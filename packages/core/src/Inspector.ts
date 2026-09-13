@@ -40,6 +40,20 @@ import {
  */
 const POINTER_BUTTON_MASKS = { 0: 1, 1: 4, 2: 2 } as const;
 
+/** {@link UINodeSnapshot.type} of the node several surfaces are wrapped in. */
+const UI_ROOT_TYPE = "UIRoot";
+
+/**
+ * Rounds one virtual-space bound to a thousandth of a pixel. The matrix round
+ * trip that produces it leaves noise in a float's last digits, and that noise
+ * changes with the canvas size, so unrounded boxes make the snapshot differ
+ * between two hosts with nothing moved. A thousandth of a pixel is far below
+ * the accuracy a click needs. Adding zero folds a rounded `-0` into `0`.
+ */
+function roundBound(value: number): number {
+  return Math.round(value * 1000) / 1000 + 0;
+}
+
 /**
  * Thrown internally by a drive's frame-budget guard once `maxFrames` is
  * spent. `executeDrive` catches its own marker to report `timedOut: true`
@@ -343,9 +357,11 @@ export interface UINodeSnapshot {
   /**
    * The element's box in virtual-space pixels: its container's top-left and
    * bottom-right corners mapped out of the renderer and through the
-   * canvas-to-virtual conversion. `null` when no renderer adapter is
-   * registered, or for an element that owns no container. A rotated element
-   * reports the axis-aligned box of those two corners, which is approximate.
+   * canvas-to-virtual conversion, rounded to a thousandth of a pixel so the
+   * same box reads the same at any canvas size. `null` when no renderer
+   * adapter is registered, or for an element that owns no container. A
+   * rotated element reports the axis-aligned box of those two corners, which
+   * is approximate.
    */
   bounds: { x: number; y: number; width: number; height: number } | null;
   children: UINodeSnapshot[];
@@ -1949,6 +1965,15 @@ export class Inspector {
       );
   }
 
+  /**
+   * The synthetic node the snapshot wraps several surfaces of one scene in.
+   * A scene with a single surface reports that surface as the root instead,
+   * and this id appears nowhere.
+   */
+  private getUIRootId(scene: Scene): string {
+    return `${this.getSceneId(scene)}:ui`;
+  }
+
   private buildUISnapshot(scene: Scene): UITreeSnapshot | null {
     const adapter = this.engine.context.tryResolve(RendererAdapterKey);
     const roots = this.getUISurfaceRoots(scene).map(({ root, id }) =>
@@ -1962,8 +1987,8 @@ export class Inspector {
 
     return {
       root: {
-        id: `${this.getSceneId(scene)}:ui`,
-        type: "UIRoot",
+        id: this.getUIRootId(scene),
+        type: UI_ROOT_TYPE,
         layout: { x: 0, y: 0, width: 0, height: 0 },
         bounds: null,
         children: roots,
@@ -2004,6 +2029,9 @@ export class Inspector {
    * An adapter without `canvasToVirtual` reports canvas CSS pixels, which the
    * {@link RendererAdapter} contract says equal virtual pixels only while the
    * canvas is at its virtual size.
+   *
+   * Values are rounded, so the same box reads the same at any canvas size and
+   * a snapshot diff stays meaningful. See {@link roundBound}.
    */
   private buildUIBounds(
     node: UIElementLike,
@@ -2022,10 +2050,10 @@ export class Inspector {
     const start = toVirtual({ x: 0, y: 0 });
     const end = toVirtual({ x: size.width, y: size.height });
     return {
-      x: Math.min(start.x, end.x),
-      y: Math.min(start.y, end.y),
-      width: Math.abs(end.x - start.x),
-      height: Math.abs(end.y - start.y),
+      x: roundBound(Math.min(start.x, end.x)),
+      y: roundBound(Math.min(start.y, end.y)),
+      width: roundBound(Math.abs(end.x - start.x)),
+      height: roundBound(Math.abs(end.y - start.y)),
     };
   }
 
@@ -2053,7 +2081,20 @@ export class Inspector {
       }
     };
     for (const scene of this.engine.scenes.all) {
-      for (const { root, id } of this.getUISurfaceRoots(scene)) visit(root, id);
+      const roots = this.getUISurfaceRoots(scene);
+      // The snapshot's synthetic wrapper owns no element, so it carries no
+      // bounds and cannot be clicked. It is indexed anyway: a caller passing
+      // an id the snapshot printed gets the missing-bounds error rather than
+      // being told to read ids from the snapshot it read them from.
+      if (roots.length > 1) {
+        entries.push({
+          id: this.getUIRootId(scene),
+          type: UI_ROOT_TYPE,
+          bounds: null,
+          displayObject: undefined,
+        });
+      }
+      for (const { root, id } of roots) visit(root, id);
     }
     return entries;
   }

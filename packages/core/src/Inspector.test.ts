@@ -312,6 +312,41 @@ describe("Inspector", () => {
     expect(await buttonBounds(true)).toEqual(await buttonBounds(false));
   });
 
+  it("reports the same UI bounds at any canvas size", async () => {
+    // One box, two canvas fits. Mapping it out of the renderer and back into
+    // virtual space leaves float noise in the last digits, and the noise
+    // differs per fit: unrounded, this element reads 23.999999999999996 tall
+    // at one size and 24.000000000000004 at the other. The snapshot is
+    // advertised as stable for diffing, and every user-interface node carries
+    // bounds, so that difference would read as a move that never happened.
+    const boundsAtScale = async (scale: number) => {
+      const { inspector, scenes, ctx } = setup();
+      ctx.register(RendererAdapterKey, {
+        canvasToVirtual: (x: number, y: number) => ({
+          x: (x - 37) / scale,
+          y: (y - 23) / scale,
+        }),
+      } as unknown as RendererAdapter);
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+
+      class UISurface extends Component {
+        readonly root = fakeUIElement({
+          layout: { left: 0, top: 0, width: 160, height: 24 },
+          origin: { x: 37 + 23 * scale, y: 23 + 17 * scale },
+          scale,
+        });
+      }
+      scene.spawn("hud").add(new UISurface());
+
+      return inspector.snapshot().scenes[0]?.ui?.root.bounds;
+    };
+
+    const box = { x: 23, y: 17, width: 160, height: 24 };
+    expect(await boundsAtScale(993 / 1280)).toEqual(box);
+    expect(await boundsAtScale(877 / 1280)).toEqual(box);
+  });
+
   it("reports null UI bounds without a registered renderer adapter", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
@@ -2215,6 +2250,7 @@ async function pointerSetup(opts?: {
   hasRenderedFrame?: boolean;
   omitVirtualToCanvas?: boolean;
   buttonHasContainer?: boolean;
+  secondSurface?: boolean;
 }) {
   const base = setup();
   const scene = new TestScene("game");
@@ -2235,12 +2271,26 @@ async function pointerSetup(opts?: {
     children: [button],
   });
   class UISurface extends Component {
-    readonly root = rootElement;
+    constructor(readonly root: FakeUIElement) {
+      super();
+    }
   }
   const entity = scene.spawn("hud");
-  entity.add(new UISurface());
+  entity.add(new UISurface(rootElement));
   const surfaceId = `entity-${entity.id}:UISurface:0`;
   const buttonId = `${surfaceId}/0`;
+
+  if (opts?.secondSurface) {
+    scene.spawn("menu").add(
+      new UISurface(
+        fakeUIElement({
+          type: "UIPanel",
+          layout: { left: 0, top: 0, width: 40, height: 40 },
+          origin: { x: 100, y: 100 },
+        }),
+      ),
+    );
+  }
 
   const dispatched: RecordedPointerEvent[] = [];
   const canvas = {
@@ -2495,6 +2545,20 @@ describe("Inspector.pointer", () => {
 
     expect(() => inspector.pointer.click("entity-99:UISurface:0")).toThrow(
       'Inspector.pointer.click(): no UI node with id "entity-99:UISurface:0"',
+    );
+  });
+
+  it("resolves the id the snapshot gives a scene with several surfaces", async () => {
+    const { inspector } = await pointerSetup({ secondSurface: true });
+    const rootId = inspector.snapshot().scenes[0]?.ui?.root.id;
+    if (!rootId) throw new Error("Expected a UI snapshot.");
+    expect(rootId).toMatch(/:ui$/);
+
+    // That wrapper owns no element, so the answer is that it has no bounds.
+    // Telling the caller to read ids from the snapshot would be absurd here:
+    // the snapshot is where this id came from.
+    expect(() => inspector.pointer.click(rootId)).toThrow(
+      `Inspector.pointer.click(): UI node "${rootId}" has no bounds.`,
     );
   });
 

@@ -70,6 +70,33 @@ async function buttons(page: Page): Promise<{
   return { nodes, plain, disabled, covered };
 }
 
+/** One half of a click, so a test can assert between the two. */
+function pointerHalf(
+  page: Page,
+  half: "down" | "up",
+  target: string | { x: number; y: number },
+): Promise<PointerHit> {
+  return page.evaluate(
+    ([which, aim]) => {
+      const inspector = window.__yage__?.inspector;
+      if (!inspector) throw new Error("__yage__.inspector is not available.");
+      return inspector.pointer[which as "down" | "up"](
+        aim as string | { x: number; y: number },
+      ) as unknown as PointerHit;
+    },
+    [half, target] as [string, string | { x: number; y: number }],
+  );
+}
+
+/** The action names the engine currently reads as held. */
+function heldActions(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const inspector = window.__yage__?.inspector;
+    if (!inspector) throw new Error("__yage__.inspector is not available.");
+    return inspector.getInputState().actions;
+  });
+}
+
 function pointerClick(
   page: Page,
   target: string | { x: number; y: number },
@@ -179,27 +206,32 @@ test.describe("Inspector pointer verbs", () => {
     expect((await probe(page))?.disabledClicks).toBe(0);
   });
 
-  test("engine input state lags the click by one frame", async ({ page }) => {
+  test("engine input state lags the press and the release by one frame", async ({
+    page,
+  }) => {
     await gotoFixture(page, "/inspector-pointer.html");
     await stepFrames(page, 1);
 
     // The middle of the play area, clear of all three surfaces.
-    const hit = await page.evaluate(() => {
-      const inspector = window.__yage__?.inspector;
-      if (!inspector) throw new Error("__yage__.inspector is not available.");
-      return inspector.pointer.down({
-        x: 160,
-        y: 90,
-      }) as unknown as PointerHit;
-    });
+    const hit = await pointerHalf(page, "down", { x: 160, y: 90 });
 
     expect(hit.nodeId).toBeNull();
     expect(hit.consumed).toBe(false);
     // Nothing has drained yet, so the action edge has not been applied.
     expect((await probe(page))?.fireDowns).toBe(0);
+    expect(await heldActions(page)).not.toContain("fire");
 
     await stepFrames(page, 1);
     expect((await probe(page))?.fireDowns).toBe(1);
+    expect(await heldActions(page)).toContain("fire");
+
+    // The release travels the same way: the engine's own listener takes it,
+    // and the next drain applies it.
+    await pointerHalf(page, "up", { x: 160, y: 90 });
+    expect(await heldActions(page)).toContain("fire");
+
+    await stepFrames(page, 1);
+    expect(await heldActions(page)).not.toContain("fire");
   });
 
   test("a click on a button raises no gameplay action edge", async ({
@@ -218,6 +250,14 @@ test.describe("Inspector pointer verbs", () => {
   });
 
   test("clicking before the first rendered frame throws", async ({ page }) => {
+    // `startFrozen` stops the renderer's ticker, but only once the debug
+    // plugin installs: the ticker auto-starts inside the renderer's own
+    // startup and can draw one frame before then. Holding back animation
+    // frames for the whole page is what keeps this at zero rendered frames
+    // every run. Nothing in this test steps, so nothing needs them.
+    await page.addInitScript(() => {
+      window.requestAnimationFrame = () => 0;
+    });
     await gotoFixture(page, "/inspector-pointer.html?frozen=1");
 
     await expect(

@@ -17,4 +17,6 @@ root?.children[0]?.bounds; // { x: 200, y: 150, width: 60, height: 30 }
 
 `bounds` is `null` when no renderer adapter is registered, or for an element
 that owns no container. A rotated element reports the axis-aligned box of two
-mapped corners, which is approximate.
+mapped corners, which is approximate. Values are rounded to a thousandth of a
+pixel, so one box reads the same at every canvas size and a snapshot diff
+stays meaningful.

@@ -1077,6 +1077,51 @@ describe("RendererPlugin", () => {
       return plugin;
     }
 
+    /** Installed into a host half the virtual size, so the fit scales by 0.5. */
+    async function installedHalfScale(): Promise<RendererPlugin> {
+      class StubResizeObserver {
+        observe(): void {}
+        disconnect(): void {}
+      }
+      globalThis.ResizeObserver =
+        StubResizeObserver as unknown as typeof globalThis.ResizeObserver;
+      const host = {
+        getBoundingClientRect: () => ({
+          width: 400,
+          height: 300,
+          top: 0,
+          left: 0,
+          right: 400,
+          bottom: 300,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        }),
+      } as unknown as HTMLElement;
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({
+        ...defaultConfig,
+        fit: { mode: "letterbox", target: host },
+      });
+      await plugin.install(context);
+      return plugin;
+    }
+
+    let originalResizeObserver: typeof globalThis.ResizeObserver | undefined;
+
+    beforeEach(() => {
+      originalResizeObserver = globalThis.ResizeObserver;
+    });
+
+    afterEach(() => {
+      if (originalResizeObserver) {
+        globalThis.ResizeObserver = originalResizeObserver;
+      } else {
+        delete (globalThis as unknown as { ResizeObserver?: unknown })
+          .ResizeObserver;
+      }
+    });
+
     it("returns the hit container and its ancestors, innermost first", async () => {
       const plugin = await installed();
       const nodes = chain(3);
@@ -1114,14 +1159,15 @@ describe("RendererPlugin", () => {
     });
 
     it("hit-tests in canvas coordinates", async () => {
-      const plugin = await installed();
-      const nodes = chain(1);
-      const boundary = attachBoundary(plugin, nodes[0]!);
+      const plugin = await installedHalfScale();
+      const boundary = attachBoundary(plugin, chain(1)[0]!);
 
       plugin.hitTestUIPath(120, 90);
 
-      const expected = plugin.virtualToCanvas(120, 90);
-      expect(boundary.hitTest).toHaveBeenCalledWith(expected.x, expected.y);
+      // The canvas is half virtual size here, so the point the boundary is
+      // asked about is half the one the caller named. Forwarding the virtual
+      // point unconverted would land somewhere else on every scaled canvas.
+      expect(boundary.hitTest).toHaveBeenCalledWith(60, 45);
     });
 
     it("binds the boundary root before the first frame", async () => {
