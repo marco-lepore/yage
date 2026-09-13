@@ -18,6 +18,7 @@ import type {
   Plugin,
   ProcessSystem,
   RendererAdapter,
+  RendererUIHit,
   SystemScheduler,
 } from "@yagejs/core";
 import {
@@ -502,8 +503,23 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * conversion is required for the hit-test to land on the correct surface.
    */
   hitTestUI(x: number, y: number): boolean {
+    return this.hitTestUIPath(x, y)?.consumed ?? false;
+  }
+
+  /**
+   * The hit test behind {@link hitTestUI}, reporting what it found: the
+   * topmost interactive container and its ancestors, innermost first, plus
+   * whether any of them is a pointer-consume surface. `null` when nothing
+   * interactive sits under `(x, y)`.
+   *
+   * Callers that address a container — matching it against an Inspector
+   * user-interface snapshot, for one — need the chain rather than the
+   * boolean. Same coordinate contract as {@link hitTestUI}: `(x, y)` is in
+   * virtual space.
+   */
+  hitTestUIPath(x: number, y: number): RendererUIHit | null {
     const boundary = this._app.renderer.events?.rootBoundary;
-    if (!boundary) return false;
+    if (!boundary) return null;
     // Pixi v8 sets `rootBoundary.rootTarget` on each render. Before the first
     // frame (or under `inspector.time.freeze()` in deterministic test runs
     // that pause the ticker) it can be null — and `boundary.hitTest` reads
@@ -516,13 +532,25 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     }
     const canvas = this._fitController.virtualToCanvas(x, y);
     const hit = boundary.hitTest(canvas.x, canvas.y) as DisplayContainer | null;
-    if (!hit) return false;
+    if (!hit) return null;
+    const path: DisplayContainer[] = [];
+    let consumed = false;
     let node: DisplayContainer | null = hit;
     while (node) {
-      if (isPointerConsumeContainer(node)) return true;
+      path.push(node);
+      if (isPointerConsumeContainer(node)) consumed = true;
       node = node.parent ?? null;
     }
-    return false;
+    return { path, consumed };
+  }
+
+  /**
+   * Whether a frame has been drawn. Pixi roots its event boundary at the last
+   * object rendered and drops an event silently when there is none, so a
+   * pointer dispatched before the first frame reaches nothing.
+   */
+  hasRenderedFrame(): boolean {
+    return this._app.renderer.lastObjectRendered != null;
   }
 
   /**

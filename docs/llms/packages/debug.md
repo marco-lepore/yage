@@ -124,6 +124,49 @@ inspector.getEntityCount(); // live entities across the scene stack, no snapshot
 inspector.time.isAdvancing(); // true if a real frame ticked within the last 250ms
 ```
 
+### Clicking the user interface (`inspector.pointer`)
+
+`inspector.input`'s pointer verbs write `InputManager` state. They drive
+gameplay input — action maps, `isPressed`, pointer position — and never reach
+a `@yagejs/ui` primitive, which receives clicks as renderer events on its own
+container. A scenario calling `input.pointerDown` over a button gets no
+`onClick`.
+
+`inspector.pointer` dispatches real DOM pointer events at the renderer's
+canvas, so the renderer hit-tests and delivers them exactly as it does for a
+person clicking. Stacking order, a disabled button's pointer mode, clipping
+and the auto-consume marking all apply.
+
+```ts
+const surface = inspector.snapshot().scenes[0]?.ui?.root;
+const button = surface?.children[0];
+const hit = inspector.pointer.click(button.id); // or click({ x, y })
+hit.path.some((node) => node.type === "UIButton"); // true
+```
+
+- `click`, `down`, `up` and `move` dispatch; `hitTest` resolves and reports
+  without dispatching.
+- The target is a `UINodeSnapshot.id`, resolved to the centre of that node's
+  `bounds`, or a virtual-space point. `bounds` is the snapshot's on-screen box;
+  `layout` beside it is Yoga's parent-relative box and locates nothing on the
+  canvas.
+- The returned hit carries `nodeId` and `type` for the innermost node, `path`
+  for every node the chain crosses innermost-first, the `point` used, and
+  `consumed`. A button's label is a node of its own and is hit before the
+  button, so read `path` to assert the click landed on the button.
+- Requires `RendererPlugin` and one rendered frame. Each guard throws and names
+  what to do.
+
+Timing runs two ways, and both matter to an assertion. The button's `onClick`
+has already run when the call returns, because delivery is synchronous. Engine
+input state reflects the press at the next frame's drain, so step one frame
+before asserting on an action.
+
+```ts
+inspector.pointer.click(button.id); // onClick has run
+inspector.time.step(1); // the action map has now seen the press
+```
+
 `events.waitFor(pattern, { withinFrames?, source? })` resolves with the earliest
 retained match without consuming it. Repeated waits can return the same entry.
 Clear the log before the action when the assertion needs a new occurrence:

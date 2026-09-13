@@ -134,7 +134,7 @@ export function createDriveContext(
   captures: DriveCapture[],
   opts: DriveContextOptions,
 ): ErasedDriveContext {
-  const { events, input: raw } = engine.inspector;
+  const { events, input: raw, pointer } = engine.inspector;
   const { time } = opts;
   const pace = opts.pace ?? "immediate";
   const warnings = opts.warnings ?? [];
@@ -301,6 +301,7 @@ export function createDriveContext(
       return driveFramesUsed(() => time.getFrame(), startFrame);
     },
     input,
+    pointer,
     events,
     expect,
     step: (frames = 1, stepOpts) => advance(frames, stepOpts),

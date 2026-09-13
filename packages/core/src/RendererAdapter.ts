@@ -10,6 +10,20 @@ import { ServiceKey } from "./EngineContext.js";
  * under `RendererAdapterKey` to integrate with the input plugin without
  * importing `@yagejs/renderer`.
  */
+/**
+ * What a hit test found under a point: the topmost interactive container and
+ * its ancestors, innermost first, plus whether the chain crosses a surface
+ * marked via `markPointerConsumeContainer`.
+ *
+ * The containers are renderer-owned objects, opaque to the consumer. Compare
+ * them by identity against display objects read elsewhere — an Inspector
+ * user-interface snapshot, for one — rather than reading fields off them.
+ */
+export interface RendererUIHit {
+  readonly path: readonly object[];
+  readonly consumed: boolean;
+}
+
 export interface RendererAdapter {
   readonly canvas: HTMLCanvasElement;
   /**
@@ -31,6 +45,25 @@ export interface RendererAdapter {
    * requiring per-component handler boilerplate.
    */
   hitTestUI?(x: number, y: number): boolean;
+  /**
+   * Virtual-space pixels → CSS pixels relative to the canvas top-left. The
+   * inverse of {@link RendererAdapter.canvasToVirtual}. Optional — a consumer
+   * that needs to place a DOM event on the canvas requires it and should say
+   * so when it is absent.
+   */
+  virtualToCanvas?(x: number, y: number): { x: number; y: number };
+  /**
+   * The same hit test as {@link RendererAdapter.hitTestUI}, reporting what was
+   * hit rather than only whether the pointer is claimed. `null` when nothing
+   * interactive sits under `(x, y)`.
+   */
+  hitTestUIPath?(x: number, y: number): RendererUIHit | null;
+  /**
+   * Whether the renderer has drawn at least one frame. Pointer delivery needs
+   * one: the event system roots its hit test at the last object rendered and
+   * drops the event when there is none.
+   */
+  hasRenderedFrame?(): boolean;
   /**
    * The on-screen region of virtual space, CLAMPED to the declared virtual
    * rect — the area a screen-space overlay may lay out in and expect to be

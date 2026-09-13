@@ -15,6 +15,13 @@ type PointerUpOpts = Parameters<InspectorInput["pointerUp"]>[1];
 type GamepadAxis = Parameters<InspectorInput["gamepadAxis"]>[0];
 
 /**
+ * Real pointer events at the canvas, taken from `Inspector.pointer` itself so
+ * the facade cannot drift from it. Every call dispatches and returns, so none
+ * of them is async.
+ */
+export type DrivePointer = Inspector["pointer"];
+
+/**
  * Synthetic input for a driven run.
  *
  * `Inspector.input` cannot be handed over unchanged: its `tap`, `hold` and
@@ -73,6 +80,22 @@ export interface DriveContext<C extends ControlSchema = ControlSchema> {
   /** Frames this run has spent so far, counting frames issued any way. */
   readonly framesUsed: number;
   input: DriveInput;
+  /**
+   * Clicks that reach `@yagejs/ui` primitives — a build menu, a pause screen,
+   * a confirm dialog. `input` writes engine input state and never reaches
+   * one; these dispatch real pointer events at the canvas, so the renderer
+   * hit-tests and delivers them.
+   *
+   * A button's `onClick` has already run when the call returns. Engine input
+   * state reflects the press one frame later, so `await step(1)` before
+   * asserting on an action.
+   *
+   * ```ts
+   * const hit = pointer.click(buttonId);
+   * expect(hit.type).toBe("UIButton");
+   * ```
+   */
+  pointer: DrivePointer;
   /**
    * The engine's event log. The run is the only thing issuing frames, so
    * `waitFor` has to be started before the frames that satisfy it and awaited

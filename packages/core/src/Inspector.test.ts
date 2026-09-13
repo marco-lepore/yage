@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Inspector } from "./Inspector.js";
 import type { InspectorFacetContributor } from "./Inspector.js";
 import { Scene } from "./Scene.js";
@@ -58,6 +58,16 @@ interface FakeUIElement {
   children: FakeUIElement[];
 }
 
+/** Classes whose names the snapshot reports as a node's `type`. */
+const fakeElementClasses = {
+  UIButton: class UIButton {
+    readonly uiElement = true;
+  },
+  UIPanel: class UIPanel {
+    readonly uiElement = true;
+  },
+};
+
 /**
  * A UI element whose container sits at `origin` in canvas pixels and draws at
  * `scale`. `layout` stays parent-relative, as Yoga reports it, so a test can
@@ -68,10 +78,11 @@ function fakeUIElement(opts: {
   origin?: { x: number; y: number };
   scale?: number;
   children?: FakeUIElement[];
+  type?: keyof typeof fakeElementClasses;
 }): FakeUIElement {
   const origin = opts.origin;
   const scale = opts.scale ?? 1;
-  return {
+  const shape = {
     yogaNode: { getComputedLayout: () => opts.layout },
     ...(origin
       ? {
@@ -85,6 +96,8 @@ function fakeUIElement(opts: {
       : {}),
     children: opts.children ?? [],
   };
+  const typed = opts.type ? new fakeElementClasses[opts.type]() : {};
+  return Object.assign(typed, shape) as FakeUIElement;
 }
 
 /** A canvas twice virtual size, offset by a 40 x 20 letterbox bar. */
@@ -2169,5 +2182,329 @@ describe("targeted component facets", () => {
       });
       expect(inspector.getComponentFacet(component, "example")).toBeUndefined();
     }
+  });
+});
+
+/** A dispatched pointer event, flattened to what the assertions read. */
+interface RecordedPointerEvent {
+  type: string;
+  clientX: number;
+  clientY: number;
+  button: number;
+  buttons: number;
+  bubbles: boolean;
+  pointerId: number;
+  pointerType: string;
+  isPrimary: boolean;
+}
+
+class StubPointerEvent {
+  constructor(
+    readonly type: string,
+    readonly init: PointerEventInit,
+  ) {}
+}
+
+/**
+ * A surface holding one button, with a renderer adapter that models a canvas
+ * at twice virtual size behind a 40 x 20 letterbox bar and offset 12 x 8 in
+ * the page. The button's container sits at canvas (440, 320), which is
+ * virtual (200, 150); its 60 x 30 box centres on virtual (230, 165).
+ */
+async function pointerSetup(opts?: {
+  hasRenderedFrame?: boolean;
+  omitVirtualToCanvas?: boolean;
+  buttonHasContainer?: boolean;
+}) {
+  const base = setup();
+  const scene = new TestScene("game");
+  await base.scenes.push(scene);
+
+  const button = fakeUIElement({
+    type: "UIButton",
+    layout: { left: 20, top: 10, width: 60, height: 30 },
+    ...(opts?.buttonHasContainer === false
+      ? {}
+      : { origin: { x: 440, y: 320 }, scale: 2 }),
+  });
+  const rootElement = fakeUIElement({
+    type: "UIPanel",
+    layout: { left: 0, top: 0, width: 200, height: 100 },
+    origin: { x: 400, y: 300 },
+    scale: 2,
+    children: [button],
+  });
+  class UISurface extends Component {
+    readonly root = rootElement;
+  }
+  const entity = scene.spawn("hud");
+  entity.add(new UISurface());
+  const surfaceId = `entity-${entity.id}:UISurface:0`;
+  const buttonId = `${surfaceId}/0`;
+
+  const dispatched: RecordedPointerEvent[] = [];
+  const canvas = {
+    getBoundingClientRect: () => ({ left: 12, top: 8 }),
+    dispatchEvent: (event: StubPointerEvent) => {
+      dispatched.push({
+        type: event.type,
+        clientX: event.init.clientX ?? 0,
+        clientY: event.init.clientY ?? 0,
+        button: event.init.button ?? 0,
+        buttons: event.init.buttons ?? 0,
+        bubbles: event.init.bubbles ?? false,
+        pointerId: event.init.pointerId ?? 0,
+        pointerType: event.init.pointerType ?? "",
+        isPrimary: event.init.isPrimary ?? false,
+      });
+      return true;
+    },
+  };
+  const hitTestUIPath = vi.fn(
+    (): { path: readonly object[]; consumed: boolean } | null => ({
+      path: [button.displayObject].filter(
+        (container) => container !== undefined,
+      ),
+      consumed: true,
+    }),
+  );
+  const adapter = {
+    canvas,
+    canvasToVirtual: (x: number, y: number) => ({
+      x: (x - 40) / 2,
+      y: (y - 20) / 2,
+    }),
+    ...(opts?.omitVirtualToCanvas
+      ? {}
+      : {
+          virtualToCanvas: (x: number, y: number) => ({
+            x: x * 2 + 40,
+            y: y * 2 + 20,
+          }),
+        }),
+    hitTestUIPath,
+    hasRenderedFrame: () => opts?.hasRenderedFrame ?? true,
+  };
+  base.ctx.register(RendererAdapterKey, adapter as unknown as RendererAdapter);
+
+  return {
+    ...base,
+    button,
+    rootElement,
+    surfaceId,
+    buttonId,
+    dispatched,
+    hitTestUIPath,
+  };
+}
+
+describe("Inspector.pointer", () => {
+  beforeEach(() => {
+    vi.stubGlobal("PointerEvent", StubPointerEvent);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("clicks a node id at the centre of its bounds, in client coordinates", async () => {
+    const { inspector, buttonId, dispatched } = await pointerSetup();
+
+    inspector.pointer.click(buttonId);
+
+    // virtual (230, 165) -> canvas (500, 350) -> client (512, 358).
+    expect(dispatched).toEqual([
+      {
+        type: "pointerdown",
+        clientX: 512,
+        clientY: 358,
+        button: 0,
+        buttons: 1,
+        bubbles: true,
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+      },
+      {
+        type: "pointerup",
+        clientX: 512,
+        clientY: 358,
+        button: 0,
+        buttons: 0,
+        bubbles: true,
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+      },
+    ]);
+  });
+
+  it("clicks a virtual-space point unchanged", async () => {
+    const { inspector, dispatched } = await pointerSetup();
+
+    const hit = inspector.pointer.click({ x: 10, y: 20 });
+
+    expect(hit.point).toEqual({ x: 10, y: 20 });
+    expect(dispatched[0]?.clientX).toBe(10 * 2 + 40 + 12);
+    expect(dispatched[0]?.clientY).toBe(20 * 2 + 20 + 8);
+  });
+
+  it("names the user-interface node the hit test landed on", async () => {
+    const { inspector, buttonId, hitTestUIPath } = await pointerSetup();
+
+    const hit = inspector.pointer.click(buttonId);
+
+    expect(hit).toEqual({
+      nodeId: buttonId,
+      type: "UIButton",
+      path: [{ id: buttonId, type: "UIButton" }],
+      point: { x: 230, y: 165 },
+      consumed: true,
+    });
+    expect(hitTestUIPath).toHaveBeenCalledWith(230, 165);
+  });
+
+  it("reports a null node when the hit test finds nothing", async () => {
+    const { inspector, hitTestUIPath } = await pointerSetup();
+    hitTestUIPath.mockReturnValue(null);
+
+    expect(inspector.pointer.click({ x: 5, y: 5 })).toEqual({
+      nodeId: null,
+      type: null,
+      path: [],
+      point: { x: 5, y: 5 },
+      consumed: false,
+    });
+  });
+
+  it("skips hit containers that no snapshot node owns", async () => {
+    const { inspector, hitTestUIPath } = await pointerSetup();
+    hitTestUIPath.mockReturnValue({ path: [{}], consumed: false });
+
+    const hit = inspector.pointer.click({ x: 5, y: 5 });
+
+    expect(hit.nodeId).toBeNull();
+    expect(hit.type).toBeNull();
+    expect(hit.path).toEqual([]);
+    expect(hit.consumed).toBe(false);
+  });
+
+  it("lists every node the hit chain crosses, innermost first", async () => {
+    const {
+      inspector,
+      button,
+      rootElement,
+      surfaceId,
+      buttonId,
+      hitTestUIPath,
+    } = await pointerSetup();
+    hitTestUIPath.mockReturnValue({
+      path: [button.displayObject, rootElement.displayObject].filter(
+        (container) => container !== undefined,
+      ),
+      consumed: true,
+    });
+
+    const hit = inspector.pointer.hitTest(buttonId);
+
+    expect(hit.path).toEqual([
+      { id: buttonId, type: "UIButton" },
+      { id: surfaceId, type: "UIPanel" },
+    ]);
+    expect(hit.nodeId).toBe(buttonId);
+    expect(hit.type).toBe("UIButton");
+  });
+
+  it("dispatches nothing from hitTest", async () => {
+    const { inspector, buttonId, dispatched } = await pointerSetup();
+
+    const hit = inspector.pointer.hitTest(buttonId);
+
+    expect(hit.nodeId).toBe(buttonId);
+    expect(dispatched).toEqual([]);
+  });
+
+  it("dispatches one event per half-verb", async () => {
+    const { inspector, dispatched } = await pointerSetup();
+
+    inspector.pointer.down({ x: 1, y: 2 });
+    inspector.pointer.move({ x: 3, y: 4 });
+    inspector.pointer.up({ x: 3, y: 4 });
+
+    expect(dispatched.map((event) => event.type)).toEqual([
+      "pointerdown",
+      "pointermove",
+      "pointerup",
+    ]);
+    expect(dispatched.map((event) => event.buttons)).toEqual([1, 0, 0]);
+  });
+
+  it("maps each mouse button to its DOM bitmask", async () => {
+    const { inspector, dispatched } = await pointerSetup();
+
+    inspector.pointer.down({ x: 1, y: 1 }, { button: 1 });
+    inspector.pointer.down({ x: 1, y: 1 }, { button: 2 });
+
+    expect(dispatched.map((event) => [event.button, event.buttons])).toEqual([
+      [1, 4],
+      [2, 2],
+    ]);
+  });
+
+  it("leaves the InputManager alone", async () => {
+    const { inspector, ctx, buttonId } = await pointerSetup();
+    const manager = {
+      firePointerDown: vi.fn(),
+      firePointerUp: vi.fn(),
+      firePointerMove: vi.fn(),
+    };
+    ctx.register(new ServiceKey("inputManager"), manager);
+
+    inspector.pointer.click(buttonId);
+
+    expect(manager.firePointerDown).not.toHaveBeenCalled();
+    expect(manager.firePointerUp).not.toHaveBeenCalled();
+    expect(manager.firePointerMove).not.toHaveBeenCalled();
+  });
+
+  it("throws without a renderer adapter", () => {
+    const { inspector } = setup();
+
+    expect(() => inspector.pointer.click({ x: 0, y: 0 })).toThrow(
+      "Inspector.pointer.click() requires RendererPlugin to be active.",
+    );
+  });
+
+  it("throws when the adapter cannot convert virtual coordinates", async () => {
+    const { inspector } = await pointerSetup({ omitVirtualToCanvas: true });
+
+    expect(() => inspector.pointer.down({ x: 0, y: 0 })).toThrow(
+      "Inspector.pointer.down() requires RendererPlugin to be active.",
+    );
+  });
+
+  it("throws before the first rendered frame", async () => {
+    const { inspector } = await pointerSetup({ hasRenderedFrame: false });
+
+    expect(() => inspector.pointer.click({ x: 0, y: 0 })).toThrow(
+      "Inspector.pointer.click() needs a rendered frame; step one frame first.",
+    );
+  });
+
+  it("throws for an id that matches no node", async () => {
+    const { inspector } = await pointerSetup();
+
+    expect(() => inspector.pointer.click("entity-99:UISurface:0")).toThrow(
+      'Inspector.pointer.click(): no UI node with id "entity-99:UISurface:0"',
+    );
+  });
+
+  it("throws for a node with no bounds", async () => {
+    const { inspector, buttonId } = await pointerSetup({
+      buttonHasContainer: false,
+    });
+
+    expect(() => inspector.pointer.hitTest(buttonId)).toThrow(
+      `Inspector.pointer.hitTest(): UI node "${buttonId}" has no bounds.`,
+    );
   });
 });

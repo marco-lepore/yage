@@ -161,6 +161,7 @@ import {
   LogLevel,
   SceneHookRegistry,
   SceneHookRegistryKey,
+  markPointerConsumeContainer,
 } from "@yagejs/core";
 import type { EngineEvents, SceneTransition } from "@yagejs/core";
 import { RendererPlugin } from "./RendererPlugin.js";
@@ -1040,6 +1041,108 @@ describe("RendererPlugin", () => {
         "change",
         expect.any(Function),
       );
+    });
+  });
+  describe("UI hit testing", () => {
+    /** A container chain the hit test can walk, innermost first. */
+    function chain(depth: number): Array<{ parent: object | null }> {
+      const nodes: Array<{ parent: object | null }> = [];
+      for (let i = 0; i < depth; i++) nodes.push({ parent: null });
+      for (let i = 0; i < depth - 1; i++) {
+        nodes[i]!.parent = nodes[i + 1]!;
+      }
+      return nodes;
+    }
+
+    /** Give the mock renderer an event boundary that reports `hit`. */
+    function attachBoundary(
+      plugin: RendererPlugin,
+      hit: object | null,
+    ): { rootTarget: unknown; hitTest: ReturnType<typeof vi.fn> } {
+      const boundary = {
+        rootTarget: null as unknown,
+        hitTest: vi.fn(() => hit),
+      };
+      const renderer = plugin.application.renderer as unknown as {
+        events?: { rootBoundary: unknown };
+      };
+      renderer.events = { rootBoundary: boundary };
+      return boundary;
+    }
+
+    async function installed(): Promise<RendererPlugin> {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      return plugin;
+    }
+
+    it("returns the hit container and its ancestors, innermost first", async () => {
+      const plugin = await installed();
+      const nodes = chain(3);
+      attachBoundary(plugin, nodes[0]!);
+
+      expect(plugin.hitTestUIPath(10, 20)).toEqual({
+        path: [nodes[0], nodes[1], nodes[2]],
+        consumed: false,
+      });
+    });
+
+    it("marks the path consumed when any ancestor is a consume surface", async () => {
+      const plugin = await installed();
+      const nodes = chain(3);
+      markPointerConsumeContainer(nodes[2]!);
+      attachBoundary(plugin, nodes[0]!);
+
+      expect(plugin.hitTestUIPath(10, 20)?.consumed).toBe(true);
+      expect(plugin.hitTestUI(10, 20)).toBe(true);
+    });
+
+    it("reports no hit when nothing interactive is under the point", async () => {
+      const plugin = await installed();
+      attachBoundary(plugin, null);
+
+      expect(plugin.hitTestUIPath(10, 20)).toBeNull();
+      expect(plugin.hitTestUI(10, 20)).toBe(false);
+    });
+
+    it("reports no hit without an event system", async () => {
+      const plugin = await installed();
+
+      expect(plugin.hitTestUIPath(10, 20)).toBeNull();
+      expect(plugin.hitTestUI(10, 20)).toBe(false);
+    });
+
+    it("hit-tests in canvas coordinates", async () => {
+      const plugin = await installed();
+      const nodes = chain(1);
+      const boundary = attachBoundary(plugin, nodes[0]!);
+
+      plugin.hitTestUIPath(120, 90);
+
+      const expected = plugin.virtualToCanvas(120, 90);
+      expect(boundary.hitTest).toHaveBeenCalledWith(expected.x, expected.y);
+    });
+
+    it("binds the boundary root before the first frame", async () => {
+      const plugin = await installed();
+      const boundary = attachBoundary(plugin, chain(1)[0]!);
+
+      plugin.hitTestUIPath(10, 20);
+
+      expect(boundary.rootTarget).toBe(plugin.worldRoot);
+    });
+
+    it("reports whether a frame has been rendered", async () => {
+      const plugin = await installed();
+      const renderer = plugin.application.renderer as unknown as {
+        lastObjectRendered?: unknown;
+      };
+
+      expect(plugin.hasRenderedFrame()).toBe(false);
+
+      renderer.lastObjectRendered = plugin.application.stage;
+      expect(plugin.hasRenderedFrame()).toBe(true);
     });
   });
 });

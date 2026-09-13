@@ -95,6 +95,28 @@ function stubEngine(
           record("clearAll")();
         },
       },
+      pointer: {
+        click: (target: unknown) => {
+          record("pointerClick")(target);
+          return POINTER_HIT;
+        },
+        down: (target: unknown) => {
+          record("pointerDown")(target);
+          return POINTER_HIT;
+        },
+        up: (target: unknown) => {
+          record("pointerUp")(target);
+          return POINTER_HIT;
+        },
+        move: (target: unknown) => {
+          record("pointerMove")(target);
+          return POINTER_HIT;
+        },
+        hitTest: (target: unknown) => {
+          record("pointerHitTest")(target);
+          return POINTER_HIT;
+        },
+      },
       capture: {
         dataURL: () => Promise.resolve(`data:image/png;base64,frame-${frame}`),
       },
@@ -185,6 +207,15 @@ function stubRenderer(opts: {
 }
 
 const SCENE = { name: "drop" } as unknown as Scene;
+
+/** What the stubbed `Inspector.pointer` reports for every call. */
+const POINTER_HIT = {
+  nodeId: "entity-1:UISurface:0/0",
+  type: "UIButton",
+  path: [{ id: "entity-1:UISurface:0/0", type: "UIButton" }],
+  point: { x: 120, y: 60 },
+  consumed: true,
+};
 
 function stubAnimationFrames() {
   let requestId = 0;
@@ -817,6 +848,26 @@ describe("the input facade", () => {
     expect(failure(result)).toBe(
       "input.fireAction() requires InputPlugin to be active.",
     );
+  });
+
+  it("hands the drive the Inspector's pointer verbs unchanged", async () => {
+    const { engine, calls } = stubEngine();
+    let hit: unknown;
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      (ctx) => {
+        hit = ctx.pointer.click("entity-1:UISurface:0/0");
+      },
+      { time: engine.inspector.time.acquire() },
+    );
+
+    expect(failure(result)).toBeUndefined();
+    expect(hit).toEqual(POINTER_HIT);
+    // Synchronous: a click dispatches and returns, so it spends no frame.
+    expect(result.framesUsed).toBe(0);
+    expect(calls).toEqual(["pointerClick(entity-1:UISurface:0/0)"]);
   });
 
   it("still runs a drive that never touches input", async () => {

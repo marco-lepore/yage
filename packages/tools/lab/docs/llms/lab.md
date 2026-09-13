@@ -314,6 +314,39 @@ await input.fireAction(name, frames?); // needs InputPlugin
 await ctx.input.whileHolding(codes, fn); // holds codes for fn, then restores
 ```
 
+### Clicking the game's own menus
+
+`ctx.input` drives gameplay input and never reaches a `@yagejs/ui` element: it
+writes engine input state, while a UI primitive receives clicks as renderer
+events on its own container. `ctx.pointer` dispatches real pointer events at
+the canvas, so the renderer hit-tests and delivers them. Every call is
+synchronous — it dispatches and returns, spending no frame.
+
+```ts
+pointer.click(target, opts?); pointer.down(target, opts?);   // sync
+pointer.up(target, opts?); pointer.move(target, opts?);      // sync
+pointer.hitTest(target);                     // resolve and report, no dispatch
+```
+
+`target` is a virtual-space point, or a `UINodeSnapshot.id` whose `bounds`
+centre the click lands on. Ids come from the Inspector's user-interface
+snapshot, `window.__yage__.inspector.snapshot().scenes[].ui`. Every call
+returns the hit: `nodeId` and `type` for the innermost node, `path` for the
+whole chain innermost-first, the `point` used, and `consumed`.
+
+```ts
+const hit = pointer.click({ x: 70, y: 30 });
+expect(hit.path.some((node) => node.type === "UIButton")).toBe(true);
+```
+
+A button's label is a node of its own and is hit before the button, so assert
+on `path` rather than on `type` when you mean "a button took the click".
+
+Timing runs two ways. The button's `onClick` has already run when the call
+returns, because delivery is synchronous. Engine input state reflects the press
+one frame later, so `await step(1)` before asserting on an action. The verbs
+need `RendererPlugin` and one rendered frame, and throw otherwise.
+
 `whileHolding` holds `codes` for the duration of `fn`, then restores what was
 held before — including when `fn` throws. A code already down on entry is left
 alone at both ends, so nested calls compose by lexical scope even when their
