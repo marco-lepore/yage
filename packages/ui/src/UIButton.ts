@@ -2,8 +2,7 @@ import { Container } from "pixi.js";
 import { devWarn } from "@yagejs/core";
 import type { DisplayContainer, TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
-import { Align, Display, Edge, Gutter, Justify } from "yoga-layout";
-import { FlexDirection as YogaFlexDirection } from "yoga-layout";
+import { Display, Edge } from "yoga-layout";
 import type {
   BackgroundOptions,
   LayoutValue,
@@ -31,11 +30,8 @@ import {
   setChildDebugLabel,
   setChildrenDebugLabel,
 } from "./internal/debug-label.js";
-import {
-  toAlignItems,
-  toFlexDirection,
-  toJustify,
-} from "./internal/flex-enums.js";
+import { applyFlexContainerProps } from "./internal/flex-container.js";
+import type { FlexContainerDefaults } from "./internal/flex-container.js";
 import { runUICallback } from "./error-boundary.js";
 
 import { type ColorBackground, isTextureBackground } from "./types.js";
@@ -51,6 +47,13 @@ const DEFAULT_BG: ColorBackground = { color: 0x444444, alpha: 1, radius: 4 };
  */
 const HOVER_FACTOR = 1.25;
 const PRESS_FACTOR = 0.75;
+
+/** What a button lays its children out as when the caller says nothing. */
+const BUTTON_DEFAULTS: FlexContainerDefaults = {
+  direction: "column",
+  alignItems: "center",
+  justifyContent: "center",
+};
 
 /** Default padding so auto-sized buttons have breathing room around their content. */
 const DEFAULT_PAD_X = 12;
@@ -309,29 +312,15 @@ export class UIButton implements UIContainerElement {
   }
 
   /**
-   * Applies the flex-container props by key presence (`"gap" in p`), not
-   * `!== undefined`: a present key holding `undefined` is how the React
-   * reconciler marks a dropped JSX prop, and each branch resets that property
-   * to the button's own default — column direction, centred on both axes, no
-   * gap, and the default padding below.
+   * Applies the container props, reading key presence (`"padding" in p`)
+   * rather than `!== undefined` for the same reason
+   * {@link applyFlexContainerProps} does. Padding is the button's own: a
+   * present key holding `undefined` drops the caller's value and puts the
+   * default below back.
    */
   private _applyProps(p: Partial<UIButtonProps>): void {
-    if ("direction" in p) {
-      this.yogaNode.setFlexDirection(
-        toFlexDirection(p.direction, YogaFlexDirection.Column),
-      );
-    }
-    if ("gap" in p) {
-      this.yogaNode.setGap(Gutter.All, p.gap);
-    }
-    if ("alignItems" in p) {
-      this.yogaNode.setAlignItems(toAlignItems(p.alignItems, Align.Center));
-    }
-    if ("justifyContent" in p) {
-      this.yogaNode.setJustifyContent(
-        toJustify(p.justifyContent, Justify.Center),
-      );
-    }
+    applyFlexContainerProps(this.yogaNode, p, BUTTON_DEFAULTS);
+
     if ("padding" in p) {
       this._hasExplicitPadding = p.padding !== undefined;
       const pad = this._hasExplicitPadding

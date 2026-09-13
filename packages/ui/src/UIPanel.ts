@@ -1,12 +1,7 @@
 import { Container, Rectangle } from "pixi.js";
 import type { TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
-import { Gutter, Edge, Overflow, Display } from "yoga-layout";
-import {
-  Align,
-  FlexDirection as YogaFlexDirection,
-  Justify,
-} from "yoga-layout";
+import { Edge, Overflow, Display } from "yoga-layout";
 import { attachMask, graphicsMask } from "@yagejs/renderer";
 import type { DisplayContainer, MaskHandle } from "@yagejs/renderer";
 import { UIText } from "./UIText.js";
@@ -39,11 +34,15 @@ import {
   setChildDebugLabel,
   setChildrenDebugLabel,
 } from "./internal/debug-label.js";
-import {
-  toAlignItems,
-  toFlexDirection,
-  toJustify,
-} from "./internal/flex-enums.js";
+import { applyFlexContainerProps } from "./internal/flex-container.js";
+import type { FlexContainerDefaults } from "./internal/flex-container.js";
+
+/** What a panel lays its children out as when the caller says nothing. */
+const PANEL_DEFAULTS: FlexContainerDefaults = {
+  direction: "column",
+  alignItems: "flex-start",
+  justifyContent: "flex-start",
+};
 
 // ---------------------------------------------------------------------------
 // UIPanel — Yoga-powered flex container
@@ -279,15 +278,7 @@ export class UIPanel implements UIContainerElement {
    * leaving the previous value in place.
    */
   private _applyProps(p: Partial<UIPanelProps>): void {
-    if ("direction" in p) {
-      this.yogaNode.setFlexDirection(
-        toFlexDirection(p.direction, YogaFlexDirection.Column),
-      );
-    }
-
-    if ("gap" in p) {
-      this.yogaNode.setGap(Gutter.All, p.gap);
-    }
+    applyFlexContainerProps(this.yogaNode, p, PANEL_DEFAULTS);
 
     if ("padding" in p) {
       const pad = resolvePadding(p.padding);
@@ -295,15 +286,6 @@ export class UIPanel implements UIContainerElement {
       this.yogaNode.setPadding(Edge.Right, pad.right);
       this.yogaNode.setPadding(Edge.Bottom, pad.bottom);
       this.yogaNode.setPadding(Edge.Left, pad.left);
-    }
-
-    if ("alignItems" in p) {
-      this.yogaNode.setAlignItems(toAlignItems(p.alignItems, Align.FlexStart));
-    }
-    if ("justifyContent" in p) {
-      this.yogaNode.setJustifyContent(
-        toJustify(p.justifyContent, Justify.FlexStart),
-      );
     }
 
     if ("overflow" in p) {
