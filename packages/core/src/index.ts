@@ -78,7 +78,8 @@ export type {
   StateExited,
   StateMachineEvents,
   StateMachineInspection,
-  StateMachineSnapshot,
+  StateMachineOptions,
+  StateMachineSaveData,
   StateTransition,
 } from "./StateMachine.js";
 

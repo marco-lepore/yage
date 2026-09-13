@@ -6,7 +6,7 @@ import type { Logger } from "./Logger.js";
 import type { Scene } from "./Scene.js";
 import type { ComponentClass } from "./types.js";
 import { StateMachine } from "./StateMachine.js";
-import type { StateDefinitions } from "./StateMachine.js";
+import type { StateDefinitions, StateMachineOptions } from "./StateMachine.js";
 import { LoggerKey, ErrorBoundaryKey, EventBusKey } from "./EngineContext.js";
 import { isolate } from "./internal/isolate.js";
 import { lazyRefPrototype } from "./internal/lazyRef.js";
@@ -281,24 +281,28 @@ export abstract class Component {
   protected stateMachine<const S extends string>(
     states: StateDefinitions<S>,
     initial: NoInfer<S>,
+    options?: StateMachineOptions,
   ): StateMachine<S> {
-    return new StateMachine(states, initial)._setCallbackRunner(
-      (kind, event, run) => {
+    return new StateMachine(states, initial, options)._setOwner({
+      run: (kind, event, call) => {
         const entity = this.entity as Entity | undefined;
         const scene = entity?.tryScene;
         const boundary = scene?.context.tryResolve(ErrorBoundaryKey);
         if (!boundary) {
-          run();
+          call();
           return;
         }
-        boundary.wrapCallback(run, {
+        boundary.wrapCallback(call, {
           kind: `StateMachine ${kind} (${this.constructor.name})`,
           ...(entity && { entity: entity.name }),
           ...(scene && { scene: scene.name }),
           event,
         });
       },
-    );
+      emit: (token, payload) => {
+        (this.entity as Entity | undefined)?.emit(token, payload);
+      },
+    });
   }
 
   /**

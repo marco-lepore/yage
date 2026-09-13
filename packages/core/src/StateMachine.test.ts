@@ -443,6 +443,87 @@ describe("StateMachine events", () => {
     ]);
   });
 
+  it("keeps events off the entity unless it was given a name", () => {
+    const seen = vi.fn();
+    class Brain extends Component {
+      readonly mode = this.stateMachine(
+        defineStates({ idle: { to: ["active"] }, active: {} }),
+        "idle",
+      );
+    }
+
+    const { scene } = createMockScene();
+    const entity = scene.spawn("guard");
+    const brain = entity.add(new Brain());
+    entity.on(brain.mode.events.changed, seen);
+
+    brain.mode.go("active");
+
+    expect(seen).not.toHaveBeenCalled();
+  });
+
+  it("publishes on the entity and the scene under its own name", () => {
+    const onEntity: string[] = [];
+    const onScene: string[] = [];
+    class Brain extends Component {
+      readonly mode = this.stateMachine(
+        defineStates({ idle: { to: ["active"] }, active: {} }),
+        "idle",
+        { events: "mode" },
+      );
+      readonly stance = this.stateMachine(
+        defineStates({ loose: { to: ["ready"] }, ready: {} }),
+        "loose",
+        { events: "stance" },
+      );
+    }
+
+    const { scene } = createMockScene();
+    const entity = scene.spawn("guard");
+    const brain = entity.add(new Brain());
+
+    expect(brain.mode.events.changed.name).toBe("mode:changed");
+    entity.on(brain.mode.events.entered, ({ state }) => onEntity.push(state));
+    scene.on(brain.mode.events.changed, ({ to }) => onScene.push(to));
+    entity.on(brain.stance.events.entered, ({ state }) =>
+      onEntity.push(`stance:${state}`),
+    );
+
+    brain.mode.go("active");
+    brain.stance.go("ready");
+
+    expect(onEntity).toEqual(["active", "stance:ready"]);
+    expect(onScene).toEqual(["active"]);
+  });
+
+  it("reaches machine subscribers and the entity from one transition", () => {
+    const seen: string[] = [];
+    class Brain extends Component {
+      readonly mode = this.stateMachine(
+        defineStates({ idle: { to: ["active"] }, active: {} }),
+        "idle",
+        { events: "mode" },
+      );
+    }
+
+    const { scene } = createMockScene();
+    const entity = scene.spawn("guard");
+    const brain = entity.add(new Brain());
+    brain.mode.on(brain.mode.events.changed, () => seen.push("machine"));
+    entity.on(brain.mode.events.changed, () => seen.push("entity"));
+
+    brain.mode.go("active");
+
+    expect(seen).toEqual(["machine", "entity"]);
+  });
+
+  it("rejects an empty events name", () => {
+    expect(
+      () =>
+        new StateMachine(defineStates({ idle: {} }), "idle", { events: "" }),
+    ).toThrow("events must be a non-empty name");
+  });
+
   it("emits nothing on hydrate", () => {
     const { machine, log } = buildLogged();
 

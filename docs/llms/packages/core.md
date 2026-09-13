@@ -197,7 +197,7 @@ class GuardBrain extends Component {
 - The first `tick()` runs the initial `enter` hook. `start()` runs it earlier, typically from `onAdd`. Construction and `hydrate()` run no hooks.
 - A transition cannot start from inside an `enter` or `exit` hook or an event handler. An exit-hook throw keeps the source state. An enter-hook throw leaves the committed target state in place and propagates.
 - `this.stateMachine(...)` attributes hook and handler failures to the component. A standalone `new StateMachine(states, initial)` works in headless code and calls them directly.
-- `serialize()` returns `{ state, elapsed }`, plus `parentElapsed` inside a sequence and `duration` for a state that computes its `for`. `hydrate()` restores it without hooks, resuming on a saved computed duration and asking the callback for one only when the snapshot has none. A restored state runs its exit hook on a later transition.
+- `serialize()` returns `StateMachineSaveData`: `{ state, elapsed }`, plus `parentElapsed` inside a sequence and `duration` for a state that computes its `for`. `hydrate()` restores it without hooks, resuming on a saved computed duration and asking the callback for one only when the snapshot has none. A restored state runs its exit hook on a later transition.
 - A machine stored in a component field without a leading underscore appears in Inspector component state as `{ state, elapsed, lastTransition }`, plus `parent` and `parentElapsed` inside a sequence. TypeScript `private` fields are included. Normal underscore and `inspectExclude` rules still apply.
 - Use several machines for independent state axes. Keep derived facts as getters. Use the abilities addon when lanes, priorities, input intents, holds, or timed action steps are part of the behavior.
 
@@ -207,8 +207,17 @@ class GuardBrain extends Component {
 `changed` (`{ from, to }`), `entered` (`{ state, from }`), and `exited`
 (`{ state, to }`). Subscribe with `machine.on(token, handler)`, which returns an
 unsubscribe function, or with `this.listen(machine, token, handler)`, which drops
-the subscription when the component is removed. Machine events stay on the
-machine: they are not `entity.emit` events and do not reach `scene.on`.
+the subscription when the component is removed.
+
+Pass an `events` name to publish them on the entity as well, under
+`<name>:changed`, `<name>:entered` and `<name>:exited`. Entity events dispatch by
+name, so two machines on one entity need different names. Without a name the
+events stay on the machine and reach only `machine.on`.
+
+```ts
+readonly mode = this.stateMachine(states, "patrol", { events: "mode" });
+// elsewhere: entity.on(brain.mode.events.entered, ...), scene.on(...) too
+```
 
 ```ts
 class GuardView extends Component {

@@ -257,8 +257,19 @@ class GuardView extends Component {
 
 `this.listen` drops the subscription when the component is removed. Outside a
 component, `mode.on(mode.events.entered, handler)` returns an unsubscribe
-function. These events stay on the machine; they are not entity events and do
-not bubble to the scene.
+function.
+
+To let any component or the scene listen without holding a reference to the
+machine, give it a name for its events:
+
+```typescript
+readonly mode = this.stateMachine(states, "patrol", { events: "mode" });
+```
+
+The tokens are then published on the entity as `mode:changed`, `mode:entered`
+and `mode:exited`, so `entity.on` and `scene.on` see them like any entity event.
+Entity events dispatch by name, so two machines on one entity need different
+names. Without a name the events stay on the machine.
 
 On a transition the order is: `exit` hook, `exited`, the state changes, `enter`
 hook, `entered`, `changed`. The first entry emits `entered` with `from: null`

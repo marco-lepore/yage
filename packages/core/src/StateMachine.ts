@@ -40,14 +40,36 @@ export interface StateMachineEvents<S extends string> {
 }
 
 /**
- * Dispatch is per machine, so one set of tokens serves every instance. The
- * payload types are erased here and restored by {@link StateMachine.events}.
+ * Tokens for a machine that keeps its events to itself. Dispatch is per
+ * machine, so one set serves every such instance. The payload types are erased
+ * here and restored by {@link StateMachine.events}.
  */
-const EVENT_TOKENS = {
+const PRIVATE_EVENT_TOKENS = {
   changed: new EventToken<StateTransition<never>>("stateMachine:changed"),
   entered: new EventToken<StateEntered<never>>("stateMachine:entered"),
   exited: new EventToken<StateExited<never>>("stateMachine:exited"),
 } as const;
+
+/** How a machine is set up beyond its states. */
+export interface StateMachineOptions {
+  /**
+   * Publish this machine's events on its entity under `<events>:changed`,
+   * `<events>:entered` and `<events>:exited`, so other components and the
+   * scene can listen for them like any entity event. Pick a name for what the
+   * machine tracks, such as `"mode"` or `"stance"`. Entity events dispatch by
+   * name, so two machines on one entity need different names.
+   *
+   * Left out, the events stay on the machine and reach only
+   * {@link StateMachine.on}.
+   */
+  readonly events?: string;
+}
+
+/** What an owning component gives a machine: attribution and entity reach. */
+interface StateMachineOwner {
+  run(kind: string, event: string, call: () => void): void;
+  emit<T>(token: EventToken<T>, payload: T): void;
+}
 
 /** One state in a {@link StateMachine} transition table. */
 export interface StateDefinition<S extends string> {
@@ -95,7 +117,7 @@ export type StateDefinitions<S extends string> = Readonly<{
 }>;
 
 /** Save data for a {@link StateMachine}. */
-export interface StateMachineSnapshot<S extends string> {
+export interface StateMachineSaveData<S extends string> {
   readonly state: S;
   readonly elapsed: number;
   /**
@@ -112,7 +134,7 @@ export interface StateMachineSnapshot<S extends string> {
 /** Inspector summary emitted when a machine is a component field. */
 export interface StateMachineInspection<
   S extends string,
-> extends StateMachineSnapshot<S> {
+> extends StateMachineSaveData<S> {
   readonly lastTransition: StateTransition<S> | null;
   /** Absent when the current state has no parent. */
   readonly parent?: S;
@@ -160,8 +182,6 @@ interface CompiledState<S extends string> {
 }
 
 /** How the machine runs game callbacks. An owner replaces it to attribute throws. */
-type CallbackRunner = (kind: string, event: string, run: () => void) => void;
-
 /**
  * A typed state machine driven by its owner's clock.
  *
@@ -191,10 +211,13 @@ type CallbackRunner = (kind: string, event: string, run: () => void) => void;
  * does, in its own update.
  */
 export class StateMachine<const S extends string> implements Serializable<
-  StateMachineSnapshot<S>
+  StateMachineSaveData<S>
 > {
-  /** Tokens for {@link on}. */
-  readonly events: StateMachineEvents<S> = EVENT_TOKENS;
+  /**
+   * Tokens for {@link on}, and for `entity.on` when the machine was given an
+   * `events` name.
+   */
+  readonly events: StateMachineEvents<S>;
 
   private readonly states: ReadonlyMap<S, CompiledState<S>>;
   private readonly fromAny: ReadonlyMap<S, CompiledState<S>>;
@@ -210,9 +233,27 @@ export class StateMachine<const S extends string> implements Serializable<
   private listeners:
     | Map<EventToken<unknown>, Set<(payload: never) => void>>
     | undefined;
-  private runCallback: CallbackRunner = (_kind, _event, run) => run();
+  /** Whether {@link events} also belongs on the owning entity. */
+  private readonly published: boolean;
+  private owner: StateMachineOwner | undefined;
 
-  constructor(states: StateDefinitions<S>, initial: NoInfer<S>) {
+  constructor(
+    states: StateDefinitions<S>,
+    initial: NoInfer<S>,
+    options?: StateMachineOptions,
+  ) {
+    const published = options?.events;
+    if (published !== undefined && published.length === 0) {
+      throw new Error("StateMachine: events must be a non-empty name.");
+    }
+    this.published = published !== undefined;
+    this.events = published
+      ? {
+          changed: new EventToken(`${published}:changed`),
+          entered: new EventToken(`${published}:entered`),
+          exited: new EventToken(`${published}:exited`),
+        }
+      : PRIVATE_EVENT_TOKENS;
     const { compiled, fromAny } = compile(states);
     this.states = compiled;
     this.fromAny = fromAny;
@@ -223,9 +264,9 @@ export class StateMachine<const S extends string> implements Serializable<
     this.current = start.start ?? start;
   }
 
-  /** @internal Route game callbacks through an owning component. */
-  _setCallbackRunner(run: CallbackRunner): this {
-    this.runCallback = run;
+  /** @internal Attribute game callbacks, and reach the entity, through an owner. */
+  _setOwner(owner: StateMachineOwner): this {
+    this.owner = owner;
     return this;
   }
 
@@ -356,7 +397,7 @@ export class StateMachine<const S extends string> implements Serializable<
     };
   }
 
-  serialize(): StateMachineSnapshot<S> {
+  serialize(): StateMachineSaveData<S> {
     const state = this.current;
     const parent = state.parent;
     return {
@@ -376,7 +417,7 @@ export class StateMachine<const S extends string> implements Serializable<
    * snapshot that carries a computed duration resumes on that duration; one
    * that does not asks the state's `for` callback for a fresh value.
    */
-  hydrate(raw: StateMachineSnapshot<S>): void {
+  hydrate(raw: StateMachineSaveData<S>): void {
     this.assertSettled("hydrate");
     if (!raw || typeof raw !== "object") {
       throw new Error("StateMachine.hydrate: snapshot must be an object.");
@@ -578,10 +619,18 @@ export class StateMachine<const S extends string> implements Serializable<
     payload: T,
   ): void {
     const handlers = this.listeners?.get(token as EventToken<unknown>);
-    if (!handlers?.size) return;
-    for (const handler of [...handlers] as Array<(payload: T) => void>) {
-      this.runCallback(kind, event, () => handler(payload));
+    if (handlers?.size) {
+      for (const handler of [...handlers] as Array<(payload: T) => void>) {
+        this.runCallback(kind, event, () => handler(payload));
+      }
     }
+    if (this.published) this.owner?.emit(token, payload);
+  }
+
+  /** Run a game callback, attributed to the owner when there is one. */
+  private runCallback(kind: string, event: string, call: () => void): void {
+    if (this.owner) this.owner.run(kind, event, call);
+    else call();
   }
 
   private advance(
