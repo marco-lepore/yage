@@ -2486,23 +2486,25 @@ describe("Inspector.pointer", () => {
     expect(dispatched).toEqual([]);
   });
 
-  it("throws for an id that matches no node", async () => {
+  it("throws for an id that matches no node, and names the wrapper case", async () => {
     const { inspector } = await pointerSetup();
 
     expect(() => inspector.pointer.click("entity-99:UISurface:0")).toThrow(
-      'Inspector.pointer.click(): no UI node with id "entity-99:UISurface:0"',
+      'no UI node with id "entity-99:UISurface:0"',
+    );
+    expect(() => inspector.pointer.click("entity-99:UISurface:0")).toThrow(
+      /wrapper node that owns no element/,
     );
   });
 
-  it("resolves the id the snapshot gives a scene with several surfaces", async () => {
+  it("tells a caller aiming at the wrapper node to aim at a child", async () => {
     const { inspector } = await pointerSetup({ secondSurface: true });
     const rootId = inspector.snapshot().scenes[0]?.ui?.root.id;
     if (!rootId) throw new Error("Expected a UI snapshot.");
     expect(rootId).toMatch(/:ui$/);
 
-    // That wrapper owns no element, so the answer is that it has no bounds.
     expect(() => inspector.pointer.click(rootId)).toThrow(
-      `Inspector.pointer.click(): UI node "${rootId}" has no bounds.`,
+      /wrapper node that owns no element/,
     );
   });
 

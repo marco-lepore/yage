@@ -35,9 +35,6 @@ import {
   driveWhileHolding,
 } from "./internal/driveSupport.js";
 
-/** {@link UINodeSnapshot.type} of the node several surfaces are wrapped in. */
-const UI_ROOT_TYPE = "UIRoot";
-
 /**
  * The renderer-adapter members {@link Inspector.pointer} calls. A foreign
  * adapter that implements fewer is named the missing one by the guard.
@@ -1974,15 +1971,6 @@ export class Inspector {
       );
   }
 
-  /**
-   * The synthetic node the snapshot wraps several surfaces of one scene in.
-   * A scene with a single surface reports that surface as the root instead,
-   * and this id appears nowhere.
-   */
-  private getUIRootId(scene: Scene): string {
-    return `${this.getSceneId(scene)}:ui`;
-  }
-
   private buildUISnapshot(scene: Scene): UITreeSnapshot | null {
     const adapter = this.engine.context.tryResolve(RendererAdapterKey);
     const roots = this.getUISurfaceRoots(scene).map(({ root, id }) =>
@@ -1996,8 +1984,8 @@ export class Inspector {
 
     return {
       root: {
-        id: this.getUIRootId(scene),
-        type: UI_ROOT_TYPE,
+        id: `${this.getSceneId(scene)}:ui`,
+        type: "UIRoot",
         layout: { x: 0, y: 0, width: 0, height: 0 },
         bounds: null,
         children: roots,
@@ -2090,20 +2078,7 @@ export class Inspector {
       }
     };
     for (const scene of this.engine.scenes.all) {
-      const roots = this.getUISurfaceRoots(scene);
-      // The snapshot's synthetic wrapper owns no element, so it carries no
-      // bounds and cannot be clicked. It is indexed anyway: a caller passing
-      // an id the snapshot printed gets the missing-bounds error rather than
-      // being told to read ids from the snapshot it read them from.
-      if (roots.length > 1) {
-        entries.push({
-          id: this.getUIRootId(scene),
-          type: UI_ROOT_TYPE,
-          bounds: null,
-          displayObject: undefined,
-        });
-      }
-      for (const { root, id } of roots) visit(root, id);
+      for (const { root, id } of this.getUISurfaceRoots(scene)) visit(root, id);
     }
     return entries;
   }
@@ -2158,7 +2133,7 @@ export class Inspector {
     const entry = index.find((candidate) => candidate.id === id);
     if (!entry) {
       throw new Error(
-        `Inspector.pointer.${call}(): no UI node with id "${id}". Read the ids from inspector.snapshot().scenes[].ui.`,
+        `Inspector.pointer.${call}(): no UI node with id "${id}". Read the ids from inspector.snapshot().scenes[].ui. A scene holding several surfaces is reported under a wrapper node that owns no element and cannot be clicked; aim at one of its children.`,
       );
     }
     if (!entry.bounds) {
