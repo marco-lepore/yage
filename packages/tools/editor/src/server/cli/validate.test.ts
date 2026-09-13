@@ -148,6 +148,10 @@ describe("runValidate", () => {
         recursive: true,
       });
     }
+    await copyFile(
+      path.join(FIXTURE, "vite.config.ts"),
+      path.join(root, "vite.config.ts"),
+    );
     await mkdir(path.join(root, "editor"), { recursive: true });
     await writeFile(path.join(root, "editor", "config.ts"), CONFIG);
     // The copy sits outside the repository and nothing is installed beside it,

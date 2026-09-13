@@ -1,3 +1,5 @@
+import type { ColliderFacetSnapshot } from "@yagejs/physics";
+import { Inspector } from "@yagejs/core";
 import {
   Component,
   Transform,
@@ -288,6 +290,7 @@ function cameraStub(view: { width: number; height: number }): {
  */
 function withPointer(renderer: object): object {
   return {
+    visibleCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
     ...renderer,
     canvas: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
     canvasToVirtual: (x: number, y: number) => ({ x, y }),
@@ -303,6 +306,7 @@ function fitted(scale: number): object {
   return {
     setFit: () => {},
     virtualSize: { width: 800, height: 600 },
+    visibleCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
     virtualCanvasRect: { x: 0, y: 0, width: 800 * scale, height: 600 * scale },
     canvasSize: { width: 800 * scale, height: 600 * scale },
     canvas: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
@@ -351,6 +355,8 @@ async function settle(): Promise<void> {
  * The coordinator and the harness it boots from, unstarted, for the cases
  * about what happens before `start()` resolves.
  */
+const colliderFacets = new Map<Component, ColliderFacetSnapshot>();
+
 function createParts(
   renderer?: unknown,
   trees?: unknown,
@@ -400,6 +406,12 @@ function createParts(
     destroy: () => {},
   } as unknown as Engine;
 
+  const inspector = new Inspector(engine);
+  inspector.registerFacetContributor({
+    namespace: "collider",
+    inspectComponent: (component) => colliderFacets.get(component),
+  });
+  Object.assign(engine, { inspector });
   const store = new EditorStore({
     api: new EditorApiClient({
       token: "t",
@@ -612,6 +624,7 @@ describe("PreviewCoordinator", () => {
       setFit: () => {},
       canvasSize: { width: 800, height: 600 },
       virtualSize: { width: 800, height: 600 },
+      visibleCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
       virtualCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
     };
 
@@ -1598,6 +1611,7 @@ describe("PreviewCoordinator", () => {
       const stretched = {
         setFit: () => {},
         virtualSize: { width: 800, height: 600 },
+        visibleCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
         virtualCanvasRect: { x: 0, y: 0, width: 800, height: 300 },
       };
       const camera = cameraStub({ width: 800, height: 600 });
@@ -1615,6 +1629,7 @@ describe("PreviewCoordinator", () => {
       const unlaid = {
         setFit: () => {},
         virtualSize: { width: 800, height: 600 },
+        visibleCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
         virtualCanvasRect: { x: 0, y: 0, width: 0, height: 0 },
       };
       const camera = cameraStub({ width: 800, height: 600 });
@@ -1666,6 +1681,7 @@ describe("PreviewCoordinator", () => {
       const paned = {
         setFit: () => {},
         virtualSize: { width: 800, height: 600 },
+        visibleCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
         virtualCanvasRect: { x: 0, y: 0, width: 400, height: 300 },
         canvasSize: { width: 400, height: 300 },
       };
@@ -2263,6 +2279,7 @@ describe("a reference field waiting for a target", () => {
   const renderer = {
     setFit: () => {},
     virtualSize: { width: 800, height: 600 },
+    visibleCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
     virtualCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
   };
 
@@ -2385,6 +2402,7 @@ describe("what the selection points at", () => {
   const renderer = {
     setFit: () => {},
     virtualSize: { width: 800, height: 600 },
+    visibleCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
     virtualCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
   };
 
@@ -2599,6 +2617,7 @@ describe("placements put out of the way", () => {
   const renderer = {
     setFit: () => {},
     virtualSize: { width: 800, height: 600 },
+    visibleCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
     virtualCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
     canvasSize: { width: 800, height: 600 },
   };
@@ -2829,6 +2848,7 @@ describe("a parameter you can drag", () => {
   const renderer = {
     setFit: () => {},
     virtualSize: { width: 800, height: 600 },
+    visibleCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
     virtualCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
   };
 
@@ -3087,3 +3107,165 @@ function gestureOf(parts: {
 function poseAt(x: number, y: number, rotation = 0): LevelTransform {
   return { position: { x, y }, rotation, scale: { x: 1, y: 1 } };
 }
+
+describe("collider and icon fallback interaction", () => {
+  const renderer = {
+    setFit: () => {},
+    canvasSize: { width: 800, height: 600 },
+    virtualSize: { width: 800, height: 600 },
+    virtualCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
+    visibleCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
+  };
+
+  it("draws, picks, frames and moves a sensor footprint while dormant", async () => {
+    const harness = await createHarness(
+      withPointer(renderer),
+      undefined,
+      cameraStub({ width: 800, height: 600 }),
+    );
+    const transform = new Transform();
+    class ColliderComponent extends Component {
+      config = {
+        shape: { type: "box", width: 100, height: 40 },
+        offset: { x: 50, y: 20 },
+        sensor: true,
+      };
+    }
+    const collider = new ColliderComponent();
+    colliderFacets.set(collider, {
+      sensor: true,
+      outlines: [
+        {
+          closed: true,
+          vertices: [
+            { x: 0, y: 0 },
+            { x: 100, y: 0 },
+            { x: 100, y: 40 },
+            { x: 0, y: 40 },
+          ],
+        },
+      ],
+    });
+    entities.set("sensor", {
+      get: () => transform,
+      getAll: () => [transform, collider],
+      parent: null,
+    });
+    const level = document("sensor");
+    await harness.build(level);
+    opened(harness.store, level);
+    expect(harness.coordinator.overlayView().marks).toEqual([]);
+    expect(harness.coordinator.overlayView().colliders).toEqual([
+      {
+        vertices: [
+          { x: 0, y: 0 },
+          { x: 100, y: 0 },
+          { x: 100, y: 40 },
+          { x: 0, y: 40 },
+        ],
+        closed: true,
+        sensor: true,
+        alpha: 1,
+      },
+    ]);
+    expect(harness.coordinator.hitTest({ x: 490, y: 330 })).toBe("sensor");
+    expect(
+      harness.coordinator.placementsWithin({ x: 0, y: 0 }, { x: 100, y: 40 }),
+    ).toEqual(["sensor"]);
+    harness.store.dispatch({ type: "selection-changed", ids: ["sensor"] });
+    harness.store.dispatch({ type: "tool-changed", tool: "box" });
+    expect(harness.coordinator.overlayView().gizmo?.kind).toBe("box");
+    transform.setPosition(200, 100);
+    expect(harness.coordinator.boundsFor(["sensor"]).get("sensor")).toEqual({
+      minX: 200,
+      minY: 100,
+      maxX: 300,
+      maxY: 140,
+    });
+    expect(
+      harness.coordinator.overlayView().colliders?.[0]?.vertices[0],
+    ).toEqual({ x: 200, y: 100 });
+    harness.coordinator.frameSelection(["sensor"]);
+    expect(harness.store.getState().view.center).toEqual({ x: 250, y: 120 });
+    harness.store.dispatch({
+      type: "pick-started",
+      pick: { placementId: "sensor", field: "target", types: ["game.other"] },
+    });
+    expect(harness.coordinator.overlayView().colliders?.[0]?.alpha).toBe(0.25);
+    expect(harness.coordinator.pickAt({ x: 490, y: 330 })).toBeNull();
+    harness.store.dispatch({ type: "hidden-set", ids: ["sensor"] });
+    expect(harness.coordinator.overlayView().colliders).toEqual([]);
+  });
+
+  it("picks a collider overlay before later artwork and falls through outside its footprint", async () => {
+    const harness = await createHarness(
+      withPointer(renderer),
+      undefined,
+      cameraStub({ width: 800, height: 600 }),
+    );
+    const transform = new Transform();
+    class Trigger extends Component {}
+    const collider = new Trigger();
+    colliderFacets.set(collider, {
+      sensor: true,
+      outlines: [
+        {
+          closed: true,
+          vertices: [
+            { x: -50, y: -50 },
+            { x: 50, y: -50 },
+            { x: 50, y: 50 },
+            { x: -50, y: 50 },
+          ],
+        },
+      ],
+    });
+    entities.set("sensor", {
+      get: () => transform,
+      getAll: () => [transform, collider],
+      parent: null,
+    });
+    entities.set("artwork", entityAt(0, 0, { half: 100 }));
+    const level = document("sensor", "artwork");
+    await harness.build(level);
+    opened(harness.store, level);
+    expect(harness.coordinator.overlayView().colliders).toHaveLength(1);
+    expect(harness.coordinator.hitTest({ x: 400, y: 300 })).toBe("sensor");
+    expect(harness.coordinator.hitTest({ x: 480, y: 300 })).toBe("artwork");
+    harness.store.dispatch({ type: "hidden-set", ids: ["sensor"] });
+    expect(harness.coordinator.hitTest({ x: 400, y: 300 })).toBe("artwork");
+  });
+
+  it("uses relocated icons for rendering, hovering and clicking near an edge", async () => {
+    const harness = await createHarness(
+      withPointer(renderer),
+      undefined,
+      cameraStub({ width: 800, height: 600 }),
+    );
+    entities.set("a", entityCarrying(-398, -298, "LightSource"));
+    entities.set("b", entityCarrying(-398, -298, "game.Chime"));
+    const level = document("a", "b");
+    await harness.build(level);
+    opened(harness.store, level);
+    for (const [id, type] of [
+      ["a", "LightSource"],
+      ["b", "game.Chime"],
+    ]) {
+      const view = harness.coordinator.overlayView();
+      const mark = view.marks!.find((one) => one.type === type)!;
+      const client = { x: mark.at.x + 400, y: mark.at.y + 300 };
+      expect(client.x).toBeGreaterThanOrEqual(9);
+      expect(client.y).toBeGreaterThanOrEqual(9);
+      expect(harness.coordinator.markAt(client)).toBe(type);
+      expect(harness.coordinator.hitTest(client)).toBe(id);
+      expect(view.markLinks).toHaveLength(2);
+    }
+    harness.store.dispatch({ type: "selection-changed", ids: ["a"] });
+    harness.store.dispatch({ type: "tool-changed", tool: "box" });
+    for (const mark of harness.coordinator.overlayView().marks!) {
+      const client = { x: mark.at.x + 400, y: mark.at.y + 300 };
+      expect(harness.coordinator.gizmoAt(client)).toBeNull();
+      expect(harness.coordinator.markAt(client)).toBe(mark.type);
+    }
+  });
+});

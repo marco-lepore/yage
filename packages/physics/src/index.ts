@@ -45,3 +45,8 @@ export { PhysicsSystem } from "./PhysicsSystem.js";
 export { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
 
 export { PhysicsPlugin } from "./PhysicsPlugin.js";
+
+export type {
+  ColliderFacetSnapshot,
+  ColliderOutlineSnapshot,
+} from "./ColliderFacetContributor.js";

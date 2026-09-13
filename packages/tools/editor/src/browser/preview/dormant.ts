@@ -18,7 +18,7 @@ export interface DormantPlacement {
  * the only ones the eye lands on, high enough that the level is still there to
  * navigate by.
  */
-const DIMMED_ALPHA = 0.25;
+export const DIMMED_ALPHA = 0.25;
 
 /**
  * The fade each visual is wearing, so the next pass can change it instead of

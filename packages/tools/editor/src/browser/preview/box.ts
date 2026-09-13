@@ -1,3 +1,4 @@
+import type { FacetReader } from "./geometry.js";
 import { Transform, type Entity } from "@yagejs/core";
 import {
   BOX_GRIPS,
@@ -372,8 +373,11 @@ export function inBoxSpace(box: OrientedBox, point: EditorPoint): EditorPoint {
  * A negative scale mirrors the placement without moving the rectangle it
  * covers, so the extents take the magnitude.
  */
-export function orientedBoxOf(entity: Entity): OrientedBox | undefined {
-  const local = localBoxOf(entity);
+export function orientedBoxOf(
+  entity: Entity,
+  inspector?: FacetReader,
+): OrientedBox | undefined {
+  const local = localBoxOf(entity, inspector);
   // A rectangle with no extent on either axis is a point, and a point has no
   // sides to put handles on. It is the same case the overlay marks with a
   // crosshair rather than an outline.
@@ -388,8 +392,11 @@ export function orientedBoxOf(entity: Entity): OrientedBox | undefined {
  * way when it draws nothing. What a box round a selection measures its members
  * by, so a member with no picture still takes up room in it.
  */
-export function boxAround(entity: Entity): OrientedBox {
-  return orientedBoxOf(entity) ?? carriedBox(entity, SUBSTITUTE_BOX);
+export function boxAround(
+  entity: Entity,
+  inspector?: FacetReader,
+): OrientedBox {
+  return orientedBoxOf(entity, inspector) ?? carriedBox(entity, SUBSTITUTE_BOX);
 }
 
 /** A rectangle in the placement's own space, carried out through its transform. */

@@ -1,3 +1,4 @@
+import { outlineContains } from "./geometry.js";
 import { describe, expect, it, vi } from "vitest";
 
 const { MockContainer, MockSprite } = vi.hoisted(() => {
@@ -63,7 +64,7 @@ vi.mock("pixi.js", () => ({
   },
 }));
 
-import { Transform, Vec2, type Component, type Entity } from "@yagejs/core";
+import { Transform, Vec2, Component, Engine, type Entity } from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";
 import {
   FRAME_MARGIN,
@@ -71,6 +72,41 @@ import {
   framedView,
   worldBoundsOf,
 } from "./bounds.js";
+
+import type { ColliderFacetSnapshot } from "@yagejs/physics";
+
+class Footprint extends Component {
+  constructor(public facet: ColliderFacetSnapshot) {
+    super();
+  }
+}
+const inspector = new Engine().inspector;
+inspector.registerFacetContributor({
+  namespace: "collider",
+  inspectComponent: (component) =>
+    component instanceof Footprint ? component.facet : undefined,
+});
+const box = (
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  sensor = false,
+) =>
+  new Footprint({
+    sensor,
+    outlines: [
+      {
+        closed: true,
+        vertices: [
+          { x, y },
+          { x: x + width, y },
+          { x: x + width, y: y + height },
+          { x, y: y + height },
+        ],
+      },
+    ],
+  });
 
 interface Rect {
   x: number;
@@ -253,4 +289,165 @@ describe("containsPoint", () => {
     expect(containsPoint(entity, { x: 100, y: 18 })).toBe(true);
     expect(containsPoint(entity, { x: 118, y: 0 })).toBe(false);
   });
+});
+
+describe("contributed collider footprints", () => {
+  it("uses one footprint for area picking and bounds, following edits immediately", () => {
+    const transform = new Transform({ position: new Vec2(40, 60) });
+    const footprint = box(0, 0, 100, 20);
+    const entity = entityWith([transform, footprint]);
+    expect(worldBoundsOf(entity, inspector)).toEqual({
+      minX: 40,
+      minY: 60,
+      maxX: 140,
+      maxY: 80,
+    });
+    expect(containsPoint(entity, { x: 130, y: 70 }, 1, inspector)).toBe(true);
+    expect(containsPoint(entity, { x: 30, y: 70 }, 1, inspector)).toBe(false);
+    transform.setPosition(100, 120);
+    footprint.facet = box(0, 0, 200, 40).facet;
+    expect(worldBoundsOf(entity, inspector)).toEqual({
+      minX: 100,
+      minY: 120,
+      maxX: 300,
+      maxY: 160,
+    });
+  });
+
+  it("preserves artwork priority and falls back when artwork is empty", () => {
+    const visual = visualOf({ x: 0, y: 0, width: 10, height: 10 });
+    const entity = entityWith([
+      new Transform(),
+      visual,
+      box(-50, -50, 100, 100),
+    ]);
+    expect(worldBoundsOf(entity, inspector)).toEqual({
+      minX: 0,
+      minY: 0,
+      maxX: 10,
+      maxY: 10,
+    });
+    expect(containsPoint(entity, { x: 40, y: 0 }, 1, inspector)).toBe(false);
+    (visual.renderObject as unknown as { localBounds: Rect }).localBounds = {
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+    };
+    expect(worldBoundsOf(entity, inspector)).toEqual({
+      minX: -50,
+      minY: -50,
+      maxX: 50,
+      maxY: 50,
+    });
+  });
+
+  it("keeps gaps and unfilled corners outside compound hit targets", () => {
+    const footprint = box(-40, -10, 20, 20, true);
+    footprint.facet = {
+      sensor: true,
+      outlines: [
+        ...footprint.facet.outlines,
+        {
+          closed: true,
+          vertices: [
+            { x: 20, y: 0 },
+            { x: 30, y: -10 },
+            { x: 40, y: 0 },
+            { x: 30, y: 10 },
+          ],
+        },
+      ],
+    };
+    const entity = entityWith([new Transform(), footprint]);
+    expect(worldBoundsOf(entity, inspector)).toEqual({
+      minX: -40,
+      minY: -10,
+      maxX: 40,
+      maxY: 10,
+    });
+    expect(containsPoint(entity, { x: 0, y: 0 }, 1, inspector)).toBe(false);
+    expect(containsPoint(entity, { x: -30, y: 0 }, 1, inspector)).toBe(true);
+    expect(containsPoint(entity, { x: 39, y: 9 }, 1, inspector)).toBe(false);
+  });
+
+  it("composes contributed offsets with mirrored, rotated parent transforms", () => {
+    const parentTransform = new Transform({
+      position: new Vec2(50, 100),
+      rotation: Math.PI / 2,
+      scale: new Vec2(-2, 3),
+    });
+    const parent = entityWith([parentTransform]);
+    const transform = new Transform({ position: new Vec2(10, 0) });
+    const entity = entityWith([transform, box(0, 0, 10, 20)]);
+    Object.assign(parent, {
+      tryGet: () => parentTransform,
+      children: new Map([["child", entity]]),
+    });
+    Object.assign(entity, {
+      parent,
+      children: new Map(),
+      tryGet: () => transform,
+    });
+    parentTransform.entity = parent;
+    transform.entity = entity;
+    const before = worldBoundsOf(entity, inspector)!;
+    expect(before.minX).toBeCloseTo(-10);
+    expect(before.maxX).toBeCloseTo(50);
+    expect(before.minY).toBeCloseTo(60);
+    expect(before.maxY).toBeCloseTo(80);
+    parentTransform.setPosition(80, 140);
+    expect(worldBoundsOf(entity, inspector)?.minX).toBeCloseTo(20);
+    expect(worldBoundsOf(entity, inspector)?.maxY).toBeCloseTo(120);
+  });
+
+  it("picks open polylines only near segments, using screen pixels at each zoom", () => {
+    const entity = entityWith([
+      new Transform(),
+      new Footprint({
+        sensor: false,
+        outlines: [
+          {
+            closed: false,
+            vertices: [
+              { x: 0, y: 0 },
+              { x: 0, y: 40 },
+              { x: 40, y: 40 },
+            ],
+          },
+        ],
+      }),
+    ]);
+    expect(containsPoint(entity, { x: 20, y: 20 }, 1, inspector)).toBe(false);
+    expect(containsPoint(entity, { x: 3, y: 20 }, 1, inspector)).toBe(true);
+    expect(containsPoint(entity, { x: 6, y: 20 }, 2, inspector)).toBe(true);
+    expect(containsPoint(entity, { x: 6, y: 20 }, 1, inspector)).toBe(false);
+  });
+});
+
+describe("collapsed collider hit targets", () => {
+  it.each([0, 0.7, 2.4])(
+    "keeps a screen-sized target for a closed outline collapsed along one axis at angle %s",
+    (angle) => {
+      const vertices = [-10, -10, 10, 10].map((y) => ({
+        x: -y * Math.sin(angle),
+        y: y * Math.cos(angle),
+      }));
+      const outline = { closed: true, sensor: false, vertices };
+      expect(
+        outlineContains(
+          outline,
+          { x: 0.25 * Math.cos(angle), y: 0.25 * Math.sin(angle) },
+          4,
+        ),
+      ).toBe(true);
+      expect(
+        outlineContains(
+          outline,
+          { x: 5 * Math.cos(angle), y: 5 * Math.sin(angle) },
+          4,
+        ),
+      ).toBe(false);
+    },
+  );
 });

@@ -1,5 +1,5 @@
 import type { EngineContext, SystemScheduler, Plugin } from "@yagejs/core";
-import { SceneHookRegistryKey, ServiceKey } from "@yagejs/core";
+import { InspectorKey, SceneHookRegistryKey, ServiceKey } from "@yagejs/core";
 import type { DebugRegistry } from "@yagejs/debug/api";
 import { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 import { PhysicsWorldKey, PhysicsWorldManagerKey } from "./types.js";
@@ -7,6 +7,7 @@ import type { PhysicsConfig } from "./types.js";
 import { assertFiniteNumber, assertPixelsPerMeter } from "./validate.js";
 import { PhysicsSystem } from "./PhysicsSystem.js";
 import { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
+import { ColliderFacetContributor } from "./ColliderFacetContributor.js";
 import { PhysicsDebugContributor } from "./PhysicsDebugContributor.js";
 
 // @yagejs/debug owns this well-known service id. Re-declare it here so physics
@@ -32,6 +33,7 @@ export class PhysicsPlugin implements Plugin {
   private readonly config: PhysicsConfig | undefined;
   private manager!: PhysicsWorldManager;
   private context!: EngineContext;
+  private unregisterFacet: (() => void) | undefined;
   private unregisterHooks: (() => void) | null = null;
 
   constructor(config?: PhysicsConfig) {
@@ -45,6 +47,9 @@ export class PhysicsPlugin implements Plugin {
     this.context = context;
     this.manager = new PhysicsWorldManager(this.config);
     context.register(PhysicsWorldManagerKey, this.manager);
+    this.unregisterFacet = context
+      .tryResolve(InspectorKey)
+      ?.registerFacetContributor(new ColliderFacetContributor());
 
     const hookRegistry = context.resolve(SceneHookRegistryKey);
     this.unregisterHooks = hookRegistry.register({
@@ -69,6 +74,8 @@ export class PhysicsPlugin implements Plugin {
   }
 
   onDestroy(): void {
+    this.unregisterFacet?.();
+    this.unregisterFacet = undefined;
     this.unregisterHooks?.();
     this.unregisterHooks = null;
     this.manager.destroy();

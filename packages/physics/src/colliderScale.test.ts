@@ -105,7 +105,7 @@ describe("scaleColliderPart", () => {
 
   it.each([
     [{ type: "circle", radius: 5 } as const, 32],
-    [{ type: "capsule", halfHeight: 10, radius: 5 } as const, 32],
+    [{ type: "capsule", halfHeight: 10, radius: 5 } as const, 34],
     [
       {
         type: "box",
@@ -113,7 +113,7 @@ describe("scaleColliderPart", () => {
         height: 10,
         borderRadius: 2,
       } as const,
-      32,
+      36,
     ],
   ])("samples curved %s geometry with %s points", (shape, count) => {
     const scaled = scaleColliderPart({ shape }, 2, 3);

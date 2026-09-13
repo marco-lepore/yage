@@ -1,7 +1,7 @@
+import { worldGeometryOf, type FacetReader } from "./geometry.js";
 import { Transform, type Entity } from "@yagejs/core";
 import { VisualComponent } from "@yagejs/renderer";
 import type { EditorPoint } from "../store/index.js";
-import { orientedBoxOf } from "./box.js";
 
 /**
  * What a mark stands for.
@@ -42,15 +42,7 @@ export const MARK_PIXELS = 14;
  */
 export const MARK_SPACING_PIXELS = 18;
 
-/**
- * How far above the placement's origin the row of marks sits, in screen
- * pixels.
- *
- * Above rather than on it, so the row clears the origin crosshair; above
- * rather than below it, because the translate and scale gizmos put their arms
- * along positive x and positive y, and a mark under the origin is drawn over
- * by the y arm of whichever gizmo the selected placement has.
- */
+/** Preferred distance above the origin, before layout avoids obstacles. */
 export const MARK_OFFSET_PIXELS = 18;
 
 /**
@@ -90,9 +82,8 @@ function kindOf(component: object): MarkKind {
 
 /**
  * The components standing in for a placement the preview draws nothing for,
- * sorted by type string. A placement with a rectangle gets none: its artwork
- * already says where it is and that it exists, which is the whole of what a
- * mark offers.
+ * sorted by type string. Artwork or a collider with world extent already shows
+ * where the placement is. A footprint collapsed to a point still needs marks.
  *
  * Sorted so a row never reshuffles between frames: the order components were
  * added in is an implementation detail of the entity's `setup()`, and a row
@@ -106,8 +97,18 @@ function kindOf(component: object): MarkKind {
  * The label is the class name. The editor never runs a minified build of the
  * project, so the name is the one the developer wrote.
  */
-export function marksOf(entity: Entity): readonly ComponentMark[] {
-  if (orientedBoxOf(entity)) return [];
+export function marksOf(
+  entity: Entity,
+  inspector?: FacetReader,
+): readonly ComponentMark[] {
+  const geometry = worldGeometryOf(entity, inspector);
+  if (
+    geometry.outlines.some(({ vertices }) => {
+      const first = vertices[0];
+      return first && vertices.some((v) => v.x !== first.x || v.y !== first.y);
+    })
+  )
+    return [];
   const marks: ComponentMark[] = [];
   for (const component of entity.getAll()) {
     if (component instanceof VisualComponent) continue;
@@ -119,31 +120,6 @@ export function marksOf(entity: Entity): readonly ComponentMark[] {
   return marks.sort((left, right) =>
     left.type < right.type ? -1 : left.type > right.type ? 1 : 0,
   );
-}
-
-/**
- * Where a placement's marks sit: a row centred under its origin, at constant
- * screen spacing.
- *
- * Laid out rather than drawn where each component is, because a component
- * states no position and most of them have none — a light is at the entity, a
- * panel is wherever its layout put it. A laid-out row cannot overlap itself,
- * which is what the alternative would have had to solve.
- */
-export function placedMarks(
-  marks: readonly ComponentMark[],
-  origin: EditorPoint,
-  perScreenPixel: number,
-): readonly PlacedMark[] {
-  const spacing = MARK_SPACING_PIXELS * perScreenPixel;
-  const first = ((marks.length - 1) / 2) * spacing;
-  return marks.map((mark, index) => ({
-    ...mark,
-    at: {
-      x: origin.x - first + index * spacing,
-      y: origin.y - MARK_OFFSET_PIXELS * perScreenPixel,
-    },
-  }));
 }
 
 /**

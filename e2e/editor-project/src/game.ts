@@ -1,3 +1,4 @@
+import { PhysicsPlugin } from "@yagejs/physics";
 import { Engine, Scene, type AssetHandle } from "@yagejs/core";
 import {
   buildLevelCatalog,
@@ -58,6 +59,7 @@ async function main(): Promise<void> {
       container,
     }),
   );
+  engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 0 } }));
   await engine.start();
   await engine.scenes.push(new ForestScene(forest));
 }

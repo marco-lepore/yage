@@ -60,7 +60,9 @@ vi.mock("pixi.js", () => ({
   },
 }));
 
-import { Component, Transform, Vec2 } from "@yagejs/core";
+import { localBoxOf } from "./bounds.js";
+import { MarkLayout } from "./markLayout.js";
+import { Component, Engine, Transform, Vec2 } from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";
 import {
@@ -68,7 +70,6 @@ import {
   MARK_SPACING_PIXELS,
   markKindOf,
   marksOf,
-  placedMarks,
   pressesMark,
 } from "./marks.js";
 
@@ -154,6 +155,44 @@ describe("marksOf", () => {
     expect(marksOf(entity)).toEqual([{ type: "LightSource", kind: "light" }]);
   });
 
+  it("keeps an icon for a collider collapsed to a point without losing its local bounds", () => {
+    const inspector = new Engine().inspector;
+    const transform = new Transform({ scale: new Vec2(0, 0) });
+    const collider = new Chime();
+    const entity = entityWith([transform, collider]);
+    inspector.registerFacetContributor({
+      namespace: "collider",
+      inspectComponent: (component) =>
+        component === collider
+          ? {
+              sensor: false,
+              outlines: [
+                {
+                  closed: true,
+                  vertices: [
+                    { x: -10, y: -10 },
+                    { x: 10, y: -10 },
+                    { x: 10, y: 10 },
+                    { x: -10, y: 10 },
+                  ],
+                },
+              ],
+            }
+          : undefined,
+    });
+    expect(marksOf(entity, inspector)).toEqual([
+      { type: "Chime", kind: "other" },
+    ]);
+    expect(localBoxOf(entity, inspector)).toEqual({
+      minX: -10,
+      minY: -10,
+      maxX: 10,
+      maxY: 10,
+    });
+    transform.setScale(1, 1);
+    expect(marksOf(entity, inspector)).toEqual([]);
+  });
+
   it("leaves out the transform, which the editor shows everywhere else", () => {
     const entity = entityWith([new Transform({ position: new Vec2(0, 0) })]);
 
@@ -184,7 +223,7 @@ describe("marksOf", () => {
   });
 });
 
-describe("placedMarks", () => {
+describe("component row layout", () => {
   const marks = [
     { type: "LightSource", kind: "light" },
     { type: "ParticleEmitterComponent", kind: "particles" },
@@ -251,3 +290,16 @@ describe("pressesMark", () => {
     ]);
   });
 });
+
+function placedMarks(
+  marks: Parameters<MarkLayout["place"]>[0][number]["marks"],
+  origin: { x: number; y: number },
+  perScreenPixel: number,
+) {
+  return new MarkLayout().place(
+    [{ id: "entity", marks, origin }],
+    perScreenPixel,
+    undefined,
+    [],
+  )[0]!.marks;
+}

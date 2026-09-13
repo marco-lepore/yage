@@ -293,28 +293,32 @@ choice is part of the remembered view, so it survives a reload, and
 
 ### Things you cannot see
 
-A placement whose only components are a light, a particle emitter or a UI
-surface draws nothing. The renderer has nothing to show for it, so without help
-there would be no outline, nothing to click, and nothing saying it is there at
-all.
+A placement with artwork uses that artwork for selection. Without artwork,
+a placement with colliders shows their footprints: amber for solid colliders,
+blue with vertex dots for sensors. Closed shapes have a subtle fill; polylines
+stay open. Add `PhysicsPlugin` to your harness to show these footprints.
 
-The editor draws a small square for each such component, in a row just above
-the placement's origin. The squares stay the same size however far you zoom,
-because what they tell you is that something is there rather than how big it
-is. Lights, occluders, emitters and UI surfaces each get their own picture, and
-anything else — including your own components — gets a generic one. Rest the
-pointer on a square and it names the component.
+Click inside a closed footprint, or near an open segment, to select the
+placement. Its collider geometry also supplies the bounds for framing,
+arranging, marquee selection and transform handles. Offsets, compound parts,
+part rotation and parent transforms all apply while the preview is inactive.
+Parameter edits update the footprint when the preview rebuilds.
 
-Clicking a square selects the placement it belongs to, which is how you pick up
-something with no picture: click the mark, then move, turn or scale it like
-anything else. The marks sit above whatever the level draws, so a mark stays
-clickable over a full background.
+A placement with neither artwork nor a usable collider gets component icons.
+A collider collapsed to a point also keeps icons so you can select it and
+restore its scale. Lights, occluders, emitters and UI surfaces have distinct
+icons; other components get a generic square. Hover an icon to read the
+component name, and click it to select its placement.
 
-Marks appear only on a placement with nothing to see. A crate with a torch on
-it has a sprite, so it gets no row — the sprite is already something to look at
-and to click. What a mark cannot tell you is _where_ the component will appear:
-a health bar anchored above its enemy still shows its mark at the enemy's
-origin.
+Icons stay the same size on screen. Each group has a line back to its entity's
+origin and moves aside to avoid nearby groups and editing controls. Groups
+stay inside the viewport and retain their offset while you pan, zoom or change
+selection, unless an overlap or viewport edge requires another position.
+In a view too crowded to fit every group, zoom in or hide nearby placements.
+
+Collider footprints and icons draw above the level's artwork and take clicks
+before it. Hiding a placement removes both. Reference picking fades ineligible
+colliders and removes their icons, so only eligible placements take a click.
 
 ### Landing on the grid
 
@@ -545,7 +549,7 @@ level stores each placement's position relative to its own parent, so a
 selection reaching across two parents has no single frame to write the answer
 into. Select the parents instead.
 
-A placement with no picture is lined up by its origin. A turned one is lined up
+A placement with neither artwork nor a collider is lined up by its origin. A turned one is lined up
 by the upright rectangle its picture covers, which is what you see the
 selection box drawn around. Whatever moves, one click is one entry in the
 history.

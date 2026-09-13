@@ -329,7 +329,7 @@ The controls:
 | Save                                                                   | Writes the draft to disk                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Drag from empty space                                                  | Pans the view                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Space-drag or middle-drag, from anywhere                               | Pans the view without changing the selection; Space is the trackpad gesture                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `F` on a placement with no visual                                      | Nothing — there is no rectangle to frame, and the view stays where it is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `F` on a placement with no artwork or collider                         | Nothing — there is no rectangle to frame, and the view stays where it is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Wheel                                                                  | Zooms around the pointer; the world point under the cursor stays under it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `F` / `Shift`-`F`                                                      | Frames the selection into the pane / puts the view back where the level opened: the origin, zoomed so the design rectangle fits the pane                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Toolbar **Guides**, or `G`                                             | Switches the grid, the world axes, and the default-viewport rectangle                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -425,23 +425,30 @@ nothing; a stale id is reported under the field in the inspector. While a
 reference field is waiting for a target, a line to a faded placement is not
 drawn.
 
-**A placement with nothing to see gets a row of marks.** A light, a particle
-emitter, a UI surface — anything the renderer does not draw — leaves a
-placement invisible in the viewport, so the editor draws a small square for
-each of its components in a row 18 screen pixels above the origin, whatever is
-selected. A placement with a rectangle of its own gets no marks: its artwork
-already says that it is there and where. The row is ordered by the
-component's class name, so it never reshuffles; a subclass of one of the
-components below gets that component's drawing. `UISurface` and `UIRoot`,
-`ParticleEmitterComponent`, `LightSource` and `LightOccluder` each get their own
-drawing, and every other component gets a generic one — including a game's own.
-`Transform` gets none, since the crosshair, the gizmo and the control bar are
-all about it. A mark says that something is there and will appear on play, and
-nothing about how big it is or where inside the placement it sits: a panel
-anchored below its entity still shows its mark at the origin. Resting the
-pointer on a mark names the component. Pressing one selects the placement it
-belongs to, which is what makes a placement with no picture reachable — a
-press is tested against the marks before the artwork drawn under them.
+**Artwork, then collider footprints, then component marks.** A placement with
+artwork uses it for selection. Otherwise `PhysicsPlugin` supplies authored
+collider outlines: amber solid shapes, blue sensors with vertex dots, subtle
+fill on closed shapes, no fill on polylines. The same geometry supplies point
+picking, local/world bounds, framing, arrangement, marquee and transform
+handles. Closed shapes pick their interior; open segments accept a press
+within four screen pixels. Compound parts, offsets, part rotation and current
+parent transforms apply without activating physics. Parameter edits rebuild
+the preview and its footprints.
+
+With neither artwork nor a usable collider, each non-Transform, non-visual
+component gets a mark. A footprint collapsed to a point also keeps marks.
+Marks are sorted by class name. `UISurface`, `UIRoot`,
+`ParticleEmitterComponent`, `LightSource` and `LightOccluder` have distinct
+pictures; subclasses inherit them and other components get a generic square.
+Hover names the component; click selects the owning placement.
+
+Mark groups keep constant screen size and a connector to the entity origin.
+Layout avoids other groups and editing controls, clamps visible groups inside
+the viewport and retains offsets until an overlap or edge requires movement.
+Crowded views may still overlap; zoom in or hide nearby placements. Drawing,
+hover and click use the same positions. Footprints and marks draw and pick
+above artwork. Hidden placements have neither; reference picking fades
+ineligible footprints to a quarter opacity and suppresses their marks.
 
 **One gizmo however many placements are selected.** It acts on the outermost of
 them: a selected child of a selected parent already travels with its parent, and

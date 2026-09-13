@@ -1,3 +1,4 @@
+import { PhysicsPlugin } from "@yagejs/physics";
 import { Engine } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { exposeLevelFacts } from "../src/inspect.js";
@@ -39,6 +40,6 @@ export default {
         return { x: point.x, y: point.y };
       },
     };
-    return [renderer];
+    return [renderer, new PhysicsPlugin({ gravity: { x: 0, y: 0 } })];
   },
 };

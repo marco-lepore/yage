@@ -345,6 +345,37 @@ by widening `RenderFacetSnapshot<Extra>` (as `SplitTextComponent` does with
 `AnimatedSpriteComponent`, `GraphicsComponent`, `TextComponent`,
 `SplitTextComponent`) all implement `inspectRender()`.
 
+### Collider facet — authored local geometry
+
+`PhysicsPlugin` publishes `components[].facets.collider` and supports a direct
+read through the existing Inspector contributor registry:
+
+```ts
+import { ColliderComponent } from "@yagejs/physics";
+
+const facet = inspector.getComponentFacet(
+  entity.get(ColliderComponent),
+  "collider",
+);
+// ColliderFacetSnapshot | undefined
+// { sensor: boolean, outlines: readonly ColliderOutlineSnapshot[] }
+// Each outline: { vertices: readonly Vec2Like[], closed: boolean }
+```
+
+Both snapshot types are exported from `@yagejs/physics`. Vertices are local
+pixels including the part's offset and rotation; apply `Transform.localToWorld`
+once for world coordinates. Each compound part has one outline. Polygons use
+the convex hull, polylines stay open, and curves use sampled line segments.
+Reads return fresh authored geometry, including while inactive or detached,
+and reflect current config. They do not report live collision contacts.
+
+`Inspector.getComponentFacet<K extends keyof InspectorFacets & string>(component:
+Component, namespace: K): InspectorFacets[K] | undefined` invokes only that
+namespace's contributor. It does not reflect fields or build a scene snapshot.
+Missing contributor, null/undefined result or a thrown inspection returns
+`undefined`, matching snapshot omission. PhysicsPlugin removes its contributor
+on teardown; no DebugPlugin is required.
+
 Renderer-aware diagnostics live under the inspector extension namespace `debug`
 (only present while `DebugPlugin` is installed). Pass `DebugDiagnostics` as the
 type parameter so the returned methods are typed:
