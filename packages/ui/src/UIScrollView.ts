@@ -211,6 +211,15 @@ export class UIScrollView implements UIContainerElement {
     this.content.insertElementBefore(child, before);
   }
 
+  /**
+   * Name the UI tree this viewport belongs to for development-mode warnings.
+   * Set by `UISurface` from the owning entity and passed down the tree.
+   * @internal
+   */
+  _setDebugLabel(label: string | undefined): void {
+    this.content._setDebugLabel(label);
+  }
+
   // -- Public scroll API (also the non-federated fallback) -----------------
 
   /** Current scroll offset in pixels along the scroll axis. */

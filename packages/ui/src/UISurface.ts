@@ -132,6 +132,11 @@ export class UISurface extends Component {
   }
 
   onAdd(): void {
+    // Name the tree for development-mode layout warnings. The root passes the
+    // name to the children already built, and to every child added later, so
+    // both build orders — children before `entity.add`, children after — end
+    // up labelled.
+    this.root._setDebugLabel(this.entity.name);
     bindUIErrorBoundary(this.root.container, this.use(ErrorBoundaryKey));
     const tree = this.use(SceneRenderTreeKey);
     const layerName = this._layer ?? UI_DEFAULT_LAYER;
