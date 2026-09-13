@@ -3,15 +3,17 @@ import type { FederatedPointerEvent, FederatedWheelEvent } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, Edge, FlexDirection, Overflow } from "yoga-layout";
 import { attachMask, graphicsMask } from "@yagejs/renderer";
-import type { DisplayContainer, MaskHandle } from "@yagejs/renderer";
+import type { DisplayContainer, MaskHandle, TextStyle } from "@yagejs/renderer";
 import type {
   BackgroundOptions,
   Padding,
+  UIButtonProps,
   UIPanelProps,
   ScrollbarOptions,
   UIScrollViewProps,
   UIContainerElement,
   UIElement,
+  UITextBuilderProps,
 } from "./types.js";
 import {
   createYogaNode,
@@ -19,6 +21,8 @@ import {
   exemptFromOverflowWarning,
 } from "./yoga-helpers.js";
 import { UIPanel } from "./UIPanel.js";
+import type { UIButton } from "./UIButton.js";
+import type { UIText } from "./UIText.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { runUICallback } from "./error-boundary.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
@@ -209,6 +213,32 @@ export class UIScrollView implements UIContainerElement {
 
   insertElementBefore(child: UIElement, before: UIElement): void {
     this.content.insertElementBefore(child, before);
+  }
+
+  // -- Builders, forwarded to the content panel -----------------------------
+
+  /** Add a text element. See {@link UIPanel.text} for `opts`. */
+  text(
+    content: string,
+    style?: Partial<TextStyle>,
+    opts?: UITextBuilderProps,
+  ): UIText {
+    return this.content.text(content, style, opts);
+  }
+
+  /** Add a button element. */
+  button(label: string, opts: Omit<UIButtonProps, "children">): UIButton {
+    return this.content.button(label, opts);
+  }
+
+  /** Add a nested child panel. */
+  panel(opts?: UIPanelProps): UIPanel {
+    return this.content.panel(opts);
+  }
+
+  /** Add a nested scrollable viewport. */
+  scrollView(opts?: UIScrollViewProps): UIScrollView {
+    return this.content.scrollView(opts);
   }
 
   /**

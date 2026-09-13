@@ -14,6 +14,7 @@ import type {
   PointerEventProps,
   UIScrollViewProps,
   UIElement,
+  UITextBuilderProps,
 } from "./types.js";
 import type { Anchor } from "./types.js";
 import { bindUIErrorBoundary } from "./error-boundary.js";
@@ -68,9 +69,13 @@ export class UISurface extends Component {
     this.root.update(handlers);
   }
 
-  /** Add a text element. */
-  text(content: string, style?: Partial<TextStyle>): UIText {
-    return this.root.text(content, style);
+  /** Add a text element. See {@link UIPanel.text} for `opts`. */
+  text(
+    content: string,
+    style?: Partial<TextStyle>,
+    opts?: UITextBuilderProps,
+  ): UIText {
+    return this.root.text(content, style, opts);
   }
 
   /** Add a button element. */

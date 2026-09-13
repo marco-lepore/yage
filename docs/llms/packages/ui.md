@@ -95,13 +95,40 @@ panel.button("A very long label that won't fit", {
   truncate: "ellipsis",
 });
 
-// Button is a flex container — addElement on it for icon + label rows etc.
-btn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
+// Button is a flex container, stacking its children in a column. Ask for a
+// row to put an icon beside the label.
+const iconBtn = panel.button("Buy", { direction: "row", gap: 6 });
+iconBtn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
+
+// A button's own defaults, all overridable:
+//   background        { color: 0x444444, alpha: 1, radius: 4 }
+//   hoverBackground   the resting background at 1.25x brightness
+//   pressBackground   the resting background at 0.75x
+//   padding           12 px horizontal, 6 px vertical, unless BOTH width and
+//                     height are pinned, or the caller passes `padding`
+//   direction         "column"; alignItems and justifyContent both "center"
+//
+// The hover and press states are derived from whatever background the button
+// resolved, so a textured or recoloured button keeps its look while pressed.
+// A texture background varies its `tint` instead of its colour: at the default
+// white tint hover leaves the art untouched and press darkens it. A colour
+// already near full brightness brightens less than 1.25x, because channels
+// clamp at 255. Pass `hoverBackground` / `pressBackground` to take over.
+//
+// To ask for no background at all, ask for a transparent one:
+panel.button("Bare", { background: { color: 0x000000, alpha: 0 } });
+// `update({ background: undefined })` resets to the grey default instead —
+// a present-but-undefined key means "reset this prop to its default"
+// everywhere in this package, and a bare button has to stay visible.
 
 // Nested panel
 const row = panel.panel({ direction: "row", gap: 12 });
 row.text("HP");
 
+// A scroll view carries the same four builders as a panel, adding to its
+// content: list.text(...), list.button(...), list.panel(...),
+// list.scrollView(...).
+//
 // Scrollable viewport (clipped + wheel/drag pannable). Children are normal
 // Yoga elements; size the viewport via LayoutProps (height / flexGrow).
 // A drag starts after 10 px and does not click a child button on release.
@@ -189,7 +216,7 @@ parent's cross-axis stretch cannot squash the picture.
 
 ## UIText: bitmap & resolution
 
-`UIText` (and the `panel.text(...)` builder, `UIButton` labels, the React `<Text>`) accept two extra props for crisp pixel-art text. Yoga measurement — the default word-wrap and the `truncate?: "clip" | "ellipsis"` modes — is unchanged on the bitmap path.
+`UIText` (and the `panel.text(...)` builder's third argument, `UIButton` labels, the React `<Text>`) accept two extra props for crisp pixel-art text. Yoga measurement — the default word-wrap and the `truncate?: "clip" | "ellipsis"` modes — is unchanged on the bitmap path.
 
 ```ts
 // `bitmap: true` bakes (or looks up) the atlas from `style.fontFamily`

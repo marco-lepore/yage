@@ -348,6 +348,13 @@ export interface UIButtonProps
   justifyContent?: JustifyContent;
 }
 
+/**
+ * Everything a `UIText` accepts except the two the `panel.text(...)` /
+ * `surface.text(...)` / `scrollView.text(...)` builders already take as
+ * positional arguments.
+ */
+export type UITextBuilderProps = Omit<UITextProps, "children" | "style">;
+
 /** Props for UIPanel (used by reconciler and props-driven constructor). */
 export interface UIPanelProps
   extends LayoutProps, ConsumeInputProps, PointerEventProps {
