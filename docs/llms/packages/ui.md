@@ -147,6 +147,12 @@ list.scrollTo(0); // also: scrollBy(dy), .scrollOffset, .maxScroll
 import { UIProgressBar } from "@yagejs/ui";
 const bar = new UIProgressBar({ width: 100, height: 16, value: 0.75 }); // value 0–1
 row.addElement(bar);
+bar.update({ value: 0.4 });
+bar.value; // 0.4 — reads back the clamped fill fraction
+
+// Move the whole tree without touching the anchor: one setOffset per frame is
+// how a panel slides in. `surface.offset` reads it back.
+surface.setOffset(0, -120);
 ```
 
 ## Flex layout defaults
@@ -191,6 +197,19 @@ Fixes: give the container more room, set `maxWidth`/`maxHeight`, mark the child
 `flexShrink: 1` / `flex: <n>` so it gives space back and wraps, or use
 `truncate: "clip" | "ellipsis"` on text (and `UIButton`).
 
+The warning names the entity that owns the tree, the child's position in its
+parent, its element class and the text it renders, so it points at one element
+rather than a pixel count. It tolerates two points of overflow, which is the
+largest gap Yoga's own pixel rounding can open between a measured text node
+and a shrink-to-fit parent at a fractional position.
+
+- **Dev-mode nine-slice warning.** A nine-slice element or background laid out
+  smaller than `left + right` or `top + bottom` insets has no room for its
+  middle row or column: the corners overlap and the art folds in on itself,
+  which reads as a positioning bug. A `console.warn` fires once per element,
+  in development builds. Nothing is clamped — give the element more room, or
+  use art with smaller insets.
+
 ## UIImage sizing
 
 ```ts
@@ -217,6 +236,14 @@ parent's cross-axis stretch cannot squash the picture.
 ## UIText: bitmap & resolution
 
 `UIText` (and the `panel.text(...)` builder's third argument, `UIButton` labels, the React `<Text>`) accept two extra props for crisp pixel-art text. Yoga measurement — the default word-wrap and the `truncate?: "clip" | "ellipsis"` modes — is unchanged on the bitmap path.
+
+`truncateWith` sets the string `"ellipsis"` appends; it defaults to `"…"`
+(U+2026), which several pixel fonts lack, so pass `"..."` for one of those.
+`UIButton` forwards it to its label alongside `truncate`.
+
+A `UIText` given both a definite `width` and a definite `height` wraps to that
+width. Yoga calls no measure function when neither axis is left to measure, so
+the wrap is applied from the layout pass instead.
 
 ```ts
 // `bitmap: true` bakes (or looks up) the atlas from `style.fontFamily`
@@ -457,3 +484,7 @@ this exact overlay.
 
 `UIImage`, `UINineSlice`, and texture backgrounds accept `TextureInput`: a
 registered asset key, a texture handle, or a raw renderer texture.
+
+Give a nine-slice element room for its insets: below `left + right` px wide or
+`top + bottom` px tall it has no middle row or column and the corners overlap.
+Development builds warn once per element when that happens.
