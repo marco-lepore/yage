@@ -31,25 +31,31 @@ import type {
 const FULL_CIRCLE: [number, number] = [0, Math.PI * 2];
 
 /**
- * An emitter's options with every defaulted value filled in. `_spawn` and
- * `_update` read one of these: the emitter's own, or a burst's merged copy.
+ * An emitter's options with every defaulted value filled in. `_update` reads
+ * the emitter's own; `_spawn` reads whichever one it is handed, so a burst with
+ * overrides spawns from a merged copy. `blendMode` is absent because the
+ * container holds it, and so is the texture source, which the pool is built
+ * against. Every field is readonly: a new configuration replaces the whole
+ * object rather than being written into the old one.
  */
-type ResolvedConfig = Required<
-  Pick<
-    EmitterOptions,
-    | "maxParticles"
-    | "rate"
-    | "lifetime"
-    | "speed"
-    | "angle"
-    | "rotation"
-    | "rotationSpeed"
-    | "tint"
-    | "damping"
-    | "layer"
-  >
-> &
-  EmitterOptions;
+type ResolvedConfig = Readonly<
+  Required<
+    Pick<
+      EmitterOptions,
+      | "maxParticles"
+      | "rate"
+      | "lifetime"
+      | "speed"
+      | "angle"
+      | "rotation"
+      | "rotationSpeed"
+      | "tint"
+      | "damping"
+      | "layer"
+    >
+  > &
+    Omit<EmitterOptions, "blendMode">
+>;
 
 /** Internal tracking state for a single active particle. */
 interface ParticleState {
@@ -109,7 +115,10 @@ export class ParticleEmitterComponent extends Component {
     assertEmitterConfig(config);
     const texture = resolveSource(config);
 
-    const options = copyOptions<EmitterOptions>(config);
+    // The texture source is resolved above and the blend mode belongs to the
+    // container, so the stored configuration carries plain emission data only.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { texture: _texture, shape: _shape, blendMode, ...options } = config;
     this.config = {
       maxParticles: 100,
       rate: 10,
@@ -120,7 +129,7 @@ export class ParticleEmitterComponent extends Component {
       tint: 0xffffff,
       damping: 0,
       layer: "default",
-      ...options,
+      ...copyOptions(options),
     };
 
     this.container = new PixiParticleContainer({
@@ -132,9 +141,7 @@ export class ParticleEmitterComponent extends Component {
         vertex: true,
       },
     });
-    if (this.config.blendMode !== undefined) {
-      this.container.blendMode = this.config.blendMode;
-    }
+    if (blendMode !== undefined) this.container.blendMode = blendMode;
 
     this._pool = new ParticlePool(texture, this.config.maxParticles);
   }
@@ -217,15 +224,14 @@ export class ParticleEmitterComponent extends Component {
    * {@link ParticleEmitterComponent.burst} instead.
    */
   configure(options: EmitterUpdate): void {
+    const { blendMode, ...rest } = options;
     const candidate: ResolvedConfig = {
       ...this.config,
-      ...copyOptions(options),
+      ...copyOptions(rest),
     };
     assertEmitterConfig(candidate);
     this.config = candidate;
-    if (options.blendMode !== undefined) {
-      this.container.blendMode = options.blendMode;
-    }
+    if (blendMode !== undefined) this.blendMode = blendMode;
   }
 
   /** Spawn `count` particles at the entity's world position. */
