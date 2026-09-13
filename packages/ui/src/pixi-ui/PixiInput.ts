@@ -4,13 +4,27 @@ import { PixiUIBase } from "./PixiUIBase.js";
 import { resolvePixiView } from "./view-resolver.js";
 
 const DEFAULT_VALUE = "";
+const DEFAULT_PLACEHOLDER = "";
 const DEFAULT_SECURE = false;
 const DEFAULT_PADDING = 0;
 
+/**
+ * @pixi/ui Input with a placeholder that can change after construction.
+ * The base class keeps the placeholder text as a protected field and only
+ * recomputes its visibility from its own `value` setter and edit start/stop.
+ */
+class YageInput extends Input {
+  setPlaceholder(text: string): void {
+    if (!this.placeholder) return;
+    this.placeholder.text = text;
+    this.placeholder.visible = this.value.length === 0 && !this.editing;
+  }
+}
+
 /** Yoga-aware wrapper around @pixi/ui Input. */
-export class PixiInput extends PixiUIBase<Input> {
+export class PixiInput extends PixiUIBase<YageInput> {
   constructor(props: PixiInputProps) {
-    const view = new Input({
+    const view = new YageInput({
       bg: resolvePixiView(props.bg),
       textStyle: props.textStyle,
       placeholder: props.placeholder,
@@ -35,6 +49,9 @@ export class PixiInput extends PixiUIBase<Input> {
     this.bridgeSignal(this.view.onEnter, "onEnter", "UI onEnter", props);
 
     if ("value" in p) this.view.value = p.value ?? DEFAULT_VALUE;
+    if ("placeholder" in p) {
+      this.view.setPlaceholder(p.placeholder ?? DEFAULT_PLACEHOLDER);
+    }
     if ("secure" in p) this.view.secure = p.secure ?? DEFAULT_SECURE;
     if ("padding" in p) {
       this.view.padding = (p.padding ?? DEFAULT_PADDING) as Input["padding"];

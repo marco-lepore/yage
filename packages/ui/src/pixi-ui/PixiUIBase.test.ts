@@ -75,9 +75,32 @@ const { mocks } = vi.hoisted(() => {
   class MockInput extends MockContainer {
     onChange = new MockSignal();
     onEnter = new MockSignal();
-    value = "";
+    protected placeholder = { text: "", visible: false };
+    protected editing = false;
+    private _value = "";
     secure = false;
     padding: number | number[] = 0;
+    constructor(options?: { placeholder?: string; value?: string }) {
+      super();
+      this.placeholder.text = options?.placeholder ?? "";
+      this.placeholder.visible = !!options?.placeholder;
+      this.value = options?.value ?? "";
+    }
+    get value(): string {
+      return this._value;
+    }
+    set value(text: string) {
+      this._value = text;
+      this.placeholder.visible = text.length === 0 && !this.editing;
+    }
+    startEditing(): void {
+      this.editing = true;
+      this.placeholder.visible = false;
+    }
+    stopEditing(): void {
+      this.editing = false;
+      this.placeholder.visible = this.value.length === 0;
+    }
   }
 
   class MockCheckBox extends MockContainer {
@@ -401,6 +424,35 @@ describe("PixiUI wrappers", () => {
       selected: undefined,
     });
     expect(radio.displayObject).toMatchObject({ selected: 0 });
+  });
+
+  it("changes the placeholder of an existing input", () => {
+    const input = new PixiInput({ bg: view(), placeholder: "Search" });
+    const placeholder = (
+      input.displayObject as unknown as {
+        placeholder: { text: string; visible: boolean };
+      }
+    ).placeholder;
+    const inputView = input.displayObject as unknown as {
+      startEditing(): void;
+      stopEditing(): void;
+    };
+
+    input.update({ placeholder: "Cerca" });
+    expect(placeholder).toEqual({ text: "Cerca", visible: true });
+
+    inputView.startEditing();
+    input.update({ placeholder: "Buscar" });
+    expect(placeholder).toEqual({ text: "Buscar", visible: false });
+    inputView.stopEditing();
+    expect(placeholder.visible).toBe(true);
+
+    input.update({ value: "hello" });
+    input.update({ placeholder: "Suchen" });
+    expect(placeholder).toEqual({ text: "Suchen", visible: false });
+
+    input.update({ placeholder: undefined });
+    expect(placeholder.text).toBe("");
   });
 
   it("disconnects one callback shared by two signals", () => {
