@@ -416,12 +416,26 @@ btn.setDisabled(true);
 btn.setText("Loading...");
 ```
 
-Buttons support three background states: default, hover, and press.
+Buttons support three background states: default, hover, and press. Give only
+`background` and the other two are derived from it — 1.25x brightness for
+hover, 0.75x for press — so a recoloured or textured button keeps its look
+through all three. A texture background varies its `tint` rather than a
+colour, which leaves hover untouched at the default white tint and darkens
+press. Channels clamp at 255, so a colour already near full brightness
+brightens less than the factor asks for. `hoverBackground` and
+`pressBackground` still win where you pass them.
+
+A button with no `background` at all gets `{ color: 0x444444, alpha: 1, radius:
+4 }`. To ask for no visible background, ask for a transparent one:
+`background: { color: 0x000000, alpha: 0 }`. Passing
+`update({ background: undefined })` resets to the grey default instead, which
+is what a present-but-undefined key means on every element in this package.
 
 Omitting `width` and/or `height` lets Yoga shrink the button to fit its
-content, with a small default padding around the label. Pass explicit
-dimensions when you need a fixed-size button (e.g. for a grid of
-equally-sized toolbar buttons).
+content, with 12 px horizontal and 6 px vertical default padding around the
+label. Pass explicit dimensions when you need a fixed-size button (e.g. for a
+grid of equally-sized toolbar buttons); a button with both axes pinned gets no
+default padding. Pass `padding` to replace the default at any size.
 
 For a fixed-size button whose label might be longer than the box — especially
 with variable-length (i18n) strings — pass `truncate: "clip" | "ellipsis"` to
@@ -439,12 +453,19 @@ auto-height button grows to fit, but a button with a *fixed* height can't — so
 either give it room to grow or truncate the label.
 
 `UIButton` is itself a flex container — `.addElement()` accepts any
-`UIElement` (text, image, nested panels) for icon + label compositions:
+`UIElement` (text, image, nested panels) for icon + label compositions. It
+stacks its children in a column and centres them on both axes, so an icon
+beside a label needs `direction: "row"`. `gap`, `padding`, `alignItems` and
+`justifyContent` work the same way they do on a panel:
 
 ```typescript
 import { UIImage } from "@yagejs/ui";
 
-const saveBtn = panel.button("Save", { onClick: () => {} });
+const saveBtn = panel.button("Save", {
+  direction: "row",
+  gap: 6,
+  onClick: () => {},
+});
 saveBtn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
 ```
 
@@ -467,7 +488,12 @@ panel.button("Play", {
 
 ## Additional Elements
 
-`UISurface` provides builder methods for `.text()`, `.button()`, and `.panel()`.
+`UISurface`, `UIPanel` and `UIScrollView` all provide the same four builder
+methods: `.text()`, `.button()`, `.panel()` and `.scrollView()`. On a scroll
+view they add to its content, so a row goes in the same way at any depth.
+`.text()` takes a third argument carrying the rest of `UITextProps` —
+`bitmap`, `resolution`, `truncate`, layout props.
+
 For other elements, create them directly and add via `addElement`:
 
 ```typescript

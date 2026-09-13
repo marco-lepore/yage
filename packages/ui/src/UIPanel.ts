@@ -20,6 +20,7 @@ import type {
   UIButtonProps,
   UIPanelProps,
   UIScrollViewProps,
+  UITextBuilderProps,
 } from "./types.js";
 import {
   createYogaNode,
@@ -161,11 +162,21 @@ export class UIPanel implements UIContainerElement {
   // Builder methods (backward compat)
   // ---------------------------------------------------------------------------
 
-  /** Add a text element. */
-  text(content: string, style?: Partial<TextStyle>): UIText {
-    const t = new UIText(
-      style ? { children: content, style } : { children: content },
-    );
+  /**
+   * Add a text element. `opts` carries the rest of {@link UITextProps} —
+   * `bitmap`, `resolution`, `truncate`, layout props — so the builder reaches
+   * everything the `UIText` constructor does.
+   */
+  text(
+    content: string,
+    style?: Partial<TextStyle>,
+    opts?: UITextBuilderProps,
+  ): UIText {
+    const t = new UIText({
+      ...opts,
+      children: content,
+      ...(style ? { style } : {}),
+    });
     this.addElement(t);
     return t;
   }

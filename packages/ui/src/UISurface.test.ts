@@ -269,6 +269,13 @@ describe("UISurface", () => {
       expect(text.visible).toBe(true);
     });
 
+    it(".text() forwards the remaining text props", () => {
+      const panel = new UISurface();
+      const text = panel.text("SCORE", { fontSize: 12 }, { truncate: "clip" });
+      const inner = text as unknown as { _truncate: string | undefined };
+      expect(inner._truncate).toBe("clip");
+    });
+
     it(".button() adds a UIButton child", () => {
       const onClick = vi.fn();
       const panel = new UISurface();

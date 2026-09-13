@@ -101,6 +101,30 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
+  class MockText extends MockContainer {
+    text: string;
+    style: Record<string, unknown>;
+    width: number;
+    height: number;
+    anchor = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
+
+    constructor(opts?: { text?: string; style?: Record<string, unknown> }) {
+      super();
+      this.text = opts?.text ?? "";
+      this.style = opts?.style ?? {};
+      this.width =
+        ((opts?.style?.fontSize as number) ?? 14) * this.text.length * 0.5;
+      this.height = (opts?.style?.fontSize as number) ?? 14;
+    }
+  }
+
   class MockRectangle {
     constructor(
       public x = 0,
@@ -110,12 +134,14 @@ const { mocks } = vi.hoisted(() => {
     ) {}
   }
 
-  return { mocks: { MockContainer, MockGraphics, MockRectangle } };
+  return { mocks: { MockContainer, MockGraphics, MockText, MockRectangle } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
   Graphics: mocks.MockGraphics,
+  Text: mocks.MockText,
+  BitmapText: mocks.MockText,
   Rectangle: mocks.MockRectangle,
 }));
 
@@ -474,6 +500,35 @@ describe("UIScrollView", () => {
     expect(sv.yogaNode.getComputedHeight()).toBe(80); // 100 − 20 footer
     expect(sv.maxScroll).toBeGreaterThan(0);
     parent.destroy();
+  });
+
+  describe("builders", () => {
+    it("adds text, buttons, panels and nested viewports to the content", () => {
+      const sv = new UIScrollView({ width: 200, height: 100 });
+      const text = sv.text("Row");
+      const button = sv.button("Buy", { onClick: () => undefined });
+      const panel = sv.panel({ direction: "row" });
+      const nested = sv.scrollView({ height: 40 });
+
+      expect(sv.children).toEqual([text, button, panel, nested]);
+      sv.destroy();
+    });
+
+    it("lays a built row out like one added with addElement", () => {
+      const built = new UIScrollView({ width: 200, height: 100 });
+      built.panel({ width: 200, height: 30 });
+      layout(built);
+
+      const added = new UIScrollView({ width: 200, height: 100 });
+      added.addElement(new UIPanel({ width: 200, height: 30 }));
+      layout(added);
+
+      expect(built.children[0]?.yogaNode.getComputedHeight()).toBe(
+        added.children[0]?.yogaNode.getComputedHeight(),
+      );
+      built.destroy();
+      added.destroy();
+    });
   });
 
   it("survives destroy()", () => {
