@@ -41,9 +41,8 @@ const DEFAULT_BG: ColorBackground = { color: 0x444444, alpha: 1, radius: 4 };
 
 /**
  * Brightness the hover and press states are derived at from the resting
- * background. At the default grey these land exactly on 0x555555 and
- * 0x333333, so a button that asks for no background looks the same as before
- * the derivation existed.
+ * background. The default grey `0x444444` lands exactly on `0x555555` hovered
+ * and `0x333333` pressed.
  */
 const HOVER_FACTOR = 1.25;
 const PRESS_FACTOR = 0.75;

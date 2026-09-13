@@ -333,12 +333,14 @@ const _overflowExempt = new WeakSet<YogaNode>();
  * parent, which is not a text node, can land up to one point inside its
  * measured child at each edge — two points in total at a point scale factor
  * of 1, which is the factor here because nothing in this package calls
- * `setPointScaleFactor` and nodes are created with no config. The
- * comparisons below are `<=`, because the artifact can be exactly two.
+ * `setPointScaleFactor` and nodes are created with no config. The fit check
+ * below is `<=`, because the artifact can be exactly two; each warn branch is
+ * the strict complement, `>`.
  *
  * Raising the scale factor would shrink the bound to 2 / factor. A Yoga
- * upgrade that changed text rounding would move it too, which is what the
- * rounding test beside this package pins.
+ * upgrade that changed the text rounding in `roundLayoutResultsToPixelGrid`
+ * would move it too. `yoga-helpers.test.ts` pins the current rule, so read
+ * that function first when the test starts failing.
  */
 const OVERFLOW_EPSILON = 2;
 
