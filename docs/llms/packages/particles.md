@@ -25,6 +25,8 @@ entity.add(
     angle: [-Math.PI, Math.PI], // radians
     scale: { start: 1, end: 0 }, // Lerped
     alpha: { start: 1, end: 0 },
+    alphaFadeIn: 0.2, // fraction of each particle's life, 0–1
+    alphaFadeOut: 0.3,
     rotation: 0, // radians
     rotationSpeed: 0, // rad/s
     tint: 0xff6600,
@@ -121,16 +123,17 @@ Two surfaces, answering two different questions.
 **`configure(options: EmitterUpdate)`** is "this emitter is different from now
 on". It changes `lifetime`, `speed`, `angle`, `scale`, `alpha`, `rotation`,
 `rotationSpeed`, `tint`, `spawnOffset`, `radialSpeed`, `rate`, `gravity`,
-`damping` and `blendMode`. Particles already in flight keep the values they
-were spawned with; continuous emission picks the new values up on its next
-particle.
+`damping`, `alphaFadeIn`, `alphaFadeOut` and `blendMode`. Particles already in
+flight keep the values they were spawned with; continuous emission picks the
+new values up on its next particle.
 
 **`burst(count, overrides: BurstOverrides)`** is "these `count` particles are
 different". It takes the spawn-time options — `lifetime`, `speed`, `angle`,
 `scale`, `alpha`, `rotation`, `rotationSpeed`, `tint`, `spawnOffset`,
 `radialSpeed` — and nothing else changes: neither the emitter's own
-configuration nor any particle already alive. `gravity` and `damping` are read
-every frame for every live particle, so they are `configure` only.
+configuration nor any particle already alive. `gravity`, `damping`,
+`alphaFadeIn` and `alphaFadeOut` are read every frame for every live particle,
+so they are `configure` only.
 
 ```ts
 // A melee trail that follows the swing, while earlier particles hold theirs.
@@ -198,11 +201,23 @@ compose. It needs a `spawnOffset` — a particle at the emitter's origin has no
 outward direction — and a particle whose offset resolves to exactly (0, 0)
 takes no radial term.
 
+**`alphaFadeIn` and `alphaFadeOut`** are fractions of each particle's own
+lifetime, both 0-1 and both 0 by default. They multiply whatever `alpha`
+produces rather than replacing it, so `alpha: { start: 0, end: 1 }` plus
+`alphaFadeIn: 0.2` ramps twice. A fade-in makes a particle spawn at 0 alpha
+instead of popping in, which is what an ambient emitter spread over an area
+needs. Fractions that overlap — both above 0.5 — multiply in the middle, so
+alpha never reaches the value `alpha` asked for. `scale` has no envelope.
+
+```ts
+{ lifetime: [1, 2], alpha: 0.6, alphaFadeIn: 0.15, alphaFadeOut: 0.4 }
+```
+
 **Numeric config is checked at construction.** Every number in the config must
-be finite, `lifetime` above 0, `damping` between 0 and 1, `rate` at least 0,
-and `maxParticles` a whole number at least 0. A value outside its range throws
-a plain `Error` naming the option and the value, before the emitter allocates
-anything.
+be finite, `lifetime` above 0, `damping` between 0 and 1, `alphaFadeIn` and
+`alphaFadeOut` between 0 and 1, `rate` at least 0, and `maxParticles` a whole
+number at least 0. A value outside its range throws a plain `Error` naming the
+option and the value, before the emitter allocates anything.
 
 **An emitter needs a `Transform` on the same entity.** `ParticleSystem` queries
 `[Transform, ParticleEmitterComponent]`, so without one the emitter never runs:

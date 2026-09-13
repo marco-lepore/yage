@@ -41,6 +41,16 @@ export interface EmitterOptions {
   scale?: NumberRange | Lerped;
   /** Alpha/opacity (or lerped). Default: 1. */
   alpha?: NumberRange | Lerped;
+  /**
+   * Fade a particle in over this fraction of its lifetime (0-1). Multiplies
+   * whatever `alpha` produces rather than replacing it. Default: 0, no fade.
+   */
+  alphaFadeIn?: number;
+  /**
+   * Fade a particle out over the last this-much fraction of its lifetime
+   * (0-1). Multiplies whatever `alpha` produces. Default: 0, no fade.
+   */
+  alphaFadeOut?: number;
   /** Initial rotation in radians. Default: 0. */
   rotation?: NumberRange;
   /** Rotation speed in rad/s. Default: 0. */
@@ -116,7 +126,17 @@ export type BurstOverrides = Partial<
  * when the emitter is built, so they are absent here.
  */
 export type EmitterUpdate = BurstOverrides &
-  Partial<Pick<EmitterOptions, "rate" | "gravity" | "damping" | "blendMode">>;
+  Partial<
+    Pick<
+      EmitterOptions,
+      | "rate"
+      | "gravity"
+      | "damping"
+      | "blendMode"
+      | "alphaFadeIn"
+      | "alphaFadeOut"
+    >
+  >;
 
 /** Resolve a NumberRange to a concrete value. */
 export function resolveRange(v: NumberRange, random: RandomService): number {

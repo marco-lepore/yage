@@ -768,6 +768,105 @@ describe("ParticleEmitterComponent", () => {
     });
   });
 
+  describe("alpha fade envelope", () => {
+    it("leaves alpha alone when neither fade is set", () => {
+      const emitter = createEmitter({
+        alpha: { start: 1, end: 0 },
+        lifetime: 1,
+        maxParticles: 1,
+      });
+      emitter.burst(1);
+      const p = emitter._active[0]!.particle;
+      expect(p.alpha).toBeCloseTo(1, 5);
+      emitter._update(0.5, 0, 0);
+      expect(p.alpha).toBeCloseTo(0.5, 5);
+    });
+
+    it("alphaFadeIn starts at 0 and reaches full at the fraction", () => {
+      const emitter = createEmitter({
+        alpha: 1,
+        alphaFadeIn: 0.25,
+        lifetime: 1,
+        maxParticles: 1,
+      });
+      emitter.burst(1);
+      const p = emitter._active[0]!.particle;
+      expect(p.alpha).toBe(0);
+
+      emitter._update(0.125, 0, 0);
+      expect(p.alpha).toBeCloseTo(0.5, 5);
+
+      emitter._update(0.125, 0, 0);
+      expect(p.alpha).toBeCloseTo(1, 5);
+    });
+
+    it("alphaFadeOut falls towards 0 at the end of life", () => {
+      const emitter = createEmitter({
+        alpha: 1,
+        alphaFadeOut: 0.5,
+        lifetime: 1,
+        maxParticles: 1,
+      });
+      emitter.burst(1);
+      const p = emitter._active[0]!.particle;
+
+      emitter._update(0.5, 0, 0);
+      expect(p.alpha).toBeCloseTo(1, 5);
+
+      emitter._update(0.25, 0, 0);
+      expect(p.alpha).toBeCloseTo(0.5, 5);
+
+      emitter._update(0.2, 0, 0);
+      expect(p.alpha).toBeCloseTo(0.1, 5);
+    });
+
+    it("multiplies the two where they overlap", () => {
+      const emitter = createEmitter({
+        alpha: 1,
+        alphaFadeIn: 0.6,
+        alphaFadeOut: 0.6,
+        lifetime: 1,
+        maxParticles: 1,
+      });
+      emitter.burst(1);
+      emitter._update(0.5, 0, 0);
+      // 0.5/0.6 in, 0.5/0.6 out: alpha never reaches the configured 1.
+      expect(emitter._active[0]!.particle.alpha).toBeCloseTo(
+        (0.5 / 0.6) ** 2,
+        5,
+      );
+    });
+
+    it("multiplies a lerped alpha rather than replacing it", () => {
+      const emitter = createEmitter({
+        alpha: { start: 1, end: 0 },
+        alphaFadeIn: 0.5,
+        lifetime: 1,
+        maxParticles: 1,
+      });
+      emitter.burst(1);
+      emitter._update(0.25, 0, 0);
+      // lerp 0.75, envelope 0.5.
+      expect(emitter._active[0]!.particle.alpha).toBeCloseTo(0.375, 5);
+    });
+
+    it("configure changes the envelope", () => {
+      const emitter = createEmitter({ alpha: 1, lifetime: 1, maxParticles: 2 });
+      emitter.configure({ alphaFadeIn: 0.5 });
+      emitter.burst(1);
+      expect(emitter._active[0]!.particle.alpha).toBe(0);
+    });
+
+    it("names the option for a fraction outside 0-1", () => {
+      expect(() => createEmitter({ alphaFadeIn: 1.5 })).toThrow(
+        "ParticleEmitterComponent: alphaFadeIn must be between 0 and 1, got 1.5.",
+      );
+      expect(() => createEmitter({ alphaFadeOut: -0.1 })).toThrow(
+        /alphaFadeOut must be between 0 and 1/,
+      );
+    });
+  });
+
   describe("continuous emission via _update", () => {
     it("spawns particles based on rate and dt", () => {
       const emitter = createEmitter({ rate: 10, maxParticles: 50 });

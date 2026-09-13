@@ -410,7 +410,8 @@ export class ParticleEmitterComponent extends Component {
       const scale = s.scaleStart + (s.scaleEnd - s.scaleStart) * t;
       s.particle.scaleX = scale;
       s.particle.scaleY = scale;
-      s.particle.alpha = s.alphaStart + (s.alphaEnd - s.alphaStart) * t;
+      s.particle.alpha =
+        (s.alphaStart + (s.alphaEnd - s.alphaStart) * t) * fadeEnvelope(t, cfg);
 
       i++;
     }
@@ -500,7 +501,9 @@ export class ParticleEmitterComponent extends Component {
       cfg.alpha ?? 1,
       this._random,
     );
-    particle.alpha = alphaStart;
+    // A fade-in starts at zero, so the envelope applies at spawn too: without
+    // it the particle would show at full alpha for one frame.
+    particle.alpha = alphaStart * fadeEnvelope(0, cfg);
 
     // Tint
     particle.tint = cfg.tint;
@@ -539,6 +542,24 @@ function resolveSource(config: EmitterConfig): TextureResource {
     "ParticleEmitterComponent",
   );
   return shapeTexture(shape);
+}
+
+/**
+ * The alpha fade envelope at `t`, a particle's age over its lifetime. It
+ * multiplies whatever `alpha` produces, and is 1 with neither fade set.
+ * Branches rather than `Math.min`, so the default path does no division and
+ * `t === 0` with no fade-in cannot produce `NaN`.
+ */
+function fadeEnvelope(t: number, cfg: ResolvedConfig): number {
+  let envelope = 1;
+  const { alphaFadeIn, alphaFadeOut } = cfg;
+  if (alphaFadeIn !== undefined && alphaFadeIn > 0 && t < alphaFadeIn) {
+    envelope *= t / alphaFadeIn;
+  }
+  if (alphaFadeOut !== undefined && alphaFadeOut > 0 && t > 1 - alphaFadeOut) {
+    envelope *= (1 - t) / alphaFadeOut;
+  }
+  return envelope;
 }
 
 function resolveLerped(
