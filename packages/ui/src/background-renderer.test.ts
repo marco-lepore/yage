@@ -312,6 +312,33 @@ describe("BackgroundRenderer", () => {
     warn.mockRestore();
   });
 
+  it("warns again once the box has fitted in between", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    const handle = new AssetHandle<Texture>("texture", "test.png");
+    renderer.set(
+      { texture: handle, mode: "nine-slice", nineSlice: 20 },
+      parent as never,
+    );
+    const count = () =>
+      warn.mock.calls.filter((c) =>
+        String(c[0]).includes("nine-slice background"),
+      ).length;
+
+    renderer.resize(100, 30);
+    expect(count()).toBe(1);
+    // Still too small: one warning per episode.
+    renderer.resize(100, 32);
+    expect(count()).toBe(1);
+    // Room for the middle row, so the episode is over.
+    renderer.resize(100, 80);
+    expect(count()).toBe(1);
+    renderer.resize(100, 30);
+    expect(count()).toBe(2);
+    warn.mockRestore();
+  });
+
   it("creates TilingSprite for tile mode", () => {
     const renderer = new BackgroundRenderer();
     const parent = new mocks.MockContainer();
