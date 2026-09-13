@@ -26,7 +26,7 @@ entity.add(
     scale: { start: 1, end: 0 }, // Lerped
     alpha: 1, // NumberRange or Lerped, like scale
     alphaFadeIn: 0.2, // fraction of each particle's life, 0–1
-    alphaFadeOut: 0.3, // multiplies alpha, so a ramped alpha ramps twice
+    alphaFadeOut: 0.3, // multiplies alpha, so a lerped alpha fades twice
     rotation: 0, // radians
     rotationSpeed: 0, // rad/s
     tint: 0xff6600,
@@ -210,7 +210,7 @@ takes no radial term.
 **`alphaFadeIn` and `alphaFadeOut`** are fractions of each particle's own
 lifetime, both 0-1 and both 0 by default. They multiply whatever `alpha`
 produces rather than replacing it, so `alpha: { start: 0, end: 1 }` plus
-`alphaFadeIn: 0.2` ramps twice. A fade-in makes a particle spawn at 0 alpha
+`alphaFadeIn: 0.2` fades in twice, once from each. A fade-in makes a particle spawn at 0 alpha
 instead of popping in, which is what an ambient emitter spread over an area
 needs. Fractions that overlap — both above 0.5 — multiply in the middle, so
 alpha never reaches the value `alpha` asked for. `scale` has no envelope.
