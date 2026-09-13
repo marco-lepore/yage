@@ -29,11 +29,19 @@ export class UIText implements UIElement {
   private _truncate: "clip" | "ellipsis" | undefined;
   private _truncateWith: string;
   // Both axes definite means Yoga skips the measure callback, which is the
-  // only place the default wrap is switched on. Tracked so `applyLayout` can
-  // put it back; see the callback below.
+  // only place the default wrap is switched on and the truncated string is
+  // built. Tracked so `applyLayout` can do that work instead; see the
+  // callback below.
   private _hasExplicitWidth: boolean;
   private _hasExplicitHeight: boolean;
-  private _wrapWidth = Number.NaN;
+  /** Computed width `applyLayout` last acted on. */
+  private _appliedWidth = Number.NaN;
+  /**
+   * Raised whenever what `applyLayout` applies — the wrap flag, the truncated
+   * string — is dropped or goes stale from somewhere else. The next
+   * `applyLayout` then runs even though the computed width has not moved.
+   */
+  private _layoutDirty = true;
   /** Source text — preserved so ellipsis re-truncation has the full string. */
   private _source: string;
   // Raw style options, kept so `mergeStyle()` can patch over the current
@@ -124,22 +132,37 @@ export class UIText implements UIElement {
   setText(s?: string): void {
     this._source = s ?? "";
     this.text.text = this._source;
+    this._layoutDirty = true;
     this.yogaNode.markDirty();
   }
 
   /**
-   * Switch word wrap on for a text whose width and height are both definite.
+   * Wrap — or truncate — a text whose width and height are both definite.
    * Yoga calls a measure function only when at least one axis is left to
-   * measure, and that callback is the only other place wrap is set, so
-   * without this a fully sized text renders one long unbroken line. Gated on
-   * the computed width so Pixi does not re-measure the block every frame.
+   * measure, and that callback is the only other place word wrap is switched
+   * on and the truncated string is built. Without this a fully sized text
+   * renders one long unbroken line, and a fully sized `truncate` text renders
+   * its whole source past the slot edge.
+   *
+   * Runs only when the computed width moved or something invalidated what was
+   * applied, because truncation binary-searches the text width and Pixi
+   * re-measures the block on every style write.
    */
   applyLayout(): void {
     if (!this._hasExplicitWidth || !this._hasExplicitHeight) return;
-    if (this._truncate === "clip" || this._truncate === "ellipsis") return;
     const width = this.yogaNode.getComputedWidth();
-    if (width === this._wrapWidth) return;
-    this._wrapWidth = width;
+    if (!this._layoutDirty && width === this._appliedWidth) return;
+    this._layoutDirty = false;
+    this._appliedWidth = width;
+
+    // `clip` / `ellipsis` are single-line: `applyTruncateStyle` keeps wrap
+    // off and the string is cut to the slot instead.
+    if (this._truncate === "clip" || this._truncate === "ellipsis") {
+      const suffix = this._truncate === "ellipsis" ? this._truncateWith : "";
+      this.applyTruncate(width, suffix);
+      return;
+    }
+
     this.text.style.wordWrap = true;
     this.text.style.wordWrapWidth = width;
   }
@@ -152,8 +175,11 @@ export class UIText implements UIElement {
   setStyle(s: Partial<TextStyle>): void {
     // Re-resolve against engine + UI defaults: the raw style carries neither,
     // so an omitted prop would otherwise drop to Pixi's bare default.
+    // The whole style object goes, so any wrap `applyLayout` had switched on
+    // goes with it.
     this.text.style = resolveTextStyle(s, getUIDefaultTextStyle()) ?? s;
     this._styleOptions = { ...s };
+    this._layoutDirty = true;
     this.applyTruncateStyle();
     this.yogaNode.markDirty();
   }
@@ -193,17 +219,25 @@ export class UIText implements UIElement {
       this._truncateWith = p.truncateWith ?? DEFAULT_ELLIPSIS;
       if (this._truncate === "ellipsis") {
         this.text.text = this._source;
+        this._layoutDirty = true;
         this.yogaNode.markDirty();
       }
     }
-    if ("width" in p) this._hasExplicitWidth = isDefiniteSize(p.width);
-    if ("height" in p) this._hasExplicitHeight = isDefiniteSize(p.height);
+    if ("width" in p) {
+      this._hasExplicitWidth = isDefiniteSize(p.width);
+      this._layoutDirty = true;
+    }
+    if ("height" in p) {
+      this._hasExplicitHeight = isDefiniteSize(p.height);
+      this._layoutDirty = true;
+    }
     if ("truncate" in p && p.truncate !== this._truncate) {
       this._truncate = p.truncate;
       // Restore source so a previous ellipsis pass doesn't bleed through;
-      // the next measure pass re-applies wordWrap / ellipsis based on the
-      // new mode.
+      // the next measure or layout pass re-applies wordWrap / ellipsis based
+      // on the new mode.
       this.text.text = this._source;
+      this._layoutDirty = true;
       this.applyTruncateStyle();
       this.yogaNode.markDirty();
     }
