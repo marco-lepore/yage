@@ -6,7 +6,9 @@ export {
   UI_DEFAULT_LAYER_ORDER,
 } from "./types.js";
 export type {
+  AlignItems,
   FlexDirection,
+  JustifyContent,
   Padding,
   BackgroundOptions,
   ColorBackground,
@@ -21,6 +23,7 @@ export type {
   ConsumeInputProps,
   PointerEventProps,
   UITextProps,
+  UITextBuilderProps,
   UISplitTextProps,
   UIButtonProps,
   UIImageProps,

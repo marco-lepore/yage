@@ -10,4 +10,6 @@ A button's hover and press backgrounds are derived from the background it was gi
 
 `panel.text(content, style, opts)` takes a third argument carrying the rest of `UITextProps`, which puts `bitmap`, `resolution`, `truncate` and the layout props within reach of the builder. `UISurface.text` and the new `UIScrollView.text` take it too.
 
+The package exports the `UITextBuilderProps`, `AlignItems` and `JustifyContent` types, so a caller can name that third argument and the two alignment props in its own signatures.
+
 The package documentation now states a button's default background, its derived hover and press states, its default padding and the way to ask for no background at all.
