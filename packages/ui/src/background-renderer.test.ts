@@ -269,6 +269,49 @@ describe("BackgroundRenderer", () => {
     expect(parent.children[0]).toBeInstanceOf(mocks.MockNineSliceSprite);
   });
 
+  it("warns when a nine-slice background is smaller than its insets", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    const handle = new AssetHandle<Texture>("texture", "test.png");
+    renderer.set(
+      {
+        texture: handle,
+        mode: "nine-slice",
+        nineSlice: { left: 8, top: 16, right: 8, bottom: 20 },
+      },
+      parent as never,
+    );
+
+    renderer.resize(100, 34);
+
+    const hit = warn.mock.calls
+      .map((c) => String(c[0]))
+      .find((m) => m.includes("nine-slice background"));
+    expect(hit).toContain("height 34.0px is under the 36px");
+    warn.mockRestore();
+  });
+
+  it("does not warn for a nine-slice background with room", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    const handle = new AssetHandle<Texture>("texture", "test.png");
+    renderer.set(
+      { texture: handle, mode: "nine-slice", nineSlice: 8 },
+      parent as never,
+    );
+
+    renderer.resize(100, 40);
+
+    expect(
+      warn.mock.calls.filter((c) =>
+        String(c[0]).includes("nine-slice background"),
+      ),
+    ).toHaveLength(0);
+    warn.mockRestore();
+  });
+
   it("creates TilingSprite for tile mode", () => {
     const renderer = new BackgroundRenderer();
     const parent = new mocks.MockContainer();

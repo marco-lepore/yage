@@ -11,6 +11,7 @@ import type { UIElement, UINineSliceProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
+import { warnNineSliceTooSmall } from "./internal/nine-slice-guard.js";
 
 /** Displays a nine-slice texture as a UI element. Requires explicit width/height from layout. */
 export class UINineSlice implements UIElement {
@@ -68,6 +69,7 @@ export class UINineSlice implements UIElement {
   applyLayout(): void {
     const w = this.yogaNode.getComputedWidth();
     const h = this.yogaNode.getComputedHeight();
+    warnNineSliceTooSmall(this, this.container, w, h, "UINineSlice");
     this.container.width = w;
     this.container.height = h;
   }

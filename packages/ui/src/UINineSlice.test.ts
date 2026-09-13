@@ -260,6 +260,62 @@ describe("UINineSlice", () => {
     ]).toEqual([5, 6, 7, 8]);
   });
 
+  describe("inset guard", () => {
+    it("warns when the box has no room for the middle row or column", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const ns = new UINineSlice({
+        texture: handle,
+        insets: { left: 8, top: 16, right: 8, bottom: 20 },
+        width: 100,
+        height: 34,
+      });
+      ns.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      ns.applyLayout();
+
+      const messages = warn.mock.calls.map((c) => String(c[0]));
+      const hit = messages.find((m) => m.includes("UINineSlice"));
+      expect(hit).toContain("height 34.0px is under the 36px");
+      expect(hit).not.toContain("width");
+      warn.mockRestore();
+    });
+
+    it("warns once, not every frame", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const ns = new UINineSlice({
+        texture: handle,
+        insets: 20,
+        width: 10,
+        height: 10,
+      });
+      ns.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      ns.applyLayout();
+      ns.applyLayout();
+      ns.applyLayout();
+
+      expect(
+        warn.mock.calls.filter((c) => String(c[0]).includes("UINineSlice")),
+      ).toHaveLength(1);
+      warn.mockRestore();
+    });
+
+    it("stays quiet when the box has room", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const ns = new UINineSlice({
+        texture: handle,
+        insets: 8,
+        width: 100,
+        height: 40,
+      });
+      ns.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      ns.applyLayout();
+
+      expect(
+        warn.mock.calls.filter((c) => String(c[0]).includes("UINineSlice")),
+      ).toHaveLength(0);
+      warn.mockRestore();
+    });
+  });
+
   it("visibility can be toggled", () => {
     const ns = new UINineSlice({ texture: handle, insets: 4 });
     ns.visible = false;
