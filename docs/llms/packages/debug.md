@@ -125,8 +125,8 @@ inspector.time.isAdvancing(); // true if a real frame ticked within the last 250
 ```
 
 Every `inspector.input` verb writes engine input state and reaches no
-`@yagejs/ui` element, so none of them clicks a button; `inspector.pointer`
-below does.
+`@yagejs/ui` element, so none of them clicks a button. `inspector.pointer`
+does — see "Clicking the user interface".
 
 `events.waitFor(pattern, { withinFrames?, source? })` resolves with the earliest
 retained match without consuming it. Repeated waits can return the same entry.
