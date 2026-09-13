@@ -161,9 +161,8 @@ what lets `configure({ radialSpeed })` pass on an emitter that already has a
 **The emitter never reads a caller's object twice.** It copies the
 configuration it is constructed with, and copies what `configure` is given,
 nested values included: a `[min, max]` array, a `Lerped` pair, `gravity` and
-`spawnOffset`. Changing either object afterwards changes nothing, and a
-development build reports the first such change once, naming the option. A
-burst's overrides are read during the call and not kept.
+`spawnOffset`. Changing either object afterwards changes nothing. A burst's
+overrides are read during the call and not kept.
 
 **An entity holds one component of a class**, so one entity has one emitter.
 A second look that `configure` and burst overrides cannot cover — a different

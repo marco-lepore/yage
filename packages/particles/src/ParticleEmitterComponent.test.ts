@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { EmitterConfig, EmitterOptions } from "./types.js";
 
 const { mocks } = vi.hoisted(() => {
@@ -187,14 +187,6 @@ function worldOf(emitter: ParticleEmitterComponent, index = 0) {
   const particle = emitter._active[index]!.particle;
   const { x, y } = emitter.container.position;
   return { x: particle.x + x, y: particle.y + y };
-}
-
-/**
- * The dev-only watch on the caller's configuration object. Private, because
- * nothing outside the emitter may read it, so a test reaches it by cast.
- */
-function aliasWatchOf(emitter: ParticleEmitterComponent): unknown {
-  return (emitter as unknown as { _aliasWatch?: unknown })._aliasWatch;
 }
 
 function setupEntity(
@@ -519,67 +511,6 @@ describe("ParticleEmitterComponent", () => {
       second.burst(1);
       expect(first._active[0]!.vy).toBeCloseTo(100, 5);
       expect(second._active[0]!.vx).toBeCloseTo(100, 5);
-    });
-  });
-
-  describe("changed config object report", () => {
-    const original = process.env.NODE_ENV;
-
-    afterEach(() => {
-      process.env.NODE_ENV = original;
-    });
-
-    it("names the option that changed, once", () => {
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const angle: [number, number] = [0, 0];
-      const emitter = createEmitter({ angle, lifetime: 10 });
-      setupEntity(emitter);
-      angle[0] = Math.PI;
-
-      emitter.burst(1);
-      emitter.burst(1);
-      emitter.emit();
-      expect(warn).toHaveBeenCalledOnce();
-      expect(warn.mock.calls[0]![0]).toMatch(/"angle" changed/);
-      expect(warn.mock.calls[0]![0]).toMatch(/configure\(\{ angle/);
-    });
-
-    it("stays quiet when the caller changes nothing", () => {
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const emitter = createEmitter({
-        angle: [0, 0],
-        gravity: { x: 0, y: 1 },
-        spawnOffset: { radius: 4 },
-        lifetime: 10,
-      });
-      setupEntity(emitter);
-      emitter.burst(1);
-      emitter.emit();
-      emitter.requestEmission();
-      expect(warn).not.toHaveBeenCalled();
-    });
-
-    it("keeps no watch in a production build", () => {
-      process.env.NODE_ENV = "production";
-      const emitter = createEmitter({ angle: [0, 0], lifetime: 10 });
-      expect(aliasWatchOf(emitter)).toBeUndefined();
-    });
-
-    it("keeps a watch in a development build", () => {
-      const emitter = createEmitter({ angle: [0, 0], lifetime: 10 });
-      expect(aliasWatchOf(emitter)).toBeDefined();
-    });
-
-    it("stays quiet in a production build", () => {
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      process.env.NODE_ENV = "production";
-      const angle: [number, number] = [0, 0];
-      const emitter = createEmitter({ angle, lifetime: 10 });
-      setupEntity(emitter);
-      angle[0] = Math.PI;
-
-      emitter.burst(1);
-      expect(warn).not.toHaveBeenCalled();
     });
   });
 
