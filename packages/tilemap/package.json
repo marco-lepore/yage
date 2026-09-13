@@ -1,6 +1,6 @@
 {
   "name": "@yagejs/tilemap",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Tile-based map loading and rendering for YAGE",
   "keywords": [
     "yage",
@@ -58,13 +58,13 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yagejs/core": "^0.11.0",
-    "@yagejs/renderer": "^0.11.0",
+    "@yagejs/core": "^0.11.1",
+    "@yagejs/renderer": "^0.11.1",
     "@pixi/tilemap": "5.0.2",
     "pixi.js": "^8.8.0"
   },
   "peerDependencies": {
-    "@yagejs/physics": ">=0.11.0 <0.12.0"
+    "@yagejs/physics": ">=0.11.1 <0.12.0"
   },
   "peerDependenciesMeta": {
     "@yagejs/physics": {
@@ -72,6 +72,6 @@
     }
   },
   "devDependencies": {
-    "@yagejs/physics": "^0.11.0"
+    "@yagejs/physics": "^0.11.1"
   }
 }

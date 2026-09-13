@@ -1,6 +1,6 @@
 {
   "name": "@yagejs/input",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Keyboard, mouse, gamepad, and touch handling for YAGE",
   "keywords": [
     "yage",
@@ -59,9 +59,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yagejs/core": "^0.11.0"
+    "@yagejs/core": "^0.11.1"
   },
   "devDependencies": {
-    "@yagejs/debug": "^0.11.0"
+    "@yagejs/debug": "^0.11.1"
   }
 }
