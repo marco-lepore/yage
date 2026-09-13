@@ -149,10 +149,6 @@ class GuardBrain extends Component {
     "patrol",
   );
 
-  onAdd(): void {
-    this.mode.start();
-  }
-
   fixedUpdate(dt: number): void {
     if (this.mode.is("patrol") && this.seesPlayer()) {
       this.mode.go("suspicious");
@@ -167,24 +163,147 @@ class GuardBrain extends Component {
 
 The keys passed to `defineStates` become the state-name type. TypeScript rejects
 unknown names in `to`, `next`, and `go()`. `go()` also checks the current
-state's `to` list at runtime.
+state's `to` list at runtime, and throws before any hook runs.
 
-Call `start()` after the component has its entity and sibling dependencies.
-`start()` runs the initial state's `enter` hook. Construction and `hydrate()`
-do not run hooks. The machine starts timing after `start()`, `hydrate()`, or a
-`go()` to a different state. Enter and exit hooks from
-`this.stateMachine(...)` are attributed to the owning component when they
-throw.
+The first `tick()` runs the initial state's `enter` hook. Call `start()` from
+`onAdd` when the hook should run before the first frame instead. Construction
+and `hydrate()` run no hooks. Enter and exit hooks from `this.stateMachine(...)`
+are attributed to the owning component when they throw.
 
-A timed state needs a finite positive `for` and a different `next`. The next
-state must appear in `to`. Pass the component's `dt` directly to `tick()`. The
+A timed state needs a `for` and a different `next` that it can reach: its own
+`to`, its parent's `to`, or a state marked `fromAny`. `for` is a number of
+seconds or a function returning one. Pass the component's `dt` directly to `tick()`. The
 engine has already applied scene and entity time scaling. Time past a state
-boundary is discarded, so a large tick enters at most one state. Calling
-`go()` with the current state is a no-op and does not restart its timer.
-Untimed elapsed time is capped at `Number.MAX_VALUE` if finite ticks overflow.
+boundary is discarded, so a large tick enters at most one state per level.
 
-The machine implements `Serializable<{ state, elapsed }>`, so a chosen save
-root can include it. `hydrate()` restores the state and timer without running
+Calling `go()` with the current state restarts it when that state lists itself
+in `to`: the `exit` hook runs, the timer resets, and the `enter` hook runs
+again. A state that does not list itself ignores the call.
+
+A few states tend to be reachable from everywhere, such as `hit` and `die`.
+Mark those with `fromAny: true` instead of repeating them in every `to` list:
+
+```typescript
+defineStates({
+  patrol: { to: ["windup"] },
+  windup: { to: ["strike"], for: 0.2, next: "strike" },
+  strike: { to: ["patrol"] },
+  hit: { fromAny: true, to: ["patrol"] },
+  die: { fromAny: true },
+});
+```
+
+`fromAny` adds no edge from the state to itself, so a second hit does not
+restart `hit` unless `hit` lists itself in `to`.
+
+`for` also takes a function, called each time the state is entered. Use it for a
+duration that comes from tuning or changes per entry. Because it runs at entry
+rather than while the table is built, it can read a field the constructor
+assigns after the machine field is initialized:
+
+```typescript
+class EnemyBrain extends Component {
+  private readonly tuning: EnemyTuning;
+
+  readonly mode = this.stateMachine(
+    defineStates({
+      patrol: { to: ["windup"] },
+      windup: { to: ["strike"], for: () => this.tuning.windup, next: "strike" },
+      strike: { to: ["patrol"] },
+    }),
+    "patrol",
+  );
+
+  constructor(tuning: EnemyTuning) {
+    super();
+    this.tuning = tuning;
+  }
+}
+```
+
+A returned value that is not finite and above 0 throws before the transition
+commits, leaving the machine where it was.
+
+When a callback can arrive after the machine has moved on, ask first:
+
+```typescript
+this.anim.playOneShot("hit", {
+  onComplete: () => {
+    if (this.mode.canGo("patrol")) this.mode.go("patrol");
+  },
+});
+```
+
+`canGo()` reports whether `go()` would move the machine, and never throws.
+
+### Driving presentation from events
+
+Every machine reports three events, typed with its own state names: `changed`
+(`{ from, to }`), `entered` (`{ state, from }`), and `exited` (`{ state, to }`).
+A presentation component can follow the machine without the table knowing
+anything about animation:
+
+```typescript
+class GuardView extends Component {
+  private readonly anim = this.sibling(AnimationController);
+  private readonly guard = this.sibling(GuardBrain);
+
+  onAdd(): void {
+    const { mode } = this.guard;
+    this.listen(mode, mode.events.entered, ({ state }) => this.anim.play(state));
+  }
+}
+```
+
+`this.listen` drops the subscription when the component is removed. Outside a
+component, `mode.on(mode.events.entered, handler)` returns an unsubscribe
+function. These events stay on the machine; they are not entity events and do
+not bubble to the scene.
+
+On a transition the order is: `exit` hook, `exited`, the state changes, `enter`
+hook, `entered`, `changed`. The first entry emits `entered` with `from: null`
+and no `changed`, and `hydrate()` emits nothing. A handler may not move the
+machine that called it.
+
+### Phases inside a state
+
+A state that covers a sequence declares its phases with `states`, and the phase
+entered with it as `start`:
+
+```typescript
+defineStates({
+  idle: { to: ["shoot", "hit"] },
+  shoot: {
+    to: ["idle", "hit"], // reachable from every phase
+    start: "aim",
+    states: {
+      aim: { to: ["fire"], for: 0.2, next: "fire" },
+      fire: { to: ["recoil"], for: 0.1, next: "recoil" },
+      recoil: { to: ["idle"], for: 0.3, next: "idle" },
+    },
+  },
+  hit: { to: ["idle"] },
+});
+```
+
+`go("shoot")` enters `aim`, and the phases run themselves to `recoil`, which
+ends the sequence by entering `idle`. A hit landing during any phase calls
+`go("hit")`: the current phase's `exit` runs, then `shoot`'s. The sequence
+cannot outlive the state that holds it, so no phase is left current while the
+entity is somewhere else.
+
+`state` reads the current phase and `is("shoot")` is true throughout the
+sequence. `entered` and `exited` fire at both levels, parent then phase on the
+way in and phase then parent on the way out, while `changed` fires once and
+names the phases. Phase names live in the same union as every other state, so they are
+unique across the table. A phase may name its siblings, its parent, and
+top-level states; naming another state's phase is rejected when the machine is
+built. Giving the parent its own `for` and `next` puts a deadline on the whole
+sequence, and that `next` has to leave the sequence. Nesting is one level deep — independent axes stay separate machines.
+
+The machine implements `Serializable`, so a chosen save root can include it.
+`serialize()` returns the current state and its elapsed time, plus the parent's
+elapsed time inside a sequence, and `hydrate()` restores them without running
 hooks. A component field without a leading underscore also appears in the
 Inspector with its current state, elapsed time, and last transition.
 

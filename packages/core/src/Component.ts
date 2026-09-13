@@ -1,7 +1,7 @@
 import type { EngineContext, ServiceKey } from "./EngineContext.js";
 import type { Entity } from "./Entity.js";
 import type { EngineEvents } from "./EventBus.js";
-import type { EventToken } from "./EventToken.js";
+import type { EventSource, EventToken } from "./EventToken.js";
 import type { Logger } from "./Logger.js";
 import type { Scene } from "./Scene.js";
 import type { ComponentClass } from "./types.js";
@@ -217,13 +217,23 @@ export abstract class Component {
     }) as C;
   }
 
-  /** Subscribe to events on any entity, auto-unsubscribe on removal. */
+  /**
+   * Subscribe to events from an entity or a state machine, auto-unsubscribe on
+   * removal.
+   *
+   * ```ts
+   * this.listen(this.entity, Hurt, ({ dir }) => this.knockback(dir));
+   * this.listen(brain.mode, brain.mode.events.entered, ({ state }) =>
+   *   this.anim.play(state),
+   * );
+   * ```
+   */
   protected listen<T>(
-    entity: Entity,
+    source: EventSource,
     token: EventToken<T>,
     handler: (data: T) => void,
   ): void {
-    const unsub = entity.on(token, handler);
+    const unsub = source.on(token, handler);
     this.addCleanup(unsub);
   }
 
@@ -264,28 +274,28 @@ export abstract class Component {
   }
 
   /**
-   * Create a state machine whose hooks are attributed to this component.
-   * The machine can be declared as a field because service lookup waits until
-   * a hook runs.
+   * Create a state machine whose hooks and event handlers are attributed to
+   * this component when they throw. The machine can be declared as a field
+   * because service lookup waits until a hook runs.
    */
   protected stateMachine<const S extends string>(
     states: StateDefinitions<S>,
     initial: NoInfer<S>,
   ): StateMachine<S> {
-    return new StateMachine(states, initial)._setHookRunner(
-      (kind, transition, hook) => {
+    return new StateMachine(states, initial)._setCallbackRunner(
+      (kind, event, run) => {
         const entity = this.entity as Entity | undefined;
         const scene = entity?.tryScene;
         const boundary = scene?.context.tryResolve(ErrorBoundaryKey);
         if (!boundary) {
-          hook();
+          run();
           return;
         }
-        boundary.wrapCallback(hook, {
-          kind: `StateMachine ${kind} hook (${this.constructor.name})`,
+        boundary.wrapCallback(run, {
+          kind: `StateMachine ${kind} (${this.constructor.name})`,
           ...(entity && { entity: entity.name }),
           ...(scene && { scene: scene.name }),
-          event: transition,
+          event,
         });
       },
     );

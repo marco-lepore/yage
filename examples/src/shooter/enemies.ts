@@ -85,11 +85,11 @@ class EnemyController extends Component {
   private readonly brain = this.stateMachine(
     defineStates<EnemyState>({
       patrol: {
-        to: ["react", "hit", "die"],
+        to: ["react"],
         enter: () => this.anim.play("walk"),
       },
       react: {
-        to: ["attack", "hit", "die"],
+        to: ["attack"],
         for: EnemyController.REACT_DURATION,
         next: "attack",
         enter: () => {
@@ -99,7 +99,7 @@ class EnemyController extends Component {
         },
       },
       attack: {
-        to: ["cooldown", "hit", "die"],
+        to: ["cooldown"],
         for: EnemyController.ATTACK_MAX_DURATION,
         next: "cooldown",
         enter: () => {
@@ -109,7 +109,7 @@ class EnemyController extends Component {
         },
       },
       cooldown: {
-        to: ["patrol", "hit", "die"],
+        to: ["patrol"],
         for: EnemyController.COOLDOWN_DURATION,
         next: "patrol",
         enter: () => {
@@ -117,8 +117,9 @@ class EnemyController extends Component {
           this.anim.play("idle");
         },
       },
-      hit: { to: ["patrol", "die"] },
-      die: {},
+      // Reachable from every state, so no other state lists them.
+      hit: { fromAny: true, to: ["patrol"] },
+      die: { fromAny: true },
     }),
     "patrol",
   );
@@ -158,7 +159,6 @@ class EnemyController extends Component {
       },
     });
 
-    // AnimationController auto-plays "idle"; switch to walk for patrol
     this.brain.start();
 
     // React to damage events on this entity
@@ -187,7 +187,6 @@ class EnemyController extends Component {
         if (wallHit) this.patrolDir *= -1;
 
         this.rb.setVelocityX(this.patrolDir * EnemyController.SPEED);
-        this.anim.play("walk");
         this.updateFacing(this.patrolDir);
 
         // Detect player (resolved once, then cached)

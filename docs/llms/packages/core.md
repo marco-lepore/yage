@@ -182,9 +182,6 @@ class GuardBrain extends Component {
     "patrol",
   );
 
-  onAdd() {
-    this.brain.start();
-  }
   fixedUpdate(dt: number) {
     if (this.seesPlayer()) this.brain.go("alert");
     this.brain.tick(dt);
@@ -192,15 +189,75 @@ class GuardBrain extends Component {
 }
 ```
 
-- `start()` runs the initial `enter` hook. Construction and `hydrate()` run no hooks. A machine starts timing after `start()`, `hydrate()`, or a `go()` to a different state.
-- `go(state)` throws for an undeclared edge. Going to the current state is a no-op and does not restart its timer.
-- A timed state declares a finite positive `for` and a different `next`; `next` must appear in `to`. A tick that crosses the boundary discards excess time. Pass the `dt` received by the owning component without applying time scaling again.
-- Untimed states accumulate elapsed time. If two finite values overflow, elapsed time is capped at `Number.MAX_VALUE` and development builds warn once for that machine.
-- `this.stateMachine(...)` attributes `enter` and `exit` hook failures to the component. A standalone `new StateMachine(states, initial)` works in headless code and calls hooks directly.
-- A transition cannot start from inside an `enter` or `exit` hook. An exit-hook throw keeps the source state. An enter-hook throw leaves the committed target state in place and propagates.
-- `serialize()` returns `{ state, elapsed }`; `hydrate()` restores it without hooks. A restored state runs its exit hook on a later transition.
-- A machine stored in a component field without a leading underscore appears in Inspector component state as `{ state, elapsed, lastTransition }`. TypeScript `private` fields are included. Normal underscore and `inspectExclude` rules still apply.
+- `go(state)` throws for an undeclared edge, before any hook runs. Naming the current state restarts it when that state lists itself in `to`: the `exit` hook runs, the timer resets, and the `enter` hook runs. Otherwise nothing happens.
+- A timed state declares `for` and a different `next` that it can reach. A tick that crosses the boundary discards the excess, so one `tick` advances the current state at most once. Pass the `dt` received by the owning component without applying time scaling again.
+- `for` takes a number, or a function called each time the state is entered. A returned value that is not finite and above 0 throws before the transition commits, so the machine stays where it was. Use the function form for a duration that comes from tuning or varies per entry, which a field initializer cannot read.
+- `fromAny: true` on a state makes every other state able to enter it without listing it in `to`, for the few states a whole machine falls into such as `hit` or `die`. It adds no edge from the state to itself, and only a top-level state can declare it.
+- `canGo(state)` reports whether `go(state)` would move the machine, without throwing. Use it where a callback can arrive after the state moved on, such as an animation finishing after the entity died.
+- The first `tick()` runs the initial `enter` hook. `start()` runs it earlier, typically from `onAdd`. Construction and `hydrate()` run no hooks.
+- A transition cannot start from inside an `enter` or `exit` hook or an event handler. An exit-hook throw keeps the source state. An enter-hook throw leaves the committed target state in place and propagates.
+- `this.stateMachine(...)` attributes hook and handler failures to the component. A standalone `new StateMachine(states, initial)` works in headless code and calls them directly.
+- `serialize()` returns `{ state, elapsed }`, plus `parentElapsed` inside a sequence and `duration` for a state that computes its `for`. `hydrate()` restores it without hooks, resuming on a saved computed duration and asking the callback for one only when the snapshot has none. A restored state runs its exit hook on a later transition.
+- A machine stored in a component field without a leading underscore appears in Inspector component state as `{ state, elapsed, lastTransition }`, plus `parent` and `parentElapsed` inside a sequence. TypeScript `private` fields are included. Normal underscore and `inspectExclude` rules still apply.
 - Use several machines for independent state axes. Keep derived facts as getters. Use the abilities addon when lanes, priorities, input intents, holds, or timed action steps are part of the behavior.
+
+#### Events
+
+`machine.events` holds three tokens typed with that machine's state names:
+`changed` (`{ from, to }`), `entered` (`{ state, from }`), and `exited`
+(`{ state, to }`). Subscribe with `machine.on(token, handler)`, which returns an
+unsubscribe function, or with `this.listen(machine, token, handler)`, which drops
+the subscription when the component is removed. Machine events stay on the
+machine: they are not `entity.emit` events and do not reach `scene.on`.
+
+```ts
+class GuardView extends Component {
+  private readonly anim = this.sibling(AnimationController);
+  private readonly guard = this.sibling(GuardBrain);
+
+  onAdd() {
+    const { brain } = this.guard;
+    this.listen(brain, brain.events.entered, ({ state }) =>
+      this.anim.play(state),
+    );
+  }
+}
+```
+
+Order on a transition: `exit` hook, `exited`, commit, `enter` hook, `entered`,
+`changed`. The first entry emits `entered` with `from: null` and no `changed`.
+`hydrate()` emits nothing. A handler may not call `go`, `tick`, `start` or
+`hydrate` on the machine that called it; it may on another machine.
+
+#### Child states
+
+A state holds a phase sequence by declaring `states` and the `start` phase
+entered with it. Names stay in one union, nesting is one level deep, and a
+parent is never the current state.
+
+```ts
+defineStates({
+  idle: { to: ["shoot", "hit"] },
+  shoot: {
+    to: ["idle", "hit"], // reachable from every child
+    start: "aim",
+    states: {
+      aim: { to: ["fire"], for: 0.2, next: "fire" },
+      fire: { to: ["recoil"], for: 0.1, next: "recoil" },
+      recoil: { to: ["idle"], for: 0.3, next: "idle" },
+    },
+  },
+  hit: { to: ["idle"] },
+});
+```
+
+- `state` reads the child. `is(name)` is true for the current child and for its parent.
+- `go("shoot")` enters `aim`. `go("hit")` from any child runs the child's `exit`, then `shoot`'s, so a sequence cannot outlive the state that holds it.
+- A child's `to` names its siblings, its parent, and states at the top level. Naming another parent's child is rejected when the machine is built.
+- Children run on the machine's one clock. A parent's own `for` and `next` put a deadline on the whole sequence, and that `next` has to leave the sequence. One tick advances one state per level: the child moves first, then the parent's deadline ends the sequence if it has come due.
+- Re-entering a parent always starts at `start`, with its deadline reset; there is no history.
+- `entered` and `exited` fire at both levels: parent then child on the way in, child then parent on the way out. `changed` fires once, naming the children.
+- `hydrate()` restores the parent from the child's name and rejects a snapshot that names a parent.
 
 ### EntityPool
 
