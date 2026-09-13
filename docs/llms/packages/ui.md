@@ -241,10 +241,11 @@ parent's cross-axis stretch cannot squash the picture.
 (U+2026), which several pixel fonts lack, so pass `"..."` for one of those.
 `UIButton` forwards it to its label alongside `truncate`.
 
-A `UIText` given both a definite `width` and a definite `height` wraps to that
-width, and one with `truncate` set cuts to it. Yoga calls no measure function
-when neither axis is left to measure, so the layout pass applies the wrap or
-the truncation instead.
+A `UIText` that Yoga sizes without measuring wraps to its computed width, and
+one with `truncate` set cuts to it. Yoga calls a measure function only when an
+axis is left to measure: both axes pinned leaves nothing, and so does a single
+pinned axis inside a plain panel, where the default stretch alignment fills the
+other one. The layout pass applies the wrap or the truncation in those cases.
 
 ```ts
 // `bitmap: true` bakes (or looks up) the atlas from `style.fontFamily`
