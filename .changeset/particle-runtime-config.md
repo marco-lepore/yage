@@ -13,3 +13,5 @@ emitter.burst(2, fistX, fistY, { angle: [swing - 0.18, swing + 0.18] });
 ```
 
 Both surfaces check the whole merged configuration and throw on a bad value, the same way construction does; a rejected `configure` leaves every previous value in force. `maxParticles`, `layer`, `simulationSpace` and the texture source are allocated when the emitter is built, so passing one of them to either method is a type error rather than a silent no-op.
+
+The `sparks` preset described itself as "directional" while it emits into a full circle with downward gravity. Its description now says what it does.

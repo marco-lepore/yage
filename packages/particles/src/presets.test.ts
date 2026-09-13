@@ -47,4 +47,39 @@ describe("ParticlePresets", () => {
       });
     });
   }
+
+  // Each preset's description names a direction and nothing else pins one, so
+  // a description and its angle can drift apart unnoticed. Screen space puts
+  // +y downward, so an upward arc has a negative sine at both ends.
+  describe("emission direction", () => {
+    function arcOf(config: EmitterConfig): [number, number] {
+      const angle = config.angle;
+      if (angle === undefined) throw new Error("preset has no angle");
+      return typeof angle === "number" ? [angle, angle] : angle;
+    }
+
+    it("fire rises", () => {
+      const [min, max] = arcOf(ParticlePresets.fire());
+      expect(Math.sin(min)).toBeLessThan(0);
+      expect(Math.sin(max)).toBeLessThan(0);
+    });
+
+    it("smoke rises", () => {
+      const [min, max] = arcOf(ParticlePresets.smoke());
+      expect(Math.sin(min)).toBeLessThan(0);
+      expect(Math.sin(max)).toBeLessThan(0);
+    });
+
+    it("sparks go in every direction and are pulled down", () => {
+      const [min, max] = arcOf(ParticlePresets.sparks());
+      expect(max - min).toBeCloseTo(Math.PI * 2, 5);
+      expect(ParticlePresets.sparks().gravity?.y).toBeGreaterThan(0);
+    });
+
+    it("rain falls", () => {
+      const [min, max] = arcOf(ParticlePresets.rain());
+      expect(Math.sin(min)).toBeGreaterThan(0);
+      expect(Math.sin(max)).toBeGreaterThan(0);
+    });
+  });
 });
