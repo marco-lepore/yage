@@ -269,6 +269,42 @@ describe("BackgroundRenderer", () => {
     expect(parent.children[0]).toBeInstanceOf(mocks.MockNineSliceSprite);
   });
 
+  it("applies the insets stated with a replaced nine-slice texture", () => {
+    const frameA = { width: 64, height: 64 };
+    const frameB = { width: 96, height: 96 };
+    registerTexture("frame-a", frameA as never);
+    registerTexture("frame-b", frameB as never);
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    renderer.set(
+      { texture: "frame-a", mode: "nine-slice", nineSlice: 4 },
+      parent as never,
+    );
+    const sprite = parent.children[0] as InstanceType<
+      typeof mocks.MockNineSliceSprite
+    >;
+
+    renderer.set(
+      {
+        texture: "frame-b",
+        mode: "nine-slice",
+        nineSlice: { left: 12, top: 10, right: 12, bottom: 16 },
+      },
+      parent as never,
+    );
+
+    // The display object is reused, so the slice guides reach the sprite from
+    // the property path rather than from its constructor.
+    expect(parent.children[0]).toBe(sprite);
+    expect(sprite.texture).toBe(frameB);
+    expect([
+      sprite.leftWidth,
+      sprite.topHeight,
+      sprite.rightWidth,
+      sprite.bottomHeight,
+    ]).toEqual([12, 10, 12, 16]);
+  });
+
   it("warns when a nine-slice background is smaller than its insets", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const renderer = new BackgroundRenderer();
@@ -336,6 +372,29 @@ describe("BackgroundRenderer", () => {
     expect(count()).toBe(1);
     renderer.resize(100, 30);
     expect(count()).toBe(2);
+    warn.mockRestore();
+  });
+
+  it("warns when replaced nine-slice art needs more room than the box has", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    const handle = new AssetHandle<Texture>("texture", "test.png");
+    renderer.set(
+      { texture: handle, mode: "nine-slice", nineSlice: 8 },
+      parent as never,
+    );
+    renderer.resize(100, 40);
+
+    renderer.set(
+      { texture: handle, mode: "nine-slice", nineSlice: 30 },
+      parent as never,
+    );
+
+    const hit = warn.mock.calls
+      .map((c) => String(c[0]))
+      .find((m) => m.includes("nine-slice background"));
+    expect(hit).toContain("height 40.0px is under the 60px");
     warn.mockRestore();
   });
 

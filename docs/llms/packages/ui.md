@@ -487,6 +487,12 @@ this exact overlay.
 `UIImage`, `UINineSlice`, and texture backgrounds accept `TextureInput`: a
 registered asset key, a texture handle, or a raw renderer texture.
 
+`nineSlice` insets are read from the options, not from the texture's own
+metadata, and they are applied every time the texture is applied. Restate them
+whenever you set a new `texture`: a background updated without `nineSlice`
+keeps the insets from the options that last stated them, and draws the new art
+with the previous art's slice guides.
+
 Give a nine-slice element room for its insets: below `left + right` px wide or
 `top + bottom` px tall it has no middle row or column and the corners overlap.
 Development builds warn once per element when that happens.
