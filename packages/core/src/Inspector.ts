@@ -956,7 +956,8 @@ export class Inspector {
    * press at the next frame's drain. Step one frame before asserting on
    * action state.
    *
-   * Requires `RendererPlugin` and at least one rendered frame.
+   * Requires `RendererPlugin`. The four verbs that dispatch also require at
+   * least one rendered frame; `hitTest` does not.
    *
    * These verbs drive one primary mouse pointer. A second finger, a touch or
    * a pen pointer is only reachable through {@link Inspector.input}, whose

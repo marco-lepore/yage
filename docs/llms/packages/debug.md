@@ -228,8 +228,10 @@ hit.path.some((node) => node.type === "UIButton"); // true
   first entry.
 - One primary mouse pointer. A touch pointer or a second finger stays with
   `inspector.input`, which takes a pointer id and type and reaches no button.
-- Requires `RendererPlugin` and one rendered frame. Each guard throws and names
-  what to do.
+- Requires `RendererPlugin`. The four verbs that dispatch also need one rendered
+  frame; `hitTest` does not. The renderer hit-tests against the last object
+  drawn and drops every event until one exists. Each guard throws and names what
+  to do.
 
 Timing runs two ways, and both matter to an assertion. The button's `onClick`
 has already run when the call returns, because delivery is synchronous. Engine

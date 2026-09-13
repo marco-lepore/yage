@@ -25,11 +25,12 @@ the `point` used and `consumed`. A button's label is a node of its own and
 sits on top of the button, so search `path` for the element you mean.
 
 The verbs drive one primary mouse pointer; a touch pointer or a second finger
-stays with `inspector.input`. They need `RendererPlugin` and one rendered
-frame, and throw with an authored message otherwise. `RendererAdapter` gains
-two optional members for them: `hitTestUIPath` and `dispatchPointerEvent`. A
-renderer that implements both can drive the user interface without `@yagejs/core`
-knowing anything about browser events.
+stays with `inspector.input`. Every verb needs `RendererPlugin`. The four verbs
+that dispatch also need one rendered frame; `hitTest` does not. Each guard
+throws with an authored message. `RendererAdapter` gains two optional members
+for them: `hitTestUIPath` and `dispatchPointerEvent`. A renderer that implements
+both can drive the user interface without `@yagejs/core` knowing anything about
+browser events.
 
 `inspector.drive`'s context carries the same namespace as `pointer`.
 

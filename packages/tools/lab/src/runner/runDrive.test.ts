@@ -210,8 +210,6 @@ const SCENE = { name: "drop" } as unknown as Scene;
 
 /** What the stubbed `Inspector.pointer` reports for every call. */
 const POINTER_HIT = {
-  nodeId: "entity-1:UISurface:0/0",
-  type: "UIButton",
   path: [{ id: "entity-1:UISurface:0/0", type: "UIButton" }],
   point: { x: 120, y: 60 },
   consumed: true,

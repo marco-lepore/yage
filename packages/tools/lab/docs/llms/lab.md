@@ -386,8 +386,10 @@ One primary mouse pointer. A touch pointer or a second finger stays with
 
 Timing runs two ways. The button's `onClick` has already run when the call
 returns, because delivery is synchronous. Engine input state reflects the press
-one frame later, so `await step(1)` before asserting on an action. The verbs
-need `RendererPlugin` and one rendered frame, and throw otherwise.
+one frame later, so `await step(1)` before asserting on an action.
+
+Every verb needs `RendererPlugin`. The four verbs that dispatch also need one
+rendered frame; `hitTest` does not. Each guard throws and names what to do.
 
 ## `yage-lab test`
 
