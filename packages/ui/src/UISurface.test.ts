@@ -256,6 +256,15 @@ describe("UISurface", () => {
     expect(panel._offset).toEqual({ x: 10, y: 20 });
   });
 
+  it("setOffset moves the tree and reads back", () => {
+    const panel = new UISurface({ offset: { x: 10, y: 20 } });
+    panel.setOffset(-5, 40);
+    expect(panel.offset).toEqual({ x: -5, y: 40 });
+    // The layout system reads the same object every frame, so it has to be
+    // the one that moved, not a replacement.
+    expect(panel._offset).toEqual({ x: -5, y: 40 });
+  });
+
   it("defaults offset to {0,0}", () => {
     const panel = new UISurface();
     expect(panel._offset).toEqual({ x: 0, y: 0 });

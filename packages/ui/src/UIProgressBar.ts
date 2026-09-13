@@ -78,6 +78,14 @@ export class UIProgressBar implements UIElement {
     this.resizeFill();
   }
 
+  /**
+   * Fill fraction, 0 to 1, as last set. Reads back what `update({ value })`
+   * clamped, which is not necessarily what was passed in.
+   */
+  get value(): number {
+    return this._value;
+  }
+
   get visible(): boolean {
     return this.container.visible;
   }

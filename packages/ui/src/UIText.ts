@@ -6,12 +6,20 @@ import { BitmapText, Text } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { MeasureMode } from "yoga-layout";
 import { Display } from "yoga-layout";
-import type { UIElement, UITextProps } from "./types.js";
+import type { LayoutValue, UIElement, UITextProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
 
-const ELLIPSIS = "…";
+const DEFAULT_ELLIPSIS = "…";
+
+/**
+ * A dimension counts as definite when the caller pinned it to a concrete
+ * value. `undefined` and `"auto"` both leave it to be measured.
+ */
+function isDefiniteSize(v: LayoutValue | undefined): boolean {
+  return v !== undefined && v !== "auto";
+}
 
 /** Lightweight wrapper around a PixiJS Text for use in UI panels. */
 export class UIText implements UIElement {
@@ -19,6 +27,13 @@ export class UIText implements UIElement {
   readonly yogaNode: YogaNode;
   private readonly text: Text | BitmapText;
   private _truncate: "clip" | "ellipsis" | undefined;
+  private _truncateWith: string;
+  // Both axes definite means Yoga skips the measure callback, which is the
+  // only place the default wrap is switched on. Tracked so `applyLayout` can
+  // put it back; see the callback below.
+  private _hasExplicitWidth: boolean;
+  private _hasExplicitHeight: boolean;
+  private _wrapWidth = Number.NaN;
   /** Source text — preserved so ellipsis re-truncation has the full string. */
   private _source: string;
   // Raw style options, kept so `mergeStyle()` can patch over the current
@@ -37,6 +52,9 @@ export class UIText implements UIElement {
 
     this._source = props.children ?? "";
     this._truncate = props.truncate;
+    this._truncateWith = props.truncateWith ?? DEFAULT_ELLIPSIS;
+    this._hasExplicitWidth = isDefiniteSize(props.width);
+    this._hasExplicitHeight = isDefiniteSize(props.height);
     if (props.style) this._styleOptions = { ...props.style };
     this._bitmap = props.bitmap;
     this._resolution = props.resolution;
@@ -68,7 +86,7 @@ export class UIText implements UIElement {
           widthMode === MeasureMode.Undefined
             ? Number.POSITIVE_INFINITY
             : width;
-        const suffix = this._truncate === "ellipsis" ? ELLIPSIS : "";
+        const suffix = this._truncate === "ellipsis" ? this._truncateWith : "";
         this.applyTruncate(maxWidth, suffix);
         const w = this.text.width;
         const measuredWidth =
@@ -107,6 +125,23 @@ export class UIText implements UIElement {
     this._source = s ?? "";
     this.text.text = this._source;
     this.yogaNode.markDirty();
+  }
+
+  /**
+   * Switch word wrap on for a text whose width and height are both definite.
+   * Yoga calls a measure function only when at least one axis is left to
+   * measure, and that callback is the only other place wrap is set, so
+   * without this a fully sized text renders one long unbroken line. Gated on
+   * the computed width so Pixi does not re-measure the block every frame.
+   */
+  applyLayout(): void {
+    if (!this._hasExplicitWidth || !this._hasExplicitHeight) return;
+    if (this._truncate === "clip" || this._truncate === "ellipsis") return;
+    const width = this.yogaNode.getComputedWidth();
+    if (width === this._wrapWidth) return;
+    this._wrapWidth = width;
+    this.text.style.wordWrap = true;
+    this.text.style.wordWrapWidth = width;
   }
 
   /**
@@ -154,6 +189,15 @@ export class UIText implements UIElement {
     // Use `"truncate" in p` rather than `!== undefined` so an explicit
     // `{ truncate: undefined }` payload (e.g. removing the prop in the
     // React reconciler) clears the mode back to default wrap behavior.
+    if ("truncateWith" in p) {
+      this._truncateWith = p.truncateWith ?? DEFAULT_ELLIPSIS;
+      if (this._truncate === "ellipsis") {
+        this.text.text = this._source;
+        this.yogaNode.markDirty();
+      }
+    }
+    if ("width" in p) this._hasExplicitWidth = isDefiniteSize(p.width);
+    if ("height" in p) this._hasExplicitHeight = isDefiniteSize(p.height);
     if ("truncate" in p && p.truncate !== this._truncate) {
       this._truncate = p.truncate;
       // Restore source so a previous ellipsis pass doesn't bleed through;

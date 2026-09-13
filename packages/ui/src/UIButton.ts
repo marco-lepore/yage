@@ -124,6 +124,7 @@ export class UIButton implements UIContainerElement {
   private _labelStyle: Partial<TextStyle> | undefined;
   private _labelBitmap: boolean | undefined;
   private _truncate: "clip" | "ellipsis" | undefined;
+  private _truncateWith: string | undefined;
   private _disabled = false;
   private _isHovered = false;
   private _isPressed = false;
@@ -153,6 +154,7 @@ export class UIButton implements UIContainerElement {
     this._hasExplicitHeight = isExplicitSize(p.height);
 
     this._truncate = p.truncate;
+    this._truncateWith = p.truncateWith;
     this.onClick = p.onClick;
     this.bgOpts = mergeBg(DEFAULT_BG, p.background);
     this.hoverBgOverride = p.hoverBackground;
@@ -409,6 +411,9 @@ export class UIButton implements UIContainerElement {
     if (this._labelStyle) props.style = this._labelStyle;
     if (this._labelBitmap !== undefined) props.bitmap = this._labelBitmap;
     if (this._truncate) props.truncate = this._truncate;
+    if (this._truncateWith !== undefined) {
+      props.truncateWith = this._truncateWith;
+    }
     return props;
   }
 
@@ -485,6 +490,10 @@ export class UIButton implements UIContainerElement {
     if ("truncate" in p && p.truncate !== this._truncate) {
       this._truncate = p.truncate;
       this._label?.update({ truncate: p.truncate });
+    }
+    if ("truncateWith" in p && p.truncateWith !== this._truncateWith) {
+      this._truncateWith = p.truncateWith;
+      this._label?.update({ truncateWith: p.truncateWith });
     }
     if ("onClick" in p) this.onClick = p.onClick;
     this.pointerEvents.set(p);

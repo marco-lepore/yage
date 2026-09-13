@@ -50,6 +50,21 @@ export class UISurface extends Component {
     this._positioning = opts?.positioning ?? "anchor";
   }
 
+  /**
+   * Move the whole tree by a screen-space offset, on top of whatever its
+   * anchor or transform positioning resolves to. Animating a sliding panel is
+   * a `setOffset` per frame.
+   */
+  setOffset(x: number, y: number): void {
+    this._offset.x = x;
+    this._offset.y = y;
+  }
+
+  /** The offset the tree is drawn at. */
+  get offset(): Readonly<{ x: number; y: number }> {
+    return this._offset;
+  }
+
   /** The PixiJS Container of the root panel. */
   get container(): DisplayContainer {
     return this.root.container;
