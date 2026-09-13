@@ -1,14 +1,12 @@
 import { Container, Rectangle } from "pixi.js";
 import type { TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
+import { Gutter, Edge, Overflow, Display } from "yoga-layout";
 import {
+  Align,
   FlexDirection as YogaFlexDirection,
-  Gutter,
-  Edge,
-  Overflow,
-  Display,
+  Justify,
 } from "yoga-layout";
-import { Align, Justify } from "yoga-layout";
 import { attachMask, graphicsMask } from "@yagejs/renderer";
 import type { DisplayContainer, MaskHandle } from "@yagejs/renderer";
 import { UIText } from "./UIText.js";
@@ -40,27 +38,11 @@ import {
   setChildDebugLabel,
   setChildrenDebugLabel,
 } from "./internal/debug-label.js";
-
-// ---------------------------------------------------------------------------
-// Enum mapping helpers
-// ---------------------------------------------------------------------------
-
-const JUSTIFY_MAP: Record<string, number> = {
-  "flex-start": Justify.FlexStart,
-  center: Justify.Center,
-  "flex-end": Justify.FlexEnd,
-  "space-between": Justify.SpaceBetween,
-  "space-around": Justify.SpaceAround,
-  "space-evenly": Justify.SpaceEvenly,
-};
-
-const ALIGN_ITEMS_MAP: Record<string, number> = {
-  "flex-start": Align.FlexStart,
-  center: Align.Center,
-  "flex-end": Align.FlexEnd,
-  stretch: Align.Stretch,
-  baseline: Align.Baseline,
-};
+import {
+  toAlignItems,
+  toFlexDirection,
+  toJustify,
+} from "./internal/flex-enums.js";
 
 // ---------------------------------------------------------------------------
 // UIPanel — Yoga-powered flex container
@@ -288,9 +270,7 @@ export class UIPanel implements UIContainerElement {
   private _applyProps(p: Partial<UIPanelProps>): void {
     if ("direction" in p) {
       this.yogaNode.setFlexDirection(
-        p.direction === "row"
-          ? YogaFlexDirection.Row
-          : YogaFlexDirection.Column,
+        toFlexDirection(p.direction, YogaFlexDirection.Column),
       );
     }
 
@@ -307,17 +287,11 @@ export class UIPanel implements UIContainerElement {
     }
 
     if ("alignItems" in p) {
-      this.yogaNode.setAlignItems(
-        p.alignItems !== undefined
-          ? (ALIGN_ITEMS_MAP[p.alignItems] ?? Align.FlexStart)
-          : Align.FlexStart,
-      );
+      this.yogaNode.setAlignItems(toAlignItems(p.alignItems, Align.FlexStart));
     }
     if ("justifyContent" in p) {
       this.yogaNode.setJustifyContent(
-        p.justifyContent !== undefined
-          ? (JUSTIFY_MAP[p.justifyContent] ?? Justify.FlexStart)
-          : Justify.FlexStart,
+        toJustify(p.justifyContent, Justify.FlexStart),
       );
     }
 

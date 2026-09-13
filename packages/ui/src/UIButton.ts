@@ -2,7 +2,8 @@ import { Container } from "pixi.js";
 import { devWarn } from "@yagejs/core";
 import type { DisplayContainer, TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
-import { Align, Display, Edge, Justify } from "yoga-layout";
+import { Align, Display, Edge, Gutter, Justify } from "yoga-layout";
+import { FlexDirection as YogaFlexDirection } from "yoga-layout";
 import type {
   BackgroundOptions,
   LayoutValue,
@@ -11,6 +12,7 @@ import type {
   UIButtonProps,
   UITextProps,
 } from "./types.js";
+import { resolvePadding } from "./types.js";
 import {
   createYogaNode,
   applyLayoutProps,
@@ -29,22 +31,26 @@ import {
   setChildDebugLabel,
   setChildrenDebugLabel,
 } from "./internal/debug-label.js";
+import {
+  toAlignItems,
+  toFlexDirection,
+  toJustify,
+} from "./internal/flex-enums.js";
 import { runUICallback } from "./error-boundary.js";
 
 import { type ColorBackground, isTextureBackground } from "./types.js";
 
-/** Default background colors for button states. */
+/** Background a button falls back to when the caller supplies none. */
 const DEFAULT_BG: ColorBackground = { color: 0x444444, alpha: 1, radius: 4 };
-const DEFAULT_HOVER_BG: ColorBackground = {
-  color: 0x555555,
-  alpha: 1,
-  radius: 4,
-};
-const DEFAULT_PRESS_BG: ColorBackground = {
-  color: 0x333333,
-  alpha: 1,
-  radius: 4,
-};
+
+/**
+ * Brightness the hover and press states are derived at from the resting
+ * background. At the default grey these land exactly on 0x555555 and
+ * 0x333333, so a button that asks for no background looks the same as before
+ * the derivation existed.
+ */
+const HOVER_FACTOR = 1.25;
+const PRESS_FACTOR = 0.75;
 
 /** Default padding so auto-sized buttons have breathing room around their content. */
 const DEFAULT_PAD_X = 12;
@@ -58,6 +64,32 @@ function mergeBg(
   if (!override) return def;
   if (isTextureBackground(override)) return override;
   return { ...def, ...override };
+}
+
+/** Scale each 8-bit channel, clamped, so a colour brightens or darkens. */
+function scaleChannels(color: number, factor: number): number {
+  const r = Math.min(255, Math.round(((color >> 16) & 0xff) * factor));
+  const g = Math.min(255, Math.round(((color >> 8) & 0xff) * factor));
+  const b = Math.min(255, Math.round((color & 0xff) * factor));
+  return (r << 16) | (g << 8) | b;
+}
+
+/**
+ * Build a hover or press background from the resting one so a textured or
+ * recoloured button keeps its look through both states. A colour background
+ * has its colour scaled; a texture background keeps its texture and has its
+ * tint scaled, which leaves the hover state a no-op at the default white tint
+ * and darkens the press state. Channels clamp at 255, so a colour already
+ * above roughly 0xCC brightens less than the factor asks for.
+ */
+function deriveStateBg(
+  base: BackgroundOptions,
+  factor: number,
+): BackgroundOptions {
+  if (isTextureBackground(base)) {
+    return { ...base, tint: scaleChannels(base.tint ?? 0xffffff, factor) };
+  }
+  return { ...base, color: scaleChannels(base.color ?? 0x000000, factor) };
 }
 
 /**
@@ -103,26 +135,30 @@ export class UIButton implements UIContainerElement {
   private _defaultPaddingApplied = false;
   private _destroyed = false;
   private _debugLabel: string | undefined;
+  private _hasExplicitPadding = false;
   private bgOpts: BackgroundOptions;
   private hoverBgOpts: BackgroundOptions;
   private pressBgOpts: BackgroundOptions;
+  // What the caller asked for, kept so a later `background` change re-derives
+  // the states it did not override.
+  private hoverBgOverride: BackgroundOptions | undefined;
+  private pressBgOverride: BackgroundOptions | undefined;
   private onClick: (() => void) | undefined;
   private readonly pointerEvents: PointerEvents;
 
   constructor(p: UIButtonProps) {
     this.yogaNode = createYogaNode();
-    this.yogaNode.setJustifyContent(Justify.Center);
-    this.yogaNode.setAlignItems(Align.Center);
 
     this._hasExplicitWidth = isExplicitSize(p.width);
     this._hasExplicitHeight = isExplicitSize(p.height);
-    this._reconcileDefaultPadding();
 
     this._truncate = p.truncate;
     this.onClick = p.onClick;
     this.bgOpts = mergeBg(DEFAULT_BG, p.background);
-    this.hoverBgOpts = mergeBg(DEFAULT_HOVER_BG, p.hoverBackground);
-    this.pressBgOpts = mergeBg(DEFAULT_PRESS_BG, p.pressBackground);
+    this.hoverBgOverride = p.hoverBackground;
+    this.pressBgOverride = p.pressBackground;
+    this.hoverBgOpts = this._resolveStateBg(this.hoverBgOverride, HOVER_FACTOR);
+    this.pressBgOpts = this._resolveStateBg(this.pressBgOverride, PRESS_FACTOR);
 
     this.container = new Container();
     this.container.eventMode = "static";
@@ -133,6 +169,12 @@ export class UIButton implements UIContainerElement {
     this.bgRenderer.set(this.bgOpts, this.container, 0);
 
     applyLayoutProps(this.yogaNode, p);
+    this._applyProps({
+      direction: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      ...p,
+    });
 
     // Auto-wrap a string child in a UIText so the builder API and React
     // JSX-string children both produce a centered label without callers
@@ -265,13 +307,55 @@ export class UIButton implements UIContainerElement {
   }
 
   /**
+   * Applies the flex-container props by key presence (`"gap" in p`), not
+   * `!== undefined`: a present key holding `undefined` is how the React
+   * reconciler marks a dropped JSX prop, and each branch resets that property
+   * to the button's own default — column direction, centred on both axes, no
+   * gap, and the default padding below.
+   */
+  private _applyProps(p: Partial<UIButtonProps>): void {
+    if ("direction" in p) {
+      this.yogaNode.setFlexDirection(
+        toFlexDirection(p.direction, YogaFlexDirection.Column),
+      );
+    }
+    if ("gap" in p) {
+      this.yogaNode.setGap(Gutter.All, p.gap);
+    }
+    if ("alignItems" in p) {
+      this.yogaNode.setAlignItems(toAlignItems(p.alignItems, Align.Center));
+    }
+    if ("justifyContent" in p) {
+      this.yogaNode.setJustifyContent(
+        toJustify(p.justifyContent, Justify.Center),
+      );
+    }
+    if ("padding" in p) {
+      this._hasExplicitPadding = p.padding !== undefined;
+      const pad = this._hasExplicitPadding
+        ? resolvePadding(p.padding)
+        : { top: 0, right: 0, bottom: 0, left: 0 };
+      this.yogaNode.setPadding(Edge.Top, pad.top);
+      this.yogaNode.setPadding(Edge.Right, pad.right);
+      this.yogaNode.setPadding(Edge.Bottom, pad.bottom);
+      this.yogaNode.setPadding(Edge.Left, pad.left);
+      // The caller's padding, or none at all, is in place; note that the
+      // default is not, so dropping the prop puts it back.
+      this._defaultPaddingApplied = false;
+    }
+    this._reconcileDefaultPadding();
+  }
+
+  /**
    * Default padding gives auto-sized buttons breathing room around their
-   * content. Skip when the caller has pinned both dimensions explicitly —
-   * surprise padding would shrink the content area inside an otherwise
-   * fixed-size button. Re-evaluated on `update()` so dynamic dimension
-   * promotions / demotions keep the right padding state.
+   * content. Skip when the caller gave their own `padding`, and when both
+   * dimensions are pinned explicitly — surprise padding would shrink the
+   * content area inside an otherwise fixed-size button. Re-evaluated on
+   * `update()` so dynamic dimension promotions / demotions keep the right
+   * padding state.
    */
   private _reconcileDefaultPadding(): void {
+    if (this._hasExplicitPadding) return;
     const want = !(this._hasExplicitWidth && this._hasExplicitHeight);
     if (want === this._defaultPaddingApplied) return;
     const padX = want ? DEFAULT_PAD_X : 0;
@@ -281,6 +365,25 @@ export class UIButton implements UIContainerElement {
     this.yogaNode.setPadding(Edge.Top, padY);
     this.yogaNode.setPadding(Edge.Bottom, padY);
     this._defaultPaddingApplied = want;
+  }
+
+  /**
+   * A state background is the caller's override when there is one, and
+   * otherwise the resting background scaled to `factor`. A colour override
+   * fills in over the derived colour, so an override giving only a colour
+   * keeps the resting corner radius; an override of the other kind replaces
+   * the derived background outright.
+   */
+  private _resolveStateBg(
+    override: BackgroundOptions | undefined,
+    factor: number,
+  ): BackgroundOptions {
+    const derived = deriveStateBg(this.bgOpts, factor);
+    if (!override) return derived;
+    if (isTextureBackground(override) || isTextureBackground(derived)) {
+      return override;
+    }
+    return { ...derived, ...override };
   }
 
   private applyBg(opts: BackgroundOptions): void {
@@ -391,24 +494,27 @@ export class UIButton implements UIContainerElement {
     if ("background" in p) {
       this.bgOpts = mergeBg(DEFAULT_BG, p.background);
     }
-    if ("hoverBackground" in p) {
-      this.hoverBgOpts = mergeBg(DEFAULT_HOVER_BG, p.hoverBackground);
-    }
-    if ("pressBackground" in p) {
-      this.pressBgOpts = mergeBg(DEFAULT_PRESS_BG, p.pressBackground);
-    }
-    if (
-      ("background" in p || "hoverBackground" in p || "pressBackground" in p) &&
-      !this._disabled
-    ) {
-      this.applyCurrentBg();
+    if ("hoverBackground" in p) this.hoverBgOverride = p.hoverBackground;
+    if ("pressBackground" in p) this.pressBgOverride = p.pressBackground;
+    if ("background" in p || "hoverBackground" in p || "pressBackground" in p) {
+      // A new resting background re-derives both states, not only the one
+      // whose key is present.
+      this.hoverBgOpts = this._resolveStateBg(
+        this.hoverBgOverride,
+        HOVER_FACTOR,
+      );
+      this.pressBgOpts = this._resolveStateBg(
+        this.pressBgOverride,
+        PRESS_FACTOR,
+      );
+      if (!this._disabled) this.applyCurrentBg();
     }
 
     if ("width" in p) this._hasExplicitWidth = isExplicitSize(p.width);
     if ("height" in p) this._hasExplicitHeight = isExplicitSize(p.height);
 
     applyLayoutProps(this.yogaNode, p);
-    this._reconcileDefaultPadding();
+    this._applyProps(p);
 
     if ("visible" in p) {
       this.visible = p.visible ?? true;

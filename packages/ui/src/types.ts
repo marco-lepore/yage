@@ -45,6 +45,23 @@ export enum Anchor {
 /** Layout direction for child elements. */
 export type FlexDirection = "row" | "column";
 
+/** Cross-axis alignment of a flex container's children. */
+export type AlignItems =
+  | "flex-start"
+  | "center"
+  | "flex-end"
+  | "stretch"
+  | "baseline";
+
+/** Main-axis distribution of a flex container's children. */
+export type JustifyContent =
+  | "flex-start"
+  | "center"
+  | "flex-end"
+  | "space-between"
+  | "space-around"
+  | "space-evenly";
+
 /** Padding specification — a single number or per-side object. */
 export type Padding =
   | number
@@ -313,6 +330,22 @@ export interface UIButtonProps
    */
   truncate?: "clip" | "ellipsis";
   disabled?: boolean;
+  /**
+   * Direction of the button's own children, for icon-plus-label content added
+   * with `addElement`. Defaults to `"column"`, so set `"row"` for a row.
+   */
+  direction?: FlexDirection;
+  /** Space between the button's children. */
+  gap?: number;
+  /**
+   * Padding inside the button. Replaces the default 12 px horizontal and 6 px
+   * vertical padding; drop the prop to get that default back.
+   */
+  padding?: Padding;
+  /** Cross-axis alignment of the button's children. Defaults to `"center"`. */
+  alignItems?: AlignItems;
+  /** Main-axis distribution of the button's children. Defaults to `"center"`. */
+  justifyContent?: JustifyContent;
 }
 
 /** Props for UIPanel (used by reconciler and props-driven constructor). */
@@ -321,14 +354,8 @@ export interface UIPanelProps
   direction?: FlexDirection;
   gap?: number;
   padding?: Padding;
-  alignItems?: "flex-start" | "center" | "flex-end" | "stretch" | "baseline";
-  justifyContent?:
-    | "flex-start"
-    | "center"
-    | "flex-end"
-    | "space-between"
-    | "space-around"
-    | "space-evenly";
+  alignItems?: AlignItems;
+  justifyContent?: JustifyContent;
   overflow?: "visible" | "hidden";
   background?: BackgroundOptions;
 }
