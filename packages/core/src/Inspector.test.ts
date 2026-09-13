@@ -25,6 +25,7 @@ import {
   SceneManagerKey,
 } from "./EngineContext.js";
 import { _resetEntityIdCounter } from "./Entity.js";
+import { RendererAdapterKey, type RendererAdapter } from "./RendererAdapter.js";
 
 const SystemSchedulerKey = new ServiceKey<SystemScheduler>("systemScheduler");
 
@@ -41,6 +42,58 @@ class Health extends Component {
     super();
   }
 }
+
+interface FakeUIElement {
+  yogaNode: {
+    getComputedLayout(): {
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+    };
+  };
+  displayObject?: {
+    toGlobal(point: { x: number; y: number }): { x: number; y: number };
+  };
+  children: FakeUIElement[];
+}
+
+/**
+ * A UI element whose container sits at `origin` in canvas pixels and draws at
+ * `scale`. `layout` stays parent-relative, as Yoga reports it, so a test can
+ * see the two disagree.
+ */
+function fakeUIElement(opts: {
+  layout: { left: number; top: number; width: number; height: number };
+  origin?: { x: number; y: number };
+  scale?: number;
+  children?: FakeUIElement[];
+}): FakeUIElement {
+  const origin = opts.origin;
+  const scale = opts.scale ?? 1;
+  return {
+    yogaNode: { getComputedLayout: () => opts.layout },
+    ...(origin
+      ? {
+          displayObject: {
+            toGlobal: (point: { x: number; y: number }) => ({
+              x: origin.x + point.x * scale,
+              y: origin.y + point.y * scale,
+            }),
+          },
+        }
+      : {}),
+    children: opts.children ?? [],
+  };
+}
+
+/** A canvas twice virtual size, offset by a 40 x 20 letterbox bar. */
+const letterboxAdapter = {
+  canvasToVirtual: (x: number, y: number) => ({
+    x: (x - 40) / 2,
+    y: (y - 20) / 2,
+  }),
+} as unknown as RendererAdapter;
 
 class TestSystem extends System {
   readonly phase = Phase.Update;
@@ -140,6 +193,142 @@ describe("Inspector", () => {
     if (!sceneSnapshot) throw new Error("Expected one scene snapshot.");
     expect(sceneSnapshot.ui?.root.id).toBe(`${sceneSnapshot.id}:ui`);
     expect(sceneSnapshot.ui?.root.children).toHaveLength(2);
+  });
+
+  it("reports UI bounds in virtual space while layout stays parent-relative", async () => {
+    const { inspector, scenes, ctx } = setup();
+    ctx.register(RendererAdapterKey, letterboxAdapter);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+
+    // A surface anchored away from the top-left: Yoga still reports (0, 0)
+    // for the root, because the anchor moves the container instead.
+    const button = fakeUIElement({
+      layout: { left: 20, top: 10, width: 60, height: 30 },
+      origin: { x: 440, y: 320 },
+      scale: 2,
+    });
+    const rootElement = fakeUIElement({
+      layout: { left: 0, top: 0, width: 200, height: 100 },
+      origin: { x: 400, y: 300 },
+      scale: 2,
+      children: [button],
+    });
+    class UISurface extends Component {
+      readonly root = rootElement;
+    }
+    scene.spawn("hud").add(new UISurface());
+
+    const root = inspector.snapshot().scenes[0]?.ui?.root;
+    if (!root) throw new Error("Expected a UI snapshot.");
+    expect(root.layout).toEqual({ x: 0, y: 0, width: 200, height: 100 });
+    expect(root.bounds).toEqual({ x: 180, y: 140, width: 200, height: 100 });
+
+    const child = root.children[0];
+    expect(child?.layout).toEqual({ x: 20, y: 10, width: 60, height: 30 });
+    expect(child?.bounds).toEqual({ x: 200, y: 150, width: 60, height: 30 });
+  });
+
+  it("keeps a child's UI bounds inside its parent's", async () => {
+    const { inspector, scenes, ctx } = setup();
+    ctx.register(RendererAdapterKey, letterboxAdapter);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+
+    const child = fakeUIElement({
+      layout: { left: 20, top: 10, width: 60, height: 30 },
+      origin: { x: 440, y: 320 },
+      scale: 2,
+    });
+    class UISurface extends Component {
+      readonly root = fakeUIElement({
+        layout: { left: 0, top: 0, width: 200, height: 100 },
+        origin: { x: 400, y: 300 },
+        scale: 2,
+        children: [child],
+      });
+    }
+    scene.spawn("hud").add(new UISurface());
+
+    const root = inspector.snapshot().scenes[0]?.ui?.root;
+    const parent = root?.bounds;
+    const inner = root?.children[0]?.bounds;
+    if (!parent || !inner) throw new Error("Expected bounds on both nodes.");
+    expect(inner.x).toBeGreaterThanOrEqual(parent.x);
+    expect(inner.y).toBeGreaterThanOrEqual(parent.y);
+    expect(inner.x + inner.width).toBeLessThanOrEqual(parent.x + parent.width);
+    expect(inner.y + inner.height).toBeLessThanOrEqual(
+      parent.y + parent.height,
+    );
+  });
+
+  it("reports the same UI bounds however deeply the element is nested", async () => {
+    const buttonBounds = async (wrapped: boolean) => {
+      const { inspector, scenes, ctx } = setup();
+      ctx.register(RendererAdapterKey, letterboxAdapter);
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+
+      const button = fakeUIElement({
+        layout: { left: 20, top: 10, width: 60, height: 30 },
+        origin: { x: 440, y: 320 },
+        scale: 2,
+      });
+      // The wrapper adds a layout level without moving anything on screen.
+      const wrapper = fakeUIElement({
+        layout: { left: 5, top: 5, width: 100, height: 50 },
+        origin: { x: 410, y: 310 },
+        scale: 2,
+        children: [button],
+      });
+      class UISurface extends Component {
+        readonly root = fakeUIElement({
+          layout: { left: 0, top: 0, width: 200, height: 100 },
+          origin: { x: 400, y: 300 },
+          scale: 2,
+          children: wrapped ? [wrapper] : [button],
+        });
+      }
+      scene.spawn("hud").add(new UISurface());
+
+      const root = inspector.snapshot().scenes[0]?.ui?.root;
+      const node = wrapped ? root?.children[0]?.children[0] : root?.children[0];
+      return node?.bounds;
+    };
+
+    expect(await buttonBounds(true)).toEqual(await buttonBounds(false));
+  });
+
+  it("reports null UI bounds without a registered renderer adapter", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+
+    class UISurface extends Component {
+      readonly root = fakeUIElement({
+        layout: { left: 0, top: 0, width: 200, height: 100 },
+        origin: { x: 400, y: 300 },
+      });
+    }
+    scene.spawn("hud").add(new UISurface());
+
+    expect(inspector.snapshot().scenes[0]?.ui?.root.bounds).toBeNull();
+  });
+
+  it("reports null UI bounds for an element without a display object", async () => {
+    const { inspector, scenes, ctx } = setup();
+    ctx.register(RendererAdapterKey, letterboxAdapter);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+
+    class UISurface extends Component {
+      readonly root = fakeUIElement({
+        layout: { left: 0, top: 0, width: 200, height: 100 },
+      });
+    }
+    scene.spawn("hud").add(new UISurface());
+
+    expect(inspector.snapshot().scenes[0]?.ui?.root.bounds).toBeNull();
   });
 
   it("registers and resolves inspector extensions by namespace", () => {

@@ -21,6 +21,7 @@ import {
   type InternalRandomService,
   type RandomService,
 } from "./Random.js";
+import { RendererAdapterKey, type RendererAdapter } from "./RendererAdapter.js";
 import { SceneTimeKey } from "./SceneTime.js";
 import {
   assertDriveMaxFrames,
@@ -124,6 +125,15 @@ interface UIElementLike {
       width: number;
       height: number;
     };
+  };
+  /**
+   * The element's own display container, matched structurally so core keeps
+   * no dependency on `@yagejs/ui`. Mapping a point through it is the only way
+   * to place the element on the canvas: Yoga reports a parent-relative box,
+   * and the surface anchor is applied to the container rather than to Yoga.
+   */
+  displayObject?: {
+    toGlobal(point: { x: number; y: number }): { x: number; y: number };
   };
 }
 
@@ -257,7 +267,21 @@ export interface WorldEntitySnapshot {
 export interface UINodeSnapshot {
   id: string;
   type: string;
+  /**
+   * Yoga's computed box in pixels, relative to the parent node. Two surfaces
+   * anchored to opposite screen corners report the same numbers, so this
+   * cannot address a point on the canvas — read {@link UINodeSnapshot.bounds}
+   * for that.
+   */
   layout: { x: number; y: number; width: number; height: number };
+  /**
+   * The element's box in virtual-space pixels: its container's top-left and
+   * bottom-right corners mapped out of the renderer and through the
+   * canvas-to-virtual conversion. `null` when no renderer adapter is
+   * registered, or for an element that owns no container. A rotated element
+   * reports the axis-aligned box of those two corners, which is approximate.
+   */
+  bounds: { x: number; y: number; width: number; height: number } | null;
   children: UINodeSnapshot[];
   state: unknown | null;
 }
@@ -1778,6 +1802,7 @@ export class Inspector {
   }
 
   private buildUISnapshot(scene: Scene): UITreeSnapshot | null {
+    const adapter = this.engine.context.tryResolve(RendererAdapterKey);
     const roots = [...scene.getEntities()]
       .filter((entity) => !entity.isDestroyed)
       .flatMap((entity) =>
@@ -1791,6 +1816,7 @@ export class Inspector {
             this.buildUINodeSnapshot(
               (component as Component & { root: UIElementLike }).root,
               `entity-${entity.id}:UISurface:${index}`,
+              adapter,
             ),
           ),
       );
@@ -1805,28 +1831,67 @@ export class Inspector {
         id: `${this.getSceneId(scene)}:ui`,
         type: "UIRoot",
         layout: { x: 0, y: 0, width: 0, height: 0 },
+        bounds: null,
         children: roots,
         state: null,
       },
     };
   }
 
-  private buildUINodeSnapshot(node: UIElementLike, id: string): UINodeSnapshot {
+  private buildUINodeSnapshot(
+    node: UIElementLike,
+    id: string,
+    adapter: RendererAdapter | undefined,
+  ): UINodeSnapshot {
     const layout = node.yogaNode?.getComputedLayout();
     const children = (node.children ?? []).map((child, index) =>
-      this.buildUINodeSnapshot(child, `${id}/${index}`),
+      this.buildUINodeSnapshot(child, `${id}/${index}`, adapter),
     );
+    const size = {
+      width: layout?.width ?? 0,
+      height: layout?.height ?? 0,
+    };
     return {
       id,
       type: node.constructor.name,
       layout: {
         x: layout?.left ?? 0,
         y: layout?.top ?? 0,
-        width: layout?.width ?? 0,
-        height: layout?.height ?? 0,
+        ...size,
       },
+      bounds: this.buildUIBounds(node, size, adapter),
       children,
       state: null,
+    };
+  }
+
+  /**
+   * Maps the element's local box out of the renderer and into virtual space.
+   * An adapter without `canvasToVirtual` reports canvas CSS pixels, which the
+   * {@link RendererAdapter} contract says equal virtual pixels only while the
+   * canvas is at its virtual size.
+   */
+  private buildUIBounds(
+    node: UIElementLike,
+    size: { width: number; height: number },
+    adapter: RendererAdapter | undefined,
+  ): UINodeSnapshot["bounds"] {
+    const displayObject = node.displayObject;
+    if (!adapter || !displayObject) return null;
+    const toVirtual = (point: {
+      x: number;
+      y: number;
+    }): { x: number; y: number } => {
+      const canvas = displayObject.toGlobal(point);
+      return adapter.canvasToVirtual?.(canvas.x, canvas.y) ?? canvas;
+    };
+    const start = toVirtual({ x: 0, y: 0 });
+    const end = toVirtual({ x: size.width, y: size.height });
+    return {
+      x: Math.min(start.x, end.x),
+      y: Math.min(start.y, end.y),
+      width: Math.abs(end.x - start.x),
+      height: Math.abs(end.y - start.y),
     };
   }
 
