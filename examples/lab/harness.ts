@@ -2,6 +2,7 @@ import { Engine } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { InputPlugin } from "@yagejs/input";
+import { UIPlugin } from "@yagejs/ui";
 import { DebugPlugin } from "@yagejs/debug";
 import { defineHarness } from "@yagejs-tools/lab";
 
@@ -27,6 +28,9 @@ export default defineHarness({
     // The action map belongs here, not in a scenario: a scenario drives the
     // actions the game declares.
     new InputPlugin({ actions: { jump: ["Space"] } }),
+    // Laying out a HUD needs this plugin; a scenario without one pays nothing
+    // for it.
+    new UIPlugin(),
     // The lab adds this plugin when a harness omits it. Declared here for the
     // seed: a scenario using randomness replays the same way.
     new DebugPlugin({ deterministicSeed: 1 }),
