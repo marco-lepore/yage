@@ -194,6 +194,14 @@ export interface UIElement {
   applyLayout?(): void;
   update(props: Record<string, unknown>): void;
   destroy(): void;
+  /**
+   * Take the name of the UI tree this element belongs to, for
+   * development-mode warnings. Containers implement it and pass the name on
+   * to their children; a leaf that prints no warning of its own leaves it
+   * out.
+   * @internal
+   */
+  _setDebugLabel?(label: string): void;
 }
 
 /** A container element that can hold child UIElements. */
