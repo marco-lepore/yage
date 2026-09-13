@@ -36,6 +36,10 @@ import {
   insertChildBefore,
   removeChild,
 } from "./internal/child-list.js";
+import {
+  setChildDebugLabel,
+  setChildrenDebugLabel,
+} from "./internal/debug-label.js";
 
 // ---------------------------------------------------------------------------
 // Enum mapping helpers
@@ -83,6 +87,7 @@ export class UIPanel implements UIContainerElement {
   private _maskHeight = Number.NaN;
   private _children: UIElement[] = [];
   private _destroyed = false;
+  private _debugLabel: string | undefined;
   private bgOpts: BackgroundOptions | undefined;
   private readonly pointerEvents: PointerEvents;
   // Transparent child that catches pointer/hover events (and the consume-input
@@ -132,6 +137,7 @@ export class UIPanel implements UIContainerElement {
       child,
       "UIPanel.addElement",
     );
+    setChildDebugLabel(child, this._debugLabel);
   }
 
   removeElement(child: UIElement): void {
@@ -156,6 +162,17 @@ export class UIPanel implements UIContainerElement {
       before,
       "UIPanel.insertElementBefore",
     );
+    setChildDebugLabel(child, this._debugLabel);
+  }
+
+  /**
+   * Name the UI tree this panel belongs to for development-mode warnings.
+   * Set by `UISurface` from the owning entity and passed down the tree.
+   * @internal
+   */
+  _setDebugLabel(label: string | undefined): void {
+    this._debugLabel = label;
+    setChildrenDebugLabel(this._children, label);
   }
 
   // ---------------------------------------------------------------------------
@@ -226,7 +243,7 @@ export class UIPanel implements UIContainerElement {
       child.applyLayout?.();
     }
 
-    warnChildOverflow(this.yogaNode, this._children);
+    warnChildOverflow(this.yogaNode, this._children, this._debugLabel);
 
     const w = this.yogaNode.getComputedWidth();
     const h = this.yogaNode.getComputedHeight();

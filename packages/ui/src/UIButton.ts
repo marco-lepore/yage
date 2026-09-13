@@ -25,6 +25,10 @@ import {
   insertChildBefore,
   removeChild,
 } from "./internal/child-list.js";
+import {
+  setChildDebugLabel,
+  setChildrenDebugLabel,
+} from "./internal/debug-label.js";
 import { runUICallback } from "./error-boundary.js";
 
 import { type ColorBackground, isTextureBackground } from "./types.js";
@@ -98,6 +102,7 @@ export class UIButton implements UIContainerElement {
   private _hasExplicitHeight = false;
   private _defaultPaddingApplied = false;
   private _destroyed = false;
+  private _debugLabel: string | undefined;
   private bgOpts: BackgroundOptions;
   private hoverBgOpts: BackgroundOptions;
   private pressBgOpts: BackgroundOptions;
@@ -198,6 +203,7 @@ export class UIButton implements UIContainerElement {
       child,
       "UIButton.addElement",
     );
+    setChildDebugLabel(child, this._debugLabel);
   }
 
   removeElement(child: UIElement): void {
@@ -227,6 +233,17 @@ export class UIButton implements UIContainerElement {
       before,
       "UIButton.insertElementBefore",
     );
+    setChildDebugLabel(child, this._debugLabel);
+  }
+
+  /**
+   * Name the UI tree this button belongs to for development-mode warnings.
+   * Set by `UISurface` from the owning entity and passed down the tree.
+   * @internal
+   */
+  _setDebugLabel(label: string | undefined): void {
+    this._debugLabel = label;
+    setChildrenDebugLabel(this._children, label);
   }
 
   /** Apply Yoga-computed positions to children and resize background. */
@@ -241,7 +258,7 @@ export class UIButton implements UIContainerElement {
       );
       child.applyLayout?.();
     }
-    warnChildOverflow(this.yogaNode, this._children);
+    warnChildOverflow(this.yogaNode, this._children, this._debugLabel);
     this._computedWidth = this.yogaNode.getComputedWidth();
     this._computedHeight = this.yogaNode.getComputedHeight();
     this.bgRenderer.resize(this._computedWidth, this._computedHeight);

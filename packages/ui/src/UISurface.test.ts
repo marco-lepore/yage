@@ -222,6 +222,7 @@ import Yoga from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UISurface } from "./UISurface.js";
 import { UIPanel } from "./UIPanel.js";
+import { UIText } from "./UIText.js";
 import { Anchor } from "./types.js";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { createUITestContext, spawnEntityInScene } from "./test-helpers.js";
@@ -825,6 +826,106 @@ describe("UISurface", () => {
         String(c[0]).includes("overflows its container"),
       );
       expect(overflowWarns).toHaveLength(0);
+      warn.mockRestore();
+    });
+
+    it("names the entity, the child position and the child's class", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { scene } = createUITestContext();
+      const entity = spawnEntityInScene(scene, "Hud");
+      const surface = entity.add(
+        new UISurface({ direction: "row", width: 100 }),
+      );
+      surface.panel({ width: 20, height: 20 });
+      surface.panel({ width: 200, height: 20 });
+
+      surface.root.yogaNode.calculateLayout(
+        undefined,
+        undefined,
+        Direction.LTR,
+      );
+      surface.root.applyLayout();
+
+      const message = String(
+        warn.mock.calls.find((c) =>
+          String(c[0]).includes("overflows its container"),
+        )?.[0],
+      );
+      expect(message).toContain('UI layout [entity "Hud"]');
+      expect(message).toContain("child #1 (UIPanel)");
+      warn.mockRestore();
+    });
+
+    it("quotes the text a text child renders", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { scene } = createUITestContext();
+      const entity = spawnEntityInScene(scene, "Hud");
+      const surface = entity.add(
+        new UISurface({ direction: "row", width: 100, height: 40 }),
+      );
+      surface.addElement(
+        new UIText({ children: "Score: 12500", width: 200, height: 20 }),
+      );
+
+      surface.root.yogaNode.calculateLayout(
+        undefined,
+        undefined,
+        Direction.LTR,
+      );
+      surface.root.applyLayout();
+
+      const message = String(
+        warn.mock.calls.find((c) =>
+          String(c[0]).includes("overflows its container"),
+        )?.[0],
+      );
+      expect(message).toContain('child #0 (UIText "Score: 12500")');
+      warn.mockRestore();
+    });
+
+    it("labels a child added after the surface is mounted", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { scene } = createUITestContext();
+      const entity = spawnEntityInScene(scene, "Shop");
+      const surface = entity.add(
+        new UISurface({ direction: "column", width: 100 }),
+      );
+      // Built after `entity.add`, so it can only be labelled by the
+      // propagation on `addElement`, not by the walk in `onAdd`.
+      const row = surface.panel({ direction: "row", width: 100 });
+      row.panel({ width: 200, height: 20 });
+
+      surface.root.yogaNode.calculateLayout(
+        undefined,
+        undefined,
+        Direction.LTR,
+      );
+      surface.root.applyLayout();
+
+      const message = String(
+        warn.mock.calls.find((c) =>
+          String(c[0]).includes("overflows its container"),
+        )?.[0],
+      );
+      expect(message).toContain('UI layout [entity "Shop"]');
+      warn.mockRestore();
+    });
+
+    it("omits the entity prefix for a panel built outside a surface", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const panel = new UIPanel({ direction: "row", width: 100 });
+      panel.addElement(new UIPanel({ width: 200, height: 20 }));
+
+      panel.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.applyLayout();
+
+      const message = String(
+        warn.mock.calls.find((c) =>
+          String(c[0]).includes("overflows its container"),
+        )?.[0],
+      );
+      expect(message).toContain("UI layout: child #0 (UIPanel) overflows");
+      expect(message).not.toContain("[entity");
       warn.mockRestore();
     });
   });
