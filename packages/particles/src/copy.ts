@@ -1,16 +1,18 @@
 /**
- * Field-wise copy of an emitter's options. An emitter reads its configuration
- * at every spawn and every frame, so any value it holds by reference is a value
- * the caller can still change behind its back. Only the options whose value can
- * be an object are copied; numbers, strings and the texture source are carried
- * over as they are, because a texture is a renderer resource rather than data.
+ * Field-wise copy of an emitter's emission options. An emitter reads its
+ * configuration at every spawn and, for some options, at every frame, so a
+ * value it keeps by reference is a value the caller can still change
+ * afterwards. Only options whose value can be an object are copied; numbers and
+ * strings carry over as they are. The check at the end of this file fails the
+ * build when `EmitterOptions` gains an object-valued option that no case here
+ * handles.
  */
 
 import { isLerped } from "./types.js";
 import type { EmitterOptions, Lerped, NumberRange } from "./types.js";
 
 /** Options typed `NumberRange`, so a `[min, max]` array can be shared. */
-export const RANGE_OPTIONS = [
+const RANGE_OPTIONS = [
   "lifetime",
   "speed",
   "angle",
@@ -20,7 +22,7 @@ export const RANGE_OPTIONS = [
 ] as const satisfies readonly (keyof EmitterOptions)[];
 
 /** Options that are a `NumberRange` or a `Lerped` pair of them. */
-export const LERPABLE_OPTIONS = [
+const LERPABLE_OPTIONS = [
   "scale",
   "alpha",
 ] as const satisfies readonly (keyof EmitterOptions)[];
@@ -73,3 +75,35 @@ export function copyOptions<T extends Partial<EmitterOptions>>(options: T): T {
 
   return copy as T;
 }
+
+/** True when any member of `T` is an object, so a caller can still change it. */
+type HoldsAnObject<T> = true extends (T extends object ? true : false)
+  ? true
+  : false;
+
+/** The options of `EmitterOptions` whose value can be an object. */
+type ObjectValuedOption = {
+  [K in keyof EmitterOptions]-?: HoldsAnObject<
+    Exclude<EmitterOptions[K], undefined>
+  > extends true
+    ? K
+    : never;
+}[keyof EmitterOptions];
+
+/** The options `copyOptions` handles by name. */
+type CopiedOption =
+  | (typeof RANGE_OPTIONS)[number]
+  | (typeof LERPABLE_OPTIONS)[number]
+  | "gravity"
+  | "spawnOffset";
+
+type MustBeNever<T extends never> = T;
+
+/**
+ * Every object-valued option is copied. An option added to `EmitterOptions`
+ * without a case above fails the typecheck here, naming the option it left out.
+ * Exported so the compiler counts this alias as used.
+ */
+export type EveryObjectValuedOptionIsCopied = MustBeNever<
+  Exclude<ObjectValuedOption, CopiedOption>
+>;
