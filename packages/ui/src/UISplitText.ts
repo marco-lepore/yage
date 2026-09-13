@@ -1,4 +1,9 @@
-import { buildTextOptions, setSplitText } from "@yagejs/renderer";
+import {
+  buildTextOptions,
+  initialAutoSplit,
+  setSplitText,
+  splitIfNotEmpty,
+} from "@yagejs/renderer";
 import type {
   DisplayBitmapText,
   DisplayContainer,
@@ -124,7 +129,7 @@ export class UISplitText implements UIElement {
         ? { lineAnchor: props.lineAnchor }
         : {}),
       // Never hand Pixi's split an empty string; see `setSplitText`.
-      autoSplit: this._autoSplit && this._source !== "",
+      autoSplit: initialAutoSplit(this._autoSplit, this._source),
     };
     this.splitText = bitmap
       ? new SplitBitmapText(splitOptions)
@@ -229,7 +234,7 @@ export class UISplitText implements UIElement {
    * empty text has nothing to split and leaves the segments empty.
    */
   resplit(): void {
-    if (this._source !== "") this.splitText.split();
+    splitIfNotEmpty(this.splitText);
     this.yogaNode.markDirty();
     this.emitSplit();
   }

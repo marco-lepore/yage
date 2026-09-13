@@ -1,6 +1,10 @@
 import { SplitText, SplitBitmapText } from "pixi.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
-import { setSplitText } from "./internal/split-text-guard.js";
+import {
+  initialAutoSplit,
+  setSplitText,
+  splitIfNotEmpty,
+} from "./internal/split-text-guard.js";
 import type {
   DestroyOptions,
   DisplayBitmapText,
@@ -120,7 +124,7 @@ export class SplitTextComponent extends VisualComponent {
         ? { lineAnchor: options.lineAnchor }
         : {}),
       // Never hand Pixi's split an empty string; see `setSplitText`.
-      autoSplit: this._autoSplit && options.text !== "",
+      autoSplit: initialAutoSplit(this._autoSplit, options.text),
     };
     this.splitText = bitmap
       ? new SplitBitmapText(splitOptions)
@@ -189,8 +193,7 @@ export class SplitTextComponent extends VisualComponent {
    * mutating `text` / `style`, call this to apply the change in one pass.
    */
   resplit(): void {
-    if (this.splitText.text === "") return;
-    this.splitText.split();
+    if (!splitIfNotEmpty(this.splitText)) return;
     this.applyBlockAnchor();
   }
 
