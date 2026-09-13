@@ -246,7 +246,7 @@ export class UIScrollView implements UIContainerElement {
    * Set by `UISurface` from the owning entity and passed down the tree.
    * @internal
    */
-  _setDebugLabel(label: string | undefined): void {
+  _setDebugLabel(label: string): void {
     this.content._setDebugLabel(label);
   }
 
