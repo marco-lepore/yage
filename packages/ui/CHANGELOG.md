@@ -1,5 +1,19 @@
 # @yagejs/ui
 
+## 0.11.1
+
+### Patch Changes
+
+- [#361](https://github.com/marco-lepore/yage/pull/361) [`ca6271a`](https://github.com/marco-lepore/yage/commit/ca6271a7e3bbe4da16c0d4a9f7c28cd183ebfbd8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `PixiInput` applies a changed `placeholder` prop to the existing element. The
+  placeholder used to be fixed at construction: passing a new value to
+  `update()`, or re-rendering `<PixiInput placeholder={hint} />` with a
+  different `hint`, kept the first text. The change keeps keyboard focus and the
+  typed value, and the placeholder stays hidden while the field holds a value or
+  is being edited.
+- Updated dependencies []:
+  - @yagejs/core@0.11.1
+  - @yagejs/renderer@0.11.1
+
 ## 0.11.0
 
 ### Minor Changes

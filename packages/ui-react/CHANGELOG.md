@@ -1,5 +1,14 @@
 # @yagejs/ui-react
 
+## 0.11.1
+
+### Patch Changes
+
+- Updated dependencies [[`ca6271a`](https://github.com/marco-lepore/yage/commit/ca6271a7e3bbe4da16c0d4a9f7c28cd183ebfbd8)]:
+  - @yagejs/ui@0.11.1
+  - @yagejs/core@0.11.1
+  - @yagejs/renderer@0.11.1
+
 ## 0.11.0
 
 ### Minor Changes

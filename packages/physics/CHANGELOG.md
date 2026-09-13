@@ -1,5 +1,16 @@
 # @yagejs/physics
 
+## 0.11.1
+
+### Patch Changes
+
+- [#354](https://github.com/marco-lepore/yage/pull/354) [`1a9a685`](https://github.com/marco-lepore/yage/commit/1a9a685d3dc47f8045847d9b36b2a34f06002a45) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add fixed, revolute, and prismatic joints for welded structures, hinges, and sliding platforms.
+
+  Configure collisions between connected bodies, angular or linear limits, and motors that can be updated through `setMotor`.
+
+- Updated dependencies []:
+  - @yagejs/core@0.11.1
+
 ## 0.11.0
 
 ### Minor Changes
