@@ -7,7 +7,29 @@ import type {
 } from "./types.js";
 import { isTextureBackground } from "./types.js";
 import { resolveTextureInput } from "@yagejs/renderer";
+import type { NineSliceInsets } from "./internal/nine-slice-guard.js";
 import { warnNineSliceTooSmall } from "./internal/nine-slice-guard.js";
+
+/** Expand `nineSlice`, one number or four named sides, to the four sprite insets. */
+function resolveNineSliceInsets(
+  nineSlice: TextureBackground["nineSlice"],
+): NineSliceInsets {
+  const insets = nineSlice ?? 0;
+  if (typeof insets === "number") {
+    return {
+      leftWidth: insets,
+      topHeight: insets,
+      rightWidth: insets,
+      bottomHeight: insets,
+    };
+  }
+  return {
+    leftWidth: insets.left,
+    topHeight: insets.top,
+    rightWidth: insets.right,
+    bottomHeight: insets.bottom,
+  };
+}
 
 /**
  * Manages a background display object for UI elements.
@@ -123,25 +145,11 @@ export class BackgroundRenderer {
     const mode = opts.mode ?? "stretch";
 
     switch (mode) {
-      case "nine-slice": {
-        const insets = opts.nineSlice ?? 0;
-        if (typeof insets === "number") {
-          return new NineSliceSprite({
-            texture,
-            leftWidth: insets,
-            topHeight: insets,
-            rightWidth: insets,
-            bottomHeight: insets,
-          });
-        }
+      case "nine-slice":
         return new NineSliceSprite({
           texture,
-          leftWidth: insets.left,
-          topHeight: insets.top,
-          rightWidth: insets.right,
-          bottomHeight: insets.bottom,
+          ...resolveNineSliceInsets(opts.nineSlice),
         });
-      }
       case "tile":
         return new TilingSprite({ texture, width: 1, height: 1 });
       case "stretch":
@@ -158,6 +166,17 @@ export class BackgroundRenderer {
     if ("texture" in this.displayObject) {
       (this.displayObject as Sprite | NineSliceSprite | TilingSprite).texture =
         texture;
+    }
+
+    // The insets are restated from the options on every apply, because the
+    // display object outlives a texture swap. A background that replaces its
+    // texture without restating them keeps the insets it was given.
+    if (this.displayObject instanceof NineSliceSprite) {
+      const insets = resolveNineSliceInsets(opts.nineSlice);
+      this.displayObject.leftWidth = insets.leftWidth;
+      this.displayObject.topHeight = insets.topHeight;
+      this.displayObject.rightWidth = insets.rightWidth;
+      this.displayObject.bottomHeight = insets.bottomHeight;
     }
 
     this.displayObject.alpha = opts.alpha ?? 1;
