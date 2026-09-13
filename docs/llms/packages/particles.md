@@ -24,9 +24,9 @@ entity.add(
     speed: [50, 150], // px/s
     angle: [-Math.PI, Math.PI], // radians
     scale: { start: 1, end: 0 }, // Lerped
-    alpha: { start: 1, end: 0 },
+    alpha: 1, // NumberRange or Lerped, like scale
     alphaFadeIn: 0.2, // fraction of each particle's life, 0–1
-    alphaFadeOut: 0.3,
+    alphaFadeOut: 0.3, // multiplies alpha, so a ramped alpha ramps twice
     rotation: 0, // radians
     rotationSpeed: 0, // rad/s
     tint: 0xff6600,
@@ -123,17 +123,24 @@ Two surfaces, answering two different questions.
 **`configure(options: EmitterUpdate)`** is "this emitter is different from now
 on". It changes `lifetime`, `speed`, `angle`, `scale`, `alpha`, `rotation`,
 `rotationSpeed`, `tint`, `spawnOffset`, `radialSpeed`, `rate`, `gravity`,
-`damping`, `alphaFadeIn`, `alphaFadeOut` and `blendMode`. Particles already in
-flight keep the values they were spawned with; continuous emission picks the
-new values up on its next particle.
+`damping`, `alphaFadeIn`, `alphaFadeOut` and `blendMode`. When a change reaches
+a particle depends on where the emitter reads the option. The spawn-time
+options — `lifetime`, `speed`, `angle`, `scale`, `alpha`, `rotation`,
+`rotationSpeed`, `tint`, `spawnOffset` and `radialSpeed` — are resolved once per
+particle, so a particle already in flight keeps what it was spawned with and the
+next particle spawned uses the new value. `gravity`, `damping`, `alphaFadeIn`
+and `alphaFadeOut` are read from the emitter every frame for every live
+particle, so they reach particles already in flight on the next frame. `rate`
+applies to the next frame of continuous emission, and `blendMode` is a property
+of the container every particle is drawn in.
 
 **`burst(count, overrides: BurstOverrides)`** is "these `count` particles are
 different". It takes the spawn-time options — `lifetime`, `speed`, `angle`,
 `scale`, `alpha`, `rotation`, `rotationSpeed`, `tint`, `spawnOffset`,
 `radialSpeed` — and nothing else changes: neither the emitter's own
 configuration nor any particle already alive. `gravity`, `damping`,
-`alphaFadeIn` and `alphaFadeOut` are read every frame for every live particle,
-so they are `configure` only.
+`alphaFadeIn` and `alphaFadeOut` are `configure` only, because a burst cannot
+own a value the update reads from the emitter itself.
 
 ```ts
 // A melee trail that follows the swing, while earlier particles hold theirs.

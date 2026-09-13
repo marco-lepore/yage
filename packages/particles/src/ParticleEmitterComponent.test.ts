@@ -189,6 +189,14 @@ function worldOf(emitter: ParticleEmitterComponent, index = 0) {
   return { x: particle.x + x, y: particle.y + y };
 }
 
+/**
+ * The dev-only watch on the caller's configuration object. Private, because
+ * nothing outside the emitter may read it, so a test reaches it by cast.
+ */
+function aliasWatchOf(emitter: ParticleEmitterComponent): unknown {
+  return (emitter as unknown as { _aliasWatch?: unknown })._aliasWatch;
+}
+
 function setupEntity(
   emitter: ParticleEmitterComponent,
   transform: Transform | null = new Transform(),
@@ -551,6 +559,17 @@ describe("ParticleEmitterComponent", () => {
       expect(warn).not.toHaveBeenCalled();
     });
 
+    it("keeps no watch in a production build", () => {
+      process.env.NODE_ENV = "production";
+      const emitter = createEmitter({ angle: [0, 0], lifetime: 10 });
+      expect(aliasWatchOf(emitter)).toBeUndefined();
+    });
+
+    it("keeps a watch in a development build", () => {
+      const emitter = createEmitter({ angle: [0, 0], lifetime: 10 });
+      expect(aliasWatchOf(emitter)).toBeDefined();
+    });
+
     it("stays quiet in a production build", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       process.env.NODE_ENV = "production";
@@ -669,6 +688,33 @@ describe("ParticleEmitterComponent", () => {
       expect(particle.scaleX).toBeCloseTo(2, 5);
       emitter._update(1, 0, 0);
       expect(emitter._active[0]!.vy).toBeCloseTo(100, 5);
+    });
+
+    it("reaches a live particle when gravity changes", () => {
+      const emitter = createEmitter({ lifetime: 10, maxParticles: 10 });
+      emitter.burst(1);
+      emitter._update(1, 0, 0);
+      expect(emitter._active[0]!.vy).toBeCloseTo(0, 5);
+
+      emitter.configure({ gravity: { x: 0, y: 100 } });
+      emitter._update(1, 0, 0);
+      expect(emitter._active[0]!.vy).toBeCloseTo(100, 5);
+    });
+
+    it("reaches a live particle when damping changes", () => {
+      const emitter = createEmitter({
+        speed: 100,
+        angle: 0,
+        lifetime: 10,
+        maxParticles: 10,
+      });
+      emitter.burst(1);
+      emitter._update(1, 0, 0);
+      expect(emitter._active[0]!.vx).toBeCloseTo(100, 5);
+
+      emitter.configure({ damping: 0.75 });
+      emitter._update(1, 0, 0);
+      expect(emitter._active[0]!.vx).toBeCloseTo(25, 5);
     });
 
     it("rejects options that are fixed at construction at the type level", () => {
@@ -855,6 +901,29 @@ describe("ParticleEmitterComponent", () => {
       emitter.configure({ alphaFadeIn: 0.5 });
       emitter.burst(1);
       expect(emitter._active[0]!.particle.alpha).toBe(0);
+    });
+
+    it("reaches a live particle when a fade is configured", () => {
+      const emitter = createEmitter({
+        alpha: 1,
+        lifetime: 10,
+        maxParticles: 1,
+      });
+      emitter.burst(1);
+      emitter._update(1, 0, 0);
+      expect(emitter._active[0]!.particle.alpha).toBeCloseTo(1, 5);
+
+      emitter.configure({ alphaFadeOut: 1 });
+      emitter._update(1, 0, 0);
+      // Two frames of a ten-second life: the envelope leaves 1 - 0.2.
+      expect(emitter._active[0]!.particle.alpha).toBeCloseTo(0.8, 5);
+    });
+
+    it("rejects a fade fraction as a burst override at the type level", () => {
+      const emitter = createEmitter();
+      // @ts-expect-error the envelope is read per frame, not per particle.
+      emitter.burst(1, { alphaFadeOut: 0.5 });
+      expect(emitter.activeCount).toBe(1);
     });
 
     it("names the option for a fraction outside 0-1", () => {

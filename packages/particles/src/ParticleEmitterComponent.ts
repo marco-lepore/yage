@@ -231,10 +231,20 @@ export class ParticleEmitterComponent extends Component {
   }
 
   /**
-   * Change the emitter's configuration from now on. Particles already in
-   * flight keep the values they were spawned with; continuous emission picks
-   * the new values up on its next particle. The whole merged configuration is
-   * checked, and a rejected call leaves every previous value in force.
+   * Change the emitter's configuration from now on. When a change reaches a
+   * particle depends on where the emitter reads the option. The spawn-time
+   * options — `lifetime`, `speed`, `angle`, `scale`, `alpha`, `rotation`,
+   * `rotationSpeed`, `tint`, `spawnOffset` and `radialSpeed` — are resolved
+   * once per particle, so a particle already in flight keeps what it was
+   * spawned with and the next particle spawned uses the new value. `gravity`,
+   * `damping`, `alphaFadeIn` and `alphaFadeOut` are read from this
+   * configuration every frame for every live particle, so they reach particles
+   * already in flight on the next frame. `rate` applies to the next frame of
+   * continuous emission, and `blendMode` is a property of the container every
+   * particle is drawn in.
+   *
+   * The whole merged configuration is checked, and a rejected call leaves every
+   * previous value in force.
    *
    * The emitter copies what it is given, so changing the object afterwards
    * changes nothing. For a one-off variation, pass overrides to
