@@ -100,6 +100,9 @@ const request = emitter.requestEmission(); // ParticleEmissionHandle
 request.release(); // release only this request; idempotent
 emitter.burst(50); // spawn at the entity's world position
 emitter.burst(10, x, y); // burst at an explicit world position
+emitter.burst(10, { angle: aim }); // these 10 particles only
+emitter.burst(10, x, y, { tint: 0xff0000 }); // position and overrides together
+emitter.configure({ rate: 40 }); // EmitterUpdate — from now on
 emitter.isEmitting; // boolean
 emitter.activeCount; // number
 emitter.blendMode = "add"; // BlendMode, read/write
@@ -110,6 +113,47 @@ Manual emission and temporary requests compose. `isEmitting` stays true while
 `stop()` does not cancel requests, and releasing a request does not cancel
 manual emission or other requests. Requests are transient and invalidated
 when the emitter is destroyed.
+
+## Changing an emitter at runtime
+
+Two surfaces, answering two different questions.
+
+**`configure(options: EmitterUpdate)`** is "this emitter is different from now
+on". It changes `lifetime`, `speed`, `angle`, `scale`, `alpha`, `rotation`,
+`rotationSpeed`, `tint`, `spawnOffset`, `radialSpeed`, `rate`, `gravity`,
+`damping` and `blendMode`. Particles already in flight keep the values they
+were spawned with; continuous emission picks the new values up on its next
+particle.
+
+**`burst(count, overrides: BurstOverrides)`** is "these `count` particles are
+different". It takes the spawn-time options — `lifetime`, `speed`, `angle`,
+`scale`, `alpha`, `rotation`, `rotationSpeed`, `tint`, `spawnOffset`,
+`radialSpeed` — and nothing else changes: neither the emitter's own
+configuration nor any particle already alive. `gravity` and `damping` are read
+every frame for every live particle, so they are `configure` only.
+
+```ts
+// A melee trail that follows the swing, while earlier particles hold theirs.
+emitter.burst(2, fistX, fistY, { angle: [swing - 0.18, swing + 0.18] });
+```
+
+Fixed when the emitter is built, and absent from both types: `maxParticles`
+and the texture source, which the particle pool allocates against; `layer`,
+read once when the component is added; and `simulationSpace`. Passing one of
+them to either method is a type error rather than a silent no-op.
+
+Both methods check the whole merged configuration and throw on a bad value, the
+same way construction does. A rejected `configure` leaves every previous value
+in force — there is no partial application. Checking the merged object is also
+what lets `configure({ radialSpeed })` pass on an emitter that already has a
+`spawnOffset`.
+
+`configure` copies what it is given, so changing that object afterwards changes
+nothing. A burst's overrides are read during the call and not kept.
+
+**An entity holds one component of a class**, so one entity has one emitter.
+A second look that `configure` and burst overrides cannot cover — a different
+texture, a different pool size — needs a second entity.
 
 **`blendMode`** is per emitter — every particle it spawns blends the same way,
 and the mode cannot vary particle by particle. Overlapping particles within one

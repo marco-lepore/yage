@@ -14,18 +14,42 @@ import type {
 import { ParticleContainer as PixiParticleContainer } from "pixi.js";
 import type { Particle } from "pixi.js";
 import { ParticlePool } from "./ParticlePool.js";
+import { copyOptions } from "./copy.js";
 import { normalizeShape, shapeTexture } from "./shapes.js";
 import { isLerped, resolveRange } from "./types.js";
 import { assertEmitterConfig } from "./validate.js";
 import type {
+  BurstOverrides,
   EmitterConfig,
   EmitterOptions,
+  EmitterUpdate,
   Lerped,
   NumberRange,
 } from "./types.js";
 
 /** Default bearing arc for a ring `spawnOffset` with no `angle` set. */
 const FULL_CIRCLE: [number, number] = [0, Math.PI * 2];
+
+/**
+ * An emitter's options with every defaulted value filled in. `_spawn` and
+ * `_update` read one of these: the emitter's own, or a burst's merged copy.
+ */
+type ResolvedConfig = Required<
+  Pick<
+    EmitterOptions,
+    | "maxParticles"
+    | "rate"
+    | "lifetime"
+    | "speed"
+    | "angle"
+    | "rotation"
+    | "rotationSpeed"
+    | "tint"
+    | "damping"
+    | "layer"
+  >
+> &
+  EmitterOptions;
 
 /** Internal tracking state for a single active particle. */
 interface ParticleState {
@@ -72,22 +96,7 @@ export class ParticleEmitterComponent extends Component {
   /** @internal */ readonly _active: ParticleState[] = [];
   /** @internal */ _accumulator = 0;
 
-  private readonly config: Required<
-    Pick<
-      EmitterOptions,
-      | "maxParticles"
-      | "rate"
-      | "lifetime"
-      | "speed"
-      | "angle"
-      | "rotation"
-      | "rotationSpeed"
-      | "tint"
-      | "damping"
-      | "layer"
-    >
-  > &
-    EmitterOptions;
+  private config: ResolvedConfig;
   private _manualEmission = false;
   private readonly _emissionRequests = new Set<EmissionRequestEntry>();
   private _destroyed = false;
@@ -187,11 +196,47 @@ export class ParticleEmitterComponent extends Component {
     );
   }
 
+  /**
+   * Change the emitter's configuration from now on. Particles already in
+   * flight keep the values they were spawned with; continuous emission picks
+   * the new values up on its next particle. The whole merged configuration is
+   * checked, and a rejected call leaves every previous value in force.
+   *
+   * The emitter copies what it is given, so changing the object afterwards
+   * changes nothing. For a one-off variation, pass overrides to
+   * {@link ParticleEmitterComponent.burst} instead.
+   */
+  configure(options: EmitterUpdate): void {
+    const candidate: ResolvedConfig = {
+      ...this.config,
+      ...copyOptions(options),
+    };
+    assertEmitterConfig(candidate);
+    this.config = candidate;
+    if (options.blendMode !== undefined) {
+      this.container.blendMode = options.blendMode;
+    }
+  }
+
   /** Spawn `count` particles at the entity's world position. */
-  burst(count: number): void;
+  burst(count: number, overrides?: BurstOverrides): void;
   /** Spawn `count` particles at an explicit world position. */
-  burst(count: number, worldX: number, worldY: number): void;
-  burst(count: number, worldX?: number, worldY?: number): void {
+  burst(
+    count: number,
+    worldX: number,
+    worldY: number,
+    overrides?: BurstOverrides,
+  ): void;
+  burst(
+    count: number,
+    worldXOrOverrides?: number | BurstOverrides,
+    worldY?: number,
+    trailingOverrides?: BurstOverrides,
+  ): void {
+    const positioned = typeof worldXOrOverrides === "number";
+    const worldX = positioned ? worldXOrOverrides : undefined;
+    const overrides = positioned ? trailingOverrides : worldXOrOverrides;
+
     this._warnIfNoTransform();
     // Every spawn path syncs the container first, so a particle is never
     // written against a stale origin. A Transform-less emitter keeps the
@@ -204,8 +249,17 @@ export class ParticleEmitterComponent extends Component {
     const { x: originX, y: originY } = this.container.position;
     const x = worldX === undefined ? 0 : worldX - originX;
     const y = worldY === undefined ? 0 : worldY - originY;
+
+    // Resolve and check the burst's configuration once, not per particle. The
+    // merged object is not kept past this call, so it needs no copy.
+    let cfg = this.config;
+    if (overrides !== undefined) {
+      cfg = { ...this.config, ...overrides };
+      assertEmitterConfig(cfg);
+    }
+
     for (let i = 0; i < count; i++) {
-      this._spawn(x, y);
+      this._spawn(x, y, cfg);
     }
   }
 
@@ -275,7 +329,7 @@ export class ParticleEmitterComponent extends Component {
       this._accumulator += cfg.rate * dt;
       while (this._accumulator >= 1) {
         this._accumulator -= 1;
-        this._spawn(0, 0);
+        this._spawn(0, 0, cfg);
       }
     }
 
@@ -347,14 +401,14 @@ export class ParticleEmitterComponent extends Component {
   }
 
   /**
-   * Spawn one particle at container-local coordinates.
+   * Spawn one particle at container-local coordinates, reading `cfg` for every
+   * spawn-time value. Continuous emission passes the emitter's own
+   * configuration; a burst with overrides passes its merged copy.
    * @internal
    */
-  _spawn(localX: number, localY: number): void {
+  _spawn(localX: number, localY: number, cfg: ResolvedConfig): void {
     const particle = this._pool.acquire();
     if (!particle) return; // at capacity
-
-    const cfg = this.config;
 
     // Position with spawn offset
     let offsetX = 0;

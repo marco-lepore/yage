@@ -28,7 +28,9 @@ export { resolveRange, isLerped } from "./types.js";
 export type {
   NumberRange,
   Lerped,
+  BurstOverrides,
   EmitterConfig,
   EmitterOptions,
+  EmitterUpdate,
   TextureSource,
 } from "./types.js";

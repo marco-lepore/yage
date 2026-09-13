@@ -88,6 +88,36 @@ export interface EmitterOptions {
 /** Emitter configuration: a texture source plus the emission options. */
 export type EmitterConfig = EmitterOptions & TextureSource;
 
+/**
+ * Spawn-time options one burst can override. Every value here is read while
+ * that burst's particles are created, so particles already in flight keep the
+ * values they were spawned with.
+ */
+export type BurstOverrides = Partial<
+  Pick<
+    EmitterOptions,
+    | "lifetime"
+    | "speed"
+    | "angle"
+    | "scale"
+    | "alpha"
+    | "rotation"
+    | "rotationSpeed"
+    | "tint"
+    | "spawnOffset"
+    | "radialSpeed"
+  >
+>;
+
+/**
+ * Options an emitter accepts after construction. Adds to {@link BurstOverrides}
+ * the values read per frame or per emission rather than per particle.
+ * `maxParticles`, `layer`, `simulationSpace` and the texture source are fixed
+ * when the emitter is built, so they are absent here.
+ */
+export type EmitterUpdate = BurstOverrides &
+  Partial<Pick<EmitterOptions, "rate" | "gravity" | "damping" | "blendMode">>;
+
 /** Resolve a NumberRange to a concrete value. */
 export function resolveRange(v: NumberRange, random: RandomService): number {
   if (typeof v === "number") return v;
