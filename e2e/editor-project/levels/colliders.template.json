@@ -1,0 +1,68 @@
+{
+  "format": "yage-level",
+  "version": 1,
+  "id": "colliders",
+  "metadata": {},
+  "entities": [
+    {
+      "id": "solid",
+      "type": "game.collider-region",
+      "typeVersion": 1,
+      "name": "Solid",
+      "transform": {
+        "position": {
+          "x": -240,
+          "y": -100
+        }
+      },
+      "params": {
+        "width": 160,
+        "height": 40,
+        "sensor": false
+      }
+    },
+    {
+      "id": "sensor",
+      "type": "game.collider-region",
+      "typeVersion": 1,
+      "name": "Sensor",
+      "transform": {
+        "position": {
+          "x": 80,
+          "y": -100
+        }
+      },
+      "params": {
+        "width": 100,
+        "height": 80,
+        "sensor": true
+      }
+    },
+    {
+      "id": "chime-a",
+      "type": "game.chime",
+      "typeVersion": 1,
+      "name": "Chime A",
+      "transform": {
+        "position": {
+          "x": -160,
+          "y": 120
+        }
+      },
+      "params": {}
+    },
+    {
+      "id": "chime-b",
+      "type": "game.chime",
+      "typeVersion": 1,
+      "name": "Chime B",
+      "transform": {
+        "position": {
+          "x": -158,
+          "y": 120
+        }
+      },
+      "params": {}
+    }
+  ]
+}

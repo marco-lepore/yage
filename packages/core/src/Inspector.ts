@@ -1212,6 +1212,23 @@ export class Inspector {
     };
   }
 
+  /**
+   * Read one plugin-owned facet without reflecting component state or taking a
+   * scene snapshot. Missing contributors and unavailable facets return undefined.
+   * Uses the same contributor and failure policy as snapshot().
+   */
+  getComponentFacet<K extends keyof InspectorFacets & string>(
+    component: Component,
+    namespace: K,
+  ): InspectorFacets[K] | undefined {
+    const contributor = this.facetContributors.get(namespace);
+    return contributor
+      ? (tryInspectComponentFacet(contributor, component) as
+          | InspectorFacets[K]
+          | undefined)
+      : undefined;
+  }
+
   /** Full deterministic state snapshot (stable ordering, serializable). */
   snapshot(): EngineSnapshot {
     const scenes = this.engine.scenes.all.map((scene) =>

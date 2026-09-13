@@ -1,5 +1,6 @@
-import { Transform, type Entity } from "@yagejs/core";
-import { VisualComponent } from "@yagejs/renderer";
+import type { FacetReader } from "./geometry.js";
+import type { Entity } from "@yagejs/core";
+import { geometryOf, worldGeometryOf, outlineContains } from "./geometry.js";
 import { unionBounds, type WorldBounds } from "../commands/index.js";
 import type { EditorViewState } from "../store/index.js";
 
@@ -16,65 +17,24 @@ export const FRAME_MARGIN = 1.2;
  */
 const MIN_FRAMED_EXTENT = 1;
 
-/** Whether a point in world space is inside any of an entity's visuals. */
+/** Pick the same footprint the preview draws, including open collider segments. */
 export function containsPoint(
   entity: Entity,
   point: { x: number; y: number },
+  perScreenPixel = 1,
+  inspector?: FacetReader,
 ): boolean {
-  const transform = entity.get(Transform);
-  const origin = transform.worldPosition;
-  const scale = transform.worldScale;
-  const rotation = transform.worldRotation;
-  const cos = Math.cos(-rotation);
-  const sin = Math.sin(-rotation);
-  const dx = point.x - origin.x;
-  const dy = point.y - origin.y;
-  // Into the visual's own space: undo the world rotation, then the scale.
-  const localX = (dx * cos - dy * sin) / (scale.x === 0 ? 1 : scale.x);
-  const localY = (dx * sin + dy * cos) / (scale.y === 0 ? 1 : scale.y);
-
-  for (const bounds of localBoundsOf(entity)) {
-    if (
-      localX >= bounds.minX &&
-      localX <= bounds.maxX &&
-      localY >= bounds.minY &&
-      localY <= bounds.maxY
-    ) {
-      return true;
-    }
-  }
-  return false;
+  return worldGeometryOf(entity, inspector).outlines.some((outline) =>
+    outlineContains(outline, point, 4 * perScreenPixel),
+  );
 }
 
-/**
- * The world rectangle an entity's visuals cover, or `undefined` when it draws
- * nothing.
- *
- * Each visual's own rectangle is taken through the entity's world transform by
- * its four corners, because a rotated rectangle's axis-aligned bounds are not
- * its corners rotated in place.
- */
-export function worldBoundsOf(entity: Entity): WorldBounds | undefined {
-  const transform = entity.get(Transform);
-  const origin = transform.worldPosition;
-  const scale = transform.worldScale;
-  const rotation = transform.worldRotation;
-  const cos = Math.cos(rotation);
-  const sin = Math.sin(rotation);
-
-  let found: WorldBounds | undefined;
-  for (const local of localBoundsOf(entity)) {
-    for (const corner of corners(local)) {
-      const x = corner.x * scale.x;
-      const y = corner.y * scale.y;
-      const point = {
-        x: origin.x + x * cos - y * sin,
-        y: origin.y + x * sin + y * cos,
-      };
-      found = found === undefined ? boundsAt(point) : grown(found, point);
-    }
-  }
-  return found;
+/** The world rectangle covering the preview's artwork or collider fallback. */
+export function worldBoundsOf(
+  entity: Entity,
+  inspector?: FacetReader,
+): WorldBounds | undefined {
+  return boundsOf(worldGeometryOf(entity, inspector));
 }
 
 /**
@@ -106,69 +66,25 @@ export function framedView(
   };
 }
 
-/**
- * Each visual's own rectangle, in the entity's local space.
- *
- * The pivot is subtracted because the renderer draws a display object at
- * `position + R·S·(point - pivot)`, and `SplitTextComponent` sets one for an
- * anchored block. Without the term a placement carrying anchored text frames
- * and hit-tests at a box its picture is not in.
- *
- * `VisualComponent.inspectRender()` reports this rectangle already in world
- * space. It is not used here because it reads the display object's matrix,
- * which the dormant preview refreshes at render time: a drag writes
- * `Transform` and asks for bounds in the same frame, so the answer would lag
- * the pointer by one frame.
- */
-/**
- * The one rectangle covering every visual an entity draws, in the entity's own
- * space rather than the world's, or `undefined` when it draws nothing.
- *
- * This is what a gizmo drawn on the placement's own box needs: the rectangle
- * before its transform is applied, so the box can be carried out through the
- * transform and turn with it.
- */
-export function localBoxOf(entity: Entity): WorldBounds | undefined {
-  return unionBounds([...localBoundsOf(entity)]);
+/** The footprint before the entity transform, used by the oriented gizmo. */
+export function localBoxOf(
+  entity: Entity,
+  inspector?: FacetReader,
+): WorldBounds | undefined {
+  return boundsOf(geometryOf(entity, inspector));
 }
 
-function* localBoundsOf(entity: Entity): Generator<WorldBounds> {
-  for (const component of entity.getAll()) {
-    if (!(component instanceof VisualComponent)) continue;
-    const bounds = component.renderObject.getLocalBounds();
-    const pivot = component.renderObject.pivot;
-    yield {
-      minX: bounds.x - pivot.x,
-      minY: bounds.y - pivot.y,
-      maxX: bounds.x + bounds.width - pivot.x,
-      maxY: bounds.y + bounds.height - pivot.y,
-    };
-  }
-}
-
-function corners(
-  bounds: WorldBounds,
-): readonly { readonly x: number; readonly y: number }[] {
-  return [
-    { x: bounds.minX, y: bounds.minY },
-    { x: bounds.maxX, y: bounds.minY },
-    { x: bounds.maxX, y: bounds.maxY },
-    { x: bounds.minX, y: bounds.maxY },
-  ];
-}
-
-function boundsAt(point: { x: number; y: number }): WorldBounds {
-  return { minX: point.x, minY: point.y, maxX: point.x, maxY: point.y };
-}
-
-function grown(
-  bounds: WorldBounds,
-  point: { x: number; y: number },
-): WorldBounds {
-  return {
-    minX: Math.min(bounds.minX, point.x),
-    minY: Math.min(bounds.minY, point.y),
-    maxX: Math.max(bounds.maxX, point.x),
-    maxY: Math.max(bounds.maxY, point.y),
-  };
+function boundsOf(
+  geometry: ReturnType<typeof geometryOf>,
+): WorldBounds | undefined {
+  return unionBounds(
+    geometry.outlines.flatMap((outline) =>
+      outline.vertices.map(({ x, y }) => ({
+        minX: x,
+        minY: y,
+        maxX: x,
+        maxY: y,
+      })),
+    ),
+  );
 }

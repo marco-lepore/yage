@@ -1,4 +1,5 @@
 import { defineLevelProject } from "@yagejs/level";
+import { ColliderRegion } from "./ColliderRegion.js";
 import { Chime } from "./Chime.js";
 import { Crate } from "./Crate.js";
 import { Slime } from "./Slime.js";
@@ -7,5 +8,5 @@ import { Torch } from "./Torch.js";
 
 // The editor and the game page build their catalog from this one declaration.
 export default defineLevelProject({
-  entities: [Crate, Chime, Torch, Switch, Slime],
+  entities: [Crate, Chime, Torch, Switch, Slime, ColliderRegion],
 });

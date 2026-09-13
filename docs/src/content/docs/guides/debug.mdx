@@ -634,6 +634,44 @@ component, so a custom graphical component opts in simply by exposing an
 `AnimatedSpriteComponent`, `GraphicsComponent`, `TextComponent`, and
 `SplitTextComponent` all implement it.
 
+### Reading authored collider geometry
+
+With `PhysicsPlugin` installed, you can read collider footprints even before
+the component has a physics body. This is useful for tools that keep entities
+inactive while editing:
+
+```typescript
+import { Transform } from "@yagejs/core";
+import { ColliderComponent } from "@yagejs/physics";
+
+const collider = entity.get(ColliderComponent);
+const facet = engine.inspector.getComponentFacet(collider, "collider");
+const transform = entity.get(Transform);
+const worldOutlines = facet?.outlines.map((outline) => ({
+  ...outline,
+  vertices: outline.vertices.map((point) => transform.localToWorld(point)),
+}));
+```
+
+`ColliderFacetSnapshot` contains `sensor` and `outlines`. Each
+`ColliderOutlineSnapshot` has `vertices` and `closed`. Vertices are local
+pixels with each part's offset and rotation already applied. Apply the
+entity's transform once to get world coordinates. Compound colliders return
+one outline per part. Polygons describe their convex hull; polylines stay
+open. Curves are approximated by line segments.
+
+Each read returns fresh geometry from the current collider configuration.
+It describes authored geometry, regardless of whether the collider is active
+or attached to an entity. It does not report live collision contacts. The same
+facet appears on component snapshots under `facets.collider`.
+
+`getComponentFacet(component, namespace)` reads one registered contributor
+without reflecting component fields or building a scene snapshot. It returns
+`undefined` when the namespace is absent, the contributor has no facet for
+that component, or inspection throws. The plugin owns registration and removes
+its contributor on teardown. Neither this query nor the collider facet needs
+`DebugPlugin`.
+
 #### Honest limits
 
 These are truths, not bugs to fix — keep them in mind when interpreting probe results:

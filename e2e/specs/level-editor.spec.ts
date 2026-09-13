@@ -15,6 +15,7 @@ import {
   type Page,
 } from "@playwright/test";
 import { waitForInspector } from "./helpers.js";
+import type { ColliderFacetSnapshot } from "@yagejs/physics";
 
 /**
  * The level editor, end to end: open a level, build it from the Actors strip,
@@ -1960,6 +1961,7 @@ test.describe("level editor", () => {
     await openEditor(page);
     const token = await tokenOf(page);
 
+    await page.keyboard.press("q");
     await openActors(page);
     await page.getByTestId("place-game.chime").click();
     const placed = await draftAfter(request, token, {
@@ -1986,6 +1988,78 @@ test.describe("level editor", () => {
     await expect(
       page.getByTestId(`hierarchy-item-${chime.id}`),
     ).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("edits invisible solid and sensor footprints while physics stays dormant", async ({
+    page,
+    request,
+  }) => {
+    useTemplate(path.join(LEVELS, "colliders.template.json"));
+    await page.goto("/");
+    await waitForInspector(page);
+    await expect(page.getByTestId("hierarchy-row-solid")).toBeVisible();
+    const token = await tokenOf(page);
+    await withoutSnapping(page);
+    await page.keyboard.press("q");
+    const facts = () =>
+      page.evaluate(() => {
+        return window
+          .__yage__!.inspector.snapshot()
+          .scenes.flatMap((scene) => scene.entities)
+          .filter((entity) =>
+            entity.components.some((component) => component.facets?.collider),
+          )
+          .map((entity) => ({
+            active: entity.active,
+            collider: entity.components.find(
+              (component) => component.facets?.collider,
+            )!.facets!.collider as ColliderFacetSnapshot,
+          }));
+      });
+    await expect.poll(facts).toHaveLength(2);
+    expect((await facts()).every((entity) => !entity.active)).toBe(true);
+    expect((await facts()).some((entity) => entity.collider?.sensor)).toBe(
+      true,
+    );
+
+    const solid = await clientPointOf(page, { x: -110, y: -80 });
+    await page.mouse.click(solid.x, solid.y);
+    await expect(page.getByTestId("hierarchy-item-solid")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    const drag = { x: 40, y: 30 };
+    const delta = await expectedWorldDelta(page, drag);
+    await dragFrom(page, { x: -160, y: -80 }, drag);
+    const moved = await draftAfter(request, token, {
+      undoDepth: 1,
+      redoDepth: 0,
+    });
+    expectPoint(
+      moved.document.entities.find((entity) => entity.id === "solid")!.transform
+        .position,
+      { x: -240 + delta.x, y: -100 + delta.y },
+    );
+
+    const sensor = await clientPointOf(page, { x: 150, y: -50 });
+    await page.mouse.click(sensor.x, sensor.y);
+    await expect(page.getByTestId("hierarchy-item-sensor")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    const width = page.getByTestId("field-width");
+    await width.fill("180");
+    await width.press("Enter");
+    await width.blur();
+    await draftAfter(request, token, { undoDepth: 2, redoDepth: 0 });
+    await page.getByTestId("hierarchy-row-solid").click();
+    const grown = await clientPointOf(page, { x: 240, y: -50 });
+    await page.mouse.click(grown.x, grown.y);
+    await expect(page.getByTestId("hierarchy-item-sensor")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect((await facts()).every((entity) => !entity.active)).toBe(true);
   });
 
   test("points a placement at another and loads the result", async ({
@@ -2072,6 +2146,11 @@ test.describe("level editor", () => {
       (entity) => !(entity.id in AUTHORED),
     );
     if (!created) throw new Error("the Actors strip created no switch.");
+
+    // Keep the target inside the canvas when the Actors strip wraps to another row.
+    const short = await canvasHeight(page);
+    await page.getByTestId("actors-toggle").click();
+    await expect.poll(() => canvasHeight(page)).toBeGreaterThan(short);
 
     await page.getByTestId("pick-door").click();
     await expect(page.getByTestId("field-door-picking")).toBeVisible();

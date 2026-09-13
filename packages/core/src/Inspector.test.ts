@@ -1919,3 +1919,66 @@ describe("Inspector facet contributors", () => {
     expect(inspector.snapshot().scenes[0]?.entities[0]?.facets).toBeUndefined();
   });
 });
+
+describe("targeted component facets", () => {
+  it("uses the registered contributor without reflecting state or running other contributors", () => {
+    const { inspector } = setup();
+    const component = new Health(10);
+    const unrelated = vi.fn(() => ({ ignored: true }));
+    const getter = vi.fn(() => {
+      throw new Error("not snapshotting state");
+    });
+    Object.defineProperty(component, "unrelatedState", { get: getter });
+    inspector.registerFacetContributor({
+      namespace: "other",
+      inspectComponent: unrelated,
+    });
+    inspector.registerFacetContributor({
+      namespace: "health",
+      inspectComponent: (candidate) =>
+        candidate instanceof Health ? { hp: candidate.hp } : undefined,
+    });
+    expect(inspector.getComponentFacet(component, "health")).toEqual({
+      hp: 10,
+    });
+    component.hp = 20;
+    expect(inspector.getComponentFacet(component, "health")).toEqual({
+      hp: 20,
+    });
+    expect(unrelated).not.toHaveBeenCalled();
+    expect(getter).not.toHaveBeenCalled();
+  });
+
+  it("shares snapshot omission and registration lifetime rules", () => {
+    const { inspector } = setup();
+    const component = new Health();
+    expect(inspector.getComponentFacet(component, "example")).toBeUndefined();
+    const old = inspector.registerFacetContributor({
+      namespace: "example",
+      inspectComponent: () => ({ value: 1 }),
+    });
+    const current = inspector.registerFacetContributor({
+      namespace: "example",
+      inspectComponent: () => ({ value: 2 }),
+    });
+    old();
+    expect(inspector.getComponentFacet(component, "example")).toEqual({
+      value: 2,
+    });
+    current();
+    expect(inspector.getComponentFacet(component, "example")).toBeUndefined();
+    for (const inspectComponent of [
+      () => null,
+      () => undefined,
+      () => {
+        throw new Error("unavailable");
+      },
+    ]) {
+      inspector.registerFacetContributor({
+        namespace: "example",
+        inspectComponent,
+      });
+      expect(inspector.getComponentFacet(component, "example")).toBeUndefined();
+    }
+  });
+});

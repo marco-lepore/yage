@@ -158,6 +158,37 @@ const TRANSLATE: OverlayView = {
 };
 
 describe("drawOverlay", () => {
+  it("fills closed collider outlines, distinguishes sensors and leaves polylines open", () => {
+    const vertices = [
+      { x: 10, y: 20 },
+      { x: 80, y: 20 },
+      { x: 80, y: 60 },
+    ];
+    const footprint = { vertices, closed: true, sensor: false, alpha: 1 };
+    const solid = calls({ ...EMPTY, colliders: [footprint] });
+    const sensor = calls({
+      ...EMPTY,
+      colliders: [{ ...footprint, sensor: true }],
+    });
+    const open = calls({
+      ...EMPTY,
+      colliders: [{ ...footprint, closed: false }],
+    });
+    const dimmed = calls({
+      ...EMPTY,
+      colliders: [{ ...footprint, alpha: 0.25 }],
+    });
+    expect(named(solid, "lineTo")).toContainEqual(["lineTo", 10, 20]);
+    expect(named(open, "lineTo")).not.toContainEqual(["lineTo", 10, 20]);
+    expect(named(solid, "fill")).toHaveLength(1);
+    expect(named(open, "fill")).toHaveLength(0);
+    expect(named(sensor, "stroke")[0]?.[1]).not.toBe(
+      named(solid, "stroke")[0]?.[1],
+    );
+    expect(named(sensor, "circle")).toHaveLength(vertices.length);
+    expect(colouredAlpha(dimmed)).toBe(colouredAlpha(solid) / 4);
+  });
+
   it("outlines a whole selection, quieter than the placements in it", () => {
     const covering = {
       center: { x: 100, y: 0 },

@@ -1,3 +1,4 @@
+import type { PreviewOutline } from "./geometry.js";
 import type { WorldBounds } from "../commands/index.js";
 import type {
   EditorPoint,
@@ -41,6 +42,10 @@ export interface OverlayTarget {
 export interface OverlayView {
   /** One rectangle per selected placement that covers any area. */
   readonly boxes: readonly WorldBounds[];
+  /** Collider fallback footprints, already transformed into world coordinates. */
+  readonly colliders?: readonly (PreviewOutline & { readonly alpha: number })[];
+  /** Connect each icon group to the entity origin it represents. */
+  readonly markLinks?: readonly OverlayLink[];
   /**
    * What a drag of the selection would take with it: every placement authored
    * under it that is not itself selected. Marked the same way and more
@@ -244,6 +249,38 @@ export function drawOverlay(target: OverlayTarget, view: OverlayView): void {
     casing: (CARRIED_LINE_PIXELS + CASING_PIXELS) * view.perScreenPixel,
     alpha: CARRIED_ALPHA,
   };
+
+  for (const outline of view.colliders ?? []) {
+    const first = outline.vertices[0];
+    if (!first) continue;
+    target.moveTo(first.x, first.y);
+    for (const point of outline.vertices.slice(1))
+      target.lineTo(point.x, point.y);
+    if (outline.closed) target.lineTo(first.x, first.y);
+    const color = outline.sensor ? 0x38bdf8 : 0xfbbf24;
+    if (outline.closed) target.fill({ color, alpha: 0.09 * outline.alpha });
+    target.stroke({ color, width: line, alpha: 0.75 * outline.alpha });
+    if (outline.sensor) {
+      // A dotted edge distinguishes sensors even without colour perception.
+      for (const point of outline.vertices) {
+        target
+          .circle(point.x, point.y, 1.5 * view.perScreenPixel)
+          .fill({ color, alpha: outline.alpha });
+      }
+    }
+  }
+  for (const link of view.markLinks ?? []) {
+    target
+      .moveTo(link.from.x, link.from.y)
+      .lineTo(link.to.x, link.to.y)
+      .stroke({ color: CASING_COLOR, width: casing, alpha: 0.55 })
+      .moveTo(link.from.x, link.from.y)
+      .lineTo(link.to.x, link.to.y)
+      .stroke({ color: MARKER_COLOR, width: view.perScreenPixel, alpha: 0.5 });
+    target
+      .circle(link.from.x, link.from.y, 2 * view.perScreenPixel)
+      .fill({ color: MARKER_COLOR });
+  }
 
   // Under everything else: a line ends on two origins, and an origin is where
   // a gizmo handle, a crosshair and a row of marks all sit.

@@ -76,20 +76,13 @@ import {
   type OverlayView,
   type ParamHandle,
 } from "./overlay.js";
-import {
-  marksOf,
-  placedMarks,
-  pressesMark,
-  type ComponentMark,
-  type PlacedMark,
-} from "./marks.js";
+import { marksOf, pressesMark, type PlacedMark } from "./marks.js";
 import { drawGuides, gridSteps, type GuideView } from "./guides.js";
-import {
-  containsPoint,
-  framedView,
-  localBoxOf,
-  worldBoundsOf,
-} from "./bounds.js";
+import { framedView, localBoxOf, worldBoundsOf } from "./bounds.js";
+import { MarkLayout, type PlacedMarkGroup } from "./markLayout.js";
+import { markObstacles } from "./markObstacles.js";
+import { outlineContains, worldGeometryOf } from "./geometry.js";
+import { DIMMED_ALPHA } from "./dormant.js";
 import { DestroyFlushSystem } from "./DestroyFlushSystem.js";
 import type { DormantPlacement } from "./dormant.js";
 import {
@@ -164,14 +157,7 @@ export class PreviewCoordinator {
   private instance: LevelInstance | undefined;
   private placements: readonly DormantPlacement[] = [];
   private byPlacementId = new Map<string, Entity>();
-  /**
-   * The placements carrying a component the preview draws nothing for, in
-   * document order.
-   *
-   * Read once per build rather than once per frame: an entity's components are
-   * fixed for the life of a projection, and the overlay redraws every frame.
-   */
-  private marked: readonly MarkedPlacement[] = [];
+  private markLayout = new MarkLayout();
   /**
    * Every reference the open document holds, in document order.
    *
@@ -477,9 +463,8 @@ export class PreviewCoordinator {
   }
 
   /**
-   * The placement under a point, or null. Later placements win, because they
-   * are the ones drawn on top. The point is in client pixels, the same ones a
-   * pointer event carries.
+   * The placement under a point, or null, following overlay and artwork order.
+   * The point is in client pixels, the same ones a pointer event carries.
    */
   hitTest(clientPoint: { x: number; y: number }): string | null {
     const world = this.screenToWorld(clientPoint);
@@ -506,15 +491,14 @@ export class PreviewCoordinator {
   }
 
   /**
-   * The placement at a world point, or null. Later placements win, because
-   * they are the ones drawn on top. `among` narrows what can be hit at all, so
+   * The placement at a world point, or null. Within each representation, later
+   * placements win. `among` narrows what can be hit at all, so
    * a press passes through a placement no press can choose, and `hidden` is
    * what the developer has taken off the screen — a press reaches whatever was
    * behind it.
    *
-   * A mark is tested before the artwork: it is drawn over everything the level
-   * draws, and for a placement that draws nothing it is the only thing there
-   * is to press.
+   * Marks and collider footprints are tested before artwork because the
+   * editor overlay draws them above the level.
    */
   private hitAmong(
     world: EditorPoint,
@@ -523,14 +507,30 @@ export class PreviewCoordinator {
     const hidden = this.hiddenClosed();
     const marked = this.markAtWorld(world, among, hidden);
     if (marked) return marked.id;
+    let artworkHit: string | null = null;
     for (let i = this.placements.length - 1; i >= 0; i -= 1) {
       const placement = this.placements[i];
       if (!placement) continue;
       if (among && !among.has(placement.id)) continue;
       if (hidden.has(placement.id)) continue;
-      if (containsPoint(placement.entity, world)) return placement.id;
+      const geometry = worldGeometryOf(
+        placement.entity,
+        this.engine?.inspector,
+      );
+      if (
+        !geometry.outlines.some((outline) =>
+          outlineContains(
+            outline,
+            world,
+            4 * this.perScreenPixel(this.store.getState()),
+          ),
+        )
+      )
+        continue;
+      if (geometry.kind === "collider") return placement.id;
+      artworkHit ??= placement.id;
     }
-    return null;
+    return artworkHit;
   }
 
   /**
@@ -608,7 +608,7 @@ export class PreviewCoordinator {
     for (const placement of this.placements) {
       const id = this.idOf(placement.entity);
       if (id === undefined || hidden.has(id)) continue;
-      const bounds = worldBoundsOf(placement.entity);
+      const bounds = worldBoundsOf(placement.entity, this.engine?.inspector);
       const inside = bounds
         ? bounds.minX >= area.minX &&
           bounds.minY >= area.minY &&
@@ -630,7 +630,7 @@ export class PreviewCoordinator {
     this.instance = undefined;
     this.placements = [];
     this.byPlacementId = new Map();
-    this.marked = [];
+    this.markLayout = new MarkLayout();
     this.links = [];
     this.pointFieldsByType = new Map();
     this.lease?.releaseAll();
@@ -690,7 +690,7 @@ export class PreviewCoordinator {
     this.instance = undefined;
     this.placements = [];
     this.byPlacementId = new Map();
-    this.marked = [];
+    this.markLayout = new MarkLayout();
 
     return buildBestEffort(
       prepared,
@@ -714,7 +714,6 @@ export class PreviewCoordinator {
   ): void {
     const placements: DormantPlacement[] = [];
     const byId = new Map<string, Entity>();
-    const marked: MarkedPlacement[] = [];
     for (const placement of document.entities) {
       const entity = instance.get(placement.id);
       if (!entity) continue;
@@ -724,12 +723,10 @@ export class PreviewCoordinator {
         entity,
         authoredActive: placement.active,
       });
-      const marks = marksOf(entity);
-      if (marks.length > 0) marked.push({ id: placement.id, entity, marks });
     }
     this.placements = placements;
     this.byPlacementId = byId;
-    this.marked = marked;
+    this.markLayout = new MarkLayout();
   }
 
   /**
@@ -830,6 +827,7 @@ export class PreviewCoordinator {
       ),
     );
     const marquee = state.marquee;
+    const groups = this.markGroups(state);
     return {
       // Only the rectangles: every selected placement gets a crosshair on its
       // origin below, and for one that draws nothing that is the same mark at
@@ -838,7 +836,12 @@ export class PreviewCoordinator {
       carried,
       gizmo: shownAsOverlay(gizmo),
       origins: this.originsOf(state),
-      marks: this.marksShown(state),
+      marks: groups.flatMap((group) => group.marks),
+      markLinks: groups.map((group) => ({
+        from: group.origin,
+        to: group.center,
+      })),
+      colliders: this.collidersShown(),
       links: this.linksShown(state),
       handles: this.handlesShown(state),
       ...(marquee === undefined
@@ -870,35 +873,48 @@ export class PreviewCoordinator {
       .map((entity) => originOf(entity));
   }
 
-  /**
-   * Every mark on screen: a row over the origin of each placement carrying a
-   * component the preview draws nothing for.
-   *
-   * Shown for every placement rather than for the selection alone. A placement
-   * whose only components are a light or a panel draws nothing at all, so the
-   * marks are what says it is there and what can be pressed to select it — and
-   * a placement that does draw something can still carry an emitter nobody
-   * would otherwise see.
-   */
-  private marksShown(state: EditorState): readonly PlacedMark[] {
-    const perScreenPixel = this.perScreenPixel(state);
-    // A placement whose only components are a light or a panel draws no
-    // artwork, so an alpha says nothing about it. Dropping its marks is what
-    // fades it, and dropping them is also the whole of what hiding one means.
+  /** One layout supplies drawing, hover labels and clicking. */
+  private markGroups(state: EditorState): readonly PlacedMarkGroup[] {
     const dimmed = this.dimmed();
     const hidden = this.hiddenClosed();
-    const shown: PlacedMark[] = [];
-    for (const placement of this.marked) {
-      if (dimmed.has(placement.id) || hidden.has(placement.id)) continue;
-      shown.push(
-        ...placedMarks(
-          placement.marks,
-          originOf(placement.entity),
-          perScreenPixel,
-        ),
+    const groups = this.placements
+      .filter(
+        (placement) => !hidden.has(placement.id) && !dimmed.has(placement.id),
+      )
+      .map((placement) => ({
+        id: placement.id,
+        origin: originOf(placement.entity),
+        marks: marksOf(placement.entity, this.engine?.inspector),
+      }));
+    const gizmo = state.pick ? undefined : shownAsOverlay(this.gizmoOf(state));
+    return this.markLayout.place(
+      groups,
+      this.perScreenPixel(state),
+      this.viewportBounds(),
+      markObstacles(
+        gizmo,
+        this.handlesShown(state),
+        this.perScreenPixel(state),
+      ),
+    );
+  }
+
+  private collidersShown(): NonNullable<OverlayView["colliders"]> {
+    const hidden = this.hiddenClosed();
+    const dimmed = this.dimmed();
+    return this.placements.flatMap((placement) => {
+      if (hidden.has(placement.id)) return [];
+      const geometry = worldGeometryOf(
+        placement.entity,
+        this.engine?.inspector,
       );
-    }
-    return shown;
+      return geometry.kind === "collider"
+        ? geometry.outlines.map((outline) => ({
+            ...outline,
+            alpha: dimmed.has(placement.id) ? DIMMED_ALPHA : 1,
+          }))
+        : [];
+    });
   }
 
   /**
@@ -998,17 +1014,16 @@ export class PreviewCoordinator {
     among: ReadonlySet<string> | undefined,
     hidden: ReadonlySet<string>,
   ): { readonly id: string; readonly mark: PlacedMark } | undefined {
-    const perScreenPixel = this.perScreenPixel(this.store.getState());
-    for (let i = this.marked.length - 1; i >= 0; i -= 1) {
-      const placement = this.marked[i];
-      if (!placement) continue;
-      if (among && !among.has(placement.id)) continue;
-      if (hidden.has(placement.id)) continue;
-      const origin = originOf(placement.entity);
-      for (const mark of placedMarks(placement.marks, origin, perScreenPixel)) {
-        if (pressesMark(mark.at, world, perScreenPixel)) {
-          return { id: placement.id, mark };
-        }
+    const state = this.store.getState();
+    const perScreenPixel = this.perScreenPixel(state);
+    const groups = this.markGroups(state);
+    for (let i = groups.length - 1; i >= 0; i -= 1) {
+      const group = groups[i];
+      if (!group || (among && !among.has(group.id)) || hidden.has(group.id))
+        continue;
+      for (const mark of group.marks) {
+        if (pressesMark(mark.at, world, perScreenPixel))
+          return { id: group.id, mark };
       }
     }
     return undefined;
@@ -1032,7 +1047,7 @@ export class PreviewCoordinator {
       if (id === skip) continue;
       const entity = this.byPlacementId.get(id);
       if (!entity) continue;
-      const bounds = worldBoundsOf(entity);
+      const bounds = worldBoundsOf(entity, this.engine?.inspector);
       if (bounds && hasArea(bounds)) boxes.push(bounds);
       else points.push(originOf(entity));
     }
@@ -1056,7 +1071,10 @@ export class PreviewCoordinator {
       const entity = this.byPlacementId.get(id);
       measured.set(
         id,
-        entity ? (worldBoundsOf(entity) ?? pointBounds(entity)) : undefined,
+        entity
+          ? (worldBoundsOf(entity, this.engine?.inspector) ??
+              pointBounds(entity))
+          : undefined,
       );
     }
     return measured;
@@ -1116,6 +1134,21 @@ export class PreviewCoordinator {
   guideView(): GuideView | undefined {
     const state = this.store.getState();
     if (!state.view.guides) return undefined;
+    const world = this.viewportBounds();
+    const renderer = this.engine?.context.tryResolve(RendererKey);
+    if (!world || !renderer) return undefined;
+    return {
+      world,
+      // The design size, not what is on screen: the rectangle says what the
+      // project renders, and `visibleVirtualRect` would say how wide the
+      // developer left the viewport panel.
+      viewport: renderer.virtualSize,
+      perScreenPixel: this.perScreenPixel(state),
+      step: state.view.step,
+    };
+  }
+
+  private viewportBounds(): WorldBounds | undefined {
     const camera = this.scene?.camera;
     const renderer = this.engine?.context.tryResolve(RendererKey);
     if (!camera || !renderer) return undefined;
@@ -1125,15 +1158,7 @@ export class PreviewCoordinator {
       canvas.x + canvas.width,
       canvas.y + canvas.height,
     );
-    return {
-      world: { minX: min.x, minY: min.y, maxX: max.x, maxY: max.y },
-      // The design size, not what is on screen: the rectangle says what the
-      // project renders, and `visibleVirtualRect` would say how wide the
-      // developer left the viewport panel.
-      viewport: renderer.virtualSize,
-      perScreenPixel: this.perScreenPixel(state),
-      step: state.view.step,
-    };
+    return { minX: min.x, minY: min.y, maxX: max.x, maxY: max.y };
   }
 
   /**
@@ -1286,8 +1311,11 @@ export class PreviewCoordinator {
     // box is a shape of its own, drawn over markers that stay.
     const alone = ids.length === 1;
     const covering = alone
-      ? orientedBoxOf(active.entity)
-      : coveringBox(entities.map(boxAround), 0);
+      ? orientedBoxOf(active.entity, this.engine?.inspector)
+      : coveringBox(
+          entities.map((entity) => boxAround(entity, this.engine?.inspector)),
+          0,
+        );
     // Where the handles sit if nothing holds them: the point the placements
     // have reached this redraw.
     const live: EditorPoint =
@@ -1391,7 +1419,8 @@ export class PreviewCoordinator {
     state: EditorState,
     active: { readonly id: string; readonly entity: Entity },
   ): UnscaledSides {
-    const local = localBoxOf(active.entity) ?? SUBSTITUTE_BOX;
+    const local =
+      localBoxOf(active.entity, this.engine?.inspector) ?? SUBSTITUTE_BOX;
     const world = active.entity.get(Transform).worldScale;
     const parent = parentWorld(
       state.document,
@@ -1451,7 +1480,9 @@ export class PreviewCoordinator {
     const each: WorldBounds[] = [];
     for (const id of ids) {
       const entity = this.byPlacementId.get(id);
-      const bounds = entity ? worldBoundsOf(entity) : undefined;
+      const bounds = entity
+        ? worldBoundsOf(entity, this.engine?.inspector)
+        : undefined;
       if (bounds) each.push(bounds);
     }
     return unionBounds(each);
@@ -1635,13 +1666,6 @@ function pointBounds(entity: Entity): WorldBounds {
 function originOf(entity: Entity): EditorPoint {
   const position = entity.get(Transform).worldPosition;
   return { x: position.x, y: position.y };
-}
-
-/** A placement carrying components the preview draws nothing for. */
-interface MarkedPlacement {
-  readonly id: string;
-  readonly entity: Entity;
-  readonly marks: readonly ComponentMark[];
 }
 
 /** What the viewport is drawing over the selection. */
