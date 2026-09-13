@@ -37,7 +37,7 @@ import {
 import { applyFlexContainerProps } from "./internal/flex-container.js";
 import type { FlexContainerDefaults } from "./internal/flex-container.js";
 
-/** What a panel lays its children out as when the caller says nothing. */
+/** What a panel's container props fall back to when one is dropped. */
 const PANEL_DEFAULTS: FlexContainerDefaults = {
   direction: "column",
   alignItems: "flex-start",

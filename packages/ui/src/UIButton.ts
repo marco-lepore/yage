@@ -47,7 +47,10 @@ const DEFAULT_BG: ColorBackground = { color: 0x444444, alpha: 1, radius: 4 };
 const HOVER_FACTOR = 1.25;
 const PRESS_FACTOR = 0.75;
 
-/** What a button lays its children out as when the caller says nothing. */
+/**
+ * What a button lays its children out as. The constructor passes all three, so
+ * these are both the starting state and what a dropped prop falls back to.
+ */
 const BUTTON_DEFAULTS: FlexContainerDefaults = {
   direction: "column",
   alignItems: "center",

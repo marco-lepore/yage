@@ -37,7 +37,11 @@ export interface FlexContainerProps {
   justifyContent?: JustifyContent;
 }
 
-/** What each prop resolves to when the element is given none. */
+/**
+ * What each prop falls back to when its key is present but holds `undefined`.
+ * A prop whose key never arrives is not set at all, so the node keeps Yoga's
+ * own default — notably `stretch` on the cross axis.
+ */
 export interface FlexContainerDefaults {
   direction: FlexDirection;
   alignItems: AlignItems;
