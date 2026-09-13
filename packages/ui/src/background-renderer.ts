@@ -22,6 +22,14 @@ export class BackgroundRenderer {
   private opts: BackgroundOptions | undefined;
   private lastWidth = 0;
   private lastHeight = 0;
+  // Raised whenever the drawn content would differ at an unchanged size: a
+  // new options object, a newly created display object, or a destroyed one.
+  // `resize` skips its redraw only while this is down AND the size matches
+  // the last draw, so a same-size colour swap (a button's hover state) still
+  // repaints. A `NaN` size sentinel cannot stand in for this flag, because
+  // `set` re-applies the cached size under `lastWidth > 0 || lastHeight > 0`
+  // and `NaN > 0` is false.
+  private needsRedraw = true;
 
   /** Create or replace the background display object. */
   set(
@@ -29,6 +37,8 @@ export class BackgroundRenderer {
     parent: DisplayContainer,
     insertIndex = 0,
   ): void {
+    this.needsRedraw = true;
+
     // If the type of background changed, destroy the old one
     if (this.displayObject) {
       const wasTexture = this.opts && isTextureBackground(this.opts);
@@ -65,11 +75,21 @@ export class BackgroundRenderer {
     }
   }
 
-  /** Resize the background to match Yoga computed dimensions. */
+  /**
+   * Resize the background to match Yoga computed dimensions. A redraw at a
+   * size already drawn is skipped: re-tessellating an unchanged rounded
+   * rectangle every frame is the package's largest per-frame allocation.
+   */
   resize(w: number, h: number): void {
+    if (!this.needsRedraw && w === this.lastWidth && h === this.lastHeight) {
+      return;
+    }
+
     this.lastWidth = w;
     this.lastHeight = h;
 
+    // Nothing to draw yet. Leave the flag raised so the first draw after
+    // `set` creates the display object still gets through.
     if (!this.displayObject || !this.opts) return;
 
     if (isTextureBackground(this.opts)) {
@@ -77,6 +97,8 @@ export class BackgroundRenderer {
     } else {
       this.drawColor(this.opts, w, h);
     }
+
+    this.needsRedraw = false;
   }
 
   /** Clean up the display object. */
@@ -175,6 +197,7 @@ export class BackgroundRenderer {
   }
 
   private destroyDisplayObject(): void {
+    this.needsRedraw = true;
     if (this.displayObject) {
       (this.displayObject as unknown as DisplayContainer).removeFromParent();
       (this.displayObject as unknown as DisplayContainer).destroy();

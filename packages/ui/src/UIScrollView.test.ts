@@ -77,7 +77,10 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockGraphics extends MockContainer {
+    /** How many times the geometry has been rebuilt. */
+    drawCount = 0;
     clear(): MockGraphics {
+      this.drawCount++;
       return this;
     }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -477,4 +480,100 @@ describe("UIScrollView", () => {
     const { sv } = buildScrollView(3);
     expect(() => sv.destroy()).not.toThrow();
   });
+
+  describe("redraw gating", () => {
+    /** The Graphics the thumb is drawn into. */
+    function thumb(sv: UIScrollView): InstanceType<typeof mocks.MockGraphics> {
+      const gfx = (
+        sv as unknown as {
+          scrollbarGfx: InstanceType<typeof mocks.MockGraphics> | undefined;
+        }
+      ).scrollbarGfx;
+      if (!gfx) throw new Error("the scroll view has not drawn a scrollbar");
+      return gfx;
+    }
+
+    /** The Graphics the clip mask is drawn into. */
+    function clipMask(
+      sv: UIScrollView,
+    ): InstanceType<typeof mocks.MockGraphics> {
+      const mask = (sv.displayObject as unknown as MockContainerLike).mask;
+      expect(mask).toBeTruthy();
+      return mask as InstanceType<typeof mocks.MockGraphics>;
+    }
+
+    it("draws nothing again on a layout pass that changed nothing", () => {
+      const { sv } = buildScrollView(6);
+      const bar = thumb(sv);
+      const mask = clipMask(sv);
+      const barDraws = bar.drawCount;
+      const maskDraws = mask.drawCount;
+
+      layout(sv);
+      layout(sv);
+
+      expect(bar.drawCount).toBe(barDraws);
+      expect(mask.drawCount).toBe(maskDraws);
+      sv.destroy();
+    });
+
+    it("redraws the thumb when only the cross-axis size changes", () => {
+      // A vertical thumb's fixed edge is `viewportWidth - thickness - margin`,
+      // so a width-only resize moves it even though the scroll axis, the
+      // offset and the scroll range are all unchanged.
+      const { sv } = buildScrollView(6);
+      const bar = thumb(sv);
+      const before = bar.drawCount;
+      const mainBefore = sv.maxScroll;
+
+      sv.update({ width: 260 });
+      layout(sv);
+
+      expect(sv.maxScroll).toBe(mainBefore);
+      expect(sv.scrollOffset).toBe(0);
+      expect(bar.drawCount).toBe(before + 1);
+      sv.destroy();
+    });
+
+    it("redraws the thumb after a scrollbar style change at an unchanged size", () => {
+      const { sv } = buildScrollView(6);
+      const bar = thumb(sv);
+      const before = bar.drawCount;
+
+      sv.update({ scrollbar: { thickness: 12, color: 0x00ff00 } });
+      layout(sv);
+
+      expect(bar.drawCount).toBe(before + 1);
+      sv.destroy();
+    });
+
+    it("redraws the thumb when the scroll offset moves", () => {
+      const { sv } = buildScrollView(6);
+      const bar = thumb(sv);
+      const before = bar.drawCount;
+
+      sv.scrollTo(40);
+      layout(sv);
+
+      expect(bar.drawCount).toBe(before + 1);
+      sv.destroy();
+    });
+
+    it("redraws the clip mask when the viewport size changes", () => {
+      const { sv } = buildScrollView(6);
+      const mask = clipMask(sv);
+      const before = mask.drawCount;
+
+      sv.update({ width: 260 });
+      layout(sv);
+
+      expect(mask.drawCount).toBe(before + 1);
+      sv.destroy();
+    });
+  });
 });
+
+/** What the pixi mock exposes for a container carrying a mask. */
+interface MockContainerLike {
+  mask: unknown;
+}

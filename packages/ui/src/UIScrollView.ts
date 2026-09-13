@@ -98,6 +98,21 @@ export class UIScrollView implements UIContainerElement {
   private _contentLeft = 0;
   private _contentTop = 0;
 
+  // Size the clip mask was last drawn at. `NaN` never equals a computed size,
+  // so the first draw gets through.
+  private _maskWidth = Number.NaN;
+  private _maskHeight = Number.NaN;
+
+  // State the scrollbar thumb was last drawn from. `_sbDirty` covers the
+  // inputs that are not numbers on this list: a replaced scrollbar style, a
+  // direction flip, a freshly created Graphics, and coming back from the
+  // hidden branch (where the bar is disabled or the content fits).
+  private _sbViewportMain = Number.NaN;
+  private _sbViewportCross = Number.NaN;
+  private _sbOffset = Number.NaN;
+  private _sbMaxScroll = Number.NaN;
+  private _sbDirty = true;
+
   private _dragging = false;
   private _panning = false;
   private _dragStart = 0;
@@ -260,7 +275,14 @@ export class UIScrollView implements UIContainerElement {
     // Recurse so the card subtrees get their Yoga-computed positions.
     this.content.applyLayout();
 
-    this.maskHandle?.redraw();
+    if (
+      this.maskHandle &&
+      (this._vw !== this._maskWidth || this._vh !== this._maskHeight)
+    ) {
+      this._maskWidth = this._vw;
+      this._maskHeight = this._vh;
+      this.maskHandle.redraw();
+    }
     if (this.bgRenderer && this.bgOpts) {
       this.bgRenderer.resize(this._vw, this._vh);
     }
@@ -285,14 +307,38 @@ export class UIScrollView implements UIContainerElement {
   private _drawScrollbar(viewportMain: number, contentMain: number): void {
     if (!this._sb.enabled || this._maxScroll <= 0) {
       if (this.scrollbarGfx) this.scrollbarGfx.visible = false;
+      // The bar is hidden. Force the next visible draw so a bar that comes
+      // back at the state it was hidden in is redrawn rather than gated out.
+      this._sbDirty = true;
       return;
     }
     if (!this.scrollbarGfx) {
       this.scrollbarGfx = new Graphics();
       this.viewport.addChild(this.scrollbarGfx);
+      this._sbDirty = true;
     }
     const g = this.scrollbarGfx;
     g.visible = true;
+
+    // The cross-axis viewport size is part of the gate, not only the main
+    // axis: the thumb's fixed edge sits at `_vw - thickness - margin` for a
+    // vertical bar and `_vh - thickness - margin` for a horizontal one, so a
+    // cross-axis-only resize moves the thumb.
+    const viewportCross = this.vertical ? this._vw : this._vh;
+    if (
+      !this._sbDirty &&
+      viewportMain === this._sbViewportMain &&
+      viewportCross === this._sbViewportCross &&
+      this._offset === this._sbOffset &&
+      this._maxScroll === this._sbMaxScroll
+    ) {
+      return;
+    }
+    this._sbViewportMain = viewportMain;
+    this._sbViewportCross = viewportCross;
+    this._sbOffset = this._offset;
+    this._sbMaxScroll = this._maxScroll;
+    this._sbDirty = false;
 
     const { thickness, margin, radius, color, alpha, minThumb } = this._sb;
     const thumbLen = Math.max(
@@ -416,7 +462,11 @@ export class UIScrollView implements UIContainerElement {
   update(props: Partial<UIScrollViewProps>): void {
     if ("onScroll" in props) this.onScroll = props.onScroll;
     if ("scrollbar" in props) {
+      // A replaced style changes thickness, margin, radius, colour, alpha or
+      // minimum thumb length without moving the viewport, the offset or the
+      // scroll range, so the numeric gate alone would keep the old thumb.
       this._sb = resolveScrollbar(props.scrollbar);
+      this._sbDirty = true;
     }
     if ("consumeInput" in props) {
       applyConsumeInput(this.viewport, props.consumeInput);
@@ -441,6 +491,9 @@ export class UIScrollView implements UIContainerElement {
           vertical ? FlexDirection.Column : FlexDirection.Row,
         );
         this.content.update({ direction: vertical ? "column" : "row" });
+        // Main and cross swap, so the cached pair no longer describes the
+        // thumb even on a square viewport.
+        this._sbDirty = true;
         // The scroll axis changed — the old offset is meaningless on it.
         // Leave _lastNotified untouched so the next _notify() (in
         // applyLayout) emits the reset to onScroll consumers.
