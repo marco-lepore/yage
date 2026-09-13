@@ -508,6 +508,98 @@ describe("UIText bitmap-in-style warning", () => {
     );
   });
 
+  describe("wrapping with both axes pinned", () => {
+    /** The Pixi text object behind a UIText. */
+    function pixiText(t: UIText): { style: Record<string, unknown> } {
+      return t.displayObject as unknown as { style: Record<string, unknown> };
+    }
+
+    function layout(t: UIText): void {
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      t.applyLayout?.();
+    }
+
+    it("wraps a text given both a width and a height", () => {
+      // Yoga calls no measure function when both axes are definite, and the
+      // measure callback is the only other place wrap is switched on.
+      const t = new UIText({
+        children: "one two three four five",
+        width: 60,
+        height: 80,
+      });
+      layout(t);
+
+      expect(pixiText(t).style.wordWrap).toBe(true);
+      expect(pixiText(t).style.wordWrapWidth).toBe(60);
+    });
+
+    it("leaves a truncating text on one line", () => {
+      const t = new UIText({
+        children: "one two three four five",
+        width: 60,
+        height: 20,
+        truncate: "ellipsis",
+      });
+      layout(t);
+
+      expect(pixiText(t).style.wordWrap).toBe(false);
+    });
+
+    it("follows a width change", () => {
+      const t = new UIText({
+        children: "one two three",
+        width: 60,
+        height: 80,
+      });
+      layout(t);
+      t.update({ width: 90 });
+      layout(t);
+
+      expect(pixiText(t).style.wordWrapWidth).toBe(90);
+    });
+  });
+
+  describe("truncateWith", () => {
+    it("appends the string the caller asked for", () => {
+      const t = new UIText({
+        children: "a long enough label",
+        width: 60,
+        truncate: "ellipsis",
+        truncateWith: "...",
+      });
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+
+      const rendered = (t.displayObject as unknown as { text: string }).text;
+      expect(rendered.endsWith("...")).toBe(true);
+    });
+
+    it("defaults to the ellipsis character", () => {
+      const t = new UIText({
+        children: "a long enough label",
+        width: 60,
+        truncate: "ellipsis",
+      });
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+
+      const rendered = (t.displayObject as unknown as { text: string }).text;
+      expect(rendered.endsWith("\u2026")).toBe(true);
+    });
+
+    it("re-truncates when the string changes", () => {
+      const t = new UIText({
+        children: "a long enough label",
+        width: 60,
+        truncate: "ellipsis",
+      });
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      t.update({ truncateWith: "..." });
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+
+      const rendered = (t.displayObject as unknown as { text: string }).text;
+      expect(rendered.endsWith("...")).toBe(true);
+    });
+  });
+
   it("does not warn for a correct sibling bitmap prop", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     new UIText({ children: "hi", bitmap: true, style: { fill: 0xffffff } });

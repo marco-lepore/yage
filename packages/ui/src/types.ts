@@ -259,10 +259,15 @@ export interface UITextProps
    *   - omitted: wrap to the layout width (default)
    *   - `"clip"`: render a single line; visible overflow is cut by the
    *     parent panel's `overflow` setting.
-   *   - `"ellipsis"`: render a single line truncated with `…` so the text
-   *     fits within the layout width.
+   *   - `"ellipsis"`: render a single line truncated with {@link
+   *     UITextProps.truncateWith} so the text fits within the layout width.
    */
   truncate?: "clip" | "ellipsis";
+  /**
+   * String the `"ellipsis"` truncate mode appends. Defaults to `"…"`
+   * (U+2026), which several pixel fonts lack — pass `"..."` for one of those.
+   */
+  truncateWith?: string;
   /**
    * Render with a bitmap font instead of canvas-rasterised `Text`. Pixel-art
    * escape hatch — canvas text blurs at non-integer scale on non-Retina
@@ -329,6 +334,12 @@ export interface UIButtonProps
    * (i18n) labels.
    */
   truncate?: "clip" | "ellipsis";
+  /**
+   * String the `"ellipsis"` truncate mode appends, forwarded to the internal
+   * label. Defaults to `"…"` (U+2026), which several pixel fonts lack — pass
+   * `"..."` for one of those.
+   */
+  truncateWith?: string;
   disabled?: boolean;
   /**
    * Direction of the button's own children, for icon-plus-label content added
