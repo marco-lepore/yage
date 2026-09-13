@@ -7,6 +7,7 @@ import type {
 } from "./types.js";
 import { isTextureBackground } from "./types.js";
 import { resolveTextureInput } from "@yagejs/renderer";
+import { warnNineSliceTooSmall } from "./internal/nine-slice-guard.js";
 
 /**
  * Manages a background display object for UI elements.
@@ -180,6 +181,15 @@ export class BackgroundRenderer {
 
   private resizeTexture(w: number, h: number): void {
     if (!this.displayObject) return;
+    if (this.displayObject instanceof NineSliceSprite) {
+      warnNineSliceTooSmall(
+        this,
+        this.displayObject,
+        w,
+        h,
+        "UI nine-slice background",
+      );
+    }
     this.displayObject.width = w;
     this.displayObject.height = h;
   }
