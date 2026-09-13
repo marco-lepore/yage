@@ -533,9 +533,10 @@ describe("UIText bitmap-in-style warning", () => {
       expect(pixiText(t).style.wordWrapWidth).toBe(60);
     });
 
-    it("leaves a truncating text on one line", () => {
+    it("truncates a truncating text onto one line", () => {
+      const source = "one two three four five";
       const t = new UIText({
-        children: "one two three four five",
+        children: source,
         width: 60,
         height: 20,
         truncate: "ellipsis",
@@ -543,6 +544,56 @@ describe("UIText bitmap-in-style warning", () => {
       layout(t);
 
       expect(pixiText(t).style.wordWrap).toBe(false);
+      expect(renderedText(t)).not.toBe(source);
+      expect(renderedText(t).endsWith("\u2026")).toBe(true);
+    });
+
+    it("re-truncates after the text changes", () => {
+      const t = new UIText({
+        children: "one two three four five",
+        width: 60,
+        height: 20,
+        truncate: "ellipsis",
+      });
+      layout(t);
+      const next = "a completely different label";
+      t.update({ children: next });
+      layout(t);
+
+      expect(renderedText(t)).not.toBe(next);
+      expect(renderedText(t).endsWith("\u2026")).toBe(true);
+    });
+
+    it("wraps again after the style is replaced", () => {
+      const t = new UIText({
+        children: "one two three four five",
+        width: 60,
+        height: 80,
+      });
+      layout(t);
+      // A full style replace drops the wrap the layout pass had switched on.
+      t.setStyle({ fill: 0xff0000 });
+      layout(t);
+
+      expect(pixiText(t).style.wordWrap).toBe(true);
+      expect(pixiText(t).style.wordWrapWidth).toBe(60);
+    });
+
+    it("wraps again after truncation is turned on and back off", () => {
+      const t = new UIText({
+        children: "one two three four five",
+        width: 60,
+        height: 80,
+      });
+      layout(t);
+      t.update({ truncate: "ellipsis" });
+      layout(t);
+      t.update({ truncate: undefined });
+      layout(t);
+
+      expect(pixiText(t).style.wordWrap).toBe(true);
+      expect(pixiText(t).style.wordWrapWidth).toBe(60);
+      expect(renderedText(t)).toBe("one two three four five");
     });
 
     it("follows a width change", () => {
