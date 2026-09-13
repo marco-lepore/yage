@@ -104,7 +104,7 @@ emitter.burst(50); // spawn at the entity's world position
 emitter.burst(10, x, y); // burst at an explicit world position
 emitter.burst(10, { angle: aim }); // these 10 particles only
 emitter.burst(10, x, y, { tint: 0xff0000 }); // position and overrides together
-emitter.configure({ rate: 40 }); // EmitterUpdate — from now on
+emitter.configure({ rate: 40 }); // EmitterUpdateOptions — from now on
 emitter.isEmitting; // boolean
 emitter.activeCount; // number
 emitter.blendMode = "add"; // BlendMode, read/write
@@ -120,12 +120,12 @@ when the emitter is destroyed.
 
 Two surfaces, answering two different questions.
 
-**`configure(options: EmitterUpdate)`** is "this emitter is different from now
-on". It changes `lifetime`, `speed`, `angle`, `scale`, `alpha`, `rotation`,
-`rotationSpeed`, `tint`, `spawnOffset`, `radialSpeed`, `rate`, `gravity`,
-`damping`, `alphaFadeIn`, `alphaFadeOut` and `blendMode`. When a change reaches
-a particle depends on where the emitter reads the option. The spawn-time
-options — `lifetime`, `speed`, `angle`, `scale`, `alpha`, `rotation`,
+**`configure(options: EmitterUpdateOptions)`** is "this emitter is different
+from now on". It changes `lifetime`, `speed`, `angle`, `scale`, `alpha`,
+`rotation`, `rotationSpeed`, `tint`, `spawnOffset`, `radialSpeed`, `rate`,
+`gravity`, `damping`, `alphaFadeIn`, `alphaFadeOut` and `blendMode`. When a
+change reaches a particle depends on where the emitter reads the option. The
+spawn-time options — `lifetime`, `speed`, `angle`, `scale`, `alpha`, `rotation`,
 `rotationSpeed`, `tint`, `spawnOffset` and `radialSpeed` — are resolved once per
 particle, so a particle already in flight keeps what it was spawned with and the
 next particle spawned uses the new value. `gravity`, `damping`, `alphaFadeIn`

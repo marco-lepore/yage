@@ -31,6 +31,6 @@ export type {
   BurstOverrides,
   EmitterConfig,
   EmitterOptions,
-  EmitterUpdate,
+  EmitterUpdateOptions,
   TextureSource,
 } from "./types.js";

@@ -22,7 +22,7 @@ import type {
   BurstOverrides,
   EmitterConfig,
   EmitterOptions,
-  EmitterUpdate,
+  EmitterUpdateOptions,
   Lerped,
   NumberRange,
 } from "./types.js";
@@ -227,7 +227,7 @@ export class ParticleEmitterComponent extends Component {
    * changes nothing. For a one-off variation, pass overrides to
    * {@link ParticleEmitterComponent.burst} instead.
    */
-  configure(options: EmitterUpdate): void {
+  configure(options: EmitterUpdateOptions): void {
     const { blendMode, ...rest } = options;
     const candidate: ResolvedConfig = {
       ...this.config,

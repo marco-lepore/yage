@@ -125,7 +125,7 @@ export type BurstOverrides = Partial<
  * `maxParticles`, `layer`, `simulationSpace` and the texture source are fixed
  * when the emitter is built, so they are absent here.
  */
-export type EmitterUpdate = BurstOverrides &
+export type EmitterUpdateOptions = BurstOverrides &
   Partial<
     Pick<
       EmitterOptions,
