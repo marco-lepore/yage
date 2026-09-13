@@ -232,8 +232,13 @@ export class UIButton implements UIContainerElement {
   /** Apply Yoga-computed positions to children and resize background. */
   applyLayout(): void {
     for (const child of this._children) {
-      const layout = child.yogaNode.getComputedLayout();
-      child.displayObject.position.set(layout.left, layout.top);
+      // Scalar getters, not `getComputedLayout()`: the Yoga binding returns
+      // that as a value object, allocating a fresh six-field object per child
+      // per frame, and only the two edges below are read.
+      child.displayObject.position.set(
+        child.yogaNode.getComputedLeft(),
+        child.yogaNode.getComputedTop(),
+      );
       child.applyLayout?.();
     }
     warnChildOverflow(this.yogaNode, this._children);

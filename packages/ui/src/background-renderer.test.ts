@@ -49,8 +49,11 @@ const { mocks } = vi.hoisted(() => {
     private _lastFillW = 0;
     private _lastFillH = 0;
     clearCalled = false;
+    /** How many times the geometry has been rebuilt. */
+    drawCount = 0;
     clear(): MockGraphics {
       this.clearCalled = true;
+      this.drawCount++;
       return this;
     }
     rect(_x: number, _y: number, w: number, h: number): MockGraphics {
@@ -197,6 +200,53 @@ describe("BackgroundRenderer", () => {
     const g = parent.children[0] as InstanceType<typeof mocks.MockGraphics>;
     expect(g.lastWidth).toBe(200);
     expect(g.lastHeight).toBe(100);
+  });
+
+  it("skips the redraw when the size has not changed", () => {
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    renderer.set({ color: 0xff0000 }, parent as never);
+    const g = parent.children[0] as InstanceType<typeof mocks.MockGraphics>;
+
+    renderer.resize(200, 100);
+    const afterFirst = g.drawCount;
+    renderer.resize(200, 100);
+    renderer.resize(200, 100);
+
+    expect(afterFirst).toBe(1);
+    expect(g.drawCount).toBe(1);
+  });
+
+  it("redraws when the size changes", () => {
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    renderer.set({ color: 0xff0000 }, parent as never);
+    const g = parent.children[0] as InstanceType<typeof mocks.MockGraphics>;
+
+    renderer.resize(200, 100);
+    renderer.resize(200, 120);
+
+    expect(g.drawCount).toBe(2);
+    expect(g.lastHeight).toBe(120);
+  });
+
+  it("redraws at an unchanged size after the options change", () => {
+    // A button swapping to its hover colour calls `set` then `resize` with the
+    // same cached size; the new colour has to reach the geometry.
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    renderer.set({ color: 0xff0000 }, parent as never);
+    renderer.resize(200, 100);
+    const g = parent.children[0] as InstanceType<typeof mocks.MockGraphics>;
+    const before = g.drawCount;
+
+    renderer.set({ color: 0x00ff00 }, parent as never);
+
+    // `set` re-applies the cached size itself, so the redraw has happened by
+    // the time it returns; the caller's own same-size `resize` is then a no-op.
+    expect(g.drawCount).toBe(before + 1);
+    renderer.resize(200, 100);
+    expect(g.drawCount).toBe(before + 1);
   });
 
   it("creates Sprite for stretch texture background", () => {

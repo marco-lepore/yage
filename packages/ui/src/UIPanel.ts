@@ -77,6 +77,10 @@ export class UIPanel implements UIContainerElement {
 
   private bgRenderer: BackgroundRenderer | undefined;
   private maskHandle: MaskHandle | undefined;
+  // Size the overflow mask was last drawn at. `NaN` never equals a computed
+  // size, so the first draw after the mask is created always gets through.
+  private _maskWidth = Number.NaN;
+  private _maskHeight = Number.NaN;
   private _children: UIElement[] = [];
   private _destroyed = false;
   private bgOpts: BackgroundOptions | undefined;
@@ -211,8 +215,13 @@ export class UIPanel implements UIContainerElement {
    */
   applyLayout(): void {
     for (const child of this._children) {
-      const layout = child.yogaNode.getComputedLayout();
-      child.displayObject.position.set(layout.left, layout.top);
+      // Scalar getters, not `getComputedLayout()`: the Yoga binding returns
+      // that as a value object, allocating a fresh six-field object per child
+      // per frame, and only the two edges below are read.
+      child.displayObject.position.set(
+        child.yogaNode.getComputedLeft(),
+        child.yogaNode.getComputedTop(),
+      );
 
       child.applyLayout?.();
     }
@@ -229,8 +238,13 @@ export class UIPanel implements UIContainerElement {
       this.bgRenderer.resize(w, h);
     }
 
-    // Re-run the overflow mask draw closure with the latest dimensions.
-    this.maskHandle?.redraw();
+    // Re-run the overflow mask draw closure only when the box it traces has
+    // moved; the closure clears and refills a Graphics.
+    if (this.maskHandle && (w !== this._maskWidth || h !== this._maskHeight)) {
+      this._maskWidth = w;
+      this._maskHeight = h;
+      this.maskHandle.redraw();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -296,6 +310,8 @@ export class UIPanel implements UIContainerElement {
         overflow === "hidden" ? Overflow.Hidden : Overflow.Visible,
       );
       if (overflow === "hidden" && !this.maskHandle) {
+        this._maskWidth = Number.NaN;
+        this._maskHeight = Number.NaN;
         this.maskHandle = attachMask(
           this.container,
           graphicsMask((g) => {

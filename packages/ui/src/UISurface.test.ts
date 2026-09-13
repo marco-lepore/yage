@@ -73,7 +73,10 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockGraphics extends MockContainer {
+    /** How many times the geometry has been rebuilt. */
+    drawCount = 0;
     clear(): MockGraphics {
+      this.drawCount++;
       return this;
     }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -823,6 +826,87 @@ describe("UISurface", () => {
       );
       expect(overflowWarns).toHaveLength(0);
       warn.mockRestore();
+    });
+  });
+
+  describe("overflow mask redraw gating", () => {
+    /** The Graphics an `overflow: "hidden"` panel clips with. */
+    function clipMask(panel: UIPanel): InstanceType<typeof mocks.MockGraphics> {
+      const mask = (panel.container as unknown as { mask: unknown }).mask;
+      expect(mask).toBeTruthy();
+      return mask as InstanceType<typeof mocks.MockGraphics>;
+    }
+
+    function layoutPanel(panel: UIPanel): void {
+      panel.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.applyLayout();
+    }
+
+    it("draws the mask on the first pass after it is created", () => {
+      const panel = new UIPanel({
+        overflow: "hidden",
+        width: 100,
+        height: 50,
+      });
+      const mask = clipMask(panel);
+      const before = mask.drawCount;
+
+      layoutPanel(panel);
+
+      expect(mask.drawCount).toBe(before + 1);
+      panel.destroy();
+    });
+
+    it("skips the mask redraw while the box is unchanged", () => {
+      const panel = new UIPanel({
+        overflow: "hidden",
+        width: 100,
+        height: 50,
+      });
+      layoutPanel(panel);
+      const mask = clipMask(panel);
+      const before = mask.drawCount;
+
+      layoutPanel(panel);
+      layoutPanel(panel);
+
+      expect(mask.drawCount).toBe(before);
+      panel.destroy();
+    });
+
+    it("redraws the mask when the box changes", () => {
+      const panel = new UIPanel({
+        overflow: "hidden",
+        width: 100,
+        height: 50,
+      });
+      layoutPanel(panel);
+      const mask = clipMask(panel);
+      const before = mask.drawCount;
+
+      panel.update({ width: 140 });
+      layoutPanel(panel);
+
+      expect(mask.drawCount).toBe(before + 1);
+      panel.destroy();
+    });
+
+    it("draws again after overflow is turned off and back on at one size", () => {
+      const panel = new UIPanel({
+        overflow: "hidden",
+        width: 100,
+        height: 50,
+      });
+      layoutPanel(panel);
+
+      panel.update({ overflow: "visible" });
+      panel.update({ overflow: "hidden" });
+      const mask = clipMask(panel);
+      const before = mask.drawCount;
+      layoutPanel(panel);
+
+      expect(mask.drawCount).toBe(before + 1);
+      panel.destroy();
     });
   });
 });
