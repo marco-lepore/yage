@@ -149,6 +149,8 @@ hit.path.some((node) => node.type === "UIButton"); // did a button take it
 A click by id needs `bounds` on the snapshot node, which the renderer fills in.
 `layout` beside it is Yoga's parent-relative box and locates nothing on screen.
 The verbs need `RendererPlugin` and one rendered frame, and throw otherwise.
+They drive one primary mouse pointer; a touch pointer or a second finger stays
+with `inspector.input`.
 
 The handler has already run when `click` returns, because delivery is
 synchronous. Engine input state reflects the press one frame later, so step a

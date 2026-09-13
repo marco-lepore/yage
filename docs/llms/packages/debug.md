@@ -124,6 +124,10 @@ inspector.getEntityCount(); // live entities across the scene stack, no snapshot
 inspector.time.isAdvancing(); // true if a real frame ticked within the last 250ms
 ```
 
+Every `inspector.input` verb writes engine input state and reaches no
+`@yagejs/ui` element, so none of them clicks a button; `inspector.pointer`
+below does.
+
 `events.waitFor(pattern, { withinFrames?, source? })` resolves with the earliest
 retained match without consuming it. Repeated waits can return the same entry.
 Clear the log before the action when the assertion needs a new occurrence:
@@ -211,15 +215,19 @@ hit.path.some((node) => node.type === "UIButton"); // true
 ```
 
 - `click`, `down`, `up` and `move` dispatch; `hitTest` resolves and reports
-  without dispatching.
+  without dispatching. `down` and `up` take `{ button }`, left by default;
+  `move` takes none and carries whichever button a `down` left held.
 - The target is a `UINodeSnapshot.id`, resolved to the centre of that node's
   `bounds`, or a virtual-space point. `bounds` is the snapshot's on-screen box;
   `layout` beside it is Yoga's parent-relative box and locates nothing on the
   canvas.
-- The returned hit carries `nodeId` and `type` for the innermost node, `path`
-  for every node the chain crosses innermost-first, the `point` used, and
-  `consumed`. A button's label is a node of its own and is hit before the
-  button, so read `path` to assert the click landed on the button.
+- The returned hit carries `path` — every node the chain crosses, innermost
+  first, empty when the point reached none — plus the `point` used and
+  `consumed`. A button's label is a node of its own and sits on top of the
+  button, so search `path` for the element you mean rather than reading its
+  first entry.
+- One primary mouse pointer. A touch pointer or a second finger stays with
+  `inspector.input`, which takes a pointer id and type and reaches no button.
 - Requires `RendererPlugin` and one rendered frame. Each guard throws and names
   what to do.
 

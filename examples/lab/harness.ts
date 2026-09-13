@@ -28,8 +28,8 @@ export default defineHarness({
     // The action map belongs here, not in a scenario: a scenario drives the
     // actions the game declares.
     new InputPlugin({ actions: { jump: ["Space"] } }),
-    // Laying out a HUD needs this plugin; a scenario without one pays nothing
-    // for it.
+    // Laying out a HUD needs this plugin. A scenario that shows no HUD runs
+    // the same with it registered.
     new UIPlugin(),
     // The lab adds this plugin when a harness omits it. Declared here for the
     // seed: a scenario using randomness replays the same way.

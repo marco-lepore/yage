@@ -298,7 +298,9 @@ There is no wall-clock timeout on an event wait.
 ### Synthetic input
 
 Use `ctx.input`, not `Inspector.input`. Every call on it that advances frames is
-async; the rest are synchronous.
+async; the rest are synchronous. These verbs write engine input state and reach
+no `@yagejs/ui` element, so none of them clicks a button — see
+[Clicking the game's own menus](#clicking-the-games-own-menus) for `ctx.pointer`.
 
 ```ts
 input.keyDown(code); input.keyUp(code);          // sync
@@ -360,23 +362,27 @@ synchronous — it dispatches and returns, spending no frame.
 
 ```ts
 pointer.click(target, opts?); pointer.down(target, opts?);   // sync
-pointer.up(target, opts?); pointer.move(target, opts?);      // sync
+pointer.up(target, opts?); pointer.move(target);             // sync
 pointer.hitTest(target);                     // resolve and report, no dispatch
 ```
 
 `target` is a virtual-space point, or a `UINodeSnapshot.id` whose `bounds`
 centre the click lands on. Ids come from the Inspector's user-interface
-snapshot, `window.__yage__.inspector.snapshot().scenes[].ui`. Every call
-returns the hit: `nodeId` and `type` for the innermost node, `path` for the
-whole chain innermost-first, the `point` used, and `consumed`.
+snapshot, `window.__yage__.inspector.snapshot().scenes[].ui`. `opts` is
+`{ button }`, left by default; `move` takes none and carries whichever button
+a `down` left held. Every call returns the hit: `path`, the chain of nodes it
+crossed innermost-first, plus the `point` used and `consumed`.
 
 ```ts
 const hit = pointer.click({ x: 70, y: 30 });
 expect(hit.path.some((node) => node.type === "UIButton")).toBe(true);
 ```
 
-A button's label is a node of its own and is hit before the button, so assert
-on `path` rather than on `type` when you mean "a button took the click".
+A button's label is a node of its own and sits on top of the button, so search
+`path` for the button rather than reading the chain's first entry.
+
+One primary mouse pointer. A touch pointer or a second finger stays with
+`ctx.input`, which takes a pointer id and type and reaches no button.
 
 Timing runs two ways. The button's `onClick` has already run when the call
 returns, because delivery is synchronous. Engine input state reflects the press

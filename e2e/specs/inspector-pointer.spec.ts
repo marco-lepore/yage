@@ -16,11 +16,14 @@ interface UiNode {
 }
 
 interface PointerHit {
-  nodeId: string | null;
-  type: string | null;
   path: Array<{ id: string; type: string }>;
   point: { x: number; y: number };
   consumed: boolean;
+}
+
+/** The innermost node a hit reached, or undefined when it reached none. */
+function innermost(hit: PointerHit): { id: string; type: string } | undefined {
+  return hit.path[0];
 }
 
 /** The id of the surface node a child id sits under. */
@@ -154,8 +157,8 @@ test.describe("Inspector pointer verbs", () => {
 
     const hit = await pointerClick(page, disabled.id);
 
-    expect(hit.nodeId).toBe(parentId(disabled.id));
-    expect(hit.type).toBe("UIPanel");
+    expect(innermost(hit)?.id).toBe(parentId(disabled.id));
+    expect(innermost(hit)?.type).toBe("UIPanel");
     expect(hit.path.map((node) => node.id)).not.toContain(disabled.id);
     expect((await probe(page))?.disabledClicks).toBe(0);
   });
@@ -176,8 +179,8 @@ test.describe("Inspector pointer verbs", () => {
 
     const hit = await pointerClick(page, covered.id);
 
-    expect(hit.nodeId).toBe(overlay.id);
-    expect(hit.type).toBe("UIPanel");
+    expect(innermost(hit)?.id).toBe(overlay.id);
+    expect(innermost(hit)?.type).toBe("UIPanel");
     expect(hit.path.map((node) => node.id)).not.toContain(covered.id);
     expect((await probe(page))?.coveredClicks).toBe(0);
   });
@@ -202,7 +205,7 @@ test.describe("Inspector pointer verbs", () => {
 
     // The off-centre button too: a constant offset would still hit the first.
     const hit = await pointerClick(page, disabled.id);
-    expect(hit.type).toBe("UIPanel");
+    expect(innermost(hit)?.type).toBe("UIPanel");
     expect((await probe(page))?.disabledClicks).toBe(0);
   });
 
@@ -215,7 +218,7 @@ test.describe("Inspector pointer verbs", () => {
     // The middle of the play area, clear of all three surfaces.
     const hit = await pointerHalf(page, "down", { x: 160, y: 90 });
 
-    expect(hit.nodeId).toBeNull();
+    expect(hit.path).toEqual([]);
     expect(hit.consumed).toBe(false);
     // Nothing has drained yet, so the action edge has not been applied.
     expect((await probe(page))?.fireDowns).toBe(0);

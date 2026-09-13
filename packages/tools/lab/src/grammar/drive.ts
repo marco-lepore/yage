@@ -35,6 +35,7 @@ export interface DriveInput {
   mouseMove(x: number, y: number): void;
   mouseDown(button?: 0 | 1 | 2): void;
   mouseUp(button?: 0 | 1 | 2): void;
+  /** Writes engine pointer state. Reaches no `@yagejs/ui` element; `pointer` does. */
   pointerMove(x: number, y: number, opts?: PointerOpts): void;
   pointerDown(button?: 0 | 1 | 2, opts?: PointerOpts): void;
   pointerUp(button?: 0 | 1 | 2, opts?: PointerUpOpts): void;
@@ -90,9 +91,12 @@ export interface DriveContext<C extends ControlSchema = ControlSchema> {
    * state reflects the press one frame later, so `await step(1)` before
    * asserting on an action.
    *
+   * One primary mouse pointer only. A touch pointer or a second finger stays
+   * with `input`, which writes engine state and reaches no button.
+   *
    * ```ts
    * const hit = pointer.click(buttonId);
-   * expect(hit.type).toBe("UIButton");
+   * expect(hit.path.some((node) => node.type === "UIButton")).toBe(true);
    * ```
    */
   pointer: DrivePointer;

@@ -6,7 +6,7 @@ Add `pointer` to the drive context, so a scenario can click the game's own
 menus.
 
 `ctx.input` writes engine input state and never reaches a `@yagejs/ui`
-element. `ctx.pointer` dispatches real pointer events at the canvas, so a
+element. `ctx.pointer` has the renderer deliver real pointer events, so a
 build menu, a pause screen or a confirm dialog is drivable from a scenario.
 
 ```ts

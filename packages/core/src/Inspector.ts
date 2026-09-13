@@ -105,7 +105,7 @@ export interface InspectorPointerOpts {
  */
 export type InspectorPointerTarget = string | { x: number; y: number };
 
-/** Which mouse button a pointer verb presses. Left (`0`) by default. */
+/** Which mouse button `click`, `down` and `up` carry. Left (`0`) by default. */
 export interface InspectorPointerButtonOpts {
   button?: 0 | 1 | 2;
 }
@@ -115,10 +115,6 @@ export interface InspectorPointerButtonOpts {
  * is dispatched.
  */
 export interface InspectorPointerHit {
-  /** The {@link UINodeSnapshot.id} of the innermost node hit, or `null`. */
-  nodeId: string | null;
-  /** That node's {@link UINodeSnapshot.type}, such as `"UIText"`. */
-  type: string | null;
   /**
    * Every user-interface node the hit chain crosses, innermost first, and
    * empty when the point reached no node. A button's label is a node in its
@@ -600,6 +596,12 @@ export interface InspectorDriveContext {
     opts?: InspectorDriveUntilOptions,
   ): Promise<number>;
   readonly input: InspectorDriveInput;
+  /**
+   * Clicks that reach `@yagejs/ui` elements, which {@link input} never does.
+   * Dispatching spends no frame, so these are the same verbs
+   * {@link Inspector.pointer} carries, handed through unchanged.
+   */
+  readonly pointer: Inspector["pointer"];
   readonly events: Inspector["events"];
   /** Screenshots into the result, resolving with a PNG data URL. */
   capture(label?: string): Promise<string>;
@@ -956,9 +958,14 @@ export class Inspector {
    *
    * Requires `RendererPlugin` and at least one rendered frame.
    *
+   * These verbs drive one primary mouse pointer. A second finger, a touch or
+   * a pen pointer is only reachable through {@link Inspector.input}, whose
+   * verbs take a pointer id and type and write engine state without going
+   * near the user interface.
+   *
    * ```ts
    * const hit = inspector.pointer.click("entity-7:UISurface:0/2");
-   * expect(hit.type).toBe("UIButton");
+   * expect(hit.path.some((node) => node.type === "UIButton")).toBe(true);
    * ```
    */
   readonly pointer = {
@@ -977,12 +984,13 @@ export class Inspector {
       opts?: InspectorPointerButtonOpts,
     ): InspectorPointerHit =>
       this.dispatchPointer("up", "up", target, opts?.button ?? 0),
-    /** Moves the pointer, which drives hover state. */
-    move: (
-      target: InspectorPointerTarget,
-      opts?: InspectorPointerButtonOpts,
-    ): InspectorPointerHit =>
-      this.dispatchPointer("move", "move", target, opts?.button ?? 0),
+    /**
+     * Moves the pointer, which drives hover state. Takes no button: a move
+     * presses and releases nothing, and carries whichever buttons an earlier
+     * {@link down} left held.
+     */
+    move: (target: InspectorPointerTarget): InspectorPointerHit =>
+      this.dispatchPointer("move", "move", target),
     /**
      * Presses and releases at one point, which is what a `UIButton` requires
      * to run its `onClick`.
@@ -1322,6 +1330,7 @@ export class Inspector {
       step,
       until,
       input,
+      pointer: this.pointer,
       events: this.events,
       capture: async (label) => {
         // A data URL rather than `capture.png()`'s bytes: it reads out of the
@@ -2158,13 +2167,7 @@ export class Inspector {
       )
       .filter((entry) => entry !== undefined)
       .map((entry) => ({ id: entry.id, type: entry.type }));
-    return {
-      nodeId: path[0]?.id ?? null,
-      type: path[0]?.type ?? null,
-      path,
-      point,
-      consumed: found?.consumed ?? false,
-    };
+    return { path, point, consumed: found?.consumed ?? false };
   }
 
   private dispatchPointer(

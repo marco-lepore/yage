@@ -1520,6 +1520,22 @@ describe("Inspector", () => {
       expect(controller.isFrozen).toBe(false);
     });
 
+    it("hands the pointer verbs to the callback unchanged", async () => {
+      const { inspector, engine } = setup();
+      const controller = driveController(engine.loop, []);
+      inspector.attachTimeController(controller);
+
+      let seen: unknown;
+      const result = await inspector.drive(({ pointer }) => {
+        seen = pointer;
+      });
+
+      expect(result.ok).toBe(true);
+      // Same object, so a drive reaches the game's menus the way the lab's
+      // own context does. Dispatching spends no frame, so nothing wraps it.
+      expect(seen).toBe(inspector.pointer);
+    });
+
     it("holds a key across frames and releases it after the frames are issued", async () => {
       const { inspector, engine, ctx } = setup();
       const log: string[] = [];
@@ -2354,8 +2370,6 @@ describe("Inspector.pointer", () => {
     const { inspector, buttonId } = await pointerSetup();
 
     expect(inspector.pointer.click(buttonId)).toEqual({
-      nodeId: buttonId,
-      type: "UIButton",
       path: [{ id: buttonId, type: "UIButton" }],
       point: { x: 230, y: 165 },
       consumed: true,
@@ -2367,8 +2381,6 @@ describe("Inspector.pointer", () => {
     hitTestUIPath.mockReturnValue(null);
 
     expect(inspector.pointer.click({ x: 5, y: 5 })).toEqual({
-      nodeId: null,
-      type: null,
       path: [],
       point: { x: 5, y: 5 },
       consumed: false,
@@ -2430,6 +2442,14 @@ describe("Inspector.pointer", () => {
       "move",
       "up",
     ]);
+  });
+
+  it("asks for no button on a move, which presses and releases nothing", async () => {
+    const { inspector, dispatched } = await pointerSetup();
+
+    inspector.pointer.move({ x: 3, y: 4 });
+
+    expect(dispatched[0]?.button).toBeUndefined();
   });
 
   it("passes the mouse button a press and a release carry", async () => {
