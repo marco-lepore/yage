@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import type { EmitterConfig, EmitterOptions } from "./types.js";
 
 const { mocks } = vi.hoisted(() => {
@@ -431,6 +431,136 @@ describe("ParticleEmitterComponent", () => {
       const emitter = createEmitter({ maxParticles: 5 });
       emitter.burst(10);
       expect(emitter.activeCount).toBe(5);
+    });
+  });
+
+  describe("configuration copying", () => {
+    it("does not follow a range array the caller changes afterwards", () => {
+      const angle: [number, number] = [0, 0];
+      const emitter = new ParticleEmitterComponent({
+        texture: tex,
+        lifetime: 10,
+        speed: 100,
+        maxParticles: 10,
+        angle,
+      });
+      setupEntity(emitter);
+      angle[0] = Math.PI;
+      angle[1] = Math.PI;
+
+      emitter.burst(1);
+      expect(emitter._active[0]!.vx).toBeCloseTo(100, 5);
+    });
+
+    it("copies both ends of a lerped value", () => {
+      const scale = {
+        start: [2, 2] as [number, number],
+        end: [2, 2] as [number, number],
+      };
+      const emitter = new ParticleEmitterComponent({
+        texture: tex,
+        lifetime: 10,
+        maxParticles: 10,
+        scale,
+      });
+      setupEntity(emitter);
+      scale.start[0] = 9;
+      scale.start[1] = 9;
+      scale.end[0] = 9;
+      scale.end[1] = 9;
+
+      emitter.burst(1);
+      const state = emitter._active[0]!;
+      expect(state.scaleStart).toBeCloseTo(2, 5);
+      expect(state.scaleEnd).toBeCloseTo(2, 5);
+    });
+
+    it("copies gravity and the spawn offset", () => {
+      const gravity = { x: 0, y: 100 };
+      const spawnOffset = { x: 0, y: 0 };
+      const emitter = new ParticleEmitterComponent({
+        texture: tex,
+        lifetime: 10,
+        speed: 0,
+        maxParticles: 10,
+        gravity,
+        spawnOffset,
+      });
+      gravity.y = 900;
+      spawnOffset.x = 500;
+
+      emitter.burst(1);
+      expect(emitter._active[0]!.particle.x).toBe(0);
+      emitter._update(1, 0, 0);
+      expect(emitter._active[0]!.vy).toBeCloseTo(100, 5);
+    });
+
+    it("keeps two emitters built from one config object independent", () => {
+      const config: EmitterConfig = {
+        texture: tex,
+        lifetime: 10,
+        speed: 100,
+        angle: 0,
+        maxParticles: 10,
+      };
+      const first = new ParticleEmitterComponent(config);
+      const second = new ParticleEmitterComponent(config);
+      first.configure({ angle: Math.PI / 2 });
+
+      first.burst(1);
+      second.burst(1);
+      expect(first._active[0]!.vy).toBeCloseTo(100, 5);
+      expect(second._active[0]!.vx).toBeCloseTo(100, 5);
+    });
+  });
+
+  describe("changed config object report", () => {
+    const original = process.env.NODE_ENV;
+
+    afterEach(() => {
+      process.env.NODE_ENV = original;
+    });
+
+    it("names the option that changed, once", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const angle: [number, number] = [0, 0];
+      const emitter = createEmitter({ angle, lifetime: 10 });
+      setupEntity(emitter);
+      angle[0] = Math.PI;
+
+      emitter.burst(1);
+      emitter.burst(1);
+      emitter.emit();
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn.mock.calls[0]![0]).toMatch(/"angle" changed/);
+      expect(warn.mock.calls[0]![0]).toMatch(/configure\(\{ angle/);
+    });
+
+    it("stays quiet when the caller changes nothing", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const emitter = createEmitter({
+        angle: [0, 0],
+        gravity: { x: 0, y: 1 },
+        spawnOffset: { radius: 4 },
+        lifetime: 10,
+      });
+      setupEntity(emitter);
+      emitter.burst(1);
+      emitter.emit();
+      emitter.requestEmission();
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("stays quiet in a production build", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      process.env.NODE_ENV = "production";
+      const angle: [number, number] = [0, 0];
+      const emitter = createEmitter({ angle, lifetime: 10 });
+      setupEntity(emitter);
+      angle[0] = Math.PI;
+
+      emitter.burst(1);
+      expect(warn).not.toHaveBeenCalled();
     });
   });
 

@@ -3,6 +3,8 @@ import {
   RandomKey,
   Transform,
   Vec2Buffer,
+  devWarn,
+  isDev,
   type RandomService,
 } from "@yagejs/core";
 import { SceneRenderTreeKey, resolveTextureInput } from "@yagejs/renderer";
@@ -14,7 +16,7 @@ import type {
 import { ParticleContainer as PixiParticleContainer } from "pixi.js";
 import type { Particle } from "pixi.js";
 import { ParticlePool } from "./ParticlePool.js";
-import { copyOptions } from "./copy.js";
+import { copyOptions, findChangedOption } from "./copy.js";
 import { normalizeShape, shapeTexture } from "./shapes.js";
 import { isLerped, resolveRange } from "./types.js";
 import { assertEmitterConfig } from "./validate.js";
@@ -102,6 +104,14 @@ export class ParticleEmitterComponent extends Component {
   private _destroyed = false;
   private _random = this.service(RandomKey);
   private _warnedNoTransform = false;
+  /**
+   * The caller's own configuration object beside the values it held at
+   * construction, so a later change to it can be reported. Dev builds only, and
+   * cleared once the report fires.
+   */
+  private _aliasWatch:
+    | { source: EmitterOptions; snapshot: EmitterOptions }
+    | undefined;
 
   constructor(config: EmitterConfig) {
     super();
@@ -109,7 +119,7 @@ export class ParticleEmitterComponent extends Component {
     assertEmitterConfig(config);
     const texture = resolveSource(config);
 
-    const options: EmitterOptions = config;
+    const options = copyOptions<EmitterOptions>(config);
     this.config = {
       maxParticles: 100,
       rate: 10,
@@ -122,6 +132,7 @@ export class ParticleEmitterComponent extends Component {
       layer: "default",
       ...options,
     };
+    if (isDev()) this._aliasWatch = { source: config, snapshot: options };
 
     this.container = new PixiParticleContainer({
       texture,
@@ -142,6 +153,7 @@ export class ParticleEmitterComponent extends Component {
   /** Start continuous emission at `config.rate` particles/sec. */
   emit(): void {
     this._warnIfNoTransform();
+    this._reportChangedConfigObject();
     this._manualEmission = true;
   }
 
@@ -165,6 +177,7 @@ export class ParticleEmitterComponent extends Component {
       );
     }
     this._warnIfNoTransform();
+    this._reportChangedConfigObject();
     const entry: EmissionRequestEntry = { active: true };
     this._emissionRequests.add(entry);
     return {
@@ -193,6 +206,27 @@ export class ParticleEmitterComponent extends Component {
       `ParticleEmitterComponent on "${this.entity?.name}": the entity has no Transform, ` +
         `so the emitter never runs — no continuous emission, and burst particles stay frozen. ` +
         `Add a Transform to the entity.`,
+    );
+  }
+
+  /**
+   * Report a configuration object that changed after the emitter copied it.
+   * Reading the caller's object at every spawn used to be how an emitter could
+   * be re-aimed, so the change is silent otherwise: it simply does nothing.
+   * Compared at the emission entry points, never per particle, and only until
+   * it fires once.
+   */
+  private _reportChangedConfigObject(): void {
+    const watch = this._aliasWatch;
+    if (!watch) return;
+    const option = findChangedOption(watch.source, watch.snapshot);
+    if (option === null) return;
+    this._aliasWatch = undefined;
+    devWarn(
+      `ParticleEmitterComponent: "${option}" changed on the object this emitter was built from. ` +
+        `The emitter copies its configuration, so it never reads that object again. ` +
+        `Call configure({ ${option}: ... }) to change the emitter from now on, or pass ` +
+        `overrides to burst() to change a single burst.`,
     );
   }
 
@@ -238,6 +272,7 @@ export class ParticleEmitterComponent extends Component {
     const overrides = positioned ? trailingOverrides : worldXOrOverrides;
 
     this._warnIfNoTransform();
+    this._reportChangedConfigObject();
     // Every spawn path syncs the container first, so a particle is never
     // written against a stale origin. A Transform-less emitter keeps the
     // container at (0, 0); its particles never move or expire, because
