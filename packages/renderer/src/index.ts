@@ -87,6 +87,8 @@ export {
   getDefaultTextStyle,
   setDefaultTextStyle,
 } from "./internal/textConstruction.js";
+/** @internal - shared empty-string guard for Pixi's split text, not for public consumption. */
+export { setSplitText } from "./internal/split-text-guard.js";
 export { linearGradient, radialGradient } from "./gradient.js";
 export type {
   GradientStop,

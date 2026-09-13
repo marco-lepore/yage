@@ -61,7 +61,9 @@ const { mocks } = vi.hoisted(() => {
     charAnchor: unknown = 0;
     wordAnchor: unknown = 0;
     lineAnchor: unknown = 0;
-    autoSplit: boolean;
+    // Named as Pixi names it: the option has no setter, so the guard writes
+    // the field.
+    _autoSplit: boolean;
     chars: MockText[] = [];
     words: MockContainer[] = [];
     lines: MockContainer[] = [];
@@ -81,8 +83,8 @@ const { mocks } = vi.hoisted(() => {
       if (opts.charAnchor !== undefined) this.charAnchor = opts.charAnchor;
       if (opts.wordAnchor !== undefined) this.wordAnchor = opts.wordAnchor;
       if (opts.lineAnchor !== undefined) this.lineAnchor = opts.lineAnchor;
-      this.autoSplit = opts.autoSplit ?? true;
-      this.split();
+      this._autoSplit = opts.autoSplit ?? true;
+      if (this._autoSplit) this.split();
     }
     split(): void {
       this.splitCalls++;
@@ -93,14 +95,27 @@ const { mocks } = vi.hoisted(() => {
         .split(/\s+/)
         .filter(Boolean)
         .map(() => new MockContainer());
-      this.lines = [new MockContainer()];
+      this.lines = this._text === "" ? [] : [new MockContainer()];
+      // Pixi ends a split with `addChild(...this.lines)`. An empty string
+      // produces no lines, so that is a zero-argument call, which reads
+      // `children[0].parent` and throws. Reproduced here so the guard that
+      // keeps an empty string out of the split has something to fail against.
+      if (this.lines.length === 0) {
+        throw new TypeError(
+          "Cannot read properties of undefined (reading 'parent')",
+        );
+      }
+      for (const line of this.lines) this.addChild(line);
     }
     get text(): string {
       return this._text;
     }
     set text(v: string) {
       this._text = v;
-      if (this.autoSplit) this.split();
+      this.lines = [];
+      this.words = [];
+      this.chars = [];
+      if (this._autoSplit) this.split();
     }
   }
   class MockSplitBitmapText extends MockSplitText {}
@@ -237,6 +252,53 @@ describe("UISplitText", () => {
     off();
     t.setText("sup");
     expect(fired).toBe(1);
+  });
+
+  describe("empty text", () => {
+    it("renders no segments instead of throwing", () => {
+      const t = new UISplitText({ children: "" });
+      expect(t.chars).toEqual([]);
+      expect(t.words).toEqual([]);
+      expect(t.lines).toEqual([]);
+    });
+
+    it("measures zero", () => {
+      const t = new UISplitText({ children: "" });
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      expect(t.yogaNode.getComputedWidth()).toBe(0);
+      expect(t.yogaNode.getComputedHeight()).toBe(0);
+    });
+
+    it("survives being cleared and splits again on the next value", () => {
+      const t = new UISplitText({ children: "hi" });
+      expect(() => t.setText("")).not.toThrow();
+      expect(t.chars).toEqual([]);
+
+      t.setText("sup");
+      expect(t.chars).toHaveLength(3);
+    });
+
+    it("emits empty segments to listeners", () => {
+      const t = new UISplitText({ children: "hi" });
+      let seen: { chars: unknown[] } | undefined;
+      t.onSplit((segments) => {
+        seen = segments;
+      });
+      t.setText("");
+      expect(seen?.chars).toEqual([]);
+    });
+
+    it("leaves an empty text empty on resplit", () => {
+      const t = new UISplitText({ children: "", autoSplit: false });
+      expect(() => t.resplit()).not.toThrow();
+      expect(t.lines).toEqual([]);
+    });
+
+    it("survives a style change while empty", () => {
+      const t = new UISplitText({ children: "" });
+      expect(() => t.setStyle({ fontSize: 24 })).not.toThrow();
+      expect(t.chars).toEqual([]);
+    });
   });
 
   it("resplit() splits again and notifies", () => {
