@@ -24,6 +24,7 @@ import {
 import {
   RendererAdapterKey,
   type RendererAdapter,
+  type RendererPointerEventType,
   type RendererUIHit,
 } from "./RendererAdapter.js";
 import { SceneTimeKey } from "./SceneTime.js";
@@ -34,14 +35,18 @@ import {
   driveWhileHolding,
 } from "./internal/driveSupport.js";
 
-/**
- * `PointerEvent.buttons` for each `button`, as the DOM defines the bitmask:
- * left is 1, middle 4, right 2.
- */
-const POINTER_BUTTON_MASKS = { 0: 1, 1: 4, 2: 2 } as const;
-
 /** {@link UINodeSnapshot.type} of the node several surfaces are wrapped in. */
 const UI_ROOT_TYPE = "UIRoot";
+
+/**
+ * The renderer-adapter members {@link Inspector.pointer} calls. A foreign
+ * adapter that implements fewer is named the missing one by the guard.
+ */
+const POINTER_ADAPTER_MEMBERS = [
+  "canvasToVirtual",
+  "hitTestUIPath",
+  "dispatchPointerEvent",
+] as const;
 
 /**
  * Rounds one virtual-space bound to a thousandth of a pixel. The matrix round
@@ -109,7 +114,7 @@ export interface InspectorPointerButtonOpts {
 }
 
 /**
- * What the hit test found under a pointer verb's point, read before the event
+ * What the hit test found under a pointer verb's point, read before any event
  * is dispatched.
  */
 export interface InspectorPointerHit {
@@ -118,17 +123,20 @@ export interface InspectorPointerHit {
   /** That node's {@link UINodeSnapshot.type}, such as `"UIText"`. */
   type: string | null;
   /**
-   * Every user-interface node the hit chain crosses, innermost first. A
-   * button's label is a node in its own right and is hit before the button
-   * behind it, so `nodeId` for a click on a labelled button names the label.
-   * Read this to assert that the click landed on the button:
+   * Every user-interface node the hit chain crosses, innermost first, and
+   * empty when the point reached no node. A button's label is a node in its
+   * own right and sits on top of the button, so the innermost node under a
+   * labelled button is its label. Search the chain for the element you mean:
    *
    * ```ts
    * expect(hit.path.some((node) => node.type === "UIButton")).toBe(true);
    * ```
    */
   path: ReadonlyArray<{ id: string; type: string }>;
-  /** The virtual-space point the events are dispatched at. */
+  /**
+   * The virtual-space point the verb aimed at. A `hitTest` reports it having
+   * dispatched nothing there.
+   */
   point: { x: number; y: number };
   /** Whether the hit chain crosses a pointer-consume surface. */
   consumed: boolean;
@@ -144,7 +152,7 @@ interface UIIndexEntry {
 
 /** A renderer adapter carrying the members the pointer verbs require. */
 type PointerCapableAdapter = RendererAdapter &
-  Required<Pick<RendererAdapter, "virtualToCanvas" | "hitTestUIPath">>;
+  Required<Pick<RendererAdapter, (typeof POINTER_ADAPTER_MEMBERS)[number]>>;
 
 /** A resolved pointer target: where to click, and what the renderer says is there. */
 interface ResolvedPointerTarget {
@@ -936,11 +944,11 @@ export class Inspector {
   };
 
   /**
-   * Pointer input that reaches `@yagejs/ui` primitives, by dispatching real
-   * DOM pointer events at the renderer's canvas. The renderer's own event
-   * system then hit-tests and delivers, so stacking order, a disabled
-   * button's pointer mode and clipping all apply exactly as they do for a
-   * person clicking.
+   * Pointer input that reaches `@yagejs/ui` primitives, by asking the
+   * renderer to deliver real pointer events. The renderer's own event system
+   * hit-tests and delivers them, so stacking order, a disabled button's
+   * pointer mode and clipping all apply exactly as they do for a person
+   * clicking.
    *
    * Distinct from {@link Inspector.input}, which writes `InputManager` state
    * and never reaches a user-interface element. The two also differ in
@@ -960,35 +968,36 @@ export class Inspector {
     /** Resolves `target` and reports what is under it, dispatching nothing. */
     hitTest: (target: InspectorPointerTarget): InspectorPointerHit =>
       this.resolvePointerTarget(target, "hitTest").hit,
-    /** Dispatches `pointerdown`. */
+    /** Presses a mouse button, left unless `opts` says otherwise. */
     down: (
       target: InspectorPointerTarget,
       opts?: InspectorPointerButtonOpts,
     ): InspectorPointerHit =>
-      this.dispatchPointer("down", "pointerdown", target, opts),
-    /** Dispatches `pointerup`. */
+      this.dispatchPointer("down", "down", target, opts?.button ?? 0),
+    /** Releases a mouse button, left unless `opts` says otherwise. */
     up: (
       target: InspectorPointerTarget,
       opts?: InspectorPointerButtonOpts,
     ): InspectorPointerHit =>
-      this.dispatchPointer("up", "pointerup", target, opts),
-    /** Dispatches `pointermove`, which drives hover state. */
+      this.dispatchPointer("up", "up", target, opts?.button ?? 0),
+    /** Moves the pointer, which drives hover state. */
     move: (
       target: InspectorPointerTarget,
       opts?: InspectorPointerButtonOpts,
     ): InspectorPointerHit =>
-      this.dispatchPointer("move", "pointermove", target, opts),
+      this.dispatchPointer("move", "move", target, opts?.button ?? 0),
     /**
-     * Dispatches `pointerdown` then `pointerup` at one point, which is what a
-     * `UIButton` requires to run its `onClick`.
+     * Presses and releases at one point, which is what a `UIButton` requires
+     * to run its `onClick`.
      */
     click: (
       target: InspectorPointerTarget,
       opts?: InspectorPointerButtonOpts,
     ): InspectorPointerHit => {
       const resolved = this.resolvePointerTarget(target, "click");
-      this.dispatchPointerEvent(resolved, "pointerdown", opts?.button ?? 0);
-      this.dispatchPointerEvent(resolved, "pointerup", opts?.button ?? 0);
+      const button = opts?.button ?? 0;
+      resolved.adapter.dispatchPointerEvent("down", resolved.point, button);
+      resolved.adapter.dispatchPointerEvent("up", resolved.point, button);
       return resolved.hit;
     },
   };
@@ -2100,19 +2109,24 @@ export class Inspector {
   }
 
   /**
-   * The adapter the pointer verbs need, with the members that make a DOM
-   * dispatch land where the caller asked.
+   * The adapter the pointer verbs need: it converts the bounds they aim by,
+   * reports what a point hits, and delivers the event.
    */
   private requirePointerAdapter(call: string): PointerCapableAdapter {
     const adapter = this.engine.context.tryResolve(RendererAdapterKey);
-    if (!adapter?.virtualToCanvas || !adapter.hitTestUIPath) {
+    if (!adapter) {
       throw new Error(
         `Inspector.pointer.${call}() requires RendererPlugin to be active.`,
       );
     }
-    if (adapter.hasRenderedFrame?.() === false) {
+    const missing = POINTER_ADAPTER_MEMBERS.filter((name) => !adapter[name]);
+    if (missing.length > 0) {
       throw new Error(
-        `Inspector.pointer.${call}() needs a rendered frame; step one frame first.`,
+        `Inspector.pointer.${call}(): the registered renderer adapter implements no ${missing.join(
+          " and no ",
+        )}. The pointer verbs need ${POINTER_ADAPTER_MEMBERS.join(
+          ", ",
+        )}; RendererPlugin implements all three.`,
       );
     }
     return adapter as PointerCapableAdapter;
@@ -2180,45 +2194,13 @@ export class Inspector {
 
   private dispatchPointer(
     call: string,
-    type: "pointerdown" | "pointerup" | "pointermove",
+    type: RendererPointerEventType,
     target: InspectorPointerTarget,
-    opts: InspectorPointerButtonOpts | undefined,
+    button?: 0 | 1 | 2,
   ): InspectorPointerHit {
     const resolved = this.resolvePointerTarget(target, call);
-    this.dispatchPointerEvent(resolved, type, opts?.button ?? 0);
+    resolved.adapter.dispatchPointerEvent(type, resolved.point, button);
     return resolved.hit;
-  }
-
-  /**
-   * Dispatches at the canvas, never at the window: the renderer's event
-   * system relabels a pointer-up whose composed path starts elsewhere, which
-   * would deliver a release-outside instead of a click. `bubbles` is what
-   * carries the same event on to the engine's own window-level listener.
-   */
-  private dispatchPointerEvent(
-    resolved: ResolvedPointerTarget,
-    type: "pointerdown" | "pointerup" | "pointermove",
-    button: 0 | 1 | 2,
-  ): void {
-    const { adapter, point } = resolved;
-    const canvas = adapter.canvas;
-    const offset = adapter.virtualToCanvas(point.x, point.y);
-    const rect = canvas.getBoundingClientRect();
-    canvas.dispatchEvent(
-      new PointerEvent(type, {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-        view: canvas.ownerDocument?.defaultView ?? null,
-        clientX: rect.left + offset.x,
-        clientY: rect.top + offset.y,
-        button,
-        buttons: type === "pointerdown" ? POINTER_BUTTON_MASKS[button] : 0,
-        pointerId: 1,
-        pointerType: "mouse",
-        isPrimary: true,
-      }),
-    );
   }
 
   private buildCameraSnapshot(): CameraSnapshot | null {

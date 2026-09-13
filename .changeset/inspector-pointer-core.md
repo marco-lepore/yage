@@ -6,8 +6,8 @@ Add `inspector.pointer`, pointer verbs that reach `@yagejs/ui` elements.
 
 `inspector.input`'s pointer verbs write `InputManager` state and never reach a
 UI primitive, which receives clicks as renderer events on its own container.
-The new namespace dispatches real DOM pointer events at the canvas, so the
-renderer hit-tests and delivers them the way it does for a person clicking.
+The new namespace asks the renderer to deliver a real pointer event, so the
+renderer hit-tests and delivers it the way it does for a person clicking.
 Stacking order, a disabled button's pointer mode, clipping and the
 auto-consume marking all apply.
 
@@ -24,8 +24,10 @@ that node's `bounds`, or a virtual-space point. The returned hit carries
 innermost-first, the `point` used, and `consumed`.
 
 The verbs need `RendererPlugin` and one rendered frame, and throw with an
-authored message otherwise. `RendererAdapter` gains three optional members for
-them: `virtualToCanvas`, `hitTestUIPath` and `hasRenderedFrame`.
+authored message otherwise. `RendererAdapter` gains two optional members for
+them: `hitTestUIPath` and `dispatchPointerEvent`. A renderer that implements
+both can drive the user interface without `@yagejs/core` knowing anything
+about browser events.
 
 A button's `onClick` has already run when a call returns, because delivery is
 synchronous. Engine input state reflects the press one frame later.

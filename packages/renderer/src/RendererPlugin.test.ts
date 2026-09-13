@@ -1043,7 +1043,7 @@ describe("RendererPlugin", () => {
       );
     });
   });
-  describe("UI hit testing", () => {
+  describe("UI hit testing and pointer dispatch", () => {
     /** A container chain the hit test can walk, innermost first. */
     function chain(depth: number): Array<{ parent: object | null }> {
       const nodes: Array<{ parent: object | null }> = [];
@@ -1189,6 +1189,122 @@ describe("RendererPlugin", () => {
 
       renderer.lastObjectRendered = plugin.application.stage;
       expect(plugin.hasRenderedFrame()).toBe(true);
+    });
+
+    /** Stands in for the DOM constructor, which node's runtime lacks. */
+    class StubPointerEvent {
+      constructor(
+        readonly type: string,
+        readonly init: PointerEventInit,
+      ) {}
+    }
+
+    /**
+     * Give the mock canvas a page position and an event sink, and mark a
+     * frame as drawn so dispatch is allowed.
+     */
+    function instrument(plugin: RendererPlugin): StubPointerEvent[] {
+      const dispatched: StubPointerEvent[] = [];
+      const canvas = plugin.application.canvas as unknown as Record<
+        string,
+        unknown
+      >;
+      canvas["getBoundingClientRect"] = (): { left: number; top: number } => ({
+        left: 12,
+        top: 8,
+      });
+      canvas["dispatchEvent"] = (event: StubPointerEvent): boolean => {
+        dispatched.push(event);
+        return true;
+      };
+      const renderer = plugin.application.renderer as unknown as {
+        lastObjectRendered?: unknown;
+      };
+      renderer.lastObjectRendered = plugin.application.stage;
+      return dispatched;
+    }
+
+    beforeEach(() => {
+      vi.stubGlobal("PointerEvent", StubPointerEvent);
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("dispatches at the canvas, in client pixels", async () => {
+      const plugin = await installedHalfScale();
+      const dispatched = instrument(plugin);
+
+      plugin.dispatchPointerEvent("down", { x: 120, y: 90 }, 0);
+
+      // The canvas is half virtual size here and sits at (12, 8) in the page:
+      // virtual (120, 90) is canvas (60, 45) is client (72, 53). Dispatching
+      // the virtual point unconverted would land at (132, 98).
+      const [event] = dispatched;
+      expect(event?.type).toBe("pointerdown");
+      expect(event?.init.clientX).toBe(72);
+      expect(event?.init.clientY).toBe(53);
+      expect(event?.init.bubbles).toBe(true);
+      expect(event?.init.pointerId).toBe(1);
+      expect(event?.init.pointerType).toBe("mouse");
+      expect(event?.init.isPrimary).toBe(true);
+    });
+
+    it("keeps a pressed button held across a move, until its release", async () => {
+      const plugin = await installed();
+      const dispatched = instrument(plugin);
+
+      plugin.dispatchPointerEvent("down", { x: 10, y: 10 }, 0);
+      plugin.dispatchPointerEvent("move", { x: 20, y: 20 });
+      plugin.dispatchPointerEvent("up", { x: 20, y: 20 }, 0);
+      plugin.dispatchPointerEvent("move", { x: 30, y: 30 });
+
+      // A drag reports the held button on every move it is made of, and a
+      // move presses and releases nothing, which the DOM writes as -1.
+      expect(
+        dispatched.map((event) => [
+          event.type,
+          event.init.button,
+          event.init.buttons,
+        ]),
+      ).toEqual([
+        ["pointerdown", 0, 1],
+        ["pointermove", -1, 1],
+        ["pointerup", 0, 0],
+        ["pointermove", -1, 0],
+      ]);
+    });
+
+    it("maps each mouse button to its DOM bit", async () => {
+      const plugin = await installed();
+      const dispatched = instrument(plugin);
+
+      plugin.dispatchPointerEvent("down", { x: 1, y: 1 }, 1);
+      plugin.dispatchPointerEvent("up", { x: 1, y: 1 }, 1);
+      plugin.dispatchPointerEvent("down", { x: 1, y: 1 }, 2);
+
+      expect(
+        dispatched.map((event) => [event.init.button, event.init.buttons]),
+      ).toEqual([
+        [1, 4],
+        [1, 0],
+        [2, 2],
+      ]);
+    });
+
+    it("refuses to dispatch before the first rendered frame", async () => {
+      const plugin = await installed();
+      const dispatched = instrument(plugin);
+      const renderer = plugin.application.renderer as unknown as {
+        lastObjectRendered?: unknown;
+      };
+      renderer.lastObjectRendered = null;
+
+      expect(() =>
+        plugin.dispatchPointerEvent("down", { x: 10, y: 10 }, 0),
+      ).toThrow(/needs a rendered frame/);
+      expect(dispatched).toEqual([]);
     });
   });
 });

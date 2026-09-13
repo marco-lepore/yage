@@ -18,6 +18,7 @@ import type {
   Plugin,
   ProcessSystem,
   RendererAdapter,
+  RendererPointerEventType,
   RendererUIHit,
   SystemScheduler,
 } from "@yagejs/core";
@@ -62,6 +63,25 @@ import { loadTexture, loadWebFont, unloadWebFont } from "./assets.js";
 
 import "./scene-augmentation.js";
 
+/** The DOM event each synthetic pointer event is dispatched as. */
+const DOM_POINTER_EVENTS: Record<RendererPointerEventType, string> = {
+  down: "pointerdown",
+  up: "pointerup",
+  move: "pointermove",
+};
+
+/**
+ * `PointerEvent.buttons` bit per mouse button, as the DOM numbers them: left
+ * is 1, right 2, middle 4.
+ */
+const POINTER_BUTTON_BITS = { 0: 1, 1: 4, 2: 2 } as const;
+
+/** Identifies the one pointer {@link RendererPlugin.dispatchPointerEvent} drives. */
+const SYNTHETIC_POINTER_ID = 1;
+
+/** `PointerEvent.button` for an event that presses and releases nothing. */
+const NO_BUTTON_CHANGE = -1;
+
 /** RendererPlugin wraps PixiJS v8 behind the YAGE plugin interface. */
 export class RendererPlugin implements Plugin, RendererAdapter {
   readonly name = "renderer";
@@ -104,6 +124,12 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     provider: false,
   };
   private _processSystem: ProcessSystem | undefined;
+  /**
+   * `PointerEvent.buttons` the synthetic pointer currently holds. A move
+   * reports it, so a drag between a press and its release looks to a handler
+   * the way a person's drag does.
+   */
+  private _syntheticPointerButtons = 0;
   /**
    * Screen-scope effects host — `.fx.addEffect(...)` attaches a filter to
    * `app.stage`, so it persists across scene transitions and composites
@@ -551,6 +577,57 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    */
   hasRenderedFrame(): boolean {
     return this._app.renderer.lastObjectRendered != null;
+  }
+
+  /**
+   * Deliver a pointer event at virtual-space `point`, so Pixi hit-tests and
+   * delivers it the way it does for a person clicking: a `@yagejs/ui` button
+   * runs its `onClick`, and stacking order, a disabled button's pointer mode
+   * and clipping all apply. `button` is the mouse button a press or a release
+   * carries; a move omits it and reports whichever buttons a press left held.
+   *
+   * The event goes to the canvas, never to the window: Pixi renames a
+   * pointer-up whose composed path starts elsewhere to `pointerupoutside`,
+   * which skips a button's click path. It bubbles, because `@yagejs/input`
+   * listens for pointer-up on the window in the bubble phase — so the engine
+   * receives the same event and applies it at the next drain, one frame after
+   * the handler has already run.
+   *
+   * One primary mouse pointer, id {@link SYNTHETIC_POINTER_ID}. Multi-touch
+   * is not reachable this way.
+   */
+  dispatchPointerEvent(
+    type: RendererPointerEventType,
+    point: { x: number; y: number },
+    button?: 0 | 1 | 2,
+  ): void {
+    if (!this.hasRenderedFrame()) {
+      throw new Error(
+        "RendererPlugin.dispatchPointerEvent() needs a rendered frame: " +
+          "the event boundary hit-tests against the last object rendered and " +
+          "drops every event until one exists. Step one frame first.",
+      );
+    }
+    const bit = button === undefined ? 0 : POINTER_BUTTON_BITS[button];
+    if (type === "down") this._syntheticPointerButtons |= bit;
+    if (type === "up") this._syntheticPointerButtons &= ~bit;
+    const canvas = this.canvas;
+    const offset = this._fitController.virtualToCanvas(point.x, point.y);
+    const rect = canvas.getBoundingClientRect();
+    canvas.dispatchEvent(
+      new PointerEvent(DOM_POINTER_EVENTS[type], {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        clientX: rect.left + offset.x,
+        clientY: rect.top + offset.y,
+        button: type === "move" ? NO_BUTTON_CHANGE : (button ?? 0),
+        buttons: this._syntheticPointerButtons,
+        pointerId: SYNTHETIC_POINTER_ID,
+        pointerType: "mouse",
+        isPrimary: true,
+      }),
+    );
   }
 
   /**

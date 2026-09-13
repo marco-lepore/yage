@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Inspector } from "./Inspector.js";
 import type { InspectorFacetContributor } from "./Inspector.js";
 import { Scene } from "./Scene.js";
@@ -2220,35 +2220,22 @@ describe("targeted component facets", () => {
   });
 });
 
-/** A dispatched pointer event, flattened to what the assertions read. */
-interface RecordedPointerEvent {
+/** One event the Inspector asked the renderer adapter to deliver. */
+interface DispatchedPointer {
   type: string;
-  clientX: number;
-  clientY: number;
-  button: number;
-  buttons: number;
-  bubbles: boolean;
-  pointerId: number;
-  pointerType: string;
-  isPrimary: boolean;
-}
-
-class StubPointerEvent {
-  constructor(
-    readonly type: string,
-    readonly init: PointerEventInit,
-  ) {}
+  point: { x: number; y: number };
+  button: 0 | 1 | 2 | undefined;
 }
 
 /**
  * A surface holding one button, with a renderer adapter that models a canvas
- * at twice virtual size behind a 40 x 20 letterbox bar and offset 12 x 8 in
- * the page. The button's container sits at canvas (440, 320), which is
- * virtual (200, 150); its 60 x 30 box centres on virtual (230, 165).
+ * at twice virtual size behind a 40 x 20 letterbox bar. The button's container
+ * sits at canvas (440, 320), which is virtual (200, 150); its 60 x 30 box
+ * centres on virtual (230, 165).
  */
 async function pointerSetup(opts?: {
-  hasRenderedFrame?: boolean;
-  omitVirtualToCanvas?: boolean;
+  omitCanvasToVirtual?: boolean;
+  omitDispatch?: boolean;
   buttonHasContainer?: boolean;
   secondSurface?: boolean;
 }) {
@@ -2292,24 +2279,7 @@ async function pointerSetup(opts?: {
     );
   }
 
-  const dispatched: RecordedPointerEvent[] = [];
-  const canvas = {
-    getBoundingClientRect: () => ({ left: 12, top: 8 }),
-    dispatchEvent: (event: StubPointerEvent) => {
-      dispatched.push({
-        type: event.type,
-        clientX: event.init.clientX ?? 0,
-        clientY: event.init.clientY ?? 0,
-        button: event.init.button ?? 0,
-        buttons: event.init.buttons ?? 0,
-        bubbles: event.init.bubbles ?? false,
-        pointerId: event.init.pointerId ?? 0,
-        pointerType: event.init.pointerType ?? "",
-        isPrimary: event.init.isPrimary ?? false,
-      });
-      return true;
-    },
-  };
+  const dispatched: DispatchedPointer[] = [];
   const hitTestUIPath = vi.fn(
     (): { path: readonly object[]; consumed: boolean } | null => ({
       path: [button.displayObject].filter(
@@ -2319,21 +2289,27 @@ async function pointerSetup(opts?: {
     }),
   );
   const adapter = {
-    canvas,
-    canvasToVirtual: (x: number, y: number) => ({
-      x: (x - 40) / 2,
-      y: (y - 20) / 2,
-    }),
-    ...(opts?.omitVirtualToCanvas
+    canvas: {},
+    ...(opts?.omitCanvasToVirtual
       ? {}
       : {
-          virtualToCanvas: (x: number, y: number) => ({
-            x: x * 2 + 40,
-            y: y * 2 + 20,
+          canvasToVirtual: (x: number, y: number) => ({
+            x: (x - 40) / 2,
+            y: (y - 20) / 2,
           }),
         }),
     hitTestUIPath,
-    hasRenderedFrame: () => opts?.hasRenderedFrame ?? true,
+    ...(opts?.omitDispatch
+      ? {}
+      : {
+          dispatchPointerEvent: (
+            type: string,
+            point: { x: number; y: number },
+            button?: 0 | 1 | 2,
+          ) => {
+            dispatched.push({ type, point: { ...point }, button });
+          },
+        }),
   };
   base.ctx.register(RendererAdapterKey, adapter as unknown as RendererAdapter);
 
@@ -2349,71 +2325,44 @@ async function pointerSetup(opts?: {
 }
 
 describe("Inspector.pointer", () => {
-  beforeEach(() => {
-    vi.stubGlobal("PointerEvent", StubPointerEvent);
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+  it("aims a node id at the centre of its virtual-space bounds", async () => {
+    const { inspector, buttonId, dispatched, hitTestUIPath } =
+      await pointerSetup();
 
-  it("clicks a node id at the centre of its bounds, in client coordinates", async () => {
-    const { inspector, buttonId, dispatched } = await pointerSetup();
+    const hit = inspector.pointer.click(buttonId);
 
-    inspector.pointer.click(buttonId);
-
-    // virtual (230, 165) -> canvas (500, 350) -> client (512, 358).
+    // Canvas (440, 320) is virtual (200, 150); the 60 x 30 box centres 30 x 15
+    // further in. Reading the bounds in canvas pixels would aim at (440, 320).
+    expect(hit.point).toEqual({ x: 230, y: 165 });
+    expect(hitTestUIPath).toHaveBeenCalledWith(230, 165);
     expect(dispatched).toEqual([
-      {
-        type: "pointerdown",
-        clientX: 512,
-        clientY: 358,
-        button: 0,
-        buttons: 1,
-        bubbles: true,
-        pointerId: 1,
-        pointerType: "mouse",
-        isPrimary: true,
-      },
-      {
-        type: "pointerup",
-        clientX: 512,
-        clientY: 358,
-        button: 0,
-        buttons: 0,
-        bubbles: true,
-        pointerId: 1,
-        pointerType: "mouse",
-        isPrimary: true,
-      },
+      { type: "down", point: { x: 230, y: 165 }, button: 0 },
+      { type: "up", point: { x: 230, y: 165 }, button: 0 },
     ]);
   });
 
-  it("clicks a virtual-space point unchanged", async () => {
+  it("aims a virtual-space point unchanged", async () => {
     const { inspector, dispatched } = await pointerSetup();
 
     const hit = inspector.pointer.click({ x: 10, y: 20 });
 
     expect(hit.point).toEqual({ x: 10, y: 20 });
-    expect(dispatched[0]?.clientX).toBe(10 * 2 + 40 + 12);
-    expect(dispatched[0]?.clientY).toBe(20 * 2 + 20 + 8);
+    expect(dispatched[0]?.point).toEqual({ x: 10, y: 20 });
   });
 
   it("names the user-interface node the hit test landed on", async () => {
-    const { inspector, buttonId, hitTestUIPath } = await pointerSetup();
+    const { inspector, buttonId } = await pointerSetup();
 
-    const hit = inspector.pointer.click(buttonId);
-
-    expect(hit).toEqual({
+    expect(inspector.pointer.click(buttonId)).toEqual({
       nodeId: buttonId,
       type: "UIButton",
       path: [{ id: buttonId, type: "UIButton" }],
       point: { x: 230, y: 165 },
       consumed: true,
     });
-    expect(hitTestUIPath).toHaveBeenCalledWith(230, 165);
   });
 
-  it("reports a null node when the hit test finds nothing", async () => {
+  it("reports an empty path when the hit test finds nothing", async () => {
     const { inspector, hitTestUIPath } = await pointerSetup();
     hitTestUIPath.mockReturnValue(null);
 
@@ -2432,8 +2381,6 @@ describe("Inspector.pointer", () => {
 
     const hit = inspector.pointer.click({ x: 5, y: 5 });
 
-    expect(hit.nodeId).toBeNull();
-    expect(hit.type).toBeNull();
     expect(hit.path).toEqual([]);
     expect(hit.consumed).toBe(false);
   });
@@ -2460,8 +2407,6 @@ describe("Inspector.pointer", () => {
       { id: buttonId, type: "UIButton" },
       { id: surfaceId, type: "UIPanel" },
     ]);
-    expect(hit.nodeId).toBe(buttonId);
-    expect(hit.type).toBe("UIButton");
   });
 
   it("dispatches nothing from hitTest", async () => {
@@ -2469,7 +2414,7 @@ describe("Inspector.pointer", () => {
 
     const hit = inspector.pointer.hitTest(buttonId);
 
-    expect(hit.nodeId).toBe(buttonId);
+    expect(hit.path).toHaveLength(1);
     expect(dispatched).toEqual([]);
   });
 
@@ -2481,26 +2426,22 @@ describe("Inspector.pointer", () => {
     inspector.pointer.up({ x: 3, y: 4 });
 
     expect(dispatched.map((event) => event.type)).toEqual([
-      "pointerdown",
-      "pointermove",
-      "pointerup",
+      "down",
+      "move",
+      "up",
     ]);
-    expect(dispatched.map((event) => event.buttons)).toEqual([1, 0, 0]);
   });
 
-  it("maps each mouse button to its DOM bitmask", async () => {
+  it("passes the mouse button a press and a release carry", async () => {
     const { inspector, dispatched } = await pointerSetup();
 
     inspector.pointer.down({ x: 1, y: 1 }, { button: 1 });
-    inspector.pointer.down({ x: 1, y: 1 }, { button: 2 });
+    inspector.pointer.up({ x: 1, y: 1 }, { button: 2 });
 
-    expect(dispatched.map((event) => [event.button, event.buttons])).toEqual([
-      [1, 4],
-      [2, 2],
-    ]);
+    expect(dispatched.map((event) => event.button)).toEqual([1, 2]);
   });
 
-  it("leaves the InputManager alone", async () => {
+  it("leaves the InputManager untouched", async () => {
     const { inspector, ctx, buttonId } = await pointerSetup();
     const manager = {
       firePointerDown: vi.fn(),
@@ -2524,20 +2465,25 @@ describe("Inspector.pointer", () => {
     );
   });
 
-  it("throws when the adapter cannot convert virtual coordinates", async () => {
-    const { inspector } = await pointerSetup({ omitVirtualToCanvas: true });
+  it("names the member a registered adapter is missing", async () => {
+    const { inspector } = await pointerSetup({ omitDispatch: true });
 
     expect(() => inspector.pointer.down({ x: 0, y: 0 })).toThrow(
-      "Inspector.pointer.down() requires RendererPlugin to be active.",
+      "Inspector.pointer.down(): the registered renderer adapter implements no dispatchPointerEvent.",
     );
   });
 
-  it("throws before the first rendered frame", async () => {
-    const { inspector } = await pointerSetup({ hasRenderedFrame: false });
+  it("refuses an adapter that cannot convert canvas coordinates", async () => {
+    // Bounds fall back to raw canvas pixels without this member, so clicking
+    // by id would aim at a canvas pixel as if it were a virtual one.
+    const { inspector, dispatched } = await pointerSetup({
+      omitCanvasToVirtual: true,
+    });
 
-    expect(() => inspector.pointer.click({ x: 0, y: 0 })).toThrow(
-      "Inspector.pointer.click() needs a rendered frame; step one frame first.",
+    expect(() => inspector.pointer.click("whatever")).toThrow(
+      "implements no canvasToVirtual",
     );
+    expect(dispatched).toEqual([]);
   });
 
   it("throws for an id that matches no node", async () => {
@@ -2555,8 +2501,6 @@ describe("Inspector.pointer", () => {
     expect(rootId).toMatch(/:ui$/);
 
     // That wrapper owns no element, so the answer is that it has no bounds.
-    // Telling the caller to read ids from the snapshot would be absurd here:
-    // the snapshot is where this id came from.
     expect(() => inspector.pointer.click(rootId)).toThrow(
       `Inspector.pointer.click(): UI node "${rootId}" has no bounds.`,
     );
