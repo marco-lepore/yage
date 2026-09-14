@@ -75,7 +75,10 @@ export class BackgroundRenderer {
       }
     }
 
-    this.opts = opts;
+    // A copy, so a later resize redraws the values passed here rather than the
+    // caller's object as it is by then. Only top-level fields are read once
+    // this call returns, so a shallow copy is enough; the texture stays shared.
+    this.opts = { ...opts };
 
     if (!this.displayObject) {
       this.displayObject = this.createDisplayObject(opts);
