@@ -206,9 +206,10 @@ and a shrink-to-fit parent at a fractional position.
 - **Dev-mode nine-slice warning.** A nine-slice element or background laid out
   smaller than `left + right` or `top + bottom` insets has no room for its
   middle row or column: the corners overlap and the art folds in on itself,
-  which reads as a positioning bug. A `console.warn` fires once per element,
-  in development builds. Nothing is clamped — give the element more room, or
-  use art with smaller insets.
+  which reads as a positioning bug. A `console.warn` fires in development
+  builds, and again if the element fits and later shrinks below its insets.
+  Nothing is clamped — give the element more room, or use art with smaller
+  insets.
 
 ## UIImage sizing
 
@@ -488,11 +489,12 @@ this exact overlay.
 registered asset key, a texture handle, or a raw renderer texture.
 
 `nineSlice` insets are read from the options, not from the texture's own
-metadata, and they are applied every time the texture is applied. Restate them
-whenever you set a new `texture`: a background updated without `nineSlice`
-keeps the insets from the options that last stated them, and draws the new art
-with the previous art's slice guides.
+metadata, and they are applied every time the options are set. Pass `mode` and
+`nineSlice` again whenever you set a new `texture`. Options you leave out go
+back to their defaults: a background updated without `nineSlice` draws with
+insets of 0, and one updated without `mode` becomes a stretched sprite.
 
 Give a nine-slice element room for its insets: below `left + right` px wide or
 `top + bottom` px tall it has no middle row or column and the corners overlap.
-Development builds warn once per element when that happens.
+Development builds warn when that happens, and warn again if the element later
+fits and then shrinks below its insets once more.
