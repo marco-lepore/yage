@@ -15,7 +15,12 @@ import type {
 import { ParticleContainer as PixiParticleContainer } from "pixi.js";
 import type { Particle } from "pixi.js";
 import { ParticlePool } from "./ParticlePool.js";
-import { copyOptions } from "./copy.js";
+import {
+  BURST_OVERRIDE_OPTIONS,
+  UPDATE_OPTIONS,
+  copyOptions,
+  pickOptions,
+} from "./copy.js";
 import { normalizeShape, shapeTexture } from "./shapes.js";
 import type { ParticleShape, ShapeConfig } from "./shapes.js";
 import { isLerped, resolveRange } from "./types.js";
@@ -225,12 +230,15 @@ export class ParticleEmitterComponent extends Component {
    * The whole merged configuration is checked, and a rejected call leaves every
    * previous value in force.
    *
+   * The emitter reads only the options `EmitterUpdateOptions` lists and ignores
+   * any other key, such as `maxParticles` in a spread `EmitterConfig`.
+   *
    * The emitter copies what it is given, so changing the object afterwards
    * changes nothing. For a one-off variation, pass overrides to
    * {@link ParticleEmitterComponent.burst} instead.
    */
   configure(options: EmitterUpdateOptions): void {
-    const { blendMode, ...rest } = options;
+    const { blendMode, ...rest } = pickOptions(options, UPDATE_OPTIONS);
     const candidate: ResolvedConfig = {
       ...this.config,
       ...copyOptions(rest),
@@ -272,11 +280,16 @@ export class ParticleEmitterComponent extends Component {
     const x = worldX === undefined ? 0 : worldX - originX;
     const y = worldY === undefined ? 0 : worldY - originY;
 
-    // Resolve and check the burst's configuration once, not per particle. The
-    // merged object is not kept past this call, so it needs no copy.
+    // Resolve and check the burst's configuration once, not per particle. Only
+    // the BurstOverrides keys are merged, because a spread can add other keys
+    // and a spawn reads some of them, such as alphaFadeIn. The merged object
+    // is not kept past this call, so it needs no copy.
     let cfg = this.config;
     if (overrides !== undefined) {
-      cfg = { ...this.config, ...overrides };
+      cfg = {
+        ...this.config,
+        ...pickOptions(overrides, BURST_OVERRIDE_OPTIONS),
+      };
       assertEmitterConfig(cfg);
     }
 

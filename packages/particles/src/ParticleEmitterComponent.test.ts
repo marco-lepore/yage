@@ -171,6 +171,7 @@ import {
   spawnEntityInScene,
 } from "./test-helpers.js";
 import { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";
+import { ParticlePresets } from "./presets.js";
 
 const tex = { label: "test" } as never;
 
@@ -656,6 +657,36 @@ describe("ParticleEmitterComponent", () => {
       emitter.configure({ maxParticles: 10 });
       expect(emitter.activeCount).toBe(0);
     });
+
+    it("ignores construction-only options that arrive through a spread", () => {
+      const emitter = new ParticleEmitterComponent({
+        texture: tex,
+        lifetime: 10,
+        maxParticles: 5,
+        simulationSpace: "local",
+        layer: "effects",
+      });
+      // The preset sets neither simulationSpace nor layer, so add both.
+      const effect: EmitterConfig = {
+        ...ParticlePresets.fire(),
+        simulationSpace: "world",
+        layer: "default",
+      };
+      // TypeScript does not report extra keys from a spread, so this compiles.
+      emitter.configure({ ...effect });
+
+      // Nothing reads maxParticles or the texture source after construction,
+      // so the stored configuration is the only place a kept value would show.
+      const stored = (emitter as unknown as { config: Record<string, unknown> })
+        .config;
+      expect(stored.simulationSpace).toBe("local");
+      expect(stored.layer).toBe("effects");
+      expect(stored.maxParticles).toBe(5);
+      expect(stored).not.toHaveProperty("shape");
+
+      // The options configure accepts still apply.
+      expect(stored.tint).toBe(0xff6600);
+    });
   });
 
   describe("burst overrides", () => {
@@ -742,6 +773,19 @@ describe("ParticleEmitterComponent", () => {
       // @ts-expect-error gravity is read per frame, not per particle.
       emitter.burst(1, { gravity: { x: 0, y: 10 } });
       expect(emitter.activeCount).toBe(2);
+    });
+
+    it("ignores options outside BurstOverrides that arrive through a spread", () => {
+      const emitter = createEmitter({
+        alpha: 1,
+        lifetime: 10,
+        maxParticles: 1,
+      });
+      // A spawn reads alphaFadeIn, so if the burst kept the spread's value,
+      // this particle would start at alpha 0.
+      const faded: EmitterConfig = { lifetime: 10, alphaFadeIn: 0.5 };
+      emitter.burst(1, { ...faded });
+      expect(emitter._active[0]!.particle.alpha).toBe(1);
     });
   });
 
