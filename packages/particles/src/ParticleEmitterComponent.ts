@@ -9,6 +9,7 @@ import { SceneRenderTreeKey, resolveTextureInput } from "@yagejs/renderer";
 import type {
   BlendMode,
   ParticleContainer,
+  TextureInput,
   TextureResource,
 } from "@yagejs/renderer";
 import { ParticleContainer as PixiParticleContainer } from "pixi.js";
@@ -16,6 +17,7 @@ import type { Particle } from "pixi.js";
 import { ParticlePool } from "./ParticlePool.js";
 import { copyOptions } from "./copy.js";
 import { normalizeShape, shapeTexture } from "./shapes.js";
+import type { ParticleShape, ShapeConfig } from "./shapes.js";
 import { isLerped, resolveRange } from "./types.js";
 import { assertEmitterConfig } from "./validate.js";
 import type {
@@ -115,12 +117,12 @@ export class ParticleEmitterComponent extends Component {
     super();
 
     assertEmitterConfig(config);
-    const texture = resolveSource(config);
 
-    // The texture source is resolved above and the blend mode belongs to the
-    // container, so the stored configuration carries plain emission data only.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { texture: _texture, shape: _shape, blendMode, ...options } = config;
+    // The texture source becomes the container's and the pool's texture, and
+    // the blend mode belongs to the container, so the stored configuration
+    // carries plain emission data only.
+    const { texture: textureInput, shape, blendMode, ...options } = config;
+    const texture = resolveSource(textureInput, shape);
     this.config = {
       maxParticles: 100,
       rate: 10,
@@ -523,15 +525,16 @@ export class ParticleEmitterComponent extends Component {
  * type, so the order below only matters for callers coming from plain JS:
  * `texture` wins, then `shape`, then the `"pixel"` default.
  */
-function resolveSource(config: EmitterConfig): TextureResource {
-  if (config.texture !== undefined) {
-    return resolveTextureInput(config.texture);
+function resolveSource(
+  texture: TextureInput | undefined,
+  shape: ParticleShape | ShapeConfig | undefined,
+): TextureResource {
+  if (texture !== undefined) {
+    return resolveTextureInput(texture);
   }
-  const shape = normalizeShape(
-    config.shape ?? "pixel",
-    "ParticleEmitterComponent",
+  return shapeTexture(
+    normalizeShape(shape ?? "pixel", "ParticleEmitterComponent"),
   );
-  return shapeTexture(shape);
 }
 
 /**
