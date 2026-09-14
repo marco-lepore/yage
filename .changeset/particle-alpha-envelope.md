@@ -14,4 +14,4 @@ Both are fractions of a particle's own lifetime, 0-1, and both default to 0. The
 
 Alpha had two points and no ramp, so an emitter spreading particles across an area popped each one in at full opacity. A fade-in spawns the particle at 0 instead.
 
-Two things to know. A hand-rolled fade such as `alpha: { start: 0, end: 1 }` multiplies with `alphaFadeIn` rather than being replaced by it, so the particle fades in twice, once from each. Fractions that overlap — both above 0.5 — multiply in the middle, so alpha never reaches the value `alpha` asked for; that is legal, not an error. `scale` has no envelope, and the presets are unchanged.
+Two things to know. A hand-rolled fade such as `alpha: { start: 0, end: 1 }` multiplies with `alphaFadeIn` rather than being replaced by it, so the particle fades in twice, once from each. Fractions that add up to more than 1 overlap and multiply in the middle, so alpha never reaches the value `alpha` asked for; that is legal, not an error. `scale` has no envelope, and the presets are unchanged.

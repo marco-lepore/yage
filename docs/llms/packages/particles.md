@@ -212,7 +212,7 @@ lifetime, both 0-1 and both 0 by default. They multiply whatever `alpha`
 produces rather than replacing it, so `alpha: { start: 0, end: 1 }` plus
 `alphaFadeIn: 0.2` fades in twice, once from each. A fade-in makes a particle spawn at 0 alpha
 instead of popping in, which is what an ambient emitter spread over an area
-needs. Fractions that overlap — both above 0.5 — multiply in the middle, so
+needs. Fractions that add up to more than 1 overlap and multiply in the middle, so
 alpha never reaches the value `alpha` asked for. `scale` has no envelope.
 
 ```ts

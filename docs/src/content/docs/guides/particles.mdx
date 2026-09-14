@@ -71,6 +71,13 @@ entity.add(emitter);
 emitter.emit();  // start continuous emission
 ```
 
+:::note
+The emitter keeps its own copy of the configuration you pass in, including
+nested values such as a `[min, max]` array or `gravity`. Changing that object
+afterwards has no effect on the emitter. To change an emitter after it is
+built, call `configure` (see [Changing an Emitter](#changing-an-emitter)).
+:::
+
 ## Emitter Config
 
 | Property | Type | Default | Description |
@@ -84,6 +91,8 @@ emitter.emit();  // start continuous emission
 | `angle` | `NumberRange` | `0` | Emission angle (radians) |
 | `scale` | `NumberRange \| Lerped` | `1` | Size, or start→end interpolation |
 | `alpha` | `NumberRange \| Lerped` | `1` | Opacity, or start→end interpolation |
+| `alphaFadeIn` | `number` | `0` | Fraction of each particle's lifetime spent fading in (0–1) |
+| `alphaFadeOut` | `number` | `0` | Fraction of each particle's lifetime spent fading out (0–1) |
 | `rotation` | `NumberRange` | `0` | Initial rotation (radians) |
 | `rotationSpeed` | `NumberRange` | `0` | Rotation speed (rad/s) |
 | `tint` | `number` | `0xffffff` | Color tint |
@@ -109,8 +118,41 @@ scale: { start: [0.8, 1.2], end: 0 }   // shrink to nothing
 alpha: { start: 1, end: [0, 0.3] }     // fade out with variation
 ```
 
-The three texture options are mutually exclusive: setting more than one is a
-type error. An emitter that sets none of them uses the `"pixel"` shape.
+The two texture options, `texture` and `shape`, are mutually exclusive: setting
+both is a type error. An emitter that sets neither uses the `"pixel"` shape.
+
+### Fading In and Out
+
+`alphaFadeIn` and `alphaFadeOut` fade each particle in at the start of its life
+and out at the end. Each is a fraction of that particle's own lifetime, from 0
+to 1, and a value outside that range throws. With `alphaFadeIn: 0.25`, a
+particle that lives 2 seconds fades in over its first half second. Both default
+to 0, which means no fade.
+
+```typescript
+const dust = new ParticleEmitterComponent({
+  shape: { type: "softCircle", size: 8 },
+  lifetime: [1, 2],
+  alpha: 0.6,
+  alphaFadeIn: 0.15,
+  alphaFadeOut: 0.4,
+});
+```
+
+A fade-in starts each particle fully transparent, so it appears gradually. The
+fades multiply whatever `alpha` produces instead of replacing it: each particle
+in the example above fades in to 0.6, stays there, and then fades out.
+
+If `alpha` is a start-to-end ramp that fades the particle as well, the particle
+fades twice, once from each option. With `alpha: { start: 0, end: 1 }` and
+`alphaFadeIn: 0.5`, a particle a quarter of the way through its life has an
+opacity of 0.125. The ramp alone would give it 0.25, and the fade alone 0.5. For
+a single fade, use either a constant `alpha` with the fade options or an `alpha`
+ramp on its own.
+
+When `alphaFadeIn` and `alphaFadeOut` add up to more than 1, the fade-in and the
+fade-out overlap and multiply, so a particle never reaches the opacity `alpha`
+gives it. That combination is allowed and does not throw.
 
 ### Blend Mode
 
@@ -207,6 +249,9 @@ const request = emitter.requestEmission(); // independent temporary request
 request.release();           // release only this request
 emitter.burst(50);           // spawn 50 at the entity's world position
 emitter.burst(10, 400, 300); // burst at an explicit world position
+emitter.burst(10, { tint: 0xff0000 });           // these 10 particles only
+emitter.burst(10, 400, 300, { tint: 0xff0000 }); // position and overrides together
+emitter.configure({ rate: 40 });                 // change the emitter from now on
 
 emitter.isEmitting;          // boolean
 emitter.activeCount;         // number of live particles
@@ -218,6 +263,46 @@ can call `requestEmission()` instead. Emission continues while manual state or
 at least one request is active. Releasing one request cannot stop another
 request or a later `emit()` call. Existing particles always continue to their
 end of life.
+
+### Changing an Emitter
+
+`configure` changes an emitter from now on. Overrides passed to `burst` change
+only the particles of that one burst, and leave the emitter's configuration and
+every live particle as they were.
+
+```typescript
+// From now on the torch emits more particles, tinted blue.
+torch.configure({ rate: 40, tint: 0x3399ff });
+
+// Each hit sends its sparks along the swing, without changing the emitter.
+sparks.burst(8, hitX, hitY, { angle: [swing - 0.2, swing + 0.2] });
+```
+
+When a `configure` change takes effect depends on the option:
+
+| Options | When a change takes effect |
+|---|---|
+| `lifetime`, `speed`, `angle`, `scale`, `alpha`, `rotation`, `rotationSpeed`, `tint`, `spawnOffset`, `radialSpeed` | For particles spawned afterwards. Particles already alive keep the values they were spawned with. |
+| `gravity`, `damping`, `alphaFadeIn`, `alphaFadeOut` | For every live particle, on the next frame. |
+| `rate` | For continuous emission, on the next frame. |
+| `blendMode` | For every particle, including those already alive, because the whole emitter shares one blend mode. |
+
+Burst overrides accept only the options in the first row, which are read once
+as each particle spawns. `gravity`, `damping`, `alphaFadeIn` and `alphaFadeOut`
+apply to every live particle on every frame, so only `configure` changes them.
+`maxParticles`, `texture`, `shape`, `layer` and `simulationSpace` are fixed
+when the emitter is built. Neither method accepts them, and naming one in the
+options is a type error.
+
+Both methods check the emitter's configuration combined with the new values,
+the same way the constructor does, and throw on a bad value. A `configure` call
+that throws changes nothing, and a `burst` call that throws spawns nothing.
+Because the check covers the combined configuration,
+`configure({ radialSpeed: 50 })` works on an emitter that already has a
+`spawnOffset`.
+
+Like the constructor, `configure` copies what it is given, so changing that
+object afterwards has no effect.
 
 ## Presets
 
