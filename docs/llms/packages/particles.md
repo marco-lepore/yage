@@ -149,8 +149,12 @@ emitter.burst(2, fistX, fistY, { angle: [swing - 0.18, swing + 0.18] });
 
 Fixed when the emitter is built, and absent from both types: `maxParticles`
 and the texture source, which the particle pool allocates against; `layer`,
-read once when the component is added; and `simulationSpace`. Passing one of
-them to either method is a type error rather than a silent no-op.
+read once when the component is added; and `simulationSpace`. Naming one of
+them in either method's options is a type error. TypeScript does not report
+extra keys that come from a spread, so a spread can still pass one. Each
+method ignores any option outside its own type.
+`configure({ ...ParticlePresets.fire() })` applies everything in the preset
+except its `maxParticles` and `shape`.
 
 Both methods check the whole merged configuration and throw on a bad value, the
 same way construction does. A rejected `configure` leaves every previous value
