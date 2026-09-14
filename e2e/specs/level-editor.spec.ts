@@ -205,12 +205,17 @@ interface DraftOutcomeView {
 /** The level this test is editing, project-relative. */
 let level = "";
 let levelCount = 0;
+/** The part of this test's level names that no other test in the run uses. */
+let levelSuffix = "";
 
 /**
  * One level file, new for each test.
  *
  * The name is new because the server keeps one draft per path for as long as
  * it runs: reusing a name would hand the next test the edits of the last one.
+ * The server runs for the whole invocation, but the count starts again in each
+ * worker, and a retry runs in a new worker. So the name also carries the
+ * worker's index, which Playwright never gives to two worker processes.
  * It is the only one because the editor opens the first level the server lists,
  * which is also how a test picks the template it wants.
  */
@@ -219,7 +224,8 @@ function useTemplate(template: string): void {
     if (file.endsWith(".yage-level.json")) rmSync(path.join(LEVELS, file));
   }
   levelCount += 1;
-  level = `levels/forest-${String(levelCount)}.yage-level.json`;
+  levelSuffix = `${String(test.info().workerIndex)}-${String(levelCount)}`;
+  level = `levels/forest-${levelSuffix}.yage-level.json`;
   copyFileSync(template, path.join(LEVELS, path.basename(level)));
 }
 
@@ -234,7 +240,7 @@ let secondLevel = "";
  * `forest` sorts before `meadow`, so the editor still opens the forest level.
  */
 function useSecondLevel(): void {
-  secondLevel = `levels/meadow-${String(levelCount)}.yage-level.json`;
+  secondLevel = `levels/meadow-${levelSuffix}.yage-level.json`;
   copyFileSync(MEADOW_TEMPLATE, path.join(LEVELS, path.basename(secondLevel)));
 }
 
@@ -2797,7 +2803,7 @@ test.describe("level editor", () => {
   }) => {
     await openEditor(page);
     const token = await tokenOf(page);
-    const name = `made-${String(levelCount)}`;
+    const name = `made-${levelSuffix}`;
     const made = `levels/${name}.yage-level.json`;
     const copy = `levels/${name}-copy.yage-level.json`;
 
@@ -3185,7 +3191,7 @@ test.describe("level editor", () => {
     await openEditor(page);
     const token = await tokenOf(page);
 
-    const name = `params-${String(levelCount)}`;
+    const name = `params-${levelSuffix}`;
     const made = `levels/${name}.yage-level.json`;
     await page.getByTestId("new-level").click();
     await page.getByTestId("level-name").fill(name);
