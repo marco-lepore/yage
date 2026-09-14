@@ -498,6 +498,28 @@ describe("reconciler", () => {
     expect(label._truncate).toBe("ellipsis");
   });
 
+  it("Button forwards `truncateWith` into the auto-wrapped Text", () => {
+    const root = createRoot(container as never);
+    const render = (truncateWith: string): void =>
+      root.render(
+        createElement(
+          Button,
+          { onClick: () => {}, truncate: "ellipsis", truncateWith, width: 80 },
+          "A very long label that doesn't fit",
+        ),
+      );
+
+    render("...");
+    const btn = getRootInstances(container as never)?.[0] as unknown as {
+      children: readonly unknown[];
+    };
+    const label = btn.children[0] as { _truncateWith: unknown };
+    expect(label._truncateWith).toBe("...");
+
+    render("~");
+    expect(label._truncateWith).toBe("~");
+  });
+
   it("forwards onHover through the reconciler to the underlying node", () => {
     // End-to-end: React prop → generic reconciler → UIPanel →
     // PointerEvents → callback. Emitting on the node's own container
