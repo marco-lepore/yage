@@ -100,6 +100,22 @@ class Level1 extends Scene {
 
 Default loaders dispose appropriately: `unload(textureHandle)` calls Pixi `Assets.unload(path)` so the texture is released and GC-able; `unload(soundHandle)` calls `sound.remove(path)`.
 
+### Waiting for cleanup
+
+`unload(handle)` and `clear()` return `void | Promise<void>`. Await the result
+when subsequent work needs cleanup to finish:
+
+```ts
+await assets.unload(map);
+await assets.loadAll([map]);
+```
+
+The last release removes the cache entry immediately. Loading the same handle
+again waits for any asynchronous cleanup, even when the caller did not await
+`unload`. A custom loader may return a promise from `unload(path, asset)`;
+that promise must cover all resources it releases. Failed cleanup rejects and
+prevents another load of that path in the same asset manager.
+
 ### Reference counting
 
 Loads are counted per handle. Every handle passed to `loadAll` adds one

@@ -1,3 +1,4 @@
+import { TilemapPlugin } from "@yagejs/tilemap";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { Engine } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
@@ -40,6 +41,10 @@ export default {
         return { x: point.x, y: point.y };
       },
     };
-    return [renderer, new PhysicsPlugin({ gravity: { x: 0, y: 0 } })];
+    return [
+      renderer,
+      new PhysicsPlugin({ gravity: { x: 0, y: 0 } }),
+      new TilemapPlugin(),
+    ];
   },
 };

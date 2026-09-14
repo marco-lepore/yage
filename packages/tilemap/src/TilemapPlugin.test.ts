@@ -61,7 +61,8 @@ vi.mock("pixi.js", () => ({
     },
     get: (key: string) => mocks.cacheMap.get(key),
     load: async (key: string) => {
-      const asset = mocks.sources.get(key) ?? { source: { label: key } };
+      const asset = mocks.cacheMap.get(key) ??
+        mocks.sources.get(key) ?? { source: { label: key } };
       mocks.cacheMap.set(key, asset);
       return asset;
     },
@@ -155,6 +156,20 @@ describe("TilemapPlugin tiledMap loader", () => {
     mocks.sources.set("maps/b.json", sharedTilesetMap());
   });
 
+  it("drops parsed map data when an image fails, so retry reads a corrected map", async () => {
+    const assets = install();
+    assets.registerLoader("texture", {
+      load: () => Promise.reject(new Error("missing image")),
+    });
+    const handle = tiledMap("maps/a.json");
+    await expect(assets.loadAll([handle])).rejects.toThrow("missing image");
+    expect(mocks.cacheMap.has(handle.path)).toBe(false);
+    const corrected = { ...sharedTilesetMap(), width: 3, tilesets: [] };
+    mocks.sources.set(handle.path, corrected);
+    await assets.loadAll([handle]);
+    expect(assets.get(handle).width).toBe(3);
+  });
+
   it("loads a map's tileset images with it", async () => {
     const assets = install();
 
@@ -163,6 +178,51 @@ describe("TilemapPlugin tiledMap loader", () => {
     expect(assets.has(texture(IMAGE))).toBe(true);
     expect(mocks.cacheMap.has(IMAGE)).toBe(true);
   });
+
+  it.each([false, true])(
+    "releases successful images from a failed map while preserving other owners (%s)",
+    async (shared) => {
+      const map = sharedTilesetMap();
+      map.tilesets.push({
+        firstgid: 2,
+        data: { ...map.tilesets[0]!.data!, resolvedImage: "maps/missing.png" },
+      });
+      mocks.sources.set("maps/a.json", map);
+      const assets = install();
+      let version = 1;
+      let finish!: () => void;
+      assets.registerLoader("texture", {
+        load: async (path) => {
+          if (path === "maps/missing.png") throw new Error("missing image");
+          if (!shared && version === 1)
+            await new Promise<void>((resolve) => {
+              finish = resolve;
+            });
+          return { version };
+        },
+      });
+      if (shared) await assets.loadAll([texture(IMAGE)]);
+      const loading = assets.loadAll([tiledMap("maps/a.json")]);
+      const failed = expect(loading).rejects.toThrow("missing image");
+      await vi.waitFor(() => {
+        if (!shared) expect(finish).toBeTypeOf("function");
+      });
+      if (!shared) finish();
+      await failed;
+      expect(assets.has(texture(IMAGE))).toBe(shared);
+      if (shared) {
+        expect(assets.get(texture(IMAGE))).toEqual({ version: 1 });
+        await assets.unload(texture(IMAGE));
+      }
+      expect(assets.has(texture(IMAGE))).toBe(false);
+      version = 2;
+      map.tilesets.pop();
+      await assets.loadAll([tiledMap("maps/a.json")]);
+      expect(assets.get(texture(IMAGE))).toEqual({ version: 2 });
+      await assets.unload(tiledMap("maps/a.json"));
+      expect(assets.has(texture(IMAGE))).toBe(false);
+    },
+  );
 
   it("releases an external tileset's JSON with the map", async () => {
     const map = sharedTilesetMap();

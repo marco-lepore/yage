@@ -197,6 +197,7 @@ function createHarness(editable = true, options: HarnessOptions = {}) {
     act(() => {
       root.render(
         <Inspector
+          tiled={NO_TILED}
           store={store}
           editable={editable}
           inspectable={(typeId) =>
@@ -1185,6 +1186,7 @@ describe("a parameter that points at another placement", () => {
     act(() => {
       root.render(
         <Inspector
+          tiled={NO_TILED}
           store={store}
           editable={editable}
           inspectable={(typeId) =>
@@ -1548,6 +1550,7 @@ describe("the plain parameter kinds", () => {
     act(() => {
       root.render(
         <Inspector
+          tiled={NO_TILED}
           store={store}
           editable={editable}
           inspectable={(typeId) =>
@@ -1864,6 +1867,7 @@ describe("a parameter holding a pair of numbers", () => {
     act(() => {
       root.render(
         <Inspector
+          tiled={NO_TILED}
           store={store}
           editable
           inspectable={(typeId) =>
@@ -2282,6 +2286,7 @@ describe("a value the game decodes, and a colour", () => {
     act(() => {
       root.render(
         <Inspector
+          tiled={NO_TILED}
           store={store}
           editable
           inspectable={(typeId) => (typeId === "game.lamp" ? LAMP : undefined)}
@@ -2604,6 +2609,7 @@ describe("several selected placements", () => {
     act(() => {
       root.render(
         <Inspector
+          tiled={NO_TILED}
           store={store}
           editable
           inspectable={(typeId) =>
@@ -2864,3 +2870,8 @@ describe("several selected placements", () => {
     expect(harness.intents).toEqual(["reset-placement h1,h2"]);
   });
 });
+
+const NO_TILED = {
+  describe: () => Promise.resolve({ source: null }),
+  open: () => Promise.resolve({ ok: true as const }),
+};

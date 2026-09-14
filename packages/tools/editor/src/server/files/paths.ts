@@ -2,32 +2,32 @@ import { realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, sep } from "node:path";
 
 /**
- * A project-relative level path, resolved to a real absolute path inside the
+ * A project-relative file path, resolved to a real absolute path inside the
  * writable root, or refused.
  */
 export type PathResolution =
   | { ok: true; absolute: string }
   | { ok: false; reason: "outside-roots" };
 
-export interface LevelPathRules {
+export interface ProjectPathRules {
   /** Real path of the writable root. Every resolution stays under it. */
   readonly realRoot: string;
-  /** Whether a root-relative POSIX path is one of the configured levels. */
-  readonly isConfiguredLevel: (path: string) => boolean;
+  /** Whether a root-relative POSIX path is one of the allowed files. */
+  readonly isAllowedPath: (path: string) => boolean;
 }
 
 /**
  * Resolve a path the browser sent.
  *
- * Three gates, in order: the text of the path, the configured level patterns,
+ * Three gates, in order: the text of the path, the allowed path patterns,
  * and the real filesystem. The last one is what a textual check cannot do — a
  * symlink inside the root can point anywhere — so both the target and its
  * nearest existing ancestor are resolved through `realpath` before the path is
  * handed back. The ancestor matters for a file that does not exist yet: a
  * symlinked directory would otherwise pass on the way to a write.
  */
-export async function resolveLevelPath(
-  rules: LevelPathRules,
+export async function resolveProjectPath(
+  rules: ProjectPathRules,
   path: string,
 ): Promise<PathResolution> {
   if (typeof path !== "string" || path.length === 0) return REFUSED;
@@ -35,7 +35,7 @@ export async function resolveLevelPath(
   if (isAbsolute(path)) return REFUSED;
   const segments = path.split("/");
   if (segments.some((s) => s === "" || s === "." || s === "..")) return REFUSED;
-  if (!rules.isConfiguredLevel(path)) return REFUSED;
+  if (!rules.isAllowedPath(path)) return REFUSED;
 
   const absolute = join(rules.realRoot, ...segments);
   const ancestor = await nearestExistingAncestor(absolute);

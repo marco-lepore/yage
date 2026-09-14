@@ -5,6 +5,7 @@ import {
   readdir,
   readFile,
   realpath,
+  stat,
   rename,
   unlink,
   writeFile,
@@ -21,7 +22,7 @@ import type {
   AssetListing,
   LevelSummary,
 } from "../../shared/protocol/index.js";
-import { resolveLevelPath, type LevelPathRules } from "./paths.js";
+import { resolveProjectPath, type ProjectPathRules } from "./paths.js";
 
 export type ReadLevelResult =
   | {
@@ -131,13 +132,21 @@ export interface LevelFileService {
    * reported without that prefix, because Vite serves the directory's contents
    * at the server root, and two files that answer to one address are one entry.
    *
-   * Confinement is the walk itself: `readdir` reports a symlink as neither a
+   * Listing confinement is the walk itself: `readdir` reports a symlink as neither a
    * file nor a directory, so the listing never descends out of the root and
    * never names a link's target. Nothing resolves a path here, because no asset
-   * path arrives from the browser — the picker writes what it was given straight
+   * path arrives here from the browser — the picker writes what it was given straight
    * into a placement's `params`.
    */
   listAssets(): Promise<AssetListing>;
+  /** Resolve the authored file for a local Tiled JSON asset. */
+  resolveTiledAsset(
+    path: string,
+  ): Promise<
+    { readonly source: string; readonly absolute: string } | undefined
+  >;
+  /** The served path when a changed file matches a configured asset glob. */
+  assetPathForFile(absolute: string): string | undefined;
   readLevel(path: string): Promise<ReadLevelResult>;
   writeLevel(
     path: string,
@@ -163,6 +172,8 @@ export interface LevelFileServiceOptions {
   readonly levels: readonly ConfiguredLevelGlob[];
   /** Asset globs, relative to the root. Empty lists nothing. */
   readonly assets: readonly string[];
+  /** Served runtime JSON path to project-relative authored source. */
+  readonly tiledSources?: Readonly<Record<string, string>> | undefined;
   /**
    * The project's `publicDir`, absolute, as Vite resolved it — `""` when the
    * project turned it off. Vite serves what is inside it at the server root, so
@@ -270,9 +281,9 @@ export async function createLevelFileService(
   const assetMatches =
     options.assets.length > 0 ? picomatch([...options.assets]) : undefined;
   const publicPrefix = servedPrefix(options.root, options.publicDir);
-  const rules: LevelPathRules = {
+  const rules: ProjectPathRules = {
     realRoot,
-    isConfiguredLevel: (path) => matches(path),
+    isAllowedPath: (path) => matches(path),
   };
 
   /**
@@ -298,6 +309,27 @@ export async function createLevelFileService(
           .join("/");
         if (accepts(relative)) found.push(relative);
       }
+    }
+  }
+
+  function servedAssetPath(file: string): string {
+    return publicPrefix !== undefined && file.startsWith(publicPrefix)
+      ? file.slice(publicPrefix.length)
+      : file;
+  }
+
+  async function projectFile(file: string): Promise<string | undefined> {
+    const resolved = await resolveProjectPath(
+      { realRoot, isAllowedPath: () => true },
+      file,
+    );
+    if (!resolved.ok) return undefined;
+    try {
+      return (await stat(resolved.absolute)).isFile()
+        ? resolved.absolute
+        : undefined;
+    } catch {
+      return undefined;
     }
   }
 
@@ -372,13 +404,13 @@ export async function createLevelFileService(
     },
 
     async createLevel(path, levelId) {
-      const resolved = await resolveLevelPath(rules, path);
+      const resolved = await resolveProjectPath(rules, path);
       if (!resolved.ok) return { ok: false, reason: "not-configured" };
       return await createFile(resolved.absolute, emptyLevelDocument(levelId));
     },
 
     async duplicateLevel(sourcePath, path, levelId) {
-      const resolved = await resolveLevelPath(rules, path);
+      const resolved = await resolveProjectPath(rules, path);
       if (!resolved.ok) return { ok: false, reason: "not-configured" };
       const source = await service.readLevel(sourcePath);
       if (!source.ok)
@@ -391,7 +423,7 @@ export async function createLevelFileService(
     },
 
     async deleteLevel(path) {
-      const resolved = await resolveLevelPath(rules, path);
+      const resolved = await resolveProjectPath(rules, path);
       if (!resolved.ok) return { ok: false, reason: "not-configured" };
       try {
         await unlink(resolved.absolute);
@@ -416,25 +448,68 @@ export async function createLevelFileService(
       // Two files can share one address — `<root>/a.png` and
       // `<root>/public/a.png` are both fetched as `a.png`, and publicDir wins
       // — so the same string is offered once.
-      const served =
-        publicPrefix === undefined
-          ? found
-          : [
-              ...new Set(
-                found.map((path) =>
-                  path.startsWith(publicPrefix)
-                    ? path.slice(publicPrefix.length)
-                    : path,
-                ),
-              ),
-            ];
+      const served = [...new Set(found.map(servedAssetPath))];
       served.sort();
       const max = options.maxAssets ?? MAX_LISTED_ASSETS;
       return { paths: served.slice(0, max), truncated: served.length > max };
     },
 
+    assetPathForFile(absolute) {
+      // Vite may report the configured root spelling (macOS /tmp), while
+      // filesystem reads use its real path (/private/tmp).
+      const configured = relative(resolve(options.root), resolve(absolute));
+      const inside =
+        configured.startsWith("..") || isAbsolute(configured)
+          ? relative(realRoot, resolve(absolute))
+          : configured;
+      const file = inside.split(sep).join("/");
+      if (file.startsWith("../") || isAbsolute(file) || !assetMatches?.(file))
+        return undefined;
+      return servedAssetPath(file);
+    },
+
+    async resolveTiledAsset(asset) {
+      const file = asset.startsWith("/") ? asset.slice(1) : asset;
+      if (!/\.json$/i.test(file)) return undefined;
+      const mapped = Object.hasOwn(options.tiledSources ?? {}, file)
+        ? options.tiledSources?.[file]
+        : undefined;
+      if (mapped !== undefined) {
+        const absolute = await projectFile(mapped);
+        return absolute === undefined
+          ? undefined
+          : {
+              source: relative(realRoot, absolute).split(sep).join("/"),
+              absolute,
+            };
+      }
+      // Vite serves public files before files at the same path under root.
+      const runtime =
+        (publicPrefix === undefined
+          ? undefined
+          : await projectFile(publicPrefix + file)) ??
+        (await projectFile(file));
+      if (runtime === undefined) return undefined;
+      try {
+        const data: unknown = JSON.parse(await readFile(runtime, "utf8"));
+        if (
+          typeof data !== "object" ||
+          data === null ||
+          !Array.isArray((data as Record<string, unknown>)["layers"]) ||
+          !Array.isArray((data as Record<string, unknown>)["tilesets"])
+        )
+          return undefined;
+      } catch {
+        return undefined;
+      }
+      return {
+        source: relative(realRoot, runtime).split(sep).join("/"),
+        absolute: runtime,
+      };
+    },
+
     async readLevel(path) {
-      const resolved = await resolveLevelPath(rules, path);
+      const resolved = await resolveProjectPath(rules, path);
       if (!resolved.ok) return { ok: false, reason: "outside-roots" };
       let bytes: Buffer;
       try {
@@ -456,7 +531,7 @@ export async function createLevelFileService(
     },
 
     async writeLevel(path, document, expectedDiskRevision) {
-      const resolved = await resolveLevelPath(rules, path);
+      const resolved = await resolveProjectPath(rules, path);
       if (!resolved.ok) return { ok: false, reason: "outside-roots" };
       let current: string | null = null;
       try {

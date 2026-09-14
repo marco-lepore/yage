@@ -60,24 +60,38 @@ export function connectPreview(
   preview: PreviewTarget,
   layersOf: (layerSet: number | undefined) => readonly LayerDef[],
 ): () => void {
+  let refreshPending = false;
   let shown: string | undefined;
   let viewed: EditorViewState | undefined;
   /** The placements whose pending number the preview is drawing, if any. */
   let drafted: readonly string[] | undefined;
   return store.subscribe((state, action) => {
+    if (action.type === "assets-changed") refreshPending = true;
     if (state.view !== viewed) {
       viewed = state.view;
       preview.applyView(state.view);
     }
     const catalog = catalogOf();
     if (!catalog) return;
-    const rebuild = (): void => {
+    const rebuild = (reloadAssets = false): void => {
       preview.requestRebuild({
+        ...(reloadAssets ? { reloadAssets: true } : {}),
         document: state.document,
         catalog,
         layers: layersOf(state.file?.layerSet),
       });
     };
+
+    if (
+      refreshPending &&
+      !state.gesture &&
+      !state.poseDraft &&
+      !state.paramDrag
+    ) {
+      refreshPending = false;
+      rebuild(true);
+      return;
+    }
 
     // The pending number stopped covering the placements it was drawn on:
     // dropped without a command behind it (a selection moving on, a level

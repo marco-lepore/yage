@@ -10,6 +10,41 @@ describe("AssetManager", () => {
     am = new AssetManager();
   });
 
+  it("waits for asynchronous cleanup before reloading the same asset", async () => {
+    let finish!: () => void;
+    const cleanup = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const load = vi.fn(async () => ({}));
+    am.registerLoader("map", { load, unload: () => cleanup });
+    const handle = new AssetHandle("map", "world.json");
+    await am.loadAll([handle]);
+    const old = am.get(handle);
+    const unloading = am.unload(handle);
+    const reload = am.loadAll([handle]);
+    await Promise.resolve();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(am.has(handle)).toBe(false);
+    finish();
+    await unloading;
+    await reload;
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(am.get(handle)).not.toBe(old);
+  });
+
+  it("reports failed cleanup to reload callers instead of loading over it", async () => {
+    const load = vi.fn(async () => ({}));
+    am.registerLoader("map", {
+      load,
+      unload: () => Promise.reject(new Error("cleanup failed")),
+    });
+    const handle = new AssetHandle("map", "world.json");
+    await am.loadAll([handle]);
+    await expect(am.unload(handle)).rejects.toThrow("cleanup failed");
+    await expect(am.loadAll([handle])).rejects.toThrow("cleanup failed");
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
   function fakeLoader<T>(factory: (path: string) => T): AssetLoader<T> {
     return {
       load: vi.fn(async (path: string) => factory(path)),

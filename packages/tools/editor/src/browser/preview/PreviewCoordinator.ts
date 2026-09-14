@@ -34,7 +34,7 @@ import type {
   ParamDrag,
   PivotMode,
 } from "../store/index.js";
-import { viewAfterResize } from "../store/index.js";
+import { posesOf, viewAfterResize } from "../store/index.js";
 import { PreviewAssetLease, placementsMissingAssets } from "./assets.js";
 import {
   draggedValue,
@@ -121,6 +121,8 @@ export function asHarness(value: unknown): EditorHarness | undefined {
 
 /** One document to project, and the catalog it means something against. */
 export interface PreviewRequest {
+  /** Release retained assets before rebuilding after an external file edit. */
+  readonly reloadAssets?: boolean;
   readonly document: LevelDocument;
   readonly catalog: LevelCatalog;
   /**
@@ -198,6 +200,8 @@ export class PreviewCoordinator {
    * empty viewport.
    */
   private held: PreviewRequest | undefined;
+  private latestRequest: PreviewRequest | undefined;
+  private assetsInvalidated = false;
   /**
    * The canvas size the view was last measured against, or nothing while the
    * canvas has no room to be measured in.
@@ -329,6 +333,8 @@ export class PreviewCoordinator {
    * leave the preview showing a document nobody is editing.
    */
   requestRebuild(request: PreviewRequest): void {
+    this.latestRequest = request;
+    this.assetsInvalidated ||= request.reloadAssets === true;
     if (!this.scene || !this.lease) {
       this.held = request;
       return;
@@ -626,15 +632,11 @@ export class PreviewCoordinator {
     this.resize = undefined;
     this.canvas = undefined;
     await this.queue.idle;
-    this.instance?.dispose();
-    this.instance = undefined;
-    this.placements = [];
-    this.byPlacementId = new Map();
-    this.markLayout = new MarkLayout();
+    this.retirePlacements();
     this.links = [];
     this.pointFieldsByType = new Map();
-    this.lease?.releaseAll();
     this.engine?.destroy();
+    await this.lease?.releaseAll();
     this.engine = undefined;
     this.scene = undefined;
     this.held = undefined;
@@ -648,6 +650,14 @@ export class PreviewCoordinator {
     if (!scene || !lease) return;
     this.revision += 1;
     const revision = this.revision;
+    const followsStore = this.store.getState().document === request.document;
+    if (this.assetsInvalidated) {
+      this.assetsInvalidated = false;
+      this.retirePlacements();
+      // Render objects from this or an earlier build may still await removal.
+      await new Promise<void>((resolve) => this.flushes.add(resolve));
+      await lease.releaseAll();
+    }
 
     this.provisionLayers(scene, request.layers);
     this.links = referenceUses(request.document.entities, (type) =>
@@ -664,11 +674,25 @@ export class PreviewCoordinator {
     // are torn down: a texture both documents use must never drop to zero
     // references in between.
     await lease.acquire(levelAssets(prepared));
+    // A file or document may change while cleanup or loading is pending.
+    // Keep the newest queued request and never publish this older projection.
+    if (request !== this.latestRequest || this.assetsInvalidated) return;
+    const state = this.store.getState();
+    if (followsStore && state.document !== request.document) {
+      this.requestRebuild({
+        ...request,
+        document: state.document,
+        reloadAssets: false,
+      });
+      return;
+    }
     const projection = this.replaceScene(scene, prepared, lease, revision);
 
     if (projection.built) {
       this.instance = projection.built;
       this.adoptPlacements(projection.built, request.document);
+      if (followsStore)
+        this.applyPoseDraft(posesOf(state, [...this.byPlacementId.keys()]));
     }
     this.publish(prepared.diagnostics, projection, revision);
 
@@ -686,11 +710,7 @@ export class PreviewCoordinator {
     revision: number,
   ): ProjectionOutcome<LevelInstance> {
     const blocked = placementsMissingAssets(prepared, lease.failures);
-    this.instance?.dispose();
-    this.instance = undefined;
-    this.placements = [];
-    this.byPlacementId = new Map();
-    this.markLayout = new MarkLayout();
+    this.retirePlacements();
 
     return buildBestEffort(
       prepared,
@@ -706,6 +726,14 @@ export class PreviewCoordinator {
         }),
       describeFailure,
     );
+  }
+
+  private retirePlacements(): void {
+    this.instance?.dispose();
+    this.instance = undefined;
+    this.placements = [];
+    this.byPlacementId = new Map();
+    this.markLayout = new MarkLayout();
   }
 
   private adoptPlacements(

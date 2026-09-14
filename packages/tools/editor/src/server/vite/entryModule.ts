@@ -68,6 +68,7 @@ const token =
 
 try {
   await mountEditor({
+    hot: import.meta.hot,
     host,
     token,
     project,

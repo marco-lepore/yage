@@ -169,6 +169,8 @@ export type LevelDeleteOutcome =
 export interface EditorRouteResponses {
   "GET /bootstrap": BootstrapResponse;
   "GET /assets": AssetListing;
+  "GET /assets/tiled": TiledAssetInfo;
+  "POST /assets/tiled/open": OpenTiledOutcome;
   "GET /draft": DraftOutcome;
   "POST /draft/command": DraftOutcome;
   "POST /draft/undo": DraftOutcome;
@@ -187,6 +189,8 @@ export interface EditorRouteResponses {
 export const EDITOR_ROUTES = [
   "GET /bootstrap",
   "GET /assets",
+  "GET /assets/tiled",
+  "POST /assets/tiled/open",
   "GET /draft",
   "POST /draft/command",
   "POST /draft/undo",
@@ -246,3 +250,15 @@ export interface LevelDuplicateRequest {
 export interface LevelDeleteRequest {
   readonly epoch: string;
 }
+
+/** The authored source, relative to the project root, or null for another asset. */
+export interface TiledAssetInfo {
+  readonly source: string | null;
+}
+
+export type OpenTiledOutcome =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly message: string };
+
+/** A configured asset changed on disk; no authored level data is carried. */
+export const ASSETS_CHANGED_EVENT = "yage-editor:assets-changed";

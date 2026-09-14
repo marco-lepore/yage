@@ -181,6 +181,39 @@ describe("tiledMapLoader", () => {
     expect(externalTilesetPaths(map)).toEqual([]);
   });
 
+  it("releases earlier external tilesets when parsing fails so retry reads corrected files", async () => {
+    const map = loadFixture("embedded.json");
+    map.tilesets = [
+      { firstgid: 1, source: "first.tsj" },
+      { firstgid: 2, source: "missing.tsj" },
+    ];
+    const cache = new Map<string, { name: string }>();
+    let version = 1;
+    let missing = true;
+    const loader = {
+      async load({ src }: { src: string }) {
+        if (missing && src === "maps/missing.tsj")
+          throw new Error("missing tileset");
+        const data = cache.get(src) ?? { name: `version ${String(version)}` };
+        cache.set(src, data);
+        return data;
+      },
+      async unload(paths: string[]) {
+        await Promise.resolve();
+        for (const path of paths) cache.delete(path);
+      },
+    };
+    const parser = tiledMapAssetExtension.loader as TestLoaderParser;
+    await expect(
+      parser.parse(structuredClone(map), { src: "maps/level.json" }, loader),
+    ).rejects.toThrow("missing tileset");
+    expect(cache.size).toBe(0);
+    version = 2;
+    missing = false;
+    const retried = await parser.parse(map, { src: "maps/level.json" }, loader);
+    expect(retried.tilesets[0]?.data?.name).toBe("version 2");
+  });
+
   it("reports one image for two tilesets that share it", async () => {
     const map = {
       width: 1,

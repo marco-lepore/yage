@@ -110,6 +110,7 @@ type Listener = (state: EditorState, action: EditorAction) => void;
  */
 export class EditorStore {
   private state: EditorState = {
+    assetRevision: 0,
     levels: [],
     committed: { document: EMPTY_LEVEL_DOCUMENT, draftRevision: 0 },
     pending: [],
@@ -729,6 +730,8 @@ function withoutLevel(state: EditorState): EditorState {
 
 function reduce(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
+    case "assets-changed":
+      return { ...state, assetRevision: state.assetRevision + 1 };
     case "level-opened": {
       const snapshot = action.snapshot;
       return {

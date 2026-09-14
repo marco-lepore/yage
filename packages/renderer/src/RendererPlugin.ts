@@ -309,25 +309,25 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     am?.registerLoader("texture", {
       load: (path: string, data?: unknown) => loadTexture(path, data),
       unload: (path: string) => {
-        Assets.unload(path);
+        return Assets.unload(path);
       },
     });
     am?.registerLoader("render-asset", {
       load: (path: string) => Assets.load(path),
       unload: (path: string) => {
-        Assets.unload(path);
+        return Assets.unload(path);
       },
     });
     am?.registerLoader("spritesheet", {
       load: (path: string) => Assets.load<Spritesheet>(path),
       unload: (path: string) => {
-        Assets.unload(path);
+        return Assets.unload(path);
       },
     });
     am?.registerLoader("bitmap-font", {
       load: (path: string) => Assets.load<BitmapFont>(path),
       unload: (path: string) => {
-        Assets.unload(path);
+        return Assets.unload(path);
       },
     });
     am?.registerLoader("web-font", {

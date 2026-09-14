@@ -1,3 +1,7 @@
+import {
+  TiledAssetButton,
+  type TiledAssetActions,
+} from "./TiledAssetButton.js";
 import type {
   ParamFieldDescription,
   ParamKindName,
@@ -50,6 +54,7 @@ export interface InspectorProps {
    * throws `EditorApiError`, which the field reports beside itself.
    */
   readonly listAssets: () => Promise<AssetListing>;
+  readonly tiled: TiledAssetActions;
   /**
    * Set one value inside a placement's parameters. The path is measured from
    * the parameter object: one field, or a member or an element inside it.
@@ -228,6 +233,8 @@ function PlacementInspector(props: PlacementProps): React.JSX.Element {
           disabled={!editable}
           diagnostics={atField(field.name)}
           listAssets={props.listAssets}
+          tiled={props.tiled}
+          assetRevision={props.state.assetRevision}
           entities={props.state.document.entities}
           picking={
             single !== undefined &&
@@ -646,6 +653,8 @@ interface FieldProps {
   disabled: boolean;
   diagnostics: readonly EditorDiagnostic[];
   listAssets: () => Promise<AssetListing>;
+  tiled: TiledAssetActions;
+  assetRevision: number;
   /** The open document's placements, which a reference field picks from. */
   entities: readonly LevelPlacement[];
   /** Whether this field is the one waiting for a target to be pointed at. */
@@ -785,6 +794,11 @@ function AssetField(props: FieldProps): React.JSX.Element {
           Reset
         </Button>
       </TextField>
+      <TiledAssetButton
+        path={held}
+        actions={props.tiled}
+        revision={props.assetRevision}
+      />
       <FieldFindings field={key} diagnostics={props.diagnostics} />
     </div>
   );

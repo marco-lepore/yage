@@ -377,6 +377,8 @@ export interface ReferencePick {
 }
 
 export interface EditorState {
+  /** Changes to configured asset files, independent of level revisions. */
+  readonly assetRevision: number;
   /**
    * Every level the project has, by project-relative path, alphabetically.
    *
@@ -493,6 +495,7 @@ export interface ViewportSizes {
  * projection cannot drift from the draft the server holds.
  */
 export type EditorAction =
+  | { readonly type: "assets-changed" }
   /** A level was opened, or its draft was re-read whole. */
   | { readonly type: "level-opened"; readonly snapshot: DraftSnapshot }
   /** No level is open: the one that was has been deleted. */

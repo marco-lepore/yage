@@ -1,3 +1,4 @@
+import type { TiledAssetActions } from "./TiledAssetButton.js";
 import { useEffect, useState } from "react";
 import type { AssetListing } from "../../shared/protocol/index.js";
 import {
@@ -87,6 +88,7 @@ export interface EditorShellProps {
    * failure throws `EditorApiError`, which the field reports beside itself.
    */
   readonly listAssets: () => Promise<AssetListing>;
+  readonly tiled: TiledAssetActions;
   /**
    * Where a new level can go, as the server read it off the config's globs.
    * The New dialog offers these, and puts the level in the first one.
@@ -575,6 +577,7 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
             editable={editable}
             inspectable={props.inspectable}
             listAssets={props.listAssets}
+            tiled={props.tiled}
             onSetParam={(ids, path, value) => {
               props.commands.setParam(ids, path, value);
             }}

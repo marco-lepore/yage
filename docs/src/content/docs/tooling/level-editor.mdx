@@ -1220,6 +1220,50 @@ resolves onto it — is refused when the server starts, rather than quietly
 shadowing your page. Write the path the way your own source does; if your Vite
 config sets a `base`, the editor resolves it under that.
 
+## Editing a tilemap in Tiled
+
+Select a placement whose asset parameter points to a local Tiled JSON map,
+then click **Open in Tiled** beside that parameter. Install Tiled on the same
+machine that runs `yage-editor`.
+
+Include the map JSON, external tileset JSON and tileset images in `assets`:
+
+```ts
+assets: ["public/maps/**/*.json", "public/tiles/**/*"],
+```
+
+Saving a matching asset refreshes the preview automatically. Level edits,
+selection, camera and undo history stay in place. A refresh waits for an active
+viewport drag or stepped transform edit to finish. If a changed asset cannot
+load, the Problems panel reports it; saving a corrected file retries it.
+
+JSON maps open directly. If your game loads a JSON export of a `.tmx` or `.tmj`
+source, declare which source to open in `editor/config.ts`:
+
+```ts
+tiled: {
+  sources: { "maps/forest.json": "art/forest.tmx" },
+},
+```
+
+The key is the path the level stores. The source is relative to the Vite root
+and must be inside that root. Export the source to the runtime JSON once in
+Tiled, then enable [Repeat last export on save](https://doc.mapeditor.org/en/stable/manual/preferences/#saving-and-loading).
+Saving the source then updates the JSON that YAGE reloads. Tiled owns the map
+contents and their undo history; YAGE keeps the asset reference and placement.
+
+On macOS, the editor opens the installed Tiled application through Launch
+Services. On Windows, it checks the standard Program Files directories, then
+looks for `tiled.exe` on `PATH`. On Linux, it runs `tiled` from `PATH`.
+Set `YAGE_TILED_PATH` before starting the editor to use another executable,
+such as an AppImage or a portable Windows installation. Give the executable
+path alone, without arguments or surrounding quotes in the value.
+
+The application opens on the server's machine. For a remote workspace, run
+Tiled in that desktop session. Under WSL, use a Linux Tiled installation with
+a working graphical desktop, or run both Tiled and the editor server on
+Windows.
+
 ## Checking levels in CI
 
 A level file goes stale on its own. Delete an entity class, rename a

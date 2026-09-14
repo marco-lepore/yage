@@ -185,6 +185,7 @@ function createHarness(
   act(() => {
     root.render(
       <EditorShell
+        tiled={NO_TILED}
         store={store}
         commands={commands}
         layerChoices={() => []}
@@ -2222,3 +2223,8 @@ describe("creating, duplicating and deleting a level", () => {
     ).toBe(true);
   });
 });
+
+const NO_TILED = {
+  describe: () => Promise.resolve({ source: null }),
+  open: () => Promise.resolve({ ok: true as const }),
+};

@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { runnerImport } from "vite";
-import type { EditorConfig, EditorLevelGlob } from "../../index.js";
+import type {
+  EditorConfig,
+  EditorLevelGlob,
+  EditorTiledConfig,
+} from "../../index.js";
 import { OWN_PAGE_PATHS, shadowsOwnPage } from "../vite/pages.js";
 import type {
   ResolvedEditorConfig,
@@ -58,6 +62,7 @@ export async function loadEditorConfig(
   return {
     root,
     configFile,
+    ...(config.tiled === undefined ? {} : { tiled: config.tiled }),
     projectId: readProjectId(options.cwd, root),
     modules: resolveModules(config.modules, configDir, root, configFile),
     levels: config.levels.map((entry) =>
@@ -127,10 +132,12 @@ function asEditorConfig(
   }
   const project = asModulePath(modules["project"], "project", configFile);
   const harness = asModulePath(modules["harness"], "harness", configFile);
+  const tiled = asTiled(value["tiled"], configFile);
   const gamePage = asGamePage(value["gamePage"], configFile);
 
   return {
     modules: { project, harness },
+    ...(tiled === undefined ? {} : { tiled }),
     levels: asLevelList(value["levels"], configFile),
     assets:
       value["assets"] === undefined
@@ -323,4 +330,49 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function asTiled(
+  value: unknown,
+  configFile: string,
+): EditorTiledConfig | undefined {
+  if (value === undefined) return undefined;
+  if (
+    !isObject(value) ||
+    (value["sources"] !== undefined && !isObject(value["sources"]))
+  ) {
+    throw new Error(
+      `${configFile}: "tiled.sources" must be an object mapping asset paths to source files.`,
+    );
+  }
+  const sources: Record<string, string> = {};
+  for (const [asset, source] of Object.entries(value["sources"] ?? {})) {
+    if (typeof source !== "string" || source === "" || asset === "") {
+      throw new Error(
+        `${configFile}: "tiled.sources" must map non-empty asset paths to source files.`,
+      );
+    }
+    for (const name of [asset, source]) {
+      if (
+        name.includes("\0") ||
+        name.startsWith("/") ||
+        name.includes("\\") ||
+        name.includes(":") ||
+        name
+          .split("/")
+          .some((part) => part === "" || part === "." || part === "..")
+      ) {
+        throw new Error(
+          `${configFile}: "tiled.sources" path "${name}" must be relative to the project root.`,
+        );
+      }
+    }
+    if (!/\.json$/i.test(asset) || !/\.(tmx|tmj|json)$/i.test(source)) {
+      throw new Error(
+        `${configFile}: "tiled.sources" must map a JSON asset to a .tmx, .tmj or .json source.`,
+      );
+    }
+    Object.defineProperty(sources, asset, { value: source, enumerable: true });
+  }
+  return { sources };
 }

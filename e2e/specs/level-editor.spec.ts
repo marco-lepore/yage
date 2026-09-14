@@ -1,4 +1,5 @@
 import {
+  writeFileSync,
   copyFileSync,
   existsSync,
   readdirSync,
@@ -3500,3 +3501,60 @@ function statuses(
 ): number {
   return outcomes.filter((outcome) => outcome.status === status).length;
 }
+
+test("opens Tiled and refreshes a saved map while preserving unsaved level edits", async ({
+  page,
+}) => {
+  useTemplate(path.join(LEVELS, "map.template.json"));
+  const mapFile = path.join(LEVELS, "../maps/room.json");
+  const original = readFileSync(mapFile, "utf8");
+  const mapSize = () =>
+    page.evaluate(() => {
+      const facts = window.__yage__!.inspector.getExtension<{
+        maps(): { width: number; height: number }[];
+      }>("levelFixture");
+      return facts?.maps();
+    });
+  try {
+    await openEditorPage(page);
+    await expect.poll(mapSize).toEqual([{ width: 1, height: 1 }]);
+    await page.getByTestId("hierarchy-row-map-placement").click();
+    await expect(
+      page.getByRole("button", { name: "Open in Tiled", exact: true }),
+    ).toBeVisible();
+    let opened = "";
+    await page.route(
+      "**/__yage_editor/api/v1/assets/tiled/open?*",
+      async (route) => {
+        expect(route.request().method()).toBe("POST");
+        opened = new URL(route.request().url()).searchParams.get("path") ?? "";
+        await route.fulfill({ json: { ok: true } });
+      },
+    );
+    await page
+      .getByRole("button", { name: "Open in Tiled", exact: true })
+      .click();
+    await expect.poll(() => opened).toBe("maps/room.json");
+    await page.getByTestId("transform-x").fill("100");
+    await page.getByTestId("transform-x").press("Enter");
+    await expect(page.getByTestId("dirty-marker")).toBeVisible();
+    let navigations = 0;
+    page.on("framenavigated", (frame) => {
+      if (frame === page.mainFrame()) navigations += 1;
+    });
+    const changed = JSON.parse(original);
+    changed.width = 2;
+    changed.layers[0].width = 2;
+    changed.layers[0].data = [1, 2];
+    writeFileSync(mapFile, JSON.stringify(changed));
+    await expect.poll(mapSize).toEqual([{ width: 2, height: 1 }]);
+    expect(navigations).toBe(0);
+    await expect(page.getByTestId("transform-x")).toHaveValue("100");
+    await expect(page.getByTestId("dirty-marker")).toBeVisible();
+    await page.getByTestId("undo").click();
+    await expect(page.getByTestId("transform-x")).toHaveValue("0");
+    await expect.poll(mapSize).toEqual([{ width: 2, height: 1 }]);
+  } finally {
+    writeFileSync(mapFile, original);
+  }
+});

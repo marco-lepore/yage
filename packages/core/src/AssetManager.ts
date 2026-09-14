@@ -31,6 +31,7 @@ export class AssetManager {
   private refCounts = new Map<string, number>();
   /** Paths already warned about, so one authoring mistake warns once. */
   private warnedConflicts = new Set<string>();
+  private readonly unloadsInFlight = new Map<string, Promise<void>>();
   private readonly loadsInFlight = new Map<string, Promise<unknown>>();
 
   /** Register a loader for a given asset type. Called by plugins during install(). */
@@ -118,11 +119,14 @@ export class AssetManager {
    * entry is dropped only when the last reference is released; earlier calls
    * just decrement. An entry left uncounted by a `loadAll` that rejected is
    * freed by its first `unload`. A no-op for handles that were never loaded.
+   * Returns the loader's completion when cleanup is asynchronous. The cache
+   * entry is removed immediately; a new load waits for cleanup to complete.
+   * Failed cleanup rejects and prevents reloading that path.
    */
-  unload(handle: AssetHandle<unknown>): void {
+  unload(handle: AssetHandle<unknown>): void | Promise<void> {
     const key = this.key(handle);
     const entry = this.cache.get(key);
-    if (entry === undefined) return;
+    if (entry === undefined) return this.unloadsInFlight.get(key);
     const count = this.refCounts.get(key) ?? 0;
     if (count > 1) {
       this.refCounts.set(key, count - 1);
@@ -130,13 +134,17 @@ export class AssetManager {
     }
     this.refCounts.delete(key);
     const loader = this.loaders.get(handle.type);
-    loader?.unload?.(handle.path, entry.asset);
+    const unloading = this.trackUnload(
+      key,
+      loader?.unload?.(handle.path, entry.asset),
+    );
     this.cache.delete(key);
     this.warnedConflicts.delete(key);
+    return unloading;
   }
 
   /** Unload every cached asset outright, ignoring reference counts. */
-  clear(): void {
+  clear(): void | Promise<void> {
     // Empty the maps before any loader runs. A loader that holds assets of its
     // own — a Tiled map on its tileset images — releases them through
     // `unload` from inside its own `unload`; with the images still cached,
@@ -148,8 +156,27 @@ export class AssetManager {
     for (const [key, entry] of entries) {
       const [type, ...pathParts] = key.split(":");
       const path = pathParts.join(":");
-      this.loaders.get(type!)?.unload?.(path, entry.asset);
+      this.trackUnload(
+        key,
+        this.loaders.get(type!)?.unload?.(path, entry.asset),
+      );
     }
+    if (this.unloadsInFlight.size > 0) {
+      return Promise.all(this.unloadsInFlight.values()).then(() => undefined);
+    }
+  }
+
+  /** Keep failed cleanup terminal for this path, including a subsequent load. */
+  private trackUnload(
+    key: string,
+    result: void | Promise<void>,
+  ): void | Promise<void> {
+    if (result === undefined) return;
+    const pending = result.then(() => {
+      this.unloadsInFlight.delete(key);
+    });
+    this.unloadsInFlight.set(key, pending);
+    return pending;
   }
 
   /** Add one reference to a cache key. */
@@ -176,8 +203,12 @@ export class AssetManager {
         ),
       );
     }
-    const run = loader
-      .load(handle.path, handle.data)
+    const unloading = this.unloadsInFlight.get(key);
+    const loading =
+      unloading === undefined
+        ? loader.load(handle.path, handle.data)
+        : unloading.then(() => loader.load(handle.path, handle.data));
+    const run = loading
       .then((asset) => {
         this.cache.set(key, { asset, data: handle.data });
         return asset;

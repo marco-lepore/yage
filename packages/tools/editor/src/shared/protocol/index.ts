@@ -1,4 +1,7 @@
 export {
+  ASSETS_CHANGED_EVENT,
+  type TiledAssetInfo,
+  type OpenTiledOutcome,
   EDITOR_API_PREFIX,
   EDITOR_ROUTES,
   EDITOR_TOKEN_HEADER,

@@ -1,0 +1,43 @@
+{
+  "type": "map",
+  "version": "1.10",
+  "tiledversion": "1.11.2",
+  "orientation": "orthogonal",
+  "renderorder": "right-down",
+  "width": 1,
+  "height": 1,
+  "tilewidth": 48,
+  "tileheight": 48,
+  "infinite": false,
+  "nextlayerid": 2,
+  "nextobjectid": 1,
+  "layers": [
+    {
+      "id": 1,
+      "name": "floor",
+      "type": "tilelayer",
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1,
+      "opacity": 1,
+      "visible": true,
+      "data": [1]
+    }
+  ],
+  "tilesets": [
+    {
+      "firstgid": 1,
+      "name": "crate",
+      "image": "../sprites/crate.png",
+      "imagewidth": 480,
+      "imageheight": 48,
+      "tilewidth": 48,
+      "tileheight": 48,
+      "tilecount": 10,
+      "columns": 10,
+      "margin": 0,
+      "spacing": 0
+    }
+  ]
+}

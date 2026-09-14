@@ -1,6 +1,8 @@
 import {
   EDITOR_API_PREFIX,
   EDITOR_TOKEN_HEADER,
+  type TiledAssetInfo,
+  type OpenTiledOutcome,
   type AssetListing,
   type BootstrapResponse,
   type DraftCommandRequest,
@@ -70,6 +72,16 @@ export class EditorApiClient {
    */
   async listAssets(): Promise<EditorRouteResponses["GET /assets"]> {
     return await this.request<AssetListing>("GET", "/assets");
+  }
+
+  async tiledAsset(path: string): Promise<TiledAssetInfo> {
+    return await this.request<TiledAssetInfo>("GET", "/assets/tiled", { path });
+  }
+
+  async openTiled(path: string): Promise<OpenTiledOutcome> {
+    return await this.request<OpenTiledOutcome>("POST", "/assets/tiled/open", {
+      path,
+    });
   }
 
   /**

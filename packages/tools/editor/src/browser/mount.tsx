@@ -1,3 +1,5 @@
+import type { ViteHotContext } from "vite/types/hot.js";
+import { ASSETS_CHANGED_EVENT } from "../shared/protocol/index.js";
 import { createRoot, type Root } from "react-dom/client";
 import type { LayerDef } from "@yagejs/renderer";
 import type { EditorDiagnostic } from "../shared/diagnostics/index.js";
@@ -17,6 +19,8 @@ import { EditorStore, type ViewStorage } from "./store/index.js";
 export interface MountEditorOptions {
   /** The element the editor renders into. */
   readonly host: HTMLElement;
+  /** The generated entry supplies Vite's existing event connection. */
+  readonly hot?: ViteHotContext | undefined;
   /** The per-process project token the page was served with. */
   readonly token: string;
   /** The project module's default export, validated here. */
@@ -85,6 +89,10 @@ export async function mountEditor(
     gamePage: options.gamePage,
   });
 
+  const tiled = {
+    describe: (path: string) => api.tiledAsset(path),
+    open: (path: string) => api.openTiled(path),
+  };
   const root: Root = createRoot(options.host);
   root.render(
     <EditorShell
@@ -96,6 +104,7 @@ export async function mountEditor(
       placeables={() => project.placeables}
       inspectable={(typeId) => project.inspectable(typeId)}
       listAssets={() => api.listAssets()}
+      tiled={tiled}
       levelDirectories={bootstrap.levelDirectories}
       layerChoices={() => layers.choicesFor(store.getState().file?.layerSet)}
       layerSorts={(layer) =>
@@ -110,6 +119,11 @@ export async function mountEditor(
     preview,
     (index) => layers.defsFor(index),
   );
+
+  const assetsChanged = (): void => {
+    store.dispatch({ type: "assets-changed" });
+  };
+  options.hot?.on(ASSETS_CHANGED_EVENT, assetsChanged);
 
   const built = project.initialize({
     project: options.project,
@@ -145,6 +159,7 @@ export async function mountEditor(
 
   return {
     async dispose(): Promise<void> {
+      options.hot?.off(ASSETS_CHANGED_EVENT, assetsChanged);
       disconnect();
       root.unmount();
       await preview.dispose();

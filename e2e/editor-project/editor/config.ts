@@ -8,6 +8,6 @@ export default defineEditorConfig({
   levels: [
     { glob: "levels/*.yage-level.json", layers: "../src/forestLayers.ts" },
   ],
-  assets: ["sprites/*.png"],
+  assets: ["sprites/*.png", "maps/*.json"],
   gamePage: "/game.html",
 });

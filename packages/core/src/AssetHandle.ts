@@ -24,5 +24,6 @@ export class AssetHandle<T> {
 /** Interface that plugins implement to load/unload a specific asset type. */
 export interface AssetLoader<T = unknown> {
   load(path: string, data?: unknown): Promise<T>;
-  unload?(path: string, asset: T): void;
+  /** Resolves when resources are released and the path can be loaded again. */
+  unload?(path: string, asset: T): void | Promise<void>;
 }
