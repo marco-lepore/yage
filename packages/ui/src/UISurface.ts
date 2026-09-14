@@ -19,6 +19,14 @@ import type {
 import type { Anchor } from "./types.js";
 import { bindUIErrorBoundary } from "./error-boundary.js";
 
+/** A non-finite offset would reach the tree's position on every layout pass. */
+function finiteOffset(value: number, name: string): number {
+  if (!Number.isFinite(value)) {
+    throw new Error(`${name} must be finite, got ${value}.`);
+  }
+  return value;
+}
+
 /**
  * Mounts a UI tree on an entity: `entity.add(new UISurface({...}))`.
  * Owns the tree's root `UIPanel` element (exposed as `root`) and provides
@@ -45,7 +53,13 @@ export class UISurface extends Component {
     this.root = new UIPanel(opts ?? {});
     this._userVisible = opts?.visible ?? true;
     this._anchor = opts?.anchor;
-    this._offset = opts?.offset ?? { x: 0, y: 0 };
+    // Copied so `setOffset` writes this surface's own object, never the one
+    // the caller passed in.
+    const offset = opts?.offset;
+    this._offset = {
+      x: offset ? finiteOffset(offset.x, "UISurface: offset.x") : 0,
+      y: offset ? finiteOffset(offset.y, "UISurface: offset.y") : 0,
+    };
     this._layer = opts?.layer;
     this._positioning = opts?.positioning ?? "anchor";
   }
@@ -56,6 +70,8 @@ export class UISurface extends Component {
    * a `setOffset` per frame.
    */
   setOffset(x: number, y: number): void {
+    finiteOffset(x, "UISurface.setOffset: x");
+    finiteOffset(y, "UISurface.setOffset: y");
     this._offset.x = x;
     this._offset.y = y;
   }
