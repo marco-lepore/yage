@@ -123,6 +123,8 @@ export const UPDATE_OPTIONS = [
  * The entries of `options` whose key is in `keys`. A key `options` does not
  * have stays absent, so spreading the result over a configuration keeps that
  * configuration's value.
+ * A key whose value is `undefined` is skipped, so it leaves that setting
+ * unchanged.
  */
 export function pickOptions<T extends object, K extends keyof T>(
   options: T,
@@ -130,7 +132,9 @@ export function pickOptions<T extends object, K extends keyof T>(
 ): Pick<T, K> {
   const picked = {} as Pick<T, K>;
   for (const key of keys) {
-    if (Object.hasOwn(options, key)) picked[key] = options[key];
+    if (Object.hasOwn(options, key) && options[key] !== undefined) {
+      picked[key] = options[key];
+    }
   }
   return picked;
 }

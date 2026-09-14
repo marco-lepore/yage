@@ -155,6 +155,7 @@ extra keys that come from a spread, so a spread can still pass one. Each
 method ignores any option outside its own type.
 `configure({ ...ParticlePresets.fire() })` applies everything in the preset
 except its `maxParticles` and `shape`.
+An option passed as `undefined` leaves that setting unchanged.
 
 Both methods check the whole merged configuration and throw on a bad value, the
 same way construction does. A rejected `configure` leaves every previous value

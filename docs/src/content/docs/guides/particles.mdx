@@ -298,6 +298,7 @@ TypeScript does not report extra keys that come from a spread, so a spread can
 still pass a method an option it does not accept. The method ignores that
 option. For example, `configure({ ...ParticlePresets.fire() })` applies
 everything in the preset except its `maxParticles` and `shape`.
+An option passed as `undefined` leaves that setting unchanged.
 
 Both methods check the emitter's configuration combined with the new values,
 the same way the constructor does, and throw on a bad value. A `configure` call

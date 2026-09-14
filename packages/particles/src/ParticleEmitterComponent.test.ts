@@ -687,6 +687,21 @@ describe("ParticleEmitterComponent", () => {
       // The options configure accepts still apply.
       expect(stored.tint).toBe(0xff6600);
     });
+
+    it("leaves a setting unchanged when its option is undefined", () => {
+      const emitter = createEmitter({
+        speed: 100,
+        lifetime: 10,
+        maxParticles: 1,
+      });
+      // @ts-expect-error a project without exactOptionalPropertyTypes can pass undefined.
+      emitter.configure({ speed: undefined });
+
+      const stored = (emitter as unknown as { config: Record<string, unknown> })
+        .config;
+      expect(stored.speed).toBe(100);
+      expect(() => emitter.burst(1)).not.toThrow();
+    });
   });
 
   describe("burst overrides", () => {
@@ -786,6 +801,17 @@ describe("ParticleEmitterComponent", () => {
       const faded: EmitterConfig = { lifetime: 10, alphaFadeIn: 0.5 };
       emitter.burst(1, { ...faded });
       expect(emitter._active[0]!.particle.alpha).toBe(1);
+    });
+
+    it("uses the emitter's value when an override is undefined", () => {
+      const emitter = createEmitter({
+        speed: 100,
+        lifetime: 10,
+        maxParticles: 1,
+      });
+      // @ts-expect-error a project without exactOptionalPropertyTypes can pass undefined.
+      expect(() => emitter.burst(1, { speed: undefined })).not.toThrow();
+      expect(emitter.activeCount).toBe(1);
     });
   });
 
