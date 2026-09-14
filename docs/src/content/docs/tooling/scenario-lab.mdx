@@ -325,6 +325,7 @@ What the context gives you:
 | `until(predicate, { maxFrames?, dtMs? })` | Steps until the predicate holds, resolving with the number of frames it took. Rejects after 600 frames by default. |
 | `expect(value)` | Jest-style assertions, from `@vitest/expect`. |
 | `input` | Synthetic keyboard, mouse, pointer, gamepad and action input. |
+| `pointer` | Real pointer events at the canvas, which reach the game's `@yagejs/ui` buttons and menus. |
 | `events` | The engine's event log, including `waitFor`. |
 | `capture(label?)` | Screenshots the canvas into the run's result. |
 
@@ -391,6 +392,15 @@ The full set: `keyDown`, `keyUp`, `mouseMove`, `mouseDown`, `mouseUp`,
 `pointerMove`, `pointerDown`, `pointerUp`, `gamepadButton`, `gamepadAxis`,
 `pressAction`, `releaseAction` and `clearAll` are synchronous; `tap`, `hold` and
 `fireAction` advance frames and are async.
+
+None of these verbs clicks a `@yagejs/ui` element. They write engine input
+state, while a button receives its clicks through the renderer. To click the
+game's own buttons and menus, use `ctx.pointer`, which dispatches real pointer
+events at the canvas. Its calls are synchronous and do not advance a frame.
+[Driving a Running Game](/guides/play-sessions/#clicking-the-user-interface)
+covers how to aim the pointer verbs and what they require. `ctx.pointer` drives
+one mouse pointer, so use `input` for touch input and for several pointers at
+once.
 
 ## Running scenarios as a test
 

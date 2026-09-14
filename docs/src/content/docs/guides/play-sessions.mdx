@@ -214,6 +214,75 @@ up. A fixed frame count instead fails again every time someone changes the run
 speed. `until` resolves with the frames it took, which is usually the
 measurement worth reporting.
 
+## Clicking the user interface
+
+To press a button in the game's user interface, such as a menu or a HUD, use
+`inspector.pointer`. Its verbs dispatch real pointer events at the canvas, and
+the renderer runs its normal hit test on each one, as it does for a person's
+click. So the button's own `onClick` runs. Whatever would stop a person's click
+also stops a click from `inspector.pointer`: a panel drawn over the button
+receives the click, and a disabled button receives none.
+
+```typescript
+const i = window.__yage__.inspector;
+
+// "build-menu" has one surface, and its buttons sit directly under the root.
+const { ui } = i.snapshotScene("build-menu");
+const button = ui.root.children.find((node) => node.type === "UIButton");
+
+const hit = i.pointer.click(button.id); // the button's onClick has run
+hit.path[0].type; // "UIText": the label, drawn on top of the button
+hit.path.some((node) => node.type === "UIButton"); // true
+```
+
+`click`, `down`, `up` and `move` dispatch events, and `hitTest` reports what is
+under the target without dispatching anything. `click`, `down` and `up` take
+`{ button }` and use the left button by default. A drive context has the same
+verbs as `ctx.pointer`, both in `inspector.drive` and in a lab scenario's
+`drive`. The calls are synchronous and do not advance a frame, so none of them
+needs `await`.
+
+**Aim at a node id rather than at pixels.** A target is either the `id` of a
+node in the Inspector's user-interface snapshot, or a point in virtual-space
+pixels. An id resolves to the centre of the node's `bounds`, its box on screen,
+so a layout change that moves the button moves the click with it. The node's
+`layout` field is measured from its parent node and gives no position on the
+canvas. The nodes are the tree under `ui.root` in a scene snapshot, which
+`inspector.snapshot().scenes` lists and `inspector.snapshotScene(name)`
+returns. In a scene with several surfaces, `ui.root` is a wrapper node whose
+children are the surfaces' root nodes, and the wrapper itself cannot be
+clicked. A lab scenario reads the snapshot from `window.__yage__.inspector`
+too, because its drive context has no snapshot method.
+
+**Look through the whole path.** Every verb returns what the hit test found.
+`path` lists the node under the point and then each node that contains it,
+innermost first, as `{ id, type }`. `path` is empty when the point is over no
+node. A button's text label is a node of its own, drawn on top of the button,
+so `path[0]` is the label and the button comes after it. Check for the button
+anywhere in `path`, as the example does. The result also carries `point`, the
+virtual-space point the verb aimed at, and `consumed`. `consumed` is `true`
+when the point is over a consume surface, where a press fires no gameplay
+action. [UI vs gameplay clicks](/guides/input/#ui-vs-gameplay-clicks) describes
+consume surfaces.
+
+**Every verb needs `RendererPlugin`, and the four that dispatch also need a
+rendered frame.** The renderer cannot deliver a pointer event before it has
+drawn a frame. `hitTest` needs no frame. Before the first click in a scenario,
+or on a page that has not played a frame yet, step one frame. Each verb throws
+when a requirement is missing, with a message that says what to do.
+
+**The handler runs before the call returns.** The renderer delivers the event
+synchronously, so a button's `onClick` has already run when `click` returns.
+The engine applies the same press to its input state at the next frame, so step
+one frame before checking an action.
+
+**`inspector.input` has pointer verbs of its own, for gameplay input.** They
+write engine input state directly, need `InputPlugin`, and work without a
+renderer. They reach no user-interface element. `inspector.pointer` drives one
+mouse pointer, so use `inspector.input` for a touch or pen pointer, or for
+several pointers at once. Its `pointerMove` and `pointerDown` take a pointer id
+and type, and its `pointerUp` takes the id.
+
 ## Screenshots
 
 Inside a drive, `ctx.capture(label?)` renders the current stage and records it
@@ -264,6 +333,10 @@ hiding the HUD before an image you intend to compare are covered in
   carry the same limit.
 - **`time.setDelta(ms)` is milliseconds.** `setDelta(30)` means 30ms per frame,
   not 30 frames per second.
-- **`inspector.input.mouseDown` / `mouseUp` carry no coordinates.** They act at
-  the last position passed to `mouseMove`, or at `(0, 0)` when there was none.
+- **`inspector.input.mouseDown` / `mouseUp` carry no coordinates and click no
+  button.** They act at the last position passed to `mouseMove`, or at
+  `(0, 0)` when there was none. Over a `@yagejs/ui` button they still only
+  write engine input state, so its `onClick` never runs. To click the user
+  interface, use `inspector.pointer`, described in
+  [Clicking the user interface](#clicking-the-user-interface).
 - **A second `drive()` while one is in flight throws.** Await the running one.
