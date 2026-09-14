@@ -102,6 +102,21 @@ panel to bound and wrap its contents, give it an explicit `width`.
   intentional overflow (`overflow: "hidden"` containers, `position: "absolute"`
   children, and scroll views).
 
+The warning says which child overflowed. It gives the name of the entity that
+holds the `UISurface`, the child's position in its parent's child list
+(counted from 0), and the child's element class. For an element that shows
+text, it adds up to the first 30 characters of that text. The message starts
+like this:
+
+```text
+UI layout [entity "Hud"]: child #2 (UIText "Score: 12500") overflows its container by 12.3px past the right edge.
+```
+
+A tree that is not mounted on a `UISurface` prints the same message without
+the entity name. Overflow of 2 px or less is not reported, because Yoga's
+pixel rounding alone can produce that much. A child that fits again and later
+overflows again warns once more.
+
 When a warning fires, fix it by giving the container more room, setting
 `maxWidth`/`maxHeight`, marking the child `flexShrink: 1` / `flex: <n>` so it
 gives space back and wraps, or using `truncate: "clip" | "ellipsis"` on the
@@ -127,6 +142,25 @@ new UISurface({
   offset: { x: -16, y: 16 },
 })
 ```
+
+To move a mounted tree later, call `setOffset(x, y)` on the surface. It changes
+the same offset the `offset` option sets, so calling it every frame animates a
+panel sliding in or out. The `offset` getter reads the current value back.
+
+```typescript
+import { ProcessComponent, Tween, easeOutQuad } from "@yagejs/core";
+
+const menu = entity.get(UISurface);
+const pc = entity.add(new ProcessComponent());
+
+// Slide the menu down from 120 px above its anchor, over 0.3 seconds.
+pc.run(Tween.custom((y) => menu.setOffset(0, y), -120, 0, 0.3, easeOutQuad));
+
+menu.offset; // { x: 0, y: 0 } once the tween has finished
+```
+
+`setOffset` and the `offset` option both throw when a coordinate is not a
+finite number, such as `NaN` or `Infinity`.
 
 ## Layer space and positioning
 
@@ -313,6 +347,34 @@ label.setText("Score: 100");
 label.setStyle({ fill: 0x00ff00 });
 ```
 
+### Wrapping and truncation
+
+Without `truncate`, a text wraps to the width it is given, either by its
+parent (see [Flexbox defaults & overflow](#flexbox-defaults--overflow)) or by
+its own `width`. To keep a label on one line, set `truncate`:
+
+- `"clip"` cuts the text after the last character that fits.
+- `"ellipsis"` cuts the text so that it fits with `"…"` appended.
+
+Both modes leave a text that already fits unchanged. `truncateWith` sets the
+string `"ellipsis"` appends. The default `"…"` is a single character (U+2026)
+that not every pixel font includes, so pass `"..."` for a font without it. A
+button passes `truncate` and `truncateWith` on to its label.
+
+```typescript
+// The third argument carries the rest of the UIText props.
+panel.text(
+  "Sword of the Northern Kings",
+  { fontFamily: "PressStart", fontSize: 8 },
+  { width: 120, truncate: "ellipsis", truncateWith: "..." },
+);
+```
+
+When not even one character fits, `"clip"` shows nothing and `"ellipsis"`
+shows only its `truncateWith` string. That includes a slot with no width at
+all. A label that shows only `…` is in a slot too narrow for its first
+character plus the `…`.
+
 ### Pixel-art text & the `resolution` gotcha
 
 For a `UIText` directly (or via the React `<Text>`), two extra props
@@ -329,6 +391,12 @@ new UIText({ children: "READY", bitmap: true, style: { fontFamily: "PressStart",
 
 // Per-text canvas resolution.
 new UIText({ children: "HUD", resolution: window.devicePixelRatio });
+```
+
+The `.text()` builder takes both props in its third argument:
+
+```typescript
+panel.text("SCORE", { fontFamily: "PressStart", fontSize: 16 }, { bitmap: true });
 ```
 
 :::caution[Pixi v8 `resolution`]
@@ -452,6 +520,9 @@ Without `truncate`, a label wider than the button wraps to multiple lines; an
 auto-height button grows to fit, but a button with a *fixed* height can't — so
 either give it room to grow or truncate the label.
 
+For a font without the `…` character, pass `truncateWith: "..."` beside
+`truncate` (see [Wrapping and truncation](#wrapping-and-truncation)).
+
 `UIButton` is itself a flex container — `.addElement()` accepts any
 `UIElement` (text, image, nested panels) for icon + label compositions. It
 stacks its children in a column and centres them on both axes, so an icon
@@ -485,6 +556,10 @@ panel.button("Play", {
   onClick: () => { /* ... */ },
 });
 ```
+
+A nine-slice button needs at least `left + right` of width and `top + bottom`
+of height, 24 × 24 px in this example, or its corners overlap. See
+[Nine-slice insets](#nine-slice-insets).
 
 ## Additional Elements
 
@@ -555,7 +630,13 @@ panel.addElement(bar);
 
 // Update value
 bar.update({ value: 0.5 });
+
+// Read it back
+bar.value; // 0.5
 ```
+
+The bar clamps a value to 0–1, so `value` reads back `1` after
+`bar.update({ value: 1.2 })`.
 
 ### Checkboxes
 
@@ -666,3 +747,37 @@ Backgrounds can be a solid color or a texture:
   nineSlice: { left: 16, top: 16, right: 16, bottom: 16 },
 }
 ```
+
+An element reads the options when you pass them. Changing a field on that
+object afterwards does not change what is drawn. To change a background, pass
+a new object. It replaces the previous options whole: a field you leave out
+takes its default, not its previous value.
+
+```typescript
+const menu = entity.get(UISurface);
+const card = menu.panel({
+  padding: 8,
+  background: { color: 0x222222, radius: 8 },
+});
+
+// Later: a new object replaces the whole background.
+card.update({ background: { color: 0x333333, radius: 8 } });
+
+// A surface's own background belongs to its root panel.
+menu.root.update({ background: { color: 0x000000, alpha: 0.5 } });
+```
+
+### Nine-slice insets
+
+The `nineSlice` insets come from the background options, not from the
+texture's own metadata. When you swap nine-slice art, pass `mode: "nine-slice"`
+and `nineSlice` again with the new `texture`. Without them, the whole texture
+stretches to the box and its corners stretch with it.
+
+A nine-slice box needs room for its insets: at least `left + right` wide and
+`top + bottom` tall. In a smaller box the corners overlap and there is no room
+for the middle row or column. Development builds log a `console.warn` when a
+nine-slice background or a `UINineSlice` element is laid out smaller than
+that. Nothing is resized for you. Give the element more room, or use art with
+smaller insets. The warning repeats if the element fits again and later
+becomes too small again.
