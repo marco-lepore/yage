@@ -171,9 +171,9 @@ export class BackgroundRenderer {
         texture;
     }
 
-    // The insets are restated from the options on every apply, because the
-    // display object outlives a texture swap. A background that replaces its
-    // texture without restating them keeps the insets it was given.
+    // The insets are set from the options on every apply, because the display
+    // object outlives a texture swap. Options without `nineSlice` give insets
+    // of 0, so a caller swapping art passes its insets again.
     if (this.displayObject instanceof NineSliceSprite) {
       const insets = resolveNineSliceInsets(opts.nineSlice);
       this.displayObject.leftWidth = insets.leftWidth;

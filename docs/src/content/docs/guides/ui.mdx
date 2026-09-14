@@ -97,7 +97,7 @@ UIs (skill trees, world maps) can exceed the screen; if you want a top-level
 panel to bound and wrap its contents, give it an explicit `width`.
 
 - **A dev-mode warning catches the leftovers.** When an in-flow child still
-  overflows its container, YAGE logs a one-time `console.warn` pointing at the
+  overflows its container, YAGE logs a `console.warn` pointing at the
   offending node. It's compiled out of production builds and stays quiet for
   intentional overflow (`overflow: "hidden"` containers, `position: "absolute"`
   children, and scroll views).
