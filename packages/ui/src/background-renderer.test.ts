@@ -66,7 +66,10 @@ const { mocks } = vi.hoisted(() => {
       this._lastFillH = h;
       return this;
     }
-    fill(): MockGraphics {
+    /** The style passed to the most recent `fill`. */
+    lastFill: { color?: number; alpha?: number } | undefined;
+    fill(style?: { color?: number; alpha?: number }): MockGraphics {
+      this.lastFill = style;
       return this;
     }
     get lastWidth() {
@@ -247,6 +250,24 @@ describe("BackgroundRenderer", () => {
     expect(g.drawCount).toBe(before + 1);
     renderer.resize(200, 100);
     expect(g.drawCount).toBe(before + 1);
+  });
+
+  it("does not draw a later mutation of the options it was given", () => {
+    // Options are read when they are passed. A later resize redraws, and that
+    // redraw must use the passed values, not the caller's object as it is now.
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    const opts = { color: 0xff0000, alpha: 1 };
+    renderer.set(opts, parent as never);
+    renderer.resize(200, 100);
+    const g = parent.children[0] as InstanceType<typeof mocks.MockGraphics>;
+
+    opts.color = 0x00ff00;
+    opts.alpha = 0.5;
+    renderer.resize(200, 120);
+
+    expect(g.lastHeight).toBe(120);
+    expect(g.lastFill).toEqual({ color: 0xff0000, alpha: 1 });
   });
 
   it("creates Sprite for stretch texture background", () => {
