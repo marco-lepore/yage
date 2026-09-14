@@ -1,5 +1,6 @@
-# Diagnostic only: the E2E suite with the dev servers' output and Playwright
-# traces kept, to find what navigates the level editor's play page.
+# Diagnostic only: the E2E suite with the dev servers' output kept, to find
+# what navigates the level editor's play page. Some legs compete for the CPU
+# with busy loops, to widen any timing window.
 name: Diagnose editor play reload
 
 on:
@@ -8,22 +9,26 @@ on:
 
 jobs:
   e2e:
-    name: E2E (${{ matrix.scope }}, ${{ matrix.debug }})
+    name: E2E (${{ matrix.scope }}, busy loops ${{ matrix.stress }}, leg ${{ matrix.leg }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         include:
-          - scope: full
-            debug: pw:webserver
-          - scope: full
-            debug: pw:webserver,vite:deps,vite:hmr
-          - scope: editor
-            debug: pw:webserver
-          - scope: editor
-            debug: pw:webserver,vite:deps,vite:hmr
+          - { scope: full, stress: 0, leg: 1 }
+          - { scope: full, stress: 0, leg: 2 }
+          - { scope: full, stress: 0, leg: 3 }
+          - { scope: full, stress: 0, leg: 4 }
+          - { scope: full, stress: 4, leg: 5 }
+          - { scope: full, stress: 4, leg: 6 }
+          - { scope: editor, stress: 4, leg: 7 }
+          - { scope: editor, stress: 8, leg: 8 }
     steps:
+      - name: Describe the runner
+        run: |
+          lscpu | grep -E 'Model name|^CPU\(s\)' || true
+          free -m | head -2
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: npx turbo build --filter='!@yagejs/docs'
@@ -42,24 +47,23 @@ jobs:
       - name: Run E2E
         working-directory: e2e
         env:
-          DEBUG: ${{ matrix.debug }}
+          DEBUG: pw:webserver
         run: |
-          if [ "${{ matrix.scope }}" = "editor" ]; then
-            npx playwright test -c ../playwright.config.ts --project=editor \
-              --retries=0 --trace=on --reporter=list
-          else
-            npx playwright test -c ../playwright.config.ts \
-              --retries=0 --trace=retain-on-failure --reporter=list
-          fi
-      - name: Keep the editor's optimized dependency metadata
-        if: always()
-        run: |
-          mkdir -p test-results
-          cp e2e/editor-project/node_modules/.yage-editor/deps/_metadata.json \
-            test-results/editor-deps-metadata.json || true
+          set +e
+          busy=()
+          for i in $(seq "${{ matrix.stress }}"); do
+            (while :; do :; done) &
+            busy+=($!)
+          done
+          project=""
+          if [ "${{ matrix.scope }}" = "editor" ]; then project="--project=editor"; fi
+          npx playwright test -c ../playwright.config.ts $project --retries=0 --reporter=list
+          code=$?
+          if [ "${#busy[@]}" -gt 0 ]; then kill "${busy[@]}"; fi
+          exit $code
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: e2e-${{ strategy.job-index }}-${{ matrix.scope }}
+          name: e2e-leg-${{ matrix.leg }}
           path: test-results
           retention-days: 7
