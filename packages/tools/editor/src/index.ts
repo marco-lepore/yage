@@ -28,8 +28,16 @@ export interface EditorLevelGlob {
   readonly layers: string;
 }
 
+/** Source maps to open instead of their runtime JSON exports. */
+export interface EditorTiledConfig {
+  /** Keys are served asset paths; values are paths relative to the Vite root. */
+  readonly sources?: Readonly<Record<string, string>> | undefined;
+}
+
 export interface EditorConfig {
   readonly modules: EditorModules;
+  /** Tiled source files. Omit to edit JSON maps directly. */
+  readonly tiled?: EditorTiledConfig | undefined;
   /**
    * Globs for level files, relative to the Vite root. A bare string is a glob
    * whose levels declare no layers, which leaves every placement on the
@@ -37,7 +45,8 @@ export interface EditorConfig {
    */
   readonly levels: readonly (string | EditorLevelGlob)[];
   /**
-   * Globs for the project files the asset picker offers, matched against where
+   * Globs for the files the asset picker offers and the preview watches for
+   * external edits, matched against where
    * a file sits on disk relative to the Vite root —
    * `["public/sprites/**\/*.png"]`. They are the whole filter: the editor
    * cannot tell which files a given parameter would accept, so what these

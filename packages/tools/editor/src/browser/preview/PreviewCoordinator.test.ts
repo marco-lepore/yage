@@ -3269,3 +3269,105 @@ describe("collider and icon fallback interaction", () => {
     }
   });
 });
+
+describe("asset refresh", () => {
+  it("waits for retired placements even after an empty rebuild", async () => {
+    const harness = await createHarness();
+    await harness.build(document("crate"));
+    await harness.build(document());
+    harness.events.length = 0;
+    harness.coordinator.requestRebuild({
+      document: document(),
+      catalog: NO_REFERENCES,
+      layers: [],
+      reloadAssets: true,
+    });
+    await settle();
+    expect(harness.events).not.toContain("unload crate.png");
+    harness.tick(2);
+    await settle();
+    expect(harness.events).toContain("unload crate.png");
+    await harness.coordinator.dispose();
+  });
+
+  it("destroys the engine before starting asynchronous asset cleanup on close", async () => {
+    const parts = createParts();
+    const engine = parts.harness.engine();
+    const assets = engine.context.resolve({} as never) as AssetManager;
+    let finish!: () => void;
+    assets.unload = (handle) => {
+      events.push(`unload ${handle.path}`);
+      return new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    };
+    engine.destroy = () => {
+      events.push("engine destroy");
+    };
+    await parts.coordinator.start(parts.harness);
+    parts.coordinator.requestRebuild({
+      document: document("crate"),
+      catalog: NO_REFERENCES,
+      layers: [],
+    });
+    await settle();
+    events.length = 0;
+    const disposing = parts.coordinator.dispose();
+    await settle();
+    expect(events).toEqual([
+      "dispose crate",
+      "engine destroy",
+      "unload crate.png",
+    ]);
+    finish();
+    await disposing;
+  });
+
+  it("retires placements and waits for the destroy flush before unloading and reloading", async () => {
+    const harness = await createHarness();
+    const doc = document("crate");
+    await harness.build(doc);
+    harness.events.length = 0;
+    harness.coordinator.requestRebuild({
+      document: doc,
+      catalog: NO_REFERENCES,
+      layers: [],
+      reloadAssets: true,
+    });
+    await settle();
+    expect(harness.events).toEqual(["dispose crate"]);
+    harness.tick(1);
+    await settle();
+    expect(harness.events).toEqual(["dispose crate"]);
+    harness.tick(1);
+    await settle();
+    expect(harness.events).toEqual([
+      "dispose crate",
+      "unload crate.png",
+      "load crate.png",
+    ]);
+    await harness.coordinator.dispose();
+  });
+
+  it("keeps invalidation when a newer document replaces the pending rebuild", async () => {
+    const harness = await createHarness();
+    await harness.build(document("crate"));
+    harness.events.length = 0;
+    harness.coordinator.requestRebuild({
+      document: document("crate"),
+      catalog: NO_REFERENCES,
+      layers: [],
+      reloadAssets: true,
+    });
+    harness.coordinator.requestRebuild({
+      document: document("barrel"),
+      catalog: NO_REFERENCES,
+      layers: [],
+    });
+    harness.tick(2);
+    await settle();
+    expect(harness.events).toContain("unload crate.png");
+    expect(harness.events).toContain("load barrel.png");
+    await harness.coordinator.dispose();
+  });
+});

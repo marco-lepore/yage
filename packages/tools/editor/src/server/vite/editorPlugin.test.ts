@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer, type ViteDevServer } from "vite";
 import type { ResolvedEditorConfig } from "../config/index.js";
 import { EDITOR_TOKEN_META, PLAY_HOST_ID } from "./editorHtml.js";
@@ -600,5 +600,55 @@ describe("the draft routes", () => {
 
     expect(outcomes.filter((status) => status === "accepted")).toHaveLength(1);
     expect(outcomes.filter((status) => status === "stale")).toHaveLength(1);
+  });
+});
+
+describe("Tiled assets", () => {
+  it("describes a map and refuses an unauthenticated launch", async () => {
+    const editor = await startEditor();
+    await writeFile(
+      path.join(editor.root, "room.json"),
+      JSON.stringify({ layers: [], tilesets: [] }),
+    );
+    expect(
+      await json(await editor.api("/assets/tiled?path=room.json")),
+    ).toEqual({ source: "room.json" });
+    expect(
+      (
+        await editor.api("/assets/tiled/open?path=room.json", {
+          method: "POST",
+          token: null,
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      await json(
+        await editor.api("/assets/tiled/open?path=absent.json", {
+          method: "POST",
+        }),
+      ),
+    ).toEqual({
+      ok: false,
+      message: expect.stringContaining("not a readable Tiled map"),
+    });
+  });
+
+  it("coalesces asset events on Vite's connection and detaches on close", async () => {
+    const editor = await startEditor({ assets: ["sprites/*.png"] });
+    const server = servers.at(-1)!;
+    const send = vi.spyOn(server.ws, "send");
+    server.watcher.emit("change", path.join(editor.root, "sprites/crate.png"));
+    server.watcher.emit("change", path.join(editor.root, "sprites/crate.png"));
+    server.watcher.emit("unlink", path.join(editor.root, "sprites/barrel.png"));
+    await vi.waitFor(() =>
+      expect(send).toHaveBeenCalledWith({
+        type: "custom",
+        event: "yage-editor:assets-changed",
+        data: { paths: ["sprites/crate.png", "sprites/barrel.png"] },
+      }),
+    );
+    const listeners = server.watcher.listenerCount("change");
+    await server.close();
+    expect(server.watcher.listenerCount("change")).toBeLessThan(listeners);
   });
 });

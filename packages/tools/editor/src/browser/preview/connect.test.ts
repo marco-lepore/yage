@@ -495,3 +495,35 @@ describe("connectPreview", () => {
     expect(harness.views).toHaveLength(views);
   });
 });
+
+describe("external asset edits", () => {
+  it("requests a reload without changing authored state or undo history", () => {
+    const harness = createHarness();
+    harness.open(document(placement("crate", 1)));
+    const before = harness.store.getState();
+    harness.store.dispatch({ type: "assets-changed" });
+    const after = harness.store.getState();
+    expect(harness.rebuilds.at(-1)?.reloadAssets).toBe(true);
+    expect(after.document).toBe(before.document);
+    expect(after.history).toBe(before.history);
+    expect(after.selection).toBe(before.selection);
+    expect(after.view).toBe(before.view);
+    expect(after.assetRevision).toBe(before.assetRevision + 1);
+  });
+
+  it("coalesces refreshes while a pose field has an uncommitted edit", () => {
+    const harness = createHarness();
+    harness.open(document(placement("crate", 1)));
+    harness.store.dispatch({
+      type: "pose-drafted",
+      draft: { ids: ["crate"], component: "x", value: 20 },
+    });
+    harness.rebuilds.length = 0;
+    harness.store.dispatch({ type: "assets-changed" });
+    harness.store.dispatch({ type: "assets-changed" });
+    expect(harness.rebuilds).toHaveLength(0);
+    harness.store.dispatch({ type: "pose-draft-dropped" });
+    expect(harness.rebuilds).toHaveLength(1);
+    expect(harness.rebuilds[0]?.reloadAssets).toBe(true);
+  });
+});

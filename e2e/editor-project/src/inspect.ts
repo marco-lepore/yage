@@ -1,3 +1,4 @@
+import { TilemapComponent } from "@yagejs/tilemap";
 import { Transform, Vec2, type Engine } from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";
 import { Crate } from "./Crate.js";
@@ -64,6 +65,7 @@ export interface SlimeFact {
 
 /** The read-only API {@link exposeLevelFacts} registers. */
 export interface LevelFacts {
+  maps(): { width: number; height: number }[];
   /** Every loaded placement, in the order the scene created them. */
   placements(): PlacementFact[];
   /** Every loaded switch and what its two reference parameters resolved to. */
@@ -87,6 +89,13 @@ export interface LevelFacts {
  */
 export function exposeLevelFacts(engine: Engine): void {
   const facts: LevelFacts = {
+    maps: () =>
+      [...(engine.scenes.active?.getEntities() ?? [])]
+        .filter((entity) => !entity.isDestroyed && entity.has(TilemapComponent))
+        .map((entity) => {
+          const map = entity.get(TilemapComponent);
+          return { width: map.data.width, height: map.data.height };
+        }),
     placements: () => {
       const scene = engine.scenes.active;
       if (!scene) return [];

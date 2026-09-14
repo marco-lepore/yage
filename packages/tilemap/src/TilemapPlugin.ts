@@ -38,16 +38,40 @@ export class TilemapPlugin implements Plugin {
     const loader: AssetLoader<TiledMapData> = {
       load: async (path: string) => {
         const map = await Assets.load<TiledMapData>(path);
-        await am.loadAll(tilesetImagePaths(map).map((image) => texture(image)));
+        const images = tilesetImagePaths(map).map((image) => texture(image));
+        // Each successful image has its own reference. Wait for every load so
+        // a failed map can release exactly those references, including images
+        // that finish after another image failed.
+        const loaded = await Promise.allSettled(
+          images.map((image) => am.loadAll([image])),
+        );
+        const failure = loaded.find((result) => result.status === "rejected");
+        if (failure) {
+          await Promise.all([
+            ...images.map((image, index) =>
+              loaded[index]?.status === "fulfilled"
+                ? am.unload(image)
+                : undefined,
+            ),
+            ...externalTilesetPaths(map).map((source) => Assets.unload(source)),
+            Assets.unload(path),
+          ]);
+          throw failure.reason;
+        }
         return map;
       },
       unload: (path: string, map: TiledMapData) => {
-        for (const image of tilesetImagePaths(map)) am.unload(texture(image));
+        const images = tilesetImagePaths(map).map((image) =>
+          am.unload(texture(image)),
+        );
         // An external tileset's JSON is plain data: a map that inlined it
         // holds its own copy, so dropping the cache entry costs a second map
         // nothing but a re-fetch if it is loaded again.
-        for (const source of externalTilesetPaths(map)) Assets.unload(source);
-        Assets.unload(path);
+        return Promise.all([
+          ...images,
+          ...externalTilesetPaths(map).map((source) => Assets.unload(source)),
+          Assets.unload(path),
+        ]).then(() => undefined);
       },
     };
     am.registerLoader("tiledMap", loader);

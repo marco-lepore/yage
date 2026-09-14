@@ -1,0 +1,29 @@
+{
+  "format": "yage-level",
+  "version": 1,
+  "id": "map-test",
+  "entities": [
+    {
+      "id": "map-placement",
+      "type": "game.map",
+      "typeVersion": 1,
+      "params": {
+        "map": "maps/room.json"
+      }
+    },
+    {
+      "id": "crate-test",
+      "type": "game.crate",
+      "typeVersion": 1,
+      "params": {
+        "sprite": "sprites/crate.png"
+      },
+      "transform": {
+        "position": {
+          "x": 250,
+          "y": 100
+        }
+      }
+    }
+  ]
+}

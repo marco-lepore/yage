@@ -1,3 +1,5 @@
+import { setTimeout, clearTimeout } from "node:timers";
+import { ASSETS_CHANGED_EVENT } from "../../shared/protocol/index.js";
 import { randomUUID } from "node:crypto";
 import type { Plugin } from "vite";
 import type { ResolvedEditorConfig } from "../config/index.js";
@@ -130,12 +132,42 @@ export function yageEditor(options: YageEditorOptions): Plugin {
             : { layerSet: layerModules.indexOf(level.layers) }),
         })),
         assets: config.assets,
+        tiledSources: config.tiled?.sources,
         publicDir: server.config.publicDir,
       });
       const draft = new DraftService({
         files,
         projectId: config.projectId,
         epoch: options.epoch ?? randomUUID(),
+      });
+
+      const changed = new Set<string>();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const onAsset = (file: string): void => {
+        const asset = files.assetPathForFile(file);
+        if (asset === undefined) return;
+        changed.add(asset);
+        if (timer !== undefined) clearTimeout(timer);
+        timer = setTimeout(() => {
+          timer = undefined;
+          server.ws.send({
+            type: "custom",
+            event: ASSETS_CHANGED_EVENT,
+            data: { paths: [...changed] },
+          });
+          changed.clear();
+        }, 150);
+      };
+      server.watcher
+        .on("add", onAsset)
+        .on("change", onAsset)
+        .on("unlink", onAsset);
+      server.httpServer?.once("close", () => {
+        server.watcher
+          .off("add", onAsset)
+          .off("change", onAsset)
+          .off("unlink", onAsset);
+        if (timer !== undefined) clearTimeout(timer);
       });
 
       server.middlewares.use(

@@ -82,11 +82,14 @@ export class PreviewAssetLease {
   }
 
   /** Release every reference this lease holds. Called when the editor closes. */
-  releaseAll(): void {
-    for (const handle of this.held.values()) this.assets.unload(handle);
+  async releaseAll(): Promise<void> {
+    const unloading = [...this.held.values()].map((handle) =>
+      this.assets.unload(handle),
+    );
     this.held.clear();
     this.failed.clear();
     this.required = new Set();
+    await Promise.all(unloading);
   }
 }
 

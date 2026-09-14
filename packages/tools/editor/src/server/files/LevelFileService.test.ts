@@ -616,3 +616,82 @@ describe("deleteLevel", () => {
     );
   });
 });
+
+describe("Tiled source files", () => {
+  const map = JSON.stringify({ type: "map", layers: [], tilesets: [] });
+
+  it("opens the public file that Vite serves, even when a root file shares its URL", async () => {
+    const root = await makeProject();
+    await mkdir(path.join(root, "public/maps"), { recursive: true });
+    await mkdir(path.join(root, "maps"));
+    await writeFile(path.join(root, "public/maps/room.json"), map);
+    await writeFile(path.join(root, "maps/room.json"), "{}");
+    const files = await createLevelFileService({
+      root,
+      levels: LEVELS,
+      assets: [],
+      publicDir: path.join(root, "public"),
+    });
+    expect(await files.resolveTiledAsset("/maps/room.json")).toEqual({
+      source: "public/maps/room.json",
+      absolute: expect.stringContaining("public/maps/room.json"),
+    });
+  });
+
+  it("opens an explicitly mapped source without modifying either file", async () => {
+    const root = await makeProject();
+    await writeFile(path.join(root, "map.json"), map);
+    await writeFile(path.join(root, "source map.tmx"), "<map/>");
+    const files = await createLevelFileService({
+      root,
+      levels: LEVELS,
+      assets: [],
+      tiledSources: { "map.json": "source map.tmx" },
+    });
+    expect((await files.resolveTiledAsset("map.json"))?.source).toBe(
+      "source map.tmx",
+    );
+    expect(await readFile(path.join(root, "map.json"), "utf8")).toBe(map);
+    expect(await files.resolveTiledAsset("../map.json")).toBeUndefined();
+    expect(await files.resolveTiledAsset("absent.json")).toBeUndefined();
+    await writeFile(path.join(root, "map.json"), "{}");
+    expect((await files.resolveTiledAsset("map.json"))?.source).toBe(
+      "source map.tmx",
+    );
+  });
+
+  it("refuses a source symlink outside the project", async () => {
+    const root = await makeProject();
+    const other = await makeProject();
+    await writeFile(path.join(root, "map.json"), map);
+    await writeFile(path.join(other, "source.tmx"), "<map/>");
+    await symlink(
+      path.join(other, "source.tmx"),
+      path.join(root, "source.tmx"),
+    );
+    const files = await createLevelFileService({
+      root,
+      levels: LEVELS,
+      assets: [],
+      tiledSources: { "map.json": "source.tmx" },
+    });
+    expect(await files.resolveTiledAsset("map.json")).toBeUndefined();
+  });
+
+  it("uses the asset listing's public-directory mapping for file changes", async () => {
+    const root = await makeProject();
+    const files = await createLevelFileService({
+      root,
+      levels: LEVELS,
+      assets: ["public/maps/**/*.json"],
+      publicDir: path.join(root, "public"),
+    });
+    expect(
+      files.assetPathForFile(path.join(root, "public/maps/room.json")),
+    ).toBe("maps/room.json");
+    expect(files.assetPathForFile(path.join(root, "code.ts"))).toBeUndefined();
+    expect(
+      files.assetPathForFile(path.join(root, "../public/maps/room.json")),
+    ).toBeUndefined();
+  });
+});

@@ -1,3 +1,5 @@
+import type { EditorTiledConfig } from "../../index.js";
+
 /** Root-absolute URLs of the project modules the generated entry imports. */
 export interface ResolvedEditorModules {
   readonly project: string;
@@ -20,6 +22,7 @@ export interface ResolvedLevelGlob {
 export interface ResolvedEditorConfig {
   /** The Vite root, and the one root the file service will write inside. */
   readonly root: string;
+  readonly tiled?: EditorTiledConfig | undefined;
   /** Absolute path of the config file, for error messages. */
   readonly configFile: string;
   /** The project's package name, or the root directory's name. */

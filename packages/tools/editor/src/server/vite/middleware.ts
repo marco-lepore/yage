@@ -12,6 +12,7 @@ import {
   type EditorRoute,
   type EditorRouteResponses,
 } from "../../shared/protocol/index.js";
+import { launchTiled } from "./tiled.js";
 import type { DraftService } from "../draft/index.js";
 import type { LevelFileService } from "../files/index.js";
 
@@ -22,7 +23,7 @@ export interface EditorMiddlewareOptions {
    * Narrowed to that one method: every write still goes through `draft`, the
    * owner of unsaved work.
    */
-  readonly files: Pick<LevelFileService, "listAssets">;
+  readonly files: Pick<LevelFileService, "listAssets" | "resolveTiledAsset">;
   /** The per-process project token every request must carry. */
   readonly token: string;
   /** Request failures go here, without tokens or document contents. */
@@ -111,6 +112,35 @@ export function createEditorMiddleware(
       const body: EditorRouteResponses["GET /assets"] =
         await files.listAssets();
       send(res, 200, body);
+      return;
+    }
+
+    if (
+      endpoint === "GET /assets/tiled" ||
+      endpoint === "POST /assets/tiled/open"
+    ) {
+      const asset = url.searchParams.get("path");
+      if (!asset) {
+        send(res, 400, { error: "An asset path is required." });
+        return;
+      }
+      const resolved = await files.resolveTiledAsset(asset);
+      if (endpoint === "GET /assets/tiled") {
+        const answer: EditorRouteResponses["GET /assets/tiled"] = {
+          source: resolved?.source ?? null,
+        };
+        send(res, 200, answer);
+      } else {
+        const answer: EditorRouteResponses["POST /assets/tiled/open"] =
+          resolved === undefined
+            ? {
+                ok: false,
+                message:
+                  "The asset or its configured source is not a readable Tiled map in this project.",
+              }
+            : await launchTiled(resolved.absolute);
+        send(res, 200, answer);
+      }
       return;
     }
 

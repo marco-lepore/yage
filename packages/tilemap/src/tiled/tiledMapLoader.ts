@@ -45,36 +45,43 @@ const tiledMapLoaderParser: LoaderParser<TiledMapData> = {
 
     const mapDir = path.dirname(src);
 
-    for (const tilesetRef of asset.tilesets as TilesetRef[]) {
-      let tileset: TilesetData | null;
-      // Tiled writes a tileset's `image` relative to the file the tileset
-      // itself lives in, so an external tileset resolves its image against its
-      // own directory and an embedded one against the map's.
-      let imageDir = mapDir;
+    try {
+      for (const tilesetRef of asset.tilesets as TilesetRef[]) {
+        let tileset: TilesetData | null;
+        // Tiled writes a tileset's `image` relative to the file the tileset
+        // itself lives in, so an external tileset resolves its image against its
+        // own directory and an embedded one against the map's.
+        let imageDir = mapDir;
 
-      if (tilesetRef.source) {
-        // External tileset JSON — load it
-        const tilesetPath = path.join(mapDir, tilesetRef.source);
-        tilesetRef.resolvedSource = tilesetPath;
-        imageDir = path.dirname(tilesetPath);
-        const tilesetData = (await loader.load<TilesetData>({
-          src: tilesetPath,
-        })) as TilesetData;
-        tilesetRef.data = tilesetData;
-        tileset = tilesetData;
-      } else {
-        tileset = resolveTilesetData(tilesetRef);
-        if (tileset) tilesetRef.data = tileset;
+        if (tilesetRef.source) {
+          // External tileset JSON — load it
+          const tilesetPath = path.join(mapDir, tilesetRef.source);
+          tilesetRef.resolvedSource = tilesetPath;
+          imageDir = path.dirname(tilesetPath);
+          const tilesetData = (await loader.load<TilesetData>({
+            src: tilesetPath,
+          })) as TilesetData;
+          tilesetRef.data = tilesetData;
+          tileset = tilesetData;
+        } else {
+          tileset = resolveTilesetData(tilesetRef);
+          if (tileset) tilesetRef.data = tileset;
+        }
+
+        if (!tileset) continue;
+
+        // `image` is what tells the two tileset forms apart. A single-image
+        // tileset also carries `tiles[]` once any tile has an animation, class,
+        // custom property or collision shape.
+        if (tileset.image) {
+          tileset.resolvedImage = path.join(imageDir, tileset.image);
+        }
       }
-
-      if (!tileset) continue;
-
-      // `image` is what tells the two tileset forms apart. A single-image
-      // tileset also carries `tiles[]` once any tile has an animation, class,
-      // custom property or collision shape.
-      if (tileset.image) {
-        tileset.resolvedImage = path.join(imageDir, tileset.image);
-      }
+    } catch (error) {
+      // A failed map has no owner to release the tilesets it already loaded.
+      // Drop their parsed data so a retry reads any corrected files.
+      await loader.unload(externalTilesetPaths(asset));
+      throw error;
     }
 
     return asset;

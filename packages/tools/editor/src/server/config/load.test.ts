@@ -256,3 +256,33 @@ describe("loadEditorConfig", () => {
     expect(config.projectId).toBe(path.basename(root));
   });
 });
+
+describe("Tiled configuration", () => {
+  it("keeps explicit source mappings relative to the project root", async () => {
+    const root = await makeProject(
+      VALID_CONFIG.replace(
+        "levels:",
+        'tiled: { sources: { "maps/room.json": "art/room.tmx" } }, levels:',
+      ),
+    );
+    expect((await load(root)).tiled).toEqual({
+      sources: { "maps/room.json": "art/room.tmx" },
+    });
+  });
+  it.each([
+    null,
+    "map.tmx",
+    { sources: [] },
+    { sources: { "map.json": "../map.tmx" } },
+    { sources: { "map.json": "" } },
+    { sources: { "map.json": "map.png" } },
+  ])("rejects an unusable mapping: %j", async (tiled) => {
+    const root = await makeProject(
+      VALID_CONFIG.replace(
+        "levels:",
+        `tiled: ${JSON.stringify(tiled)}, levels:`,
+      ),
+    );
+    await expect(load(root)).rejects.toThrow("tiled.sources");
+  });
+});
