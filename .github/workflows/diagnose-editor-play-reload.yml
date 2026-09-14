@@ -1,0 +1,65 @@
+# Diagnostic only: the E2E suite with the dev servers' output and Playwright
+# traces kept, to find what navigates the level editor's play page.
+name: Diagnose editor play reload
+
+on:
+  push:
+    branches: ["ci/diagnose-editor-play-reload"]
+
+jobs:
+  e2e:
+    name: E2E (${{ matrix.scope }}, ${{ matrix.debug }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scope: full
+            debug: pw:webserver
+          - scope: full
+            debug: pw:webserver,vite:deps,vite:hmr
+          - scope: editor
+            debug: pw:webserver
+          - scope: editor
+            debug: pw:webserver,vite:deps,vite:hmr
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: npx turbo build --filter='!@yagejs/docs'
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: timeout 300 npx playwright install --with-deps chromium
+      - name: Install Playwright OS dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Run E2E
+        working-directory: e2e
+        env:
+          DEBUG: ${{ matrix.debug }}
+        run: |
+          if [ "${{ matrix.scope }}" = "editor" ]; then
+            npx playwright test -c ../playwright.config.ts --project=editor \
+              --retries=0 --trace=on --reporter=list
+          else
+            npx playwright test -c ../playwright.config.ts \
+              --retries=0 --trace=retain-on-failure --reporter=list
+          fi
+      - name: Keep the editor's optimized dependency metadata
+        if: always()
+        run: |
+          mkdir -p test-results
+          cp e2e/editor-project/node_modules/.yage-editor/deps/_metadata.json \
+            test-results/editor-deps-metadata.json || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-${{ strategy.job-index }}-${{ matrix.scope }}
+          path: test-results
+          retention-days: 7

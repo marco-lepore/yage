@@ -243,6 +243,53 @@ test.beforeEach(() => {
   secondLevel = "";
 });
 
+// Diagnostic only: every page's main-frame navigations, console messages, HMR
+// socket frames and closes, with wall-clock times to line up with the server.
+test.beforeEach(({ context }, testInfo) => {
+  const stamp = (): string => new Date().toISOString();
+  console.log(
+    `${stamp()} [test] ${testInfo.title} (retry ${String(testInfo.retry)})`,
+  );
+  const watch = (opened: Page): void => {
+    const where = (): string => {
+      try {
+        return new URL(opened.url()).pathname;
+      } catch {
+        return opened.url();
+      }
+    };
+    opened.on("framenavigated", (frame) => {
+      if (frame === opened.mainFrame()) {
+        console.log(`${stamp()} [nav] ${frame.url()}`);
+      }
+    });
+    opened.on("console", (message) => {
+      console.log(
+        `${stamp()} [console ${where()}] ${message.type()}: ${message.text().slice(0, 400)}`,
+      );
+    });
+    opened.on("pageerror", (error) => {
+      console.log(`${stamp()} [pageerror ${where()}] ${error.message}`);
+    });
+    opened.on("websocket", (socket) => {
+      console.log(`${stamp()} [ws open ${where()}] ${socket.url()}`);
+      socket.on("framereceived", (frame) => {
+        const text =
+          typeof frame.payload === "string" ? frame.payload : "<binary>";
+        console.log(`${stamp()} [ws in ${where()}] ${text.slice(0, 300)}`);
+      });
+      socket.on("close", () => {
+        console.log(`${stamp()} [ws close ${where()}]`);
+      });
+    });
+    opened.on("close", () => {
+      console.log(`${stamp()} [close] ${where()}`);
+    });
+  };
+  context.pages().forEach(watch);
+  context.on("page", watch);
+});
+
 /**
  * Every placement the file on disk holds, in authored order. A placement at
  * the identity transform carries no `transform`: the canonical format leaves
