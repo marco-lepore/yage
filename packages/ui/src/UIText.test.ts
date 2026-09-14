@@ -688,6 +688,28 @@ describe("UIText bitmap-in-style warning", () => {
       expect(renderedText(t).endsWith("\u2026")).toBe(true);
     });
 
+    it("renders nothing for a clipped text in a zero-width slot", () => {
+      const t = new UIText({
+        children: "one two three four five",
+        width: 0,
+        truncate: "clip",
+      });
+      layoutInStretchingParent(t, FlexDirection.Row, 200, 20);
+
+      expect(renderedText(t)).toBe("");
+    });
+
+    it("renders only the suffix for an ellipsis text in a zero-width slot", () => {
+      const t = new UIText({
+        children: "one two three four five",
+        width: 0,
+        truncate: "ellipsis",
+      });
+      layoutInStretchingParent(t, FlexDirection.Row, 200, 20);
+
+      expect(renderedText(t)).toBe("\u2026");
+    });
+
     it("leaves the wrap the measure callback chose alone", () => {
       // A measured text is wrapped from inside the callback. The layout pass
       // must not then rewrite the flag from the computed width, which is the

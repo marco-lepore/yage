@@ -265,6 +265,30 @@ describe("UISurface", () => {
     expect(panel._offset).toEqual({ x: -5, y: 40 });
   });
 
+  it("rejects a non-finite offset without moving the tree", () => {
+    const panel = new UISurface({ offset: { x: 10, y: 20 } });
+    expect(() => panel.setOffset(Number.NaN, 5)).toThrow(
+      "UISurface.setOffset: x must be finite, got NaN.",
+    );
+    expect(() => panel.setOffset(5, Number.POSITIVE_INFINITY)).toThrow(
+      "UISurface.setOffset: y must be finite, got Infinity.",
+    );
+    expect(panel.offset).toEqual({ x: 10, y: 20 });
+  });
+
+  it("rejects a non-finite offset option", () => {
+    expect(() => new UISurface({ offset: { x: 0, y: Number.NaN } })).toThrow(
+      "UISurface: offset.y must be finite, got NaN.",
+    );
+  });
+
+  it("does not write into the offset object it was given", () => {
+    const offset = { x: 10, y: 20 };
+    const panel = new UISurface({ offset });
+    panel.setOffset(1, 2);
+    expect(offset).toEqual({ x: 10, y: 20 });
+  });
+
   it("defaults offset to {0,0}", () => {
     const panel = new UISurface();
     expect(panel._offset).toEqual({ x: 0, y: 0 });

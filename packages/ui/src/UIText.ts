@@ -284,17 +284,24 @@ export class UIText implements UIElement {
 
   /**
    * Truncate `_source` to the longest prefix whose width + `suffix` fits
-   * within `maxWidth`, then write the result into `text.text`. Falls back
-   * to the full source when it already fits. Uses a binary search since
-   * each width measurement traverses the Pixi text pipeline.
+   * within `maxWidth`, then write the result into `text.text`. A non-finite
+   * width means the text is unconstrained, so it renders whole, as it does
+   * when it already fits. Uses a binary search since each width measurement
+   * traverses the Pixi text pipeline.
    *
    * `"ellipsis"` mode passes `"…"` as the suffix; `"clip"` mode passes the
    * empty string and so simply cuts at the character boundary — the text
    * stays bounded by its yoga slot rather than relying on a parent mask.
    */
   private applyTruncate(maxWidth: number, suffix: string): void {
-    if (!Number.isFinite(maxWidth) || maxWidth <= 0) {
+    if (!Number.isFinite(maxWidth)) {
       this.text.text = this._source;
+      return;
+    }
+    // A slot with no room gets what the search settles on when not even one
+    // character fits: the suffix, which is empty for `"clip"`.
+    if (maxWidth <= 0) {
+      this.text.text = suffix;
       return;
     }
 
