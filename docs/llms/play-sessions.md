@@ -138,8 +138,9 @@ container. `inspector.pointer` dispatches real pointer events at the canvas,
 which does reach one — a build menu, a pause screen, a confirm dialog.
 
 ```ts
-const { pointer, snapshot } = window.__yage__.inspector;
-const menu = snapshot().scenes[0]?.ui?.root;
+const inspector = window.__yage__.inspector;
+const { pointer } = inspector;
+const menu = inspector.snapshot().scenes[0]?.ui?.root;
 
 pointer.hitTest({ x: 160, y: 90 }); // what is under this point
 const hit = pointer.click(menu.children[0].id); // centre of that node's bounds
