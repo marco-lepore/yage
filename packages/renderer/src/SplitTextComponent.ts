@@ -1,5 +1,10 @@
 import { SplitText, SplitBitmapText } from "pixi.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
+import {
+  initialAutoSplit,
+  setSplitText,
+  splitIfNotEmpty,
+} from "./internal/split-text-guard.js";
 import type {
   DestroyOptions,
   DisplayBitmapText,
@@ -91,6 +96,7 @@ export class SplitTextComponent extends VisualComponent {
   readonly isBitmap: boolean;
   private _bitmap?: boolean;
   private _anchor?: { x: number; y: number };
+  private readonly _autoSplit: boolean;
 
   constructor(options: SplitTextComponentOptions) {
     super(options.layer);
@@ -104,6 +110,7 @@ export class SplitTextComponent extends VisualComponent {
       undefined,
     );
     this.isBitmap = bitmap;
+    this._autoSplit = options.autoSplit ?? true;
     const splitOptions = {
       text: options.text,
       style: textOptions.style ?? {},
@@ -116,9 +123,8 @@ export class SplitTextComponent extends VisualComponent {
       ...(options.lineAnchor !== undefined
         ? { lineAnchor: options.lineAnchor }
         : {}),
-      ...(options.autoSplit !== undefined
-        ? { autoSplit: options.autoSplit }
-        : {}),
+      // Never hand Pixi's split an empty string; see `setSplitText`.
+      autoSplit: initialAutoSplit(this._autoSplit, options.text),
     };
     this.splitText = bitmap
       ? new SplitBitmapText(splitOptions)
@@ -151,9 +157,12 @@ export class SplitTextComponent extends VisualComponent {
     return this.splitText.lines;
   }
 
-  /** Replace the displayed string (re-splits when `autoSplit` is on). */
+  /**
+   * Replace the displayed string (re-splits when `autoSplit` is on). An empty
+   * string renders nothing and leaves the segments empty.
+   */
   setText(value: string): void {
-    this.splitText.text = value;
+    setSplitText(this.splitText, value, this._autoSplit);
     this.applyBlockAnchor();
   }
 
@@ -184,7 +193,7 @@ export class SplitTextComponent extends VisualComponent {
    * mutating `text` / `style`, call this to apply the change in one pass.
    */
   resplit(): void {
-    this.splitText.split();
+    if (!splitIfNotEmpty(this.splitText)) return;
     this.applyBlockAnchor();
   }
 

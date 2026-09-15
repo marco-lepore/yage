@@ -211,7 +211,7 @@ vi.mock("pixi.js", () => ({
   Rectangle: mocks.MockRectangle,
 }));
 
-import Yoga, { Direction } from "yoga-layout";
+import Yoga, { Direction, Edge } from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UIButton } from "./UIButton.js";
 import { UIText } from "./UIText.js";
@@ -373,6 +373,182 @@ describe("UIButton", () => {
     btn.update({ bitmap: false });
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  describe("state backgrounds", () => {
+    /** The hover and press backgrounds the button resolved for itself. */
+    function stateBgs(btn: UIButton): {
+      hover: Record<string, unknown>;
+      press: Record<string, unknown>;
+    } {
+      const inner = btn as unknown as {
+        hoverBgOpts: Record<string, unknown>;
+        pressBgOpts: Record<string, unknown>;
+      };
+      return { hover: inner.hoverBgOpts, press: inner.pressBgOpts };
+    }
+
+    it("keeps the grey triple a button with no background used to get", () => {
+      const { hover, press } = stateBgs(new UIButton({ children: "Test" }));
+      expect(hover).toEqual({ color: 0x555555, alpha: 1, radius: 4 });
+      expect(press).toEqual({ color: 0x333333, alpha: 1, radius: 4 });
+    });
+
+    it("derives both states from the colour it was given", () => {
+      const btn = new UIButton({
+        children: "Test",
+        background: { color: 0x204060, radius: 8 },
+      });
+      const { hover, press } = stateBgs(btn);
+      // Each channel scaled and rounded: 0x20 -> 0x28, 0x40 -> 0x50,
+      // 0x60 -> 0x78 on hover; 0x18 / 0x30 / 0x48 on press.
+      expect(hover.color).toBe(0x285078);
+      expect(press.color).toBe(0x183048);
+      expect(hover.radius).toBe(8);
+      expect(press.radius).toBe(8);
+    });
+
+    it("keeps a texture background through both states", () => {
+      // A raw texture object, not an asset key: the key path would look the
+      // texture up in a loader this test has no business starting.
+      const texture = { width: 64, height: 64 } as never;
+      const btn = new UIButton({
+        children: "Test",
+        background: { texture, mode: "nine-slice", nineSlice: 6 },
+      });
+      const { hover, press } = stateBgs(btn);
+      expect(hover.texture).toBe(texture);
+      expect(press.texture).toBe(texture);
+      // White cannot brighten, so hover leaves the art alone; press darkens.
+      expect(hover.tint).toBe(0xffffff);
+      expect(press.tint).toBe(0xbfbfbf);
+    });
+
+    it("clamps a channel that would brighten past full", () => {
+      const btn = new UIButton({
+        children: "Test",
+        background: { color: 0xf00000 },
+      });
+      expect(stateBgs(btn).hover.color).toBe(0xff0000);
+    });
+
+    it("lets an explicit hover background win, over the derived radius", () => {
+      const btn = new UIButton({
+        children: "Test",
+        background: { color: 0x204060, radius: 8 },
+        hoverBackground: { color: 0xff0000 },
+      });
+      const { hover, press } = stateBgs(btn);
+      expect(hover.color).toBe(0xff0000);
+      expect(hover.radius).toBe(8);
+      expect(press.color).toBe(0x183048);
+    });
+
+    it("re-derives both states when the resting background changes", () => {
+      const btn = new UIButton({ children: "Test" });
+      btn.update({ background: { color: 0x204060, radius: 8 } });
+      const { hover, press } = stateBgs(btn);
+      expect(hover.color).toBe(0x285078);
+      expect(press.color).toBe(0x183048);
+    });
+
+    it("resets to the button's own default when the background is dropped", () => {
+      // A present-but-undefined key means "reset this prop to its default",
+      // and a button's default is the grey fill that keeps it visible.
+      const btn = new UIButton({
+        children: "Test",
+        background: { color: 0x204060 },
+      });
+      btn.update({ background: undefined });
+      const resting = (btn as unknown as { bgOpts: Record<string, unknown> })
+        .bgOpts;
+      expect(resting).toEqual({ color: 0x444444, alpha: 1, radius: 4 });
+      expect(stateBgs(btn).hover.color).toBe(0x555555);
+    });
+  });
+
+  describe("flex-container props", () => {
+    function layout(btn: UIButton): void {
+      btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      btn.applyLayout();
+    }
+
+    it("lays children out in a row when asked", () => {
+      const btn = new UIButton({ direction: "row", gap: 8 });
+      const a = new UIPanel({ width: 16, height: 16 });
+      const b = new UIPanel({ width: 16, height: 16 });
+      btn.addElement(a);
+      btn.addElement(b);
+      layout(btn);
+
+      expect(a.yogaNode.getComputedTop()).toBe(b.yogaNode.getComputedTop());
+      expect(b.yogaNode.getComputedLeft() - a.yogaNode.getComputedLeft()).toBe(
+        24,
+      ); // 16 wide + 8 gap
+    });
+
+    it("stacks children in a column by default", () => {
+      const btn = new UIButton({});
+      const a = new UIPanel({ width: 16, height: 16 });
+      const b = new UIPanel({ width: 16, height: 16 });
+      btn.addElement(a);
+      btn.addElement(b);
+      layout(btn);
+
+      expect(a.yogaNode.getComputedLeft()).toBe(b.yogaNode.getComputedLeft());
+      expect(b.yogaNode.getComputedTop() - a.yogaNode.getComputedTop()).toBe(
+        16,
+      );
+    });
+
+    it("replaces the default padding with the caller's", () => {
+      const btn = new UIButton({ children: "Test", padding: 20 });
+      layout(btn);
+      expect(btn.yogaNode.getComputedPadding(Edge.Left)).toBe(20);
+      expect(btn.yogaNode.getComputedPadding(Edge.Top)).toBe(20);
+    });
+
+    it("restores the default padding when the caller drops theirs", () => {
+      const btn = new UIButton({ children: "Test", padding: 20 });
+      btn.update({ padding: undefined });
+      layout(btn);
+      expect(btn.yogaNode.getComputedPadding(Edge.Left)).toBe(12);
+      expect(btn.yogaNode.getComputedPadding(Edge.Top)).toBe(6);
+    });
+
+    it("keeps the caller's padding on a button with both axes pinned", () => {
+      // The default padding is skipped for a fully pinned button; an explicit
+      // one is not.
+      const btn = new UIButton({
+        children: "Test",
+        width: 120,
+        height: 40,
+        padding: 4,
+      });
+      layout(btn);
+      expect(btn.yogaNode.getComputedPadding(Edge.Left)).toBe(4);
+    });
+
+    it("centres children on both axes unless told otherwise", () => {
+      const btn = new UIButton({ width: 100, height: 40 });
+      const child = new UIPanel({ width: 20, height: 10 });
+      btn.addElement(child);
+      layout(btn);
+      expect(child.yogaNode.getComputedLeft()).toBe(40); // (100 - 20) / 2
+      expect(child.yogaNode.getComputedTop()).toBe(15); // (40 - 10) / 2
+
+      const left = new UIButton({
+        width: 100,
+        height: 40,
+        alignItems: "flex-start",
+        justifyContent: "flex-start",
+      });
+      const leftChild = new UIPanel({ width: 20, height: 10 });
+      left.addElement(leftChild);
+      layout(left);
+      expect(leftChild.yogaNode.getComputedLeft()).toBe(0);
+      expect(leftChild.yogaNode.getComputedTop()).toBe(0);
+    });
   });
 
   it("visibility can be toggled", () => {

@@ -95,13 +95,40 @@ panel.button("A very long label that won't fit", {
   truncate: "ellipsis",
 });
 
-// Button is a flex container — addElement on it for icon + label rows etc.
-btn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
+// Button is a flex container, stacking its children in a column. Ask for a
+// row to put an icon beside the label.
+const iconBtn = panel.button("Buy", { direction: "row", gap: 6 });
+iconBtn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
+
+// A button's own defaults, all overridable:
+//   background        { color: 0x444444, alpha: 1, radius: 4 }
+//   hoverBackground   the resting background at 1.25x brightness
+//   pressBackground   the resting background at 0.75x
+//   padding           12 px horizontal, 6 px vertical, unless BOTH width and
+//                     height are pinned, or the caller passes `padding`
+//   direction         "column"; alignItems and justifyContent both "center"
+//
+// The hover and press states are derived from whatever background the button
+// resolved, so a textured or recoloured button keeps its look while pressed.
+// A texture background varies its `tint` instead of its colour: at the default
+// white tint hover leaves the art untouched and press darkens it. A colour
+// already near full brightness brightens less than 1.25x, because channels
+// clamp at 255. Pass `hoverBackground` / `pressBackground` to take over.
+//
+// To ask for no background at all, ask for a transparent one:
+panel.button("Bare", { background: { color: 0x000000, alpha: 0 } });
+// `update({ background: undefined })` resets to the grey default instead —
+// a present-but-undefined key means "reset this prop to its default"
+// everywhere in this package, and a bare button has to stay visible.
 
 // Nested panel
 const row = panel.panel({ direction: "row", gap: 12 });
 row.text("HP");
 
+// A scroll view carries the same four builders as a panel, adding to its
+// content: list.text(...), list.button(...), list.panel(...),
+// list.scrollView(...).
+//
 // Scrollable viewport (clipped + wheel/drag pannable). Children are normal
 // Yoga elements; size the viewport via LayoutProps (height / flexGrow).
 // A drag starts after 10 px and does not click a child button on release.
@@ -120,6 +147,12 @@ list.scrollTo(0); // also: scrollBy(dy), .scrollOffset, .maxScroll
 import { UIProgressBar } from "@yagejs/ui";
 const bar = new UIProgressBar({ width: 100, height: 16, value: 0.75 }); // value 0–1
 row.addElement(bar);
+bar.update({ value: 0.4 });
+bar.value; // 0.4 — reads back the clamped fill fraction
+
+// Move the whole tree without touching the anchor: one setOffset per frame is
+// how a panel slides in. `surface.offset` reads it back.
+surface.setOffset(0, -120);
 ```
 
 ## Flex layout defaults
@@ -164,6 +197,20 @@ Fixes: give the container more room, set `maxWidth`/`maxHeight`, mark the child
 `flexShrink: 1` / `flex: <n>` so it gives space back and wraps, or use
 `truncate: "clip" | "ellipsis"` on text (and `UIButton`).
 
+The warning names the entity that owns the tree, the child's position in its
+parent, its element class and the text it renders, so it points at one element
+rather than a pixel count. It tolerates two points of overflow, which is the
+largest gap Yoga's own pixel rounding can open between a measured text node
+and a shrink-to-fit parent at a fractional position.
+
+- **Dev-mode nine-slice warning.** A nine-slice element or background laid out
+  smaller than `left + right` or `top + bottom` insets has no room for its
+  middle row or column: the corners overlap and the art folds in on itself,
+  which reads as a positioning bug. A `console.warn` fires in development
+  builds, and again if the element fits and later shrinks below its insets.
+  Nothing is clamped — give the element more room, or use art with smaller
+  insets.
+
 ## UIImage sizing
 
 ```ts
@@ -189,7 +236,17 @@ parent's cross-axis stretch cannot squash the picture.
 
 ## UIText: bitmap & resolution
 
-`UIText` (and the `panel.text(...)` builder, `UIButton` labels, the React `<Text>`) accept two extra props for crisp pixel-art text. Yoga measurement — the default word-wrap and the `truncate?: "clip" | "ellipsis"` modes — is unchanged on the bitmap path.
+`UIText` (and the `panel.text(...)` builder's third argument, `UIButton` labels, the React `<Text>`) accept two extra props for crisp pixel-art text. Yoga measurement — the default word-wrap and the `truncate?: "clip" | "ellipsis"` modes — is unchanged on the bitmap path.
+
+`truncateWith` sets the string `"ellipsis"` appends; it defaults to `"…"`
+(U+2026), which several pixel fonts lack, so pass `"..."` for one of those.
+`UIButton` forwards it to its label alongside `truncate`.
+
+A `UIText` that Yoga sizes without measuring wraps to its computed width, and
+one with `truncate` set cuts to it. Yoga calls a measure function only when an
+axis is left to measure: both axes pinned leaves nothing, and so does a single
+pinned axis inside a plain panel, where the default stretch alignment fills the
+other one. The layout pass applies the wrap or the truncation in those cases.
 
 ```ts
 // `bitmap: true` bakes (or looks up) the atlas from `style.fontFamily`
@@ -430,3 +487,14 @@ this exact overlay.
 
 `UIImage`, `UINineSlice`, and texture backgrounds accept `TextureInput`: a
 registered asset key, a texture handle, or a raw renderer texture.
+
+`nineSlice` insets are read from the options, not from the texture's own
+metadata, and they are applied every time the options are set. Pass `mode` and
+`nineSlice` again whenever you set a new `texture`. Options you leave out go
+back to their defaults: a background updated without `nineSlice` draws with
+insets of 0, and one updated without `mode` becomes a stretched sprite.
+
+Give a nine-slice element room for its insets: below `left + right` px wide or
+`top + bottom` px tall it has no middle row or column and the corners overlap.
+Development builds warn when that happens, and warn again if the element later
+fits and then shrinks below its insets once more.

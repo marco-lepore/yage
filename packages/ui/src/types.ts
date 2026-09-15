@@ -45,6 +45,23 @@ export enum Anchor {
 /** Layout direction for child elements. */
 export type FlexDirection = "row" | "column";
 
+/** Cross-axis alignment of a flex container's children. */
+export type AlignItems =
+  | "flex-start"
+  | "center"
+  | "flex-end"
+  | "stretch"
+  | "baseline";
+
+/** Main-axis distribution of a flex container's children. */
+export type JustifyContent =
+  | "flex-start"
+  | "center"
+  | "flex-end"
+  | "space-between"
+  | "space-around"
+  | "space-evenly";
+
 /** Padding specification — a single number or per-side object. */
 export type Padding =
   | number
@@ -177,6 +194,14 @@ export interface UIElement {
   applyLayout?(): void;
   update(props: Record<string, unknown>): void;
   destroy(): void;
+  /**
+   * Take the name of the UI tree this element belongs to, for
+   * development-mode warnings. Containers implement it and pass the name on
+   * to their children; a leaf that prints no warning of its own leaves it
+   * out.
+   * @internal
+   */
+  _setDebugLabel?(label: string): void;
 }
 
 /** A container element that can hold child UIElements. */
@@ -242,10 +267,15 @@ export interface UITextProps
    *   - omitted: wrap to the layout width (default)
    *   - `"clip"`: render a single line; visible overflow is cut by the
    *     parent panel's `overflow` setting.
-   *   - `"ellipsis"`: render a single line truncated with `…` so the text
-   *     fits within the layout width.
+   *   - `"ellipsis"`: render a single line truncated with {@link
+   *     UITextProps.truncateWith} so the text fits within the layout width.
    */
   truncate?: "clip" | "ellipsis";
+  /**
+   * String the `"ellipsis"` truncate mode appends. Defaults to `"…"`
+   * (U+2026), which several pixel fonts lack — pass `"..."` for one of those.
+   */
+  truncateWith?: string;
   /**
    * Render with a bitmap font instead of canvas-rasterised `Text`. Pixel-art
    * escape hatch — canvas text blurs at non-integer scale on non-Retina
@@ -312,8 +342,37 @@ export interface UIButtonProps
    * (i18n) labels.
    */
   truncate?: "clip" | "ellipsis";
+  /**
+   * String the `"ellipsis"` truncate mode appends, forwarded to the internal
+   * label. Defaults to `"…"` (U+2026), which several pixel fonts lack — pass
+   * `"..."` for one of those.
+   */
+  truncateWith?: string;
   disabled?: boolean;
+  /**
+   * Direction of the button's own children, for icon-plus-label content added
+   * with `addElement`. Defaults to `"column"`, so set `"row"` for a row.
+   */
+  direction?: FlexDirection;
+  /** Space between the button's children. */
+  gap?: number;
+  /**
+   * Padding inside the button. Replaces the default 12 px horizontal and 6 px
+   * vertical padding; drop the prop to get that default back.
+   */
+  padding?: Padding;
+  /** Cross-axis alignment of the button's children. Defaults to `"center"`. */
+  alignItems?: AlignItems;
+  /** Main-axis distribution of the button's children. Defaults to `"center"`. */
+  justifyContent?: JustifyContent;
 }
+
+/**
+ * Everything a `UIText` accepts except the two the `panel.text(...)` /
+ * `surface.text(...)` / `scrollView.text(...)` builders already take as
+ * positional arguments.
+ */
+export type UITextBuilderProps = Omit<UITextProps, "children" | "style">;
 
 /** Props for UIPanel (used by reconciler and props-driven constructor). */
 export interface UIPanelProps
@@ -321,14 +380,8 @@ export interface UIPanelProps
   direction?: FlexDirection;
   gap?: number;
   padding?: Padding;
-  alignItems?: "flex-start" | "center" | "flex-end" | "stretch" | "baseline";
-  justifyContent?:
-    | "flex-start"
-    | "center"
-    | "flex-end"
-    | "space-between"
-    | "space-around"
-    | "space-evenly";
+  alignItems?: AlignItems;
+  justifyContent?: JustifyContent;
   overflow?: "visible" | "hidden";
   background?: BackgroundOptions;
 }

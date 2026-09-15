@@ -246,4 +246,15 @@ describe("UIProgressBar", () => {
     >;
     expect(container.destroyed).toBe(true);
   });
+
+  it("reads its value back, clamped", () => {
+    const bar = new UIProgressBar({ value: 0.42, width: 100, height: 10 });
+    expect(bar.value).toBe(0.42);
+
+    bar.update({ value: 1.8 });
+    expect(bar.value).toBe(1);
+
+    bar.update({ value: -3 });
+    expect(bar.value).toBe(0);
+  });
 });

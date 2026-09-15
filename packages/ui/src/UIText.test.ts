@@ -134,7 +134,7 @@ vi.mock("pixi.js", () => ({
   BitmapText: mocks.MockBitmapText,
 }));
 
-import Yoga, { Direction, FlexDirection } from "yoga-layout";
+import Yoga, { Align, Direction, FlexDirection } from "yoga-layout";
 import { setDefaultTextStyle } from "@yagejs/renderer";
 import { setYoga } from "./yoga-helpers.js";
 import { setUIDefaultTextStyle } from "./text-defaults.js";
@@ -506,6 +506,275 @@ describe("UIText bitmap-in-style warning", () => {
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("`bitmap` was found inside `style`"),
     );
+  });
+
+  describe("wrapping with both axes pinned", () => {
+    /** The Pixi text object behind a UIText. */
+    function pixiText(t: UIText): { style: Record<string, unknown> } {
+      return t.displayObject as unknown as { style: Record<string, unknown> };
+    }
+
+    function layout(t: UIText): void {
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      t.applyLayout?.();
+    }
+
+    it("wraps a text given both a width and a height", () => {
+      // Yoga calls no measure function when both axes are definite, and the
+      // measure callback is the only other place wrap is switched on.
+      const t = new UIText({
+        children: "one two three four five",
+        width: 60,
+        height: 80,
+      });
+      layout(t);
+
+      expect(pixiText(t).style.wordWrap).toBe(true);
+      expect(pixiText(t).style.wordWrapWidth).toBe(60);
+    });
+
+    it("truncates a truncating text onto one line", () => {
+      const source = "one two three four five";
+      const t = new UIText({
+        children: source,
+        width: 60,
+        height: 20,
+        truncate: "ellipsis",
+      });
+      layout(t);
+
+      expect(pixiText(t).style.wordWrap).toBe(false);
+      expect(renderedText(t)).not.toBe(source);
+      expect(renderedText(t).endsWith("\u2026")).toBe(true);
+    });
+
+    it("re-truncates after the text changes", () => {
+      const t = new UIText({
+        children: "one two three four five",
+        width: 60,
+        height: 20,
+        truncate: "ellipsis",
+      });
+      layout(t);
+      const next = "a completely different label";
+      t.update({ children: next });
+      layout(t);
+
+      expect(renderedText(t)).not.toBe(next);
+      expect(renderedText(t).endsWith("\u2026")).toBe(true);
+    });
+
+    it("wraps again after the style is replaced", () => {
+      const t = new UIText({
+        children: "one two three four five",
+        width: 60,
+        height: 80,
+      });
+      layout(t);
+      // A full style replace drops the wrap the layout pass had switched on.
+      t.setStyle({ fill: 0xff0000 });
+      layout(t);
+
+      expect(pixiText(t).style.wordWrap).toBe(true);
+      expect(pixiText(t).style.wordWrapWidth).toBe(60);
+    });
+
+    it("wraps again after truncation is turned on and back off", () => {
+      const t = new UIText({
+        children: "one two three four five",
+        width: 60,
+        height: 80,
+      });
+      layout(t);
+      t.update({ truncate: "ellipsis" });
+      layout(t);
+      t.update({ truncate: undefined });
+      layout(t);
+
+      expect(pixiText(t).style.wordWrap).toBe(true);
+      expect(pixiText(t).style.wordWrapWidth).toBe(60);
+      expect(renderedText(t)).toBe("one two three four five");
+    });
+
+    it("follows a width change", () => {
+      const t = new UIText({
+        children: "one two three",
+        width: 60,
+        height: 80,
+      });
+      layout(t);
+      t.update({ width: 90 });
+      layout(t);
+
+      expect(pixiText(t).style.wordWrapWidth).toBe(90);
+    });
+  });
+
+  describe("wrapping with one axis pinned inside a stretching parent", () => {
+    /** The Pixi text object behind a UIText. */
+    function pixiText(t: UIText): { style: Record<string, unknown> } {
+      return t.displayObject as unknown as { style: Record<string, unknown> };
+    }
+
+    /**
+     * Lay the text out as the only child of a parent that stretches it on the
+     * cross axis, which is what a plain panel does. Yoga measures a node only
+     * when an axis is left to measure, so a pinned main axis plus a stretched
+     * cross axis calls no measure function at all.
+     */
+    function layoutInStretchingParent(
+      t: UIText,
+      direction: number,
+      parentWidth: number,
+      parentHeight: number,
+    ): number {
+      const parent = Yoga.Node.create();
+      parent.setFlexDirection(direction);
+      parent.setWidth(parentWidth);
+      parent.setHeight(parentHeight);
+      parent.insertChild(t.yogaNode, 0);
+      parent.calculateLayout(undefined, undefined, Direction.LTR);
+      t.applyLayout?.();
+      const width = t.yogaNode.getComputedWidth();
+      parent.removeChild(t.yogaNode);
+      parent.free();
+      return width;
+    }
+
+    it("wraps a text given only a height in a column parent", () => {
+      const t = new UIText({ children: "one two three four five", height: 40 });
+      const width = layoutInStretchingParent(t, FlexDirection.Column, 60, 200);
+
+      // The parent stretched the text across its width, so Yoga had nothing
+      // left to measure.
+      expect(width).toBe(60);
+      expect(pixiText(t).style.wordWrap).toBe(true);
+      expect(pixiText(t).style.wordWrapWidth).toBe(60);
+    });
+
+    it("wraps a text given only a width in a row parent", () => {
+      const t = new UIText({ children: "one two three four five", width: 60 });
+      layoutInStretchingParent(t, FlexDirection.Row, 200, 40);
+
+      expect(pixiText(t).style.wordWrap).toBe(true);
+      expect(pixiText(t).style.wordWrapWidth).toBe(60);
+    });
+
+    it("truncates a text given only a height in a column parent", () => {
+      const source = "one two three four five";
+      const t = new UIText({
+        children: source,
+        height: 20,
+        truncate: "ellipsis",
+      });
+      layoutInStretchingParent(t, FlexDirection.Column, 60, 200);
+
+      expect(pixiText(t).style.wordWrap).toBe(false);
+      expect(renderedText(t)).not.toBe(source);
+      expect(renderedText(t).endsWith("\u2026")).toBe(true);
+    });
+
+    it("truncates a text given only a width in a row parent", () => {
+      const source = "one two three four five";
+      const t = new UIText({
+        children: source,
+        width: 60,
+        truncate: "ellipsis",
+      });
+      layoutInStretchingParent(t, FlexDirection.Row, 200, 20);
+
+      expect(pixiText(t).style.wordWrap).toBe(false);
+      expect(renderedText(t)).not.toBe(source);
+      expect(renderedText(t).endsWith("\u2026")).toBe(true);
+    });
+
+    it("renders nothing for a clipped text in a zero-width slot", () => {
+      const t = new UIText({
+        children: "one two three four five",
+        width: 0,
+        truncate: "clip",
+      });
+      layoutInStretchingParent(t, FlexDirection.Row, 200, 20);
+
+      expect(renderedText(t)).toBe("");
+    });
+
+    it("renders only the suffix for an ellipsis text in a zero-width slot", () => {
+      const t = new UIText({
+        children: "one two three four five",
+        width: 0,
+        truncate: "ellipsis",
+      });
+      layoutInStretchingParent(t, FlexDirection.Row, 200, 20);
+
+      expect(renderedText(t)).toBe("\u2026");
+    });
+
+    it("leaves the wrap the measure callback chose alone", () => {
+      // A measured text is wrapped from inside the callback. The layout pass
+      // must not then rewrite the flag from the computed width, which is the
+      // constraint the callback already honoured.
+      const t = new UIText({ children: "one two three four five" });
+      const parent = Yoga.Node.create();
+      parent.setFlexDirection(FlexDirection.Column);
+      parent.setAlignItems(Align.FlexStart);
+      parent.setWidth(200);
+      parent.setHeight(200);
+      parent.insertChild(t.yogaNode, 0);
+      parent.calculateLayout(undefined, undefined, Direction.LTR);
+      t.applyLayout?.();
+      const wrapWidth = pixiText(t).style.wordWrapWidth;
+
+      // A second pass with nothing dirty: Yoga reuses its cached layout and
+      // calls no measure function.
+      parent.calculateLayout(undefined, undefined, Direction.LTR);
+      t.applyLayout?.();
+
+      expect(pixiText(t).style.wordWrapWidth).toBe(wrapWidth);
+      parent.removeChild(t.yogaNode);
+      parent.free();
+    });
+  });
+
+  describe("truncateWith", () => {
+    it("appends the string the caller asked for", () => {
+      const t = new UIText({
+        children: "a long enough label",
+        width: 60,
+        truncate: "ellipsis",
+        truncateWith: "...",
+      });
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+
+      const rendered = (t.displayObject as unknown as { text: string }).text;
+      expect(rendered.endsWith("...")).toBe(true);
+    });
+
+    it("defaults to the ellipsis character", () => {
+      const t = new UIText({
+        children: "a long enough label",
+        width: 60,
+        truncate: "ellipsis",
+      });
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+
+      const rendered = (t.displayObject as unknown as { text: string }).text;
+      expect(rendered.endsWith("\u2026")).toBe(true);
+    });
+
+    it("re-truncates when the string changes", () => {
+      const t = new UIText({
+        children: "a long enough label",
+        width: 60,
+        truncate: "ellipsis",
+      });
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      t.update({ truncateWith: "..." });
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+
+      const rendered = (t.displayObject as unknown as { text: string }).text;
+      expect(rendered.endsWith("...")).toBe(true);
+    });
   });
 
   it("does not warn for a correct sibling bitmap prop", () => {

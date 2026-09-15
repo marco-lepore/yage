@@ -3,15 +3,17 @@ import type { FederatedPointerEvent, FederatedWheelEvent } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, Edge, FlexDirection, Overflow } from "yoga-layout";
 import { attachMask, graphicsMask } from "@yagejs/renderer";
-import type { DisplayContainer, MaskHandle } from "@yagejs/renderer";
+import type { DisplayContainer, MaskHandle, TextStyle } from "@yagejs/renderer";
 import type {
   BackgroundOptions,
   Padding,
+  UIButtonProps,
   UIPanelProps,
   ScrollbarOptions,
   UIScrollViewProps,
   UIContainerElement,
   UIElement,
+  UITextBuilderProps,
 } from "./types.js";
 import {
   createYogaNode,
@@ -19,6 +21,8 @@ import {
   exemptFromOverflowWarning,
 } from "./yoga-helpers.js";
 import { UIPanel } from "./UIPanel.js";
+import type { UIButton } from "./UIButton.js";
+import type { UIText } from "./UIText.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { runUICallback } from "./error-boundary.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
@@ -97,6 +101,20 @@ export class UIScrollView implements UIContainerElement {
   private _vh = 0;
   private _contentLeft = 0;
   private _contentTop = 0;
+
+  // Size the clip mask was last drawn at. `NaN` never equals a computed size,
+  // so the first draw gets through.
+  private _maskWidth = Number.NaN;
+  private _maskHeight = Number.NaN;
+
+  // State the scrollbar thumb was last drawn from. `NaN` never equals a
+  // computed number, so writing it forces the next draw — which is how the
+  // two inputs that are not numbers on this list get through: a replaced
+  // scrollbar style and a direction flip.
+  private _sbViewportMain = Number.NaN;
+  private _sbViewportCross = Number.NaN;
+  private _sbOffset = Number.NaN;
+  private _sbMaxScroll = Number.NaN;
 
   private _dragging = false;
   private _panning = false;
@@ -196,6 +214,41 @@ export class UIScrollView implements UIContainerElement {
     this.content.insertElementBefore(child, before);
   }
 
+  // -- Builders, forwarded to the content panel -----------------------------
+
+  /** Add a text element. See {@link UIPanel.text} for `opts`. */
+  text(
+    content: string,
+    style?: Partial<TextStyle>,
+    opts?: UITextBuilderProps,
+  ): UIText {
+    return this.content.text(content, style, opts);
+  }
+
+  /** Add a button element. */
+  button(label: string, opts: Omit<UIButtonProps, "children">): UIButton {
+    return this.content.button(label, opts);
+  }
+
+  /** Add a nested child panel. */
+  panel(opts?: UIPanelProps): UIPanel {
+    return this.content.panel(opts);
+  }
+
+  /** Add a nested scrollable viewport. */
+  scrollView(opts?: UIScrollViewProps): UIScrollView {
+    return this.content.scrollView(opts);
+  }
+
+  /**
+   * Name the UI tree this viewport belongs to for development-mode warnings.
+   * Set by `UISurface` from the owning entity and passed down the tree.
+   * @internal
+   */
+  _setDebugLabel(label: string): void {
+    this.content._setDebugLabel(label);
+  }
+
   // -- Public scroll API (also the non-federated fallback) -----------------
 
   /** Current scroll offset in pixels along the scroll axis. */
@@ -260,7 +313,14 @@ export class UIScrollView implements UIContainerElement {
     // Recurse so the card subtrees get their Yoga-computed positions.
     this.content.applyLayout();
 
-    this.maskHandle?.redraw();
+    if (
+      this.maskHandle &&
+      (this._vw !== this._maskWidth || this._vh !== this._maskHeight)
+    ) {
+      this._maskWidth = this._vw;
+      this._maskHeight = this._vh;
+      this.maskHandle.redraw();
+    }
     if (this.bgRenderer && this.bgOpts) {
       this.bgRenderer.resize(this._vw, this._vh);
     }
@@ -284,6 +344,8 @@ export class UIScrollView implements UIContainerElement {
 
   private _drawScrollbar(viewportMain: number, contentMain: number): void {
     if (!this._sb.enabled || this._maxScroll <= 0) {
+      // Hiding keeps the geometry, so a bar that comes back at the state it
+      // was hidden in needs no redraw.
       if (this.scrollbarGfx) this.scrollbarGfx.visible = false;
       return;
     }
@@ -293,6 +355,24 @@ export class UIScrollView implements UIContainerElement {
     }
     const g = this.scrollbarGfx;
     g.visible = true;
+
+    // The cross-axis viewport size is part of the gate, not only the main
+    // axis: the thumb's fixed edge sits at `_vw - thickness - margin` for a
+    // vertical bar and `_vh - thickness - margin` for a horizontal one, so a
+    // cross-axis-only resize moves the thumb.
+    const viewportCross = this.vertical ? this._vw : this._vh;
+    if (
+      viewportMain === this._sbViewportMain &&
+      viewportCross === this._sbViewportCross &&
+      this._offset === this._sbOffset &&
+      this._maxScroll === this._sbMaxScroll
+    ) {
+      return;
+    }
+    this._sbViewportMain = viewportMain;
+    this._sbViewportCross = viewportCross;
+    this._sbOffset = this._offset;
+    this._sbMaxScroll = this._maxScroll;
 
     const { thickness, margin, radius, color, alpha, minThumb } = this._sb;
     const thumbLen = Math.max(
@@ -416,7 +496,11 @@ export class UIScrollView implements UIContainerElement {
   update(props: Partial<UIScrollViewProps>): void {
     if ("onScroll" in props) this.onScroll = props.onScroll;
     if ("scrollbar" in props) {
+      // A replaced style changes thickness, margin, radius, colour, alpha or
+      // minimum thumb length without moving the viewport, the offset or the
+      // scroll range, so the numeric gate alone would keep the old thumb.
       this._sb = resolveScrollbar(props.scrollbar);
+      this._sbViewportMain = Number.NaN;
     }
     if ("consumeInput" in props) {
       applyConsumeInput(this.viewport, props.consumeInput);
@@ -441,6 +525,9 @@ export class UIScrollView implements UIContainerElement {
           vertical ? FlexDirection.Column : FlexDirection.Row,
         );
         this.content.update({ direction: vertical ? "column" : "row" });
+        // Main and cross swap, so the cached pair no longer describes the
+        // thumb even on a square viewport.
+        this._sbViewportMain = Number.NaN;
         // The scroll axis changed — the old offset is meaningless on it.
         // Leave _lastNotified untouched so the next _notify() (in
         // applyLayout) emits the reset to onScroll consumers.

@@ -49,8 +49,11 @@ const { mocks } = vi.hoisted(() => {
     private _lastFillW = 0;
     private _lastFillH = 0;
     clearCalled = false;
+    /** How many times the geometry has been rebuilt. */
+    drawCount = 0;
     clear(): MockGraphics {
       this.clearCalled = true;
+      this.drawCount++;
       return this;
     }
     rect(_x: number, _y: number, w: number, h: number): MockGraphics {
@@ -63,7 +66,10 @@ const { mocks } = vi.hoisted(() => {
       this._lastFillH = h;
       return this;
     }
-    fill(): MockGraphics {
+    /** The style passed to the most recent `fill`. */
+    lastFill: { color?: number; alpha?: number } | undefined;
+    fill(style?: { color?: number; alpha?: number }): MockGraphics {
+      this.lastFill = style;
       return this;
     }
     get lastWidth() {
@@ -199,6 +205,71 @@ describe("BackgroundRenderer", () => {
     expect(g.lastHeight).toBe(100);
   });
 
+  it("skips the redraw when the size has not changed", () => {
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    renderer.set({ color: 0xff0000 }, parent as never);
+    const g = parent.children[0] as InstanceType<typeof mocks.MockGraphics>;
+
+    renderer.resize(200, 100);
+    const afterFirst = g.drawCount;
+    renderer.resize(200, 100);
+    renderer.resize(200, 100);
+
+    expect(afterFirst).toBe(1);
+    expect(g.drawCount).toBe(1);
+  });
+
+  it("redraws when the size changes", () => {
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    renderer.set({ color: 0xff0000 }, parent as never);
+    const g = parent.children[0] as InstanceType<typeof mocks.MockGraphics>;
+
+    renderer.resize(200, 100);
+    renderer.resize(200, 120);
+
+    expect(g.drawCount).toBe(2);
+    expect(g.lastHeight).toBe(120);
+  });
+
+  it("redraws at an unchanged size after the options change", () => {
+    // A button swapping to its hover colour calls `set` then `resize` with the
+    // same cached size; the new colour has to reach the geometry.
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    renderer.set({ color: 0xff0000 }, parent as never);
+    renderer.resize(200, 100);
+    const g = parent.children[0] as InstanceType<typeof mocks.MockGraphics>;
+    const before = g.drawCount;
+
+    renderer.set({ color: 0x00ff00 }, parent as never);
+
+    // `set` re-applies the cached size itself, so the redraw has happened by
+    // the time it returns; the caller's own same-size `resize` is then a no-op.
+    expect(g.drawCount).toBe(before + 1);
+    renderer.resize(200, 100);
+    expect(g.drawCount).toBe(before + 1);
+  });
+
+  it("does not draw a later mutation of the options it was given", () => {
+    // Options are read when they are passed. A later resize redraws, and that
+    // redraw must use the passed values, not the caller's object as it is now.
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    const opts = { color: 0xff0000, alpha: 1 };
+    renderer.set(opts, parent as never);
+    renderer.resize(200, 100);
+    const g = parent.children[0] as InstanceType<typeof mocks.MockGraphics>;
+
+    opts.color = 0x00ff00;
+    opts.alpha = 0.5;
+    renderer.resize(200, 120);
+
+    expect(g.lastHeight).toBe(120);
+    expect(g.lastFill).toEqual({ color: 0xff0000, alpha: 1 });
+  });
+
   it("creates Sprite for stretch texture background", () => {
     const renderer = new BackgroundRenderer();
     const parent = new mocks.MockContainer();
@@ -217,6 +288,135 @@ describe("BackgroundRenderer", () => {
       parent as never,
     );
     expect(parent.children[0]).toBeInstanceOf(mocks.MockNineSliceSprite);
+  });
+
+  it("applies the insets stated with a replaced nine-slice texture", () => {
+    const frameA = { width: 64, height: 64 };
+    const frameB = { width: 96, height: 96 };
+    registerTexture("frame-a", frameA as never);
+    registerTexture("frame-b", frameB as never);
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    renderer.set(
+      { texture: "frame-a", mode: "nine-slice", nineSlice: 4 },
+      parent as never,
+    );
+    const sprite = parent.children[0] as InstanceType<
+      typeof mocks.MockNineSliceSprite
+    >;
+
+    renderer.set(
+      {
+        texture: "frame-b",
+        mode: "nine-slice",
+        nineSlice: { left: 12, top: 10, right: 12, bottom: 16 },
+      },
+      parent as never,
+    );
+
+    // The display object is reused, so the slice guides reach the sprite from
+    // the property path rather than from its constructor.
+    expect(parent.children[0]).toBe(sprite);
+    expect(sprite.texture).toBe(frameB);
+    expect([
+      sprite.leftWidth,
+      sprite.topHeight,
+      sprite.rightWidth,
+      sprite.bottomHeight,
+    ]).toEqual([12, 10, 12, 16]);
+  });
+
+  it("warns when a nine-slice background is smaller than its insets", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    const handle = new AssetHandle<Texture>("texture", "test.png");
+    renderer.set(
+      {
+        texture: handle,
+        mode: "nine-slice",
+        nineSlice: { left: 8, top: 16, right: 8, bottom: 20 },
+      },
+      parent as never,
+    );
+
+    renderer.resize(100, 34);
+
+    const hit = warn.mock.calls
+      .map((c) => String(c[0]))
+      .find((m) => m.includes("nine-slice background"));
+    expect(hit).toContain("height 34.0px is under the 36px");
+    warn.mockRestore();
+  });
+
+  it("does not warn for a nine-slice background with room", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    const handle = new AssetHandle<Texture>("texture", "test.png");
+    renderer.set(
+      { texture: handle, mode: "nine-slice", nineSlice: 8 },
+      parent as never,
+    );
+
+    renderer.resize(100, 40);
+
+    expect(
+      warn.mock.calls.filter((c) =>
+        String(c[0]).includes("nine-slice background"),
+      ),
+    ).toHaveLength(0);
+    warn.mockRestore();
+  });
+
+  it("warns again once the box has fitted in between", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    const handle = new AssetHandle<Texture>("texture", "test.png");
+    renderer.set(
+      { texture: handle, mode: "nine-slice", nineSlice: 20 },
+      parent as never,
+    );
+    const count = () =>
+      warn.mock.calls.filter((c) =>
+        String(c[0]).includes("nine-slice background"),
+      ).length;
+
+    renderer.resize(100, 30);
+    expect(count()).toBe(1);
+    // Still too small: one warning per episode.
+    renderer.resize(100, 32);
+    expect(count()).toBe(1);
+    // Room for the middle row, so the episode is over.
+    renderer.resize(100, 80);
+    expect(count()).toBe(1);
+    renderer.resize(100, 30);
+    expect(count()).toBe(2);
+    warn.mockRestore();
+  });
+
+  it("warns when replaced nine-slice art needs more room than the box has", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    const handle = new AssetHandle<Texture>("texture", "test.png");
+    renderer.set(
+      { texture: handle, mode: "nine-slice", nineSlice: 8 },
+      parent as never,
+    );
+    renderer.resize(100, 40);
+
+    renderer.set(
+      { texture: handle, mode: "nine-slice", nineSlice: 30 },
+      parent as never,
+    );
+
+    const hit = warn.mock.calls
+      .map((c) => String(c[0]))
+      .find((m) => m.includes("nine-slice background"));
+    expect(hit).toContain("height 40.0px is under the 60px");
+    warn.mockRestore();
   });
 
   it("creates TilingSprite for tile mode", () => {

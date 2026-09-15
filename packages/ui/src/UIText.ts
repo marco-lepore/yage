@@ -11,7 +11,7 @@ import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
 
-const ELLIPSIS = "…";
+const DEFAULT_ELLIPSIS = "…";
 
 /** Lightweight wrapper around a PixiJS Text for use in UI panels. */
 export class UIText implements UIElement {
@@ -19,6 +19,20 @@ export class UIText implements UIElement {
   readonly yogaNode: YogaNode;
   private readonly text: Text | BitmapText;
   private _truncate: "clip" | "ellipsis" | undefined;
+  private _truncateWith: string;
+  /**
+   * Whether the measure callback ran during the layout just computed. It runs
+   * only when Yoga has an axis left to measure, and it is where wrap and
+   * truncation are applied for every text Yoga does measure. `applyLayout`
+   * reads it to tell the two cases apart.
+   */
+  private _measured = false;
+  /**
+   * Computed width the wrap flag and the truncated string were last built
+   * from. `NaN` never equals a computed width, so writing it forces the next
+   * `applyLayout` to rebuild them even though the width has not moved.
+   */
+  private _appliedWidth = Number.NaN;
   /** Source text — preserved so ellipsis re-truncation has the full string. */
   private _source: string;
   // Raw style options, kept so `mergeStyle()` can patch over the current
@@ -37,6 +51,7 @@ export class UIText implements UIElement {
 
     this._source = props.children ?? "";
     this._truncate = props.truncate;
+    this._truncateWith = props.truncateWith ?? DEFAULT_ELLIPSIS;
     if (props.style) this._styleOptions = { ...props.style };
     this._bitmap = props.bitmap;
     this._resolution = props.resolution;
@@ -61,6 +76,8 @@ export class UIText implements UIElement {
     this.pointerEvents = new PointerEvents(this.text, props);
 
     this.yogaNode.setMeasureFunc((width, widthMode) => {
+      this._measured = true;
+
       // `clip` / `ellipsis` are single-line, so wordWrap stays off and the
       // text is substring-truncated to fit the slot.
       if (this._truncate === "clip" || this._truncate === "ellipsis") {
@@ -68,7 +85,7 @@ export class UIText implements UIElement {
           widthMode === MeasureMode.Undefined
             ? Number.POSITIVE_INFINITY
             : width;
-        const suffix = this._truncate === "ellipsis" ? ELLIPSIS : "";
+        const suffix = this._truncate === "ellipsis" ? this._truncateWith : "";
         this.applyTruncate(maxWidth, suffix);
         const w = this.text.width;
         const measuredWidth =
@@ -106,7 +123,48 @@ export class UIText implements UIElement {
   setText(s?: string): void {
     this._source = s ?? "";
     this.text.text = this._source;
+    this._appliedWidth = Number.NaN;
     this.yogaNode.markDirty();
+  }
+
+  /**
+   * Wrap — or truncate — a text Yoga laid out without measuring. Yoga calls a
+   * measure function only when an axis is left to measure, and that callback
+   * is the only other place word wrap is switched on and the truncated string
+   * is built. Both axes pinned leaves nothing to measure, and so does one
+   * pinned axis with the other filled by the default stretch alignment, which
+   * is what a plain panel does. Without this such a text renders one long
+   * unbroken line, and a truncating one renders its whole source past the
+   * slot edge.
+   *
+   * Runs only when the computed width moved, because truncation
+   * binary-searches the text width and Pixi re-measures the block on every
+   * style write.
+   */
+  applyLayout(): void {
+    const width = this.yogaNode.getComputedWidth();
+    if (this._measured) {
+      // The callback already wrapped or truncated this text to the constraint
+      // it was given. Record the width it produced so the next pass, which
+      // Yoga serves from its layout cache without measuring anything, leaves
+      // that work in place.
+      this._measured = false;
+      this._appliedWidth = width;
+      return;
+    }
+    if (width === this._appliedWidth) return;
+    this._appliedWidth = width;
+
+    // `clip` / `ellipsis` are single-line: `applyTruncateStyle` keeps wrap
+    // off and the string is cut to the slot instead.
+    if (this._truncate === "clip" || this._truncate === "ellipsis") {
+      const suffix = this._truncate === "ellipsis" ? this._truncateWith : "";
+      this.applyTruncate(width, suffix);
+      return;
+    }
+
+    this.text.style.wordWrap = true;
+    this.text.style.wordWrapWidth = width;
   }
 
   /**
@@ -117,8 +175,11 @@ export class UIText implements UIElement {
   setStyle(s: Partial<TextStyle>): void {
     // Re-resolve against engine + UI defaults: the raw style carries neither,
     // so an omitted prop would otherwise drop to Pixi's bare default.
+    // The whole style object goes, so any wrap `applyLayout` had switched on
+    // goes with it.
     this.text.style = resolveTextStyle(s, getUIDefaultTextStyle()) ?? s;
     this._styleOptions = { ...s };
+    this._appliedWidth = Number.NaN;
     this.applyTruncateStyle();
     this.yogaNode.markDirty();
   }
@@ -154,12 +215,21 @@ export class UIText implements UIElement {
     // Use `"truncate" in p` rather than `!== undefined` so an explicit
     // `{ truncate: undefined }` payload (e.g. removing the prop in the
     // React reconciler) clears the mode back to default wrap behavior.
+    if ("truncateWith" in p) {
+      this._truncateWith = p.truncateWith ?? DEFAULT_ELLIPSIS;
+      if (this._truncate === "ellipsis") {
+        this.text.text = this._source;
+        this._appliedWidth = Number.NaN;
+        this.yogaNode.markDirty();
+      }
+    }
     if ("truncate" in p && p.truncate !== this._truncate) {
       this._truncate = p.truncate;
       // Restore source so a previous ellipsis pass doesn't bleed through;
-      // the next measure pass re-applies wordWrap / ellipsis based on the
-      // new mode.
+      // the next measure or layout pass re-applies wordWrap / ellipsis based
+      // on the new mode.
       this.text.text = this._source;
+      this._appliedWidth = Number.NaN;
       this.applyTruncateStyle();
       this.yogaNode.markDirty();
     }
@@ -214,17 +284,24 @@ export class UIText implements UIElement {
 
   /**
    * Truncate `_source` to the longest prefix whose width + `suffix` fits
-   * within `maxWidth`, then write the result into `text.text`. Falls back
-   * to the full source when it already fits. Uses a binary search since
-   * each width measurement traverses the Pixi text pipeline.
+   * within `maxWidth`, then write the result into `text.text`. A non-finite
+   * width means the text is unconstrained, so it renders whole, as it does
+   * when it already fits. Uses a binary search since each width measurement
+   * traverses the Pixi text pipeline.
    *
    * `"ellipsis"` mode passes `"…"` as the suffix; `"clip"` mode passes the
    * empty string and so simply cuts at the character boundary — the text
    * stays bounded by its yoga slot rather than relying on a parent mask.
    */
   private applyTruncate(maxWidth: number, suffix: string): void {
-    if (!Number.isFinite(maxWidth) || maxWidth <= 0) {
+    if (!Number.isFinite(maxWidth)) {
       this.text.text = this._source;
+      return;
+    }
+    // A slot with no room gets what the search settles on when not even one
+    // character fits: the suffix, which is empty for `"clip"`.
+    if (maxWidth <= 0) {
+      this.text.text = suffix;
       return;
     }
 

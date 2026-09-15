@@ -309,10 +309,10 @@ export function applyLayoutProps(node: YogaNode, props: LayoutProps): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Track child nodes we've already warned about so a per-frame layout pass
- * doesn't spam the console — one warning per offending child for the life of
- * the node. A child that later fits (e.g. after a resize) simply stops
- * triggering the check.
+ * Track child nodes already warned about so a per-frame layout pass doesn't
+ * spam the console — one warning per overflow episode. A child that fits
+ * again is dropped from the set, so a later overflow on the same node warns
+ * once more.
  */
 const _overflowWarned = new WeakSet<YogaNode>();
 
@@ -324,13 +324,25 @@ const _overflowWarned = new WeakSet<YogaNode>();
 const _overflowExempt = new WeakSet<YogaNode>();
 
 /**
- * Slack before an overflow is reported. Pixi text/sprite measurement and
- * Yoga's point rounding routinely differ from the container by up to a whole
- * pixel (e.g. a bordered card sitting 1px proud of its slot), which is visually
- * irrelevant. Only flag overflow beyond that so real spills (text/children
- * running many px past the box) still warn without nagging on rounding noise.
+ * Slack before an overflow is reported, in points, and the largest artifact
+ * Yoga's own pixel-grid rounding can produce.
+ *
+ * Installing a measure function makes a node a text node to Yoga. When a text
+ * node's width is fractional, its left edge is floored and its right edge
+ * ceiled; every other node's edges round to nearest. So a shrink-to-fit
+ * parent, which is not a text node, can land up to one point inside its
+ * measured child at each edge — two points in total at a point scale factor
+ * of 1, which is the factor here because nothing in this package calls
+ * `setPointScaleFactor` and nodes are created with no config. The fit check
+ * below is `<=`, because the artifact can be exactly two; each warn branch is
+ * the strict complement, `>`.
+ *
+ * Raising the scale factor would shrink the bound to 2 / factor. A Yoga
+ * upgrade that changed the text rounding in `roundLayoutResultsToPixelGrid`
+ * would move it too. `yoga-helpers.test.ts` pins the current rule, so read
+ * that function first when the test starts failing.
  */
-const OVERFLOW_EPSILON = 1.5;
+const OVERFLOW_EPSILON = 2;
 
 /**
  * Opt a container out of the dev-mode overflow warning. Use for nodes that
@@ -338,6 +350,27 @@ const OVERFLOW_EPSILON = 1.5;
  */
 export function exemptFromOverflowWarning(node: YogaNode): void {
   _overflowExempt.add(node);
+}
+
+/** Longest text snippet a warning quotes before it is cut. */
+const SNIPPET_MAX = 30;
+
+/**
+ * Name one child well enough to find it in a tree: its position in the
+ * parent's child list, its element class, and the text it renders when it
+ * renders text. Class names come from `constructor.name`, so a minified build
+ * prints minified names — acceptable for a warning that only exists in
+ * development builds.
+ */
+function describeChild(child: UIElement, index: number): string {
+  const cls = child.constructor.name;
+  const text = (child.displayObject as unknown as { text?: unknown }).text;
+  if (typeof text === "string" && text.length > 0) {
+    const snippet =
+      text.length > SNIPPET_MAX ? `${text.slice(0, SNIPPET_MAX)}…` : text;
+    return `child #${index} (${cls} "${snippet}")`;
+  }
+  return `child #${index} (${cls})`;
 }
 
 /**
@@ -357,6 +390,7 @@ export function exemptFromOverflowWarning(node: YogaNode): void {
 export function warnChildOverflow(
   parent: YogaNode,
   children: readonly UIElement[],
+  label?: string,
 ): void {
   if (!isDev()) return;
   if (parent.getOverflow() === Overflow.Hidden) return;
@@ -373,7 +407,9 @@ export function warnChildOverflow(
   const contentRight = w - parent.getComputedPadding(Edge.Right);
   const contentBottom = h - parent.getComputedPadding(Edge.Bottom);
 
+  let index = -1;
   for (const child of children) {
+    index++;
     const cn = child.yogaNode;
     if (cn.getDisplay() === Display.None) continue;
     if (cn.getPositionType() === PositionType.Absolute) continue;
@@ -408,8 +444,13 @@ export function warnChildOverflow(
       parts.push(`${overTop.toFixed(1)}px past the top edge`);
     if (overBottom > OVERFLOW_EPSILON)
       parts.push(`${overBottom.toFixed(1)}px past the bottom edge`);
+    // The identity string is built here, inside the warn branch, so a
+    // fitting tree allocates nothing on the per-frame path.
+    const prefix =
+      label !== undefined ? `UI layout [entity "${label}"]` : "UI layout";
     devWarn(
-      `UI layout: a child overflows its container by ${parts.join(" and ")}. ` +
+      `${prefix}: ${describeChild(child, index)} overflows its container by ` +
+        `${parts.join(" and ")}. ` +
         `Flex children keep their natural size by default (flexShrink: 0) — ` +
         `give the container more room, set maxWidth/maxHeight, mark the child ` +
         `flexShrink: 1 or flex: <n> so it gives space back and wraps, or use ` +

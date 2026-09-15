@@ -73,7 +73,10 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockGraphics extends MockContainer {
+    /** How many times the geometry has been rebuilt. */
+    drawCount = 0;
     clear(): MockGraphics {
+      this.drawCount++;
       return this;
     }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -219,6 +222,7 @@ import Yoga from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UISurface } from "./UISurface.js";
 import { UIPanel } from "./UIPanel.js";
+import { UIText } from "./UIText.js";
 import { Anchor } from "./types.js";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { createUITestContext, spawnEntityInScene } from "./test-helpers.js";
@@ -252,6 +256,39 @@ describe("UISurface", () => {
     expect(panel._offset).toEqual({ x: 10, y: 20 });
   });
 
+  it("setOffset moves the tree and reads back", () => {
+    const panel = new UISurface({ offset: { x: 10, y: 20 } });
+    panel.setOffset(-5, 40);
+    expect(panel.offset).toEqual({ x: -5, y: 40 });
+    // The layout system reads the same object every frame, so it has to be
+    // the one that moved, not a replacement.
+    expect(panel._offset).toEqual({ x: -5, y: 40 });
+  });
+
+  it("rejects a non-finite offset without moving the tree", () => {
+    const panel = new UISurface({ offset: { x: 10, y: 20 } });
+    expect(() => panel.setOffset(Number.NaN, 5)).toThrow(
+      "UISurface.setOffset: x must be finite, got NaN.",
+    );
+    expect(() => panel.setOffset(5, Number.POSITIVE_INFINITY)).toThrow(
+      "UISurface.setOffset: y must be finite, got Infinity.",
+    );
+    expect(panel.offset).toEqual({ x: 10, y: 20 });
+  });
+
+  it("rejects a non-finite offset option", () => {
+    expect(() => new UISurface({ offset: { x: 0, y: Number.NaN } })).toThrow(
+      "UISurface: offset.y must be finite, got NaN.",
+    );
+  });
+
+  it("does not write into the offset object it was given", () => {
+    const offset = { x: 10, y: 20 };
+    const panel = new UISurface({ offset });
+    panel.setOffset(1, 2);
+    expect(offset).toEqual({ x: 10, y: 20 });
+  });
+
   it("defaults offset to {0,0}", () => {
     const panel = new UISurface();
     expect(panel._offset).toEqual({ x: 0, y: 0 });
@@ -263,6 +300,13 @@ describe("UISurface", () => {
       const text = panel.text("Hello", { fontSize: 24 });
       expect(text).toBeDefined();
       expect(text.visible).toBe(true);
+    });
+
+    it(".text() forwards the remaining text props", () => {
+      const panel = new UISurface();
+      const text = panel.text("SCORE", { fontSize: 12 }, { truncate: "clip" });
+      const inner = text as unknown as { _truncate: string | undefined };
+      expect(inner._truncate).toBe("clip");
     });
 
     it(".button() adds a UIButton child", () => {
@@ -823,6 +867,187 @@ describe("UISurface", () => {
       );
       expect(overflowWarns).toHaveLength(0);
       warn.mockRestore();
+    });
+
+    it("names the entity, the child position and the child's class", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { scene } = createUITestContext();
+      const entity = spawnEntityInScene(scene, "Hud");
+      const surface = entity.add(
+        new UISurface({ direction: "row", width: 100 }),
+      );
+      surface.panel({ width: 20, height: 20 });
+      surface.panel({ width: 200, height: 20 });
+
+      surface.root.yogaNode.calculateLayout(
+        undefined,
+        undefined,
+        Direction.LTR,
+      );
+      surface.root.applyLayout();
+
+      const message = String(
+        warn.mock.calls.find((c) =>
+          String(c[0]).includes("overflows its container"),
+        )?.[0],
+      );
+      expect(message).toContain('UI layout [entity "Hud"]');
+      expect(message).toContain("child #1 (UIPanel)");
+      warn.mockRestore();
+    });
+
+    it("quotes the text a text child renders", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { scene } = createUITestContext();
+      const entity = spawnEntityInScene(scene, "Hud");
+      const surface = entity.add(
+        new UISurface({ direction: "row", width: 100, height: 40 }),
+      );
+      surface.addElement(
+        new UIText({ children: "Score: 12500", width: 200, height: 20 }),
+      );
+
+      surface.root.yogaNode.calculateLayout(
+        undefined,
+        undefined,
+        Direction.LTR,
+      );
+      surface.root.applyLayout();
+
+      const message = String(
+        warn.mock.calls.find((c) =>
+          String(c[0]).includes("overflows its container"),
+        )?.[0],
+      );
+      expect(message).toContain('child #0 (UIText "Score: 12500")');
+      warn.mockRestore();
+    });
+
+    it("labels a child added after the surface is mounted", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { scene } = createUITestContext();
+      const entity = spawnEntityInScene(scene, "Shop");
+      const surface = entity.add(
+        new UISurface({ direction: "column", width: 100 }),
+      );
+      // Built after `entity.add`, so it can only be labelled by the
+      // propagation on `addElement`, not by the walk in `onAdd`.
+      const row = surface.panel({ direction: "row", width: 100 });
+      row.panel({ width: 200, height: 20 });
+
+      surface.root.yogaNode.calculateLayout(
+        undefined,
+        undefined,
+        Direction.LTR,
+      );
+      surface.root.applyLayout();
+
+      const message = String(
+        warn.mock.calls.find((c) =>
+          String(c[0]).includes("overflows its container"),
+        )?.[0],
+      );
+      expect(message).toContain('UI layout [entity "Shop"]');
+      warn.mockRestore();
+    });
+
+    it("omits the entity prefix for a panel built outside a surface", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const panel = new UIPanel({ direction: "row", width: 100 });
+      panel.addElement(new UIPanel({ width: 200, height: 20 }));
+
+      panel.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.applyLayout();
+
+      const message = String(
+        warn.mock.calls.find((c) =>
+          String(c[0]).includes("overflows its container"),
+        )?.[0],
+      );
+      expect(message).toContain("UI layout: child #0 (UIPanel) overflows");
+      expect(message).not.toContain("[entity");
+      warn.mockRestore();
+    });
+  });
+
+  describe("overflow mask redraw gating", () => {
+    /** The Graphics an `overflow: "hidden"` panel clips with. */
+    function clipMask(panel: UIPanel): InstanceType<typeof mocks.MockGraphics> {
+      const mask = (panel.container as unknown as { mask: unknown }).mask;
+      expect(mask).toBeTruthy();
+      return mask as InstanceType<typeof mocks.MockGraphics>;
+    }
+
+    function layoutPanel(panel: UIPanel): void {
+      panel.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.applyLayout();
+    }
+
+    it("draws the mask on the first pass after it is created", () => {
+      const panel = new UIPanel({
+        overflow: "hidden",
+        width: 100,
+        height: 50,
+      });
+      const mask = clipMask(panel);
+      const before = mask.drawCount;
+
+      layoutPanel(panel);
+
+      expect(mask.drawCount).toBe(before + 1);
+      panel.destroy();
+    });
+
+    it("skips the mask redraw while the box is unchanged", () => {
+      const panel = new UIPanel({
+        overflow: "hidden",
+        width: 100,
+        height: 50,
+      });
+      layoutPanel(panel);
+      const mask = clipMask(panel);
+      const before = mask.drawCount;
+
+      layoutPanel(panel);
+      layoutPanel(panel);
+
+      expect(mask.drawCount).toBe(before);
+      panel.destroy();
+    });
+
+    it("redraws the mask when the box changes", () => {
+      const panel = new UIPanel({
+        overflow: "hidden",
+        width: 100,
+        height: 50,
+      });
+      layoutPanel(panel);
+      const mask = clipMask(panel);
+      const before = mask.drawCount;
+
+      panel.update({ width: 140 });
+      layoutPanel(panel);
+
+      expect(mask.drawCount).toBe(before + 1);
+      panel.destroy();
+    });
+
+    it("draws again after overflow is turned off and back on at one size", () => {
+      const panel = new UIPanel({
+        overflow: "hidden",
+        width: 100,
+        height: 50,
+      });
+      layoutPanel(panel);
+
+      panel.update({ overflow: "visible" });
+      panel.update({ overflow: "hidden" });
+      const mask = clipMask(panel);
+      const before = mask.drawCount;
+      layoutPanel(panel);
+
+      expect(mask.drawCount).toBe(before + 1);
+      panel.destroy();
     });
   });
 });

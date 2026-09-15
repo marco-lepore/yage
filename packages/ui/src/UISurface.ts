@@ -14,9 +14,18 @@ import type {
   PointerEventProps,
   UIScrollViewProps,
   UIElement,
+  UITextBuilderProps,
 } from "./types.js";
 import type { Anchor } from "./types.js";
 import { bindUIErrorBoundary } from "./error-boundary.js";
+
+/** A non-finite offset would reach the tree's position on every layout pass. */
+function finiteOffset(value: number, name: string): number {
+  if (!Number.isFinite(value)) {
+    throw new Error(`${name} must be finite, got ${value}.`);
+  }
+  return value;
+}
 
 /**
  * Mounts a UI tree on an entity: `entity.add(new UISurface({...}))`.
@@ -44,9 +53,32 @@ export class UISurface extends Component {
     this.root = new UIPanel(opts ?? {});
     this._userVisible = opts?.visible ?? true;
     this._anchor = opts?.anchor;
-    this._offset = opts?.offset ?? { x: 0, y: 0 };
+    // Copied so `setOffset` writes this surface's own object, never the one
+    // the caller passed in.
+    const offset = opts?.offset;
+    this._offset = {
+      x: offset ? finiteOffset(offset.x, "UISurface: offset.x") : 0,
+      y: offset ? finiteOffset(offset.y, "UISurface: offset.y") : 0,
+    };
     this._layer = opts?.layer;
     this._positioning = opts?.positioning ?? "anchor";
+  }
+
+  /**
+   * Move the whole tree by a screen-space offset, on top of whatever its
+   * anchor or transform positioning resolves to. Animating a sliding panel is
+   * a `setOffset` per frame.
+   */
+  setOffset(x: number, y: number): void {
+    finiteOffset(x, "UISurface.setOffset: x");
+    finiteOffset(y, "UISurface.setOffset: y");
+    this._offset.x = x;
+    this._offset.y = y;
+  }
+
+  /** The offset the tree is drawn at. */
+  get offset(): Readonly<{ x: number; y: number }> {
+    return this._offset;
   }
 
   /** The PixiJS Container of the root panel. */
@@ -68,9 +100,13 @@ export class UISurface extends Component {
     this.root.update(handlers);
   }
 
-  /** Add a text element. */
-  text(content: string, style?: Partial<TextStyle>): UIText {
-    return this.root.text(content, style);
+  /** Add a text element. See {@link UIPanel.text} for `opts`. */
+  text(
+    content: string,
+    style?: Partial<TextStyle>,
+    opts?: UITextBuilderProps,
+  ): UIText {
+    return this.root.text(content, style, opts);
   }
 
   /** Add a button element. */
@@ -132,6 +168,11 @@ export class UISurface extends Component {
   }
 
   onAdd(): void {
+    // Name the tree for development-mode layout warnings. The root passes the
+    // name to the children already built, and to every child added later, so
+    // both build orders — children before `entity.add`, children after — end
+    // up labelled.
+    this.root._setDebugLabel(this.entity.name);
     bindUIErrorBoundary(this.root.container, this.use(ErrorBoundaryKey));
     const tree = this.use(SceneRenderTreeKey);
     const layerName = this._layer ?? UI_DEFAULT_LAYER;

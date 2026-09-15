@@ -348,14 +348,23 @@ export const SplitText = forwardRef<UISplitTextNode, SplitTextProps>(
  *   dropped (this reconciler has no `createTextInstance`).
  */
 export function Button(props: ButtonProps): React.JSX.Element {
-  const { children, hoverBg, pressBg, textStyle, truncate, bitmap, ...rest } =
-    props;
+  const {
+    children,
+    hoverBg,
+    pressBg,
+    textStyle,
+    truncate,
+    truncateWith,
+    bitmap,
+    ...rest
+  } = props;
   const isPrimitiveLabel =
     typeof children === "string" || typeof children === "number";
   const content = isPrimitiveLabel ? (
     <UIText
       {...(textStyle ? { style: textStyle } : {})}
       {...(truncate ? { truncate } : {})}
+      {...(truncateWith !== undefined ? { truncateWith } : {})}
       {...(bitmap !== undefined ? { bitmap } : {})}
     >
       {String(children)}
