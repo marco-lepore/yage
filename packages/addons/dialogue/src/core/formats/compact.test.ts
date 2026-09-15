@@ -155,7 +155,7 @@ describe("loadCompact — choice text vs choice attributes", () => {
     expect(opt.presentation).toBe("disabled");
     expect(opt.target).toBe("hatch");
     // The retained markup still renders bold (and the flag never leaks into it).
-    const parsed = parseMarkup(opt.text);
+    const parsed = parseMarkup(opt.text as string);
     expect(parsed.runs[0]).toMatchObject({
       text: "Force",
       style: { bold: true },
@@ -202,9 +202,9 @@ describe("loadCompact — choice text vs choice attributes", () => {
     expect(wrap("? Leave target=exit").options[0]!.target).toBe("exit");
   });
 
-  it("`#line:id` sets the i18n key (not meta) on a choice option", () => {
+  it("`#line:id` turns a choice option's text into a { key, fallback } message (not meta)", () => {
     const opt = wrap("? Trade -> shop #line:opt_trade").options[0]!;
-    expect(opt.key).toBe("opt_trade");
+    expect(opt.text).toEqual({ key: "opt_trade", fallback: "Trade" });
     expect(opt.meta).toBeUndefined();
   });
 });
@@ -236,10 +236,9 @@ describe("parseCompact — say lines", () => {
     expect(say.text).toBe("Look out!");
   });
 
-  it("`#line:id` sets the i18n key (not meta) on a say line", () => {
+  it("`#line:id` turns a say line's text into a { key, fallback } message (not meta)", () => {
     const say = firstSay("hero: Hello #line:greet_01", "@ hero Hero\n");
-    expect(say.key).toBe("greet_01");
-    expect(say.text).toBe("Hello");
+    expect(say.text).toEqual({ key: "greet_01", fallback: "Hello" });
     expect(say.meta).toBeUndefined();
   });
 

@@ -7,6 +7,7 @@
  */
 
 import { analyzeScript, DialogueScriptError } from "../validate.js";
+import { isDialogueText } from "../i18n.js";
 import { parseExpr } from "../expr-parse.js";
 import type {
   ChoiceOption,
@@ -87,6 +88,11 @@ function normalizeSpeakers(
   if (!speakers) return undefined;
   const out: Record<SpeakerId, LoadedSpeaker> = {};
   for (const [key, def] of Object.entries(speakers)) {
+    if (!isDialogueText(def.name)) {
+      throw new DialogueScriptError(
+        `speaker "${key}": name must be a string or { key, fallback } message`,
+      );
+    }
     out[key] = { ...def, id: key };
   }
   return out;
@@ -120,6 +126,13 @@ function validateStep(
   };
   // Node typos throw, so speaker typos must too — an unknown speaker would
   // otherwise silently render as a narrator line (and never find its actor).
+  const textIsValid = (text: unknown, field: string): void => {
+    if (!isDialogueText(text)) {
+      throw new DialogueScriptError(
+        `node "${nodeId}": ${field} must be a string or { key, fallback } message`,
+      );
+    }
+  };
   const speakerExists = (s: string | undefined): void => {
     if (s !== undefined && !script.speakers?.[s]) {
       throw new DialogueScriptError(
@@ -129,11 +142,7 @@ function validateStep(
   };
   switch (step.kind) {
     case "say":
-      if (typeof step.text !== "string") {
-        throw new DialogueScriptError(
-          `node "${nodeId}": say.text must be a string`,
-        );
-      }
+      textIsValid(step.text, "say.text");
       speakerExists(step.speaker);
       break;
     case "choice":
@@ -142,8 +151,15 @@ function validateStep(
           `node "${nodeId}": choice has no options`,
         );
       }
+      if (step.text !== undefined) textIsValid(step.text, "choice.text");
       speakerExists(step.speaker);
-      for (const opt of step.options) targetExists(opt.target);
+      for (const [i, opt] of step.options.entries()) {
+        textIsValid(opt.text, `choice option ${i}.text`);
+        if (opt.disabledReason !== undefined) {
+          textIsValid(opt.disabledReason, `choice option ${i}.disabledReason`);
+        }
+        targetExists(opt.target);
+      }
       break;
     case "command":
       targetExists(step.target);

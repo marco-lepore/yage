@@ -1,12 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
-import { Logger, LoggerKey, LogLevel, createMockScene } from "@yagejs/core";
+import {
+  Logger,
+  LoggerKey,
+  LogLevel,
+  ServiceKey,
+  createMockScene,
+} from "@yagejs/core";
 import { InputManager, InputManagerKey } from "@yagejs/input";
 
-import { DialogueController } from "./DialogueController.js";
+import {
+  DialogueController,
+  type DialogueControllerOptions,
+} from "./DialogueController.js";
 import { CompositeInputBinding, PointerInputBinding } from "./input/index.js";
 import {
   DialogueAutoAdvanceEvent,
   DialogueChoiceMadeEvent,
+  DialogueLineEvent,
   DialogueRevealCompletedEvent,
   DialogueRevealMarkerEvent,
   DialogueSelectionChangedEvent,
@@ -22,6 +32,7 @@ import type {
   DialogueExtraChannel,
   DialogueScript,
   DialogueSession,
+  I18nAdapter,
   MarkerToken,
   RevealBeat,
 } from "./core/index.js";
@@ -44,6 +55,7 @@ class StubText implements TextPresenter {
   mount(): void {}
   dispose(): void {}
   present(): void {}
+  replaceVisible(): void {}
   completeReveal(): void {}
   isRevealComplete(): boolean {
     return true;
@@ -88,6 +100,7 @@ class DrivableText implements TextPresenter {
   present(): void {
     this.revealing = true;
   }
+  replaceVisible(): void {}
   completeReveal(): void {
     this.finish();
   }
@@ -161,12 +174,16 @@ const SCRIPT: DialogueScript = {
   nodes: { a: { id: "a", steps: [{ kind: "say", text: "hi" }] } },
 };
 
-function makeController(input: InputBinding = noopBinding): DialogueController {
+function makeController(
+  input: InputBinding = noopBinding,
+  extra: Partial<DialogueControllerOptions> = {},
+): DialogueController {
   return new DialogueController({
     chrome: new StubChrome(),
     text: new StubText(),
     choices: new StubChoices(),
     input,
+    ...extra,
   });
 }
 
@@ -832,5 +849,72 @@ describe("DialogueController — default action names validated against the live
     addZeroConfig(scene);
 
     expect(warn.mock.calls.filter((c) => c[0] === "dialogue")).toHaveLength(0);
+  });
+});
+
+describe("DialogueController — i18n adapter resolution", () => {
+  /** Records which adapter resolved the line and lets a test flip its locale. */
+  function adapter(tag: string): I18nAdapter & { listeners: Set<() => void> } {
+    const listeners = new Set<() => void>();
+    return {
+      locale: "en",
+      listeners,
+      resolve: (text) =>
+        `${tag}:${typeof text === "string" ? text : text.fallback}`,
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+  }
+
+  it('uses the option first, then a service registered under "localization", then identity', () => {
+    const { scene, context } = createMockScene();
+    const lines: string[] = [];
+    const record = (host: ReturnType<typeof scene.spawn>): void => {
+      host.on(DialogueLineEvent, (e) => lines.push(e.text));
+    };
+
+    const service = adapter("svc");
+    context.register(new ServiceKey<I18nAdapter>("localization"), service);
+    const option = adapter("opt");
+
+    const withOption = scene.spawn("a");
+    record(withOption);
+    withOption.add(makeController(undefined, { i18n: option })).play(SCRIPT);
+    const withService = scene.spawn("b");
+    record(withService);
+    withService.add(makeController()).play(SCRIPT);
+    expect(lines).toEqual(["opt:hi", "svc:hi"]);
+
+    context.unregister(new ServiceKey<I18nAdapter>("localization"));
+    const identity = scene.spawn("c");
+    record(identity);
+    identity.add(makeController()).play(SCRIPT);
+    expect(lines[2]).toBe("hi");
+  });
+
+  it("subscribes to the adapter's locale changes for the component's lifetime", () => {
+    const { scene } = createMockScene();
+    const a = adapter("a");
+    const text = new DrivableText();
+    const host = scene.spawn("dlg");
+    const controller = host.add(
+      new DialogueController({
+        chrome: new StubChrome(),
+        text,
+        choices: new StubChoices(),
+        input: noopBinding,
+        i18n: a,
+      }),
+    );
+    expect(a.listeners.size).toBe(1);
+    controller.play(SCRIPT);
+    const lines: string[] = [];
+    host.on(DialogueLineEvent, (e) => lines.push(e.text));
+    for (const l of a.listeners) l(); // a locale change: re-presented in place, no line event
+    expect(lines).toEqual([]);
+    host.remove(DialogueController);
+    expect(a.listeners.size).toBe(0);
   });
 });

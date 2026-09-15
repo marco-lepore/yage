@@ -87,6 +87,7 @@ class RecText implements TextPresenter {
   present(): void {
     this.presents++;
   }
+  replaceVisible(): void {}
   completeReveal(): void {}
   isRevealComplete(): boolean {
     return true;

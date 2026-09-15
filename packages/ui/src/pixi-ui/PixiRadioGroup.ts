@@ -76,6 +76,7 @@ export class PixiRadioGroup extends PixiUIBase<RadioGroup> {
           : (this.view.selected ?? DEFAULT_SELECTED);
       const selected = selectedForItems(requested, items.length);
       (this.view as MutableRadioGroup).replaceItems(items, selected);
+      this.invalidateSize();
     } else if ("selected" in p) {
       this.view.selectItem(p.selected ?? DEFAULT_SELECTED);
     }

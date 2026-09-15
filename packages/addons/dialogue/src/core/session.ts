@@ -99,10 +99,18 @@ export interface PresentedChoice {
  * Body-text channel. Owns reveal timing (the Session only learns *that* a line
  * finished, via the reveal listener, never *when* a glyph appears). An
  * accessibility / no-typewriter presenter is
- * `present(){ draw(); this.revealListener?.() }`.
+ * `present(){ draw(); this.revealListener?.() }` with `replaceVisible(){ draw() }`.
  */
 export interface TextChannel {
   present(line: PresentedLine): void;
+  /**
+   * Swap the line on screen for a re-resolved version of the same line (a
+   * translation) without restarting the typewriter: revealed count, hold
+   * state, and completion carry over, and nothing fires. A presenter built on
+   * `LineReveal` passes the new text to `LineReveal.rebase`; one with no
+   * typewriter redraws.
+   */
+  replaceVisible(line: PresentedLine): void;
   /** Reveal everything immediately (skip-to-end). */
   completeReveal(): void;
   isRevealComplete(): boolean;
@@ -351,6 +359,10 @@ export class DialogueSession {
   private scriptId = "";
 
   private saying: SayStep | undefined;
+  /** Speaker of the line or choice on screen, kept for {@link retranslate}. */
+  private currentSpeaker: LoadedSpeaker | undefined;
+  /** The choice step on screen, kept for {@link retranslate}. */
+  private choosingStep: ChoiceStep | undefined;
   /** Countdown to the next auto-advance, in seconds. `undefined` = disarmed. */
   private autoTimer: number | undefined;
   /** Default auto-advance delay (seconds) applied to lines without their own
@@ -710,6 +722,8 @@ export class DialogueSession {
   private goIdle(mode: "idle" | "ended"): void {
     this.mode = mode;
     this.saying = undefined;
+    this.currentSpeaker = undefined;
+    this.choosingStep = undefined;
     this.resolved = [];
     this.confirming = false;
     this.currentLine = undefined;
@@ -925,11 +939,11 @@ export class DialogueSession {
           ? script.speakers?.[step.speaker]
           : undefined;
         const name = speaker
-          ? this.i18n.t(speaker.nameKey, speaker.name, view)
+          ? this.i18n.resolve(speaker.name, view)
           : undefined;
         out.push({
           speaker: name,
-          text: stripMarkup(this.i18n.t(step.key, step.text, view)),
+          text: stripMarkup(this.i18n.resolve(step.text, view)),
         });
         i++;
       } else if (step.kind === "command") {
@@ -1003,9 +1017,7 @@ export class DialogueSession {
     if (!chosen) return;
     this.opts.onSelectionChanged?.({
       index: chosen.index,
-      text: stripMarkup(
-        this.i18n.t(chosen.option.key, chosen.option.text, this.readView()),
-      ),
+      text: stripMarkup(this.i18n.resolve(chosen.option.text, this.readView())),
     });
   }
 
@@ -1044,11 +1056,7 @@ export class DialogueSession {
     if (!chosen || chosen.disabled) return; // never commit a missing or disabled row
     this.selected = position;
     this.confirming = true;
-    const text = this.i18n.t(
-      chosen.option.key,
-      chosen.option.text,
-      this.readView(),
-    );
+    const text = this.i18n.resolve(chosen.option.text, this.readView());
     this.opts.onChoiceMade?.({ index: chosen.index, text });
     this.runner?.choose(chosen.index);
   }
@@ -1084,25 +1092,16 @@ export class DialogueSession {
     this.advanceFired = false;
     this.afterRevealFired = false;
     this.confirming = false;
+    this.currentSpeaker = speaker;
+    this.choosingStep = undefined;
     // Materialize the read view once for this line (an external getter fires
     // exactly once per present, shared by text + nameplate).
     const view = this.readView();
-    const resolved = this.i18n.t(step.key, step.text, view);
-    const line: PresentedLine = {
-      speaker: this.speakerView(speaker, view),
-      text: parseMarkup(resolved),
-      speed: step.speed ?? 1,
-      view: step.view,
-      meta: step.meta,
-      voice: step.voice,
-    };
+    const { line, plain, name } = this.buildSayLine(step, speaker, view);
 
     this.channels.choices.clear();
     this.channels.chrome?.setContinueVisible(false);
-    this.channels.chrome?.setNameplate(
-      this.speakerName(speaker, view),
-      speaker?.color,
-    );
+    this.channels.chrome?.setNameplate(name, speaker?.color);
 
     this.channels.avatar?.setSpeaker(speaker);
     this.channels.avatar?.setExpression(step.expression);
@@ -1128,12 +1127,8 @@ export class DialogueSession {
       }
     }
 
-    const plain = stripMarkup(resolved);
-    this.currentLine = {
-      speaker: this.speakerName(speaker, view),
-      text: plain,
-    };
-    this.opts.onLine?.({ speaker: this.currentLine.speaker, text: plain });
+    this.currentLine = { speaker: name, text: plain };
+    this.opts.onLine?.({ speaker: name, text: plain });
 
     // A saying line shows the chrome + body text (gated by the host-hidden lever).
     this.applyVisibility();
@@ -1158,20 +1153,14 @@ export class DialogueSession {
     }
     this.selected = firstEnabled;
     this.confirming = false;
+    this.currentSpeaker = speaker;
+    this.choosingStep = step;
     const view = this.readView();
 
     // Treat the choice like a line so the chrome switches to the right variant
     // (a composite box/bubble chrome otherwise leaves the previous speaker's
     // bubble up behind a frameless choice list).
-    const line: PresentedLine = {
-      speaker: this.speakerView(speaker, view),
-      text: step.text
-        ? parseMarkup(this.i18n.t(step.key, step.text, view))
-        : EMPTY_PARSED,
-      speed: 1,
-      view: step.view,
-      meta: step.meta,
-    };
+    const line = this.buildChoiceLine(step, speaker, view);
 
     // Drive the avatar like a say-line would: the choice's speaker owns the
     // portrait (a stale say-speaker must not linger through the choice). No
@@ -1217,24 +1206,112 @@ export class DialogueSession {
       else this.channels.text.clear();
     }
 
-    const labels = choices.map((c) =>
-      stripMarkup(this.i18n.t(c.option.key, c.option.text, view)),
-    );
-    const presented: PresentedChoice[] = choices.map((c, i) => ({
-      label: labels[i]!,
-      meta: c.option.meta,
-      disabled: c.disabled,
-      // i18n-resolve the reason (interpolating {tokens}) only for disabled rows
-      // that carry one; there's no separate i18n key for it.
-      disabledReason:
-        c.disabled && c.option.disabledReason !== undefined
-          ? stripMarkup(this.i18n.t(undefined, c.option.disabledReason, view))
-          : undefined,
-    }));
+    const presented = this.buildChoiceRows(choices, view);
     this.channels.choices.present(presented, ctx);
     this.channels.choices.highlight(this.selected);
     this.applyVisibility();
-    this.opts.onChoiceShown?.({ options: labels });
+    this.opts.onChoiceShown?.({ options: presented.map((c) => c.label) });
+  }
+
+  /**
+   * Re-resolve what is on screen after the adapter's locale changed and
+   * re-present it in place. A line keeps its reveal progress (through the
+   * text channel's `replaceVisible`); a choice menu keeps its
+   * highlighted row. No line, command, reveal, or choice event fires, and
+   * the cursor does not move. A no-op outside a line or choice.
+   */
+  retranslate(): void {
+    const view = this.readView();
+    const speaker = this.currentSpeaker;
+    if (this.mode === "saying" && this.saying) {
+      const { line, plain, name } = this.buildSayLine(
+        this.saying,
+        speaker,
+        view,
+      );
+      this.currentPresented = line;
+      this.currentLine = { speaker: name, text: plain };
+      this.channels.chrome?.setNameplate(name, speaker?.color);
+      this.channels.chrome?.present?.(line);
+      this.channels.text.replaceVisible(line);
+      return;
+    }
+    if (this.mode !== "choosing" || !this.choosingStep) return;
+    const step = this.choosingStep;
+    const line = this.buildChoiceLine(step, speaker, view);
+    const ctx: ChoiceContext = {
+      view: step.view,
+      speaker: line.speaker,
+      prompt: line.text,
+      meta: step.meta,
+    };
+    if (this.choiceShowsChrome) {
+      this.channels.chrome?.setNameplate(
+        this.speakerName(speaker, view),
+        speaker?.color,
+      );
+      this.channels.chrome?.present?.(line);
+    }
+    if (this.choiceShowsBody) this.channels.text.replaceVisible(line);
+    this.channels.choices.present(
+      this.buildChoiceRows(this.resolved, view),
+      ctx,
+    );
+    this.channels.choices.highlight(this.selected);
+  }
+
+  /** Resolve a say step's text and speaker for the current read view. */
+  private buildSayLine(
+    step: SayStep,
+    speaker: LoadedSpeaker | undefined,
+    view: VarMap,
+  ): { line: PresentedLine; plain: string; name: string | undefined } {
+    const resolved = this.i18n.resolve(step.text, view);
+    return {
+      line: {
+        speaker: this.speakerView(speaker, view),
+        text: parseMarkup(resolved),
+        speed: step.speed ?? 1,
+        view: step.view,
+        meta: step.meta,
+        voice: step.voice,
+      },
+      plain: stripMarkup(resolved),
+      name: this.speakerName(speaker, view),
+    };
+  }
+
+  /** Resolve a choice step's prompt line for the current read view. */
+  private buildChoiceLine(
+    step: ChoiceStep,
+    speaker: LoadedSpeaker | undefined,
+    view: VarMap,
+  ): PresentedLine {
+    return {
+      speaker: this.speakerView(speaker, view),
+      text: step.text
+        ? parseMarkup(this.i18n.resolve(step.text, view))
+        : EMPTY_PARSED,
+      speed: 1,
+      view: step.view,
+      meta: step.meta,
+    };
+  }
+
+  /** Resolve the option labels (and disabled reasons) for the current read view. */
+  private buildChoiceRows(
+    choices: readonly ResolvedChoice[],
+    view: VarMap,
+  ): PresentedChoice[] {
+    return choices.map((c) => ({
+      label: stripMarkup(this.i18n.resolve(c.option.text, view)),
+      meta: c.option.meta,
+      disabled: c.disabled,
+      disabledReason:
+        c.disabled && c.option.disabledReason !== undefined
+          ? stripMarkup(this.i18n.resolve(c.option.disabledReason, view))
+          : undefined,
+    }));
   }
 
   private handleCommand(
@@ -1363,7 +1440,7 @@ export class DialogueSession {
     view: VarMap,
   ): string | undefined {
     if (!speaker) return undefined;
-    return this.i18n.t(speaker.nameKey, speaker.name, view);
+    return this.i18n.resolve(speaker.name, view);
   }
 
   private speakerView(

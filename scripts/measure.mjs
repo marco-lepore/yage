@@ -736,12 +736,30 @@ export function checkAddonContextRegistration(files) {
       contextNames.has(node.name.text)
     );
   }
+  // A class that `implements Plugin` is the addon's engine integration
+  // (`packages/addons/AGENTS.md`, L2b): registering its service from there is
+  // the documented path. The rule targets components and helpers, where a
+  // registration hides entity-hosted state from the ECS.
+  function implementsPlugin(node, source) {
+    return (
+      ts.isClassLike(node) &&
+      (node.heritageClauses ?? []).some(
+        (clause) =>
+          clause.token === ts.SyntaxKind.ImplementsKeyword &&
+          clause.types.some((t) => t.expression.getText(source) === "Plugin"),
+      )
+    );
+  }
   const errors = [];
   for (const file of files) {
     if (!file.path.startsWith("packages/addons/")) continue;
     const source = sourceFile(file.path, file.code);
+    let pluginDepth = 0;
     ts.forEachChild(source, function visit(node) {
+      const plugin = implementsPlugin(node, source);
+      if (plugin) pluginDepth++;
       if (
+        pluginDepth === 0 &&
         ts.isCallExpression(node) &&
         ts.isPropertyAccessExpression(node.expression) &&
         isContextReceiver(node.expression.expression)
@@ -754,13 +772,162 @@ export function checkAddonContextRegistration(files) {
               "addon-context-registration",
               file.path,
               lineOf(source, node),
-              `Addons must not call ${owner}.${method}(); keep entity-hosted state in the ECS.`,
+              `Addons must not call ${owner}.${method}() outside a Plugin; keep entity-hosted state in the ECS.`,
             ),
           );
         }
       }
       ts.forEachChild(node, visit);
+      if (plugin) pluginDepth--;
     });
+  }
+  return errors;
+}
+
+// Text-carrying property names on a `@yagejs/ui` component's Props interface.
+// A component with one of these puts words a player reads on screen, so the
+// localization addon owes it a class whose text follows the locale. A widget
+// whose text sits under any other property name is not detected: add the name.
+const TEXT_PROP_NAMES = new Set([
+  "text",
+  "label",
+  "placeholder",
+  "items",
+  "children",
+]);
+
+const UI_TYPES_PATH = "packages/ui/src/types.ts";
+const I18N_UI_BARREL = "packages/addons/i18n/src/ui.ts";
+
+/** `UIButton` -> `UILocalizedButton`; `PixiSelect` -> `LocalizedPixiSelect`. */
+function localizedNameFor(component) {
+  return component.startsWith("UI")
+    ? `UILocalized${component.slice(2)}`
+    : `Localized${component}`;
+}
+
+/** Names the barrel actually re-exports as values, ignoring `export type`. */
+function exportedValueNames(file) {
+  const source = sourceFile(file.path, file.code);
+  const names = new Set();
+  ts.forEachChild(source, (node) => {
+    if (!ts.isExportDeclaration(node) || node.isTypeOnly) return;
+    const clause = node.exportClause;
+    if (!clause || !ts.isNamedExports(clause)) return;
+    for (const element of clause.elements) {
+      if (!element.isTypeOnly) names.add(element.name.text);
+    }
+  });
+  return names;
+}
+
+/**
+ * Exemptions declared in the barrel as
+ * `// i18n-coverage-exempt: <Component> — <reason>`. The reason is required,
+ * so an exclusion states why rather than just disappearing.
+ */
+function coverageExemptions(file) {
+  const claimed = new Map();
+  const pattern =
+    /i18n-coverage-exempt:\s*([A-Za-z0-9_]+)\s*(?:[\u2014-]\s*(.*))?/g;
+  for (const match of file.code.matchAll(pattern)) {
+    claimed.set(match[1], (match[2] ?? "").trim());
+  }
+  return claimed;
+}
+
+/**
+ * Every text-bearing `@yagejs/ui` component needs a localized counterpart
+ * exported from `@yagejs-addons/i18n/ui`, so localization coverage is decided
+ * by the widget set rather than by whoever needed a widget first.
+ */
+export function checkLocalizedWidgetCoverage(files) {
+  const types = files.find((file) => file.path === UI_TYPES_PATH);
+  const barrel = files.find((file) => file.path === I18N_UI_BARREL);
+  if (!types || !barrel) return [];
+
+  const exempt = coverageExemptions(barrel);
+  const exported = exportedValueNames(barrel);
+  const source = sourceFile(types.path, types.code);
+
+  const interfaces = new Map();
+  ts.forEachChild(source, (node) => {
+    if (ts.isInterfaceDeclaration(node) && node.name.text.endsWith("Props")) {
+      interfaces.set(node.name.text, node);
+    }
+  });
+
+  /** Text props reachable from an interface, following `extends` and nesting. */
+  function carriesText(name, seen = new Set()) {
+    if (seen.has(name)) return false;
+    seen.add(name);
+    const node = interfaces.get(name);
+    if (!node) return false;
+    for (const clause of node.heritageClauses ?? []) {
+      for (const base of clause.types) {
+        if (carriesText(base.expression.getText(source), seen)) return true;
+      }
+    }
+    return node.members.some((member) => {
+      if (!ts.isPropertySignature(member) || !ts.isIdentifier(member.name)) {
+        return false;
+      }
+      if (!TEXT_PROP_NAMES.has(member.name.text)) return false;
+      const type = member.type?.getText(source) ?? "";
+      if (/\bstring\b/.test(type)) return true;
+      // A collection of another widget's props, e.g. `PixiCheckboxProps[]`.
+      return [...interfaces.keys()].some(
+        (other) =>
+          other !== name &&
+          new RegExp(`\\b${other}\\b`).test(type) &&
+          carriesText(other, new Set(seen)),
+      );
+    });
+  }
+
+  const errors = [];
+  const covered = new Set();
+  for (const name of interfaces.keys()) {
+    const component = name.slice(0, -"Props".length);
+    if (!component.startsWith("UI") && !component.startsWith("Pixi")) continue;
+    if (!carriesText(name)) continue;
+    covered.add(component);
+    const reason = exempt.get(component);
+    if (reason !== undefined) {
+      if (reason.length === 0) {
+        errors.push(
+          finding(
+            "localized-widget-coverage",
+            barrel.path,
+            1,
+            `The ${component} coverage exemption states no reason; write "// i18n-coverage-exempt: ${component} \u2014 <reason>".`,
+          ),
+        );
+      }
+      continue;
+    }
+    const localized = localizedNameFor(component);
+    if (exported.has(localized)) continue;
+    errors.push(
+      finding(
+        "localized-widget-coverage",
+        barrel.path,
+        1,
+        `${component} shows text but ${I18N_UI_BARREL} exports no ${localized}; add it, or add "// i18n-coverage-exempt: ${component} \u2014 <reason>".`,
+      ),
+    );
+  }
+  // An exemption for a widget that no longer shows text is dead weight.
+  for (const component of exempt.keys()) {
+    if (covered.has(component)) continue;
+    errors.push(
+      finding(
+        "localized-widget-coverage",
+        barrel.path,
+        1,
+        `The ${component} coverage exemption is stale: no such text-bearing widget in ${UI_TYPES_PATH}.`,
+      ),
+    );
   }
   return errors;
 }
@@ -1016,6 +1183,107 @@ export function positiveControlFailures() {
         ]).length === 1,
     },
     {
+      name: "addon-context-registration-plugin",
+      passed:
+        checkAddonContextRegistration([
+          {
+            path: "packages/addons/control/src/plugin.ts",
+            code: "class ControlPlugin implements Plugin { install(context) { context.register(ControlKey, value); } }",
+          },
+        ]).length === 0,
+    },
+    {
+      name: "localized-widget-coverage",
+      passed:
+        checkLocalizedWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code: "export interface UIBannerProps { text?: string; }",
+          },
+          { path: "packages/addons/i18n/src/ui.ts", code: "export {};" },
+        ]).length === 1,
+    },
+    {
+      name: "localized-widget-coverage-satisfied",
+      passed:
+        checkLocalizedWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code: "export interface PixiBannerProps { text?: string; }",
+          },
+          {
+            path: "packages/addons/i18n/src/ui.ts",
+            code: 'export { LocalizedPixiBanner } from "./ui/LocalizedPixiBanner.js";',
+          },
+        ]).length === 0,
+    },
+    {
+      name: "localized-widget-coverage-ignores-comments-and-types",
+      passed:
+        checkLocalizedWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code: "export interface PixiBannerProps { text?: string; }",
+          },
+          {
+            path: "packages/addons/i18n/src/ui.ts",
+            code: '// LocalizedPixiBanner\nexport type { LocalizedPixiBanner } from "./x.js";',
+          },
+        ]).length === 1,
+    },
+    {
+      name: "localized-widget-coverage-follows-extends-and-nesting",
+      passed:
+        checkLocalizedWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code:
+              "interface LabelledProps { text?: string; }\n" +
+              "export interface PixiHeirProps extends LabelledProps { size?: number; }\n" +
+              "export interface PixiGroupProps { items: PixiHeirProps[]; }",
+          },
+          { path: "packages/addons/i18n/src/ui.ts", code: "export {};" },
+        ]).length === 2,
+    },
+    {
+      name: "localized-widget-coverage-exempt-needs-a-reason",
+      passed:
+        checkLocalizedWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code: "export interface UIBannerProps { text?: string; }",
+          },
+          {
+            path: "packages/addons/i18n/src/ui.ts",
+            code: "// i18n-coverage-exempt: UIBanner \u2014 developer-only readout.",
+          },
+        ]).length === 0 &&
+        checkLocalizedWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code: "export interface UIBannerProps { text?: string; }",
+          },
+          {
+            path: "packages/addons/i18n/src/ui.ts",
+            code: "// i18n-coverage-exempt: UIBanner",
+          },
+        ]).length === 1,
+    },
+    {
+      name: "localized-widget-coverage-flags-stale-exemptions",
+      passed:
+        checkLocalizedWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code: "export interface UIBannerProps { size?: number; }",
+          },
+          {
+            path: "packages/addons/i18n/src/ui.ts",
+            code: "// i18n-coverage-exempt: UIBanner \u2014 no longer shows text.",
+          },
+        ]).length === 1,
+    },
+    {
       name: "inline-import-type",
       passed:
         checkInlineImportTypes([
@@ -1081,6 +1349,7 @@ export function runChecks(root = repoRoot) {
     ...checkRemovedOnRemove(sources),
     ...checkComposedEntityLiveness(sources),
     ...checkAddonContextRegistration(sources),
+    ...checkLocalizedWidgetCoverage(sources),
     ...checkInlineImportTypes(sources),
     ...checkVec2VoidMethods(sources),
     ...checkCoreEventBusKeys(sources),

@@ -42,8 +42,14 @@ export { parseExpr, DialogueExprError } from "./expr-parse.js";
 // — internal plumbing; `session.ts`/`runner.ts`/`validate.ts` import them by path.
 export { DialogueRunner } from "./runner.js";
 export type { RunnerHandlers, ResolvedChoice, RunnerEnv } from "./runner.js";
-export { IdentityI18n, interpolateDialogueText } from "./i18n.js";
-export type { I18nAdapter } from "./i18n.js";
+export {
+  IdentityI18n,
+  interpolateDialogueText,
+  isDialogueMessage,
+  isDialogueText,
+  dialogueTextFallback,
+} from "./i18n.js";
+export type { I18nAdapter, DialogueMessage, DialogueText } from "./i18n.js";
 export { DialogueSession } from "./session.js";
 export type {
   DialogueChannels,

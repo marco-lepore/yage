@@ -128,7 +128,11 @@ const { mocks } = vi.hoisted(() => {
   class MockSelect extends MockContainer {
     protected view = new MockContainer();
     protected scrollBox = { removeItems: vi.fn() };
-    protected openButton = { text: "" };
+    protected openButton = {
+      text: "",
+      visible: true,
+      getLocalBounds: () => ({ width: 180, height: 40 }),
+    };
     protected closeButton = { text: "" };
     onSelect = new MockSignal();
     value = 0;
@@ -146,9 +150,15 @@ const { mocks } = vi.hoisted(() => {
       this.addedItems = items;
       this.value = selected;
     }
-    toggle(): void {}
-    open(): void {}
-    close(): void {}
+    toggle(): void {
+      this.openButton.visible = !this.openButton.visible;
+    }
+    open(): void {
+      this.openButton.visible = false;
+    }
+    close(): void {
+      this.openButton.visible = true;
+    }
   }
 
   class MockRadioGroup extends MockContainer {
@@ -208,7 +218,7 @@ vi.mock("@pixi/ui", () => ({
   RadioGroup: mocks.MockRadioGroup,
 }));
 
-import Yoga, { Display } from "yoga-layout";
+import Yoga, { Direction, Display } from "yoga-layout";
 import { setYoga } from "../yoga-helpers.js";
 import { PixiFancyButton } from "./PixiFancyButton.js";
 import { PixiSlider } from "./PixiSlider.js";
@@ -323,6 +333,65 @@ describe("PixiUI wrappers", () => {
     });
     progress.update({ value: undefined });
     expect(progress.displayObject).toMatchObject({ progress: 0 });
+  });
+
+  it("keeps a select's layout size while its dropdown is open", () => {
+    const select = new PixiSelect({
+      closedBG: view(),
+      openBG: view(),
+      items: ["A", "B"],
+    });
+    const measure = (): number => {
+      select.yogaNode.markDirty();
+      select.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      return select.yogaNode.getComputedWidth();
+    };
+    expect(measure()).toBe(180);
+
+    // Open: the closed button is hidden and the list sits on the stage, so the
+    // Select's own bounds are empty — layout must not follow them.
+    (select.displayObject as unknown as { open(): void }).open();
+    expect(measure()).toBe(180);
+
+    select.update({ items: ["Facile", "Difficile"] });
+    expect(measure()).toBe(180);
+
+    (select.displayObject as unknown as { close(): void }).close();
+    expect(measure()).toBe(180);
+  });
+
+  it("keeps the player's row when a select's items are replaced without one", () => {
+    const select = new PixiSelect({
+      closedBG: view(),
+      openBG: view(),
+      items: ["A", "B", "C"],
+      selected: 0,
+    });
+    // The player opens the dropdown and picks the third row.
+    (select.displayObject as unknown as { value: number }).value = 2;
+
+    select.update({ items: ["X", "Y", "Z"] });
+    expect(select.displayObject).toMatchObject({ value: 2 });
+
+    // A shorter list clamps rather than dropping to the first row.
+    select.update({ items: ["X", "Y"] });
+    expect(select.displayObject).toMatchObject({ value: 1 });
+
+    // An explicit `selected` still wins.
+    select.update({ items: ["P", "Q"], selected: 0 });
+    expect(select.displayObject).toMatchObject({ value: 0 });
+  });
+
+  it("re-measures a wrapper whose text changes size", () => {
+    const button = new PixiFancyButton({ text: "A" });
+    const dirty = vi.spyOn(button.yogaNode, "markDirty");
+
+    button.update({ text: "A much longer label" });
+    expect(dirty).toHaveBeenCalled();
+
+    dirty.mockClear();
+    button.update({ disabled: true });
+    expect(dirty).not.toHaveBeenCalled();
   });
 
   it("applies item updates for selects and radio groups", () => {

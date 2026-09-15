@@ -114,6 +114,32 @@ export class LineReveal {
     if (this.done) this.finish();
   }
 
+  /**
+   * Swap the line's text under the running clock — a translation of the line
+   * on screen. The revealed grapheme count carries over (clamped to the new
+   * length), tokens at or before it count as drained, and no beat or
+   * completion fires: a finished line stays finished, an unfinished one keeps
+   * typing and completes through {@link update} as usual. A pending pause
+   * hold is dropped. No-op before the first {@link begin}.
+   */
+  rebase(parsed: ParsedText): void {
+    if (!this.parsed) return;
+    this.parsed = parsed;
+    this.cursor = this.done
+      ? parsed.length
+      : Math.min(this.cursor, parsed.length);
+    this.pauseTimer = 0;
+    let idx = 0;
+    while (
+      idx < parsed.tokens.length &&
+      parsed.tokens[idx]!.atChar <= this.cursor
+    ) {
+      idx++;
+    }
+    this.tokenIdx = idx;
+    this.tickCount = Math.floor(this.cursor);
+  }
+
   /** Hold-to-fast-forward multiplier (1 = normal, e.g. 4 while skip is held). */
   setSpeedMultiplier(m: number): void {
     this.speedMul = Math.max(1, m);

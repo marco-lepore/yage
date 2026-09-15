@@ -223,3 +223,31 @@ describe("DialogueTextView — origin provider retention", () => {
     expect(internals.originProvider).toBeUndefined();
   });
 });
+
+describe("DialogueTextView — replaceVisible", () => {
+  it("keeps the reveal progress under a translated line and fires nothing", () => {
+    const view = new DialogueTextView(CFG);
+    let completed = 0;
+    view.setRevealListener(() => completed++);
+    view.show(parseMarkup("abcdef"));
+    view.update(2);
+
+    view.replaceVisible({ text: parseMarkup("abcdefgh"), speed: 1 });
+    expect(completed).toBe(0);
+    expect(view.isRevealing()).toBe(true);
+    view.update(5);
+    expect(completed).toBe(0);
+    view.update(1);
+    expect(completed).toBe(1);
+  });
+
+  it("does nothing when no line is on screen", () => {
+    const view = new DialogueTextView(CFG);
+    let completed = 0;
+    view.setRevealListener(() => completed++);
+    view.replaceVisible({ text: parseMarkup("ab"), speed: 1 });
+    expect(view.isRevealComplete()).toBe(false);
+    view.update(5);
+    expect(completed).toBe(0);
+  });
+});

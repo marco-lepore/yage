@@ -10,6 +10,7 @@ class NoopText implements TextChannel {
   present(): void {
     this.revealListener?.(); // no-typewriter: reveal completes instantly
   }
+  replaceVisible(): void {}
   completeReveal(): void {}
   isRevealComplete(): boolean {
     return true;

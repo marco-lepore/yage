@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { IdentityI18n, interpolateDialogueText } from "./i18n.js";
+import {
+  IdentityI18n,
+  dialogueTextFallback,
+  interpolateDialogueText,
+  isDialogueMessage,
+  isDialogueText,
+} from "./i18n.js";
 
 describe("interpolateDialogueText", () => {
   it("replaces known tokens and leaves unknown ones untouched", () => {
@@ -26,9 +32,37 @@ describe("interpolateDialogueText", () => {
 });
 
 describe("IdentityI18n", () => {
-  it("returns the fallback, interpolating params", () => {
+  it("returns a string as authored, interpolating params", () => {
     const i18n = new IdentityI18n();
-    expect(i18n.t("some.key", "hi {name}", { name: "Mara" })).toBe("hi Mara");
-    expect(i18n.t(undefined, "plain")).toBe("plain");
+    expect(i18n.resolve("hi {name}", { name: "Mara" })).toBe("hi Mara");
+    expect(i18n.resolve("plain")).toBe("plain");
+  });
+
+  it("returns a message's fallback, with call values over the message's own", () => {
+    const i18n = new IdentityI18n();
+    const text = {
+      key: "greet",
+      fallback: "hi {name} ({hp})",
+      values: { name: "Mara", hp: 3 },
+    };
+    expect(i18n.resolve(text)).toBe("hi Mara (3)");
+    expect(i18n.resolve(text, { hp: 9 })).toBe("hi Mara (9)");
+  });
+});
+
+describe("DialogueText guards", () => {
+  it("recognise strings and { key, fallback } messages", () => {
+    expect(isDialogueMessage({ key: "k", fallback: "f" })).toBe(true);
+    expect(
+      isDialogueMessage({ key: "k", fallback: "f", values: { n: 1 } }),
+    ).toBe(true);
+    expect(isDialogueMessage({ key: "", fallback: "f" })).toBe(false);
+    expect(isDialogueMessage({ key: "k" })).toBe(false);
+    expect(isDialogueMessage("k")).toBe(false);
+    expect(isDialogueText("k")).toBe(true);
+    expect(isDialogueText({ key: "k", fallback: "f" })).toBe(true);
+    expect(isDialogueText(3)).toBe(false);
+    expect(dialogueTextFallback("k")).toBe("k");
+    expect(dialogueTextFallback({ key: "k", fallback: "f" })).toBe("f");
   });
 });

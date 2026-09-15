@@ -5,6 +5,8 @@
  * live behind adapters (see ../chrome, ../render, ../avatar, ./i18n).
  */
 
+import type { DialogueText } from "./i18n.js";
+
 export type NodeId = string;
 export type SpeakerId = string;
 
@@ -223,9 +225,9 @@ export interface DialogueHandle<Vars extends VarMap = VarMap> {
 export interface SayStep {
   readonly kind: "say";
   readonly speaker?: SpeakerId;
-  /** Literal text (default-locale), and/or an i18n `key`. Markup allowed. */
-  readonly text: string;
-  readonly key?: string;
+  /** Authored text, or a catalog message whose fallback is the authored
+   *  text. Markup is allowed in both. */
+  readonly text: DialogueText;
   /** Expression variant for the speaker's avatar (e.g. "happy", "angry"). */
   readonly expression?: string;
   /** Reveal-speed multiplier for this whole line (1 = base). */
@@ -242,8 +244,8 @@ export interface SayStep {
 }
 
 export interface ChoiceOption {
-  readonly text: string;
-  readonly key?: string;
+  /** Authored text or catalog message. Markup allowed. */
+  readonly text: DialogueText;
   /** Node to jump to when picked. Omit to just continue the current node. */
   readonly target?: NodeId;
   readonly condition?: Condition;
@@ -262,9 +264,9 @@ export interface ChoiceOption {
    */
   readonly presentation?: "hidden" | "disabled";
   /** Short reason shown beside a `"disabled"` row where the layout allows (e.g.
-   *  "Requires the rusty key"). Resolved through the i18n adapter, so `{token}`s
-   *  interpolate; there is no separate i18n `key` for it. */
-  readonly disabledReason?: string;
+   *  "Requires the rusty key"). Resolved through the i18n adapter like the
+   *  option text, so `{token}`s interpolate. */
+  readonly disabledReason?: DialogueText;
   readonly commands?: readonly Command[];
   /** Opaque per-choice hint bag (tone/icon/position for fancy choice UIs). */
   readonly meta?: Readonly<Record<string, unknown>>;
@@ -273,8 +275,7 @@ export interface ChoiceOption {
 export interface ChoiceStep {
   readonly kind: "choice";
   /** Optional prompt shown above the options. */
-  readonly text?: string;
-  readonly key?: string;
+  readonly text?: DialogueText;
   readonly speaker?: SpeakerId;
   readonly options: readonly ChoiceOption[];
   /** Presentation preset for the prompt/chrome (e.g. "box"/"bubble"), like a
@@ -328,10 +329,8 @@ export interface AvatarRef {
  * never repeat it. A key/id mismatch is therefore impossible to write.
  */
 export interface SpeakerDef {
-  /** Display name (literal). */
-  readonly name: string;
-  /** i18n key for the name. */
-  readonly nameKey?: string;
+  /** Display name: authored text or catalog message. */
+  readonly name: DialogueText;
   /** Name-plate tint (0xRRGGBB). */
   readonly color?: number;
   readonly avatar?: AvatarRef;

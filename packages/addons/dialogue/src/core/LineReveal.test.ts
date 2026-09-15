@@ -317,3 +317,59 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     expect(tickIndexes(beats())).toEqual([]); // begin() reveals nothing yet
   });
 });
+
+describe("LineReveal — rebase (translation of the line on screen)", () => {
+  it("keeps the revealed count and keeps typing on the new text without re-firing beats", () => {
+    const { reveal, completed } = clock(1);
+    const beats: RevealBeat[] = [];
+    reveal.setBeatListener((b) => beats.push(b));
+    reveal.begin(parseMarkup("abcdef")); // 6 graphemes
+    reveal.update(3);
+    expect(beats.filter((b) => b.kind === "tick")).toHaveLength(3);
+
+    // Same line, translated: 8 graphemes, with a marker the cursor has passed.
+    reveal.rebase(parseMarkup("ab[wave/]cdefgh"));
+    expect(reveal.revealed).toBe(3);
+    expect(reveal.isComplete()).toBe(false);
+    expect(beats.filter((b) => b.kind === "marker")).toHaveLength(0);
+    expect(completed()).toBe(0);
+
+    reveal.update(1);
+    expect(beats.filter((b) => b.kind === "tick").map((b) => b.index)).toEqual([
+      0, 1, 2, 3,
+    ]);
+    reveal.update(4);
+    expect(completed()).toBe(1);
+    expect(reveal.revealed).toBe(8);
+  });
+
+  it("clamps to a shorter translation and completes on the next update, once", () => {
+    const { reveal, completed } = clock(1);
+    reveal.begin(parseMarkup("abcdef"));
+    reveal.update(5);
+    reveal.rebase(parseMarkup("ab"));
+    expect(reveal.revealed).toBe(2);
+    expect(completed()).toBe(0);
+    reveal.update(0);
+    expect(completed()).toBe(1);
+  });
+
+  it("a finished line stays finished and fires no second completion", () => {
+    const { reveal, completed } = clock(1);
+    reveal.begin(parseMarkup("ab"));
+    reveal.update(2);
+    expect(completed()).toBe(1);
+    reveal.rebase(parseMarkup("abcdef"));
+    expect(reveal.isComplete()).toBe(true);
+    expect(reveal.revealed).toBe(6);
+    reveal.update(10);
+    expect(completed()).toBe(1);
+  });
+
+  it("is a no-op before the first begin", () => {
+    const { reveal, completed } = clock(1);
+    reveal.rebase(parseMarkup("ab"));
+    expect(reveal.isComplete()).toBe(false);
+    expect(completed()).toBe(0);
+  });
+});
