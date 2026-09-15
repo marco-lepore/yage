@@ -1,5 +1,19 @@
 # @yagejs/tilemap
 
+## 0.11.1
+
+### Patch Changes
+
+- [#367](https://github.com/marco-lepore/yage/pull/367) [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Support editing tilemaps in Tiled with automatic preview refresh.
+
+  Return cleanup completion for a map, its external tilesets and its counted images before the same map can reload.
+
+  Release images and parsed tilesets acquired by a failed map load so a corrected map reads fresh assets while preserving other owners' image references.
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8)]:
+  - @yagejs/core@0.11.1
+  - @yagejs/renderer@0.11.1
+
 ## 0.11.0
 
 ### Minor Changes

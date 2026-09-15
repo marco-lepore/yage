@@ -1,5 +1,16 @@
 # @yagejs-tools/editor
 
+## 0.1.1
+
+### Patch Changes
+
+- [#363](https://github.com/marco-lepore/yage/pull/363) [`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Show authored collider footprints in the level editor.
+  - Use collider footprints for invisible placements, including picking, bounds, framing and transform handles. Distinguish sensors and arrange remaining component icons around nearby groups, editing controls and viewport edges with consistent hover and click targets.
+
+- [#367](https://github.com/marco-lepore/yage/pull/367) [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Support editing tilemaps in Tiled with automatic preview refresh.
+
+  Add Open in Tiled beside local map assets, with native launchers for macOS, Windows and Linux and optional source-file mappings. Automatically refresh configured assets after external saves while preserving level edits, selection and undo history.
+
 ## 0.1.0
 
 ### Minor Changes
