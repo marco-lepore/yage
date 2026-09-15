@@ -55,7 +55,8 @@ export async function waitForInspector(page: Page): Promise<void> {
     return { origin: performance.timeOrigin, href: location.href };
   });
   try {
-    await page.evaluate(() => window.__yage__?.ready);
+    const handle = await page.evaluateHandle(() => window.__yage__?.ready);
+    await handle.dispose();
   } catch (error) {
     const stamp = new Date().toISOString();
     const after = await page
