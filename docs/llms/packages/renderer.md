@@ -73,7 +73,7 @@ new RendererPlugin({
 
 Registers `RendererKey`, `SceneRenderTreeProviderKey`, and the cross-package `RendererAdapterKey` (from `@yagejs/core`, consumed by `@yagejs/input`) in `EngineContext`, plus a `beforeEnter` scene hook that materializes a per-scene `SceneRenderTree` (accessible via the scene-scoped `SceneRenderTreeKey`).
 
-The adapter contract (`RendererAdapter` in `@yagejs/core`) carries `canvas`, `canvasToVirtual`, `hitTestUI`, and the optional `visibleVirtualRect` — the on-screen region of virtual space CLAMPED to the declared virtual rect. Renderer-agnostic overlays (e.g. `@yagejs-addons/virtual-controls`) lay out against `visibleVirtualRect`, NOT against `canvasToVirtual`-mapped canvas corners: under letterbox the corners map into the masked bars, where drawn content is clipped but pointer input still registers.
+The adapter contract (`RendererAdapter` in `@yagejs/core`) carries `canvas`, `canvasToVirtual`, `hitTestUI`, `hitTestUIPath` (the same test, reporting the container chain it crossed), `dispatchPointerEvent` (deliver a pointer event at a virtual-space point, which `inspector.pointer` drives the user interface through), and the optional `visibleVirtualRect` — the on-screen region of virtual space CLAMPED to the declared virtual rect. Renderer-agnostic overlays (e.g. `@yagejs-addons/virtual-controls`) lay out against `visibleVirtualRect`, NOT against `canvasToVirtual`-mapped canvas corners: under letterbox the corners map into the masked bars, where drawn content is clipped but pointer input still registers.
 
 ## Responsive fit
 

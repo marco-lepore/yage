@@ -1,6 +1,27 @@
 import { ServiceKey } from "./EngineContext.js";
 
 /**
+ * What a hit test found under a point: the topmost interactive container and
+ * its ancestors, innermost first, plus whether the chain crosses a surface
+ * marked via `markPointerConsumeContainer`.
+ *
+ * The containers are renderer-owned objects, opaque to the consumer. Compare
+ * them by identity against display objects read elsewhere — an Inspector
+ * user-interface snapshot, for one — rather than reading fields off them.
+ */
+export interface RendererUIHit {
+  readonly path: readonly object[];
+  readonly consumed: boolean;
+}
+
+/**
+ * One synthetic pointer event: a press, a release, or a move between the two.
+ * Named in pointer terms rather than in any one platform's event names, which
+ * the renderer maps to.
+ */
+export type RendererPointerEventType = "down" | "up" | "move";
+
+/**
  * Cross-package contract for "something that owns a canvas and can map
  * canvas-relative CSS pixels into virtual-space pixels".
  *
@@ -31,6 +52,28 @@ export interface RendererAdapter {
    * requiring per-component handler boilerplate.
    */
   hitTestUI?(x: number, y: number): boolean;
+  /**
+   * The same hit test as {@link RendererAdapter.hitTestUI}, reporting what was
+   * hit rather than only whether the pointer is claimed. `null` when nothing
+   * interactive sits under `(x, y)`.
+   */
+  hitTestUIPath?(x: number, y: number): RendererUIHit | null;
+  /**
+   * Deliver a pointer event at `point`, in virtual-space pixels, through the
+   * renderer's own event system, so hit testing, stacking order and clipping
+   * apply as they do for a person clicking. `button` says which mouse button
+   * a press or a release carries; a move carries no button change and omits
+   * it, and the renderer reports whatever buttons its synthetic pointer still
+   * holds.
+   *
+   * Optional. A renderer that cannot deliver yet — before it has drawn a
+   * frame, for one — throws with a message naming what to do.
+   */
+  dispatchPointerEvent?(
+    type: RendererPointerEventType,
+    point: { x: number; y: number },
+    button?: 0 | 1 | 2,
+  ): void;
   /**
    * The on-screen region of virtual space, CLAMPED to the declared virtual
    * rect — the area a screen-space overlay may lay out in and expect to be

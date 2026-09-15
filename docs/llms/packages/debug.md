@@ -124,6 +124,10 @@ inspector.getEntityCount(); // live entities across the scene stack, no snapshot
 inspector.time.isAdvancing(); // true if a real frame ticked within the last 250ms
 ```
 
+Every `inspector.input` verb writes engine input state and reaches no
+`@yagejs/ui` element, so none of them clicks a button. `inspector.pointer`
+does — see "Clicking the user interface".
+
 `events.waitFor(pattern, { withinFrames?, source? })` resolves with the earliest
 retained match without consuming it. Repeated waits can return the same entry.
 Clear the log before the action when the assertion needs a new occurrence:
@@ -189,6 +193,55 @@ timestamps from the same clock.
 `getInputState()` returns the input snapshot on its own — `{ keys, actions, mouse, pointers, gamepad }`, the same object `snapshot().input` carries. Use it to read what is held without paying for a full `snapshot()`, which walks every scene and entity. With no `InputPlugin` active it returns the empty shape rather than throwing.
 
 `time.isAdvancing(withinMs = 250)` reports whether the game loop actually ticked within the last `withinMs` milliseconds, independent of `time.isFrozen()`. A frozen clock that isn't being stepped reads `isAdvancing() === false`, but a manual `time.step`/`stepUntil`/`stepAsync` fires a real tick, so `isAdvancing()` reads `true` for `withinMs` after one. A game that has stalled without being frozen — a hung `await`, a runaway synchronous loop — also reads `false`. `isFrozen()` alone can't tell those two cases apart; `isAdvancing()` exists for that.
+
+### Clicking the user interface (`inspector.pointer`)
+
+`inspector.input`'s pointer verbs write `InputManager` state. They drive
+gameplay input — action maps, `isPressed`, pointer position — and never reach
+a `@yagejs/ui` primitive, which receives clicks as renderer events on its own
+container. A scenario calling `input.pointerDown` over a button gets no
+`onClick`.
+
+`inspector.pointer` dispatches real DOM pointer events at the renderer's
+canvas, so the renderer hit-tests and delivers them exactly as it does for a
+person clicking. Stacking order, a disabled button's pointer mode, clipping
+and the auto-consume marking all apply.
+
+```ts
+const surface = inspector.snapshot().scenes[0]?.ui?.root;
+const button = surface?.children[0];
+const hit = inspector.pointer.click(button.id); // or click({ x, y })
+hit.path.some((node) => node.type === "UIButton"); // true
+```
+
+- `click`, `down`, `up` and `move` dispatch; `hitTest` resolves and reports
+  without dispatching. `down` and `up` take `{ button }`, left by default;
+  `move` takes none and carries whichever button a `down` left held.
+- The target is a `UINodeSnapshot.id`, resolved to the centre of that node's
+  `bounds`, or a virtual-space point. `bounds` is the snapshot's on-screen box;
+  `layout` beside it is Yoga's parent-relative box and locates nothing on the
+  canvas.
+- The returned hit carries `path` — every node the chain crosses, innermost
+  first, empty when the point reached none — plus the `point` used and
+  `consumed`. A button's label is a node of its own and sits on top of the
+  button, so search `path` for the element you mean rather than reading its
+  first entry.
+- One primary mouse pointer. A touch pointer or a second finger stays with
+  `inspector.input`, which takes a pointer id and type and reaches no button.
+- Requires `RendererPlugin`. The four verbs that dispatch also need one rendered
+  frame; `hitTest` does not. The renderer hit-tests against the last object
+  drawn and drops every event until one exists. Each guard throws and names what
+  to do.
+
+Timing runs two ways, and both matter to an assertion. The button's `onClick`
+has already run when the call returns, because delivery is synchronous. Engine
+input state reflects the press at the next frame's drain, so step one frame
+before asserting on an action.
+
+```ts
+inspector.pointer.click(button.id); // onClick has run
+inspector.time.step(1); // the action map has now seen the press
+```
 
 ### Screenshots (`inspector.capture`)
 

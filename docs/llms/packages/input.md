@@ -341,6 +341,8 @@ inside the frame (a component that records `isJustPressed("jump")` in its
 
 Synthetic injection bypasses the queue and applies state synchronously — tests using `fireKeyDown` / `firePointerDown` / `fireGamepadButton` read updated state immediately. Tests that drive `dispatchEvent` directly need an explicit `manager._drainInputQueue()` (or a frame step) before assertions.
 
+Synthetic injection also reaches no `@yagejs/ui` element: it writes manager state, while a UI primitive receives clicks as renderer events on its own container. `inspector.pointer` (see the debug package) asks the renderer to deliver a real pointer event, which does reach one.
+
 Window blur and page hide release held keyboard, gamepad, and pointer input
 through the normal release paths, then discard browser events queued before
 the focus boundary. Action-source holds are independent and remain held until

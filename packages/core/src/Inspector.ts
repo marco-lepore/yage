@@ -21,6 +21,12 @@ import {
   type InternalRandomService,
   type RandomService,
 } from "./Random.js";
+import {
+  RendererAdapterKey,
+  type RendererAdapter,
+  type RendererPointerEventType,
+  type RendererUIHit,
+} from "./RendererAdapter.js";
 import { SceneTimeKey } from "./SceneTime.js";
 import {
   assertDriveMaxFrames,
@@ -28,6 +34,27 @@ import {
   driveFramesUsed,
   driveWhileHolding,
 } from "./internal/driveSupport.js";
+
+/**
+ * The renderer-adapter members {@link Inspector.pointer} calls. A foreign
+ * adapter that implements fewer is named the missing one by the guard.
+ */
+const POINTER_ADAPTER_MEMBERS = [
+  "canvasToVirtual",
+  "hitTestUIPath",
+  "dispatchPointerEvent",
+] as const;
+
+/**
+ * Rounds one virtual-space bound to a thousandth of a pixel. The matrix round
+ * trip that produces it leaves noise in a float's last digits, and that noise
+ * changes with the canvas size, so unrounded boxes make the snapshot differ
+ * between two hosts with nothing moved. A thousandth of a pixel is far below
+ * the accuracy a click needs. Adding zero folds a rounded `-0` into `0`.
+ */
+function roundBound(value: number): number {
+  return Math.round(value * 1000) / 1000 + 0;
+}
 
 /**
  * Thrown internally by a drive's frame-budget guard once `maxFrames` is
@@ -70,6 +97,61 @@ export interface InspectorPointerOpts {
   id?: number;
   type?: "mouse" | "pen" | "touch";
   isPrimary?: boolean;
+}
+
+/**
+ * What {@link Inspector.pointer} aims at: a {@link UINodeSnapshot.id}, whose
+ * `bounds` centre becomes the point, or a virtual-space point itself.
+ */
+export type InspectorPointerTarget = string | { x: number; y: number };
+
+/** Which mouse button `click`, `down` and `up` carry. Left (`0`) by default. */
+export interface InspectorPointerButtonOpts {
+  button?: 0 | 1 | 2;
+}
+
+/**
+ * What the hit test found under a pointer verb's point, read before any event
+ * is dispatched.
+ */
+export interface InspectorPointerHit {
+  /**
+   * Every user-interface node the hit chain crosses, innermost first, and
+   * empty when the point reached no node. A button's label is a node in its
+   * own right and sits on top of the button, so the innermost node under a
+   * labelled button is its label. Search the chain for the element you mean:
+   *
+   * ```ts
+   * expect(hit.path.some((node) => node.type === "UIButton")).toBe(true);
+   * ```
+   */
+  path: ReadonlyArray<{ id: string; type: string }>;
+  /**
+   * The virtual-space point the verb aimed at. A `hitTest` reports it having
+   * dispatched nothing there.
+   */
+  point: { x: number; y: number };
+  /** Whether the hit chain crosses a pointer-consume surface. */
+  consumed: boolean;
+}
+
+/** One user-interface element, paired with the snapshot identity it carries. */
+interface UIIndexEntry {
+  id: string;
+  type: string;
+  bounds: UINodeSnapshot["bounds"];
+  displayObject: object | undefined;
+}
+
+/** A renderer adapter carrying the members the pointer verbs require. */
+type PointerCapableAdapter = RendererAdapter &
+  Required<Pick<RendererAdapter, (typeof POINTER_ADAPTER_MEMBERS)[number]>>;
+
+/** A resolved pointer target: where to click, and what the renderer says is there. */
+interface ResolvedPointerTarget {
+  adapter: PointerCapableAdapter;
+  point: { x: number; y: number };
+  hit: InspectorPointerHit;
 }
 
 interface InputManagerLike {
@@ -124,6 +206,15 @@ interface UIElementLike {
       width: number;
       height: number;
     };
+  };
+  /**
+   * The element's own display container, matched structurally so core keeps
+   * no dependency on `@yagejs/ui`. Mapping a point through it is the only way
+   * to place the element on the canvas: Yoga reports a parent-relative box,
+   * and the surface anchor is applied to the container rather than to Yoga.
+   */
+  displayObject?: {
+    toGlobal(point: { x: number; y: number }): { x: number; y: number };
   };
 }
 
@@ -257,7 +348,23 @@ export interface WorldEntitySnapshot {
 export interface UINodeSnapshot {
   id: string;
   type: string;
+  /**
+   * Yoga's computed box in pixels, relative to the parent node. Two surfaces
+   * anchored to opposite screen corners report the same numbers, so this
+   * cannot address a point on the canvas — read {@link UINodeSnapshot.bounds}
+   * for that.
+   */
   layout: { x: number; y: number; width: number; height: number };
+  /**
+   * The element's box in virtual-space pixels: its container's top-left and
+   * bottom-right corners mapped out of the renderer and through the
+   * canvas-to-virtual conversion, rounded to a thousandth of a pixel so the
+   * same box reads the same at any canvas size. `null` when no renderer
+   * adapter is registered, or for an element that owns no container. A
+   * rotated element reports the axis-aligned box of those two corners, which
+   * is approximate.
+   */
+  bounds: { x: number; y: number; width: number; height: number } | null;
   children: UINodeSnapshot[];
   state: unknown | null;
 }
@@ -489,6 +596,12 @@ export interface InspectorDriveContext {
     opts?: InspectorDriveUntilOptions,
   ): Promise<number>;
   readonly input: InspectorDriveInput;
+  /**
+   * Clicks that reach `@yagejs/ui` elements, which {@link input} never does.
+   * Dispatching spends no frame, so these are the same verbs
+   * {@link Inspector.pointer} carries, handed through unchanged.
+   */
+  readonly pointer: Inspector["pointer"];
   readonly events: Inspector["events"];
   /** Screenshots into the result, resolving with a PNG data URL. */
   capture(label?: string): Promise<string>;
@@ -829,6 +942,72 @@ export class Inspector {
     },
   };
 
+  /**
+   * Pointer input that reaches `@yagejs/ui` primitives, by asking the
+   * renderer to deliver real pointer events. The renderer's own event system
+   * hit-tests and delivers them, so stacking order, a disabled button's
+   * pointer mode and clipping all apply exactly as they do for a person
+   * clicking.
+   *
+   * Distinct from {@link Inspector.input}, which writes `InputManager` state
+   * and never reaches a user-interface element. The two also differ in
+   * timing: a button's `onClick` has already run when a verb here returns,
+   * because delivery is synchronous, while engine input state reflects the
+   * press at the next frame's drain. Step one frame before asserting on
+   * action state.
+   *
+   * Requires `RendererPlugin`. The four verbs that dispatch also require at
+   * least one rendered frame; `hitTest` does not.
+   *
+   * These verbs drive one primary mouse pointer. A second finger, a touch or
+   * a pen pointer is only reachable through {@link Inspector.input}, whose
+   * verbs take a pointer id and type and write engine state without going
+   * near the user interface.
+   *
+   * ```ts
+   * const hit = inspector.pointer.click("entity-7:UISurface:0/2");
+   * expect(hit.path.some((node) => node.type === "UIButton")).toBe(true);
+   * ```
+   */
+  readonly pointer = {
+    /** Resolves `target` and reports what is under it, dispatching nothing. */
+    hitTest: (target: InspectorPointerTarget): InspectorPointerHit =>
+      this.resolvePointerTarget(target, "hitTest").hit,
+    /** Presses a mouse button, left unless `opts` says otherwise. */
+    down: (
+      target: InspectorPointerTarget,
+      opts?: InspectorPointerButtonOpts,
+    ): InspectorPointerHit =>
+      this.dispatchPointer("down", "down", target, opts?.button ?? 0),
+    /** Releases a mouse button, left unless `opts` says otherwise. */
+    up: (
+      target: InspectorPointerTarget,
+      opts?: InspectorPointerButtonOpts,
+    ): InspectorPointerHit =>
+      this.dispatchPointer("up", "up", target, opts?.button ?? 0),
+    /**
+     * Moves the pointer, which drives hover state. Takes no button: a move
+     * presses and releases nothing, and carries whichever buttons an earlier
+     * {@link down} left held.
+     */
+    move: (target: InspectorPointerTarget): InspectorPointerHit =>
+      this.dispatchPointer("move", "move", target),
+    /**
+     * Presses and releases at one point, which is what a `UIButton` requires
+     * to run its `onClick`.
+     */
+    click: (
+      target: InspectorPointerTarget,
+      opts?: InspectorPointerButtonOpts,
+    ): InspectorPointerHit => {
+      const resolved = this.resolvePointerTarget(target, "click");
+      const button = opts?.button ?? 0;
+      resolved.adapter.dispatchPointerEvent("down", resolved.point, button);
+      resolved.adapter.dispatchPointerEvent("up", resolved.point, button);
+      return resolved.hit;
+    },
+  };
+
   readonly events = {
     getLog: (): EventLogEntry[] =>
       this.iterateLog().map(({ entry }) => ({ ...entry })),
@@ -1152,6 +1331,7 @@ export class Inspector {
       step,
       until,
       input,
+      pointer: this.pointer,
       events: this.events,
       capture: async (label) => {
         // A data URL rather than `capture.png()`'s bytes: it reads out of the
@@ -1777,8 +1957,15 @@ export class Inspector {
     return facets;
   }
 
-  private buildUISnapshot(scene: Scene): UITreeSnapshot | null {
-    const roots = [...scene.getEntities()]
+  /**
+   * Every `UISurface` root in the scene, each with the id the snapshot and the
+   * pointer verbs both address it by. Matched by class name plus a `root`
+   * field, so core imports nothing from `@yagejs/ui`.
+   */
+  private getUISurfaceRoots(
+    scene: Scene,
+  ): Array<{ root: UIElementLike; id: string }> {
+    return [...scene.getEntities()]
       .filter((entity) => !entity.isDestroyed)
       .flatMap((entity) =>
         [...entity.getAll()]
@@ -1787,13 +1974,18 @@ export class Inspector {
               component.constructor.name === "UISurface" &&
               "root" in (component as object),
           )
-          .map((component, index) =>
-            this.buildUINodeSnapshot(
-              (component as Component & { root: UIElementLike }).root,
-              `entity-${entity.id}:UISurface:${index}`,
-            ),
-          ),
+          .map((component, index) => ({
+            root: (component as Component & { root: UIElementLike }).root,
+            id: `entity-${entity.id}:UISurface:${index}`,
+          })),
       );
+  }
+
+  private buildUISnapshot(scene: Scene): UITreeSnapshot | null {
+    const adapter = this.engine.context.tryResolve(RendererAdapterKey);
+    const roots = this.getUISurfaceRoots(scene).map(({ root, id }) =>
+      this.buildUINodeSnapshot(root, id, adapter),
+    );
 
     if (roots.length === 0) return null;
     if (roots.length === 1) {
@@ -1805,29 +1997,189 @@ export class Inspector {
         id: `${this.getSceneId(scene)}:ui`,
         type: "UIRoot",
         layout: { x: 0, y: 0, width: 0, height: 0 },
+        bounds: null,
         children: roots,
         state: null,
       },
     };
   }
 
-  private buildUINodeSnapshot(node: UIElementLike, id: string): UINodeSnapshot {
+  private buildUINodeSnapshot(
+    node: UIElementLike,
+    id: string,
+    adapter: RendererAdapter | undefined,
+  ): UINodeSnapshot {
     const layout = node.yogaNode?.getComputedLayout();
     const children = (node.children ?? []).map((child, index) =>
-      this.buildUINodeSnapshot(child, `${id}/${index}`),
+      this.buildUINodeSnapshot(child, `${id}/${index}`, adapter),
     );
+    const size = {
+      width: layout?.width ?? 0,
+      height: layout?.height ?? 0,
+    };
     return {
       id,
       type: node.constructor.name,
       layout: {
         x: layout?.left ?? 0,
         y: layout?.top ?? 0,
-        width: layout?.width ?? 0,
-        height: layout?.height ?? 0,
+        ...size,
       },
+      bounds: this.buildUIBounds(node, size, adapter),
       children,
       state: null,
     };
+  }
+
+  /**
+   * Maps the element's local box out of the renderer and into virtual space.
+   * An adapter without `canvasToVirtual` reports canvas CSS pixels, which the
+   * {@link RendererAdapter} contract says equal virtual pixels only while the
+   * canvas is at its virtual size.
+   *
+   * Values are rounded, so the same box reads the same at any canvas size and
+   * a snapshot diff stays meaningful. See {@link roundBound}.
+   */
+  private buildUIBounds(
+    node: UIElementLike,
+    size: { width: number; height: number },
+    adapter: RendererAdapter | undefined,
+  ): UINodeSnapshot["bounds"] {
+    const displayObject = node.displayObject;
+    if (!adapter || !displayObject) return null;
+    const toVirtual = (point: {
+      x: number;
+      y: number;
+    }): { x: number; y: number } => {
+      const canvas = displayObject.toGlobal(point);
+      return adapter.canvasToVirtual?.(canvas.x, canvas.y) ?? canvas;
+    };
+    const start = toVirtual({ x: 0, y: 0 });
+    const end = toVirtual({ x: size.width, y: size.height });
+    return {
+      x: roundBound(Math.min(start.x, end.x)),
+      y: roundBound(Math.min(start.y, end.y)),
+      width: roundBound(Math.abs(end.x - start.x)),
+      height: roundBound(Math.abs(end.y - start.y)),
+    };
+  }
+
+  /**
+   * Every user-interface element in the scene stack, flattened, each carrying
+   * the id the snapshot gives it. Both lookups the pointer verbs need come
+   * from this one walk: an id to a point, and a hit container back to an id.
+   */
+  private buildUIIndex(adapter: PointerCapableAdapter): UIIndexEntry[] {
+    const entries: UIIndexEntry[] = [];
+    const visit = (node: UIElementLike, id: string): void => {
+      const layout = node.yogaNode?.getComputedLayout();
+      entries.push({
+        id,
+        type: node.constructor.name,
+        bounds: this.buildUIBounds(
+          node,
+          { width: layout?.width ?? 0, height: layout?.height ?? 0 },
+          adapter,
+        ),
+        displayObject: node.displayObject,
+      });
+      for (const [index, child] of (node.children ?? []).entries()) {
+        visit(child, `${id}/${index}`);
+      }
+    };
+    for (const scene of this.engine.scenes.all) {
+      for (const { root, id } of this.getUISurfaceRoots(scene)) visit(root, id);
+    }
+    return entries;
+  }
+
+  /**
+   * The adapter the pointer verbs need: it converts the bounds they aim by,
+   * reports what a point hits, and delivers the event.
+   */
+  private requirePointerAdapter(call: string): PointerCapableAdapter {
+    const adapter = this.engine.context.tryResolve(RendererAdapterKey);
+    if (!adapter) {
+      throw new Error(
+        `Inspector.pointer.${call}() requires RendererPlugin to be active.`,
+      );
+    }
+    const missing = POINTER_ADAPTER_MEMBERS.filter((name) => !adapter[name]);
+    if (missing.length > 0) {
+      throw new Error(
+        `Inspector.pointer.${call}(): the registered renderer adapter implements no ${missing.join(
+          " and no ",
+        )}. The pointer verbs need ${POINTER_ADAPTER_MEMBERS.join(
+          ", ",
+        )}; RendererPlugin implements all three.`,
+      );
+    }
+    return adapter as PointerCapableAdapter;
+  }
+
+  private resolvePointerTarget(
+    target: InspectorPointerTarget,
+    call: string,
+  ): ResolvedPointerTarget {
+    const adapter = this.requirePointerAdapter(call);
+    const index = this.buildUIIndex(adapter);
+    const point =
+      typeof target === "string"
+        ? this.pointerTargetCentre(target, call, index)
+        : { x: target.x, y: target.y };
+    const found = adapter.hitTestUIPath(point.x, point.y);
+    return {
+      adapter,
+      point,
+      hit: this.describePointerHit(point, found, index),
+    };
+  }
+
+  private pointerTargetCentre(
+    id: string,
+    call: string,
+    index: readonly UIIndexEntry[],
+  ): { x: number; y: number } {
+    const entry = index.find((candidate) => candidate.id === id);
+    if (!entry) {
+      throw new Error(
+        `Inspector.pointer.${call}(): no UI node with id "${id}". Read the ids from inspector.snapshot().scenes[].ui. A scene holding several surfaces is reported under a wrapper node that owns no element and cannot be clicked; aim at one of its children.`,
+      );
+    }
+    if (!entry.bounds) {
+      throw new Error(
+        `Inspector.pointer.${call}(): UI node "${id}" has no bounds. Pass a point instead.`,
+      );
+    }
+    return {
+      x: entry.bounds.x + entry.bounds.width / 2,
+      y: entry.bounds.y + entry.bounds.height / 2,
+    };
+  }
+
+  private describePointerHit(
+    point: { x: number; y: number },
+    found: RendererUIHit | null,
+    index: readonly UIIndexEntry[],
+  ): InspectorPointerHit {
+    const path = (found?.path ?? [])
+      .map((container) =>
+        index.find((entry) => entry.displayObject === container),
+      )
+      .filter((entry) => entry !== undefined)
+      .map((entry) => ({ id: entry.id, type: entry.type }));
+    return { path, point, consumed: found?.consumed ?? false };
+  }
+
+  private dispatchPointer(
+    call: string,
+    type: RendererPointerEventType,
+    target: InspectorPointerTarget,
+    button?: 0 | 1 | 2,
+  ): InspectorPointerHit {
+    const resolved = this.resolvePointerTarget(target, call);
+    resolved.adapter.dispatchPointerEvent(type, resolved.point, button);
+    return resolved.hit;
   }
 
   private buildCameraSnapshot(): CameraSnapshot | null {

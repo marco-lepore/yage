@@ -25,6 +25,7 @@ import {
   SceneManagerKey,
 } from "./EngineContext.js";
 import { _resetEntityIdCounter } from "./Entity.js";
+import { RendererAdapterKey, type RendererAdapter } from "./RendererAdapter.js";
 
 const SystemSchedulerKey = new ServiceKey<SystemScheduler>("systemScheduler");
 
@@ -41,6 +42,71 @@ class Health extends Component {
     super();
   }
 }
+
+interface FakeUIElement {
+  yogaNode: {
+    getComputedLayout(): {
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+    };
+  };
+  displayObject?: {
+    toGlobal(point: { x: number; y: number }): { x: number; y: number };
+  };
+  children: FakeUIElement[];
+}
+
+/** Classes whose names the snapshot reports as a node's `type`. */
+const fakeElementClasses = {
+  UIButton: class UIButton {
+    readonly uiElement = true;
+  },
+  UIPanel: class UIPanel {
+    readonly uiElement = true;
+  },
+};
+
+/**
+ * A UI element whose container sits at `origin` in canvas pixels and draws at
+ * `scale`. `layout` stays parent-relative, as Yoga reports it, so a test can
+ * see the two disagree.
+ */
+function fakeUIElement(opts: {
+  layout: { left: number; top: number; width: number; height: number };
+  origin?: { x: number; y: number };
+  scale?: number;
+  children?: FakeUIElement[];
+  type?: keyof typeof fakeElementClasses;
+}): FakeUIElement {
+  const origin = opts.origin;
+  const scale = opts.scale ?? 1;
+  const shape = {
+    yogaNode: { getComputedLayout: () => opts.layout },
+    ...(origin
+      ? {
+          displayObject: {
+            toGlobal: (point: { x: number; y: number }) => ({
+              x: origin.x + point.x * scale,
+              y: origin.y + point.y * scale,
+            }),
+          },
+        }
+      : {}),
+    children: opts.children ?? [],
+  };
+  const typed = opts.type ? new fakeElementClasses[opts.type]() : {};
+  return Object.assign(typed, shape) as FakeUIElement;
+}
+
+/** A canvas twice virtual size, offset by a 40 x 20 letterbox bar. */
+const letterboxAdapter = {
+  canvasToVirtual: (x: number, y: number) => ({
+    x: (x - 40) / 2,
+    y: (y - 20) / 2,
+  }),
+} as unknown as RendererAdapter;
 
 class TestSystem extends System {
   readonly phase = Phase.Update;
@@ -140,6 +206,177 @@ describe("Inspector", () => {
     if (!sceneSnapshot) throw new Error("Expected one scene snapshot.");
     expect(sceneSnapshot.ui?.root.id).toBe(`${sceneSnapshot.id}:ui`);
     expect(sceneSnapshot.ui?.root.children).toHaveLength(2);
+  });
+
+  it("reports UI bounds in virtual space while layout stays parent-relative", async () => {
+    const { inspector, scenes, ctx } = setup();
+    ctx.register(RendererAdapterKey, letterboxAdapter);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+
+    // A surface anchored away from the top-left: Yoga still reports (0, 0)
+    // for the root, because the anchor moves the container instead.
+    const button = fakeUIElement({
+      layout: { left: 20, top: 10, width: 60, height: 30 },
+      origin: { x: 440, y: 320 },
+      scale: 2,
+    });
+    const rootElement = fakeUIElement({
+      layout: { left: 0, top: 0, width: 200, height: 100 },
+      origin: { x: 400, y: 300 },
+      scale: 2,
+      children: [button],
+    });
+    class UISurface extends Component {
+      readonly root = rootElement;
+    }
+    scene.spawn("hud").add(new UISurface());
+
+    const root = inspector.snapshot().scenes[0]?.ui?.root;
+    if (!root) throw new Error("Expected a UI snapshot.");
+    expect(root.layout).toEqual({ x: 0, y: 0, width: 200, height: 100 });
+    expect(root.bounds).toEqual({ x: 180, y: 140, width: 200, height: 100 });
+
+    const child = root.children[0];
+    expect(child?.layout).toEqual({ x: 20, y: 10, width: 60, height: 30 });
+    expect(child?.bounds).toEqual({ x: 200, y: 150, width: 60, height: 30 });
+  });
+
+  it("keeps a child's UI bounds inside its parent's", async () => {
+    const { inspector, scenes, ctx } = setup();
+    ctx.register(RendererAdapterKey, letterboxAdapter);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+
+    const child = fakeUIElement({
+      layout: { left: 20, top: 10, width: 60, height: 30 },
+      origin: { x: 440, y: 320 },
+      scale: 2,
+    });
+    class UISurface extends Component {
+      readonly root = fakeUIElement({
+        layout: { left: 0, top: 0, width: 200, height: 100 },
+        origin: { x: 400, y: 300 },
+        scale: 2,
+        children: [child],
+      });
+    }
+    scene.spawn("hud").add(new UISurface());
+
+    const root = inspector.snapshot().scenes[0]?.ui?.root;
+    const parent = root?.bounds;
+    const inner = root?.children[0]?.bounds;
+    if (!parent || !inner) throw new Error("Expected bounds on both nodes.");
+    expect(inner.x).toBeGreaterThanOrEqual(parent.x);
+    expect(inner.y).toBeGreaterThanOrEqual(parent.y);
+    expect(inner.x + inner.width).toBeLessThanOrEqual(parent.x + parent.width);
+    expect(inner.y + inner.height).toBeLessThanOrEqual(
+      parent.y + parent.height,
+    );
+  });
+
+  it("reports the same UI bounds however deeply the element is nested", async () => {
+    const buttonBounds = async (wrapped: boolean) => {
+      const { inspector, scenes, ctx } = setup();
+      ctx.register(RendererAdapterKey, letterboxAdapter);
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+
+      const button = fakeUIElement({
+        layout: { left: 20, top: 10, width: 60, height: 30 },
+        origin: { x: 440, y: 320 },
+        scale: 2,
+      });
+      // The wrapper adds a layout level without moving anything on screen.
+      const wrapper = fakeUIElement({
+        layout: { left: 5, top: 5, width: 100, height: 50 },
+        origin: { x: 410, y: 310 },
+        scale: 2,
+        children: [button],
+      });
+      class UISurface extends Component {
+        readonly root = fakeUIElement({
+          layout: { left: 0, top: 0, width: 200, height: 100 },
+          origin: { x: 400, y: 300 },
+          scale: 2,
+          children: wrapped ? [wrapper] : [button],
+        });
+      }
+      scene.spawn("hud").add(new UISurface());
+
+      const root = inspector.snapshot().scenes[0]?.ui?.root;
+      const node = wrapped ? root?.children[0]?.children[0] : root?.children[0];
+      return node?.bounds;
+    };
+
+    expect(await buttonBounds(true)).toEqual(await buttonBounds(false));
+  });
+
+  it("reports the same UI bounds at any canvas size", async () => {
+    // One box, two canvas fits. Mapping it out of the renderer and back into
+    // virtual space leaves float noise in the last digits, and the noise
+    // differs per fit: unrounded, this element reads 23.999999999999996 tall
+    // at one size and 24.000000000000004 at the other. The snapshot is
+    // advertised as stable for diffing, and every user-interface node carries
+    // bounds, so that difference would read as a move that never happened.
+    const boundsAtScale = async (scale: number) => {
+      const { inspector, scenes, ctx } = setup();
+      ctx.register(RendererAdapterKey, {
+        canvasToVirtual: (x: number, y: number) => ({
+          x: (x - 37) / scale,
+          y: (y - 23) / scale,
+        }),
+      } as unknown as RendererAdapter);
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+
+      class UISurface extends Component {
+        readonly root = fakeUIElement({
+          layout: { left: 0, top: 0, width: 160, height: 24 },
+          origin: { x: 37 + 23 * scale, y: 23 + 17 * scale },
+          scale,
+        });
+      }
+      scene.spawn("hud").add(new UISurface());
+
+      return inspector.snapshot().scenes[0]?.ui?.root.bounds;
+    };
+
+    const box = { x: 23, y: 17, width: 160, height: 24 };
+    expect(await boundsAtScale(993 / 1280)).toEqual(box);
+    expect(await boundsAtScale(877 / 1280)).toEqual(box);
+  });
+
+  it("reports null UI bounds without a registered renderer adapter", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+
+    class UISurface extends Component {
+      readonly root = fakeUIElement({
+        layout: { left: 0, top: 0, width: 200, height: 100 },
+        origin: { x: 400, y: 300 },
+      });
+    }
+    scene.spawn("hud").add(new UISurface());
+
+    expect(inspector.snapshot().scenes[0]?.ui?.root.bounds).toBeNull();
+  });
+
+  it("reports null UI bounds for an element without a display object", async () => {
+    const { inspector, scenes, ctx } = setup();
+    ctx.register(RendererAdapterKey, letterboxAdapter);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+
+    class UISurface extends Component {
+      readonly root = fakeUIElement({
+        layout: { left: 0, top: 0, width: 200, height: 100 },
+      });
+    }
+    scene.spawn("hud").add(new UISurface());
+
+    expect(inspector.snapshot().scenes[0]?.ui?.root.bounds).toBeNull();
   });
 
   it("registers and resolves inspector extensions by namespace", () => {
@@ -1283,6 +1520,22 @@ describe("Inspector", () => {
       expect(controller.isFrozen).toBe(false);
     });
 
+    it("hands the pointer verbs to the callback unchanged", async () => {
+      const { inspector, engine } = setup();
+      const controller = driveController(engine.loop, []);
+      inspector.attachTimeController(controller);
+
+      let seen: unknown;
+      const result = await inspector.drive(({ pointer }) => {
+        seen = pointer;
+      });
+
+      expect(result.ok).toBe(true);
+      // Same object, so a drive reaches the game's menus the way the lab's
+      // own context does. Dispatching spends no frame, so nothing wraps it.
+      expect(seen).toBe(inspector.pointer);
+    });
+
     it("holds a key across frames and releases it after the frames are issued", async () => {
       const { inspector, engine, ctx } = setup();
       const log: string[] = [];
@@ -1980,5 +2233,308 @@ describe("targeted component facets", () => {
       });
       expect(inspector.getComponentFacet(component, "example")).toBeUndefined();
     }
+  });
+});
+
+/** One event the Inspector asked the renderer adapter to deliver. */
+interface DispatchedPointer {
+  type: string;
+  point: { x: number; y: number };
+  button: 0 | 1 | 2 | undefined;
+}
+
+/**
+ * A surface holding one button, with a renderer adapter that models a canvas
+ * at twice virtual size behind a 40 x 20 letterbox bar. The button's container
+ * sits at canvas (440, 320), which is virtual (200, 150); its 60 x 30 box
+ * centres on virtual (230, 165).
+ */
+async function pointerSetup(opts?: {
+  omitCanvasToVirtual?: boolean;
+  omitDispatch?: boolean;
+  buttonHasContainer?: boolean;
+  secondSurface?: boolean;
+}) {
+  const base = setup();
+  const scene = new TestScene("game");
+  await base.scenes.push(scene);
+
+  const button = fakeUIElement({
+    type: "UIButton",
+    layout: { left: 20, top: 10, width: 60, height: 30 },
+    ...(opts?.buttonHasContainer === false
+      ? {}
+      : { origin: { x: 440, y: 320 }, scale: 2 }),
+  });
+  const rootElement = fakeUIElement({
+    type: "UIPanel",
+    layout: { left: 0, top: 0, width: 200, height: 100 },
+    origin: { x: 400, y: 300 },
+    scale: 2,
+    children: [button],
+  });
+  class UISurface extends Component {
+    constructor(readonly root: FakeUIElement) {
+      super();
+    }
+  }
+  const entity = scene.spawn("hud");
+  entity.add(new UISurface(rootElement));
+  const surfaceId = `entity-${entity.id}:UISurface:0`;
+  const buttonId = `${surfaceId}/0`;
+
+  if (opts?.secondSurface) {
+    scene.spawn("menu").add(
+      new UISurface(
+        fakeUIElement({
+          type: "UIPanel",
+          layout: { left: 0, top: 0, width: 40, height: 40 },
+          origin: { x: 100, y: 100 },
+        }),
+      ),
+    );
+  }
+
+  const dispatched: DispatchedPointer[] = [];
+  const hitTestUIPath = vi.fn(
+    (): { path: readonly object[]; consumed: boolean } | null => ({
+      path: [button.displayObject].filter(
+        (container) => container !== undefined,
+      ),
+      consumed: true,
+    }),
+  );
+  const adapter = {
+    canvas: {},
+    ...(opts?.omitCanvasToVirtual
+      ? {}
+      : {
+          canvasToVirtual: (x: number, y: number) => ({
+            x: (x - 40) / 2,
+            y: (y - 20) / 2,
+          }),
+        }),
+    hitTestUIPath,
+    ...(opts?.omitDispatch
+      ? {}
+      : {
+          dispatchPointerEvent: (
+            type: string,
+            point: { x: number; y: number },
+            button?: 0 | 1 | 2,
+          ) => {
+            dispatched.push({ type, point: { ...point }, button });
+          },
+        }),
+  };
+  base.ctx.register(RendererAdapterKey, adapter as unknown as RendererAdapter);
+
+  return {
+    ...base,
+    button,
+    rootElement,
+    surfaceId,
+    buttonId,
+    dispatched,
+    hitTestUIPath,
+  };
+}
+
+describe("Inspector.pointer", () => {
+  it("aims a node id at the centre of its virtual-space bounds", async () => {
+    const { inspector, buttonId, dispatched, hitTestUIPath } =
+      await pointerSetup();
+
+    const hit = inspector.pointer.click(buttonId);
+
+    // Canvas (440, 320) is virtual (200, 150); the 60 x 30 box centres 30 x 15
+    // further in. Reading the bounds in canvas pixels would aim at (440, 320).
+    expect(hit.point).toEqual({ x: 230, y: 165 });
+    expect(hitTestUIPath).toHaveBeenCalledWith(230, 165);
+    expect(dispatched).toEqual([
+      { type: "down", point: { x: 230, y: 165 }, button: 0 },
+      { type: "up", point: { x: 230, y: 165 }, button: 0 },
+    ]);
+  });
+
+  it("aims a virtual-space point unchanged", async () => {
+    const { inspector, dispatched } = await pointerSetup();
+
+    const hit = inspector.pointer.click({ x: 10, y: 20 });
+
+    expect(hit.point).toEqual({ x: 10, y: 20 });
+    expect(dispatched[0]?.point).toEqual({ x: 10, y: 20 });
+  });
+
+  it("names the user-interface node the hit test landed on", async () => {
+    const { inspector, buttonId } = await pointerSetup();
+
+    expect(inspector.pointer.click(buttonId)).toEqual({
+      path: [{ id: buttonId, type: "UIButton" }],
+      point: { x: 230, y: 165 },
+      consumed: true,
+    });
+  });
+
+  it("reports an empty path when the hit test finds nothing", async () => {
+    const { inspector, hitTestUIPath } = await pointerSetup();
+    hitTestUIPath.mockReturnValue(null);
+
+    expect(inspector.pointer.click({ x: 5, y: 5 })).toEqual({
+      path: [],
+      point: { x: 5, y: 5 },
+      consumed: false,
+    });
+  });
+
+  it("skips hit containers that no snapshot node owns", async () => {
+    const { inspector, hitTestUIPath } = await pointerSetup();
+    hitTestUIPath.mockReturnValue({ path: [{}], consumed: false });
+
+    const hit = inspector.pointer.click({ x: 5, y: 5 });
+
+    expect(hit.path).toEqual([]);
+    expect(hit.consumed).toBe(false);
+  });
+
+  it("lists every node the hit chain crosses, innermost first", async () => {
+    const {
+      inspector,
+      button,
+      rootElement,
+      surfaceId,
+      buttonId,
+      hitTestUIPath,
+    } = await pointerSetup();
+    hitTestUIPath.mockReturnValue({
+      path: [button.displayObject, rootElement.displayObject].filter(
+        (container) => container !== undefined,
+      ),
+      consumed: true,
+    });
+
+    const hit = inspector.pointer.hitTest(buttonId);
+
+    expect(hit.path).toEqual([
+      { id: buttonId, type: "UIButton" },
+      { id: surfaceId, type: "UIPanel" },
+    ]);
+  });
+
+  it("dispatches nothing from hitTest", async () => {
+    const { inspector, buttonId, dispatched } = await pointerSetup();
+
+    const hit = inspector.pointer.hitTest(buttonId);
+
+    expect(hit.path).toHaveLength(1);
+    expect(dispatched).toEqual([]);
+  });
+
+  it("dispatches one event per half-verb", async () => {
+    const { inspector, dispatched } = await pointerSetup();
+
+    inspector.pointer.down({ x: 1, y: 2 });
+    inspector.pointer.move({ x: 3, y: 4 });
+    inspector.pointer.up({ x: 3, y: 4 });
+
+    expect(dispatched.map((event) => event.type)).toEqual([
+      "down",
+      "move",
+      "up",
+    ]);
+  });
+
+  it("asks for no button on a move, which presses and releases nothing", async () => {
+    const { inspector, dispatched } = await pointerSetup();
+
+    inspector.pointer.move({ x: 3, y: 4 });
+
+    expect(dispatched[0]?.button).toBeUndefined();
+  });
+
+  it("passes the mouse button a press and a release carry", async () => {
+    const { inspector, dispatched } = await pointerSetup();
+
+    inspector.pointer.down({ x: 1, y: 1 }, { button: 1 });
+    inspector.pointer.up({ x: 1, y: 1 }, { button: 2 });
+
+    expect(dispatched.map((event) => event.button)).toEqual([1, 2]);
+  });
+
+  it("leaves the InputManager untouched", async () => {
+    const { inspector, ctx, buttonId } = await pointerSetup();
+    const manager = {
+      firePointerDown: vi.fn(),
+      firePointerUp: vi.fn(),
+      firePointerMove: vi.fn(),
+    };
+    ctx.register(new ServiceKey("inputManager"), manager);
+
+    inspector.pointer.click(buttonId);
+
+    expect(manager.firePointerDown).not.toHaveBeenCalled();
+    expect(manager.firePointerUp).not.toHaveBeenCalled();
+    expect(manager.firePointerMove).not.toHaveBeenCalled();
+  });
+
+  it("throws without a renderer adapter", () => {
+    const { inspector } = setup();
+
+    expect(() => inspector.pointer.click({ x: 0, y: 0 })).toThrow(
+      "Inspector.pointer.click() requires RendererPlugin to be active.",
+    );
+  });
+
+  it("names the member a registered adapter is missing", async () => {
+    const { inspector } = await pointerSetup({ omitDispatch: true });
+
+    expect(() => inspector.pointer.down({ x: 0, y: 0 })).toThrow(
+      "Inspector.pointer.down(): the registered renderer adapter implements no dispatchPointerEvent.",
+    );
+  });
+
+  it("refuses an adapter that cannot convert canvas coordinates", async () => {
+    // Bounds fall back to raw canvas pixels without this member, so clicking
+    // by id would aim at a canvas pixel as if it were a virtual one.
+    const { inspector, dispatched } = await pointerSetup({
+      omitCanvasToVirtual: true,
+    });
+
+    expect(() => inspector.pointer.click("whatever")).toThrow(
+      "implements no canvasToVirtual",
+    );
+    expect(dispatched).toEqual([]);
+  });
+
+  it("throws for an id that matches no node, and names the wrapper case", async () => {
+    const { inspector } = await pointerSetup();
+
+    expect(() => inspector.pointer.click("entity-99:UISurface:0")).toThrow(
+      'no UI node with id "entity-99:UISurface:0"',
+    );
+    expect(() => inspector.pointer.click("entity-99:UISurface:0")).toThrow(
+      /wrapper node that owns no element/,
+    );
+  });
+
+  it("tells a caller aiming at the wrapper node to aim at a child", async () => {
+    const { inspector } = await pointerSetup({ secondSurface: true });
+    const rootId = inspector.snapshot().scenes[0]?.ui?.root.id;
+    if (!rootId) throw new Error("Expected a UI snapshot.");
+    expect(rootId).toMatch(/:ui$/);
+
+    expect(() => inspector.pointer.click(rootId)).toThrow(
+      /wrapper node that owns no element/,
+    );
+  });
+
+  it("throws for a node with no bounds", async () => {
+    const { inspector, buttonId } = await pointerSetup({
+      buttonHasContainer: false,
+    });
+
+    expect(() => inspector.pointer.hitTest(buttonId)).toThrow(
+      `Inspector.pointer.hitTest(): UI node "${buttonId}" has no bounds.`,
+    );
   });
 });

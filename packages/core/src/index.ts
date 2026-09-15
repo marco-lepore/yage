@@ -118,6 +118,9 @@ export type {
   InspectorTimeLease,
   InspectorTime,
   InspectorPointerOpts,
+  InspectorPointerTarget,
+  InspectorPointerHit,
+  InspectorPointerButtonOpts,
   InspectorGamepadAxisKey,
   InspectorDriveContext,
   InspectorDriveInput,
@@ -232,7 +235,11 @@ export { Engine } from "./Engine.js";
 export type { EngineConfig } from "./Engine.js";
 
 export { RendererAdapterKey } from "./RendererAdapter.js";
-export type { RendererAdapter } from "./RendererAdapter.js";
+export type {
+  RendererAdapter,
+  RendererUIHit,
+  RendererPointerEventType,
+} from "./RendererAdapter.js";
 
 export {
   markPointerConsumeContainer,
