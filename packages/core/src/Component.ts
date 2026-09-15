@@ -1,10 +1,12 @@
 import type { EngineContext, ServiceKey } from "./EngineContext.js";
 import type { Entity } from "./Entity.js";
 import type { EngineEvents } from "./EventBus.js";
-import type { EventToken } from "./EventToken.js";
+import type { EventSource, EventToken } from "./EventToken.js";
 import type { Logger } from "./Logger.js";
 import type { Scene } from "./Scene.js";
 import type { ComponentClass } from "./types.js";
+import { StateMachine } from "./StateMachine.js";
+import type { StateDefinitions, StateMachineOptions } from "./StateMachine.js";
 import { LoggerKey, ErrorBoundaryKey, EventBusKey } from "./EngineContext.js";
 import { isolate } from "./internal/isolate.js";
 import { lazyRefPrototype } from "./internal/lazyRef.js";
@@ -215,13 +217,23 @@ export abstract class Component {
     }) as C;
   }
 
-  /** Subscribe to events on any entity, auto-unsubscribe on removal. */
+  /**
+   * Subscribe to events from an entity or a state machine, auto-unsubscribe on
+   * removal.
+   *
+   * ```ts
+   * this.listen(this.entity, Hurt, ({ dir }) => this.knockback(dir));
+   * this.listen(brain.mode, brain.mode.events.entered, ({ state }) =>
+   *   this.anim.play(state),
+   * );
+   * ```
+   */
   protected listen<T>(
-    entity: Entity,
+    source: EventSource,
     token: EventToken<T>,
     handler: (data: T) => void,
   ): void {
-    const unsub = entity.on(token, handler);
+    const unsub = source.on(token, handler);
     this.addCleanup(unsub);
   }
 
@@ -259,6 +271,38 @@ export abstract class Component {
   protected addCleanup(fn: () => void): void {
     this._cleanups ??= [];
     this._cleanups.push(fn);
+  }
+
+  /**
+   * Create a state machine whose hooks and event handlers are attributed to
+   * this component when they throw. The machine can be declared as a field
+   * because service lookup waits until a hook runs.
+   */
+  protected stateMachine<const S extends string>(
+    states: StateDefinitions<S>,
+    initial: NoInfer<S>,
+    options?: StateMachineOptions,
+  ): StateMachine<S> {
+    return new StateMachine(states, initial, options)._setOwner({
+      run: (kind, event, call) => {
+        const entity = this.entity as Entity | undefined;
+        const scene = entity?.tryScene;
+        const boundary = scene?.context.tryResolve(ErrorBoundaryKey);
+        if (!boundary) {
+          call();
+          return;
+        }
+        boundary.wrapCallback(call, {
+          kind: `StateMachine ${kind} (${this.constructor.name})`,
+          ...(entity && { entity: entity.name }),
+          ...(scene && { scene: scene.name }),
+          event,
+        });
+      },
+      emit: (token, payload) => {
+        (this.entity as Entity | undefined)?.emit(token, payload);
+      },
+    });
   }
 
   /**

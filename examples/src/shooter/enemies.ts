@@ -5,6 +5,7 @@ import {
   Vec2,
   ProcessComponent,
   Process,
+  defineStates,
 } from "@yagejs/core";
 import type { ProcessSlot } from "@yagejs/core";
 import {
@@ -71,17 +72,6 @@ class EnemyController extends Component {
   private patrolLeft: number;
   private patrolRight: number;
 
-  private state: EnemyState = "patrol";
-  private targetX = 0;
-  private cooldownTimer = 0;
-  private attackTimer = 0;
-  // Cached once found; the player entity is never destroyed in this demo.
-  private player?: Entity;
-
-  // Slots
-  private flashSlot!: ProcessSlot;
-  private shakeSlot!: ProcessSlot;
-
   private static readonly SPEED = 60;
   private static readonly CHARGE_SPEED = 350;
   private static readonly DETECT_RANGE = 120;
@@ -91,6 +81,55 @@ class EnemyController extends Component {
   private static readonly SLASH_FRAME_START = 4;
   private static readonly SLASH_FRAME_END = 9;
   private static readonly COOLDOWN_DURATION = 0.5;
+
+  private readonly brain = this.stateMachine(
+    defineStates<EnemyState>({
+      patrol: {
+        to: ["react"],
+        enter: () => this.anim.play("walk"),
+      },
+      react: {
+        to: ["attack"],
+        for: EnemyController.REACT_DURATION,
+        next: "attack",
+        enter: () => {
+          const pos = this.transform.position;
+          this.updateFacing(this.targetX > pos.x ? 1 : -1);
+          this.anim.play("react");
+        },
+      },
+      attack: {
+        to: ["cooldown"],
+        for: EnemyController.ATTACK_MAX_DURATION,
+        next: "cooldown",
+        enter: () => {
+          const pos = this.transform.position;
+          this.updateFacing(this.targetX > pos.x ? 1 : -1);
+          this.anim.play("attack");
+        },
+      },
+      cooldown: {
+        to: ["patrol"],
+        for: EnemyController.COOLDOWN_DURATION,
+        next: "patrol",
+        enter: () => {
+          this.rb.setVelocityX(0);
+          this.anim.play("idle");
+        },
+      },
+      // Reachable from every state, so no other state lists them.
+      hit: { fromAny: true, to: ["patrol"] },
+      die: { fromAny: true },
+    }),
+    "patrol",
+  );
+  private targetX = 0;
+  // Cached once found; the player entity is never destroyed in this demo.
+  private player?: Entity;
+
+  // Slots
+  private flashSlot!: ProcessSlot;
+  private shakeSlot!: ProcessSlot;
 
   constructor(patrolLeft: number, patrolRight: number, camera: CameraEntity) {
     super();
@@ -120,17 +159,17 @@ class EnemyController extends Component {
       },
     });
 
-    // AnimationController auto-plays "idle"; switch to walk for patrol
-    this.anim.play("walk");
+    this.brain.start();
 
     // React to damage events on this entity
     this.listen(this.entity, Hurt, ({ dir }) => this.takeDamage(dir));
   }
 
   update(dt: number): void {
+    this.brain.tick(dt);
     const pos = this.transform.position;
 
-    switch (this.state) {
+    switch (this.brain.state) {
       case "patrol": {
         // Reverse on patrol bounds
         if (pos.x <= this.patrolLeft) this.patrolDir = 1;
@@ -148,7 +187,6 @@ class EnemyController extends Component {
         if (wallHit) this.patrolDir *= -1;
 
         this.rb.setVelocityX(this.patrolDir * EnemyController.SPEED);
-        this.anim.play("walk");
         this.updateFacing(this.patrolDir);
 
         // Detect player (resolved once, then cached)
@@ -173,16 +211,9 @@ class EnemyController extends Component {
 
       case "react":
         this.rb.setVelocityX(0);
-        // Animation completion triggers transition to attack (set up in enterReact)
         break;
 
       case "attack": {
-        this.attackTimer -= dt;
-        if (this.attackTimer <= 0) {
-          this.enterCooldown();
-          break;
-        }
-
         const inSlash = this.anim.inFrameRange(
           EnemyController.SLASH_FRAME_START,
           EnemyController.SLASH_FRAME_END,
@@ -211,11 +242,6 @@ class EnemyController extends Component {
 
       case "cooldown":
         this.rb.setVelocityX(0);
-        this.cooldownTimer -= dt;
-        if (this.cooldownTimer <= 0) {
-          this.state = "patrol";
-          this.anim.play("walk");
-        }
         break;
 
       case "hit":
@@ -229,39 +255,8 @@ class EnemyController extends Component {
   }
 
   private enterReact(playerX: number): void {
-    this.state = "react";
     this.targetX = playerX;
-
-    // Face toward player
-    const pos = this.transform.position;
-    this.updateFacing(playerX > pos.x ? 1 : -1);
-
-    this.anim.play("react");
-    this.pc.cancel("state-transition");
-    this.pc.run(
-      Process.delay(EnemyController.REACT_DURATION, () => {
-        if (this.state === "react") this.enterAttack();
-      }),
-      { tags: ["state-transition"] },
-    );
-  }
-
-  private enterAttack(): void {
-    const pos = this.transform.position;
-
-    this.state = "attack";
-    this.attackTimer = EnemyController.ATTACK_MAX_DURATION;
-
-    this.updateFacing(this.targetX > pos.x ? 1 : -1);
-
-    this.anim.play("attack");
-  }
-
-  private enterCooldown(): void {
-    this.state = "cooldown";
-    this.cooldownTimer = EnemyController.COOLDOWN_DURATION;
-    this.rb.setVelocityX(0);
-    this.anim.play("idle");
+    this.brain.go("react");
   }
 
   private updateFacing(dir: number): void {
@@ -271,7 +266,7 @@ class EnemyController extends Component {
   }
 
   private takeDamage(bulletDir: number): void {
-    if (this.state === "die") return;
+    if (this.brain.is("die")) return;
 
     this.hp--;
     this.audio.play(HurtSfx.path, { channel: "sfx" });
@@ -289,8 +284,7 @@ class EnemyController extends Component {
     }
 
     // Enter hit state
-    this.state = "hit";
-    this.pc.cancel("state-transition");
+    this.brain.go("hit");
 
     // Flash white (cleanup resets tint)
     this.flashSlot.restart();
@@ -303,8 +297,8 @@ class EnemyController extends Component {
     this.anim.playOneShot("hit", {
       duration: hitDuration,
       onComplete: () => {
-        if (this.state === "hit") {
-          this.state = "patrol";
+        if (this.brain.is("hit")) {
+          this.brain.go("patrol");
         }
       },
     });
@@ -314,7 +308,7 @@ class EnemyController extends Component {
   }
 
   private die(): void {
-    this.state = "die";
+    this.brain.go("die");
     this.audio.play(ExplosionSfx.path, { channel: "sfx" });
 
     // Stop blocking bullets and hurting the player

@@ -48,6 +48,7 @@ export type { SceneHooks } from "./SceneHooks.js";
 export { SceneHookRegistry, SceneHookRegistryKey } from "./SceneHooks.js";
 
 export { EventToken, defineEvent } from "./EventToken.js";
+export type { EventSource } from "./EventToken.js";
 
 export { AssetHandle } from "./AssetHandle.js";
 export type { AssetLoader } from "./AssetHandle.js";
@@ -67,6 +68,20 @@ export { filterEntities } from "./EntityFilter.js";
 export type { EntityFilter } from "./EntityFilter.js";
 
 export { Component } from "./Component.js";
+
+export { StateMachine, defineStates } from "./StateMachine.js";
+export type {
+  ChildStateDefinition,
+  StateDefinition,
+  StateDefinitions,
+  StateEntered,
+  StateExited,
+  StateMachineEvents,
+  StateMachineInspection,
+  StateMachineOptions,
+  StateMachineSaveData,
+  StateTransition,
+} from "./StateMachine.js";
 
 export { Transform } from "./Transform.js";
 

@@ -40,3 +40,13 @@ export function defineEvent<T = void>(name: string): EventToken<T> {
   }
   return new EventToken<T>(name);
 }
+
+/**
+ * Something that dispatches typed events to subscribers: an `Entity`, whose
+ * events also bubble to its scene, or a `StateMachine`, whose events stay on
+ * the machine. `Component.listen` subscribes to either and unsubscribes when
+ * the component is removed.
+ */
+export interface EventSource {
+  on<T>(token: EventToken<T>, handler: (data: T) => void): () => void;
+}

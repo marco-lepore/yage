@@ -49,6 +49,115 @@ class DamageReceiver extends Component {
 
 If `update()` or `fixedUpdate()` throws, the error is attributed to the component, logged, recorded (`Inspector.getErrors().callbackErrors`), and rethrown. `GameLoop.tick()` stops the loop if the error escapes the whole frame unhandled.
 
+### Stored modes and state machines
+
+Use `StateMachine` when a component has named modes and only specific moves
+between them are valid. Keep condition checks beside the probes and inputs that
+produce them, then call `go()`.
+
+```ts
+class EnemyBrain extends Component {
+  readonly mode = this.stateMachine(
+    defineStates({
+      patrol: { to: ["windup"] },
+      windup: { to: ["attack"], for: 0.2, next: "attack" },
+      attack: { to: ["patrol"] },
+    }),
+    "patrol",
+  );
+
+  fixedUpdate(dt: number) {
+    if (this.mode.is("patrol") && this.canAttack()) this.mode.go("windup");
+    this.mode.tick(dt);
+  }
+}
+```
+
+The component's fixed-step `dt` already includes scene and entity time scaling.
+Passing it to `tick()` makes timed states pause during a freeze. Call `tick()`
+from `update()` for a frame-clock presentation mode. The first `tick()` runs the
+initial `enter` hook; call `start()` from `onAdd` to run it earlier. State
+machines do not poll conditions themselves.
+
+A state that lists itself in `to` restarts on `go(current)`, running `exit` and
+`enter` again and resetting its timer. A state that does not list itself ignores
+the call.
+
+Mark the few states the whole machine falls into with `fromAny: true` rather
+than repeating them in every `to` list. Give `for` a function when the duration
+comes from tuning: it runs when the state is entered, so it can read a field the
+constructor assigns after the machine is built.
+
+```ts
+class EnemyBrain extends Component {
+  private readonly tuning: EnemyTuning;
+
+  readonly mode = this.stateMachine(
+    defineStates({
+      patrol: { to: ["windup"] },
+      windup: { to: ["strike"], for: () => this.tuning.windup, next: "strike" },
+      strike: { to: ["patrol"] },
+      hit: { fromAny: true, to: ["patrol"] },
+      die: { fromAny: true },
+    }),
+    "patrol",
+  );
+
+  constructor(tuning: EnemyTuning) {
+    super();
+    this.tuning = tuning;
+  }
+}
+```
+
+Ask `canGo()` before a `go()` that a late callback may no longer be allowed to
+make, such as an animation finishing after the entity died.
+
+Keep the presentation layer out of the table by listening instead of calling
+into it from a hook. `machine.events` carries `changed`, `entered` and `exited`,
+typed with the machine's own state names:
+
+```ts
+class EnemyView extends Component {
+  private readonly anim = this.sibling(AnimationController);
+  private readonly enemy = this.sibling(EnemyBrain);
+
+  onAdd() {
+    const { mode } = this.enemy;
+    this.listen(mode, mode.events.entered, ({ state }) =>
+      this.anim.play(state),
+    );
+  }
+}
+```
+
+A state that holds a phase sequence declares `states` and the `start` phase.
+`go()` at the parent level exits the current phase and then the parent, so a
+sequence never outlives the state that holds it:
+
+```ts
+defineStates({
+  idle: { to: ["shoot", "hit"] },
+  shoot: {
+    to: ["idle", "hit"], // reachable from every phase
+    start: "aim",
+    states: {
+      aim: { to: ["fire"], for: 0.2, next: "fire" },
+      fire: { to: ["recoil"], for: 0.1, next: "recoil" },
+      recoil: { to: ["idle"], for: 0.3, next: "idle" },
+    },
+  },
+  hit: { to: ["idle"] },
+});
+```
+
+`state` reads the current phase; `is("shoot")` is true throughout the sequence.
+Nesting is one level deep.
+
+Use ordinary getters for derived or combined facts. Use one machine per
+independent state axis. Use `@yagejs-addons/abilities` for actions that need
+input intents, lanes, priorities, holds, or timed step windows.
+
 ## System Patterns
 
 Systems are for engine-level cross-cutting concerns (rendering, physics, audio sync). Game developers typically write Components instead. Use Systems when you need efficient cross-entity iteration via `QueryCache` and strict phase ordering.
