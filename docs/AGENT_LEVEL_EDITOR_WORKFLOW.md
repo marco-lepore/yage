@@ -170,7 +170,7 @@ Review scope is proportional to the change:
   pass for full coverage: enumerate the implementation's exports and contract
   claims, then try to break each one at least once. Use focus lists only in
   re-reviews.
-- After corrections, one focused reviewer verifies the changed public surface and the
+- After corrections, one focused reviewer verifies the corrected code and the
   prior round's dispositions. Run the full set of passes again only when a
   correction reworks the design, rather than fixing a bounded defect inside
   the design.

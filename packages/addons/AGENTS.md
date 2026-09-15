@@ -293,10 +293,12 @@ is demonstrated, to avoid sprawl.
 - The **root barrel (`.`) must export only the headless surface.** Re-exporting
   presenters from the root, even as a namespace, puts pixi in the headless import
   path. **Presenters are reachable only via the `./presenters` subpath.**
-- `package.json` `exports` declares `"."`, `"./presenters"`, and `"./yaml"`, each
-  with `import`/`require`/`types` triples. `tsup` builds one entry per subpath:
-  `src/index.ts`, `src/presenters.ts`, and `src/yaml.ts`. See `packages/renderer/package.json` for the two-key shape
-  and `packages/addons/dialogue/` for the worked example.
+- `package.json` `exports` declares `"."` and `"./presenters"`, each with
+  `import`/`require`/`types` triples. Add one entry per extra subpath the addon
+  needs, and give `tsup` one entry file per declared subpath. Dialogue declares
+  three: `"."`, `"./presenters"`, and `"./yaml"`, built from `src/index.ts`,
+  `src/presenters.ts`, and `src/yaml.ts`. See `packages/renderer/package.json`
+  for the two-key shape and `packages/addons/dialogue/` for the worked example.
 - `@yagejs/renderer` is `optional` in `peerDependenciesMeta`, because only
   `./presenters` needs it. `pixi.js` is **not** a peer at all, since presenters
   reach pixi only through `@yagejs/renderer`.
