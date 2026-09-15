@@ -57,6 +57,18 @@ describe("DialogueText guards", () => {
       isDialogueMessage({ key: "k", fallback: "f", values: { n: 1 } }),
     ).toBe(true);
     expect(isDialogueMessage({ key: "", fallback: "f" })).toBe(false);
+    expect(
+      isDialogueMessage({ key: "k", fallback: "f", values: { n: null } }),
+    ).toBe(true);
+    expect(
+      isDialogueMessage({ key: "k", fallback: "f", values: { n: {} } }),
+    ).toBe(false);
+    expect(
+      isDialogueMessage({ key: "k", fallback: "f", values: { n: [1] } }),
+    ).toBe(false);
+    expect(
+      isDialogueMessage({ key: "k", fallback: "f", values: { n: Infinity } }),
+    ).toBe(false);
     expect(isDialogueMessage({ key: "k" })).toBe(false);
     expect(isDialogueMessage("k")).toBe(false);
     expect(isDialogueText("k")).toBe(true);

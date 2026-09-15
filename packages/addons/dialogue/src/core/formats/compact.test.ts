@@ -236,6 +236,12 @@ describe("parseCompact — say lines", () => {
     expect(say.text).toBe("Look out!");
   });
 
+  it("rejects `#line:` with no catalog key", () => {
+    expect(() => firstSay("hero: Hi #line:", "@ hero Hero\n")).toThrow(
+      "needs a catalog key",
+    );
+  });
+
   it("`#line:id` turns a say line's text into a { key, fallback } message (not meta)", () => {
     const say = firstSay("hero: Hello #line:greet_01", "@ hero Hero\n");
     expect(say.text).toEqual({ key: "greet_01", fallback: "Hello" });

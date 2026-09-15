@@ -135,14 +135,14 @@ const { mocks } = vi.hoisted(() => {
     };
     protected closeButton = { text: "" };
     onSelect = new MockSignal();
-    value = 0;
+    /** @pixi/ui leaves this at -1 until a row is picked. */
+    value = -1;
     addedItems: unknown;
     constructor(options?: { selected?: number; items?: unknown }) {
       super();
-      this.value = options?.selected ?? 0;
       this.addedItems = options?.items;
       const items = (options?.items as { items?: string[] } | undefined)?.items;
-      this.openButton.text = items?.[this.value] ?? "";
+      this.openButton.text = items?.[options?.selected ?? 0] ?? "";
       this.closeButton.text = this.openButton.text;
       this.addChild(this.view);
     }
@@ -333,6 +333,18 @@ describe("PixiUI wrappers", () => {
     });
     progress.update({ value: undefined });
     expect(progress.displayObject).toMatchObject({ progress: 0 });
+  });
+
+  it("keeps an authored selection when the items are relabelled", () => {
+    const select = new PixiSelect({
+      closedBG: view(),
+      openBG: view(),
+      items: ["Easy", "Hard"],
+      selected: 1,
+    });
+    // No row picked yet, so the authored `selected` still owns the row.
+    select.update({ items: ["Facile", "Difficile"] });
+    expect(select.displayObject).toMatchObject({ value: 1 });
   });
 
   it("keeps a select's layout size while its dropdown is open", () => {

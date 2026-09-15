@@ -84,6 +84,17 @@ describe("createLocalization (i18next)", () => {
     );
   });
 
+  it("accepts a script-and-region tag whose less specific catalog exists", async () => {
+    const l10n = await createLocalization({
+      locale: "zh-Hant-HK",
+      fallbackLocale: "en",
+      catalogs: { en: { hi: "Hi" }, "zh-Hant": { hi: "\u55e8" } },
+    });
+    expect(l10n.resolve(msg("hi", "Hi"))).toBe("\u55e8");
+    l10n.setLocale("zh-Hant-TW");
+    expect(l10n.locale).toBe("zh-Hant-TW");
+  });
+
   it("skips a listener removed earlier in the same notification", async () => {
     const l10n = await createLocalization({
       locale: "en",

@@ -3,6 +3,7 @@ import {
   ErrorBoundaryKey,
   SceneManagerKey,
   type EngineContext,
+  type ErrorBoundary,
   type Plugin,
 } from "@yagejs/core";
 import {
@@ -24,6 +25,7 @@ export class LocalizationPlugin implements Plugin {
   readonly name = "localization";
   readonly version = "0.1.0";
   private context: EngineContext | undefined;
+  private boundary: ErrorBoundary | undefined;
   private unsubscribe: (() => void) | undefined;
 
   constructor(readonly localization: Localization) {}
@@ -32,6 +34,7 @@ export class LocalizationPlugin implements Plugin {
     this.context = context;
     context.register(LocalizationKey, this.localization);
     const boundary = context.tryResolve(ErrorBoundaryKey);
+    this.boundary = boundary;
     const pass = (): void => this.relocalizeAll();
     this.unsubscribe = this.localization.subscribe(() =>
       boundary
@@ -52,7 +55,12 @@ export class LocalizationPlugin implements Plugin {
     for (const scene of scenes.all) {
       for (const entity of scene.getEntities()) {
         for (const component of entity.getAll(Component)) {
-          if (isRelocalizable(component)) component.relocalize(resolve);
+          if (!isRelocalizable(component)) continue;
+          const hook = (): void => component.relocalize(resolve);
+          // The component carries the blame for its own hook, the way a
+          // component update does.
+          if (this.boundary) this.boundary.wrapComponent(component, hook);
+          else hook();
         }
       }
     }
@@ -61,7 +69,7 @@ export class LocalizationPlugin implements Plugin {
   onDestroy(): void {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
-    this.context?.unregister(LocalizationKey);
+    this.boundary = undefined;
     this.context = undefined;
   }
 }

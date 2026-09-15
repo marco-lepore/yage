@@ -195,8 +195,9 @@ export class DialogueTextView implements TextPresenter {
   /**
    * TextChannel: swap the line on screen for a re-resolved version (a
    * translation) without restarting the typewriter. Rebuilds the glyphs and
-   * rebases the reveal clock, so the revealed count, hold state, and
-   * completion carry over and nothing fires. Nothing on screen: no-op.
+   * rebases the reveal clock, so the revealed count and completion carry over
+   * and nothing fires; a pending `[pause]` hold is dropped. Nothing on
+   * screen: no-op.
    */
   replaceVisible(line: PresentedLine): void {
     if (!this.parsed) return;

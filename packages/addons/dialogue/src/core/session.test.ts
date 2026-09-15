@@ -2345,3 +2345,33 @@ describe("DialogueSession — retranslate", () => {
     expect(h.choices.presented).toHaveLength(0);
   });
 });
+
+describe("DialogueSession — retranslate with nothing on screen", () => {
+  it("reads no storage once the conversation stopped", () => {
+    const h = makeHarness({});
+    let reads = 0;
+    const script: DialogueScript = {
+      id: "idle-retranslate",
+      start: "a",
+      nodes: {
+        a: { id: "a", steps: [{ kind: "say", text: "You have {gold}." }] },
+      },
+    };
+    h.session.play(script, {
+      storage: cells({
+        gold: () => {
+          reads++;
+          return 1;
+        },
+      }),
+    });
+    const whileShowing = reads;
+    expect(whileShowing).toBeGreaterThan(0);
+
+    h.session.stop();
+    h.session.retranslate();
+    // A getter a game supplies has side effects of its own; an idle locale
+    // change must not run one.
+    expect(reads).toBe(whileShowing);
+  });
+});

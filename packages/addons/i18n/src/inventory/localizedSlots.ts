@@ -107,6 +107,7 @@ class LocalizedSlots implements SlotsPresenter {
 
   clear(): void {
     this.slots = undefined;
+    this.selected = undefined;
     this.inner.clear();
   }
 }

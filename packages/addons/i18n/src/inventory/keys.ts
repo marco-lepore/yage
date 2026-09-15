@@ -1,4 +1,4 @@
-import type { Scene } from "@yagejs/core";
+import { ErrorBoundaryKey, type Scene } from "@yagejs/core";
 import {
   fallbackLocalization,
   localizationOf,
@@ -39,7 +39,17 @@ export class LocalizedPresenterState {
   mount(scene: Scene, onChange: () => void): void {
     this.unmount();
     this.localization = localizationOf(scene.context);
-    this.unsubscribe = this.localization.subscribe(onChange);
+    // The redraw runs the game's own presenter, so a failure is recorded
+    // against it rather than against whoever changed the locale.
+    const boundary = scene.context.tryResolve(ErrorBoundaryKey);
+    this.unsubscribe = this.localization.subscribe(
+      boundary
+        ? () =>
+            boundary.wrapCallback(onChange, {
+              kind: "Localized inventory presenter",
+            })
+        : onChange,
+    );
   }
 
   unmount(): void {

@@ -2,9 +2,10 @@
 "@yagejs/ui": patch
 ---
 
-A `PixiSelect` keeps the row the player is on when its `items` are replaced
-without a `selected` in the same update, matching `PixiRadioGroup`. Relabelling
-the rows no longer resets the choice.
+A `PixiSelect` keeps its row when `items` are replaced without a `selected` in
+the same update, matching `PixiRadioGroup`: the row the player picked, or the
+authored `selected` while they have picked none. Relabelling the rows leaves
+the choice alone.
 
 Wrappers whose text changes size (`PixiFancyButton`, `PixiCheckbox`,
 `PixiInput`, `PixiSelect`, `PixiRadioGroup`) now mark their layout node for

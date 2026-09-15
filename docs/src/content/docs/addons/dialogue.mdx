@@ -888,6 +888,9 @@ class DomTextPresenter implements TextChannel {
     // The same line in another language: keep the reveal where it is.
     this.graphemes = splitGraphemes(line.text.runs.map((r) => r.text).join(""));
     this.reveal.rebase(line.text);
+    this.el.textContent = this.graphemes
+      .slice(0, Math.floor(this.reveal.revealed))
+      .join("");
   }
   update(dt: number) {
     this.reveal.update(dt);

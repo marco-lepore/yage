@@ -76,7 +76,8 @@ describe("LocalizationPlugin", () => {
     expect(() => localization.setLocale("it")).toThrow("boom");
     const errors = engine.context.resolve(ErrorBoundaryKey).getCallbackErrors();
     expect(errors).toHaveLength(1);
-    expect(errors[0]?.kind).toBe("Localization update pass");
+    expect(errors[0]?.kind).toBe("Component Broken");
+    expect(errors[0]?.entity).toBe("broken");
     expect(localization.locale).toBe("it");
     engine.destroy();
   });
@@ -87,7 +88,8 @@ describe("LocalizationPlugin", () => {
     await engine.scenes.push(scene);
     const label = scene.spawn("title").add(new Label(msg("title", "Title")));
     engine.destroy();
-    expect(engine.context.tryResolve(LocalizationKey)).toBeUndefined();
+    // Services outlive teardown (docs/ARCHITECTURE.md); the subscription does not.
+    expect(engine.context.tryResolve(LocalizationKey)).toBe(localization);
     localization.setLocale("it");
     expect(label.text).toBe("");
     expect(localization.resolve(msg("title", "Title"))).toBe("Titolo");

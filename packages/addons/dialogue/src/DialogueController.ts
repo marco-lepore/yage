@@ -208,6 +208,7 @@ export class DialogueController<
         boundary.wrapCallback(retranslate, {
           kind: "DialogueController retranslate",
           entity: this.entity.name,
+          scene: this.entity.tryScene?.name ?? "",
         });
       } else {
         retranslate();

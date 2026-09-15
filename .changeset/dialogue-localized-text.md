@@ -18,6 +18,9 @@ choice menu on screen in place through the new `DialogueSession.retranslate()`:
 a line keeps its reveal progress, a menu keeps its highlighted row, and no
 event fires.
 
+A `#line:` tag with no catalog key fails at the line that wrote it, and a
+message's `values` are checked entry by entry when a script loads.
+
 `TextChannel` has a new required method, `replaceVisible(line)`, which swaps
 the text of the line on screen without restarting its reveal. The bundled text
 views and `CompositeTextPresenter` implement it; a custom text presenter built

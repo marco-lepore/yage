@@ -190,10 +190,14 @@ export class PixiSelect extends PixiUIBase<PortalSelect> {
       } as unknown as PixiSelectProps;
       // A replacement list keeps the row the player is on unless this update
       // names one, so re-labelling the rows does not reset the choice.
+      // `Select.value` is -1 until the player picks a row, so an authored
+      // `selected` owns the row until then.
       const requested =
         "selected" in p
           ? (p.selected ?? DEFAULT_SELECTED)
-          : (this.view.value ?? merged.selected ?? DEFAULT_SELECTED);
+          : this.view.value >= 0
+            ? this.view.value
+            : (merged.selected ?? DEFAULT_SELECTED);
       const selected = selectedForItems(requested, merged.items.length);
       this.view.replaceItems(selectItems(merged), selected);
       this.invalidateSize();
@@ -206,6 +210,7 @@ export class PixiSelect extends PixiUIBase<PortalSelect> {
         selectItems(merged),
         p.selected ?? DEFAULT_SELECTED,
       );
+      this.invalidateSize();
     }
 
     this.updateBase(props);

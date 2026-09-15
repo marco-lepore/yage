@@ -18,9 +18,15 @@ function hasCatalog(
   catalogs: Readonly<Record<string, Catalog>>,
   locale: string,
 ): boolean {
-  if (Object.hasOwn(catalogs, locale)) return true;
-  const parent = locale.split("-")[0];
-  return parent !== undefined && Object.hasOwn(catalogs, parent);
+  // One trailing subtag at a time, the way i18next resolves: "zh-Hant-HK"
+  // finds a "zh-Hant" catalog, then a "zh" one.
+  let tag = locale;
+  for (;;) {
+    if (Object.hasOwn(catalogs, tag)) return true;
+    const separator = tag.lastIndexOf("-");
+    if (separator <= 0) return false;
+    tag = tag.slice(0, separator);
+  }
 }
 
 class I18nextLocalization implements Localization {

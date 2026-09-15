@@ -105,10 +105,10 @@ export interface TextChannel {
   present(line: PresentedLine): void;
   /**
    * Swap the line on screen for a re-resolved version of the same line (a
-   * translation) without restarting the typewriter: revealed count, hold
-   * state, and completion carry over, and nothing fires. A presenter built on
-   * `LineReveal` passes the new text to `LineReveal.rebase`; one with no
-   * typewriter redraws.
+   * translation) without restarting the typewriter: the revealed count and
+   * completion carry over and nothing fires. A pending `[pause]` hold is
+   * dropped. A presenter built on `LineReveal` passes the new text to
+   * `LineReveal.rebase`; one with no typewriter redraws.
    */
   replaceVisible(line: PresentedLine): void;
   /** Reveal everything immediately (skip-to-end). */
@@ -1221,6 +1221,9 @@ export class DialogueSession {
    * the cursor does not move. A no-op outside a line or choice.
    */
   retranslate(): void {
+    // Before the view: `readView` materializes storage, and a getter a game
+    // supplies runs with it.
+    if (this.mode !== "saying" && this.mode !== "choosing") return;
     const view = this.readView();
     const speaker = this.currentSpeaker;
     if (this.mode === "saying" && this.saying) {

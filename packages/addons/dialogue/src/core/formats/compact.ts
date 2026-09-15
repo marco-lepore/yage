@@ -403,7 +403,7 @@ function peelSayHints(
     const hash = /(^|\s)#(\S+)\s*$/.exec(rest);
     if (hash) {
       const tag = hash[2]!;
-      const lk = lineKey(tag);
+      const lk = lineKey(tag, lineNo);
       if (lk !== undefined) key = lk;
       else metaCount += applyHashtag(meta, tag);
       rest = rest.slice(0, hash.index).replace(/\s+$/, "");
@@ -472,7 +472,7 @@ function parseChoice(body: string, lineNo: number): ChoiceOption {
     const hash = /(^|\s)#(\S+)\s*$/.exec(rest);
     if (!hash) break;
     const tag = hash[2]!;
-    const lk = lineKey(tag);
+    const lk = lineKey(tag, lineNo);
     if (tag === "once") once = true;
     else if (tag === "disabled") disabled = true;
     else if (lk !== undefined) key = lk;
@@ -534,11 +534,12 @@ function applyHashtag(meta: Record<string, unknown>, tag: string): 1 {
 /** A `line:<id>` hashtag (Yarn's `#line:` convention) carries a catalog key:
  *  the line's text becomes a `{ key, fallback }` message instead of a string.
  *  Returns the id, or `undefined` for any other tag (which routes to `meta`). */
-function lineKey(tag: string): string | undefined {
+function lineKey(tag: string, lineNo: number): string | undefined {
   const colon = tag.indexOf(":");
-  return colon > 0 && tag.slice(0, colon) === "line"
-    ? tag.slice(colon + 1)
-    : undefined;
+  if (colon <= 0 || tag.slice(0, colon) !== "line") return undefined;
+  const key = tag.slice(colon + 1);
+  if (!key) fail(lineNo, "`#line:` needs a catalog key");
+  return key;
 }
 
 /** Sentinel: `numberBoolNull` returns this when the source is not one of the

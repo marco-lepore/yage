@@ -44,6 +44,16 @@ export interface I18nAdapter {
 }
 
 /** Whether `value` has the {@link DialogueMessage} shape. */
+/** One interpolation value: the literal types a catalog entry can carry. */
+function isMessageValue(value: unknown): boolean {
+  return (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value))
+  );
+}
+
 export function isDialogueMessage(value: unknown): value is DialogueMessage {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
@@ -54,7 +64,8 @@ export function isDialogueMessage(value: unknown): value is DialogueMessage {
     (candidate.values === undefined ||
       (typeof candidate.values === "object" &&
         candidate.values !== null &&
-        !Array.isArray(candidate.values)))
+        !Array.isArray(candidate.values) &&
+        Object.values(candidate.values).every(isMessageValue)))
   );
 }
 
