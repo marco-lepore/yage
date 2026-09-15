@@ -2,7 +2,7 @@
 
 ## Overview
 
-YAGE's plugin system is the mechanism by which all engine features beyond the core kernel are delivered. Rendering, physics, input, audio -- everything is a plugin. This document specifies the plugin interface, lifecycle, dependency management, and how to create custom plugins.
+Every engine feature beyond the core kernel ships as a plugin. Rendering, physics, input, audio -- everything is a plugin. This document specifies the plugin interface, lifecycle, dependency management, and how to create custom plugins.
 
 ---
 
@@ -87,8 +87,9 @@ engine.use(new InputPlugin({ actions: { jump: ["Space"] } }));
 7. Emit engine:started
 ```
 
-`engine.start()` resolves after step 7, so a scene pushed right after
-`await engine.start()` sees every plugin's `onStart()` work.
+`engine.start()` resolves after step 7. A scene pushed right after
+`await engine.start()` therefore runs after every plugin's `onStart()` has
+completed.
 
 ### Destroy Phase (`engine.destroy()`)
 
@@ -102,8 +103,8 @@ engine.use(new InputPlugin({ actions: { jump: ["Space"] } }));
 6. Dispose the inspector and clear the event bus
 ```
 
-The stages are independent: a throw in one still lets the others run, and the
-first error is rethrown once teardown has finished.
+The stages are independent. If one stage throws, the remaining stages still
+run. `engine.destroy()` rethrows the first error after teardown finishes.
 
 ### Lifecycle Diagram
 
@@ -113,9 +114,9 @@ engine.start()         →  install() → registerSystems() → onRegister() →
 engine.destroy()       →  loop stops → scenes torn down → onUnregister() → onDestroy() (reverse order)
 ```
 
-An engine instance runs once. `destroy()` is terminal, and so is a `start()`
-that rejects: both make later `start()` and `use()` calls throw. Services stay
-registered in `EngineContext` — plugins do not unregister them — which is why
+An engine instance runs once. After `destroy()`, and after a `start()` that
+rejects, any later `start()` or `use()` call on that instance throws. Services
+stay registered in `EngineContext` because plugins do not unregister them, so
 the same instance cannot be started a second time. Construct a new `Engine`
 instead.
 
@@ -176,7 +177,7 @@ The dependency errors are thrown by `engine.start()` before any plugin is instal
 
 ### The ServiceKey Pattern
 
-Plugins register services using typed `ServiceKey<T>` objects. This provides:
+Plugins register services using typed `ServiceKey<T>` objects. Keys give:
 
 - **Type safety**: `context.resolve(RendererKey)` returns `RendererPlugin`, not `unknown`.
 - **Decoupling**: Consumers resolve by key, not by import. A mock can replace a real service.
@@ -204,7 +205,7 @@ class RendererPlugin implements Plugin {
   }
 }
 
-// Camera is now an entity, not a service:
+// The camera is an entity spawned into the scene, not a registered service:
 import { CameraEntity } from "@yagejs/renderer";
 
 // In a scene's onEnter():
@@ -234,7 +235,7 @@ These keys are registered by `@yagejs/core` itself (not by plugins):
 | `SceneTimeKey`         | `SceneTime` (scene-scoped)     | Engine's own `beforeEnter` scene hook |
 | `RandomKey`            | `RandomService` (scene-scoped) | Engine's own `beforeEnter` scene hook |
 
-`RendererAdapterKey` (`RendererAdapter`) is also defined in `@yagejs/core`: the pointer-input adapter of the current renderer. `@yagejs/renderer` registers itself under it, and `@yagejs/input` resolves it for canvas targeting and coordinate mapping without depending on the renderer package.
+`RendererAdapterKey` (`RendererAdapter`) is also defined in `@yagejs/core`. It holds the pointer-input adapter of the current renderer. `@yagejs/renderer` registers itself under that key. `@yagejs/input` resolves the key for canvas targeting and coordinate mapping, so it does not depend on the renderer package.
 
 Keys registered by official plugins:
 
@@ -269,7 +270,7 @@ this.unregisterHooks = hooks.register({
 });
 ```
 
-Scoped registrations are cleared automatically when the scene exits. Resolving a scene-scoped key that no hook registered throws from `Scene.use()`; resolving it before `onEnter()` is the usual cause.
+Scoped registrations are cleared automatically when the scene exits. Resolving a scene-scoped key that no hook registered throws from `Scene.use()`. The usual cause is resolving the key before `onEnter()`.
 
 ### Optional Dependencies
 
@@ -299,8 +300,9 @@ root `@yagejs/tilemap` entry does not import physics, so rendering-only projects
 do not need the physics package.
 
 `@yagejs/input` and `@yagejs/physics` use private keys with the
-`"debugRegistry"` id to contribute optional diagnostics. Their built packages
-do not depend on `@yagejs/debug`; installing either package remains headless.
+`"debugRegistry"` id to contribute optional diagnostics. Neither built package
+depends on `@yagejs/debug`, so installing input or physics adds no debug
+package and no debug overlay.
 
 ---
 
@@ -371,7 +373,7 @@ EndOfFrame:
 
 ## 6. Component Exposure
 
-Components don't need to be "registered" with the engine. They're just classes that extend `Component`. Any plugin can export component classes, and users import and use them directly:
+Components are not registered with the engine. They are classes that extend `Component`. Any plugin can export component classes, and users import and use them directly:
 
 ```typescript
 // @yagejs/physics exports:
@@ -464,7 +466,7 @@ Entity payloads carry the live `Entity`. Scene payloads are `SceneRef` views, ex
 
 ### Example: A Score Tracking Plugin
 
-**Goal**: Track player score across scenes, emit events on change, expose via service key.
+**Goal**: track the player score across scenes, emit an event on every change, and expose the score through a service key.
 
 #### Step 1: Define the Service Key and Types
 
@@ -482,7 +484,7 @@ export interface ScoreEvents {
 
 #### Step 2: Implement the Service
 
-The engine's `EventBus<EngineEvents>` is typed to the engine's own events, so a plugin with events of its own owns a bus for them:
+The engine's `EventBus<EngineEvents>` is typed to the engine's own events, so a plugin with events of its own creates a separate bus for them:
 
 ```typescript
 // packages/score/src/ScoreManager.ts
@@ -545,7 +547,7 @@ export interface ScoreConfig {
 export class ScorePlugin implements Plugin {
   readonly name = "score";
   readonly version = "1.0.0";
-  // No dependencies -- works with just @yagejs/core
+  // No dependencies -- works with @yagejs/core alone
 
   private config: ScoreConfig;
   private manager?: ScoreManager;
@@ -647,22 +649,22 @@ registerSystems(scheduler: SystemScheduler) {
 
 - **Access another plugin's internals**: Only public service keys are accessible. Private state stays private.
 - **Override another plugin's services**: `EngineContext.register()` throws on duplicate keys. A plugin cannot replace another plugin's service.
-- **Remove another plugin's systems**: `SystemScheduler.remove()` accepts any system, but a plugin removes only the systems it added. Nothing enforces this; it is the contract.
-- **Escape the error boundary**: every system `update()` runs through `ErrorBoundary.wrapSystem`, so a throw is attributed to the system that threw before it propagates.
+- **Remove another plugin's systems**: `SystemScheduler.remove()` accepts any system, but a plugin removes only the systems it added. Nothing enforces that limit. It is part of the plugin contract.
+- **Escape the error boundary**: every system `update()` runs through `ErrorBoundary.wrapSystem`, which records the system that threw before the error propagates.
 
 ### Failure Model
 
-A throw is reported, not repaired around. If a plugin's system throws:
+The engine reports an error and rethrows it. It never suppresses one. If a plugin's system throws:
 
-1. `ErrorBoundary` records the culprit system (readable via `Inspector.getErrors().callbackErrors`) and logs it through `Logger`.
-2. The error is rethrown. Nothing is disabled, unsubscribed, or muted; `system.enabled` is a flag the game sets, never the boundary.
+1. `ErrorBoundary` records the system that threw (readable via `Inspector.getErrors().callbackErrors`) and logs it through `Logger`.
+2. The error is rethrown. Nothing is disabled, unsubscribed, or muted. `system.enabled` is a flag the game sets, and `ErrorBoundary` never changes it.
 3. If nothing inside the frame catches it, `GameLoop.tick()` stops the loop and rethrows so the error reaches the host (`window.onerror`, an unhandled-rejection handler, or the caller's own `try`/`catch`).
 
 If a plugin's `install()` or `onStart()` throws:
 
 1. `engine.start()` rejects with that error.
-2. Plugins installed earlier in the order stay installed; their services stay registered.
-3. The instance is terminal: a later `start()` or `use()` throws. Call `engine.destroy()` to release what did install, then construct a new `Engine`.
+2. Plugins installed earlier in the order stay installed, and their services stay registered.
+3. Any later `start()` or `use()` on that instance throws. Call `engine.destroy()` to release the plugins that did install, then construct a new `Engine`.
 
 ---
 
@@ -670,7 +672,7 @@ If a plugin's `install()` or `onStart()` throws:
 
 ### Constructor Config
 
-The standard pattern. Pass configuration when creating the plugin:
+The standard pattern is to pass configuration when creating the plugin:
 
 ```typescript
 engine.use(

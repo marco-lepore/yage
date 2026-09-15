@@ -32,27 +32,25 @@ YAGE is a 2D game engine built as a Turborepo monorepo.
 | `@yagejs/save`        | Controlled state documents, migrations, and named slots |
 | `@yagejs/level`       | Level documents: read, validate, prepare, load          |
 
-## Design Philosophy
+## Design Rules
 
-Read this before writing any code:
-
-- **Simple APIs, internal complexity** — public interfaces should feel obvious and require minimal boilerplate. Hide implementation complexity behind clean abstractions.
-- **Developer ergonomics first** — always consider how the end-developer will use an API. Fewer arguments, sensible defaults, discoverable names.
-- **SOLID principles** — single responsibility, open/closed, etc. Apply pragmatically, not dogmatically.
-- **Learn from existing code, but stay critical** — the codebase is WIP. Study existing patterns before writing new code, but don't blindly copy if you see something that could be better. Flag concerns.
-- **Refactors mean rethinking, not reshuffling** — when moving to a different architecture or public API, don't preserve old access patterns for backward compatibility unless explicitly asked. The path of least resistance (minimal diff, keep old call sites working) often smuggles the old design into the new one. Question whether every existing abstraction still belongs. When in doubt, ask rather than defaulting to compatibility shims.
-- **Right tool for the job** — the engine offers multiple approaches (e.g., Scene subclass vs `defineInlineScene`). Choose based on the actual use case. A complex game scene belongs in a class; a quick prototype can use an inline setup.
-- **Extend the shared mechanism instead of running a second one beside it.**
-  Bespoke or duplicated code often exists because a shared abstraction cannot
-  express what a caller needs. Fix the abstraction; do not add a parallel
-  registry, index or cache next to it. The diagnostic: if a proposed fix has to
-  re-derive an invariant the existing mechanism already maintains — membership,
-  activation state, teardown timing — it is rebuilding that mechanism, and
-  every edge where the two disagree becomes a defect. Count the sites before
-  choosing: one workaround is a local fix, the same limitation in three places
-  is the mechanism asking to change. Correctness decides and scope does not —
-  take the fix that removes the cause, across as many packages as it needs, and
-  describe the behaviour change in the changeset.
+- **No compatibility shims in a refactor.** When moving to a different
+  architecture or public API, do not keep old access patterns working unless
+  explicitly asked. Why: keeping old call sites working preserves the old
+  design inside the new one. When in doubt, ask.
+- **Extend the shared mechanism; never add a second one beside it.** No
+  parallel registry, index, or cache next to an existing abstraction. The
+  check: if a fix has to re-derive an invariant the existing mechanism already
+  maintains (membership, activation state, teardown timing), it is rebuilding
+  that mechanism, and every case where the two disagree is a defect. One
+  workaround is a local fix; the same limitation in three places means the
+  mechanism has to change. Take the fix that removes the cause, across as many
+  packages as it needs, and describe the behaviour change in the changeset.
+- **Scene subclass for a full scene, `defineInlineScene` for a prototype.**
+  Choose by the actual use case.
+- **Study the existing pattern before writing a new one, and report it if it
+  looks wrong.** The codebase is work in progress. Existing code shows what
+  was done, not that it was right.
 
 ## Coding Style
 
@@ -62,30 +60,29 @@ Enforced by tooling — match these conventions exactly:
 - **Prettier**: double quotes, semicolons, 2-space indent, trailing commas
 - **ESLint**: `typescript-eslint` strict config
 - No `any` in public API signatures
-- **Prefer `import type { Foo } from "./foo.js"` over inline `import("./foo.js").Foo`.** Inline `import()` type syntax is noisy and hard to read; use top-of-file `import type` statements. Only reach for inline `import()` when breaking an otherwise unavoidable circular type dependency — and add a comment explaining why.
+- **Prefer `import type { Foo } from "./foo.js"` over inline `import("./foo.js").Foo`.** Inline `import()` type syntax is noisy and hard to read; use top-of-file `import type` statements. Use inline `import()` only to break an otherwise unavoidable circular type dependency, and add a comment explaining why.
 
 ## Architecture Rules
 
 - **Components own game logic; Systems for engine internals** — `ComponentUpdateSystem` calls component `update(dt)`/`fixedUpdate(dt)`. Systems are for cross-cutting concerns (physics, rendering, audio).
-- **`ServiceKey<T>` for plugin-owned infrastructure** — never use string keys. Keys with the same id string resolve the same service. A package may re-declare an id for the same contract to avoid an optional runtime dependency, but the repeated declaration needs a nearby comment naming the package that owns the key. Type-safe resolution uses `Component.use(Key)` or `Component.service(Key)`. Some keys are per-scene (e.g. `PhysicsWorldKey`, `SceneRenderTreeKey`) — `use()` resolves the correct one automatically. ServiceKey is for infrastructure owned by plugins (renderer, physics world, input manager). Entity-hosted state is accessed through entity queries or direct references from `spawn()` — never registered as a service. If a Component self-registers into DI, that's a sign it should be found through the ECS instead.
+- **`ServiceKey<T>` for plugin-owned infrastructure only** (renderer, physics world, input manager); never string keys. Keys with the same id string resolve the same service; a package that re-declares an id to avoid an optional runtime dependency adds a comment naming the owning package. Resolve with `Component.use(Key)` or `Component.service(Key)`; per-scene keys (`PhysicsWorldKey`, `SceneRenderTreeKey`) resolve to the current scene automatically. Entity-hosted state is reached through entity queries or references from `spawn()`, never registered as a service. A Component that self-registers into DI should be found through the ECS instead.
 - **Pixels everywhere** — all user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`.
 - **Immutable `Vec2`, mutable `Transform`** — `Vec2` operations return new instances. `Transform` has mutating methods (`setPosition`, `translate`, etc.).
 - **No pixi.js imports in `@yagejs/core`** — core has zero runtime dependencies.
-- **No raw `pixi.js` type in an exported signature** — public fields, parameters, and return types (in `@yagejs/renderer` and downstream consumers: ui, particles, tilemap, ...) use `@yagejs/renderer`'s alias layer (`DisplayContainer`, `DisplaySprite`, `GraphicsContext`, `ColorValue`, ...) instead of a direct `pixi.js` type import, so consumer code never needs to import `pixi.js` for types. The aliases are transparent (`type DisplayContainer = Container`) — this covers discoverability, not encapsulation. Constructing the actual Pixi object still imports `pixi.js` directly; only type positions in public signatures go through the alias.
+- **No raw `pixi.js` type in an exported signature.** Public fields, parameters, and return types in `@yagejs/renderer` and its consumers (ui, particles, tilemap, ...) use the renderer's aliases (`DisplayContainer`, `DisplaySprite`, `GraphicsContext`, `ColorValue`, ...). Why: consumer code never imports `pixi.js` for types. The aliases are transparent (`type DisplayContainer = Container`); constructing a Pixi object still imports `pixi.js` directly.
 - **Export new public types from `index.ts`** — every package has a barrel export.
 - **Plain objects for config** — plugin configs, action maps, collider shapes. No `Map`, no classes for config.
 - **Entity subclasses with `setup()` for entity types** — preferred pattern for game entities. `defineBlueprint()` still works for simple parametric factories but is deprecated.
 - **Entity events for game logic** — `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. `EventBus` for global engine events.
-- **Controlled save state** — persist only explicit state roots through `@yagejs/save`. A state root implements `Serializable<TEncoded>` or comes from a core state factory. Runtime ECS objects, renderer resources, callbacks, and plugin internals are not traversed automatically. Addons expose complete domain `snapshot()` / `restore()` APIs so the game can include them in a chosen state root.
-- **Attribute developer-supplied callbacks** — every dispatch of game-registered code (event handlers, collision handlers, input listeners, process callbacks) runs through `ErrorBoundary.wrapCallback`; a `System`/`Component` update goes through `wrapSystem`/`wrapComponent`; scene `onEnter`/`onExit`/`onPause`/`onResume` through `wrapLifecycleHook`. The wrap records the culprit on `Inspector.getErrors().callbackErrors`, logs it, and rethrows; nothing is disabled or unsubscribed. A new dispatch site still needs the wrap. Full model (async hooks, `GameLoop.tick()` as the terminal point): the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
-- **A throwing hook is terminal: report it, don't repair around it** — when developer code throws inside an engine-owned sequence (scene teardown, destroy cascade, pool disposal, event fan-out), the later steps do not run, and that is the model. Never add a collector that runs the remaining steps or a `try`/`finally` that pushes a teardown through. The two fixes always in scope are attribution (`wrapCallback`) and the reporting channel (`reportLifecycleError` where a documented contract says the operation continues). Details and the two shipped exceptions: the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
-- **Turn predictable failures into authored errors at the entry** — where a
-  failure is knowable when the operation is called (an unknown sound alias, a
-  missing asset key, an out-of-range argument), validate at the entry and throw
-  an authored error naming the offending input before anything mutates, instead
-  of letting the call fail halfway with a message from a dependency's
-  internals. This is edge validation, not mid-operation recovery.
-- **A non-finite number (`NaN`, `Infinity`) is never stored into engine state unguarded** — a game-supplied number written into simulation state (setter, config, callback return) throws at the write site with `Context.method: constraint, got ${x}`; two legal inputs that combine into a non-finite result (a documented `Infinity` times a `dt` of `0`) get a defined result, plus a one-shot `devWarn` in core when that result is lossy; a read-only query stays unguarded and documents that the result is undefined. The three cases in full: the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
+- **Controlled save state** — only explicit state roots persist through `@yagejs/save`: a root implements `Serializable<TEncoded>` or comes from a core state factory. Runtime ECS objects, renderer resources, callbacks, and plugin internals are never traversed. Addons expose domain `snapshot()` / `restore()` so a game can include them in a root.
+- **Every dispatch of game-registered code is wrapped**: event, collision, input, and process callbacks through `ErrorBoundary.wrapCallback`; `System`/`Component` updates through `wrapSystem`/`wrapComponent`; scene `onEnter`/`onExit`/`onPause`/`onResume` through `wrapLifecycleHook`. The wrap records the failing callback on `Inspector.getErrors().callbackErrors`, logs, and rethrows; nothing is disabled or unsubscribed. A new dispatch site needs the wrap. Full model: the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
+- **A throwing hook ends the sequence.** When developer code throws inside an engine-owned sequence (scene teardown, destroy cascade, pool disposal, event fan-out), the later steps do not run. Never add a collector that runs the remaining steps or a `try`/`finally` that forces the remaining teardown steps to run. The only fixes in scope: attribution (`wrapCallback`) and the reporting channel (`reportLifecycleError`, where a documented contract says the operation continues). The two shipped exceptions: the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
+- **Predictable failures throw an authored error at the entry.** When a
+  failure is knowable at the call (unknown sound alias, missing asset key,
+  out-of-range argument), validate at the entry and throw naming the offending
+  input before anything mutates. This is edge validation, not mid-operation
+  recovery.
+- **No non-finite number (`NaN`, `Infinity`) enters engine state unguarded.** A game-supplied number written into simulation state (setter, config, callback return) throws at the write site with `Context.method: constraint, got ${x}`. Two legal inputs that combine into a non-finite result (a documented `Infinity` times a `dt` of `0`) get a defined result plus a one-shot `devWarn` when it is lossy. A read-only query stays unguarded and documents that the result is undefined. Full cases: the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
 
 ## Testing
 
@@ -96,14 +93,12 @@ Enforced by tooling — match these conventions exactly:
 
 ## Documentation
 
-YAGE maintains two parallel documentation surfaces. When you ship a new public API, add a config option, or discover a gotcha worth warning about, make a reasonable effort to cover it in both where it makes sense:
+Two sets of docs. A new public API, config option, or gotcha goes into both, not necessarily with equal depth. Why: a missing LLM entry makes agents write broken code against a feature that exists; a missing human entry makes humans fail to discover one.
 
-- **LLM docs** — `docs/llms/` (source). Terse, signature-forward reference material optimised for context windows. **Never edit `docs/public/llms/` directly** — it's regenerated from `docs/llms/` by `docs/scripts/copy-llms.mjs` on every docs build and edits to the generated copy are silently overwritten.
-- **Human docs (yage.dev)** — `docs/src/content/docs/` Astro + Starlight `.mdx` files. More narrative; can embed images, diagrams, and inline playable examples.
+- **LLM docs** — `docs/llms/` (source). Terse reference that leads with signatures. **Never edit `docs/public/llms/`**: `docs/scripts/copy-llms.mjs` regenerates it on every docs build and overwrites edits.
+- **Human docs (yage.dev)** — `docs/src/content/docs/` Astro + Starlight `.mdx` files. Narrative; may embed images, diagrams, and playable examples.
 
-Every rendered page links `/llms.txt`, and pages with a Markdown counterpart also link it with `<link rel="alternate" type="text/markdown">`. The page-to-Markdown mapping lives in `docs/scripts/llm-docs.mjs`; a new human docs page must be mapped there (or listed as having no counterpart in `docs/scripts/llm-docs.test.mjs`), and every served Markdown file must be linked from `docs/llms.txt`, or the docs tests fail.
-
-The two do NOT need 1:1 parity — human docs can be longer and more visual, LLM docs can skip prose that doesn't help an agent. But _something_ should land in each surface when a feature becomes user-visible. A missing LLM entry makes agents write broken code against a feature that exists; a missing human entry makes humans fail to discover one.
+A new human docs page must be mapped to its Markdown counterpart in `docs/scripts/llm-docs.mjs` (or listed as having none in `docs/scripts/llm-docs.test.mjs`), and every served Markdown file must be linked from `docs/llms.txt`, or the docs tests fail.
 
 Rebuild both after changes:
 
@@ -115,15 +110,15 @@ This runs `copy-llms.mjs` (regenerates `public/llms/`) then builds the Astro sit
 
 ### Language & audience
 
-Docs are for the **user of the API**, not its author. Focus on the available API, how to use it, and what it produces. Apply these when writing or editing any doc:
+Docs are for the **user of the API**, not its author: the available API, how to use it, what it produces. Checks for any doc edit:
 
-- **Internals are a black box — except to explain a limitation or a gotcha.** Keep an internal detail only when a user would hit it (state persists across plays; a timer runs on your clock; an unmapped action silently does nothing). Cut pure mechanism ("the session fans its stream", "a layout owner … so they never drift", "drain order"), packaging rationale (tree-shaking, "lives on the root entry"), and testing notes ("a test asserts …").
-- **Don't document what isn't shipped.** No roadmap, "deferred", "future", "purely additive", or internal milestone names (v1, v1.1). Delete "what's deferred" sections — their useful positive bits usually live elsewhere. Exception: a limitation a user would 100% expect (rare).
-- **Lead with the outcome, not the architecture.** Intros and section openers say what you get and what it's for before how it's built. Order sections the way a user moves: install → make it work → then reference, packaging, and extension.
-- **No invented terms.** Never coin a label and reuse it as if it were real YAGE vocabulary ("seam", "the multi-instance story", "leader"). Left in the docs, agents parrot them as de-facto terms. Jargon (orthogonal, drain order, syntactic sugar) is usually a symptom of over-detailed internals — first ask whether the passage should exist, then plain-word what remains.
-- **Plain language.** One idea per sentence; don't stack em-dashes and parentheticals; plain words over idioms ("for free" → automatically, "lands normally" → completes, "wire up" → connect); no nouns as verbs ("poke a variable" → set a variable); name the referent; no LLM-ese.
-- **Method.** Read each file end-to-end — grep finds words, not buried problems or inaccuracies. Edits stay focused but are not only word-swaps: rework hard sentences, reorder sections, and cut paragraphs that fail the tests above. Surface structural moves (section reorders, large cuts) as proposals. Verify a suspicious factual claim against the source yourself rather than shipping it.
-- **LLM docs (`docs/llms/`): same rules, terser bar.** Less hand-holding is fine (the audience is agents), but still clean the language and kill invented terms.
+- **Internals are not described unless they explain a limitation or a gotcha** a user would hit (state persists across plays; a timer runs on your clock; an unmapped action silently does nothing). Cut pure mechanism, packaging rationale (tree-shaking, "lives on the root entry"), and testing notes.
+- **Only shipped behavior.** No roadmap, "deferred", "future", "purely additive", or milestone names (v1, v1.1).
+- **Outcome before architecture.** Section openers say what you get and what it is for. Order sections the way a user needs them: install, make it work, then reference, packaging, extension.
+- **No invented terms.** A label that is not real YAGE vocabulary ("seam", "leader", "the multi-instance story") gets replaced by the behavior. Why: left in the docs, agents repeat it as a real term. Jargon (orthogonal, drain order, syntactic sugar) usually marks a passage of over-detailed internals.
+- **Plain language.** One idea per sentence; no stacked em-dashes and parentheticals; literal words over idioms ("for free" → automatically, "wire up" → connect); no nouns as verbs; name the referent.
+- **Read the whole file before editing it.** Grep finds words, not buried inaccuracies. Propose structural moves (section reorders, large cuts) rather than making them silently. Verify a suspicious claim against the source.
+- **LLM docs in `docs/llms/` follow the same checks** with less hand-holding, since the audience is agents.
 
 ## Key Commands
 

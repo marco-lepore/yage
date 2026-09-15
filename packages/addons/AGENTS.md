@@ -7,33 +7,35 @@ changing anything under `packages/addons/`.
 
 An **addon** is an _installable, opinionated implementation of one cohesive
 gameplay pattern_, designed so its opinions are overridable without forking. One
-addon = one thing a developer reaches for by name (dialogue, inventory, combat,
+addon = one thing a developer installs by name (dialogue, inventory, combat,
 player-controllers, prototype kit).
 
-It is **not** a generic data-structure library, a batteries-welded-shut system,
-or a mainline plugin. Addons are _gameplay patterns_; mainline plugins (`core`,
-`renderer`, `physics`, …) are _engine infrastructure_ — many games ship zero
-dialogue/inventory. The distinction from mainline is **editorial, not
-engineering**. If you'd describe it as "a game like X" (an RPG), that's a
-**template** (a `create-yage` starter), not an addon.
+It is **not** a generic data-structure library, a system with no overrides, or a
+mainline plugin. Addons are _gameplay patterns_. Mainline plugins (`core`,
+`renderer`, `physics`, …) are _engine infrastructure_, and many games need no
+dialogue or inventory at all. Whether something belongs in an addon or in
+mainline is a scope decision, not a technical one. If you would describe it as
+"a game like X" (an RPG), it is a **template** (a `create-yage` starter), not an
+addon.
 
 ## The two failure modes
 
 | Failure         | Symptom                                                                               | Root cause                                                          |
 | --------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | **Too generic** | User writes as much config as building it themselves; "it's just a `Map` with events" | The addon owns _abstraction_ instead of the fiddly _concrete logic_ |
-| **Cornered**    | Works until the user's game differs, then they fork/abandon                           | The addon baked _domain decisions_ into its _plumbing_              |
+| **Cornered**    | Works until the user's game differs, then they fork/abandon                           | The addon bakes _domain decisions_ into its _structure_             |
 
-The fix is not a perfect mid-level abstraction. It is **separating layers so each
-is opinionated at its own level and replaceable independently**, plus the seven
-rules below that keep each layer honest.
+Separate the layers instead of searching for one mid-level abstraction. Each
+layer is opinionated at its own level and replaceable on its own. The numbered
+rules below apply that separation layer by layer.
 
 ## Default render-layer orders
 
 Built-in presenters ensure their configured layers before drawing, including
-standalone mounting. Use the shared renderer `ensureLayer` contract: an existing
-host layer keeps its order; a mismatch warns once per tree, name, and requested
-order in development. Do not add a separate warning registry in an addon.
+when mounted standalone. Use the shared renderer `ensureLayer` contract. An
+existing host layer keeps its order. In development a mismatch logs one warning
+per tree, layer name, and requested order. Do not add a separate warning
+registry in an addon.
 
 | Use                                    | Default order range |
 | -------------------------------------- | ------------------- |
@@ -42,251 +44,327 @@ order in development. Do not add a separate warning registry in an addon.
 | Virtual controls                       | 1080–1099           |
 | Dialogue screen overlays               | 1100–1199           |
 
-World-space bubble dialogue uses the configured world layer, creating it at
+World-space bubble dialogue uses the configured world layer and creates it at
 order 0 when absent. The screen-overlay ranges do not apply to world layers.
 
 ## The layer model (L0–L3)
 
 An addon uses **only the layers its pattern needs**.
 
-- **L0 Assets** — bundled files (art, fonts, themes). Optional; needs
-  `"files": ["dist", "assets"]`. Prefer zero bundled assets where possible
-  (e.g. dialogue's default theme is Graphics + canvas fonts).
-- **L1 Model** — headless logic + operations + events. No engine deps, or
-  `@yagejs/core`-only. Fully unit-testable. **Enforce headlessness as an
-  invariant** ("no `@yagejs/renderer`/`pixi` import in the model layer, ever").
-- **L2 Engine integration — two co-equal forms (use either or both):**
-  - **L2a Component** — per-entity ownership; hosts the model, bridges model
-    events → entity events, integrates save, and may use the engine peers its
-    behavior requires (for example physics or input). Zero setup: user
-    `entity.add()`s it; `ComponentUpdateSystem` drives it.
-  - **L2b Plugin (+ System + Service)** — cross-cutting orchestration: a System
+- **L0 Assets**: bundled files such as art, fonts, or themes. Optional. Needs
+  `"files": ["dist", "assets"]`. Prefer zero bundled assets where possible.
+  Dialogue's default theme uses Graphics plus canvas fonts and bundles nothing.
+- **L1 Model**: headless logic, operations, and events. No engine dependencies,
+  or `@yagejs/core` only. Fully unit-testable. Never import `@yagejs/renderer` or
+  `pixi.js` in the model layer.
+- **L2 Engine integration**, in two equal forms. Use either or both:
+  - **L2a Component**: per-entity ownership. It hosts the model, forwards model
+    events to entity events, integrates save, and may use the engine peers its
+    behavior requires, such as physics or input. No setup beyond `entity.add()`;
+    `ComponentUpdateSystem` drives it.
+  - **L2b Plugin with a System and a Service**: cross-cutting orchestration. A System
     for cross-entity per-frame work, a `ServiceKey` Service for global shared
-    state, scene hooks, DOM/gamepad/loop wiring. User must `engine.use(...)`.
-    Config/presets flow through the **plugin constructor** (like
-    `InputPlugin`/`AudioPlugin`).
+    state, scene hooks, and DOM, gamepad, or loop setup. The user must call
+    `engine.use(...)`. Config and presets pass through the **plugin
+    constructor**, as in `InputPlugin` and `AudioPlugin`.
 - **L3 View** — presentation behind an interface, with a default presenter,
-  reachable only via a `/presenters` subpath so the headless path never pulls
-  pixi. For views with multiple independently-varying parts, **split the
-  interface into _capability channels_ rather than one coarse presenter**
-  (see the channels pattern below). One coarse presenter is fine only when the
-  view is one indivisible thing.
+  reachable only via a `/presenters` subpath so the headless path never imports
+  pixi. When the view has several independently-varying parts, **split the
+  interface into one narrow channel interface per part** rather than one wide
+  presenter (see the channels section below). A single wide presenter is right
+  only when the view is one indivisible thing.
 
 ### Decision rule — L2a vs L2b
 
-Follows the codebase rule ("Components own game logic; Systems for engine
-internals"): one-entity state → **Component (L2a)**; global / cross-entity /
-loop / external-IO → **Plugin+System (L2b)**. Many patterns need **both**
-(combat: `Hitbox` components + an overlap System). Component-only = zero-config;
-a Plugin costs the user an `engine.use()` line.
+The codebase rule applies: components own game logic, systems handle engine
+internals. One-entity state → **Component (L2a)**. Global state, cross-entity
+work, loop work, or external IO → **Plugin+System (L2b)**. Many patterns need
+**both**; combat uses `Hitbox` components plus an overlap System. A
+component-only addon needs no configuration, while a Plugin costs the user an
+`engine.use()` line.
 
 ### Refinement — host-owned cross-cutting
 
-"This pattern touches pause/focus/global state, therefore it needs L2b" is **not
-automatic**. When _which instance is active_ or _whether the world pauses_ is
-genuinely **game policy** — especially when multiple instances can run at once —
-owning it in a global Service is wrong. **Dialogue is the worked
-counter-example:** it ships as an L2a `Component` the game spawns, exposes
-`isActive()`, and lets the host decide focus and pause (several ambient
-conversations can run concurrently, no global singleton). Prefer host-owned
-cross-cutting when the pattern is naturally multi-instance or the policy is the
-game's to set.
+Touching pause, focus, or global state does not by itself require L2b. When
+_which instance is active_ or _whether the world pauses_ is **game policy**,
+owning it in a global Service is wrong. That applies especially when several
+instances can run at once. Dialogue takes the other route: it ships as an L2a
+`Component` the game spawns, exposes `isActive()`, and leaves focus and pause to
+the host. Several ambient conversations can run at the same time, and there is
+no global singleton. Prefer host-owned cross-cutting when the pattern is
+naturally multi-instance, or when the policy belongs to the game.
 
-## Capability-channels presentation pattern
+## Channel interfaces for presentation
 
-When the view has several independently-varying parts, split L3 into narrow
-**capability channels** instead of one fat presenter interface. Dialogue splits
-into `TextChannel` / `ChoiceChannel` / `AvatarChannel` / `ChromeChannel`, so the
-typewriter, choice UI, portrait, and frame are each swappable and composable. A
-**composite presenter** fans one event stream out to several channels. This is
-what makes "logic installed, presentation swappable, copy-paste/eject for UI
-only" actually hold.
+When the view has several independently-varying parts, split L3 into one narrow
+channel interface per part instead of one wide presenter interface. Dialogue
+splits into `TextChannel`, `ChoiceChannel`, `AvatarChannel`, and `ChromeChannel`
+(`packages/addons/dialogue/src/core/session.ts`), so the typewriter, choice UI,
+portrait, and frame are each swappable and composable. A **composite presenter**
+forwards one event stream to several channels. The split is what lets a game
+replace the UI without replacing the logic.
 
 ## Per-game factory pattern (typed config pinning)
 
-When an addon's typing must be re-established at every use site — a generic
-domain type (rule 3) threading through components, policy functions,
-def/step factories, and event payloads — consider exporting a factory the game
-calls **once** with its type parameter and full config catalog. It converts
-"annotate every site" into "close over the type once". The factory returns:
+Some addons make the game re-state its typing at every use site: a generic domain
+type (rule 3) passes through components, policy functions, def and step
+factories, and event payloads. For those, consider exporting a factory the game
+calls **once** with its type parameter and full config catalog. The game states
+its type once instead of annotating every call site. The factory returns:
 
-- **Retyped def/step/policy factories** — no per-call-site type parameters.
-- **New event tokens, created per factory call** and typed to the game's
-  payload, so handlers need no narrowing. Entity events dispatch by token
-  _string name_ (`packages/core/src/Entity.ts`), so the factory must
-  namespace event names via a required `id` option and warn in dev mode on
-  duplicate ids — two instances creating tokens with the same name would
-  collide silently.
+- **Retyped def, step, and policy factories** — no per-call-site type
+  parameters.
+- **New event tokens, created per factory call** and typed to the game's payload,
+  so handlers need no narrowing. Entity events dispatch by token _string name_
+  (`packages/core/src/Entity.ts`). The factory must therefore namespace event
+  names through a required `id` option, and warn in dev mode on duplicate ids.
+  Two instances creating tokens with the same name would collide with no error.
 - **A bundle component** that mounts the addon's standard sibling stack in
-  `onAdd` (`packages/core/src/Component.ts`) and exposes the boundary API.
-  Any erasure cast between an unparameterized shared contract (a trait or
-  event singleton) and the game's typed model lives inside the bundle, never
-  in game code.
-- **Id-literal unions derived from the catalog's map keys** (a mistyped id is
-  a compile error) plus eager whole-catalog cross-reference validation that
-  fails naming the offending key. Precedent for keys-as-ids: dialogue stamps
+  `onAdd` (`packages/core/src/Component.ts`) and exposes the boundary API. Any
+  erasure cast between an unparameterized shared contract (a trait or event
+  singleton) and the game's typed model lives inside the bundle, never in game
+  code.
+- **Id-literal unions derived from the catalog's map keys**, so a mistyped id is
+  a compile error. Add eager whole-catalog cross-reference validation that fails
+  naming the offending key. Dialogue uses map keys as ids the same way: it sets
   each `SpeakerDef.id` from its `speakers` map key
   (`packages/addons/dialogue/src/core/types.ts`).
 
-The charter rule that keeps it honest: **assembly + typing only — no behavior
-may exist only through the factory.** Everything it returns must be
-hand-constructible from the public exports (rule 6). The factory is a preset
-over the addon's primitives, not a layer; it lives in the component layer (it
-returns L2 assemblies), and the headless core stays factory-free.
+The constraint on the pattern: the factory does **assembly and typing only**. No
+behavior may exist only through the factory. Everything it returns must be
+hand-constructible from the public exports (rule 6). The factory is a preset over
+the addon's primitives, not a layer. It lives in the component layer because it
+returns L2 assemblies, and the headless core contains no factory.
 
 Boundaries and caveats:
 
-- Traits are class-static (`packages/core/src/Entity.ts`), so neither a
-  factory nor a component can attach a trait to its host entity — the
-  `@trait` + delegation lines stay in game code. Only a factory-returned base
-  class could absorb them, at the single-inheritance cost.
-- When the game creates the event tokens through the factory, L3 presenters
-  must attach to the factory instance or its tokens (the way dialogue
-  channels attach to a session), not to module-global events.
-- Skip the pattern when the addon has no generic domain type and a
-  one-component surface (rule 3's "don't force a `<T>`") — there the factory
-  would just rename constructors.
+- Traits are class-static (`packages/core/src/Entity.ts`), so neither a factory
+  nor a component can attach a trait to its host entity. The `@trait` and
+  delegation lines stay in game code. Only a factory-returned base class could
+  absorb them, at the cost of the single inheritance slot.
+- When the game creates the event tokens through the factory, L3 presenters must
+  attach to the factory instance or its tokens, the way dialogue channels attach
+  to a session. They must not attach to module-global events.
+- Skip the pattern when the addon has no generic domain type and has a
+  one-component surface (rule 3's "don't force a `<T>`"). There the factory would
+  only rename constructors.
 
 ## Rules in, consequences out
 
 - **Rules** the system needs to function correctly (do these stack? can this go
-  here? is this choice available?) are **injected as policy** (config values +
-  pure functions).
-- **Consequences** in the game (what a potion does, a pickup SFX, what a custom
-  command means) are **emitted as events**.
-- When the mechanical-vs-game line is genuinely blurry, model the process as an
-  **ordered pipeline of injectable steps**, each defaulting to sensible
-  behavior, each replaceable, with **events at the boundaries**. (Dialogue:
-  the `set` flow op is owned by the runner; every other command surfaces via an
-  `onCommand` handler **and** an event, with optional `blocking`/async handling
-  for cinematic sequencing.)
+  here? is this choice available?) are **injected as policy**: config values plus
+  pure functions.
+- **Consequences** in the game (what a potion does, a pickup sound effect, what a
+  custom command means) are **emitted as events**.
+- When the line between mechanical and game-specific is genuinely blurry, model
+  the process as an **ordered pipeline of injectable steps**. Each step has a
+  default, each step is replaceable, and events fire at the boundaries. Dialogue
+  works this way: the runner owns the `set` flow op, and every other command is
+  reported through an `onCommand` handler **and** an event, with optional
+  `blocking`/async handling for cinematic sequencing.
 
-## The seven rules
+## The addon rules
 
 1. **Ship a concrete default, not a framework.** The primary export is an
-   opinionated _working_ implementation. The 5-minute path must run.
+   opinionated _working_ implementation. A user must be able to install it and
+   see it run without writing policy code first.
 2. **Opinions are _data and functions_, not _structure_.** Express opinionated
-   bits as config values + injected pure policy functions, never hardwired
+   bits as config values plus injected pure policy functions, never as hardwired
    branches or subclass-only behavior. The user overrides the _policy_, not the
-   _plumbing_.
+   _structure_.
 3. **The domain type is the user's, not yours — for data/state addons.** Be
-   generic over the game's type (`Inventory<TItem>`), requiring only a tiny
-   accessor/policy. Behavior addons (controllers, bullet-time) have no domain
-   type — they lean on config + policy hooks + events. Don't force a `<T>` where
+   generic over the game's type (`Inventory<TItem>`), requiring only a small
+   accessor or policy. Behavior addons (controllers, bullet-time) have no domain
+   type; they use config, policy hooks, and events. Don't force a `<T>` where
    none belongs.
 4. **Layers, each independently usable** (L0–L3 above). An addon uses only the
    layers its pattern needs.
 5. **Rules in, consequences out — and when blurry, a pipeline of steps** (above).
-6. **Escape hatches at every layer.** Underlying state is readable; documented
-   direct-mutation methods exist; the model is swappable inside the component.
-   Never let the _only_ API be a convenience that hides state.
+6. **Escape hatches at every layer.** Underlying state is readable, documented
+   direct-mutation methods exist, and the model is swappable inside the
+   component. Never make a convenience wrapper the only way to read or change
+   state.
 7. **The "would you write this yourself?" test (scoping).** Own the
    annoying-but-non-trivial logic (stack merge/split, slot swap, hitbox overlap,
-   save round-trip, typewriter + branching). Expose a hook for anything trivial
-   or game-specific (item balance, what a custom command does). This decides the
-   surface area and dodges both failure modes.
+   save round-trip, typewriter plus branching). Expose a hook for anything
+   trivial or game-specific (item balance, what a custom command does). That test
+   decides the surface area and avoids both failure modes.
 
 ## Theme authoring
 
-A theme is a plain data object (no behavior), serializable, authored inline or spread-and-tweaked. The rule for what belongs in it is **data vs code**:
+A theme is a plain data object (no behavior), serializable, authored inline or
+spread-and-tweaked. The rule for what belongs in it is **data vs code**:
 
-- **Theme field (data):** any pure value a built-in renderer consumes — a color, size, gap, radius, alpha, texture key, or nine-slice insets. Declare it as an optional-derived field (`field?`) that falls back to a sensible default when omitted, and name the default in the JSDoc (`Omit to derive X`). Keep the interface flat with surface-grouped ordering and section comments. Nested objects require a deep-partial resolver to spread-and-tweak, which callers don't have.
-- **Render-delegate preset (code):** any new drawing code. Mirror the `CellPresenter`/`CellHandle` shape — the view computes rects, placement, and hit-tests; the preset only draws. Custom presets carry their own config by closure. They should still read the shared palette, font, and layer tokens so a single theme change keeps all surfaces consistent. Never add preset-specific tokens to the shared theme.
-- **View (behavior):** placement, windowing, navigation, hit-tests. These stay hardcoded in the view. To change them, replace the entire view. ±1px alignment nudges, shape-geometry constants, and contrast floors are also view-internal — they have no meaning outside the specific view that uses them.
+- **Theme field, data:** any pure value a built-in renderer consumes, such as a
+  color, size, gap, radius, alpha, texture key, or nine-slice insets. Declare it as an
+  optional-derived field (`field?`) that falls back to a default when omitted,
+  and name the default in the JSDoc (`Omit to derive X`). Keep the interface
+  flat, with surface-grouped ordering and section comments. Nested objects
+  require a deep-partial resolver to spread-and-tweak, which callers don't have.
+- **Render-delegate preset (code):** any new drawing code. Mirror the
+  `CellPresenter`/`CellHandle` shape: the view computes rects, placement, and
+  hit-tests, and the preset only draws. A custom preset carries its own config by
+  closure. A preset still reads the shared palette, font, and layer tokens, so
+  one theme change keeps all surfaces consistent. Never add preset-specific
+  tokens to the shared theme.
+- **View (behavior):** placement, windowing, navigation, hit-tests. All four stay
+  hardcoded in the view. To change them, replace the entire view. ±1px alignment
+  nudges, shape-geometry constants, and contrast floors are also view-internal,
+  because they have no meaning outside the view that uses them.
 
-**Drift-guard:** every addon with a theme factory must have a test that walks the fully-populated theme to the presenter configs and fails if any field is unthreaded. See `packages/addons/inventory/src/factory/theme.test.ts` for the sentinel-walk pattern.
+**Drift-guard:** every addon with a theme factory must have a test that walks the
+fully-populated theme to the presenter configs and fails if any field is not
+passed through. See `packages/addons/inventory/src/factory/theme.test.ts` for the
+sentinel-walk pattern.
 
-## Design archetypes (guidance, NOT encoded in the name)
+## Default font path: canvas, with bitmap fonts opt-in
 
-- **Collection** — many interchangeable pieces/variants/assets (prototype,
-  player-controllers). Usually L0/L2a/L3, light on L1.
+Default presenters use Graphics chrome plus the canvas `SplitTextComponent` /
+`TextComponent`, and bundle no assets. `defaultTheme()` sets no `bitmapFont*`,
+`textured`, or portrait fields — only a `fontFamily` plus Graphics colors and
+layers. The view selects the path by presence: `font = bitmapFont ?? fontFamily`,
+and it uses the bitmap path only when `bitmapFont` is set. Native bold and italic
+plus per-glyph tint effects are available on the canvas path. Bitmap fonts
+(variant atlases) are an explicit opt-in theme path, never the default. The dialogue addon passes font names as strings and imports no bitmap symbol
+by value. When extending the bitmap path, use the names `@yagejs/renderer`'s
+barrel exports:
+`bitmapFont`, `installBitmapFont`, `BitmapFontVariant`, `resolveTextureInput`,
+and `TextureInput`.
+
+## Addon shapes (guidance, NOT encoded in the name)
+
+- **Collection** — many interchangeable pieces, variants, or assets (prototype,
+  player-controllers). Usually L0, L2a, and L3, light on L1.
 - **Single system** — one cohesive installed system (dialogue, combat). Usually
-  L1 + L2a-or-L2b (+ L3). _Dialogue's shape:_ L1 headless core + **L2a
-  Component** (host owns focus/pause) + **L3 capability channels** + an
-  explicit domain `snapshot()` / `restore()` pair for durable state.
+  L1 plus L2a or L2b, plus L3. _Dialogue's shape:_ L1 headless core, an **L2a
+  Component** with the host owning focus and pause, **L3 channel interfaces**,
+  and an explicit domain `snapshot()` / `restore()` pair for durable state.
 - **Pure library** — headless logic only (stats-formula). L1 only.
 
-Single _tiny_ mechanics (e.g. bullet-time) are usually **recipes/examples** (a
-copyable snippet), not packages — promote to a package only on demonstrated
-reuse, to avoid sprawl.
+A single tiny mechanic such as bullet-time is usually a **recipe or example**, a
+copyable snippet rather than a package. Promote it to a package only once reuse
+is demonstrated, to avoid sprawl.
 
 ## Naming & packaging mechanics
 
 - **Scope:** `@yagejs-addons` (own npm org, separate from engine `@yagejs`).
   Domain-only package names, **no tier suffixes** — the scope is the only
   category marker. `@yagejs-addons/dialogue`, `/inventory`, `/combat`.
-- **Export-symbol naming (cross-addon).** Value exports a consumer types into game
-  code — bundle factories, action-map presets, default themes — are
+- **Export-symbol naming (cross-addon).** Value exports a consumer types into
+  game code — bundle factories, action-map presets, default themes — are
   **domain-prefixed** so two addons never collide on an auto-import:
   `dialogueControls`/`inventoryControls`, `DEFAULT_DIALOGUE_ACTIONS`,
   `defaultInventoryTheme`. Interface and class contracts (`InputBinding`,
-  `KeyboardInputBinding`, `ChromePresenter`) may stay generic — a wrong import is a
-  compile error, not a silent hazard, and identical shapes are harmless. Event
-  tokens are always domain-prefixed (`DialogueFooEvent`, `InventoryFooEvent`). This
-  is why virtual-controls (`defaultControlsTheme`, `VIRTUAL_CONTROLS_LAYERS`) has
-  zero collisions where dialogue's original generic names did not.
+  `KeyboardInputBinding`, `ChromePresenter`) may stay generic, because a wrong
+  import is a compile error rather than a silent hazard, and identical shapes are
+  harmless. Event tokens are always domain-prefixed (`DialogueFooEvent`,
+  `InventoryFooEvent`). Virtual-controls follows the rule with
+  `defaultControlsTheme` and `VIRTUAL_CONTROLS_LAYERS`.
 - **Granularity:** one package per addon, each with its own curated dependency
-  closure. (A single `@yagejs/addons` package with subpath exports was rejected:
-  subpath exports split _code_, not _dependencies_ or _versions_.)
+  closure. Subpath exports inside a single package would split _code_ only, not
+  _dependencies_ or _versions_.
 - **Repo location:** `packages/addons/<domain>/` inside this Turborepo. The npm
-  workspaces glob `packages/addons/*` (added to the root `package.json`) picks
-  them up — note `packages/*` is single-level and does **not** match the nested
-  path.
-- **Versioning:** addons are **independent** — keep them **out of the engine's
-  `fixed` group** in `.changeset/config.json` so they iterate without forcing
-  core bumps and vice-versa. Do not add an addon's name to that array. Use
-  `minor` for initial/feature 0.x releases (pre-1.0 rule; never propose 1.0.0).
-  When an engine minor pushes a capped peer range out of range, changesets
-  force-bumps the addon by `major` (→ `1.0.0` on a 0.x package) and opens the
-  peer cap to `>=<engine>`. `scripts/clamp-package-versions.mjs` runs inside
-  `version-packages` right after `changeset version` to undo both: it clamps the
-  addon back to a `0.x` minor and restores the `<next-minor>` peer cap. Don't
-  hand-fix addon versions in the Version Packages PR — the script owns this.
+  workspaces glob `packages/addons/*` in the root `package.json` picks them up.
+  `packages/*` is single-level and does not match the nested path.
+- **Versioning:** addons are **independent**. Keep them **out of the engine's
+  `fixed` group** in `.changeset/config.json` so an addon release never forces a
+  core release, and a core release never forces an addon release. Do not add an
+  addon's name to that array; confirm with
+  `grep -c "yagejs-addons" .changeset/config.json` returning 0. A new addon's
+  changeset is a plain `minor` for that package alone, because the fixed group's
+  cascade handles dependents. Use `minor` for initial and feature 0.x releases
+  (pre-1.0 rule; never propose 1.0.0). When an engine minor pushes a capped peer
+  range out of range, changesets force-bumps the addon by `major` (to `1.0.0` on
+  a 0.x package) and opens the peer cap to `>=<engine>`.
+  `scripts/clamp-package-versions.mjs` runs inside `version-packages` right after
+  `changeset version` and reverses both: it clamps the addon back to a `0.x`
+  minor and restores the `<next-minor>` peer cap. Don't hand-fix addon versions
+  in the Version Packages PR, because the script handles it.
 - **Engine deps as `peerDependencies`** (optional via `peerDependenciesMeta`
-  where presentation-only), so the user's single engine install is reused, never
-  duplicated — this avoids duplicate-instance DI/`ServiceKey` hazards. Use a
-  pre-1.0 floor like `">=0.7.0 <0.8.0"` (a future 0.8.0 is breaking per the
-  pre-1.0 rule); re-floor on each engine minor. Mirror the engine versions in
-  `devDependencies` with an open floor (`>=0.7.0`) so the current workspace
-  and the next engine minor remain accepted during development.
+  where presentation-only), so the user's single engine install is reused rather
+  than duplicated. Duplicate instances break DI and `ServiceKey` lookups. Use a
+  pre-1.0 floor like `">=0.7.0 <0.8.0"`, since a future 0.8.0 is breaking under
+  the pre-1.0 rule, and re-floor on each engine minor. Mirror the engine versions
+  in `devDependencies` with an open floor (`>=0.7.0`) so the current workspace
+  and the next engine minor both resolve during development.
 
 ## Export split (the one packaging mistake to avoid)
 
 - The **root barrel (`.`) must export only the headless surface.** Re-exporting
-  presenters from the root — even as a namespace — pulls pixi into the headless
-  import path. **Presenters are reachable only via the `./presenters` subpath.**
-- `package.json` `exports` declares both `"."` and `"./presenters"` with
-  `import`/`require`/`types` triples; `tsup` has two entries (`src/index.ts`,
-  `src/presenters.ts`). See `packages/renderer/package.json` for the two-key
-  shape and `packages/addons/dialogue/` for the worked example.
+  presenters from the root, even as a namespace, puts pixi in the headless import
+  path. **Presenters are reachable only via the `./presenters` subpath.**
+- `package.json` `exports` declares `"."`, `"./presenters"`, and `"./yaml"`, each
+  with `import`/`require`/`types` triples. `tsup` builds one entry per subpath:
+  `src/index.ts`, `src/presenters.ts`, and `src/yaml.ts`. See `packages/renderer/package.json` for the two-key shape
+  and `packages/addons/dialogue/` for the worked example.
+- `@yagejs/renderer` is `optional` in `peerDependenciesMeta`, because only
+  `./presenters` needs it. `pixi.js` is **not** a peer at all, since presenters
+  reach pixi only through `@yagejs/renderer`.
 - Input bindings over `@yagejs/input` (not pixi) may belong with the **root**
   entry when input is part of the addon's required controller. When input is an
   optional adapter over an otherwise input-agnostic model, expose it through an
   `./input` subpath and mark `@yagejs/input` as an optional peer. When a
-  controller needs view geometry (e.g. pointer hit-testing a choice row), it
-  must reach the presenter **through an interface seam**, never by importing the
-  presenter module — that preserves the no-pixi guarantee on root.
-- **Copy tooling from `packages/particles/`**: `tsconfig.json` (extends
-  `../../../tsconfig.base.json` — note the extra `../` for the nested addon
-  path), `tsup.config.ts`, `vitest.config.ts` (keep the oxc legacy-decorator
-  flag for YAGE decorators such as `@trait`; add `@vitest/coverage-v8` as a
-  devDep).
+  controller needs view geometry, such as pointer hit-testing a choice row, it
+  must reach the presenter **through an interface**, never by importing the
+  presenter module. That keeps the root entry free of pixi.
+- **Copy tooling from `packages/particles/`.** `tsconfig.json` extends
+  `../../../tsconfig.base.json`; the nested addon path needs the extra `../`.
+  `tsup.config.ts` builds ESM and CJS with type declarations, sourcemaps,
+  `keepNames`, and an `es2022` target. `vitest.config.ts` keeps the oxc
+  legacy-decorator flag for YAGE decorators such as `@trait`. Add
+  `@vitest/coverage-v8` as a devDependency.
+
+### Verify the split against the build output, not the source
+
+Source-level grepping is necessary but not sufficient. An `import type` from a
+renderer module looks like an import in the source yet is fully erased at build.
+A value import buried in a shared chunk can put pixi in the root bundle without
+appearing in `src/index.ts`. Verify against the emitted `dist/`:
+
+```bash
+# Must all print 0:
+grep -c "@yagejs/renderer\|pixi.js" packages/addons/dialogue/dist/index.js
+grep -c "@yagejs/renderer\|pixi.js" packages/addons/dialogue/dist/index.cjs
+grep -c "@yagejs/renderer\|pixi.js" packages/addons/dialogue/dist/index.d.ts
+# Also check every shared chunk the root pulls (tsup names them chunk-*.js):
+grep -lc "@yagejs/renderer\|pixi.js" packages/addons/dialogue/dist/chunk-*.js
+```
+
+`DialogueController` is the case to watch: it lives in the root entry and
+references presenter contracts. Keep those as `import type` only
+(`TextPresenter`, `ChromePresenter`, `ChoicePresenter`, `AvatarPresenter`), and
+import only pixi-free _values_ such as `InputManagerKey` from `@yagejs/input`.
+`input/*` is pixi-free and belongs with the root entry, not with presenters.
+
+### Pixi primitives go through `@yagejs/renderer`
+
+When a presenter needs a pixi display primitive the renderer doesn't expose, add
+it to `@yagejs/renderer`, which owns the pixi abstraction. Do not import
+`pixi.js` inside the addon. A direct pixi import works, because pixi is a
+transitive dependency, but it bypasses the engine's abstraction and adds a second
+`pixi.js` peer whose version must be kept in step. `createNineSlice` (plus
+`NineSliceOptions` and a re-exported `NineSliceSprite` type) exists in renderer
+for this reason, so the addon declares no `pixi.js` peer. Don't pull
+`@yagejs/ui` for nine-slice either: `grep -rc "@yagejs/ui" packages/addons/dialogue`
+must return 0. The textured variants (`TexturedChrome`, `TexturedBubble`) are
+opt-in, reachable only through the `./presenters` barrel plus the optional
+`theme.textured` field, and no default bundle or factory references them.
 
 ## Controller `input` contract
 
 Every controller that accepts device input declares the same option:
 `input?: InputBinding | null`, with three modes:
 
-- **omitted** — the zero-config default: full device wiring (keyboard/gamepad
-  action polling PLUS pointer), with pointer hit-testing wired to the
-  controller's **own bundled presenters**. The 5-minute path must include
-  working mouse/touch; a presenter without the optional hit-test method
-  degrades the pointer side gracefully.
+- **omitted** — the zero-config default. The controller sets up keyboard and
+  gamepad action polling plus pointer input, with pointer hit-testing against its
+  own bundled presenters. The default path must include working mouse and touch
+  input. A presenter without the optional hit-test method keeps working, with the
+  pointer side disabled.
 - **an `InputBinding`** — replaces the default entirely (custom action names,
   hold thresholds, extra devices).
-- **`null`** — NO device input: the embedded/host-driven mode; the host calls
-  the controller's public methods itself, and the controller constructs no
-  binding (no pointer subscription, no action polling).
+- **`null`** — no device input. The host calls the controller's public methods
+  itself, and the controller constructs no binding: no pointer subscription and
+  no action polling.
 
 Reference implementations: `packages/addons/inventory/src/InventoryController.ts`
 and `packages/addons/dialogue/src/DialogueController.ts`.
@@ -314,14 +392,39 @@ it into its explicit `Serializable<TEncoded>` root. The addon does not register
 itself with `@yagejs/save`, traverse the entity graph, or own a save slot.
 
 **Capture the whole cursor, not just the obvious bits.** For dialogue that means
-`{ nodeId, stepIndex, vars, chosenOnce }` — omitting `chosenOnce` silently
-resurrects spent "once"-choices after a load. Restoring mid-line re-presents the
-current line.
+`{ nodeId, stepIndex, vars, chosenOnce }`. Omitting `chosenOnce` makes spent
+"once" choices available again after a load, with no error. Restoring mid-line
+re-presents the current line.
 
-For dialogue, keep the entire runner cursor reachable through read-only getters:
-`getVars()`, `getNodeId()`, `getStepIndex()`, and `getChosenOnce()`. A domain
-snapshot API can then capture the cursor without coupling dialogue to
-`@yagejs/save`.
+For dialogue, the entire runner cursor is reachable through read-only getters on
+`runner.ts`: `getVars()`, `getNodeId()`, `getStepIndex()`, and `getChosenOnce()`.
+A domain snapshot API can therefore capture the cursor without coupling dialogue
+to `@yagejs/save`.
+
+## Docs live inside the addon package
+
+An addon's LLM doc source is co-located in the package at
+`packages/addons/<name>/docs/llms/<name>.md`, unlike the conceptual docs at the
+repo's `docs/llms/`. `docs/scripts/copy-llms.mjs` harvests three source trees
+into the generated `docs/public/llms/` tree: `docs/llms/` (conceptual),
+`packages/*/docs/llms/` (engine packages, into `public/llms/packages/`), and
+`packages/addons/*/docs/llms/` (addons, into `public/llms/addons/`). Never edit
+`docs/public/llms/...` directly; edit the co-located source. The human-facing
+surface for an addon is `docs/src/content/docs/addons/<name>.mdx`
+(Astro/Starlight). Rebuild both surfaces with
+`npx turbo run build --filter=@yagejs/docs`.
+
+## `exactOptionalPropertyTypes`
+
+A field assigned a possibly-undefined constructor option is declared
+`field: T | undefined`, not `field?: T`. A `?:` declaration rejects the
+assignment. Match `PointerInputBinding`'s `unsub` field pattern.
+
+## Lint
+
+`turbo lint` must exit 0 on an addon. YAGE sets
+`@typescript-eslint/no-non-null-assertion` at warning level, so it does not fail
+the run. Treat only errors as blocking.
 
 ## Reference files
 
@@ -331,59 +434,4 @@ snapshot API can then capture the cursor without coupling dialogue to
 - `packages/core/src/state/reactive.ts` — `Serializable<TEncoded>`.
 - `packages/input/src/InputPlugin.ts`, `packages/audio/src/AudioPlugin.ts` —
   L2b Plugin references.
-- `packages/addons/dialogue/` — the first addon; worked single-system example.
-
-## New learnings from the dialogue port (first addon)
-
-These were discovered while porting `@yagejs-addons/dialogue`. They generalize to any addon with a headless/pixi split.
-
-### Pixi-free root entry: verify at the build artifact, not just the source
-
-The locked rule is that the root entry (`.`) must NOT transitively import `pixi.js` or `@yagejs/renderer`; all pixi lives behind `./presenters`. Source-level grepping is necessary but NOT sufficient — `import type` from a renderer module looks like an import in source yet is fully erased at build, and a value import buried in a shared chunk can sneak pixi into the root bundle without appearing in `src/index.ts`. Verify against the emitted `dist/`:
-
-```bash
-# Must all print 0:
-grep -c "@yagejs/renderer\|pixi.js" packages/addons/dialogue/dist/index.js
-grep -c "@yagejs/renderer\|pixi.js" packages/addons/dialogue/dist/index.cjs
-grep -c "@yagejs/renderer\|pixi.js" packages/addons/dialogue/dist/index.d.ts
-# Also check every shared chunk the root pulls (tsup names them chunk-*.js):
-grep -lc "@yagejs/renderer\|pixi.js" packages/addons/dialogue/dist/chunk-*.js
-```
-
-`DialogueController` is the trap: it lives in the root entry but references presenter contracts. Keep those as `import type` only (TextPresenter/ChromePresenter/ChoicePresenter/AvatarPresenter), and import only pixi-free _values_ (e.g. `InputManagerKey` from `@yagejs/input`). `input/*` is pixi-free and intentionally belongs with the root entry, not presenters.
-
-### Canvas-default vs bitmap-opt-in font split
-
-Default presenters use Graphics chrome + canvas `SplitTextComponent`/`TextComponent` with ZERO bundled assets. `defaultTheme()` sets no `bitmapFont*`/`textured`/portrait fields — only a `fontFamily` plus Graphics colors/layers. The view selects the path by presence: `font = bitmapFont ?? fontFamily`, and only flips to the bitmap path when `bitmapFont` is set. Native bold/italic + per-glyph tint effects come for free on the canvas path. Bitmap fonts (variant atlases) are an explicit opt-in theme path, never the default.
-
-Renderer API name drift to watch: the brief named `bakeBitmapFont` / `BitmapFontVariantTextures`, but `@yagejs/renderer`'s barrel actually exports `bitmapFont` / `installBitmapFont` / `BitmapFontVariant` (+ `resolveTextureInput` / `TextureInput`). The addon never imports a bitmap symbol by value (it only passes font-name strings), so this didn't bite the build — but use the real symbol names when extending the opt-in bitmap theme path.
-
-### Nine-slice without a `@yagejs/ui` dependency
-
-Texture-driven re-theming (`TexturedChrome` / `TexturedBubble`) uses `@yagejs/renderer`'s `createNineSlice` primitive — **not** a direct `pixi.js` import. **Lesson (general):** when a presenter needs a pixi display primitive the renderer doesn't expose, ADD it to `@yagejs/renderer` (it owns the pixi abstraction) rather than importing `pixi.js` inside the addon. Reaching past renderer to pixi works mechanically (pixi is a transitive dep) but bypasses the engine's abstraction and saddles the addon with a second `pixi.js` peer + version surface to keep in lockstep. `createNineSlice` (+ `NineSliceOptions`, and a re-exported `NineSliceSprite` type) was added to renderer for exactly this — so the addon declares **no** `pixi.js` peer at all. Do NOT pull `@yagejs/ui` for nine-slice either — verify `grep -rc "@yagejs/ui" packages/addons/dialogue` returns 0. These textured variants are opt-in: reachable only via the `./presenters` barrel + the optional `theme.textured` field; no default bundle or factory references them.
-
-### Dialogue save state
-
-Keep the runner cursor reachable so a complete domain snapshot API can be added without changing the runner again. `runner.ts` exposes read-only `getVars()`, `getNodeId()`, `getStepIndex()`, and `getChosenOnce()`.
-
-### Glossary terms were CUT from the first release (2026-06-11)
-
-The `[term=id]`/`[gloss=id]` markup, the text-view hit-testing/underline machinery, the `TermTarget`/`setTermSink` binding seam, and `DialogueTermActivatedEvent` were removed before first publish — the feature crossed all three layers (presenter -> input -> controller) and generated a disproportionate share of review findings for a phase-1 addon. Unknown tags drop silently, so scripts containing `[term]` still parse. If re-introduced, design it post-Design-C with the theming/extensibility story, mirroring `PointerChoiceTarget` the way the original did (see git history on `feat/dialogue-addon`).
-
-exactOptionalPropertyTypes gotcha (still applies generally): fields assigned possibly-undefined ctor options are declared `field: T | undefined` (NOT `field?: T`) — `?:` would reject the assignment. Match `PointerInputBinding`'s `unsub` field pattern.
-
-### Independent versioning + changeset
-
-The addon is EXCLUDED from `.changeset/config.json`'s `fixed` group (the `@yagejs/*` + `create-yage` cohort), so it versions independently. Confirm with `grep -c "yagejs-addons" .changeset/config.json` == 0. The new-package changeset is a plain `minor` for `@yagejs-addons/dialogue` only — the fixed group's cascade handles dependents; never add the addon to that array as a shortcut.
-
-### Package config: copy particles' shape
-
-`tsconfig.json` extends `../../../tsconfig.base.json` (note the extra `..` — addons are one level deeper at `packages/addons/<name>`). `tsup` builds two entries (`src/index.ts`, `src/presenters.ts`), ESM+CJS, dts, sourcemap, `keepNames`, es2022. `package.json` declares both `.` and `./presenters` exports with import/require + types. `@yagejs/renderer` is `optional` in `peerDependenciesMeta` (only `./presenters` needs it); `pixi.js` is **not** a peer — presenters reach pixi only through `@yagejs/renderer`. Engine peers are mirrored in `devDependencies` so local builds resolve them. The root `package.json` `workspaces` already globs `packages/addons/*` — no workspace edit needed.
-
-### Docs co-locate + sync (addons differ from engine packages)
-
-Unlike the conceptual docs at the repo's `docs/llms/`, an addon's LLM doc source is **co-located inside the package** at `packages/addons/<name>/docs/llms/<name>.md`. `docs/scripts/copy-llms.mjs` harvests three source trees — `docs/llms/` (conceptual), `packages/*/docs/llms/` (engine packages → `public/llms/packages/`), and `packages/addons/*/docs/llms/` (addons → `public/llms/addons/`) — into the GENERATED `docs/public/llms/` tree. Never edit `docs/public/llms/...` directly; edit the co-located source. The human/narrative surface for an addon is `docs/src/content/docs/addons/<name>.mdx` (Astro/Starlight). Rebuild both surfaces with `npx turbo run build --filter=@yagejs/docs`.
-
-### Lint baseline
-
-`turbo lint` on the addon is GREEN (exit 0) with 0 errors and ~46 `@typescript-eslint/no-non-null-assertion` WARNINGS (in `input/InputBinding.ts` and `render/DialogueTextView.ts`), consistent with the ported code's existing style and YAGE's warning-level convention. Warnings don't fail the loop; only treat errors as blocking.
+- `packages/addons/dialogue/` — worked single-system example.

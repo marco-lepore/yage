@@ -220,7 +220,7 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 
 | File                        | Purpose                                               |
 | --------------------------- | ----------------------------------------------------- |
-| `src/UIPlugin.ts`           | Plugin entry, loads Yoga + wires AssetManager         |
+| `src/UIPlugin.ts`           | Plugin entry, loads Yoga and connects AssetManager    |
 | `src/UISurface.ts`          | Root component mounting a UI tree on an entity        |
 | `src/UIPanel.ts`            | Layout container element with Yoga flexbox            |
 | `src/UIText.ts`             | Text rendering                                        |
@@ -266,7 +266,7 @@ Controlled persistence for typed reactive stores and custom
 | `src/adapters/localStorage.ts` | `localStorageAdapter()` — browser default                          |
 | `src/adapters/memory.ts`       | `memoryAdapter()` — tests + Node                                   |
 
-The reactive state factories themselves (the compound `createStore` + leaf `createRecord` / `createValue` / `createSet` / `createMap` / `createCounter` / `createList`) live in `@yagejs/core` under `src/state/`. They implement three contracts — `Reactive`, `Serializable<T>`, `Resettable` — also defined in `state/reactive.ts` along with the `Reactive*` shape interfaces. The save layer consumes any `Serializable<T>` by id at the call site; primitives stay ignorant of persistence vocabulary.
+The reactive state factories themselves live in `@yagejs/core` under `src/state/`: the compound `createStore` plus the leaf factories `createRecord`, `createValue`, `createSet`, `createMap`, `createCounter`, and `createList`. They implement three contracts: `Reactive`, `Serializable<T>`, and `Resettable`. Those contracts and the `Reactive*` shape interfaces are defined in `state/reactive.ts`. The save layer accepts any `Serializable<T>` by id at the call site. The state factories know nothing about the save layer's documents, slots, or migrations.
 
 ### Project Root
 
@@ -284,9 +284,9 @@ The reactive state factories themselves (the compound `createStore` + leaf `crea
 
 ### Order of Operations
 
-1. **Unit tests first** -- fast feedback, no browser needed
-2. **Type-check** -- catch type errors before runtime
-3. **Build** -- ensure packages compile
+1. **Unit tests first** -- they are fast and need no browser
+2. **Type-check** -- catches type errors before runtime
+3. **Build** -- confirms every package compiles
 4. **E2E tests** -- verify real browser behavior
 
 ```bash
@@ -355,32 +355,34 @@ expect(pos!.y).toBeGreaterThan(100);
 
 ### Clock ownership and snapshot readings
 
-`Inspector.time` owns public clock control. A custom driver acquires an
-`InspectorTimeLease` through `time.acquire()` and uses that lease for every
-mutation until `release()`. Acquisition and release change ownership only.
-Queries remain available, but raw mutators reject while a lease is held.
-Raw async stepping holds a lease for the entire operation. `Inspector.drive`
-and Lab playback use the same ownership; do not add a separate driver flag.
+`Inspector.time` is the only public way to control the clock. A custom driver
+acquires an `InspectorTimeLease` through `time.acquire()` and uses that lease
+for every mutation until it calls `release()`. Acquiring and releasing a lease
+changes ownership and nothing else. While a lease is held, queries still work
+and the raw mutators fail. Raw async stepping holds a lease for the whole
+operation. `Inspector.drive` and Lab playback use the same lease mechanism.
+Do not add a separate driver flag.
 
 `time.getFrame()`, snapshot frames, event frames and logger frames all use
-`GameLoop.frameCount`. Deadline waits expire through `Inspector._completeFrame`
-after end-of-frame systems and destroy flushing; an event on the deadline
-frame can satisfy its wait. Tests of these claims must advance the real loop.
-Event waits match retained history without consuming it. Clear the log before
-testing a new occurrence; Lab rebuilds clear it before scene setup.
+`GameLoop.frameCount`. Deadline waits expire through `Inspector._completeFrame`,
+which runs after end-of-frame systems and after destroy flushing. An event on
+the deadline frame still satisfies its wait. Tests of this behavior must
+advance the real loop. Event waits match retained event history and leave the
+matched events in place. Clear the log before testing a new occurrence. Lab
+rebuilds clear it before scene setup.
 
 All entity counts exclude destroyed entities and include dormant/inactive
 ones. World-entity snapshots expose `name`, optional `key`, `generation` and
 `pooled` from existing metadata. Scene ids identify instances for the
 Inspector lifetime and must not reset while retained events refer to them.
-They are not keys for golden comparisons across rebuilt runs.
+Scene ids are not stable keys for golden comparisons across rebuilt runs.
 
-Snapshot clock readings come from their owners: `fixedStepIndex` from the
-scheduler, `interpolationAlpha` from the game loop, scene `elapsed` and
-`fixedElapsed` from `SceneTime`, and `physics.elapsed` from the scene's physics
-world (`0` without physics). Elapsed values are seconds. Compare timestamps
-from the same clock; do not add diagnostic counters for existing runtime
-readings.
+Each snapshot clock reading comes from the component that owns that clock:
+`fixedStepIndex` from the scheduler, `interpolationAlpha` from the game loop,
+scene `elapsed` and `fixedElapsed` from `SceneTime`, and `physics.elapsed` from
+the scene's physics world (`0` without physics). Elapsed values are seconds.
+Compare timestamps only when they come from the same clock. Do not add
+diagnostic counters for readings the runtime already provides.
 
 ---
 
@@ -500,12 +502,12 @@ Summary:
 ### Add a New Example
 
 Each example is one flat HTML file at the `examples/` root plus a source folder
-under `examples/src/`. The HTML's URL is `/<name>.html`; the source lives at
+under `examples/src/`. The HTML's URL is `/<name>.html`. The source lives at
 `examples/src/<name>/main.ts` (use `main.tsx` for React examples).
 
 1. Create `examples/src/<name>/main.ts`. Larger examples split into sibling
    files in the same folder (`scene.ts`, `player.ts`, `hud.ts`, `constants.ts`,
-   …) with `main.ts` reduced to plugin setup + boot. Relative imports use the
+   …), and `main.ts` then holds only plugin setup and boot. Relative imports use the
    `./foo.js` form. Shared helpers come from `../shared/bootstrap.js`
    (`installDebugFromUrl`, `setupGameContainer`, `getContainer`). Boot with:
 
@@ -588,10 +590,10 @@ install(context: EngineContext) {
 
 Entities support two usage styles (mixable in the same project):
 
-- **Data containers (ECS-style)**: Plain ID + component bags. Systems query and manipulate components directly. Good for bulk processing (physics bodies, particles, tiles).
-- **Game object API layer**: Entity subclasses with methods that internally interact with components. Add `@trait()` for shared behaviors discoverable at runtime. Good for gameplay objects with rich interactions (NPCs, items, doors).
+- **Data containers (ECS-style)**: an id plus a set of components. Systems query and change those components directly. Good for bulk processing (physics bodies, particles, tiles).
+- **Game object API layer**: Entity subclasses with methods that internally interact with components. Add `@trait()` for shared behaviors discoverable at runtime. Good for gameplay objects with many behaviors (NPCs, items, doors).
 
-Use `setup()` instead of the constructor — it runs after the entity is wired to the scene, so `onAdd` hooks and service resolution work.
+Use `setup()` instead of the constructor. `setup()` runs after the entity is attached to the scene, so `onAdd` hooks and service resolution work.
 
 ```typescript
 import { Entity, Transform, Vec2 } from "@yagejs/core";
@@ -693,12 +695,13 @@ const game = createStore((s) => ({
   gold: s.counter({ default: 0 }),
 }));
 
-// Leaf for things that persist on a different cadence.
+// Leaf state that persists on its own schedule.
 const settings = createRecord<{ volume: number }>({
   default: () => ({ volume: 0.8 }),
 });
 
-// Construct Save in main; register via plugin. Ids live at the call site.
+// Construct Save in main and register it through the plugin.
+// Ids are given at the call site.
 const save = createSave({ adapter: localStorageAdapter() });
 await Promise.all([
   save.restore("game", game),
@@ -829,9 +832,9 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 
 | Convention                         | Details                                                                                                                                                                                                                                                                       |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Immutable Vec2 by default**      | Keep or share values as `Vec2`; its vector operations return immutable values. For repeated calculations, reuse a caller-owned `Vec2Buffer` with `Into` methods. Never mutate a `Vec2` or pass it as an output.                                                               |
-| **Transform is mutable**           | Use scalar writes such as `setPosition`, `setWorldPosition`, and `translate`. `Into` getters copy into a caller-owned buffer without constructing `Vec2`; ordinary vector getters return lazy immutable snapshots that never change after being returned.                     |
-| **Components own game logic**      | Components can have `update(dt)` and `fixedUpdate(dt)` methods — the built-in `ComponentUpdateSystem` calls them, per entity in ascending `updatePriority` (add order by default). Systems are for engine internals and cross-cutting concerns (physics, rendering).          |
+| **Immutable Vec2 by default**      | Keep or share values as `Vec2`. Its vector operations return immutable values. For repeated calculations, reuse a caller-owned `Vec2Buffer` with `Into` methods. Never mutate a `Vec2` or pass it as an output.                                                               |
+| **Transform is mutable**           | Use scalar writes such as `setPosition`, `setWorldPosition`, and `translate`. `Into` getters copy into a caller-owned buffer without constructing `Vec2`. Ordinary vector getters return lazy immutable snapshots that never change after being returned.                     |
+| **Components own game logic**      | Components can have `update(dt)` and `fixedUpdate(dt)` methods. The built-in `ComponentUpdateSystem` calls them per entity, in ascending `updatePriority` (add order by default). Systems are for engine internals and cross-cutting concerns (physics, rendering).           |
 | **Phase assignment**               | Physics in `FixedUpdate`. Input polling in `EarlyUpdate`. Rendering in `Render`. Cleanup in `EndOfFrame`.                                                                                                                                                                     |
 | **ServiceKey for DI**              | Always use `ServiceKey<T>` for type-safe service resolution. Keys use their id string for identity. A repeated id is allowed only for the same contract when avoiding an optional runtime dependency, with a nearby comment naming the owner. Never use string keys directly. |
 | **Plain objects for config**       | Plugin configs, action maps, collider shapes -- all plain objects. No `Map`, no classes for config.                                                                                                                                                                           |
@@ -849,15 +852,15 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Putting engine-level cross-cutting concerns in Components**          | Physics stepping, render sync, and collision dispatch need efficient cross-entity queries and strict phase ordering. Putting these in Components means duplicate work and no centralized control. | Use Systems for engine-level concerns (physics, rendering, audio). Components are for game logic.                                                                                            |
 | **Importing PixiJS types into `@yagejs/core`**                         | Creates a dependency from core to pixi.js, breaking the zero-dependency guarantee.                                                                                                                | Keep PixiJS types inside `@yagejs/renderer`. Use abstract interfaces in core if needed.                                                                                                      |
-| **Typing a public field/param/return with a raw `pixi.js` type**       | Forces consumer code to import `pixi.js` for types, defeating the alias layer's discoverability goal.                                                                                             | Use `@yagejs/renderer`'s aliases (`DisplayContainer`, `DisplaySprite`, `GraphicsContext`, `ColorValue`, ...) in exported signatures — construction still imports `pixi.js` directly.         |
+| **Typing a public field/param/return with a raw `pixi.js` type**       | Forces consumer code to import `pixi.js` for types, which defeats the purpose of the alias layer: every type a consumer needs is found in `@yagejs/renderer`.                                     | Use `@yagejs/renderer`'s aliases (`DisplayContainer`, `DisplaySprite`, `GraphicsContext`, `ColorValue`, ...) in exported signatures. Construction still imports `pixi.js` directly.          |
 | **Using `context.resolve()` in a constructor**                         | Context may not be fully populated during plugin installation.                                                                                                                                    | Use `onRegister()` for systems or `onEnter()` for scenes to resolve services.                                                                                                                |
-| **Mutating Vec2**                                                      | Shared values and previously returned transform snapshots must keep their coordinates.                                                                                                            | Use immutable vector operations, or pass a caller-owned `Vec2Buffer` to an `Into` method. Never return reusable internal scratch as a public value.                                          |
+| **Mutating Vec2**                                                      | Shared values and previously returned transform snapshots must keep their coordinates.                                                                                                            | Use immutable vector operations, or pass a caller-owned `Vec2Buffer` to an `Into` method. Never return a reusable internal scratch object as a public value.                                 |
 | **Running async code in system `update()`**                            | The game loop is synchronous. Async operations skip frames and cause non-determinism.                                                                                                             | Start async work outside the loop, use events to communicate completion, or use Process for frame-aligned delays.                                                                            |
 | **Forgetting to export from `index.ts`**                               | Unexported types won't be available to consumers.                                                                                                                                                 | Always add new public types to the package's barrel export.                                                                                                                                  |
 | **Registering duplicate ServiceKeys**                                  | `EngineContext.register()` throws on duplicates.                                                                                                                                                  | Check with `context.has()` first, or ensure only one plugin registers each key.                                                                                                              |
 | **Putting unit tests in `e2e/`**                                       | Unit tests should be fast and not require a browser.                                                                                                                                              | Co-locate with source. Only put browser-dependent tests in `e2e/`.                                                                                                                           |
 | **Using `setTimeout` or `setInterval` in game logic**                  | Breaks deterministic frame execution. Timers drift and don't respect pause.                                                                                                                       | Use `ProcessComponent` with slots for cooldowns/timers, `pc.run()` for one-offs, or `TimerEntity` for scene-level timing.                                                                    |
-| **Using boolean flags for cooldown state**                             | Manual booleans + `Process.delay` to reset them is error-prone and verbose.                                                                                                                       | Use `ProcessSlot` — `slot.completed` IS the state. No separate boolean needed.                                                                                                               |
+| **Using boolean flags for cooldown state**                             | Manual booleans plus `Process.delay` to reset them are verbose and easy to get wrong.                                                                                                             | Use `ProcessSlot`: `slot.completed` is the state, so no separate boolean is needed.                                                                                                          |
 | **Assuming render order = spawn order**                                | Render order is controlled by `RenderLayer` and draw priority, not entity creation order.                                                                                                         | Use layers for explicit draw ordering.                                                                                                                                                       |
 | **Passing raw `Texture` objects where an asset reference is expected** | Raw textures have caller-owned lifetime and cannot be preloaded by key. Sprites and animations reject them at the type level.                                                                     | Use `FrameSource` for animations, a `texture` key or a built-in shape for particles, and a `TextureRef` for sprites. Register runtime-created textures with `registerTexture(key, texture)`. |
 
@@ -875,52 +878,50 @@ Before submitting code:
 
 ## 9. Architecture Decision Quick Reference
 
-Quick summary of the key architectural decisions:
-
-| Decision                                                | Rationale                                                                                                                                      |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| No global state (`EngineContext` instead of `Executor`) | Prevents stale refs in async, supports multiple engines in tests                                                                               |
-| Components own game logic; Systems power engine plugins | ComponentUpdateSystem calls component update/fixedUpdate (enabled check built in); Systems use QueryCache for efficient cross-entity iteration |
-| Cached queries (`QueryCache`)                           | O(1) registration, O(matched) iteration, only updates on archetype changes                                                                     |
-| Deterministic frame phases                              | Predictable execution order; no setTimeout, no async in game loop                                                                              |
-| Physics is optional                                     | Core has zero knowledge of physics; no WASM download for non-physics games                                                                     |
-| Internal coordinate conversion                          | `PhysicsWorld` handles pixels ↔ meters; users never see Rapier units                                                                           |
-| Error attribution (`ErrorBoundary`)                     | A throw is attributed to the system/component/callback that threw, logged, and inspectable, before it stops the loop                           |
-| Inspector + Logger as core features                     | Testing and debugging are first-class; `window.__yage__` enables Playwright assertions                                                         |
-| Explicit save roots (`Serializable<TEncoded>`)          | Save files hold selected durable game facts; scene setup rebuilds runtime ECS and plugin objects after load                                    |
-| String keys for texture-dependent components            | `FrameSource` (animation), `texture` (particles), and sprite texture keys integrate with asset loading without coupling to PixiJS objects      |
+| Decision                                                    | Rationale                                                                                                                                           |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No global state; services live on `EngineContext`           | Prevents stale refs in async, supports multiple engines in tests                                                                                    |
+| Components own game logic; Systems implement engine plugins | ComponentUpdateSystem calls component update/fixedUpdate and skips disabled components. Systems use QueryCache for efficient cross-entity iteration |
+| Cached queries (`QueryCache`)                               | O(1) registration, O(matched) iteration, only updates on archetype changes                                                                          |
+| Deterministic frame phases                                  | Predictable execution order; no setTimeout, no async in game loop                                                                                   |
+| Physics is optional                                         | Core contains no physics code, so games without physics download no WASM                                                                            |
+| Internal coordinate conversion                              | `PhysicsWorld` handles pixels ↔ meters; users never see Rapier units                                                                                |
+| Error attribution (`ErrorBoundary`)                         | A throw is attributed to the system/component/callback that threw, logged, and inspectable, before it stops the loop                                |
+| Inspector + Logger as core features                         | Testing and debugging are built in. `window.__yage__` lets Playwright tests assert on engine state                                                  |
+| Explicit save roots (`Serializable<TEncoded>`)              | Save files hold selected durable game facts; scene setup rebuilds runtime ECS and plugin objects after load                                         |
+| String keys for texture-dependent components                | `FrameSource` (animation), `texture` (particles), and sprite texture keys integrate with asset loading without coupling to PixiJS objects           |
 
 ## 10. Error-Handling Model
 
-Three rules govern how engine code treats a failure in developer-supplied code. `AGENTS.md` states each as one bullet; this section is the full model.
+Three rules govern how engine code treats a failure in developer-supplied code. `AGENTS.md` states each rule as one bullet. This section gives the detail.
 
 ### Attribute developer-supplied callbacks
 
-Engine code that invokes a callback the game registered (event handlers, collision handlers, input listeners, process callbacks) runs it through `ErrorBoundary.wrapCallback`, and a `System`/`Component`'s own update call goes through `wrapSystem`/`wrapComponent`. All three record the culprit (readable via `Inspector.getErrors().callbackErrors`), log it through `Logger`, and rethrow. Nothing is disabled, unsubscribed, muted, or cancelled.
+Engine code that invokes a callback the game registered (event handlers, collision handlers, input listeners, process callbacks) runs it through `ErrorBoundary.wrapCallback`, and a `System`/`Component`'s own update call goes through `wrapSystem`/`wrapComponent`. All three record which callback threw, log the error through `Logger`, and rethrow. `Inspector.getErrors().callbackErrors` reads the recorded errors. Nothing is disabled, unsubscribed, muted, or cancelled.
 
-Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`) use `ErrorBoundary.wrapLifecycleHook` instead: a synchronous throw is reported and rethrown the same way, but a rejected async hook can only be reported. The call has already returned by the time the rejection settles, so there is no stack left to rethrow into. Plugin `beforeEnter` hooks are different: `SceneHookRegistry.runBeforeEnter` awaits each one, so a rejection is reported and rethrown, and the scene push or replace that triggered it rejects instead of activating the scene. `Logger`'s own `output` sink guards itself the same way, since it cannot route through the boundary it is reporting into.
+Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`) use `ErrorBoundary.wrapLifecycleHook`. A synchronous throw from one of them is reported and rethrown the same way. A rejected async hook can only be reported, because the call has already returned by the time the rejection settles, leaving no stack to rethrow into. Plugin `beforeEnter` hooks behave differently. `SceneHookRegistry.runBeforeEnter` awaits each one, so a rejection is reported and rethrown, and the scene push or replace that triggered it rejects rather than activating the scene. `Logger`'s own `output` sink catches and reports its own errors, because it cannot route through the boundary it is reporting into.
 
 `GameLoop.tick()` is the one place that decides a failure is terminal: an error that escapes an entire frame unhandled stops the loop and rethrows so it reaches the host.
 
-A new dispatch site still needs the wrap. The wrap is what attributes the throw to the actual callback instead of whatever caller happened to be on the stack when it escaped.
+Every new dispatch site needs the same wrap. Without it, the throw is attributed to whichever caller was on the stack when the error escaped, not to the callback that threw.
 
-### A throwing hook is terminal: report it, don't repair around it
+### A throwing hook is terminal: report the failure, do not continue the sequence
 
-When developer-supplied code throws inside an engine-owned sequence (scene teardown, an entity destroy cascade, a pool disposal, an event fan-out), the later steps do not run and the resources they would have released stay allocated. That is the model, not a defect to fix. A session with a throwing hook is over, so the engine's whole duty is to attribute the failure, record it on `Inspector.getErrors().callbackErrors`, and let it propagate. The developer can then fix it, and a shipped game can show or collect a bug report.
+When developer-supplied code throws inside an engine-owned sequence (scene teardown, an entity destroy cascade, a pool disposal, an event dispatch to several listeners), the later steps do not run and the resources they would have released stay allocated. That is the intended behavior, not a defect to fix. The engine attributes the failure, records it on `Inspector.getErrors().callbackErrors`, and lets it propagate. The developer can then fix the throwing code, and a shipped game can show or collect a bug report.
 
-Do not add a collector that runs every remaining step and rethrows the first error, and do not wrap a teardown step in `try`/`finally` to push it through. Two shipped places finish the sequence anyway, and neither is a pattern to copy: `Engine.destroy()` runs every stage and rethrows the first error because the host is quitting, and the plugin `afterExit` hooks continue past a failing plugin by documented contract, reporting without rethrowing.
+Do not add a collector that runs every remaining step and rethrows the first error. Do not wrap a teardown step in `try`/`finally` to force the rest of the sequence to run. Two places do finish the sequence, and neither is a pattern to copy. `Engine.destroy()` runs every stage and rethrows the first error, because the host is quitting. The plugin `afterExit` hooks continue past a failing plugin by documented contract, reporting the error without rethrowing.
 
 Two kinds of fix are always in scope:
 
 - **Attribution**: wrap a raw dispatch site so the throw names the callback that threw. Use `wrapCallback` where the throw should keep propagating.
-- **Reporting channel**: a catch that swallows or writes to `console.error` reports through the boundary instead. Use `reportLifecycleError` where a documented contract says the operation continues (`SceneHookRegistry.runAfterExit`, for instance).
+- **Reporting channel**: a `catch` that discards the error or writes to `console.error` must report through `ErrorBoundary`. Use `reportLifecycleError` where a documented contract says the operation continues, as in `SceneHookRegistry.runAfterExit`.
 
 ### Non-finite numbers never reach engine state unguarded
 
-`NaN` fails every comparison, so a guard like `value <= 0` lets it through, and once it reaches position, velocity, a cooldown, or particle state, nothing recovers it. The response depends on where the number enters. Three cases:
+`NaN` fails every comparison, so a guard like `value <= 0` does not catch it. Once `NaN` reaches a position, a velocity, a cooldown, or particle state, no later code can restore a valid value. The correct response depends on where the number enters. Three cases:
 
-- **Two already-legal inputs combine into a non-finite result.** Example: a documented `Infinity` option multiplied by a `dt` of `0` from a time-scale freeze. Define the result at that point instead of throwing; a throw here would fire on ordinary, documented usage. When the defined result drops what the caller asked for, emit a one-shot `devWarn` naming what could not be honoured. When the result is exact (`dt = 0` meaning nothing changes), stay silent. `devWarn` is internal to `@yagejs/core`, so only core sites can warn this way. A package without it stays silent on this edge; that is fine as long as its own result is exact rather than lossy.
-- **A single game-supplied number is about to be written into simulation state**, through a setter, constructor config, or a value returned from a game-authored callback. Throw a plain `Error` at that write site before the value is stored, naming the offending input and the constraint it violates. The message follows the style already shipped for scene-time and entity-pool validation: `Context.method: constraint, got ${x}`.
+- **Two already-legal inputs combine into a non-finite result.** Example: a documented `Infinity` option multiplied by a `dt` of `0` from a time-scale freeze. Define the result at that point rather than throwing, because a throw here would fire on ordinary, documented usage. When the defined result drops part or all of what the caller asked for, emit a one-shot `devWarn` naming the part that was dropped. When the result is exact (`dt = 0` means nothing changes), emit no warning. `devWarn` is internal to `@yagejs/core`, so only core code can warn this way. A package outside core emits no warning in this case, which is acceptable as long as its own result is exact rather than lossy.
+- **A single game-supplied number is about to be written into simulation state**, through a setter, constructor config, or a value returned from a game-authored callback. Throw a plain `Error` at that write site before the value is stored, naming the offending input and the constraint it violates. The message follows the style used by scene-time and entity-pool validation: `Context.method: constraint, got ${x}`.
 - **A non-finite input only changes what a read-only query returns** and is never stored anywhere. Leave it unguarded and document that the result is undefined for non-finite input. Don't add a branch for it.
 
 ---
