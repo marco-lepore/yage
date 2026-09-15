@@ -294,10 +294,11 @@ apply to every live particle on every frame, so only `configure` changes them.
 when the emitter is built. Neither method accepts them, and naming one in the
 options is a type error.
 
-TypeScript does not report extra keys that come from a spread, so a spread can
-still pass a method an option it does not accept. The method ignores that
-option. For example, `configure({ ...ParticlePresets.fire() })` applies
-everything in the preset except its `maxParticles` and `shape`.
+TypeScript reports an option a method does not accept only when the options are
+written as an object literal at the call site. A spread, or a variable typed as
+the full `EmitterConfig`, compiles and passes the option anyway. The method
+ignores that option. For example, `configure({ ...ParticlePresets.fire() })`
+applies everything in the preset except its `maxParticles` and `shape`.
 An option passed as `undefined` leaves that setting unchanged.
 
 Both methods check the emitter's configuration combined with the new values,
