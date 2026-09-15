@@ -50,6 +50,8 @@ export function assertEmitterConfig(config: EmitterConfig): void {
   assertNumber("rate", config.rate, atLeastZero);
   assertNumber("tint", config.tint, finite);
   assertNumber("damping", config.damping, zeroToOne);
+  assertNumber("alphaFadeIn", config.alphaFadeIn, zeroToOne);
+  assertNumber("alphaFadeOut", config.alphaFadeOut, zeroToOne);
   assertRange("lifetime", config.lifetime, aboveZero);
   assertRange("speed", config.speed, finite);
   assertRange("angle", config.angle, finite);

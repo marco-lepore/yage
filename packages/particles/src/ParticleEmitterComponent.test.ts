@@ -171,6 +171,7 @@ import {
   spawnEntityInScene,
 } from "./test-helpers.js";
 import { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";
+import { ParticlePresets } from "./presets.js";
 
 const tex = { label: "test" } as never;
 
@@ -421,7 +422,8 @@ describe("ParticleEmitterComponent", () => {
       // Either both coordinates or neither: one alone would mix an explicit x
       // with an implied y of 0.
       const emitter = createEmitter();
-      // @ts-expect-error burst takes (count) or (count, x, y).
+      // @ts-expect-error burst takes (count) or (count, x, y), each with
+      // optional overrides after the position.
       emitter.burst(1, 100);
       expect(emitter.activeCount).toBe(1);
     });
@@ -430,6 +432,508 @@ describe("ParticleEmitterComponent", () => {
       const emitter = createEmitter({ maxParticles: 5 });
       emitter.burst(10);
       expect(emitter.activeCount).toBe(5);
+    });
+  });
+
+  describe("configuration copying", () => {
+    it("does not follow a range array the caller changes afterwards", () => {
+      const angle: [number, number] = [0, 0];
+      const emitter = new ParticleEmitterComponent({
+        texture: tex,
+        lifetime: 10,
+        speed: 100,
+        maxParticles: 10,
+        angle,
+      });
+      setupEntity(emitter);
+      angle[0] = Math.PI;
+      angle[1] = Math.PI;
+
+      emitter.burst(1);
+      expect(emitter._active[0]!.vx).toBeCloseTo(100, 5);
+    });
+
+    it("copies both ends of a lerped value", () => {
+      const scale = {
+        start: [2, 2] as [number, number],
+        end: [2, 2] as [number, number],
+      };
+      const emitter = new ParticleEmitterComponent({
+        texture: tex,
+        lifetime: 10,
+        maxParticles: 10,
+        scale,
+      });
+      setupEntity(emitter);
+      scale.start[0] = 9;
+      scale.start[1] = 9;
+      scale.end[0] = 9;
+      scale.end[1] = 9;
+
+      emitter.burst(1);
+      const state = emitter._active[0]!;
+      expect(state.scaleStart).toBeCloseTo(2, 5);
+      expect(state.scaleEnd).toBeCloseTo(2, 5);
+    });
+
+    it("copies gravity and the spawn offset", () => {
+      const gravity = { x: 0, y: 100 };
+      const spawnOffset = { x: 0, y: 0 };
+      const emitter = new ParticleEmitterComponent({
+        texture: tex,
+        lifetime: 10,
+        speed: 0,
+        maxParticles: 10,
+        gravity,
+        spawnOffset,
+      });
+      gravity.y = 900;
+      spawnOffset.x = 500;
+
+      emitter.burst(1);
+      expect(emitter._active[0]!.particle.x).toBe(0);
+      emitter._update(1, 0, 0);
+      expect(emitter._active[0]!.vy).toBeCloseTo(100, 5);
+    });
+
+    it("keeps two emitters built from one config object independent", () => {
+      const config: EmitterConfig = {
+        texture: tex,
+        lifetime: 10,
+        speed: 100,
+        angle: 0,
+        maxParticles: 10,
+      };
+      const first = new ParticleEmitterComponent(config);
+      const second = new ParticleEmitterComponent(config);
+      first.configure({ angle: Math.PI / 2 });
+
+      first.burst(1);
+      second.burst(1);
+      expect(first._active[0]!.vy).toBeCloseTo(100, 5);
+      expect(second._active[0]!.vx).toBeCloseTo(100, 5);
+    });
+  });
+
+  describe("configure", () => {
+    it("changes the next particle and leaves live ones alone", () => {
+      const emitter = createEmitter({
+        speed: 100,
+        angle: 0,
+        lifetime: 10,
+        maxParticles: 10,
+      });
+      emitter.burst(1);
+      emitter.configure({ angle: Math.PI / 2 });
+      emitter.burst(1);
+
+      const [first, second] = emitter._active;
+      expect(first!.vx).toBeCloseTo(100, 5);
+      expect(first!.vy).toBeCloseTo(0, 5);
+      expect(second!.vx).toBeCloseTo(0, 5);
+      expect(second!.vy).toBeCloseTo(100, 5);
+    });
+
+    it("applies to particles a running emission spawns afterwards", () => {
+      const emitter = createEmitter({
+        rate: 10,
+        lifetime: 10,
+        maxParticles: 10,
+        tint: 0x111111,
+      });
+      emitter.emit();
+      emitter._update(0.1, 0, 0);
+      emitter.configure({ tint: 0x222222 });
+      emitter._update(0.1, 0, 0);
+
+      expect(emitter.activeCount).toBe(2);
+      expect(emitter._active[0]!.particle.tint).toBe(0x111111);
+      expect(emitter._active[1]!.particle.tint).toBe(0x222222);
+    });
+
+    it("changes the continuous emission rate", () => {
+      const emitter = createEmitter({ rate: 10, maxParticles: 50 });
+      emitter.emit();
+      emitter.configure({ rate: 40 });
+      emitter._update(0.5, 0, 0);
+      expect(emitter.activeCount).toBe(20);
+    });
+
+    it("writes a blend mode through to the container", () => {
+      const emitter = createEmitter();
+      emitter.configure({ blendMode: "add" });
+      expect(emitter.container.blendMode).toBe("add");
+    });
+
+    it("rejects a bad value and leaves every previous value in force", () => {
+      const emitter = createEmitter({
+        tint: 0x111111,
+        lifetime: 10,
+        maxParticles: 10,
+      });
+      expect(() => emitter.configure({ tint: 0x222222, damping: 1.5 })).toThrow(
+        "ParticleEmitterComponent: damping must be between 0 and 1, got 1.5.",
+      );
+      emitter.burst(1);
+      expect(emitter._active[0]!.particle.tint).toBe(0x111111);
+    });
+
+    it("checks the merged configuration, not the argument alone", () => {
+      // radialSpeed needs a spawnOffset, and the emitter already has one.
+      const withOffset = createEmitter({ spawnOffset: { radius: 10 } });
+      expect(() => withOffset.configure({ radialSpeed: 50 })).not.toThrow();
+
+      const withoutOffset = createEmitter();
+      expect(() => withoutOffset.configure({ radialSpeed: 50 })).toThrow(
+        /radialSpeed needs a spawnOffset/,
+      );
+    });
+
+    it("copies a range array instead of reading the caller's", () => {
+      const emitter = createEmitter({
+        speed: 100,
+        lifetime: 10,
+        maxParticles: 10,
+      });
+      setupEntity(emitter);
+      const angle: [number, number] = [0, 0];
+      emitter.configure({ angle });
+      angle[0] = Math.PI;
+      angle[1] = Math.PI;
+      emitter.burst(1);
+      expect(emitter._active[0]!.vx).toBeCloseTo(100, 5);
+    });
+
+    it("copies both ends of a lerped value and a nested object", () => {
+      const emitter = createEmitter({ lifetime: 10, maxParticles: 10 });
+      setupEntity(emitter);
+      const scale = { start: [2, 2] as [number, number], end: 2 };
+      const gravity = { x: 0, y: 100 };
+      emitter.configure({ scale, gravity });
+      scale.start[0] = 9;
+      scale.start[1] = 9;
+      scale.end = 9;
+      gravity.y = 900;
+
+      emitter.burst(1);
+      const particle = emitter._active[0]!.particle;
+      expect(particle.scaleX).toBeCloseTo(2, 5);
+      emitter._update(1, 0, 0);
+      expect(emitter._active[0]!.vy).toBeCloseTo(100, 5);
+    });
+
+    it("reaches a live particle when gravity changes", () => {
+      const emitter = createEmitter({ lifetime: 10, maxParticles: 10 });
+      emitter.burst(1);
+      emitter._update(1, 0, 0);
+      expect(emitter._active[0]!.vy).toBeCloseTo(0, 5);
+
+      emitter.configure({ gravity: { x: 0, y: 100 } });
+      emitter._update(1, 0, 0);
+      expect(emitter._active[0]!.vy).toBeCloseTo(100, 5);
+    });
+
+    it("reaches a live particle when damping changes", () => {
+      const emitter = createEmitter({
+        speed: 100,
+        angle: 0,
+        lifetime: 10,
+        maxParticles: 10,
+      });
+      emitter.burst(1);
+      emitter._update(1, 0, 0);
+      expect(emitter._active[0]!.vx).toBeCloseTo(100, 5);
+
+      emitter.configure({ damping: 0.75 });
+      emitter._update(1, 0, 0);
+      expect(emitter._active[0]!.vx).toBeCloseTo(25, 5);
+    });
+
+    it("rejects options that are fixed at construction at the type level", () => {
+      const emitter = createEmitter();
+      // @ts-expect-error the texture source is chosen when the pool is built.
+      emitter.configure({ texture: tex });
+      // @ts-expect-error the pool's capacity is allocated at construction.
+      emitter.configure({ maxParticles: 10 });
+      expect(emitter.activeCount).toBe(0);
+    });
+
+    it("ignores construction-only options that arrive through a spread", () => {
+      const emitter = new ParticleEmitterComponent({
+        texture: tex,
+        lifetime: 10,
+        maxParticles: 5,
+        simulationSpace: "local",
+        layer: "effects",
+      });
+      // The preset sets neither simulationSpace nor layer, so add both.
+      const effect: EmitterConfig = {
+        ...ParticlePresets.fire(),
+        simulationSpace: "world",
+        layer: "default",
+      };
+      // TypeScript does not report extra keys from a spread, so this compiles.
+      emitter.configure({ ...effect });
+
+      // Nothing reads maxParticles or the texture source after construction,
+      // so the stored configuration is the only place a kept value would show.
+      const stored = (emitter as unknown as { config: Record<string, unknown> })
+        .config;
+      expect(stored.simulationSpace).toBe("local");
+      expect(stored.layer).toBe("effects");
+      expect(stored.maxParticles).toBe(5);
+      expect(stored).not.toHaveProperty("shape");
+
+      // The options configure accepts still apply.
+      expect(stored.tint).toBe(0xff6600);
+    });
+
+    it("leaves a setting unchanged when its option is undefined", () => {
+      const emitter = createEmitter({
+        speed: 100,
+        lifetime: 10,
+        maxParticles: 1,
+      });
+      // @ts-expect-error a project without exactOptionalPropertyTypes can pass undefined.
+      emitter.configure({ speed: undefined });
+
+      const stored = (emitter as unknown as { config: Record<string, unknown> })
+        .config;
+      expect(stored.speed).toBe(100);
+      expect(() => emitter.burst(1)).not.toThrow();
+    });
+  });
+
+  describe("burst overrides", () => {
+    it("spawns the burst with the override values", () => {
+      const emitter = createEmitter({
+        speed: 100,
+        angle: 0,
+        lifetime: 10,
+        maxParticles: 10,
+      });
+      emitter.burst(2, { angle: Math.PI / 2 });
+      expect(emitter.activeCount).toBe(2);
+      for (const state of emitter._active) {
+        expect(state.vx).toBeCloseTo(0, 5);
+        expect(state.vy).toBeCloseTo(100, 5);
+      }
+    });
+
+    it("leaves the emitter's own configuration alone", () => {
+      const emitter = createEmitter({
+        speed: 100,
+        angle: 0,
+        lifetime: 10,
+        maxParticles: 10,
+      });
+      emitter.burst(1, { angle: Math.PI / 2 });
+      emitter.burst(1);
+      expect(emitter._active[1]!.vx).toBeCloseTo(100, 5);
+      expect(emitter._active[1]!.vy).toBeCloseTo(0, 5);
+    });
+
+    it("does not disturb particles already in flight", () => {
+      const emitter = createEmitter({
+        speed: 100,
+        angle: 0,
+        lifetime: 10,
+        maxParticles: 10,
+      });
+      emitter.burst(1, { angle: 0 });
+      emitter.burst(1, { angle: Math.PI / 2 });
+      expect(emitter._active[0]!.vx).toBeCloseTo(100, 5);
+      expect(emitter._active[0]!.vy).toBeCloseTo(0, 5);
+      expect(emitter._active[1]!.vy).toBeCloseTo(100, 5);
+    });
+
+    it("applies a position and overrides together", () => {
+      const emitter = createEmitter({
+        speed: 0,
+        lifetime: 10,
+        maxParticles: 10,
+      });
+      emitter.burst(1, 100, 200, { speed: 50, angle: 0 });
+      expect(worldOf(emitter)).toEqual({ x: 100, y: 200 });
+      expect(emitter._active[0]!.vx).toBeCloseTo(50, 5);
+    });
+
+    it("rejects a bad override value", () => {
+      const emitter = createEmitter();
+      expect(() => emitter.burst(1, { lifetime: 0 })).toThrow(
+        /lifetime must be finite and > 0/,
+      );
+      expect(emitter.activeCount).toBe(0);
+    });
+
+    it("checks the merged configuration, not the override alone", () => {
+      const withOffset = createEmitter({
+        spawnOffset: { radius: 10 },
+        lifetime: 10,
+        maxParticles: 10,
+      });
+      setupEntity(withOffset);
+      expect(() => withOffset.burst(1, { radialSpeed: 50 })).not.toThrow();
+
+      const withoutOffset = createEmitter();
+      expect(() => withoutOffset.burst(1, { radialSpeed: 50 })).toThrow(
+        /radialSpeed needs a spawnOffset/,
+      );
+    });
+
+    it("rejects options a burst cannot change at the type level", () => {
+      const emitter = createEmitter();
+      // @ts-expect-error the pool's capacity is allocated at construction.
+      emitter.burst(1, { maxParticles: 10 });
+      // @ts-expect-error gravity is read per frame, not per particle.
+      emitter.burst(1, { gravity: { x: 0, y: 10 } });
+      expect(emitter.activeCount).toBe(2);
+    });
+
+    it("ignores options outside BurstOverrides that arrive through a spread", () => {
+      const emitter = createEmitter({
+        alpha: 1,
+        lifetime: 10,
+        maxParticles: 1,
+      });
+      // A spawn reads alphaFadeIn, so if the burst kept the spread's value,
+      // this particle would start at alpha 0.
+      const faded: EmitterConfig = { lifetime: 10, alphaFadeIn: 0.5 };
+      emitter.burst(1, { ...faded });
+      expect(emitter._active[0]!.particle.alpha).toBe(1);
+    });
+
+    it("uses the emitter's value when an override is undefined", () => {
+      const emitter = createEmitter({
+        speed: 100,
+        lifetime: 10,
+        maxParticles: 1,
+      });
+      // @ts-expect-error a project without exactOptionalPropertyTypes can pass undefined.
+      expect(() => emitter.burst(1, { speed: undefined })).not.toThrow();
+      expect(emitter.activeCount).toBe(1);
+    });
+  });
+
+  describe("alpha fade envelope", () => {
+    it("leaves alpha alone when neither fade is set", () => {
+      const emitter = createEmitter({
+        alpha: { start: 1, end: 0 },
+        lifetime: 1,
+        maxParticles: 1,
+      });
+      emitter.burst(1);
+      const p = emitter._active[0]!.particle;
+      expect(p.alpha).toBeCloseTo(1, 5);
+      emitter._update(0.5, 0, 0);
+      expect(p.alpha).toBeCloseTo(0.5, 5);
+    });
+
+    it("alphaFadeIn starts at 0 and reaches full at the fraction", () => {
+      const emitter = createEmitter({
+        alpha: 1,
+        alphaFadeIn: 0.25,
+        lifetime: 1,
+        maxParticles: 1,
+      });
+      emitter.burst(1);
+      const p = emitter._active[0]!.particle;
+      expect(p.alpha).toBe(0);
+
+      emitter._update(0.125, 0, 0);
+      expect(p.alpha).toBeCloseTo(0.5, 5);
+
+      emitter._update(0.125, 0, 0);
+      expect(p.alpha).toBeCloseTo(1, 5);
+    });
+
+    it("alphaFadeOut falls towards 0 at the end of life", () => {
+      const emitter = createEmitter({
+        alpha: 1,
+        alphaFadeOut: 0.5,
+        lifetime: 1,
+        maxParticles: 1,
+      });
+      emitter.burst(1);
+      const p = emitter._active[0]!.particle;
+
+      emitter._update(0.5, 0, 0);
+      expect(p.alpha).toBeCloseTo(1, 5);
+
+      emitter._update(0.25, 0, 0);
+      expect(p.alpha).toBeCloseTo(0.5, 5);
+
+      emitter._update(0.2, 0, 0);
+      expect(p.alpha).toBeCloseTo(0.1, 5);
+    });
+
+    it("multiplies the two where they overlap", () => {
+      const emitter = createEmitter({
+        alpha: 1,
+        alphaFadeIn: 0.6,
+        alphaFadeOut: 0.6,
+        lifetime: 1,
+        maxParticles: 1,
+      });
+      emitter.burst(1);
+      emitter._update(0.5, 0, 0);
+      // 0.5/0.6 in, 0.5/0.6 out: alpha never reaches the configured 1.
+      expect(emitter._active[0]!.particle.alpha).toBeCloseTo(
+        (0.5 / 0.6) ** 2,
+        5,
+      );
+    });
+
+    it("multiplies a lerped alpha rather than replacing it", () => {
+      const emitter = createEmitter({
+        alpha: { start: 1, end: 0 },
+        alphaFadeIn: 0.5,
+        lifetime: 1,
+        maxParticles: 1,
+      });
+      emitter.burst(1);
+      emitter._update(0.25, 0, 0);
+      // lerp 0.75, envelope 0.5.
+      expect(emitter._active[0]!.particle.alpha).toBeCloseTo(0.375, 5);
+    });
+
+    it("configure changes the envelope", () => {
+      const emitter = createEmitter({ alpha: 1, lifetime: 1, maxParticles: 2 });
+      emitter.configure({ alphaFadeIn: 0.5 });
+      emitter.burst(1);
+      expect(emitter._active[0]!.particle.alpha).toBe(0);
+    });
+
+    it("reaches a live particle when a fade is configured", () => {
+      const emitter = createEmitter({
+        alpha: 1,
+        lifetime: 10,
+        maxParticles: 1,
+      });
+      emitter.burst(1);
+      emitter._update(1, 0, 0);
+      expect(emitter._active[0]!.particle.alpha).toBeCloseTo(1, 5);
+
+      emitter.configure({ alphaFadeOut: 1 });
+      emitter._update(1, 0, 0);
+      // Two frames of a ten-second life: the envelope leaves 1 - 0.2.
+      expect(emitter._active[0]!.particle.alpha).toBeCloseTo(0.8, 5);
+    });
+
+    it("rejects a fade fraction as a burst override at the type level", () => {
+      const emitter = createEmitter();
+      // @ts-expect-error the envelope is read per frame, not per particle.
+      emitter.burst(1, { alphaFadeOut: 0.5 });
+      expect(emitter.activeCount).toBe(1);
+    });
+
+    it("names the option for a fraction outside 0-1", () => {
+      expect(() => createEmitter({ alphaFadeIn: 1.5 })).toThrow(
+        "ParticleEmitterComponent: alphaFadeIn must be between 0 and 1, got 1.5.",
+      );
+      expect(() => createEmitter({ alphaFadeOut: -0.1 })).toThrow(
+        /alphaFadeOut must be between 0 and 1/,
+      );
     });
   });
 

@@ -9,23 +9,62 @@ import { SceneRenderTreeKey, resolveTextureInput } from "@yagejs/renderer";
 import type {
   BlendMode,
   ParticleContainer,
+  TextureInput,
   TextureResource,
 } from "@yagejs/renderer";
 import { ParticleContainer as PixiParticleContainer } from "pixi.js";
 import type { Particle } from "pixi.js";
 import { ParticlePool } from "./ParticlePool.js";
+import {
+  BURST_OVERRIDE_OPTIONS,
+  UPDATE_OPTIONS,
+  copyOptions,
+  pickOptions,
+} from "./copy.js";
 import { normalizeShape, shapeTexture } from "./shapes.js";
+import type { ParticleShape, ShapeConfig } from "./shapes.js";
 import { isLerped, resolveRange } from "./types.js";
 import { assertEmitterConfig } from "./validate.js";
 import type {
+  BurstOverrides,
   EmitterConfig,
   EmitterOptions,
+  EmitterUpdateOptions,
   Lerped,
   NumberRange,
 } from "./types.js";
 
 /** Default bearing arc for a ring `spawnOffset` with no `angle` set. */
 const FULL_CIRCLE: [number, number] = [0, Math.PI * 2];
+
+/**
+ * An emitter's options with every defaulted value filled in. `_update` reads
+ * the emitter's own; `_spawn` reads whichever one it is handed, so a burst with
+ * overrides spawns from a merged copy. `blendMode` is absent because the
+ * container holds it, and so is the texture source, which the pool is built
+ * against. Every field is readonly: a new configuration replaces the whole
+ * object rather than being written into the old one.
+ */
+type ResolvedConfig = Readonly<
+  Required<
+    Pick<
+      EmitterOptions,
+      | "maxParticles"
+      | "rate"
+      | "lifetime"
+      | "speed"
+      | "angle"
+      | "rotation"
+      | "rotationSpeed"
+      | "tint"
+      | "damping"
+      | "alphaFadeIn"
+      | "alphaFadeOut"
+      | "layer"
+    >
+  > &
+    Omit<EmitterOptions, "blendMode">
+>;
 
 /** Internal tracking state for a single active particle. */
 interface ParticleState {
@@ -72,22 +111,7 @@ export class ParticleEmitterComponent extends Component {
   /** @internal */ readonly _active: ParticleState[] = [];
   /** @internal */ _accumulator = 0;
 
-  private readonly config: Required<
-    Pick<
-      EmitterOptions,
-      | "maxParticles"
-      | "rate"
-      | "lifetime"
-      | "speed"
-      | "angle"
-      | "rotation"
-      | "rotationSpeed"
-      | "tint"
-      | "damping"
-      | "layer"
-    >
-  > &
-    EmitterOptions;
+  private config: ResolvedConfig;
   private _manualEmission = false;
   private readonly _emissionRequests = new Set<EmissionRequestEntry>();
   private _destroyed = false;
@@ -98,9 +122,12 @@ export class ParticleEmitterComponent extends Component {
     super();
 
     assertEmitterConfig(config);
-    const texture = resolveSource(config);
 
-    const options: EmitterOptions = config;
+    // The texture source becomes the container's and the pool's texture, and
+    // the blend mode belongs to the container, so the stored configuration
+    // carries plain emission data only.
+    const { texture: textureInput, shape, blendMode, ...options } = config;
+    const texture = resolveSource(textureInput, shape);
     this.config = {
       maxParticles: 100,
       rate: 10,
@@ -110,8 +137,10 @@ export class ParticleEmitterComponent extends Component {
       rotationSpeed: 0,
       tint: 0xffffff,
       damping: 0,
+      alphaFadeIn: 0,
+      alphaFadeOut: 0,
       layer: "default",
-      ...options,
+      ...copyOptions(options),
     };
 
     this.container = new PixiParticleContainer({
@@ -123,9 +152,7 @@ export class ParticleEmitterComponent extends Component {
         vertex: true,
       },
     });
-    if (this.config.blendMode !== undefined) {
-      this.container.blendMode = this.config.blendMode;
-    }
+    if (blendMode !== undefined) this.container.blendMode = blendMode;
 
     this._pool = new ParticlePool(texture, this.config.maxParticles);
   }
@@ -187,11 +214,59 @@ export class ParticleEmitterComponent extends Component {
     );
   }
 
+  /**
+   * Change the emitter's configuration from now on. When a change reaches a
+   * particle depends on where the emitter reads the option. The spawn-time
+   * options — `lifetime`, `speed`, `angle`, `scale`, `alpha`, `rotation`,
+   * `rotationSpeed`, `tint`, `spawnOffset` and `radialSpeed` — are resolved
+   * once per particle, so a particle already in flight keeps what it was
+   * spawned with and the next particle spawned uses the new value. `gravity`,
+   * `damping`, `alphaFadeIn` and `alphaFadeOut` are read from this
+   * configuration every frame for every live particle, so they reach particles
+   * already in flight on the next frame. `rate` applies to the next frame of
+   * continuous emission, and `blendMode` is a property of the container every
+   * particle is drawn in.
+   *
+   * The whole merged configuration is checked, and a rejected call leaves every
+   * previous value in force.
+   *
+   * The emitter reads only the options `EmitterUpdateOptions` lists and ignores
+   * any other key, such as `maxParticles` in a spread `EmitterConfig`.
+   *
+   * The emitter copies what it is given, so changing the object afterwards
+   * changes nothing. For a one-off variation, pass overrides to
+   * {@link ParticleEmitterComponent.burst} instead.
+   */
+  configure(options: EmitterUpdateOptions): void {
+    const { blendMode, ...rest } = pickOptions(options, UPDATE_OPTIONS);
+    const candidate: ResolvedConfig = {
+      ...this.config,
+      ...copyOptions(rest),
+    };
+    assertEmitterConfig(candidate);
+    this.config = candidate;
+    if (blendMode !== undefined) this.blendMode = blendMode;
+  }
+
   /** Spawn `count` particles at the entity's world position. */
-  burst(count: number): void;
+  burst(count: number, overrides?: BurstOverrides): void;
   /** Spawn `count` particles at an explicit world position. */
-  burst(count: number, worldX: number, worldY: number): void;
-  burst(count: number, worldX?: number, worldY?: number): void {
+  burst(
+    count: number,
+    worldX: number,
+    worldY: number,
+    overrides?: BurstOverrides,
+  ): void;
+  burst(
+    count: number,
+    worldXOrOverrides?: number | BurstOverrides,
+    worldY?: number,
+    trailingOverrides?: BurstOverrides,
+  ): void {
+    const positioned = typeof worldXOrOverrides === "number";
+    const worldX = positioned ? worldXOrOverrides : undefined;
+    const overrides = positioned ? trailingOverrides : worldXOrOverrides;
+
     this._warnIfNoTransform();
     // Every spawn path syncs the container first, so a particle is never
     // written against a stale origin. A Transform-less emitter keeps the
@@ -204,8 +279,22 @@ export class ParticleEmitterComponent extends Component {
     const { x: originX, y: originY } = this.container.position;
     const x = worldX === undefined ? 0 : worldX - originX;
     const y = worldY === undefined ? 0 : worldY - originY;
+
+    // Resolve and check the burst's configuration once, not per particle. Only
+    // the BurstOverrides keys are merged, because a spread can add other keys
+    // and a spawn reads some of them, such as alphaFadeIn. The merged object
+    // is not kept past this call, so it needs no copy.
+    let cfg = this.config;
+    if (overrides !== undefined) {
+      cfg = {
+        ...this.config,
+        ...pickOptions(overrides, BURST_OVERRIDE_OPTIONS),
+      };
+      assertEmitterConfig(cfg);
+    }
+
     for (let i = 0; i < count; i++) {
-      this._spawn(x, y);
+      this._spawn(x, y, cfg);
     }
   }
 
@@ -275,11 +364,13 @@ export class ParticleEmitterComponent extends Component {
       this._accumulator += cfg.rate * dt;
       while (this._accumulator >= 1) {
         this._accumulator -= 1;
-        this._spawn(0, 0);
+        this._spawn(0, 0, cfg);
       }
     }
 
     // 2. Update active particles
+    const { alphaFadeIn, alphaFadeOut } = cfg;
+    const fades = alphaFadeIn > 0 || alphaFadeOut > 0;
     const active = this._active;
     let i = 0;
     while (i < active.length) {
@@ -321,7 +412,10 @@ export class ParticleEmitterComponent extends Component {
       const scale = s.scaleStart + (s.scaleEnd - s.scaleStart) * t;
       s.particle.scaleX = scale;
       s.particle.scaleY = scale;
-      s.particle.alpha = s.alphaStart + (s.alphaEnd - s.alphaStart) * t;
+      const alpha = s.alphaStart + (s.alphaEnd - s.alphaStart) * t;
+      s.particle.alpha = fades
+        ? alpha * fadeEnvelope(t, alphaFadeIn, alphaFadeOut)
+        : alpha;
 
       i++;
     }
@@ -347,14 +441,14 @@ export class ParticleEmitterComponent extends Component {
   }
 
   /**
-   * Spawn one particle at container-local coordinates.
+   * Spawn one particle at container-local coordinates, reading `cfg` for every
+   * spawn-time value. Continuous emission passes the emitter's own
+   * configuration; a burst with overrides passes its merged copy.
    * @internal
    */
-  _spawn(localX: number, localY: number): void {
+  _spawn(localX: number, localY: number, cfg: ResolvedConfig): void {
     const particle = this._pool.acquire();
     if (!particle) return; // at capacity
-
-    const cfg = this.config;
 
     // Position with spawn offset
     let offsetX = 0;
@@ -411,7 +505,10 @@ export class ParticleEmitterComponent extends Component {
       cfg.alpha ?? 1,
       this._random,
     );
-    particle.alpha = alphaStart;
+    // A fade-in starts at zero, so the envelope applies at spawn too: without
+    // it the particle would show at full alpha for one frame.
+    particle.alpha =
+      alphaStart * fadeEnvelope(0, cfg.alphaFadeIn, cfg.alphaFadeOut);
 
     // Tint
     particle.tint = cfg.tint;
@@ -441,15 +538,29 @@ export class ParticleEmitterComponent extends Component {
  * type, so the order below only matters for callers coming from plain JS:
  * `texture` wins, then `shape`, then the `"pixel"` default.
  */
-function resolveSource(config: EmitterConfig): TextureResource {
-  if (config.texture !== undefined) {
-    return resolveTextureInput(config.texture);
+function resolveSource(
+  texture: TextureInput | undefined,
+  shape: ParticleShape | ShapeConfig | undefined,
+): TextureResource {
+  if (texture !== undefined) {
+    return resolveTextureInput(texture);
   }
-  const shape = normalizeShape(
-    config.shape ?? "pixel",
-    "ParticleEmitterComponent",
+  return shapeTexture(
+    normalizeShape(shape ?? "pixel", "ParticleEmitterComponent"),
   );
-  return shapeTexture(shape);
+}
+
+/**
+ * The alpha fade envelope at `t`, a particle's age over its lifetime, as a
+ * multiplier on whatever `alpha` produces. Each fraction is 0 when its fade is
+ * off, and each guard keeps the division away from that case, so a particle at
+ * `t === 0` with no fade-in gets 1 rather than `NaN`.
+ */
+function fadeEnvelope(t: number, fadeIn: number, fadeOut: number): number {
+  let envelope = 1;
+  if (fadeIn > 0 && t < fadeIn) envelope *= t / fadeIn;
+  if (fadeOut > 0 && t > 1 - fadeOut) envelope *= (1 - t) / fadeOut;
+  return envelope;
 }
 
 function resolveLerped(
