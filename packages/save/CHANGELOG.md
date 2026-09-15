@@ -1,5 +1,12 @@
 # @yagejs/save
 
+## 0.11.1
+
+### Patch Changes
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8)]:
+  - @yagejs/core@0.11.1
+
 ## 0.11.0
 
 ### Minor Changes

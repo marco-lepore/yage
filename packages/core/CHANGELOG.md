@@ -1,5 +1,16 @@
 # @yagejs/core
 
+## 0.11.1
+
+### Patch Changes
+
+- [#363](https://github.com/marco-lepore/yage/pull/363) [`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Show authored collider footprints in the level editor.
+  - Add `Inspector.getComponentFacet(component, namespace)` to read one registered component facet without reflecting fields or building a scene snapshot. It follows the existing contributor registration and omission contracts.
+
+- [#367](https://github.com/marco-lepore/yage/pull/367) [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Support editing tilemaps in Tiled with automatic preview refresh.
+
+  Allow asset loaders to report asynchronous cleanup. Asset unloading and clearing return its completion, and reloading a path waits for its previous resources to be released.
+
 ## 0.11.0
 
 ### Minor Changes
