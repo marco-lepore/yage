@@ -42,7 +42,14 @@ export async function waitForInspector(page: Page): Promise<void> {
   // about how far boot got. `ready` settles when start() finished, and a boot
   // failure rejects it — reported here instead of timing out.
   await page.waitForFunction(() => window.__yage__ !== undefined);
-  await page.evaluate(() => window.__yage__?.ready);
+  // Awaited through a handle, so the promise Chromium waits on is `ready`
+  // itself, which `__yage__` holds. `page.evaluate` would wait on a wrapper
+  // promise that nothing references once it settles. Chromium can collect
+  // that wrapper before it sends the result and answers "Promise was
+  // collected". Playwright reports that as "Execution context was destroyed"
+  // although nothing navigated.
+  const handle = await page.evaluateHandle(() => window.__yage__?.ready);
+  await handle.dispose();
 }
 
 export async function waitForClock(page: Page): Promise<void> {
