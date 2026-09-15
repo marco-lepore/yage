@@ -1,6 +1,6 @@
-# Diagnostic only: the E2E suite with the dev servers' output kept, to find
-# what navigates the level editor's play page. Some legs compete for the CPU
-# with busy loops, to widen any timing window.
+# Diagnostic only: the E2E suite with dev server and browser output kept, and
+# Playwright's evaluation errors carrying Chrome's raw message, to find what
+# fails the level editor's wait on its play page.
 name: Diagnose editor play reload
 
 on:
@@ -9,21 +9,19 @@ on:
 
 jobs:
   e2e:
-    name: E2E (${{ matrix.scope }}, busy loops ${{ matrix.stress }}, leg ${{ matrix.leg }})
+    name: E2E (devtools session ${{ matrix.cdp }}, leg ${{ matrix.leg }})
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { scope: full, stress: 0, leg: 1 }
-          - { scope: full, stress: 0, leg: 2 }
-          - { scope: full, stress: 0, leg: 3 }
-          - { scope: full, stress: 0, leg: 4 }
-          - { scope: full, stress: 4, leg: 5 }
-          - { scope: full, stress: 4, leg: 6 }
-          - { scope: editor, stress: 4, leg: 7 }
-          - { scope: editor, stress: 8, leg: 8 }
+          - { cdp: "0", leg: 1 }
+          - { cdp: "0", leg: 2 }
+          - { cdp: "0", leg: 3 }
+          - { cdp: "1", leg: 4 }
+          - { cdp: "1", leg: 5 }
+          - { cdp: "1", leg: 6 }
     steps:
       - name: Describe the runner
         run: |
@@ -44,23 +42,43 @@ jobs:
       - name: Install Playwright OS dependencies
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
+      - name: Report Chrome's raw evaluation errors
+        run: |
+          node - node_modules/playwright-core/lib/coreBundle.js <<'EOF'
+          const fs = require("fs");
+          const file = process.argv[2];
+          let source = fs.readFileSync(file, "utf8");
+          const swaps = [
+            [
+              'throw new Error("Execution context was destroyed, most likely because of a navigation.");',
+              'throw new Error("Execution context was destroyed, most likely because of a navigation. [protocol error: " + error.message + "]");',
+              2,
+            ],
+            [
+              'data.context.contextDestroyed("Execution context was destroyed, most likely because of a navigation");',
+              'data.context.contextDestroyed("Execution context was destroyed, most likely because of a navigation [a new main-world context was created]");',
+              1,
+            ],
+            [
+              'context2.contextDestroyed("Execution context was destroyed, most likely because of a navigation");',
+              'context2.contextDestroyed("Execution context was destroyed, most likely because of a navigation [Runtime.executionContextDestroyed]");',
+              1,
+            ],
+          ];
+          for (const [from, to, count] of swaps) {
+            const found = source.split(from).length - 1;
+            if (found !== count) throw new Error("expected " + count + " matches, found " + found + ": " + from);
+            source = source.split(from).join(to);
+          }
+          fs.writeFileSync(file, source);
+          console.log("patched Playwright's evaluation error messages");
+          EOF
       - name: Run E2E
         working-directory: e2e
         env:
-          DEBUG: pw:webserver
-        run: |
-          set +e
-          busy=()
-          for i in $(seq "${{ matrix.stress }}"); do
-            (while :; do :; done) &
-            busy+=($!)
-          done
-          project=""
-          if [ "${{ matrix.scope }}" = "editor" ]; then project="--project=editor"; fi
-          npx playwright test -c ../playwright.config.ts $project --retries=0 --reporter=list
-          code=$?
-          if [ "${#busy[@]}" -gt 0 ]; then kill "${busy[@]}"; fi
-          exit $code
+          DEBUG: pw:webserver,pw:browser
+          DIAG_CDP: ${{ matrix.cdp }}
+        run: npx playwright test -c ../playwright.config.ts --retries=0 --reporter=list
       - uses: actions/upload-artifact@v4
         if: always()
         with:

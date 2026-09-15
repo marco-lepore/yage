@@ -282,6 +282,9 @@ test.beforeEach(({ context }, testInfo) => {
         console.log(`${stamp()} [ws close ${where()}]`);
       });
     });
+    opened.on("crash", () => {
+      console.log(`${stamp()} [crash] ${where()}`);
+    });
     opened.on("close", () => {
       console.log(`${stamp()} [close] ${where()}`);
     });
@@ -2800,10 +2803,65 @@ test.describe("level editor", () => {
       page.getByTestId("play-level").click(),
     ]);
 
-    // The level runs as it stands on screen, and nothing is written: the page
-    // reads the draft the editor is holding. It is the editor's own page, so
-    // the project contributed nothing to make this work.
-    await waitForInspector(play);
+    // Diagnostic only: what Chrome reports for the play page around the wait.
+    const stampPlay = (): string => new Date().toISOString();
+    if (process.env["DIAG_CDP"] === "1") {
+      const cdp = (await context.newCDPSession(play)) as unknown as {
+        on(event: string, listener: (payload: unknown) => void): void;
+        send(method: string): Promise<unknown>;
+      };
+      for (const event of [
+        "Runtime.executionContextCreated",
+        "Runtime.executionContextDestroyed",
+        "Runtime.executionContextsCleared",
+        "Inspector.targetCrashed",
+        "Inspector.detached",
+        "Page.frameNavigated",
+        "Page.frameStartedLoading",
+        "Page.frameStoppedLoading",
+        "Page.frameDetached",
+      ]) {
+        cdp.on(event, (payload) => {
+          console.log(
+            `${stampPlay()} [cdp play] ${event} ${JSON.stringify(payload).slice(0, 300)}`,
+          );
+        });
+      }
+      await cdp.send("Page.enable");
+      await cdp.send("Runtime.enable");
+    }
+    const probe = async (label: string): Promise<void> => {
+      try {
+        const facts = await play.evaluate(() => ({
+          origin: performance.timeOrigin,
+          href: location.href,
+          navigation: (
+            performance.getEntriesByType("navigation")[0] as
+              | PerformanceNavigationTiming
+              | undefined
+          )?.type,
+          yage: typeof window.__yage__,
+          readyState: document.readyState,
+        }));
+        console.log(
+          `${stampPlay()} [probe play ${label}] ${JSON.stringify(facts)} closed=${String(play.isClosed())}`,
+        );
+      } catch (probeError) {
+        console.log(
+          `${stampPlay()} [probe play ${label} failed] ${String(probeError)}`,
+        );
+      }
+    };
+    await probe("before");
+    try {
+      await waitForInspector(play);
+    } catch (error) {
+      console.log(`${stampPlay()} [wait failed] ${String(error)}`);
+      await probe("after 1");
+      await play.waitForTimeout(500).catch(() => undefined);
+      await probe("after 2");
+      throw error;
+    }
     expect((await placementIn(play, ROOT)).world).not.toEqual(saved);
     expect(savedPlacement(ROOT).transform.position).toEqual(saved);
     expect(new URL(play.url()).pathname).toBe("/play.html");
