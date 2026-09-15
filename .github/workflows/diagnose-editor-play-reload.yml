@@ -19,9 +19,11 @@ jobs:
           - { cdp: "0", leg: 1 }
           - { cdp: "0", leg: 2 }
           - { cdp: "0", leg: 3 }
-          - { cdp: "1", leg: 4 }
-          - { cdp: "1", leg: 5 }
-          - { cdp: "1", leg: 6 }
+          - { cdp: "0", leg: 4 }
+          - { cdp: "0", leg: 5 }
+          - { cdp: "0", leg: 6 }
+          - { cdp: "0", leg: 7 }
+          - { cdp: "0", leg: 8 }
     steps:
       - name: Describe the runner
         run: |

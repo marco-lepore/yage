@@ -42,7 +42,70 @@ export async function waitForInspector(page: Page): Promise<void> {
   // about how far boot got. `ready` settles when start() finished, and a boot
   // failure rejects it — reported here instead of timing out.
   await page.waitForFunction(() => window.__yage__ !== undefined);
-  await page.evaluate(() => window.__yage__?.ready);
+  // Diagnostic only: identify the document and the published object before the
+  // wait, without the page holding a strong reference to either.
+  const before = await page.evaluate(() => {
+    const scope = window as unknown as Record<string, unknown>;
+    const WeakRefCtor = (
+      globalThis as unknown as {
+        WeakRef: new (target: object) => { deref(): object | undefined };
+      }
+    ).WeakRef;
+    scope["__diagYageRef"] = new WeakRefCtor(scope["__yage__"] as object);
+    return { origin: performance.timeOrigin, href: location.href };
+  });
+  try {
+    await page.evaluate(() => window.__yage__?.ready);
+  } catch (error) {
+    const stamp = new Date().toISOString();
+    const after = await page
+      .evaluate(async () => {
+        const scope = window as unknown as Record<string, unknown>;
+        const yage = scope["__yage__"] as
+          | {
+              ready?: Promise<unknown>;
+              inspector?: { snapshot(): { frame: number } };
+            }
+          | undefined;
+        const ref = (
+          scope["__diagYageRef"] as { deref(): object | undefined } | undefined
+        )?.deref();
+        let frame: unknown;
+        try {
+          frame = yage?.inspector?.snapshot().frame;
+        } catch (e) {
+          frame = String(e);
+        }
+        const pendingReady = yage?.ready;
+        const ready =
+          pendingReady === undefined
+            ? "no ready"
+            : await Promise.race([
+                pendingReady.then(
+                  () => "resolved",
+                  (e: unknown) => `rejected: ${String(e)}`,
+                ),
+                new Promise((resolve) =>
+                  setTimeout(() => resolve("pending after 3s"), 3000),
+                ),
+              ]);
+        return {
+          origin: performance.timeOrigin,
+          href: location.href,
+          yage: typeof yage,
+          keys: yage ? Object.keys(yage) : null,
+          refAlive: ref !== undefined,
+          sameYage: ref === yage,
+          frame,
+          ready,
+        };
+      })
+      .catch((probeError: unknown) => `probe failed: ${String(probeError)}`);
+    console.log(
+      `${stamp} [waitForInspector failed] ${page.url()} before=${JSON.stringify(before)} after=${JSON.stringify(after)} error=${String(error)}`,
+    );
+    throw error;
+  }
 }
 
 export async function waitForClock(page: Page): Promise<void> {
