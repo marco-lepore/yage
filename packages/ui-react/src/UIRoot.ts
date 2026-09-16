@@ -3,6 +3,7 @@ import {
   ErrorBoundaryKey,
   Transform,
   Vec2Buffer,
+  isDev,
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
 } from "@yagejs/core";
@@ -30,6 +31,14 @@ import { FloatingOverlayCtx, FloatingOverlayKey } from "./floating.js";
 import type { FloatingOverlay } from "./floating.js";
 import { UIReactPluginKey } from "./UIReactPlugin.js";
 import { RendererKey, SceneRenderTreeKey } from "@yagejs/renderer";
+
+/** A non-finite offset would reach the tree's position on every layout pass. */
+function finiteOffset(value: number, name: string): number {
+  if (!Number.isFinite(value)) {
+    throw new Error(`${name} must be finite, got ${value}.`);
+  }
+  return value;
+}
 
 /** Options for UIRoot. */
 export interface UIRootOptions {
@@ -92,7 +101,13 @@ export class UIRoot extends Component {
       markPointerConsumeContainer(this._container);
     }
     this._anchor = opts?.anchor;
-    this._offset = opts?.offset ?? { x: 0, y: 0 };
+    // Copied so `setOffset` writes this root's own object, never the one the
+    // caller passed in.
+    const offset = opts?.offset;
+    this._offset = {
+      x: offset ? finiteOffset(offset.x, "UIRoot: offset.x") : 0,
+      y: offset ? finiteOffset(offset.y, "UIRoot: offset.y") : 0,
+    };
     this._layer = opts?.layer;
     this._positioning = opts?.positioning ?? "anchor";
   }
@@ -141,9 +156,25 @@ export class UIRoot extends Component {
     // with or without a `UIRoot`.
     this._floating = this.use(FloatingOverlayKey);
 
-    // When React commits, re-run layout and anchor
-    this._onCommit = () => this._layoutAndAnchor();
+    // When React commits, name the new elements and re-run layout and anchor
+    this._onCommit = () => {
+      this._labelTree();
+      this._layoutAndAnchor();
+    };
     addOnCommit(this._onCommit);
+  }
+
+  /**
+   * Name the tree for development-mode layout warnings. React builds the
+   * elements during a commit, so each commit labels the root elements, and a
+   * container passes the name on to the children it holds and to every child
+   * added after — which covers the deeper elements of a later render.
+   */
+  private _labelTree(): void {
+    if (!isDev()) return;
+    const instances = getRootInstances(this._container);
+    if (!instances) return;
+    for (const inst of instances) inst._setDebugLabel?.(this.entity.name);
   }
 
   /** Wrap a tree in the engine/scene context providers. */
@@ -172,6 +203,23 @@ export class UIRoot extends Component {
         ),
       ),
     );
+  }
+
+  /**
+   * Move the whole tree by a screen-space offset, on top of whatever its
+   * anchor or transform positioning resolves to. Animating a sliding panel is
+   * a `setOffset` per frame.
+   */
+  setOffset(x: number, y: number): void {
+    finiteOffset(x, "UIRoot.setOffset: x");
+    finiteOffset(y, "UIRoot.setOffset: y");
+    this._offset.x = x;
+    this._offset.y = y;
+  }
+
+  /** The offset the tree is drawn at. */
+  get offset(): Readonly<{ x: number; y: number }> {
+    return this._offset;
   }
 
   /**

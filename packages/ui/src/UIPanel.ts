@@ -1,14 +1,7 @@
 import { Container, Rectangle } from "pixi.js";
 import type { TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
-import {
-  FlexDirection as YogaFlexDirection,
-  Gutter,
-  Edge,
-  Overflow,
-  Display,
-} from "yoga-layout";
-import { Align, Justify } from "yoga-layout";
+import { Edge, Overflow, Display } from "yoga-layout";
 import { attachMask, graphicsMask } from "@yagejs/renderer";
 import type { DisplayContainer, MaskHandle } from "@yagejs/renderer";
 import { UIText } from "./UIText.js";
@@ -22,6 +15,7 @@ import type {
   UIButtonProps,
   UIPanelProps,
   UIScrollViewProps,
+  UITextBuilderProps,
 } from "./types.js";
 import {
   createYogaNode,
@@ -36,26 +30,18 @@ import {
   insertChildBefore,
   removeChild,
 } from "./internal/child-list.js";
+import {
+  setChildDebugLabel,
+  setChildrenDebugLabel,
+} from "./internal/debug-label.js";
+import { applyFlexContainerProps } from "./internal/flex-container.js";
+import type { FlexContainerDefaults } from "./internal/flex-container.js";
 
-// ---------------------------------------------------------------------------
-// Enum mapping helpers
-// ---------------------------------------------------------------------------
-
-const JUSTIFY_MAP: Record<string, number> = {
-  "flex-start": Justify.FlexStart,
-  center: Justify.Center,
-  "flex-end": Justify.FlexEnd,
-  "space-between": Justify.SpaceBetween,
-  "space-around": Justify.SpaceAround,
-  "space-evenly": Justify.SpaceEvenly,
-};
-
-const ALIGN_ITEMS_MAP: Record<string, number> = {
-  "flex-start": Align.FlexStart,
-  center: Align.Center,
-  "flex-end": Align.FlexEnd,
-  stretch: Align.Stretch,
-  baseline: Align.Baseline,
+/** What a panel's container props fall back to when one is dropped. */
+const PANEL_DEFAULTS: FlexContainerDefaults = {
+  direction: "column",
+  alignItems: "flex-start",
+  justifyContent: "flex-start",
 };
 
 // ---------------------------------------------------------------------------
@@ -77,8 +63,13 @@ export class UIPanel implements UIContainerElement {
 
   private bgRenderer: BackgroundRenderer | undefined;
   private maskHandle: MaskHandle | undefined;
+  // Size the overflow mask was last drawn at. `NaN` never equals a computed
+  // size, so the first draw after the mask is created always gets through.
+  private _maskWidth = Number.NaN;
+  private _maskHeight = Number.NaN;
   private _children: UIElement[] = [];
   private _destroyed = false;
+  private _debugLabel: string | undefined;
   private bgOpts: BackgroundOptions | undefined;
   private readonly pointerEvents: PointerEvents;
   // Transparent child that catches pointer/hover events (and the consume-input
@@ -128,6 +119,7 @@ export class UIPanel implements UIContainerElement {
       child,
       "UIPanel.addElement",
     );
+    setChildDebugLabel(child, this._debugLabel);
   }
 
   removeElement(child: UIElement): void {
@@ -152,17 +144,38 @@ export class UIPanel implements UIContainerElement {
       before,
       "UIPanel.insertElementBefore",
     );
+    setChildDebugLabel(child, this._debugLabel);
+  }
+
+  /**
+   * Name the UI tree this panel belongs to for development-mode warnings.
+   * Set by `UISurface` from the owning entity and passed down the tree.
+   * @internal
+   */
+  _setDebugLabel(label: string): void {
+    this._debugLabel = label;
+    setChildrenDebugLabel(this._children, label);
   }
 
   // ---------------------------------------------------------------------------
   // Builder methods (backward compat)
   // ---------------------------------------------------------------------------
 
-  /** Add a text element. */
-  text(content: string, style?: Partial<TextStyle>): UIText {
-    const t = new UIText(
-      style ? { children: content, style } : { children: content },
-    );
+  /**
+   * Add a text element. `opts` carries the rest of {@link UITextProps} —
+   * `bitmap`, `resolution`, `truncate`, layout props — so the builder reaches
+   * everything the `UIText` constructor does.
+   */
+  text(
+    content: string,
+    style?: Partial<TextStyle>,
+    opts?: UITextBuilderProps,
+  ): UIText {
+    const t = new UIText({
+      ...opts,
+      children: content,
+      ...(style ? { style } : {}),
+    });
     this.addElement(t);
     return t;
   }
@@ -211,13 +224,18 @@ export class UIPanel implements UIContainerElement {
    */
   applyLayout(): void {
     for (const child of this._children) {
-      const layout = child.yogaNode.getComputedLayout();
-      child.displayObject.position.set(layout.left, layout.top);
+      // Scalar getters, not `getComputedLayout()`: the Yoga binding returns
+      // that as a value object, allocating a fresh six-field object per child
+      // per frame, and only the two edges below are read.
+      child.displayObject.position.set(
+        child.yogaNode.getComputedLeft(),
+        child.yogaNode.getComputedTop(),
+      );
 
       child.applyLayout?.();
     }
 
-    warnChildOverflow(this.yogaNode, this._children);
+    warnChildOverflow(this.yogaNode, this._children, this._debugLabel);
 
     const w = this.yogaNode.getComputedWidth();
     const h = this.yogaNode.getComputedHeight();
@@ -229,8 +247,13 @@ export class UIPanel implements UIContainerElement {
       this.bgRenderer.resize(w, h);
     }
 
-    // Re-run the overflow mask draw closure with the latest dimensions.
-    this.maskHandle?.redraw();
+    // Re-run the overflow mask draw closure only when the box it traces has
+    // moved; the closure clears and refills a Graphics.
+    if (this.maskHandle && (w !== this._maskWidth || h !== this._maskHeight)) {
+      this._maskWidth = w;
+      this._maskHeight = h;
+      this.maskHandle.redraw();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -255,17 +278,7 @@ export class UIPanel implements UIContainerElement {
    * leaving the previous value in place.
    */
   private _applyProps(p: Partial<UIPanelProps>): void {
-    if ("direction" in p) {
-      this.yogaNode.setFlexDirection(
-        p.direction === "row"
-          ? YogaFlexDirection.Row
-          : YogaFlexDirection.Column,
-      );
-    }
-
-    if ("gap" in p) {
-      this.yogaNode.setGap(Gutter.All, p.gap);
-    }
+    applyFlexContainerProps(this.yogaNode, p, PANEL_DEFAULTS);
 
     if ("padding" in p) {
       const pad = resolvePadding(p.padding);
@@ -275,27 +288,14 @@ export class UIPanel implements UIContainerElement {
       this.yogaNode.setPadding(Edge.Left, pad.left);
     }
 
-    if ("alignItems" in p) {
-      this.yogaNode.setAlignItems(
-        p.alignItems !== undefined
-          ? (ALIGN_ITEMS_MAP[p.alignItems] ?? Align.FlexStart)
-          : Align.FlexStart,
-      );
-    }
-    if ("justifyContent" in p) {
-      this.yogaNode.setJustifyContent(
-        p.justifyContent !== undefined
-          ? (JUSTIFY_MAP[p.justifyContent] ?? Justify.FlexStart)
-          : Justify.FlexStart,
-      );
-    }
-
     if ("overflow" in p) {
       const overflow = p.overflow ?? "visible";
       this.yogaNode.setOverflow(
         overflow === "hidden" ? Overflow.Hidden : Overflow.Visible,
       );
       if (overflow === "hidden" && !this.maskHandle) {
+        this._maskWidth = Number.NaN;
+        this._maskHeight = Number.NaN;
         this.maskHandle = attachMask(
           this.container,
           graphicsMask((g) => {

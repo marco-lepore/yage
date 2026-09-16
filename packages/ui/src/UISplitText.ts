@@ -1,4 +1,9 @@
-import { buildTextOptions } from "@yagejs/renderer";
+import {
+  buildTextOptions,
+  initialAutoSplit,
+  setSplitText,
+  splitIfNotEmpty,
+} from "@yagejs/renderer";
 import type {
   DisplayBitmapText,
   DisplayContainer,
@@ -123,7 +128,8 @@ export class UISplitText implements UIElement {
       ...(props.lineAnchor !== undefined
         ? { lineAnchor: props.lineAnchor }
         : {}),
-      ...(props.autoSplit !== undefined ? { autoSplit: props.autoSplit } : {}),
+      // Never hand Pixi's split an empty string; see `setSplitText`.
+      autoSplit: initialAutoSplit(this._autoSplit, this._source),
     };
     this.splitText = bitmap
       ? new SplitBitmapText(splitOptions)
@@ -201,7 +207,7 @@ export class UISplitText implements UIElement {
 
   setText(s?: string): void {
     this._source = s ?? "";
-    this.splitText.text = this._source;
+    setSplitText(this.splitText, this._source, this._autoSplit);
     this.yogaNode.markDirty();
     // With autoSplit off, Pixi cleared the segments without rebuilding — the
     // real split is deferred to resplit(), which emits then. Emitting now would
@@ -223,9 +229,12 @@ export class UISplitText implements UIElement {
     if (this._autoSplit) this.emitSplit();
   }
 
-  /** Re-split now (only needed when constructed with `autoSplit: false`). */
+  /**
+   * Re-split now (only needed when constructed with `autoSplit: false`). An
+   * empty text has nothing to split and leaves the segments empty.
+   */
   resplit(): void {
-    this.splitText.split();
+    splitIfNotEmpty(this.splitText);
     this.yogaNode.markDirty();
     this.emitSplit();
   }
@@ -307,6 +316,7 @@ export class UISplitText implements UIElement {
    * regardless of how the live segments have been transformed by animation.
    */
   private measureNatural(): { width: number; height: number } {
+    if (this._source === "") return { width: 0, height: 0 };
     const style = this.splitText.style;
     const m = this.isBitmap
       ? BitmapFontManager.measureText(this._source, style)

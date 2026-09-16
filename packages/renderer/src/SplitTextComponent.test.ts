@@ -86,7 +86,9 @@ const { mocks } = vi.hoisted(() => {
     charAnchor: unknown;
     wordAnchor: unknown;
     lineAnchor: unknown;
-    autoSplit: boolean;
+    // Named as Pixi names it: the option has no setter, so the guard writes
+    // the field.
+    _autoSplit: boolean;
     chars: MockText[] = [];
     words: MockContainer[] = [];
     lines: MockContainer[] = [];
@@ -106,8 +108,8 @@ const { mocks } = vi.hoisted(() => {
       this.charAnchor = opts.charAnchor ?? 0;
       this.wordAnchor = opts.wordAnchor ?? 0;
       this.lineAnchor = opts.lineAnchor ?? 0;
-      this.autoSplit = opts.autoSplit ?? true;
-      this.split();
+      this._autoSplit = opts.autoSplit ?? true;
+      if (this._autoSplit) this.split();
     }
 
     split(): void {
@@ -119,7 +121,20 @@ const { mocks } = vi.hoisted(() => {
         .split(/\s+/)
         .filter(Boolean)
         .map(() => new MockContainer());
-      this.lines = this._text.split("\n").map(() => new MockContainer());
+      this.lines =
+        this._text === ""
+          ? []
+          : this._text.split("\n").map(() => new MockContainer());
+      // Pixi ends a split with `addChild(...this.lines)`. An empty string
+      // produces no lines, so that is a zero-argument call, which reads
+      // `children[0].parent` and throws. Reproduced here so the guard that
+      // keeps an empty string out of the split has something to fail against.
+      if (this.lines.length === 0) {
+        throw new TypeError(
+          "Cannot read properties of undefined (reading 'parent')",
+        );
+      }
+      for (const line of this.lines) this.addChild(line);
     }
 
     get text(): string {
@@ -127,7 +142,10 @@ const { mocks } = vi.hoisted(() => {
     }
     set text(v: string) {
       this._text = v;
-      if (this.autoSplit) this.split();
+      this.lines = [];
+      this.words = [];
+      this.chars = [];
+      if (this._autoSplit) this.split();
     }
   }
   class MockSplitBitmapText extends MockSplitText {}
@@ -298,6 +316,36 @@ describe("SplitTextComponent", () => {
     expect(comp.mask).toBeUndefined();
     expect(typeof comp.setMask).toBe("function");
     expect(typeof comp.clearMask).toBe("function");
+  });
+
+  describe("empty text", () => {
+    it("renders no segments instead of throwing", () => {
+      const comp = new SplitTextComponent({ text: "" });
+      expect(comp.chars).toEqual([]);
+      expect(comp.words).toEqual([]);
+      expect(comp.lines).toEqual([]);
+    });
+
+    it("survives being cleared and splits again on the next value", () => {
+      const comp = new SplitTextComponent({ text: "hi" });
+      expect(() => comp.setText("")).not.toThrow();
+      expect(comp.chars).toEqual([]);
+
+      comp.setText("sup");
+      expect(comp.chars).toHaveLength(3);
+    });
+
+    it("leaves an empty text empty on resplit", () => {
+      const comp = new SplitTextComponent({ text: "", autoSplit: false });
+      expect(() => comp.resplit()).not.toThrow();
+      expect(comp.lines).toEqual([]);
+    });
+
+    it("survives a style change while empty", () => {
+      const comp = new SplitTextComponent({ text: "" });
+      expect(() => comp.setStyle({ fontSize: 24 })).not.toThrow();
+      expect(comp.chars).toEqual([]);
+    });
   });
 
   it("resplit() calls the underlying split()", () => {
