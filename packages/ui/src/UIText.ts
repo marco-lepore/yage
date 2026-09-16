@@ -212,15 +212,21 @@ export class UIText implements UIElement {
     if ("style" in p) {
       this.setStyle(p.style ?? {});
     }
-    // Use `"truncate" in p` rather than `!== undefined` so an explicit
-    // `{ truncate: undefined }` payload (e.g. removing the prop in the
-    // React reconciler) clears the mode back to default wrap behavior.
+    // Use `"truncateWith" in p` rather than `!== undefined` so an explicit
+    // `{ truncateWith: undefined }` payload (e.g. removing the prop in the
+    // React reconciler) restores the default ellipsis. A suffix equal to the
+    // one in force leaves the applied truncation in place: the reconciler
+    // passes every current prop on each commit, and re-truncating
+    // binary-searches the text width.
     if ("truncateWith" in p) {
-      this._truncateWith = p.truncateWith ?? DEFAULT_ELLIPSIS;
-      if (this._truncate === "ellipsis") {
-        this.text.text = this._source;
-        this._appliedWidth = Number.NaN;
-        this.yogaNode.markDirty();
+      const next = p.truncateWith ?? DEFAULT_ELLIPSIS;
+      if (next !== this._truncateWith) {
+        this._truncateWith = next;
+        if (this._truncate === "ellipsis") {
+          this.text.text = this._source;
+          this._appliedWidth = Number.NaN;
+          this.yogaNode.markDirty();
+        }
       }
     }
     if ("truncate" in p && p.truncate !== this._truncate) {

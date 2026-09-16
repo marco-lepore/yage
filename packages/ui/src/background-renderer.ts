@@ -31,6 +31,71 @@ function resolveNineSliceInsets(
   };
 }
 
+/** Equality for `nineSlice`: absent, one number, or the four named sides. */
+function sameNineSlice(
+  a: TextureBackground["nineSlice"],
+  b: TextureBackground["nineSlice"],
+): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object") return false;
+  return (
+    a.left === b.left &&
+    a.top === b.top &&
+    a.right === b.right &&
+    a.bottom === b.bottom
+  );
+}
+
+/** Equality for `tileScale`: absent, one number, or an x/y pair. */
+function sameTileScale(
+  a: TextureBackground["tileScale"],
+  b: TextureBackground["tileScale"],
+): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object") return false;
+  return a.x === b.x && a.y === b.y;
+}
+
+/**
+ * Field-by-field equality for two background options. Textures compare by
+ * identity, so a caller that resolves its own texture object per call counts
+ * as a change; every other field is a primitive or one of the two small
+ * objects above.
+ */
+function sameBackground(a: BackgroundOptions, b: BackgroundOptions): boolean {
+  if (isTextureBackground(a)) {
+    if (!isTextureBackground(b)) return false;
+    return (
+      a.texture === b.texture &&
+      a.mode === b.mode &&
+      a.tint === b.tint &&
+      a.alpha === b.alpha &&
+      sameNineSlice(a.nineSlice, b.nineSlice) &&
+      sameTileScale(a.tileScale, b.tileScale)
+    );
+  }
+  if (isTextureBackground(b)) return false;
+  return a.color === b.color && a.alpha === b.alpha && a.radius === b.radius;
+}
+
+type MustBeNever<T extends never> = T;
+
+/**
+ * Every field of both background shapes is compared by `sameBackground`. A
+ * field added to either shape without a comparison there fails the typecheck
+ * here, naming the field left out. Exported so the compiler counts the aliases
+ * as used.
+ */
+export type EveryColorFieldIsCompared = MustBeNever<
+  Exclude<keyof ColorBackground, "color" | "alpha" | "radius">
+>;
+export type EveryTextureFieldIsCompared = MustBeNever<
+  Exclude<
+    keyof TextureBackground,
+    "texture" | "mode" | "tint" | "alpha" | "nineSlice" | "tileScale"
+  >
+>;
+
 /**
  * Manages a background display object for UI elements.
  * Supports solid-color (Graphics) and texture-based (Sprite/NineSliceSprite/TilingSprite) backgrounds.
@@ -55,6 +120,20 @@ export class BackgroundRenderer {
     parent: DisplayContainer,
     insertIndex = 0,
   ): void {
+    // A display object that is already in this container, drawn from these
+    // values, has nothing to apply. The React reconciler passes every current
+    // prop to an element's `update()` on each commit, so an unchanged
+    // background prop reaches this method once per re-render. Checked ahead
+    // of the copy below, so such a call allocates nothing.
+    if (
+      this.displayObject &&
+      this.opts &&
+      (this.displayObject as unknown as DisplayContainer).parent === parent &&
+      sameBackground(this.opts, opts)
+    ) {
+      return;
+    }
+
     // The size to redraw at, read before the new options invalidate it.
     const w = this.lastWidth;
     const h = this.lastHeight;

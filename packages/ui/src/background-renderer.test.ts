@@ -270,6 +270,37 @@ describe("BackgroundRenderer", () => {
     expect(g.lastFill).toEqual({ color: 0xff0000, alpha: 1 });
   });
 
+  it("draws nothing when set repeats the options in force", () => {
+    // The React reconciler hands an element every current prop on each
+    // commit, so an unchanged background prop reaches `set` once per
+    // re-render of the tree around it.
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    renderer.set({ color: 0xff0000, alpha: 1, radius: 4 }, parent as never);
+    renderer.resize(200, 100);
+    const g = parent.children[0] as InstanceType<typeof mocks.MockGraphics>;
+    const before = g.drawCount;
+
+    renderer.set({ color: 0xff0000, alpha: 1, radius: 4 }, parent as never);
+    renderer.resize(200, 100);
+
+    expect(g.drawCount).toBe(before);
+  });
+
+  it("redraws when one field of the options changes", () => {
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    renderer.set({ color: 0xff0000, alpha: 1, radius: 4 }, parent as never);
+    renderer.resize(200, 100);
+    const g = parent.children[0] as InstanceType<typeof mocks.MockGraphics>;
+    const before = g.drawCount;
+
+    renderer.set({ color: 0xff0000, alpha: 1, radius: 6 }, parent as never);
+
+    expect(g.drawCount).toBe(before + 1);
+    expect(g.lastFill).toEqual({ color: 0xff0000, alpha: 1 });
+  });
+
   it("creates Sprite for stretch texture background", () => {
     const renderer = new BackgroundRenderer();
     const parent = new mocks.MockContainer();
@@ -324,6 +355,38 @@ describe("BackgroundRenderer", () => {
       sprite.rightWidth,
       sprite.bottomHeight,
     ]).toEqual([12, 10, 12, 16]);
+  });
+
+  it("leaves the sprite alone when set repeats the texture options in force", () => {
+    const renderer = new BackgroundRenderer();
+    const parent = new mocks.MockContainer();
+    const handle = new AssetHandle<Texture>("texture", "test.png");
+    renderer.set(
+      {
+        texture: handle,
+        mode: "nine-slice",
+        nineSlice: { left: 4, top: 4, right: 4, bottom: 4 },
+      },
+      parent as never,
+    );
+    const sprite = parent.children[0] as InstanceType<
+      typeof mocks.MockNineSliceSprite
+    >;
+    // A value only a re-apply of the options can overwrite.
+    sprite.leftWidth = 99;
+
+    // A separate object of equal fields, which is what a caller building its
+    // options per render passes.
+    renderer.set(
+      {
+        texture: handle,
+        mode: "nine-slice",
+        nineSlice: { left: 4, top: 4, right: 4, bottom: 4 },
+      },
+      parent as never,
+    );
+
+    expect(sprite.leftWidth).toBe(99);
   });
 
   it("warns when a nine-slice background is smaller than its insets", () => {

@@ -775,6 +775,41 @@ describe("UIText bitmap-in-style warning", () => {
       const rendered = (t.displayObject as unknown as { text: string }).text;
       expect(rendered.endsWith("...")).toBe(true);
     });
+
+    it("keeps the applied truncation when the string is unchanged", () => {
+      // The React reconciler hands an element every current prop on each
+      // commit, so the suffix in force arrives on every re-render.
+      const t = new UIText({
+        children: "a long enough label",
+        width: 60,
+        truncate: "ellipsis",
+        truncateWith: "...",
+      });
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      const truncated = (t.displayObject as unknown as { text: string }).text;
+      expect(truncated).not.toBe("a long enough label");
+
+      t.update({ truncateWith: "..." });
+
+      const rendered = (t.displayObject as unknown as { text: string }).text;
+      expect(rendered).toBe(truncated);
+    });
+
+    it("restores the default ellipsis when the string is dropped", () => {
+      const t = new UIText({
+        children: "a long enough label",
+        width: 60,
+        truncate: "ellipsis",
+        truncateWith: "...",
+      });
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+
+      t.update({ truncateWith: undefined });
+      t.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+
+      const rendered = (t.displayObject as unknown as { text: string }).text;
+      expect(rendered.endsWith("…")).toBe(true);
+    });
   });
 
   it("does not warn for a correct sibling bitmap prop", () => {
