@@ -386,8 +386,14 @@ export class UIButton implements UIContainerElement {
     }
   }
 
+  /**
+   * Paint the background for the button's state. A disabled button takes its
+   * resting background whatever the hover flag holds, because the pointer
+   * listeners return early while disabled and leave that flag set.
+   */
   private applyCurrentBg(): void {
-    if (this._isPressed) this.applyBg(this.pressBgOpts);
+    if (this._disabled) this.applyBg(this.bgOpts);
+    else if (this._isPressed) this.applyBg(this.pressBgOpts);
     else if (this._isHovered) this.applyBg(this.hoverBgOpts);
     else this.applyBg(this.bgOpts);
   }
@@ -427,10 +433,8 @@ export class UIButton implements UIContainerElement {
     if (v) {
       this._pressStartedHere = false;
       this._isPressed = false;
-      this.applyBg(this.bgOpts);
-    } else {
-      this.applyCurrentBg();
     }
+    this.applyCurrentBg();
   }
 
   get disabled(): boolean {
@@ -488,9 +492,9 @@ export class UIButton implements UIContainerElement {
     }
     if ("onClick" in p) this.onClick = p.onClick;
     this.pointerEvents.set(p);
-    if ("disabled" in p) this.setDisabled(p.disabled ?? false);
-    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
 
+    // Ahead of `disabled` below: `setDisabled` repaints from `bgOpts`, so
+    // `bgOpts` has to hold the value this same call supplies.
     if ("background" in p) {
       this.bgOpts = mergeBg(DEFAULT_BG, p.background);
     }
@@ -507,8 +511,11 @@ export class UIButton implements UIContainerElement {
         this.pressBgOverride,
         PRESS_FACTOR,
       );
-      if (!this._disabled) this.applyCurrentBg();
+      this.applyCurrentBg();
     }
+
+    if ("disabled" in p) this.setDisabled(p.disabled ?? false);
+    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
 
     if ("width" in p) this._hasExplicitWidth = isExplicitSize(p.width);
     if ("height" in p) this._hasExplicitHeight = isExplicitSize(p.height);

@@ -80,8 +80,10 @@ const { mocks } = vi.hoisted(() => {
     roundRect(...args: unknown[]): MockGraphics {
       return this;
     }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    fill(...args: unknown[]): MockGraphics {
+    /** The style passed to the most recent `fill`. */
+    lastFill: { color?: number; alpha?: number } | undefined;
+    fill(style?: { color?: number; alpha?: number }): MockGraphics {
+      this.lastFill = style;
       return this;
     }
   }
@@ -450,6 +452,57 @@ describe("UIButton", () => {
       const { hover, press } = stateBgs(btn);
       expect(hover.color).toBe(0x285078);
       expect(press.color).toBe(0x183048);
+    });
+
+    /** The colour the background Graphics was last filled with. */
+    function paintedColor(btn: UIButton): number | undefined {
+      const container = btn.container as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+      const g = container.children[0] as InstanceType<
+        typeof mocks.MockGraphics
+      >;
+      return g.lastFill?.color;
+    }
+
+    /** Give the background renderer a computed size to draw at. */
+    function layout(btn: UIButton): void {
+      btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      btn.applyLayout();
+    }
+
+    it("paints the background the update that disables it supplies", () => {
+      const btn = new UIButton({
+        children: "Test",
+        width: 100,
+        height: 30,
+        background: { color: 0x204060 },
+      });
+      layout(btn);
+
+      btn.update({ disabled: true, background: { color: 0x991111 } });
+
+      expect(paintedColor(btn)).toBe(0x991111);
+      const container = btn.container as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+      expect(container.alpha).toBe(0.5);
+      expect(container.eventMode).toBe("none");
+    });
+
+    it("paints a background change that reaches a disabled button", () => {
+      const btn = new UIButton({
+        children: "Test",
+        width: 100,
+        height: 30,
+        background: { color: 0x204060 },
+        disabled: true,
+      });
+      layout(btn);
+
+      btn.update({ background: { color: 0x991111 } });
+
+      expect(paintedColor(btn)).toBe(0x991111);
     });
 
     it("resets to the button's own default when the background is dropped", () => {
