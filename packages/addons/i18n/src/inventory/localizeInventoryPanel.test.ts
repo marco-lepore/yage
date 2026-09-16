@@ -1,4 +1,4 @@
-import { createMockScene } from "@yagejs/core";
+import { createMockScene, ErrorBoundaryKey } from "@yagejs/core";
 import type {
   ActionMenuPresenter,
   ChromePresenter,
@@ -116,7 +116,7 @@ async function setup() {
   ]) {
     p.mount(scene);
   }
-  return { bundle, inner, localization };
+  return { bundle, inner, localization, context };
 }
 
 describe("localizeInventoryPanel", () => {
@@ -161,6 +161,19 @@ describe("localizeInventoryPanel", () => {
     expect(inner.actionMenu.visibles.at(-1)).toBe(true);
     expect(inner.actionMenu.highlights.at(-1)).toBe(1);
     expect(inner.chrome.presented[1]!.title).toBe("Zaino");
+  });
+
+  it("names the channel and the scene when a presenter throws during a locale redraw", async () => {
+    const { bundle, inner, localization, context } = await setup();
+    bundle.detail!.present(potion);
+    inner.detail.present = (): never => {
+      throw new Error("boom");
+    };
+
+    expect(() => localization.setLocale("it")).toThrow("boom");
+    const errors = context.resolve(ErrorBoundaryKey).getCallbackErrors();
+    expect(errors.at(-1)?.kind).toBe("Localized inventory detail");
+    expect(typeof errors.at(-1)?.scene).toBe("string");
   });
 
   it("forwards the session's commit handlers and optional pointer members to the inner presenters", async () => {

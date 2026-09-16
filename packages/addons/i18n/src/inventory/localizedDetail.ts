@@ -10,7 +10,7 @@ import { localizeSlotView } from "./localizedSlots.js";
 /** Wraps a detail presenter so the selected item's name and description
  *  follow the locale; re-presents the current item on a locale change. */
 class LocalizedDetail implements DetailPresenter {
-  private readonly state = new LocalizedPresenterState();
+  private readonly state = new LocalizedPresenterState("detail");
   private current: SlotView | null | undefined;
 
   constructor(

@@ -36,7 +36,7 @@ export function localizeSlotView(
  * keeping the selected slot.
  */
 class LocalizedSlots implements SlotsPresenter {
-  private readonly state = new LocalizedPresenterState();
+  private readonly state = new LocalizedPresenterState("slots");
   private slots: readonly SlotView[] | undefined;
   private selected: number | undefined;
 

@@ -28,6 +28,9 @@ export class LocalizedPresenterState {
   private localization: Localization = fallbackLocalization;
   private unsubscribe: (() => void) | undefined;
 
+  /** `channel` names the presenter in an error record, e.g. "action menu". */
+  constructor(private readonly channel: string) {}
+
   readonly resolve: MessageResolver = (message, values) =>
     this.localization.resolve(message, values);
 
@@ -46,7 +49,8 @@ export class LocalizedPresenterState {
       boundary
         ? () =>
             boundary.wrapCallback(onChange, {
-              kind: "Localized inventory presenter",
+              kind: `Localized inventory ${this.channel}`,
+              scene: scene.name,
             })
         : onChange,
     );

@@ -9,7 +9,7 @@ import { LocalizedPresenterState, type InventoryMessageKeys } from "./keys.js";
 /** Wraps a chrome presenter so the header title follows the locale: the
  *  controller's `title` string is the fallback for `keys.title`. */
 class LocalizedChrome implements ChromePresenter {
-  private readonly state = new LocalizedPresenterState();
+  private readonly state = new LocalizedPresenterState("chrome");
   private info: InventoryChromeInfo | undefined;
 
   constructor(

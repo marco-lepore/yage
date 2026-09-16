@@ -13,7 +13,7 @@ import { LocalizedPresenterState, type InventoryMessageKeys } from "./keys.js";
  * with the new labels, keeping its highlighted row and visibility.
  */
 class LocalizedActionMenu implements ActionMenuPresenter {
-  private readonly state = new LocalizedPresenterState();
+  private readonly state = new LocalizedPresenterState("action menu");
   private actions: readonly PresentedAction[] | undefined;
   private slot = 0;
   private highlighted = 0;
