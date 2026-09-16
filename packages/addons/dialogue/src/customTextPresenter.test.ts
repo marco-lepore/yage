@@ -53,6 +53,13 @@ class DomTextPresenter implements TextChannel {
     this.render();
   }
 
+  replaceVisible(line: PresentedLine): void {
+    const plain = line.text.runs.map((r) => r.text).join("");
+    this.graphemes = splitGraphemes(plain);
+    this.reveal.rebase(line.text);
+    this.render();
+  }
+
   update(dt: number): void {
     this.reveal.update(dt);
     this.render();
@@ -124,6 +131,22 @@ describe("a custom text presenter from the documented contract", () => {
     present(p, "Bold [b]word[/b] here");
     p.completeReveal();
     expect(p.revealed).toBe("Bold word here"); // tags gone, all shown
+    expect(done).toBe(1);
+  });
+
+  it("swaps a translation under the running reveal without restarting it", () => {
+    const p = new DomTextPresenter(1);
+    let done = 0;
+    p.setRevealListener(() => done++);
+    present(p, "Hello");
+    p.update(2);
+    expect(p.revealed).toBe("He");
+
+    p.replaceVisible({ text: parseMarkup("Ciao!"), speed: 1 });
+    expect(p.revealed).toBe("Ci");
+    expect(done).toBe(0);
+    p.update(3);
+    expect(p.revealed).toBe("Ciao!");
     expect(done).toBe(1);
   });
 

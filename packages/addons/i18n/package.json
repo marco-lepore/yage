@@ -1,0 +1,133 @@
+{
+  "name": "@yagejs-addons/i18n",
+  "version": "0.0.0",
+  "description": "Localization for YAGE: message descriptors, an i18next-backed service, and localized text for renderer, UI, React, dialogue, and inventory",
+  "keywords": [
+    "yage",
+    "yage-addon",
+    "game-engine",
+    "2d",
+    "typescript",
+    "localization",
+    "i18n",
+    "i18next"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/addons/i18n"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./renderer": {
+      "import": {
+        "types": "./dist/renderer.d.ts",
+        "default": "./dist/renderer.js"
+      },
+      "require": {
+        "types": "./dist/renderer.d.cts",
+        "default": "./dist/renderer.cjs"
+      }
+    },
+    "./ui": {
+      "import": {
+        "types": "./dist/ui.d.ts",
+        "default": "./dist/ui.js"
+      },
+      "require": {
+        "types": "./dist/ui.d.cts",
+        "default": "./dist/ui.cjs"
+      }
+    },
+    "./ui-react": {
+      "import": {
+        "types": "./dist/ui-react.d.ts",
+        "default": "./dist/ui-react.js"
+      },
+      "require": {
+        "types": "./dist/ui-react.d.cts",
+        "default": "./dist/ui-react.cjs"
+      }
+    },
+    "./inventory": {
+      "import": {
+        "types": "./dist/inventory.d.ts",
+        "default": "./dist/inventory.js"
+      },
+      "require": {
+        "types": "./dist/inventory.d.cts",
+        "default": "./dist/inventory.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "i18next": "^23.16.8"
+  },
+  "peerDependencies": {
+    "@yagejs-addons/inventory": ">=0.3.0 <0.4.0",
+    "@yagejs/core": ">=0.11.0 <0.12.0",
+    "@yagejs/renderer": ">=0.11.0 <0.12.0",
+    "@yagejs/ui": ">=0.11.1 <0.12.0",
+    "@yagejs/ui-react": ">=0.11.0 <0.12.0",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@yagejs-addons/inventory": {
+      "optional": true
+    },
+    "@yagejs/renderer": {
+      "optional": true
+    },
+    "@yagejs/ui": {
+      "optional": true
+    },
+    "@yagejs/ui-react": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@yagejs-addons/inventory": ">=0.3.0",
+    "@yagejs/core": ">=0.11.0",
+    "@yagejs/renderer": ">=0.11.0",
+    "@yagejs/ui": ">=0.11.0",
+    "@yagejs/ui-react": ">=0.11.0",
+    "pixi.js": "^8.8.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.2.4"
+  }
+}

@@ -48,9 +48,19 @@ export class BubbleTextView extends DialogueTextView {
   }
 
   override present(line: PresentedLine): void {
-    // Size to the same width + height the chrome draws this line at (one shared
-    // measurement), so the text sits inside the content-sized bubble — wrapping
-    // to the column left of any in-bubble portrait inset.
+    this.fitBubble(line);
+    super.present(line);
+  }
+
+  override replaceVisible(line: PresentedLine): void {
+    this.fitBubble(line);
+    super.replaceVisible(line);
+  }
+
+  /** Size to the same width + height the chrome draws this line at (one shared
+   *  measurement), so the text sits inside the content-sized bubble — wrapping
+   *  to the column left of any in-bubble portrait inset. */
+  private fitBubble(line: PresentedLine): void {
     const size = this.layout.sizeFor(line);
     this.setBox(0, 0, this.layout.textWrapWidth(size));
     const speakerId = line.speaker?.id;
@@ -62,6 +72,5 @@ export class BubbleTextView extends DialogueTextView {
         : { x: 0, y: 0 };
       return this.layout.originFor(anchor, size);
     });
-    super.present(line);
   }
 }

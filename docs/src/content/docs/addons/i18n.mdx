@@ -1,0 +1,273 @@
+---
+title: Localization
+description: Translate renderer text, UI, React UI, dialogue, and inventory through one service, and switch language at any moment without replaying anything
+---
+
+`@yagejs-addons/i18n` translates the strings a player reads. One service holds
+the catalogs and the current locale; each engine text surface has a localized
+class that resolves its message through that service and updates when the
+locale changes. Switch language while a dialogue line is typing, with a choice
+menu open, or with the inventory panel open: the text swaps in place and no
+event fires.
+
+The engine packages carry no localization code. Games that never translate
+install nothing.
+
+## Install
+
+```bash
+npm install @yagejs-addons/i18n
+```
+
+`@yagejs/core` is the only required peer. Each optional peer sits behind its
+own subpath, so importing the root pulls neither pixi nor React:
+
+| Entry         | Peer                          | What it adds                                                     |
+| ------------- | ----------------------------- | ---------------------------------------------------------------- |
+| `.`           | `@yagejs/core`                | `msg`, the `Localization` service, the i18next backend, the plugin |
+| `./renderer`  | `@yagejs/renderer`            | localized `TextComponent` and `SplitTextComponent`               |
+| `./ui`        | `@yagejs/ui`                  | localized `UISurface`, a localized class per text widget, tooltip |
+| `./ui-react`  | `@yagejs/ui-react`, `react`   | `useLocalization`, `<Trans>`, a localized select                 |
+| `./inventory` | `@yagejs-addons/inventory`    | localized inventory presenters                                   |
+
+## Set up the service
+
+Create the service from preloaded catalogs and install the plugin:
+
+```ts
+import { Engine } from "@yagejs/core";
+import { createLocalization, LocalizationPlugin } from "@yagejs-addons/i18n";
+
+const localization = await createLocalization({
+  locale: "en",
+  fallbackLocale: "en",
+  catalogs: {
+    en: {
+      "hud.hp": "HP {hp}",
+      apples_one: "{count} apple",
+      apples_other: "{count} apples",
+    },
+    it: {
+      "hud.hp": "PV {hp}",
+      apples_one: "{count} mela",
+      apples_other: "{count} mele",
+    },
+  },
+});
+
+const engine = new Engine();
+engine.use(new LocalizationPlugin(localization));
+```
+
+`localization.setLocale("it")` switches language. Every localized text on
+screen is updated before the call returns, in paused scenes too. An unknown
+locale throws before anything changes. Plural forms use i18next's `_one` /
+`_other` suffixes, picked by a numeric `count` value.
+
+## Write messages
+
+A message is the catalog key, the text to show when the catalog lacks the key,
+and optional values for `{name}` tokens:
+
+```ts
+import { msg } from "@yagejs-addons/i18n";
+
+const hp = msg("hud.hp", "HP {hp}", { hp: 55 });
+```
+
+`msg` returns plain frozen data; nothing is translated until a localized class
+resolves it. The same message works everywhere below.
+
+## Renderer text
+
+```ts
+import { LocalizedTextComponent } from "@yagejs-addons/i18n/renderer";
+
+const label = hud.add(
+  new LocalizedTextComponent({
+    message: msg("hud.hp", "HP {hp}", { hp: 55 }),
+    style: { fontSize: 16, fill: 0xffffff },
+  }),
+);
+
+// later, when hp changes
+label.setMessage(msg("hud.hp", "HP {hp}", { hp: 40 }));
+```
+
+`LocalizedSplitTextComponent` does the same for split text. Both take the
+options of their base class with `message` in place of `text`.
+
+## Imperative UI
+
+`LocalizedUISurface` is a `UISurface` whose builders take a message as well as
+a string. Every localized element under it, however deeply nested, updates on
+a locale change:
+
+```ts
+import { LocalizedUISurface } from "@yagejs-addons/i18n/ui";
+
+const menu = entity.add(new LocalizedUISurface({ anchor: Anchor.Center, padding: 12 }));
+menu.text(msg("menu.title", "Observatory"), { fontSize: 24 });
+menu.button(msg("menu.start", "Start"), { onClick: start });
+menu.button(msg("menu.language", "Language"), { onClick: () => localization.setLocale(next()) });
+```
+
+To add a localized label inside a nested panel, pass the panel as the third
+argument: `menu.text(message, style, panel)`. `localizedTooltip(anchor, scene,
+message)` builds a tooltip bubble that follows the locale.
+
+### Every widget that shows text
+
+The surface builders cover text and buttons. For every other widget, build the
+localized class and add it with `menu.addElement(element)`, or
+`menu.addElement(element, panel)` to nest it. The surface resolves it for the
+current locale as it goes in.
+
+```ts
+import {
+  LocalizedPixiRadioGroup,
+  UILocalizedCheckbox,
+} from "@yagejs-addons/i18n/ui";
+
+const radio = { checkedView: "radio-on", uncheckedView: "radio-off" };
+const difficulty = new LocalizedPixiRadioGroup({
+  items: [
+    { ...radio, text: msg("difficulty.easy", "Easy") },
+    { ...radio, text: msg("difficulty.hard", "Hard") },
+  ],
+  type: "vertical",
+  elementsMargin: 8,
+  selected: 0,
+});
+menu.addElement(difficulty);
+menu.addElement(new UILocalizedCheckbox({ label: msg("settings.sound", "Sound"), checked: true }));
+```
+
+| Widget | Localized class | Message prop |
+| --- | --- | --- |
+| `UIText` | `UILocalizedText` | `message` |
+| `UISplitText` | `UILocalizedSplitText` | `message` |
+| `UIButton` | `UILocalizedButton` | `message` |
+| `UICheckbox` | `UILocalizedCheckbox` | `label` |
+| `PixiSelect` | `LocalizedPixiSelect` | `items` |
+| `PixiFancyButton` | `LocalizedPixiFancyButton` | `text` |
+| `PixiCheckbox` | `LocalizedPixiCheckbox` | `text` |
+| `PixiRadioGroup` | `LocalizedPixiRadioGroup` | `items[].text` |
+| `PixiInput` | `LocalizedPixiInput` | `placeholder` |
+
+Each class exposes its text as `message` and replaces it with
+`setMessage(message)`. The dropdown and the radio group use `messages` and `setMessages(messages)`. On
+the radio group, `setMessages` relabels the rows it already has, and
+`setItems(items, selected?)` replaces them, views and all. Each class keeps the state a player expects to survive a language
+change: the selected row of a dropdown or radio group, a checkbox's checked
+state, and text already typed into an input.
+
+Only a `LocalizedUISurface` updates the elements under it. A localized element
+under a plain `UISurface` or a React `UIRoot` keeps the text it was built with,
+and one added with a panel's own `addElement` shows its fallback until the next
+locale change.
+
+## React UI
+
+```tsx
+import { Trans, useLocalization, LocalizedPixiSelect } from "@yagejs-addons/i18n/ui-react";
+
+function Settings() {
+  const { t, locale } = useLocalization();
+  return (
+    <Panel direction="column" gap={8}>
+      <Trans message={msg("settings.title", "Settings")} style={{ fontSize: 20 }} />
+      <Button onClick={nextLanguage}>
+        {t(msg("settings.language", "Language: {locale}", { locale }))}
+      </Button>
+      <LocalizedPixiSelect
+        items={[msg("difficulty.easy", "Easy"), msg("difficulty.hard", "Hard")]}
+        onSelect={pick}
+      />
+    </Panel>
+  );
+}
+```
+
+A component that calls `useLocalization()` re-renders on each locale change.
+`<Trans>` accepts every `<Text>` prop.
+
+## Dialogue
+
+The dialogue addon needs no import from this one. Its text fields accept the
+message shape `msg` returns, and `DialogueController` finds the installed
+service by itself:
+
+```ts
+const SCRIPT = defineScript({
+  speakers: { mira: { name: msg("speaker.mira", "Mira") } },
+  nodes: {
+    intro: {
+      id: "intro",
+      steps: [
+        { kind: "say", speaker: "mira", text: msg("mira.greet", "Welcome, {name}.", { name: "Ari" }) },
+        {
+          kind: "choice",
+          text: msg("mira.where", "Where to?"),
+          options: [{ text: msg("mira.forest", "The forest"), target: "forest" }],
+        },
+      ],
+    },
+  },
+});
+npc.add(new DialogueController({ ...createBoxDialogue() }));
+```
+
+A locale change mid-line keeps the typewriter where it is and swaps the text
+under it; an open choice menu keeps its highlighted row. Any other translation
+library plugs into dialogue through its `I18nAdapter` option, with or without
+this addon (see the dialogue page).
+
+## Inventory
+
+Item and action definitions keep plain strings. The string is the fallback
+and the id picks the catalog key:
+
+```ts
+import { localizeInventoryPanel } from "@yagejs-addons/i18n/inventory";
+
+const ITEMS = defineItems({ potion: { name: "Potion", description: "Restores health." } });
+
+const bundle = localizeInventoryPanel(createInventoryPanel(), {
+  item: (id) => `item.${id}.name`,
+  description: (id) => `item.${id}.description`,
+  action: (id) => `action.${id}`,
+  title: "inventory.title",
+});
+entity.add(new InventoryController({ ...bundle, inventory, title: "Backpack" }));
+```
+
+The wrapped presenters resolve names, descriptions, action labels, and the
+title when they draw, and redraw on a locale change. An open action menu keeps
+its highlighted row. Quests need nothing: key a title by quest id and render it
+through any localized text class.
+
+## Your own component
+
+The plugin updates any component that implements `relocalize`:
+
+```ts
+import type { MessageResolver, Relocalizable } from "@yagejs-addons/i18n";
+
+class ScoreLabel extends Component implements Relocalizable {
+  relocalize(resolve: MessageResolver): void {
+    this.label.setText(resolve(msg("hud.score", "Score {n}", { n: this.score })));
+  }
+}
+```
+
+## Your own backend
+
+Any object with `locale`, `resolve`, `setLocale`, and `subscribe` is a valid
+service; pass it to `LocalizationPlugin` in place of the i18next one.
+
+## Example
+
+The **Localization** example in the examples app drives every surface above
+from the keyboard: **L** switches language mid-line, on the choice menu, and
+with the backpack menu open.

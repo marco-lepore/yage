@@ -91,6 +91,16 @@ class PortalSelect extends Select {
     this.addChildAt(this.view, this._originalIndex);
   }
 
+  /**
+   * The closed button's size. Readable while the dropdown is open, when that
+   * button is hidden and the dropdown sits on the stage, so this Select's own
+   * bounds are empty.
+   */
+  get closedSize(): { width: number; height: number } {
+    const bounds = this.openButton.getLocalBounds();
+    return { width: bounds.width, height: bounds.height };
+  }
+
   replaceItems(
     items: Parameters<Select["addItems"]>[0],
     selected: number,
@@ -162,6 +172,12 @@ export class PixiSelect extends PixiUIBase<PortalSelect> {
     // position only — no resize
   }
 
+  /** The open list is an overlay on the stage and the closed button is hidden
+   *  while it shows, so layout follows the closed button at all times. */
+  protected override intrinsicSize(): { width: number; height: number } {
+    return this.view.closedSize;
+  }
+
   update(props: Record<string, unknown>): void {
     const p = props as unknown as Partial<PixiSelectProps>;
 
@@ -172,9 +188,19 @@ export class PixiSelect extends PixiUIBase<PortalSelect> {
         ...this.prevProps,
         ...props,
       } as unknown as PixiSelectProps;
-      const requested = merged.selected ?? DEFAULT_SELECTED;
+      // A replacement list keeps the row the player is on unless this update
+      // names one, so re-labelling the rows does not reset the choice.
+      // `Select.value` is -1 until the player picks a row, so an authored
+      // `selected` owns the row until then.
+      const requested =
+        "selected" in p
+          ? (p.selected ?? DEFAULT_SELECTED)
+          : this.view.value >= 0
+            ? this.view.value
+            : (merged.selected ?? DEFAULT_SELECTED);
       const selected = selectedForItems(requested, merged.items.length);
       this.view.replaceItems(selectItems(merged), selected);
+      this.invalidateSize();
     } else if ("selected" in p) {
       const merged = {
         ...this.prevProps,
@@ -184,6 +210,7 @@ export class PixiSelect extends PixiUIBase<PortalSelect> {
         selectItems(merged),
         p.selected ?? DEFAULT_SELECTED,
       );
+      this.invalidateSize();
     }
 
     this.updateBase(props);

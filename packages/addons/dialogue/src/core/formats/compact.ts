@@ -54,6 +54,7 @@
  * (a {@link DialogueScriptError} subtype) with its position.
  */
 
+import type { DialogueText } from "../i18n.js";
 import { parseExpr } from "../expr-parse.js";
 import { firstUnknownTag } from "../markup.js";
 import { loadScript, DialogueScriptError } from "./canonical.js";
@@ -380,8 +381,6 @@ interface SayFields {
   voice?: string;
   speed?: number;
   autoAdvance?: number;
-  /** i18n key from a `#line:id` hashtag (Yarn's localization tag). */
-  key?: string;
 }
 
 /** Strip the trailing run of `#hashtag` / `key=value` hints off a say body; the
@@ -390,7 +389,7 @@ function peelSayHints(
   body: string,
   lineNo: number,
 ): {
-  text: string;
+  text: DialogueText;
   fields: SayFields;
   meta: Record<string, unknown> | undefined;
 } {
@@ -398,14 +397,14 @@ function peelSayHints(
   const fields: SayFields = {};
   const meta: Record<string, unknown> = {};
   let metaCount = 0;
+  let key: string | undefined;
 
   for (;;) {
     const hash = /(^|\s)#(\S+)\s*$/.exec(rest);
     if (hash) {
       const tag = hash[2]!;
-      const lk = lineKey(tag);
-      if (lk !== undefined)
-        fields.key = lk; // #line:id → SayStep.key (i18n)
+      const lk = lineKey(tag, lineNo);
+      if (lk !== undefined) key = lk;
       else metaCount += applyHashtag(meta, tag);
       rest = rest.slice(0, hash.index).replace(/\s+$/, "");
       continue;
@@ -419,7 +418,11 @@ function peelSayHints(
     break;
   }
 
-  return { text: rest, fields, meta: metaCount > 0 ? meta : undefined };
+  return {
+    text: key === undefined ? rest : { key, fallback: rest },
+    fields,
+    meta: metaCount > 0 ? meta : undefined,
+  };
 }
 
 function applySayField(
@@ -469,11 +472,10 @@ function parseChoice(body: string, lineNo: number): ChoiceOption {
     const hash = /(^|\s)#(\S+)\s*$/.exec(rest);
     if (!hash) break;
     const tag = hash[2]!;
-    const lk = lineKey(tag);
+    const lk = lineKey(tag, lineNo);
     if (tag === "once") once = true;
     else if (tag === "disabled") disabled = true;
-    else if (lk !== undefined)
-      key = lk; // #line:id → ChoiceOption.key (i18n)
+    else if (lk !== undefined) key = lk;
     else metaCount += applyHashtag(meta, tag);
     rest = rest.slice(0, hash.index).replace(/\s+$/, "");
   }
@@ -508,8 +510,7 @@ function parseChoice(body: string, lineNo: number): ChoiceOption {
   }
 
   return {
-    text,
-    ...(key !== undefined ? { key } : {}),
+    text: key === undefined ? text : { key, fallback: text },
     ...(condition !== undefined ? { condition } : {}),
     ...(target !== undefined ? { target } : {}),
     ...(once ? { once: true } : {}),
@@ -530,14 +531,15 @@ function applyHashtag(meta: Record<string, unknown>, tag: string): 1 {
   return 1;
 }
 
-/** A `line:<id>` hashtag carries an i18n key (Yarn's `#line:` convention) →
- *  the step's `key`, not `meta`. Returns the id, or `undefined` for any other
- *  tag (which routes to `meta` as usual). */
-function lineKey(tag: string): string | undefined {
+/** A `line:<id>` hashtag (Yarn's `#line:` convention) carries a catalog key:
+ *  the line's text becomes a `{ key, fallback }` message instead of a string.
+ *  Returns the id, or `undefined` for any other tag (which routes to `meta`). */
+function lineKey(tag: string, lineNo: number): string | undefined {
   const colon = tag.indexOf(":");
-  return colon > 0 && tag.slice(0, colon) === "line"
-    ? tag.slice(colon + 1)
-    : undefined;
+  if (colon <= 0 || tag.slice(0, colon) !== "line") return undefined;
+  const key = tag.slice(colon + 1);
+  if (!key) fail(lineNo, "`#line:` needs a catalog key");
+  return key;
 }
 
 /** Sentinel: `numberBoolNull` returns this when the source is not one of the

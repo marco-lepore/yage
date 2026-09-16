@@ -302,4 +302,189 @@ test.describe("Examples", () => {
     expect(result.tappedDashCooldown).not.toBe("0.0");
     expect(result.errors.callbackErrors).toEqual([]);
   });
+
+  test("localization switches visible text without replaying gameplay", async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+    page.on("pageerror", (error) => errors.push(error.message));
+
+    await page.goto("/i18n.html?test");
+    await page.waitForFunction(
+      () => {
+        const insp = window.__yage__?.inspector;
+        return (
+          insp?.time.isFrozen() === true &&
+          insp.getSceneStack().at(-1)?.name === "localization-example"
+        );
+      },
+      undefined,
+      { timeout: 10_000 },
+    );
+
+    interface Probe {
+      locale: string;
+      paused: boolean;
+      dialogueActive: boolean;
+      dialogueLines: number;
+      dialogueCommands: number;
+      dialogueCompletions: number;
+      dialogueChoices: number;
+      dialogueChoosing: boolean;
+      inventoryActions: number;
+      inventoryOpen: boolean;
+      inventoryMenuOpen: boolean;
+      inventoryQuantity: number;
+      inventorySelection: number;
+    }
+    const state = () =>
+      page.evaluate(() => {
+        const inspector = window.__yage__!.inspector;
+        return {
+          probe: inspector.getComponentData(
+            "localization-probe",
+            "LocalizationProbe",
+          ) as Probe,
+          renderer: inspector.getComponentData(
+            "renderer-localized",
+            "LocalizedTextComponent",
+          ) as { content: string },
+          fallback: inspector.getComponentData(
+            "literal-and-fallback",
+            "LocalizedTextComponent",
+          ) as { content: string },
+          errors: inspector.getErrors(),
+        };
+      });
+    // Tap a key for one frozen-clock frame, then let a few frames run so the
+    // controllers' bindings and the dialogue's async line steps settle.
+    const tap = (code: string) =>
+      page.evaluate((code) => {
+        const insp = window.__yage__!.inspector;
+        insp.input.tap(code, 1);
+        insp.time.step(3);
+      }, code);
+    const probeFlag = (flag: keyof Probe, expected: boolean) =>
+      page.waitForFunction(
+        ([flag, expected]) =>
+          (
+            window.__yage__!.inspector.getComponentData(
+              "localization-probe",
+              "LocalizationProbe",
+            ) as Record<string, unknown>
+          )[flag] === expected,
+        [flag, expected] as const,
+      );
+    const gameplayCounters = (probe: Probe) => ({
+      dialogueLines: probe.dialogueLines,
+      dialogueCommands: probe.dialogueCommands,
+      dialogueCompletions: probe.dialogueCompletions,
+      dialogueChoices: probe.dialogueChoices,
+      inventoryActions: probe.inventoryActions,
+    });
+
+    await page.evaluate(() => window.__yage__!.inspector.time.step(5));
+    const initial = await state();
+    expect(initial.probe.locale).toBe("en");
+    expect(initial.probe.dialogueActive).toBe(true);
+    expect(initial.renderer.content).toBe("Renderer: 2 crystals");
+    expect(initial.fallback.content).toBe("Missing-key fallback stays visible");
+
+    // L switches language mid-reveal: text swaps, no gameplay counter moves.
+    await tap("KeyL");
+    const translated = await state();
+    expect(translated.probe.locale).toBe("it");
+    expect(translated.renderer.content).toBe("Renderer: 2 cristalli");
+    expect(translated.fallback.content).toBe(
+      "Missing-key fallback stays visible",
+    );
+    expect(gameplayCounters(translated.probe)).toEqual(
+      gameplayCounters(initial.probe),
+    );
+
+    // Enter completes the reveal, then a second Enter reaches the choice.
+    await tap("Enter");
+    await page.waitForFunction(
+      () =>
+        (
+          window.__yage__!.inspector.getComponentData(
+            "localization-probe",
+            "LocalizationProbe",
+          ) as { dialogueCompletions: number }
+        ).dialogueCompletions === 1,
+    );
+    await tap("Enter");
+    await probeFlag("dialogueChoosing", true);
+
+    // Switching back on the choice menu keeps the menu and its counters.
+    const beforeChoiceLocale = await state();
+    await tap("KeyL");
+    const afterChoiceLocale = await state();
+    expect(afterChoiceLocale.probe.locale).toBe("en");
+    expect(afterChoiceLocale.probe.dialogueChoosing).toBe(true);
+    expect(gameplayCounters(afterChoiceLocale.probe)).toEqual(
+      gameplayCounters(beforeChoiceLocale.probe),
+    );
+
+    // P freezes the conversation: Enter does nothing until P resumes it.
+    await tap("KeyP");
+    expect((await state()).probe.paused).toBe(true);
+    await tap("Enter");
+    expect((await state()).probe.dialogueChoices).toBe(0);
+    await tap("KeyP");
+    expect((await state()).probe.paused).toBe(false);
+
+    // Enter confirms the highlighted option and ends the script.
+    await tap("Enter");
+    await probeFlag("dialogueActive", false);
+    expect((await state()).probe.dialogueChoices).toBe(1);
+
+    // I opens the backpack, Enter opens the action menu on the potion.
+    await tap("KeyI");
+    await tap("Enter");
+    const menu = await state();
+    expect(menu.probe).toMatchObject({
+      inventoryOpen: true,
+      inventoryMenuOpen: true,
+      inventoryQuantity: 2,
+      inventoryActions: 0,
+    });
+
+    // A language change redraws the open menu in place: panel, menu, slot,
+    // and model all stay as they were.
+    await tap("KeyL");
+    const menuTranslated = await state();
+    expect(menuTranslated.probe).toMatchObject({
+      locale: "it",
+      inventoryOpen: true,
+      inventoryMenuOpen: true,
+      inventoryQuantity: 2,
+      inventorySelection: menu.probe.inventorySelection,
+      inventoryActions: 0,
+    });
+
+    // Enter runs the highlighted action, then Esc closes the panel (twice
+    // if the menu is still open after the action).
+    await tap("Enter");
+    expect((await state()).probe.inventoryActions).toBe(1);
+    if ((await state()).probe.inventoryMenuOpen) await tap("Escape");
+    await tap("Escape");
+    expect((await state()).probe.inventoryOpen).toBe(false);
+
+    // T replays the ended conversation.
+    const beforeReplay = await state();
+    await tap("KeyT");
+    await probeFlag("dialogueActive", true);
+    const replayed = await state();
+    expect(replayed.probe.dialogueLines).toBeGreaterThan(
+      beforeReplay.probe.dialogueLines,
+    );
+
+    const finalState = await state();
+    expect(finalState.errors.callbackErrors).toEqual([]);
+    expect(errors).toEqual([]);
+  });
 });

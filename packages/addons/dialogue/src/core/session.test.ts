@@ -21,6 +21,7 @@ import type {
   SpeakerDef,
 } from "./types.js";
 import type { RevealBeat } from "./LineReveal.js";
+import type { I18nAdapter } from "./i18n.js";
 
 /**
  * A controllable text channel. Reveal does NOT advance on its own — a test
@@ -42,6 +43,11 @@ class StubText implements TextChannel {
   present(line: PresentedLine): void {
     this.presented.push(line);
     this.revealing = true; // start "typing"; stays revealing until finishReveal()
+  }
+  /** Lines swapped in place by `retranslate` (reveal state untouched). */
+  readonly replaced: PresentedLine[] = [];
+  replaceVisible(line: PresentedLine): void {
+    this.replaced.push(line);
   }
   completeReveal(): void {
     this.completeRevealCalls += 1;
@@ -2209,5 +2215,163 @@ describe("DialogueSession — line-driven avatar", () => {
     h.session.play(script);
     h.session.stop();
     expect(h.avatar.presents.at(-1)).toBeUndefined(); // cleared its inset
+  });
+});
+
+describe("DialogueSession — retranslate", () => {
+  /** An adapter whose language flips at runtime; `subscribe` is the controller's concern. */
+  function adapter(): { i18n: I18nAdapter; setLocale(l: string): void } {
+    let locale = "en";
+    const table: Record<string, Record<string, string>> = {
+      it: {
+        greet: "Ciao {name}",
+        ask: "Dove?",
+        left: "Sinistra",
+        right: "Destra",
+        mira: "Mira (it)",
+      },
+    };
+    return {
+      setLocale: (l) => void (locale = l),
+      i18n: {
+        get locale() {
+          return locale;
+        },
+        resolve(text, values) {
+          if (typeof text === "string") return text;
+          const raw = table[locale]?.[text.key] ?? text.fallback;
+          const merged: Record<string, unknown> = { ...text.values, ...values };
+          return raw.replace(/\{(\w+)\}/g, (w, n: string) =>
+            Object.hasOwn(merged, n) ? String(merged[n]) : w,
+          );
+        },
+      },
+    };
+  }
+  const SCRIPT: DialogueScript = {
+    id: "t",
+    start: "a",
+    speakers: { mira: { name: { key: "mira", fallback: "Mira" } } },
+    nodes: {
+      a: {
+        id: "a",
+        steps: [
+          {
+            kind: "say",
+            speaker: "mira",
+            text: {
+              key: "greet",
+              fallback: "Hello {name}",
+              values: { name: "Ari" },
+            },
+          },
+          {
+            kind: "choice",
+            text: { key: "ask", fallback: "Where?" },
+            options: [
+              { text: { key: "left", fallback: "Left" } },
+              { text: { key: "right", fallback: "Right" } },
+            ],
+          },
+        ],
+      },
+    },
+  };
+
+  it("re-presents the line on screen in place: new text, same reveal, no events", async () => {
+    const a = adapter();
+    const events: string[] = [];
+    const h = makeHarness({
+      i18n: a.i18n,
+      onLine: () => events.push("line"),
+      onRevealCompleted: () => events.push("reveal"),
+      onChoiceShown: () => events.push("choice"),
+    });
+    h.session.play(SCRIPT);
+    expect(h.text.lastText).toBe("Hello Ari");
+    expect(h.chrome.nameplates.at(-1)?.name).toBe("Mira");
+
+    a.setLocale("it");
+    h.session.retranslate();
+    expect(h.text.presented).toHaveLength(1);
+    expect(h.text.replaced).toHaveLength(1);
+    expect(h.text.replaced[0]!.text.runs.map((r) => r.text).join("")).toBe(
+      "Ciao Ari",
+    );
+    expect(h.chrome.nameplates.at(-1)?.name).toBe("Mira (it)");
+    expect(h.text.isRevealing()).toBe(true);
+    expect(events).toEqual(["line"]);
+
+    // Completion afterwards reports the translated line.
+    h.text.finishReveal();
+    await flush();
+    expect(events).toEqual(["line", "reveal"]);
+  });
+
+  it("re-presents an open choice menu with new labels and keeps the highlighted row", async () => {
+    const a = adapter();
+    const shown: number[] = [];
+    const h = makeHarness({ i18n: a.i18n, onChoiceShown: () => shown.push(1) });
+    h.session.play(SCRIPT);
+    h.text.finishReveal();
+    h.session.advance();
+    await flush();
+    expect(h.session.isChoosing()).toBe(true);
+    h.session.moveSelection(1);
+    expect(h.choices.lastLabels).toEqual(["Left", "Right"]);
+    expect(shown).toHaveLength(1);
+
+    a.setLocale("it");
+    h.session.retranslate();
+    expect(h.choices.lastLabels).toEqual(["Sinistra", "Destra"]);
+    expect(h.choices.highlights.at(-1)).toBe(1);
+    expect(
+      h.text.replaced
+        .at(-1)!
+        .text.runs.map((r) => r.text)
+        .join(""),
+    ).toBe("Dove?");
+    expect(shown).toHaveLength(1);
+    h.session.confirm();
+    await flush();
+    expect(h.session.isChoosing()).toBe(false);
+  });
+
+  it("is a no-op when nothing is on screen", () => {
+    const a = adapter();
+    const h = makeHarness({ i18n: a.i18n });
+    h.session.retranslate();
+    expect(h.text.replaced).toHaveLength(0);
+    expect(h.choices.presented).toHaveLength(0);
+  });
+});
+
+describe("DialogueSession — retranslate with nothing on screen", () => {
+  it("reads no storage once the conversation stopped", () => {
+    const h = makeHarness({});
+    let reads = 0;
+    const script: DialogueScript = {
+      id: "idle-retranslate",
+      start: "a",
+      nodes: {
+        a: { id: "a", steps: [{ kind: "say", text: "You have {gold}." }] },
+      },
+    };
+    h.session.play(script, {
+      storage: cells({
+        gold: () => {
+          reads++;
+          return 1;
+        },
+      }),
+    });
+    const whileShowing = reads;
+    expect(whileShowing).toBeGreaterThan(0);
+
+    h.session.stop();
+    h.session.retranslate();
+    // A getter a game supplies has side effects of its own; an idle locale
+    // change must not run one.
+    expect(reads).toBe(whileShowing);
   });
 });

@@ -1,3 +1,4 @@
+import { dialogueTextFallback } from "./i18n.js";
 import { createRecord } from "@yagejs/core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -108,7 +109,7 @@ function makeRecorder(
 
 /** Convenience: text of every say line surfaced, in order. */
 function lineTexts(rec: Recorder): string[] {
-  return rec.says.map((s) => s.text);
+  return rec.says.map((s) => dialogueTextFallback(s.text));
 }
 
 /**

@@ -48,9 +48,13 @@ export class PixiInput extends PixiUIBase<YageInput> {
     this.bridgeSignal(this.view.onChange, "onChange", "UI onChange", props);
     this.bridgeSignal(this.view.onEnter, "onEnter", "UI onEnter", props);
 
-    if ("value" in p) this.view.value = p.value ?? DEFAULT_VALUE;
+    if ("value" in p) {
+      this.view.value = p.value ?? DEFAULT_VALUE;
+      this.invalidateSize();
+    }
     if ("placeholder" in p) {
       this.view.setPlaceholder(p.placeholder ?? DEFAULT_PLACEHOLDER);
+      this.invalidateSize();
     }
     if ("secure" in p) this.view.secure = p.secure ?? DEFAULT_SECURE;
     if ("padding" in p) {

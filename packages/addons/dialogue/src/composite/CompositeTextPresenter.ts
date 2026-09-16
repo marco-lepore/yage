@@ -79,6 +79,15 @@ export class CompositeTextPresenter implements TextPresenter {
     target.setVisible(this.visible); // reflect the master gate immediately
   }
 
+  /**
+   * Swap the text of the line already on screen, on whichever view is showing
+   * it. Routing is not re-evaluated: the line is the same one, only its words
+   * changed, so moving it between views would restart the reveal.
+   */
+  replaceVisible(line: PresentedLine): void {
+    this.active?.replaceVisible(line);
+  }
+
   /** Show/hide the body text — forwarded to both views (the inactive one is
    *  cleared, so its setVisible is a no-op); state-preserving on the active. */
   setVisible(visible: boolean): void {

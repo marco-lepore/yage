@@ -410,8 +410,8 @@ the variant-swapping presenters, and is set in code on the parsed script.
 
 A line can also carry trailing hints: `view=` / `voice=` / `speed=` / `auto=` set the
 say-line fields, and trailing `#key:value` (or a bare `#flag`) becomes `meta` — except
-`#line:id`, which sets the i18n `key` (Yarn's localization tag) on a say line or choice
-option, so a string table can translate it. The `set` / `do` / `end` keywords are
+`#line:id`, which makes the say line's or choice option's text a `{ key: id, fallback }`
+message (Yarn's localization tag), so a string table can translate it. The `set` / `do` / `end` keywords are
 lowercase and matched by their full shape, so ordinary prose that happens to start with
 `Set`, `Do`, or `End` stays narration.
 
@@ -454,8 +454,8 @@ By default an option whose `condition` is false is **filtered out** of the menu.
 Set `presentation: "disabled"` to keep it on screen instead — greyed-out and
 non-selectable, the Disco-Elysium "[Strength 8] Force the door" pattern that lets
 the player see a gate before they can pass it. `disabledReason` adds a short
-explanation shown beside the row (it runs through the i18n adapter, so `{token}`s
-interpolate; there is no separate translation key for it).
+explanation shown beside the row (resolved like the option text, so it can be a
+translatable message and `{token}`s interpolate).
 
 ```ts
 {
@@ -883,6 +883,14 @@ class DomTextPresenter implements TextChannel {
   present(line: PresentedLine) {
     this.graphemes = splitGraphemes(line.text.runs.map((r) => r.text).join(""));
     this.reveal.begin(line.text, line.speed);
+  }
+  replaceVisible(line: PresentedLine) {
+    // The same line in another language: keep the reveal where it is.
+    this.graphemes = splitGraphemes(line.text.runs.map((r) => r.text).join(""));
+    this.reveal.rebase(line.text);
+    this.el.textContent = this.graphemes
+      .slice(0, Math.floor(this.reveal.revealed))
+      .join("");
   }
   update(dt: number) {
     this.reveal.update(dt);

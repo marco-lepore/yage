@@ -56,7 +56,10 @@ export class PixiFancyButton extends PixiUIBase<FancyButton> {
 
     this.bridgeSignal(this.view.onPress, "onClick", "UI onClick", props);
 
-    if ("text" in p) this.view.text = p.text ?? DEFAULT_TEXT;
+    if ("text" in p) {
+      this.view.text = p.text ?? DEFAULT_TEXT;
+      this.invalidateSize();
+    }
     if ("textStyle" in p && this.view.textView) {
       this.view.textView.style = p.textStyle ?? DEFAULT_TEXT_STYLE;
     }

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Localization</title>
+    <link rel="stylesheet" href="/shared.css" />
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>Localization</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span
+        ><kbd>L</kbd> language · <kbd>Enter</kbd> advance / confirm ·
+        <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>I</kbd> backpack ·
+        <kbd>Esc</kbd> close · <kbd>P</kbd> pause · <kbd>T</kbd> replay</span
+      >
+      <span
+        >One localization service updates renderer text, imperative UI, React
+        UI, dialogue, inventory, and a quest title. Switch language mid-line:
+        the text swaps in place and nothing replays. Inspect
+        <code>localization-probe / LocalizationProbe</code> for counters.</span
+      >
+    </div>
+    <script type="module" src="/src/i18n/main.tsx"></script>
+  </body>
+</html>

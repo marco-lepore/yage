@@ -125,16 +125,18 @@ const script = defineScript({
 });
 ```
 
-`SpeakerDef`: `{ name, nameKey?, color?, avatar? }`. The speaker's **id is its
+`SpeakerDef`: `{ name, color?, avatar? }`; `name` is a `DialogueText` (see Localization). The speaker's **id is its
 key** in `speakers` — steps reference it (`speaker: "gwen"`) and presenters anchor
 actors by it; the loader stamps it on, so never write `id` inside the entry.
 
 Step kinds: `say` | `choice` | `command` | `goto` | `end`.
 
-- `SayStep`: `text` (+ optional i18n `key`), `speaker?`, `expression?`, `speed?`,
+- `SayStep`: `text` (a `DialogueText`), `speaker?`, `expression?`, `speed?`,
   `autoAdvance?` (seconds), `commands?`, `view?`, `meta?`, `voice?`.
-- `ChoiceOption`: `text`, `target?`, `condition?`, `once?`, `presentation?`
-  (`"hidden"` default | `"disabled"`), `disabledReason?`, `commands?`, `meta?`.
+- `ChoiceStep`: `text?` (prompt, a `DialogueText`), `speaker?`, `options`, `view?`, `meta?`.
+- `ChoiceOption`: `text` (a `DialogueText`), `target?`, `condition?`, `once?`,
+  `presentation?` (`"hidden"` default | `"disabled"`), `disabledReason?` (a
+  `DialogueText`), `commands?`, `meta?`.
 - `CommandStep`: `commands` (+ optional `condition`/`target` conditional jump).
 - `Condition`: a **string expression** (`"hp > 0 and has_item('key')"`, parsed at
   load — see below), the atomic `{ var, op, value }` (op = `== != > >= < <= truthy
@@ -304,10 +306,10 @@ indentation is insignificant.
 
 **Say-line hints** ride the end of the line: `view=` / `voice=` / `speed=` / `auto=`
 → the first-class `SayStep` fields; trailing `#key:value` / bare `#flag` → `SayStep.meta`
-(Yarn-aligned — metadata is trailing); `#line:id` is special — it sets the i18n `key`
-(Yarn's localization tag), not `meta`, on a say line or a choice option. Say text is
-otherwise handed to markup **verbatim**, so inline `[..]` (and any tokens a later
-release adds) survives.
+(Yarn-aligned — metadata is trailing); `#line:id` is special — it makes the say
+line's or choice option's text a `{ key: id, fallback: text }` message (Yarn's
+localization tag) instead of a `meta` entry. Say text is otherwise handed to markup
+**verbatim**, so inline `[..]` (and any tokens a later release adds) survives.
 
 **Choice attributes** come after the text, in this order: `if: cond`, then `-> target`
 (or `target=node`), then `#once` / `#disabled` / `#key:value`. They are lexed off and
@@ -370,10 +372,10 @@ end
 `ChoiceOption.presentation` decides what a **false condition** does. Default
 `"hidden"` filters the option out (the original behavior); `"disabled"` keeps it
 on screen greyed-out and non-selectable — the Disco-Elysium "[Strength 8] Force
-the door" pattern, so the player learns the gate exists. `disabledReason?: string`
-shows beside the row where the layout allows (i18n-resolved: `{token}`s
-interpolate; there is no separate i18n `key`). `PresentedChoice` carries
-`disabled?` / `disabledReason?` for presenters.
+the door" pattern, so the player learns the gate exists. `disabledReason?:
+DialogueText` shows beside the row where the layout allows (resolved like the
+option text, so `{token}`s interpolate). `PresentedChoice` carries `disabled?` /
+`disabledReason?` for presenters.
 
 - A spent `once` option is **always** hidden — `presentation` governs condition
   failures only, never a consumed one-shot.
@@ -503,7 +505,7 @@ must resolve to a handler/fallback, else play-time error. (There is **no**
 new DialogueController({
   ...createBoxDialogue(theme), // DialogueBundle: { chrome, text, choices, avatar?, skipMultiplier? }
   avatar, // optional AvatarPresenter override
-  i18n, // optional I18nAdapter
+  i18n, // optional I18nAdapter (see Localization)
   storage,
   functions,
   commands,
@@ -726,6 +728,14 @@ class DomTextPresenter implements TextChannel {
   present(line: PresentedLine) {
     this.graphemes = splitGraphemes(line.text.runs.map((r) => r.text).join(""));
     this.reveal.begin(line.text, line.speed);
+  }
+  replaceVisible(line: PresentedLine) {
+    // The same line in another language: keep the reveal where it is.
+    this.graphemes = splitGraphemes(line.text.runs.map((r) => r.text).join(""));
+    this.reveal.rebase(line.text);
+    this.el.textContent = this.graphemes
+      .slice(0, Math.floor(this.reveal.revealed))
+      .join("");
   }
   update(dt: number) {
     this.reveal.update(dt);
@@ -1056,3 +1066,69 @@ resumable cursor.) The storage model makes the future API purely additive: a
 cursor is `{ nodeId, stepIndex, chosenOnce }` + the in-memory default store's
 contents (game-backed `cells` serialize through the game's own save). Save
 outside conversations (or replay the script) until v1.1 adds the seam.
+
+## Localization
+
+Every text field a player reads — `SayStep.text`, `ChoiceStep.text`,
+`ChoiceOption.text`, `ChoiceOption.disabledReason`, `SpeakerDef.name` — is a
+`DialogueText`: an authored string, or a `DialogueMessage`
+`{ key, fallback, values? }` whose `fallback` is the authored string. Markup and
+`{token}` interpolation work in both forms; a message's own `values` satisfy its
+tokens at validation time, the rest must be declared vars. The compact DSL's
+`#line:id` tag writes the message form. `@yagejs-addons/i18n`'s `msg(key, fallback)`
+returns this exact shape, so scripts can be written with it directly.
+
+```ts
+speakers: { mira: { name: { key: "speaker.mira", fallback: "Mira" } } },
+steps: [
+  { kind: "say", speaker: "mira", text: msg("mira.greet", "Welcome, {name}.", { name: "Ari" }) },
+  { kind: "choice", options: [{ text: msg("mira.forest", "The forest"), target: "forest" }] },
+]
+```
+
+Resolution goes through an `I18nAdapter`:
+
+```ts
+interface I18nAdapter {
+  readonly locale: string;
+  resolve(
+    text: DialogueText,
+    values?: Readonly<Record<string, unknown>>,
+  ): string;
+  subscribe?(listener: () => void): () => void; // optional locale-change notification
+}
+```
+
+`DialogueController` picks the adapter in this order: the `i18n` option; a
+service registered under the `"localization"` id (the `@yagejs-addons/i18n`
+plugin registers one, and its service satisfies the interface as is); the
+bundled `IdentityI18n`, which returns the fallback with `{token}`s interpolated.
+When the adapter has `subscribe`, each locale change re-presents what is on
+screen in place: a line keeps its reveal progress (the text presenter's
+`replaceVisible(line)`, which a presenter built on `LineReveal` implements with
+`LineReveal.rebase`) and an open choice menu keeps its highlighted row.
+No line, command, reveal-completed, or choice event fires from that path.
+
+A non-YAGE library plugs in with a few lines:
+
+```ts
+const adapter: I18nAdapter = {
+  get locale() {
+    return i18next.language;
+  },
+  resolve(text, values) {
+    if (typeof text === "string")
+      return interpolateDialogueText(text, values ?? {});
+    const raw = i18next.t(text.key, {
+      defaultValue: text.fallback,
+      skipInterpolation: true,
+    });
+    return interpolateDialogueText(raw, { ...text.values, ...values });
+  },
+  subscribe(fn) {
+    i18next.on("languageChanged", fn);
+    return () => i18next.off("languageChanged", fn);
+  },
+};
+new DialogueController({ ...createBoxDialogue(), i18n: adapter });
+```

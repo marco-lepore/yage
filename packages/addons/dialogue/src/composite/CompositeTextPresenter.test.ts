@@ -6,12 +6,16 @@ import { CompositeTextPresenter } from "./CompositeTextPresenter.js";
 /** A stub text view recording presents/clears, speed, and visibility. */
 class StubView implements TextPresenter {
   presented = 0;
+  replaced = 0;
   cleared = 0;
   speedMultiplier = 1;
   visibles: boolean[] = [];
   revealListener?: (() => void) | undefined;
   present(): void {
     this.presented++;
+  }
+  replaceVisible(): void {
+    this.replaced++;
   }
   completeReveal(): void {}
   isRevealComplete(): boolean {
@@ -90,5 +94,33 @@ describe("CompositeTextPresenter — fast-forward multiplier", () => {
     c.setSpeedMultiplier(1);
     expect(box.speedMultiplier).toBe(1);
     expect(bubble.speedMultiplier).toBe(1);
+  });
+});
+
+describe("CompositeTextPresenter.replaceVisible", () => {
+  it("swaps the text on the view showing the line, and on no other", () => {
+    const box = new StubView();
+    const bubble = new StubView();
+    const composite = new CompositeTextPresenter(box, bubble);
+
+    composite.present(line("bubble", true));
+    composite.replaceVisible(line("bubble", true));
+
+    expect(bubble.replaced).toBe(1);
+    expect(box.replaced).toBe(0);
+    // A replacement is not a new line: nothing is presented or cleared again.
+    expect(bubble.presented).toBe(1);
+    expect(box.cleared).toBe(1);
+  });
+
+  it("does nothing before a line is presented", () => {
+    const box = new StubView();
+    const bubble = new StubView();
+    const composite = new CompositeTextPresenter(box, bubble);
+
+    composite.replaceVisible(line());
+
+    expect(box.replaced).toBe(0);
+    expect(bubble.replaced).toBe(0);
   });
 });

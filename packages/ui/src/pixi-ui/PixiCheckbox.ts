@@ -37,7 +37,10 @@ export class PixiCheckbox extends PixiUIBase<CheckBox> {
     this.bridgeSignal(this.view.onCheck, "onChange", "UI onChange", props);
 
     if ("checked" in p) this.view.forceCheck(p.checked ?? DEFAULT_CHECKED);
-    if ("text" in p) this.view.text = p.text ?? DEFAULT_TEXT;
+    if ("text" in p) {
+      this.view.text = p.text ?? DEFAULT_TEXT;
+      this.invalidateSize();
+    }
 
     this.updateBase(props);
   }

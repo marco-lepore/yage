@@ -192,6 +192,26 @@ export class DialogueTextView implements TextPresenter {
     this.show(line.text, line.speed);
   }
 
+  /**
+   * TextChannel: swap the line on screen for a re-resolved version (a
+   * translation) without restarting the typewriter. Rebuilds the glyphs and
+   * rebases the reveal clock, so the revealed count and completion carry over
+   * and nothing fires; a pending `[pause]` hold is dropped. Nothing on
+   * screen: no-op.
+   */
+  replaceVisible(line: PresentedLine): void {
+    if (!this.parsed) return;
+    this.line?.entity.destroy();
+    this.line = undefined;
+    this.shownCount = -1;
+    this.parsed = line.text;
+    if (line.text.length > 0) this.buildLine(line.text);
+    this.reveal.rebase(line.text);
+    this.applyReveal();
+    this.reposition();
+    this.applyHidden();
+  }
+
   /** TextChannel: reveal everything now. */
   completeReveal(): void {
     this.skipToEnd();

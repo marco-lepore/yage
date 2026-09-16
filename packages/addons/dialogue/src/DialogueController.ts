@@ -14,10 +14,18 @@
  *   host.add(new DialogueController({ ...createBoxDialogue(theme), avatar, storage }));
  */
 
-import { Component, LoggerKey, isDev, type Logger } from "@yagejs/core";
+import {
+  Component,
+  ErrorBoundaryKey,
+  LoggerKey,
+  ServiceKey,
+  isDev,
+  type Logger,
+} from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 import {
   DialogueSession,
+  IdentityI18n,
   type CommandHandler,
   type DialogueExtraChannel,
   type DialogueFunction,
@@ -119,6 +127,13 @@ export interface DialogueControllerOptions<
   readonly onEnded?: () => void;
 }
 
+/**
+ * `@yagejs-addons/i18n` owns the "localization" service id. Re-declared here
+ * (same id, the {@link I18nAdapter} contract its service satisfies) so an
+ * installed service is picked up without a dependency on that package.
+ */
+const LOCALIZATION_KEY = new ServiceKey<I18nAdapter>("localization");
+
 export class DialogueController<
   TStorage extends VariableStorage = VariableStorage,
 > extends Component {
@@ -148,6 +163,8 @@ export class DialogueController<
    *  `addChannel`). `onDestroy` runs them all — each idempotent — to unregister
    *  and dispose (unmounting the Mountable ones). */
   private readonly channelDisposers = new Set<() => void>();
+  /** Unsubscribes from the i18n adapter's locale changes (when it has any). */
+  private unsubscribeI18n: (() => void) | undefined;
 
   constructor(private readonly opts: DialogueControllerOptions<TStorage>) {
     super();
@@ -178,6 +195,26 @@ export class DialogueController<
     this.opts.text.setDiagnostics?.(warn);
     this.opts.choices.setDiagnostics?.(warn);
 
+    // The option wins; otherwise an installed localization service (the
+    // `@yagejs-addons/i18n` plugin registers one); otherwise identity.
+    const i18n: I18nAdapter =
+      this.opts.i18n ??
+      this.context.tryResolve(LOCALIZATION_KEY) ??
+      new IdentityI18n();
+    const boundary = this.context.tryResolve(ErrorBoundaryKey);
+    this.unsubscribeI18n = i18n.subscribe?.(() => {
+      const retranslate = (): void => this.session.retranslate();
+      if (boundary) {
+        boundary.wrapCallback(retranslate, {
+          kind: "DialogueController retranslate",
+          entity: this.entity.name,
+          scene: this.entity.tryScene?.name ?? "",
+        });
+      } else {
+        retranslate();
+      }
+    });
+
     this.session = new DialogueSession(
       {
         text: this.opts.text,
@@ -186,7 +223,7 @@ export class DialogueController<
         chrome: this.opts.chrome,
       },
       {
-        i18n: this.opts.i18n,
+        i18n,
         skipMultiplier: this.opts.skipMultiplier,
         // Controller-installed environment — persists across plays.
         storage: this.opts.storage,
@@ -252,6 +289,8 @@ export class DialogueController<
 
   onDestroy(): void {
     this.destroyed = true;
+    this.unsubscribeI18n?.();
+    this.unsubscribeI18n = undefined;
     // Stop first: bumps the session generation so an in-flight blocking-command
     // continuation bails instead of presenting onto presenters we're about to
     // dispose; also clears visuals (and fans clear() to the extras) while valid.

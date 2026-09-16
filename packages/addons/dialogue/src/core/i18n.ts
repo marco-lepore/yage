@@ -1,38 +1,102 @@
 /**
  * i18n seam. The runtime never reaches for a translation library directly —
- * it asks an {@link I18nAdapter}. Ship the identity adapter (literal text +
- * `{param}` interpolation) by default; wrap i18next / FormatJS / your own
- * string table in a ~10-line adapter to localise without touching the engine.
+ * it asks an {@link I18nAdapter}. The identity adapter (authored text plus
+ * `{param}` interpolation) runs by default. `@yagejs-addons/i18n`'s service
+ * satisfies the interface as is and is picked up automatically when its
+ * plugin is installed; any other library fits behind a ~10-line adapter.
  */
+
+/**
+ * A translatable piece of script text: the catalog `key`, the authored
+ * `fallback` (shown when no catalog has the key), and optional interpolation
+ * `values`. The same shape as `@yagejs-addons/i18n`'s `Message`, so a `msg()`
+ * call can be written straight into a script.
+ */
+export interface DialogueMessage {
+  readonly key: string;
+  readonly fallback: string;
+  readonly values?: Readonly<Record<string, string | number | boolean | null>>;
+}
+
+/** Script text: an authored string, or a {@link DialogueMessage}. */
+export type DialogueText = string | DialogueMessage;
 
 export interface I18nAdapter {
   /** Current locale tag, e.g. "en", "fr-CA". Informational. */
   readonly locale: string;
   /**
-   * Resolve a string. `key` is the translation key when the script provides
-   * one; `fallback` is the authored literal text. `params` feed interpolation.
-   * Implementations should return localised markup-bearing text.
+   * Localized, markup-bearing text for `text`, with `{token}`s interpolated
+   * from `values` (a message's own `values` first, then `values`). A string is
+   * the authored literal; a message is looked up by key and falls back to its
+   * `fallback`.
    */
-  t(
-    key: string | undefined,
-    fallback: string,
-    params?: Readonly<Record<string, unknown>>,
+  resolve(
+    text: DialogueText,
+    values?: Readonly<Record<string, unknown>>,
   ): string;
+  /**
+   * Optional locale-change notification. When present, the controller
+   * subscribes and re-presents the line and choice menu on screen in place on
+   * each call, without advancing or firing events. Absent: the next line
+   * picks up the new locale.
+   */
+  subscribe?(listener: () => void): () => void;
+}
+
+/** Whether `value` has the {@link DialogueMessage} shape. */
+/** One interpolation value: the literal types a catalog entry can carry. */
+function isMessageValue(value: unknown): boolean {
+  return (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value))
+  );
+}
+
+export function isDialogueMessage(value: unknown): value is DialogueMessage {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.key === "string" &&
+    candidate.key.length > 0 &&
+    typeof candidate.fallback === "string" &&
+    (candidate.values === undefined ||
+      (typeof candidate.values === "object" &&
+        candidate.values !== null &&
+        !Array.isArray(candidate.values) &&
+        Object.values(candidate.values).every(isMessageValue)))
+  );
+}
+
+/** Whether `value` is a string or a {@link DialogueMessage}. */
+export function isDialogueText(value: unknown): value is DialogueText {
+  return typeof value === "string" || isDialogueMessage(value);
+}
+
+/** The authored text: a string as is, a message's `fallback`. */
+export function dialogueTextFallback(text: DialogueText): string {
+  return typeof text === "string" ? text : text.fallback;
 }
 
 /**
- * No-op adapter: returns the authored literal, interpolating `{name}` tokens
- * from `params`. This is what runs until a real i18n backend is plugged in.
+ * No-op adapter: returns the authored text, interpolating `{name}` tokens.
+ * This is what runs until a real i18n backend is plugged in.
  */
 export class IdentityI18n implements I18nAdapter {
   constructor(readonly locale: string = "en") {}
 
-  t(
-    _key: string | undefined,
-    fallback: string,
-    params?: Readonly<Record<string, unknown>>,
+  resolve(
+    text: DialogueText,
+    values?: Readonly<Record<string, unknown>>,
   ): string {
-    return params ? interpolateDialogueText(fallback, params) : fallback;
+    if (typeof text === "string") {
+      return values ? interpolateDialogueText(text, values) : text;
+    }
+    return interpolateDialogueText(text.fallback, {
+      ...text.values,
+      ...values,
+    });
   }
 }
 

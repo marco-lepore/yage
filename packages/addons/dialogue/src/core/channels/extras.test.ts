@@ -15,6 +15,7 @@ class StubText implements TextChannel {
     this.presented.push(line);
     this.revealing = true;
   }
+  replaceVisible(): void {}
   completeReveal(): void {
     this.finishReveal();
   }

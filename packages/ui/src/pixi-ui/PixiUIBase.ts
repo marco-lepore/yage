@@ -41,8 +41,7 @@ export abstract class PixiUIBase<
     this.yogaNode = createYogaNode();
 
     this.yogaNode.setMeasureFunc((w, wMode, h, hMode) => {
-      const natW = view.width;
-      const natH = view.height;
+      const { width: natW, height: natH } = this.intrinsicSize();
 
       let mW = natW;
       let mH = natH;
@@ -58,6 +57,16 @@ export abstract class PixiUIBase<
 
     applyLayoutProps(this.yogaNode, props);
     if (props.visible === false) this.visible = false;
+  }
+
+  /**
+   * The size layout gives this widget when nothing constrains it. A composite
+   * that hides or reparents its parts — a dropdown lifting its open list out
+   * of this container — overrides this so the space it takes in the flow does
+   * not depend on which part is on screen.
+   */
+  protected intrinsicSize(): { width: number; height: number } {
+    return { width: this.view.width, height: this.view.height };
   }
 
   applyLayout(): void {
@@ -115,6 +124,15 @@ export abstract class PixiUIBase<
     signal.disconnect(wrapped ?? callback);
     callbacks?.delete(callback as (...args: never[]) => void);
     if (callbacks?.size === 0) this.bridgedCallbacks.delete(key);
+  }
+
+  /**
+   * Re-measure on the next layout pass. Yoga caches a measure function's
+   * result, so a prop that changes the widget's intrinsic size (its text, its
+   * item list) leaves the old size in the tree until the node is dirtied.
+   */
+  protected invalidateSize(): void {
+    this.yogaNode.markDirty();
   }
 
   /** Apply layout props, visible, and store prevProps. Call at end of subclass update(). */

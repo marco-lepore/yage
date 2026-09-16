@@ -209,3 +209,82 @@ describe("loadScript — string conditions / set values unify to Expr", () => {
     expect(() => loadCondition("a and")).toThrow(DialogueScriptError);
   });
 });
+
+describe("loadScript — text fields accept strings and { key, fallback } messages", () => {
+  it("loads messages on say, choice prompt, options, disabled reasons, and speaker names", () => {
+    const s = loadScript(
+      script({
+        speakers: { mira: { name: { key: "mira", fallback: "Mira" } } },
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              {
+                kind: "say",
+                speaker: "mira",
+                text: {
+                  key: "hi",
+                  fallback: "Hi {name}",
+                  values: { name: "Ari" },
+                },
+              },
+              {
+                kind: "choice",
+                text: { key: "ask", fallback: "Where?" },
+                options: [
+                  { text: { key: "l", fallback: "Left" } },
+                  {
+                    text: "Right",
+                    condition: false as unknown as Condition,
+                    presentation: "disabled",
+                    disabledReason: { key: "why", fallback: "Locked" },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    );
+    expect(s.speakers?.mira?.name).toEqual({ key: "mira", fallback: "Mira" });
+  });
+
+  it("rejects a text field that is neither", () => {
+    const bad = (text: unknown): DialogueScript =>
+      script({
+        nodes: {
+          a: { id: "a", steps: [{ kind: "say", text: text as string }] },
+        },
+      });
+    expect(() => loadScript(bad(3))).toThrow(
+      /say\.text must be a string or \{ key, fallback \} message/,
+    );
+    expect(() => loadScript(bad({ key: "", fallback: "x" }))).toThrow(
+      DialogueScriptError,
+    );
+    expect(() =>
+      loadScript(
+        script({
+          speakers: { m: { name: 7 as unknown as string } },
+          nodes: {
+            a: { id: "a", steps: [{ kind: "say", speaker: "m", text: "hi" }] },
+          },
+        }),
+      ),
+    ).toThrow(/speaker "m": name must be a string/);
+    expect(() =>
+      loadScript(
+        script({
+          nodes: {
+            a: {
+              id: "a",
+              steps: [
+                { kind: "choice", options: [{ text: 1 as unknown as string }] },
+              ],
+            },
+          },
+        }),
+      ),
+    ).toThrow(/choice option 0\.text/);
+  });
+});

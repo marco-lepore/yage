@@ -24,15 +24,24 @@ export class BoxTextView extends DialogueTextView {
   }
 
   override present(line: PresentedLine): void {
-    // Wrap to the owner's current region width (insets already applied — the
-    // avatar registers its column before the session presents the text), and
-    // follow the region's top-left so a moved/grown frame carries the text.
+    this.fitRegion();
+    super.present(line);
+  }
+
+  override replaceVisible(line: PresentedLine): void {
+    this.fitRegion();
+    super.replaceVisible(line);
+  }
+
+  /** Wrap to the owner's current region width (insets already applied — the
+   *  avatar registers its column before the session presents the text), and
+   *  follow the region's top-left so a moved/grown frame carries the text. */
+  private fitRegion(): void {
     const region = this.layout.textRegion();
     this.setBox(0, 0, region.width);
     this.setOrigin(() => {
       const r = this.layout.textRegion();
       return { x: r.x, y: r.y };
     });
-    super.present(line);
   }
 }

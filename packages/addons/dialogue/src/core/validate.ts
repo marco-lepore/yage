@@ -21,7 +21,7 @@
  */
 
 import { isExpr } from "./expr.js";
-import { tokensIn } from "./i18n.js";
+import { tokensIn, type DialogueText } from "./i18n.js";
 import type {
   BinaryOp,
   ChoiceStep,
@@ -169,9 +169,15 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
     }
   };
 
-  const checkTokens = (text: string | undefined): void => {
+  // A message's own `values` satisfy its tokens; the rest must be vars.
+  const checkTokens = (text: DialogueText | undefined): void => {
     if (!text) return;
-    for (const token of tokensIn(text)) readVars.add(token);
+    const authored = typeof text === "string" ? text : text.fallback;
+    const own = typeof text === "string" ? undefined : text.values;
+    for (const token of tokensIn(authored)) {
+      if (own && Object.hasOwn(own, token)) continue;
+      readVars.add(token);
+    }
   };
 
   const checkCondition = (
