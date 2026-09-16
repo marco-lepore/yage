@@ -1,7 +1,7 @@
 import type {
-  SplitText as DisplaySplitText,
-  SplitBitmapText as DisplaySplitBitmapText,
-} from "pixi.js";
+  DisplaySplitBitmapText,
+  DisplaySplitText,
+} from "../public-types.js";
 
 type AnySplitText = DisplaySplitText | DisplaySplitBitmapText;
 
