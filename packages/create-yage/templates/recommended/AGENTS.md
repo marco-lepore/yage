@@ -11,10 +11,11 @@ This is a [YAGE](https://yage.dev) 2D game engine project (TypeScript + Vite).
 
 ## What's in the starter
 
-A playable platformer seed: move with `A`/`D` (or arrow keys), jump with
-`Space`. Collect yellow coins. Avoid the red spiky hazards and purple slimes.
-Touching either respawns the player at the start. The level is defined in
-`src/scenes/GameScene.ts`; change the entity positions or spawn more.
+The starter is a playable platformer. Move with `A`/`D` or the arrow keys,
+and jump with `Space`. Collect yellow coins. Avoid the red spiky hazards and
+the purple slimes. Touching a hazard or a slime respawns the player at the
+start. The level is defined in `src/scenes/GameScene.ts`. Change the entity
+positions there, or spawn more entities.
 
 ## Project layout
 
@@ -48,13 +49,13 @@ Touching either respawns the player at the start. The level is defined in
         └── Oscillate.ts           # shared by Coin and Hazard
 ```
 
-See https://yage.dev/patterns/project-layout for the full convention writeup.
+See https://yage.dev/patterns/project-layout for the full conventions.
 **Short version:**
 
-- **One scene per file.** Scenes should be orchestrators — preload, camera, spawn entities. If a scene grows past ~150 lines, extract entity classes.
-- **Simple entity → single file; complex entity → folder.** Promote to a folder only when you have a second supporting file.
-- **Entity-specific components live next to the entity** (e.g. `Player/PlayerController.ts`), not in `components/`. `components/` is reserved for components shared across multiple entities (e.g. `Oscillate`).
-- **`main.ts` stays short.** Engine creation, plugin registration, scene push. No game logic.
+- **One scene per file.** A scene preloads assets, sets up the camera, and spawns entities. If a scene grows past ~150 lines, extract entity classes.
+- **Simple entity → single file; complex entity → folder.** Move an entity into a folder only when it has a second supporting file.
+- **Entity-specific components live next to the entity**, such as `Player/PlayerController.ts`. Use `components/` only for components shared across multiple entities, such as `Oscillate`.
+- **`main.ts` stays short.** It creates the engine, registers plugins, and pushes the first scene. Keep game logic out of it.
 
 ## Installed packages
 
@@ -72,11 +73,11 @@ Add more as you need them: `@yagejs/particles`, `@yagejs/tilemap`, `@yagejs/ui`,
 - `Vec2` is immutable — operations return new instances
 - `Transform` is mutable — call `.setPosition(...)`, `.rotate(...)` in place
 - Pixels are the primary unit across every public API
-- Components own game logic; systems are for engine internals only
+- Put game logic in components. Systems are for engine internals only
 - Use `setVelocity` on `RigidBodyComponent`, not `applyImpulse` — impulses need careful unit math
 - Spawn entities with `scene.spawn(EntityClass, params)` — YAGE calls `setup(params)` automatically
 - Resolve services with `this.service(Key)` or `this.use(Key)` inside components
-- Declare asset handles with `texture()` / `sound()` at module scope and list them in `Scene.preload` — everything is guaranteed loaded before `onEnter` runs
+- Declare asset handles with `texture()` / `sound()` at module scope and list them in `Scene.preload`. Every listed handle is loaded before `onEnter` runs
 
 ## Assets
 
@@ -92,15 +93,15 @@ as `texture("/assets/player-idle.png")` resolves to
 
 See `public/assets/CREDITS.md` for source links and license details.
 
-Replace them with your own assets — just keep the paths in sync with
-whatever your scene preload declares.
+Replace them with your own assets, and keep the file paths matching the
+handles your scene's `preload` declares.
 
 ## Save state
 
 Use `@yagejs/save` with an explicit `Serializable<TEncoded>` state root. Save
-files contain only the state you choose; YAGE does not serialize the live ECS
-world automatically. The Vite config preserves names for readable diagnostics,
-not for save-file identity.
+files contain only the state you choose. YAGE does not serialize the live ECS
+world automatically. The Vite config preserves class and function names so
+diagnostics stay readable. Do not rely on those names for save-file identity.
 
 ## Full YAGE documentation
 
@@ -112,8 +113,8 @@ not for save-file identity.
 
 ## Runtime inspector
 
-The engine is started with `debug: true`, which exposes `window.__yage__.inspector`
-in the browser console:
+`main.ts` starts the engine with `debug: true`, which adds
+`window.__yage__.inspector` in the browser console:
 
 ```js
 window.__yage__.inspector.snapshot();
