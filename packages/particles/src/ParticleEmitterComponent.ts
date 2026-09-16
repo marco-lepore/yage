@@ -267,6 +267,20 @@ export class ParticleEmitterComponent extends Component {
     const worldX = positioned ? worldXOrOverrides : undefined;
     const overrides = positioned ? trailingOverrides : worldXOrOverrides;
 
+    // Resolve and check the burst's configuration once, not per particle, and
+    // before the container moves, so a rejected override leaves the emitter
+    // as it was. Only the BurstOverrides keys are merged, because a spread can
+    // add other keys and a spawn reads some of them, such as alphaFadeIn. The
+    // merged object is not kept past this call, so it needs no copy.
+    let cfg = this.config;
+    if (overrides !== undefined) {
+      cfg = {
+        ...this.config,
+        ...pickOptions(overrides, BURST_OVERRIDE_OPTIONS),
+      };
+      assertEmitterConfig(cfg);
+    }
+
     this._warnIfNoTransform();
     // Every spawn path syncs the container first, so a particle is never
     // written against a stale origin. A Transform-less emitter keeps the
@@ -279,19 +293,6 @@ export class ParticleEmitterComponent extends Component {
     const { x: originX, y: originY } = this.container.position;
     const x = worldX === undefined ? 0 : worldX - originX;
     const y = worldY === undefined ? 0 : worldY - originY;
-
-    // Resolve and check the burst's configuration once, not per particle. Only
-    // the BurstOverrides keys are merged, because a spread can add other keys
-    // and a spawn reads some of them, such as alphaFadeIn. The merged object
-    // is not kept past this call, so it needs no copy.
-    let cfg = this.config;
-    if (overrides !== undefined) {
-      cfg = {
-        ...this.config,
-        ...pickOptions(overrides, BURST_OVERRIDE_OPTIONS),
-      };
-      assertEmitterConfig(cfg);
-    }
 
     for (let i = 0; i < count; i++) {
       this._spawn(x, y, cfg);

@@ -766,6 +766,14 @@ describe("ParticleEmitterComponent", () => {
       expect(emitter.activeCount).toBe(0);
     });
 
+    it("checks the overrides before it touches the container", () => {
+      const emitter = createEmitter({ lifetime: 10, maxParticles: 10 });
+      setupEntity(emitter, new Transform({ position: new Vec2(40, 60) }));
+      expect(() => emitter.burst(1, { lifetime: 0 })).toThrow(/lifetime/);
+      expect(emitter.container.position.x).toBe(0);
+      expect(emitter.container.position.y).toBe(0);
+    });
+
     it("checks the merged configuration, not the override alone", () => {
       const withOffset = createEmitter({
         spawnOffset: { radius: 10 },
