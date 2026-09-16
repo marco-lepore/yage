@@ -1000,8 +1000,9 @@ export class Inspector {
       target: InspectorPointerTarget,
       opts?: InspectorPointerButtonOpts,
     ): InspectorPointerHit => {
-      const resolved = this.resolvePointerTarget(target, "click");
       const button = opts?.button ?? 0;
+      this.assertPointerButton(button, "click");
+      const resolved = this.resolvePointerTarget(target, "click");
       resolved.adapter.dispatchPointerEvent("down", resolved.point, button);
       resolved.adapter.dispatchPointerEvent("up", resolved.point, button);
       return resolved.hit;
@@ -2181,6 +2182,7 @@ export class Inspector {
     target: InspectorPointerTarget,
     button?: 0 | 1 | 2,
   ): InspectorPointerHit {
+    if (button !== undefined) this.assertPointerButton(button, call);
     const resolved = this.resolvePointerTarget(target, call);
     resolved.adapter.dispatchPointerEvent(type, resolved.point, button);
     return resolved.hit;
@@ -2476,6 +2478,19 @@ export class Inspector {
     if (!Number.isFinite(value)) {
       throw new Error(
         `Inspector.pointer.${call}(): ${name} must be finite, got ${value}.`,
+      );
+    }
+  }
+
+  /**
+   * A button comes from the caller. The DOM numbers only these three, so any
+   * other value would reach the dispatched event with no `buttons` bit of its
+   * own and press nothing.
+   */
+  private assertPointerButton(button: number, call: string): void {
+    if (button !== 0 && button !== 1 && button !== 2) {
+      throw new Error(
+        `Inspector.pointer.${call}(): button must be 0, 1 or 2, got ${button}.`,
       );
     }
   }

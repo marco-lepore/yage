@@ -2357,6 +2357,21 @@ describe("Inspector.pointer", () => {
     ]);
   });
 
+  it("rejects a mouse button the DOM does not number", async () => {
+    const { inspector, buttonId, dispatched } = await pointerSetup();
+    const unnumbered = 3 as unknown as 0;
+
+    expect(() =>
+      inspector.pointer.down(buttonId, { button: unnumbered }),
+    ).toThrow(
+      /Inspector\.pointer\.down\(\): button must be 0, 1 or 2, got 3\./,
+    );
+    expect(() =>
+      inspector.pointer.click(buttonId, { button: -1 as unknown as 0 }),
+    ).toThrow(/button must be 0, 1 or 2, got -1\./);
+    expect(dispatched).toHaveLength(0);
+  });
+
   it("rejects a non-finite point before it reaches the renderer", async () => {
     const { inspector, dispatched, hitTestUIPath } = await pointerSetup();
 
