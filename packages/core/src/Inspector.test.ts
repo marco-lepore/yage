@@ -2357,6 +2357,19 @@ describe("Inspector.pointer", () => {
     ]);
   });
 
+  it("rejects a non-finite point before it reaches the renderer", async () => {
+    const { inspector, dispatched, hitTestUIPath } = await pointerSetup();
+
+    expect(() => inspector.pointer.click({ x: Number.NaN, y: 20 })).toThrow(
+      /Inspector\.pointer\.click\(\): x must be finite, got NaN\./,
+    );
+    expect(() =>
+      inspector.pointer.move({ x: 10, y: Number.POSITIVE_INFINITY }),
+    ).toThrow(/y must be finite, got Infinity\./);
+    expect(hitTestUIPath).not.toHaveBeenCalled();
+    expect(dispatched).toHaveLength(0);
+  });
+
   it("aims a virtual-space point unchanged", async () => {
     const { inspector, dispatched } = await pointerSetup();
 

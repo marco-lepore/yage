@@ -2121,6 +2121,10 @@ export class Inspector {
     target: InspectorPointerTarget,
     call: string,
   ): ResolvedPointerTarget {
+    if (typeof target !== "string") {
+      this.assertFinitePointerCoordinate(target.x, "x", call);
+      this.assertFinitePointerCoordinate(target.y, "y", call);
+    }
     const adapter = this.requirePointerAdapter(call);
     const index = this.buildUIIndex(adapter);
     const point =
@@ -2457,6 +2461,22 @@ export class Inspector {
   private assertNonNegativeInteger(value: number, name: string): void {
     if (!Number.isInteger(value) || value < 0) {
       throw new Error(`${name} requires a non-negative integer.`);
+    }
+  }
+
+  /**
+   * A point comes from the caller. A non-finite coordinate reaches the hit
+   * test and the coordinates of the event that is dispatched.
+   */
+  private assertFinitePointerCoordinate(
+    value: number,
+    name: string,
+    call: string,
+  ): void {
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `Inspector.pointer.${call}(): ${name} must be finite, got ${value}.`,
+      );
     }
   }
 
