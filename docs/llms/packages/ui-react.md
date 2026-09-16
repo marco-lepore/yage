@@ -30,6 +30,8 @@ entity.add(root);
 root.render(<MyComponent />);
 ```
 
+`root.setOffset(x, y)` moves the tree without touching its anchor, and `root.offset` reads the pair back. Both values must be finite; `NaN` or an infinity throws and names the argument.
+
 Positioning modes (mirror `@yagejs/ui`'s `UISurface`):
 
 - `positioning: "anchor"` (default) — `anchor` resolves against the viewport.
@@ -63,8 +65,9 @@ import {
     Click
   </Button>
 
-  {/* Button accepts ReactNode children for icon + label compositions */}
-  <Button onClick={() => {}}>
+  {/* Button accepts ReactNode children for icon + label compositions.
+      A button lays out a column, so a row needs direction="row". */}
+  <Button direction="row" onClick={() => {}}>
     <Image texture={iconTex} width={16} height={16} />
     <Text>Save</Text>
   </Button>
@@ -82,11 +85,13 @@ import {
 
 `<Text>` takes a single string child. Pre-join interpolated content into one template string (`` `Boats: ${count}/3` ``); mixing text and expressions (`Boats: {count}/3`) produces a `(string | number)[]` and fails typechecking. `<Button>`, by contrast, accepts arbitrary `ReactNode` children.
 
+`<ProgressBar>` forwards a `ref` to its `UIProgressBar` node, so `ref.current.value` reads the fraction it last drew.
+
 PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlider`, `PixiInput`, `PixiSelect`, `PixiRadioGroup`.
 
 Each JSX prop type extends its `@yagejs/ui` imperative counterpart (e.g. `ButtonProps` extends `UIButtonProps`). A prop the imperative class accepts is always a valid JSX prop too. `consumeInput` works on every element, including `Checkbox`, `ScrollView`, and the Pixi\* wrappers.
 
-**Prop removal resets to default.** Dropping a prop between renders resets it instead of leaving the old value: a cleared `background` removes the fill, an unbound handler stops firing, a removed layout value (`width`, `margin`, and the rest) goes back to its Yoga default. This applies to every element. Two JSX patterns both drop a prop this way: an explicit `undefined` (`bg={selected ? hl : undefined}`) and a conditional spread (`{...(open ? { onClick } : {})}`).
+**Prop removal resets to default.** Dropping a prop between renders resets it instead of leaving the old value: a cleared `background` removes the fill on `Panel` and `ScrollView` and returns `Button` to its default grey, an unbound handler stops firing, a removed layout value (`width`, `margin`, and the rest) goes back to its Yoga default. This applies to every element. Two JSX patterns both drop a prop this way: an explicit `undefined` (`bg={selected ? hl : undefined}`) and a conditional spread (`{...(open ? { onClick } : {})}`).
 
 **`bg` is shorthand for `background`** on `Panel`, `Button`, and `ScrollView`. `Button` also has `hoverBg` and `pressBg` for its hover/press backgrounds. Passing both `bg` and `background` on the same element resolves to `background` and fires a dev warning once per element type. `PixiProgressBar`, `PixiSlider`, and `PixiInput` have their own `bg` prop — a required `@pixi/ui` view-slot value, not this alias — and are unaffected.
 

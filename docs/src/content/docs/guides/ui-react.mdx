@@ -46,6 +46,17 @@ By default the React tree renders into the auto-provisioned screen-space
 viewport. Pass `layer: "<name>"` to mount on any layer declared on
 `Scene.layers`.
 
+`setOffset(x, y)` moves a mounted tree without changing its anchor, and
+`offset` reads the current value back:
+
+```typescript
+root.setOffset(0, -120); // slide the tree 120 px up
+root.offset; // { x: 0, y: -120 }
+```
+
+Both values must be finite. A `NaN` or an infinity throws and names the
+argument.
+
 ### Entity-anchored React UI
 
 For UI that tracks a specific game entity (nameplates, health bars,
@@ -143,10 +154,12 @@ function HUD() {
 
 `<Button>` accepts any `ReactNode` as children. Pass a string for the common
 labeled-button case (it's auto-wrapped in a centered `<Text>` styled with
-`textStyle`), or pass JSX children to compose icons and text:
+`textStyle`), or pass JSX children to compose icons and text. A button lays
+its children out in a column, so an icon beside a label needs
+`direction="row"`:
 
 ```tsx
-<Button onClick={() => save()}>
+<Button direction="row" onClick={() => save()}>
   <Image texture={saveIcon} width={16} height={16} />
   <Text style={{ fontSize: 14, fill: 0xffffff }}>Save</Text>
 </Button>
@@ -171,7 +184,7 @@ text with expressions:
 | `<Button>` | Clickable button with `onClick`, `bg`, `hoverBg`, `pressBg` |
 | `<Image>` | Texture display with `texture`, `tint`, `alpha`; set exactly one of `width` or `height` and the other follows the texture's aspect ratio (flex sizing turns that off) |
 | `<NineSlice>` | Nine-slice scalable texture |
-| `<ProgressBar>` | Progress bar (`value` 0–1) |
+| `<ProgressBar>` | Progress bar (`value` 0–1); a `ref` exposes the node, whose `value` reads the drawn fraction |
 | `<Checkbox>` | Checkbox with `checked`, `onChange`, `label` |
 | `<Tooltip>` | Hover-driven floating label wrapping a trigger |
 
@@ -190,7 +203,9 @@ resets it to its default instead of leaving the previous value in place:
 ```
 
 This holds for every prop on every component — a removed `onClick` unbinds
-the handler, a removed `width` goes back to Yoga's auto sizing, and so on.
+the handler, a removed `width` goes back to Yoga's auto sizing, and so on. A
+default is not always empty: a `<Button>` with no `bg` paints its own grey
+fill.
 
 ### The `bg` shorthand
 
