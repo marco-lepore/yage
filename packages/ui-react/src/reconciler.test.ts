@@ -160,6 +160,7 @@ import {
   UIText as UITextNode,
   UIButton as UIButtonNode,
   UIScrollView as UIScrollViewNode,
+  UIProgressBar as UIProgressBarNode,
 } from "@yagejs/ui";
 import { createElement, createRef, Fragment } from "react";
 import {
@@ -172,6 +173,7 @@ import {
   Button,
   Checkbox,
   Panel,
+  ProgressBar,
   ScrollView,
   Tooltip,
   UIText as Text,
@@ -418,6 +420,24 @@ describe("reconciler", () => {
     root.render(createElement(ScrollView, { ref }));
 
     expect(ref.current).toBe(getRootInstances(container as never)![0]);
+  });
+
+  it("declares ProgressBar as a ref-forwarding component", () => {
+    // React 18 is inside the peer range, and it drops a ref passed to a plain
+    // function component instead of attaching it.
+    expect((ProgressBar as { $$typeof?: symbol }).$$typeof).toBe(
+      Symbol.for("react.forward_ref"),
+    );
+  });
+
+  it("forwards a ProgressBar ref to its UIProgressBar instance", () => {
+    const ref = createRef<UIProgressBarNode>();
+    const root = createRoot(container as never);
+
+    root.render(createElement(ProgressBar, { ref, value: 0.5 }));
+
+    expect(ref.current).toBe(getRootInstances(container as never)![0]);
+    expect(ref.current!.value).toBe(0.5);
   });
 
   it("does not crash on missing _ctor (React catches the error)", () => {

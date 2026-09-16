@@ -399,9 +399,11 @@ export function NineSlice(props: NineSliceProps): React.JSX.Element {
 }
 
 /** A progress bar with track and fill. */
-export function ProgressBar(props: ProgressBarProps): React.JSX.Element {
-  return <UIElementHost _ctor={UIProgressBarNode} {...props} />;
-}
+export const ProgressBar = forwardRef<UIProgressBarNode, ProgressBarProps>(
+  function ProgressBar(props, ref) {
+    return <UIElementHost _ctor={UIProgressBarNode} {...props} ref={ref} />;
+  },
+);
 
 /** An interactive checkbox with optional label. */
 export function Checkbox(props: CheckboxProps): React.JSX.Element {
