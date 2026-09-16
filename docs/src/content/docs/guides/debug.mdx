@@ -470,6 +470,32 @@ can tell apart; `pressAction`/`releaseAction` exist only on the lab's context;
 and a scenario's own `drive` runs with no frame budget, since `yage-lab test`
 and the panel's Run button own that timeout.
 
+### Clicking the user interface
+
+The drive context's `input` verbs and `inspector.input` write `InputManager`
+state, which drives action maps and the pointer position. A `@yagejs/ui` element receives clicks as renderer events on
+its own container, so the input verbs never press a button. `inspector.pointer`
+dispatches real pointer events at the renderer's canvas, and the renderer
+hit-tests each one as it does for a person's click.
+
+```typescript
+const i = window.__yage__.inspector;
+const button = i.snapshot().scenes[0].ui.root.children[0];
+
+const hit = i.pointer.click(button.id); // or click({ x, y })
+hit.path.some((node) => node.type === "UIButton"); // true
+i.time.step(1); // the action map has seen the press
+```
+
+`click`, `down`, `up` and `move` dispatch events, and `hitTest` reports what
+sits under a target without dispatching. A target is a UI snapshot node id or a
+point in virtual space. The button's own `onClick` has run by the time the call
+returns, while engine input state reflects the press one frame later. The four
+verbs that dispatch need `RendererPlugin` and one rendered frame, and each
+throws with what to do when that is missing.
+[Driving a Running Game](/guides/play-sessions/) covers what a click reaches
+and what blocks it.
+
 ### Throwaway Inspector specs
 
 The Inspector + frozen clock + scripted input together make a tight short-loop

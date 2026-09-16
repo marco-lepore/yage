@@ -132,6 +132,32 @@ they advance frames without draining microtasks — the drive context's versions
 are the awaitable ones. Nothing here releases input for you; pair every hold
 with a release, or call `clearAll()`.
 
+`inspector.input` never reaches a `@yagejs/ui` element: its verbs write engine
+input state, and a UI primitive receives clicks as renderer events on its own
+container. `inspector.pointer` dispatches real pointer events at the canvas,
+which does reach one — a build menu, a pause screen, a confirm dialog.
+
+```ts
+const inspector = window.__yage__.inspector;
+const { pointer } = inspector;
+const menu = inspector.snapshot().scenes[0]?.ui?.root;
+
+pointer.hitTest({ x: 160, y: 90 }); // what is under this point
+const hit = pointer.click(menu.children[0].id); // centre of that node's bounds
+hit.path.some((node) => node.type === "UIButton"); // did a button take it
+```
+
+A click by id needs `bounds` on the snapshot node, which the renderer fills in.
+`layout` beside it is Yoga's parent-relative box and locates nothing on screen.
+Every verb needs `RendererPlugin`. The four verbs that dispatch also need one
+rendered frame; `hitTest` does not. Each guard throws and names what to do.
+They drive one primary mouse pointer; a touch pointer or a second finger stays
+with `inspector.input`.
+
+The handler has already run when `click` returns, because delivery is
+synchronous. Engine input state reflects the press one frame later, so step a
+frame before asserting on an action.
+
 ## Playing by rules instead of by a fixed script
 
 A fixed script — hold Right 30 frames, jump, step 45 — only works while the
