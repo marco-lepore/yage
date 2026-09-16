@@ -41,6 +41,16 @@ export interface EmitterOptions {
   scale?: NumberRange | Lerped;
   /** Alpha/opacity (or lerped). Default: 1. */
   alpha?: NumberRange | Lerped;
+  /**
+   * Fade a particle in over this fraction of its lifetime (0-1). Multiplies
+   * whatever `alpha` produces rather than replacing it. Default: 0, no fade.
+   */
+  alphaFadeIn?: number;
+  /**
+   * Fade a particle out over the last this-much fraction of its lifetime
+   * (0-1). Multiplies whatever `alpha` produces. Default: 0, no fade.
+   */
+  alphaFadeOut?: number;
   /** Initial rotation in radians. Default: 0. */
   rotation?: NumberRange;
   /** Rotation speed in rad/s. Default: 0. */
@@ -87,6 +97,46 @@ export interface EmitterOptions {
 
 /** Emitter configuration: a texture source plus the emission options. */
 export type EmitterConfig = EmitterOptions & TextureSource;
+
+/**
+ * Spawn-time options one burst can override. Every value here is read while
+ * that burst's particles are created, so particles already in flight keep the
+ * values they were spawned with.
+ */
+export type BurstOverrides = Partial<
+  Pick<
+    EmitterOptions,
+    | "lifetime"
+    | "speed"
+    | "angle"
+    | "scale"
+    | "alpha"
+    | "rotation"
+    | "rotationSpeed"
+    | "tint"
+    | "spawnOffset"
+    | "radialSpeed"
+  >
+>;
+
+/**
+ * Options an emitter accepts after construction. Adds to {@link BurstOverrides}
+ * the values read per frame or per emission rather than per particle.
+ * `maxParticles`, `layer`, `simulationSpace` and the texture source are fixed
+ * when the emitter is built, so they are absent here.
+ */
+export type EmitterUpdateOptions = BurstOverrides &
+  Partial<
+    Pick<
+      EmitterOptions,
+      | "rate"
+      | "gravity"
+      | "damping"
+      | "blendMode"
+      | "alphaFadeIn"
+      | "alphaFadeOut"
+    >
+  >;
 
 /** Resolve a NumberRange to a concrete value. */
 export function resolveRange(v: NumberRange, random: RandomService): number {

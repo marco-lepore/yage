@@ -59,7 +59,7 @@ export const ParticlePresets = {
     };
   },
 
-  /** Fast directional sparks. */
+  /** Fast, short-lived sparks thrown in every direction and pulled down by gravity. */
   sparks(textureOrKey?: TextureInput): EmitterConfig {
     return {
       ...source(textureOrKey, { type: "line", size: [10, 3] }),
