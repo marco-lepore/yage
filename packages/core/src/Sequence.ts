@@ -83,11 +83,13 @@ export class Sequence {
   }
 
   /**
-   * Build the sequence into a Process without registering with a scene.
-   * Exposed for unit testing.
-   * @internal
+   * Compile the steps into the single `Process` that drives them.
+   *
+   * Nothing runs until a runner drives that process: pass it to
+   * `ProcessComponent.run` for entity-scoped work, or to a queue's `run`.
+   * Cancelling the returned process cancels the step it is on.
    */
-  _build(): Process {
+  build(): Process {
     const steps = this.steps;
     const looping = this._loop;
     const repeatCount = this._repeatCount;
@@ -153,11 +155,6 @@ export class Sequence {
         active = [];
       },
     });
-  }
-
-  /** Build and start the sequence. Returns the wrapping Process. */
-  start(): Process {
-    return this._build();
   }
 }
 

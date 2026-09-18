@@ -330,7 +330,7 @@ pc.run(
     .wait(0.2)
     .then(Tween.custom((v) => (sprite.alpha = v), 1, 0, 0.4, easeOutQuad))
     .call(() => entity.destroy())
-    .start(),
+    .build(),
 );
 ```
 
@@ -347,16 +347,16 @@ pc.run(
       Tween.vec2((v) => t.setPosition(v.x, v.y), t.position, offscreen, 0.3, easeInQuad),
     )
     .call(() => entity.destroy())
-    .start(),
+    .build(),
 );
 ```
 
 The sequence advances past a `.parallel()` step once **all** of its children
 complete.
 
-`Sequence.start()` builds and returns the wrapping `Process` but does
-**not** schedule it — pass it to `pc.run(...)` for the sequence to
-actually tick.
+`Sequence.build()` compiles the steps into the wrapping `Process` and returns
+it. Nothing ticks until a runner drives that process — pass it to
+`pc.run(...)`, or to a scene or global queue's `run(...)`.
 
 Cancelling a sequence cancels whatever step it is running. A tween instance
 you built, passed to `.then()` or `.parallel()`, and still hold is cancelled
@@ -375,7 +375,7 @@ pc.run(
     .then(Tween.custom((v) => (sprite.alpha = v), 1, 0.5, 0.5, easeInOutQuad))
     .then(Tween.custom((v) => (sprite.alpha = v), 0.5, 1, 0.5, easeInOutQuad))
     .loop()
-    .start(),
+    .build(),
 );
 
 // Repeat a fixed number of times
@@ -384,7 +384,7 @@ pc.run(
     .call(() => flash())
     .wait(0.1)
     .repeat(5)
-    .start(),
+    .build(),
 );
 ```
 
@@ -651,7 +651,7 @@ function damageFlash(entity: Entity) {
       .call(() => (sprite.tint = TINT_HIT))
       .wait(0.12)
       .call(() => (sprite.tint = TINT_NORMAL))
-      .start(),
+      .build(),
     { tags: ["flash"] },
   );
 }
@@ -749,7 +749,7 @@ function telegraph(enemy: Entity, attack: () => void) {
         sprite.tint = 0xffffff;
       })
       .call(attack)
-      .start(),
+      .build(),
   );
 }
 ```
@@ -777,7 +777,7 @@ function fadeOut(entity: Entity, duration = 0.2, onDone?: () => void) {
     new Sequence()
       .then(Tween.custom((v) => (sprite.alpha = v), 1, 0, duration, easeInQuad))
       .call(() => onDone?.())
-      .start(),
+      .build(),
     { tags: ["fade"] },
   );
 }

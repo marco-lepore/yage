@@ -9,7 +9,7 @@ describe("Sequence", () => {
       .call(() => order.push(1))
       .call(() => order.push(2))
       .call(() => order.push(3))
-      ._build();
+      .build();
 
     proc._update(16); // step 1
     proc._update(16); // step 2
@@ -20,7 +20,7 @@ describe("Sequence", () => {
 
   it("wait() delays for specified ms", () => {
     const called = vi.fn();
-    const proc = new Sequence().wait(100).call(called)._build();
+    const proc = new Sequence().wait(100).call(called).build();
 
     proc._update(50); // wait process created, 50ms elapsed
     expect(called).not.toHaveBeenCalled();
@@ -42,7 +42,7 @@ describe("Sequence", () => {
             },
           }),
       )
-      ._build();
+      .build();
 
     proc._update(50);
     expect(value).toBe(50);
@@ -59,7 +59,7 @@ describe("Sequence", () => {
         return true;
       },
     });
-    const proc = new Sequence().then(inner)._build();
+    const proc = new Sequence().then(inner).build();
     proc._update(16);
     expect(value).toBe(1);
   });
@@ -84,7 +84,7 @@ describe("Sequence", () => {
             },
           }),
       )
-      ._build();
+      .build();
 
     proc._update(50);
     // Both should have been updated
@@ -96,13 +96,13 @@ describe("Sequence", () => {
     expect(proc.completed).toBe(true);
   });
 
-  it("start() returns a process", () => {
-    const proc = new Sequence().call(() => {}).start();
+  it("build() returns a process", () => {
+    const proc = new Sequence().call(() => {}).build();
     expect(proc).toBeInstanceOf(Process);
   });
 
   it("empty sequence completes immediately", () => {
-    const proc = new Sequence()._build();
+    const proc = new Sequence().build();
     proc._update(16);
     expect(proc.completed).toBe(true);
   });
@@ -122,7 +122,7 @@ describe("Sequence", () => {
         return true;
       },
     });
-    const seq = new Sequence().parallel(procA, procB)._build();
+    const seq = new Sequence().parallel(procA, procB).build();
     seq._update(16);
     expect(a).toBe(1);
     expect(b).toBe(1);
@@ -136,7 +136,7 @@ describe("Sequence", () => {
     // Inject a falsy value into the internal steps array to trigger the guard
     const steps = (seq as unknown as { steps: Array<unknown> })["steps"];
     steps.push(undefined);
-    const proc = seq._build();
+    const proc = seq.build();
     proc._update(16);
     // The guard returns true (complete) when it encounters a falsy step
     expect(proc.completed).toBe(true);
@@ -147,7 +147,7 @@ describe("Sequence", () => {
     const proc = new Sequence()
       .call(() => count++)
       .loop()
-      ._build();
+      .build();
 
     proc._update(0); // iteration 1
     proc._update(0); // restarts, iteration 2
@@ -161,7 +161,7 @@ describe("Sequence", () => {
     const proc = new Sequence()
       .call(() => count++)
       .repeat(3)
-      ._build();
+      .build();
 
     proc._update(0); // iteration 1
     proc._update(0); // iteration 2
@@ -175,7 +175,7 @@ describe("Sequence", () => {
     const proc = new Sequence()
       .call(() => count++)
       .repeat(1)
-      ._build();
+      .build();
 
     proc._update(0);
     expect(count).toBe(1);
@@ -190,7 +190,7 @@ describe("Sequence", () => {
         count++;
       },
     });
-    const proc = new Sequence().then(inner).loop()._build();
+    const proc = new Sequence().then(inner).loop().build();
 
     // Iteration 1: inner runs for 50ms
     proc._update(50);
@@ -211,7 +211,7 @@ describe("Sequence", () => {
         return true;
       },
     });
-    const proc = new Sequence().then(inner).repeat(3)._build();
+    const proc = new Sequence().then(inner).repeat(3).build();
 
     proc._update(0); // iteration 1
     proc._update(0); // iteration 2
@@ -236,7 +236,7 @@ describe("Sequence", () => {
       },
     });
 
-    const seq = new Sequence().parallel(procA, procB).loop()._build();
+    const seq = new Sequence().parallel(procA, procB).loop().build();
 
     seq._update(0); // iteration 1: both run and complete
     seq._update(0); // iteration 2: both should be reset and run again
@@ -247,8 +247,8 @@ describe("Sequence", () => {
 
   it("runs a built sequence again on every reuse as a step", () => {
     let count = 0;
-    const inner = new Sequence().call(() => count++)._build();
-    const outer = new Sequence().then(inner).repeat(3)._build();
+    const inner = new Sequence().call(() => count++).build();
+    const outer = new Sequence().then(inner).repeat(3).build();
 
     outer._update(0); // iteration 1
     outer._update(0); // iteration 2
@@ -259,7 +259,7 @@ describe("Sequence", () => {
 
   it("cancelling the wrapper cancels the step process the caller holds", async () => {
     const inner = new Process({ duration: 100, update: () => {} });
-    const seq = new Sequence().then(inner)._build();
+    const seq = new Sequence().then(inner).build();
 
     seq._update(50);
     expect(inner.completed).toBe(false);
@@ -274,7 +274,7 @@ describe("Sequence", () => {
   it("cancelling the wrapper cancels every process of a parallel step", () => {
     const a = new Process({ duration: 100, update: () => {} });
     const b = new Process({ duration: 100, update: () => {} });
-    const seq = new Sequence().parallel(a, b)._build();
+    const seq = new Sequence().parallel(a, b).build();
 
     seq._update(50);
     seq.cancel();
@@ -305,7 +305,7 @@ describe("Sequence", () => {
           }),
       )
       .call(() => order.push("end"))
-      ._build();
+      .build();
 
     proc._update(16); // "start" call created and completes, stepIndex → 1
     proc._update(16); // wait(50) process created, 16ms elapsed

@@ -360,7 +360,7 @@ const seq = new Sequence()
   .call(() => ui.hideDialogue())
   .then(Tween.custom((v) => (camera.zoom = v), 1, 1.5, 0.5));
 
-pc.run(seq.start());
+pc.run(seq.build());
 ```
 
 ### Tween animation
@@ -534,7 +534,7 @@ describe("Movement integration", () => {
 
 ### Testing processes, slots, and tweens
 
-Processes are updated manually via `_update(dt)` — no game loop needed. `ProcessSlot` uses `_tick(dt)`. `Sequence` uses `_build()` in tests instead of `start()`:
+Processes are updated manually via `_update(dt)` — no game loop needed. `ProcessSlot` uses `_tick(dt)`. `Sequence.build()` returns the process a test drives:
 
 ```ts
 import { describe, it, expect, vi } from "vitest";
@@ -581,7 +581,7 @@ describe("Sequence", () => {
     const seq = new Sequence()
       .call(() => order.push("a"))
       .call(() => order.push("b"))
-      ._build();
+      .build();
 
     seq._update(16);
     seq._update(16);
@@ -626,7 +626,7 @@ describe("FooPlugin", () => {
 - Use `createMockEntity` for component unit tests — fast, no Engine overhead.
 - Use `createTestEngine` + `advanceFrames` for integration tests involving the game loop.
 - Call `engine.destroy()` at the end of every integration test to clean up.
-- Processes use `_update(dt)`, `ProcessSlot` uses `_tick(dt)`, `Sequence` uses `_build()` — direct control, no game loop needed.
+- Processes use `_update(dt)`, `ProcessSlot` uses `_tick(dt)`, `Sequence` uses `build()` — direct control, no game loop needed.
 - The ErrorBoundary records and logs a component/system throw, then rethrows it — nothing is disabled or muted. Assert on `inspector.getErrors().callbackErrors` and on the rethrow, not on `enabled`.
 - Use `vi.fn()` and `vi.spyOn()` from Vitest for mocking callbacks and service methods.
 

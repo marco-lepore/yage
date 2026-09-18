@@ -111,7 +111,7 @@ export const Tween = {
     return items.map((item, i) => {
       const seq = new Sequence();
       if (i > 0 && stepSeconds > 0) seq.wait(i * stepSeconds);
-      return seq.then(() => factory(item, i)).start();
+      return seq.then(() => factory(item, i)).build();
     });
   },
 };

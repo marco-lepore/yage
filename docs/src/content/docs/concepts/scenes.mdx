@@ -43,6 +43,58 @@ class GameplayScene extends Scene {
 }
 ```
 
+### Scene Hooks
+
+Four hooks cover entering, exiting and pausing, and `onProgress(ratio)` reports
+asset preload progress from 0 to 1 while the scene's `preload` list loads. That
+is every hook `Scene` declares:
+
+| Hook | Fires |
+|---|---|
+| `onProgress(ratio)` | During preloading: with 0 before the first asset loads, then once as each asset in `preload` resolves |
+| `onEnter()` | Once preloading finishes and the scene is on the stack |
+| `onExit()` | When the scene is popped or replaced |
+| `onPause()` | When the scene becomes effectively paused |
+| `onResume()` | When the scene stops being effectively paused |
+
+Subclasses in the engine can add to that set: [`LoadingScene`](/guides/loading-scene/)
+declares `onLoadError(error)` for a preload that fails.
+
+A scene has no per-frame hook. `update` and `fixedUpdate` are typed as `never`
+on `Scene`, so a subclass that declares either name fails to compile. The
+per-frame pass ticks components, which leaves two homes for scene-level
+per-frame logic:
+
+```typescript
+import {
+  Process,
+  ProcessSystemKey,
+  Scene,
+  makeSceneScopedQueue,
+} from "@yagejs/core";
+
+class ArenaScene extends Scene {
+  readonly name = "arena";
+
+  onEnter() {
+    // A component on an entity the scene spawns drifts the backdrop.
+    this.spawn("backdrop").add(new ParallaxDrift());
+
+    // A queue that pauses and ends with the scene runs the round timer.
+    const processSystem = this.context.resolve(ProcessSystemKey);
+    const queue = makeSceneScopedQueue(processSystem, this);
+    queue.run(Process.delay(60, () => this.endRound()));
+  }
+
+  private endRound() {
+    // …
+  }
+}
+```
+
+An `Entity` subclass carries the same two `never` declarations, for the same
+reason: put the logic in a component the entity holds.
+
 ### Scene Properties
 
 | Property | Default | Purpose |
@@ -87,11 +139,16 @@ const current = engine.scenes.active;
 ### Lifecycle Flow
 
 ```
-push(A)      → A.onEnter()
-push(B)      → A.onPause()  → B.onEnter()
+push(A)      → A.onProgress(ratio)… → A.onEnter()
+push(B)      → B.onProgress(ratio)… → B.onEnter()  → A.onPause()
 pop()        → B.onExit()   → A.onResume()
-replace(C)   → B.onExit()   → C.onEnter()
+replace(C)   → C.onProgress(ratio)… → B.onExit()   → C.onEnter()
 ```
+
+Every push and every replace preloads the scene it is entering before
+`onEnter`. `onProgress` repeats while that scene's `preload` assets load, and
+is skipped for a scene with nothing to preload. No step of this flow is
+per-frame.
 
 `onPause` and `onResume` fire on **every** effective pause transition, not
 just stack changes: setting `scene.paused = true` from game code, the

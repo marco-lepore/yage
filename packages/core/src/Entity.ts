@@ -102,6 +102,32 @@ export class Entity {
    */
   timeScale = 1;
 
+  /**
+   * Reserved: a subclass that declares `update` fails to compile.
+   *
+   * The engine's per-frame pass ticks the components an entity holds, so an
+   * entity method with this name is dead code. Per-frame logic belongs in a
+   * component added to the entity, or in a process on the queue that
+   * `makeSceneScopedQueue()` returns when the work outlives a single entity.
+   *
+   * The slot is optional, so the compiler reports the subclass method as not
+   * assignable to type `undefined` rather than to type `never`.
+   */
+  declare readonly update?: never;
+
+  /**
+   * Reserved: a subclass that declares `fixedUpdate` fails to compile.
+   *
+   * There is no fixed-step entity hook either, and for the same reason. Both
+   * homes above apply: a component added to the entity, or a process on the
+   * queue that `makeSceneScopedQueue()` returns when the work outlives a
+   * single entity.
+   *
+   * The slot is optional, so the compiler reports the subclass method as not
+   * assignable to type `undefined` rather than to type `never`.
+   */
+  declare readonly fixedUpdate?: never;
+
   private components = new Map<ComponentClass, Component>();
   /**
    * Ancestor index: every class in a component's prototype chain maps to the
