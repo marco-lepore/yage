@@ -38,6 +38,7 @@ vi.mock("pixi.js", () => {
 });
 
 import { Texture } from "pixi.js";
+import { texture } from "./assets.js";
 import { resolveFrames, sliceGrid, sliceSheet } from "./spritesheet.js";
 
 function frameAt(frames: Texture[], i: number): { x: number; y: number } {
@@ -172,6 +173,21 @@ describe("resolveFrames — sheet sources", () => {
     });
     expect(frames).toHaveLength(48);
     expect(frameAt(frames, 7)).toEqual({ x: 0, y: 132 });
+  });
+
+  it("resolves a sheet given a texture handle", () => {
+    const frames = resolveFrames({
+      sheet: texture("player.png"),
+      frameWidth: 48,
+    });
+    expect(frames).toHaveLength(2);
+    expect(frameAt(frames, 1)).toEqual({ x: 48, y: 0 });
+  });
+
+  it("names a handle's asset key in a grid error", () => {
+    expect(() =>
+      resolveFrames({ sheet: texture("player.png"), frameWidth: 200 }),
+    ).toThrow('for sheet "player.png"');
   });
 
   it("throws when frameWidth exceeds the texture width", () => {

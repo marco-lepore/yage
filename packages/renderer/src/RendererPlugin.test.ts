@@ -87,6 +87,10 @@ const { mocks } = vi.hoisted(() => {
         this.width = w;
         this.height = h;
       },
+      generateTexture: vi.fn((options: unknown) => ({
+        label: "generated",
+        options,
+      })),
     };
     initialized = false;
     destroyCalled = false;
@@ -137,6 +141,14 @@ vi.mock("pixi.js", () => {
       }
     },
     TextureStyle: { defaultOptions: { scaleMode: "linear" } },
+    Rectangle: class {
+      constructor(
+        public x: number,
+        public y: number,
+        public width: number,
+        public height: number,
+      ) {}
+    },
   };
 });
 
@@ -1305,6 +1317,59 @@ describe("RendererPlugin", () => {
         plugin.dispatchPointerEvent("down", { x: 10, y: 10 }, 0),
       ).toThrow(/needs a rendered frame/);
       expect(dispatched).toEqual([]);
+    });
+  });
+
+  describe("createTexture", () => {
+    async function installedPlugin(): Promise<RendererPlugin> {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      return plugin;
+    }
+
+    function generateCalls(plugin: RendererPlugin): { frame?: unknown }[] {
+      const generate = (
+        plugin.application.renderer as unknown as {
+          generateTexture: { mock: { calls: [{ frame?: unknown }][] } };
+        }
+      ).generateTexture;
+      return generate.mock.calls.map(([options]) => options);
+    }
+
+    it("bakes the region a size names, starting at the origin", async () => {
+      const plugin = await installedPlugin();
+
+      plugin.createTexture(() => {}, { width: 128, height: 32 });
+
+      const [options] = generateCalls(plugin);
+      expect(options?.frame).toMatchObject({
+        x: 0,
+        y: 0,
+        width: 128,
+        height: 32,
+      });
+    });
+
+    it("passes no frame without a size, so pixi bakes the drawn bounds", async () => {
+      const plugin = await installedPlugin();
+
+      plugin.createTexture(() => {});
+
+      const [options] = generateCalls(plugin);
+      expect(options).not.toHaveProperty("frame");
+    });
+
+    it("throws naming the offending dimension", async () => {
+      const plugin = await installedPlugin();
+
+      expect(() =>
+        plugin.createTexture(() => {}, { width: 0, height: 32 }),
+      ).toThrow("RendererPlugin.createTexture: width must be finite and > 0");
+      expect(() =>
+        plugin.createTexture(() => {}, { width: 128, height: NaN }),
+      ).toThrow("RendererPlugin.createTexture: height must be finite and > 0");
+      expect(generateCalls(plugin)).toEqual([]);
     });
   });
 });

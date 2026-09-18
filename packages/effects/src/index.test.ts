@@ -24,6 +24,7 @@ import {
   implosion,
   dissolve,
 } from "./index.js";
+import type { BloomHandle, EffectHandle, OutlineHandle } from "./index.js";
 
 // Smoke tests live here. End-to-end attach + serialize round-trip is
 // covered by `@yagejs/renderer`'s EffectStack tests using a fake filter,
@@ -81,5 +82,15 @@ describe("@yagejs/effects presets", () => {
     expect(typeof axisBlur({ axis: "vertical" })).toBe("function");
     expect(typeof implosion({ radius: 160 })).toBe("function");
     expect(typeof dissolve({ edgeColor: 0x67e8f9 })).toBe("function");
+  });
+
+  it("the barrel exports the base handle shape the presets narrow", () => {
+    // A per-preset handle is assignable to EffectHandle, so game code can hold
+    // a mixed list of effects it fades or removes together.
+    const handles: EffectHandle[] = [];
+    const outlineHandle = {} as OutlineHandle;
+    const bloomHandle = {} as BloomHandle;
+    handles.push(outlineHandle, bloomHandle);
+    expect(handles).toHaveLength(2);
   });
 });

@@ -37,6 +37,18 @@ The base handle is shared across every preset:
 | `fadeOut(seconds)` | Tween primary intensity → 0. Returns a `Process`. |
 | `run(p)` | Schedule a `Process` scoped to this effect — pauses with the owning scene, time-scales with it, auto-cancels on `remove()`. Use for custom uniform tweens. |
 
+`@yagejs/effects` exports `EffectHandle` as a type, so a field or a list that
+holds handles from several presets has a name to declare:
+
+```ts
+import { Component } from "@yagejs/core";
+import type { EffectHandle } from "@yagejs/effects";
+
+class Hazard extends Component {
+  private active: EffectHandle[] = [];
+}
+```
+
 Each preset extends the base with its own knobs — `OutlineHandle.setThickness(n)`,
 `HitFlashHandle.trigger()`, `ColorGradeHandle.setPreset("sepia")`, etc.
 The common `setIntensity` method changes the current 0–1 strength. A preset

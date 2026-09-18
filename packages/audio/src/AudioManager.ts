@@ -146,6 +146,20 @@ export class AudioManager {
     };
   }
 
+  /**
+   * Whether a sound is registered under `ref`'s alias — preloaded with
+   * `sound(...)` or added with `registerSound()`. This is the same check that
+   * makes `play` throw, so it is the guard for an alias the game assembles at
+   * runtime.
+   *
+   * It reports nothing about whether audio can be heard. The browser's
+   * autoplay unlock is {@link AudioManager.isUnlocked}, and channel mute is
+   * {@link AudioManager.muteChannel}.
+   */
+  hasSound(ref: SoundRef): boolean {
+    return this._sound.exists(aliasOf(ref));
+  }
+
   playRandom(aliases: SoundRef[], options?: AudioPlayOptions): SoundHandle {
     if (aliases.length === 0) {
       throw new Error("playRandom: aliases array must not be empty.");

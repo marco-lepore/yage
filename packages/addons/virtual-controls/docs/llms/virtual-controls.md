@@ -93,13 +93,17 @@ host entity and add a fresh component.
   `maxTouchPoints`). Phones/tablets show, desktops (touch-screen laptops
   included) don't.
 - `true` / `false`: decide yourself (e.g. a saved setting).
-- `controls.setVisible(bool)` at runtime. Hiding releases every engaged
+- `controls.setVisible(v)` at runtime, where `v` is `true`, `false` or
+  `"auto"` — the same three values the option takes, so a settings screen can
+  pass its choice straight through. `"auto"` reads the device during that call
+  and stores the boolean it resolves to. Hiding releases every engaged
   control: mirrored actions get a real release edge, axes reset, views hide.
   While hidden nothing is claimed or consumed.
 - `controls.enabled = false` and `entity.setActive(false)` do the same,
-  independently of `visible`: the views hide and every hold is released. The
-  requested `visible` value is kept and applies again on reactivation, so a
-  HUD entity you turn off and back on returns to the state you set.
+  independently of `visible`: the views hide and every hold is released.
+  Reactivation applies the stored boolean, so a HUD entity you turn off and
+  back on returns to the state you set. Reactivation does not read the device,
+  so call `setVisible("auto")` for a fresh detection.
 
 Change one configured button without rebuilding the overlay:
 

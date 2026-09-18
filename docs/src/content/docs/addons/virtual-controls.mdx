@@ -116,8 +116,13 @@ new VirtualControls({ visible: true, … });       // always (e.g. this demo pag
 new VirtualControls({ visible: settings.touch ?? "auto", … });
 
 controls.setVisible(false);                      // runtime lever (settings toggle, cutscene)
+controls.setVisible("auto");                     // hand a settings choice straight through
 prefersTouchControls();                          // the raw detection, for your own policy
 ```
+
+`setVisible` takes the same three values as the option, and `"auto"` re-reads
+the device, so a settings screen with an "automatic" choice needs no branch of
+its own.
 
 Hiding releases every engaged control — mirrored actions get a real release
 edge and the synthetic stick axes reset — so nothing sticks when the overlay
@@ -125,8 +130,10 @@ disappears mid-hold.
 
 Deactivating the host entity (`entity.setActive(false)`) does the same, and so
 does `controls.enabled = false`: the controls leave the screen and stop
-claiming touches. Whatever you passed to `setVisible` is remembered, so turning
-the entity back on restores the overlay you asked for, not a forced-on one.
+claiming touches. The boolean `setVisible` resolved is remembered, so turning
+the entity back on restores the overlay you asked for, not a forced-on one. An
+`"auto"` request resolved to that boolean during the call, so reactivation
+applies it rather than reading the device again.
 
 ## Change one button at runtime
 

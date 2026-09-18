@@ -67,6 +67,9 @@ export type { ImplosionOptions } from "./implosion.js";
 export { dissolve } from "./dissolve.js";
 export type { DissolveOptions } from "./dissolve.js";
 
+/** The base handle shape every preset in this package returns. */
+export type { EffectHandle } from "@yagejs/renderer";
+
 export type {
   HitFlashHandle,
   BloomHandle,

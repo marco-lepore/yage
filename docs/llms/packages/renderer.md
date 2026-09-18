@@ -416,6 +416,8 @@ API: `chars` / `words` / `lines` (getters), `setText(v)`, `content` (reads the c
 
 `source` is required; there is no raw-`Texture[]` construction path. A `FrameSource` is either a sheet (`SheetFrameSource`: `{ sheet, frameWidth, frameHeight?, count?, columns?, startX?, startY?, gapX?, gapY? }` — top row by default; `count` wraps rows every `columns` frames for multi-row grid sheets) or an atlas animation (`{ atlas, animation }`). `sliceGrid(texture, options)` is the underlying slicer for use when you already have a `Texture` object.
 
+`sheet` is a `TextureRef`: an asset key or the handle `texture(path)` returns — the same pair `SpriteComponent`'s `texture` accepts, so a preload declaration flows straight into a frame source. `atlas` stays a key, because an atlas resolves as a `Spritesheet` and not as a texture.
+
 Every slicing entry (`sliceGrid`, `sliceSheet`, `sliceTextureFrames`, and a `SheetFrameSource`) validates its options: each field must be a finite number at or above its minimum, and the resulting grid must fit inside the texture. A failure throws naming the function and the offending field. Slicing does not change how the texture is sampled — turn on `pixelArtPreset` for the whole project, or `texture(path, { scaleMode: "nearest" })` for one sheet.
 
 ```ts
@@ -427,6 +429,7 @@ const player = entity.add(
     layer: "world",
     anchor: { x: 0.5, y: 1 },
     tint: 0xffffff,
+    speed: 0.15, // starting playback rate
   }),
 );
 
@@ -452,6 +455,8 @@ index through `frame`. A bare `play()` resumes from the current frame. Pass
 non-looping animation.
 
 `play(options?)` owns its completion callback: a play with no `onComplete` clears the one the previous play installed, and an `AnimationController` animation switch clears it too. `speed` and `loop` are sticky — the next play keeps them.
+
+The `speed` construction option sets the rate the first `play()` runs at, so a clip that starts as soon as it mounts needs no `play({ speed })`. A non-finite value throws naming the component and the option.
 
 `speed` (get/set) is the live playback rate, and the same number `play({ speed })` writes: frames advanced per tick at 60 fps, default `1`. Writing it retimes a running clip without restarting it. `0` holds the current frame while `isPlaying` stays `true`, and a negative value plays backwards. A non-finite value throws from the property and from `play({ speed })` alike. With an `AnimationController` on the entity, `speed` reads the composed rate: the animation definition's `speed` times `controller.speed` times the `playOneShot({ speed })` factor. The controller writes the rate again at its next animation switch and whenever `controller.speed` is written, so set `AnimationController.speed` to retime every animation and the component's `speed` to retime only the clip on screen. The component's `speed` does not retime a running one-shot's lock: the lock keeps the duration computed when the one-shot started, so the clip and the lock can end at different times.
 
@@ -663,10 +668,13 @@ class SkyBand extends Component {
   private band!: TextureResource;
 
   onAdd(): void {
-    this.band = this.use(RendererKey).createTexture((g) => {
-      g.rect(0, 0, 64, 16).fill(0x1b3a5c);
-      g.rect(0, 16, 64, 16).fill(0x24507d);
-    });
+    this.band = this.use(RendererKey).createTexture(
+      (g) => {
+        g.rect(0, 0, 64, 16).fill(0x1b3a5c);
+        g.rect(0, 16, 64, 16).fill(0x24507d);
+      },
+      { width: 64, height: 32 },
+    );
 
     this.entity.add(
       new GraphicsComponent({ layer: "sky" }).draw((g) => {
@@ -690,6 +698,16 @@ class SkyBand extends Component {
   source, so that is `texture.width`. A frame cut from a spritesheet fills with
   the whole sheet, not the frame. The default, `"local"`, stretches exactly
   one copy over the shape's bounds.
+- `createTexture(draw, { width, height })` bakes exactly that region, measured
+  from `(0, 0)`. Without the size the texture is the drawn bounds, so its
+  top-left corner is the first pixel drawn: a drawing that starts at `(10, 4)`
+  bakes shifted by that much, and the pattern repeats over the smaller size.
+- A standalone `g.texture(tex, tint, x, y)` call draws at the alpha of the
+  active fill style, so a preceding `fill({ alpha: 0 })` makes it invisible.
+  Pass the size to `createTexture` rather than a transparent rectangle when the
+  point of the rectangle was to pin the texture's bounds. A
+  `.fill({ texture })` call keeps its own alpha, because a fill style merges
+  against pixi's default rather than the active one.
 - `matrix` moves the pattern under the shape. `new Matrix().translate(-x, 0)`,
   redrawn each frame with a growing `x`, scrolls it sideways. `Matrix` is
   imported from `pixi.js`, like the `Graphics` object `.draw()` hands you.
@@ -1393,11 +1411,15 @@ registerTexture(
 entity.add(new SpriteComponent({ texture: "marker" }));
 
 // Runtime animation: bake the frames as ONE horizontal strip (x = i * frameWidth),
-// register it, and reference it as a strip FrameSource.
-const strip = renderer.createTexture((g) => {
-  for (let i = 0; i < 4; i++)
-    g.circle(i * 32 + 16, 16, 6 + i * 2).fill(0xffcc00);
-});
+// register it, and reference it as a strip FrameSource. The size names the
+// strip's region, so each 32-pixel slice lands on one circle.
+const strip = renderer.createTexture(
+  (g) => {
+    for (let i = 0; i < 4; i++)
+      g.circle(i * 32 + 16, 16, 6 + i * 2).fill(0xffcc00);
+  },
+  { width: 128, height: 32 },
+);
 registerTexture("boss-idle", strip);
 boss.add(
   new AnimatedSpriteComponent({
@@ -1414,6 +1436,7 @@ Semantics:
 - Re-registering a key replaces the entry; components constructed before the replacement keep the old texture instance (resolution happens at construction).
 - Registering a key already used by a loaded asset (or any cache entry the API didn't create) throws — shadowing a loaded asset would let that asset's unload destroy the registered texture.
 - A runtime texture also works as a graphics fill — `g.rect(...).fill({ texture, textureSpace: "global" })` tiles it across the shape. See "Texture fills". Do not call `update()` on the `source` of a `createTexture` result: that re-uploads the texture empty and it stays blank.
+- A frame grid needs the size option on `createTexture`. Without it the texture measures the drawn bounds and its origin is the top-left of the drawing, so `frameWidth` slices land between the shapes rather than on them: four circles of radius 6 to 12 drawn at `x = i * 32 + 16` bake into a 114 x 24 texture whose cells start 10 pixels off. `{ width: 128, height: 32 }` makes the grid line up. A non-finite or zero dimension throws naming the dimension.
 
 **`installBitmapFont(source, opts)`** — bake a bitmap glyph atlas from a `.ttf`/`.woff` at runtime via Pixi v8's `BitmapFont.install`. Returns the registered font name, ready to pass as `style.fontFamily` (with `bitmap: true`):
 

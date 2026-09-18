@@ -73,7 +73,7 @@ export interface InputConfig {
   /** Target element for pointer events (default: canvas from renderer, or document). */
   target?: HTMLElement;
   /** Action map: action name -> array of physical key codes. */
-  actions?: ActionMapDefinition;
+  actions?: ActionMapInput;
   /** Input groups: group name -> array of action names belonging to it. */
   groups?: Record<string, string[]>;
   /** Key codes to call preventDefault() on (default: none). */
@@ -233,6 +233,13 @@ export interface PointerEventInfo {
 
 /** Maps action names to arrays of physical key codes. */
 export type ActionMapDefinition = Record<string, string[]>;
+
+/**
+ * An action map a caller hands to the engine: action name to physical key
+ * codes. Every reader copies each key list, so a frozen object and an `as
+ * const` literal both fit.
+ */
+export type ActionMapInput = Readonly<Record<string, readonly string[]>>;
 
 /** How to handle a conflict when rebinding a key already used by another action in the same group. */
 export type InputConflictPolicy = "replace" | "keep-both" | "reject";

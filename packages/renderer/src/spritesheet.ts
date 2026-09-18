@@ -1,6 +1,6 @@
 import { Texture, Rectangle, Assets } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
-import type { TextureSliceOptions } from "./public-types.js";
+import type { TextureRef, TextureSliceOptions } from "./public-types.js";
 import { resolveTextureInput } from "./assets.js";
 import { assertCount, assertFiniteNumber } from "./internal/validate.js";
 
@@ -193,7 +193,12 @@ export function sliceSheet(
  * {@link TextureSliceOptions}.
  */
 export interface SheetFrameSource extends TextureSliceOptions {
-  sheet: string;
+  /**
+   * The sheet to slice: an asset key, or the texture handle a `texture(...)`
+   * declaration returns. Both resolve from the cache a `SpriteComponent`
+   * texture resolves from.
+   */
+  sheet: TextureRef;
 }
 
 /** A named animation within a JSON atlas spritesheet. */
@@ -225,7 +230,7 @@ export function resolveFrames(source: FrameSource): Texture[] {
     const base = resolveTextureInput(sheet);
     const layout = resolveGridLayout(base, options, {
       fn: "resolveFrames",
-      sheet,
+      sheet: typeof sheet === "string" ? sheet : sheet.path,
     });
     return buildFrames(base, layout);
   }

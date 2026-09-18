@@ -100,6 +100,7 @@ entity.add(
     source: { sheet: "hero_idle.png", frameWidth: 48 },
     anchor: { x: 0.5, y: 0.5 },
     layer: "characters",
+    speed: 0.1,
   }),
 );
 
@@ -201,6 +202,8 @@ sprite.speed = -0.15; // play backwards
 
 `speed` counts frames advanced per tick at 60 fps, so `1` moves one frame every
 tick and `0.15` moves one frame about every seventh tick. It defaults to `1`.
+The `speed` construction option sets the starting rate, which a sprite that
+plays as soon as it mounts needs.
 Writing it retimes the clip that is already running, without restarting it, and
 reads back the same number `play({ speed })` writes. A non-finite value throws
 from both. Scene and entity `timeScale` multiply it.
@@ -416,7 +419,9 @@ const asset = renderAsset("assets/tileset.png");
 ```
 
 These return handles that are resolved during scene loading, so textures are
-available by the time `setup()` runs.
+available by the time `setup()` runs. A handle goes where a `TextureRef` goes:
+a `SpriteComponent`'s `texture`, and the `sheet` of an animation frame source.
+An atlas animation source takes the atlas key.
 
 Sheet slicing — `sliceGrid`, `sliceSheet`, `sliceTextureFrames`, and a
 `{ sheet, frameWidth }` animation source — validates its options before it
@@ -463,11 +468,14 @@ entity.add(new SpriteComponent({ texture: "marker" }));
 
 // Runtime animation: bake the frames as ONE horizontal strip
 // (frame i at x = i * frameWidth), then reference it as a strip source.
-const strip = renderer.createTexture((g) => {
-  for (let i = 0; i < 4; i++) {
-    g.circle(i * 32 + 16, 16, 6 + i * 2).fill(0xffcc00);
-  }
-});
+const strip = renderer.createTexture(
+  (g) => {
+    for (let i = 0; i < 4; i++) {
+      g.circle(i * 32 + 16, 16, 6 + i * 2).fill(0xffcc00);
+    }
+  },
+  { width: 128, height: 32 }, // the strip's region, so cells match the circles
+);
 registerTexture("boss-idle", strip);
 boss.add(
   new AnimatedSpriteComponent({
@@ -489,6 +497,10 @@ The rules that make this safe:
 - Never call `update()` on the `source` of a texture from `createTexture`.
   Those pixels live only on the GPU, so the re-upload writes an empty image
   over them and the texture stays blank.
+- Give `createTexture` a size whenever the texture is sliced into frames.
+  Without one the texture measures the drawn bounds and starts at the top-left
+  of the drawing, so the four circles above would bake into a 114 x 24 texture
+  whose 32-pixel cells sit 10 pixels off the circles.
 
 A runtime texture also works as a fill for a procedural shape, where it tiles
 across the shape — see [texture fills](/guides/rendering/graphics/#texture-fills).

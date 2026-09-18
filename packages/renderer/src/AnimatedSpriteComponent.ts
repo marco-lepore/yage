@@ -21,6 +21,14 @@ export interface AnimatedSpriteComponentOptions extends VisualComponentOptions {
    * Per-{@link AnimationController} `AnimationDef.anchor` overrides this when set.
    */
   anchor?: Vec2Like;
+  /**
+   * Playback rate applied at construction: frames advanced per tick at 60 fps.
+   * Default `1`. `play({ speed })` and the
+   * {@link AnimatedSpriteComponent.speed} property retime the clip afterwards,
+   * and an {@link AnimationController} writes the rate at every animation
+   * switch.
+   */
+  speed?: number;
 }
 
 /** Component that displays a PixiJS AnimatedSprite. */
@@ -38,6 +46,14 @@ export class AnimatedSpriteComponent extends VisualComponent {
 
     if (options.anchor) {
       this.animatedSprite.anchor.set(options.anchor.x, options.anchor.y);
+    }
+    if (options.speed !== undefined) {
+      assertFiniteNumber(
+        "AnimatedSpriteComponent.constructor",
+        "speed",
+        options.speed,
+      );
+      this.animatedSprite.animationSpeed = options.speed;
     }
     this.applyVisualOptions(options);
   }

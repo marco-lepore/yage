@@ -792,6 +792,17 @@ describe("InputManager", () => {
     });
   });
 
+  it("setActionMap and loadBindings accept a frozen readonly map", () => {
+    input.setActionMap(Object.freeze({ shoot: Object.freeze(["KeyX"]) }));
+    expect(input.getBindings("shoot")).toEqual(["KeyX"]);
+
+    input.loadBindings(Object.freeze({ shoot: Object.freeze(["KeyZ"]) }));
+    expect(input.getBindings("shoot")).toEqual(["KeyZ"]);
+
+    input.resetBindings();
+    expect(input.getBindings("shoot")).toEqual(["KeyX"]);
+  });
+
   it("loadBindings overlays onto defaults and preserves uncovered actions", () => {
     input.loadBindings({ jump: ["KeyK"] });
     expect(input.getBindings("jump")).toEqual(["KeyK"]);

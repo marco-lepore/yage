@@ -98,10 +98,13 @@ class SkyBand extends Component {
 
   onAdd(): void {
     // Bake the tile once, then fill a much larger shape with it.
-    this.band = this.use(RendererKey).createTexture((g) => {
-      g.rect(0, 0, 64, 16).fill(0x1b3a5c);
-      g.rect(0, 16, 64, 16).fill(0x24507d);
-    });
+    this.band = this.use(RendererKey).createTexture(
+      (g) => {
+        g.rect(0, 0, 64, 16).fill(0x1b3a5c);
+        g.rect(0, 16, 64, 16).fill(0x24507d);
+      },
+      { width: 64, height: 32 },
+    );
 
     this.entity.add(
       new GraphicsComponent({ layer: "sky" }).draw((g) => {
@@ -127,6 +130,11 @@ not the frame. The default, `"local"`, stretches exactly one copy over the shape
 bounds — useful when you want the texture to fit the shape rather than tile
 inside it.
 
+The size passed to `createTexture` names the region it bakes, measured from
+`(0, 0)`. Without a size the texture is the drawn bounds, so its top-left
+corner is the first pixel drawn: a drawing that starts at `(10, 4)` bakes
+shifted by that much and tiles at the smaller size.
+
 To scroll the pattern, pass a `matrix` and redraw:
 `new Matrix().translate(-offset, 0)` moves it sideways. `Matrix` comes from
 `pixi.js`, like the `Graphics` object `.draw()` hands you.
@@ -139,4 +147,10 @@ help.
 Never call `texture.source.update()` on a texture from `createTexture`. Those
 pixels live only on the GPU, so the re-upload writes an empty image over them
 and everything drawn from the texture turns transparent permanently.
+
+A standalone `g.texture(...)` call draws at the alpha of the active fill style,
+so a `fill({ alpha: 0 })` before it makes the texture invisible. Give
+`createTexture` a size rather than a transparent rectangle to pin the bounds.
+A `.fill({ texture })` call keeps its own alpha, because a fill style merges
+against pixi's default rather than the active one.
 :::

@@ -3,6 +3,7 @@ import type { RendererAdapter, ErrorBoundary } from "@yagejs/core";
 import { applyRadialDeadzone } from "./deadzone.js";
 import type {
   ActionMapDefinition,
+  ActionMapInput,
   BufferedPressOptions,
   CameraLike,
   GamepadAxisKey,
@@ -1139,7 +1140,7 @@ export class InputManager {
   // -- Runtime action map management --
 
   /** Replace the entire action map and store it as the default for {@link resetBindings}. */
-  setActionMap(actions: ActionMapDefinition): void {
+  setActionMap(actions: ActionMapInput): void {
     this.actionMap.clear();
     this.defaultBindings.clear();
     for (const [action, keys] of Object.entries(actions)) {
@@ -1280,7 +1281,7 @@ export class InputManager {
   }
 
   /** Load bindings from a plain object. Resets to defaults first, then overlays the provided map. */
-  loadBindings(map: ActionMapDefinition): void {
+  loadBindings(map: ActionMapInput): void {
     this.resetBindings();
     for (const [action, keys] of Object.entries(map)) {
       this.actionMap.set(action, [...keys]);

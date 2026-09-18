@@ -63,6 +63,18 @@ If nothing is registered under the alias, `play`, `playOnce`, `requestOnce`,
 and `playRandom` throw and name it. That covers both a typo and playing a sound
 the scene never preloaded.
 
+`hasSound(ref)` makes the same check and returns a boolean, so an alias built at
+runtime can fall back to a default:
+
+```typescript
+const step = `sfx/step-${surface}.wav`;
+audio.play(audio.hasSound(step) ? step : "sfx/step-default.wav");
+```
+
+It answers registration alone. Whether audio is audible is a different
+question: `isUnlocked()` covers the browser's autoplay gate, and the mute calls
+below cover the rest.
+
 **Play options:**
 
 ```typescript

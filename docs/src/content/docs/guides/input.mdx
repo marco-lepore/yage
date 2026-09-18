@@ -38,6 +38,19 @@ Codes can be `KeyboardEvent.code` values (e.g. `"KeyA"`, `"Space"`),
 synthetic mouse codes (`"MouseLeft"`, `"MouseMiddle"`, `"MouseRight"`), or
 gamepad codes (see [Gamepad](#gamepad) below).
 
+The map is read, never kept: `actions`, `setActionMap` and `loadBindings` copy
+every key list. They accept a readonly map (`ActionMapInput`), so a catalog
+declared once and shared across scenes can be `as const`:
+
+```typescript
+export const ACTIONS = {
+  jump: ["Space", "GamepadA"],
+  attack: ["KeyJ", "MouseLeft"],
+} as const;
+
+engine.use(new InputPlugin({ actions: ACTIONS }));
+```
+
 ## Querying Input
 
 Resolve the `InputManager` from the engine context and query actions by name:

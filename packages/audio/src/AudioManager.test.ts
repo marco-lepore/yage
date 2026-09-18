@@ -173,6 +173,25 @@ describe("AudioManager", () => {
     });
   });
 
+  describe("hasSound()", () => {
+    it("is true for a registered alias and for a sound() handle", () => {
+      expect(manager.hasSound("explosion")).toBe(true);
+      expect(manager.hasSound(sound("assets/coin.wav"))).toBe(true);
+      expect(mockSound.exists).toHaveBeenCalledWith("assets/coin.wav");
+    });
+
+    it("is false for an alias nothing is registered under", () => {
+      (mockSound.exists as ReturnType<typeof vi.fn>).mockReturnValue(false);
+      expect(manager.hasSound("sfx/typo.wav")).toBe(false);
+    });
+
+    it("stays true while the audio context is suspended", () => {
+      setAudioContextState(mockSound, "suspended");
+      expect(manager.isUnlocked()).toBe(false);
+      expect(manager.hasSound("explosion")).toBe(true);
+    });
+  });
+
   describe("playOnce()", () => {
     it("reuses the handle of a sound that is still playing", () => {
       const first = manager.playOnce("music", { channel: "music" });

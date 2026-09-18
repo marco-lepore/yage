@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createMockEntity,
   RendererAdapterKey,
@@ -325,6 +325,39 @@ describe("VirtualControls — pointer consumption", () => {
 });
 
 describe("VirtualControls — visibility", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('setVisible("auto") reads the device the way the option does', () => {
+    const { controls } = setup();
+
+    vi.stubGlobal("window", {
+      matchMedia: (query: string) => ({
+        matches: query === "(pointer: coarse)",
+      }),
+    });
+    controls.setVisible("auto");
+    expect(controls.visible).toBe(true);
+
+    vi.stubGlobal("window", { matchMedia: () => ({ matches: false }) });
+    controls.setVisible("auto");
+    expect(controls.visible).toBe(false);
+  });
+
+  it('setVisible("auto") on a fine-pointer device releases mirrored actions', () => {
+    const { input, controls } = setup();
+    const { center } = controls.button("a")!.layout;
+    touchDown(input, 7, center.x, center.y);
+    expect(input.isPressed("jump")).toBe(true);
+
+    vi.stubGlobal("window", { matchMedia: () => ({ matches: false }) });
+    controls.setVisible("auto");
+
+    expect(controls.visible).toBe(false);
+    expect(input.isJustReleased("jump")).toBe(true);
+  });
+
   it("hidden controls claim nothing", () => {
     const { input, controls } = setup({ visible: false });
     touchDown(input, 7, 150, 400);
