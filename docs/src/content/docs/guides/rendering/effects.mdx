@@ -305,6 +305,24 @@ presets accept just has to be finite.
 
 ### Pick the right scope for each preset
 
+Scope decides how much of the screen a filter has to work with. A filter runs
+over its host container's own content bounds, which pixi computes from
+whatever the container holds. Nothing sets `filterArea`, so the input frame is
+neither the canvas nor the virtual play rect: it tracks the content, and it
+moves and resizes with the camera and with the letterbox bars the responsive
+fit produces.
+
+A layer holding three sprites therefore gives a small frame that changes size
+as those sprites move, and a vignette or a full-screen colour grade on it
+covers the three sprites and the gaps between them rather than the screen. A
+layer that fills the viewport gives a frame close to the visible area, which is
+what a full-screen look needs. A wider scope takes in more content and the
+frame grows to hold it — `app.stage`, the screen-scope host, has no
+`filterArea` either — so widening helps only as far as the added content
+reaches. The frame also resizes with the camera and the bars, which changes
+what a pixel-valued option measures; the caution at the end of this section
+covers that.
+
 Four presets read best at scene scope (or higher) rather than
 on a single component:
 

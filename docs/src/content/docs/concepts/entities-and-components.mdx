@@ -439,6 +439,43 @@ One Rapier behavior to know: a collider disabled and re-enabled while it still
 overlaps something gets no fresh collision-start event. An entity you reactivate
 directly on top of an existing contact will not receive `onCollision` for it.
 
+### Declaring Fields on a Subclass
+
+`Entity` and `Component` own member names of their own, and a subclass field
+that reuses one shadows the base member with no warning. The short names are
+the easiest ones to collide with: `name`, `key`, `tags`, `scene`, `parent`,
+`children`, `handle`, and `generation` on an entity; `entity`, `scene`,
+`context`, `enabled`, and `updatePriority` on a component. Every method name is
+taken too — `add`, `get`, `tryGet`, `has`, `remove`, `getAll`, `addChild`,
+`spawnChild`, `removeChild`, `getChild`, `tryGetChild`, `setActive`, `destroy`,
+`on`, `emit`, and `hasTrait` on an entity, and `use`, `service`, `sibling`,
+`listen`, `listenScene`, `listenBus`, `addCleanup`, `stateMachine`, and
+`destroy` on a component — along with every hook name (`setup`, `onAcquire`,
+`onRelease`, `onAdd`, `onEnable`, `onDisable`, `onDestroy`, `update`,
+`fixedUpdate`). A leading underscore marks an engine-internal member, so those
+names are taken as well. The [`Entity`](/api/yagejs/core/classes/entity/) and
+[`Component`](/api/yagejs/core/classes/component/) API pages list the full
+public surface.
+
+Three names on `Entity` report a compile error rather than shadowing quietly:
+`components`, `byClass`, and `callbacks` are private, and a subclass field
+under one of them fails with "separate declarations of a private property".
+
+A field an `Entity` subclass assigns in `setup()` cannot be `readonly`.
+TypeScript accepts a write to a readonly field only from the constructor, and
+`setup()` runs after it. Declare the field with a definite assignment
+assertion:
+
+```typescript
+class Player extends Entity {
+  private body!: RigidBodyComponent; // not `readonly`
+
+  setup() {
+    this.body = this.add(new RigidBodyComponent({ type: "dynamic" }));
+  }
+}
+```
+
 ### Update Order
 
 Within one entity, components run `update()` and `fixedUpdate()` in the order

@@ -437,6 +437,27 @@ const tiles = texture("assets/tiles.png", { scaleMode: "nearest" });
 The setting lands on the loaded image, so every sprite drawing from that
 sheet samples the same way.
 
+### One frame as a texture
+
+`resolveFrames(source)` turns either frame-source shape — `{ sheet, ... }` or
+`{ atlas, animation }` — into the `Texture[]` an animation would play, for code
+that wants the textures rather than the animation. A `UIImage` takes a single
+texture, so index the result:
+
+```typescript
+import { resolveFrames } from "@yagejs/renderer";
+import { UIImage } from "@yagejs/ui";
+
+const icon = new UIImage({
+  texture: resolveFrames({ atlas: "ui.json", animation: "coin" })[0]!,
+});
+```
+
+The call is synchronous and reads already-loaded assets, so the sheet or atlas
+has to be in the scene's preload. An unloaded sheet, a missing atlas, an
+unknown animation name, and an animation with no frames each throw naming the
+key.
+
 ## Runtime-generated textures
 
 Textures created at runtime (procedural art, dynamically baked frames) have

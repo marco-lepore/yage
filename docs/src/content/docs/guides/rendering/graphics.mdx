@@ -36,6 +36,34 @@ start point first for a standalone arc, otherwise a line connects it from
 the previous point. Fill and stroke take options bags (`{ color, alpha,
 width, ... }`). See the [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
 
+## Repeating a shape
+
+The context carries a transform stack, so a part that repeats draws in its own
+coordinates and the callback works out no per-copy offsets.
+`translateTransform(x, y?)`, `scaleTransform(x, y?)` and
+`rotateTransform(angle)` multiply into the current transform.
+`setTransform(matrix)` — or six numbers — replaces it, and `resetTransform()`
+returns it to identity. `save()` pushes the current transform and `restore()`
+pops it. Each of them returns the context, so calls chain:
+
+```typescript
+entity.add(
+  new GraphicsComponent({ layer: "world" }).draw((g) => {
+    for (let i = 0; i < 6; i++) {
+      g.save();
+      g.translateTransform(i * 24, 0).rotateTransform(i * 0.2);
+      g.rect(-6, -6, 12, 12).fill(0xffcc00); // square drawn around its origin
+      g.restore();
+    }
+  }),
+);
+```
+
+Each square is described once, at the origin, and the transform places and
+turns it. The `save()` / `restore()` pair is what keeps the six copies
+independent: without it each transform would build on the one before, so the
+squares would spread further apart and turn further with every step.
+
 ## Gradient fills
 
 For linear and radial gradients, use `linearGradient` / `radialGradient`

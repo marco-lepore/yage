@@ -259,6 +259,29 @@ class GameScene extends Scene {
 ```
 :::
 
+An overlay scene that wants to drop the press that opened it measures the
+window on a different clock. The press was stamped against the clock of the
+scene below, before the overlay existed, so `this.use(SceneTimeKey)` on the
+overlay hands back a clock the press was never measured on. Reach the other
+scene through `engine.scenes.all` and read its clock with `tryResolveScoped`,
+which returns `undefined` where `Scene.use` would throw:
+
+```typescript
+import { Scene, SceneManagerKey, SceneTimeKey } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+
+class PauseMenu extends Scene {
+  readonly name = "pause";
+
+  onEnter() {
+    const input = this.use(InputManagerKey);
+    const below = this.use(SceneManagerKey).all.find((s) => s.name === "game");
+    const clock = below?.tryResolveScoped(SceneTimeKey);
+    if (clock) input.consumeBufferedPress("pause", 0.2, { clock });
+  }
+}
+```
+
 ## Pointer (Mouse / Touch)
 
 ```typescript
@@ -777,6 +800,19 @@ bound to a different action *in the same group*:
 - `"replace"` — the other action loses the binding
 - `"keep-both"` — the new binding is added without unbinding the conflict
 - `"reject"` (default) — the rebind is cancelled and `ok` is `false`
+
+Conflict detection covers one group, so a key bound to two actions in
+different groups is a legal map. Pressing that key presses both actions:
+`isJustPressed` reads `true` for each, each gets its own listener call, and
+each gets its own buffered press. Buffered presses are recorded per action
+name, so `consumeBufferedPress("dash", 0.15)` claims the dash press and leaves
+the other action's press for whatever consumes that one. Read
+`input.getActionsForKey(code)` for every action a key drives, and check it
+before a rebind when a key should drive one action only:
+
+```typescript
+const shared = input.getActionsForKey("ShiftLeft"); // e.g. ["dash", "sprint"]
+```
 
 ## Listen for Next Input
 
