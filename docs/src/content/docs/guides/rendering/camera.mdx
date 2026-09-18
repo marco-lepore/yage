@@ -192,6 +192,34 @@ Constrain the camera to a region so it never shows areas outside the level:
 camera.bounds = { minX: 0, minY: 0, maxX: 4000, maxY: 2000 };
 ```
 
+### The components behind the camera
+
+`CameraEntity` composes five components, and each convenience method above
+delegates to one of them:
+
+| Component | What it does |
+|---|---|
+| `CameraComponent` | Holds `position`, `rotation`, `zoom`, the viewport size, the layer bindings, and the `modifiers` host. Every delegate on the entity forwards here. |
+| `CameraFollow` | Moves `CameraComponent.position` toward the follow target each frame, applying the smoothing, offset, and deadzone from the follow options. |
+| `CameraBoundsComponent` | Clamps `CameraComponent.position` into the rectangle `camera.bounds` names. It runs after the behaviours that move or zoom the camera, so the clamp reads this frame's position and zoom. |
+| `CameraShake` | Contributes one removable displacement to `CameraComponent.modifiers` for a duration, leaving the base position where it is. |
+| `CameraZoom` | Interpolates `CameraComponent.zoom` toward a target over a duration, through an easing function. |
+
+`camera.follow()`, `camera.snapToTarget()`, `camera.bounds`, `camera.shake()`,
+and `camera.zoomTo()` cover what a game usually needs. Reach a behaviour
+component itself with `camera.get(...)` to read state that has no delegate —
+`CameraShake.offset` is the displacement the shake contributes this frame,
+which `camera.position` does not include:
+
+```typescript
+import { CameraShake } from "@yagejs/renderer";
+
+const displacement = camera.get(CameraShake).offset;
+```
+
+All five are exported from `@yagejs/renderer`, so a hand-built camera entity
+can carry exactly the behaviours it uses.
+
 ### Camera bindings
 
 A `CameraEntity` auto-binds every `space: "world"` layer at full

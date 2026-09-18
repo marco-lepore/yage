@@ -125,6 +125,22 @@ pc.run(Process.delay(0.5, () => {
 }));
 ```
 
+`pc.run()` hands back the `Process` it scheduled, and `toPromise()` on that
+process resolves when the run ends — completion, `cancel()`, or a reset for a
+re-run. That is how an `async` method waits for work it scheduled:
+
+```typescript
+async function fadeOutAndLeave() {
+  await pc
+    .run(Tween.custom((v) => (overlay.alpha = v), 1, 0, 0.4))
+    .toPromise();
+  await scenes.replace(new GameOverScene());
+}
+```
+
+The promise carries no result, and a process that has already completed
+resolves one immediately. Read whatever the process wrote once it resolves.
+
 ## Durations
 
 Every duration is in seconds and must be finite and greater than zero.

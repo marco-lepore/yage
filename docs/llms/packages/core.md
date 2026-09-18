@@ -142,6 +142,7 @@ class Turret extends Component {
 ```
 
 - Order on add: `onAdd()`, then query join, then `onEnable()`. Order on remove or destroy: `onDisable()`, then cleanups, then `onDestroy()`.
+- `onAdd()` runs inside `entity.add()`, before that call returns. A field the caller assigns from the return value is still `undefined` while `onAdd()` runs — in an `Entity` subclass's `setup()`, `this.gun = this.add(new Gun())` leaves `this.gun` unset for the whole of `Gun.onAdd()`. Read a sibling through `this.entity.get(Cls)` or `this.sibling(Cls)` there rather than through a field on the entity.
 - `component.destroy()` ends its own life — the same as `entity.remove(SomeClass)`, without having to name its own class from inside itself, which breaks under subclassing.
 - Validate dependencies by throwing from `onAdd()`. The throw is attributed to the component, recorded in `Inspector.getErrors().callbackErrors`, and rethrown to the caller of `entity.add()`. Called from `setup()`, that caller is `scene.spawn`, which lets the throw through unchanged and leaves the half-built entity in the scene.
 - `onEnable()` sees whatever state the component held while dormant. Put live resources there (sounds, bodies, display objects), not game-state resets.
@@ -166,6 +167,22 @@ this.add(new Brain()).updatePriority = -1; // per instance: decides before Mover
 
 - `component.updatePriority` is writable at any time, before or after `add()`; the instance value overrides the class's `static updatePriority`, which subclasses inherit.
 - `entity.getAll()` and `entity.getAll(Cls)` stay in add order.
+- Adding a component from inside another component's `update()` on the same entity: whether the new one runs in the same pass depends on priorities. While no component on that entity declares an `updatePriority`, the pass walks the live component list and the new component runs in the same frame. Once one declares a priority, the pass walks a sorted list taken before it started, and a component added during the pass first runs next frame. Neither order is worth depending on — do the work the new component would do this frame in the component that adds it.
+
+### Declaring fields on a subclass
+
+`Component` and `Entity` own member names of their own, and a subclass field that reuses one shadows the base member. Taken on `Component`: `entity`, `enabled`, `effectiveEnabled`, `updatePriority`, `scene`, `context`, `use`, `service`, `sibling`, `listen`, `listenScene`, `listenBus`, `addCleanup`, `stateMachine`, `destroy`, plus the hook names `onAdd`, `onEnable`, `onDisable`, `onDestroy`, `update` and `fixedUpdate`. Taken on `Entity`: `id`, `name`, `tags`, `key`, `timeScale`, `scene`, `tryScene`, `parent`, `children`, `activeSelf`, `isActive`, `isDestroyed`, `isPooled`, `generation`, `handle`, `setActive`, `requireKey`, `hasTrait`, `destroy`, `on`, `emit`, the component and child methods `add`, `get`, `tryGet`, `has`, `remove`, `getAll`, `addChild`, `spawnChild`, `removeChild`, `getChild` and `tryGetChild`, and the hook names `setup`, `onAcquire` and `onRelease`. Names starting with `_` are internal and also taken, and so are `Entity`'s private `components`, `byClass` and `callbacks` — a subclass field under one of those names fails to compile with a "separate declarations of a private property" error.
+
+A field an `Entity` subclass assigns in `setup()` cannot be `readonly`: TypeScript allows a write to a readonly field only from the constructor. Declare it with a definite assignment assertion instead.
+
+```ts
+class Player extends Entity {
+  private body!: RigidBodyComponent; // not `readonly`
+  setup() {
+    this.body = this.add(new RigidBodyComponent({ type: "dynamic" }));
+  }
+}
+```
 
 ### State machines
 
@@ -627,6 +644,18 @@ It returns `false` for a foreign or already-removed slot. Use it when a
 component permanently discards a dynamically-created slot; `slot.cancel()`
 alone keeps the reusable slot registered with its `ProcessComponent`.
 
+`process.toPromise(): Promise<void>` resolves when the current run ends —
+completion, `cancel()`, or a reset for a re-run. It is how an `async` caller
+waits for a process it scheduled, and it resolves immediately on a process that
+has already completed. The promise carries no result, so read the state the
+process wrote once it resolves.
+
+```ts
+const fade = pc.run(Tween.custom((v) => (overlay.alpha = v), 0, 1, 0.4));
+await fade.toPromise();
+await this.use(SceneManagerKey).replace(new Level2());
+```
+
 ### Animation
 
 Keyframe-based property animation on top of `ProcessComponent`. Runs multiple named animations concurrently; values interpolate between keyframes via an easing function and are pushed to a user-supplied setter.
@@ -836,6 +865,8 @@ and `easeInOutBounce` stay inside `[0,1]` but are not monotonic.
 A filter class matches the class itself and any subclass of it, so `register([Transform, VisualComponent])` finds an entity carrying a `SpriteComponent`. A `QueryResult` holds entities, not components — read them with `entity.getAll(VisualComponent)` when one entity may carry several.
 
 `cache.queryOnce(filter)` builds the same seeded snapshot but skips registration entirely — use it for a point-in-time read (e.g. a render-phase snapshot) that must not hold a live entry in the cache.
+
+`scene.findEntities({ trait: token })` narrows its result: for a `TraitToken<T>` the call returns `(Entity & T)[]`, so the trait's members read without a cast. The `trait` field is the only one that narrows — `filter` is `(entity: Entity) => boolean`, a predicate that selects entities and says nothing about their type, and `filterEntities` returns `Entity[]` for every filter.
 
 ### Stable Identity
 

@@ -180,6 +180,32 @@ const enemies = scene.findEntitiesByTag("enemy");
 const all = scene.getEntities();
 ```
 
+`scene.findEntities(filter)` matches on several criteria at once — `name`,
+`tags`, `trait`, and a `filter` predicate — and an entity has to pass every
+one of them that the call supplies:
+
+```typescript
+const closeEnemies = scene.findEntities({
+  tags: ["enemy"],
+  filter: (e) => e.get(Transform).position.x < 400,
+});
+```
+
+`trait` is the one field that changes the result type. Given a
+`TraitToken<T>`, the call returns `(Entity & T)[]`, so the trait's own members
+read off each result without a cast:
+
+```typescript
+for (const chest of scene.findEntities({ trait: Openable })) {
+  chest.open(); // typed through the trait
+}
+```
+
+The `filter` predicate narrows nothing. Its type is
+`(entity: Entity) => boolean`, which picks entities and says nothing about
+their type, so a call carrying one still returns `Entity[]`. See
+[Traits](/patterns/entity-subclasses/#traits) for how `Openable` is declared.
+
 ## Subclassing Scene
 
 Scenes are always classes. Override `onEnter` to spawn entities, resolve

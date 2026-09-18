@@ -281,7 +281,9 @@ collider.onCollision((ev) => {
 });
 ```
 
-Overlap queries report only pairs where this collider or the other is `sensor: true`; two solid colliders never report, however deeply they penetrate. For solid-vs-solid contact (contact damage, say) use `onCollision`. This is the one query that is about sensors: `PhysicsWorld`'s `raycast`, `castShape`, `queryShape` and `queryRadius` skip sensor colliders unless asked for them.
+Overlap queries report a pair when at least one of the two colliders is `sensor: true`, two sensors included; two solid colliders never report, however deeply they penetrate. For solid-vs-solid contact (contact damage, say) use `onCollision`. This is the one query that is about sensors: `PhysicsWorld`'s `raycast`, `castShape`, `queryShape` and `queryRadius` skip sensor colliders unless asked for them.
+
+Two colliders that both sit on static bodies never report each other, whatever their sensor flags: at least one of the two bodies has to be kinematic or dynamic. Sensor pairs do report on kinematic against kinematic, on static against kinematic, and on dynamic against dynamic. Give a trigger zone a kinematic body rather than a static one when the other side is static too.
 
 ```ts
 collider.getOverlapping(); // Entity[]
@@ -566,7 +568,9 @@ apply.
 `raycast`, `castShape`, `queryShape` and `queryRadius` skip sensor colliders
 unless `sensors` says otherwise, so a ground check or a line of sight reports
 surfaces rather than trigger zones. `queryOverlapping` is the exception: it
-reports Rapier's intersection pairs, which exist only when one side is a sensor.
+reports Rapier's intersection pairs, which exist when at least one side is a
+sensor, two sensors included. A pair whose colliders both sit on static bodies
+is never among them.
 
 All five report every live collider at its current pose. When colliders were
 created, re-shaped, enabled, disabled or teleported since the last physics step, the

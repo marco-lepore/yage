@@ -594,6 +594,12 @@ the event log stores: an entity reads as `{ id, name }`, a component as
 `{ _type }`. A getter that throws is skipped rather than failing the whole
 snapshot.
 
+Reflection reads fields and getters, and nothing else. No path calls a
+`serialize()` method on a component, so defining one adds nothing to what a
+snapshot shows. To publish a value the rules above leave out — a derived
+number, or a short summary of an excluded field — declare a public getter for
+it.
+
 A component keeps bulk data out of its reflected state with a static list.
 Lists merge down the class chain, so a subclass adds to its base class's
 exclusions:

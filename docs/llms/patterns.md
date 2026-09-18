@@ -806,6 +806,14 @@ const grounded = hit !== null; // add coyote timer for better feel
 
 **Deferred destruction**: `entity.destroy()` deactivates immediately — `isActive` reads `false`, the entity leaves every query, `onDisable` fires right away. `onDestroy` and detaching from the scene wait for the EndOfFrame flush, so don't assume the entity or its components are gone until then.
 
+A destroyed child keeps its slot in its parent's child map until that same flush, so its name is still taken for the rest of the tick. `addChild` and `spawnChild` both throw on a name the parent already holds, so a replacement under the same name in the same tick fails. `parent.removeChild(name)` detaches the child and frees the name in the same tick, so call it before the replacement spawns. A pooled child is the exception: `destroy()` hands it back to its pool, which detaches it there and then, so its name is free straight away.
+
+```ts
+const old = parent.removeChild("view"); // name free from here on
+old.destroy();
+parent.spawnChild("view", NextView);
+```
+
 **Fixed vs variable dt**: `update(dt)` receives variable frame delta. `fixedUpdate(dt)` receives the fixed timestep. Use `fixedUpdate` for physics-sensitive logic.
 
 **Vec2 is immutable**: `vec.add(other)` returns a new Vec2. Transform has mutating methods (`setPosition`, `translate`).

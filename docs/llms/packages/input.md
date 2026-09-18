@@ -160,6 +160,23 @@ onResume() {
 }
 ```
 
+An overlay scene discarding the press that opened it measures its window on a
+different clock: the one belonging to the scene underneath, because the press
+was stamped against that clock before the overlay existed.
+`this.use(SceneTimeKey)` on the overlay hands back the overlay's own clock,
+which the press is not on. Read the other scene's clock with
+`tryResolveScoped`, which returns `undefined` where `Scene.use` would throw:
+
+```ts
+onEnter() {
+  const input = this.use(InputManagerKey);
+  const scenes = this.use(SceneManagerKey);
+  const below = scenes.all.find((s) => s.name === "game");
+  const clock = below?.tryResolveScoped(SceneTimeKey);
+  if (clock) input.consumeBufferedPress("pause", 0.2, { clock });
+}
+```
+
 ## Pointer
 
 ```ts
@@ -470,6 +487,15 @@ input.loadBindings(saved);
 input.resetBindings(); // restore defaults
 input.resetBindings("jump"); // restore single action
 ```
+
+`conflict` only governs actions inside the same group. One key left bound to two
+actions is a legal map, and a press of that key presses both actions:
+`isJustPressed` reads true for each, and each gets its own listener call and
+its own buffered-press stamp. Presses are recorded per action name, so
+`consumeBufferedPress("dash", 0.15)` claims the dash press and leaves the other
+action's press unclaimed for its own consumer. `input.getActionsForKey(code)`
+lists every action a key is bound to — check it before a rebind if one key
+should drive one action only.
 
 ## Action Groups
 

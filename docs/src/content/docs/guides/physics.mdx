@@ -413,12 +413,21 @@ const enemies = collider.getOverlapping({ tags: ["enemy"] });
 const components = collider.getOverlappingComponents(HealthComponent);
 ```
 
-This reports an overlap only when this collider or the overlapping one is a
-`sensor: true`. Two solid colliders never report each other here, however
-deeply they penetrate — for solid-vs-solid contact such as contact damage, use
-`onCollision`. It is the one query that is about sensors: the world queries
-below (`raycast`, `castShape`, `queryShape`, `queryRadius`) skip sensors
-unless you ask for them.
+This reports an overlap when at least one of the two colliders is a
+`sensor: true`, two sensors included. Two solid colliders never report each
+other here, however deeply they penetrate — for solid-vs-solid contact such as
+contact damage, use `onCollision`. It is the one query that is about sensors:
+the world queries below (`raycast`, `castShape`, `queryShape`, `queryRadius`)
+skip sensors unless you ask for them.
+
+The bodies count as well as the flags. Two colliders that both sit on static
+bodies never report each other, whatever their sensor flags: at least one of
+the two bodies has to be `kinematic` or `dynamic`. Sensor pairs do report on
+static against kinematic, on kinematic against kinematic, and on dynamic
+against dynamic. So give a trigger zone a `kinematic` body whenever the
+collider it has to notice sits on a static body — a detector laid over a wall,
+a zone that reacts to a fixed piece of scenery. A zone that only ever sees the
+player or another moving body can stay static.
 
 ## Measuring a Contact
 

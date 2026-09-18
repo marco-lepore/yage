@@ -98,6 +98,27 @@ this.add(new SpriteComponent({ texture: "cursor", renderAboveEffects: true }));
 
 `renderAboveEffects` draws the visual after the scene's layers while its logical parent still drives position, alpha, visibility, and camera. It escapes layer and scene filters, `layer.setMask`, `tree.setMask`, and the `irisReveal` / `chessboard` transition masks — during those reveals the visual shows at once. A screen-scope effect still covers it. Hit testing follows the logical tree, so a UI element drawn under it still receives the pointer first. Toggle it at runtime with `sprite.renderAboveEffects = false`. On a `SortGroupComponent` the flag applies to the component's own render object; the group's container is not lifted. A layer declared with `isRenderGroup: true` is unsupported for lifted visuals (a Pixi restriction).
 
+### What a layer-scope filter's input frame covers
+
+A layer- or scene-scope filter runs over the filtered container's own content
+bounds, which Pixi computes from what the container holds. Nothing sets
+`filterArea`, so the frame is not the viewport and not the play rect: it tracks
+the content, and it moves and resizes with the camera and with the letterbox
+bars the responsive fit produces.
+
+Two consequences for choosing a scope:
+
+- **A sparse layer** gets a small frame that changes size as its contents move.
+  A vignette or a full-screen colour grade on a layer holding three sprites
+  covers those three sprites and their gaps, not the screen. A wider scope
+  unions more content into the frame — `app.stage`, the screen-scope host, has
+  no `filterArea` either — so it helps only as far as the content it adds
+  reaches. The reliable answer is a layer that fills the viewport.
+- **A layer that fills the viewport** gets a frame close to the visible area,
+  which is what a full-screen look needs. The frame still resizes with the
+  camera and the letterbox bars, so an option measured in input-texture pixels
+  changes meaning as it does — see the unit reference below.
+
 ## Unit reference (and a known limitation)
 
 Pixel-valued options on older presets and `axisBlur` are in **input-texture pixels** — i.e. the rasterized region's pixel size, post fit + camera transforms. With responsive `fit`, that means a `bloom.blur: 8` is 8/900 = 0.89% of canvas width on a desktop-native viewport but 8/382 = 2.10% on a mobile-sized one. Effects visibly "scale up" on smaller canvases. This is a known cross-package issue, not specific to any one preset.

@@ -128,6 +128,14 @@ Every `inspector.input` verb writes engine input state and reaches no
 `@yagejs/ui` element, so none of them clicks a button. `inspector.pointer`
 does — see "Clicking the user interface".
 
+A game or plugin registers an API of its own under a namespace with
+`inspector.addExtension(namespace, api)`, on the `Inspector` resolved from
+`InspectorKey` in `@yagejs/core`. A test reads that API back through the
+matching getter, `inspector.getExtension<T>(namespace)`, reached as
+`window.__yage__.inspector`. See
+[Inspector extension namespaces](#inspector-extension-namespaces) for both
+calls and for the `debug` namespace `DebugPlugin` installs.
+
 `events.waitFor(pattern, { withinFrames?, source? })` resolves with the earliest
 retained match without consuming it. Repeated waits can return the same entry.
 Clear the log before the action when the assertion needs a new occurrence:
@@ -334,6 +342,11 @@ as `{ component }`, a scene as `{ name }`, and any other class instance as
 `{ _type }`. A getter that throws is skipped rather than failing the whole
 diagnostic snapshot. Inspector snapshots are not save data.
 
+Reflection reads fields and getters only. No path calls a `serialize()` method
+on a component, so defining one adds nothing to what the Inspector shows. To
+publish a value the rules above exclude — a derived number, or a summary of an
+excluded field — declare a public getter for it.
+
 A component keeps bulk data out of its reflected state with a static list;
 lists merge down the class chain:
 
@@ -428,6 +441,8 @@ namespace's contributor. It does not reflect fields or build a scene snapshot.
 Missing contributor, null/undefined result or a thrown inspection returns
 `undefined`, matching snapshot omission. PhysicsPlugin removes its contributor
 on teardown; no DebugPlugin is required.
+
+### Inspector extension namespaces
 
 Renderer-aware diagnostics live under the inspector extension namespace `debug`
 (only present while `DebugPlugin` is installed). Pass `DebugDiagnostics` as the

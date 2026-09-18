@@ -46,8 +46,8 @@ YAGE is a 2D game engine built as a Turborepo monorepo.
   workaround is a local fix; the same limitation in three places means the
   mechanism has to change. Take the fix that removes the cause, across as many
   packages as it needs, and describe the behaviour change in the changeset.
-- **Scene subclass for a full scene, `defineInlineScene` for a prototype.**
-  Choose by the actual use case.
+- **A scene is a `Scene` subclass.** There is no lighter form; a throwaway
+  prototype scene is a subclass with a short `onEnter` too.
 - **Study the existing pattern before writing a new one, and report it if it
   looks wrong.** The codebase is work in progress. Existing code shows what
   was done, not that it was right.
