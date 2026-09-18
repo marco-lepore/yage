@@ -42,6 +42,7 @@ export type {
 
 // Plugin
 export { RendererPlugin } from "./RendererPlugin.js";
+export type { CreateTextureOptions } from "./RendererPlugin.js";
 
 // Inspector render facet — the renderer owns this type and publishes it into the
 // Inspector snapshot via RenderFacetContributor (which also augments core's

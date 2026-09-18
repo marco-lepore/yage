@@ -26,6 +26,19 @@ engine.use(
 
 Registers `InputManagerKey` in `EngineContext`.
 
+`actions`, `setActionMap(map)` and `loadBindings(map)` take `ActionMapInput`, a
+readonly map of action name to key codes, so a shared catalog declared `as
+const` or frozen passes straight in:
+
+```ts
+const ACTIONS = { jump: ["Space", "KeyW"], fire: ["KeyJ"] } as const;
+engine.use(new InputPlugin({ actions: ACTIONS }));
+```
+
+Each call copies every key list, so later rebinding leaves the caller's object
+alone. `exportBindings()` returns a fresh mutable `ActionMapDefinition`, ready
+to serialize.
+
 ## InputManager Queries
 
 ```ts

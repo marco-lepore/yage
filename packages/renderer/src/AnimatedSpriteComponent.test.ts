@@ -276,6 +276,23 @@ describe("AnimatedSpriteComponent", () => {
     expect(comp.animatedSprite.anchor.y).toBe(1);
   });
 
+  it("applies the speed option at construction", () => {
+    const comp = new AnimatedSpriteComponent({ source: SOURCE, speed: 0.25 });
+    expect(comp.speed).toBe(0.25);
+    expect(comp.animatedSprite.animationSpeed).toBe(0.25);
+  });
+
+  it("keeps the default speed when the option is omitted", () => {
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
+    expect(comp.speed).toBe(1);
+  });
+
+  it("throws on a speed option that is not a finite number", () => {
+    expect(
+      () => new AnimatedSpriteComponent({ source: SOURCE, speed: NaN }),
+    ).toThrow("AnimatedSpriteComponent.constructor: speed must be finite");
+  });
+
   it("applies tint when provided (numeric and string)", () => {
     const num = new AnimatedSpriteComponent({ source: SOURCE, tint: 0xff0000 });
     expect(num.animatedSprite.tint).toBe(0xff0000);

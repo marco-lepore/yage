@@ -27,6 +27,7 @@ import {
   Assets,
   Container,
   Graphics,
+  Rectangle,
   TextureStyle,
 } from "pixi.js";
 import type { BitmapFont, Spritesheet, SCALE_MODE } from "pixi.js";
@@ -60,6 +61,7 @@ import {
 } from "./SceneRenderTree.js";
 import { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
 import { loadTexture, loadWebFont, unloadWebFont } from "./assets.js";
+import { assertPositiveNumber } from "./internal/validate.js";
 
 import "./scene-augmentation.js";
 
@@ -81,6 +83,14 @@ const SYNTHETIC_POINTER_ID = 1;
 
 /** `PointerEvent.button` for an event that presses and releases nothing. */
 const NO_BUTTON_CHANGE = -1;
+
+/** The region {@link RendererPlugin.createTexture} bakes, in pixels. */
+export interface CreateTextureOptions {
+  /** Width of the baked texture, measured from x = 0. */
+  readonly width: number;
+  /** Height of the baked texture, measured from y = 0. */
+  readonly height: number;
+}
 
 /** RendererPlugin wraps PixiJS v8 behind the YAGE plugin interface. */
 export class RendererPlugin implements Plugin, RendererAdapter {
@@ -707,15 +717,38 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * result never changes again; for a buffer the game redraws, use
    * {@link createRenderTarget}.
    *
+   * With `size`, the texture measures exactly that region of the drawing,
+   * starting at `(0, 0)`: a 4-frame strip of 32-pixel cells is `width: 128,
+   * height: 32` however much of each cell the drawing covers. Without it the
+   * texture is the drawn bounds, so its top-left corner is the first pixel
+   * drawn rather than `(0, 0)`, and a drawing that starts at `(10, 4)` bakes
+   * shifted by that much.
+   *
    * The pixels live only on the GPU, with no image to reload from. Calling
    * `update()` on the returned texture's `source` re-uploads it empty and
    * everything drawn from it turns transparent.
    */
-  createTexture(draw: (graphics: GraphicsContext) => void): TextureResource {
+  createTexture(
+    draw: (graphics: GraphicsContext) => void,
+    size?: CreateTextureOptions,
+  ): TextureResource {
+    if (size) {
+      assertPositiveNumber("RendererPlugin.createTexture", "width", size.width);
+      assertPositiveNumber(
+        "RendererPlugin.createTexture",
+        "height",
+        size.height,
+      );
+    }
     const graphics = new Graphics();
     try {
       draw(graphics);
-      return this._app.renderer.generateTexture(graphics);
+      return this._app.renderer.generateTexture({
+        target: graphics,
+        ...(size
+          ? { frame: new Rectangle(0, 0, size.width, size.height) }
+          : {}),
+      });
     } finally {
       graphics.destroy();
     }

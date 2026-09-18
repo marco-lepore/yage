@@ -528,9 +528,13 @@ const registeredTextures = new Map<string, TextureResource>();
  * unload destroy the registered texture later.
  *
  * ```ts
- * const strip = renderer.createTexture((g) => {
- *   for (let i = 0; i < 4; i++) g.circle(i * 32 + 16, 16, 4 + i * 3).fill(0xffcc00);
- * });
+ * // The size names the strip's region, so every 32-pixel cell holds one circle.
+ * const strip = renderer.createTexture(
+ *   (g) => {
+ *     for (let i = 0; i < 4; i++) g.circle(i * 32 + 16, 16, 4 + i * 3).fill(0xffcc00);
+ *   },
+ *   { width: 128, height: 32 },
+ * );
  * registerTexture("boss-idle", strip);
  * entity.add(new AnimatedSpriteComponent({ source: { sheet: "boss-idle", frameWidth: 32 } }));
  * ```

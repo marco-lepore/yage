@@ -9,6 +9,7 @@ export type {
   BufferedPressOptions,
   HoldDurationOptions,
   ActionMapDefinition,
+  ActionMapInput,
   InputConflictPolicy,
   RebindOptions,
   RebindResult,

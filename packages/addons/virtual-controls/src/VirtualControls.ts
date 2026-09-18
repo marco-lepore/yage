@@ -140,9 +140,10 @@ export class VirtualControls extends Component {
     });
   }
 
-  /** The requested overlay state (see `setVisible`), whatever the host
-   *  entity's activeness. A dormant host draws and claims nothing, and the
-   *  value set here comes back with it. */
+  /** The resolved overlay state (see `setVisible`), whatever the host
+   *  entity's activeness. A dormant host draws and claims nothing, and this
+   *  value comes back with it. An `"auto"` request resolves to a boolean at
+   *  the moment of the call, and the boolean is what this reports. */
   get visible(): boolean {
     return this._visible;
   }
@@ -181,11 +182,16 @@ export class VirtualControls extends Component {
    * Turn the overlay on/off at runtime (a settings toggle, a cutscene).
    * Turning it off releases every engaged control — mirrored actions get
    * their release edge, axes reset — and hides the views.
+   *
+   * `"auto"` reads the device the same way the `visible` option does, through
+   * {@link prefersTouchControls}: a settings screen can hand its "automatic"
+   * choice straight through.
    */
-  setVisible(visible: boolean): void {
+  setVisible(visible: boolean | "auto"): void {
+    const resolved = visible === "auto" ? prefersTouchControls() : visible;
     const was = this._visible;
-    this._visible = visible;
-    if (!visible && was) this.model.releaseAll();
+    this._visible = resolved;
+    if (!resolved && was) this.model.releaseAll();
     this.applyViewVisibility();
   }
 
@@ -221,11 +227,7 @@ export class VirtualControls extends Component {
       );
     }
 
-    this.setVisible(
-      this.opts.visible === undefined || this.opts.visible === "auto"
-        ? prefersTouchControls()
-        : this.opts.visible,
-    );
+    this.setVisible(this.opts.visible ?? "auto");
 
     this.addCleanup(input.onPointerDown((p) => this.handleDown(p)));
     this.addCleanup(input.onPointerMove((p) => this.handleMove(p)));
@@ -245,8 +247,9 @@ export class VirtualControls extends Component {
   /**
    * A dormant host (or `enabled = false`) takes the overlay off screen and
    * releases every engaged control, so a deactivated HUD entity leaves no
-   * painted controls and no stuck action holds. The requested `visible` value
-   * is untouched and applies again on reactivation.
+   * painted controls and no stuck action holds. The resolved `visible`
+   * boolean is untouched and applies again on reactivation, without reading
+   * the device a second time.
    */
   override onDisable(): void {
     this.model.releaseAll();

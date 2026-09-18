@@ -17,6 +17,8 @@ this.use(RendererKey).fx.addEffect(vignette({ alpha: 0.4 }));
 
 Each preset returns the same `EffectHandle` shape (`remove`, `setEnabled`, `enabled`, `setIntensity(value)`, `fadeIn(duration)`, `fadeOut(duration)`) plus typed extras specific to the preset (e.g. `OutlineHandle.setThickness(n)`).
 
+`import type { EffectHandle } from "@yagejs/effects"` names that shape — the type to annotate a field or a list that holds handles from several presets. Each preset's own handle type (`OutlineHandle`, `BloomHandle`) is exported from the same barrel and narrows it.
+
 ## Presets
 
 | Preset                | Options shape                                                                                                              | Wraps                                  | Primary intensity                                  |

@@ -55,6 +55,22 @@ describe("InputPlugin", () => {
     expect(manager).toBeInstanceOf(InputManager);
   });
 
+  it("accepts an action map declared `as const`", () => {
+    const actions = { jump: ["Space", "KeyW"], fire: ["KeyJ"] } as const;
+    context = createContext();
+    plugin = new InputPlugin({ actions });
+    plugin.install(context);
+
+    const manager = context.resolve(InputManagerKey);
+    expect(manager.getBindings("jump")).toEqual(["Space", "KeyW"]);
+    expect(manager.getBindings("fire")).toEqual(["KeyJ"]);
+    // The manager copies each key list, so a rebind leaves the caller's
+    // literal untouched.
+    manager.rebind("fire", "KeyK", { slot: 0 });
+    expect(manager.getBindings("fire")).toEqual(["KeyK"]);
+    expect(actions.fire).toEqual(["KeyJ"]);
+  });
+
   it("attaches keyboard listeners", () => {
     context = createContext();
     plugin = new InputPlugin({

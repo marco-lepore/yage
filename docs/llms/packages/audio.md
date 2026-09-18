@@ -103,6 +103,8 @@ audio.resumeChannel("music");
 
 `play`, `playOnce`, `requestOnce`, and `playRandom` throw naming the alias when no sound is registered under it — a typo, or playback before the asset finished preloading. Preload it with `sound(path)` or register it with `registerSound(alias, buffer)`.
 
+`hasSound(ref)` reports whether an alias is registered, which is the check those throws make. It takes an alias or a `sound()` handle, so a game that assembles an alias at runtime — one variant per surface, per weapon, per language — can choose a fallback rather than risk the throw. It reports nothing about whether audio is audible: the browser's autoplay unlock is `isUnlocked()`, and mute is `muteChannel` / `muteAll`.
+
 `playOnce` and `requestOnce` share one playback for each alias and channel.
 `playOnce` holds one implicit owner; repeated calls return the same
 `SoundHandle` without adding owners. Each `requestOnce` call returns an
