@@ -31,6 +31,11 @@ Every exported field, parameter, and return type across `@yagejs/renderer` (and 
 
 The aliases are transparent (`type DisplayContainer = Container`) and provide no encapsulation. Escape hatches (`RendererPlugin.application`, every `renderObject` getter, `.sprite`/`.graphics`/`.text`/`.splitText`/`.animatedSprite`) still return the real Pixi object. Only the _type_ used to describe it is aliased, so calling any native Pixi method on it works exactly as it would on the raw type.
 
+A `GraphicsContext` therefore carries Pixi's graphics transform stack —
+`translateTransform`, `scaleTransform`, `rotateTransform`, `setTransform`,
+`resetTransform`, and the `save` / `restore` pair. See `GraphicsComponent`
+below.
+
 ## Setup
 
 ```ts
@@ -307,6 +312,27 @@ entity.add(
 
 Graphics and their draw callbacks are runtime resources. Save the durable game facts that determine the drawing, then call `draw()` during normal component setup.
 
+The context also carries a transform stack, so a repeated part draws in its own
+coordinates without the callback computing offsets.
+`translateTransform(x, y?)`, `scaleTransform(x, y?)` and
+`rotateTransform(angle)` multiply into the current transform.
+`setTransform(matrix)` — or six numbers — replaces it, and `resetTransform()`
+returns it to identity. `save()` pushes the current transform and `restore()`
+pops it. Every one of them returns the context, so calls chain.
+
+```ts
+entity.add(
+  new GraphicsComponent({ layer: "world" }).draw((g) => {
+    for (let i = 0; i < 6; i++) {
+      g.save();
+      g.translateTransform(i * 24, 0).rotateTransform(i * 0.2);
+      g.rect(-6, -6, 12, 12).fill(0xffcc00); // drawn around its own centre
+      g.restore();
+    }
+  }),
+);
+```
+
 **Escape hatch:** `.graphics` (and the `g` passed to `.draw(fn)`) is a raw pixi `Graphics` with the v8 fluent API: `rect` / `circle` / `roundRect` / `poly` / `moveTo` / `lineTo` / `arc` / `fill` / `stroke`. `arc` continues the current path like Canvas 2D: call `moveTo(x, y)` at the arc's start point first for a standalone arc, otherwise a line connects it from the previous point. See [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
 
 Gradient fills: use `linearGradient` / `radialGradient` (see below) instead of reaching into `pixi.js` for `FillGradient`.
@@ -471,6 +497,23 @@ Playback runs in engine-scaled component time. `scene.timeScale` and
 `scene.timeScale = 0`, or a disabled component freezes the animation. Host an
 animation in a separate active overlay scene when it must keep playing while
 gameplay is frozen.
+
+`resolveFrames(source: FrameSource): Texture[]` turns either `FrameSource` shape
+into the frame textures the component would use, for code that wants the
+textures rather than an animation. It is synchronous and reads already-loaded
+assets, so the sheet or atlas has to be in the scene's preload. An unloaded
+sheet, a missing atlas, an unknown animation name and an empty animation each
+throw naming the key. Index the result for a single frame — a `UIImage` takes
+one `TextureInput`, not an array:
+
+```ts
+import { resolveFrames } from "@yagejs/renderer";
+import { UIImage } from "@yagejs/ui";
+
+const icon = new UIImage({
+  texture: resolveFrames({ atlas: "ui.json", animation: "coin" })[0]!,
+});
+```
 
 **Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
 
@@ -705,6 +748,23 @@ class SkyBand extends Component {
 
 The camera is an entity, not a service. Spawn a `CameraEntity` in your scene
 and use it directly for follow, shake, zoom, and bounds — all convenience methods are on the entity.
+
+`CameraEntity` composes five components, each exported from the package for a
+hand-built camera:
+
+| Component               | What it does                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `CameraComponent`       | Holds the camera's `position`, `rotation`, `zoom`, viewport size and layer bindings, plus the `modifiers` list                  |
+| `CameraFollow`          | Moves `CameraComponent.position` toward a target's world position each frame, with smoothing, an offset and a deadzone          |
+| `CameraBoundsComponent` | Clamps `CameraComponent.position` into a rectangle after every other camera behaviour ran, using this frame's position and zoom |
+| `CameraShake`           | Adds one removable displacement to `CameraComponent.modifiers` for a duration, leaving the base position where it was           |
+| `CameraZoom`            | Interpolates `CameraComponent.zoom` toward a target over a duration, through an easing function                                 |
+
+`CameraEntity` and `CameraComponent` both expose the shorter route to the same
+behaviour: `follow`/`unfollow`/`snapToTarget` reach `CameraFollow`, the `bounds`
+accessor reaches `CameraBoundsComponent`, `shake` reaches `CameraShake`, and
+`zoomTo` reaches `CameraZoom`. Reach for a behaviour component directly to read
+its own state, such as `CameraShake.offset`.
 
 ```ts
 import { CameraEntity } from "@yagejs/renderer";

@@ -94,6 +94,17 @@ player.addChild("healthBar", healthBar);
 Child transforms are relative to the parent. When the parent moves, children
 follow. Destroying the parent destroys all children.
 
+Child names are unique per parent, and a destroyed child the scene owns holds its
+name until the end-of-frame flush. Swapping one child for another under the same
+name in a single tick therefore starts with `removeChild`, which detaches the
+child and frees the name straight away:
+
+```typescript
+const old = player.removeChild("weapon"); // the name is free from here on
+old.destroy();
+player.spawnChild("weapon", Shotgun);
+```
+
 ## Cooldowns
 
 Use `ProcessSlot` for cooldowns and timed abilities:

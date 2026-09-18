@@ -119,7 +119,8 @@ e.tags.has("hostile");
 
 // Hierarchy
 parent.addChild("arm", childEntity);
-parent.getChild("arm");
+parent.getChild("arm"); // throws when there is no child by that name
+parent.tryGetChild("arm"); // undefined when there is no child by that name
 parent.removeChild("arm");
 
 // Per-entity time scale (composes with the scene's effective scale)
@@ -197,7 +198,7 @@ Properties: `pauseBelow` (default true), `transparentBelow` (default false), `pa
 
 Asset preloading: declare `readonly preload` array of `AssetHandle` -- loaded before `onEnter()`.
 
-Entity queries: `scene.findEntity(name)`, `scene.findEntitiesByTag(tag)`, `scene.findEntities(filter)`.
+Entity queries: `scene.findEntity(name)`, `scene.findEntitiesByTag(tag)`, `scene.findEntities(filter)`. `scene.findEntities({ trait: token })` returns `(Entity & T)[]` for a `TraitToken<T>`; every other filter returns `Entity[]`.
 
 ## Events
 

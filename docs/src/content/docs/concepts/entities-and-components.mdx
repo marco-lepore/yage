@@ -182,6 +182,21 @@ over a query result is not left holding a torn-down entity — while still
 letting other code react to the destruction within the same frame, since the
 entity is already out of every query.
 
+One thing the deferral covers that is easy to miss: a destroyed child keeps its
+slot in its parent's child map until the **EndOfFrame** flush, so its name stays
+taken for the rest of the tick. Spawning a replacement under that name in the
+same tick throws. `parent.removeChild(name)` detaches the child and frees the
+name straight away, so call it before the replacement spawns:
+
+```typescript
+const old = parent.removeChild("view"); // the name is free from here on
+old.destroy();
+parent.spawnChild("view", NextView);
+```
+
+A pooled child is the exception: `destroy()` hands it back to its pool, which
+detaches it there and then, so its name is free in the same tick.
+
 Entities also die when their scene leaves the stack (`pop`, `replace`, or
 engine shutdown). Scene teardown applies the same contract: every entity is
 marked destroyed and deactivated (`isDestroyed` reads `true` and `isActive`
@@ -366,6 +381,23 @@ The order is `onAdd` → query join → `onEnable` when a component is added, an
 `onDisable` → `onDestroy` when it is torn down. A component added to a dormant
 entity gets `onAdd` but waits for `onEnable` until the entity is activated.
 
+`onAdd` and the query join run inside the `entity.add()` call, before it
+returns, and `onEnable` too when the entity is already active. So a field the
+caller assigns from the return value is still `undefined` while `onAdd` runs:
+
+```typescript
+class Turret extends Entity {
+  private gun!: Gun;
+
+  setup() {
+    this.gun = this.add(new Gun()); // Gun's onAdd cannot read this.gun yet
+  }
+}
+```
+
+From inside `onAdd`, reach a sibling through `this.entity.get(Gun)` or
+`this.sibling(Gun)` rather than through a field on the entity.
+
 A component can end its own life with `this.destroy()` — the same as calling
 `entity.remove(SomeClass)` from outside, without having to name its own class
 from inside itself, which breaks under subclassing.
@@ -441,6 +473,15 @@ class BoundsClamp extends Component {
 An instance's own `updatePriority` overrides the class default and can be
 written at any time, before or after `add()`. This orders siblings only:
 entities still update in the order they were added to the scene.
+
+Adding a component from inside another component's `update()` on the same entity
+lands in one of two orders, and which one depends on priorities. While no
+component on that entity declares an `updatePriority`, the pass walks the live
+component list and the new component runs in the same frame. Once one declares a
+priority, the pass walks a sorted list taken before it started, and a component
+added during the pass first runs on the next frame. Setting a priority anywhere
+on the entity therefore changes when a mid-pass addition starts running, so do
+the work the new component would do this frame in the component that adds it.
 
 ### Cached Service Resolution
 
