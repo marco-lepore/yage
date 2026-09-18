@@ -13,6 +13,12 @@ const player = scene.spawn("player");
 const bullet = scene.spawn("bullet");
 ```
 
+An entity subclass has no per-frame hook. `update` and `fixedUpdate` are typed
+as `never` on `Entity`, so a subclass that declares either name fails to
+compile. The per-frame pass ticks the components an entity holds, which is
+where per-frame logic goes. `Scene` carries the same two declarations, for the
+same reason.
+
 ### Adding and Querying Components
 
 ```typescript

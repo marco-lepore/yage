@@ -987,6 +987,34 @@ export abstract class Scene {
    */
   onResume?(): void;
 
+  /**
+   * Reserved: a subclass that declares `update` fails to compile.
+   *
+   * The engine's per-frame pass ticks components, so a scene method with this
+   * name is dead code. Per-frame scene logic has two homes: a component on an
+   * entity the scene spawns, or a process on the queue that
+   * `makeSceneScopedQueue()` returns, which lives and dies with the scene.
+   *
+   * The slot is optional, so the compiler reports the subclass method as not
+   * assignable to type `undefined` rather than to type `never`.
+   *
+   * The hooks above are every hook `Scene` itself declares; `LoadingScene`
+   * adds `onLoadError` for a preload that fails.
+   */
+  declare readonly update?: never;
+
+  /**
+   * Reserved: a subclass that declares `fixedUpdate` fails to compile.
+   *
+   * There is no fixed-step scene hook either, and for the same reason. Both
+   * homes above apply: a component on an entity the scene spawns, or a
+   * process on the queue that `makeSceneScopedQueue()` returns.
+   *
+   * The slot is optional, so the compiler reports the subclass method as not
+   * assignable to type `undefined` rather than to type `never`.
+   */
+  declare readonly fixedUpdate?: never;
+
   // ---- Internal methods ----
 
   /**

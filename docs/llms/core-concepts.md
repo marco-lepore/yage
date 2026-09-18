@@ -189,7 +189,9 @@ await engine.scenes.popAll(); // exits all (queued)
 All four are async and queued — they await `beforeEnter` hooks,
 `scene.preload`, and any in-flight transition before applying.
 
-Scene hooks: `onEnter`, `onExit`, `onPause` (scene became effectively paused — covered by a pushed `pauseBelow` scene, manual `paused = true`, or blur auto-pause), `onResume` (scene became effectively unpaused).
+Scene hooks, every one `Scene` declares: `onProgress(ratio)` (asset preload progress, 0→1), `onEnter`, `onExit`, `onPause` (scene became effectively paused — covered by a pushed `pauseBelow` scene, manual `paused = true`, or blur auto-pause), `onResume` (scene became effectively unpaused). `LoadingScene` adds one more, `onLoadError(error)`, for a preload that fails.
+
+A scene has no per-frame hook. `update` and `fixedUpdate` are typed as `never` on `Scene`, so a subclass that declares either one fails to compile. Put per-frame scene logic in a component on an entity the scene spawns, or in a process on a queue from `makeSceneScopedQueue()`. The same rule holds for an `Entity` subclass: components tick, entities do not.
 
 Properties: `pauseBelow` (default true), `transparentBelow` (default false), `paused` (setting it fires `onPause`/`onResume` when `isPaused` flips), `timeScale`.
 
@@ -317,7 +319,7 @@ const seq = new Sequence()
   .parallel(tweenA, tweenB)
   .loop();
 
-pc.run(seq.start());
+pc.run(seq.build());
 ```
 
 ### TimerEntity
