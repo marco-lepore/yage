@@ -1,5 +1,41 @@
 # @yagejs-addons/dialogue
 
+## 0.7.0
+
+### Minor Changes
+
+- [#369](https://github.com/marco-lepore/yage/pull/369) [`edd86b4`](https://github.com/marco-lepore/yage/commit/edd86b496d55298ae9deced1a52bedfcbbb14bf5) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Script text fields take a `DialogueText`: an authored string or a
+  `{ key, fallback, values? }` message (the shape `@yagejs-addons/i18n`'s `msg`
+  returns). `SayStep.text`, `ChoiceStep.text`, `ChoiceOption.text`,
+  `ChoiceOption.disabledReason`, and `SpeakerDef.name` accept it; the separate
+  `SayStep.key`, `ChoiceStep.key`, `ChoiceOption.key`, and `SpeakerDef.nameKey`
+  fields are gone. The compact DSL's `#line:id` tag now produces the message form.
+
+  `I18nAdapter` is `{ locale, resolve(text, values?), subscribe?() }` instead of
+  `{ locale, t(key, fallback, params?) }`. `DialogueController` resolves the
+  adapter from its `i18n` option, then a service registered under the
+  `"localization"` id (the `@yagejs-addons/i18n` plugin), then `IdentityI18n`.
+  When the adapter has `subscribe`, a locale change re-presents the line or
+  choice menu on screen in place through the new `DialogueSession.retranslate()`:
+  a line keeps its reveal progress, a menu keeps its highlighted row, and no
+  event fires.
+
+  A `#line:` tag with no catalog key fails at the line that wrote it, and a
+  message's `values` are checked entry by entry when a script loads.
+
+  `TextChannel` has a new required method, `replaceVisible(line)`, which swaps
+  the text of the line on screen without restarting its reveal. The bundled text
+  views and `CompositeTextPresenter` implement it; a custom text presenter built
+  on `LineReveal` implements it by passing the new text to the new
+  `LineReveal.rebase`.
+
+### Patch Changes
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`851310c`](https://github.com/marco-lepore/yage/commit/851310c54e04f5cdb52819050ca0a50f36b8e4c3), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210)]:
+  - @yagejs/core@0.12.0
+  - @yagejs/renderer@0.12.0
+  - @yagejs/input@0.12.0
+
 ## 0.6.0
 
 ### Minor Changes

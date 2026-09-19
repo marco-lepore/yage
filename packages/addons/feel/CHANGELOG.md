@@ -1,5 +1,16 @@
 # @yagejs-addons/feel
 
+## 0.2.0
+
+### Patch Changes
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`e8c93f5`](https://github.com/marco-lepore/yage/commit/e8c93f57bef781765abe236ded02a136ba4739d7), [`6fa0712`](https://github.com/marco-lepore/yage/commit/6fa07120abe2bce190a707c2711a3e6c1b7d764a), [`fb52b18`](https://github.com/marco-lepore/yage/commit/fb52b18a52d42178a81cc1c787d463bb395005d2), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`851310c`](https://github.com/marco-lepore/yage/commit/851310c54e04f5cdb52819050ca0a50f36b8e4c3), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210)]:
+  - @yagejs/core@0.12.0
+  - @yagejs/effects@0.12.0
+  - @yagejs/audio@0.12.0
+  - @yagejs/renderer@0.12.0
+  - @yagejs/particles@0.12.0
+
 ## 0.1.0
 
 ### Minor Changes

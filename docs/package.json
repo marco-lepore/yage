@@ -23,18 +23,18 @@
     "vite-plugin-wasm": "^3.6.0"
   },
   "devDependencies": {
-    "@yagejs/audio": "^0.11.0",
-    "@yagejs/core": "^0.11.0",
-    "@yagejs/debug": "^0.11.0",
-    "@yagejs/effects": "^0.11.0",
-    "@yagejs/input": "^0.11.0",
-    "@yagejs/lighting": "^0.11.0",
-    "@yagejs/particles": "^0.11.0",
-    "@yagejs/pathfinding": "^0.11.0",
-    "@yagejs/physics": "^0.11.0",
-    "@yagejs/renderer": "^0.11.0",
-    "@yagejs/save": "^0.11.0",
-    "@yagejs/tilemap": "^0.11.0",
-    "@yagejs/ui": "^0.11.0"
+    "@yagejs/audio": "^0.12.0",
+    "@yagejs/core": "^0.12.0",
+    "@yagejs/debug": "^0.12.0",
+    "@yagejs/effects": "^0.12.0",
+    "@yagejs/input": "^0.12.0",
+    "@yagejs/lighting": "^0.12.0",
+    "@yagejs/particles": "^0.12.0",
+    "@yagejs/pathfinding": "^0.12.0",
+    "@yagejs/physics": "^0.12.0",
+    "@yagejs/renderer": "^0.12.0",
+    "@yagejs/save": "^0.12.0",
+    "@yagejs/tilemap": "^0.12.0",
+    "@yagejs/ui": "^0.12.0"
   }
 }
