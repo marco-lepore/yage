@@ -1,12 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeEach,
-  beforeAll,
-  afterEach,
-} from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
@@ -72,35 +64,12 @@ const { mocks } = vi.hoisted(() => {
       this._lastFillH = h;
       return this;
     }
-    /** The rectangle of the most recent rounded draw. */
-    lastRect:
-      | { x: number; y: number; width: number; height: number; radius?: number }
-      | undefined;
-    roundRect(
-      x: number,
-      y: number,
-      w: number,
-      h: number,
-      radius?: number,
-    ): MockGraphics {
+    roundRect(_x: number, _y: number, w: number, h: number): MockGraphics {
       this._lastFillW = w;
       this._lastFillH = h;
-      this.lastRect = {
-        x,
-        y,
-        width: w,
-        height: h,
-        ...(radius === undefined ? {} : { radius }),
-      };
       return this;
     }
     fill(): MockGraphics {
-      return this;
-    }
-    /** The style passed to the most recent `stroke`. */
-    lastStroke: { color?: number; width?: number } | undefined;
-    stroke(style?: { color?: number; width?: number }): MockGraphics {
-      this.lastStroke = style;
       return this;
     }
     get lastWidth() {
@@ -173,9 +142,6 @@ vi.mock("pixi.js", () => ({
 import Yoga, { Direction } from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UIProgressBar } from "./UIProgressBar.js";
-import { getFocusState } from "./focus/FocusState.js";
-import { setUIFocusStyle } from "./internal/focus-outline.js";
-import { takePointerRequest } from "./focus/pointer-request.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -290,146 +256,5 @@ describe("UIProgressBar", () => {
 
     bar.update({ value: -3 });
     expect(bar.value).toBe(0);
-  });
-});
-
-describe("UIProgressBar focus", () => {
-  // An outline is drawn only where one is asked for, so these boxes are
-  // measured against the outline a game asks for once for the whole UI.
-  beforeEach(() => setUIFocusStyle({}));
-  afterEach(() => setUIFocusStyle(undefined));
-
-  /** Fire a Pixi event on the element's own display object. */
-  const emitOn = (bar: UIProgressBar, event: string): void =>
-    (bar.displayObject as unknown as { emit(e: string): void }).emit(event);
-
-  it("stays out of focus navigation by default", () => {
-    const bar = new UIProgressBar({ value: 0.5, width: 200, height: 20 });
-
-    expect(getFocusState(bar)?.focusable).toBe(false);
-    bar.destroy();
-  });
-
-  /** The outline a focused element draws, or `undefined` before it takes one. */
-  function outlineOf(element: {
-    displayObject: unknown;
-  }): InstanceType<typeof mocks.MockGraphics> | undefined {
-    const children = (
-      element.displayObject as unknown as InstanceType<
-        typeof mocks.MockContainer
-      >
-    ).children;
-    return children.find(
-      (child): child is InstanceType<typeof mocks.MockGraphics> =>
-        child instanceof mocks.MockGraphics && child.measurable === false,
-    );
-  }
-
-  it("joins focus navigation and reports focus changes", () => {
-    const onFocusChange = vi.fn();
-    const bar = new UIProgressBar({
-      value: 0.5,
-      width: 200,
-      height: 20,
-      focusable: true,
-      onFocusChange,
-    });
-
-    const state = getFocusState(bar);
-    expect(state?.focusable).toBe(true);
-    state?._setFocused(true);
-
-    expect(onFocusChange).toHaveBeenCalledWith(true);
-    bar.destroy();
-  });
-
-  it("outlines a focusable bar at the box layout gave it", () => {
-    const bar = new UIProgressBar({
-      value: 0.5,
-      width: 200,
-      height: 20,
-      focusable: true,
-    });
-    getFocusState(bar)?._setFocused(true);
-
-    bar.yogaNode.calculateLayout(200, 20, Direction.LTR);
-    bar.applyLayout();
-
-    expect(outlineOf(bar)?.lastRect).toMatchObject({
-      x: 1,
-      y: 1,
-      width: 198,
-      height: 18,
-    });
-    bar.destroy();
-  });
-
-  it("takes the focus props an update carries", () => {
-    const bar = new UIProgressBar({ value: 0.5, width: 200, height: 20 });
-
-    bar.update({ focusable: true, focusId: "health" });
-
-    expect(getFocusState(bar)?.focusable).toBe(true);
-    expect(getFocusState(bar)?.id).toBe("health");
-    bar.destroy();
-  });
-
-  it("asks for hover focus while the pointer is over it", () => {
-    const bar = new UIProgressBar({
-      value: 0.5,
-      width: 200,
-      height: 20,
-      focusable: true,
-    });
-    takePointerRequest();
-
-    emitOn(bar, "pointerover");
-
-    expect(takePointerRequest()?.trigger).toBe("hover");
-    bar.destroy();
-  });
-
-  it("asks for press focus when the pointer presses it", () => {
-    const bar = new UIProgressBar({
-      value: 0.5,
-      width: 200,
-      height: 20,
-      focusable: true,
-    });
-    takePointerRequest();
-
-    emitOn(bar, "pointerdown");
-
-    const request = takePointerRequest();
-    expect(request?.element).toBe(bar);
-    expect(request?.trigger).toBe("press");
-    bar.destroy();
-  });
-
-  it("reports its focus state to the Inspector", () => {
-    const bar = new UIProgressBar({
-      value: 0.5,
-      width: 200,
-      height: 20,
-      focusable: true,
-    });
-
-    expect(bar._inspectState()).toEqual({ focused: false, focusable: true });
-    getFocusState(bar)?._setFocused(true);
-    expect(bar._inspectState()).toEqual({ focused: true, focusable: true });
-    bar.destroy();
-  });
-
-  it("leaves focus navigation when it is destroyed", () => {
-    const bar = new UIProgressBar({
-      value: 0.5,
-      width: 200,
-      height: 20,
-      focusable: true,
-    });
-
-    bar.destroy();
-
-    expect(getFocusState(bar)).toBeUndefined();
   });
 });

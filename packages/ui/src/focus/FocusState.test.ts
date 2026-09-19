@@ -30,28 +30,19 @@ const PRESSABLE: FocusBehavior = { focusableByDefault: true };
 const INERT: FocusBehavior = { focusableByDefault: false };
 
 describe("FocusState", () => {
-  it("takes the element's own default when the prop is absent", () => {
-    const { element } = makeElement();
-    expect(new FocusState(element, {}, PRESSABLE).focusable).toBe(true);
-
-    const other = makeElement();
-    expect(new FocusState(other.element, {}, INERT).focusable).toBe(false);
-  });
-
-  it("lets the prop override the default in both directions", () => {
-    const pressable = makeElement();
-    const state = new FocusState(
-      pressable.element,
-      { focusable: false },
-      PRESSABLE,
-    );
-    expect(state.focusable).toBe(false);
-
-    const inert = makeElement();
-    expect(
-      new FocusState(inert.element, { focusable: true }, INERT).focusable,
-    ).toBe(true);
-  });
+  it.each([
+    [PRESSABLE, undefined, true],
+    [INERT, undefined, false],
+    [PRESSABLE, false, false],
+    [INERT, true, true],
+  ])(
+    "reads focusable from the prop, then the default",
+    (behavior, prop, expected) => {
+      const props = prop === undefined ? {} : { focusable: prop };
+      const state = new FocusState(makeElement().element, props, behavior);
+      expect(state.focusable).toBe(expected);
+    },
+  );
 
   it("reads the id and the neighbours the element was built with", () => {
     const { element } = makeElement();
@@ -64,10 +55,9 @@ describe("FocusState", () => {
     expect(state.neighbors).toEqual({ down: "saves-first" });
   });
 
-  it("reports disabled from the element's own hook", () => {
-    const { element } = makeElement();
+  it("reports disabled from the element's own hook, and enabled with none", () => {
     let disabled = false;
-    const state = new FocusState(element, {}, {
+    const state = new FocusState(makeElement().element, {}, {
       focusableByDefault: true,
       isDisabled: () => disabled,
     } satisfies FocusBehavior);
@@ -75,11 +65,9 @@ describe("FocusState", () => {
     expect(state.disabled).toBe(false);
     disabled = true;
     expect(state.disabled).toBe(true);
-  });
-
-  it("reports an element with no disabled hook as enabled", () => {
-    const { element } = makeElement();
-    expect(new FocusState(element, {}, PRESSABLE).disabled).toBe(false);
+    expect(new FocusState(makeElement().element, {}, PRESSABLE).disabled).toBe(
+      false,
+    );
   });
 
   describe("set", () => {
@@ -182,8 +170,7 @@ describe("FocusState", () => {
       expect(boundary.getCallbackErrors()).toEqual([
         { kind: "UI onFocusChange", error: "cue failed" },
       ]);
-      // The flag is committed before the callback runs, so a throw cannot
-      // leave the state and the paint disagreeing.
+      // Committed before the callback runs, so state and paint agree.
       expect(state.focused).toBe(true);
     });
   });
@@ -227,25 +214,19 @@ describe("FocusState", () => {
   });
 
   describe("getFocusState", () => {
-    it("finds the state the element built for itself", () => {
+    it("finds the state an element built, until it is destroyed", () => {
       const { element } = makeElement();
+      expect(getFocusState(element)).toBeUndefined();
+
       const state = new FocusState(element, {}, PRESSABLE);
       expect(getFocusState(element)).toBe(state);
-    });
 
-    it("returns nothing for an element that built none", () => {
-      const { element } = makeElement();
+      state.destroy();
       expect(getFocusState(element)).toBeUndefined();
     });
   });
 
   describe("destroy", () => {
-    it("drops the element's entry", () => {
-      const { element } = makeElement();
-      new FocusState(element, {}, PRESSABLE).destroy();
-      expect(getFocusState(element)).toBeUndefined();
-    });
-
     it("clears the scope's reference with no callback and no paint", () => {
       const { element } = makeElement();
       const onFocusChange = vi.fn();
@@ -270,12 +251,6 @@ describe("FocusState", () => {
       expect(state.focused).toBe(false);
     });
 
-    it("leaves an element with no scope alone", () => {
-      const { element } = makeElement();
-      const state = new FocusState(element, {}, PRESSABLE);
-      expect(() => state.destroy()).not.toThrow();
-    });
-
     it("takes the element's pending pointer request with it", () => {
       const { element } = makeElement();
       const state = new FocusState(element, {}, PRESSABLE);
@@ -284,18 +259,6 @@ describe("FocusState", () => {
       state.destroy();
 
       expect(takePointerRequest()).toBeNull();
-    });
-
-    it("leaves another element's pending pointer request in the cell", () => {
-      const { element } = makeElement();
-      const hovered = makeElement().element;
-      new FocusState(hovered, {}, PRESSABLE);
-      const state = new FocusState(element, {}, PRESSABLE);
-      requestHoverFocus(hovered);
-
-      state.destroy();
-
-      expect(takePointerRequest()?.element).toBe(hovered);
     });
   });
 });

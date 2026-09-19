@@ -1,12 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeEach,
-  beforeAll,
-  afterEach,
-} from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { Direction } from "yoga-layout";
 
 const { mocks } = vi.hoisted(() => {
@@ -125,24 +117,8 @@ const { mocks } = vi.hoisted(() => {
     rect(...args: unknown[]): MockGraphics {
       return this;
     }
-    /** The rectangle of the most recent rounded draw. */
-    lastRect:
-      | { x: number; y: number; width: number; height: number; radius?: number }
-      | undefined;
-    roundRect(
-      x: number,
-      y: number,
-      width: number,
-      height: number,
-      radius?: number,
-    ): MockGraphics {
-      this.lastRect = {
-        x,
-        y,
-        width,
-        height,
-        ...(radius === undefined ? {} : { radius }),
-      };
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    roundRect(...args: unknown[]): MockGraphics {
       return this;
     }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -204,9 +180,6 @@ import { setYoga } from "./yoga-helpers.js";
 import { UIScrollView } from "./UIScrollView.js";
 import { UIPanel } from "./UIPanel.js";
 import { UIButton } from "./UIButton.js";
-import { getFocusState } from "./focus/FocusState.js";
-import { setUIFocusStyle } from "./internal/focus-outline.js";
-import { takePointerRequest } from "./focus/pointer-request.js";
 import { UIFocusScope } from "./focus/UIFocusScope.js";
 
 beforeAll(() => {
@@ -591,27 +564,17 @@ describe("UIScrollView", () => {
     parent.destroy();
   });
 
-  describe("viewport size", () => {
-    it("is zero before the first layout pass", () => {
-      const sv = new UIScrollView({ width: 200, height: 100 });
-      expect(sv.viewportWidth).toBe(0);
-      expect(sv.viewportHeight).toBe(0);
-      sv.destroy();
-    });
+  it("reports the clipped box on both axes once a layout pass has run", () => {
+    const unlaid = new UIScrollView({ width: 200, height: 100 });
+    expect([unlaid.viewportWidth, unlaid.viewportHeight]).toEqual([0, 0]);
 
-    it("reports the clipped box of a vertical view on both axes", () => {
-      const { sv } = buildScrollView(8, { height: 100 });
-      expect(sv.viewportWidth).toBe(200);
-      expect(sv.viewportHeight).toBe(100);
-      sv.destroy();
-    });
+    const { sv } = buildScrollView(8, { height: 100 });
+    expect([sv.viewportWidth, sv.viewportHeight]).toEqual([200, 100]);
 
-    it("reports the clipped box of a horizontal view on both axes", () => {
-      const { sv } = buildHorizontal(8);
-      expect(sv.viewportWidth).toBe(100);
-      expect(sv.viewportHeight).toBe(50);
-      sv.destroy();
-    });
+    const horizontal = buildHorizontal(8).sv;
+    expect([horizontal.viewportWidth, horizontal.viewportHeight]).toEqual([
+      100, 50,
+    ]);
   });
 
   describe("hover callbacks", () => {
@@ -631,13 +594,14 @@ describe("UIScrollView", () => {
         onHover,
       });
 
+      // An update that names no handler keeps them all.
+      sv.update({ width: 260 });
       viewportOf(sv).emit("pointerover");
-      expect(onPointerOver).toHaveBeenCalledTimes(1);
-      expect(onHover).toHaveBeenLastCalledWith(true);
-
       viewportOf(sv).emit("pointerout");
+
+      expect(onPointerOver).toHaveBeenCalledTimes(1);
       expect(onPointerOut).toHaveBeenCalledTimes(1);
-      expect(onHover).toHaveBeenLastCalledWith(false);
+      expect(onHover.mock.calls).toEqual([[true], [false]]);
       sv.destroy();
     });
 
@@ -660,86 +624,32 @@ describe("UIScrollView", () => {
       expect(second).toHaveBeenCalledTimes(1);
       sv.destroy();
     });
-
-    it("keeps a handler an update does not mention", () => {
-      const onHover = vi.fn();
-      const sv = new UIScrollView({ width: 200, height: 100, onHover });
-
-      sv.update({ width: 260 });
-      viewportOf(sv).emit("pointerover");
-
-      expect(onHover).toHaveBeenLastCalledWith(true);
-      sv.destroy();
-    });
   });
 
   describe("scrollIntoView", () => {
-    it("scrolls down to a row below the fold", () => {
-      // Rows 30px in a 100px viewport: row 4 spans 120–150, so the list has
-      // to travel 50px for its end to reach the bottom edge.
-      const { sv, rowsArr } = buildScrollView(8);
-      sv.scrollIntoView(rowsArr[4]!);
-      expect(sv.scrollOffset).toBe(50);
-      sv.destroy();
-    });
-
-    it("scrolls up to a row above the fold", () => {
-      const { sv, rowsArr } = buildScrollView(8);
-      sv.scrollTo(140);
-      sv.scrollIntoView(rowsArr[0]!);
-      expect(sv.scrollOffset).toBe(0);
-      sv.destroy();
-    });
-
-    it("leaves a fully visible row alone and does not fire onScroll", () => {
+    // Eight 30 px rows in a 100 px viewport: row 4 spans 120 to 150.
+    it.each([
+      ["a row below the fold, to the far edge", 0, 4, {}, 50],
+      ["a row above the fold, to the near edge", 140, 0, {}, 0],
+      ["a fully visible row nowhere", 0, 1, {}, 0],
+      ["padding clear of the far edge", 0, 4, { padding: 10 }, 60],
+      ["padding clear of the near edge", 140, 4, { padding: 10 }, 110],
+      ["align 'start' to the near edge", 0, 4, { align: "start" }, 120],
+      ["align 'end' to the far edge", 0, 4, { align: "end" }, 50],
+      ["align 'center' to the middle", 0, 4, { align: "center" }, 85],
+      ["align 'start' for a visible row", 0, 1, { align: "start" }, 30],
+      ["align 'start' clamped at the far end", 0, 7, { align: "start" }, 140],
+      ["align 'end' clamped at the near end", 100, 0, { align: "end" }, 0],
+    ] as const)("scrolls %s", (_name, from, row, options, expected) => {
       const onScroll = vi.fn();
       const { sv, rowsArr } = buildScrollView(8, { onScroll });
-      sv.scrollIntoView(rowsArr[1]!);
-      expect(sv.scrollOffset).toBe(0);
-      expect(onScroll).not.toHaveBeenCalled();
-      sv.destroy();
-    });
+      sv.scrollTo(from);
+      onScroll.mockClear();
 
-    it("keeps padding between the row and the edge it reaches", () => {
-      const { sv, rowsArr } = buildScrollView(8);
-      // Row 4 ends at 150; 10px clear of the bottom edge puts it at 60.
-      sv.scrollIntoView(rowsArr[4]!, { padding: 10 });
-      expect(sv.scrollOffset).toBe(60);
+      sv.scrollIntoView(rowsArr[row]!, options);
 
-      // Coming back the other way, row 4 starts at 120 and wants 10px clear
-      // of the top edge.
-      sv.scrollTo(140);
-      sv.scrollIntoView(rowsArr[4]!, { padding: 10 });
-      expect(sv.scrollOffset).toBe(110);
-      sv.destroy();
-    });
-
-    it("align 'start' puts the row at the near edge", () => {
-      const { sv, rowsArr } = buildScrollView(8);
-      sv.scrollIntoView(rowsArr[4]!, { align: "start" });
-      expect(sv.scrollOffset).toBe(120);
-      sv.destroy();
-    });
-
-    it("align 'end' puts the row at the far edge", () => {
-      const { sv, rowsArr } = buildScrollView(8);
-      sv.scrollIntoView(rowsArr[4]!, { align: "end" });
-      expect(sv.scrollOffset).toBe(50);
-      sv.destroy();
-    });
-
-    it("align 'center' puts the row in the middle of the viewport", () => {
-      const { sv, rowsArr } = buildScrollView(8);
-      // Row 4's centre sits at 135; the viewport's is 50px from its top.
-      sv.scrollIntoView(rowsArr[4]!, { align: "center" });
-      expect(sv.scrollOffset).toBe(85);
-      sv.destroy();
-    });
-
-    it("align 'start' moves a row that is already visible", () => {
-      const { sv, rowsArr } = buildScrollView(8);
-      sv.scrollIntoView(rowsArr[1]!, { align: "start" });
-      expect(sv.scrollOffset).toBe(30);
+      expect(sv.scrollOffset).toBe(expected);
+      expect(onScroll).toHaveBeenCalledTimes(expected === from ? 0 : 1);
       sv.destroy();
     });
 
@@ -773,17 +683,6 @@ describe("UIScrollView", () => {
       sv.scrollTo(30);
       sv.scrollIntoView(card);
       expect(sv.scrollOffset).toBe(50);
-      sv.destroy();
-    });
-
-    it("clamps at both ends of the scroll range", () => {
-      const { sv, rowsArr } = buildScrollView(8);
-      sv.scrollIntoView(rowsArr[7]!, { align: "start" });
-      expect(sv.scrollOffset).toBe(sv.maxScroll);
-
-      sv.scrollTo(100);
-      sv.scrollIntoView(rowsArr[0]!, { align: "end" });
-      expect(sv.scrollOffset).toBe(0);
       sv.destroy();
     });
 
@@ -982,123 +881,8 @@ interface MockContainerLike {
   mask: unknown;
 }
 
+// The focus props every widget shares are covered in focus-props.test.ts.
 describe("UIScrollView focus", () => {
-  // An outline is drawn only where one is asked for, so these boxes are
-  // measured against the outline a game asks for once for the whole UI.
-  beforeEach(() => setUIFocusStyle({}));
-  afterEach(() => setUIFocusStyle(undefined));
-
-  /** The clipped viewport, which is where the pointer listeners sit. */
-  const emitOn = (sv: UIScrollView, event: string, payload?: unknown): void =>
-    (
-      sv.displayObject as unknown as { emit(e: string, p?: unknown): void }
-    ).emit(event, payload);
-
-  it("stays out of focus navigation by default", () => {
-    const sv = new UIScrollView({ width: 200, height: 100 });
-
-    expect(getFocusState(sv)?.focusable).toBe(false);
-    sv.destroy();
-  });
-
-  /** The outline a focused element draws, or `undefined` before it takes one. */
-  function outlineOf(element: {
-    displayObject: unknown;
-  }): InstanceType<typeof mocks.MockGraphics> | undefined {
-    const children = (
-      element.displayObject as unknown as InstanceType<
-        typeof mocks.MockContainer
-      >
-    ).children;
-    return children.find(
-      (child): child is InstanceType<typeof mocks.MockGraphics> =>
-        child instanceof mocks.MockGraphics && child.measurable === false,
-    );
-  }
-
-  it("joins focus navigation and reports focus changes", () => {
-    const onFocusChange = vi.fn();
-    const sv = new UIScrollView({
-      width: 200,
-      height: 100,
-      focusable: true,
-      onFocusChange,
-    });
-
-    const state = getFocusState(sv);
-    expect(state?.focusable).toBe(true);
-    state?._setFocused(true);
-
-    expect(onFocusChange).toHaveBeenCalledWith(true);
-    sv.destroy();
-  });
-
-  it("outlines a focusable view at its viewport box", () => {
-    const sv = new UIScrollView({ width: 200, height: 100, focusable: true });
-    getFocusState(sv)?._setFocused(true);
-
-    sv.yogaNode.calculateLayout(200, 100, Direction.LTR);
-    sv.applyLayout();
-
-    expect(outlineOf(sv)?.lastRect).toMatchObject({
-      x: 1,
-      y: 1,
-      width: 198,
-      height: 98,
-    });
-    sv.destroy();
-  });
-
-  it("takes the focus props an update carries", () => {
-    const sv = new UIScrollView({ width: 200, height: 100 });
-
-    sv.update({ focusable: true, focusId: "saves" });
-
-    expect(getFocusState(sv)?.focusable).toBe(true);
-    expect(getFocusState(sv)?.id).toBe("saves");
-    sv.destroy();
-  });
-
-  it("asks for hover focus while the pointer is over the viewport", () => {
-    const sv = new UIScrollView({ width: 200, height: 100, focusable: true });
-    takePointerRequest();
-
-    emitOn(sv, "pointerover");
-
-    expect(takePointerRequest()?.trigger).toBe("hover");
-    sv.destroy();
-  });
-
-  it("asks for press focus when the pointer presses the viewport", () => {
-    const sv = new UIScrollView({ width: 200, height: 100, focusable: true });
-    takePointerRequest();
-
-    // The drag listener reads the same press this request rides on.
-    emitOn(sv, "pointerdown", { global: { x: 0, y: 0 } });
-
-    const request = takePointerRequest();
-    expect(request?.element).toBe(sv);
-    expect(request?.trigger).toBe("press");
-    sv.destroy();
-  });
-
-  it("reports its focus state to the Inspector", () => {
-    const sv = new UIScrollView({ width: 200, height: 100, focusable: true });
-
-    expect(sv._inspectState()).toEqual({ focused: false, focusable: true });
-    getFocusState(sv)?._setFocused(true);
-    expect(sv._inspectState()).toEqual({ focused: true, focusable: true });
-    sv.destroy();
-  });
-
-  it("leaves focus navigation when it is destroyed", () => {
-    const sv = new UIScrollView({ width: 200, height: 100, focusable: true });
-
-    sv.destroy();
-
-    expect(getFocusState(sv)).toBeUndefined();
-  });
-
   it("is a candidate a scope still walks into", () => {
     const host = new UIPanel({ width: 200, height: 100 });
     const sv = new UIScrollView({ width: 200, height: 100, focusable: true });
@@ -1112,8 +896,7 @@ describe("UIScrollView focus", () => {
       {},
     );
 
-    // The view answers to focus itself, and the walk carries on into the rows
-    // it holds, so panning the list and picking a row are both reachable.
+    // The view takes focus itself, and the walk carries on into its rows.
     expect(scope.candidates).toEqual([sv, row]);
 
     scope._destroy();

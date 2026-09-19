@@ -1,161 +1,19 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 
-const { mocks } = vi.hoisted(() => {
+vi.hoisted(() => {
   // @pixi/ui reads navigator at import time — stub it for Node
   if (typeof globalThis.navigator === "undefined") {
     (globalThis as unknown as { navigator: { userAgent: string } }).navigator =
       { userAgent: "" };
   }
-  class MockContainer {
-    children: MockContainer[] = [];
-    position = {
-      x: 0,
-      y: 0,
-      set(ax: number, ay: number) {
-        this.x = ax;
-        this.y = ay;
-      },
-    };
-    scale = { x: 1, y: 1 };
-    rotation = 0;
-    visible = true;
-    alpha = 1;
-    parent: MockContainer | null = null;
-    sortableChildren = false;
-    zIndex = 0;
-    label = "";
-    destroyed = false;
-    eventMode = "auto";
-    cursor = "default";
-    mask: MockContainer | null = null;
-    private _listeners = new Map<string, Set<(...args: unknown[]) => void>>();
-
-    addChild(child: MockContainer): MockContainer {
-      this.children.push(child);
-      child.parent = this;
-      return child;
-    }
-
-    addChildAt(child: MockContainer, index: number): MockContainer {
-      this.children.splice(index, 0, child);
-      child.parent = this;
-      return child;
-    }
-
-    removeChild(child: MockContainer): MockContainer {
-      const idx = this.children.indexOf(child);
-      if (idx !== -1) {
-        this.children.splice(idx, 1);
-        child.parent = null;
-      }
-      return child;
-    }
-
-    removeChildAt(index: number): MockContainer {
-      const child = this.children[index];
-      if (child) {
-        this.children.splice(index, 1);
-        child.parent = null;
-      }
-      return child!;
-    }
-
-    removeFromParent(): void {
-      this.parent?.removeChild(this);
-    }
-
-    on(event: string, fn: (...args: unknown[]) => void): this {
-      if (!this._listeners.has(event)) this._listeners.set(event, new Set());
-      this._listeners.get(event)!.add(fn);
-      return this;
-    }
-
-    emit(event: string): void {
-      const listeners = this._listeners.get(event);
-      if (listeners) {
-        for (const fn of listeners) fn();
-      }
-    }
-
-    destroy(): void {
-      this.destroyed = true;
-      this.removeFromParent();
-    }
-
-    off(event: string, fn: (...args: unknown[]) => void): this {
-      this._listeners.get(event)?.delete(fn);
-      return this;
-    }
-
-    setMask(opts: { mask: MockContainer | null; inverse?: boolean }): void {
-      this.mask = opts.mask;
-    }
-  }
-
-  class MockGraphics extends MockContainer {
-    clear(): MockGraphics {
-      return this;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    rect(...args: unknown[]): MockGraphics {
-      return this;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    roundRect(...args: unknown[]): MockGraphics {
-      return this;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    fill(...args: unknown[]): MockGraphics {
-      return this;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    stroke(...args: unknown[]): MockGraphics {
-      return this;
-    }
-  }
-
-  class MockText extends MockContainer {
-    text: string;
-    style: Record<string, unknown>;
-    width: number;
-    height: number;
-    anchor = {
-      x: 0,
-      y: 0,
-      set(ax: number, ay: number) {
-        this.x = ax;
-        this.y = ay;
-      },
-    };
-
-    constructor(opts?: { text?: string; style?: Record<string, unknown> }) {
-      super();
-      this.text = opts?.text ?? "";
-      this.style = opts?.style ?? {};
-      this.width = 50;
-      this.height = 14;
-    }
-  }
-
-  class MockRectangle {
-    constructor(
-      public x = 0,
-      public y = 0,
-      public width = 0,
-      public height = 0,
-    ) {}
-  }
-
-  return { mocks: { MockContainer, MockGraphics, MockText, MockRectangle } };
 });
 
-vi.mock("pixi.js", () => ({
-  Container: mocks.MockContainer,
-  Graphics: mocks.MockGraphics,
-  Text: mocks.MockText,
-  Rectangle: mocks.MockRectangle,
-}));
+vi.mock(
+  "pixi.js",
+  async () => (await import("../../ui/src/test-pixi.js")).pixiMock,
+);
 
+import { MockContainer } from "../../ui/src/test-pixi.js";
 import Yoga from "yoga-layout";
 import {
   setYoga,
@@ -188,11 +46,11 @@ beforeAll(() => {
 });
 
 describe("reconciler", () => {
-  let container: InstanceType<typeof mocks.MockContainer>;
+  let container: MockContainer;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    container = new mocks.MockContainer();
+    container = new MockContainer();
   });
 
   it("createRoot returns render and unmount", () => {
@@ -553,7 +411,7 @@ describe("reconciler", () => {
     root.render(createElement(Panel, { onHover }));
 
     const panel = getRootInstances(container as never)![0] as unknown as {
-      displayObject: InstanceType<typeof mocks.MockContainer>;
+      displayObject: MockContainer;
     };
     panel.displayObject.emit("pointerover");
     panel.displayObject.emit("pointerout");
@@ -635,7 +493,7 @@ describe("reconciler dev-warnings", () => {
   // once-per-type dedupe doesn't collide with other suites.
   class SilentLeafWidget {
     readonly yogaNode = createYogaNode();
-    private readonly _do = new mocks.MockContainer();
+    private readonly _do = new MockContainer();
     get displayObject(): never {
       return this._do as never;
     }
@@ -648,7 +506,7 @@ describe("reconciler dev-warnings", () => {
 
   it("warns once when JSX children are appended to a non-container leaf", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const container = new mocks.MockContainer();
+    const container = new MockContainer();
     const root = createRoot(container as never);
 
     root.render(
@@ -670,7 +528,7 @@ describe("reconciler dev-warnings", () => {
 
   it("destroys a child rendered under a non-container leaf when it is removed", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const container = new mocks.MockContainer();
+    const container = new MockContainer();
     const root = createRoot(container as never);
     const destroySpy = vi.spyOn(UIPanel.prototype, "destroy");
 
@@ -696,7 +554,7 @@ describe("reconciler dev-warnings", () => {
 
   describe("prop removal (commitUpdate diff)", () => {
     it("resets a removed prop to its default instead of leaving the old value", () => {
-      const container = new mocks.MockContainer();
+      const container = new MockContainer();
       const root = createRoot(container as never);
 
       const withBg = createElement("ui-element", {
@@ -728,7 +586,7 @@ describe("reconciler dev-warnings", () => {
     });
 
     it("resets a removed onClick handler instead of leaving it bound", () => {
-      const container = new mocks.MockContainer();
+      const container = new MockContainer();
       const root = createRoot(container as never);
       const onClick = vi.fn();
 
@@ -745,7 +603,7 @@ describe("reconciler dev-warnings", () => {
   describe("bare text child warning", () => {
     it("warns once when a raw string/number is passed where createTextInstance is hit", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const container = new mocks.MockContainer();
+      const container = new MockContainer();
       const root = createRoot(container as never);
 
       // Panel's underlying UIElement has no addElement matching a bare-text
@@ -763,7 +621,7 @@ describe("reconciler dev-warnings", () => {
 
   describe("bg shorthand alias", () => {
     it("bg styles the panel same as background", () => {
-      const container = new mocks.MockContainer();
+      const container = new MockContainer();
       const root = createRoot(container as never);
 
       root.render(createElement(Panel, { bg: { color: 0x00ff00 } }));
@@ -776,7 +634,7 @@ describe("reconciler dev-warnings", () => {
 
     it("canonical background wins over bg, with a once-per-type dev warning", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const container = new mocks.MockContainer();
+      const container = new MockContainer();
       const root = createRoot(container as never);
 
       // @ts-expect-error — intentionally passing both for the collision test
@@ -800,7 +658,7 @@ describe("reconciler dev-warnings", () => {
     });
 
     it("removing bg clears the background, same as removing background directly", () => {
-      const container = new mocks.MockContainer();
+      const container = new MockContainer();
       const root = createRoot(container as never);
 
       root.render(createElement(Panel, { bg: { color: 0x00ff00 } }));
@@ -816,7 +674,7 @@ describe("reconciler dev-warnings", () => {
       // PixiProgressBar's `bg` is a required PixiViewType, not a background
       // alias — the reconciler must never touch it. It has no `_bgAlias`
       // marker, so createInstance/commitUpdate pass `bg` straight through.
-      const container = new mocks.MockContainer();
+      const container = new MockContainer();
       const root = createRoot(container as never);
       const bgView = "some-texture-path";
 
@@ -837,103 +695,54 @@ describe("reconciler dev-warnings", () => {
   });
 
   describe("focus props", () => {
-    /** The single root element the last render committed. */
-    function onlyInstance<T>(
-      container: InstanceType<typeof mocks.MockContainer>,
-    ): T {
-      return getRootInstances(container as never)![0] as unknown as T;
-    }
-
-    it("forwards focusable to the underlying element", () => {
-      const container = new mocks.MockContainer();
+    it("forwards focusable, and restores the element's default when it is dropped", () => {
+      const container = new MockContainer();
       const root = createRoot(container as never);
+      const button = (): UIButtonNode =>
+        getRootInstances(container as never)![0] as UIButtonNode;
 
       root.render(createElement(Button, { focusable: false }, "Upload"));
+      expect(button().focusable).toBe(false);
 
-      expect(onlyInstance<UIButtonNode>(container).focusable).toBe(false);
-    });
-
-    it("restores the element's own default when focusable is dropped", () => {
-      const container = new mocks.MockContainer();
-      const root = createRoot(container as never);
-
-      root.render(createElement(Button, { focusable: false }, "Upload"));
       root.render(createElement(Button, {}, "Upload"));
-
-      expect(onlyInstance<UIButtonNode>(container).focusable).toBe(true);
+      expect(button().focusable).toBe(true);
     });
 
-    it("maps focusBg onto the button's focused background", () => {
-      const container = new mocks.MockContainer();
-      const root = createRoot(container as never);
+    it.each([
+      ["a button", Button],
+      ["a panel", Panel],
+    ] as const)(
+      "maps focusBg onto %s's focused background, re-derives it, and clears it",
+      (_name, component) => {
+        const container = new MockContainer();
+        const root = createRoot(container as never);
+        const focusBgOpts = (): { color: number } | undefined =>
+          (
+            getRootInstances(container as never)![0] as unknown as {
+              focusBgOpts: { color: number } | undefined;
+            }
+          ).focusBgOpts;
+        const bg = { color: 0x101018 };
 
-      root.render(
-        createElement(
-          Button,
-          { bg: { color: 0x101018 }, focusBg: { color: 0x334455 } },
-          "Resume",
-        ),
-      );
-
-      const btn = onlyInstance<{ focusBgOpts: { color: number } }>(container);
-      expect(btn.focusBgOpts.color).toBe(0x334455);
-    });
-
-    it("re-derives the focused background when focusBg changes", () => {
-      const container = new mocks.MockContainer();
-      const root = createRoot(container as never);
-      const render = (focusBg: number): void => {
         root.render(
-          createElement(
-            Button,
-            { bg: { color: 0x101018 }, focusBg: { color: focusBg } },
-            "Resume",
-          ),
+          createElement(component, { bg, focusBg: { color: 0x334455 } }),
         );
-      };
+        expect(focusBgOpts()?.color).toBe(0x334455);
 
-      render(0x334455);
-      render(0x667788);
+        root.render(
+          createElement(component, { bg, focusBg: { color: 0x667788 } }),
+        );
+        expect(focusBgOpts()?.color).toBe(0x667788);
 
-      const btn = onlyInstance<{ focusBgOpts: { color: number } }>(container);
-      expect(btn.focusBgOpts.color).toBe(0x667788);
-    });
-
-    it("maps focusBg onto a panel's focused background", () => {
-      const container = new mocks.MockContainer();
-      const root = createRoot(container as never);
-
-      root.render(
-        createElement(Panel, {
-          bg: { color: 0x101018 },
-          focusBg: { color: 0x2c4a6f },
-        }),
-      );
-
-      const panel = onlyInstance<{ focusBgOpts: { color: number } }>(container);
-      expect(panel.focusBgOpts.color).toBe(0x2c4a6f);
-    });
-
-    it("clears a panel's focused fill when focusBg is dropped", () => {
-      const container = new mocks.MockContainer();
-      const root = createRoot(container as never);
-
-      root.render(
-        createElement(Panel, {
-          bg: { color: 0x101018 },
-          focusBg: { color: 0x2c4a6f },
-        }),
-      );
-      root.render(createElement(Panel, { bg: { color: 0x101018 } }));
-
-      const panel = onlyInstance<{ focusBgOpts: unknown }>(container);
-      expect(panel.focusBgOpts).toBeUndefined();
-    });
+        root.render(createElement(component, { bg }));
+        expect(focusBgOpts()).toBeUndefined();
+      },
+    );
   });
 
   describe("derived prop types accept consumeInput (item 4 drift fix)", () => {
     it("Checkbox forwards consumeInput to the underlying container", () => {
-      const container = new mocks.MockContainer();
+      const container = new MockContainer();
       const root = createRoot(container as never);
 
       root.render(createElement(Checkbox, { consumeInput: false }));
@@ -944,7 +753,7 @@ describe("reconciler dev-warnings", () => {
     });
 
     it("ScrollView forwards consumeInput to the underlying viewport", () => {
-      const container = new mocks.MockContainer();
+      const container = new MockContainer();
       const root = createRoot(container as never);
 
       root.render(createElement(ScrollView, { consumeInput: false }));

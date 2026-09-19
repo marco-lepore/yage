@@ -12,6 +12,8 @@ export default defineConfig({
     passWithNoTests: true,
     coverage: {
       provider: "v8",
+      // Test doubles shared between test files are not source to cover.
+      exclude: ["src/**/test-*.ts"],
     },
   },
 });

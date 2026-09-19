@@ -1,65 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Phase, SceneManagerKey } from "@yagejs/core";
 import type { EngineContext, Scene } from "@yagejs/core";
-import type { DisplayContainer } from "@yagejs/renderer";
-import { MockContainer } from "./test-helpers.js";
-import type { UIContainerElement, UIElement } from "./types.js";
-import { FocusState } from "./focus/FocusState.js";
 import {
   requestHoverFocus,
   takePointerRequest,
 } from "./focus/pointer-request.js";
-import { UIFocusScope } from "./focus/UIFocusScope.js";
+import type { UIFocusScope } from "./focus/UIFocusScope.js";
 import { UIFocusStack, UIFocusStackKey } from "./focus/UIFocusStack.js";
+import { TestNode, scopeOver } from "./focus/test-nodes.js";
 import { UIFocusSystem } from "./UIFocusSystem.js";
-
-/** A stand-in element: a container, a laid-out box, and optional focus. */
-class TestNode implements UIContainerElement {
-  readonly container = new MockContainer();
-  readonly children: UIElement[] = [];
-
-  get displayObject(): DisplayContainer {
-    return this.container as unknown as DisplayContainer;
-  }
-
-  get yogaNode(): UIElement["yogaNode"] {
-    return {
-      getComputedWidth: () => 100,
-      getComputedHeight: () => 20,
-    } as unknown as UIElement["yogaNode"];
-  }
-
-  get visible(): boolean {
-    return this.container.visible;
-  }
-
-  set visible(value: boolean) {
-    this.container.visible = value;
-  }
-
-  focusable(): this {
-    new FocusState(this, {}, { focusableByDefault: true });
-    return this;
-  }
-
-  add<T extends TestNode>(child: T): T {
-    this.children.push(child);
-    this.container.addChild(child.container);
-    return child;
-  }
-
-  addElement(child: UIElement): void {
-    this.children.push(child);
-  }
-
-  removeElement(): void {}
-
-  insertElementBefore(): void {}
-
-  update(): void {}
-
-  destroy(): void {}
-}
 
 /** One scene holding one focus scope over one focusable row. */
 function sceneWithScope(): {
@@ -70,10 +19,7 @@ function sceneWithScope(): {
 } {
   const panel = new TestNode();
   panel.add(new TestNode()).focusable();
-  const scope = new UIFocusScope(
-    { displayObject: panel.displayObject, roots: () => panel.children },
-    {},
-  );
+  const scope = scopeOver(panel);
   const stack = new UIFocusStack();
   stack._register(scope);
   return { scene: sceneOf(stack), stack, scope, panel };
@@ -119,9 +65,18 @@ function makeContext(
   return { context, activeScenesReads: () => activeReads };
 }
 
+/** A system registered against `scenes`. */
+function systemOver(
+  scenes: Scene[],
+  options: ContextOptions = {},
+): UIFocusSystem {
+  const system = new UIFocusSystem();
+  system.onRegister(makeContext(scenes, options).context);
+  return system;
+}
+
 beforeEach(() => {
-  // The pointer request cell is module-level; a request left by one test is not the
-  // next one's.
+  // The pointer request cell is module-level.
   takePointerRequest();
   vi.restoreAllMocks();
 });
@@ -133,12 +88,10 @@ describe("UIFocusSystem", () => {
     expect(system.priority).toBe(202);
   });
 
-  it("drives only the topmost scene holding a shown scope", () => {
+  it("drives only the topmost scene holding a shown scope, past one with no stack", () => {
     const bottom = sceneWithScope();
     const top = sceneWithScope();
-    const system = new UIFocusSystem();
-    const { context } = makeContext([bottom.scene, top.scene]);
-    system.onRegister(context);
+    const system = systemOver([bottom.scene, top.scene, sceneOf(undefined)]);
 
     system.update();
 
@@ -151,9 +104,7 @@ describe("UIFocusSystem", () => {
     const bottom = sceneWithScope();
     const top = sceneWithScope();
     top.panel.visible = false;
-    const system = new UIFocusSystem();
-    const { context } = makeContext([bottom.scene, top.scene]);
-    system.onRegister(context);
+    const system = systemOver([bottom.scene, top.scene]);
 
     system.update();
 
@@ -176,9 +127,7 @@ describe("UIFocusSystem", () => {
   it("observes a scene whose stack it does not drive", () => {
     const bottom = sceneWithScope();
     const top = sceneWithScope();
-    const system = new UIFocusSystem();
-    const { context } = makeContext([bottom.scene, top.scene]);
-    system.onRegister(context);
+    const system = systemOver([bottom.scene, top.scene]);
     system.update();
 
     // The bottom scene's menu is shown while the scene above holds input.
@@ -193,29 +142,10 @@ describe("UIFocusSystem", () => {
     expect(bottom.stack.active).toBe(bottom.scope);
   });
 
-  it("keeps walking past a scene with no focus stack", () => {
-    const bottom = sceneWithScope();
-    const top = sceneWithScope();
-    const system = new UIFocusSystem();
-    const { context } = makeContext([
-      bottom.scene,
-      sceneOf(undefined),
-      top.scene,
-    ]);
-    system.onRegister(context);
-
-    system.update();
-
-    expect(top.stack.active).toBe(top.scope);
-    expect(bottom.stack.active).toBeNull();
-  });
-
   it("warns once when no input manager is registered", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const scene = sceneWithScope();
-    const system = new UIFocusSystem();
-    const { context } = makeContext([scene.scene]);
-    system.onRegister(context);
+    const system = systemOver([scene.scene]);
 
     system.update();
     system.update();
@@ -229,15 +159,8 @@ describe("UIFocusSystem", () => {
     const panel = new TestNode();
     panel.add(new TestNode()).focusable();
     const stack = new UIFocusStack();
-    stack._register(
-      new UIFocusScope(
-        { displayObject: panel.displayObject, roots: () => panel.children },
-        { input: null },
-      ),
-    );
-    const system = new UIFocusSystem();
-    const { context } = makeContext([sceneOf(stack)]);
-    system.onRegister(context);
+    stack._register(scopeOver(panel, { input: null }));
+    const system = systemOver([sceneOf(stack)]);
 
     system.update();
 
@@ -248,9 +171,7 @@ describe("UIFocusSystem", () => {
     const scene = sceneWithScope();
     scene.panel.visible = false;
     const hovered = new TestNode().focusable();
-    const system = new UIFocusSystem();
-    const { context } = makeContext([scene.scene]);
-    system.onRegister(context);
+    const system = systemOver([scene.scene]);
     requestHoverFocus(hovered);
 
     system.update();
@@ -266,9 +187,7 @@ describe("UIFocusSystem", () => {
       isJustPressed: () => false,
       hasAction: () => true,
     };
-    const system = new UIFocusSystem();
-    const { context } = makeContext([scene.scene], { input });
-    system.onRegister(context);
+    const system = systemOver([scene.scene], { input });
 
     system.update();
 

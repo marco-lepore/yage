@@ -20,12 +20,8 @@ beforeAll(() => {
 });
 
 /**
- * A leaf that answers the pointer across one box, the way a panel does.
- *
- * The box is the leaf's own hit area rather than a position, because Pixi
- * composes the transforms these points would be read through while it draws
- * a frame, and no frame is drawn here. Every container therefore sits at the
- * origin and each box says where it is.
+ * A leaf that answers the pointer across one box. The box is its hit area, not
+ * a position: no frame is drawn here, so Pixi composes no transforms.
  */
 function hitSurface(x: number, y: number, size = 20): Container {
   const container = new Container();
@@ -70,38 +66,24 @@ function pointerEvent(
 }
 
 describe("createPointerBlocker", () => {
-  it("claims the pointer for the UI, so a press on it never reaches the game", () => {
+  it("claims the pointer for the UI until the mark is cleared", () => {
     const blocker = createPointerBlocker();
-
     expect(isPointerConsumeContainer(blocker)).toBe(true);
     expect(blocker.eventMode).toBe("static");
-  });
-
-  it("gives the mark back, so a torn-down blocker claims nothing", () => {
-    const blocker = createPointerBlocker();
 
     clearConsumeInput(blocker);
-
     expect(isPointerConsumeContainer(blocker)).toBe(false);
   });
 
-  it("answers the hit test wherever it is asked", () => {
+  it("answers the hit test wherever it is asked, and draws nothing", () => {
     const root = new Container();
+    root.addChild(hitSurface(0, 0, 30));
+    const before = root.getLocalBounds().rectangle.clone();
     const blocker = createPointerBlocker();
-    root.addChild(blocker as Container);
+    root.addChildAt(blocker as Container, 0);
 
-    expect(hitAt(root, 0, 0)).toBe(blocker);
     expect(hitAt(root, 4000, -9000)).toBe(blocker);
-  });
-
-  it("draws nothing, so a parent measures the same box with it or without", () => {
-    const parent = new Container();
-    parent.addChild(hitSurface(0, 0, 30));
-    const before = parent.getLocalBounds().rectangle.clone();
-
-    parent.addChildAt(createPointerBlocker() as Container, 0);
-
-    expect(parent.getLocalBounds().rectangle).toEqual(before);
+    expect(root.getLocalBounds().rectangle).toEqual(before);
   });
 });
 
@@ -131,35 +113,41 @@ describe("a pointer blocker under a dialog", () => {
     return { root, behind, dialog, dialogRow, blocker };
   }
 
-  it("swallows a point over the menu behind it", () => {
-    const { root, behind, blocker } = buildTree();
+  /** Keep the dialog inside the 100 x 100 box at (200, 200). */
+  function clip(dialog: Container): void {
+    const mask = new Graphics();
+    mask.rect(200, 200, 100, 100);
+    mask.fill({ color: 0xffffff });
+    dialog.addChild(mask);
+    dialog.setMask({ mask });
+  }
+
+  /** Record every pointer event the menu row hears. */
+  function listen(behind: Container): string[] {
+    const heard: string[] = [];
+    for (const type of POINTER_EVENTS) {
+      behind.on(type as "pointerdown", () => heard.push(type));
+    }
+    return heard;
+  }
+
+  it("swallows every point but the dialog's own rows, while the dialog shows", () => {
+    const { root, behind, dialog, dialogRow, blocker } = buildTree();
 
     expect(hitAt(root, 10, 10)).toBe(blocker);
-    expect(hitAt(root, 10, 10)).not.toBe(behind);
-  });
+    expect(hitAt(root, 290, 290)).toBe(blocker);
+    expect(hitAt(root, 210, 210)).toBe(dialogRow);
 
-  it("leaves the menu answering once the blocker is taken away", () => {
-    const { root, behind, blocker } = buildTree();
+    dialog.visible = false;
+    expect(hitAt(root, 10, 10)).toBe(behind);
 
+    dialog.visible = true;
     blocker.removeFromParent();
-
     expect(hitAt(root, 10, 10)).toBe(behind);
   });
 
-  it("leaves the dialog's own rows answering", () => {
-    const { root, dialogRow } = buildTree();
-
-    expect(hitAt(root, 210, 210)).toBe(dialogRow);
-  });
-
-  it("swallows the gap inside the dialog that no row of its own covers", () => {
-    const { root, blocker } = buildTree();
-
-    expect(hitAt(root, 290, 290)).toBe(blocker);
-  });
-
   it("blocks only what is outside the scope it sits in", () => {
-    const { root, dialog, dialogRow } = buildTree();
+    const { root, dialog } = buildTree();
     // A second blocker, for a scope nested inside the dialog.
     const nested = new Container();
     dialog.addChild(nested);
@@ -168,30 +156,16 @@ describe("a pointer blocker under a dialog", () => {
     const innerRow = hitSurface(210, 210, 5);
     nested.addChild(innerRow);
 
-    // The nested scope's own row keeps the point it covers.
     expect(hitAt(root, 212, 212)).toBe(innerRow);
-    // Everything around it, the dialog's own row included, goes to the
-    // nested blocker rather than to the blocker under the dialog.
+    // The dialog's own row at (205, 205) goes to the nested blocker too.
     expect(hitAt(root, 205, 205)).toBe(inner);
     expect(hitAt(root, 10, 10)).toBe(inner);
-    expect(hitAt(root, 205, 205)).not.toBe(dialogRow);
-  });
-
-  it("stops answering while the subtree holding it is hidden", () => {
-    const { root, behind, dialog } = buildTree();
-
-    dialog.visible = false;
-
-    expect(hitAt(root, 10, 10)).toBe(behind);
   });
 
   it("ends a press the pointer began before it, without a click", () => {
     const { root, behind, dialog, blocker } = buildTree();
     blocker.removeFromParent();
-    const heard: string[] = [];
-    for (const type of POINTER_EVENTS) {
-      behind.on(type as "pointerdown", () => heard.push(type));
-    }
+    const heard = listen(behind);
     const boundary = new EventBoundary(root);
     boundary.mapEvent(pointerEvent(boundary, "pointermove", 10, 10));
     boundary.mapEvent(pointerEvent(boundary, "pointerdown", 10, 10));
@@ -202,66 +176,43 @@ describe("a pointer blocker under a dialog", () => {
     heard.length = 0;
     boundary.mapEvent(pointerEvent(boundary, "pointerup", 10, 10));
 
-    // The release the element hears is one that landed elsewhere, which the
-    // pointer path already refuses to turn into a click.
     expect(heard).toEqual(["pointerupoutside"]);
-  });
-
-  it("answers only inside a clip on the container holding it", () => {
-    const { root, behind, dialog, blocker } = buildTree();
-    // The dialog keeps its rows inside the 100 x 100 box at (200, 200), the
-    // way a panel that hides its overflow does.
-    const clip = new Graphics();
-    clip.rect(200, 200, 100, 100);
-    clip.fill({ color: 0xffffff });
-    dialog.addChild(clip);
-    dialog.setMask({ mask: clip });
-
-    // (250, 250) is inside the clip and on no row of the dialog's own.
-    expect(hitAt(root, 250, 250)).toBe(blocker);
-    // (10, 10) is outside it, on the menu row at (0, 0) — and the menu row is
-    // what answers, because Pixi reads the clip at the dialog and prunes the
-    // blocker with the rest of the subtree before its hit area is asked.
-    expect(hitAt(root, 10, 10)).toBe(behind);
-  });
-
-  it("answers everywhere from the far side of a clipped container", () => {
-    const { root, behind, dialog, dialogRow, blocker } = buildTree();
-    const clip = new Graphics();
-    clip.rect(200, 200, 100, 100);
-    clip.fill({ color: 0xffffff });
-    dialog.addChild(clip);
-    dialog.setMask({ mask: clip });
-    // Out of the clipped dialog and directly under it, where a modal scope
-    // seats it when something between its host and the screen clips.
-    root.addChildAt(blocker as Container, root.children.indexOf(dialog));
-
-    expect(hitAt(root, 10, 10)).toBe(blocker);
-    expect(hitAt(root, 10, 10)).not.toBe(behind);
-    // The dialog's own row, inside the clip, still answers for itself.
-    expect(hitAt(root, 210, 210)).toBe(dialogRow);
   });
 
   it("clears the look of an element hovered before it, on the next move", () => {
     const { root, behind, dialog, blocker } = buildTree();
     blocker.removeFromParent();
-    const heard: string[] = [];
-    for (const type of POINTER_EVENTS) {
-      behind.on(type as "pointerdown", () => heard.push(type));
-    }
+    const heard = listen(behind);
     const boundary = new EventBoundary(root);
     boundary.mapEvent(pointerEvent(boundary, "pointermove", 10, 10));
     expect(heard).toEqual(["pointerover"]);
 
+    // Pixi hit-tests on a pointer event only, so the hover look stays until
+    // the pointer moves.
     dialog.addChild(blocker as Container);
     heard.length = 0;
-    // The hover look stays until the pointer moves: Pixi hit-tests on a
-    // pointer event and on nothing else, so a player who reaches for the
-    // gamepad leaves a lit row behind the dialog.
-    expect(heard).toEqual([]);
-
     boundary.mapEvent(pointerEvent(boundary, "pointermove", 11, 11));
 
     expect(heard).toEqual(["pointerout"]);
+  });
+
+  it("answers only inside a clip on the container holding it", () => {
+    const { root, behind, dialog, blocker } = buildTree();
+    clip(dialog);
+
+    expect(hitAt(root, 250, 250)).toBe(blocker);
+    // Pixi reads the clip at the dialog and prunes the blocker with it.
+    expect(hitAt(root, 10, 10)).toBe(behind);
+  });
+
+  it("answers everywhere from the far side of a clipped container", () => {
+    const { root, dialog, dialogRow, blocker } = buildTree();
+    clip(dialog);
+    // Directly under the clipped dialog, where a modal scope seats it when
+    // something between its host and the screen clips.
+    root.addChildAt(blocker as Container, root.children.indexOf(dialog));
+
+    expect(hitAt(root, 10, 10)).toBe(blocker);
+    expect(hitAt(root, 210, 210)).toBe(dialogRow);
   });
 });

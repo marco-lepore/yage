@@ -24,9 +24,14 @@ import {
   SceneRenderTreeProviderKey,
 } from "@yagejs/renderer";
 import type {
+  DisplayContainer,
   SceneRenderTree,
   SceneRenderTreeProvider,
 } from "@yagejs/renderer";
+import type { Node as YogaNode } from "yoga-layout";
+import { createYogaNode } from "./yoga-helpers.js";
+import type { UIElement } from "./types.js";
+import type { UITreeContext } from "./internal/tree-context.js";
 
 // ---- Minimal mock container for test context ----
 
@@ -284,4 +289,46 @@ export function createUITestContext(): UITestContext {
 
 export function spawnEntityInScene(scene: Scene, name = "entity"): Entity {
   return scene.spawn(name);
+}
+
+/**
+ * A leaf that records the tree context its container hands it. The caller
+ * passes the display object, built from whichever `pixi.js` stand-in its file
+ * mocks.
+ */
+export class TreeContextProbe implements UIElement {
+  readonly yogaNode: YogaNode = createYogaNode();
+  received: UITreeContext | undefined;
+  /** How many times the tree has taken the context away. */
+  detachments = 0;
+
+  constructor(readonly displayObject: DisplayContainer) {}
+
+  get attached(): boolean {
+    return this.received !== undefined;
+  }
+
+  get visible(): boolean {
+    return this.displayObject.visible;
+  }
+
+  set visible(v: boolean) {
+    this.displayObject.visible = v;
+  }
+
+  update(): void {}
+
+  destroy(): void {
+    this.yogaNode.free();
+    this.displayObject.destroy();
+  }
+
+  _attachToTree(context: UITreeContext): void {
+    this.received = context;
+  }
+
+  _detachFromTree(): void {
+    this.received = undefined;
+    this.detachments += 1;
+  }
 }

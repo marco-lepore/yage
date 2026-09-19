@@ -84,64 +84,33 @@ describe("UIPlugin default text style lifecycle", () => {
 });
 
 describe("UIPlugin focus style lifecycle", () => {
-  it("sets the focus outline style on install and restores it on destroy", async () => {
-    setUIFocusStyle({ color: 0x111111 });
-    const plugin = new UIPlugin({ focusStyle: { color: 0x33ff88, width: 4 } });
+  const PRIOR = { color: 0x111111 };
 
-    await plugin.install(stubContext);
-    expect(getUIFocusStyle()).toEqual({ color: 0x33ff88, width: 4 });
+  it.each([
+    ["sets the style it was given", PRIOR, { color: 0x33ff88, width: 4 }],
+    ["sets a style over none", undefined, { color: 0x33ff88 }],
+    ["names no outline for a game that gave no style", PRIOR, undefined],
+    ["takes null as naming no outline", PRIOR, null],
+  ])(
+    "%s on install and restores the prior style on destroy",
+    async (_n, prior, focusStyle) => {
+      setUIFocusStyle(prior);
+      const plugin = new UIPlugin(
+        focusStyle === undefined ? {} : { focusStyle },
+      );
 
-    plugin.onDestroy();
-    expect(getUIFocusStyle()).toEqual({ color: 0x111111 });
+      await plugin.install(stubContext);
+      expect(getUIFocusStyle()).toEqual(focusStyle ?? undefined);
 
-    setUIFocusStyle(undefined);
-  });
-
-  it("restores to undefined when there was no prior style", async () => {
-    setUIFocusStyle(undefined);
-    const plugin = new UIPlugin({ focusStyle: { color: 0x33ff88 } });
-
-    await plugin.install(stubContext);
-    expect(getUIFocusStyle()).toEqual({ color: 0x33ff88 });
-
-    plugin.onDestroy();
-    expect(getUIFocusStyle()).toBeUndefined();
-  });
-
-  it("names no outline for a game that asked for no focus style", async () => {
-    setUIFocusStyle({ color: 0x111111 });
-    const plugin = new UIPlugin();
-
-    await plugin.install(stubContext);
-    expect(getUIFocusStyle()).toBeUndefined();
-
-    plugin.onDestroy();
-    setUIFocusStyle(undefined);
-  });
-
-  it("takes null as naming no outline", async () => {
-    setUIFocusStyle({ color: 0x111111 });
-    const plugin = new UIPlugin({ focusStyle: null });
-
-    await plugin.install(stubContext);
-    expect(getUIFocusStyle()).toBeUndefined();
-
-    plugin.onDestroy();
-    setUIFocusStyle(undefined);
-  });
+      plugin.onDestroy();
+      expect(getUIFocusStyle()).toEqual(prior);
+      setUIFocusStyle(undefined);
+    },
+  );
 });
 
 describe("UIPlugin focus stacks", () => {
-  it("gives a scene entering the stack its own focus stack", async () => {
-    const hooks = await installed();
-    const scene = makeScene();
-
-    hooks.beforeEnter?.(scene);
-
-    expect(scene._resolveScoped(UIFocusStackKey)).toBeInstanceOf(UIFocusStack);
-  });
-
-  it("gives each scene a separate stack", async () => {
+  it("gives each scene entering the stack a focus stack of its own", async () => {
     const hooks = await installed();
     const first = makeScene();
     const second = makeScene();
@@ -149,9 +118,11 @@ describe("UIPlugin focus stacks", () => {
     hooks.beforeEnter?.(first);
     hooks.beforeEnter?.(second);
 
+    expect(first._resolveScoped(UIFocusStackKey)).toBeInstanceOf(UIFocusStack);
     expect(first._resolveScoped(UIFocusStackKey)).not.toBe(
       second._resolveScoped(UIFocusStackKey),
     );
+    expect(makeScene()._resolveScoped(UIFocusStackKey)).toBeUndefined();
   });
 
   it("destroys the stack when the scene exits", async () => {
@@ -178,11 +149,6 @@ describe("UIPlugin focus stacks", () => {
     stack._drive(null);
 
     expect(stack.active).toBeNull();
-  });
-
-  it("leaves a scene that never entered without a stack", async () => {
-    await installed();
-    expect(makeScene()._resolveScoped(UIFocusStackKey)).toBeUndefined();
   });
 });
 

@@ -110,133 +110,82 @@ describe("InputPlugin", () => {
     expect(manager.isJustPressed("jump")).toBe(false);
   });
 
-  it("raises no action for a key typed into a focused text field", () => {
+  /** Installs the plugin with `forward` on KeyW and `back` on Escape. */
+  function installKeys(): InputManager {
     context = createContext();
-    plugin = new InputPlugin({ actions: { forward: ["KeyW"] } });
+    plugin = new InputPlugin({
+      actions: { forward: ["KeyW"], back: ["Escape"] },
+    });
     plugin.install(context);
-    const manager = context.resolve(InputManagerKey);
+    return context.resolve(InputManagerKey);
+  }
 
-    const field = document.createElement("input");
-    const note = document.createElement("div");
-    note.contentEditable = "true";
-    document.body.append(field, note);
+  /** Sends a bubbling key event at `target`, then drains the queue. */
+  function sendKey(
+    manager: InputManager,
+    target: EventTarget,
+    type: "keydown" | "keyup",
+    code: string,
+  ): void {
+    target.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }));
+    manager._drainInputQueue();
+  }
 
+  function makeElement(tag: string, type?: string): HTMLElement {
+    const element = document.createElement(tag);
+    if (type !== undefined) (element as HTMLInputElement).type = type;
+    if (tag === "div") element.contentEditable = "true";
+    return element;
+  }
+
+  it.each([
+    ["a text input", "input", undefined, false],
+    ["a textarea", "textarea", undefined, false],
+    ["a contenteditable element", "div", undefined, false],
+    ["a checkbox", "input", "checkbox", true],
+  ])("a key sent to %s raises the action: %s", (_name, tag, type, raised) => {
+    const manager = installKeys();
+    const element = makeElement(tag, type);
+    document.body.append(element);
     try {
-      field.focus();
-      field.dispatchEvent(
-        new KeyboardEvent("keydown", { code: "KeyW", bubbles: true }),
-      );
-      manager._drainInputQueue();
-      expect(manager.isPressed("forward")).toBe(false);
-      expect(manager.isJustPressed("forward")).toBe(false);
-
-      note.focus();
-      note.dispatchEvent(
-        new KeyboardEvent("keydown", { code: "KeyW", bubbles: true }),
-      );
-      manager._drainInputQueue();
-      expect(manager.isPressed("forward")).toBe(false);
+      element.focus();
+      sendKey(manager, element, "keydown", "KeyW");
+      expect(manager.isPressed("forward")).toBe(raised);
+      expect(manager.isJustPressed("forward")).toBe(raised);
+      sendKey(manager, element, "keyup", "KeyW");
     } finally {
-      field.remove();
-      note.remove();
+      element.remove();
     }
   });
 
   it("raises no action for the key a text field left the page over", () => {
-    context = createContext();
-    plugin = new InputPlugin({ actions: { back: ["Escape"] } });
-    plugin.install(context);
-    const manager = context.resolve(InputManagerKey);
-
+    const manager = installKeys();
     const field = document.createElement("input");
     document.body.append(field);
-    // What `@pixi/ui`'s text input does to end an edit: its own listener on
-    // the hidden field blurs and removes it, so nothing is focused by the
-    // time the press reaches `window`.
+    // A text widget ends an edit by blurring and removing its field, so
+    // nothing is focused by the time the press reaches `window`.
     field.addEventListener("keydown", () => {
       field.blur();
       field.remove();
     });
 
-    try {
-      field.focus();
-      field.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          code: "Escape",
-          key: "Escape",
-          bubbles: true,
-        }),
-      );
-      manager._drainInputQueue();
-      expect(manager.isPressed("back")).toBe(false);
-      expect(manager.isJustPressed("back")).toBe(false);
-    } finally {
-      field.remove();
-    }
-  });
-
-  it("raises the action for the same key with nothing focused", () => {
-    context = createContext();
-    plugin = new InputPlugin({ actions: { forward: ["KeyW"] } });
-    plugin.install(context);
-    const manager = context.resolve(InputManagerKey);
-
-    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW" }));
-    manager._drainInputQueue();
-    expect(manager.isPressed("forward")).toBe(true);
-    expect(manager.isJustPressed("forward")).toBe(true);
-
-    window.dispatchEvent(new KeyboardEvent("keyup", { code: "KeyW" }));
-    manager._drainInputQueue();
-  });
-
-  it("raises the action for a key pressed while a checkbox holds focus", () => {
-    context = createContext();
-    plugin = new InputPlugin({ actions: { forward: ["KeyW"] } });
-    plugin.install(context);
-    const manager = context.resolve(InputManagerKey);
-
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    document.body.append(box);
-
-    try {
-      box.focus();
-      box.dispatchEvent(
-        new KeyboardEvent("keydown", { code: "KeyW", bubbles: true }),
-      );
-      manager._drainInputQueue();
-      expect(manager.isPressed("forward")).toBe(true);
-
-      box.dispatchEvent(
-        new KeyboardEvent("keyup", { code: "KeyW", bubbles: true }),
-      );
-      manager._drainInputQueue();
-    } finally {
-      box.remove();
-    }
+    field.focus();
+    sendKey(manager, field, "keydown", "Escape");
+    expect(manager.isPressed("back")).toBe(false);
+    expect(manager.isJustPressed("back")).toBe(false);
   });
 
   it("releases a key that was held when a text field took focus", () => {
-    context = createContext();
-    plugin = new InputPlugin({ actions: { forward: ["KeyW"] } });
-    plugin.install(context);
-    const manager = context.resolve(InputManagerKey);
-
-    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW" }));
-    manager._drainInputQueue();
+    const manager = installKeys();
+    sendKey(manager, window, "keydown", "KeyW");
     expect(manager.isPressed("forward")).toBe(true);
 
     const field = document.createElement("input");
     document.body.append(field);
-
     try {
       field.focus();
       manager._clearFrameState();
-      field.dispatchEvent(
-        new KeyboardEvent("keyup", { code: "KeyW", bubbles: true }),
-      );
-      manager._drainInputQueue();
+      sendKey(manager, field, "keyup", "KeyW");
       expect(manager.isPressed("forward")).toBe(false);
       expect(manager.isJustReleased("forward")).toBe(true);
     } finally {

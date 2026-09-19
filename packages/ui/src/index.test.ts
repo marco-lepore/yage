@@ -54,10 +54,7 @@ describe("@yagejs/ui entry point", () => {
   });
 
   it("carries every focus type on the barrel", () => {
-    // The annotations below are the check, and `tsconfig.contract.json` is
-    // what evaluates them: each type is read off the entry point, so a focus
-    // type the barrel stops exporting fails the type pass here rather than
-    // inside a game that annotates its menu options with it.
+    // The annotations are the check; `tsconfig.contract.json` evaluates them.
     const style: UIFocusStyle = { color: 0x8ab4ff, width: 2, radius: 4 };
     const box: UIFocusOutlineBox = { x: 0, y: 0, width: 96, height: 24 };
     const neighbors: FocusNeighbors = { up: "load", down: null };

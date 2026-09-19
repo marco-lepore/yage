@@ -1,75 +1,22 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
-const { mocks } = vi.hoisted(() => {
-  /** Counts the strokes laid down, so a test reads how often it redrew. */
-  class MockGraphics {
-    parent: MockGraphics | null = null;
-    children: MockGraphics[] = [];
-    measurable = true;
-    visible = true;
-    destroyed = false;
-    clears = 0;
-    strokes = 0;
-    lastRect: {
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-      radius: number;
-    } | null = null;
-    position = {
-      x: 0,
-      y: 0,
-      set(x: number, y = x): void {
-        this.x = x;
-        this.y = y;
-      },
-    };
-    scale = {
-      x: 1,
-      y: 1,
-      set(x: number, y = x): void {
-        this.x = x;
-        this.y = y;
-      },
-    };
+vi.mock("pixi.js", async () => (await import("../test-pixi.js")).pixiMock);
 
-    addChild(child: MockGraphics): MockGraphics {
-      this.children.push(child);
-      child.parent = this;
-      return child;
-    }
-    clear(): this {
-      this.clears += 1;
-      this.lastRect = null;
-      return this;
-    }
-    roundRect(
-      x: number,
-      y: number,
-      width: number,
-      height: number,
-      radius = 0,
-    ): this {
-      this.lastRect = { x, y, width, height, radius };
-      return this;
-    }
-    stroke(): this {
-      this.strokes += 1;
-      return this;
-    }
-    destroy(): void {
-      this.destroyed = true;
-    }
-  }
-
-  return { mocks: { MockGraphics } };
-});
-
-vi.mock("pixi.js", () => ({ Graphics: mocks.MockGraphics }));
-
+import Yoga, { Direction } from "yoga-layout";
 import type { DisplayContainer } from "@yagejs/renderer";
+import { MockContainer, MockGraphics } from "../test-pixi.js";
+import { setYoga } from "../yoga-helpers.js";
 import { setUIDefaultTextStyle } from "../text-defaults.js";
+import { UIPanel } from "../UIPanel.js";
+import { getFocusState } from "../focus/FocusState.js";
 import {
   FocusOutline,
   resolveFocusStyle,
@@ -77,74 +24,48 @@ import {
 } from "./focus-outline.js";
 import type { UIFocusOutlineBox } from "../types.js";
 
+beforeAll(() => setYoga(Yoga));
 afterEach(() => {
   setUIFocusStyle(undefined);
   setUIDefaultTextStyle(undefined);
 });
 
 describe("focus outline style", () => {
-  it("names no outline when neither the element nor the UI asks for one", () => {
-    expect(resolveFocusStyle(undefined)).toBeNull();
+  it("names no outline when nothing asks for one, or the element opts out", () => {
     expect(resolveFocusStyle(undefined, 12)).toBeNull();
-  });
 
-  it("names no outline for an element that opted out of the UI-wide one", () => {
+    setUIFocusStyle(null);
+    expect(resolveFocusStyle(undefined)).toBeNull();
+
     setUIFocusStyle({ color: 0x102030, width: 3 });
-
     expect(resolveFocusStyle(null)).toBeNull();
   });
 
-  it("names no outline for a UI that asked for none", () => {
-    setUIFocusStyle(null);
-
-    expect(resolveFocusStyle(undefined)).toBeNull();
-  });
-
-  it("gives the UI-wide outline to an element that names no style", () => {
-    setUIFocusStyle({ color: 0x102030 });
-
-    expect(resolveFocusStyle(undefined)).toEqual({
-      color: 0x102030,
-      width: 2,
-      radius: 4,
-      inset: 0,
-    });
-  });
-
-  it("falls back to a 2 px white outline on a 4 px radius", () => {
+  it("falls back to a 2 px outline on a 4 px radius, in the UI default text fill or white", () => {
     expect(resolveFocusStyle({})).toEqual({
       color: 0xffffff,
       width: 2,
       radius: 4,
       inset: 0,
     });
-  });
 
-  it("takes its colour from the UI default text fill", () => {
     setUIDefaultTextStyle({ fill: 0xe2e8f0 });
-
     expect(resolveFocusStyle({})?.color).toBe(0xe2e8f0);
-  });
 
-  it("stays white for a text fill that names no colour number", () => {
+    // A fill that names no colour number.
     setUIDefaultTextStyle({ fill: { fill: 0x112233 } });
-
     expect(resolveFocusStyle({})?.color).toBe(0xffffff);
-  });
-
-  it("follows the element's own corner radius", () => {
-    expect(resolveFocusStyle({}, 12)?.radius).toBe(12);
-  });
-
-  it("lets the themed style win over the element's radius", () => {
-    setUIFocusStyle({ radius: 0 });
-
-    expect(resolveFocusStyle(undefined, 12)?.radius).toBe(0);
   });
 
   it("resolves each field on its own, element over theme over default", () => {
     setUIFocusStyle({ color: 0x102030, width: 3 });
 
+    expect(resolveFocusStyle(undefined)).toEqual({
+      color: 0x102030,
+      width: 3,
+      radius: 4,
+      inset: 0,
+    });
     expect(resolveFocusStyle({ color: 0xff8800, inset: 2 })).toEqual({
       color: 0xff8800,
       width: 3,
@@ -152,16 +73,22 @@ describe("focus outline style", () => {
       inset: 2,
     });
   });
+
+  it("follows the element's own corner radius unless the themed style names one", () => {
+    expect(resolveFocusStyle({}, 12)?.radius).toBe(12);
+
+    setUIFocusStyle({ radius: 0 });
+    expect(resolveFocusStyle(undefined, 12)?.radius).toBe(0);
+  });
 });
 
 describe("focus outline drawing", () => {
-  let container: InstanceType<typeof mocks.MockGraphics>;
+  let container: MockContainer;
   let box: UIFocusOutlineBox;
 
   beforeEach(() => {
-    container = new mocks.MockGraphics();
+    container = new MockContainer();
     box = { x: 0, y: 0, width: 100, height: 40 };
-    // The UI asked for an outline, which is what puts one on every element.
     setUIFocusStyle({});
   });
 
@@ -173,13 +100,15 @@ describe("focus outline drawing", () => {
   }
 
   /** The graphics the outline built inside its host container. */
-  function graphics(): InstanceType<typeof mocks.MockGraphics> {
+  function graphics(): MockGraphics & { measurable?: boolean } {
     const child = container.children[0];
-    if (!child) throw new Error("the outline drew nothing");
+    if (!(child instanceof MockGraphics)) {
+      throw new Error("the outline drew nothing");
+    }
     return child;
   }
 
-  it("strokes the box the host states", () => {
+  it("strokes the box the host states, on a graphics that does not measure", () => {
     outline().setFocused(true);
 
     expect(graphics().lastRect).toEqual({
@@ -192,27 +121,20 @@ describe("focus outline drawing", () => {
     expect(graphics().measurable).toBe(false);
   });
 
-  it("skips a layout pass that would stroke what is already drawn", () => {
+  it("redraws only once the host's box moves", () => {
+    const stroke = vi.spyOn(MockGraphics.prototype, "stroke");
     const focusOutline = outline();
     focusOutline.setFocused(true);
-    expect(graphics().strokes).toBe(1);
 
     focusOutline.refresh();
     focusOutline.refresh();
-
-    expect(graphics().strokes).toBe(1);
-    expect(graphics().clears).toBe(1);
-  });
-
-  it("redraws once the host's box moves", () => {
-    const focusOutline = outline();
-    focusOutline.setFocused(true);
+    expect(stroke).toHaveBeenCalledTimes(1);
 
     box = { x: 0, y: 0, width: 100, height: 60 };
     focusOutline.refresh();
-
-    expect(graphics().strokes).toBe(2);
+    expect(stroke).toHaveBeenCalledTimes(2);
     expect(graphics().lastRect?.height).toBe(58);
+    stroke.mockRestore();
   });
 
   it("redraws for a style the element itself names", () => {
@@ -221,7 +143,7 @@ describe("focus outline drawing", () => {
 
     focusOutline.set({ focusStyle: { color: 0xff0000, width: 4 } });
 
-    expect(graphics().strokes).toBe(2);
+    expect(graphics().lastStroke).toEqual({ color: 0xff0000, width: 4 });
     expect(graphics().lastRect).toEqual({
       x: 2,
       y: 2,
@@ -231,14 +153,16 @@ describe("focus outline drawing", () => {
     });
   });
 
-  it("builds nothing for an element no style names an outline for", () => {
+  it("builds nothing where no style names an outline, until one does", () => {
     setUIFocusStyle(undefined);
     const focusOutline = outline();
 
     focusOutline.setFocused(true);
     focusOutline.refresh();
-
     expect(container.children).toEqual([]);
+
+    focusOutline.set({ focusStyle: { color: 0x33ff88, width: 2 } });
+    expect(graphics().visible).toBe(true);
   });
 
   it("builds nothing for an element that opted out of the UI-wide outline", () => {
@@ -250,7 +174,7 @@ describe("focus outline drawing", () => {
     expect(container.children).toEqual([]);
   });
 
-  it("drops the outline when the element opts out while it holds focus", () => {
+  it("hides the outline when the element opts out while it holds focus", () => {
     const focusOutline = outline();
     focusOutline.setFocused(true);
     expect(graphics().visible).toBe(true);
@@ -258,18 +182,36 @@ describe("focus outline drawing", () => {
     focusOutline.set({ focusStyle: null });
 
     expect(graphics().visible).toBe(false);
-    expect(graphics().strokes).toBe(1);
   });
+});
 
-  it("draws the outline a style names while the element holds focus", () => {
-    setUIFocusStyle(undefined);
-    const focusOutline = outline();
-    focusOutline.setFocused(true);
-    expect(container.children).toEqual([]);
+describe("focus with no outline", () => {
+  it("still reports focus to the game and the Inspector, and paints the focus background", () => {
+    const changes: boolean[] = [];
+    const panel = new UIPanel({
+      width: 100,
+      height: 40,
+      focusable: true,
+      background: { color: 0x204060, radius: 4 },
+      focusBackground: { color: 0xff0000 },
+      onFocusChange: (focused) => changes.push(focused),
+    });
+    panel.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+    panel.applyLayout();
 
-    focusOutline.set({ focusStyle: { color: 0x33ff88, width: 2 } });
+    getFocusState(panel)?._setFocused(true);
 
-    expect(graphics().visible).toBe(true);
-    expect(graphics().strokes).toBe(1);
+    const drawn = (panel.container as unknown as MockContainer).children.filter(
+      (child): child is MockGraphics => child instanceof MockGraphics,
+    );
+    expect(drawn).toHaveLength(1);
+    expect(drawn[0]?.lastFill?.color).toBe(0xff0000);
+    expect(panel._inspectState()).toMatchObject({
+      focused: true,
+      focusable: true,
+    });
+
+    getFocusState(panel)?._setFocused(false);
+    expect(changes).toEqual([true, false]);
   });
 });

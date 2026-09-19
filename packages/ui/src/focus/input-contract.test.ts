@@ -4,15 +4,9 @@ import type { UIFocusInputSource } from "./UIFocusScope.js";
 
 /**
  * `UIFocusInputSource` is declared structurally so `@yagejs/ui` names no type
- * from `@yagejs/input`. These are what keeps the two declarations from
- * drifting apart without anyone noticing: the alias fails to compile if a
- * signature changes, and the tests drive a real manager through the contract
- * type, so a method that is renamed, dropped or answers differently fails
- * here rather than inside a menu.
- *
- * The alias is compiled by `tsconfig.contract.json`, which the package's
- * `typecheck` script runs over this file — the package's main config leaves
- * the test files out.
+ * from `@yagejs/input`. The alias fails to compile when a signature drifts
+ * (`tsconfig.contract.json` compiles this file), and the tests drive a real
+ * manager through the contract type.
  */
 type PinnedToInputManager<T extends UIFocusInputSource> = T;
 type Pinned = PinnedToInputManager<InputManager>;
@@ -48,8 +42,7 @@ describe("UIFocusInputSource", () => {
 
     manager.fireKeyDown("Space");
     manager._clearFrameState();
-    // What the window losing focus does: every held key goes, while the
-    // player is still holding this one.
+    // The window losing focus: every held key goes while the player holds it.
     manager._releaseAllPhysicalState();
 
     expect(source.isPressed("confirm")).toBe(false);

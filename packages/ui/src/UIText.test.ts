@@ -1,12 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeAll,
-  afterEach,
-  beforeEach,
-} from "vitest";
+import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
 
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
@@ -133,44 +125,11 @@ const { mocks } = vi.hoisted(() => {
   // exercise identically under a bitmap font.
   class MockBitmapText extends MockText {}
 
-  /** Records the outline a focused element draws, so a test can read it. */
-  class MockGraphics extends MockContainer {
-    measurable = true;
-    lastRect:
-      | { x: number; y: number; width: number; height: number; radius?: number }
-      | undefined;
-    lastStroke: { color?: number; width?: number } | undefined;
-    clear(): MockGraphics {
-      return this;
-    }
-    roundRect(
-      x: number,
-      y: number,
-      width: number,
-      height: number,
-      radius?: number,
-    ): MockGraphics {
-      this.lastRect = {
-        x,
-        y,
-        width,
-        height,
-        ...(radius === undefined ? {} : { radius }),
-      };
-      return this;
-    }
-    stroke(style?: { color?: number; width?: number }): MockGraphics {
-      this.lastStroke = style;
-      return this;
-    }
-  }
-
-  return { mocks: { MockContainer, MockGraphics, MockText, MockBitmapText } };
+  return { mocks: { MockContainer, MockText, MockBitmapText } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
-  Graphics: mocks.MockGraphics,
   Text: mocks.MockText,
   BitmapText: mocks.MockBitmapText,
 }));
@@ -180,9 +139,6 @@ import { setDefaultTextStyle } from "@yagejs/renderer";
 import { setYoga } from "./yoga-helpers.js";
 import { setUIDefaultTextStyle } from "./text-defaults.js";
 import { UIText } from "./UIText.js";
-import { getFocusState } from "./focus/FocusState.js";
-import { setUIFocusStyle } from "./internal/focus-outline.js";
-import { takePointerRequest } from "./focus/pointer-request.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -862,114 +818,5 @@ describe("UIText bitmap-in-style warning", () => {
     expect(warn).not.toHaveBeenCalledWith(
       expect.stringContaining("`bitmap` was found inside `style`"),
     );
-  });
-});
-
-describe("UIText focus", () => {
-  // An outline is drawn only where one is asked for, so these boxes are
-  // measured against the outline a game asks for once for the whole UI.
-  beforeEach(() => setUIFocusStyle({}));
-  afterEach(() => setUIFocusStyle(undefined));
-
-  /** Fire a Pixi event on the element's own display object. */
-  const emitOn = (t: UIText, event: string): void =>
-    (t.displayObject as unknown as { emit(e: string): void }).emit(event);
-
-  it("stays out of focus navigation by default", () => {
-    const t = new UIText({ children: "hi" });
-
-    expect(getFocusState(t)?.focusable).toBe(false);
-    t.destroy();
-  });
-
-  /** The outline a focused element draws, or `undefined` before it takes one. */
-  function outlineOf(element: {
-    displayObject: unknown;
-  }): InstanceType<typeof mocks.MockGraphics> | undefined {
-    const children = (
-      element.displayObject as unknown as InstanceType<
-        typeof mocks.MockContainer
-      >
-    ).children;
-    return children.find(
-      (child): child is InstanceType<typeof mocks.MockGraphics> =>
-        child instanceof mocks.MockGraphics && child.measurable === false,
-    );
-  }
-
-  it("joins focus navigation and reports focus changes", () => {
-    const onFocusChange = vi.fn();
-    const t = new UIText({ children: "hi", focusable: true, onFocusChange });
-
-    const state = getFocusState(t);
-    expect(state?.focusable).toBe(true);
-    state?._setFocused(true);
-
-    expect(onFocusChange).toHaveBeenCalledWith(true);
-    t.destroy();
-  });
-
-  it("outlines a focusable label at the box layout gave it", () => {
-    const t = new UIText({ children: "hi", focusable: true, width: 120 });
-    expect(outlineOf(t)).toBeUndefined();
-
-    getFocusState(t)?._setFocused(true);
-    t.yogaNode.calculateLayout(120, 40, Direction.LTR);
-    t.applyLayout();
-
-    const ring = outlineOf(t);
-    expect(ring?.visible).toBe(true);
-    expect(ring?.lastRect).toMatchObject({ x: 1, y: 1, width: 118 });
-    expect(ring?.lastStroke).toEqual({ color: 0xffffff, width: 2 });
-    t.destroy();
-  });
-
-  it("takes the focus props an update carries", () => {
-    const t = new UIText({ children: "hi" });
-
-    t.update({ focusable: true, focusId: "heading" });
-
-    expect(getFocusState(t)?.focusable).toBe(true);
-    expect(getFocusState(t)?.id).toBe("heading");
-    t.destroy();
-  });
-
-  it("asks for hover focus while the pointer is over it", () => {
-    const t = new UIText({ children: "hi", focusable: true });
-    takePointerRequest();
-
-    emitOn(t, "pointerover");
-
-    expect(takePointerRequest()?.trigger).toBe("hover");
-    t.destroy();
-  });
-
-  it("asks for press focus when the pointer presses it", () => {
-    const t = new UIText({ children: "hi", focusable: true });
-    takePointerRequest();
-
-    emitOn(t, "pointerdown");
-
-    const request = takePointerRequest();
-    expect(request?.element).toBe(t);
-    expect(request?.trigger).toBe("press");
-    t.destroy();
-  });
-
-  it("reports its focus state to the Inspector", () => {
-    const t = new UIText({ children: "hi", focusable: true });
-
-    expect(t._inspectState()).toEqual({ focused: false, focusable: true });
-    getFocusState(t)?._setFocused(true);
-    expect(t._inspectState()).toEqual({ focused: true, focusable: true });
-    t.destroy();
-  });
-
-  it("leaves focus navigation when it is destroyed", () => {
-    const t = new UIText({ children: "hi", focusable: true });
-
-    t.destroy();
-
-    expect(getFocusState(t)).toBeUndefined();
   });
 });

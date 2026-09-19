@@ -1,128 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Node as YogaNode } from "yoga-layout";
-import type { DisplayContainer } from "@yagejs/renderer";
-import { MockContainer } from "../test-helpers.js";
-import type { UIContainerElement, UIElement } from "../types.js";
-import { FocusState } from "./FocusState.js";
 import { takePointerRequest } from "./pointer-request.js";
-import { UIFocusScope } from "./UIFocusScope.js";
-import type { UIFocusInputSource } from "./UIFocusScope.js";
+import type { UIFocusInputSource, UIFocusScope } from "./UIFocusScope.js";
 import { UIFocusStack } from "./UIFocusStack.js";
+import { StubInput, TestNode, scopeOver } from "./test-nodes.js";
 
-/** A stand-in element: a container, a laid-out box, and optional focus. */
-class TestNode implements UIContainerElement {
-  readonly container = new MockContainer();
-  readonly children: UIElement[] = [];
-  paints: boolean[] = [];
-  activations = 0;
-
-  constructor(y = 0) {
-    this.container.position.set(0, y);
+/** `count` panels on one stage, a focusable row and a registered scope each. */
+function stacked(count: number): {
+  stack: UIFocusStack;
+  panels: TestNode[];
+  rows: TestNode[];
+  scopes: UIFocusScope[];
+} {
+  const stage = new TestNode();
+  const stack = new UIFocusStack();
+  const panels: TestNode[] = [];
+  const rows: TestNode[] = [];
+  const scopes: UIFocusScope[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const panel = stage.add(new TestNode());
+    rows.push(panel.add(new TestNode()).focusable());
+    panels.push(panel);
+    scopes.push(scopeOver(panel));
+    stack._register(scopes[i]!);
   }
-
-  get displayObject(): DisplayContainer {
-    return this.container as unknown as DisplayContainer;
-  }
-
-  get yogaNode(): YogaNode {
-    return {
-      getComputedWidth: () => 100,
-      getComputedHeight: () => 20,
-    } as unknown as YogaNode;
-  }
-
-  get visible(): boolean {
-    return this.container.visible;
-  }
-
-  set visible(value: boolean) {
-    this.container.visible = value;
-  }
-
-  focusable(): this {
-    new FocusState(
-      this,
-      {},
-      {
-        focusableByDefault: true,
-        paint: (focused) => this.paints.push(focused),
-        activate: () => {
-          this.activations += 1;
-        },
-      },
-    );
-    return this;
-  }
-
-  add<T extends TestNode>(child: T): T {
-    this.children.push(child);
-    this.container.addChild(child.container);
-    return child;
-  }
-
-  addElement(child: UIElement): void {
-    this.children.push(child);
-  }
-
-  removeElement(): void {}
-
-  insertElementBefore(): void {}
-
-  update(): void {}
-
-  destroy(): void {}
+  return { stack, panels, rows, scopes };
 }
 
-class StubInput implements UIFocusInputSource {
-  private readonly held = new Set<string>();
-  private readonly edges = new Set<string>();
-  private readonly playerReleases = new Set<string>();
-
-  isPressed(action: string): boolean {
-    return this.held.has(action);
-  }
-
-  isJustPressed(action: string): boolean {
-    return this.edges.has(action);
-  }
-
-  isJustReleasedByPlayer(action: string): boolean {
-    return this.playerReleases.has(action);
-  }
-
-  hasAction(): boolean {
-    return true;
-  }
-
-  press(...names: string[]): void {
-    for (const name of names) {
-      this.held.add(name);
-      this.edges.add(name);
-      this.playerReleases.delete(name);
-    }
-  }
-
-  release(...names: string[]): void {
-    for (const name of names) {
-      this.held.delete(name);
-      this.playerReleases.add(name);
-    }
-    this.edges.clear();
-  }
-}
-
-/** A panel with one focusable row, ready to host a scope. */
-function menu(stage: TestNode): { panel: TestNode; row: TestNode } {
-  const panel = stage.add(new TestNode());
-  const row = panel.add(new TestNode()).focusable();
-  return { panel, row };
-}
-
-function scopeOver(panel: TestNode): UIFocusScope {
-  return new UIFocusScope(
-    { displayObject: panel.displayObject, roots: () => panel.children },
-    {},
-  );
+/** One frame of the focus system over a stack it drives. */
+function frame(stack: UIFocusStack, input: UIFocusInputSource | null): void {
+  stack._observe();
+  stack._drive(input);
 }
 
 beforeEach(() => {
@@ -131,59 +38,28 @@ beforeEach(() => {
 });
 
 describe("UIFocusStack", () => {
-  it("gives input to the scope shown most recently", () => {
-    const stage = new TestNode();
-    const first = menu(stage);
-    const second = menu(stage);
-    second.panel.visible = false;
-    const menuScope = scopeOver(first.panel);
-    const dialogScope = scopeOver(second.panel);
-    const stack = new UIFocusStack();
-    stack._register(menuScope);
-    stack._register(dialogScope);
+  it("gives input to the scope shown most recently and hands it back", () => {
+    const { stack, panels, rows, scopes } = stacked(2);
+    const extra = panels[0]!.add(new TestNode({ y: 30 })).focusable();
+    panels[1]!.visible = false;
+    frame(stack, null);
+    expect(stack.active).toBe(scopes[0]);
+    scopes[0]!.move("down");
+    expect(extra.paints).toEqual([true]);
 
-    stack._observe();
-    stack._drive(null);
-    expect(stack.active).toBe(menuScope);
-    expect(first.row.paints).toEqual([true]);
-
-    second.panel.visible = true;
-    stack._observe();
-    stack._drive(null);
-
-    expect(stack.active).toBe(dialogScope);
-    expect(dialogScope.focused).toBe(second.row);
+    panels[1]!.visible = true;
+    frame(stack, null);
+    expect(stack.active).toBe(scopes[1]);
+    expect(scopes[1]!.focused).toBe(rows[1]);
     // The menu keeps the row it had, painted as any other resting row.
-    expect(menuScope.focused).toBe(first.row);
-    expect(first.row.paints).toEqual([true, false]);
-  });
+    expect(scopes[0]!.focused).toBe(extra);
+    expect(extra.paints).toEqual([true, false]);
 
-  it("hands input back on the element the outer scope had", () => {
-    const stage = new TestNode();
-    const first = menu(stage);
-    const extra = first.panel.add(new TestNode(30)).focusable();
-    const second = menu(stage);
-    second.panel.visible = false;
-    const menuScope = scopeOver(first.panel);
-    const dialogScope = scopeOver(second.panel);
-    const stack = new UIFocusStack();
-    stack._register(menuScope);
-    stack._register(dialogScope);
-    stack._observe();
-    stack._drive(null);
-    menuScope.move("down");
-    expect(menuScope.focused).toBe(extra);
-
-    second.panel.visible = true;
-    stack._observe();
-    stack._drive(null);
-    second.panel.visible = false;
-    stack._observe();
-    stack._drive(null);
-
-    expect(stack.active).toBe(menuScope);
-    expect(menuScope.focused).toBe(extra);
-    expect(extra.paints.at(-1)).toBe(true);
+    panels[1]!.visible = false;
+    frame(stack, null);
+    expect(stack.active).toBe(scopes[0]);
+    expect(scopes[0]!.focused).toBe(extra);
+    expect(extra.paints).toEqual([true, false, true]);
   });
 
   it("stops driving a scope hidden by an ancestor rather than itself", () => {
@@ -194,49 +70,34 @@ describe("UIFocusStack", () => {
     const scope = scopeOver(panel);
     const stack = new UIFocusStack();
     stack._register(scope);
-    stack._observe();
-    stack._drive(null);
+    frame(stack, null);
     expect(stack.active).toBe(scope);
 
     surface.visible = false;
-    stack._observe();
-    stack._drive(null);
+    frame(stack, null);
 
     expect(stack.active).toBeNull();
     expect(scope.hasInput).toBe(false);
   });
 
   it("records a shown transition taken while the stack was suspended", () => {
-    const stage = new TestNode();
-    const { panel } = menu(stage);
-    panel.visible = false;
-    const scope = scopeOver(panel);
-    const stack = new UIFocusStack();
-    stack._register(scope);
+    const { stack, panels, scopes } = stacked(1);
+    panels[0]!.visible = false;
 
-    panel.visible = true;
+    panels[0]!.visible = true;
     stack._observe();
     stack._suspend();
-    stack._observe();
-    stack._drive(null);
+    frame(stack, null);
 
-    expect(stack.active).toBe(scope);
+    expect(stack.active).toBe(scopes[0]);
   });
 
   it("resolves two scopes shown in one frame by registration order", () => {
-    const stage = new TestNode();
-    const first = menu(stage);
-    const second = menu(stage);
-    const firstScope = scopeOver(first.panel);
-    const secondScope = scopeOver(second.panel);
-    const stack = new UIFocusStack();
-    stack._register(firstScope);
-    stack._register(secondScope);
+    const { stack, scopes } = stacked(2);
 
-    stack._observe();
-    stack._drive(null);
+    frame(stack, null);
 
-    expect(stack.active).toBe(secondScope);
+    expect(stack.active).toBe(scopes[1]);
   });
 
   it("drives a nested scope registered before the one around it", () => {
@@ -248,111 +109,64 @@ describe("UIFocusStack", () => {
     const dialogScope = scopeOver(dialog);
     const menuScope = scopeOver(menuPanel);
     const stack = new UIFocusStack();
-    // A tree filled before it is mounted registers the dialog's scope first,
-    // and the menu around it never takes the dialog's rows into its own walk.
+    // A tree filled before it is mounted registers the dialog's scope first.
     stack._register(dialogScope);
     stack._register(menuScope);
 
-    stack._observe();
-    stack._drive(null);
+    frame(stack, null);
 
     expect(stack.active).toBe(dialogScope);
     expect(menuScope.hasInput).toBe(false);
   });
 
-  it("re-latches on return rather than keeping a stale latch", () => {
-    const stage = new TestNode();
-    const { panel, row } = menu(stage);
-    const scope = scopeOver(panel);
-    const stack = new UIFocusStack();
-    stack._register(scope);
-    const input = new StubInput();
-
-    input.press("interact");
-    stack._observe();
-    stack._drive(input);
-    expect(row.activations).toBe(0);
-
-    input.release("interact");
-    stack._suspend();
-    stack._observe();
-    stack._drive(input);
-    input.press("interact");
-    stack._drive(input);
-    input.release("interact");
-    stack._drive(input);
-
-    expect(row.activations).toBe(1);
-  });
-
   it("latches again every time a scope takes input back", () => {
-    const stage = new TestNode();
-    const { panel, row } = menu(stage);
-    const scope = scopeOver(panel);
-    const stack = new UIFocusStack();
-    stack._register(scope);
+    const { stack, rows } = stacked(1);
     const input = new StubInput();
-    stack._observe();
-    stack._drive(input);
+    frame(stack, input);
 
     stack._suspend();
     input.press("interact");
-    stack._observe();
+    frame(stack, input);
+    expect(rows[0]!.activations).toBe(0);
+
+    input.release("interact");
     stack._drive(input);
-
-    expect(row.activations).toBe(0);
+    input.press("interact");
+    stack._drive(input);
+    input.release("interact");
+    stack._drive(input);
+    expect(rows[0]!.activations).toBe(1);
   });
 
-  it("drops a scope unregistered while it holds input", () => {
-    const stage = new TestNode();
-    const { panel, row } = menu(stage);
-    const scope = scopeOver(panel);
-    const stack = new UIFocusStack();
-    stack._register(scope);
-    stack._observe();
-    stack._drive(null);
-    expect(row.paints).toEqual([true]);
+  it.each(["_unregister", "destroy"] as const)(
+    "takes input away from the scope holding it on %s",
+    (how) => {
+      const { stack, rows, scopes } = stacked(1);
+      frame(stack, null);
+      expect(rows[0]!.paints).toEqual([true]);
 
-    stack._unregister(scope);
+      if (how === "destroy") stack.destroy();
+      else stack._unregister(scopes[0]!);
 
-    expect(stack.active).toBeNull();
-    expect(scope.hasInput).toBe(false);
-    expect(row.paints).toEqual([true, false]);
-
-    stack._observe();
-    stack._drive(null);
-    expect(stack.active).toBeNull();
-  });
+      expect(stack.active).toBeNull();
+      expect(scopes[0]!.hasInput).toBe(false);
+      expect(rows[0]!.paints).toEqual([true, false]);
+      if (how === "destroy") return;
+      frame(stack, null);
+      expect(stack.active).toBeNull();
+    },
+  );
 
   it("reports whether any shown scope reads a device", () => {
-    const stage = new TestNode();
-    const { panel } = menu(stage);
-    const headless = new UIFocusScope(
-      { displayObject: panel.displayObject, roots: () => panel.children },
-      { input: null },
-    );
+    const panel = new TestNode().add(new TestNode());
+    panel.add(new TestNode()).focusable();
     const stack = new UIFocusStack();
-    stack._register(headless);
+    stack._register(scopeOver(panel, { input: null }));
     stack._observe();
     expect(stack._hasDeviceScope()).toBe(false);
 
     stack._register(scopeOver(panel));
     stack._observe();
     expect(stack._hasDeviceScope()).toBe(true);
-  });
-
-  it("takes input away from the scope holding it when destroyed", () => {
-    const stage = new TestNode();
-    const { panel, row } = menu(stage);
-    const scope = scopeOver(panel);
-    const stack = new UIFocusStack();
-    stack._register(scope);
-    stack._observe();
-    stack._drive(null);
-
-    stack.destroy();
-
-    expect(stack.active).toBeNull();
-    expect(row.paints).toEqual([true, false]);
   });
 });

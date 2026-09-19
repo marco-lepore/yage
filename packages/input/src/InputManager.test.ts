@@ -81,37 +81,24 @@ describe("InputManager", () => {
 
   // -- isJustReleasedByPlayer --
 
-  it("reports a player release on the frame the key came up", () => {
+  it("reports a player release on the frame the key came up, then forgets it", () => {
     input._onKeyDown("Space");
     input._clearFrameState();
     input._onKeyUp("Space");
     expect(input.isJustReleasedByPlayer("jump")).toBe(true);
-  });
-
-  it("forgets a player release after _clearFrameState", () => {
-    input._onKeyDown("Space");
-    input._clearFrameState();
-    input._onKeyUp("Space");
     input._clearFrameState();
     expect(input.isJustReleasedByPlayer("jump")).toBe(false);
   });
 
-  it("reports no player release when the window drops the held key", () => {
-    input._onKeyDown("Space");
+  it("reports a player release for a gamepad button and an on-screen control", () => {
+    input.setActionMap({ confirm: ["GamepadA"], jump: ["Space"] });
+    input.fireGamepadButton("GamepadA", true);
+    setTestActionHeld(input, "jump", true);
     input._clearFrameState();
-    input._releaseAllPhysicalState();
-    expect(input.isPressed("jump")).toBe(false);
-    // The hold ended and listeners heard it; only the player's own release
-    // is missing.
-    expect(input.isJustReleased("jump")).toBe(true);
-    expect(input.isJustReleasedByPlayer("jump")).toBe(false);
-  });
-
-  it("reports no player release when clearAll drops the held key", () => {
-    input._onKeyDown("Space");
-    input._clearFrameState();
-    input.clearAll();
-    expect(input.isJustReleasedByPlayer("jump")).toBe(false);
+    input.fireGamepadButton("GamepadA", false);
+    setTestActionHeld(input, "jump", false);
+    expect(input.isJustReleasedByPlayer("confirm")).toBe(true);
+    expect(input.isJustReleasedByPlayer("jump")).toBe(true);
   });
 
   it("reports no player release while the action's group is disabled", () => {
@@ -123,53 +110,49 @@ describe("InputManager", () => {
     expect(input.isJustReleasedByPlayer("jump")).toBe(false);
   });
 
-  it("reports a player release for a gamepad button that came up", () => {
-    input.setActionMap({ confirm: ["GamepadA"] });
-    input.fireGamepadButton("GamepadA", true);
-    input._clearFrameState();
-    input.fireGamepadButton("GamepadA", false);
-    expect(input.isJustReleasedByPlayer("confirm")).toBe(true);
-  });
-
-  it("reports no player release when gamepad state is dropped", () => {
-    input.setActionMap({ confirm: ["GamepadA"] });
-    input.fireGamepadButton("GamepadA", true);
-    input._clearFrameState();
-    input._releaseAllGamepadState();
-    expect(input.isPressed("confirm")).toBe(false);
-    expect(input.isJustReleasedByPlayer("confirm")).toBe(false);
-  });
-
-  it("reports a player release for an on-screen control the finger left", () => {
-    setTestActionHeld(input, "jump", true);
-    input._clearFrameState();
-    setTestActionHeld(input, "jump", false);
-    expect(input.isJustReleasedByPlayer("jump")).toBe(true);
-  });
-
-  it("reports no player release when an action source releases everything", () => {
+  it("reports no player release for a hold the engine ended", () => {
+    input.setActionMap({
+      jump: ["Space"],
+      confirm: ["GamepadA"],
+      fire: ["MouseLeft"],
+    });
     const source = input.createActionSource();
-    source.setHeld("jump", true);
-    input._clearFrameState();
-    source.releaseAll();
-    expect(input.isPressed("jump")).toBe(false);
-    expect(input.isJustReleasedByPlayer("jump")).toBe(false);
-  });
-
-  it("reports no player release when a pointer gesture is cancelled", () => {
-    input._onPointerDown({
+    const pointer = {
       id: 1,
       screenX: 0,
       screenY: 0,
       type: "mouse",
       isPrimary: true,
       button: 0,
-    });
-    input._clearFrameState();
-    input._applyPointerCancel(1);
-    expect(input.isPressed("fire")).toBe(false);
-    expect(input.isJustReleased("fire")).toBe(true);
-    expect(input.isJustReleasedByPlayer("fire")).toBe(false);
+    } as const;
+    const cases: [string, () => void, () => void][] = [
+      [
+        "jump",
+        () => input._onKeyDown("Space"),
+        () => input._releaseAllPhysicalState(),
+      ],
+      ["jump", () => input._onKeyDown("Space"), () => input.clearAll()],
+      [
+        "confirm",
+        () => input.fireGamepadButton("GamepadA", true),
+        () => input._releaseAllGamepadState(),
+      ],
+      ["jump", () => source.setHeld("jump", true), () => source.releaseAll()],
+      [
+        "fire",
+        () => input._onPointerDown(pointer),
+        () => input._applyPointerCancel(1),
+      ],
+    ];
+    for (const [action, hold, drop] of cases) {
+      hold();
+      input._clearFrameState();
+      drop();
+      // The hold ended; only the player's own release is missing.
+      expect(input.isPressed(action)).toBe(false);
+      expect(input.isJustReleasedByPlayer(action)).toBe(false);
+      input._clearFrameState();
+    }
   });
 
   // -- getHoldDuration / isHeldFor --
