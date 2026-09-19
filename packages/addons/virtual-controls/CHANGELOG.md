@@ -1,5 +1,18 @@
 # @yagejs-addons/virtual-controls
 
+## 0.4.0
+
+### Patch Changes
+
+- [#374](https://github.com/marco-lepore/yage/pull/374) [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `setVisible` accepts `"auto"`, the same three values as the `visible` option. `"auto"` reads the device through `prefersTouchControls()`, so a settings screen offering "on / off / automatic" passes its choice straight through with no branch of its own.
+
+  Turning the overlay off still releases every engaged control, whichever value resolved to off: mirrored actions get their release edge and the synthetic axes reset.
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`851310c`](https://github.com/marco-lepore/yage/commit/851310c54e04f5cdb52819050ca0a50f36b8e4c3), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210)]:
+  - @yagejs/core@0.12.0
+  - @yagejs/renderer@0.12.0
+  - @yagejs/input@0.12.0
+
 ## 0.3.0
 
 ### Minor Changes

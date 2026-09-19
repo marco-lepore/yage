@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/i18n",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Localization for YAGE: message descriptors, an i18next-backed service, and localized text for renderer, UI, React, dialogue, and inventory",
   "keywords": [
     "yage",
@@ -94,11 +94,11 @@
     "i18next": "^23.16.8"
   },
   "peerDependencies": {
-    "@yagejs-addons/inventory": ">=0.3.0 <0.4.0",
-    "@yagejs/core": ">=0.11.0 <0.12.0",
-    "@yagejs/renderer": ">=0.11.0 <0.12.0",
-    "@yagejs/ui": ">=0.11.1 <0.12.0",
-    "@yagejs/ui-react": ">=0.11.0 <0.12.0",
+    "@yagejs-addons/inventory": "^0.4.0",
+    "@yagejs/core": ">=0.12.0 <0.13.0",
+    "@yagejs/renderer": ">=0.12.0 <0.13.0",
+    "@yagejs/ui": ">=0.12.0 <0.13.0",
+    "@yagejs/ui-react": ">=0.12.0 <0.13.0",
     "react": "^18.0.0 || ^19.0.0"
   },
   "peerDependenciesMeta": {
@@ -121,11 +121,11 @@
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@vitest/coverage-v8": "^4.0.18",
-    "@yagejs-addons/inventory": ">=0.3.0",
-    "@yagejs/core": ">=0.11.0",
-    "@yagejs/renderer": ">=0.11.0",
-    "@yagejs/ui": ">=0.11.0",
-    "@yagejs/ui-react": ">=0.11.0",
+    "@yagejs-addons/inventory": "^0.4.0",
+    "@yagejs/core": ">=0.12.0",
+    "@yagejs/renderer": ">=0.12.0",
+    "@yagejs/ui": ">=0.12.0",
+    "@yagejs/ui-react": ">=0.12.0",
     "pixi.js": "^8.8.0",
     "react": "^19.0.0",
     "react-dom": "^19.2.4"

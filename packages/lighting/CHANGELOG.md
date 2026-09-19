@@ -1,5 +1,23 @@
 # @yagejs/lighting
 
+## 0.12.0
+
+### Minor Changes
+
+- [#375](https://github.com/marco-lepore/yage/pull/375) [`7bf5d5d`](https://github.com/marco-lepore/yage/commit/7bf5d5dafc35682e6b42982afab9804b2c03de9d) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Occluders block light, in the gameplay query and in the built-in overlay renderer.
+  - A light contributes to a point only when the straight line between them misses every enabled occluder. Touching an edge or a corner counts as blocked, an occluder containing a light does not block it, a point inside an occluder is dark for every light outside it, and shadows are hard. `LightingWorld.levelAt(x, y)` keeps its signature and answers by that rule, so a scene with occluders reads darker where a wall stands in the way.
+  - `OverlayLightingRenderer` draws each light through an inverse mask covering what its occluders hide, so the drawn picture and the query agree. The renderer redraws a light's shadows when the light, an occluder or the camera moves.
+  - `LightSource` takes `castShadows`, default `true`. Set it to `false` for a light that reaches through walls.
+  - `LightOccluder` follows the entity's world scale: a uniform positive scale resizes the shape, any other scale turns it into a scaled outline, matching how a physics collider follows entity scale. `LightOccluder.scale` reports it.
+  - `LightingWorld.levelGridInto(out, grid)` samples a rectangular grid of world points into a caller-owned `Float32Array`, row-major, one sample per cell centre, each equal to `levelAt` at that centre. Each source is summed only over the cells its radius reaches and against the occluders within that radius. The new `LightGrid` type describes the region.
+  - The overlay scales a light's drawn radius by the camera's effective zoom, so a zoom modifier moves the drawn light and its position together.
+
+### Patch Changes
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`851310c`](https://github.com/marco-lepore/yage/commit/851310c54e04f5cdb52819050ca0a50f36b8e4c3), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210)]:
+  - @yagejs/core@0.12.0
+  - @yagejs/renderer@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes

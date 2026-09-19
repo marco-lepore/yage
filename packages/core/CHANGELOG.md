@@ -1,5 +1,94 @@
 # @yagejs/core
 
+## 0.12.0
+
+### Minor Changes
+
+- [#373](https://github.com/marco-lepore/yage/pull/373) [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Reject a per-frame method on a `Scene` or `Entity` subclass at compile time.
+  - Breaking: `Scene` and `Entity` declare `update` and `fixedUpdate` as `never`, so a subclass that defines either name fails to compile. The engine's per-frame pass ticks components, so a method with either name on a scene or an entity is dead code.
+  - Per-frame logic belongs in a component on the entity, or on an entity the scene spawns. Work that outlives a single entity goes on the queue that `makeSceneScopedQueue()` returns, which pauses and ends with its scene.
+  - `Scene` declares `onProgress(ratio)`, `onEnter`, `onExit`, `onPause` and `onResume`, and no other hook; `LoadingScene` adds `onLoadError`.
+
+- [#373](https://github.com/marco-lepore/yage/pull/373) [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `Sequence.build()` is the one way to turn a sequence into a process.
+  - `build()` compiles the chained steps and returns the wrapping `Process`. Nothing ticks until a runner drives it: pass the process to `ProcessComponent.run`, or to the `run` of an entity, scene or global queue.
+  - Breaking: `build()` is the sequence's only public exit, so `sequence.start()` does not compile.
+
+### Patch Changes
+
+- [#363](https://github.com/marco-lepore/yage/pull/363) [`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Show authored collider footprints in the level editor.
+  - Add `Inspector.getComponentFacet(component, namespace)` to read one registered component facet without reflecting fields or building a scene snapshot. It follows the existing contributor registration and omission contracts.
+
+- [#365](https://github.com/marco-lepore/yage/pull/365) [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `inspector.pointer`, pointer verbs that reach `@yagejs/ui` elements.
+
+  `inspector.input`'s pointer verbs write `InputManager` state and never reach a
+  UI primitive, which receives clicks as renderer events on its own container.
+  The new namespace asks the renderer to deliver a real pointer event, so the
+  renderer hit-tests and delivers it the way it does for a person clicking.
+  Stacking order, a disabled button's pointer mode, clipping and the
+  auto-consume marking all apply.
+
+  ```ts
+  const surface = inspector.snapshot().scenes[0]?.ui?.root;
+  const hit = inspector.pointer.click(surface.children[0].id); // or { x, y }
+  hit.path.some((node) => node.type === "UIButton"); // true
+  ```
+
+  `click`, `down`, `up` and `move` dispatch; `hitTest` resolves and reports
+  without dispatching. A target is a `UINodeSnapshot.id`, aimed at the centre of
+  that node's `bounds`, or a virtual-space point. The returned hit carries
+  `path` — every user-interface node the chain crossed, innermost first — plus
+  the `point` used and `consumed`. A button's label is a node of its own and
+  sits on top of the button, so search `path` for the element you mean.
+
+  The verbs drive one primary mouse pointer; a touch pointer or a second finger
+  stays with `inspector.input`. Every verb needs `RendererPlugin`. The four verbs
+  that dispatch also need one rendered frame; `hitTest` does not. Each guard
+  throws with an authored message. `RendererAdapter` gains two optional members
+  for them: `hitTestUIPath` and `dispatchPointerEvent`. A renderer that implements
+  both can drive the user interface without `@yagejs/core` knowing anything about
+  browser events.
+
+  `inspector.drive`'s context carries the same namespace as `pointer`.
+
+  A button's `onClick` has already run when a call returns, because delivery is
+  synchronous. Engine input state reflects the press one frame later.
+
+- [#365](https://github.com/marco-lepore/yage/pull/365) [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `bounds` to every node of the Inspector's user-interface snapshot.
+
+  `layout` carries Yoga's parent-relative box, which cannot locate an element on
+  the canvas: a surface anchored to the bottom right applies that anchor to its
+  container rather than to Yoga, so summing offsets down the tree reports
+  top-left coordinates. `bounds` maps the element's own container into
+  virtual-space pixels, so a test can read where a button sits on screen.
+
+  ```ts
+  const root = engine.inspector.snapshot().scenes[0]?.ui?.root;
+  root?.children[0]?.bounds; // { x: 200, y: 150, width: 60, height: 30 }
+  ```
+
+  `bounds` is `null` when no renderer adapter is registered, or for an element
+  that owns no container. A rotated element reports the axis-aligned box of two
+  mapped corners, which is approximate. Values are rounded to a thousandth of a
+  pixel, so one box reads the same at every canvas size and a snapshot diff
+  stays meaningful.
+
+- [#367](https://github.com/marco-lepore/yage/pull/367) [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Support editing tilemaps in Tiled with automatic preview refresh.
+
+  Allow asset loaders to report asynchronous cleanup. Asset unloading and clearing return its completion, and reloading a path waits for its previous resources to be released.
+
+- [#371](https://github.com/marco-lepore/yage/pull/371) [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add a typed state-machine primitive for stored game modes.
+  - Declare legal edges, timed transitions, and enter or exit hooks with `defineStates` and `StateMachine`. The first `tick()` runs the initial `enter` hook, and `start()` runs it earlier.
+  - Restart a state by listing it in its own `to`: `go(current)` then runs `exit`, resets the timer, and runs `enter`.
+  - Follow a machine from another layer with `machine.events.changed`, `.entered` and `.exited`, subscribed through `machine.on(...)` or `this.listen(machine, ...)`. Name them with `{ events: "mode" }` to publish them on the entity as `mode:changed` and friends, for `entity.on` and `scene.on`.
+  - Give a state a phase sequence with `states` and `start`. Leaving the parent exits the current phase first, so a sequence cannot outlive the state that holds it.
+  - Reach the states a whole machine falls into, such as `hit` and `die`, by marking them `fromAny: true` instead of repeating them in every `to` list.
+  - Give `for` a function to resolve a duration each time the state is entered, for tuning a field initializer cannot read.
+  - Ask `canGo(state)` before a `go()` that a late callback may no longer be allowed to make.
+  - Bind component-owned machines to error attribution with `Component.stateMachine`.
+  - Serialize the current state and elapsed time; inspect those values and the last transition.
+
+  `Component.listen` now accepts any event source, an entity or a state machine, in its first argument.
+
 ## 0.11.0
 
 ### Minor Changes

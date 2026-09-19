@@ -1,5 +1,19 @@
 # @yagejs/physics
 
+## 0.12.0
+
+### Patch Changes
+
+- [#363](https://github.com/marco-lepore/yage/pull/363) [`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Show authored collider footprints in the level editor.
+  - Publish typed authored collider outlines through the Inspector contributor registry, including for detached and inactive colliders. Share geometry with collider scaling and preserve the straight sides of rounded boxes and capsules.
+
+- [#354](https://github.com/marco-lepore/yage/pull/354) [`1a9a685`](https://github.com/marco-lepore/yage/commit/1a9a685d3dc47f8045847d9b36b2a34f06002a45) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add fixed, revolute, and prismatic joints for welded structures, hinges, and sliding platforms.
+
+  Configure collisions between connected bodies, angular or linear limits, and motors that can be updated through `setMotor`.
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210)]:
+  - @yagejs/core@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes
