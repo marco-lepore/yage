@@ -63,6 +63,22 @@ export interface LightingConfig {
   renderer?: LightingRendererFactory | null;
 }
 
+/** A rectangular sample region for `LightingWorld.levelGridInto`. */
+export interface LightGrid {
+  /** World x of the region's left edge. */
+  readonly x: number;
+  /** World y of the region's top edge. */
+  readonly y: number;
+  /** Cells across. */
+  readonly cols: number;
+  /** Cells down. */
+  readonly rows: number;
+  /** Cell width in world pixels. */
+  readonly cellWidth: number;
+  /** Cell height in world pixels. */
+  readonly cellHeight: number;
+}
+
 /** Geometry registered by a {@link LightOccluder}. */
 export type LightOccluderShape =
   | { readonly type: "circle"; readonly radius: number }

@@ -4,8 +4,9 @@ description: "Add radial lights and query how lit a point is"
 ---
 
 `@yagejs/lighting` adds soft radial lights to a scene and gives gameplay code a
-continuous `0..1` light level. A stealth game can use the same light sources
-for its visuals and detection rules.
+continuous `0..1` light level. Walls and other occluders block light in both,
+so a stealth game or a maze-of-light game can use one set of light sources for
+its visuals and its rules.
 
 ## Install and enable lighting
 
@@ -64,8 +65,13 @@ gameplay radius changes:
 light.radius = 240;
 light.intensity = 0.7;
 light.color = 0x80aaff;
+light.castShadows = false;
 light.enabled = false;
 ```
+
+`castShadows` is `true` by default. Set it to `false` for a light that should
+reach through walls, such as a global fill or a highlight on a selected
+entity.
 
 Disabling the light or its entity removes it from rendering and queries until
 it becomes active again. If light settings are durable game state, include
@@ -90,9 +96,54 @@ class GuardVision extends Component {
 ```
 
 `levelAt(x, y)` starts with the ambient level, adds the contribution from each
-enabled light, and clamps the answer to `1`. Each light fades linearly from its
-full intensity at the centre to zero at its radius. The query is scalar, so
-light colours do not affect it.
+enabled light that reaches the point, and clamps the answer to `1`. Each light
+fades linearly from its full intensity at the centre to zero at its radius. The
+query is scalar, so light colours do not affect it.
+
+A light reaches the point only when the straight line between them misses every
+enabled occluder. See [Register occluder geometry](#register-occluder-geometry)
+for the full rule.
+
+### Sample a whole grid
+
+A game that keeps a light field, such as a pathfinding cost map or a fog
+layer, asks for many points at once with `levelGridInto`:
+
+```typescript
+import { Component } from "@yagejs/core";
+import { LightingWorldKey } from "@yagejs/lighting";
+import type { LightGrid } from "@yagejs/lighting";
+
+const GRID: LightGrid = {
+  x: 0,
+  y: 0,
+  cols: 40,
+  rows: 20,
+  cellWidth: 16,
+  cellHeight: 16,
+};
+
+class LightField extends Component {
+  private readonly lighting = this.service(LightingWorldKey);
+  private readonly levels = new Float32Array(GRID.cols * GRID.rows);
+
+  rebuild(): void {
+    this.lighting.levelGridInto(this.levels, GRID);
+  }
+
+  levelAtCell(col: number, row: number): number {
+    return this.levels[row * GRID.cols + col] ?? 0;
+  }
+}
+```
+
+`x` and `y` place the region's top-left corner in world pixels. The buffer is
+row-major, and each cell holds what `levelAt` returns for that cell's centre.
+You own the buffer, so a field rebuilt every frame allocates nothing.
+
+Each light is summed only over the cells its radius reaches, and only against
+the occluders within that radius, so the cost grows with the lit area rather
+than with the size of the grid.
 
 Change the scene's ambient light at runtime:
 
@@ -106,7 +157,9 @@ lighting.setAmbient(0.2, 0x8090b8);
 ## Configure the built-in renderer
 
 The default renderer draws ambient colour and radial lights into an offscreen
-buffer, then multiplies it over the scene. Coloured lights tint the surfaces
+buffer, then multiplies it over the scene. A light is drawn only where no
+occluder stands between it and the surface, so the picture matches what
+`levelAt()` reports. Shadow edges are hard. Coloured lights tint the surfaces
 they reach, as real coloured illumination does.
 
 ```typescript
@@ -138,8 +191,7 @@ backend.
 
 ## Register occluder geometry
 
-`LightOccluder` stores geometry for a lighting renderer without tying the
-component to Pixi:
+A `LightOccluder` marks the area an entity blocks light through:
 
 ```typescript
 import { LightOccluder } from "@yagejs/lighting";
@@ -170,13 +222,28 @@ rock.add(
 );
 ```
 
-The shape uses local pixels. Its centre and rotation follow the entity's world
-transform.
+The shape uses local pixels. Its centre, rotation and scale follow the entity's
+world transform. A uniform positive scale resizes the shape; any other scale
+turns it into a scaled outline, the same way a physics collider follows entity
+scale.
 
-:::caution[No built-in shadows]
-The built-in overlay does not cast shadows, and occluders do not change
-`levelAt()`. They are available to custom lighting renderers through
-`LightingWorld.occluders`.
+The rule both the query and the built-in renderer apply:
+
+- A light reaches a point unless the straight line between them touches an
+  enabled occluder.
+- Touching an edge or a corner counts as blocked, so two occluders that meet
+  leave no gap for light.
+- An occluder that contains a light does not block it, so a lamp mounted on a
+  pillar still lights the room.
+- A point inside an occluder is dark for every light outside it.
+- Shadows are hard. Partial cover does not dim a light.
+
+Disabling the component or its entity lets light through again. Occluders are
+also available to custom lighting renderers through `LightingWorld.occluders`.
+
+:::note[Hard edges only]
+Shadow edges have no penumbra and no soft falloff. A game that needs soft
+shadows draws them in its own renderer.
 :::
 
 ## Supply another renderer
@@ -207,7 +274,8 @@ engine.use(new LightingPlugin({ renderer: customLighting }));
 YAGE calls the factory once for each entered scene and calls `destroy()` when
 that scene exits. Each source contains renderer-neutral light data, so a
 custom renderer can draw visibility polygons, material lighting, or another
-visual treatment without changing game entities.
+visual treatment without changing game entities. Apply the same occlusion rule
+the query applies, or the drawn light and the queried light disagree.
 
 Both `LightSource` and `LightOccluder` expose an immutable `position` in world
 pixels. For coordinate reads inside a render loop, keep a `Vec2Buffer` and

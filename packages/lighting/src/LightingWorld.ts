@@ -4,9 +4,12 @@ import type { LightOccluder } from "./LightOccluder.js";
 import type { LightSource } from "./LightSource.js";
 import type {
   AmbientLightOptions,
+  LightGrid,
   LightingRenderer,
   LightingRenderFrame,
 } from "./types.js";
+import { OccluderFootprintPool } from "./occlusion.js";
+import type { OccluderFootprint } from "./occlusion.js";
 import { assertColor, assertUnit, clampUnit } from "./validation.js";
 
 const DEFAULT_AMBIENT_LEVEL = 0.15;
@@ -16,10 +19,19 @@ const DEFAULT_AMBIENT_COLOR = 0xffffff;
  * Per-scene light state.
  *
  * `levelAt(x, y)` reports a continuous value from 0 to 1. The ambient level
- * and every radial source contribution are added, then clamped.
+ * and every radial source contribution are added, then clamped. A source
+ * contributes only where an enabled occluder does not stand between it and
+ * the point; `levelGridInto` answers the same question for a whole grid in
+ * one call.
  */
 export class LightingWorld {
   private readonly positionScratch = new Vec2Buffer();
+  /** Reused footprints, one per registered occluder, refreshed per query. */
+  private readonly footprints = new OccluderFootprintPool();
+  /** Footprints near enough to shadow the light being summed. */
+  private readonly inReach: OccluderFootprint[] = [];
+  /** Double-precision cell totals, so a grid cell matches `levelAt` exactly. */
+  private accumulator = new Float64Array(0);
   readonly scene: Scene;
 
   private readonly _sources = new Set<LightSource>();
@@ -77,19 +89,149 @@ export class LightingWorld {
 
   /** Return the combined light level at a world-space point. */
   levelAt(x: number, y: number): number {
+    this.footprints.refresh(this._occluders);
+    const footprintCount = this.footprints.count;
     let level = this._ambientLevel;
     for (const source of this._sources) {
       const position = source.getPositionInto(this.positionScratch);
-      const dx = x - position.x;
-      const dy = y - position.y;
+      const sourceX = position.x;
+      const sourceY = position.y;
+      const dx = x - sourceX;
+      const dy = y - sourceY;
       const distanceSquared = dx * dx + dy * dy;
       const radius = source.radius;
       if (distanceSquared >= radius * radius) continue;
+      if (
+        source.castShadows &&
+        this.shadowed(footprintCount, sourceX, sourceY, x, y)
+      ) {
+        continue;
+      }
       const falloff = 1 - Math.sqrt(distanceSquared) / radius;
       level += source.intensity * falloff;
       if (level >= 1) return 1;
     }
     return clampUnit(level);
+  }
+
+  /**
+   * Sample a rectangular grid of light levels into `out`, row by row, one
+   * sample at each cell's centre. Every cell holds what `levelAt` returns for
+   * that centre.
+   *
+   * Each source is summed over the cells its radius reaches, against the
+   * occluders within that radius, so the cost grows with the lit area rather
+   * than with the whole grid.
+   */
+  levelGridInto(out: Float32Array, grid: LightGrid): Float32Array {
+    const { x: originX, y: originY, cols, rows, cellWidth, cellHeight } = grid;
+    assertPositiveInteger(cols, "cols");
+    assertPositiveInteger(rows, "rows");
+    assertFinite(originX, "x");
+    assertFinite(originY, "y");
+    assertPositiveSize(cellWidth, "cellWidth");
+    assertPositiveSize(cellHeight, "cellHeight");
+    const cellCount = cols * rows;
+    if (out.length !== cellCount) {
+      throw new RangeError(
+        `LightingWorld.levelGridInto: out must hold cols * rows samples ` +
+          `(${cellCount}), got ${out.length}.`,
+      );
+    }
+
+    const levels = this.ensureAccumulator(cellCount);
+    levels.fill(this._ambientLevel, 0, cellCount);
+
+    this.footprints.refresh(this._occluders);
+    const footprintCount = this.footprints.count;
+    for (const source of this._sources) {
+      const position = source.getPositionInto(this.positionScratch);
+      const sourceX = position.x;
+      const sourceY = position.y;
+      const radius = source.radius;
+      const intensity = source.intensity;
+
+      const minCol = Math.max(
+        0,
+        Math.ceil((sourceX - radius - originX) / cellWidth - 0.5),
+      );
+      const maxCol = Math.min(
+        cols - 1,
+        Math.floor((sourceX + radius - originX) / cellWidth - 0.5),
+      );
+      const minRow = Math.max(
+        0,
+        Math.ceil((sourceY - radius - originY) / cellHeight - 0.5),
+      );
+      const maxRow = Math.min(
+        rows - 1,
+        Math.floor((sourceY + radius - originY) / cellHeight - 0.5),
+      );
+      if (minCol > maxCol || minRow > maxRow) continue;
+
+      const inReach = this.inReach;
+      inReach.length = 0;
+      if (source.castShadows) {
+        for (let i = 0; i < footprintCount; i++) {
+          const footprint = this.footprints.get(i);
+          if (!footprint.withinRange(sourceX, sourceY, radius)) continue;
+          if (footprint.contains(sourceX, sourceY)) continue;
+          inReach.push(footprint);
+        }
+      }
+
+      for (let row = minRow; row <= maxRow; row++) {
+        const y = originY + (row + 0.5) * cellHeight;
+        const rowStart = row * cols;
+        for (let col = minCol; col <= maxCol; col++) {
+          const index = rowStart + col;
+          if (levels[index]! >= 1) continue;
+          const x = originX + (col + 0.5) * cellWidth;
+          const dx = x - sourceX;
+          const dy = y - sourceY;
+          const distanceSquared = dx * dx + dy * dy;
+          if (distanceSquared >= radius * radius) continue;
+          let blocked = false;
+          for (const footprint of inReach) {
+            if (!footprint.blocks(sourceX, sourceY, x, y)) continue;
+            blocked = true;
+            break;
+          }
+          if (blocked) continue;
+          levels[index] =
+            levels[index]! +
+            intensity * (1 - Math.sqrt(distanceSquared) / radius);
+        }
+      }
+    }
+
+    for (let i = 0; i < cellCount; i++) out[i] = clampUnit(levels[i]!);
+    return out;
+  }
+
+  /** Whether an occluder stands between a light and a point. */
+  private shadowed(
+    footprintCount: number,
+    sourceX: number,
+    sourceY: number,
+    x: number,
+    y: number,
+  ): boolean {
+    for (let i = 0; i < footprintCount; i++) {
+      const footprint = this.footprints.get(i);
+      // A light inside an occluder shines out of it rather than being
+      // swallowed by it, so a lamp mounted on a pillar still lights the room.
+      if (footprint.contains(sourceX, sourceY)) continue;
+      if (footprint.blocks(sourceX, sourceY, x, y)) return true;
+    }
+    return false;
+  }
+
+  private ensureAccumulator(cellCount: number): Float64Array {
+    if (this.accumulator.length < cellCount) {
+      this.accumulator = new Float64Array(cellCount);
+    }
+    return this.accumulator;
   }
 
   /** Register a source. Components call this while effectively enabled. */
@@ -157,5 +299,29 @@ export class LightingWorld {
       this._sources.clear();
       this._occluders.clear();
     }
+  }
+}
+
+function assertPositiveInteger(value: number, name: string): void {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new RangeError(
+      `LightingWorld.levelGridInto: ${name} must be a positive integer, got ${value}.`,
+    );
+  }
+}
+
+function assertPositiveSize(value: number, name: string): void {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new RangeError(
+      `LightingWorld.levelGridInto: ${name} must be a finite number greater than 0, got ${value}.`,
+    );
+  }
+}
+
+function assertFinite(value: number, name: string): void {
+  if (!Number.isFinite(value)) {
+    throw new RangeError(
+      `LightingWorld.levelGridInto: ${name} must be a finite number, got ${value}.`,
+    );
   }
 }

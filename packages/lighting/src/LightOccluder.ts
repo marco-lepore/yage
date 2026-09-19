@@ -14,10 +14,13 @@ export interface LightOccluderOptions {
 }
 
 /**
- * Renderer-neutral shadow geometry centred on its entity's `Transform`.
+ * Shadow geometry centred on its entity's `Transform`.
  *
- * The built-in overlay renderer does not cast shadows. Custom renderers
- * can read registered occluders from `LightingWorld.occluders`.
+ * `LightingWorld.levelAt()` and the built-in overlay renderer both treat an
+ * enabled occluder as opaque: a light reaches a point only when the straight
+ * line between them misses every occluder. The shape follows the entity's
+ * world position, rotation and scale. Custom renderers read the registered
+ * occluders from `LightingWorld.occluders`.
  */
 export class LightOccluder extends Component {
   private readonly transform = this.sibling(Transform);
@@ -44,6 +47,15 @@ export class LightOccluder extends Component {
   /** Current world rotation in radians. */
   get rotation(): number {
     return this.transform.worldRotation;
+  }
+
+  /**
+   * Current world scale. A uniform positive scale resizes the shape; any
+   * other scale turns it into a scaled outline, the way a physics collider
+   * follows entity scale.
+   */
+  get scale(): Vec2 {
+    return this.transform.worldScale;
   }
 
   onEnable(): void {
