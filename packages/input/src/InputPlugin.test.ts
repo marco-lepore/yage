@@ -110,6 +110,140 @@ describe("InputPlugin", () => {
     expect(manager.isJustPressed("jump")).toBe(false);
   });
 
+  it("raises no action for a key typed into a focused text field", () => {
+    context = createContext();
+    plugin = new InputPlugin({ actions: { forward: ["KeyW"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    const field = document.createElement("input");
+    const note = document.createElement("div");
+    note.contentEditable = "true";
+    document.body.append(field, note);
+
+    try {
+      field.focus();
+      field.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "KeyW", bubbles: true }),
+      );
+      manager._drainInputQueue();
+      expect(manager.isPressed("forward")).toBe(false);
+      expect(manager.isJustPressed("forward")).toBe(false);
+
+      note.focus();
+      note.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "KeyW", bubbles: true }),
+      );
+      manager._drainInputQueue();
+      expect(manager.isPressed("forward")).toBe(false);
+    } finally {
+      field.remove();
+      note.remove();
+    }
+  });
+
+  it("raises no action for the key a text field left the page over", () => {
+    context = createContext();
+    plugin = new InputPlugin({ actions: { back: ["Escape"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    const field = document.createElement("input");
+    document.body.append(field);
+    // What `@pixi/ui`'s text input does to end an edit: its own listener on
+    // the hidden field blurs and removes it, so nothing is focused by the
+    // time the press reaches `window`.
+    field.addEventListener("keydown", () => {
+      field.blur();
+      field.remove();
+    });
+
+    try {
+      field.focus();
+      field.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          code: "Escape",
+          key: "Escape",
+          bubbles: true,
+        }),
+      );
+      manager._drainInputQueue();
+      expect(manager.isPressed("back")).toBe(false);
+      expect(manager.isJustPressed("back")).toBe(false);
+    } finally {
+      field.remove();
+    }
+  });
+
+  it("raises the action for the same key with nothing focused", () => {
+    context = createContext();
+    plugin = new InputPlugin({ actions: { forward: ["KeyW"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW" }));
+    manager._drainInputQueue();
+    expect(manager.isPressed("forward")).toBe(true);
+    expect(manager.isJustPressed("forward")).toBe(true);
+
+    window.dispatchEvent(new KeyboardEvent("keyup", { code: "KeyW" }));
+    manager._drainInputQueue();
+  });
+
+  it("raises the action for a key pressed while a checkbox holds focus", () => {
+    context = createContext();
+    plugin = new InputPlugin({ actions: { forward: ["KeyW"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    document.body.append(box);
+
+    try {
+      box.focus();
+      box.dispatchEvent(
+        new KeyboardEvent("keydown", { code: "KeyW", bubbles: true }),
+      );
+      manager._drainInputQueue();
+      expect(manager.isPressed("forward")).toBe(true);
+
+      box.dispatchEvent(
+        new KeyboardEvent("keyup", { code: "KeyW", bubbles: true }),
+      );
+      manager._drainInputQueue();
+    } finally {
+      box.remove();
+    }
+  });
+
+  it("releases a key that was held when a text field took focus", () => {
+    context = createContext();
+    plugin = new InputPlugin({ actions: { forward: ["KeyW"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW" }));
+    manager._drainInputQueue();
+    expect(manager.isPressed("forward")).toBe(true);
+
+    const field = document.createElement("input");
+    document.body.append(field);
+
+    try {
+      field.focus();
+      manager._clearFrameState();
+      field.dispatchEvent(
+        new KeyboardEvent("keyup", { code: "KeyW", bubbles: true }),
+      );
+      manager._drainInputQueue();
+      expect(manager.isPressed("forward")).toBe(false);
+      expect(manager.isJustReleased("forward")).toBe(true);
+    } finally {
+      field.remove();
+    }
+  });
+
   it("auto-resolves RendererAdapterKey and attaches pointer listeners to its canvas", () => {
     const canvas = document.createElement("canvas");
     context = createContext({ withRenderer: true, canvas });
@@ -768,6 +902,25 @@ describe("InputPlugin", () => {
 
     expect(manager.isPressed("jump")).toBe(true);
     expect(manager.isJustReleased("jump")).toBe(true);
+  });
+
+  it("reports no player release for a key the window blur dropped", () => {
+    context = createContext();
+    plugin = new InputPlugin({ actions: { jump: ["Space"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
+    manager._drainInputQueue();
+    manager._clearFrameState();
+
+    window.dispatchEvent(new Event("blur"));
+
+    expect(manager.isPressed("jump")).toBe(false);
+    // The hold ended, so a listener hears it — but the player is still
+    // holding the key, so nothing that commits on release may run.
+    expect(manager.isJustReleased("jump")).toBe(true);
+    expect(manager.isJustReleasedByPlayer("jump")).toBe(false);
   });
 
   it("pointerleave on canvas removes a hovering touch / pen pointer", () => {

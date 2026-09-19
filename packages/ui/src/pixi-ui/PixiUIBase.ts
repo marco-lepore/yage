@@ -1,15 +1,29 @@
 import type { DisplayContainer } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
-import type { LayoutProps, UIElement } from "../types.js";
+import type {
+  FocusDirection,
+  FocusProps,
+  LayoutProps,
+  PointerEventProps,
+  UIElement,
+} from "../types.js";
 import { createYogaNode, applyLayoutProps } from "../yoga-helpers.js";
 import { runUICallback } from "../error-boundary.js";
+import { PointerEvents } from "../pointer-events.js";
+import { FocusOutline } from "../internal/focus-outline.js";
+import type { UIFocusOutlineBox } from "../types.js";
+import { FocusState } from "../focus/FocusState.js";
+import {
+  requestHoverFocus,
+  requestPressFocus,
+} from "../focus/pointer-request.js";
 
 /**
  * Abstract base class for wrapping @pixi/ui components as Yoga-aware UIElements.
  *
  * Handles: Yoga node + measure function, prevProps storage, bridgeSignal helper,
- * visible prop, applyLayout, and destroy cleanup.
+ * visible prop, applyLayout, hover fan-out, focus, and destroy cleanup.
  */
 export abstract class PixiUIBase<
   T extends DisplayContainer,
@@ -21,6 +35,18 @@ export abstract class PixiUIBase<
     string,
     Map<(...args: never[]) => void, (...args: never[]) => void>
   >();
+  private readonly pointerEvents: PointerEvents | undefined;
+  private readonly _focus: FocusState;
+  private readonly _focusOutline: FocusOutline;
+  private _focused = false;
+  private _isHovered = false;
+  // One flag per device holding the widget down, and whether this wrapper is
+  // the one currently showing the pressed face. The widget paints its own
+  // pointer press; this wrapper paints a confirm press and reclaims the face
+  // whenever the widget has repainted it while a press is still held.
+  private _pointerPressed = false;
+  private _focusPressed = false;
+  private _paintedPressed = false;
   private _destroyed = false;
 
   get displayObject(): DisplayContainer {
@@ -36,7 +62,7 @@ export abstract class PixiUIBase<
     this.yogaNode.setDisplay(v ? Display.Flex : Display.None);
   }
 
-  constructor(view: T, props: LayoutProps) {
+  constructor(view: T, props: LayoutProps & PointerEventProps & FocusProps) {
     this.view = view;
     this.yogaNode = createYogaNode();
 
@@ -57,7 +83,165 @@ export abstract class PixiUIBase<
 
     applyLayoutProps(this.yogaNode, props);
     if (props.visible === false) this.visible = false;
+
+    if (this.interactive) {
+      // The pointer reaches focus here exactly as it does on a `UIButton`, so
+      // a mouse and a gamepad agree on which row a confirm press will hit.
+      // The pair of hover listeners also keeps {@link hovered}, which is how
+      // a widget that owns its own art knows which face to rest on.
+      this.view.on("pointerover", () => {
+        if (this.disabled) return;
+        this._isHovered = true;
+        requestHoverFocus(this);
+      });
+      this.view.on("pointerout", () => {
+        if (this.disabled) return;
+        this._isHovered = false;
+        this._pointerPressed = false;
+        this._paintPress();
+      });
+      this.view.on("pointerdown", () => {
+        if (this.disabled) return;
+        requestPressFocus(this);
+        // No paint: the widget shows its own pressed face for the pointer.
+        this._pointerPressed = true;
+      });
+      this.view.on("pointerup", () => {
+        this._pointerPressed = false;
+        this._paintPress();
+      });
+      this.view.on("pointerupoutside", () => {
+        this._pointerPressed = false;
+        this._paintPress();
+      });
+
+      // A @pixi/ui widget swaps its own face whenever the pointer leaves it
+      // or lets go, knowing nothing of a confirm press held from a focus
+      // scope. Reclaiming the face after each of those swaps is what keeps a
+      // held confirm painted while the mouse wanders over the widget, and
+      // what stops a mouse release from unpainting a press the player is
+      // still making on the gamepad.
+      //
+      // A widget reads the pointer names on a touch device and the mouse
+      // names on a desktop, and a reclaim only works from a listener that
+      // runs after the widget's own. The listeners above cover the first
+      // case, since @pixi/ui connects before this constructor does; these
+      // cover the second, since Pixi dispatches each mouse event after the
+      // pointer one it accompanies.
+      const reclaimFace = (): void => this._paintPress();
+      this.view.on("mouseover", reclaimFace);
+      this.view.on("mouseout", reclaimFace);
+      this.view.on("mouseup", reclaimFace);
+      this.view.on("mouseupoutside", reclaimFace);
+
+      // The caller's hover callbacks fan out beside that request, suppressed
+      // while the widget is disabled.
+      this.pointerEvents = new PointerEvents(
+        this.view,
+        props,
+        () => this.disabled,
+      );
+    }
+
+    this._focusOutline = new FocusOutline({
+      container: this.view,
+      box: () => this.focusOutlineBox(),
+      scale: () => this.view.scale,
+    });
+    this._focusOutline.set(props);
+
+    this._focus = new FocusState(this, props, {
+      focusableByDefault: this.interactive,
+      isDisabled: () => this.disabled,
+      paint: (focused) => this._paintFocus(focused),
+      setPressed: (pressed) => {
+        this._focusPressed = pressed;
+        this._paintPress();
+      },
+      activate: () => {
+        this.activate();
+        // A widget lands on the face a pointer release leaves behind when its
+        // own action runs, which is the wrong face while a pointer is still
+        // holding it down.
+        this._paintPress();
+      },
+      adjust: (direction) => this.adjust?.(direction) === true,
+    });
   }
+
+  /**
+   * Whether the wrapped widget answers the player. An interactive wrapper
+   * takes the hover fan-out, asks a focus scope for focus when the pointer
+   * reaches it, and takes focus when the game says nothing; one that only
+   * displays a value keeps its view's own event mode and stays out of
+   * navigation unless a game asks for it by `focusable`.
+   */
+  protected get interactive(): boolean {
+    return true;
+  }
+
+  /**
+   * Whether the widget refuses the pointer and a confirm press. Only a widget
+   * whose @pixi/ui view carries an enabled flag reports `true`.
+   */
+  get disabled(): boolean {
+    return false;
+  }
+
+  /** Whether the widget holds focus in the scope that owns it. */
+  get focused(): boolean {
+    return this._focused;
+  }
+
+  /**
+   * Whether the pointer is over the widget. A widget whose art carries a
+   * hover face rests on it while this holds, so a press driven from the
+   * keyboard or a gamepad hands the mouse back the face it had.
+   */
+  protected get hovered(): boolean {
+    return this._isHovered;
+  }
+
+  /**
+   * Whether any device is holding the widget down: the pointer, a confirm
+   * press from a focus scope, or both. One press is one face however many
+   * devices make it, so a widget resting on {@link hovered} reads this first.
+   */
+  protected get pressed(): boolean {
+    return this._pointerPressed || this._focusPressed;
+  }
+
+  /** Whether the widget takes part in focus navigation. */
+  get focusable(): boolean {
+    return this._focus.focusable;
+  }
+
+  /**
+   * Run the widget's own action — what a confirm press does, and what a click
+   * does where the widget has a press. A widget that is stepped rather than
+   * pressed implements this as a no-op and carries {@link adjust}.
+   */
+  abstract activate(): void;
+
+  /**
+   * Show the widget's pressed face while a device holds it down, and its
+   * resting face once every device has let go. A widget whose art names a
+   * pressed face implements this; one that has none — a checkbox with a
+   * checked and an unchecked view, a text field — leaves it out, and a
+   * confirm press on it shows what the action itself changes.
+   *
+   * `true` arrives again where the widget has repainted itself under a press
+   * that is still held, so an implementation sets the face rather than
+   * toggling it.
+   */
+  protected setPressed?(pressed: boolean): void;
+
+  /**
+   * Step the widget's own value along `direction`, returning `true` only when
+   * the press was consumed. A stepper at its end returns `false`, so the press
+   * moves focus out of the widget instead of being swallowed.
+   */
+  protected adjust?(direction: FocusDirection): boolean;
 
   /**
    * The size layout gives this widget when nothing constrains it. A composite
@@ -69,9 +253,63 @@ export abstract class PixiUIBase<
     return { width: this.view.width, height: this.view.height };
   }
 
+  /**
+   * Whether the size layout computes is what makes the widget that size. A
+   * composite — a checkbox pairing a square icon with a label, a radio group
+   * stacking several of them — places its own parts, and sizing its container
+   * scales those parts out of shape, so such a wrapper answers `false` and
+   * draws at its own size inside whatever box layout gives it.
+   */
+  protected sizedByLayout(): boolean {
+    return true;
+  }
+
+  /**
+   * The rectangle the focus outline is drawn around, in the widget view's own
+   * space.
+   *
+   * A widget layout sizes covers both the box layout gave it and everything
+   * it draws, so a part that reaches outside that box — a slider knob
+   * standing taller than its track — is inside the outline rather than cut by
+   * it, and a wrapper stretched by its parent is outlined around the whole
+   * row. A widget that keeps its own size is outlined around what it draws,
+   * because the box layout gave it is larger than anything on screen. A
+   * widget whose drawn extent moves with its value overrides this with a box
+   * that holds every value, so the outline stays still while the value
+   * changes.
+   */
+  protected focusOutlineBox(): UIFocusOutlineBox {
+    const bounds = this.view.getLocalBounds();
+    if (!this.sizedByLayout()) {
+      return {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+      };
+    }
+    // The layout box is measured in the parent's px and the widget's own
+    // bounds in its local space, which is the space this box is expressed in.
+    const scaleX = this.view.scale.x || 1;
+    const scaleY = this.view.scale.y || 1;
+    const width = this.yogaNode.getComputedWidth() / scaleX;
+    const height = this.yogaNode.getComputedHeight() / scaleY;
+    const left = Math.min(0, bounds.x);
+    const top = Math.min(0, bounds.y);
+    return {
+      x: left,
+      y: top,
+      width: Math.max(width, bounds.x + bounds.width) - left,
+      height: Math.max(height, bounds.y + bounds.height) - top,
+    };
+  }
+
   applyLayout(): void {
-    this.view.width = this.yogaNode.getComputedWidth();
-    this.view.height = this.yogaNode.getComputedHeight();
+    if (this.sizedByLayout()) {
+      this.view.width = this.yogaNode.getComputedWidth();
+      this.view.height = this.yogaNode.getComputedHeight();
+    }
+    this._focusOutline.refresh();
   }
 
   /** Bridge a @pixi/ui Signal to a callback prop. Only reconnects if ref changed. */
@@ -137,21 +375,80 @@ export abstract class PixiUIBase<
 
   /** Apply layout props, visible, and store prevProps. Call at end of subclass update(). */
   protected updateBase(props: Record<string, unknown>): void {
+    if (this.disabled) this._dropPress();
     applyLayoutProps(this.yogaNode, props as LayoutProps);
     if ("visible" in props)
       this.visible = (props.visible as boolean | undefined) ?? true;
+    this.pointerEvents?.set(props as PointerEventProps);
+    this._focus.set(props as FocusProps);
+    this._focusOutline.set(props as FocusProps);
     Object.assign(this.prevProps, props);
   }
 
   abstract update(props: Record<string, unknown>): void;
 
+  /**
+   * What the Inspector reports for this widget, so a test reads its state
+   * instead of a screenshot.
+   * @internal
+   */
+  _inspectState(): { focused: boolean; focusable: boolean; disabled: boolean } {
+    return {
+      focused: this._focused,
+      focusable: this.focusable,
+      disabled: this.disabled,
+    };
+  }
+
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+    this._focus.destroy();
+    this._focusOutline.destroy();
     this.disconnectAll();
     this.bridgedCallbacks.clear();
     this.yogaNode.free();
     this.view.destroy();
+  }
+
+  private _paintFocus(focused: boolean): void {
+    this._focused = focused;
+    this._focusOutline.setFocused(focused);
+  }
+
+  /**
+   * Put the pressed face on while a device holds the widget down, and hand it
+   * back once every device has let go.
+   *
+   * The pressed face is asked for again on each call rather than only where
+   * the press changes, because the widget repaints itself under this wrapper:
+   * the face has to be reclaimed after a pointer event the widget answered
+   * for itself. The resting face is asked for only where this wrapper is the
+   * one showing a press, so a pointer release the widget has already painted
+   * is not painted a second time.
+   */
+  private _paintPress(): void {
+    if (this._destroyed) return;
+    if (this.pressed) {
+      this._paintedPressed = true;
+      this.setPressed?.(true);
+      return;
+    }
+    if (!this._paintedPressed) return;
+    this._paintedPressed = false;
+    this.setPressed?.(false);
+  }
+
+  /**
+   * Forget every press a disabled widget was under. It refuses both devices
+   * from here on, and it is already showing its disabled face, so the press
+   * ends unpainted rather than springing back when the widget is enabled
+   * again.
+   */
+  private _dropPress(): void {
+    this._pointerPressed = false;
+    this._focusPressed = false;
+    this._paintedPressed = false;
   }
 
   /** Override in subclass to disconnect all signals on destroy. */

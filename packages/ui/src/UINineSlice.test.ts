@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  beforeAll,
+  afterEach,
+} from "vitest";
 import { AssetHandle } from "@yagejs/core";
 import type { Texture } from "pixi.js";
 
@@ -62,10 +70,33 @@ const { mocks } = vi.hoisted(() => {
     rect(): MockGraphics {
       return this;
     }
-    roundRect(): MockGraphics {
+    /** The rectangle of the most recent rounded draw. */
+    lastRect:
+      | { x: number; y: number; width: number; height: number; radius?: number }
+      | undefined;
+    roundRect(
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      radius?: number,
+    ): MockGraphics {
+      this.lastRect = {
+        x,
+        y,
+        width,
+        height,
+        ...(radius === undefined ? {} : { radius }),
+      };
       return this;
     }
     fill(): MockGraphics {
+      return this;
+    }
+    /** The style passed to the most recent `stroke`. */
+    lastStroke: { color?: number; width?: number } | undefined;
+    stroke(style?: { color?: number; width?: number }): MockGraphics {
+      this.lastStroke = style;
       return this;
     }
   }
@@ -157,6 +188,9 @@ import Yoga, { Direction } from "yoga-layout";
 import { registerTexture } from "@yagejs/renderer";
 import { setYoga } from "./yoga-helpers.js";
 import { UINineSlice } from "./UINineSlice.js";
+import { getFocusState } from "./focus/FocusState.js";
+import { setUIFocusStyle } from "./internal/focus-outline.js";
+import { takePointerRequest } from "./focus/pointer-request.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -331,5 +365,142 @@ describe("UINineSlice", () => {
       typeof mocks.MockNineSliceSprite
     >;
     expect(sprite.destroyed).toBe(true);
+  });
+});
+
+describe("UINineSlice focus", () => {
+  // An outline is drawn only where one is asked for, so these boxes are
+  // measured against the outline a game asks for once for the whole UI.
+  beforeEach(() => setUIFocusStyle({}));
+  afterEach(() => setUIFocusStyle(undefined));
+
+  /** Fire a Pixi event on the element's own display object. */
+  const emitOn = (ns: UINineSlice, event: string): void =>
+    (ns.displayObject as unknown as { emit(e: string): void }).emit(event);
+
+  it("stays out of focus navigation by default", () => {
+    const ns = new UINineSlice({ texture: "panel", insets: 4 });
+
+    expect(getFocusState(ns)?.focusable).toBe(false);
+    ns.destroy();
+  });
+
+  /** The outline a focused element draws, or `undefined` before it takes one. */
+  function outlineOf(element: {
+    displayObject: unknown;
+  }): InstanceType<typeof mocks.MockGraphics> | undefined {
+    const children = (
+      element.displayObject as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >
+    ).children;
+    return children.find(
+      (child): child is InstanceType<typeof mocks.MockGraphics> =>
+        child instanceof mocks.MockGraphics && child.measurable === false,
+    );
+  }
+
+  it("joins focus navigation and reports focus changes", () => {
+    const onFocusChange = vi.fn();
+    const ns = new UINineSlice({
+      texture: "panel",
+      insets: 4,
+      focusable: true,
+      onFocusChange,
+    });
+
+    const state = getFocusState(ns);
+    expect(state?.focusable).toBe(true);
+    state?._setFocused(true);
+
+    expect(onFocusChange).toHaveBeenCalledWith(true);
+    ns.destroy();
+  });
+
+  it("outlines a focusable frame at the box layout gave it", () => {
+    const ns = new UINineSlice({
+      texture: "panel",
+      insets: 4,
+      focusable: true,
+      width: 120,
+      height: 40,
+    });
+    getFocusState(ns)?._setFocused(true);
+
+    ns.yogaNode.calculateLayout(120, 40, Direction.LTR);
+    ns.applyLayout();
+
+    expect(outlineOf(ns)?.lastRect).toMatchObject({
+      x: 1,
+      y: 1,
+      width: 118,
+      height: 38,
+    });
+    ns.destroy();
+  });
+
+  it("takes the focus props an update carries", () => {
+    const ns = new UINineSlice({ texture: "panel", insets: 4 });
+
+    ns.update({ focusable: true, focusId: "frame" });
+
+    expect(getFocusState(ns)?.focusable).toBe(true);
+    expect(getFocusState(ns)?.id).toBe("frame");
+    ns.destroy();
+  });
+
+  it("asks for hover focus while the pointer is over it", () => {
+    const ns = new UINineSlice({
+      texture: "panel",
+      insets: 4,
+      focusable: true,
+    });
+    takePointerRequest();
+
+    emitOn(ns, "pointerover");
+
+    expect(takePointerRequest()?.trigger).toBe("hover");
+    ns.destroy();
+  });
+
+  it("asks for press focus when the pointer presses it", () => {
+    const ns = new UINineSlice({
+      texture: "panel",
+      insets: 4,
+      focusable: true,
+    });
+    takePointerRequest();
+
+    emitOn(ns, "pointerdown");
+
+    const request = takePointerRequest();
+    expect(request?.element).toBe(ns);
+    expect(request?.trigger).toBe("press");
+    ns.destroy();
+  });
+
+  it("reports its focus state to the Inspector", () => {
+    const ns = new UINineSlice({
+      texture: "panel",
+      insets: 4,
+      focusable: true,
+    });
+
+    expect(ns._inspectState()).toEqual({ focused: false, focusable: true });
+    getFocusState(ns)?._setFocused(true);
+    expect(ns._inspectState()).toEqual({ focused: true, focusable: true });
+    ns.destroy();
+  });
+
+  it("leaves focus navigation when it is destroyed", () => {
+    const ns = new UINineSlice({
+      texture: "panel",
+      insets: 4,
+      focusable: true,
+    });
+
+    ns.destroy();
+
+    expect(getFocusState(ns)).toBeUndefined();
   });
 });

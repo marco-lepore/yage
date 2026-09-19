@@ -108,6 +108,10 @@ const { mocks } = vi.hoisted(() => {
     fill(...args: unknown[]): MockGraphics {
       return this;
     }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    stroke(...args: unknown[]): MockGraphics {
+      return this;
+    }
   }
 
   class MockText extends MockContainer {
@@ -162,12 +166,19 @@ import {
   LogLevel,
   Scene,
 } from "@yagejs/core";
-import { FloatingOverlayKey, setYoga } from "@yagejs/ui";
+import {
+  FloatingOverlayKey,
+  UIFocusStack,
+  UIFocusStackKey,
+  UIPanel,
+  setYoga,
+} from "@yagejs/ui";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { UIRoot } from "./UIRoot.js";
 import type { UIRootOptions } from "./UIRoot.js";
 import { UIReactPlugin, UIReactPluginKey } from "./UIReactPlugin.js";
-import { Panel } from "./components.js";
+import { getRootInstances } from "./reconciler.js";
+import { Button, Panel } from "./components.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -197,6 +208,7 @@ afterEach(() => {
 function mountUIRoot(
   entityName: string,
   opts?: UIRootOptions,
+  focusStack?: UIFocusStack,
 ): { root: UIRoot; layer: InstanceType<typeof mocks.MockContainer> } {
   const context = new EngineContext();
   context.register(
@@ -212,6 +224,7 @@ function mountUIRoot(
     tryGet: () => ({ container: layer }),
   } as never);
   scene.registerScoped(FloatingOverlayKey, {} as never);
+  if (focusStack) scene.registerScoped(UIFocusStackKey, focusStack);
 
   const entity = scene.spawn(entityName);
   const root = entity.add(new UIRoot(opts));
@@ -224,6 +237,17 @@ function outerContainer(
   layer: InstanceType<typeof mocks.MockContainer>,
 ): InstanceType<typeof mocks.MockContainer> {
   return layer.children[0]!;
+}
+
+/** Run `body` with `isDev()` reporting false, as a shipped build does. */
+function inProductionBuild(body: () => void): void {
+  const previous = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  try {
+    body();
+  } finally {
+    process.env.NODE_ENV = previous;
+  }
 }
 
 function overflowWarnings(warn: ReturnType<typeof vi.spyOn>): string[] {
@@ -320,5 +344,215 @@ describe("UIRoot overflow warnings", () => {
 
     expect(overflowWarnings(warn)).toHaveLength(1);
     expect(overflowWarnings(warn)[0]).toContain('entity "quest-log"');
+  });
+});
+
+describe("UIRoot tree context", () => {
+  it("stamps the entity name and the focus stack on the tree", () => {
+    inProductionBuild(() => {
+      const attach = vi.spyOn(UIPanel.prototype, "_attachToTree");
+      const focusStack = {} as UIFocusStack;
+      const { root } = mountUIRoot("pause-menu", undefined, focusStack);
+
+      root.render(createElement(Panel, { width: 40, height: 20 }));
+
+      const context = attach.mock.calls[0]?.[0];
+      expect(context?.label).toBe("pause-menu");
+      expect(context?.focusStack).toBe(focusStack);
+    });
+  });
+
+  it("carries a null focus stack in a scene that registered none", () => {
+    const attach = vi.spyOn(UIPanel.prototype, "_attachToTree");
+    const { root } = mountUIRoot("hud");
+
+    root.render(createElement(Panel, { width: 40, height: 20 }));
+
+    expect(attach.mock.calls[0]?.[0].focusStack).toBeNull();
+  });
+
+  it("walks a stamped element once, not on every commit", () => {
+    const attach = vi.spyOn(UIPanel.prototype, "_attachToTree");
+    const { root } = mountUIRoot("pause-menu", undefined, new UIFocusStack());
+    const tree = (width: number): ReturnType<typeof createElement> =>
+      createElement(
+        Panel,
+        { width },
+        createElement(Panel, null, createElement(Panel, null)),
+      );
+
+    root.render(tree(40));
+
+    // One walk from the root element through its whole subtree.
+    expect(attach).toHaveBeenCalledTimes(3);
+
+    attach.mockClear();
+    root.render(tree(60));
+
+    expect(attach).not.toHaveBeenCalled();
+  });
+
+  it("stamps an element a later render adds at the top level", () => {
+    const attach = vi.spyOn(UIPanel.prototype, "_attachToTree");
+    const { root } = mountUIRoot("hud", undefined, new UIFocusStack());
+    root.render(
+      createElement(Fragment, null, createElement(Panel, { key: "a" })),
+    );
+    attach.mockClear();
+
+    root.render(
+      createElement(
+        Fragment,
+        null,
+        createElement(Panel, { key: "a" }),
+        createElement(Panel, { key: "b" }),
+      ),
+    );
+
+    expect(attach).toHaveBeenCalledTimes(1);
+  });
+
+  it("detaches the root instances when the component is destroyed", () => {
+    const detach = vi.spyOn(UIPanel.prototype, "_detachFromTree");
+    const { root } = mountUIRoot("hud");
+    root.render(createElement(Panel, { width: 40, height: 20 }));
+    detach.mockClear();
+
+    root.onDestroy();
+
+    expect(detach).toHaveBeenCalled();
+  });
+});
+
+describe("UIRoot focus option", () => {
+  /** Recompute which scopes are shown, then run a frame with no device. */
+  function drive(stack: UIFocusStack): void {
+    stack._observe();
+    stack._drive(null);
+  }
+
+  it("scopes the root instances and registers with the scene's stack", () => {
+    inProductionBuild(() => {
+      const stack = new UIFocusStack();
+      const { root } = mountUIRoot("pause-menu", { focus: true }, stack);
+
+      root.render(
+        createElement(
+          Fragment,
+          null,
+          createElement(Button, { key: "resume" }, "Resume"),
+          createElement(Button, { key: "quit" }, "Quit"),
+        ),
+      );
+      drive(stack);
+
+      const scope = root.focusScope;
+      expect(scope).not.toBeNull();
+      expect(scope!.candidates).toHaveLength(2);
+      expect(stack.active).toBe(scope);
+    });
+  });
+
+  it("warns when the scene registered no focus stack", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { root } = mountUIRoot("pause-menu", { focus: true });
+
+    expect(root.focusScope).not.toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+    // The sentence a `focus` panel and a `focus` surface print from
+    // `@yagejs/ui`'s own internal helper. The two packages hold it
+    // separately, so each copy is pinned where it lives.
+    expect(warn.mock.calls[0]?.[0]).toContain(
+      'UIRoot on entity "pause-menu" has no focus stack, so its focus scope ' +
+        "reads no keyboard or gamepad input. UIPlugin registers one per " +
+        "scene as the scene is entered.",
+    );
+  });
+
+  it("has no scope without the option", () => {
+    const { root } = mountUIRoot("hud", undefined, new UIFocusStack());
+
+    expect(root.focusScope).toBeNull();
+  });
+
+  it("hands the keys to a Panel scope inside it", () => {
+    const stack = new UIFocusStack();
+    const { root, layer } = mountUIRoot("pause-menu", { focus: true }, stack);
+
+    root.render(
+      createElement(
+        Panel,
+        { focus: true },
+        createElement(Button, null, "Delete"),
+      ),
+    );
+    drive(stack);
+
+    const panel = getRootInstances(
+      outerContainer(layer) as never,
+    )![0] as UIPanel;
+    // The root's own walk stops at the nested scope, so the dialog's rows
+    // belong to the dialog alone.
+    expect(root.focusScope!.candidates).toHaveLength(0);
+    expect(stack.active).toBe(panel.focusScope);
+  });
+
+  it("keeps its scope through a render that replaces the top-level elements", () => {
+    const stack = new UIFocusStack();
+    const { root } = mountUIRoot("pause-menu", { focus: true }, stack);
+    root.render(
+      createElement(
+        Fragment,
+        null,
+        createElement(Button, { key: "resume" }, "Resume"),
+      ),
+    );
+    const scope = root.focusScope;
+    drive(stack);
+
+    root.render(
+      createElement(
+        Fragment,
+        null,
+        createElement(Button, { key: "load" }, "Load"),
+        createElement(Button, { key: "quit" }, "Quit"),
+      ),
+    );
+    drive(stack);
+
+    expect(root.focusScope).toBe(scope);
+    expect(scope!.candidates).toHaveLength(2);
+    expect(stack.active).toBe(scope);
+  });
+
+  it("releases its scope when the component is destroyed", () => {
+    const stack = new UIFocusStack();
+    const { root } = mountUIRoot("pause-menu", { focus: true }, stack);
+    root.render(createElement(Button, null, "Resume"));
+    drive(stack);
+    expect(stack.active).not.toBeNull();
+
+    root.onDestroy();
+
+    expect(root.focusScope).toBeNull();
+    expect(stack._observe()).toBe(false);
+    expect(stack.active).toBeNull();
+  });
+
+  it("unregisters a Panel scope inside it when the component is destroyed", () => {
+    const stack = new UIFocusStack();
+    const { root } = mountUIRoot("pause-menu", undefined, stack);
+    root.render(
+      createElement(Panel, { focus: true }, createElement(Button, null, "Ok")),
+    );
+    drive(stack);
+    expect(stack.active).not.toBeNull();
+
+    // Unmounting deletes the tree element by element, and each one detaches
+    // itself, so a scope a nested panel owns leaves the stack with it.
+    root.onDestroy();
+
+    expect(stack._observe()).toBe(false);
+    expect(stack.active).toBeNull();
   });
 });

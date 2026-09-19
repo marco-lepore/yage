@@ -822,14 +822,16 @@ function exportedValueNames(file) {
 }
 
 /**
- * Exemptions declared in the barrel as
- * `// i18n-coverage-exempt: <Component> — <reason>`. The reason is required,
- * so an exclusion states why rather than just disappearing.
+ * Exemptions declared in a coverage rule's anchor file as
+ * `// <tag>-coverage-exempt: <Component> — <reason>`. The reason is
+ * required, so an exclusion states why rather than just disappearing.
  */
-function coverageExemptions(file) {
+function coverageExemptions(file, tag) {
   const claimed = new Map();
-  const pattern =
-    /i18n-coverage-exempt:\s*([A-Za-z0-9_]+)\s*(?:[\u2014-]\s*(.*))?/g;
+  const pattern = new RegExp(
+    `${tag}-coverage-exempt:\\s*([A-Za-z0-9_]+)\\s*(?:[\\u2014-]\\s*(.*))?`,
+    "g",
+  );
   for (const match of file.code.matchAll(pattern)) {
     claimed.set(match[1], (match[2] ?? "").trim());
   }
@@ -846,7 +848,7 @@ export function checkLocalizedWidgetCoverage(files) {
   const barrel = files.find((file) => file.path === I18N_UI_BARREL);
   if (!types || !barrel) return [];
 
-  const exempt = coverageExemptions(barrel);
+  const exempt = coverageExemptions(barrel, "i18n");
   const exported = exportedValueNames(barrel);
   const source = sourceFile(types.path, types.code);
 
@@ -926,6 +928,189 @@ export function checkLocalizedWidgetCoverage(files) {
         barrel.path,
         1,
         `The ${component} coverage exemption is stale: no such text-bearing widget in ${UI_TYPES_PATH}.`,
+      ),
+    );
+  }
+  return errors;
+}
+
+// Property names on a `@yagejs/ui` component's Props interface that mean a
+// player operates the component. Detection reads interaction rather than
+// focus, so a widget cannot drop out of the rule by leaving focus out.
+// `onScroll` is absent on purpose: scrolling alone does not make a place for
+// focus to land. A scroll view whose props reach `FocusProps` still owes a
+// `FocusState`, which the second half of the rule asks for.
+const INTERACTIVE_PROP_NAMES = new Set([
+  "onClick",
+  "onChange",
+  "onSelect",
+  "onEnter",
+  "onPress",
+  "disabled",
+]);
+
+const UI_SOURCE_PREFIX = "packages/ui/src/";
+const FOCUS_ANCHOR_PATH = "packages/ui/src/focus/FocusState.ts";
+
+/** The `@yagejs/ui` module implementing `<Component>`, found by basename. */
+function componentModule(files, component) {
+  return files.find(
+    (file) =>
+      file.path.startsWith(UI_SOURCE_PREFIX) &&
+      file.path.endsWith(`/${component}.ts`),
+  );
+}
+
+/** The class `className` extends, read from the module that declares it. */
+function declaredBaseName(file, className) {
+  const source = sourceFile(file.path, file.code);
+  let base;
+  ts.forEachChild(source, function visit(node) {
+    if (ts.isClassDeclaration(node) && node.name?.text === className) {
+      base = classBaseName(node);
+    }
+    ts.forEachChild(node, visit);
+  });
+  return base;
+}
+
+/**
+ * Every interactive `@yagejs/ui` component takes keyboard and gamepad focus,
+ * so the widget set decides focus coverage rather than whoever needed a
+ * keyboard-operable widget first.
+ *
+ * Coverage needs the props interface to reach `FocusProps` and the component
+ * to build a `FocusState`. The two are checked from either end: an interactive
+ * widget whose props miss `FocusProps` is dead to the keyboard while its type
+ * says nothing, and a widget whose props reach `FocusProps` with no
+ * `FocusState` in its class accepts `focusable` and drops it — an `extends`
+ * clause copied from a sibling reads as a promise the class never keeps.
+ */
+export function checkFocusWidgetCoverage(files) {
+  const types = files.find((file) => file.path === UI_TYPES_PATH);
+  const anchor = files.find((file) => file.path === FOCUS_ANCHOR_PATH);
+  if (!types || !anchor) return [];
+
+  const exempt = coverageExemptions(anchor, "focus");
+  const source = sourceFile(types.path, types.code);
+
+  const interfaces = new Map();
+  ts.forEachChild(source, (node) => {
+    if (ts.isInterfaceDeclaration(node) && node.name.text.endsWith("Props")) {
+      interfaces.set(node.name.text, node);
+    }
+  });
+
+  /** Interactive props reachable from an interface, through `extends` or nesting. */
+  function isInteractive(name, seen = new Set()) {
+    if (seen.has(name)) return false;
+    seen.add(name);
+    const node = interfaces.get(name);
+    if (!node) return false;
+    for (const clause of node.heritageClauses ?? []) {
+      for (const base of clause.types) {
+        if (isInteractive(base.expression.getText(source), seen)) return true;
+      }
+    }
+    return node.members.some((member) => {
+      if (!ts.isPropertySignature(member) || !ts.isIdentifier(member.name)) {
+        return false;
+      }
+      if (INTERACTIVE_PROP_NAMES.has(member.name.text)) return true;
+      // A collection of another widget's props, e.g. `PixiCheckboxProps[]`.
+      const type = member.type?.getText(source) ?? "";
+      return [...interfaces.keys()].some(
+        (other) =>
+          other !== name &&
+          new RegExp(`\\b${other}\\b`).test(type) &&
+          isInteractive(other, new Set(seen)),
+      );
+    });
+  }
+
+  function reachesFocusProps(name, seen = new Set()) {
+    if (seen.has(name)) return false;
+    seen.add(name);
+    const node = interfaces.get(name);
+    if (!node) return false;
+    for (const clause of node.heritageClauses ?? []) {
+      for (const base of clause.types) {
+        const baseName = base.expression.getText(source);
+        if (baseName === "FocusProps" || reachesFocusProps(baseName, seen)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** Whether the component, or a base class of it, constructs a `FocusState`. */
+  function buildsFocusState(component, seen = new Set()) {
+    if (seen.has(component)) return false;
+    seen.add(component);
+    const module = componentModule(files, component);
+    if (!module) return false;
+    if (module.code.includes("new FocusState(")) return true;
+    const base = declaredBaseName(module, component);
+    return base !== undefined && buildsFocusState(base, seen);
+  }
+
+  const errors = [];
+  const covered = new Set();
+  for (const [name, node] of interfaces) {
+    const component = name.slice(0, -"Props".length);
+    if (!component.startsWith("UI") && !component.startsWith("Pixi")) continue;
+    const reaches = reachesFocusProps(name);
+    if (!reaches && !isInteractive(name)) continue;
+    covered.add(component);
+    const reason = exempt.get(component);
+    if (reason !== undefined) {
+      if (reason.length === 0) {
+        errors.push(
+          finding(
+            "focus-widget-coverage",
+            anchor.path,
+            1,
+            `The ${component} coverage exemption states no reason; write "// focus-coverage-exempt: ${component} — <reason>".`,
+          ),
+        );
+      }
+      continue;
+    }
+    const modulePath =
+      componentModule(files, component)?.path ??
+      `${UI_SOURCE_PREFIX}${component}.ts`;
+    if (!reaches) {
+      errors.push(
+        finding(
+          "focus-widget-coverage",
+          types.path,
+          lineOf(source, node),
+          `${component} is interactive but ${name} does not reach FocusProps; extend it and construct a FocusState in ${modulePath}, or add "// focus-coverage-exempt: ${component} — <reason>".`,
+        ),
+      );
+      continue;
+    }
+    if (!buildsFocusState(component)) {
+      errors.push(
+        finding(
+          "focus-widget-coverage",
+          modulePath,
+          1,
+          `${component} reaches FocusProps but ${modulePath} constructs no FocusState; construct one, or add "// focus-coverage-exempt: ${component} — <reason>".`,
+        ),
+      );
+    }
+  }
+  // An exemption naming a widget the rule never asks about is dead weight.
+  for (const component of exempt.keys()) {
+    if (covered.has(component)) continue;
+    errors.push(
+      finding(
+        "focus-widget-coverage",
+        anchor.path,
+        1,
+        `The ${component} coverage exemption is stale: ${UI_TYPES_PATH} has no such widget that is interactive or reaches FocusProps.`,
       ),
     );
   }
@@ -1284,6 +1469,164 @@ export function positiveControlFailures() {
         ]).length === 1,
     },
     {
+      name: "focus-widget-coverage",
+      passed:
+        checkFocusWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code: "export interface UIDialProps { onChange?: (value: number) => void; }",
+          },
+          { path: "packages/ui/src/UIDial.ts", code: "class UIDial {}" },
+          {
+            path: "packages/ui/src/focus/FocusState.ts",
+            code: "export class FocusState {}",
+          },
+        ]).length === 1,
+    },
+    {
+      name: "focus-widget-coverage-satisfied",
+      passed:
+        checkFocusWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code:
+              "interface FocusProps { focusable?: boolean }\n" +
+              "export interface UIDialProps extends FocusProps { onChange?: (value: number) => void; }",
+          },
+          {
+            path: "packages/ui/src/UIDial.ts",
+            code: "class UIDial { attach() { this.focus = new FocusState(this, {}, {}); } }",
+          },
+          {
+            path: "packages/ui/src/focus/FocusState.ts",
+            code: "export class FocusState {}",
+          },
+        ]).length === 0,
+    },
+    {
+      name: "focus-widget-coverage-needs-a-focus-state",
+      passed:
+        checkFocusWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code:
+              "interface FocusProps { focusable?: boolean }\n" +
+              "export interface UIDialProps extends FocusProps { onChange?: (value: number) => void; }",
+          },
+          { path: "packages/ui/src/UIDial.ts", code: "class UIDial {}" },
+          {
+            path: "packages/ui/src/focus/FocusState.ts",
+            code: "export class FocusState {}",
+          },
+        ]).length === 1,
+    },
+    {
+      name: "focus-widget-coverage-needs-a-focus-state-without-interaction",
+      passed:
+        checkFocusWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code:
+              "interface FocusProps { focusable?: boolean }\n" +
+              "export interface UIBadgeProps extends FocusProps { tint?: number; }",
+          },
+          { path: "packages/ui/src/UIBadge.ts", code: "class UIBadge {}" },
+          {
+            path: "packages/ui/src/focus/FocusState.ts",
+            code: "export class FocusState {}",
+          },
+        ]).length === 1 &&
+        checkFocusWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code:
+              "interface FocusProps { focusable?: boolean }\n" +
+              "export interface UIBadgeProps extends FocusProps { tint?: number; }",
+          },
+          {
+            path: "packages/ui/src/UIBadge.ts",
+            code: "class UIBadge { attach() { this.focus = new FocusState(this, {}, {}); } }",
+          },
+          {
+            path: "packages/ui/src/focus/FocusState.ts",
+            code: "export class FocusState {}",
+          },
+        ]).length === 0,
+    },
+    {
+      name: "focus-widget-coverage-exempt-needs-a-reason",
+      passed:
+        checkFocusWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code: "export interface UIDialProps { onChange?: (value: number) => void; }",
+          },
+          {
+            path: "packages/ui/src/focus/FocusState.ts",
+            code: "// focus-coverage-exempt: UIDial — stepped by drag alone.",
+          },
+        ]).length === 0 &&
+        checkFocusWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code: "export interface UIDialProps { onChange?: (value: number) => void; }",
+          },
+          {
+            path: "packages/ui/src/focus/FocusState.ts",
+            code: "// focus-coverage-exempt: UIDial",
+          },
+        ]).length === 1,
+    },
+    {
+      name: "focus-widget-coverage-flags-stale-exemptions",
+      passed:
+        checkFocusWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code: "export interface UIDialProps { size?: number; }",
+          },
+          {
+            path: "packages/ui/src/focus/FocusState.ts",
+            code: "// focus-coverage-exempt: UIDial — stepped by drag alone.",
+          },
+        ]).length === 1,
+    },
+    {
+      name: "focus-widget-coverage-ignores-scroll-callbacks",
+      passed:
+        checkFocusWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code: "export interface UIListProps { onScroll?: (offset: number) => void; }",
+          },
+          {
+            path: "packages/ui/src/focus/FocusState.ts",
+            code: "export class FocusState {}",
+          },
+        ]).length === 0,
+    },
+    {
+      name: "focus-widget-coverage-follows-nested-props",
+      passed:
+        checkFocusWidgetCoverage([
+          {
+            path: "packages/ui/src/types.ts",
+            code:
+              "interface FocusProps { focusable?: boolean }\n" +
+              "export interface PixiOptionProps extends FocusProps { onChange?: () => void; }\n" +
+              "export interface PixiOptionGroupProps { items: PixiOptionProps[]; }",
+          },
+          {
+            path: "packages/ui/src/pixi-ui/PixiOption.ts",
+            code: "class PixiOption { attach() { this.focus = new FocusState(this, {}, {}); } }",
+          },
+          {
+            path: "packages/ui/src/focus/FocusState.ts",
+            code: "export class FocusState {}",
+          },
+        ]).length === 1,
+    },
+    {
       name: "inline-import-type",
       passed:
         checkInlineImportTypes([
@@ -1350,6 +1693,7 @@ export function runChecks(root = repoRoot) {
     ...checkComposedEntityLiveness(sources),
     ...checkAddonContextRegistration(sources),
     ...checkLocalizedWidgetCoverage(sources),
+    ...checkFocusWidgetCoverage(sources),
     ...checkInlineImportTypes(sources),
     ...checkVec2VoidMethods(sources),
     ...checkCoreEventBusKeys(sources),

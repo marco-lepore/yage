@@ -217,6 +217,15 @@ interface UIElementLike {
   displayObject?: {
     toGlobal(point: { x: number; y: number }): { x: number; y: number };
   };
+  /**
+   * The element's own interaction state — whether it is focused, hovered,
+   * pressed, checked, disabled — matched structurally so core keeps no
+   * dependency on `@yagejs/ui`. It fills {@link UINodeSnapshot.state}, which
+   * is how a test reads which element holds focus without comparing pixels.
+   *
+   * @internal
+   */
+  _inspectState?(): unknown;
 }
 
 /** Backward-compatible summary snapshot returned by query helpers. */
@@ -367,6 +376,12 @@ export interface UINodeSnapshot {
    */
   bounds: { x: number; y: number; width: number; height: number } | null;
   children: UINodeSnapshot[];
+  /**
+   * The element's own interaction state, in whatever shape the element
+   * reports — a button's focused, hovered, pressed and disabled flags, a
+   * checkbox's checked flag. `null` for an element that reports none and for
+   * the synthetic root a scene with several surfaces carries.
+   */
   state: unknown | null;
 }
 
@@ -2029,7 +2044,7 @@ export class Inspector {
       },
       bounds: this.buildUIBounds(node, size, adapter),
       children,
-      state: null,
+      state: node._inspectState?.() ?? null,
     };
   }
 

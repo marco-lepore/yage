@@ -68,6 +68,29 @@ export interface HoldDurationOptions {
   clock?: InputClock;
 }
 
+/** Default seconds a held action waits before its first repeat. */
+export const DEFAULT_REPEAT_DELAY = 0.35;
+/** Default seconds between repeats after the first. */
+export const DEFAULT_REPEAT_INTERVAL = 0.1;
+
+/**
+ * Options for `InputManager.isJustPressed`.
+ *
+ * `clock` selects the clock the repeat schedule is counted on — the
+ * `SceneTime` of a scene on the stack. It does not affect the initial press
+ * edge, which always resolves against the caller's frame or fixed-step
+ * window. Omit it and repeats count on the raw input clock, which keeps a
+ * menu repeating while the scene under it is paused.
+ */
+export interface PressRepeatOptions extends HoldDurationOptions {
+  /** Whether a held action produces repeat edges. Default `false`. */
+  repeat?: boolean;
+  /** Seconds held before the first repeat. Default 0.35. */
+  repeatDelay?: number;
+  /** Seconds between repeats after the first. Default 0.1. */
+  repeatInterval?: number;
+}
+
 /** Configuration for the InputPlugin. */
 export interface InputConfig {
   /** Target element for pointer events (default: canvas from renderer, or document). */

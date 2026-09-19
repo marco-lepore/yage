@@ -11,6 +11,7 @@ import type {
   TextureResource,
 } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
+import type { UITreeContext } from "./internal/tree-context.js";
 
 /** View type accepted by @pixi/ui components (texture path, Texture, Container, Sprite, or Graphics). */
 export type PixiViewType =
@@ -195,13 +196,21 @@ export interface UIElement {
   update(props: Record<string, unknown>): void;
   destroy(): void;
   /**
-   * Take the name of the UI tree this element belongs to, for
-   * development-mode warnings. Containers implement it and pass the name on
-   * to their children; a leaf that prints no warning of its own leaves it
-   * out.
+   * Take the context of the UI tree this element belongs to: the name a
+   * development warning prints, and the scene's focus stack. Containers
+   * implement it and pass it on to their children; a leaf that neither warns
+   * nor hosts a scope leaves it out. An element written outside this package
+   * that implements neither hook gets no warning label and never hosts a focus
+   * scope, and nothing reports that.
    * @internal
    */
-  _setDebugLabel?(label: string): void;
+  _attachToTree?(context: UITreeContext): void;
+  /**
+   * Drop the tree context, unregistering any focus scope this element hosts.
+   * Called from a container's `removeElement` and from `destroy()`.
+   * @internal
+   */
+  _detachFromTree?(): void;
 }
 
 /** A container element that can hold child UIElements. */
@@ -247,9 +256,9 @@ export interface ConsumeInputProps {
  *   enter and `false` on leave. Ideal for "show while hovered" toggles
  *   (tooltips, detail popovers) where one setter handles both edges.
  *
- * All three are independent and may be combined. Callbacks are suppressed
- * while the element is disabled (currently only `UIButton` has a disabled
- * state).
+ * All three are independent and may be combined. `UIButton`, `UICheckbox` and
+ * the interactive `@pixi/ui` wrappers suppress all three while they are
+ * disabled.
  */
 export interface PointerEventProps {
   onPointerOver?: () => void;
@@ -257,9 +266,261 @@ export interface PointerEventProps {
   onHover?: (hovering: boolean) => void;
 }
 
+// ---------------------------------------------------------------------------
+// Keyboard / gamepad focus
+// ---------------------------------------------------------------------------
+
+/** The four directions a focus scope moves in. */
+export type FocusDirection = "up" | "down" | "left" | "right";
+
+/**
+ * What pointer input does to focus inside a scope, set through
+ * {@link UIFocusScopeOptions.pointerFocus}.
+ *
+ * - `"press"` — pressing a control focuses it, the way clicking a control on
+ *   a web page focuses it. Moving the pointer across the menu changes which
+ *   control looks hovered and nothing else.
+ * - `"hover"` — moving the pointer over a control focuses it as well, which
+ *   is what a console-style menu with one lit row wants.
+ * - `"none"` — the pointer never moves focus, so the keyboard keeps its row
+ *   whatever the mouse does.
+ *
+ * Hovered and pressed are the element's own looks and are painted under every
+ * setting, as is the action a click runs.
+ */
+export type PointerFocusMode = "none" | "press" | "hover";
+
+/**
+ * Per-direction override of the position rule, addressed by
+ * {@link FocusProps.focusId}.
+ *
+ * A string matching a current candidate wins outright. `null` stops movement
+ * in that direction: no position fallback, no wrap, and `move` returns
+ * `false`. An absent key, or a string matching nothing at the moment, falls
+ * through to the position rule, so a row hidden by a filter does not strand
+ * its neighbour.
+ *
+ * Ids rather than element references, because a sibling's props holding an
+ * element would keep a removed element alive.
+ */
+export interface FocusNeighbors {
+  up?: string | null;
+  down?: string | null;
+  left?: string | null;
+  right?: string | null;
+}
+
+/**
+ * How the outline around a focused element is drawn.
+ *
+ * An outline is drawn only where one is asked for: set this once for the
+ * whole UI through `UIPluginOptions.focusStyle`, or for one element through
+ * {@link FocusProps.focusStyle}. Where neither names a style the element
+ * draws no outline, and a game shows focus its own way — a marker beside the
+ * row, a swapped sprite, a sound — from {@link FocusProps.onFocusChange}.
+ *
+ * Each field resolves on its own: the element's value, then the UI-wide one,
+ * then the default below.
+ */
+export interface UIFocusStyle {
+  /**
+   * Stroke colour. Defaults to the fill of the UI default text style when
+   * that names a colour number, so a game that themed its text already said
+   * what its foreground is; white otherwise.
+   */
+  color?: number;
+  /** Stroke thickness in px. Default `2`. */
+  width?: number;
+  /**
+   * Corner radius. Defaults to the element's own background radius where it
+   * has one, so a themed button and the widget beside it are rounded the
+   * same while focused, and to `4` otherwise.
+   */
+  radius?: number;
+  /**
+   * Gap in px between the element's box and the outline's outer edge.
+   * Default `0`. The outline is drawn inside the box whatever this is, so it
+   * never changes a measured size or reaches over a neighbour.
+   */
+  inset?: number;
+}
+
+/**
+ * The rectangle a focus outline is drawn around, in the local space of the
+ * Pixi container that holds it.
+ *
+ * A `@pixi/ui` wrapper states its own through `PixiUIBase.focusOutlineBox`
+ * when the parts it draws do not match the box layout gave it.
+ */
+export interface UIFocusOutlineBox {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  /** The element's own corner radius, followed when no style names one. */
+  readonly radius?: number;
+}
+
+/**
+ * Focus participation for one element, mixed into every element props
+ * interface beside {@link PointerEventProps}.
+ *
+ * Every callback here runs through the UI error boundary, so a throw is
+ * attributed to the element and rethrown.
+ */
+export interface FocusProps {
+  /**
+   * Take part in focus navigation. Omitted, the element's own default
+   * applies: `true` for `UIButton`, `UICheckbox` and the six interactive
+   * `@pixi/ui` wrappers, `false` for everything else. `focusable: false`
+   * takes an element out of navigation without disabling it, so the pointer
+   * still reaches it.
+   */
+  focusable?: boolean;
+  /**
+   * Name this element so a sibling's {@link FocusProps.focusNeighbors} can
+   * point at it. Unique inside one scope: two elements claiming one id draw a
+   * development warning, and the first in tree order answers to it.
+   */
+  focusId?: string;
+  /** Per-direction overrides of the position rule. */
+  focusNeighbors?: FocusNeighbors;
+  /**
+   * Called with `true` when focus arrives and `false` when it leaves,
+   * including when the scope stops taking input. This is how most games show
+   * focus — a marker beside the row, a swapped sprite, a sound — since an
+   * element draws an outline only where a {@link FocusProps.focusStyle} asks
+   * for one.
+   */
+  onFocusChange?: (focused: boolean) => void;
+  /**
+   * Called with `-1` for left and `1` for right while this element is
+   * focused, consuming that press — what a volume or difficulty row needs.
+   * Up and down always move focus, so a column of stepper rows stays
+   * traversable.
+   */
+  onAdjust?: (direction: -1 | 1) => void;
+  /**
+   * The focus outline for this element alone. Each field falls back to the
+   * plugin-level `focusStyle`, then to the built-in default; `null` draws no
+   * outline here, which is how one element opts out of a UI-wide one.
+   *
+   * Omitted, the element draws the UI-wide outline, or none at all when the
+   * plugin names no style either.
+   */
+  focusStyle?: UIFocusStyle | null;
+}
+
+/**
+ * Action names a focus scope polls, one role per key, merged over the
+ * defaults `move-up`, `move-down`, `move-left`, `move-right`, `interact` and
+ * `cancel`. A role takes one name or a list, so a game whose map carries both
+ * `interact` and `attack` can bind both to confirm.
+ *
+ * A scope consumes nothing it polls: a confirm press that activates a menu
+ * row is still visible to gameplay code reading the same action in that same
+ * frame. Keeping menu input out of gameplay is what input groups
+ * (`InputManager.setActiveGroups`) are for.
+ */
+export interface UIFocusInputOptions {
+  up?: string | readonly string[];
+  down?: string | readonly string[];
+  left?: string | readonly string[];
+  right?: string | readonly string[];
+  confirm?: string | readonly string[];
+  cancel?: string | readonly string[];
+  /**
+   * Hold-to-repeat, applied to the four directions only — confirm and cancel
+   * never repeat. Defaults to `true`, taking the input package's own delay
+   * and interval. Repeats count on the raw input clock, so a pause menu keeps
+   * repeating while its scene is paused.
+   */
+  repeat?: boolean | { delay?: number; interval?: number };
+}
+
+/**
+ * How one focus scope behaves, passed as {@link UIPanelProps.focus}.
+ *
+ * `onFocusMove`, `onActivate` and `onMoveBlocked` are the scope-wide cue
+ * hooks: one handler for a whole menu rather than one closure per row. All
+ * four callbacks run through the UI error boundary against the host
+ * container.
+ */
+export interface UIFocusScopeOptions {
+  /**
+   * Return to the first element against the direction when a move runs past
+   * the last one. Defaults to `true`; `false` refuses the move instead.
+   */
+  wrap?: boolean;
+  /**
+   * Focus the first candidate in tree order the first time the scope takes
+   * input with nothing remembered. Defaults to `true`.
+   */
+  autoFocus?: boolean;
+  /**
+   * Rename the polled actions per role. `null` reads no device at all: the
+   * game drives the scope through `move()`, `activate()` and `cancel()`,
+   * while pointer focus and the scroll follow keep working.
+   */
+  input?: UIFocusInputOptions | null;
+  /**
+   * What pointer input does to focus. Defaults to `"press"`: pressing a
+   * control focuses it, and passing the pointer over one leaves focus where
+   * the keyboard put it.
+   */
+  pointerFocus?: PointerFocusMode;
+  /**
+   * Own the pointer as well as the keys while this scope reads input.
+   * Defaults to `true`: everything drawn under the scope stops answering the
+   * pointer, so a confirm dialog cannot be clicked through — no hover look,
+   * no press, no click on the menu behind it — and a press on the blocked
+   * area is claimed for the UI rather than reaching the game's action map.
+   * The scope's own subtree keeps every pointer behaviour it has, and a scope
+   * nested inside another blocks only what is outside itself.
+   *
+   * `false` leaves the pointer alone, for a panel that wants the keys while
+   * the world behind it stays clickable.
+   */
+  modal?: boolean;
+  /**
+   * Px kept between a focused element and the edge of an enclosing
+   * `UIScrollView`. Defaults to `8`; must be finite and at or above zero.
+   */
+  scrollPadding?: number;
+  /** Called after focus lands somewhere else, with both elements. */
+  onFocusMove?: (element: UIElement | null, previous: UIElement | null) => void;
+  /** Called after the focused element's own action has run. */
+  onActivate?: (element: UIElement) => void;
+  /**
+   * Called when a move finds nothing in that direction. This is the only way
+   * to hear a refused move, since the scope drives itself.
+   */
+  onMoveBlocked?: (direction: FocusDirection) => void;
+  /** Called on the cancel action and on `cancel()`. */
+  onCancel?: () => void;
+}
+
+/**
+ * Options for `UIScrollView.scrollIntoView`. The `UI` prefix keeps the name
+ * clear of the DOM lib's global `ScrollIntoViewOptions`.
+ */
+export interface UIScrollIntoViewOptions {
+  /**
+   * Where the element lands in the viewport. `"nearest"`, the default,
+   * scrolls the least distance that brings it inside and leaves an element
+   * already fully visible where it is.
+   */
+  align?: "nearest" | "start" | "center" | "end";
+  /**
+   * Px kept between the element and the viewport edge. Defaults to `0`; must
+   * be finite and at or above zero.
+   */
+  padding?: number;
+}
+
 /** Props for UIText (used by reconciler and props-driven constructor). */
 export interface UITextProps
-  extends LayoutProps, ConsumeInputProps, PointerEventProps {
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   children?: string;
   style?: Partial<TextStyle>;
   /**
@@ -296,7 +557,7 @@ export interface UITextProps
 
 /** Props for UISplitText (used by reconciler and props-driven constructor). */
 export interface UISplitTextProps
-  extends LayoutProps, ConsumeInputProps, PointerEventProps {
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   children?: string;
   style?: Partial<TextStyle>;
   /**
@@ -320,12 +581,20 @@ export interface UISplitTextProps
 
 /** Props for UIButton (used by reconciler and props-driven constructor). */
 export interface UIButtonProps
-  extends LayoutProps, ConsumeInputProps, PointerEventProps {
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   children?: string;
   onClick?: () => void;
   background?: BackgroundOptions;
   hoverBackground?: BackgroundOptions;
   pressBackground?: BackgroundOptions;
+  /**
+   * Background painted while the button holds focus and the pointer is not
+   * on it — the filled selected row some menus want, under any focus outline
+   * a `focusStyle` asks for. Omitted, a focused button keeps its resting
+   * background. An override supplying only a colour keeps the resting corner
+   * radius.
+   */
+  focusBackground?: BackgroundOptions;
   textStyle?: Partial<TextStyle>;
   /**
    * Bitmap font for the auto-wrapped string label (forwarded to the inner
@@ -376,7 +645,7 @@ export type UITextBuilderProps = Omit<UITextProps, "children" | "style">;
 
 /** Props for UIPanel (used by reconciler and props-driven constructor). */
 export interface UIPanelProps
-  extends LayoutProps, ConsumeInputProps, PointerEventProps {
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   direction?: FlexDirection;
   gap?: number;
   padding?: Padding;
@@ -384,6 +653,30 @@ export interface UIPanelProps
   justifyContent?: JustifyContent;
   overflow?: "visible" | "hidden";
   background?: BackgroundOptions;
+  /**
+   * Background painted while a `focusable` panel holds focus — the filled
+   * selected row some menus want, under any focus outline a `focusStyle`
+   * asks for. Omitted, a focused panel keeps its resting background. An
+   * override supplying only a colour keeps the resting corner radius. A panel
+   * with no `background` of its own paints this fill while focused and nothing
+   * at rest, which is the menu row that is transparent until it is selected.
+   */
+  focusBackground?: BackgroundOptions;
+  /**
+   * Make this panel a focus scope over its descendants, so keyboard and
+   * gamepad input walks them. `true` takes every default; an object sets
+   * them. Reached afterwards through `panel.focusScope`.
+   *
+   * Among those defaults, the scope reading input also owns the pointer:
+   * everything drawn under it stops answering the mouse until it hands the
+   * keys back. {@link UIFocusScopeOptions.modal} turns that off.
+   *
+   * Passing `focus` again through `update()` refreshes the existing scope's
+   * options in place, so re-rendering with a fresh object literal keeps
+   * focus where it is; passing `false` or an explicit `undefined` disposes
+   * the scope.
+   */
+  focus?: boolean | UIFocusScopeOptions;
 }
 
 /**
@@ -396,7 +689,7 @@ export interface UIPanelProps
  * with one of those set the texture stretches as if both axes were sized.
  */
 export interface UIImageProps
-  extends LayoutProps, ConsumeInputProps, PointerEventProps {
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   texture: TextureInput;
   tint?: number;
   alpha?: number;
@@ -404,7 +697,7 @@ export interface UIImageProps
 
 /** Props for UINineSlice. */
 export interface UINineSliceProps
-  extends LayoutProps, ConsumeInputProps, PointerEventProps {
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   texture: TextureInput;
   insets: { left: number; top: number; right: number; bottom: number } | number;
   tint?: number;
@@ -413,7 +706,7 @@ export interface UINineSliceProps
 
 /** Props for UIProgressBar. */
 export interface UIProgressBarProps
-  extends LayoutProps, ConsumeInputProps, PointerEventProps {
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   value: number;
   trackBackground?: BackgroundOptions;
   fillBackground?: BackgroundOptions;
@@ -421,7 +714,8 @@ export interface UIProgressBarProps
 }
 
 /** Props for UICheckbox. */
-export interface UICheckboxProps extends LayoutProps, ConsumeInputProps {
+export interface UICheckboxProps
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   checked?: boolean;
   onChange?: (checked: boolean) => void;
   size?: number;
@@ -445,7 +739,8 @@ export interface FancyButtonAnimations {
 }
 
 /** Props for PixiFancyButton. */
-export interface PixiFancyButtonProps extends LayoutProps, ConsumeInputProps {
+export interface PixiFancyButtonProps
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   defaultView?: PixiViewType;
   hoverView?: PixiViewType;
   pressedView?: PixiViewType;
@@ -469,7 +764,8 @@ export interface PixiFancyButtonProps extends LayoutProps, ConsumeInputProps {
 }
 
 /** Props for PixiCheckbox. */
-export interface PixiCheckboxProps extends LayoutProps, ConsumeInputProps {
+export interface PixiCheckboxProps
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   checked?: boolean;
   onChange?: (checked: boolean) => void;
   checkedView: PixiViewType;
@@ -480,7 +776,8 @@ export interface PixiCheckboxProps extends LayoutProps, ConsumeInputProps {
 }
 
 /** Props for PixiProgressBar. */
-export interface PixiProgressBarProps extends LayoutProps, ConsumeInputProps {
+export interface PixiProgressBarProps
+  extends LayoutProps, ConsumeInputProps, FocusProps {
   value: number;
   bg: PixiViewType;
   fill: PixiViewType;
@@ -494,7 +791,8 @@ export interface PixiProgressBarProps extends LayoutProps, ConsumeInputProps {
 }
 
 /** Props for PixiSlider. */
-export interface PixiSliderProps extends LayoutProps, ConsumeInputProps {
+export interface PixiSliderProps
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   value?: number;
   min?: number;
   max?: number;
@@ -516,7 +814,8 @@ export interface PixiSliderProps extends LayoutProps, ConsumeInputProps {
 }
 
 /** Props for PixiInput. */
-export interface PixiInputProps extends LayoutProps, ConsumeInputProps {
+export interface PixiInputProps
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   bg: PixiViewType;
   textStyle?: Partial<TextStyle>;
   placeholder?: string;
@@ -553,7 +852,8 @@ export interface ScrollbarOptions {
  * `height` / `flexGrow` …). Content overflowing the scroll axis is clipped
  * and pannable. `gap` / `padding` apply to the inner content stack.
  */
-export interface UIScrollViewProps extends LayoutProps, ConsumeInputProps {
+export interface UIScrollViewProps
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   /** Scroll/stack axis. Default `"vertical"`. */
   direction?: "vertical" | "horizontal";
   /** Gap between child cards (forwarded to the content stack). */
@@ -574,7 +874,8 @@ export interface UIScrollViewProps extends LayoutProps, ConsumeInputProps {
 }
 
 /** Props for PixiSelect. */
-export interface PixiSelectProps extends LayoutProps, ConsumeInputProps {
+export interface PixiSelectProps
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   closedBG: PixiViewType;
   openBG: PixiViewType;
   items: string[];
@@ -591,7 +892,8 @@ export interface PixiSelectProps extends LayoutProps, ConsumeInputProps {
 }
 
 /** Props for PixiRadioGroup. */
-export interface PixiRadioGroupProps extends LayoutProps, ConsumeInputProps {
+export interface PixiRadioGroupProps
+  extends LayoutProps, ConsumeInputProps, PointerEventProps, FocusProps {
   items: PixiCheckboxProps[];
   type: "vertical" | "horizontal";
   elementsMargin: number;
@@ -606,7 +908,15 @@ export interface PixiRadioGroupProps extends LayoutProps, ConsumeInputProps {
 /** Positioning mode for a surface's root panel. */
 export type UIPositioning = "anchor" | "transform";
 
-/** Options for creating a UISurface (the Component that mounts a UI tree on an entity). */
+/**
+ * Options for creating a UISurface (the Component that mounts a UI tree on an
+ * entity).
+ *
+ * Extending `UIPanelProps` means the surface takes the root panel's props
+ * directly, {@link UIPanelProps.focus} among them: `new UISurface({ focus:
+ * true })` turns the whole surface into one keyboard- and gamepad-driven
+ * focus scope, reached afterwards through `surface.focusScope`.
+ */
 export interface UISurfaceOptions extends UIPanelProps {
   anchor?: Anchor;
   offset?: { x: number; y: number };

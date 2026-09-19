@@ -51,6 +51,20 @@ export const ACTIONS = {
 engine.use(new InputPlugin({ actions: ACTIONS }));
 ```
 
+::::note[Typing into a text field raises no action]
+A key the browser sends to a text field goes to the field and nowhere else: a
+`<textarea>`, a text-accepting `<input>` — which is what the `PixiInput` widget
+creates — or a `contenteditable` element. So a player typing `w` into a name
+field does not walk the character, and `preventDefaultKeys` does not interfere
+with what they type. Bind whatever letters your game needs. The key that ends
+an edit belongs to the field too, so leaving a name field with Escape or Enter
+fires no game action bound to those keys.
+
+Releases are always delivered. A key held when the field took focus keeps its
+action down until the player lets go, exactly as it would with no field on
+screen. Gamepad and pointer input carry on throughout.
+::::
+
 ## Querying Input
 
 Resolve the `InputManager` from the engine context and query actions by name:
@@ -72,6 +86,7 @@ one deterministic time source.
 input.isPressed("jump");       // true while the key is held
 input.isJustPressed("jump");   // true only in the window the key went down
 input.isJustReleased("jump");  // true only in the window it was released
+input.isJustReleasedByPlayer("jump"); // same window, only if the player let go
 ```
 
 The `isJust*` queries answer "did this happen in my window", and the window
@@ -82,6 +97,56 @@ Either way each press is seen exactly once — when a frame runs several fixed
 steps only the first step sees it, and a press landing in a frame that runs no
 fixed step is held for the next step. Poll from whichever context your gameplay
 runs in; frame and step rates don't change the answer.
+
+A hold also ends when the engine drops it: the window loses focus, the page
+hides, a gamepad disconnects, a pointer gesture is cancelled, or the game calls
+`clearAll()`. `isJustReleased` reports all of those, which is right for a jump
+that should stop when the player alt-tabs away. Where the release is what
+commits something the player cannot take back — a menu confirming the row under
+the cursor, a charged shot leaving the barrel — read
+`isJustReleasedByPlayer` instead, and alt-tabbing commits nothing.
+
+### Hold-to-repeat
+
+A menu that moves one row per key press is tiring to use. Pass
+`{ repeat: true }` and `isJustPressed` is true on the press and again while the
+key stays down — after 0.35 seconds, then every 0.1 second:
+
+```typescript
+if (input.isJustPressed("move-down", { repeat: true })) cursor.step(1);
+if (input.isJustPressed("move-up", { repeat: true })) cursor.step(-1);
+```
+
+Set the two timings per call. They are arguments rather than per-action
+configuration, so two callers can repeat one action at different rates:
+
+```typescript
+input.isJustPressed("move-up", {
+  repeat: true,
+  repeatDelay: 0.5,      // seconds held before the first repeat
+  repeatInterval: 0.06,  // seconds between repeats after that
+});
+```
+
+A `repeatDelay` that is not finite or is negative throws, and so does a
+`repeatInterval` that is not finite or is not above zero. Both throw at the
+call, before any input state is read.
+
+The query returns a boolean, so a frame longer than the interval produces one
+edge and not several: a hitch moves the cursor one row rather than five.
+
+Repeats count on the raw input clock unless you pass a `clock`, which keeps a
+pause menu repeating while the scene under it is paused. Pass a scene's
+`SceneTime` to stop them with the scene, as described under
+[Counting on Scene Time](#counting-on-scene-time). The clock applies to the
+repeats only — the initial press edge always falls in the caller's frame or
+fixed step.
+
+An action bound to a gamepad stick direction repeats the same way, with no
+stick-specific code: a stick push past the threshold arrives as a
+`GamepadLeftStick*` key edge, so it carries an ordinary hold. Menus built on
+`@yagejs/ui`'s focus scopes get all of this without calling the query
+themselves.
 
 ### Axes and Vectors
 
@@ -630,6 +695,13 @@ across devices.
 
 PlayStation users see ✕/○/△/□ on hardware that maps to `GamepadA/B/X/Y`
 in code — code names are layout-canonical (Xbox), not glyph-specific.
+
+A stick push past the threshold arrives as one of the
+`GamepadLeftStick*` / `GamepadRightStick*` key edges and carries an ordinary
+hold, so a stick direction bound to a movement action works with every press
+query. That includes [hold-to-repeat](#hold-to-repeat): bind the direction and
+a held stick steps a menu at the same rate a held key does, with no threshold
+code of your own. Read `getStick` when you want the analog value itself.
 
 ### Analog sticks and triggers
 

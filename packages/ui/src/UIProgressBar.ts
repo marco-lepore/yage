@@ -11,6 +11,12 @@ import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
+import { FocusOutline, layoutBox } from "./internal/focus-outline.js";
+import { FocusState } from "./focus/FocusState.js";
+import {
+  requestHoverFocus,
+  requestPressFocus,
+} from "./focus/pointer-request.js";
 
 /** Default track and fill backgrounds. */
 const DEFAULT_TRACK: BackgroundOptions = { color: 0x333333, alpha: 1 };
@@ -32,6 +38,8 @@ export class UIProgressBar implements UIElement {
   private lastWidth = 0;
   private lastHeight = 0;
   private readonly pointerEvents: PointerEvents;
+  private readonly _focus: FocusState;
+  private readonly _focusOutline: FocusOutline;
   private _destroyed = false;
 
   constructor(props: UIProgressBarProps) {
@@ -39,6 +47,26 @@ export class UIProgressBar implements UIElement {
     this.container = new Container();
     applyConsumeInput(this.container, props.consumeInput);
     this.pointerEvents = new PointerEvents(this.container, props);
+
+    // Out of focus navigation until a game asks for it with `focusable`.
+    // Asked for, the bar is outlined like every other focusable element; the
+    // pointer still moves focus here, which keeps the mouse and the keyboard
+    // on the same element.
+    this._focusOutline = new FocusOutline({
+      container: this.container,
+      box: () => layoutBox(this.yogaNode),
+    });
+    this._focusOutline.set(props);
+    this._focus = new FocusState(this, props, {
+      focusableByDefault: false,
+      paint: (focused) => this._focusOutline.setFocused(focused),
+    });
+    this.container.on("pointerover", () => {
+      requestHoverFocus(this);
+    });
+    this.container.on("pointerdown", () => {
+      requestPressFocus(this);
+    });
 
     this._value = clamp(props.value);
     this._direction = props.direction ?? "horizontal";
@@ -76,6 +104,7 @@ export class UIProgressBar implements UIElement {
 
     this.trackRenderer.resize(w, h);
     this.resizeFill();
+    this._focusOutline.refresh();
   }
 
   /**
@@ -122,6 +151,8 @@ export class UIProgressBar implements UIElement {
 
     if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
     this.pointerEvents.set(p);
+    this._focus.set(p);
+    this._focusOutline.set(p);
 
     applyLayoutProps(this.yogaNode, p);
 
@@ -135,10 +166,22 @@ export class UIProgressBar implements UIElement {
     }
   }
 
+  /**
+   * What the Inspector reports for this progress bar: whether it takes part in
+   * focus navigation, which is off unless the game asked for it, and whether
+   * it holds focus right now. A test reads this instead of a screenshot.
+   * @internal
+   */
+  _inspectState(): { focused: boolean; focusable: boolean } {
+    return { focused: this._focus.focused, focusable: this._focus.focusable };
+  }
+
   /** Idempotent — a second call is a no-op. */
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+    this._focus.destroy();
+    this._focusOutline.destroy();
     clearConsumeInput(this.container);
     this.yogaNode.free();
     this.trackRenderer.destroy();

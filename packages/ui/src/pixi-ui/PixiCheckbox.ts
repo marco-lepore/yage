@@ -25,10 +25,19 @@ export class PixiCheckbox extends PixiUIBase<CheckBox> {
     this.prevProps = { ...props };
   }
 
-  /** CheckBox is a composite (icon + label). Setting container.width/height
-   *  changes scale and distorts the square icon, so we skip resizing. */
-  override applyLayout(): void {
-    // position only — no resize
+  /** CheckBox is a composite: an icon beside a label. Sizing its container
+   *  scales the square icon out of shape, so it keeps its own size. */
+  protected override sizedByLayout(): boolean {
+    return false;
+  }
+
+  /**
+   * Toggle the box. `checked` routes through the widget's own switch, which
+   * emits `onCheck` and so the bridged `onChange`; `update({ checked })` keeps
+   * using `forceCheck`, the setter @pixi/ui documents as the silent one.
+   */
+  activate(): void {
+    this.view.checked = !this.view.checked;
   }
 
   update(props: Record<string, unknown>): void {

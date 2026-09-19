@@ -6,6 +6,7 @@ import type { UIElement } from "./types.js";
 import { computePosition } from "./positioning.js";
 import type { Dimensions, Placement, Rect } from "./positioning.js";
 import { bindUIErrorBoundary, runUICallback } from "./error-boundary.js";
+import { readElementRect } from "./focus/element-rect.js";
 
 /**
  * Per-floating-element config. All optional; the floating layer fills
@@ -70,7 +71,6 @@ interface Entry {
 
 const OVERLAY_LAYER = "ui-overlay";
 const OVERLAY_LAYER_ORDER = 1_000_000;
-const ZERO = { x: 0, y: 0 } as const;
 const EMPTY_SIZE: Dimensions = { width: 0, height: 0 };
 
 function sameRect(a: Rect | null, b: Rect): boolean {
@@ -96,9 +96,6 @@ function sameRect(a: Rect | null, b: Rect): boolean {
 export class FloatingOverlay {
   private layer: DisplayContainer | null = null;
   private readonly entries = new Set<Entry>();
-  private readonly referenceTopLeft = { x: 0, y: 0 };
-  private readonly referenceBottomRight = { x: 0, y: 0 };
-  private readonly referenceBottomRightInput = { x: 0, y: 0 };
   private readonly currentReferenceRect: Rect = {
     x: 0,
     y: 0,
@@ -249,22 +246,7 @@ export class FloatingOverlay {
   private readReferenceRect(ref: UIElement, out: Rect): boolean {
     const layer = this.layer;
     if (!layer) return false;
-    const w = ref.yogaNode.getComputedWidth();
-    const h = ref.yogaNode.getComputedHeight();
-    if (!Number.isFinite(w) || !Number.isFinite(h)) return false;
-    this.referenceBottomRightInput.x = w;
-    this.referenceBottomRightInput.y = h;
-    const a = layer.toLocal(ZERO, ref.displayObject, this.referenceTopLeft);
-    const b = layer.toLocal(
-      this.referenceBottomRightInput,
-      ref.displayObject,
-      this.referenceBottomRight,
-    );
-    out.x = Math.min(a.x, b.x);
-    out.y = Math.min(a.y, b.y);
-    out.width = Math.abs(b.x - a.x);
-    out.height = Math.abs(b.y - a.y);
-    return true;
+    return readElementRect(layer, ref, out);
   }
 }
 

@@ -27,25 +27,26 @@ import {
   removeChild,
 } from "./internal/child-list.js";
 import {
-  setChildDebugLabel,
-  setChildrenDebugLabel,
-} from "./internal/debug-label.js";
+  attachChildToTree,
+  attachChildrenToTree,
+  detachChildFromTree,
+} from "./internal/tree-context.js";
+import type { UITreeContext } from "./internal/tree-context.js";
 import { applyFlexContainerProps } from "./internal/flex-container.js";
 import type { FlexContainerDefaults } from "./internal/flex-container.js";
+import { HOVER_FACTOR, PRESS_FACTOR, deriveStateBg } from "./internal/color.js";
+import { FocusOutline, layoutBox } from "./internal/focus-outline.js";
+import { FocusState } from "./focus/FocusState.js";
+import {
+  requestHoverFocus,
+  requestPressFocus,
+} from "./focus/pointer-request.js";
 import { runUICallback } from "./error-boundary.js";
 
 import { type ColorBackground, isTextureBackground } from "./types.js";
 
 /** Background a button falls back to when the caller supplies none. */
 const DEFAULT_BG: ColorBackground = { color: 0x444444, alpha: 1, radius: 4 };
-
-/**
- * Brightness the hover and press states are derived at from the resting
- * background. The default grey `0x444444` lands exactly on `0x555555` hovered
- * and `0x333333` pressed.
- */
-const HOVER_FACTOR = 1.25;
-const PRESS_FACTOR = 0.75;
 
 /**
  * What a button lays its children out as. The constructor passes all three, so
@@ -69,32 +70,6 @@ function mergeBg(
   if (!override) return def;
   if (isTextureBackground(override)) return override;
   return { ...def, ...override };
-}
-
-/** Scale each 8-bit channel, clamped, so a colour brightens or darkens. */
-function scaleChannels(color: number, factor: number): number {
-  const r = Math.min(255, Math.round(((color >> 16) & 0xff) * factor));
-  const g = Math.min(255, Math.round(((color >> 8) & 0xff) * factor));
-  const b = Math.min(255, Math.round((color & 0xff) * factor));
-  return (r << 16) | (g << 8) | b;
-}
-
-/**
- * Build a hover or press background from the resting one so a textured or
- * recoloured button keeps its look through both states. A colour background
- * has its colour scaled; a texture background keeps its texture and has its
- * tint scaled, which leaves the hover state a no-op at the default white tint
- * and darkens the press state. Channels clamp at 255, so a colour already
- * above roughly 0xCC brightens less than the factor asks for.
- */
-function deriveStateBg(
-  base: BackgroundOptions,
-  factor: number,
-): BackgroundOptions {
-  if (isTextureBackground(base)) {
-    return { ...base, tint: scaleChannels(base.tint ?? 0xffffff, factor) };
-  }
-  return { ...base, color: scaleChannels(base.color ?? 0x000000, factor) };
 }
 
 /**
@@ -132,7 +107,14 @@ export class UIButton implements UIContainerElement {
   private _truncateWith: string | undefined;
   private _disabled = false;
   private _isHovered = false;
-  private _isPressed = false;
+  // One flag per device holding the button down. They are separate states
+  // with one look: the button paints pressed while either is set, and each
+  // device clears only its own, so a mouse moving off the button never ends
+  // a confirm press the player is still holding, and a confirm press never
+  // ends the click the mouse is in the middle of making.
+  private _pointerPressed = false;
+  private _focusPressed = false;
+  private _isFocused = false;
   private _pressStartedHere = false;
   private _computedWidth = 0;
   private _computedHeight = 0;
@@ -140,17 +122,23 @@ export class UIButton implements UIContainerElement {
   private _hasExplicitHeight = false;
   private _defaultPaddingApplied = false;
   private _destroyed = false;
+  private _treeContext: UITreeContext | undefined;
   private _debugLabel: string | undefined;
   private _hasExplicitPadding = false;
   private bgOpts: BackgroundOptions;
   private hoverBgOpts: BackgroundOptions;
   private pressBgOpts: BackgroundOptions;
+  // The fill a focused button paints, only where the caller named one.
+  private focusBgOpts: BackgroundOptions | undefined;
   // What the caller asked for, kept so a later `background` change re-derives
   // the states it did not override.
   private hoverBgOverride: BackgroundOptions | undefined;
   private pressBgOverride: BackgroundOptions | undefined;
+  private focusBgOverride: BackgroundOptions | undefined;
   private onClick: (() => void) | undefined;
   private readonly pointerEvents: PointerEvents;
+  private readonly _focus: FocusState;
+  private readonly _focusOutline: FocusOutline;
 
   constructor(p: UIButtonProps) {
     this.yogaNode = createYogaNode();
@@ -164,8 +152,10 @@ export class UIButton implements UIContainerElement {
     this.bgOpts = mergeBg(DEFAULT_BG, p.background);
     this.hoverBgOverride = p.hoverBackground;
     this.pressBgOverride = p.pressBackground;
+    this.focusBgOverride = p.focusBackground;
     this.hoverBgOpts = this._resolveStateBg(this.hoverBgOverride, HOVER_FACTOR);
     this.pressBgOpts = this._resolveStateBg(this.pressBgOverride, PRESS_FACTOR);
+    this.focusBgOpts = this._resolveFocusBg();
 
     this.container = new Container();
     this.container.eventMode = "static";
@@ -196,36 +186,48 @@ export class UIButton implements UIContainerElement {
     if (p.disabled) this.setDisabled(true);
     if (p.visible === false) this.visible = false;
 
+    // Every listener sets its own flags and repaints from all of them, so a
+    // pointer leaving a row that holds focus repaints it as focused rather
+    // than as resting, and whatever focus signal the game asked for — a
+    // `focusBackground` fill, an outline from `focusStyle`, its own painting
+    // from `onFocusChange` — stays on. Each listener touches the pointer's
+    // own press flag and leaves a confirm press held on the button alone.
+    //
+    // Hovered and focused are separate states: the pointer passing over the
+    // button tints it, and pressing it is what asks a focus scope to bring
+    // the keyboard here.
     this.container.on("pointerover", () => {
       if (this._disabled) return;
       this._isHovered = true;
-      this.applyBg(this.hoverBgOpts);
+      requestHoverFocus(this);
+      this.applyCurrentBg();
     });
     this.container.on("pointerout", () => {
       if (this._disabled) return;
       this._isHovered = false;
-      this._isPressed = false;
-      this.applyBg(this.bgOpts);
+      this._pointerPressed = false;
+      this.applyCurrentBg();
     });
     this.container.on("pointerdown", () => {
       if (this._disabled) return;
       this._pressStartedHere = true;
-      this._isPressed = true;
-      this.applyBg(this.pressBgOpts);
+      this._pointerPressed = true;
+      requestPressFocus(this);
+      this.applyCurrentBg();
     });
     this.container.on("pointerup", () => {
       if (this._disabled) return;
+      // Whether a release counts as a click is the pointer path's own
+      // question: a press that began elsewhere must not fire this button.
       const shouldClick = this._pressStartedHere;
       this._pressStartedHere = false;
-      this._isPressed = false;
-      this.applyBg(this.hoverBgOpts);
-      if (shouldClick && this.onClick) {
-        runUICallback(this.container, "UI onClick", this.onClick);
-      }
+      this._pointerPressed = false;
+      this.applyCurrentBg();
+      if (shouldClick) this.activate();
     });
     this.container.on("pointerupoutside", () => {
       this._pressStartedHere = false;
-      this._isPressed = false;
+      this._pointerPressed = false;
       this.applyCurrentBg();
     });
 
@@ -236,6 +238,61 @@ export class UIButton implements UIContainerElement {
       p,
       () => this._disabled,
     );
+
+    this._focusOutline = new FocusOutline({
+      container: this.container,
+      box: () => layoutBox(this.yogaNode, this._bgRadius()),
+    });
+    this._focusOutline.set(p);
+
+    this._focus = new FocusState(this, p, {
+      focusableByDefault: true,
+      isDisabled: () => this._disabled,
+      paint: (focused) => {
+        this._isFocused = focused;
+        this._focusOutline.setFocused(focused);
+        this.applyCurrentBg();
+      },
+      setPressed: (pressed) => {
+        this._focusPressed = pressed;
+        this.applyCurrentBg();
+      },
+      activate: () => this.activate(),
+    });
+  }
+
+  /** The corner radius the outline follows, from the resting background. */
+  private _bgRadius(): number | undefined {
+    return isTextureBackground(this.bgOpts) ? undefined : this.bgOpts.radius;
+  }
+
+  /**
+   * Run the button's action: the click path and the focus scope's confirm
+   * both come through here, so one disabled guard and one dispatch serve
+   * both.
+   *
+   * Running the action is all this does. Each device ends its own press where
+   * the player ends it — the pointer listener below on a release, the focus
+   * scope when the confirm action goes up — so a confirm press cannot repaint
+   * the button out from under a pointer that is still holding it down, nor
+   * swallow the click that pointer is on its way to making. A call from game
+   * code therefore shows no press of its own and disturbs none in progress.
+   */
+  activate(): void {
+    if (this._disabled) return;
+    if (this.onClick) {
+      runUICallback(this.container, "UI onClick", this.onClick);
+    }
+  }
+
+  /** Whether the button holds focus in the scope that owns it. */
+  get focused(): boolean {
+    return this._isFocused;
+  }
+
+  /** Whether the button takes part in focus navigation. */
+  get focusable(): boolean {
+    return this._focus.focusable;
   }
 
   get children(): readonly UIElement[] {
@@ -252,7 +309,7 @@ export class UIButton implements UIContainerElement {
       child,
       "UIButton.addElement",
     );
-    setChildDebugLabel(child, this._debugLabel);
+    attachChildToTree(child, this._treeContext);
   }
 
   removeElement(child: UIElement): void {
@@ -264,10 +321,10 @@ export class UIButton implements UIContainerElement {
           yogaNode: this.yogaNode,
         },
         child,
-      ) &&
-      child === this._label
+      )
     ) {
-      this._label = undefined;
+      detachChildFromTree(child);
+      if (child === this._label) this._label = undefined;
     }
   }
 
@@ -282,17 +339,26 @@ export class UIButton implements UIContainerElement {
       before,
       "UIButton.insertElementBefore",
     );
-    setChildDebugLabel(child, this._debugLabel);
+    attachChildToTree(child, this._treeContext);
   }
 
   /**
-   * Name the UI tree this button belongs to for development-mode warnings.
-   * Set by `UISurface` from the owning entity and passed down the tree.
+   * Take the context of the UI tree this button belongs to: the name
+   * development-mode warnings print, and the scene's focus stack. Stamped by
+   * `UISurface` from the owning entity and passed down the tree.
    * @internal
    */
-  _setDebugLabel(label: string): void {
-    this._debugLabel = label;
-    setChildrenDebugLabel(this._children, label);
+  _attachToTree(context: UITreeContext): void {
+    this._treeContext = context;
+    this._debugLabel = context.label;
+    attachChildrenToTree(this._children, context);
+  }
+
+  /** @internal */
+  _detachFromTree(): void {
+    this._treeContext = undefined;
+    this._debugLabel = undefined;
+    for (const child of this._children) detachChildFromTree(child);
   }
 
   /** Apply Yoga-computed positions to children and resize background. */
@@ -311,6 +377,7 @@ export class UIButton implements UIContainerElement {
     this._computedWidth = this.yogaNode.getComputedWidth();
     this._computedHeight = this.yogaNode.getComputedHeight();
     this.bgRenderer.resize(this._computedWidth, this._computedHeight);
+    this._focusOutline.refresh();
   }
 
   /**
@@ -379,6 +446,23 @@ export class UIButton implements UIContainerElement {
     return { ...derived, ...override };
   }
 
+  /**
+   * The fill a focused button paints: the caller's `focusBackground` and
+   * nothing else, so a game that named no fill shows focus the way it asked
+   * for elsewhere — an outline from `focusStyle`, or its own painting from
+   * `onFocusChange`. A colour override fills in over the resting background,
+   * so an override giving only a colour keeps the resting corner radius; an
+   * override of the other kind replaces it outright.
+   */
+  private _resolveFocusBg(): BackgroundOptions | undefined {
+    const override = this.focusBgOverride;
+    if (override === undefined) return undefined;
+    if (isTextureBackground(override) || isTextureBackground(this.bgOpts)) {
+      return override;
+    }
+    return { ...this.bgOpts, ...override };
+  }
+
   private applyBg(opts: BackgroundOptions): void {
     this.bgRenderer.set(opts, this.container, 0);
     if (this._computedWidth > 0 || this._computedHeight > 0) {
@@ -387,14 +471,30 @@ export class UIButton implements UIContainerElement {
   }
 
   /**
+   * Whether any device is holding the button down, which is what paints it
+   * pressed. One press is one look however many devices make it, so the
+   * second to arrive changes nothing and the first to leave takes nothing
+   * away.
+   */
+  private get _isPressed(): boolean {
+    return this._pointerPressed || this._focusPressed;
+  }
+
+  /**
    * Paint the background for the button's state. A disabled button takes its
    * resting background whatever the hover flag holds, because the pointer
-   * listeners return early while disabled and leave that flag set.
+   * listeners return early while disabled and leave that flag set. Hovered
+   * outranks focused here because the two are separate states and the pointer
+   * is the more immediate of them: a focused row the pointer rests on shows
+   * the hover tint, with whatever focus signal the game asked for on top of
+   * it.
    */
   private applyCurrentBg(): void {
+    const focusBg = this.focusBgOpts;
     if (this._disabled) this.applyBg(this.bgOpts);
     else if (this._isPressed) this.applyBg(this.pressBgOpts);
     else if (this._isHovered) this.applyBg(this.hoverBgOpts);
+    else if (this._isFocused && focusBg) this.applyBg(focusBg);
     else this.applyBg(this.bgOpts);
   }
 
@@ -430,9 +530,12 @@ export class UIButton implements UIContainerElement {
     this.container.eventMode = v ? "none" : "static";
     this.container.cursor = v ? "default" : "pointer";
     this.container.alpha = v ? 0.5 : 1;
+    // A disabled button refuses both devices, so both presses end here rather
+    // than springing back when it is enabled again.
     if (v) {
       this._pressStartedHere = false;
-      this._isPressed = false;
+      this._pointerPressed = false;
+      this._focusPressed = false;
     }
     this.applyCurrentBg();
   }
@@ -492,6 +595,8 @@ export class UIButton implements UIContainerElement {
     }
     if ("onClick" in p) this.onClick = p.onClick;
     this.pointerEvents.set(p);
+    this._focus.set(p);
+    this._focusOutline.set(p);
 
     // Ahead of `disabled` below: `setDisabled` repaints from `bgOpts`, so
     // `bgOpts` has to hold the value this same call supplies.
@@ -500,9 +605,15 @@ export class UIButton implements UIContainerElement {
     }
     if ("hoverBackground" in p) this.hoverBgOverride = p.hoverBackground;
     if ("pressBackground" in p) this.pressBgOverride = p.pressBackground;
-    if ("background" in p || "hoverBackground" in p || "pressBackground" in p) {
-      // A new resting background re-derives both states, not only the one
-      // whose key is present.
+    if ("focusBackground" in p) this.focusBgOverride = p.focusBackground;
+    if (
+      "background" in p ||
+      "hoverBackground" in p ||
+      "pressBackground" in p ||
+      "focusBackground" in p
+    ) {
+      // A new resting background re-derives every state, not only the one
+      // whose key is present, and the outline follows its corner radius.
       this.hoverBgOpts = this._resolveStateBg(
         this.hoverBgOverride,
         HOVER_FACTOR,
@@ -511,7 +622,9 @@ export class UIButton implements UIContainerElement {
         this.pressBgOverride,
         PRESS_FACTOR,
       );
+      this.focusBgOpts = this._resolveFocusBg();
       this.applyCurrentBg();
+      this._focusOutline.refresh();
     }
 
     if ("disabled" in p) this.setDisabled(p.disabled ?? false);
@@ -528,10 +641,34 @@ export class UIButton implements UIContainerElement {
     }
   }
 
+  /**
+   * What the Inspector reports for this button, so a test reads its
+   * interaction state instead of a screenshot.
+   * @internal
+   */
+  _inspectState(): {
+    focused: boolean;
+    focusable: boolean;
+    hovered: boolean;
+    pressed: boolean;
+    disabled: boolean;
+  } {
+    return {
+      focused: this._isFocused,
+      focusable: this._focus.focusable,
+      hovered: this._isHovered,
+      pressed: this._isPressed,
+      disabled: this._disabled,
+    };
+  }
+
   /** Idempotent — a second call is a no-op (the React reconciler and a direct caller can both destroy the same instance). */
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+    this._focus.destroy();
+    this._focusOutline.destroy();
+    this._detachFromTree();
     clearConsumeInput(this.container);
     for (const child of this._children) {
       child.destroy();

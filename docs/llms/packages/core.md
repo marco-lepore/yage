@@ -1273,7 +1273,7 @@ before `UIRootLayoutSystem` because `ui-react` depends on `ui`).
 - `EarlyUpdate`: _`logger.setFrame`, `SceneTime` frame tick per active scene, transition tick_ → `InputPollSystem (-100, input)`
 - `FixedUpdate`, 0 to `maxFixedStepsPerFrame` times: _`SceneTime` fixed tick per active scene_ → `PhysicsSystem (0, physics)` → `ProcessFixedUpdateSystem (500, core)` → `ComponentFixedUpdateSystem (1000, core)`
 - `Update`: `PhysicsInterpolationSystem (-100, physics)` → `ProcessSystem (500, core)` → `ComponentUpdateSystem (1000, core)`
-- `LateUpdate`: `ParticleSystem (0, particles)` → `UILayoutSystem (200, ui)` → `UIRootLayoutSystem (200, ui-react)` → `FloatingOverlaySystem (201, ui)`
+- `LateUpdate`: `ParticleSystem (0, particles)` → `UILayoutSystem (200, ui)` → `UIRootLayoutSystem (200, ui-react)` → `FloatingOverlaySystem (201, ui)` → `UIFocusSystem (202, ui)`
 - `Render`: `DisplaySystem (0, renderer)` → `LightingSystem (100, lighting)` → `DebugRenderSystem (9999, debug)`
 - `EndOfFrame`: `InputClearSystem (9000, input)` → _destroy-queue flush_
 

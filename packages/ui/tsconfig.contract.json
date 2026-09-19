@@ -1,0 +1,11 @@
+{
+  // The package's own config leaves the test files out of `tsc`, so a
+  // type-level pin written in one is never evaluated. This config checks the
+  // files that carry a pin — the `@yagejs/input` contract and the entry
+  // point's focus types — and nothing else; the `typecheck` script runs it
+  // after the source pass.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["src/focus/input-contract.test.ts", "src/index.test.ts"],
+  "exclude": []
+}

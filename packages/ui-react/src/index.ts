@@ -85,4 +85,12 @@ export type {
   ScrollbarOptions,
   PointerEventProps,
   PositionValue,
+  FocusProps,
+  FocusNeighbors,
+  FocusDirection,
+  UIFocusStyle,
+  UIFocusOutlineBox,
+  UIFocusScope,
+  UIFocusScopeOptions,
+  UIFocusInputOptions,
 } from "@yagejs/ui";

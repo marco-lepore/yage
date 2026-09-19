@@ -69,26 +69,38 @@ const UIElementHost = "ui-element" as unknown as UIElementHostComponent;
 // `reconciler.ts`'s `SHORTHAND_ALIASES` — before the element ever sees them.
 // ---------------------------------------------------------------------------
 
-export interface PanelProps extends UIElementPanelProps {
+export interface PanelProps extends Omit<
+  UIElementPanelProps,
+  "focusBackground"
+> {
   /**
    * Shorthand for `background` — expanded by the reconciler's shared alias
    * table. If both `bg` and `background` are passed, `background` wins.
    */
   bg?: BackgroundOptions;
+  /**
+   * Shorthand for `focusBackground`, the background painted while a
+   * `focusable` panel holds keyboard or gamepad focus — the same spelling
+   * `<Button>` takes, expanded by the same shared alias table. The canonical
+   * `focusBackground` prop is omitted from this interface, so `focusBg` is
+   * the only way to set it on `<Panel>`. Opt-in: omitted, a focused panel
+   * keeps its resting background.
+   */
+  focusBg?: BackgroundOptions;
 }
 
 export type TextProps = UIElementTextProps;
 
 export interface ButtonProps extends Omit<
   UIElementButtonProps,
-  "children" | "hoverBackground" | "pressBackground"
+  "children" | "hoverBackground" | "pressBackground" | "focusBackground"
 > {
   /** Shorthand for `background` (see {@link PanelProps.bg}). */
   bg?: BackgroundOptions;
   /**
-   * Hover-state background override. Button-specific alias applied inline
-   * by `Button` itself (not part of the shared shorthand table — no other
-   * element has a hover-state background to alias). The canonical
+   * Hover-state background override. Applied inline by `Button` itself
+   * rather than by the reconciler's shared alias table, which carries the
+   * shorthands more than one element accepts. The canonical
    * `hoverBackground`/`pressBackground` props are omitted from this
    * interface — `hoverBg`/`pressBg` are the only way to set these on
    * `<Button>`.
@@ -96,6 +108,13 @@ export interface ButtonProps extends Omit<
   hoverBg?: BackgroundOptions;
   /** Press-state background override — see {@link hoverBg}. */
   pressBg?: BackgroundOptions;
+  /**
+   * Shorthand for `focusBackground`, the background painted while the button
+   * holds keyboard or gamepad focus. `<Panel>` spells it the same way, and
+   * the shared alias table expands both. Opt-in: omitted, a focused button
+   * keeps its resting background and the focus outline is the whole signal.
+   */
+  focusBg?: BackgroundOptions;
   /**
    * String for the common labeled-button case — auto-wrapped in a centered
    * `<Text>` with `textStyle` applied. Pass `ReactNode`s (Text + Image rows,
@@ -120,7 +139,8 @@ export type CheckboxProps = UIElementCheckboxProps;
 /** A flex-layout container with optional background. */
 export function Panel(props: PropsWithChildren<PanelProps>): React.JSX.Element {
   const { children, ...rest } = props;
-  // `_bgAlias` tells the reconciler to expand a `bg` prop to `background`;
+  // `rest` still carries `bg` and `focusBg` (see PanelProps) — the
+  // reconciler's `_bgAlias` marker expands both to their canonical names.
   return (
     <UIElementHost _ctor={UIPanel} _bgAlias {...rest}>
       {children}
@@ -372,9 +392,10 @@ export function Button(props: ButtonProps): React.JSX.Element {
   ) : (
     children
   );
-  // `rest` still carries `bg` (see ButtonProps) — the reconciler's `_bgAlias`
-  // marker expands it to `background`. `hoverBg`/`pressBg` are Button-only
-  // sugar, mapped inline since no other element has those two states.
+  // `rest` still carries `bg` and `focusBg` (see ButtonProps) — the
+  // reconciler's `_bgAlias` marker expands both. The hover and press
+  // backgrounds are mapped here; passed on every render, so dropping one
+  // clears its fill.
   return (
     <UIElementHost
       _ctor={UIButtonNode}

@@ -100,4 +100,47 @@ export const EXAMPLE_SCRIPTS: Record<string, ExampleScript> = {
       { step: 120 },
     ],
   },
+
+  // Walk the focus demo through each of its regions with the arrow keys.
+  // Ends with the confirm dialog cancelled, the save list scrolled down, and
+  // focus back on the save row that opened the dialog.
+  "ui-focus": {
+    warmup: 20,
+    actions: [
+      // The scope opens on the first tab, so left and right run the strip.
+      // Confirm on a tab re-labels the grid beneath it.
+      { tap: "ArrowRight", frames: 2 },
+      { tap: "ArrowRight", frames: 2 },
+      { tap: "Enter", frames: 2 },
+      { step: 4 },
+      // Down leaves the strip for the pane under the focused tab, and the
+      // grid moves by where its cells are drawn rather than by a stored
+      // row and column.
+      { tap: "ArrowDown", frames: 2 },
+      { tap: "ArrowRight", frames: 2 },
+      { tap: "ArrowDown", frames: 2 },
+      { tap: "ArrowLeft", frames: 2 },
+      { step: 4 },
+      // Left off the grid's first column crosses into the menu column, where
+      // the disabled row is passed over rather than focused.
+      { tap: "ArrowLeft", frames: 2 },
+      { tap: "ArrowDown", frames: 2 },
+      { tap: "ArrowDown", frames: 2 },
+      { step: 4 },
+      // One held press, repeating at the shipped 0.35 s delay and 0.1 s
+      // interval, walks out of the menu, through the two stepper rows and
+      // the save-name field, and into the save list past the fold, where the
+      // list scrolls to follow the focus.
+      { hold: "ArrowDown", frames: 120 },
+      { step: 6 },
+      // Confirm on the focused save row opens the dialog, which is a nested
+      // scope: the move inside it belongs to the dialog, and cancel closes it
+      // and hands the keys back to the row that opened it.
+      { tap: "Enter", frames: 2 },
+      { step: 6 },
+      { tap: "ArrowDown", frames: 2 },
+      { tap: "Escape", frames: 2 },
+      { step: 10 },
+    ],
+  },
 };
