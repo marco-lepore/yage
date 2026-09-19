@@ -12,67 +12,31 @@
     <div id="game-container"></div>
     <div class="controls">
       <span>
-        <kbd>Arrows</kbd> / <kbd>WASD</kbd> / d-pad / left stick move &middot;
-        <kbd>Enter</kbd> or <kbd>A</kbd> confirms &middot; <kbd>Esc</kbd> or
-        <kbd>B</kbd> cancels &middot; hold a direction to repeat: first after
-        0.35 s, then every 0.1 s &middot;
-        <b>Two focus looks, side by side:</b> this page asks the plugin for an
-        outline, so the grid, the steppers, the widgets and the save slots draw
-        one just inside the focused element; the <kbd>Main Menu</kbd> rows pass
-        <kbd>focusStyle: null</kbd> and put a <kbd>&gt;</kbd> marker beside the
-        focused row from <kbd>onFocusChange</kbd> instead. Walk the menu with
-        <kbd>&uarr;</kbd> <kbd>&darr;</kbd> to move the marker, then
-        <kbd>&rarr;</kbd> into the grid to see the outline &middot;
-        <b>Pointer focus:</b> the <kbd>Pointer focus</kbd> stepper under
-        <kbd>Pointer</kbd> in the Inventory pane steps <kbd>none</kbd> /
-        <kbd>press</kbd> / <kbd>hover</kbd> on <kbd>&larr;</kbd>
-        <kbd>&rarr;</kbd>, and the status panel prints the setting. On
-        <kbd>press</kbd>, the default: move the mouse over a menu row and it
-        tints while the marker stays where the keyboard left it, then click that
-        row and the marker follows. On <kbd>hover</kbd>: moving the mouse across
-        the rows drags the focus along with it. On <kbd>none</kbd>: neither a
-        hover nor a click moves the focus, and the click still runs the row's
-        action &middot; <b>Pointer ownership:</b> <kbd>Enter</kbd> on
-        <kbd>Quit to Desktop</kbd> or on a save slot opens the dialog, which
-        takes the keys and the pointer. With
-        <kbd>Dialog owns the pointer</kbd> checked, the default, the menu behind
-        answers nothing: hover <kbd>Continue</kbd> and it stays untinted, click
-        it and nothing happens. <kbd>Enter</kbd> on that checkbox clears it —
-        open the dialog from a save slot and click
-        <kbd>Quit to Desktop</kbd> behind it, and the question changes, because
-        the click ran &middot; <b>Press:</b> hold <kbd>Enter</kbd> and the row
-        paints pressed, let go and it acts once — let go after moving the focus
-        off and nothing runs &middot; <b>Tabs:</b> <kbd>&larr;</kbd>
-        <kbd>&rarr;</kbd> run the strip, <kbd>&darr;</kbd> leaves it &middot;
-        <b>Menu:</b> <kbd>&uarr;</kbd> <kbd>&darr;</kbd> step over the disabled
-        <kbd>Upload Save</kbd> row &middot; <b>Grid:</b> all four directions
-        move by position, and off an edge focus carries on into the pane next
-        door &middot; <b>Wrap:</b> <kbd>&uarr;</kbd> from the tab strip comes
-        round to the last menu row, and <kbd>&rarr;</kbd> from
-        <kbd>New Save</kbd> comes round to the strip &middot;
-        <b>Save Slots:</b> these rows ask for a filled selected row as well as
-        the outline; hold <kbd>&darr;</kbd> past the fold and the list scrolls
-        to follow — then scroll it by wheel or drag and check the follow leaves
-        your offset alone &middot; <b>Dialog:</b> <kbd>Esc</kbd> closes it and
-        focus returns to the row that opened it &middot; <b>Steppers:</b>
-        <kbd>&larr;</kbd> <kbd>&rarr;</kbd> change <kbd>Music</kbd> and
-        <kbd>Difficulty</kbd> and keep focus, <kbd>&uarr;</kbd>
-        <kbd>&darr;</kbd> still move &middot; <b>Widgets:</b> the slider and the
-        radios step on <kbd>&larr;</kbd> <kbd>&rarr;</kbd> and release focus at
-        their ends — the slider's outline frames the track and the handle
-        together and holds still as the value sweeps &middot;
-        <kbd>Enter</kbd> toggles any checkbox, and the <kbd>Apply</kbd> button
-        shows its pressed art while <kbd>Enter</kbd> is held and its resting art
-        once you let go &middot; <b>Display select:</b> <kbd>Enter</kbd> opens
-        the list, and the open list takes the keys — <kbd>&uarr;</kbd>
-        <kbd>&darr;</kbd> move the lit row while the menu behind it stays still,
-        <kbd>Enter</kbd> picks that row and closes, <kbd>Esc</kbd> closes on the
-        value it already had &middot; <kbd>Enter</kbd> on the save-name field
-        types into it — letters go to the text, not the menu, and fire no
-        action; the status panel names whichever of the two is holding the keys
-        &middot; <kbd>F</kbd> fires a gameplay action, and the status panel
-        counts every <kbd>Enter</kbd>
-        gameplay still hears
+        <kbd>Arrows</kbd> / <kbd>WASD</kbd> / d-pad / left stick move, and
+        repeat while held &middot; <kbd>Enter</kbd> or <kbd>A</kbd> confirms
+        &middot; <kbd>Esc</kbd> or <kbd>B</kbd> cancels &middot; <b>Tabs:</b>
+        <kbd>&larr;</kbd> <kbd>&rarr;</kbd> run the strip,
+        <kbd>Enter</kbd> relabels the grid &middot; <b>Menu:</b> the rows pass
+        <kbd>focusStyle: null</kbd> and show a <kbd>&gt;</kbd> marker from
+        <kbd>onFocusChange</kbd>; every other element draws the outline set on
+        the plugin. <kbd>&uarr;</kbd> <kbd>&darr;</kbd> step over the disabled
+        row and wrap at the ends &middot; <b>Grid:</b> all four directions move
+        by position, and off an edge focus carries on into the next pane
+        &middot; <b>Steppers:</b> <kbd>&larr;</kbd> <kbd>&rarr;</kbd> change the
+        value and keep focus. <kbd>Pointer focus</kbd> picks what the mouse does
+        to focus: <kbd>press</kbd> focuses on click, <kbd>hover</kbd> focuses
+        under the pointer, <kbd>none</kbd> leaves focus to the keys. The
+        <kbd>Dialog owns the pointer</kbd> checkbox picks whether the open
+        dialog blocks clicks on the menu behind it &middot; <b>Widgets:</b> the
+        slider and the radios step on <kbd>&larr;</kbd> <kbd>&rarr;</kbd>;
+        <kbd>Enter</kbd> opens the select or types into the field, which then
+        holds the keys until <kbd>Enter</kbd> or <kbd>Esc</kbd> &middot;
+        <b>Save Slots:</b> hold <kbd>&darr;</kbd> and the list scrolls to follow
+        the focus &middot; <b>Dialog:</b> <kbd>Enter</kbd> on
+        <kbd>Quit Game</kbd> or a save slot opens it; <kbd>Esc</kbd> closes it
+        and focus returns to the row that opened it &middot; <kbd>F</kbd> fires
+        a gameplay action, and the status panel counts every
+        <kbd>Enter</kbd> gameplay still hears
       </span>
     </div>
     <script type="module" src="/src/ui-focus/main.ts"></script>
