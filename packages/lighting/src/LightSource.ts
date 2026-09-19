@@ -12,6 +12,8 @@ export interface LightSourceOptions {
   intensity?: number;
   /** RGB tint used by renderers that support coloured light. Default `0xffffff`. */
   color?: number;
+  /** Whether occluders block this light. Default `true`. */
+  castShadows?: boolean;
   /** Whether the source starts enabled. Default `true`. */
   enabled?: boolean;
 }
@@ -28,6 +30,11 @@ export class LightSource extends Component {
   private _radius: number;
   private _intensity: number;
   private _color: number;
+  /**
+   * Whether occluders block this light. Set it to `false` for a light that
+   * shines through walls, such as a global fill or a UI highlight.
+   */
+  castShadows: boolean;
 
   constructor(options: LightSourceOptions) {
     super();
@@ -38,6 +45,7 @@ export class LightSource extends Component {
     this._radius = options.radius;
     this._intensity = options.intensity ?? 1;
     this._color = options.color ?? 0xffffff;
+    this.castShadows = options.castShadows ?? true;
     this.enabled = options.enabled ?? true;
   }
 

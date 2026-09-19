@@ -10,6 +10,7 @@ import { LightOccluder } from "./LightOccluder.js";
 import { LightSource } from "./LightSource.js";
 import { LightingWorld } from "./LightingWorld.js";
 import { LightingWorldKey } from "./types.js";
+import type { LightOccluderShape } from "./types.js";
 
 function addLight(
   world: LightingWorld,
@@ -19,6 +20,7 @@ function addLight(
     radius?: number;
     intensity?: number;
     color?: number;
+    castShadows?: boolean;
   } = {},
 ): LightSource {
   const entity = world.scene.spawn("light");
@@ -32,8 +34,39 @@ function addLight(
       radius: options.radius ?? 100,
       intensity: options.intensity ?? 0.5,
       color: options.color ?? 0xffffff,
+      castShadows: options.castShadows ?? true,
     }),
   );
+}
+
+function addOccluder(
+  world: LightingWorld,
+  shape: LightOccluderShape,
+  options: {
+    x?: number;
+    y?: number;
+    rotation?: number;
+    scale?: number | { x: number; y: number };
+  } = {},
+): LightOccluder {
+  const entity = world.scene.spawn("occluder");
+  const scale = options.scale ?? 1;
+  entity.add(
+    new Transform({
+      position: new Vec2(options.x ?? 0, options.y ?? 0),
+      rotation: options.rotation ?? 0,
+      scale: typeof scale === "number" ? new Vec2(scale, scale) : scale,
+    }),
+  );
+  return entity.add(new LightOccluder({ shape }));
+}
+
+/** A world with no ambient light, so a level reads as one light's reach. */
+function createWorld(): LightingWorld {
+  const { scene } = createMockScene();
+  const world = new LightingWorld(scene, { level: 0 });
+  scene.registerScoped(LightingWorldKey, world);
+  return world;
 }
 
 describe("LightingWorld", () => {
@@ -185,5 +218,229 @@ describe("LightingWorld", () => {
           shape: { type: "polygon", vertices: [{ x: 0, y: 0 }] },
         }),
     ).toThrow(RangeError);
+  });
+});
+
+describe("LightingWorld occlusion", () => {
+  it("drops a light's contribution behind a box and keeps it beside one", () => {
+    const world = createWorld();
+    addLight(world, { radius: 200, intensity: 1 });
+    addOccluder(world, { type: "box", width: 20, height: 100 }, { x: 50 });
+
+    expect(world.levelAt(100, 0)).toBe(0);
+    expect(world.levelAt(0, 100)).toBeCloseTo(0.5);
+  });
+
+  it("blocks a circle's and a polygon's shadow alike", () => {
+    const circleWorld = createWorld();
+    addLight(circleWorld, { radius: 200, intensity: 1 });
+    addOccluder(circleWorld, { type: "circle", radius: 20 }, { x: 50 });
+    expect(circleWorld.levelAt(100, 0)).toBe(0);
+    expect(circleWorld.levelAt(100, 60)).toBeGreaterThan(0);
+
+    const polygonWorld = createWorld();
+    addLight(polygonWorld, { radius: 200, intensity: 1 });
+    addOccluder(
+      polygonWorld,
+      {
+        type: "polygon",
+        vertices: [
+          { x: -10, y: -50 },
+          { x: 10, y: -50 },
+          { x: 10, y: 50 },
+          { x: -10, y: 50 },
+        ],
+      },
+      { x: 50 },
+    );
+    expect(polygonWorld.levelAt(100, 0)).toBe(0);
+    expect(polygonWorld.levelAt(0, 100)).toBeGreaterThan(0);
+  });
+
+  it("turns an occluder with its entity", () => {
+    const world = createWorld();
+    addLight(world, { radius: 200, intensity: 1 });
+    const bar = addOccluder(
+      world,
+      { type: "box", width: 80, height: 10 },
+      { x: 60 },
+    );
+
+    expect(world.levelAt(60, 40)).toBeGreaterThan(0);
+    bar.entity.get(Transform).setRotation(Math.PI / 2);
+    expect(world.levelAt(60, 40)).toBe(0);
+  });
+
+  it("grows an occluder with its entity's scale", () => {
+    const world = createWorld();
+    addLight(world, { radius: 200, intensity: 1 });
+    const wall = addOccluder(
+      world,
+      { type: "box", width: 10, height: 20 },
+      { x: 50 },
+    );
+
+    expect(world.levelAt(100, 30)).toBeGreaterThan(0);
+    wall.entity.get(Transform).setScale(2, 2);
+    expect(world.levelAt(100, 30)).toBe(0);
+  });
+
+  it("leaves no gap where two occluders touch", () => {
+    const world = createWorld();
+    addLight(world, { radius: 200, intensity: 1 });
+    addOccluder(
+      world,
+      { type: "box", width: 20, height: 50 },
+      { x: 50, y: -25 },
+    );
+    addOccluder(
+      world,
+      { type: "box", width: 20, height: 50 },
+      { x: 50, y: 25 },
+    );
+
+    expect(world.levelAt(100, 0)).toBe(0);
+  });
+
+  it("lights the room from a lamp standing inside an occluder", () => {
+    const world = createWorld();
+    addLight(world, { radius: 200, intensity: 1 });
+    addOccluder(world, { type: "box", width: 40, height: 40 });
+
+    expect(world.levelAt(100, 0)).toBeCloseTo(0.5);
+  });
+
+  it("darkens a point inside an occluder", () => {
+    const world = createWorld();
+    addLight(world, { radius: 200, intensity: 1 });
+    addOccluder(world, { type: "box", width: 40, height: 40 }, { x: 60 });
+
+    expect(world.levelAt(60, 0)).toBe(0);
+  });
+
+  it("reports a lamp's own position as lit", () => {
+    const world = createWorld();
+    addLight(world, { x: 12, y: 38, radius: 50, intensity: 1 });
+    addOccluder(
+      world,
+      { type: "box", width: 60, height: 60 },
+      { x: 50, rotation: Math.PI / 4 },
+    );
+
+    expect(world.levelAt(12, 38)).toBe(1);
+    expect(world.levelAt(12.0001, 38)).toBeCloseTo(1);
+  });
+
+  it("stretches an occluder under a non-uniform scale", () => {
+    const world = createWorld();
+    addLight(world, { radius: 200, intensity: 1 });
+    const wall = addOccluder(
+      world,
+      { type: "circle", radius: 10 },
+      { x: 50, scale: { x: 1, y: 4 } },
+    );
+
+    expect(world.levelAt(100, 120)).toBeGreaterThan(0);
+    wall.entity.get(Transform).setScale(1, 8);
+    expect(world.levelAt(100, 120)).toBe(0);
+  });
+
+  it("mirrors an occluder under a negative scale", () => {
+    const world = createWorld();
+    addLight(world, { radius: 200, intensity: 1 });
+    addOccluder(
+      world,
+      {
+        type: "polygon",
+        vertices: [
+          { x: 20, y: -60 },
+          { x: 40, y: -60 },
+          { x: 40, y: 60 },
+          { x: 20, y: 60 },
+        ],
+      },
+      { scale: -1 },
+    );
+
+    // The authored slab sits to the right of the entity; a scale of -1 puts
+    // it to the left, where it blocks the light instead.
+    expect(world.levelAt(100, 0)).toBeGreaterThan(0);
+    expect(world.levelAt(-100, 0)).toBe(0);
+  });
+
+  it("lets a light ignore occluders", () => {
+    const world = createWorld();
+    const light = addLight(world, {
+      radius: 200,
+      intensity: 1,
+      castShadows: false,
+    });
+    addOccluder(world, { type: "box", width: 20, height: 100 }, { x: 50 });
+
+    expect(world.levelAt(100, 0)).toBeCloseTo(0.5);
+    light.castShadows = true;
+    expect(world.levelAt(100, 0)).toBe(0);
+  });
+});
+
+describe("LightingWorld.levelGridInto", () => {
+  it("fills every cell with what levelAt reports for its centre", () => {
+    const { scene } = createMockScene();
+    const world = new LightingWorld(scene, { level: 0.1 });
+    scene.registerScoped(LightingWorldKey, world);
+    addLight(world, { x: 40, y: 30, radius: 120, intensity: 0.9 });
+    addLight(world, { x: 160, y: 90, radius: 90, intensity: 0.7 });
+    addOccluder(
+      world,
+      { type: "box", width: 16, height: 80 },
+      { x: 90, y: 40 },
+    );
+    addOccluder(world, { type: "circle", radius: 18 }, { x: 140, y: 30 });
+
+    const grid = {
+      x: -20,
+      y: -10,
+      cols: 24,
+      rows: 16,
+      cellWidth: 10,
+      cellHeight: 8,
+    };
+    const out = new Float32Array(grid.cols * grid.rows);
+    expect(world.levelGridInto(out, grid)).toBe(out);
+
+    for (let row = 0; row < grid.rows; row++) {
+      for (let col = 0; col < grid.cols; col++) {
+        const x = grid.x + (col + 0.5) * grid.cellWidth;
+        const y = grid.y + (row + 0.5) * grid.cellHeight;
+        expect(out[row * grid.cols + col]).toBe(
+          Math.fround(world.levelAt(x, y)),
+        );
+      }
+    }
+  });
+
+  it("rejects a grid it cannot fill", () => {
+    const world = createWorld();
+    const grid = {
+      x: 0,
+      y: 0,
+      cols: 4,
+      rows: 4,
+      cellWidth: 10,
+      cellHeight: 10,
+    };
+
+    expect(() => world.levelGridInto(new Float32Array(15), grid)).toThrow(
+      /out must hold cols \* rows samples \(16\), got 15/,
+    );
+    expect(() =>
+      world.levelGridInto(new Float32Array(16), { ...grid, cols: 4.5 }),
+    ).toThrow(/cols must be a positive integer/);
+    expect(() =>
+      world.levelGridInto(new Float32Array(16), { ...grid, cellHeight: 0 }),
+    ).toThrow(/cellHeight must be a finite number greater than 0/);
+    expect(() =>
+      world.levelGridInto(new Float32Array(16), { ...grid, x: NaN }),
+    ).toThrow(/x must be a finite number/);
   });
 });

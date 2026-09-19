@@ -1,9 +1,11 @@
 import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
 import {
+  LightOccluder,
   LightSource,
   LightingPlugin,
   LightingWorldKey,
 } from "@yagejs/lighting";
+import type { LightOccluderShape } from "@yagejs/lighting";
 import {
   GraphicsComponent,
   RendererPlugin,
@@ -18,6 +20,11 @@ import {
 const WIDTH = 800;
 const HEIGHT = 600;
 
+/**
+ * Sweeps the open strip between the pillar and the counter. The travel stays
+ * clear of every piece of furniture, so the lamp itself never crosses a prop
+ * and each shadow it throws has one obvious source.
+ */
 class Orbit extends Component {
   private readonly transform = this.sibling(Transform);
   private elapsed = 0;
@@ -25,8 +32,8 @@ class Orbit extends Component {
   update(dt: number): void {
     this.elapsed += dt;
     this.transform.setPosition(
-      400 + Math.cos(this.elapsed * 0.7) * 230,
-      280 + Math.sin(this.elapsed * 1.1) * 120,
+      400 + Math.cos(this.elapsed * 0.7) * 180,
+      392 + Math.sin(this.elapsed * 1.1) * 22,
     );
   }
 }
@@ -64,13 +71,28 @@ class LightingScene extends Scene {
   onEnter(): void {
     this.drawRoom();
 
+    // The solid furniture blocks light, so the lamps below cast shadows and
+    // the probe drops to the ambient level wherever a piece stands in the way.
+    this.spawnOccluder("pillar", 400, 210, {
+      type: "box",
+      width: 70,
+      height: 280,
+    });
+    this.spawnOccluder("counter", 400, 450, {
+      type: "box",
+      width: 200,
+      height: 40,
+    });
+    this.spawnOccluder("planter", 155, 435, { type: "circle", radius: 42 });
+    this.spawnOccluder("barrel", 645, 430, { type: "circle", radius: 48 });
+
     this.spawnLamp("warm-lamp", 220, 210, 190, 0xffa34d, 0.95);
     this.spawnLamp("cool-lamp", 590, 205, 165, 0x66aaff, 0.85);
 
     const orbiting = this.spawnLamp(
       "orbiting-lamp",
-      400,
-      280,
+      580,
+      392,
       140,
       0xff66b8,
       0.7,
@@ -129,6 +151,17 @@ class LightingScene extends Scene {
         graphics.circle(645, 430, 48).fill(0x416eb0);
       }),
     );
+  }
+
+  private spawnOccluder(
+    name: string,
+    x: number,
+    y: number,
+    shape: LightOccluderShape,
+  ): void {
+    const entity = this.spawn(name);
+    entity.add(new Transform({ position: new Vec2(x, y) }));
+    entity.add(new LightOccluder({ shape }));
   }
 
   private spawnLamp(
