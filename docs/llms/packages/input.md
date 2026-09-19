@@ -39,6 +39,16 @@ Each call copies every key list, so later rebinding leaves the caller's object
 alone. `exportBindings()` returns a fresh mutable `ActionMapDefinition`, ready
 to serialize.
 
+**Typing never reaches the action map.** A key press the browser sent to a text
+field — a `<textarea>`, a text-accepting `<input>` (which is what `@pixi/ui`'s
+text input creates), or a `contenteditable` element — is text: it raises no
+action and `preventDefaultKeys` leaves it alone, so a player typing `w` into a
+name field does not walk the character. The press belongs to the field it was
+sent to even when handling it takes the field off the page, so the Escape or
+Enter that ends an edit fires no game action bound to it. Releases always reach
+the map, so a key held when the field took focus still ends its action when the
+player lets go. Gamepad and pointer input are unaffected.
+
 ## InputManager Queries
 
 ```ts
@@ -54,6 +64,15 @@ input.getClockTime();
 input.isPressed("jump"); // currently held
 input.isJustPressed("fire"); // press edge in the caller's window (see below)
 input.isJustReleased("jump"); // release edge in the caller's window
+input.isJustReleasedByPlayer("jump"); // same window, only a release the player made
+
+// Press edge plus repeats while held: after 0.35s, then every 0.1s
+input.isJustPressed("move-down", { repeat: true });
+input.isJustPressed("move-up", {
+  repeat: true,
+  repeatDelay: 0.5,
+  repeatInterval: 0.06,
+});
 
 // Hold duration (seconds)
 input.getHoldDuration("fire"); // seconds held, 0 if not held
@@ -79,8 +98,9 @@ input.getAxis("left", "right"); // -1, 0, or 1
 input.getVector("left", "right", "up", "down"); // Vec2 (not normalized)
 ```
 
-**Edge-query windows.** The six edge queries (`isJustPressed`, `isJustReleased`,
-`isJustHeldFor`, `isJustTapped`, `isJustReleasedAfter`, `getReleaseDuration`)
+**Edge-query windows.** The seven edge queries (`isJustPressed`,
+`isJustReleased`, `isJustReleasedByPlayer`, `isJustHeldFor`, `isJustTapped`,
+`isJustReleasedAfter`, `getReleaseDuration`)
 resolve against the caller's execution context. Called from frame code
 (`update`, listeners, any non-fixed system) the window is the current rendered
 frame. Called from fixed-step code (`fixedUpdate`, a `Phase.FixedUpdate`
@@ -88,6 +108,57 @@ system) it is the current fixed step: the edges that arrived since the previous
 step began. Each context sees an edge exactly once at any display/step rate
 ratio. When several steps run in one frame only the first sees it, and an edge
 in a frame that runs no step is held for the next step.
+
+**Who ended the hold.** `isJustReleasedByPlayer(action)` answers `true` only
+for a release the player made: a key-up, a gamepad button-up, a pointer-button
+release, an on-screen control the finger left. It answers `false` for held
+state the engine drops on its own — the window losing focus, the page hiding,
+a pad disconnecting, a cancelled pointer gesture, `clearAll()`, an action
+source's `releaseAll()` — and `false` while the action's group is disabled.
+Read it wherever the release commits something the player cannot take back: a
+menu confirming the row under the cursor, a charged shot leaving the barrel.
+The other release queries (`isJustReleased`, `getReleaseDuration`,
+`isJustTapped`, `isJustReleasedAfter`) and the `onActionReleased` listener
+report every end of a hold, forced or not.
+
+**Hold-to-repeat.** `isJustPressed(action, options?: PressRepeatOptions)` with
+one argument is the press edge alone. With `{ repeat: true }` it is also true
+in each window where the hold crosses `repeatDelay + n * repeatInterval`, so
+one call covers the press and the repeats a held key produces.
+
+```ts
+interface PressRepeatOptions {
+  repeat?: boolean; // default false
+  repeatDelay?: number; // seconds before the first repeat, default 0.35
+  repeatInterval?: number; // seconds between repeats, default 0.1
+  clock?: InputClock; // the clock the repeat schedule counts on
+}
+```
+
+The defaults are exported as `DEFAULT_REPEAT_DELAY` and
+`DEFAULT_REPEAT_INTERVAL`. The rate is an argument rather than per-action
+state, so two callers can repeat one action at different rates.
+
+- **One edge per query window.** A frame longer than the interval produces one
+  edge, not several, so a hitch steps a menu one row.
+- **`clock` selects the repeat clock only.** The initial press edge always
+  resolves against the caller's frame or fixed-step window. Omit `clock` and
+  the repeats count on the raw input clock, which keeps a menu repeating while
+  the scene under it is paused. Pass a scene's `SceneTime` to stop the repeats
+  with the scene.
+- **Gamepad sticks repeat with no extra code.** A stick push past the
+  threshold arrives as a `GamepadLeftStick*` key edge, so it carries an
+  ordinary hold.
+- **Validation.** A `repeatDelay` or `repeatInterval` you pass is checked
+  whether or not `repeat` is set, so a timing written without the flag still
+  reports the bad number. A delay that is not finite or is negative, and an
+  interval that is not finite or is not above zero, both throw before any
+  state is read and whatever the action's group enablement:
+
+  ```text
+  InputManager.isJustPressed: repeatDelay must be a finite number of seconds at or above 0, got -1.
+  InputManager.isJustPressed: repeatInterval must be a finite number of seconds above 0, got 0.
+  ```
 
 The window and the clock (below) are separate choices: the clock decides how a
 duration is measured, the calling context decides which window an edge falls in,
@@ -551,7 +622,13 @@ new InputPlugin({
 `GamepadDPadUp/Down/Left/Right`, `GamepadHome`, and physical stick directions
 `GamepadLeftStickUp/Down/Left/Right` and
 `GamepadRightStickUp/Down/Left/Right`. Stick directions press at 0.5 and
-release below 0.375 to avoid repeated edges near the boundary. Non-standard pads
+release below 0.375 to avoid repeated edges near the boundary.
+
+A stick push arrives as one of those key edges and carries an ordinary hold,
+so a stick direction bound to a movement action works with every press query —
+including hold-to-repeat, which a menu gets from
+`isJustPressed(action, { repeat: true })` with no stick-specific code. Reach
+for `getStick` when you need the analog value itself. Non-standard pads
 (`mapping === ""`) expose `GamepadButtonN`, where `N` is the browser button
 index (any non-negative integer the runtime emits, e.g. `GamepadButton0`,
 `GamepadButton16`).

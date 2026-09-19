@@ -25,6 +25,12 @@ import type { UIElement, UISplitTextProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
+import { FocusOutline, layoutBox } from "./internal/focus-outline.js";
+import { FocusState } from "./focus/FocusState.js";
+import {
+  requestHoverFocus,
+  requestPressFocus,
+} from "./focus/pointer-request.js";
 import { getUIDefaultTextStyle } from "./text-defaults.js";
 import { runUICallback } from "./error-boundary.js";
 
@@ -98,6 +104,8 @@ export class UISplitText implements UIElement {
   // of the same shape doesn't re-split and reset in-flight glyph animations.
   private _appliedStyle: Partial<TextStyle> | undefined;
   private readonly pointerEvents: PointerEvents;
+  private readonly _focus: FocusState;
+  private readonly _focusOutline: FocusOutline;
   private readonly _splitListeners = new Set<SplitListener>();
   private _destroyed = false;
 
@@ -141,6 +149,26 @@ export class UISplitText implements UIElement {
     this.displayObject = this.splitText;
     applyConsumeInput(this.splitText, props.consumeInput);
     this.pointerEvents = new PointerEvents(this.splitText, props);
+
+    // Out of focus navigation until a game asks for it with `focusable`.
+    // Asked for, the block is outlined like every other focusable element;
+    // the pointer still moves focus here, which keeps the mouse and the
+    // keyboard on the same element.
+    this._focusOutline = new FocusOutline({
+      container: this.splitText,
+      box: () => layoutBox(this.yogaNode),
+    });
+    this._focusOutline.set(props);
+    this._focus = new FocusState(this, props, {
+      focusableByDefault: false,
+      paint: (focused) => this._focusOutline.setFocused(focused),
+    });
+    this.splitText.on("pointerover", () => {
+      requestHoverFocus(this);
+    });
+    this.splitText.on("pointerdown", () => {
+      requestPressFocus(this);
+    });
 
     // Measure the text's NATURAL size via Pixi's metrics, not the live
     // container bounds — per-glyph animation moves/scales the chars, and we
@@ -263,6 +291,11 @@ export class UISplitText implements UIElement {
     return this.splitText.lineAnchor;
   }
 
+  /** Follow the box layout gave this block, which is what the outline rings. */
+  applyLayout(): void {
+    this._focusOutline.refresh();
+  }
+
   get visible(): boolean {
     return this.displayObject.visible;
   }
@@ -294,14 +327,28 @@ export class UISplitText implements UIElement {
       applyConsumeInput(this.splitText, p.consumeInput);
     }
     this.pointerEvents.set(p);
+    this._focus.set(p);
+    this._focusOutline.set(p);
     applyLayoutProps(this.yogaNode, p);
     if ("visible" in p) this.visible = p.visible ?? true;
+  }
+
+  /**
+   * What the Inspector reports for this split text: whether it takes part in
+   * focus navigation, which is off unless the game asked for it, and whether
+   * it holds focus right now. A test reads this instead of a screenshot.
+   * @internal
+   */
+  _inspectState(): { focused: boolean; focusable: boolean } {
+    return { focused: this._focus.focused, focusable: this._focus.focusable };
   }
 
   /** Idempotent — a second call is a no-op. */
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+    this._focus.destroy();
+    this._focusOutline.destroy();
     this._splitListeners.clear();
     clearConsumeInput(this.splitText);
     this.yogaNode.free();

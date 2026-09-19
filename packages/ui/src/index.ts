@@ -42,6 +42,15 @@ export type {
   PixiRadioGroupProps,
   PixiViewType,
   FancyButtonAnimations,
+  FocusProps,
+  FocusNeighbors,
+  FocusDirection,
+  PointerFocusMode,
+  UIFocusStyle,
+  UIFocusOutlineBox,
+  UIFocusScopeOptions,
+  UIFocusInputOptions,
+  UIScrollIntoViewOptions,
 } from "./types.js";
 
 // Yoga helpers (for testing and custom element implementations)
@@ -56,6 +65,23 @@ export { BackgroundRenderer } from "./background-renderer.js";
 // Shared pointer/hover fan-out (used by the interactive primitives;
 // exported for custom element implementations and tests)
 export { PointerEvents } from "./pointer-events.js";
+
+// Keyboard / gamepad focus
+export { FocusState } from "./focus/FocusState.js";
+export type { FocusBehavior } from "./focus/FocusState.js";
+export { UIFocusScope } from "./focus/UIFocusScope.js";
+export type {
+  UIFocusScopeHost,
+  UIFocusInputSource,
+} from "./focus/UIFocusScope.js";
+export { UIFocusStack, UIFocusStackKey } from "./focus/UIFocusStack.js";
+export { UIFocusSystem } from "./UIFocusSystem.js";
+// An element holding a scope's input; exported for custom element
+// implementations, the way `PointerEvents` and `FocusState` are.
+export { captureFocusInput, isCapturingInput } from "./focus/input-capture.js";
+export type { UIInputCaptureElement } from "./focus/input-capture.js";
+/** @internal The downward channel a custom element's `_attachToTree` takes. */
+export type { UITreeContext } from "./internal/tree-context.js";
 
 // Plugin
 export { UIPlugin } from "./UIPlugin.js";

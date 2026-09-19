@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  beforeAll,
+  afterEach,
+} from "vitest";
 import { AssetHandle } from "@yagejs/core";
 import type { Texture } from "pixi.js";
 
@@ -20,6 +28,14 @@ const { mocks } = vi.hoisted(() => {
       set(ax: number, ay: number) {
         this.x = ax;
         this.y = ay;
+      },
+    };
+    scale = {
+      x: 1,
+      y: 1,
+      set(sx: number, sy: number) {
+        this.x = sx;
+        this.y = sy;
       },
     };
     visible = true;
@@ -72,8 +88,25 @@ const { mocks } = vi.hoisted(() => {
 
   class MockSprite extends MockContainer {
     texture: MockTexture;
-    width = 0;
-    height = 0;
+    // Pixi sizes a sprite by scaling it against its texture.
+    private _width = 0;
+    private _height = 0;
+    get width(): number {
+      return this._width;
+    }
+    set width(value: number) {
+      this._width = value;
+      const natural = this.texture.width;
+      this.scale.x = natural !== 0 ? value / natural : 1;
+    }
+    get height(): number {
+      return this._height;
+    }
+    set height(value: number) {
+      this._height = value;
+      const natural = this.texture.height;
+      this.scale.y = natural !== 0 ? value / natural : 1;
+    }
     tint = 0xffffff;
     anchor = {
       x: 0,
@@ -99,10 +132,33 @@ const { mocks } = vi.hoisted(() => {
     rect(): MockGraphics {
       return this;
     }
-    roundRect(): MockGraphics {
+    /** The rectangle of the most recent rounded draw. */
+    lastRect:
+      | { x: number; y: number; width: number; height: number; radius?: number }
+      | undefined;
+    roundRect(
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      radius?: number,
+    ): MockGraphics {
+      this.lastRect = {
+        x,
+        y,
+        width,
+        height,
+        ...(radius === undefined ? {} : { radius }),
+      };
       return this;
     }
     fill(): MockGraphics {
+      return this;
+    }
+    /** The style passed to the most recent `stroke`. */
+    lastStroke: { color?: number; width?: number } | undefined;
+    stroke(style?: { color?: number; width?: number }): MockGraphics {
+      this.lastStroke = style;
       return this;
     }
   }
@@ -177,6 +233,9 @@ import Yoga, { Align, Direction, FlexDirection } from "yoga-layout";
 import { registerTexture } from "@yagejs/renderer";
 import { setYoga } from "./yoga-helpers.js";
 import { UIImage } from "./UIImage.js";
+import { getFocusState } from "./focus/FocusState.js";
+import { setUIFocusStyle } from "./internal/focus-outline.js";
+import { takePointerRequest } from "./focus/pointer-request.js";
 
 /**
  * Lay an image out inside a parent node the way the layout system does —
@@ -422,5 +481,133 @@ describe("UIImage", () => {
       typeof mocks.MockSprite
     >;
     expect(sprite.destroyed).toBe(true);
+  });
+});
+
+describe("UIImage focus", () => {
+  // An outline is drawn only where one is asked for, so these boxes are
+  // measured against the outline a game asks for once for the whole UI.
+  beforeEach(() => setUIFocusStyle({}));
+  afterEach(() => setUIFocusStyle(undefined));
+
+  /** Fire a Pixi event on the element's own display object. */
+  const emitOn = (img: UIImage, event: string): void =>
+    (img.displayObject as unknown as { emit(e: string): void }).emit(event);
+
+  it("stays out of focus navigation by default", () => {
+    const img = new UIImage({ texture: "cell" });
+
+    expect(getFocusState(img)?.focusable).toBe(false);
+    img.destroy();
+  });
+
+  /** The outline a focused element draws, or `undefined` before it takes one. */
+  function outlineOf(element: {
+    displayObject: unknown;
+  }): InstanceType<typeof mocks.MockGraphics> | undefined {
+    const children = (
+      element.displayObject as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >
+    ).children;
+    return children.find(
+      (child): child is InstanceType<typeof mocks.MockGraphics> =>
+        child instanceof mocks.MockGraphics && child.measurable === false,
+    );
+  }
+
+  it("joins focus navigation and reports focus changes", () => {
+    const onFocusChange = vi.fn();
+    const img = new UIImage({
+      texture: "cell",
+      focusable: true,
+      onFocusChange,
+    });
+
+    const state = getFocusState(img);
+    expect(state?.focusable).toBe(true);
+    state?._setFocused(true);
+
+    expect(onFocusChange).toHaveBeenCalledWith(true);
+    img.destroy();
+  });
+
+  it("outlines a focusable cell at the size it is drawn on screen", () => {
+    const img = new UIImage({
+      texture: "cell",
+      focusable: true,
+      width: 128,
+      height: 96,
+    });
+    getFocusState(img)?._setFocused(true);
+
+    img.yogaNode.calculateLayout(128, 96, Direction.LTR);
+    img.applyLayout();
+
+    // The sprite is sized by scaling its 100x50 texture, so the outline is
+    // scaled back: 128 px across on screen, with a 2 px stroke on both axes
+    // rather than one stretched with the picture.
+    const ring = outlineOf(img);
+    const sprite = img.container as unknown as {
+      scale: { x: number; y: number };
+    };
+    const rect = ring?.lastRect;
+    expect(sprite.scale.x).not.toBeCloseTo(sprite.scale.y);
+    expect(ring?.lastStroke).toEqual({ color: 0xffffff, width: 2 });
+    expect(
+      ((rect?.width ?? 0) + 2) * (ring?.scale.x ?? 1) * sprite.scale.x,
+    ).toBeCloseTo(128);
+    expect(2 * (ring?.scale.x ?? 1) * sprite.scale.x).toBeCloseTo(2);
+    expect(2 * (ring?.scale.y ?? 1) * sprite.scale.y).toBeCloseTo(2);
+    img.destroy();
+  });
+
+  it("takes the focus props an update carries", () => {
+    const img = new UIImage({ texture: "cell" });
+
+    img.update({ focusable: true, focusId: "first-cell" });
+
+    expect(getFocusState(img)?.focusable).toBe(true);
+    expect(getFocusState(img)?.id).toBe("first-cell");
+    img.destroy();
+  });
+
+  it("asks for hover focus while the pointer is over it", () => {
+    const img = new UIImage({ texture: "cell", focusable: true });
+    takePointerRequest();
+
+    emitOn(img, "pointerover");
+
+    expect(takePointerRequest()?.trigger).toBe("hover");
+    img.destroy();
+  });
+
+  it("asks for press focus when the pointer presses it", () => {
+    const img = new UIImage({ texture: "cell", focusable: true });
+    takePointerRequest();
+
+    emitOn(img, "pointerdown");
+
+    const request = takePointerRequest();
+    expect(request?.element).toBe(img);
+    expect(request?.trigger).toBe("press");
+    img.destroy();
+  });
+
+  it("reports its focus state to the Inspector", () => {
+    const img = new UIImage({ texture: "cell", focusable: true });
+
+    expect(img._inspectState()).toEqual({ focused: false, focusable: true });
+    getFocusState(img)?._setFocused(true);
+    expect(img._inspectState()).toEqual({ focused: true, focusable: true });
+    img.destroy();
+  });
+
+  it("leaves focus navigation when it is destroyed", () => {
+    const img = new UIImage({ texture: "cell", focusable: true });
+
+    img.destroy();
+
+    expect(getFocusState(img)).toBeUndefined();
   });
 });

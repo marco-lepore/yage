@@ -118,17 +118,18 @@ function diffProps(
  */
 const SHORTHAND_ALIASES: Record<string, string> = {
   bg: "background",
+  focusBg: "focusBackground",
 };
 
 /**
  * Expand shorthand aliases (see {@link SHORTHAND_ALIASES}) right before an
  * element is constructed or updated. Gated by the internal `_bgAlias`
- * marker (set by the JSX components that accept `bg` — `Panel`, `Button`,
- * `ScrollView`) rather than applied unconditionally: the Pixi* wrappers
- * (`PixiProgressBar`, `PixiSlider`, `PixiInput`) use `bg` as their own
- * required, unrelated view-slot prop and never set the marker, so they're
- * untouched. When both the alias and its canonical key are present, the
- * canonical value wins (dev-warns once per element type). Returns a fresh
+ * marker (set by the JSX components that accept a background shorthand —
+ * `Panel`, `Button`, `ScrollView`) rather than applied unconditionally: the
+ * Pixi* wrappers (`PixiProgressBar`, `PixiSlider`, `PixiInput`) use `bg` as
+ * their own required, unrelated view-slot prop and never set the marker, so
+ * they're untouched. When both the alias and its canonical key are present,
+ * the canonical value wins (dev-warns once per element type). Returns a fresh
  * object rather than deleting alias keys in place (avoids a dynamic
  * `delete`, which the lint config forbids).
  */
@@ -374,8 +375,8 @@ const hostConfig = {
   ) {
     const merged = diffProps(oldProps, newProps);
     // Shorthand expansion runs AFTER the removal diff above, on the
-    // authored JSX prop names (`bg` included) — so removing `bg` clears
-    // `background` exactly like removing `background` directly would.
+    // authored JSX prop names — so removing `bg` or `focusBg` clears the
+    // canonical prop exactly like removing that prop directly would.
     const finalProps = newProps._bgAlias
       ? expandShorthand(instance.constructor, merged)
       : merged;

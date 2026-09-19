@@ -123,6 +123,48 @@ describe("edge queries from a fixed-phase system", () => {
     engine.destroy();
   });
 
+  it("a player release reaches the fixed step its window covers", async () => {
+    const { engine, input, scheduler } = await startEngine();
+    const byPlayer = new QueryReader(Phase.FixedUpdate, () =>
+      input.isJustReleasedByPlayer("jump"),
+    );
+    scheduler.add(byPlayer);
+
+    input._enqueueKeyDown("Space");
+    engine.loop.tick(16); // step 1: press lands
+    input._enqueueKeyUp("Space");
+    engine.loop.tick(8); // release drains; no step runs
+    expect(byPlayer.readings).toEqual([false]);
+
+    engine.loop.tick(8); // step 2 sees the release
+    expect(byPlayer.readings).toEqual([false, true]);
+
+    engine.loop.tick(16); // step 3: edge expired
+    expect(byPlayer.readings).toEqual([false, true, false]);
+    engine.destroy();
+  });
+
+  it("a release the window forced reaches no fixed step as a player release", async () => {
+    const { engine, input, scheduler } = await startEngine();
+    const released = new QueryReader(Phase.FixedUpdate, () =>
+      input.isJustReleased("jump"),
+    );
+    const byPlayer = new QueryReader(Phase.FixedUpdate, () =>
+      input.isJustReleasedByPlayer("jump"),
+    );
+    scheduler.add(released);
+    scheduler.add(byPlayer);
+
+    input._enqueueKeyDown("Space");
+    engine.loop.tick(16); // step 1: press lands
+    input._releaseAllPhysicalState(); // the window lost focus
+    engine.loop.tick(16); // step 2 sees the hold end
+
+    expect(released.readings).toEqual([false, true]);
+    expect(byPlayer.readings).toEqual([false, false]);
+    engine.destroy();
+  });
+
   it("a synthetic tap spanning a zero-step frame shows both edges to the next step", async () => {
     const { engine, input, scheduler } = await startEngine();
     const pressed = new QueryReader(Phase.FixedUpdate, () =>

@@ -30,6 +30,21 @@ import type {
 
 // ---- Minimal mock container for test context ----
 
+/** Translation and scale composed down a container chain. */
+interface ComposedTransform {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+}
+
+const IDENTITY: Readonly<ComposedTransform> = {
+  x: 0,
+  y: 0,
+  scaleX: 1,
+  scaleY: 1,
+};
+
 export class MockContainer {
   children: MockContainer[] = [];
   position = {
@@ -51,6 +66,13 @@ export class MockContainer {
   destroyed = false;
   eventMode = "passive";
   cursor = "default";
+  measurable = true;
+  /**
+   * The clip Pixi reads on the container itself. A point the mask does not
+   * hold prunes this container and everything under it before any child's own
+   * hit area is consulted, which is what an `overflow: hidden` panel does.
+   */
+  mask: MockContainer | null = null;
 
   addChild(child: MockContainer): MockContainer {
     this.children.push(child);
@@ -79,6 +101,39 @@ export class MockContainer {
 
   sortChildren(): void {
     this.children.sort((a, b) => a.zIndex - b.zIndex);
+  }
+
+  /**
+   * Convert `point` — given in `from`'s local space, or in global space when
+   * `from` is left out — into this container's local space.
+   *
+   * Translation and scale only. Rotation is out of scope: nothing in the UI
+   * layer rotates a container, and leaving it out keeps the arithmetic a
+   * reader can check by hand against the coordinates a test writes.
+   */
+  toLocal(
+    point: { x: number; y: number },
+    from?: MockContainer,
+    out?: { x: number; y: number },
+  ): { x: number; y: number } {
+    const source = from?.composedTransform() ?? IDENTITY;
+    const target = this.composedTransform();
+    const globalX = source.x + point.x * source.scaleX;
+    const globalY = source.y + point.y * source.scaleY;
+    const result = out ?? { x: 0, y: 0 };
+    result.x = (globalX - target.x) / target.scaleX;
+    result.y = (globalY - target.y) / target.scaleY;
+    return result;
+  }
+
+  /** This container's position and scale, composed from the root down. */
+  private composedTransform(): ComposedTransform {
+    const composed = this.parent?.composedTransform() ?? { ...IDENTITY };
+    composed.x += this.position.x * composed.scaleX;
+    composed.y += this.position.y * composed.scaleY;
+    composed.scaleX *= this.scale.x;
+    composed.scaleY *= this.scale.y;
+    return composed;
   }
 
   destroy(): void {

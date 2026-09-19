@@ -108,6 +108,10 @@ const { mocks } = vi.hoisted(() => {
     fill(...args: unknown[]): MockGraphics {
       return this;
     }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    stroke(...args: unknown[]): MockGraphics {
+      return this;
+    }
   }
 
   class MockText extends MockContainer {
@@ -712,11 +716,15 @@ describe("reconciler dev-warnings", () => {
       // The panel instance is stable across the update (same host instance).
       expect(getRootInstances(container as never)![0]).toBe(panel);
       // No direct "has background" getter on UIPanel; assert indirectly via
-      // the background-renderer's absence — background: undefined must have
-      // reached update() as an explicit reset, not been skipped.
-      const bgRenderer = (panel as unknown as { bgRenderer: unknown })
-        .bgRenderer;
-      expect(bgRenderer).toBeUndefined();
+      // the display object the background renderer holds, which is gone while
+      // the panel paints no fill — background: undefined must have reached
+      // update() as an explicit reset, not been skipped.
+      const bgRenderer = (
+        panel as unknown as {
+          bgRenderer: { displayObject: unknown } | undefined;
+        }
+      ).bgRenderer;
+      expect(bgRenderer?.displayObject).toBeUndefined();
     });
 
     it("resets a removed onClick handler instead of leaving it bound", () => {
@@ -799,9 +807,9 @@ describe("reconciler dev-warnings", () => {
       root.render(createElement(Panel, {})); // bg dropped between renders
 
       const panel = getRootInstances(container as never)![0] as unknown as {
-        bgRenderer: unknown;
+        bgRenderer: { displayObject: unknown } | undefined;
       };
-      expect(panel.bgRenderer).toBeUndefined();
+      expect(panel.bgRenderer?.displayObject).toBeUndefined();
     });
 
     it("does not expand bg on Pixi* wrappers (own required view-slot prop)", () => {
@@ -825,6 +833,101 @@ describe("reconciler dev-warnings", () => {
       // No `_bgAlias` marker was set, so `bg` was never expanded to
       // `background` — UIPanel's own background stays unset.
       expect(instance.bgRenderer).toBeUndefined();
+    });
+  });
+
+  describe("focus props", () => {
+    /** The single root element the last render committed. */
+    function onlyInstance<T>(
+      container: InstanceType<typeof mocks.MockContainer>,
+    ): T {
+      return getRootInstances(container as never)![0] as unknown as T;
+    }
+
+    it("forwards focusable to the underlying element", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+
+      root.render(createElement(Button, { focusable: false }, "Upload"));
+
+      expect(onlyInstance<UIButtonNode>(container).focusable).toBe(false);
+    });
+
+    it("restores the element's own default when focusable is dropped", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+
+      root.render(createElement(Button, { focusable: false }, "Upload"));
+      root.render(createElement(Button, {}, "Upload"));
+
+      expect(onlyInstance<UIButtonNode>(container).focusable).toBe(true);
+    });
+
+    it("maps focusBg onto the button's focused background", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+
+      root.render(
+        createElement(
+          Button,
+          { bg: { color: 0x101018 }, focusBg: { color: 0x334455 } },
+          "Resume",
+        ),
+      );
+
+      const btn = onlyInstance<{ focusBgOpts: { color: number } }>(container);
+      expect(btn.focusBgOpts.color).toBe(0x334455);
+    });
+
+    it("re-derives the focused background when focusBg changes", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+      const render = (focusBg: number): void => {
+        root.render(
+          createElement(
+            Button,
+            { bg: { color: 0x101018 }, focusBg: { color: focusBg } },
+            "Resume",
+          ),
+        );
+      };
+
+      render(0x334455);
+      render(0x667788);
+
+      const btn = onlyInstance<{ focusBgOpts: { color: number } }>(container);
+      expect(btn.focusBgOpts.color).toBe(0x667788);
+    });
+
+    it("maps focusBg onto a panel's focused background", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+
+      root.render(
+        createElement(Panel, {
+          bg: { color: 0x101018 },
+          focusBg: { color: 0x2c4a6f },
+        }),
+      );
+
+      const panel = onlyInstance<{ focusBgOpts: { color: number } }>(container);
+      expect(panel.focusBgOpts.color).toBe(0x2c4a6f);
+    });
+
+    it("clears a panel's focused fill when focusBg is dropped", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+
+      root.render(
+        createElement(Panel, {
+          bg: { color: 0x101018 },
+          focusBg: { color: 0x2c4a6f },
+        }),
+      );
+      root.render(createElement(Panel, { bg: { color: 0x101018 } }));
+
+      const panel = onlyInstance<{ focusBgOpts: unknown }>(container);
+      expect(panel.focusBgOpts).toBeUndefined();
     });
   });
 
