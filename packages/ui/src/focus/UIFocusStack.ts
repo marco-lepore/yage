@@ -12,12 +12,10 @@ interface Entry {
 /**
  * Every focus scope in one scene, and which of them reads input.
  *
- * A scope shows and hides with its own subtree, so the stack cannot be a
- * push/pop list: it records which scopes are shown each frame and gives input
- * to the innermost of them, or to the one shown most recently among the
- * scopes that hold none of the others. Showing a dialog inside a menu
- * therefore hands the keys over, and hiding it hands them back on the row the
- * menu had.
+ * A scope shows and hides with its own subtree, so this is not a push/pop
+ * list: each frame it records which scopes are shown and gives input to the
+ * innermost one. Hiding a dialog inside a menu hands the keys back to the
+ * menu, on the row it had.
  */
 export class UIFocusStack {
   private readonly entries: Entry[] = [];
@@ -46,11 +44,8 @@ export class UIFocusStack {
 
   /**
    * Recompute which scopes are shown, stamping each one that just became
-   * shown, and report whether any of them is.
-   *
-   * Runs for every scene each frame, driven or not, so a menu shown under a
-   * pushed scene is recorded when it happens rather than staying invisible
-   * behind a scope that was registered earlier.
+   * shown, and report whether any is. Runs for every scene each frame, driven
+   * or not, so a menu shown under a pushed scene gets its stamp that frame.
    * @internal
    */
   _observe(): boolean {
@@ -68,13 +63,10 @@ export class UIFocusStack {
   }
 
   /**
-   * Give input to the innermost scope shown and run its frame.
-   *
-   * A scope holding a shown scope inside it stands aside, so a confirm dialog
-   * inside a menu is the one the player drives whichever order the tree put
-   * the two scopes in the stack. Among scopes that hold none of the others,
-   * the one shown most recently wins, and two shown in the same frame are
-   * stamped in registration order.
+   * Give input to the innermost scope shown and run its frame. A scope
+   * holding a shown scope inside it stands aside. Among the rest, the one
+   * shown most recently wins, and two shown in the same frame rank in
+   * registration order.
    * @internal
    */
   _drive(input: UIFocusInputSource | null): void {

@@ -39,19 +39,14 @@ const NON_TEXT_INPUT_TYPES = new Set([
 
 /**
  * Whether the browser sent this key press to an element that accepts typed
- * text: a `<textarea>`, an `<input>` of a text-accepting type — which is what
- * `@pixi/ui`'s text input creates and focuses — or an element marked
- * `contenteditable`.
+ * text: a `<textarea>`, an `<input>` of a text-accepting type (what
+ * `@pixi/ui`'s text input creates), or a `contenteditable` element. Key
+ * events reach `window` whatever their target, so without this check typing a
+ * save name presses every action bound to those letters.
  *
- * Key events reach `window` whatever element they were sent to, so without
- * this check a player naming a save file also presses every action bound to
- * those letters.
- *
- * The press is judged by the element it was dispatched at rather than by what
- * holds focus when this listener runs. A text field handles its own keys
- * first and a widget such as `@pixi/ui`'s input blurs and removes its field
- * to end an edit, which leaves nothing focused by the bubble phase; the key
- * that ended the edit still belongs to the field.
+ * The event target is used, not `document.activeElement`: `@pixi/ui`'s input
+ * blurs and removes its field to end an edit, so nothing is focused by the
+ * bubble phase, yet the key that ended the edit belongs to the field.
  */
 function isTextEntryTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -134,16 +129,14 @@ export class InputPlugin implements Plugin {
     const onKeyDown = (e: Event): void => {
       const ke = e as KeyboardEvent;
       if (ke.repeat) return;
-      // A text field owns the keys sent to it: the press is text, so it
-      // raises no action and the browser's own text entry runs undisturbed.
+      // A key sent to a text field is text and raises no action.
       if (isTextEntryTarget(ke.target)) return;
       if (preventSet.has(ke.code)) ke.preventDefault();
       this.manager._enqueueKeyDown(ke.code);
     };
-    // Releases are never filtered. A key held when a text field took focus was
-    // enqueued as a press, and dropping its release would hold that action
-    // down for good; a release whose press was skipped names a key the manager
-    // is not holding and changes nothing.
+    // Releases are never filtered: a key held when a text field took focus
+    // was enqueued as a press, and dropping its release would hold that
+    // action down. A release whose press was skipped changes nothing.
     const onKeyUp = (e: Event): void => {
       const ke = e as KeyboardEvent;
       if (preventSet.has(ke.code)) ke.preventDefault();

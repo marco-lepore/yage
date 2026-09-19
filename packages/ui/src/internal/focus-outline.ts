@@ -1,9 +1,8 @@
 /**
  * The focused look a game opts into: one outline, drawn the same way by every
- * focusable element in the package, asked for once through the UI plugin or
- * per element. Where nothing asks for one, nothing is drawn and the game
- * shows focus its own way from `onFocusChange`. Hover and press stay fills,
- * so an element that is both hovered and focused reads as both.
+ * focusable element, asked for through the UI plugin or per element. Where
+ * nothing asks for one, nothing is drawn. Hover and press stay fills, so an
+ * element that is both hovered and focused shows both.
  */
 
 import { Graphics } from "pixi.js";
@@ -28,9 +27,8 @@ const UNSCALED = { x: 1, y: 1 };
 let uiFocusStyle: UIFocusStyle | undefined;
 
 /**
- * Store the UI-level focus outline style, which every focusable element in
- * the package reads at paint time. Without one, an element draws an outline
- * only where its own `focusStyle` asks for it.
+ * Store the UI-level focus outline style, read by every focusable element at
+ * paint time.
  */
 export function setUIFocusStyle(style: UIFocusStyle | null | undefined): void {
   uiFocusStyle = style ? { ...style } : undefined;
@@ -41,10 +39,7 @@ export function getUIFocusStyle(): UIFocusStyle | undefined {
   return uiFocusStyle;
 }
 
-/**
- * The box layout gave an element, which is what an element rings when its own
- * Pixi container is positioned by layout rather than scaled by it.
- */
+/** The box layout gave an element, in its container's local space. */
 export function layoutBox(node: YogaNode, radius?: number): UIFocusOutlineBox {
   const box = {
     x: 0,
@@ -65,10 +60,7 @@ export interface ResolvedFocusStyle {
 
 /**
  * The colour an outline takes when nothing names one: the fill of the UI
- * default text style, so a game that themed its text has already said what
- * its foreground is and a light palette gets a readable outline. A fill that
- * is not a colour number — a CSS string, a gradient — names no colour here,
- * and the outline falls back to white.
+ * default text style, or white when that fill is not a colour number.
  */
 function themedColor(): number {
   const fill = getUIDefaultTextStyle()?.fill;
@@ -77,13 +69,10 @@ function themedColor(): number {
 
 /**
  * The outline an element carrying `override` draws, or `null` where it draws
- * none: nothing named a style, or the element itself named `null` to opt out
- * of the UI-wide one.
- *
- * A style that is named resolves field by field — the element's own value,
- * then the UI-wide one, then the built-in default. `fallbackRadius` is the
- * element's own corner radius, so a themed button and the widget beside it
- * are rounded the same while focused.
+ * none: nothing named a style, or the element named `null` to opt out of the
+ * UI-wide one. Each field resolves from the element's own value, then the
+ * UI-wide one, then the default. `fallbackRadius` is the element's own corner
+ * radius.
  * @internal
  */
 export function resolveFocusStyle(
@@ -110,10 +99,9 @@ export interface FocusOutlineHost {
   /** The rectangle to outline, in `container`'s own local space. */
   box(): UIFocusOutlineBox;
   /**
-   * What `container` scales its contents by. The outline is drawn in the px
-   * the layout box is measured in and scaled back down, so every edge comes
-   * out one thickness on a widget layout sized by scaling. Omitted means the
-   * container draws at those px already.
+   * What `container` scales its contents by. The outline is drawn in layout
+   * px and scaled back down, so the stroke keeps its thickness on a widget
+   * that layout sizes by scaling. Omitted means the container does not scale.
    */
   scale?(): { readonly x: number; readonly y: number };
 }
@@ -134,13 +122,8 @@ interface DrawnOutline {
 
 /**
  * The outline one element draws while it holds focus, where a style asks for
- * one.
- *
- * The graphics is built the first time a stroke is actually laid down and
- * kept afterwards, so an element that draws no outline holds none; it is left
- * out of its container's local bounds so showing it changes no measured size,
- * and redrawn from the element's layout pass. It is drawn inside the box, so
- * it never reaches over a neighbour.
+ * one. The graphics is built on the first stroke, redrawn from the element's
+ * layout pass, and drawn inside the box so it never covers a neighbour.
  */
 export class FocusOutline {
   private readonly host: FocusOutlineHost;
@@ -153,10 +136,7 @@ export class FocusOutline {
     this.host = host;
   }
 
-  /**
-   * Swap the element's own `focusStyle` in place, by key presence, the way
-   * the shared focus and pointer fan-outs read their props.
-   */
+  /** Swap the element's own `focusStyle` in place, by key presence. */
   set(props: FocusProps): void {
     if (!("focusStyle" in props)) return;
     this.style = props.focusStyle;
@@ -185,19 +165,14 @@ export class FocusOutline {
   private _build(): Graphics {
     const graphics = new Graphics();
     this.drawn = undefined;
-    // Left out of the container's local bounds, so taking focus cannot change
-    // the size a parent measured, nor the width and height a wrapper's
-    // `applyLayout` writes back into its widget.
+    // Left out of local bounds, so taking focus changes no measured size, nor
+    // the width and height a wrapper's `applyLayout` writes into its widget.
     graphics.measurable = false;
     this.host.container.addChild(graphics);
     this.graphics = graphics;
     return graphics;
   }
 
-  /**
-   * Bring the outline to what the element's focus and style come to now: a
-   * stroke at its current box, or nothing at all.
-   */
   private _paint(): void {
     if (!this._focused) {
       this._hide();
@@ -210,8 +185,7 @@ export class FocusOutline {
       !Number.isFinite(box.width) ||
       !Number.isFinite(box.height)
     ) {
-      // Nothing is measured yet. The layout pass that measures this element
-      // refreshes the outline, so the stroke lands then.
+      // Not measured yet. The layout pass that measures it calls `refresh`.
       return;
     }
     const style = resolveFocusStyle(this.style, box.radius);
@@ -245,11 +219,9 @@ export class FocusOutline {
     const height = box.height * scaleY - edge * 2;
     const radius = Math.max(0, style.radius - edge);
 
-    // A stroke that would come out exactly as the one already laid down is
-    // skipped, the way the package's backgrounds skip a resize to the size
-    // they hold: re-tessellating an unchanged rounded rectangle on every
-    // layout pass is this package's largest per-frame allocation, and a
-    // focused element runs that pass every frame.
+    // Skip a stroke identical to the one already drawn: a focused element
+    // runs the layout pass every frame, and re-tessellating a rounded
+    // rectangle allocates.
     const drawn = this.drawn;
     if (
       drawn !== undefined &&
@@ -279,12 +251,9 @@ export class FocusOutline {
       strokeWidth: style.width,
     };
 
-    // The box's corner is a point in the container's space; its extent is
-    // written in the px the layout box is measured in, and the graphics is
-    // scaled back by the same amount. One space for both, so a widget drawn
-    // around its own centre is ringed where it is drawn. A host that declares
-    // no scale never scales its container, and the graphics keeps the scale
-    // of 1 it was built with.
+    // The corner is a point in the container's space; the extent is in layout
+    // px, and the graphics is scaled back by the same amount. A host that
+    // declares no scale leaves the graphics at scale 1.
     graphics.position.set(box.x, box.y);
     if (readScale) graphics.scale.set(1 / scaleX, 1 / scaleY);
     graphics.clear();

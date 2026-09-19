@@ -15,7 +15,6 @@ const DEFAULT_STEP = 1;
 /**
  * `Slider.change()` is the only thing that emits `onChange`, and it is
  * protected, so a keyboard or gamepad step reaches it through a subclass.
- * The knob's travel is read from the same protected parts.
  */
 class SteppableSlider extends Slider {
   /** Publish the settled value, as releasing a drag does. */
@@ -25,17 +24,13 @@ class SteppableSlider extends Slider {
 
   /**
    * The box the track and the knob's whole sweep occupy, in the slider's own
-   * space.
+   * space. It is the same at every value.
    *
-   * The knob art hangs in a container parked on the track's mid-line and at
-   * `value / max * trackWidth - containerWidth / 2` along it, so the sweep is
-   * the art's own box widened by half the container's width at each end. The
-   * art sits at its own place inside that container — centred for a `Sprite`,
-   * which takes an anchor of 0.5, and left- and top-aligned for every other
-   * view, which keeps its origin — so that offset is read from the container's
-   * local bounds rather than assumed. The result holds the knob at every
-   * value, which is what keeps an outline drawn around it still while the
-   * value moves.
+   * The knob's container sits on the track's mid-line at
+   * `value / max * trackWidth - containerWidth / 2`, so the sweep is the art's
+   * box widened by half the container's width at each end. The art's offset
+   * inside the container depends on the view (a `Sprite` is centred, other
+   * views keep their origin), so it is read from the container's local bounds.
    */
   travelBox(): { x: number; y: number; width: number; height: number } {
     const trackWidth = this.bg.width;
@@ -91,22 +86,17 @@ export class PixiSlider extends PixiUIBase<SteppableSlider> {
 
   /**
    * Outline the track together with the knob's whole travel. The knob
-   * overhangs the track at both ends and, where its art stands outside the
-   * track's own band, above and below it, so the box layout gave the slider
-   * holds neither; a box measured from what the widget draws right now would
-   * follow the knob and breathe as the value changes. This one is the same at
-   * every value.
+   * overhangs the layout box, and a box measured from what is drawn would
+   * move with the value.
    */
   protected override focusOutlineBox(): UIFocusOutlineBox {
     return this.view.travelBox();
   }
 
   /**
-   * Step the value on left and right. Setting `value` clamps and reports the
-   * move, and the commit that follows settles it, so both signals arrive in
-   * the order a drag produces them and a live preview hears a gamepad. At
-   * either end the press is not consumed, so focus leaves the slider instead
-   * of being trapped on it.
+   * Step the value on left and right. Setting `value` reports the move and
+   * the commit settles it, the order a drag produces. At either end the press
+   * is not consumed, so focus leaves the slider.
    */
   protected override adjust(direction: FocusDirection): boolean {
     if (direction !== "left" && direction !== "right") return false;

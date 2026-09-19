@@ -25,14 +25,12 @@ export interface UIPluginOptions {
    */
   defaultTextStyle?: TextStyle;
   /**
-   * How the outline around a focused element is drawn — colour, thickness,
-   * corner radius and inset. One answer for every focusable element in the
-   * package, from a `UIButton` to a `@pixi/ui` wrapper; a per-element
-   * `focusStyle` overrides it field by field, and `focusStyle: null` on an
-   * element drops the outline for that element alone.
+   * How the outline around a focused element is drawn: colour, thickness,
+   * corner radius and inset. It applies to every focusable element. A
+   * per-element `focusStyle` overrides it field by field, and `null` on an
+   * element drops that element's outline.
    *
-   * Omitted, no element draws an outline: a game shows focus the way its art
-   * calls for, commonly a marker beside the focused row drawn from
+   * Omitted, no element draws an outline, and a game shows focus from
    * `onFocusChange`.
    */
   focusStyle?: UIFocusStyle | null;

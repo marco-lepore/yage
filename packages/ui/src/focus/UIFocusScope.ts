@@ -33,11 +33,8 @@ export interface UIFocusScopeHost {
 }
 
 /**
- * The slice of an input manager a scope reads.
- *
- * Declared structurally so `@yagejs/ui` names no type from `@yagejs/input`:
- * the input package stays an optional peer, and a handful of methods on a
- * stub object drive a scope in a unit test.
+ * The slice of an input manager a scope reads. Structural, so `@yagejs/ui`
+ * names no type from the optional peer `@yagejs/input`.
  */
 export interface UIFocusInputSource {
   isPressed(action: string): boolean;
@@ -50,10 +47,9 @@ export interface UIFocusInputSource {
     },
   ): boolean;
   /**
-   * Whether the player let go of the action in this window, as opposed to the
-   * engine dropping the hold — the window losing focus, the action's group
-   * being disabled, any other forced clear of physical state. A confirm press
-   * runs its element's action on this and on nothing else.
+   * Whether the player let go of the action, as opposed to the engine
+   * dropping the hold (window blur, disabled action group). A confirm press
+   * runs its element's action only on this.
    */
   isJustReleasedByPlayer(action: string): boolean;
   hasAction(name: string): boolean;
@@ -79,14 +75,12 @@ const DEFAULT_ACTIONS: Record<FocusRole, string> = {
 
 const DEFAULT_SCROLL_PADDING = 8;
 
-/** What `isJustPressed` is asked for on a direction role. */
 interface RepeatQuery {
   repeat: true;
   repeatDelay?: number;
   repeatInterval?: number;
 }
 
-/** The action names and repeat cadence a scope polls with. */
 interface ResolvedInput {
   readonly names: Record<FocusRole, readonly string[]>;
   readonly repeat: RepeatQuery | undefined;
@@ -103,16 +97,11 @@ interface Candidate {
 
 /**
  * Every scope by the container it is hosted on. The candidate walk stops at
- * one, so a confirm dialog's rows belong to the dialog and never to the menu
- * around it, and a pointer request finds the scope whose subtree it landed
- * in.
+ * one, and a pointer request finds the scope whose subtree it landed in.
  */
 const scopeHosts = new WeakMap<DisplayContainer, UIFocusScope>();
 
-/**
- * The scope `element` belongs to: the innermost one whose host container the
- * element hangs under, which is the scope whose candidate walk reaches it.
- */
+/** The innermost scope whose host container `element` hangs under. */
 function scopeOf(element: UIElement): UIFocusScope | undefined {
   let container: DisplayContainer | null = element.displayObject;
   while (container !== null) {
@@ -128,12 +117,9 @@ function emptyRect(): Rect {
 }
 
 /**
- * Whether this container narrows the hit test of everything beneath it.
- *
- * Pixi asks a container's mask whether it holds the point before it looks at
- * any child (`EventBoundary.hitPruneFn`), and a mask that says no prunes the
- * container together with its whole subtree. A clipped container is therefore
- * hittable only where it draws, whatever hit area its children carry.
+ * Whether this container narrows the hit test of everything beneath it. Pixi
+ * asks a container's mask before any child (`EventBoundary.hitPruneFn`), so a
+ * masked container is hittable only where it draws.
  */
 function clipsHitTest(container: DisplayContainer): boolean {
   const mask = container.mask;
@@ -147,7 +133,6 @@ interface BlockerSeat {
   readonly below: DisplayContainer | null;
 }
 
-/** The element's children, or `undefined` for a leaf. */
 function childrenOf(element: UIElement): readonly UIElement[] | undefined {
   return (element as Partial<UIContainerElement>).children;
 }
@@ -208,7 +193,6 @@ function assertRepeatTiming(
   }
 }
 
-/** Whether `node` is the box of one of the scroll views around a candidate. */
 function isViewportNode(
   node: YogaNode,
   views: readonly FocusScrollView[],
@@ -220,22 +204,13 @@ function isViewportNode(
 }
 
 /**
- * Write into `out` the two facts a scroll follow turns on, read from the
- * boxes between `element` and the outermost scroll view around it: where the
- * element sits inside the scrolled content — every box's position inside its
- * parent, plus the element's own size — and how large each viewport around it
- * is.
+ * Write into `out` what a scroll follow depends on: the position of every box
+ * between `element` and the outermost scroll view, plus the size of the
+ * element and of each viewport.
  *
- * The size of the panel a view holds its rows in is read from none of those
- * boxes. It answers to every row, so a row appended or removed below the
- * focused one grows or shrinks it while the focused row stays where it was,
- * and following that would pull the list away from the offset the player
- * wheeled or dragged to.
- *
- * Yoga carries none of a view's scroll offset — that lives on the content
- * container's position — so this reading changes when a layout pass moved the
- * element or resized a viewport, and stands still while the player scrolls a
- * list by hand.
+ * The content panel's size is left out: a row added or removed below the
+ * focused one changes it without moving the focused row. Yoga carries no
+ * scroll offset, so the reading stays still while the player scrolls by hand.
  */
 function readFollowGeometry(
   element: UIElement,
@@ -257,12 +232,10 @@ function readFollowGeometry(
   }
 }
 
-/** Whether two geometry readings hold the same numbers in the same order. */
 function sameGeometry(a: readonly number[], b: readonly number[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) {
-    // `Object.is`, so a box that has no number yet reads as unchanged rather
-    // than as a reason to scroll on every frame.
+    // `Object.is`, so a box that is still NaN reads as unchanged.
     if (!Object.is(a[i], b[i])) return false;
   }
   return true;
@@ -282,17 +255,11 @@ function assertScrollPadding(context: string, padding: number): void {
  *
  * A game reaches its scope through `surface.focusScope`, `panel.focusScope`
  * or `root.focusScope` and never builds one. Every method works with no
- * engine attached, which is what `input: null`, a cutscene script and a unit
- * test drive.
+ * engine attached, so a cutscene script or a unit test can drive it.
  *
- * The scope reading input owns the pointer as well as the keys: everything
- * drawn under it stops answering the mouse for as long as it holds them, so
- * a dialog cannot be clicked through. `modal: false` leaves the pointer to
- * whatever is behind.
- *
- * Candidates are rebuilt from the live tree on every read. There is no cache:
- * `visible` and `setDisabled` are plain setters no shared helper observes, so
- * a cache would go stale in exactly the cases navigation depends on.
+ * The scope reading input owns the pointer too: everything drawn under it
+ * stops answering the mouse, so a dialog cannot be clicked through.
+ * `modal: false` leaves the pointer to whatever is behind.
  */
 export class UIFocusScope {
   private readonly host: UIFocusScopeHost;
@@ -301,7 +268,6 @@ export class UIFocusScope {
   private _autoFocus = true;
   private _pointerFocus: PointerFocusMode = "press";
   private _modal = true;
-  /** The container swallowing the pointer around this scope, once built. */
   private _blocker: DisplayContainer | null = null;
   private _roles: ResolvedInput | null = resolveInput(undefined);
   private readonly _followOptions: UIScrollIntoViewOptions = {
@@ -315,9 +281,8 @@ export class UIFocusScope {
   private _onCancel: (() => void) | undefined;
 
   private _focused: UIElement | null = null;
-  /** The element a confirm press is being held on, or `null`. */
   private _pressed: UIElement | null = null;
-  /** The action name whose hold that press follows. */
+  /** The action name whose hold the confirm press follows. */
   private _pressName = "";
   /** Tree index the focused element had, so a lost row resumes beside it. */
   private _focusedIndex = -1;
@@ -327,12 +292,11 @@ export class UIFocusScope {
   private _clearedByGame = false;
   private _hasInput = false;
 
-  // Rebuilt by one walk per read, reusing the entries it already holds, so
-  // navigating a list whose length is steady allocates nothing.
+  // Rebuilt from the live tree on every read, reusing its entries. Not cached:
+  // `visible` and `setDisabled` are plain setters that nothing observes.
   private readonly _candidates: Candidate[] = [];
   private _count = 0;
   private readonly _scrollStack: FocusScrollView[] = [];
-  /** The element under this scope holding its input, or `null`. */
   private _capture: UIInputCaptureElement | null = null;
   private _wasCapturing = false;
   private readonly _seenIds = new Set<string>();
@@ -341,7 +305,6 @@ export class UIFocusScope {
   private readonly _followedGeometry: number[] = [];
   private readonly _currentGeometry: number[] = [];
 
-  // Geometry, read only on a move.
   private readonly _rectPool: Rect[] = [];
   private readonly _moveRects: Rect[] = [];
   private readonly _rectOf: number[] = [];
@@ -363,8 +326,7 @@ export class UIFocusScope {
 
   /**
    * The element this scope remembers. It is painted and acted on only while
-   * {@link hasInput} is true, so a menu behind a dialog keeps its row without
-   * lighting it up.
+   * {@link hasInput} is true.
    */
   get focused(): UIElement | null {
     return this._focused;
@@ -387,12 +349,10 @@ export class UIFocusScope {
 
   /**
    * Move focus to one element of this scope, reporting whether it landed.
-   * `null` clears focus.
+   * `null` clears focus. A hidden, disabled or non-focusable element returns
+   * `false` with a development warning.
    *
-   * @throws when `element` is not inside this scope — a programming error
-   * knowable at the call. A descendant that is hidden, disabled or not
-   * focusable returns `false` with a development warning instead, because
-   * that is a layout race the caller could not have known about.
+   * @throws when `element` is not inside this scope.
    */
   focus(element: UIElement | null): boolean {
     if (element === null) {
@@ -427,8 +387,7 @@ export class UIFocusScope {
    * changed, or the focused element consumed the step as an adjustment.
    *
    * While an element under this scope holds its input, the step goes to that
-   * element and focus stays where it is. One it has no use for is still
-   * consumed, so a direction never reaches the menu behind an open list.
+   * element, focus stays, and the result is `true`.
    */
   move(direction: FocusDirection): boolean {
     this._collect();
@@ -442,15 +401,10 @@ export class UIFocusScope {
   }
 
   /**
-   * Run the focused element's own action — the one a click runs — and then
+   * Run the focused element's own action (the one a click runs), then
    * `onActivate`. A disabled or unfocused scope does nothing. While an
-   * element under this scope holds its input, this confirms that element
-   * instead, keeping what it produced.
-   *
-   * This runs at once and paints no press: a press is the picture of a held
-   * confirm action, and a call from game code holds nothing. The pressed look
-   * belongs to the scope's own polling, which shows it for as long as the
-   * player keeps the action down.
+   * element under this scope holds its input, this confirms that element.
+   * Paints no pressed look; that belongs to a held confirm action.
    */
   activate(): void {
     this._collect();
@@ -464,8 +418,7 @@ export class UIFocusScope {
 
   /**
    * Run `onCancel`. While an element under this scope holds its input, this
-   * cancels that element instead — an open list closes on the value it had,
-   * and the menu around it stays open.
+   * cancels that element and `onCancel` does not run.
    */
   cancel(): void {
     this._collect();
@@ -489,8 +442,7 @@ export class UIFocusScope {
 
   /**
    * Take `options` as the whole declaration: a key left out goes back to its
-   * default. A host calls this with the `focus` value it was handed, so a
-   * callback a React render stopped passing is dropped rather than kept.
+   * default, so a callback a React render stopped passing is dropped.
    * @internal
    */
   _replaceOptions(options: UIFocusScopeOptions): void {
@@ -515,10 +467,9 @@ export class UIFocusScope {
   }
 
   /**
-   * Drop a focused element that is being torn down: no callback and no
-   * repaint, because painting from here reaches a freed Yoga node and a
-   * destroyed container. The tree index it held is kept, so the next
-   * validation lands beside it rather than back at the first row.
+   * Drop a focused element that is being torn down, with no callback and no
+   * repaint: painting here reaches a freed Yoga node. The tree index is kept
+   * so the next validation lands beside it.
    * @internal
    */
   _clearFocusedOnDestroy(element: UIElement): void {
@@ -528,10 +479,9 @@ export class UIFocusScope {
   }
 
   /**
-   * Whether this scope's host is on screen: visible itself and under visible
-   * ancestors all the way up. Hiding a surface, disabling its component and
-   * deactivating its entity all write the same flag, so all three hand input
-   * back, and a dialog inside a hidden surface holds no keys.
+   * Whether this scope's host and all its ancestors are visible. Hiding a
+   * surface, disabling its component and deactivating its entity all write
+   * that flag.
    * @internal
    */
   _isShown(): boolean {
@@ -543,13 +493,7 @@ export class UIFocusScope {
     return true;
   }
 
-  /**
-   * Whether `scope` sits inside this one's subtree — a confirm dialog's scope
-   * inside the menu's. A stack reads it to give input to the innermost shown
-   * scope, so which one the player drives follows the shape of the tree
-   * rather than the order the two scopes happened to register in.
-   * @internal
-   */
+  /** Whether `scope` sits inside this one's subtree. @internal */
   _containsScope(scope: UIFocusScope): boolean {
     const root = this.host.displayObject;
     // From the parent up: a scope does not contain itself.
@@ -566,11 +510,7 @@ export class UIFocusScope {
     return this._roles !== null;
   }
 
-  /**
-   * Start reading input: latch whatever is already held, then light up the
-   * remembered element or the first candidate.
-   * @internal
-   */
+  /** Start reading input: latch held names, light an element. @internal */
   _takeInput(input: UIFocusInputSource | null): void {
     if (this._hasInput) return;
     this._hasInput = true;
@@ -585,9 +525,6 @@ export class UIFocusScope {
       this._followScroll(focused, this._focusedIndex);
       return;
     }
-    // One auto-focus rule for every way a scope arrives with nothing lit, so
-    // a menu the game unlit with `focus(null)` stays unlit when a dialog over
-    // it closes, exactly as it does across the frames in between.
     this._autoFocusFirst();
   }
 
@@ -600,12 +537,9 @@ export class UIFocusScope {
     // One walk on the way out, because the element holding this scope's
     // input may have taken it since the last tick.
     this._collect();
-    // A scope that has stopped reading input will never see the release that
-    // would end a press it is holding, so the press ends here and its action
-    // does not run — a menu that hid itself lights nothing.
+    // This scope will never see the release that ends a held press, so the
+    // press ends here without running its action.
     this._cancelPress();
-    // The keys this scope handed to an element are not this scope's to hand
-    // out any more, so a field gives back the caret and an open list closes.
     this._releaseCapture(this._capture);
     if (this._focused !== null)
       getFocusState(this._focused)?._setFocused(false);
@@ -613,9 +547,7 @@ export class UIFocusScope {
 
   /** One frame of this scope: validate, pointer, poll. @internal */
   _tick(input: UIFocusInputSource | null): void {
-    // The seat is read again here, so a panel that starts clipping its
-    // overflow while the dialog is up, or a subtree that is moved, does not
-    // leave the blocker somewhere a clip reaches it.
+    // Read the seat again: the host may have started clipping or moved.
     this._syncBlocker();
     this._collect();
     this._validate();
@@ -668,15 +600,9 @@ export class UIFocusScope {
   // -- Pointer ownership ----------------------------------------------------
 
   /**
-   * Put the pointer blocker in place, or take it away, to match what this
-   * scope owns: a modal scope reading input swallows the pointer everywhere
-   * around itself, and anything else leaves the pointer alone.
-   *
-   * The blocker goes directly under the branch the scope is drawn in, so
-   * everything the scope draws sits above it and answers the pointer as it
-   * always does, while every point around the scope reaches the blocker
-   * first. A scope nested inside another therefore blocks the menu around it
-   * and not its own rows.
+   * Seat or remove the pointer blocker: a modal scope reading input swallows
+   * the pointer everywhere around itself. The blocker sits directly under
+   * what the scope draws, so the scope's own rows still answer the pointer.
    */
   private _syncBlocker(): void {
     if (!this._modal || !this._hasInput) {
@@ -692,8 +618,7 @@ export class UIFocusScope {
         ? children[0] === blocker
         : children[children.indexOf(below) - 1] === blocker;
     if (seated) return;
-    // Out of wherever it sat before, so the index below is read against the
-    // children the seat is measured in.
+    // Remove first, so the index below is read without the blocker in it.
     blocker.removeFromParent();
     parent.addChildAt(
       blocker,
@@ -702,27 +627,14 @@ export class UIFocusScope {
   }
 
   /**
-   * Where this scope's blocker hangs: the bottom of its own host, or the far
-   * side of the host when the host clips its own hit test.
+   * Where the blocker hangs: the bottom of the host, or directly under the
+   * host in its parent when the host clips its own hit test.
    *
-   * Both seats put the blocker directly beneath everything the scope draws
-   * and above everything else around it, which is the whole of what a modal
-   * scope owns. A clip anywhere above the host bounds the scope's siblings
-   * exactly as it bounds the scope, so the region that clip prunes holds
-   * nothing left to block, and the blocker stays inside it answering for the
-   * rows a dialog is there to cover. A clip on the host bounds the scope
-   * alone: a blocker inside one covers the single region a scope needs no
-   * blocker for and leaves every point around the dialog live. Giving the
-   * blocker a hit area of its own buys it nothing there, because the clip is
-   * read above it and prunes it before that hit area is asked.
-   *
-   * Staying inside the host wherever it clips nothing keeps what that
-   * placement is worth: a hidden host is pruned from the hit test with the
-   * blocker inside it, and a destroyed host destroys it. A blocker beside the
-   * host leans on the stack instead, which releases a scope on the frame it
-   * sees its host stop being shown, and on `_destroy`, which takes the
-   * blocker down itself. A clipping host with nothing above it keeps its
-   * blocker inside, because there is no outside of the tree to hang from.
+   * A clip on the host prunes a blocker inside it everywhere outside the
+   * clip, which is the area the blocker exists to cover. A host that clips
+   * nothing keeps the blocker inside, so hiding or destroying the host takes
+   * the blocker with it. Seated beside the host, the blocker relies on the
+   * stack releasing a hidden scope and on `_destroy`.
    */
   private _blockerSeat(): BlockerSeat {
     const host = this.host.displayObject;
@@ -739,17 +651,14 @@ export class UIFocusScope {
     this._scrollStack.length = 0;
     this._seenIds.clear();
     this._walk(this.host.roots());
-    // Nothing is kept past the live count: an entry the walk did not reuse
-    // still points at an element the tree has dropped, and would keep that
-    // row's container and Yoga node reachable for as long as the scope lives.
+    // Truncate to the live count: a stale entry would keep a dropped
+    // element's container and Yoga node reachable.
     this._candidates.length = this._count;
   }
 
   private _walk(elements: readonly UIElement[]): void {
     for (const element of elements) {
       const container = element.displayObject;
-      // A hidden subtree costs one check: nothing in it is reachable, and
-      // nothing in it is measured.
       if (!container.visible) continue;
       // An element owning its own scope takes its whole subtree with it.
       if (scopeHosts.has(container)) continue;
@@ -795,9 +704,8 @@ export class UIFocusScope {
       entry.id = id;
       entry.scrollViews.length = 0;
     }
-    // The walk stacks them outermost first; a candidate wants them the other
-    // way round, because an inner list has to move before the outer one
-    // measures.
+    // The walk stacks views outermost first; a candidate wants innermost
+    // first, because an inner list has to scroll before the outer measures.
     for (let i = this._scrollStack.length - 1; i >= 0; i -= 1) {
       entry.scrollViews.push(this._scrollStack[i]!);
     }
@@ -830,14 +738,11 @@ export class UIFocusScope {
 
   /**
    * Drop a focused element that is gone, hidden or disabled, and land on the
-   * nearest survivor: the candidate that took its place in tree order, or the
-   * last one when the list ends before it. A player forty rows into a list is
-   * not thrown back to row one.
+   * candidate that took its place in tree order, or the last one.
    */
   private _validate(): void {
-    // An element that took the input on a path focus did not follow — a field
-    // clicked in a scope the pointer moves no focus in — takes focus with it,
-    // so the presses handed to it go to the row the scope reports.
+    // An element that took the input without focus following (a field clicked
+    // under `pointerFocus: "none"`) takes focus with it.
     const capture = this._capture;
     if (capture !== null && capture !== this._focused) {
       const index = this._indexOf(capture);
@@ -865,10 +770,8 @@ export class UIFocusScope {
   }
 
   /**
-   * Land beside an element torn down while it held focus, on the candidate
-   * that took its place in tree order. Destroying a focused row and hiding
-   * one therefore leave focus in the same place. An empty list keeps the
-   * index owed, so a list that repopulates resumes where the player was.
+   * Land beside an element torn down while it held focus. An empty list
+   * keeps the index owed, so a list that repopulates resumes at it.
    */
   private _resumeAfterDestroy(): void {
     const lost = this._lostIndex;
@@ -878,10 +781,8 @@ export class UIFocusScope {
   }
 
   /**
-   * Light the first candidate for a scope holding input with nothing
-   * focused — a menu whose rows arrive a frame after it opens, or one whose
-   * every row was disabled when it did. A game that cleared focus itself
-   * keeps an unlit menu until it moves.
+   * Light the first candidate for a scope holding input with nothing focused,
+   * on any tick. Skipped after the game cleared focus with `focus(null)`.
    */
   private _autoFocusFirst(): void {
     if (!this._autoFocus || this._clearedByGame) return;
@@ -894,8 +795,6 @@ export class UIFocusScope {
   private _move(direction: FocusDirection): boolean {
     const focused = this._focused;
     if (focused === null) {
-      // The candidate array outlives the walk that filled it, so the live
-      // count is what says whether there is anything to focus.
       if (this._count === 0) {
         this._blocked(direction);
         return false;
@@ -931,15 +830,13 @@ export class UIFocusScope {
   }
 
   /**
-   * Fill `_moveRects` with this frame's candidate boxes in the host's space
-   * and return the focused element's index into it.
+   * Fill `_moveRects` with the candidate boxes in the host's space and return
+   * the focused element's index into it.
    *
-   * A candidate inside a scroll view is clipped to that view's viewport, and
-   * one clipped away entirely drops out, so Up from a footer lands on the
-   * nearest row a player can see rather than teleporting into the middle of
-   * a list. Candidates sharing the focused element's innermost view keep
-   * their full box, which is what makes the next row below the fold
-   * reachable.
+   * A candidate inside a scroll view is clipped to the viewport and drops out
+   * when nothing is left, so a move lands on a visible row. Candidates
+   * sharing the focused element's innermost view keep their full box, which
+   * keeps the next row below the fold reachable.
    */
   private _measure(focusedIndex: number): number {
     this._moveRects.length = 0;
@@ -1014,16 +911,13 @@ export class UIFocusScope {
     if (next !== null) this._clearedByGame = false;
     if (next === previous) return;
     // A confirm press belongs to the element it started on, so focus leaving
-    // that element ends the press and runs nothing — the rule the pointer
-    // follows when it is dragged off a button it pressed.
+    // it ends the press and runs nothing.
     this._cancelPress();
-    // The field is committed before anything is painted and before any game
-    // callback runs, so a throwing handler cannot leave `focused` and the
-    // painted element disagreeing.
+    // Commit the field before painting and before any game callback, so a
+    // throwing handler cannot leave `focused` and the painted element apart.
     this._focused = next;
-    // An element answers the player on its own only while focus is on it, so
-    // focus moving away hands its keys back: an open list closes on the value
-    // it had, and a field being typed into gives back the caret.
+    // Focus moving away hands the element's keys back: an open list closes
+    // and a field gives back the caret.
     this._releaseCapture(previous);
     const previousState =
       previous === null ? undefined : getFocusState(previous);
@@ -1065,12 +959,8 @@ export class UIFocusScope {
 
   /**
    * Bring the focused element inside every viewport around it, innermost
-   * first, so an inner list has already moved when the outer one measures.
-   *
-   * Runs where focus lands — a move, a pointer, a game's `focus()` call, the
-   * frame the scope takes input — and where the boxes it reads have moved
-   * since the last follow. A tick on its own runs nothing, so a list the
-   * player wheels or drags keeps the offset they scrolled it to.
+   * first. Runs where focus lands and where the followed boxes moved. A plain
+   * tick runs nothing, so a list the player scrolls keeps its offset.
    */
   private _followScroll(element: UIElement, index: number): void {
     const candidate = this._candidates[index];
@@ -1081,14 +971,7 @@ export class UIFocusScope {
     }
   }
 
-  /**
-   * Follow the focused element again once a layout pass has moved it inside
-   * the scrolled content or resized a viewport around it — a row arriving
-   * above it, a viewport that shrank — so a row pushed out of sight by
-   * something other than the player comes back. A row appended or removed
-   * below it leaves both of those readings where they were, as does a
-   * player's wheel or drag, so neither starts a follow.
-   */
+  /** Follow again when {@link readFollowGeometry} reads a change. */
   private _followChangedGeometry(): void {
     const element = this._focused;
     if (element === null) return;
@@ -1103,18 +986,12 @@ export class UIFocusScope {
   // -- Input ----------------------------------------------------------------
 
   /**
-   * Take this tick's pointer request and hand it to the scope whose subtree
-   * the element sits in, which is not always this one: only the driven scope
-   * ticks, so a menu behind a dialog would otherwise never hear that the
-   * pointer reached one of its rows. Each scope answers for itself, so a
-   * console-style submenu can follow the pointer while the menu around it
-   * leaves focus to the keyboard.
+   * Hand this tick's pointer request to the scope whose subtree the element
+   * sits in. That is not always this one: only the driven scope ticks.
    *
-   * A modal scope answers for the pointer everywhere, so a request from
-   * outside its subtree is dropped. Pixi carries an event from the blocker up
-   * through the containers the scope hangs under, and a focusable panel among
-   * them would otherwise read a press on the blocked area as a press on
-   * itself.
+   * A modal scope reading input drops a request from outside its subtree.
+   * Pixi bubbles an event from the blocker up through the scope's ancestors,
+   * and a focusable panel among them would read it as a press on itself.
    */
   private _consumePointerFocus(): void {
     const request = takePointerRequest();
@@ -1129,10 +1006,9 @@ export class UIFocusScope {
   }
 
   /**
-   * Move focus to an element of this scope the pointer reached, where this
-   * scope's `pointerFocus` acts on that kind of pointer input. A scope that
-   * is not reading input remembers the element and paints nothing, so
-   * returning to that scope resumes where the pointer left it.
+   * Move focus to an element the pointer reached, where `pointerFocus` acts
+   * on that trigger. A scope not reading input remembers the element and
+   * paints nothing.
    */
   private _focusFromPointer(
     element: UIElement,
@@ -1148,9 +1024,9 @@ export class UIFocusScope {
   }
 
   /**
-   * Latch every name already held, and name a role nothing in the live map
-   * answers to. Taken on every transition into reading input, so a direction
-   * held while a submenu closes runs away in no parent menu.
+   * Latch every name already held, and warn about a role no mapped action
+   * answers to. Runs on every transition into reading input, so a direction
+   * held while a submenu closes does not move the parent menu.
    */
   private _arm(input: UIFocusInputSource | null): void {
     this._latched.clear();
@@ -1180,9 +1056,8 @@ export class UIFocusScope {
 
   private _poll(input: UIFocusInputSource, roles: ResolvedInput): void {
     this._unlatch(input);
-    // A confirm press owns every tick between the edge that starts it and
-    // the release that ends it, so a held confirm neither runs its action
-    // twice nor walks the menu underneath it.
+    // A held confirm press owns every tick until its release, so it neither
+    // runs its action twice nor moves the menu.
     if (this._pressed !== null) {
       this._resolvePress(input);
       return;
@@ -1204,9 +1079,8 @@ export class UIFocusScope {
     const confirm = this._edgeName(input, roles.names.confirm, undefined);
     if (confirm !== undefined) {
       this._beginPress(target, confirm);
-      // A press and its release inside one query window — a quick tap, a
-      // scripted key press — is the whole press, so it ends in the tick that
-      // saw it rather than waiting for a release that has already gone by.
+      // A press and its release inside one query window is the whole
+      // press, so it resolves in this tick.
       if (this._pressed !== null) this._resolvePress(input);
       return;
     }
@@ -1214,19 +1088,12 @@ export class UIFocusScope {
   }
 
   /**
-   * One frame of a scope whose input an element holds: the same six roles,
-   * every one of them handed to that element.
+   * One frame of a scope whose input an element holds: every role goes to
+   * that element, and at most one press is resolved.
    *
-   * At most one press is resolved. Confirm and cancel come before the
-   * directions, so an end lands on what the element is showing at the start
-   * of the tick and a direction held all the while — a movement key under
-   * the fingers of a player typing a name — cannot swallow it. A direction
-   * left over once the element has ended reaches nobody: ending re-latches
-   * every held name, so navigation restarts from a fresh press.
-   *
-   * Confirm acts on the edge and paints no press. A press is the picture of
-   * an element being activated, and the element holding the input activates
-   * nothing.
+   * Confirm and cancel come before the directions, so a direction key held
+   * while typing cannot swallow them. Confirm acts on the edge and paints no
+   * press.
    */
   private _pollCapture(
     input: UIFocusInputSource,
@@ -1249,10 +1116,9 @@ export class UIFocusScope {
   }
 
   /**
-   * Take the input back from the element holding it, where `element` is that
-   * one and still holds it. Read from the record rather than from the last
-   * walk, so an element that gave the input back on its own — a list a mouse
-   * click closed — is not asked to end again.
+   * Take the input back from `element` if it still holds it. Read from the
+   * live record, so an element that already gave the input back is not asked
+   * to end again.
    */
   private _releaseCapture(element: UIElement | null): void {
     if (element === null) return;
@@ -1260,10 +1126,9 @@ export class UIFocusScope {
   }
 
   /**
-   * Take a confirm press onto `element` and paint it. The press lands only on
-   * the element that still holds focus, so a direction resolved earlier in
-   * this same tick takes the confirm with it rather than pressing the row the
-   * player has already left.
+   * Take a confirm press onto `element` and paint it. Only the element that
+   * still holds focus takes it, so a direction resolved earlier in the tick
+   * drops the confirm.
    */
   private _beginPress(element: UIElement | null, name: string): void {
     if (element === null || element !== this._focused) return;
@@ -1275,18 +1140,9 @@ export class UIFocusScope {
   }
 
   /**
-   * Carry a press through one tick: keep it while the player holds the
-   * action, and run the element's own action on the release the player made.
-   *
-   * A hold ends for reasons the player had no part in — the window losing
-   * focus and the engine dropping every held key, the action's group being
-   * disabled, any other forced clear of physical state. None of those may run
-   * a row's action, so the press is dropped instead, which is what the
-   * pointer path does when a release lands outside the button it started on.
-   *
-   * A press that no longer belongs to anyone never reaches here, because
-   * every move of focus cancels it — and an element hidden, disabled or torn
-   * down under a press has handed focus on by the time this runs.
+   * Keep a press while the player holds the action, and run the element's
+   * action on a release the player made. A hold the engine dropped (window
+   * blur, disabled action group) drops the press and runs nothing.
    */
   private _resolvePress(input: UIFocusInputSource): void {
     const name = this._pressName;
@@ -1297,12 +1153,7 @@ export class UIFocusScope {
     if (released) this._activate(element);
   }
 
-  /**
-   * Drop a press and unpaint it, leaving the element's action unrun. The
-   * element is reached through its live focus state, so a press held on an
-   * element that has since been torn down ends with no repaint of a freed
-   * Yoga node and a destroyed container.
-   */
+  /** Drop a press and unpaint it, leaving the action unrun. */
   private _cancelPress(): void {
     const element = this._pressed;
     this._pressed = null;
@@ -1326,10 +1177,7 @@ export class UIFocusScope {
     return this._edgeName(input, names, repeat) !== undefined;
   }
 
-  /**
-   * The first name of this role that reports an edge, which a press then
-   * follows through `isPressed` for as long as the player holds it.
-   */
+  /** The first unlatched name of this role that reports an edge. */
   private _edgeName(
     input: UIFocusInputSource,
     names: readonly string[],

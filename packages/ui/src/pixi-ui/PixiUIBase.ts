@@ -41,9 +41,8 @@ export abstract class PixiUIBase<
   private _focused = false;
   private _isHovered = false;
   // One flag per device holding the widget down, and whether this wrapper is
-  // the one currently showing the pressed face. The widget paints its own
-  // pointer press; this wrapper paints a confirm press and reclaims the face
-  // whenever the widget has repainted it while a press is still held.
+  // the one showing the pressed face. The widget paints its own pointer
+  // press; this wrapper paints a confirm press.
   private _pointerPressed = false;
   private _focusPressed = false;
   private _paintedPressed = false;
@@ -85,10 +84,7 @@ export abstract class PixiUIBase<
     if (props.visible === false) this.visible = false;
 
     if (this.interactive) {
-      // The pointer reaches focus here exactly as it does on a `UIButton`, so
-      // a mouse and a gamepad agree on which row a confirm press will hit.
-      // The pair of hover listeners also keeps {@link hovered}, which is how
-      // a widget that owns its own art knows which face to rest on.
+      // The hover listeners also keep {@link hovered}.
       this.view.on("pointerover", () => {
         if (this.disabled) return;
         this._isHovered = true;
@@ -117,25 +113,19 @@ export abstract class PixiUIBase<
 
       // A @pixi/ui widget swaps its own face whenever the pointer leaves it
       // or lets go, knowing nothing of a confirm press held from a focus
-      // scope. Reclaiming the face after each of those swaps is what keeps a
-      // held confirm painted while the mouse wanders over the widget, and
-      // what stops a mouse release from unpainting a press the player is
-      // still making on the gamepad.
-      //
-      // A widget reads the pointer names on a touch device and the mouse
-      // names on a desktop, and a reclaim only works from a listener that
-      // runs after the widget's own. The listeners above cover the first
-      // case, since @pixi/ui connects before this constructor does; these
-      // cover the second, since Pixi dispatches each mouse event after the
-      // pointer one it accompanies.
+      // scope, so the face is reclaimed after each of those swaps. A reclaim
+      // only works from a listener that runs after the widget's own. The
+      // pointer listeners above do, since @pixi/ui connects before this
+      // constructor. These cover a widget reading the mouse names: Pixi
+      // dispatches each mouse event after the pointer one it accompanies.
       const reclaimFace = (): void => this._paintPress();
       this.view.on("mouseover", reclaimFace);
       this.view.on("mouseout", reclaimFace);
       this.view.on("mouseup", reclaimFace);
       this.view.on("mouseupoutside", reclaimFace);
 
-      // The caller's hover callbacks fan out beside that request, suppressed
-      // while the widget is disabled.
+      // The caller's hover callbacks are suppressed while the widget is
+      // disabled.
       this.pointerEvents = new PointerEvents(
         this.view,
         props,
@@ -160,9 +150,8 @@ export abstract class PixiUIBase<
       },
       activate: () => {
         this.activate();
-        // A widget lands on the face a pointer release leaves behind when its
-        // own action runs, which is the wrong face while a pointer is still
-        // holding it down.
+        // The widget's own action leaves it on the released face, which is
+        // wrong while a pointer still holds it down.
         this._paintPress();
       },
       adjust: (direction) => this.adjust?.(direction) === true,
@@ -170,11 +159,9 @@ export abstract class PixiUIBase<
   }
 
   /**
-   * Whether the wrapped widget answers the player. An interactive wrapper
-   * takes the hover fan-out, asks a focus scope for focus when the pointer
-   * reaches it, and takes focus when the game says nothing; one that only
-   * displays a value keeps its view's own event mode and stays out of
-   * navigation unless a game asks for it by `focusable`.
+   * Whether the wrapped widget answers the player. One that only displays a
+   * value keeps its view's own event mode and stays out of navigation unless
+   * `focusable` asks for it.
    */
   protected get interactive(): boolean {
     return true;
@@ -193,19 +180,14 @@ export abstract class PixiUIBase<
     return this._focused;
   }
 
-  /**
-   * Whether the pointer is over the widget. A widget whose art carries a
-   * hover face rests on it while this holds, so a press driven from the
-   * keyboard or a gamepad hands the mouse back the face it had.
-   */
+  /** Whether the pointer is over the widget. */
   protected get hovered(): boolean {
     return this._isHovered;
   }
 
   /**
    * Whether any device is holding the widget down: the pointer, a confirm
-   * press from a focus scope, or both. One press is one face however many
-   * devices make it, so a widget resting on {@link hovered} reads this first.
+   * press from a focus scope, or both.
    */
   protected get pressed(): boolean {
     return this._pointerPressed || this._focusPressed;
@@ -217,29 +199,27 @@ export abstract class PixiUIBase<
   }
 
   /**
-   * Run the widget's own action — what a confirm press does, and what a click
-   * does where the widget has a press. A widget that is stepped rather than
-   * pressed implements this as a no-op and carries {@link adjust}.
+   * Run the widget's own action, as a confirm press or a click does. A widget
+   * that is stepped rather than pressed implements this as a no-op and
+   * carries {@link adjust}.
    */
   abstract activate(): void;
 
   /**
    * Show the widget's pressed face while a device holds it down, and its
-   * resting face once every device has let go. A widget whose art names a
-   * pressed face implements this; one that has none — a checkbox with a
-   * checked and an unchecked view, a text field — leaves it out, and a
-   * confirm press on it shows what the action itself changes.
+   * resting face once every device has let go. A widget with no pressed face
+   * leaves it out.
    *
    * `true` arrives again where the widget has repainted itself under a press
-   * that is still held, so an implementation sets the face rather than
-   * toggling it.
+   * that is still held, so an implementation sets the face and never toggles
+   * it.
    */
   protected setPressed?(pressed: boolean): void;
 
   /**
    * Step the widget's own value along `direction`, returning `true` only when
    * the press was consumed. A stepper at its end returns `false`, so the press
-   * moves focus out of the widget instead of being swallowed.
+   * moves focus out of the widget.
    */
   protected adjust?(direction: FocusDirection): boolean;
 
@@ -255,10 +235,9 @@ export abstract class PixiUIBase<
 
   /**
    * Whether the size layout computes is what makes the widget that size. A
-   * composite — a checkbox pairing a square icon with a label, a radio group
-   * stacking several of them — places its own parts, and sizing its container
-   * scales those parts out of shape, so such a wrapper answers `false` and
-   * draws at its own size inside whatever box layout gives it.
+   * composite that places its own parts (a checkbox with a label, a radio
+   * group) answers `false`: sizing its container would scale those parts out
+   * of shape, so it draws at its own size inside the layout box.
    */
   protected sizedByLayout(): boolean {
     return true;
@@ -268,15 +247,11 @@ export abstract class PixiUIBase<
    * The rectangle the focus outline is drawn around, in the widget view's own
    * space.
    *
-   * A widget layout sizes covers both the box layout gave it and everything
-   * it draws, so a part that reaches outside that box — a slider knob
-   * standing taller than its track — is inside the outline rather than cut by
-   * it, and a wrapper stretched by its parent is outlined around the whole
-   * row. A widget that keeps its own size is outlined around what it draws,
-   * because the box layout gave it is larger than anything on screen. A
-   * widget whose drawn extent moves with its value overrides this with a box
-   * that holds every value, so the outline stays still while the value
-   * changes.
+   * A widget layout sizes is outlined around both its layout box and
+   * everything it draws, so a part reaching outside the box is inside the
+   * outline. A widget that keeps its own size is outlined around what it
+   * draws. A widget whose drawn extent moves with its value overrides this
+   * with a box that holds every value, so the outline stays still.
    */
   protected focusOutlineBox(): UIFocusOutlineBox {
     const bounds = this.view.getLocalBounds();
@@ -288,8 +263,8 @@ export abstract class PixiUIBase<
         height: bounds.height,
       };
     }
-    // The layout box is measured in the parent's px and the widget's own
-    // bounds in its local space, which is the space this box is expressed in.
+    // The layout box is in the parent's px; this box is in the widget's local
+    // space.
     const scaleX = this.view.scale.x || 1;
     const scaleY = this.view.scale.y || 1;
     const width = this.yogaNode.getComputedWidth() / scaleX;
@@ -387,11 +362,7 @@ export abstract class PixiUIBase<
 
   abstract update(props: Record<string, unknown>): void;
 
-  /**
-   * What the Inspector reports for this widget, so a test reads its state
-   * instead of a screenshot.
-   * @internal
-   */
+  /** @internal */
   _inspectState(): { focused: boolean; focusable: boolean; disabled: boolean } {
     return {
       focused: this._focused,
@@ -417,15 +388,10 @@ export abstract class PixiUIBase<
   }
 
   /**
-   * Put the pressed face on while a device holds the widget down, and hand it
-   * back once every device has let go.
-   *
-   * The pressed face is asked for again on each call rather than only where
-   * the press changes, because the widget repaints itself under this wrapper:
-   * the face has to be reclaimed after a pointer event the widget answered
-   * for itself. The resting face is asked for only where this wrapper is the
-   * one showing a press, so a pointer release the widget has already painted
-   * is not painted a second time.
+   * The pressed face is asked for on every call, because the widget repaints
+   * itself under this wrapper. The resting face is asked for only where this
+   * wrapper is the one showing a press, so a pointer release the widget has
+   * already painted is not painted twice.
    */
   private _paintPress(): void {
     if (this._destroyed) return;
@@ -440,10 +406,8 @@ export abstract class PixiUIBase<
   }
 
   /**
-   * Forget every press a disabled widget was under. It refuses both devices
-   * from here on, and it is already showing its disabled face, so the press
-   * ends unpainted rather than springing back when the widget is enabled
-   * again.
+   * Forget every press a disabled widget was under, unpainted: it already
+   * shows its disabled face, and must not spring back when enabled again.
    */
   private _dropPress(): void {
     this._pointerPressed = false;

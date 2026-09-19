@@ -11,26 +11,22 @@ import type { UIFocusInputSource } from "./focus/UIFocusScope.js";
 import { UIFocusStack, UIFocusStackKey } from "./focus/UIFocusStack.js";
 
 /**
- * `@yagejs/input` is an optional peer — this package must work with it absent
- * from the consumer's install. Re-declaring the well-known service id here,
- * instead of importing `InputManagerKey`, keeps `@yagejs/ui` free of a runtime
- * dependency on it, and typing the key by the structural `UIFocusInputSource`
- * keeps the input package's types out of this package's declarations.
+ * The well-known service id owned by `@yagejs/input`, re-declared here so
+ * `@yagejs/ui` has no runtime dependency on that optional peer. Typed by the
+ * structural `UIFocusInputSource` to keep its types out of this package too.
  */
 const INPUT_SOURCE_KEY = new ServiceKey<UIFocusInputSource>("inputManager");
 
 /**
  * Drives keyboard and gamepad focus: one scope, once a frame.
  *
- * Runs in `LateUpdate` at priority `202` — after `UILayoutSystem` and the
- * React root layout (both `200`) and after the floating overlay (`201`), so
- * every rectangle it searches was computed this frame, and the repaint and
- * the scroll it causes reach the renderer in that same frame.
+ * Runs in `LateUpdate` at priority `202`, after `UILayoutSystem` and the React
+ * root layout (both `200`) and the floating overlay (`201`), so every
+ * rectangle it searches was computed this frame.
  *
- * It walks the whole scene stack rather than the unpaused scenes, so the
- * commonest pause menu works: a game that pauses its scene and shows an
- * overlay keeps a menu the keyboard reaches, the same menu the mouse already
- * reaches, because layout and hit testing are not filtered by pause either.
+ * It walks the whole scene stack, paused scenes included, so a pause menu
+ * shown over a paused scene takes the keyboard. Layout and hit testing are
+ * not filtered by pause either.
  */
 export class UIFocusSystem extends System {
   readonly phase = Phase.LateUpdate;
@@ -62,9 +58,8 @@ export class UIFocusSystem extends System {
       if (stack === driven) stack._drive(this.input);
       else stack._suspend();
     }
-    // The driven scope already took the pointer's focus request. On a frame
-    // with no scope to drive nothing did, and a request left in the shared
-    // cell would keep its element reachable until the next pointer move.
+    // On a frame with no driven scope nothing took the pointer request, and
+    // leaving it would keep its element reachable.
     clearPointerRequest();
     if (
       driven === null ||

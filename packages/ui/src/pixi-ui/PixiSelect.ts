@@ -106,9 +106,8 @@ class PortalSelect extends Select {
   }
 
   /**
-   * Move the selection without opening the list, for a keyboard or gamepad
-   * step. The two labels are the closed and open faces of the same row, and
-   * `Select` only writes them from a row press.
+   * Move the selection without opening the list. `Select` only writes its
+   * closed and open labels from a row press.
    */
   selectIndex(index: number, text: string): void {
     this.value = index;
@@ -117,9 +116,8 @@ class PortalSelect extends Select {
   }
 
   /**
-   * Put the closed button's face into `state`. It is the face of the whole
-   * closed select, and its own pointer handlers write the same field, so a
-   * press driven from a keyboard or a gamepad reads the same as a click.
+   * Put the closed button's face into `state`. Its own pointer handlers write
+   * the same field.
    */
   setClosedState(state: "default" | "hover" | "pressed"): void {
     this.openButton.setState(state);
@@ -136,27 +134,22 @@ class PortalSelect extends Select {
   }
 
   /**
-   * The rows of the list. `Select` builds every one of them itself, in
-   * `convertItemsToButtons`, which makes each a `FancyButton`; the scroll box
-   * they hang in types its items as plain containers.
+   * The rows of the list. `Select` builds each as a `FancyButton` in
+   * `convertItemsToButtons`; the scroll box types its items as plain
+   * containers.
    */
   private get rows(): readonly FancyButton[] {
     return (this.scrollBox?.items ?? []) as unknown as readonly FancyButton[];
   }
 
-  /** The row a confirm press commits, or `-1` while no row is lit. */
   get highlighted(): number {
     return this._highlight;
   }
 
   /**
    * Light the row nearest `index` as the one a confirm press commits, and
-   * bring it into the visible part of the list.
-   *
-   * `Select` carries no highlight of its own — a row is lit by the pointer
-   * reaching it and by nothing else — so the light is that same hover face,
-   * and a player driving the list from a keyboard sees what a player driving
-   * it from a mouse sees.
+   * bring it into the visible part of the list. `Select` has no highlight of
+   * its own, so the light is the row's hover face.
    */
   highlightRow(index: number): void {
     const rows = this.rows;
@@ -180,9 +173,8 @@ class PortalSelect extends Select {
 
   /**
    * Run the highlighted row's own press. `Select` hangs the whole commit on
-   * it — the value, `onSelect`, both labels and the close — so a confirm
-   * press and a click on that row take one path. A list with no rows in it
-   * simply closes.
+   * it: the value, `onSelect`, both labels and the close. A list with no rows
+   * closes.
    */
   pressHighlighted(): void {
     const row = this.rows[this._highlight];
@@ -238,14 +230,11 @@ function selectItems(
 /**
  * Yoga-aware wrapper around @pixi/ui Select (dropdown).
  *
- * A confirm press opens the list, and left and right step the selection while
- * it is closed. The open list takes the input of the focus scope around it:
- * up and down move the row a confirm press commits, confirm commits it and
- * closes, cancel closes on the value the select already had, and left and
- * right do nothing, because a game's own `onAdjust` owns those two directions
- * and an open list must not fight it. Anything that closes the list — a
- * commit, a cancel, a mouse click, focus leaving the select — hands the
- * scope's input back.
+ * While closed, a confirm press opens the list, and left and right step the
+ * selection. The open list takes the input of the focus scope around it: up
+ * and down move the highlighted row, confirm commits it and closes, cancel
+ * closes on the value the select already had, and left and right do nothing.
+ * Anything that closes the list hands the scope's input back.
  */
 export class PixiSelect
   extends PixiUIBase<PortalSelect>
@@ -264,9 +253,8 @@ export class PixiSelect
     super(view, props);
 
     // Lift the open dropdown above sibling UI; drop it back on close. Every
-    // path that opens or closes the list runs through here — the closed
-    // button, a row press, a confirm, a cancel — so the list, the light on
-    // its rows and the scope's input all turn over together.
+    // path that opens or closes the list runs through here, so the list, the
+    // row highlight and the scope's input turn over together.
     view.onOpenChange = (open) => {
       if (open) {
         view.portalDropdown();
@@ -289,10 +277,8 @@ export class PixiSelect
   }
 
   /**
-   * The closed button's box. It is the whole select while the list is shut,
-   * and while the list is open the button is hidden and the list itself draws
-   * on the stage, so this container draws nothing to ring — the outline holds
-   * the trigger's place either way.
+   * The closed button's box. While the list is open the button is hidden and
+   * the list draws on the stage, so this container draws nothing to outline.
    */
   protected override focusOutlineBox(): UIFocusOutlineBox {
     const { width, height } = this.view.closedSize;
@@ -315,18 +301,13 @@ export class PixiSelect
   }
 
   /**
-   * Walk the open list. Up and down move the row a confirm press commits and
-   * stop at either end rather than wrapping, and the press is kept either
-   * way, so an arrow key over an open list never walks the menu behind it.
-   *
-   * Left and right do nothing while the list is open: the list is a column,
-   * so there is no row beside the highlighted one. The open list is handed
-   * every direction, so nothing else reads left and right until it closes —
-   * this wrapper's own `adjust` and a game's `onAdjust` both wait for that.
+   * Walk the open list. Up and down stop at either end without wrapping, and
+   * the press is kept either way, so it never reaches the menu behind the
+   * list. Left and right do nothing: the open list is handed every direction,
+   * so `adjust` and a game's `onAdjust` wait until it closes.
    */
   moveCapture(direction: FocusDirection): void {
     if (direction !== "up" && direction !== "down") return;
-    // The list clamps, so a step past either end stays on the row it is on.
     this.view.highlightRow(
       this.view.highlighted + (direction === "down" ? 1 : -1),
     );
@@ -347,10 +328,6 @@ export class PixiSelect
     this.cancelCapture();
   }
 
-  /**
-   * Show the closed button's pressed art while a confirm press is held on the
-   * select, and hand the face back to the pointer when the press ends.
-   */
   protected override setPressed(pressed: boolean): void {
     if (pressed) {
       this.view.setClosedState("pressed");
@@ -360,12 +337,9 @@ export class PixiSelect
   }
 
   /**
-   * Step the selection on left and right. At either end the press is not
-   * consumed, so focus leaves the dropdown rather than being trapped on it.
-   *
-   * This is the closed select's stepper. An open list holds the scope's
-   * input, so every direction reaches {@link moveCapture} instead and this
-   * never runs while the list shows.
+   * Step the closed select on left and right. At either end the press is not
+   * consumed, so focus leaves the dropdown. An open list routes every
+   * direction to {@link moveCapture}, so this never runs while it shows.
    */
   protected override adjust(direction: FocusDirection): boolean {
     if (direction !== "left" && direction !== "right") return false;
@@ -375,9 +349,8 @@ export class PixiSelect
     if (next < 0 || next >= items.length) return false;
     const text = items[next] ?? "";
     this.view.selectIndex(next, text);
-    // A row press is the only thing `Select` emits `onSelect` from, so a
-    // stepped selection reports itself through the widget's own signal, which
-    // carries the bridged, error-boundary-wrapped callback.
+    // `Select` emits `onSelect` only from a row press, so a stepped selection
+    // emits it here. The signal carries the error-boundary-wrapped callback.
     this.view.onSelect.emit(next, text);
     return true;
   }
@@ -427,8 +400,7 @@ export class PixiSelect
   }
 
   override destroy(): void {
-    // The list goes with the widget, so the scope's input is handed back
-    // before anything is torn down.
+    // Hand the scope's input back before anything is torn down.
     captureFocusInput(this, false);
     // Put the dropdown back inside the Select first, so `view.destroy()` tears
     // it down instead of leaking a container reparented to the stage.

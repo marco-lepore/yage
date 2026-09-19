@@ -85,10 +85,8 @@ export interface UIRootOptions {
    * scope over the elements it commits at the top level. `true` takes every
    * scope default; an object names the ones to change.
    *
-   * Reach for this when the tree's outermost element is not a single
-   * `<Panel>`. A `<Panel focus>` inside the tree is the usual form and needs
-   * nothing here, and a scope inside this one takes the keys while it is
-   * shown.
+   * Use this when the tree's outermost element is not a single `<Panel>`;
+   * otherwise `<Panel focus>` is the usual form.
    */
   focus?: boolean | UIFocusScopeOptions;
 }
@@ -200,22 +198,17 @@ export class UIRoot extends Component {
   }
 
   /**
-   * Hand the tree what it needs to know about itself: the entity name
-   * development-mode layout warnings print, and the scene's focus stack.
+   * Hand the tree the entity name that development warnings print, and the
+   * scene's focus stack.
    *
-   * Only an element the tree has not been stamped on yet is visited. Stamping
-   * recurses into a container's whole subtree and rebuilds the scopes it
-   * finds, so doing it for every element of every commit would put a walk of
-   * the entire tree behind each keystroke of a text field's state. An element
-   * that already holds this context keeps it: a container passes it on to
-   * every child added after, which covers the deeper elements of a later
-   * render, and a root element leaves the tree only by being destroyed. The
-   * context itself is one object for as long as its two values hold, so a
-   * stamped element and a later one carry the same one.
+   * Only an element not yet stamped is visited. Stamping recurses into a
+   * container's subtree and rebuilds the scopes it finds, so stamping every
+   * element on every commit would walk the whole tree on each state change. A
+   * container passes its context to every child added later, which covers the
+   * deeper elements of a later render.
    *
-   * `tryResolveScoped`, not `use`: the focus stack is registered by
-   * `UIPlugin`'s scene hook, and a root in a scene whose hooks never ran would
-   * otherwise fail on every commit for a feature it does not use.
+   * `tryResolveScoped`, not `use`: `UIPlugin`'s scene hook registers the
+   * focus stack, and a scene whose hooks never ran must not fail on commit.
    */
   private _applyTreeContext(): void {
     const instances = getRootInstances(this._container);
@@ -241,11 +234,9 @@ export class UIRoot extends Component {
   }
 
   /**
-   * Build the scope `UIRootOptions.focus` asks for.
-   *
-   * A React tree has no single root element — a fragment commits several, and
-   * every commit may replace them — so the scope searches whatever the
-   * current commit left at the top rather than one element captured here, and
+   * Build the scope `UIRootOptions.focus` asks for. A React tree has no
+   * single root element, and every commit may replace the top-level ones, so
+   * the scope searches whatever the current commit left at the top and
    * measures candidates against this root's own container.
    */
   private _buildFocusScope(): void {
@@ -261,10 +252,9 @@ export class UIRoot extends Component {
     this._focusScope = scope;
     const stack = this.scene.tryResolveScoped(UIFocusStackKey);
     if (!stack) {
-      // The same sentence a `focus` panel and a `focus` surface print, from
-      // this package's own copy: `@yagejs/ui` keeps its warning helper
-      // internal, so the three hosts cannot share one. The test beside this
-      // file holds the wording to the sentence below.
+      // The same sentence a `focus` panel and a `focus` surface print.
+      // `@yagejs/ui` keeps its warning helper internal, so this is a copy; the
+      // test beside this file pins the wording.
       devWarn(
         `UIRoot on entity "${this.entity.name}" has no focus stack, so its ` +
           "focus scope reads no keyboard or gamepad input. UIPlugin " +

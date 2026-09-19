@@ -52,11 +52,8 @@ export class UISurface extends Component {
 
   constructor(opts?: UISurfaceOptions) {
     super();
-    // `focus` goes to the root panel with the rest of the options. One
-    // container hosts one scope, and a root panel's own scope searches exactly
-    // the children a surface-level scope would, so `surface.focusScope` and
-    // `root.focusScope` name the one scope however the option arrives — at
-    // construction or through a later `root.update({ focus })`.
+    // `focus` goes to the root panel with the rest of the options, so
+    // `surface.focusScope` and `root.focusScope` are one scope.
     this.root = new UIPanel(opts ?? {});
     this._userVisible = opts?.visible ?? true;
     this._anchor = opts?.anchor;
@@ -95,9 +92,8 @@ export class UISurface extends Component {
 
   /**
    * The scope `UISurfaceOptions.focus` asks for, or `null` when the surface
-   * carries none. It is the root panel's scope, so `surface.focusScope` and
-   * `surface.root.focusScope` are the same object, and passing `focus` again
-   * through `root.update()` refreshes that scope rather than replacing it.
+   * carries none. It is the root panel's scope: `surface.root.focusScope` is
+   * the same object.
    */
   get focusScope(): UIFocusScope | null {
     return this.root.focusScope;
@@ -185,16 +181,13 @@ export class UISurface extends Component {
   }
 
   onAdd(): void {
-    // Hand the tree what it needs to know about itself: the entity name
-    // development-mode layout warnings print, and the scene's focus stack. The
-    // root passes it to the children already built, and to every child added
-    // later, so both build orders — children before `entity.add`, children
-    // after — end up with it.
+    // Hand the tree the entity name that development warnings print, and the
+    // scene's focus stack. The root passes it to children built before and
+    // after this point.
     //
-    // `tryResolveScoped`, not `use`: the key is registered by `UIPlugin`'s
-    // scene hook, and a surface in a scene whose hooks never ran — a unit-test
-    // harness, a scene built by hand — would otherwise fail on add for a
-    // feature it does not use.
+    // `tryResolveScoped`, not `use`: `UIPlugin`'s scene hook registers the
+    // key, and a scene whose hooks never ran (a unit-test harness) must not
+    // fail on add.
     const focusStack = this.scene.tryResolveScoped(UIFocusStackKey) ?? null;
     this.root._attachToTree({ label: this.entity.name, focusStack });
     bindUIErrorBoundary(this.root.container, this.use(ErrorBoundaryKey));
@@ -233,8 +226,8 @@ export class UISurface extends Component {
   }
 
   onDestroy(): void {
-    // Every scope in the tree, the root's own included, leaves the stack as
-    // `root.destroy()` detaches the tree element by element.
+    // `root.destroy()` detaches the tree, which takes every scope off the
+    // stack.
     this.root.container.removeFromParent();
     this.root.destroy();
   }

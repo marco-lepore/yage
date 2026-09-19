@@ -198,10 +198,8 @@ export interface UIElement {
   /**
    * Take the context of the UI tree this element belongs to: the name a
    * development warning prints, and the scene's focus stack. Containers
-   * implement it and pass it on to their children; a leaf that neither warns
-   * nor hosts a scope leaves it out. An element written outside this package
-   * that implements neither hook gets no warning label and never hosts a focus
-   * scope, and nothing reports that.
+   * implement it and pass it on to their children. An element that implements
+   * neither hook gets no warning label and never hosts a focus scope.
    * @internal
    */
   _attachToTree?(context: UITreeContext): void;
@@ -274,19 +272,15 @@ export interface PointerEventProps {
 export type FocusDirection = "up" | "down" | "left" | "right";
 
 /**
- * What pointer input does to focus inside a scope, set through
- * {@link UIFocusScopeOptions.pointerFocus}.
+ * What pointer input does to focus inside a scope.
  *
- * - `"press"` — pressing a control focuses it, the way clicking a control on
- *   a web page focuses it. Moving the pointer across the menu changes which
- *   control looks hovered and nothing else.
- * - `"hover"` — moving the pointer over a control focuses it as well, which
- *   is what a console-style menu with one lit row wants.
- * - `"none"` — the pointer never moves focus, so the keyboard keeps its row
- *   whatever the mouse does.
+ * - `"press"`: pressing a control focuses it. Moving the pointer only changes
+ *   which control looks hovered.
+ * - `"hover"`: moving the pointer over a control focuses it as well.
+ * - `"none"`: the pointer never moves focus.
  *
- * Hovered and pressed are the element's own looks and are painted under every
- * setting, as is the action a click runs.
+ * Hovered and pressed looks, and the action a click runs, work under every
+ * setting.
  */
 export type PointerFocusMode = "none" | "press" | "hover";
 
@@ -294,14 +288,10 @@ export type PointerFocusMode = "none" | "press" | "hover";
  * Per-direction override of the position rule, addressed by
  * {@link FocusProps.focusId}.
  *
- * A string matching a current candidate wins outright. `null` stops movement
- * in that direction: no position fallback, no wrap, and `move` returns
- * `false`. An absent key, or a string matching nothing at the moment, falls
- * through to the position rule, so a row hidden by a filter does not strand
- * its neighbour.
- *
- * Ids rather than element references, because a sibling's props holding an
- * element would keep a removed element alive.
+ * A string matching a current candidate wins. `null` stops movement in that
+ * direction: no position fallback, no wrap, and `move` returns `false`. An
+ * absent key, or a string matching no current candidate, falls through to the
+ * position rule.
  */
 export interface FocusNeighbors {
   up?: string | null;
@@ -313,34 +303,27 @@ export interface FocusNeighbors {
 /**
  * How the outline around a focused element is drawn.
  *
- * An outline is drawn only where one is asked for: set this once for the
- * whole UI through `UIPluginOptions.focusStyle`, or for one element through
- * {@link FocusProps.focusStyle}. Where neither names a style the element
- * draws no outline, and a game shows focus its own way — a marker beside the
- * row, a swapped sprite, a sound — from {@link FocusProps.onFocusChange}.
- *
- * Each field resolves on its own: the element's value, then the UI-wide one,
- * then the default below.
+ * An outline is drawn only where a style is set: for the whole UI through
+ * `UIPluginOptions.focusStyle`, or for one element through
+ * {@link FocusProps.focusStyle}. Each field resolves on its own: the element's
+ * value, then the UI-wide one, then the default below.
  */
 export interface UIFocusStyle {
   /**
    * Stroke colour. Defaults to the fill of the UI default text style when
-   * that names a colour number, so a game that themed its text already said
-   * what its foreground is; white otherwise.
+   * that names a colour number; white otherwise.
    */
   color?: number;
   /** Stroke thickness in px. Default `2`. */
   width?: number;
   /**
    * Corner radius. Defaults to the element's own background radius where it
-   * has one, so a themed button and the widget beside it are rounded the
-   * same while focused, and to `4` otherwise.
+   * has one, and to `4` otherwise.
    */
   radius?: number;
   /**
    * Gap in px between the element's box and the outline's outer edge.
-   * Default `0`. The outline is drawn inside the box whatever this is, so it
-   * never changes a measured size or reaches over a neighbour.
+   * Default `0`. The outline is always drawn inside the box.
    */
   inset?: number;
 }
@@ -348,9 +331,6 @@ export interface UIFocusStyle {
 /**
  * The rectangle a focus outline is drawn around, in the local space of the
  * Pixi container that holds it.
- *
- * A `@pixi/ui` wrapper states its own through `PixiUIBase.focusOutlineBox`
- * when the parts it draws do not match the box layout gave it.
  */
 export interface UIFocusOutlineBox {
   readonly x: number;
@@ -363,50 +343,38 @@ export interface UIFocusOutlineBox {
 
 /**
  * Focus participation for one element, mixed into every element props
- * interface beside {@link PointerEventProps}.
- *
- * Every callback here runs through the UI error boundary, so a throw is
- * attributed to the element and rethrown.
+ * interface. Every callback runs through the UI error boundary.
  */
 export interface FocusProps {
   /**
-   * Take part in focus navigation. Omitted, the element's own default
-   * applies: `true` for `UIButton`, `UICheckbox` and the six interactive
-   * `@pixi/ui` wrappers, `false` for everything else. `focusable: false`
-   * takes an element out of navigation without disabling it, so the pointer
-   * still reaches it.
+   * Take part in focus navigation. Defaults to `true` for `UIButton`,
+   * `UICheckbox` and the six interactive `@pixi/ui` wrappers, `false` for
+   * everything else. `false` leaves the element enabled for the pointer.
    */
   focusable?: boolean;
   /**
    * Name this element so a sibling's {@link FocusProps.focusNeighbors} can
-   * point at it. Unique inside one scope: two elements claiming one id draw a
-   * development warning, and the first in tree order answers to it.
+   * point at it. Unique inside one scope: a duplicate id draws a development
+   * warning, and the first element in tree order answers to it.
    */
   focusId?: string;
   /** Per-direction overrides of the position rule. */
   focusNeighbors?: FocusNeighbors;
   /**
    * Called with `true` when focus arrives and `false` when it leaves,
-   * including when the scope stops taking input. This is how most games show
-   * focus — a marker beside the row, a swapped sprite, a sound — since an
-   * element draws an outline only where a {@link FocusProps.focusStyle} asks
-   * for one.
+   * including when the scope stops taking input. Use it to show focus without
+   * an outline: a marker beside the row, a swapped sprite, a sound.
    */
   onFocusChange?: (focused: boolean) => void;
   /**
    * Called with `-1` for left and `1` for right while this element is
-   * focused, consuming that press — what a volume or difficulty row needs.
-   * Up and down always move focus, so a column of stepper rows stays
-   * traversable.
+   * focused, consuming that press. Up and down still move focus.
    */
   onAdjust?: (direction: -1 | 1) => void;
   /**
    * The focus outline for this element alone. Each field falls back to the
-   * plugin-level `focusStyle`, then to the built-in default; `null` draws no
-   * outline here, which is how one element opts out of a UI-wide one.
-   *
-   * Omitted, the element draws the UI-wide outline, or none at all when the
-   * plugin names no style either.
+   * plugin-level `focusStyle`, then to the built-in default. `null` draws no
+   * outline on this element.
    */
   focusStyle?: UIFocusStyle | null;
 }
@@ -414,13 +382,11 @@ export interface FocusProps {
 /**
  * Action names a focus scope polls, one role per key, merged over the
  * defaults `move-up`, `move-down`, `move-left`, `move-right`, `interact` and
- * `cancel`. A role takes one name or a list, so a game whose map carries both
- * `interact` and `attack` can bind both to confirm.
+ * `cancel`. A role takes one name or a list.
  *
- * A scope consumes nothing it polls: a confirm press that activates a menu
- * row is still visible to gameplay code reading the same action in that same
- * frame. Keeping menu input out of gameplay is what input groups
- * (`InputManager.setActiveGroups`) are for.
+ * A scope consumes nothing it polls: gameplay code reading the same action in
+ * the same frame still sees the press. Use input groups
+ * (`InputManager.setActiveGroups`) to keep menu input out of gameplay.
  */
 export interface UIFocusInputOptions {
   up?: string | readonly string[];
@@ -430,26 +396,22 @@ export interface UIFocusInputOptions {
   confirm?: string | readonly string[];
   cancel?: string | readonly string[];
   /**
-   * Hold-to-repeat, applied to the four directions only — confirm and cancel
-   * never repeat. Defaults to `true`, taking the input package's own delay
-   * and interval. Repeats count on the raw input clock, so a pause menu keeps
-   * repeating while its scene is paused.
+   * Hold-to-repeat for the four directions; confirm and cancel never repeat.
+   * Defaults to `true`, taking the input package's own delay and interval.
+   * Repeats count on the raw input clock, so they run while the scene is
+   * paused.
    */
   repeat?: boolean | { delay?: number; interval?: number };
 }
 
 /**
- * How one focus scope behaves, passed as {@link UIPanelProps.focus}.
- *
- * `onFocusMove`, `onActivate` and `onMoveBlocked` are the scope-wide cue
- * hooks: one handler for a whole menu rather than one closure per row. All
- * four callbacks run through the UI error boundary against the host
- * container.
+ * How one focus scope behaves, passed as {@link UIPanelProps.focus}. All four
+ * callbacks run through the UI error boundary against the host container.
  */
 export interface UIFocusScopeOptions {
   /**
-   * Return to the first element against the direction when a move runs past
-   * the last one. Defaults to `true`; `false` refuses the move instead.
+   * Wrap to the opposite end when a move runs past the last element. Defaults
+   * to `true`; `false` refuses the move.
    */
   wrap?: boolean;
   /**
@@ -458,28 +420,19 @@ export interface UIFocusScopeOptions {
    */
   autoFocus?: boolean;
   /**
-   * Rename the polled actions per role. `null` reads no device at all: the
-   * game drives the scope through `move()`, `activate()` and `cancel()`,
-   * while pointer focus and the scroll follow keep working.
+   * Rename the polled actions per role. `null` reads no device: the game
+   * drives the scope through `move()`, `activate()` and `cancel()`. Pointer
+   * focus and the scroll follow keep working.
    */
   input?: UIFocusInputOptions | null;
-  /**
-   * What pointer input does to focus. Defaults to `"press"`: pressing a
-   * control focuses it, and passing the pointer over one leaves focus where
-   * the keyboard put it.
-   */
+  /** What pointer input does to focus. Defaults to `"press"`. */
   pointerFocus?: PointerFocusMode;
   /**
    * Own the pointer as well as the keys while this scope reads input.
-   * Defaults to `true`: everything drawn under the scope stops answering the
-   * pointer, so a confirm dialog cannot be clicked through — no hover look,
-   * no press, no click on the menu behind it — and a press on the blocked
-   * area is claimed for the UI rather than reaching the game's action map.
-   * The scope's own subtree keeps every pointer behaviour it has, and a scope
-   * nested inside another blocks only what is outside itself.
-   *
-   * `false` leaves the pointer alone, for a panel that wants the keys while
-   * the world behind it stays clickable.
+   * Defaults to `true`: everything drawn outside the scope's subtree stops
+   * answering the pointer, and a press there is claimed for the UI and does
+   * not reach the game's action map. `false` leaves the world behind the
+   * panel clickable.
    */
   modal?: boolean;
   /**
@@ -491,24 +444,18 @@ export interface UIFocusScopeOptions {
   onFocusMove?: (element: UIElement | null, previous: UIElement | null) => void;
   /** Called after the focused element's own action has run. */
   onActivate?: (element: UIElement) => void;
-  /**
-   * Called when a move finds nothing in that direction. This is the only way
-   * to hear a refused move, since the scope drives itself.
-   */
+  /** Called when a move finds nothing in that direction. */
   onMoveBlocked?: (direction: FocusDirection) => void;
   /** Called on the cancel action and on `cancel()`. */
   onCancel?: () => void;
 }
 
-/**
- * Options for `UIScrollView.scrollIntoView`. The `UI` prefix keeps the name
- * clear of the DOM lib's global `ScrollIntoViewOptions`.
- */
+/** Options for `UIScrollView.scrollIntoView`. */
 export interface UIScrollIntoViewOptions {
   /**
    * Where the element lands in the viewport. `"nearest"`, the default,
-   * scrolls the least distance that brings it inside and leaves an element
-   * already fully visible where it is.
+   * scrolls the least distance that brings it inside, and does not move an
+   * element that is already fully visible.
    */
   align?: "nearest" | "start" | "center" | "end";
   /**
@@ -589,10 +536,8 @@ export interface UIButtonProps
   pressBackground?: BackgroundOptions;
   /**
    * Background painted while the button holds focus and the pointer is not
-   * on it — the filled selected row some menus want, under any focus outline
-   * a `focusStyle` asks for. Omitted, a focused button keeps its resting
-   * background. An override supplying only a colour keeps the resting corner
-   * radius.
+   * on it. Omitted, a focused button keeps its resting background. An
+   * override supplying only a colour keeps the resting corner radius.
    */
   focusBackground?: BackgroundOptions;
   textStyle?: Partial<TextStyle>;
@@ -654,27 +599,21 @@ export interface UIPanelProps
   overflow?: "visible" | "hidden";
   background?: BackgroundOptions;
   /**
-   * Background painted while a `focusable` panel holds focus — the filled
-   * selected row some menus want, under any focus outline a `focusStyle`
-   * asks for. Omitted, a focused panel keeps its resting background. An
-   * override supplying only a colour keeps the resting corner radius. A panel
-   * with no `background` of its own paints this fill while focused and nothing
-   * at rest, which is the menu row that is transparent until it is selected.
+   * Background painted while a `focusable` panel holds focus. Omitted, a
+   * focused panel keeps its resting background. An override supplying only a
+   * colour keeps the resting corner radius. A panel with no `background`
+   * paints this fill while focused and nothing at rest.
    */
   focusBackground?: BackgroundOptions;
   /**
    * Make this panel a focus scope over its descendants, so keyboard and
    * gamepad input walks them. `true` takes every default; an object sets
-   * them. Reached afterwards through `panel.focusScope`.
-   *
-   * Among those defaults, the scope reading input also owns the pointer:
-   * everything drawn under it stops answering the mouse until it hands the
-   * keys back. {@link UIFocusScopeOptions.modal} turns that off.
+   * them. Reached afterwards through `panel.focusScope`. By default the scope
+   * also owns the pointer; see {@link UIFocusScopeOptions.modal}.
    *
    * Passing `focus` again through `update()` refreshes the existing scope's
-   * options in place, so re-rendering with a fresh object literal keeps
-   * focus where it is; passing `false` or an explicit `undefined` disposes
-   * the scope.
+   * options and keeps focus where it is. `false` or an explicit `undefined`
+   * disposes the scope.
    */
   focus?: boolean | UIFocusScopeOptions;
 }
@@ -912,10 +851,9 @@ export type UIPositioning = "anchor" | "transform";
  * Options for creating a UISurface (the Component that mounts a UI tree on an
  * entity).
  *
- * Extending `UIPanelProps` means the surface takes the root panel's props
- * directly, {@link UIPanelProps.focus} among them: `new UISurface({ focus:
- * true })` turns the whole surface into one keyboard- and gamepad-driven
- * focus scope, reached afterwards through `surface.focusScope`.
+ * The surface takes the root panel's props. `new UISurface({ focus: true })`
+ * turns the whole surface into one focus scope, reached through
+ * `surface.focusScope`.
  */
 export interface UISurfaceOptions extends UIPanelProps {
   anchor?: Anchor;

@@ -80,11 +80,10 @@ export interface PanelProps extends Omit<
   bg?: BackgroundOptions;
   /**
    * Shorthand for `focusBackground`, the background painted while a
-   * `focusable` panel holds keyboard or gamepad focus — the same spelling
-   * `<Button>` takes, expanded by the same shared alias table. The canonical
+   * `focusable` panel holds keyboard or gamepad focus. The canonical
    * `focusBackground` prop is omitted from this interface, so `focusBg` is
-   * the only way to set it on `<Panel>`. Opt-in: omitted, a focused panel
-   * keeps its resting background.
+   * the only way to set it on `<Panel>`. Omitted, a focused panel keeps its
+   * resting background.
    */
   focusBg?: BackgroundOptions;
 }
@@ -110,9 +109,8 @@ export interface ButtonProps extends Omit<
   pressBg?: BackgroundOptions;
   /**
    * Shorthand for `focusBackground`, the background painted while the button
-   * holds keyboard or gamepad focus. `<Panel>` spells it the same way, and
-   * the shared alias table expands both. Opt-in: omitted, a focused button
-   * keeps its resting background and the focus outline is the whole signal.
+   * holds keyboard or gamepad focus. Omitted, a focused button keeps its
+   * resting background.
    */
   focusBg?: BackgroundOptions;
   /**

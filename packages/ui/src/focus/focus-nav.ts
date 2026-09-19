@@ -20,9 +20,8 @@ const AXIS: Record<
 };
 
 /**
- * Slack on the "is it in that direction" test, in px. A box level with the
- * focused one is never below it, and half a pixel absorbs the rounding a
- * layout pass leaves behind.
+ * Slack on the "is it in that direction" test, in px. Absorbs the rounding a
+ * layout pass leaves, so a box level with the focused one is not ahead of it.
  */
 const AHEAD_EPSILON = 0.5;
 
@@ -45,12 +44,11 @@ function overlaps(
 
 /**
  * Index of the best box on one side of `focused`, or `-1`. `behind` searches
- * the boxes the direction points away from, which is what wrapping needs.
+ * the side the direction points away from, which is what wrapping needs.
  *
- * Boxes overlapping the focused box on the perpendicular axis — the same
- * column for a vertical move, the same row for a horizontal one — win as a
- * group whenever the group is not empty. Ties break by array index, which the
- * caller fills in tree order, so the result is stable frame to frame.
+ * Boxes overlapping the focused box on the perpendicular axis win as a group
+ * over every other box. Ties break by array index, which the caller fills in
+ * tree order.
  */
 function search(
   rects: readonly FocusRect[],
@@ -66,8 +64,7 @@ function search(
   let bestAligned = false;
   let bestScore = 0;
   for (const [index, rect] of rects.entries()) {
-    // The focused box scores `along === 0`, so it is neither ahead nor
-    // behind and can never win its own move.
+    // The focused box scores `along === 0`, so it never wins its own move.
     const ox = rect.x + rect.width / 2 - cx;
     const oy = rect.y + rect.height / 2 - cy;
     const along = ox * dx + oy * dy;

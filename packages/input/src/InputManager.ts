@@ -27,13 +27,10 @@ import type {
 const MOUSE_BUTTON_CODES = ["MouseLeft", "MouseMiddle", "MouseRight"] as const;
 
 /**
- * What ended a hold: the player letting go of a key, a button or an on-screen
- * control, or the engine dropping held state the player is still holding —
- * the window losing focus, the page hiding, a pad vanishing, a cancelled
- * pointer, {@link InputManager.clearAll}.
- *
- * Both end the hold and both notify listeners; only a `"player"` release
- * answers {@link InputManager.isJustReleasedByPlayer}.
+ * What ended a hold: the player letting go, or the engine dropping held state
+ * (window blur, page hide, pad disconnect, cancelled pointer,
+ * {@link InputManager.clearAll}). Both notify listeners; only a `"player"`
+ * release answers {@link InputManager.isJustReleasedByPlayer}.
  */
 type ReleaseOrigin = "player" | "engine";
 
@@ -163,8 +160,7 @@ interface ClockState {
 
 /**
  * How many repeat edges a hold of `held` units has produced. `delay` and
- * `interval` are in the same unit as `held`, so the comparison works on a
- * millisecond input clock and a second-based scene clock alike.
+ * `interval` are in the same unit as `held`.
  */
 function repeatCount(held: number, delay: number, interval: number): number {
   return held < delay ? 0 : 1 + Math.floor((held - delay) / interval);
@@ -232,9 +228,8 @@ export class InputManager {
   /** Actions released in the current frame by any physical or synthetic code. */
   private actionReleasesThisFrame = new Set<string>();
   /**
-   * Actions the player let go of in the current frame — a subset of
-   * {@link actionReleasesThisFrame}, holding only the releases a key-up, a
-   * button-up, a pointer-up or an on-screen control put there.
+   * Actions the player let go of in the current frame: the subset of
+   * {@link actionReleasesThisFrame} that no engine drop produced.
    */
   private playerReleasesThisFrame = new Set<string>();
   /** Action mapping captured when each currently-held code was pressed. */
@@ -391,32 +386,25 @@ export class InputManager {
    * fixed step is held for the next step.
    *
    * With `{ repeat: true }` a held action also reports an edge in every window
-   * where its hold crosses `repeatDelay + n * repeatInterval`, so one call
-   * covers the press and the repeats a menu cursor walks on. At most one edge
-   * per query window: a frame longer than the interval steps a menu one row,
-   * not five. Each caller's rate is an argument rather than per-action state,
-   * so two callers can repeat the same action at different rates.
-   *
-   * Gamepad stick directions repeat with no special case — a push past the
-   * direction threshold arrives as an ordinary `GamepadLeftStickDown`-style
-   * key edge and so carries an ordinary hold start.
+   * where its hold crosses `repeatDelay + n * repeatInterval`. At most one
+   * edge per query window: a frame longer than the interval steps a menu one
+   * row. The rate is an argument, so two callers can repeat the same action
+   * at different rates. Gamepad stick directions repeat like any key.
    *
    * `options.clock` selects the clock the repeat schedule is counted on; the
-   * initial press edge always resolves against the caller's own window. Omit
-   * it and repeats count on the raw input clock, which keeps a menu repeating
+   * initial press edge always resolves against the caller's own window.
+   * Omitted, repeats count on the raw input clock, so a menu keeps repeating
    * over a paused scene.
    *
-   * Throws when `repeatDelay` is not a finite number at or above 0, or
-   * `repeatInterval` is not a finite number above 0 — before any state is
-   * read, so the same argument throws whatever the action's group state.
+   * @throws when `repeatDelay` is not a finite number at or above 0, or
+   * `repeatInterval` is not a finite number above 0, before any state is read.
    */
   isJustPressed(action: string, options?: PressRepeatOptions): boolean {
     const repeating = options?.repeat === true;
     const delaySeconds = options?.repeatDelay ?? DEFAULT_REPEAT_DELAY;
     const intervalSeconds = options?.repeatInterval ?? DEFAULT_REPEAT_INTERVAL;
-    // A timing the caller wrote is checked whether or not `repeat` came with
-    // it: the alternative silently swallows a bad number from a caller who
-    // meant to switch repeats on and forgot the flag.
+    // Timings are checked even without `repeat`, so a bad number from a caller
+    // who forgot the flag still throws.
     if (
       options?.repeatDelay !== undefined ||
       options?.repeatInterval !== undefined
@@ -427,8 +415,6 @@ export class InputManager {
     if (this.hasPressEdge(action)) return true;
     if (!repeating) return false;
 
-    // The repeat schedule is measured from the hold, so a clock that carries no
-    // hold is what the failure names.
     const state = this.resolveState("isJustPressed", "hold", options?.clock);
     if (!this.isActionEnabled(action)) return false;
     const hold = this.rawHoldOn(action, state);
@@ -450,7 +436,6 @@ export class InputManager {
     );
   }
 
-  /** Press edge for the action in the caller's query window. */
   private hasPressEdge(action: string): boolean {
     if (!this.isActionEnabled(action)) return false;
     const window = this.currentStepWindow();
@@ -481,24 +466,19 @@ export class InputManager {
   }
 
   /**
-   * Whether the player let go of the action in the caller's query window —
-   * the current frame or the current fixed step, matching the calling context
-   * like {@link isJustPressed}.
+   * Whether the player let go of the action in the caller's query window,
+   * matching the calling context like {@link isJustPressed}.
    *
-   * A key-up, a gamepad button-up, a pointer-button release and an on-screen
-   * control the finger left are the player letting go. Held state the engine
-   * drops on its own is not: the window losing focus, the page hiding, a pad
-   * disconnecting, a cancelled pointer, {@link clearAll}, an action source
-   * released. Those still end the hold and still notify
-   * {@link onActionReleased}, so {@link isJustReleased} reports them.
+   * A key-up, a gamepad button-up, a pointer-button release and a finger
+   * leaving an on-screen control count. Held state the engine drops does not:
+   * window blur, page hide, a pad disconnecting, a cancelled pointer,
+   * {@link clearAll}, an action source released. Those still notify
+   * {@link onActionReleased}, and {@link isJustReleased} reports them.
    *
-   * Read this instead of {@link isJustReleased} wherever the release is what
-   * commits something the player cannot take back — a menu confirming the row
-   * under the cursor, a charged shot leaving the barrel — so alt-tabbing out
-   * of the game commits nothing.
+   * Read this where the release commits something the player cannot take
+   * back (a menu confirm, a charged shot), so alt-tabbing commits nothing.
    *
-   * A hold that ends while the action's group is disabled answers `false`,
-   * like every other query on a disabled action.
+   * A hold that ends while the action's group is disabled answers `false`.
    */
   isJustReleasedByPlayer(action: string): boolean {
     if (!this.isActionEnabled(action)) return false;
@@ -1918,9 +1898,8 @@ export class InputManager {
       typeof navigator !== "undefined" &&
       typeof navigator.getGamepads === "function"
     ) {
-      // Buttons the departed pad was holding are dropped by the engine, not
-      // let go by the player: a release this produces is one no pad still
-      // reports, and the pad that reported it is gone.
+      // The departed pad's held buttons are dropped by the engine, not let go
+      // by the player.
       this.reconcileButtonStateAcrossPads(navigator.getGamepads(), "engine");
     } else {
       this._releaseAllGamepadState();
@@ -2219,8 +2198,8 @@ export class InputManager {
       return;
     }
     if (!this.pressedKeys.has(code)) return;
-    // A finger leaving an on-screen button is the player letting go, the same
-    // as a key-up; the source's `releaseAll` below is the control going away.
+    // A finger leaving an on-screen button is the player letting go; the
+    // source's `releaseAll` below is the control going away.
     this.applyCodeUp(code, false, "player");
     this.syntheticCodes.delete(code);
     const codes = this.sourceCodes.get(sourceId);
@@ -2630,8 +2609,8 @@ export class InputManager {
     pointer.buttons.clear();
     pointer.isDown = false;
     for (const button of heldButtons) {
-      // A cancelled gesture is the browser or a blur taking the pointer away,
-      // so the mouse code it was holding ends without a player release.
+      // A cancelled gesture is the browser taking the pointer away, not a
+      // player release.
       this.recomputeMouseAggregate(button, "engine");
     }
     if (hadActivePress) {
@@ -2787,10 +2766,9 @@ export class InputManager {
   }
 
   /**
-   * End a held key, gamepad or mouse code, recording who ended it. Key and
-   * action listeners hear an engine-forced release exactly as they hear one
-   * the player made; the two part only at
-   * {@link InputManager.isJustReleasedByPlayer}.
+   * End a held key, gamepad or mouse code, recording who ended it. Listeners
+   * hear both origins alike; only
+   * {@link InputManager.isJustReleasedByPlayer} tells them apart.
    */
   private releaseKeyCode(code: string, origin: ReleaseOrigin): void {
     this.applyCodeUp(code, true, origin);

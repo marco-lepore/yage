@@ -57,15 +57,12 @@ export class PixiFancyButton extends PixiUIBase<FancyButton> {
   }
 
   /**
-   * Press the button. The click path and the focus scope's confirm both end
-   * at the widget's own press signal, so both run the bridged, error-boundary
-   * wrapped `onClick` behind one disabled guard.
+   * Press the button through the widget's own press signal, so a click and a
+   * confirm run the same wrapped `onClick` behind one disabled guard.
    *
-   * The widget hangs its own view swapping off that same signal and lands on
-   * the face a mouse release leaves behind, so the face it belongs on is set
-   * here afterwards: with no pointer over the button, nothing else would ever
-   * take that face away. A callback that tore the button down leaves nothing
-   * to repaint, and one that disabled it keeps the disabled face.
+   * The widget swaps its view off that signal and lands on the mouse-release
+   * face, so the correct face is set afterwards. A callback that destroyed
+   * the button leaves nothing to repaint.
    */
   activate(): void {
     if (this.disabled) return;
@@ -73,19 +70,13 @@ export class PixiFancyButton extends PixiUIBase<FancyButton> {
     if (!this.view.destroyed) this.view.setState(this.faceState());
   }
 
-  /**
-   * Show the widget's own pressed art while a device holds the button, and
-   * hand the face back once every device has let go.
-   */
   protected override setPressed(): void {
     this.view.setState(this.faceState());
   }
 
   /**
-   * The face the button belongs on right now. Disabled outranks everything,
-   * a press held by any device outranks hover, and hover outranks the default
-   * face — so running the button's action while the player's mouse is still
-   * down leaves the press showing.
+   * The face the button belongs on: disabled outranks a press held by any
+   * device, which outranks hover, which outranks the default face.
    */
   private faceState(): "default" | "hover" | "pressed" | "disabled" {
     if (this.disabled) return "disabled";

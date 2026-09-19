@@ -53,12 +53,9 @@ class YageInput extends Input {
   }
 
   /**
-   * Every key the hidden DOM field receives, despite the base class's name
-   * for it: `Input` binds this as the field's `keydown` listener.
-   *
-   * Escape is the cancel key, so it leaves the field on the value the edit
-   * began with — the end the surrounding focus scope gives it as well. The
-   * base treats Escape as it treats Enter and keeps what was typed.
+   * `Input` binds this as the hidden DOM field's `keydown` listener, despite
+   * its name. The base treats Escape as Enter and keeps what was typed; here
+   * Escape restores the value the edit began with.
    */
   protected override onKeyUp(e: KeyboardEvent): void {
     if (e.key === "Escape") {
@@ -75,17 +72,16 @@ class YageInput extends Input {
   }
 
   protected override stopEditing(): void {
-    // The base returns early for a field that is not editing, so the record
-    // of who holds the caret follows the same guard.
+    // The base returns early for a field that is not editing.
     const wasEditing = this.editing;
     super.stopEditing();
     if (wasEditing) this.onEditingChange?.(false);
   }
 
   override destroy(options?: DestroyOptions | boolean): void {
-    // `Input.destroy()` leaves an edit in progress running, and one field
-    // recorded as editing makes every focus scope poll nothing but confirm
-    // and cancel for the rest of the session.
+    // `Input.destroy()` leaves an edit in progress running, and a field
+    // recorded as editing makes every focus scope poll only confirm and
+    // cancel.
     this.stopEditing();
     super.destroy(options);
   }
@@ -110,8 +106,7 @@ export class PixiInput
     } as ConstructorParameters<typeof Input>[0]);
     super(view, props);
 
-    // The caret is what makes the field answer the player, so the field holds
-    // its scope's input for exactly as long as it has one.
+    // The field holds its scope's input for as long as it holds the caret.
     view.onEditingChange = (editing): void => {
       captureFocusInput(this, editing);
     };
@@ -127,14 +122,13 @@ export class PixiInput
   }
 
   /**
-   * Put the caret in the field. A field holding the caret takes the input of
-   * the focus scope around it, so the typed keys reach the field rather than
-   * walking the menu. Enter typed into the field commits what was typed and
-   * Escape restores the value the edit began with, the two ends the scope's
-   * confirm and cancel give it.
+   * Put the caret in the field. While it holds the caret the field takes the
+   * input of the focus scope around it, so typed keys do not walk the menu.
+   * Enter commits what was typed and Escape restores the value the edit began
+   * with.
    *
-   * Leaving the field any way emits its `onEnter`, because that is what ends
-   * every edit; after {@link cancelEditing} it carries the restored value.
+   * Every way of leaving the field emits its `onEnter`; after
+   * {@link cancelEditing} it carries the restored value.
    */
   activate(): void {
     this.view.beginEditing();
@@ -150,20 +144,15 @@ export class PixiInput
     this.view.cancelEditing();
   }
 
-  /** Confirm ends the edit on what was typed. */
   confirmCapture(): void {
     this.commitEditing();
   }
 
-  /** Cancel ends it on the value the field held when the caret arrived. */
   cancelCapture(): void {
     this.cancelEditing();
   }
 
-  /**
-   * Focus moving off the field, or its menu losing the keys, ends the edit on
-   * what was typed — the same end a click somewhere else gives it.
-   */
+  /** Focus leaving the field, or its menu losing the keys, keeps the text. */
   releaseCapture(): void {
     this.commitEditing();
   }

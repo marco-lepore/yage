@@ -136,9 +136,7 @@ export class UIScrollView implements UIContainerElement {
   private _sbOffset = Number.NaN;
   private _sbMaxScroll = Number.NaN;
 
-  // One warning per view for a scroll-into-view asked for before the first
-  // layout pass: the focus follow calls it every tick, and the cause is the
-  // same one every time.
+  // One warning per view: the focus follow calls scroll-into-view every tick.
   private _layoutWarned = false;
 
   private _dragging = false;
@@ -160,17 +158,13 @@ export class UIScrollView implements UIContainerElement {
     this.viewport.eventMode = "static";
     this.viewport.hitArea = this._hitArea;
     applyConsumeInput(this.viewport, props.consumeInput);
-    // The hover fan-out sits on the clipped viewport, not on the content
-    // panel: the viewport is the box a pointer enters and leaves, while the
-    // content is taller than it and moves under the scroll offset.
+    // The hover fan-out sits on the clipped viewport: the content panel is
+    // taller than it and moves under the scroll offset.
     this.pointerEvents = new PointerEvents(this.viewport, props);
 
-    // The view is a candidate as well as a container: out of focus navigation
-    // until a game asks for it with `focusable`, which is what panning a list
-    // with the stick needs. The candidate walk still descends into the rows,
-    // and a row is deeper than the view, so a press on a row asks for focus
-    // on the row. Asked for, the viewport is outlined like every other
-    // focusable element.
+    // The view stays out of focus navigation until a game sets `focusable`,
+    // which is what panning a list with the stick needs. The rows remain
+    // candidates either way, and a press on a row focuses the row.
     this._focusOutline = new FocusOutline({
       container: this.viewport,
       box: () => layoutBox(this.yogaNode),
@@ -319,18 +313,16 @@ export class UIScrollView implements UIContainerElement {
   }
 
   /**
-   * Width of the clipped viewport in px, as the last layout pass computed it
-   * — the box the mask clips to, so a vertical view's scrollbar gutter is
-   * part of it. `0` before the first layout pass.
+   * Width of the clipped viewport in px, scrollbar gutter included. `0`
+   * before the first layout pass.
    */
   get viewportWidth(): number {
     return this._vw;
   }
 
   /**
-   * Height of the clipped viewport in px, as the last layout pass computed it
-   * — the box the mask clips to, so a horizontal view's scrollbar gutter is
-   * part of it. `0` before the first layout pass.
+   * Height of the clipped viewport in px, scrollbar gutter included. `0`
+   * before the first layout pass.
    */
   get viewportHeight(): number {
     return this._vh;
@@ -367,19 +359,19 @@ export class UIScrollView implements UIContainerElement {
 
   /**
    * Scroll the least distance that brings `element` inside the viewport on
-   * this view's scroll axis. `align` decides where it lands and defaults to
-   * `"nearest"`, which leaves an element already fully visible where it is,
-   * so a list does not jitter and `onScroll` does not fire.
+   * this view's scroll axis. `align` defaults to `"nearest"`, which does not
+   * move an element that is already fully visible, so `onScroll` does not
+   * fire.
    *
    * `padding` is px kept between the element and the viewport edge it is
-   * aligned against; it does not apply to `align: "center"`, where the
-   * element sits in the middle of the viewport.
+   * aligned against; it does not apply to `align: "center"`.
    *
-   * One layout pass has to have run: before that the element has no laid-out
-   * box, the call does nothing and a development warning names the view.
+   * Before the first layout pass the call does nothing and a development
+   * warning names the view.
    *
    * @throws when `element` is not inside this view, or `padding` is not a
-   * finite number of pixels at or above zero — both before the offset moves.
+   * finite number of pixels at or above zero. Both throw before the offset
+   * moves.
    */
   scrollIntoView(element: UIElement, opts?: UIScrollIntoViewOptions): void {
     const padding = opts?.padding ?? 0;
@@ -396,10 +388,8 @@ export class UIScrollView implements UIContainerElement {
       );
     }
 
-    // The element's top-left in the content panel's own space. That space
-    // does not move with the offset — the offset is the content container's
-    // position — so the same element answers the same number at every scroll
-    // position, and no ancestor's box has to be summed.
+    // The element's top-left in the content panel's own space, which does not
+    // move with the scroll offset.
     const p = this.content.container.toLocal(
       ORIGIN,
       element.displayObject,
@@ -449,9 +439,8 @@ export class UIScrollView implements UIContainerElement {
   }
 
   /**
-   * Whether `element` hangs under the content panel. The display parent chain
-   * is the only answer: `toLocal` projects any element that shares a stage,
-   * so it cannot tell a foreign element from a descendant.
+   * Whether `element` hangs under the content panel. `toLocal` projects any
+   * element that shares a stage, so only the display parent chain can tell.
    */
   private _contains(element: UIElement): boolean {
     let node: DisplayContainer | null = element.displayObject.parent;
@@ -734,12 +723,7 @@ export class UIScrollView implements UIContainerElement {
     if ("visible" in props) this.visible = props.visible ?? true;
   }
 
-  /**
-   * What the Inspector reports for this scroll view: whether it takes part in
-   * focus navigation, which is off unless the game asked for it, and whether
-   * it holds focus right now. A test reads this instead of a screenshot.
-   * @internal
-   */
+  /** @internal */
   _inspectState(): { focused: boolean; focusable: boolean } {
     return { focused: this._focus.focused, focusable: this._focus.focusable };
   }

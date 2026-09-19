@@ -76,11 +76,11 @@ export const DEFAULT_REPEAT_INTERVAL = 0.1;
 /**
  * Options for `InputManager.isJustPressed`.
  *
- * `clock` selects the clock the repeat schedule is counted on — the
- * `SceneTime` of a scene on the stack. It does not affect the initial press
- * edge, which always resolves against the caller's frame or fixed-step
- * window. Omit it and repeats count on the raw input clock, which keeps a
- * menu repeating while the scene under it is paused.
+ * `clock` selects the clock the repeat schedule is counted on: the
+ * `SceneTime` of a scene on the stack. The initial press edge always resolves
+ * against the caller's frame or fixed-step window. Omitted, repeats count on
+ * the raw input clock, so a menu keeps repeating while the scene under it is
+ * paused.
  */
 export interface PressRepeatOptions extends HoldDurationOptions {
   /** Whether a held action produces repeat edges. Default `false`. */

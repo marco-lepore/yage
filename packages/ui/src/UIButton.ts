@@ -107,11 +107,10 @@ export class UIButton implements UIContainerElement {
   private _truncateWith: string | undefined;
   private _disabled = false;
   private _isHovered = false;
-  // One flag per device holding the button down. They are separate states
-  // with one look: the button paints pressed while either is set, and each
-  // device clears only its own, so a mouse moving off the button never ends
-  // a confirm press the player is still holding, and a confirm press never
-  // ends the click the mouse is in the middle of making.
+  // One flag per device holding the button down. The button paints pressed
+  // while either is set, and each device clears only its own, so a mouse
+  // moving off the button never ends a held confirm press, and a confirm
+  // press never ends a click in progress.
   private _pointerPressed = false;
   private _focusPressed = false;
   private _isFocused = false;
@@ -187,15 +186,11 @@ export class UIButton implements UIContainerElement {
     if (p.visible === false) this.visible = false;
 
     // Every listener sets its own flags and repaints from all of them, so a
-    // pointer leaving a row that holds focus repaints it as focused rather
-    // than as resting, and whatever focus signal the game asked for — a
-    // `focusBackground` fill, an outline from `focusStyle`, its own painting
-    // from `onFocusChange` — stays on. Each listener touches the pointer's
-    // own press flag and leaves a confirm press held on the button alone.
+    // pointer leaving a focused row repaints it as focused. Each listener
+    // touches only the pointer's press flag.
     //
-    // Hovered and focused are separate states: the pointer passing over the
-    // button tints it, and pressing it is what asks a focus scope to bring
-    // the keyboard here.
+    // Hovered and focused are separate states: hover tints the button, and a
+    // press asks a focus scope to bring focus here.
     this.container.on("pointerover", () => {
       if (this._disabled) return;
       this._isHovered = true;
@@ -217,8 +212,7 @@ export class UIButton implements UIContainerElement {
     });
     this.container.on("pointerup", () => {
       if (this._disabled) return;
-      // Whether a release counts as a click is the pointer path's own
-      // question: a press that began elsewhere must not fire this button.
+      // A press that began elsewhere must not fire this button.
       const shouldClick = this._pressStartedHere;
       this._pressStartedHere = false;
       this._pointerPressed = false;
@@ -267,16 +261,11 @@ export class UIButton implements UIContainerElement {
   }
 
   /**
-   * Run the button's action: the click path and the focus scope's confirm
-   * both come through here, so one disabled guard and one dispatch serve
-   * both.
+   * Run the button's action. The click path and the focus scope's confirm
+   * both come through here, behind one disabled guard.
    *
-   * Running the action is all this does. Each device ends its own press where
-   * the player ends it — the pointer listener below on a release, the focus
-   * scope when the confirm action goes up — so a confirm press cannot repaint
-   * the button out from under a pointer that is still holding it down, nor
-   * swallow the click that pointer is on its way to making. A call from game
-   * code therefore shows no press of its own and disturbs none in progress.
+   * This paints no press and ends none: each device ends its own press, so a
+   * call from game code does not disturb a press in progress.
    */
   activate(): void {
     if (this._disabled) return;
@@ -343,9 +332,7 @@ export class UIButton implements UIContainerElement {
   }
 
   /**
-   * Take the context of the UI tree this button belongs to: the name
-   * development-mode warnings print, and the scene's focus stack. Stamped by
-   * `UISurface` from the owning entity and passed down the tree.
+   * Stamped by `UISurface` from the owning entity and passed down the tree.
    * @internal
    */
   _attachToTree(context: UITreeContext): void {
@@ -447,12 +434,9 @@ export class UIButton implements UIContainerElement {
   }
 
   /**
-   * The fill a focused button paints: the caller's `focusBackground` and
-   * nothing else, so a game that named no fill shows focus the way it asked
-   * for elsewhere — an outline from `focusStyle`, or its own painting from
-   * `onFocusChange`. A colour override fills in over the resting background,
-   * so an override giving only a colour keeps the resting corner radius; an
-   * override of the other kind replaces it outright.
+   * The fill a focused button paints: the caller's `focusBackground` only. A
+   * colour override is laid over the resting background, so it keeps the
+   * resting corner radius; any other override replaces it.
    */
   private _resolveFocusBg(): BackgroundOptions | undefined {
     const override = this.focusBgOverride;
@@ -470,12 +454,7 @@ export class UIButton implements UIContainerElement {
     }
   }
 
-  /**
-   * Whether any device is holding the button down, which is what paints it
-   * pressed. One press is one look however many devices make it, so the
-   * second to arrive changes nothing and the first to leave takes nothing
-   * away.
-   */
+  /** Whether any device is holding the button down. */
   private get _isPressed(): boolean {
     return this._pointerPressed || this._focusPressed;
   }
@@ -484,10 +463,8 @@ export class UIButton implements UIContainerElement {
    * Paint the background for the button's state. A disabled button takes its
    * resting background whatever the hover flag holds, because the pointer
    * listeners return early while disabled and leave that flag set. Hovered
-   * outranks focused here because the two are separate states and the pointer
-   * is the more immediate of them: a focused row the pointer rests on shows
-   * the hover tint, with whatever focus signal the game asked for on top of
-   * it.
+   * outranks focused: a focused row under the pointer shows the hover tint,
+   * with the game's focus signal on top.
    */
   private applyCurrentBg(): void {
     const focusBg = this.focusBgOpts;
@@ -530,8 +507,8 @@ export class UIButton implements UIContainerElement {
     this.container.eventMode = v ? "none" : "static";
     this.container.cursor = v ? "default" : "pointer";
     this.container.alpha = v ? 0.5 : 1;
-    // A disabled button refuses both devices, so both presses end here rather
-    // than springing back when it is enabled again.
+    // A disabled button ends both presses, so neither springs back when it is
+    // enabled again.
     if (v) {
       this._pressStartedHere = false;
       this._pointerPressed = false;
@@ -641,11 +618,7 @@ export class UIButton implements UIContainerElement {
     }
   }
 
-  /**
-   * What the Inspector reports for this button, so a test reads its
-   * interaction state instead of a screenshot.
-   * @internal
-   */
+  /** @internal */
   _inspectState(): {
     focused: boolean;
     focusable: boolean;

@@ -25,8 +25,7 @@ export class PixiCheckbox extends PixiUIBase<CheckBox> {
     this.prevProps = { ...props };
   }
 
-  /** CheckBox is a composite: an icon beside a label. Sizing its container
-   *  scales the square icon out of shape, so it keeps its own size. */
+  /** A composite of an icon beside a label, so it keeps its own size. */
   protected override sizedByLayout(): boolean {
     return false;
   }

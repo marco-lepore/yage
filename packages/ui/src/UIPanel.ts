@@ -94,10 +94,8 @@ export class UIPanel implements UIContainerElement {
   private readonly pointerEvents: PointerEvents;
   private readonly _focus: FocusState;
   private readonly _focusOutline: FocusOutline;
-  /** What the caller asked for, kept until a tree context can honour it. */
   private _focusOption: boolean | UIFocusScopeOptions | undefined;
   private _focusScope: UIFocusScope | null = null;
-  /** The stack the scope is registered with, which teardown unregisters from. */
   private _focusStack: UIFocusStack | null = null;
   // Transparent child that catches pointer/hover events (and the consume-input
   // fallback) across the panel's whole computed box — gaps, padding, and the
@@ -127,17 +125,15 @@ export class UIPanel implements UIContainerElement {
     this.pointerEvents = new PointerEvents(this.container, opts);
     // A focusable row takes focus from the pointer the way a button does.
     // Pixi dispatches pointer events along the whole composed path, so a
-    // button inside this row asks too; the deepest request of a tick wins,
-    // which puts focus on the element the pointer is over. A row that takes
-    // no part in focus navigation asks for nothing, which the cell decides.
+    // button inside this row asks too; the deepest request of a tick wins.
     this.container.on("pointerover", () => {
       requestHoverFocus(this);
     });
     this.container.on("pointerdown", () => {
       requestPressFocus(this);
     });
-    // Ahead of the props: `_applyProps` refreshes the outline when it takes a
-    // background, whose corner radius the outline follows.
+    // Built before the props: `_applyProps` refreshes the outline when it
+    // takes a background.
     this._focusOutline = new FocusOutline({
       container: this.container,
       box: () => layoutBox(this.yogaNode, this._bgRadius()),
@@ -163,8 +159,8 @@ export class UIPanel implements UIContainerElement {
 
   /**
    * The focus scope this panel owns, or `null` when it carries no `focus`
-   * option. A panel built before its tree is mounted gets its scope the
-   * moment the tree context arrives.
+   * option. A panel built before its tree is mounted gets its scope when the
+   * tree is mounted.
    */
   get focusScope(): UIFocusScope | null {
     return this._focusScope;
@@ -218,16 +214,13 @@ export class UIPanel implements UIContainerElement {
   }
 
   /**
-   * Take the context of the UI tree this panel belongs to: the name
-   * development-mode warnings print, and the scene's focus stack. Stamped by
-   * `UISurface` from the owning entity and passed down the tree.
+   * Stamped by `UISurface` from the owning entity and passed down the tree.
    * @internal
    */
   _attachToTree(context: UITreeContext): void {
     this._treeContext = context;
     this._debugLabel = context.label;
-    // Before the children, so scopes register from the root of the tree down
-    // and this panel owns its own before its subtree joins.
+    // Before the children, so scopes register from the root of the tree down.
     this._syncFocusScope();
     attachChildrenToTree(this._children, context);
   }
@@ -235,10 +228,8 @@ export class UIPanel implements UIContainerElement {
   /** @internal */
   _detachFromTree(): void {
     this._disposeFocusScope();
-    // A panel holding no context handed none down, so its subtree carries
-    // none either. Destroying a tree reaches each panel twice — once from the
-    // parent's walk, once from its own `destroy()` — and the second visit
-    // stops here rather than walking the subtree again.
+    // Destroying a tree reaches each panel twice: from the parent's walk and
+    // from its own `destroy()`. The second visit stops here.
     if (this._treeContext === undefined) return;
     this._treeContext = undefined;
     this._debugLabel = undefined;
@@ -330,8 +321,6 @@ export class UIPanel implements UIContainerElement {
     this._hitArea.width = w;
     this._hitArea.height = h;
 
-    // Whatever the panel is painting — its resting background or the fill it
-    // took with focus — follows the box.
     this.bgRenderer?.resize(w, h);
 
     // Re-run the overflow mask draw closure only when the box it traces has
@@ -357,10 +346,7 @@ export class UIPanel implements UIContainerElement {
   }
 
   /**
-   * What the Inspector reports for this panel: which scope holds the keys,
-   * and whether the panel itself is focused in the scope that owns it —
-   * true only for a `focusable` panel, such as a stepper row built with
-   * `focusable` plus `onAdjust`. A test reads this instead of a screenshot.
+   * `focused` is true only for a `focusable` panel.
    * @internal
    */
   _inspectState(): {
@@ -427,7 +413,7 @@ export class UIPanel implements UIContainerElement {
 
     if ("background" in p || "focusBackground" in p) {
       // A new resting background re-resolves the focused fill and the corner
-      // radius the outline follows, so a recoloured panel stays in step.
+      // radius the outline follows.
       if ("focusBackground" in p) this.focusBgOverride = p.focusBackground;
       this.focusBgOpts = this._resolveFocusBg();
       this._paintBg();
@@ -453,13 +439,10 @@ export class UIPanel implements UIContainerElement {
   // ---------------------------------------------------------------------------
 
   /**
-   * The fill a focused panel paints: the caller's `focusBackground` and
-   * nothing else, so a game that named no fill shows focus the way it asked
-   * for elsewhere — an outline from `focusStyle`, or its own painting from
-   * `onFocusChange`. A colour override fills in over the resting background,
-   * so an override giving only a colour keeps the resting corner radius. A
-   * panel with no `background` of its own takes the override whole, which is
-   * the menu row that is transparent at rest and filled while focused.
+   * The fill a focused panel paints: the caller's `focusBackground` only. A
+   * colour override is laid over the resting background, so it keeps the
+   * resting corner radius. A panel with no `background` takes the override
+   * whole.
    */
   private _resolveFocusBg(): BackgroundOptions | undefined {
     const base = this.bgOpts;
@@ -473,15 +456,10 @@ export class UIPanel implements UIContainerElement {
   }
 
   /**
-   * Paint the fill the panel's current focus state calls for, and nothing at
-   * all when that state names none: the display object goes with it, so a row
-   * that is transparent at rest leaves no empty rectangle behind when focus
-   * moves off it. The renderer stays, holding nothing, and draws again from
-   * the next fill it is given.
-   *
-   * The renderer draws at the box the last layout pass computed rather than
-   * waiting for the next one, so a fill arriving with a focus change is on
-   * screen in the frame it was asked for.
+   * Paint the fill the current focus state calls for. A state with no fill
+   * removes the display object, so a row that is transparent at rest leaves
+   * no empty rectangle behind. The renderer draws at the box of the last
+   * layout pass, so the fill is on screen in the frame focus changes.
    */
   private _paintBg(): void {
     const painted =
@@ -500,11 +478,9 @@ export class UIPanel implements UIContainerElement {
   /**
    * Build, refresh or drop the scope this panel's `focus` option asks for.
    *
-   * An option arriving for a scope that exists refreshes it in place rather
-   * than rebuilding it: the React reconciler passes every prop on every
-   * commit with a fresh object literal, so rebuilding would drop focus on
-   * each unrelated state change. Building waits for the tree context, so a
-   * panel filled before its surface reaches an entity works too.
+   * An option arriving for an existing scope refreshes it in place: the React
+   * reconciler passes a fresh object literal on every commit, and rebuilding
+   * would drop focus each time. Building waits for the tree context.
    */
   private _syncFocusScope(): void {
     const option = this._focusOption;

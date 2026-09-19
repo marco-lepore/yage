@@ -26,7 +26,6 @@ export function markScrollView(view: FocusScrollView): void {
  * @internal
  */
 export function asScrollView(element: UIElement): FocusScrollView | undefined {
-  // The set only ever takes a `FocusScrollView`, so membership is the proof
-  // `scrollIntoView` is there.
+  // Only a `FocusScrollView` enters the set, so membership proves the cast.
   return scrollViews.has(element) ? (element as FocusScrollView) : undefined;
 }

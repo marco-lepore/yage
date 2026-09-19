@@ -43,11 +43,8 @@ export class UICheckbox implements UIElement {
   private onChange: ((checked: boolean) => void) | undefined;
   private _destroyed = false;
   private _pressStartedHere = false;
-  // One flag per device holding the row down, and the face they are painted
-  // as. The two are separate states with one look: the box is darkened while
-  // either device holds it, and each device clears only its own, so a mouse
-  // moving off the row never ends a confirm press the player is still
-  // holding, and a confirm press never ends the click the mouse is making.
+  // One flag per device holding the row down. The box is darkened while
+  // either is set, and each device clears only its own press.
   private _pointerPressed = false;
   private _focusPressed = false;
   private _isPressed = false;
@@ -103,10 +100,8 @@ export class UICheckbox implements UIElement {
     applyLayoutProps(this.yogaNode, props);
 
     // Every listener writes the pointer's own press flag and repaints from
-    // both, so the pointer and a focus scope's confirm show the same pressed
-    // face and neither takes the other's away. The pointer moving over the
-    // row hovers it; pressing it is what asks a focus scope to bring the
-    // keyboard here.
+    // both flags. Hover only hovers the row; a press asks a focus scope to
+    // bring focus here.
     this.container.on("pointerover", () => {
       if (this._disabled) return;
       requestHoverFocus(this);
@@ -124,8 +119,7 @@ export class UICheckbox implements UIElement {
       this.repaintPress();
     });
     this.container.on("pointerup", () => {
-      // Whether a release counts as a toggle is the pointer path's own
-      // question: a press that began elsewhere must not toggle this box.
+      // A press that began elsewhere must not toggle this box.
       const shouldToggle = !this._disabled && this._pressStartedHere;
       this._pressStartedHere = false;
       this._pointerPressed = false;
@@ -138,8 +132,7 @@ export class UICheckbox implements UIElement {
       this.repaintPress();
     });
 
-    // Hover callbacks fan out beside the pointer requests above, and are
-    // suppressed while the checkbox is disabled.
+    // Hover callbacks are suppressed while the checkbox is disabled.
     this.pointerEvents = new PointerEvents(
       this.container,
       props,
@@ -175,10 +168,9 @@ export class UICheckbox implements UIElement {
   }
 
   /**
-   * Toggle the box: the click path and the focus scope's confirm both come
-   * through here, so one disabled guard and one dispatch serve both. Unlike
-   * `update({ checked })`, which sets the value silently, this fires
-   * `onChange`.
+   * Toggle the box and fire `onChange`. The click path and the focus scope's
+   * confirm both come through here. `update({ checked })` sets the value
+   * silently.
    */
   activate(): void {
     if (this._disabled) return;
@@ -196,12 +188,7 @@ export class UICheckbox implements UIElement {
     this._focusOutline.refresh();
   }
 
-  /**
-   * Show the box the way the devices holding the row down leave it: darkened
-   * while either of them holds it, resting once both have let go. One press
-   * is one look however many devices make it, so the second to arrive redraws
-   * nothing and the first to leave takes nothing away.
-   */
+  /** Darken the box while either device holds the row down. */
   private repaintPress(): void {
     const pressed = this._pointerPressed || this._focusPressed;
     if (pressed === this._isPressed) return;
@@ -239,8 +226,8 @@ export class UICheckbox implements UIElement {
 
   setDisabled(v: boolean): void {
     this._disabled = v;
-    // A disabled row refuses both devices, so both presses end here rather
-    // than springing back when it is enabled again.
+    // A disabled row ends both presses, so neither springs back when it is
+    // enabled again.
     if (v) {
       this._pressStartedHere = false;
       this._pointerPressed = false;
@@ -326,11 +313,7 @@ export class UICheckbox implements UIElement {
     }
   }
 
-  /**
-   * What the Inspector reports for this checkbox, so a test reads its state
-   * instead of a screenshot.
-   * @internal
-   */
+  /** @internal */
   _inspectState(): {
     focused: boolean;
     focusable: boolean;
@@ -387,8 +370,7 @@ export class UICheckbox implements UIElement {
 
   /**
    * The box, in the caller's `boxColor`, darkened by the shared press factor
-   * while the row is held down. The box colour says nothing about focus: the
-   * row carries whatever focus signal the game asked for.
+   * while the row is held down. The box colour does not show focus.
    */
   private drawBox(): void {
     const color = this._isPressed

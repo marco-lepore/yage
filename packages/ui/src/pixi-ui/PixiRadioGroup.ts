@@ -74,9 +74,7 @@ export class PixiRadioGroup extends PixiUIBase<MutableRadioGroup> {
     this.prevProps = { ...props };
   }
 
-  /** RadioGroup is a composite: several checkboxes it places itself. Sizing
-   *  its container scales that arrangement out of shape, so it keeps its own
-   *  size. */
+  /** A composite that places its own checkboxes, so it keeps its own size. */
   protected override sizedByLayout(): boolean {
     return false;
   }

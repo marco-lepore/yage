@@ -29,17 +29,10 @@ export interface FocusBehavior {
   /** Paint the focused or the resting look. */
   paint?(focused: boolean): void;
   /**
-   * Paint the pressed or the unpressed look. An element paints pressed while
-   * any device holds it down, and the scope's confirm press is one of those
-   * devices, so this hook is told the combined press rather than the scope's
-   * alone: the element gives its resting look back only once the pointer has
-   * also let go. `true` arrives more than once where the element repaints
-   * itself under a press that is still held, so an implementation sets the
-   * face rather than toggling it.
-   *
-   * An element whose look has no pressed face — a panel, a widget whose art
-   * names only a resting one — leaves this out, so a confirm press on it
-   * paints nothing.
+   * Paint the pressed or the unpressed look. Receives the combined press of
+   * every device holding the element, so the resting look returns only once
+   * the pointer has also let go. `true` can arrive more than once, so set the
+   * face; do not toggle it. An element with no pressed look leaves this out.
    */
   setPressed?(pressed: boolean): void;
   /** Run the element's own action, the one a click also runs. */
@@ -53,17 +46,10 @@ export interface FocusBehavior {
 }
 
 /**
- * Every element's focus state, keyed by the element.
- *
- * A module-level table is how this package holds state about an element
- * outside the `UIElement` interface: error boundaries (`error-boundary.ts`),
- * scroll views (`focus/scroll-registry.ts`), elements holding a scope's input
- * (`focus/input-capture.ts`) and scope hosts (`focus/UIFocusScope.ts`) are
- * all reached this way. The internal members `UIElement` does carry are hooks an
- * element implements for itself, so a slot this package wrote into an element
- * would be a second convention beside the table, and a writable one, since
- * the interface is public. {@link FocusState.destroy} drops the entry, so a
- * destroyed element stops being a focus candidate.
+ * Every element's focus state, keyed by the element. This package holds
+ * per-element state in module-level tables (`error-boundary.ts`,
+ * `focus/scroll-registry.ts`, `focus/input-capture.ts`), not in slots on the
+ * public `UIElement` interface.
  */
 const states = new WeakMap<UIElement, FocusState>();
 
@@ -71,12 +57,8 @@ const states = new WeakMap<UIElement, FocusState>();
  * The focus state of one element: what a scope reads to decide whether the
  * element is a candidate, and where the element's own focus callbacks live.
  *
- * One instance per element, built by the element itself and registered in a
- * module-level map so a scope reaches it without a required member on
- * {@link UIElement}. Callbacks sit in mutable fields swapped in place by
- * {@link FocusState.set}, so the React reconciler's prop churn never rebinds
- * anything. Teardown is explicit: the element calls {@link FocusState.destroy}
- * from its own `destroy()`.
+ * Built by the element itself, one per element. The element calls
+ * {@link FocusState.destroy} from its own `destroy()`.
  */
 export class FocusState {
   /** The element's own hooks, which a scope drives it through. @internal */
@@ -128,11 +110,9 @@ export class FocusState {
   }
 
   /**
-   * Swap focus props in place, from the element's `update()`. Reads key
-   * presence the way the shared pointer fan-out does: a present key —
-   * including the explicit `undefined` the React reconciler emits for a
-   * removed prop — reassigns, while an absent key leaves the field alone, so
-   * a partial imperative `update({ ... })` drops no handler.
+   * Swap focus props in place, from the element's `update()`. A present key
+   * reassigns, including the explicit `undefined` the React reconciler emits
+   * for a removed prop. An absent key leaves the field alone.
    */
   set(props: FocusProps): void {
     if ("focusable" in props) this._focusable = props.focusable;
@@ -143,9 +123,8 @@ export class FocusState {
   }
 
   /**
-   * Record that focus arrived or left, paint it, and tell the game, in that
-   * order, so a throwing callback cannot leave the flag and the paint
-   * disagreeing. Repeated calls with the value already held do nothing.
+   * Record that focus arrived or left, paint it, then tell the game, so a
+   * throwing callback cannot leave the flag and the paint apart.
    * @internal
    */
   _setFocused(focused: boolean): void {
@@ -162,12 +141,8 @@ export class FocusState {
 
   /**
    * Step along `direction`, reporting whether the press was consumed and so
-   * must not move focus.
-   *
-   * The game's `onAdjust` owns left and right, which is what a volume or
-   * difficulty row is written as; the element's own stepper owns every other
-   * axis it claims, and left and right when the game supplied no handler. The
-   * two never both run.
+   * must not move focus. The game's `onAdjust` owns left and right when set;
+   * the element's own stepper owns everything else. The two never both run.
    * @internal
    */
   _adjust(direction: FocusDirection): boolean {
@@ -188,11 +163,9 @@ export class FocusState {
   }
 
   /**
-   * Leave focus navigation. Called from the element's own `destroy()`: the
-   * owning scope drops the element with no callback and no repaint, because
-   * painting from here would reach a freed Yoga node and a destroyed
-   * container. A pointer request this element left in the shared cell goes
-   * with it, so no scope reads it on a later frame.
+   * Leave focus navigation, from the element's own `destroy()`. The owning
+   * scope drops the element with no callback and no repaint, and a pending
+   * pointer request from this element is dropped too.
    */
   destroy(): void {
     releasePointerRequest(this.element);
