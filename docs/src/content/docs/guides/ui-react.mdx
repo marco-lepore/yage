@@ -377,7 +377,9 @@ function PauseMenu({
 `focus={{ … }}` literal on every render refreshes the scope's options in place,
 so `onCancel`, `onFocusMove`, `onActivate` and `onMoveBlocked` are replaced per
 render and the highlight stays on the row the player left it on. That holds for
-a `focus` object built from state, too. Dropping the prop — an explicit
+a `focus` object built from state, too. The object is the whole declaration: a
+key a render leaves out goes back to its default, so a callback you stop
+passing stops running. Dropping the prop — an explicit
 `undefined`, or a key gone from a conditional spread — disposes the scope, and
 input goes to the next scope that is shown.
 

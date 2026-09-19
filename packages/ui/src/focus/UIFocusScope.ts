@@ -357,7 +357,7 @@ export class UIFocusScope {
   /** @internal */
   constructor(host: UIFocusScopeHost, options: UIFocusScopeOptions) {
     this.host = host;
-    this._apply("UIFocusScope", options);
+    this._apply("UIFocusScope", options, true);
     scopeHosts.set(host.displayObject, this);
   }
 
@@ -481,11 +481,20 @@ export class UIFocusScope {
 
   /**
    * Replace the options this scope was built with, key by key. A key the
-   * caller left out keeps its value, so a React re-render passing a fresh
-   * object refreshes the callbacks and loses no focus.
+   * caller left out keeps its value.
    */
   setOptions(options: UIFocusScopeOptions): void {
-    this._apply("UIFocusScope.setOptions", options);
+    this._apply("UIFocusScope.setOptions", options, false);
+  }
+
+  /**
+   * Take `options` as the whole declaration: a key left out goes back to its
+   * default. A host calls this with the `focus` value it was handed, so a
+   * callback a React render stopped passing is dropped rather than kept.
+   * @internal
+   */
+  _replaceOptions(options: UIFocusScopeOptions): void {
+    this._apply("UIFocusScope", options, true);
   }
 
   /** Leave every element and stop reading input. @internal */
@@ -624,32 +633,36 @@ export class UIFocusScope {
 
   // -- Options --------------------------------------------------------------
 
-  private _apply(context: string, options: UIFocusScopeOptions): void {
+  private _apply(
+    context: string,
+    options: UIFocusScopeOptions,
+    replace: boolean,
+  ): void {
+    const has = (key: keyof UIFocusScopeOptions): boolean =>
+      replace || key in options;
     // Validate everything before writing anything, so a bad number leaves the
     // scope on the options it was working with.
-    const hasPadding = "scrollPadding" in options;
     const padding = options.scrollPadding ?? DEFAULT_SCROLL_PADDING;
-    if (hasPadding) assertScrollPadding(context, padding);
-    if ("input" in options) assertRepeatTiming(context, options.input?.repeat);
+    if (has("scrollPadding")) assertScrollPadding(context, padding);
+    if (has("input")) assertRepeatTiming(context, options.input?.repeat);
 
-    if (hasPadding) this._followOptions.padding = padding;
-    if ("input" in options) {
+    if (has("scrollPadding")) this._followOptions.padding = padding;
+    if (has("input")) {
       this._roles = resolveInput(options.input);
       this._warnedRoles.clear();
     }
-    if ("wrap" in options) this._wrap = options.wrap ?? true;
-    if ("autoFocus" in options) this._autoFocus = options.autoFocus ?? true;
-    if ("pointerFocus" in options) {
+    if (has("wrap")) this._wrap = options.wrap ?? true;
+    if (has("autoFocus")) this._autoFocus = options.autoFocus ?? true;
+    if (has("pointerFocus"))
       this._pointerFocus = options.pointerFocus ?? "press";
-    }
-    if ("modal" in options) {
+    if (has("modal")) {
       this._modal = options.modal ?? true;
       this._syncBlocker();
     }
-    if ("onFocusMove" in options) this._onFocusMove = options.onFocusMove;
-    if ("onActivate" in options) this._onActivate = options.onActivate;
-    if ("onMoveBlocked" in options) this._onMoveBlocked = options.onMoveBlocked;
-    if ("onCancel" in options) this._onCancel = options.onCancel;
+    if (has("onFocusMove")) this._onFocusMove = options.onFocusMove;
+    if (has("onActivate")) this._onActivate = options.onActivate;
+    if (has("onMoveBlocked")) this._onMoveBlocked = options.onMoveBlocked;
+    if (has("onCancel")) this._onCancel = options.onCancel;
   }
 
   // -- Pointer ownership ----------------------------------------------------
@@ -822,6 +835,17 @@ export class UIFocusScope {
    * not thrown back to row one.
    */
   private _validate(): void {
+    // An element that took the input on a path focus did not follow — a field
+    // clicked in a scope the pointer moves no focus in — takes focus with it,
+    // so the presses handed to it go to the row the scope reports.
+    const capture = this._capture;
+    if (capture !== null && capture !== this._focused) {
+      const index = this._indexOf(capture);
+      if (index !== -1) {
+        this._commitFocus(capture, index);
+        return;
+      }
+    }
     const focused = this._focused;
     if (focused === null) {
       this._resumeAfterDestroy();

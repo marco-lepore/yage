@@ -1017,6 +1017,10 @@ Either way, the scope taking its input back ends the element cleanly: focus
 moving off, the menu hiding, the widget being destroyed. A field keeps what
 was typed, and a list closes on the value it had.
 
+An element that takes the keys also takes focus. A field the player clicks in a
+`pointerFocus: "none"` scope becomes the focused row, so the row the scope
+reports is always the one the keys go to.
+
 `isCapturingInput(element)` answers whether that element is holding the keys.
 It answers per element, so a field edited in one surface says nothing about a
 field in another:

@@ -2130,6 +2130,20 @@ describe("UIFocusScope captured input", () => {
     expect(scope.focused).toBe(holder);
   });
 
+  it("moves focus to a holder that took the input while another row held it", () => {
+    const { holder, row, scope, input } = held();
+    holder.stop();
+    scope.focus(row);
+
+    holder.start();
+    scope._tick(input);
+
+    expect(scope.focused).toBe(holder);
+    input.press("interact");
+    scope._tick(input);
+    expect(holder.confirms).toBe(1);
+  });
+
   it("keeps a direction a holder that takes none was handed", () => {
     const { holder, scope, input } = held({ takesDirections: false });
 

@@ -776,7 +776,7 @@ scope?.focus(element); // false when hidden, disabled or not focusable
 scope?.focus(null); // clear
 scope?.activate();
 scope?.cancel();
-scope?.setOptions({ wrap: false }); // applied per key present
+scope?.setOptions({ wrap: false }); // applied per key present; `update({ focus })` replaces them all
 scope?.focused; // UIElement | null
 scope?.hasInput; // whether this scope is the one reading input
 scope?.candidates; // readonly UIElement[], tree order
@@ -830,7 +830,9 @@ An element that answers the player on its own while it is focused takes the
 scope's input, and the scope hands it all six roles rather than navigating.
 Two elements do so: a `PixiInput` holding the caret, and a `PixiSelect`
 showing its list. A direction the element has no use for is kept rather than
-passed on, so a press can never walk the menu behind it.
+passed on, so a press can never walk the menu behind it. An element that takes
+the input while another row is focused — a field clicked in a
+`pointerFocus: "none"` scope — takes focus with it.
 
 ```ts
 import { isCapturingInput } from "@yagejs/ui";

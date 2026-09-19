@@ -391,6 +391,18 @@ describe("UIPanel focus scope", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  it("drops a callback a later options object leaves out", () => {
+    const stack = new UIFocusStack();
+    const { panel } = mountedPanel(stack);
+    const onCancel = vi.fn();
+    panel.update({ focus: { onCancel } });
+
+    panel.update({ focus: {} });
+
+    panel.focusScope!.cancel();
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
   it("disposes the scope when the option is removed", () => {
     const stack = new UIFocusStack();
     const { panel } = mountedPanel(stack);

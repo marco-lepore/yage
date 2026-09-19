@@ -516,7 +516,7 @@ export class UIPanel implements UIContainerElement {
     const context = this._treeContext;
     const existing = this._focusScope;
     if (existing !== null) {
-      existing.setOptions(options);
+      existing._replaceOptions(options);
       this._registerScope(existing, context?.focusStack ?? null);
       return;
     }

@@ -303,7 +303,8 @@ place.** The reconciler passes every prop on every commit, so a new object
 literal each render is the normal case and focus stays where it is. Put the
 menu's callbacks in `focus` — `onCancel`, `onFocusMove`, `onActivate`,
 `onMoveBlocked` — and they are replaced per render without rebuilding
-anything. Dropping the prop, by an explicit `undefined` or a conditional
+anything. The object is the whole declaration: a key a render leaves out goes
+back to its default, so a callback you stop passing stops running. Dropping the prop, by an explicit `undefined` or a conditional
 spread, disposes the scope and hands input to the next shown one.
 
 `UIRoot` takes the same option, for a tree whose outermost element is not a
