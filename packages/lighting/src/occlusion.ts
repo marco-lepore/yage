@@ -6,6 +6,13 @@ import type { LightOccluderShape } from "./types.js";
 const CIRCLE_OUTLINE_VERTICES = 32;
 
 /**
+ * Squared world distance within which a point counts as sitting on an outline
+ * edge. A thousandth of a pixel: far below anything a game positions by, and
+ * far above the rounding a rotated or scaled shape leaves behind.
+ */
+const ON_EDGE_TOLERANCE_SQUARED = 1e-6;
+
+/**
  * @internal Footprints for a whole occluder set, resolved once and then read
  * many times. The query and the renderer both work from one of these, so the
  * light a game asks about and the light it sees come from the same geometry.
@@ -127,6 +134,16 @@ export class OccluderFootprint {
       const iy = vertices[i * 2 + 1]!;
       const jx = vertices[j * 2]!;
       const jy = vertices[j * 2 + 1]!;
+      // The outline belongs to the footprint, so a light resting against a
+      // wall counts as inside it and that wall lets it through. The crossing
+      // count below answers the interior and reads a point on an edge as
+      // either side of it.
+      if (
+        segmentPointDistanceSquared(jx, jy, ix, iy, x, y) <=
+        ON_EDGE_TOLERANCE_SQUARED
+      ) {
+        return true;
+      }
       if (iy > y !== jy > y && x < ((jx - ix) * (y - iy)) / (jy - iy) + ix) {
         inside = !inside;
       }

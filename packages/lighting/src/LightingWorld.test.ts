@@ -331,6 +331,17 @@ describe("LightingWorld occlusion", () => {
     expect(world.levelAt(12.0001, 38)).toBeCloseTo(1);
   });
 
+  it("lights the room from a lamp resting against a wall", () => {
+    const world = createWorld();
+    // The lamp sits exactly on the wall's face, where a grid-aligned level
+    // leaves a wall-mounted light. The wall it rests on holds it.
+    addLight(world, { x: 130, y: 0, radius: 120, intensity: 1 });
+    addOccluder(world, { type: "box", width: 60, height: 200 }, { x: 100 });
+
+    expect(world.levelAt(180, 0)).toBeCloseTo(1 - 50 / 120);
+    expect(world.levelAt(20, 0)).toBeCloseTo(1 - 110 / 120);
+  });
+
   it("stretches an occluder under a non-uniform scale", () => {
     const world = createWorld();
     addLight(world, { radius: 200, intensity: 1 });
