@@ -19,7 +19,9 @@ import { setViewport } from "./yoga-helpers.js";
 export class UILayoutSystem extends System {
   private readonly positionScratch = new Vec2Buffer();
   readonly phase = Phase.LateUpdate;
-  readonly priority = 200;
+  readonly priority: number = 200;
+  /** Whether a surface whose layout nothing changed is skipped. */
+  protected readonly onlyChanged: boolean = false;
 
   private surfaceQuery!: QueryResult;
   private virtualWidth = 0;
@@ -41,6 +43,7 @@ export class UILayoutSystem extends System {
     for (const entity of this.surfaceQuery) {
       const surface = entity.get(UISurface);
       if (!surface.enabled || !surface.visible) continue;
+      if (this.onlyChanged && !surface.root.yogaNode.isDirty()) continue;
 
       const node = surface.root;
 
@@ -100,6 +103,18 @@ export class UILayoutSystem extends System {
       }
     }
   }
+}
+
+/**
+ * Lays out again, after `UIFocusSystem`, every surface a focus callback
+ * changed. A confirm press that shows a dialog or a step that swaps a label
+ * runs after the frame's layout, so without this pass the frame is drawn with
+ * the new content at the old positions. A surface nothing touched is skipped.
+ */
+export class UIFocusRelayoutSystem extends UILayoutSystem {
+  override readonly priority: number = 203;
+
+  protected override readonly onlyChanged: boolean = true;
 }
 
 /**

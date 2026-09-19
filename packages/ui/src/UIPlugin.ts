@@ -1,7 +1,7 @@
 import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
 import { ErrorBoundaryKey, SceneHookRegistryKey } from "@yagejs/core";
 import type { TextStyle } from "@yagejs/renderer";
-import { UILayoutSystem } from "./UILayoutSystem.js";
+import { UIFocusRelayoutSystem, UILayoutSystem } from "./UILayoutSystem.js";
 import { FloatingOverlay, FloatingOverlayKey } from "./floating.js";
 import { FloatingOverlaySystem } from "./FloatingOverlaySystem.js";
 import { UIFocusStack, UIFocusStackKey } from "./focus/UIFocusStack.js";
@@ -96,6 +96,7 @@ export class UIPlugin implements Plugin {
     scheduler.add(new UILayoutSystem());
     scheduler.add(new FloatingOverlaySystem());
     scheduler.add(new UIFocusSystem());
+    scheduler.add(new UIFocusRelayoutSystem());
   }
 
   onDestroy(): void {

@@ -9,7 +9,7 @@ import type {
 } from "@yagejs/core";
 import type { DisplayContainer } from "@yagejs/renderer";
 import { UIPlugin } from "./UIPlugin.js";
-import { UILayoutSystem } from "./UILayoutSystem.js";
+import { UIFocusRelayoutSystem, UILayoutSystem } from "./UILayoutSystem.js";
 import { FloatingOverlaySystem } from "./FloatingOverlaySystem.js";
 import { UIFocusSystem } from "./UIFocusSystem.js";
 import { UIFocusScope } from "./focus/UIFocusScope.js";
@@ -153,7 +153,7 @@ describe("UIPlugin focus stacks", () => {
 });
 
 describe("UIPlugin systems", () => {
-  it("registers layout, floating and focus, in frame order", () => {
+  it("registers layout, floating, focus and the layout after focus, in frame order", () => {
     const systems: System[] = [];
     const scheduler = {
       add: (system: System) => systems.push(system),
@@ -165,7 +165,10 @@ describe("UIPlugin systems", () => {
       UILayoutSystem,
       FloatingOverlaySystem,
       UIFocusSystem,
+      UIFocusRelayoutSystem,
     ]);
-    expect(systems.map((system) => system.priority)).toEqual([200, 201, 202]);
+    expect(systems.map((system) => system.priority)).toEqual([
+      200, 201, 202, 203,
+    ]);
   });
 });

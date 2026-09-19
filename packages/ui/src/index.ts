@@ -115,6 +115,7 @@ export {
 
 // System & utilities
 export {
+  UIFocusRelayoutSystem,
   UILayoutSystem,
   resolveAnchor,
   pivotOffsetFromAnchor,

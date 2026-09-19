@@ -131,7 +131,7 @@ import { setYoga } from "./yoga-helpers.js";
 import { UISurface } from "./UISurface.js";
 import { Transform, Vec2 } from "@yagejs/core";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
-import { UILayoutSystem } from "./UILayoutSystem.js";
+import { UIFocusRelayoutSystem, UILayoutSystem } from "./UILayoutSystem.js";
 import { Anchor } from "./types.js";
 import { createUITestContext, spawnEntityInScene } from "./test-helpers.js";
 
@@ -337,6 +337,48 @@ describe("UILayoutSystem", () => {
     expect(p1.container.position.y).toBe(0);
     expect(p2.container.position.x).toBe(720); // 800 - 80
     expect(p2.container.position.y).toBe(575); // 600 - 25
+  });
+
+  describe("the pass after focus", () => {
+    function relayout(ctx: ReturnType<typeof setup>): UIFocusRelayoutSystem {
+      const pass = new UIFocusRelayoutSystem();
+      pass._setContext(ctx.context);
+      pass.onRegister!(ctx.context);
+      return pass;
+    }
+
+    it("places a dialog a callback showed after the frame's layout", () => {
+      const ctx = setup();
+      const surface = spawnEntityInScene(ctx.scene).add(
+        new UISurface({ anchor: Anchor.TopLeft, direction: "column" }),
+      );
+      surface.button("Open", { width: 100, height: 30 });
+      const dialog = surface.panel({ direction: "column", padding: 10 });
+      const confirm = dialog.button("Yes", { width: 80, height: 20 });
+      dialog.visible = false;
+      system.update(16);
+
+      dialog.visible = true;
+      expect(confirm.displayObject.position.x).toBe(0);
+      relayout(ctx).update(16);
+
+      expect(dialog.displayObject.position.y).toBe(30);
+      expect(confirm.displayObject.position.x).toBe(10);
+    });
+
+    it("leaves a surface nothing changed alone", () => {
+      const ctx = setup();
+      const surface = spawnEntityInScene(ctx.scene).add(
+        new UISurface({ anchor: Anchor.TopLeft }),
+      );
+      surface.button("A", { width: 100, height: 30 });
+      system.update(16);
+      const applyLayout = vi.spyOn(surface.root, "applyLayout");
+
+      relayout(ctx).update(16);
+
+      expect(applyLayout).not.toHaveBeenCalled();
+    });
   });
 
   describe("transform positioning", () => {
