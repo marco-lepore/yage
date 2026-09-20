@@ -20,6 +20,9 @@ function addLight(
     radius?: number;
     intensity?: number;
     color?: number;
+    size?: number;
+    cone?: number;
+    rotation?: number;
     castShadows?: boolean;
   } = {},
 ): LightSource {
@@ -27,6 +30,7 @@ function addLight(
   entity.add(
     new Transform({
       position: new Vec2(options.x ?? 0, options.y ?? 0),
+      rotation: options.rotation ?? 0,
     }),
   );
   return entity.add(
@@ -34,9 +38,43 @@ function addLight(
       radius: options.radius ?? 100,
       intensity: options.intensity ?? 0.5,
       color: options.color ?? 0xffffff,
+      size: options.size ?? 0,
+      ...(options.cone === undefined ? {} : { cone: { angle: options.cone } }),
       castShadows: options.castShadows ?? true,
     }),
   );
+}
+
+/**
+ * Share of a lamp at the origin that reaches a point, for a world with no
+ * ambient light and a single source of full intensity.
+ */
+function coverageAt(
+  world: LightingWorld,
+  radius: number,
+  x: number,
+  y: number,
+): number {
+  return world.levelAt(x, y) / (1 - Math.hypot(x, y) / radius);
+}
+
+/**
+ * How wide the partly lit band of a shadow is along a vertical line, in world
+ * pixels, for a lamp at the origin. The scan stops at `x` above the axis,
+ * short of the rim where the falloff leaves too little light to read a share
+ * from.
+ */
+function borderWidth(world: LightingWorld, radius: number, x: number): number {
+  const tolerance = 1e-9;
+  let first = Number.NaN;
+  let last = Number.NaN;
+  for (let y = 0; y <= x; y += 0.5) {
+    const coverage = coverageAt(world, radius, x, y);
+    if (coverage <= tolerance || coverage >= 1 - tolerance) continue;
+    if (Number.isNaN(first)) first = y;
+    last = y;
+  }
+  return last - first;
 }
 
 function addOccluder(
@@ -394,6 +432,122 @@ describe("LightingWorld occlusion", () => {
   });
 });
 
+describe("LightingWorld lamp size", () => {
+  it("dims the border by the share of the lamp a blocker hides", () => {
+    const world = createWorld();
+    const light = addLight(world, { radius: 300, intensity: 1, size: 40 });
+    addOccluder(world, { type: "box", width: 20, height: 40 }, { x: 60 });
+
+    // (150, 60) sits on the line from the lamp's centre past the blocker's
+    // corner, which leaves exactly half the lamp visible.
+    expect(coverageAt(world, 300, 150, 60)).toBeCloseTo(0.5);
+    // Deep behind the blocker and well clear of it, nothing changes.
+    expect(world.levelAt(150, 0)).toBe(0);
+    expect(coverageAt(world, 300, 150, 160)).toBeCloseTo(1);
+
+    // A point lamp switches the same point off outright.
+    light.size = 0;
+    expect(world.levelAt(150, 60)).toBe(0);
+  });
+
+  it("widens the border with the distance from the blocker", () => {
+    const world = createWorld();
+    addLight(world, { radius: 600, intensity: 1, size: 40 });
+    addOccluder(world, { type: "box", width: 20, height: 40 }, { x: 60 });
+
+    expect(borderWidth(world, 600, 400)).toBeGreaterThan(
+      borderWidth(world, 600, 150) * 2,
+    );
+  });
+
+  it("softens a circle's border too", () => {
+    const world = createWorld();
+    addLight(world, { radius: 300, intensity: 1, size: 40 });
+    addOccluder(world, { type: "circle", radius: 20 }, { x: 60 });
+
+    expect(borderWidth(world, 300, 200)).toBeGreaterThan(20);
+    expect(world.levelAt(150, 0)).toBe(0);
+  });
+
+  it("takes one stretch of a lamp away once when two occluders hide it", () => {
+    const single = createWorld();
+    addLight(single, { radius: 300, intensity: 1, size: 40 });
+    addOccluder(single, { type: "box", width: 20, height: 40 }, { x: 60 });
+
+    const doubled = createWorld();
+    addLight(doubled, { radius: 300, intensity: 1, size: 40 });
+    addOccluder(doubled, { type: "box", width: 20, height: 40 }, { x: 60 });
+    addOccluder(doubled, { type: "box", width: 20, height: 40 }, { x: 60 });
+
+    for (const y of [40, 55, 60, 65, 80]) {
+      expect(doubled.levelAt(150, y)).toBe(single.levelAt(150, y));
+    }
+  });
+
+  it("keeps a point inside an occluder dark for a wide lamp", () => {
+    const world = createWorld();
+    addLight(world, { radius: 200, intensity: 1, size: 60 });
+    addOccluder(world, { type: "box", width: 40, height: 40 }, { x: 60 });
+
+    expect(world.levelAt(60, 0)).toBe(0);
+  });
+
+  it("lights the room from a wide lamp standing inside an occluder", () => {
+    const world = createWorld();
+    addLight(world, { radius: 200, intensity: 1, size: 60 });
+    addOccluder(world, { type: "box", width: 40, height: 40 });
+
+    expect(world.levelAt(100, 0)).toBeCloseTo(0.5);
+  });
+});
+
+describe("LightingWorld cone", () => {
+  it("reaches only the directions its entity faces", () => {
+    const world = createWorld();
+    const light = addLight(world, {
+      radius: 200,
+      intensity: 1,
+      cone: Math.PI / 2,
+    });
+
+    expect(world.levelAt(100, 0)).toBeCloseTo(0.5);
+    expect(world.levelAt(100, 60)).toBeCloseTo(1 - Math.hypot(100, 60) / 200);
+    expect(world.levelAt(100, 140)).toBe(0);
+    expect(world.levelAt(-100, 0)).toBe(0);
+
+    light.entity.get(Transform).setRotation(Math.PI);
+    expect(world.levelAt(100, 0)).toBe(0);
+    expect(world.levelAt(-100, 0)).toBeCloseTo(0.5);
+  });
+
+  it("widens to the whole turn when the cone is opened up", () => {
+    const world = createWorld();
+    const light = addLight(world, {
+      radius: 200,
+      intensity: 1,
+      cone: Math.PI / 2,
+    });
+
+    expect(world.levelAt(-100, 0)).toBe(0);
+    light.coneAngle = Math.PI * 2;
+    expect(world.levelAt(-100, 0)).toBeCloseTo(0.5);
+  });
+
+  it("reports a lamp's own position as lit whichever way it faces", () => {
+    const world = createWorld();
+    addLight(world, {
+      x: 12,
+      y: 38,
+      radius: 50,
+      intensity: 1,
+      cone: Math.PI / 6,
+      rotation: Math.PI,
+    });
+
+    expect(world.levelAt(12, 38)).toBe(1);
+  });
+});
+
 describe("LightingWorld.levelGridInto", () => {
   it("fills every cell with what levelAt reports for its centre", () => {
     const { scene } = createMockScene();
@@ -418,6 +572,55 @@ describe("LightingWorld.levelGridInto", () => {
     };
     const out = new Float32Array(grid.cols * grid.rows);
     expect(world.levelGridInto(out, grid)).toBe(out);
+
+    for (let row = 0; row < grid.rows; row++) {
+      for (let col = 0; col < grid.cols; col++) {
+        const x = grid.x + (col + 0.5) * grid.cellWidth;
+        const y = grid.y + (row + 0.5) * grid.cellHeight;
+        expect(out[row * grid.cols + col]).toBe(
+          Math.fround(world.levelAt(x, y)),
+        );
+      }
+    }
+  });
+
+  it("matches levelAt for wide lamps and cones alike", () => {
+    const { scene } = createMockScene();
+    const world = new LightingWorld(scene, { level: 0.05 });
+    scene.registerScoped(LightingWorldKey, world);
+    addLight(world, {
+      x: 40,
+      y: 30,
+      radius: 140,
+      intensity: 0.9,
+      size: 30,
+    });
+    addLight(world, {
+      x: 170,
+      y: 90,
+      radius: 120,
+      intensity: 0.8,
+      size: 18,
+      cone: Math.PI / 2,
+      rotation: Math.PI,
+    });
+    addOccluder(
+      world,
+      { type: "box", width: 16, height: 80 },
+      { x: 90, y: 40 },
+    );
+    addOccluder(world, { type: "circle", radius: 18 }, { x: 140, y: 30 });
+
+    const grid = {
+      x: -20,
+      y: -10,
+      cols: 24,
+      rows: 16,
+      cellWidth: 10,
+      cellHeight: 8,
+    };
+    const out = new Float32Array(grid.cols * grid.rows);
+    world.levelGridInto(out, grid);
 
     for (let row = 0; row < grid.rows; row++) {
       for (let col = 0; col < grid.cols; col++) {

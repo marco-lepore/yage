@@ -13,6 +13,14 @@ const CIRCLE_OUTLINE_VERTICES = 32;
 const ON_EDGE_TOLERANCE_SQUARED = 1e-6;
 
 /**
+ * Nearest depth, in world pixels from the query point, at which an occluder
+ * edge still projects onto the lamp. An edge closer than that runs through the
+ * point itself, where the projection is unbounded and the clamp to the lamp's
+ * own ends answers instead.
+ */
+const MIN_PROJECTION_DEPTH = 1e-3;
+
+/**
  * @internal Footprints for a whole occluder set, resolved once and then read
  * many times. The query and the renderer both work from one of these, so the
  * light a game asks about and the light it sees come from the same geometry.
@@ -37,6 +45,235 @@ export class OccluderFootprintPool {
   /** The footprint at `index`, valid while `index` is below {@link count}. */
   get(index: number): OccluderFootprint {
     return this.footprints[index]!;
+  }
+}
+
+/**
+ * @internal A lamp of a given width, seen from one query point.
+ *
+ * The lamp is a line of width `2 * halfSize` centred on the light and square
+ * to the direction from the point to it. Coordinates along that line run from
+ * -1 at one end to 1 at the other, and each occluder edge hides a stretch of
+ * it. Overlapping stretches merge, so two blockers covering the same part of
+ * the lamp take it away once.
+ *
+ * One view is aimed at each light in turn from each point, so the direction,
+ * the depth and the bounds are worked out once and every footprint reads them.
+ */
+export class LampView {
+  /** World point the lamp is seen from. */
+  pointX = 0;
+  pointY = 0;
+  /** Smallest world rectangle holding the point and the whole lamp. */
+  minX = 0;
+  minY = 0;
+  maxX = 0;
+  maxY = 0;
+  /** Unit direction from the point towards the light. */
+  private alongX = 1;
+  private alongY = 0;
+  /** World centre of the lamp's line. */
+  private lightX = 0;
+  private lightY = 0;
+  /** Distance to the light, which is the depth the lamp's line sits at. */
+  private distance = 0;
+  private halfSize = 0;
+  private readonly starts: number[] = [];
+  private readonly ends: number[] = [];
+  private count = 0;
+
+  /**
+   * Point this view at a light from a query point, dropping what the last
+   * point hid. Returns `false` for a point standing on the light itself,
+   * which has no direction to project along and sees the whole lamp.
+   */
+  aimAt(
+    pointX: number,
+    pointY: number,
+    lightX: number,
+    lightY: number,
+    halfSize: number,
+  ): boolean {
+    this.count = 0;
+    const toLightX = lightX - pointX;
+    const toLightY = lightY - pointY;
+    const distance = Math.hypot(toLightX, toLightY);
+    if (distance === 0) return false;
+    this.pointX = pointX;
+    this.pointY = pointY;
+    this.alongX = toLightX / distance;
+    this.alongY = toLightY / distance;
+    this.lightX = lightX;
+    this.lightY = lightY;
+    this.distance = distance;
+    this.halfSize = halfSize;
+    // The lamp reaches at most its own half-width from the light, in any
+    // direction, so this rectangle holds every ray the point can send it.
+    this.minX = Math.min(pointX, lightX - halfSize);
+    this.maxX = Math.max(pointX, lightX + halfSize);
+    this.minY = Math.min(pointY, lightY - halfSize);
+    this.maxY = Math.max(pointY, lightY + halfSize);
+    return true;
+  }
+
+  /** Whether the whole lamp is hidden, so no further edge can change it. */
+  get blocked(): boolean {
+    return this.count === 1 && this.starts[0]! <= -1 && this.ends[0]! >= 1;
+  }
+
+  /** Share of the lamp's width that nothing hides, from 0 to 1. */
+  get litShare(): number {
+    let hidden = 0;
+    for (let i = 0; i < this.count; i++) {
+      hidden += this.ends[i]! - this.starts[i]!;
+    }
+    return Math.max(0, 1 - hidden / 2);
+  }
+
+  /** Take the whole lamp away, for a point an occluder covers outright. */
+  hideAll(): void {
+    this.count = 1;
+    this.starts[0] = -1;
+    this.ends[0] = 1;
+  }
+
+  /**
+   * Hide the stretch of the lamp that one occluder edge takes away.
+   *
+   * The edge is first clipped to the depth between the point and the lamp —
+   * anything nearer than the point or beyond the lamp hides nothing — and each
+   * surviving end is then carried along its own ray out to the lamp's depth,
+   * which is where it stops light.
+   */
+  hide(ax: number, ay: number, bx: number, by: number): void {
+    const alongX = this.alongX;
+    const alongY = this.alongY;
+    const distance = this.distance;
+    const firstX = ax - this.pointX;
+    const firstY = ay - this.pointY;
+    const secondX = bx - this.pointX;
+    const secondY = by - this.pointY;
+    const firstDepth = firstX * alongX + firstY * alongY;
+    const secondDepth = secondX * alongX + secondY * alongY;
+    if (
+      (firstDepth < MIN_PROJECTION_DEPTH &&
+        secondDepth < MIN_PROJECTION_DEPTH) ||
+      (firstDepth > distance && secondDepth > distance)
+    ) {
+      return;
+    }
+    const firstSide = firstY * alongX - firstX * alongY;
+    const secondSide = secondY * alongX - secondX * alongY;
+
+    let from = 0;
+    let to = 1;
+    const depthSpan = secondDepth - firstDepth;
+    if (depthSpan !== 0) {
+      const atNear = (MIN_PROJECTION_DEPTH - firstDepth) / depthSpan;
+      const atFar = (distance - firstDepth) / depthSpan;
+      from = Math.max(from, Math.min(atNear, atFar));
+      to = Math.min(to, Math.max(atNear, atFar));
+      if (from > to) return;
+    }
+
+    // An end at depth `d` and offset `s` from the line to the light meets the
+    // lamp `s * distance / d` off its centre; dividing by the lamp's own
+    // half-width puts that on the -1 to 1 scale.
+    const scale = distance / this.halfSize;
+    const fromDepth = firstDepth + depthSpan * from;
+    const fromSide = firstSide + (secondSide - firstSide) * from;
+    const toDepth = firstDepth + depthSpan * to;
+    const toSide = firstSide + (secondSide - firstSide) * to;
+    const fromEnd = (fromSide / fromDepth) * scale;
+    const toEnd = (toSide / toDepth) * scale;
+    this.add(
+      Math.max(-1, Math.min(fromEnd, toEnd)),
+      Math.min(1, Math.max(fromEnd, toEnd)),
+    );
+  }
+
+  /**
+   * Hide the stretch a disc takes, for a query point outside it.
+   *
+   * The disc's silhouette from the point is the chord between the two points
+   * where the view of it grazes the outline. Where the lamp's own line runs
+   * through the disc that chord can sit entirely beyond the lamp, hiding
+   * nothing by itself, while lamp points inside the disc are hidden outright.
+   * The chord between the two places the lamp's line meets the outline covers
+   * those, and the two chords together bound the hidden stretch in every
+   * arrangement of disc and lamp.
+   */
+  hideDisc(centerX: number, centerY: number, radius: number): void {
+    const pointX = this.pointX;
+    const pointY = this.pointY;
+    const toCenterX = centerX - pointX;
+    const toCenterY = centerY - pointY;
+    const centerDistance = Math.hypot(toCenterX, toCenterY);
+    const sin = radius / centerDistance;
+    const cos = Math.sqrt(Math.max(0, 1 - sin * sin));
+    const reach = centerDistance * cos;
+    const unitX = toCenterX / centerDistance;
+    const unitY = toCenterY / centerDistance;
+    this.hide(
+      pointX + reach * (unitX * cos - unitY * sin),
+      pointY + reach * (unitX * sin + unitY * cos),
+      pointX + reach * (unitX * cos + unitY * sin),
+      pointY + reach * (unitY * cos - unitX * sin),
+    );
+
+    // The lamp's line is square to `along`, so its own points are the ones at
+    // offset `t` from the light. Both ends of the chord already sit on the
+    // lamp, so their offsets are their coordinates along it.
+    const offsetX = this.lightX - centerX;
+    const offsetY = this.lightY - centerY;
+    const acrossX = -this.alongY;
+    const acrossY = this.alongX;
+    const midpoint = -(offsetX * acrossX + offsetY * acrossY);
+    const halfChordSquared =
+      midpoint * midpoint -
+      (offsetX * offsetX + offsetY * offsetY) +
+      radius * radius;
+    if (halfChordSquared <= 0) return;
+    const halfChord = Math.sqrt(halfChordSquared);
+    const scale = 1 / this.halfSize;
+    this.add(
+      Math.max(-1, (midpoint - halfChord) * scale),
+      Math.min(1, (midpoint + halfChord) * scale),
+    );
+  }
+
+  /** Record one hidden stretch, merged into the ones it meets. */
+  private add(start: number, end: number): void {
+    if (!(end > start)) return;
+    const starts = this.starts;
+    const ends = this.ends;
+    let first = 0;
+    while (first < this.count && ends[first]! < start) first++;
+    let last = first;
+    let low = start;
+    let high = end;
+    while (last < this.count && starts[last]! <= high) {
+      if (starts[last]! < low) low = starts[last]!;
+      if (ends[last]! > high) high = ends[last]!;
+      last++;
+    }
+    const merged = last - first;
+    if (merged > 1) {
+      const removed = merged - 1;
+      for (let i = last; i < this.count; i++) {
+        starts[i - removed] = starts[i]!;
+        ends[i - removed] = ends[i]!;
+      }
+      this.count -= removed;
+    } else if (merged === 0) {
+      for (let i = this.count; i > first; i--) {
+        starts[i] = starts[i - 1]!;
+        ends[i] = ends[i - 1]!;
+      }
+      this.count++;
+    }
+    starts[first] = low;
+    ends[first] = high;
   }
 }
 
@@ -208,6 +445,49 @@ export class OccluderFootprint {
       }
     }
     return false;
+  }
+
+  /**
+   * Hide the stretch of a lamp this footprint takes from the view's point.
+   *
+   * A circle is handled as a disc; every other shape projects each edge of
+   * its outline. The union of those stretches is the part of the lamp whose
+   * straight line back to the point crosses the footprint, which is what
+   * `blocks()` answers for a point lamp.
+   */
+  projectShadow(lamp: LampView): void {
+    if (
+      this.maxX < lamp.minX ||
+      this.minX > lamp.maxX ||
+      this.maxY < lamp.minY ||
+      this.minY > lamp.maxY
+    ) {
+      return;
+    }
+    const pointX = lamp.pointX;
+    const pointY = lamp.pointY;
+    // A point inside an occluder is dark for every light outside it.
+    if (this.contains(pointX, pointY)) {
+      lamp.hideAll();
+      return;
+    }
+
+    if (this.isCircle) {
+      lamp.hideDisc(this.centerX, this.centerY, this.radius);
+      return;
+    }
+
+    const vertices = this.vertices;
+    const count = this.vertexCount;
+    for (let i = 0, j = count - 1; i < count; j = i++) {
+      lamp.hide(
+        vertices[j * 2]!,
+        vertices[j * 2 + 1]!,
+        vertices[i * 2]!,
+        vertices[i * 2 + 1]!,
+      );
+      if (lamp.blocked) return;
+    }
   }
 
   /** Write the shape's scaled outline in entity-local pixels; returns its length. */

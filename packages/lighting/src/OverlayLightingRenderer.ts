@@ -12,7 +12,7 @@ import type {
   LightingRendererContext,
   LightingRenderFrame,
 } from "./types.js";
-import { assertPositive } from "./validation.js";
+import { FULL_TURN, assertPositive } from "./validation.js";
 
 const DEFAULT_LAYER = "lighting";
 const DEFAULT_ORDER = 900;
@@ -45,9 +45,14 @@ interface SourceVisual {
   shadows: Graphics | null;
   masked: boolean;
   gradient: FillGradient;
+  /** Radius the gradient spans, or 0 while it follows the drawn bounds. */
+  gradientRadius: number;
   radius: number;
   intensity: number;
   color: number;
+  coneAngle: number;
+  /** Screen-space direction the cone points along, in radians. */
+  aim: number;
   x: number;
   y: number;
   /** World-space light state the drawn shadows were built from. */
@@ -71,10 +76,15 @@ interface OccluderState {
  * Draws ambient colour plus radial lights into an offscreen buffer, then
  * multiplies that buffer over the scene.
  *
- * Coloured lights tint every surface they reach. An enabled occluder is
- * opaque: each light is drawn through an inverse mask covering everything its
- * occluders hide, so the picture follows the same rule as
- * `LightingWorld.levelAt()`. Shadow edges are hard.
+ * Coloured lights tint every surface they reach. A light with a cone is drawn
+ * as a pie slice aimed along its entity's world rotation. An enabled occluder
+ * is opaque: each light is drawn through an inverse mask covering everything
+ * its occluders hide.
+ *
+ * Shadow edges are hard whatever a light's `size` says. At `size: 0` the
+ * picture is exactly what `LightingWorld.levelAt()` reports; above it the
+ * drawn edge runs along the middle of the soft border the query answers with,
+ * so the two agree everywhere except inside that border.
  */
 export class OverlayLightingRenderer implements LightingRenderer {
   private readonly positionScratch = new Vec2Buffer();
@@ -336,6 +346,8 @@ export class OverlayLightingRenderer implements LightingRenderer {
         ? camera.worldToScreenInto(this.positionScratch, worldX, worldY)
         : position;
       const radius = source.radius * scale;
+      const coneAngle = source.coneAngle;
+      const gradientRadius = gradientRadiusFor(coneAngle, radius);
       let visual = this.visuals.get(source);
       if (!visual) {
         visual = this.createVisual(source, radius, projected.x, projected.y);
@@ -347,18 +359,36 @@ export class OverlayLightingRenderer implements LightingRenderer {
 
       if (
         visual.color !== source.color ||
-        visual.intensity !== source.intensity
+        visual.intensity !== source.intensity ||
+        visual.gradientRadius !== gradientRadius
       ) {
         visual.gradient.destroy();
-        visual.gradient = createLightGradient(source.color, source.intensity);
+        visual.gradient = createLightGradient(
+          source.color,
+          source.intensity,
+          gradientRadius,
+        );
         visual.color = source.color;
         visual.intensity = source.intensity;
+        visual.gradientRadius = gradientRadius;
         visual.radius = radius;
+        visual.coneAngle = coneAngle;
         redrawLight(visual);
         changed = true;
-      } else if (visual.radius !== radius) {
+      } else if (visual.radius !== radius || visual.coneAngle !== coneAngle) {
         visual.radius = radius;
+        visual.coneAngle = coneAngle;
         redrawLight(visual);
+        changed = true;
+      }
+
+      // Shadow geometry rides the camera transform; a light's own graphic is
+      // already projected, so its cone turns by the camera's rotation here.
+      const aim =
+        coneAngle < FULL_TURN ? source.rotation - this.viewRotation : 0;
+      if (visual.aim !== aim) {
+        visual.aim = aim;
+        visual.graphics.rotation = aim;
         changed = true;
       }
 
@@ -458,15 +488,26 @@ export class OverlayLightingRenderer implements LightingRenderer {
     graphics.blendMode = "add";
     graphics.position.set(x, y);
     container.addChild(graphics);
+    const coneAngle = source.coneAngle;
+    const gradientRadius = gradientRadiusFor(coneAngle, radius);
+    const aim = coneAngle < FULL_TURN ? source.rotation - this.viewRotation : 0;
+    graphics.rotation = aim;
     const visual: SourceVisual = {
       container,
       graphics,
       shadows: null,
       masked: false,
-      gradient: createLightGradient(source.color, source.intensity),
+      gradient: createLightGradient(
+        source.color,
+        source.intensity,
+        gradientRadius,
+      ),
+      gradientRadius,
       radius,
       intensity: source.intensity,
       color: source.color,
+      coneAngle,
+      aim,
       x,
       y,
       shadowX: NaN,
@@ -488,17 +529,49 @@ export function overlayLighting(
   return (context) => new OverlayLightingRenderer(context, options);
 }
 
-function createLightGradient(color: number, intensity: number): FillGradient {
+/**
+ * How far a light's gradient has to span, or 0 to let it follow the drawn
+ * shape's own bounds.
+ *
+ * A full circle's bounds are the light itself, so a gradient normalised to
+ * them lands correctly at any radius and a radius change only redraws the
+ * shape. A pie slice's bounds are narrower than the light, so a cone's
+ * gradient is placed on the lamp and spans the radius, which costs a rebuild
+ * whenever the radius changes.
+ */
+function gradientRadiusFor(coneAngle: number, radius: number): number {
+  return coneAngle < FULL_TURN ? radius : 0;
+}
+
+function createLightGradient(
+  color: number,
+  intensity: number,
+  gradientRadius: number,
+): FillGradient {
+  const stops = [
+    { offset: 0, color, alpha: intensity },
+    { offset: 1, color, alpha: 0 },
+  ];
+  if (gradientRadius === 0) return radialGradient({ stops }) as FillGradient;
   return radialGradient({
-    stops: [
-      { offset: 0, color, alpha: intensity },
-      { offset: 1, color, alpha: 0 },
-    ],
+    stops,
+    center: { x: 0, y: 0 },
+    outerRadius: gradientRadius,
+    space: "global",
   }) as FillGradient;
 }
 
 function redrawLight(visual: SourceVisual): void {
-  visual.graphics.clear().circle(0, 0, visual.radius).fill(visual.gradient);
+  const graphics = visual.graphics.clear();
+  if (visual.coneAngle >= FULL_TURN) {
+    graphics.circle(0, 0, visual.radius).fill(visual.gradient);
+    return;
+  }
+  const half = visual.coneAngle / 2;
+  graphics
+    .moveTo(0, 0)
+    .arc(0, 0, visual.radius, -half, half)
+    .fill(visual.gradient);
 }
 
 /**

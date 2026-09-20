@@ -23,9 +23,14 @@ engine.use(
 The default `OverlayLightingRenderer` draws a half-resolution light buffer on
 a screen-space `"lighting"` layer at order `900`. It multiplies ambient colour
 and soft radial lights over the scene. A light is drawn only where no occluder
-stands between it and the surface, so the picture follows the same rule as
-`levelAt()`. Shadow edges are hard. Coloured lights tint the surfaces they
-reach. UI on the conventional order `1000` remains above the lighting layer.
+stands between it and the surface. A light with a cone is drawn as a pie
+slice. Coloured lights tint the surfaces they reach. UI on the conventional
+order `1000` remains above the lighting layer.
+
+Shadow edges are hard whatever a light's `size` says. At `size: 0` the drawn
+picture is exactly what `levelAt()` reports. Above it the drawn edge runs along
+the middle of the soft border the query answers with, so the two agree
+everywhere except inside that border.
 
 Configure the built-in renderer:
 
@@ -62,6 +67,8 @@ const light = torch.add(
     radius: 180, // required; world pixels, above 0
     intensity: 0.9, // 0..1; default 1
     color: 0xffb060, // default 0xffffff
+    size: 24, // lamp diameter in world pixels; default 0
+    cone: { angle: Math.PI / 3 }, // spotlight spread; omit for every direction
     castShadows: true, // default true
     enabled: true, // default true
   }),
@@ -70,9 +77,20 @@ const light = torch.add(
 
 The centre follows `Transform.worldPosition`, including parent transforms.
 Transform scale does not change `radius`. Set `light.radius`,
-`light.intensity`, `light.color`, or `light.castShadows` to update a live
-light. Disabling the component or its entity removes it until it becomes
-active again.
+`light.intensity`, `light.color`, `light.size`, `light.coneAngle`, or
+`light.castShadows` to update a live light. Disabling the component or its
+entity removes it until it becomes active again.
+
+`radius` is how far the light reaches and `size` is how wide the lamp itself
+is. A lamp wider than a point is partly hidden behind a blocker's edge, so its
+shadows carry a soft border and a partly covered point dims rather than
+switching off. The border widens with the distance from the blocker. At
+`size: 0` a light is a point and its shadows have hard edges.
+
+`cone` narrows a light to a spotlight of that full spread in radians, pointing
+along the entity's world rotation, and `light.coneAngle` reads or sets it. A
+whole turn, `Math.PI * 2`, is the default and reaches every direction. A cone
+changes where light lands in the query as well as in the picture.
 
 With `castShadows: false` a light passes through every occluder, in the query
 and in the drawn picture. Use it for a global fill or a highlight that has to
@@ -104,14 +122,20 @@ Call `this.lighting.setAmbient(0.08)` or
 
 `levelAt(x, y)` starts with `ambientLevel`, adds each enabled radial source
 that reaches the point using linear falloff, and clamps the result to `1`.
-Source colours do not change the scalar query.
+Source colours do not change the scalar query. A source with a cone
+contributes only to the points its cone covers.
 
-A source reaches the point only when the straight line from the light to the
-point misses every enabled occluder. Touching an edge or a corner counts as
-blocked, so two occluders that meet leave no gap. An occluder that contains
-the light does not block it, so a lamp mounted on a pillar still lights the
-room. A point inside an occluder is dark for every light outside it. Shadows
-are hard: partial cover does not dim a light.
+Each source's contribution is scaled by the share of its lamp the point can
+see. The lamp is a line of width `size` centred on the light and square to the
+direction from the point to it; every occluder's outline is projected onto
+that line, the projections are merged, and the unblocked share is what is
+left. Touching an edge or a corner counts as blocked, so two occluders that
+meet leave no gap. An occluder that contains the light does not block it, so a
+lamp mounted on a pillar still lights the room. A point inside an occluder is
+dark for every light outside it.
+
+At `size: 0` the share is 1 or 0 and the rule reduces to the straight line
+from the light to the point missing every enabled occluder.
 
 Sample a whole grid in one call with `levelGridInto`:
 
@@ -193,6 +217,12 @@ An enabled occluder is opaque to `levelAt()`, to `levelGridInto()`, and to the
 built-in overlay renderer. Disabling the component or its entity lets light
 through again. Custom renderers read `LightingWorld.occluders`.
 
+A wide lamp costs more to query than a point lamp, because every occluder in
+reach is projected onto the lamp rather than tested once for a hit: about
+3 ms for point lamps and about 10 ms for 24-pixel lamps, for one
+`levelGridInto` call over 14,400 cells with 50 lights of radius 200 and 400
+box occluders.
+
 Both `LightSource` and `LightOccluder` expose world coordinates as an immutable
 `position: Vec2` and as `getPositionInto(out: Vec2Buffer): Vec2Buffer`.
 For repeated reads, reuse a buffer from `@yagejs/core`:
@@ -239,4 +269,5 @@ YAGE creates one backend per entered scene. Renderer callbacks are attributed
 through the engine error boundary and still rethrow.
 
 A custom renderer that draws shadows should apply the rule `levelAt()` applies,
-or the drawn light and the queried light disagree.
+or the drawn light and the queried light disagree. The query is the truth
+whichever renderer a scene uses.

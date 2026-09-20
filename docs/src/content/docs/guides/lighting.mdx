@@ -3,10 +3,10 @@ title: "Lighting"
 description: "Add radial lights and query how lit a point is"
 ---
 
-`@yagejs/lighting` adds soft radial lights to a scene and gives gameplay code a
-continuous `0..1` light level. Walls and other occluders block light in both,
-so a stealth game or a maze-of-light game can use one set of light sources for
-its visuals and its rules.
+`@yagejs/lighting` adds radial lights and spotlights to a scene and gives
+gameplay code a continuous `0..1` light level. Walls and other occluders block
+light in both, so a stealth game or a maze-of-light game can use one set of
+light sources for its visuals and its rules.
 
 ## Install and enable lighting
 
@@ -65,6 +65,8 @@ gameplay radius changes:
 light.radius = 240;
 light.intensity = 0.7;
 light.color = 0x80aaff;
+light.size = 24;
+light.coneAngle = Math.PI / 3;
 light.castShadows = false;
 light.enabled = false;
 ```
@@ -77,6 +79,57 @@ Disabling the light or its entity removes it from rendering and queries until
 it becomes active again. If light settings are durable game state, include
 their plain values in the game's explicit save root and rebuild the light when
 the scene is created.
+
+### Give the lamp a size
+
+`radius` says how far a light reaches. `size` says how wide the lamp itself
+is, in world pixels, and it defaults to `0`:
+
+```typescript
+const lantern = this.spawn("lantern");
+lantern.add(new Transform({ position: new Vec2(420, 180) }));
+
+lantern.add(
+  new LightSource({
+    radius: 180,
+    size: 24,
+  }),
+);
+```
+
+A lamp wider than a point is partly hidden behind a blocker's edge, so the
+edge of its shadow is a band that runs from full light to full dark rather
+than a line. A point standing in that band is dimmed by the share of the lamp
+it can still see. The band widens with the distance from the blocker, the way
+a real shadow does: crisp against the wall the crate stands on, and blurred
+several metres behind it.
+
+At `size: 0` a light is a point and its shadows have hard edges.
+
+### Narrow a light into a spotlight
+
+`cone` limits a light to one direction. The angle is the full spread in
+radians, and the entity's rotation aims it:
+
+```typescript
+const lamp = this.spawn("lamp");
+lamp.add(new Transform({ position: new Vec2(320, 180), rotation: 0 }));
+
+const beam = lamp.add(
+  new LightSource({
+    radius: 260,
+    cone: { angle: Math.PI / 3 },
+  }),
+);
+
+lamp.get(Transform).setRotation(Math.PI / 2); // aim the beam downward
+beam.coneAngle = Math.PI / 2; // widen it
+```
+
+A cone changes where direct light lands, so `levelAt()` answers by it too: a
+guard outside the beam reads as dark even when it is well inside the light's
+radius. The default spread is a whole turn, `Math.PI * 2`, which reaches every
+direction.
 
 ## Query the light level
 
@@ -100,9 +153,9 @@ enabled light that reaches the point, and clamps the answer to `1`. Each light
 fades linearly from its full intensity at the centre to zero at its radius. The
 query is scalar, so light colours do not affect it.
 
-A light reaches the point only when the straight line between them misses every
-enabled occluder. See [Register occluder geometry](#register-occluder-geometry)
-for the full rule.
+Each light's contribution is scaled by the share of its lamp the point can
+see, and a light with a cone contributes only inside that cone. See
+[Register occluder geometry](#register-occluder-geometry) for the full rule.
 
 ### Sample a whole grid
 
@@ -158,9 +211,9 @@ lighting.setAmbient(0.2, 0x8090b8);
 
 The default renderer draws ambient colour and radial lights into an offscreen
 buffer, then multiplies it over the scene. A light is drawn only where no
-occluder stands between it and the surface, so the picture matches what
-`levelAt()` reports. Shadow edges are hard. Coloured lights tint the surfaces
-they reach, as real coloured illumination does.
+occluder stands between it and the surface. A light with a cone is drawn as a
+pie slice, turned by its entity. Coloured lights tint the surfaces they reach,
+as real coloured illumination does.
 
 ```typescript
 import { LightingPlugin, overlayLighting } from "@yagejs/lighting";
@@ -227,24 +280,37 @@ world transform. A uniform positive scale resizes the shape; any other scale
 turns it into a scaled outline, the same way a physics collider follows entity
 scale.
 
-The rule both the query and the built-in renderer apply:
+The rule the query applies:
 
-- A light reaches a point unless the straight line between them touches an
-  enabled occluder.
+- A light contributes in proportion to the share of its lamp the point can
+  see. The lamp is a line of width `size` centred on the light and square to
+  the direction from the point to it. Every occluder's outline is projected
+  onto that line from the point, the projections are merged, and the share
+  left over scales the light's contribution.
+- At `size: 0` the share is all or nothing, and the rule is that the straight
+  line between the light and the point must miss every enabled occluder.
 - Touching an edge or a corner counts as blocked, so two occluders that meet
   leave no gap for light.
 - An occluder that contains a light does not block it, so a lamp mounted on a
   pillar still lights the room.
 - A point inside an occluder is dark for every light outside it.
-- Shadows are hard. Partial cover does not dim a light.
 
 Disabling the component or its entity lets light through again. Occluders are
 also available to custom lighting renderers through `LightingWorld.occluders`.
 
-:::note[Hard edges only]
-Shadow edges have no penumbra and no soft falloff. A game that needs soft
-shadows draws them in its own renderer.
+:::note[The overlay draws hard edges]
+The built-in renderer draws one hard shadow edge whatever a light's `size`
+says. At `size: 0` the picture is exactly what `levelAt()` reports. Above it
+the drawn edge runs along the middle of the soft border the query answers
+with, so a character in that border is drawn on one side of the line and
+queried as partly lit. The query is the truth whichever renderer a scene uses.
 :::
+
+Projecting every occluder onto a wide lamp costs more than testing a straight
+line once: about 3 ms for point lamps and about 10 ms for 24-pixel lamps, for
+one `levelGridInto` call over 14,400 cells with 50 lights of radius 200 and
+400 box occluders. Keep `size` at `0` for lights whose shadows do not need a
+soft border.
 
 ## Supply another renderer
 

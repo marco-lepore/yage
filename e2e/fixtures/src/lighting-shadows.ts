@@ -4,8 +4,8 @@
  *
  * A white floor under one lamp and one wall, so the lighting overlay's
  * multiply composite puts the drawn light level straight into the canvas
- * pixels. A second lamp ignores occluders and starts dark.
- * `window.__lighting__.probe` returns what the query says about a world
+ * pixels. A second lamp ignores occluders and a third is a spotlight; both
+ * start dark. `window.__lighting__.probe` returns what the query says about a world
  * point plus where that point lands on screen, which lets the spec compare
  * the queried level with the drawn one under a camera that is neither
  * centred nor at zoom 1.
@@ -52,6 +52,7 @@ class ShadowScene extends Scene {
   camera!: CameraEntity;
   world!: LightingWorld;
   fill!: LightSource;
+  spot!: LightSource;
   counter!: FrameCounter;
 
   onEnter(): void {
@@ -76,6 +77,20 @@ class ShadowScene extends Scene {
     fill.add(new Transform({ position: new Vec2(200, 200) }));
     this.fill = fill.add(
       new LightSource({ radius: 180, intensity: 0, castShadows: false }),
+    );
+
+    // Aimed down the screen, so one probe sits inside its quarter-turn cone
+    // and one the same distance away sits outside it.
+    const spot = this.spawn("spotlight");
+    spot.add(
+      new Transform({ position: new Vec2(200, 200), rotation: Math.PI / 2 }),
+    );
+    this.spot = spot.add(
+      new LightSource({
+        radius: 180,
+        intensity: 0,
+        cone: { angle: Math.PI / 2 },
+      }),
     );
 
     const wall = this.spawn("wall");
@@ -116,6 +131,7 @@ await engine.scenes.push(scene);
         y: number,
       ): { level: number; screenX: number; screenY: number };
       setFillIntensity(intensity: number): void;
+      setSpotIntensity(intensity: number): void;
     };
   }
 ).__lighting__ = {
@@ -130,5 +146,8 @@ await engine.scenes.push(scene);
   },
   setFillIntensity: (intensity) => {
     scene.fill.intensity = intensity;
+  },
+  setSpotIntensity: (intensity) => {
+    scene.spot.intensity = intensity;
   },
 };

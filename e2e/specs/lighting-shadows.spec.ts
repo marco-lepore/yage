@@ -12,6 +12,7 @@ interface LightingAPI {
   frames(): number;
   probe(x: number, y: number): Probe;
   setFillIntensity(intensity: number): void;
+  setSpotIntensity(intensity: number): void;
 }
 
 type LightingWindow = Window & { __lighting__?: LightingAPI };
@@ -95,5 +96,30 @@ test.describe("Lighting shadows", () => {
 
     const [drawnShadow] = await drawnLevels(page, [shadowed]);
     expect(drawnShadow).toBeCloseTo(shadowed.level, 1);
+  });
+
+  test("draws a spotlight over the directions its cone covers", async ({
+    page,
+  }) => {
+    const before = await probe(page, 200, 290);
+    await page.evaluate(() => {
+      const value = (window as LightingWindow).__lighting__;
+      if (!value) throw new Error("__lighting__ is not available");
+      value.setSpotIntensity(0.5);
+    });
+    await settle(page);
+
+    // Both points are 90 pixels from the lamp; the cone covers only the first.
+    const inside = await probe(page, 200, 290);
+    const outside = await probe(page, 110, 200);
+    expect(inside.level).toBeCloseTo(before.level + 0.25, 2);
+    expect(outside.level).toBeCloseTo(before.level, 2);
+
+    const [drawnInside, drawnOutside] = await drawnLevels(page, [
+      inside,
+      outside,
+    ]);
+    expect(drawnInside).toBeCloseTo(inside.level, 1);
+    expect(drawnOutside).toBeCloseTo(outside.level, 1);
   });
 });
