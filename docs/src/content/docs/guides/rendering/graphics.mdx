@@ -36,6 +36,42 @@ start point first for a standalone arc, otherwise a line connects it from
 the previous point. Fill and stroke take options bags (`{ color, alpha,
 width, ... }`). See the [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
 
+## Where the drawing turns
+
+The drawing's `(0, 0)` sits on the entity's position, and the entity's
+rotation turns the drawing about that point. A barrel drawn upwards from
+`(0, 0)` therefore tips from side to side about its base and never rolls.
+
+`pivot` names a different point of the drawing to put on the entity position,
+in the drawing's own pixels. Rotation and scale then act about that point:
+
+```typescript
+// The circle's centre sits on the entity, so the barrel rolls in place.
+entity.add(
+  new GraphicsComponent({ layer: "world", pivot: { x: 0, y: -24 } }).draw(
+    (g) => {
+      g.circle(0, -24, 24).fill({ color: 0x8b5a2b });
+    },
+  ),
+);
+```
+
+`pivot` is the `GraphicsComponent` counterpart of the `anchor` that sprites and
+text take. It is in pixels rather than a 0–1 fraction, because a drawing has no
+texture size to take a fraction of. Both numbers must be finite; a `NaN` throws
+naming the component and the coordinate.
+
+Drawing the shape around `(0, 0)` in the first place reaches the same result,
+and is the simpler choice when you control the callback. `pivot` is for the
+drawings whose coordinates are fixed by something else — a callback shared by
+entities that turn about different points, or a shape whose numbers come from
+data.
+
+Neither route turns a drawing about a point outside its own entity. For that,
+parent the entity under another entity placed at the turning point and rotate
+the parent: an entity's rotation carries every descendant around its own
+position.
+
 ## Repeating a shape
 
 The context carries a transform stack, so a part that repeats draws in its own

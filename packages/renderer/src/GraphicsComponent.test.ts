@@ -4,6 +4,14 @@ const { mocks } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
     position = { x: 0, y: 0 };
+    pivot = {
+      x: 0,
+      y: 0,
+      set(this: { x: number; y: number }, x: number, y: number) {
+        this.x = x;
+        this.y = y;
+      },
+    };
     scale = { x: 1, y: 1 };
     rotation = 0;
     visible = true;
@@ -212,6 +220,27 @@ describe("GraphicsComponent", () => {
     // Pixi constructs display objects at "inherit", which renders as normal
     // until an ancestor sets a mode of its own.
     expect(new GraphicsComponent().blendMode).toBe("inherit");
+  });
+
+  it("puts the pivot option on the graphics object", () => {
+    const comp = new GraphicsComponent({ pivot: { x: 0, y: -24 } });
+    expect(comp.graphics.pivot).toMatchObject({ x: 0, y: -24 });
+  });
+
+  it("leaves the pivot at the drawing origin when the option is absent", () => {
+    expect(new GraphicsComponent().graphics.pivot).toMatchObject({
+      x: 0,
+      y: 0,
+    });
+  });
+
+  it("throws on a non-finite pivot coordinate", () => {
+    expect(() => new GraphicsComponent({ pivot: { x: 0, y: NaN } })).toThrow(
+      /pivot\.y must be finite/,
+    );
+    expect(() => new GraphicsComponent({ pivot: { x: NaN, y: 0 } })).toThrow(
+      /pivot\.x must be finite/,
+    );
   });
 
   it("applies the interactive option, defaulting eventMode to static", () => {

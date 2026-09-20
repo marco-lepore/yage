@@ -272,7 +272,9 @@ the component is destroyed. Modifiers are runtime-only.
 import "pixi.js/advanced-blend-modes";
 ```
 
-Pixi constructs every display object at `"inherit"`, not `"normal"` — inherited blending renders as normal until an ancestor sets a mode, and the two differ under a non-normal parent. `"erase"` composites against whatever framebuffer the object lands in, so it only cuts a hole out of the darkness you intend when both are drawn into their own offscreen buffer — see [Offscreen render targets](#offscreen-render-targets). `anchor` (`{x, y}`) is shared by Sprite, AnimatedSprite, Text, and SplitText. Graphics has no anchor (a raw Pixi `Container` has none). SplitText also has per-segment `charAnchor` / `wordAnchor` / `lineAnchor` values (see below).
+Pixi constructs every display object at `"inherit"`, not `"normal"` — inherited blending renders as normal until an ancestor sets a mode, and the two differ under a non-normal parent. `"erase"` composites against whatever framebuffer the object lands in, so it only cuts a hole out of the darkness you intend when both are drawn into their own offscreen buffer — see [Offscreen render targets](#offscreen-render-targets).
+
+**`anchor` and `pivot`.** A visual is drawn with one point of its art on the entity's world position, and the entity's rotation and scale turn and size the art about that same point. `anchor` (`{x, y}`, a fraction of the texture) chooses which point that is: `{ x: 0.5, y: 0.5 }` turns the art about its own middle, `{ x: 0.5, y: 1 }` about its bottom edge. Sprite, AnimatedSprite, Text, and SplitText take it. Graphics has none (a raw Pixi `Container` has no anchor) and takes `pivot` (`{x, y}`) instead — the same idea in the drawing's own pixels, since a drawing has no texture size to take a fraction of. SplitText also has per-segment `charAnchor` / `wordAnchor` / `lineAnchor` values (see below). Neither option turns art about a point outside the entity: for that, parent the visual's entity under an entity placed at the turning point.
 
 ### SpriteComponent
 
@@ -311,6 +313,21 @@ entity.add(
 ```
 
 Graphics and their draw callbacks are runtime resources. Save the durable game facts that determine the drawing, then call `draw()` during normal component setup.
+
+`pivot` (`{x, y}`, in the drawing's own pixels, default `{ x: 0, y: 0 }`) names the point of the drawing that sits on the entity position and that rotation and scale act about. It is the Graphics counterpart of `anchor`. Both numbers must be finite; a `NaN` throws naming `pivot.x` or `pivot.y`.
+
+```ts
+// A barrel drawn from its base upwards, rolling about its middle.
+entity.add(
+  new GraphicsComponent({ layer: "world", pivot: { x: 0, y: -24 } }).draw(
+    (g) => {
+      g.circle(0, -24, 24).fill(0x8b5a2b);
+    },
+  ),
+);
+```
+
+Drawing the shape around `(0, 0)` in the callback reaches the same result. `pivot` is for the cases where the drawing's coordinates are fixed by something else: a shared draw callback used by entities that turn about different points, or a layout whose numbers come from data.
 
 The context also carries a transform stack, so a repeated part draws in its own
 coordinates without the callback computing offsets.
@@ -414,8 +431,8 @@ const title = entity.add(
     text: "GAME OVER",
     style: { fontSize: 48, fill: 0xffffff },
     bitmap: true, // optional — SplitBitmapText (font via style.fontFamily)
-    anchor: { x: 0.5, y: 0.5 }, // pivot for the whole text block
-    charAnchor: 0.5, // segment pivots (0–1): char / word / lineAnchor
+    anchor: { x: 0.5, y: 0.5 }, // turning point of the whole text block
+    charAnchor: 0.5, // segment turning points (0–1): char / word / lineAnchor
     // autoSplit: false,              // batch text/style edits, then resplit()
   }),
 );

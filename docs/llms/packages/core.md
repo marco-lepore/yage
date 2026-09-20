@@ -549,6 +549,14 @@ Assigning a `Vec2` to `position` or `scale` preserves that value's identity;
 assigning `worldPosition` does so on a root. Root local/world getters share
 the same snapshot.
 
+A rotation turns the entity's own space about the entity's own position, and
+carries every descendant around that same point. `Transform` has no pivot, so
+the point an entity turns about is always its own position. To turn an entity
+about a different point, put that point on a parent entity and rotate the
+parent. To turn the artwork about a different point while the entity stays
+where it is, use the visual component's `anchor` or, on `GraphicsComponent`,
+`pivot` — see `@yagejs/renderer`.
+
 Transform position, scale, and rotation writes require finite numbers and
 reject invalid inputs or non-finite computed local values before storing the
 operation's values. Zero and negative scale are legal. Read-only conversions
