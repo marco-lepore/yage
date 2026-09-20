@@ -1,4 +1,8 @@
-import { ServiceKey, type AssetHandle } from "@yagejs/core";
+import {
+  ServiceKey,
+  type AssetHandle,
+  type EasingFunction,
+} from "@yagejs/core";
 import type { Sound } from "@pixi/sound";
 import type { AudioManager } from "./AudioManager.js";
 
@@ -32,6 +36,22 @@ export interface AudioPlayOptions {
    * on a voice clip.
    */
   onEnd?: () => void;
+}
+
+export interface AudioFadeOptions {
+  /** Fade duration in seconds. Must be finite and greater than zero. */
+  duration: number;
+  /** Volume interpolation. Default: `easeLinear`. */
+  easing?: EasingFunction;
+  /** Stop playback after fading to zero. Default: `false`. */
+  stopOnComplete?: boolean;
+}
+
+export interface AudioCrossfadeOptions extends AudioPlayOptions {
+  /** Crossfade duration in seconds. Must be finite and greater than zero. */
+  duration: number;
+  /** Volume interpolation for both sounds. Default: `easeLinear`. */
+  easing?: EasingFunction;
 }
 
 /** One ownership request for playback shared by alias and channel. */

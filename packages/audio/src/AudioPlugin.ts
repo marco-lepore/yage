@@ -1,4 +1,10 @@
-import { AssetManagerKey, ErrorBoundaryKey, globalRandom } from "@yagejs/core";
+import {
+  AssetManagerKey,
+  ErrorBoundaryKey,
+  ProcessSystemKey,
+  globalRandom,
+  makeGlobalScopedQueue,
+} from "@yagejs/core";
 import type { EngineContext, Plugin } from "@yagejs/core";
 import type { Sound as PixiSound, SoundLibrary } from "@pixi/sound";
 import { AudioManager } from "./AudioManager.js";
@@ -14,6 +20,7 @@ export class AudioPlugin implements Plugin {
   private readonly _config: AudioConfig;
   private _cleanupFns: Array<() => void> = [];
   private _sound: SoundLibrary | undefined;
+  private _manager: AudioManager | undefined;
   private _destroyed = false;
 
   constructor(config?: AudioConfig) {
@@ -38,7 +45,14 @@ export class AudioPlugin implements Plugin {
     this._sound = sound;
     _setSoundLibrary(sound);
 
-    const manager = new AudioManager(sound, this._config, globalRandom);
+    const fadeQueue = makeGlobalScopedQueue(context.resolve(ProcessSystemKey));
+    const manager = new AudioManager(
+      sound,
+      this._config,
+      globalRandom,
+      fadeQueue,
+    );
+    this._manager = manager;
     manager._setErrorBoundary(context.tryResolve(ErrorBoundaryKey));
     context.register(AudioManagerKey, manager);
 
@@ -90,6 +104,8 @@ export class AudioPlugin implements Plugin {
     this._destroyed = true;
     for (const cleanup of this._cleanupFns) cleanup();
     this._cleanupFns.length = 0;
+    this._manager?._dispose();
+    this._manager = undefined;
     this._sound?.close();
   }
 }

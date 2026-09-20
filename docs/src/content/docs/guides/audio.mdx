@@ -120,7 +120,8 @@ calling `onEnd`.
 const handle = audio.play(BgMusic, { channel: "music", loop: true });
 
 handle.playing;        // boolean
-handle.volume = 0.5;   // adjust volume
+handle.channel;        // readonly mixer channel
+handle.volume = 0.5;   // per-sound volume before the channel multiplier
 handle.speed = 1.5;    // adjust speed
 handle.paused = true;  // pause/resume
 handle.muted = true;   // mute/unmute
@@ -132,6 +133,52 @@ You can also stop via the manager:
 ```typescript
 audio.stop(handle);
 ```
+
+## Fades and Crossfades
+
+Fade a handle to a target volume with `fadeTo`. The method returns a `Process`,
+so you can cancel it or wait for it with `toPromise()`:
+
+```typescript
+import { easeInOutQuad } from "@yagejs/core";
+
+const fade = handle.fadeTo(0, {
+  duration: 0.6,
+  easing: easeInOutQuad,
+  stopOnComplete: true,
+});
+
+await fade.toPromise();
+```
+
+The default easing is linear. `stopOnComplete` is available when the target
+volume is zero. Starting another fade on the same handle cancels and replaces
+the first fade.
+
+Use `crossfade` to replace one playing sound with another:
+
+```typescript
+const next = audio.crossfade(current, StageMusic, {
+  duration: 1.2,
+  easing: easeInOutQuad,
+  channel: "music",
+  loop: true,
+  volume: 0.8,
+});
+```
+
+The incoming sound starts at zero and fades to the requested `volume`, or 1
+when `volume` is absent. The outgoing sound fades to zero and stops. The method
+returns the incoming `SoundHandle` immediately. If `channel` is absent, the
+incoming sound uses the outgoing handle's channel.
+
+`SoundHandle.volume` is the per-sound volume before the channel multiplier.
+Changing the channel volume preserves the handle volume and the current point
+in an active fade.
+
+Fades use the engine-global frame clock. They continue across scene changes
+and do not pause with an individual scene. They follow the global
+`ProcessSystem.timeScale`.
 
 ## Channels
 

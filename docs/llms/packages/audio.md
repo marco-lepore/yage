@@ -66,6 +66,11 @@ const handle = audio.play(CoinSfx, {
   loop: false,
   speed: 1,
 });
+const next = audio.crossfade(handle, "music/next", {
+  duration: 1.2,
+  channel: "music",
+  loop: true,
+});
 audio.playOnce(CoinSfx, opts); // skips playback if already playing
 const request = audio.requestOnce(CoinSfx, opts); // one releasable request for shared playback
 audio.playRandom([CoinSfx, "assets/step.wav"], opts); // random pick
@@ -75,10 +80,12 @@ request.release(); // release only this request
 
 // SoundHandle
 handle.playing; // boolean
-handle.volume; // get/set
+handle.channel; // readonly mixer channel
+handle.volume; // get/set, per-sound volume before the channel multiplier
 handle.speed; // get/set
 handle.paused; // get/set
 handle.muted; // get/set
+handle.fadeTo(0, { duration: 0.6, stopOnComplete: true }); // returns Process
 handle.stop();
 
 // Stop
@@ -100,6 +107,45 @@ audio.unmuteAll();
 audio.pauseChannel("music");
 audio.resumeChannel("music");
 ```
+
+Fade types and signatures:
+
+```ts
+interface AudioFadeOptions {
+  duration: number;
+  easing?: EasingFunction; // default: easeLinear
+  stopOnComplete?: boolean; // requires target volume 0
+}
+
+interface AudioCrossfadeOptions extends AudioPlayOptions {
+  duration: number;
+  easing?: EasingFunction; // default: easeLinear
+}
+
+SoundHandle.fadeTo(volume: number, options: AudioFadeOptions): Process;
+AudioManager.crossfade(
+  outgoing: SoundHandle,
+  next: SoundRef,
+  options: AudioCrossfadeOptions,
+): SoundHandle;
+```
+
+`SoundHandle.volume` is a value from 0 to 1 before channel volume is applied.
+Changing a channel keeps each handle's volume and any active fade. A second
+`fadeTo` on the same handle cancels and replaces its current fade. The returned
+`Process` can be cancelled or awaited with `toPromise()`.
+
+`crossfade` starts `next` at zero, fades it to `options.volume ?? 1`, fades the
+outgoing handle to zero, and stops the outgoing handle at completion. It
+returns the incoming handle immediately. When `options.channel` is absent, the
+incoming sound uses the outgoing handle's channel. One easing function applies
+to both fades.
+
+Fades use the engine-global frame process pool. They continue across scene
+changes, follow `ProcessSystem.timeScale`, and are not gated by an individual
+scene's pause state. Duration and volume inputs are validated before playback
+changes. Easing output is clamped to the fade interval; a non-finite result
+throws at the volume write.
 
 `play`, `playOnce`, `requestOnce`, and `playRandom` throw naming the alias when no sound is registered under it — a typo, or playback before the asset finished preloading. Preload it with `sound(path)` or register it with `registerSound(alias, buffer)`.
 

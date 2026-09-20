@@ -157,14 +157,18 @@ describe("registering before AudioPlugin installs", () => {
     install: () => Promise<void>;
   }> {
     vi.resetModules();
-    const [assets, { AudioPlugin }, { EngineContext }] = await Promise.all([
+    const [assets, { AudioPlugin }, core] = await Promise.all([
       import("./assets.js"),
       import("./AudioPlugin.js"),
       import("@yagejs/core"),
     ]);
     return {
       assets,
-      install: () => new AudioPlugin().install(new EngineContext()),
+      install: () => {
+        const context = new core.EngineContext();
+        context.register(core.ProcessSystemKey, new core.ProcessSystem());
+        return new AudioPlugin().install(context);
+      },
     };
   }
 
