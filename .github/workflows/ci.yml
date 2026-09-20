@@ -100,8 +100,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
         # A failed listing must fail the step, not read as "nothing changed".
+        # The files endpoint lists paths for a pull request of any size; the
+        # diff endpoint refuses one past 20,000 lines.
         run: |
-          files=$(gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" --name-only)
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
           if grep -qE '^docs/' <<< "$files"; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else

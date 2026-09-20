@@ -263,10 +263,12 @@ in YAGE use `<Panel direction="column" | "row">`.
 
 ### Hover events
 
-`<Panel>`, `<Button>`, `<Text>`, `<Image>`, `<NineSlice>`, and
-`<ProgressBar>` accept hover callbacks. Their containers are already
-interactive, so this is a lightweight fan-out — there is no separate
-"make it hoverable" step.
+`<Panel>`, `<Button>`, `<Text>`, `<SplitText>`, `<Image>`, `<NineSlice>`,
+`<ProgressBar>`, `<Checkbox>`, `<ScrollView>` and the interactive `Pixi*`
+wrappers accept hover callbacks. Their containers are already interactive, so
+there is no separate "make it hoverable" step. On a `<ScrollView>` the
+callbacks fire anywhere over the viewport box, the gutter and the gaps between
+rows included.
 
 Three independent props (combine them freely):
 
@@ -291,8 +293,170 @@ function HoverableCard() {
 }
 ```
 
-Hover callbacks are suppressed while a `<Button disabled>` (matching its
-existing disabled hover-background behavior).
+Hover callbacks are suppressed on a component whose disabled state is on: a
+`<Button disabled>`, a `<Checkbox disabled>`, and a `Pixi*` wrapper whose
+widget carries an enabled flag. A disabled component takes no pointer events
+at all, which is the same reason its hover background stays unpainted.
+
+### Keyboard and gamepad focus
+
+`focus` on a `<Panel>` makes it a focus scope over everything inside it: the
+direction actions move a highlight between the rows, confirm presses the
+highlighted one and runs it on the release, cancel calls your `onCancel`. The
+[imperative UI guide](/guides/ui/#keyboard-and-gamepad-focus) covers the model
+in full — the action names, wrapping, scrolling lists, nested dialogs, and
+keeping menu input out of gameplay. The props are the same ones in JSX.
+
+```tsx
+import { Button, Checkbox, Panel, ScrollView, Text } from "@yagejs/ui-react";
+
+interface SaveSlot { id: string; label: string; empty: boolean }
+
+function PauseMenu({
+  slots,
+  onResume,
+  onLoad,
+}: {
+  slots: SaveSlot[];
+  onResume: () => void;
+  onLoad: (id: string) => void;
+}) {
+  const [volume, setVolume] = useState(60);
+  const [music, setMusic] = useState(true);
+
+  return (
+    <Panel
+      gap={8}
+      padding={16}
+      bg={{ color: 0x101018, alpha: 0.9, radius: 8 }}
+      focus={{ wrap: true, onCancel: onResume }}
+    >
+      <Button width={220} onClick={onResume}>Resume</Button>
+
+      {/* Skipped by navigation, and confirm refuses it as a click would. */}
+      <Button width={220} disabled onClick={() => undefined}>
+        Upload to cloud
+      </Button>
+
+      {/* Left and right step the value and keep the focus; up and down move. */}
+      <Panel
+        direction="row"
+        gap={12}
+        width={220}
+        bg={{ color: 0x222230, radius: 4 }}
+        focusable
+        focusId="volume"
+        focusNeighbors={{ down: "saves-first" }}
+        onAdjust={(d) => setVolume((v) => Math.max(0, Math.min(100, v + d * 5)))}
+      >
+        <Text>{`Volume ${volume}`}</Text>
+      </Panel>
+
+      <Checkbox label="Music" checked={music} onChange={setMusic} />
+
+      {/* Focus entering a row below the fold scrolls the list to it. */}
+      <ScrollView width={220} height={140} gap={4}>
+        {slots.map((slot, index) => (
+          <Button
+            key={slot.id}
+            width="100%"
+            disabled={slot.empty}
+            {...(index === 0 ? { focusId: "saves-first" } : {})}
+            onClick={() => onLoad(slot.id)}
+          >
+            {slot.label}
+          </Button>
+        ))}
+      </ScrollView>
+    </Panel>
+  );
+}
+```
+
+**Put the menu's callbacks in `focus` and let the object be rebuilt.** A fresh
+`focus={{ … }}` literal on every render refreshes the scope's options in place,
+so `onCancel`, `onFocusMove`, `onActivate` and `onMoveBlocked` are replaced per
+render and the highlight stays on the row the player left it on. That holds for
+a `focus` object built from state, too. The object is the whole declaration: a
+key a render leaves out goes back to its default, so a callback you stop
+passing stops running. Dropping the prop — an explicit
+`undefined`, or a key gone from a conditional spread — disposes the scope, and
+input goes to the next scope that is shown.
+
+**Focus draws nothing until you ask for it.** Most games show the focused row
+from `onFocusChange` — a marker beside it, a swapped sprite, a sound:
+
+```tsx
+const [focused, setFocused] = useState(false);
+
+<Panel direction="row" gap={6} alignItems="center">
+  <Text width={10}>{focused ? ">" : ""}</Text>
+  <Button flex={1} onFocusChange={setFocused} onClick={onResume}>
+    Continue
+  </Button>
+</Panel>;
+```
+
+`focusStyle` asks for the package's own outline, drawn just inside the
+component's box. It sets the outline's `color`, `width`, `radius` and `inset`
+on one component, over the `focusStyle` you gave `UIPlugin` for the whole UI;
+`focusStyle={null}` drops a UI-wide outline for that component alone. Hover
+and press keep their fills, so a row the pointer is on shows both. Holding
+confirm on the focused component paints it pressed and runs its action on the
+release.
+
+`focusBg` fills the row that holds the focus. `<Button>` takes it beside
+`hoverBg` and `pressBg`, and a `focusable` `<Panel>` takes it on its own: a
+panel with no `bg` is transparent at rest and filled while the focus is on it,
+which is the menu row that appears only when the player reaches it. Omit it and
+a focused component keeps its resting background. A fill naming only a colour
+keeps the resting corner radius.
+
+```tsx
+<Button width={220} focusBg={{ color: 0x2c4a6f }} onClick={onLoad}>
+  Load game
+</Button>
+```
+
+```tsx
+<Panel
+  direction="row"
+  gap={6}
+  padding={4}
+  focusable
+  focusBg={{ color: 0x2c4a6f, radius: 4 }}
+  onFocusChange={setRowFocused}
+>
+  <Text>{slot.label}</Text>
+  <Text>{slot.playtime}</Text>
+</Panel>
+```
+
+**What the mouse does.** Pressing a component focuses it; passing the pointer
+over one leaves the focus where the keyboard put it, and the component still
+shows its hover tint. `focus={{ pointerFocus: "hover" }}` gives you the
+console-style lit row that follows the mouse, and `"none"` keeps the pointer
+out of the focus entirely.
+
+**The panel reading input owns the pointer.** While a `<Panel focus>` holds
+the keys, everything drawn under it stops answering the mouse, so a confirm
+dialog cannot be clicked through. `focus={{ modal: false }}` turns that off,
+for a panel that wants the keys while the world behind it stays clickable. The
+block runs downwards from where the panel is drawn, so anything drawn above it
+stays interactive — a `<Tooltip>` bubble, a `PixiSelect` list, a surface added
+after the menu's. A `<ScrollView>`, or any other container that clips what it
+draws, clips the block too: a `focus` panel inside one covers that view's own
+rows and leaves every point outside the view clickable.
+
+For a tree whose outermost element is not a single `<Panel>`, put the option on
+the root instead:
+
+```tsx
+const root = entity.add(new UIRoot({ anchor: Anchor.Center, focus: true }));
+root.render(<PauseMenu slots={slots} onResume={resume} onLoad={load} />);
+
+root.focusScope?.move("down"); // drive it by hand from anywhere
+```
 
 ### `<Tooltip>` — hover-driven floating label
 

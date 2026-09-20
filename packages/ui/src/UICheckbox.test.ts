@@ -68,7 +68,10 @@ const { mocks } = vi.hoisted(() => {
     roundRect(): MockGraphics {
       return this;
     }
-    fill(): MockGraphics {
+    /** The style passed to the most recent `fill`. */
+    lastFill: { color?: number; alpha?: number } | undefined;
+    fill(style?: { color?: number; alpha?: number }): MockGraphics {
+      this.lastFill = style;
       return this;
     }
     moveTo(): MockGraphics {
@@ -159,6 +162,7 @@ vi.mock("pixi.js", () => ({
 import Yoga from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UICheckbox } from "./UICheckbox.js";
+import { getFocusState } from "./focus/FocusState.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -288,5 +292,114 @@ describe("UICheckbox", () => {
       typeof mocks.MockContainer
     >;
     expect(container.destroyed).toBe(true);
+  });
+
+  it("reads the disabled flag back", () => {
+    const cb = new UICheckbox({ disabled: true });
+    expect(cb.disabled).toBe(true);
+
+    cb.update({ disabled: false });
+    expect(cb.disabled).toBe(false);
+
+    cb.setDisabled(true);
+    expect(cb.disabled).toBe(true);
+  });
+
+  function containerOf(
+    cb: UICheckbox,
+  ): InstanceType<typeof mocks.MockContainer> {
+    return cb.container as unknown as InstanceType<typeof mocks.MockContainer>;
+  }
+
+  describe("hover callbacks", () => {
+    it("fires all three on pointerover and pointerout, with the handlers an update set", () => {
+      const first = vi.fn();
+      const onHover = vi.fn();
+      const onPointerOver = vi.fn();
+      const onPointerOut = vi.fn();
+      const cb = new UICheckbox({
+        onHover: first,
+        onPointerOver,
+        onPointerOut,
+      });
+      cb.update({ onHover });
+
+      containerOf(cb).emit("pointerover");
+      containerOf(cb).emit("pointerout");
+
+      expect(first).not.toHaveBeenCalled();
+      expect(onPointerOver).toHaveBeenCalledTimes(1);
+      expect(onPointerOut).toHaveBeenCalledTimes(1);
+      expect(onHover.mock.calls).toEqual([[true], [false]]);
+    });
+
+    it("suppresses them while disabled", () => {
+      const onHover = vi.fn();
+      const cb = new UICheckbox({ onHover, disabled: true });
+
+      containerOf(cb).emit("pointerover");
+      containerOf(cb).emit("pointerout");
+
+      expect(onHover).not.toHaveBeenCalled();
+    });
+  });
+
+  // The focus and press rules a checkbox shares with a button are in
+  // focus-props.test.ts.
+  describe("focus", () => {
+    /** The colour the box was last filled with. */
+    function boxColor(cb: UICheckbox): number | undefined {
+      const box = containerOf(cb).children[0] as InstanceType<
+        typeof mocks.MockGraphics
+      >;
+      return box.lastFill?.color;
+    }
+
+    it("gives the box back when the pointer leaves the row still held", () => {
+      const cb = new UICheckbox({ boxColor: 0x204060 });
+
+      containerOf(cb).emit("pointerdown");
+      expect(boxColor(cb)).toBe(0x183048);
+
+      containerOf(cb).emit("pointerout");
+      expect(boxColor(cb)).toBe(0x204060);
+    });
+
+    it("keeps the box colour an update sets while it holds focus", () => {
+      const cb = new UICheckbox({});
+      getFocusState(cb)?._setFocused(true);
+      expect(cb.focused).toBe(true);
+
+      cb.update({ boxColor: 0x204060 });
+
+      expect(boxColor(cb)).toBe(0x204060);
+    });
+
+    it("toggles, redraws and reports once from activate()", () => {
+      const onChange = vi.fn();
+      const cb = new UICheckbox({ onChange });
+      const checkmark = containerOf(cb).children[1] as InstanceType<
+        typeof mocks.MockGraphics
+      >;
+      const redraw = vi.spyOn(checkmark, "clear");
+
+      cb.activate();
+
+      expect(cb.checked).toBe(true);
+      expect(onChange.mock.calls).toEqual([[true]]);
+      expect(redraw).toHaveBeenCalled();
+      expect(cb._inspectState()).toMatchObject({ checked: true });
+    });
+
+    it("reports nothing from an update that sets checked, or from a disabled activate()", () => {
+      const onChange = vi.fn();
+      const cb = new UICheckbox({ onChange });
+
+      cb.update({ checked: true, disabled: true });
+      cb.activate();
+
+      expect(cb.checked).toBe(true);
+      expect(onChange).not.toHaveBeenCalled();
+    });
   });
 });

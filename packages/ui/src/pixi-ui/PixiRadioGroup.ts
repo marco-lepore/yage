@@ -1,5 +1,9 @@
 import { CheckBox, RadioGroup } from "@pixi/ui";
-import type { PixiRadioGroupProps, PixiCheckboxProps } from "../types.js";
+import type {
+  FocusDirection,
+  PixiRadioGroupProps,
+  PixiCheckboxProps,
+} from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
 import { resolvePixiView } from "./view-resolver.js";
 
@@ -25,6 +29,19 @@ function selectedForItems(requested: number, itemCount: number): number {
 }
 
 class MutableRadioGroup extends RadioGroup {
+  /**
+   * How many rows the group holds. `selectItem` reads its row with no bounds
+   * check, so a step has to clamp against this before calling it.
+   */
+  get itemCount(): number {
+    return this.items.length;
+  }
+
+  /** Whether the group stacks its rows down the screen rather than across. */
+  get vertical(): boolean {
+    return this.options.type !== "horizontal";
+  }
+
   replaceItems(items: CheckBox[], selected: number): void {
     const previousItems = [...this.items];
     this.removeItems(this.items.map((_, index) => index).reverse());
@@ -41,7 +58,7 @@ class MutableRadioGroup extends RadioGroup {
 }
 
 /** Yoga-aware wrapper around @pixi/ui RadioGroup. */
-export class PixiRadioGroup extends PixiUIBase<RadioGroup> {
+export class PixiRadioGroup extends PixiUIBase<MutableRadioGroup> {
   constructor(props: PixiRadioGroupProps) {
     const checkboxes = props.items.map(makeCheckBox);
 
@@ -57,10 +74,27 @@ export class PixiRadioGroup extends PixiUIBase<RadioGroup> {
     this.prevProps = { ...props };
   }
 
-  /** RadioGroup is a composite (multiple CheckBoxes). Setting container.width/height
-   *  changes scale and distorts the layout, so we skip resizing. */
-  override applyLayout(): void {
-    // position only — no resize
+  /** A composite that places its own checkboxes, so it keeps its own size. */
+  protected override sizedByLayout(): boolean {
+    return false;
+  }
+
+  /** A radio group is stepped, not pressed. */
+  activate(): void {}
+
+  /**
+   * Step the selection along the group's own axis, which fires `onChange`.
+   * The other axis and either end of the list are left alone, so a player can
+   * always move focus out of the group.
+   */
+  protected override adjust(direction: FocusDirection): boolean {
+    const forward = this.view.vertical ? "down" : "right";
+    const backward = this.view.vertical ? "up" : "left";
+    if (direction !== forward && direction !== backward) return false;
+    const next = this.view.selected + (direction === forward ? 1 : -1);
+    if (next < 0 || next >= this.view.itemCount) return false;
+    this.view.selectItem(next);
+    return true;
   }
 
   update(props: Record<string, unknown>): void {
@@ -75,7 +109,7 @@ export class PixiRadioGroup extends PixiUIBase<RadioGroup> {
           ? (p.selected ?? DEFAULT_SELECTED)
           : (this.view.selected ?? DEFAULT_SELECTED);
       const selected = selectedForItems(requested, items.length);
-      (this.view as MutableRadioGroup).replaceItems(items, selected);
+      this.view.replaceItems(items, selected);
       this.invalidateSize();
     } else if ("selected" in p) {
       this.view.selectItem(p.selected ?? DEFAULT_SELECTED);

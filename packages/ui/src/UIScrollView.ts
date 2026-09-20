@@ -2,6 +2,7 @@ import { Container, Graphics, Rectangle } from "pixi.js";
 import type { FederatedPointerEvent, FederatedWheelEvent } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, Edge, FlexDirection, Overflow } from "yoga-layout";
+import { devWarn } from "@yagejs/core";
 import { attachMask, graphicsMask } from "@yagejs/renderer";
 import type { DisplayContainer, MaskHandle, TextStyle } from "@yagejs/renderer";
 import type {
@@ -10,6 +11,7 @@ import type {
   UIButtonProps,
   UIPanelProps,
   ScrollbarOptions,
+  UIScrollIntoViewOptions,
   UIScrollViewProps,
   UIContainerElement,
   UIElement,
@@ -21,9 +23,18 @@ import {
   exemptFromOverflowWarning,
 } from "./yoga-helpers.js";
 import { UIPanel } from "./UIPanel.js";
+import { FocusOutline, layoutBox } from "./internal/focus-outline.js";
+import { FocusState } from "./focus/FocusState.js";
+import {
+  requestHoverFocus,
+  requestPressFocus,
+} from "./focus/pointer-request.js";
+import { markScrollView } from "./focus/scroll-registry.js";
+import type { UITreeContext } from "./internal/tree-context.js";
 import type { UIButton } from "./UIButton.js";
 import type { UIText } from "./UIText.js";
 import { BackgroundRenderer } from "./background-renderer.js";
+import { PointerEvents } from "./pointer-events.js";
 import { runUICallback } from "./error-boundary.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 
@@ -36,6 +47,12 @@ interface ResolvedScrollbar {
   minThumb: number;
   margin: number;
 }
+
+/** Top-left corner of an element, the point a scroll-into-view projects. */
+const ORIGIN = { x: 0, y: 0 } as const;
+
+/** Reused destination of that projection, so a call allocates nothing. */
+const projected = { x: 0, y: 0 };
 
 const SCROLLBAR_DEFAULTS = {
   thickness: 4,
@@ -77,6 +94,9 @@ export class UIScrollView implements UIContainerElement {
   readonly yogaNode: YogaNode;
   private readonly viewport: Container;
   private readonly content: UIPanel;
+  private readonly pointerEvents: PointerEvents;
+  private readonly _focus: FocusState;
+  private readonly _focusOutline: FocusOutline;
   private vertical: boolean;
   private scrollbarGfx: Graphics | undefined;
   private _sb: ResolvedScrollbar;
@@ -116,6 +136,9 @@ export class UIScrollView implements UIContainerElement {
   private _sbOffset = Number.NaN;
   private _sbMaxScroll = Number.NaN;
 
+  // One warning per view: the focus follow calls scroll-into-view every tick.
+  private _layoutWarned = false;
+
   private _dragging = false;
   private _panning = false;
   private _dragStart = 0;
@@ -135,6 +158,28 @@ export class UIScrollView implements UIContainerElement {
     this.viewport.eventMode = "static";
     this.viewport.hitArea = this._hitArea;
     applyConsumeInput(this.viewport, props.consumeInput);
+    // The hover fan-out sits on the clipped viewport: the content panel is
+    // taller than it and moves under the scroll offset.
+    this.pointerEvents = new PointerEvents(this.viewport, props);
+
+    // The view stays out of focus navigation until a game sets `focusable`,
+    // which is what panning a list with the stick needs. The rows remain
+    // candidates either way, and a press on a row focuses the row.
+    this._focusOutline = new FocusOutline({
+      container: this.viewport,
+      box: () => layoutBox(this.yogaNode),
+    });
+    this._focusOutline.set(props);
+    this._focus = new FocusState(this, props, {
+      focusableByDefault: false,
+      paint: (focused) => this._focusOutline.setFocused(focused),
+    });
+    this.viewport.on("pointerover", () => {
+      requestHoverFocus(this);
+    });
+    this.viewport.on("pointerdown", () => {
+      requestPressFocus(this);
+    });
 
     this.yogaNode = createYogaNode();
     this.yogaNode.setOverflow(Overflow.Hidden);
@@ -194,6 +239,7 @@ export class UIScrollView implements UIContainerElement {
     );
 
     this._attachInput();
+    markScrollView(this);
   }
 
   // -- UIContainerElement: delegate child management to the content panel ---
@@ -241,12 +287,17 @@ export class UIScrollView implements UIContainerElement {
   }
 
   /**
-   * Name the UI tree this viewport belongs to for development-mode warnings.
-   * Set by `UISurface` from the owning entity and passed down the tree.
+   * Take the context of the UI tree this viewport belongs to. The content
+   * panel holds the children, so it holds the context.
    * @internal
    */
-  _setDebugLabel(label: string): void {
-    this.content._setDebugLabel(label);
+  _attachToTree(context: UITreeContext): void {
+    this.content._attachToTree(context);
+  }
+
+  /** @internal */
+  _detachFromTree(): void {
+    this.content._detachFromTree();
   }
 
   // -- Public scroll API (also the non-federated fallback) -----------------
@@ -259,6 +310,22 @@ export class UIScrollView implements UIContainerElement {
   /** Maximum scrollable offset (content overflow), computed each layout. */
   get maxScroll(): number {
     return this._maxScroll;
+  }
+
+  /**
+   * Width of the clipped viewport in px, scrollbar gutter included. `0`
+   * before the first layout pass.
+   */
+  get viewportWidth(): number {
+    return this._vw;
+  }
+
+  /**
+   * Height of the clipped viewport in px, scrollbar gutter included. `0`
+   * before the first layout pass.
+   */
+  get viewportHeight(): number {
+    return this._vh;
   }
 
   /**
@@ -288,6 +355,100 @@ export class UIScrollView implements UIContainerElement {
   /** Scroll by a relative delta (clamped). Positive = toward content end. */
   scrollBy(delta: number): void {
     this._setOffset(this._offset + delta);
+  }
+
+  /**
+   * Scroll the least distance that brings `element` inside the viewport on
+   * this view's scroll axis. `align` defaults to `"nearest"`, which does not
+   * move an element that is already fully visible, so `onScroll` does not
+   * fire.
+   *
+   * `padding` is px kept between the element and the viewport edge it is
+   * aligned against; it does not apply to `align: "center"`.
+   *
+   * Before the first layout pass the call does nothing and a development
+   * warning names the view.
+   *
+   * @throws when `element` is not inside this view, or `padding` is not a
+   * finite number of pixels at or above zero. Both throw before the offset
+   * moves.
+   */
+  scrollIntoView(element: UIElement, opts?: UIScrollIntoViewOptions): void {
+    const padding = opts?.padding ?? 0;
+    if (!Number.isFinite(padding) || padding < 0) {
+      throw new Error(
+        "UIScrollView.scrollIntoView: padding must be a finite number of " +
+          `pixels at or above 0, got ${padding}.`,
+      );
+    }
+    if (!this._contains(element)) {
+      throw new Error(
+        "UIScrollView.scrollIntoView: the element is not inside this scroll " +
+          "view.",
+      );
+    }
+
+    // The element's top-left in the content panel's own space, which does not
+    // move with the scroll offset.
+    const p = this.content.container.toLocal(
+      ORIGIN,
+      element.displayObject,
+      projected,
+    );
+    const extent = this.vertical
+      ? element.yogaNode.getComputedHeight()
+      : element.yogaNode.getComputedWidth();
+    const start = this.vertical ? p.y : p.x;
+    if (!Number.isFinite(extent) || !Number.isFinite(start)) {
+      if (!this._layoutWarned) {
+        this._layoutWarned = true;
+        devWarn(
+          "UIScrollView.scrollIntoView: the scroll view needs one layout " +
+            "pass before an element can be scrolled into view.",
+        );
+      }
+      return;
+    }
+
+    // The gutter is reserved on the cross axis, so the whole main-axis size
+    // is scrollable viewport.
+    const viewportMain = this.vertical ? this._vh : this._vw;
+    const contentOrigin = this.vertical ? this._contentTop : this._contentLeft;
+    const visibleStart = this._offset - contentOrigin;
+    const visibleEnd = visibleStart + viewportMain;
+    const toStart = start - visibleStart - padding;
+    const toEnd = start + extent - visibleEnd + padding;
+
+    let delta: number;
+    switch (opts?.align ?? "nearest") {
+      case "start":
+        delta = toStart;
+        break;
+      case "end":
+        delta = toEnd;
+        break;
+      case "center":
+        delta = start + extent / 2 - (visibleStart + viewportMain / 2);
+        break;
+      default:
+        if (toStart < 0) delta = toStart;
+        else if (toEnd > 0) delta = toEnd;
+        else return;
+    }
+    this._setOffset(this._offset + delta);
+  }
+
+  /**
+   * Whether `element` hangs under the content panel. `toLocal` projects any
+   * element that shares a stage, so only the display parent chain can tell.
+   */
+  private _contains(element: UIElement): boolean {
+    let node: DisplayContainer | null = element.displayObject.parent;
+    while (node !== null) {
+      if (node === this.content.container) return true;
+      node = node.parent;
+    }
+    return false;
   }
 
   // -- Layout --------------------------------------------------------------
@@ -325,6 +486,7 @@ export class UIScrollView implements UIContainerElement {
       this.bgRenderer.resize(this._vw, this._vh);
     }
     this._drawScrollbar(viewportMain, contentMain);
+    this._focusOutline.refresh();
     this._notify();
   }
 
@@ -495,6 +657,9 @@ export class UIScrollView implements UIContainerElement {
 
   update(props: Partial<UIScrollViewProps>): void {
     if ("onScroll" in props) this.onScroll = props.onScroll;
+    this.pointerEvents.set(props);
+    this._focus.set(props);
+    this._focusOutline.set(props);
     if ("scrollbar" in props) {
       // A replaced style changes thickness, margin, radius, colour, alpha or
       // minimum thumb length without moving the viewport, the offset or the
@@ -558,10 +723,18 @@ export class UIScrollView implements UIContainerElement {
     if ("visible" in props) this.visible = props.visible ?? true;
   }
 
+  /** @internal */
+  _inspectState(): { focused: boolean; focusable: boolean } {
+    return { focused: this._focus.focused, focusable: this._focus.focusable };
+  }
+
   /** Idempotent — a second call is a no-op. */
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+    this._detachFromTree();
+    this._focus.destroy();
+    this._focusOutline.destroy();
     this._detachInput();
     clearConsumeInput(this.viewport);
     this.maskHandle?.remove();

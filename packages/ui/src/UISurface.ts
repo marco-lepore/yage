@@ -3,6 +3,8 @@ import type { TextStyle } from "@yagejs/renderer";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import type { DisplayContainer } from "@yagejs/renderer";
 import { UIPanel } from "./UIPanel.js";
+import { UIFocusStackKey } from "./focus/UIFocusStack.js";
+import type { UIFocusScope } from "./focus/UIFocusScope.js";
 import type { UIText } from "./UIText.js";
 import type { UIButton } from "./UIButton.js";
 import type { UIScrollView } from "./UIScrollView.js";
@@ -50,6 +52,8 @@ export class UISurface extends Component {
 
   constructor(opts?: UISurfaceOptions) {
     super();
+    // `focus` goes to the root panel with the rest of the options, so
+    // `surface.focusScope` and `root.focusScope` are one scope.
     this.root = new UIPanel(opts ?? {});
     this._userVisible = opts?.visible ?? true;
     this._anchor = opts?.anchor;
@@ -84,6 +88,15 @@ export class UISurface extends Component {
   /** The PixiJS Container of the root panel. */
   get container(): DisplayContainer {
     return this.root.container;
+  }
+
+  /**
+   * The scope `UISurfaceOptions.focus` asks for, or `null` when the surface
+   * carries none. It is the root panel's scope: `surface.root.focusScope` is
+   * the same object.
+   */
+  get focusScope(): UIFocusScope | null {
+    return this.root.focusScope;
   }
 
   /**
@@ -168,11 +181,15 @@ export class UISurface extends Component {
   }
 
   onAdd(): void {
-    // Name the tree for development-mode layout warnings. The root passes the
-    // name to the children already built, and to every child added later, so
-    // both build orders — children before `entity.add`, children after — end
-    // up labelled.
-    this.root._setDebugLabel(this.entity.name);
+    // Hand the tree the entity name that development warnings print, and the
+    // scene's focus stack. The root passes it to children built before and
+    // after this point.
+    //
+    // `tryResolveScoped`, not `use`: `UIPlugin`'s scene hook registers the
+    // key, and a scene whose hooks never ran (a unit-test harness) must not
+    // fail on add.
+    const focusStack = this.scene.tryResolveScoped(UIFocusStackKey) ?? null;
+    this.root._attachToTree({ label: this.entity.name, focusStack });
     bindUIErrorBoundary(this.root.container, this.use(ErrorBoundaryKey));
     const tree = this.use(SceneRenderTreeKey);
     const layerName = this._layer ?? UI_DEFAULT_LAYER;
@@ -209,6 +226,8 @@ export class UISurface extends Component {
   }
 
   onDestroy(): void {
+    // `root.destroy()` detaches the tree, which takes every scope off the
+    // stack.
     this.root.container.removeFromParent();
     this.root.destroy();
   }

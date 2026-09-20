@@ -3,7 +3,7 @@ import {
   ErrorBoundaryKey,
   Transform,
   Vec2Buffer,
-  isDev,
+  devWarn,
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
 } from "@yagejs/core";
@@ -16,9 +16,17 @@ import {
   resolveAnchor,
   UI_DEFAULT_LAYER,
   UI_DEFAULT_LAYER_ORDER,
+  UIFocusScope,
+  UIFocusStackKey,
   bindUIErrorBoundary,
 } from "@yagejs/ui";
-import type { UIPositioning } from "@yagejs/ui";
+import type {
+  UIElement,
+  UIFocusScopeOptions,
+  UIFocusStack,
+  UIPositioning,
+  UITreeContext,
+} from "@yagejs/ui";
 import {
   createRoot,
   addOnCommit,
@@ -72,6 +80,15 @@ export interface UIRootOptions {
    *   a world-space layer for genuinely diegetic UI.
    */
   positioning?: UIPositioning;
+  /**
+   * Make the whole React tree one keyboard- and gamepad-navigable focus
+   * scope over the elements it commits at the top level. `true` takes every
+   * scope default; an object names the ones to change.
+   *
+   * Use this when the tree's outermost element is not a single `<Panel>`;
+   * otherwise `<Panel focus>` is the usual form.
+   */
+  focus?: boolean | UIFocusScopeOptions;
 }
 
 /**
@@ -92,6 +109,11 @@ export class UIRoot extends Component {
   private readonly _offset: { x: number; y: number };
   private readonly _layer: string | undefined;
   private readonly _positioning: UIPositioning;
+  private readonly _focusOption: boolean | UIFocusScopeOptions | undefined;
+  private _focusScope: UIFocusScope | null = null;
+  private _focusStack: UIFocusStack | null = null;
+  private _treeContext: UITreeContext | null = null;
+  private _stamped = new WeakSet<UIElement>();
   private _onCommit: (() => void) | null = null;
 
   constructor(opts?: UIRootOptions) {
@@ -110,6 +132,16 @@ export class UIRoot extends Component {
     };
     this._layer = opts?.layer;
     this._positioning = opts?.positioning ?? "anchor";
+    this._focusOption = opts?.focus;
+  }
+
+  /**
+   * The focus scope covering the whole React tree, or `null` when the root
+   * carries no `focus` option. A `<Panel focus>` inside the tree owns its own
+   * scope, reached through that panel.
+   */
+  get focusScope(): UIFocusScope | null {
+    return this._focusScope;
   }
 
   onAdd(): void {
@@ -149,6 +181,7 @@ export class UIRoot extends Component {
     this._container.visible = false;
 
     this.root = createRoot(this._container);
+    this._buildFocusScope();
 
     // Resolve the scene-level overlay so the React context Provider can hand
     // it to <Tooltip>/useFloating. The overlay layer is attached + ticked by
@@ -156,25 +189,90 @@ export class UIRoot extends Component {
     // with or without a `UIRoot`.
     this._floating = this.use(FloatingOverlayKey);
 
-    // When React commits, name the new elements and re-run layout and anchor
+    // When React commits, stamp the new elements and re-run layout and anchor
     this._onCommit = () => {
-      this._labelTree();
+      this._applyTreeContext();
       this._layoutAndAnchor();
     };
     addOnCommit(this._onCommit);
   }
 
   /**
-   * Name the tree for development-mode layout warnings. React builds the
-   * elements during a commit, so each commit labels the root elements, and a
-   * container passes the name on to the children it holds and to every child
-   * added after — which covers the deeper elements of a later render.
+   * Hand the tree the entity name that development warnings print, and the
+   * scene's focus stack.
+   *
+   * Only an element not yet stamped is visited. Stamping recurses into a
+   * container's subtree and rebuilds the scopes it finds, so stamping every
+   * element on every commit would walk the whole tree on each state change. A
+   * container passes its context to every child added later, which covers the
+   * deeper elements of a later render.
+   *
+   * `tryResolveScoped`, not `use`: `UIPlugin`'s scene hook registers the
+   * focus stack, and a scene whose hooks never ran must not fail on commit.
    */
-  private _labelTree(): void {
-    if (!isDev()) return;
+  private _applyTreeContext(): void {
     const instances = getRootInstances(this._container);
     if (!instances) return;
-    for (const inst of instances) inst._setDebugLabel?.(this.entity.name);
+    const label = this.entity.name;
+    const focusStack = this.scene.tryResolveScoped(UIFocusStackKey) ?? null;
+    let context = this._treeContext;
+    if (
+      context === null ||
+      context.label !== label ||
+      context.focusStack !== focusStack
+    ) {
+      context = { label, focusStack };
+      this._treeContext = context;
+      this._stamped = new WeakSet();
+    }
+    const stamped = this._stamped;
+    for (const inst of instances) {
+      if (stamped.has(inst)) continue;
+      stamped.add(inst);
+      inst._attachToTree?.(context);
+    }
+  }
+
+  /**
+   * Build the scope `UIRootOptions.focus` asks for. A React tree has no
+   * single root element, and every commit may replace the top-level ones, so
+   * the scope searches whatever the current commit left at the top and
+   * measures candidates against this root's own container.
+   */
+  private _buildFocusScope(): void {
+    const option = this._focusOption;
+    if (option === undefined || option === false) return;
+    const scope = new UIFocusScope(
+      {
+        displayObject: this._container,
+        roots: () => getRootInstances(this._container) ?? [],
+      },
+      option === true ? {} : option,
+    );
+    this._focusScope = scope;
+    const stack = this.scene.tryResolveScoped(UIFocusStackKey);
+    if (!stack) {
+      // The same sentence a `focus` panel and a `focus` surface print.
+      // `@yagejs/ui` keeps its warning helper internal, so this is a copy; the
+      // test beside this file pins the wording.
+      devWarn(
+        `UIRoot on entity "${this.entity.name}" has no focus stack, so its ` +
+          "focus scope reads no keyboard or gamepad input. UIPlugin " +
+          "registers one per scene as the scene is entered.",
+      );
+      return;
+    }
+    this._focusStack = stack;
+    stack._register(scope);
+  }
+
+  private _disposeFocusScope(): void {
+    const scope = this._focusScope;
+    if (scope === null) return;
+    this._focusScope = null;
+    this._focusStack?._unregister(scope);
+    this._focusStack = null;
+    scope._destroy();
   }
 
   /** Wrap a tree in the engine/scene context providers. */
@@ -310,6 +408,7 @@ export class UIRoot extends Component {
 
   onDestroy(): void {
     if (this._onCommit) removeOnCommit(this._onCommit);
+    this._disposeFocusScope();
     unmarkPointerConsumeContainer(this._container);
     this.root?.unmount();
     this.root = null;

@@ -665,6 +665,373 @@ that subscribes to the events emitted by `LoadingScene`. See the
 [Loading Scene guide](/guides/loading-scene/) for the full recipe.
 :::
 
+## Keyboard and gamepad focus
+
+Set `focus` on a `UISurface` or a `UIPanel` and its rows answer to the keyboard
+and the gamepad. The direction actions move a highlight between the rows,
+confirm runs the highlighted one, and cancel calls your `onCancel`. Each
+direction goes to the nearest row that way, measured on the laid-out boxes, so
+the order a player moves through is the order on screen. Rows that are hidden
+or disabled are passed over.
+
+```typescript
+import { Anchor, UISurface } from "@yagejs/ui";
+
+const menu = entity.add(new UISurface({
+  anchor: Anchor.Center,
+  gap: 8,
+  padding: 16,
+  background: { color: 0x101018, alpha: 0.9, radius: 8 },
+  focus: {
+    onCancel: () => resume(),
+    onFocusMove: () => playCursorCue(),
+  },
+}));
+
+menu.button("Resume", { width: 220, onClick: () => resume() });
+menu.button("Options", { width: 220, onClick: () => openOptions() });
+menu.button("Quit", { width: 220, onClick: () => quit() });
+```
+
+`focus: true` takes every default: wrapping at the ends, a press moving the
+focus, owning the pointer while the scope reads input, the shared action
+names, and repeats while a direction is held. `UIButton`, `UICheckbox` and the
+interactive `@pixi/ui` wrappers take focus by themselves; any other element
+joins with `focusable: true`.
+
+### The actions a scope reads
+
+The default names are `move-up`, `move-down`, `move-left`, `move-right`,
+`interact` and `cancel`. Bind them in the action map, or rename the roles that
+differ in yours:
+
+```typescript
+new UISurface({
+  focus: { input: { confirm: ["interact", "attack"], cancel: "menu-back" } },
+});
+```
+
+Each role takes one name or a list. Holding a direction repeats it after a
+short delay — see [Hold-to-repeat](/guides/input/#hold-to-repeat) — and a
+gamepad stick repeats the same way with no extra code, because a stick push
+arrives as an ordinary key edge.
+
+### What the player sees
+
+Focus draws nothing until you ask for it. Nothing is the default because a
+menu's focused row is a look you design: most games put a marker beside it and
+move the marker from `onFocusChange`.
+
+```typescript
+const line = menu.panel({ direction: "row", gap: 6, alignItems: "center" });
+const marker = line.text("", { fontSize: 12 }, { width: 10 });
+
+line.button("Continue", {
+  flex: 1,
+  onFocusChange: (focused) => marker.setText(focused ? ">" : ""),
+  onClick: () => resume(),
+});
+```
+
+`onFocusChange` fires `true` when focus arrives and `false` when it leaves,
+including when the menu stops reading input, so a marker you painted goes out
+with the menu.
+
+For the package's own outline, ask for one with `focusStyle`: once on the
+plugin for every focused row, or on one element, overriding the plugin's field
+by field.
+
+```typescript
+engine.use(new UIPlugin({ focusStyle: { color: 0x7dd3fc, width: 2 } }));
+
+menu.button("Quit", { width: 220, focusStyle: { width: 3 } });
+menu.button("Continue", { width: 220, focusStyle: null }); // no outline here
+```
+
+`focusStyle: null` on one element drops the UI-wide outline for that element
+alone, which is how one pane carries a marker of its own while the rest of the
+menu is outlined.
+
+`color`, `width`, `radius` and `inset` each fall back on their own: the
+element's value, then the plugin's, then the default. Leave `color` out and it
+follows the fill of your `defaultTextStyle`, so a light theme gets an outline
+the player can see. Leave `radius` out and it follows
+the element's own background radius, so a rounded button and the `@pixi/ui`
+widget beside it are rounded the same while focused. The outline is drawn
+inside the box and kept out of measurement, so focus changes no layout.
+
+Hover and press keep their fills, so a row the pointer is on and the focus is
+on shows its hover tint with the outline on top, and the player reads both at
+once.
+
+To fill the focused row as well, pass `focusBackground` on a `UIButton` or a
+`focusable` `UIPanel`. It is an opt-in: leave it out and a focused row keeps
+its resting background.
+
+### What the mouse does to the focus
+
+Hovered and focused are separate states, the way they are on a web page.
+Pressing a row focuses it. Passing the pointer over a row changes which row
+looks hovered and nothing else, so a player walking a list with the arrow keys
+keeps their row when the mouse drifts across it. Taking the pointer away from
+a row it focused leaves the focus there, so the keyboard picks up where the
+mouse left off.
+
+`pointerFocus` on the scope decides which pointer input moves the focus:
+
+```typescript
+new UISurface({ focus: { pointerFocus: "hover" } });
+
+menu.focusScope?.setOptions({ pointerFocus: "none" }); // applies at once
+```
+
+- `"press"`, the default: a press focuses the row, a hover does not.
+- `"hover"`: a hover focuses the row too — the console-style menu with one lit
+  row that follows the mouse. A press still focuses, so a touch press with no
+  hover before it lands.
+- `"none"`: the pointer never moves the focus, and the keyboard and gamepad
+  keep the row whatever the mouse does.
+
+Each scope answers for its own setting, so a submenu can follow the pointer
+while the menu behind it does not. Whatever the setting, a row under the
+pointer still shows its hover tint, still paints pressed and still runs its
+action on a click.
+
+Holding confirm on the focused row paints it pressed — the look the pointer
+gives it — and letting go runs the row's action once. Let go somewhere else and
+nothing happens: move the focus, hide or disable the row, or close the menu
+while confirm is held, and the press disappears with no action. That is the
+rule the mouse already follows, where dragging off a button before releasing
+cancels the click. `scope.activate()` called from your own code runs at once
+and paints no press, because there is no hold to show.
+
+A row looks pressed while any device holds it, and each device lets go of its
+own hold only. A player resting the mouse on a row and pressing confirm on the
+gamepad sees one pressed row that stays pressed until both are released, and
+moving the mouse off the row leaves the confirm press showing. Each completed
+press runs the row's action once, so that player runs it twice — the same way
+a web page fires a click for a mouse release and for an Enter key on the same
+button.
+
+### Disabled rows and stepper rows
+
+A disabled button is skipped by navigation, and confirm refuses it the same way
+a click does — `activate()`, which the confirm action calls, runs the same
+disabled check the pointer path runs.
+
+A row that changes a value rather than opening something takes `onAdjust`: left
+and right step the value and keep the focus, while up and down still move to
+the next row.
+
+```typescript
+let volume = 60;
+
+const row = menu.panel({
+  direction: "row",
+  gap: 12,
+  width: 220,
+  padding: 6,
+  background: { color: 0x222230, radius: 4 },
+  focusable: true,
+  focusId: "volume",
+  focusNeighbors: { down: "saves-first" },
+  onAdjust: (direction) => {
+    volume = Math.max(0, Math.min(100, volume + direction * 5));
+    readout.setText(`Volume ${volume}`);
+  },
+});
+const readout = row.text(`Volume ${volume}`);
+
+menu.button("Upload save", {
+  width: 220,
+  disabled: true,
+  onClick: () => upload(),
+});
+```
+
+`focusId` names a row so another row can point at it, and `focusNeighbors`
+says where one direction goes in place of the nearest row that way — the
+volume row above sends a down press to the row named `saves-first`, wherever
+the layout puts it. An id that matches nothing at the moment is ignored and
+the nearest row wins, so a row hidden by a filter does not strand its
+neighbour. Use `null` in place of an id to stop movement in that direction
+altogether.
+
+### Scrolling lists
+
+Focus entering a row inside a `UIScrollView` scrolls the list to it, keeping
+`scrollPadding` pixels clear of the edge (8 by default). Your code reads no
+viewport size and no offset:
+
+```typescript
+const list = menu.scrollView({ width: 220, height: 140, gap: 4 });
+
+slots.forEach((slot, index) => {
+  list.button(slot.label, {
+    width: "100%",
+    disabled: slot.empty,
+    ...(index === 0 ? { focusId: "saves-first" } : {}),
+    onClick: () => load(slot.id),
+  });
+});
+```
+
+Moving up into the list from a button below it lands on the nearest row that is
+actually on screen, not on a row scrolled out of sight. Once the focus is
+inside the list, the next row below the fold is reachable and the list follows
+it.
+
+The list follows the focused row again when a layout pass moves that row inside
+the content — rows arriving above it — or resizes the viewport around it.
+Wheeling or dragging the list changes neither, so the offset the player scrolls
+to is kept until focus moves.
+
+For an explicit scroll, `list.scrollIntoView(element, { align, padding })`
+does the same thing from your own code, and `list.viewportWidth` /
+`list.viewportHeight` report the clipped box in pixels.
+
+### A dialog inside the menu
+
+A panel carrying its own `focus` is a scope of its own. While it is visible it
+takes the keys and the pointer, and the menu around it stops navigating — the
+dialog's rows never appear in the menu's list, and the menu's rows never
+appear in the dialog's. Hide the dialog and the menu picks up on the row it
+had.
+
+```typescript
+const confirmDelete = menu.panel({
+  gap: 8,
+  padding: 12,
+  visible: false,
+  background: { color: 0x181822, radius: 6 },
+  focus: { onCancel: () => (confirmDelete.visible = false) },
+});
+confirmDelete.text("Delete this save?");
+confirmDelete.button("Delete", { onClick: () => deleteSave() });
+confirmDelete.button("Keep", { onClick: () => (confirmDelete.visible = false) });
+```
+
+The dialog cannot be clicked through. While it holds the keys, everything
+drawn under it stops answering the pointer: a menu row behind it lights up on
+no hover, paints no press and runs no click, and a press on the blocked area
+is claimed for the UI rather than reaching your action map. The dialog's own
+rows behave exactly as they always do, and a scope nested inside the dialog
+blocks the dialog too. Hide the dialog and the pointer comes straight back.
+
+For a panel that wants the keys while the world behind it stays clickable —
+an inventory beside a live battlefield, a HUD panel a player navigates with
+the d-pad — turn it off:
+
+```typescript
+const inventory = hud.panel({
+  focus: { onCancel: () => closeInventory(), modal: false },
+});
+
+inventory.focusScope?.setOptions({ modal: false }); // and back at runtime
+```
+
+Two things to expect. A row already hovered when the dialog appears keeps its
+hover look until the player next moves the mouse, because the hit test runs on
+a pointer event and on nothing else. And the dialog blocks downwards from where
+it is drawn, so anything drawn above it stays interactive — a floating tooltip,
+a `PixiSelect` list, or a surface added after the menu's.
+
+A container that clips what it draws — a `UIScrollView`, or any other masked
+container — clips the block along with everything else inside it. Open a dialog
+inside a scroll view and it covers that view's own rows, while every point
+outside the view stays clickable. A dialog that has to cover the screen goes in
+a surface of its own, outside the clip.
+
+Nesting has no depth limit. One scope reads input at a time, and it sits in the
+topmost scene on the stack that has a scope shown, counting a scene you have
+paused. Within that scene, a scope with another shown scope inside it does not
+read input, which is why the dialog above reads it rather than the menu around
+it. Where neither of two shown scopes sits inside the other, the one shown most
+recently reads the input. Hiding a surface, or disabling its component or
+entity, hands the input back to the next scope that is still shown.
+
+### Keeping menu input out of gameplay
+
+A scope consumes nothing it reads. The confirm press that activates a menu row
+is still visible that frame to gameplay code polling the same action, and to
+the dialogue and interaction addons, which poll `interact` as well. Separate
+them with [action groups](/guides/input/#action-groups), on the
+`InputManager` you resolved from the engine context:
+
+```typescript
+input.setActiveGroups(["menu"]);  // while the menu is up
+input.setActiveGroups(["gameplay", "movement"]);  // when it closes
+```
+
+### Driving a scope yourself
+
+`surface.focusScope` and `panel.focusScope` give you the live scope. Every
+method works whether or not a device is attached, which is what a cutscene, a
+radial menu or a unit test uses:
+
+```typescript
+const scope = menu.focusScope;
+
+scope?.move("down");        // true when the press was used: a move, an adjust, an open list
+scope?.focus(firstSaveRow); // false when that row is hidden or disabled
+scope?.activate();
+scope?.cancel();
+
+scope?.focused;   // the element the scope remembers, or null
+scope?.hasInput;  // whether this scope is the one reading input
+```
+
+Pass `focus: { input: null }` for a scope that reads no device at all and waits
+for those calls. Pointer focus, the scroll follow and pointer ownership keep
+working there — such a scope still holds the keys, so add `modal: false` where
+the world behind it must stay clickable. With
+`@yagejs/input` absent from the project every scope behaves that way, and a
+development build says so once.
+
+### An element that takes the keys
+
+Some elements answer the player on their own while they are focused, and take
+the scope's input for as long as they do: a `PixiInput` holding the caret, and
+a `PixiSelect` showing its list. The scope hands that element every press it
+reads instead of navigating, so typing a name walks no menu and an arrow key
+over an open list moves the row the list will commit rather than the row
+behind it.
+
+In a text field, confirm commits what was typed and leaves the field, and
+cancel restores the value the field had when editing began. Enter and Escape
+typed into the field are those same two ends, so a player who renames a save
+and presses Escape gets the old name back either way. The keys the player
+types are text entry: they do not reach the action map, so a letter bound to a
+gameplay action stays quiet until the player leaves the field, and so does the
+key they leave it with.
+
+In an open dropdown list, up and down move the row a confirm press commits and
+the list scrolls to follow, stopping at either end. Confirm commits that row —
+the value changes, your `onSelect` fires and the list closes — which is what
+clicking the row does. Cancel closes the list on the value the select already
+had, and the menu around it stays open. Left and right do nothing at all while
+the list shows. The open list holds every direction the scope reads and acts on
+up and down alone, so a row's own `onAdjust` runs only once the list is closed.
+
+Either way, the scope taking its input back ends the element cleanly: focus
+moving off, the menu hiding, the widget being destroyed. A field keeps what
+was typed, and a list closes on the value it had.
+
+An element that takes the keys also takes focus. A field the player clicks in a
+`pointerFocus: "none"` scope becomes the focused row, so the row the scope
+reports is always the one the keys go to.
+
+`isCapturingInput(element)` answers whether that element is holding the keys.
+It answers per element, so a field edited in one surface says nothing about a
+field in another:
+
+```typescript
+import { isCapturingInput } from "@yagejs/ui";
+
+// Hide the movement prompt while the player is naming a save or picking a mode.
+movementHint.visible = !isCapturingInput(nameField);
+```
+
 ## Nested Panels
 
 Build complex layouts with nested panels:

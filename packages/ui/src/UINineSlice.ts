@@ -11,6 +11,12 @@ import type { UIElement, UINineSliceProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
+import { FocusOutline, layoutBox } from "./internal/focus-outline.js";
+import { FocusState } from "./focus/FocusState.js";
+import {
+  requestHoverFocus,
+  requestPressFocus,
+} from "./focus/pointer-request.js";
 import { warnNineSliceTooSmall } from "./internal/nine-slice-guard.js";
 
 /** Displays a nine-slice texture as a UI element. Requires explicit width/height from layout. */
@@ -24,6 +30,8 @@ export class UINineSlice implements UIElement {
 
   private textureInput: TextureInput;
   private readonly pointerEvents: PointerEvents;
+  private readonly _focus: FocusState;
+  private readonly _focusOutline: FocusOutline;
   private _destroyed = false;
 
   constructor(props: UINineSliceProps) {
@@ -54,6 +62,26 @@ export class UINineSlice implements UIElement {
     applyConsumeInput(this.container, props.consumeInput);
     this.pointerEvents = new PointerEvents(this.container, props);
 
+    // Out of focus navigation until a game asks for it with `focusable`.
+    // Asked for, the sprite is outlined like every other focusable element;
+    // the pointer still moves focus here, which keeps the mouse and the
+    // keyboard on the same element.
+    this._focusOutline = new FocusOutline({
+      container: this.container,
+      box: () => layoutBox(this.yogaNode),
+    });
+    this._focusOutline.set(props);
+    this._focus = new FocusState(this, props, {
+      focusableByDefault: false,
+      paint: (focused) => this._focusOutline.setFocused(focused),
+    });
+    this.container.on("pointerover", () => {
+      requestHoverFocus(this);
+    });
+    this.container.on("pointerdown", () => {
+      requestPressFocus(this);
+    });
+
     if (props.tint !== undefined) this.container.tint = props.tint;
     if (props.alpha !== undefined) this.container.alpha = props.alpha;
 
@@ -72,6 +100,7 @@ export class UINineSlice implements UIElement {
     warnNineSliceTooSmall(this, this.container, w, h, "UINineSlice");
     this.container.width = w;
     this.container.height = h;
+    this._focusOutline.refresh();
   }
 
   get visible(): boolean {
@@ -105,6 +134,8 @@ export class UINineSlice implements UIElement {
     if ("alpha" in p) this.container.alpha = p.alpha ?? 1;
     if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
     this.pointerEvents.set(p);
+    this._focus.set(p);
+    this._focusOutline.set(p);
 
     applyLayoutProps(this.yogaNode, p);
 
@@ -113,10 +144,22 @@ export class UINineSlice implements UIElement {
     }
   }
 
+  /**
+   * What the Inspector reports for this nine-slice: whether it takes part in
+   * focus navigation, which is off unless the game asked for it, and whether
+   * it holds focus right now. A test reads this instead of a screenshot.
+   * @internal
+   */
+  _inspectState(): { focused: boolean; focusable: boolean } {
+    return { focused: this._focus.focused, focusable: this._focus.focusable };
+  }
+
   /** Idempotent — a second call is a no-op. */
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+    this._focus.destroy();
+    this._focusOutline.destroy();
     clearConsumeInput(this.container);
     this.yogaNode.free();
     this.container.destroy();

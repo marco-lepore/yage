@@ -1,6 +1,7 @@
 import { Phase, Vec2 } from "@yagejs/core";
 import type { RendererAdapter, ErrorBoundary } from "@yagejs/core";
 import { applyRadialDeadzone } from "./deadzone.js";
+import { DEFAULT_REPEAT_DELAY, DEFAULT_REPEAT_INTERVAL } from "./types.js";
 import type {
   ActionMapDefinition,
   ActionMapInput,
@@ -16,6 +17,7 @@ import type {
   PointerEventInfo,
   PointerInfo,
   PointerType,
+  PressRepeatOptions,
   RebindOptions,
   RebindResult,
   SchedulerLike,
@@ -23,6 +25,14 @@ import type {
 
 /** Action-map codes for the three primary mouse buttons, indexed by button. */
 const MOUSE_BUTTON_CODES = ["MouseLeft", "MouseMiddle", "MouseRight"] as const;
+
+/**
+ * What ended a hold: the player letting go, or the engine dropping held state
+ * (window blur, page hide, pad disconnect, cancelled pointer,
+ * {@link InputManager.clearAll}). Both notify listeners; only a `"player"`
+ * release answers {@link InputManager.isJustReleasedByPlayer}.
+ */
+type ReleaseOrigin = "player" | "engine";
 
 /** Mutable internal pointer record. Exposed externally as the read-only {@link PointerInfo}. */
 interface MutablePointerInfo {
@@ -148,6 +158,27 @@ interface ClockState {
   pressStamp: Map<string, number>;
 }
 
+/**
+ * How many repeat edges a hold of `held` units has produced. `delay` and
+ * `interval` are in the same unit as `held`.
+ */
+function repeatCount(held: number, delay: number, interval: number): number {
+  return held < delay ? 0 : 1 + Math.floor((held - delay) / interval);
+}
+
+function assertRepeatTiming(delay: number, interval: number): void {
+  if (!Number.isFinite(delay) || delay < 0) {
+    throw new Error(
+      `InputManager.isJustPressed: repeatDelay must be a finite number of seconds at or above 0, got ${delay}.`,
+    );
+  }
+  if (!Number.isFinite(interval) || interval <= 0) {
+    throw new Error(
+      `InputManager.isJustPressed: repeatInterval must be a finite number of seconds above 0, got ${interval}.`,
+    );
+  }
+}
+
 class ManagerActionSource implements InputActionSource {
   constructor(
     private readonly manager: InputManager,
@@ -196,6 +227,11 @@ export class InputManager {
   private actionPressesThisFrame = new Set<string>();
   /** Actions released in the current frame by any physical or synthetic code. */
   private actionReleasesThisFrame = new Set<string>();
+  /**
+   * Actions the player let go of in the current frame: the subset of
+   * {@link actionReleasesThisFrame} that no engine drop produced.
+   */
+  private playerReleasesThisFrame = new Set<string>();
   /** Action mapping captured when each currently-held code was pressed. */
   private activePressActions = new Map<string, readonly string[]>();
   /** Internal codes owned by action sources, excluded from public key listeners. */
@@ -223,6 +259,11 @@ export class InputManager {
   private stepActionPressTags = new Map<string, number>();
   /** Action release edges from any code, tagged like {@link stepPressTags}. */
   private stepActionReleaseTags = new Map<string, number>();
+  /**
+   * Release edges the player made, tagged like {@link stepPressTags}. The
+   * fixed-step half of {@link playerReleasesThisFrame}.
+   */
+  private stepPlayerReleaseTags = new Map<string, number>();
   /** Step index of the latest hold-baseline rotation, shared by every clock. */
   private stepHoldRotatedAt = -1;
   /**
@@ -343,8 +384,59 @@ export class InputManager {
    * Each context sees a press exactly once — when several fixed steps run in
    * one frame only the first sees it, and a press in a frame that runs no
    * fixed step is held for the next step.
+   *
+   * With `{ repeat: true }` a held action also reports an edge in every window
+   * where its hold crosses `repeatDelay + n * repeatInterval`. At most one
+   * edge per query window: a frame longer than the interval steps a menu one
+   * row. The rate is an argument, so two callers can repeat the same action
+   * at different rates. Gamepad stick directions repeat like any key.
+   *
+   * `options.clock` selects the clock the repeat schedule is counted on; the
+   * initial press edge always resolves against the caller's own window.
+   * Omitted, repeats count on the raw input clock, so a menu keeps repeating
+   * over a paused scene.
+   *
+   * @throws when `repeatDelay` is not a finite number at or above 0, or
+   * `repeatInterval` is not a finite number above 0, before any state is read.
    */
-  isJustPressed(action: string): boolean {
+  isJustPressed(action: string, options?: PressRepeatOptions): boolean {
+    const repeating = options?.repeat === true;
+    const delaySeconds = options?.repeatDelay ?? DEFAULT_REPEAT_DELAY;
+    const intervalSeconds = options?.repeatInterval ?? DEFAULT_REPEAT_INTERVAL;
+    // Timings are checked even without `repeat`, so a bad number from a caller
+    // who forgot the flag still throws.
+    if (
+      options?.repeatDelay !== undefined ||
+      options?.repeatInterval !== undefined
+    ) {
+      assertRepeatTiming(delaySeconds, intervalSeconds);
+    }
+
+    if (this.hasPressEdge(action)) return true;
+    if (!repeating) return false;
+
+    const state = this.resolveState("isJustPressed", "hold", options?.clock);
+    if (!this.isActionEnabled(action)) return false;
+    const hold = this.rawHoldOn(action, state);
+    if (hold <= 0) return false;
+
+    const window = this.currentStepWindow();
+    let baseline: number;
+    if (window === null) {
+      baseline = state.prevHold.get(action) ?? 0;
+    } else {
+      this.rotateStepHolds(window + 1);
+      baseline = state.stepPrevHold.get(action) ?? 0;
+    }
+    const delay = delaySeconds * state.perSecond;
+    const interval = intervalSeconds * state.perSecond;
+    return (
+      repeatCount(hold, delay, interval) >
+      repeatCount(baseline, delay, interval)
+    );
+  }
+
+  private hasPressEdge(action: string): boolean {
     if (!this.isActionEnabled(action)) return false;
     const window = this.currentStepWindow();
     if (window === null) {
@@ -371,6 +463,30 @@ export class InputManager {
       return this.actionReleasesThisFrame.has(action);
     }
     return this.stepActionReleaseTags.get(action) === window;
+  }
+
+  /**
+   * Whether the player let go of the action in the caller's query window,
+   * matching the calling context like {@link isJustPressed}.
+   *
+   * A key-up, a gamepad button-up, a pointer-button release and a finger
+   * leaving an on-screen control count. Held state the engine drops does not:
+   * window blur, page hide, a pad disconnecting, a cancelled pointer,
+   * {@link clearAll}, an action source released. Those still notify
+   * {@link onActionReleased}, and {@link isJustReleased} reports them.
+   *
+   * Read this where the release commits something the player cannot take
+   * back (a menu confirm, a charged shot), so alt-tabbing commits nothing.
+   *
+   * A hold that ends while the action's group is disabled answers `false`.
+   */
+  isJustReleasedByPlayer(action: string): boolean {
+    if (!this.isActionEnabled(action)) return false;
+    const window = this.currentStepWindow();
+    if (window === null) {
+      return this.playerReleasesThisFrame.has(action);
+    }
+    return this.stepPlayerReleaseTags.get(action) === window;
   }
 
   /** Whether any binding (key or synthetic) still holds the action, ignoring group enablement. */
@@ -1732,7 +1848,7 @@ export class InputManager {
    */
   _releaseAllGamepadState(): void {
     for (const code of [...this.lastButtonState.keys()]) {
-      this._applyKeyUp(code);
+      this.releaseKeyCode(code, "engine");
     }
     this.lastButtonState.clear();
     this.gamepadAxisState.clear();
@@ -1782,7 +1898,9 @@ export class InputManager {
       typeof navigator !== "undefined" &&
       typeof navigator.getGamepads === "function"
     ) {
-      this.reconcileButtonStateAcrossPads(navigator.getGamepads());
+      // The departed pad's held buttons are dropped by the engine, not let go
+      // by the player.
+      this.reconcileButtonStateAcrossPads(navigator.getGamepads(), "engine");
     } else {
       this._releaseAllGamepadState();
     }
@@ -1887,7 +2005,7 @@ export class InputManager {
     }
 
     // 5. Reconcile button state across all pads (any-pad action map).
-    this.reconcileButtonStateAcrossPads(pads);
+    this.reconcileButtonStateAcrossPads(pads, "player");
   }
 
   /** Whether a pad has any input that should claim active-pad ownership. */
@@ -1918,6 +2036,7 @@ export class InputManager {
    */
   private reconcileButtonStateAcrossPads(
     pads: ReadonlyArray<Gamepad | null>,
+    origin: ReleaseOrigin,
   ): void {
     const codePressed = new Map<string, boolean>();
     const directionStrengths = new Map<string, number>();
@@ -2005,7 +2124,7 @@ export class InputManager {
       if (isPressed && !wasPressed) {
         this._applyKeyDown(code);
       } else if (!isPressed && wasPressed) {
-        this._applyKeyUp(code);
+        this.releaseKeyCode(code, origin);
       }
       if (isPressed) {
         this.lastButtonState.set(code, true);
@@ -2079,7 +2198,9 @@ export class InputManager {
       return;
     }
     if (!this.pressedKeys.has(code)) return;
-    this.applyCodeUp(code, false);
+    // A finger leaving an on-screen button is the player letting go; the
+    // source's `releaseAll` below is the control going away.
+    this.applyCodeUp(code, false, "player");
     this.syntheticCodes.delete(code);
     const codes = this.sourceCodes.get(sourceId);
     codes?.delete(code);
@@ -2091,7 +2212,7 @@ export class InputManager {
     const codes = this.sourceCodes.get(sourceId);
     if (!codes) return;
     for (const code of [...codes]) {
-      this.applyCodeUp(code, false);
+      this.applyCodeUp(code, false, "engine");
       this.syntheticCodes.delete(code);
     }
     this.sourceCodes.delete(sourceId);
@@ -2100,7 +2221,7 @@ export class InputManager {
   /** Release all synthetic and physical input state. */
   clearAll(): void {
     for (const code of [...this.pressedKeys]) {
-      this.applyCodeUp(code, !this.syntheticCodes.has(code));
+      this.applyCodeUp(code, !this.syntheticCodes.has(code), "engine");
     }
     // Hard reset: synthetic releases generated above are intentionally
     // discarded. Callers want a clean slate, not a flurry of justReleased
@@ -2110,6 +2231,7 @@ export class InputManager {
     this.pulsedSyntheticActions.clear();
     this.actionPressesThisFrame.clear();
     this.actionReleasesThisFrame.clear();
+    this.playerReleasesThisFrame.clear();
     this.activePressActions.clear();
     this.syntheticCodes.clear();
     this.sourceCodes.clear();
@@ -2129,6 +2251,7 @@ export class InputManager {
     this.stepPulseTags.clear();
     this.stepActionPressTags.clear();
     this.stepActionReleaseTags.clear();
+    this.stepPlayerReleaseTags.clear();
     this.stepHoldRotatedAt = -1;
     this.pointers.clear();
     this.queuedPointers.clear();
@@ -2177,7 +2300,7 @@ export class InputManager {
       ) {
         continue;
       }
-      this._applyKeyUp(code);
+      this.releaseKeyCode(code, "engine");
     }
     this._releaseAllGamepadState();
     this.clearPointerButtons();
@@ -2486,7 +2609,9 @@ export class InputManager {
     pointer.buttons.clear();
     pointer.isDown = false;
     for (const button of heldButtons) {
-      this.recomputeMouseAggregate(button);
+      // A cancelled gesture is the browser taking the pointer away, not a
+      // player release.
+      this.recomputeMouseAggregate(button, "engine");
     }
     if (hadActivePress) {
       this.notifyPointerListeners(
@@ -2637,10 +2762,23 @@ export class InputManager {
    * {@link _enqueueKeyUp}.
    */
   _applyKeyUp(code: string): void {
-    this.applyCodeUp(code, true);
+    this.releaseKeyCode(code, "player");
   }
 
-  private applyCodeUp(code: string, notifyKey: boolean): void {
+  /**
+   * End a held key, gamepad or mouse code, recording who ended it. Listeners
+   * hear both origins alike; only
+   * {@link InputManager.isJustReleasedByPlayer} tells them apart.
+   */
+  private releaseKeyCode(code: string, origin: ReleaseOrigin): void {
+    this.applyCodeUp(code, true, origin);
+  }
+
+  private applyCodeUp(
+    code: string,
+    notifyKey: boolean,
+    origin: ReleaseOrigin,
+  ): void {
     if (this.pressedKeys.has(code)) {
       const actions = this.activePressActions.get(code) ?? [];
       const durations = this.endKeyHold(code);
@@ -2659,6 +2797,10 @@ export class InputManager {
       for (const action of actions) {
         this.actionReleasesThisFrame.add(action);
         this.stepActionReleaseTags.set(action, this.stepTag());
+        if (origin === "player") {
+          this.playerReleasesThisFrame.add(action);
+          this.stepPlayerReleaseTags.set(action, this.stepTag());
+        }
         if (this.isActionEnabled(action)) {
           this.notifyActionListeners(this.actionReleasedListeners, action);
           if (!this.isActionStillHeld(action)) {
@@ -2781,7 +2923,10 @@ export class InputManager {
    * gameplay actions, even if a second non-UI pointer simultaneously holds
    * the same button.
    */
-  private recomputeMouseAggregate(button: number): void {
+  private recomputeMouseAggregate(
+    button: number,
+    origin: ReleaseOrigin = "player",
+  ): void {
     const code = MOUSE_BUTTON_CODES[button];
     if (!code) return;
     let nowAny = false;
@@ -2798,7 +2943,7 @@ export class InputManager {
       this._applyKeyDown(code);
     } else if (!nowAny && wasAny) {
       this.mouseButtonAggregate.delete(button);
-      this._applyKeyUp(code);
+      this.releaseKeyCode(code, origin);
     }
   }
 
@@ -2892,6 +3037,7 @@ export class InputManager {
     this.justReleasedKeys.clear();
     this.actionPressesThisFrame.clear();
     this.actionReleasesThisFrame.clear();
+    this.playerReleasesThisFrame.clear();
     this.pointerPressesThisFrame.length = 0;
     const endedPulses = [...this.pulsedSyntheticActions];
     this.pulsedSyntheticActions.clear();
@@ -2923,6 +3069,7 @@ export class InputManager {
     this.pruneStepTags(this.stepPulseTags, currentTag);
     this.pruneStepTags(this.stepActionPressTags, currentTag);
     this.pruneStepTags(this.stepActionReleaseTags, currentTag);
+    this.pruneStepTags(this.stepPlayerReleaseTags, currentTag);
   }
 
   /** Drop step-window entries whose step has already started. */

@@ -379,6 +379,35 @@ describe("Inspector", () => {
     expect(inspector.snapshot().scenes[0]?.ui?.root.bounds).toBeNull();
   });
 
+  it("fills a UI node's state from the element, and reports null without one", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+
+    const box = { left: 0, top: 0, width: 60, height: 30 };
+    // `_inspectState` is matched structurally, the way `@yagejs/ui` elements
+    // report focus, hover and disabled state to a test.
+    const interactive = Object.assign(fakeUIElement({ layout: box }), {
+      _inspectState: () => ({ focused: true, disabled: false }),
+    });
+    const plain = fakeUIElement({ layout: box });
+    class UISurface extends Component {
+      readonly root = fakeUIElement({
+        layout: { left: 0, top: 0, width: 200, height: 100 },
+        children: [interactive, plain],
+      });
+    }
+    scene.spawn("hud").add(new UISurface());
+
+    const root = inspector.snapshot().scenes[0]?.ui?.root;
+    expect(root?.state).toBeNull();
+    expect(root?.children[0]?.state).toEqual({
+      focused: true,
+      disabled: false,
+    });
+    expect(root?.children[1]?.state).toBeNull();
+  });
+
   it("registers and resolves inspector extensions by namespace", () => {
     const { inspector } = setup();
     const inventory = {

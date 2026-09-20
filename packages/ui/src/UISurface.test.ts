@@ -219,13 +219,20 @@ vi.mock("pixi.js", () => ({
 }));
 
 import Yoga from "yoga-layout";
+import { Container } from "pixi.js";
 import { setYoga } from "./yoga-helpers.js";
 import { UISurface } from "./UISurface.js";
 import { UIPanel } from "./UIPanel.js";
 import { UIText } from "./UIText.js";
 import { Anchor } from "./types.js";
+import type { UISurfaceOptions } from "./types.js";
+import { UIFocusStack, UIFocusStackKey } from "./focus/UIFocusStack.js";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
-import { createUITestContext, spawnEntityInScene } from "./test-helpers.js";
+import {
+  createUITestContext,
+  spawnEntityInScene,
+  TreeContextProbe,
+} from "./test-helpers.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -1050,4 +1057,190 @@ describe("UISurface", () => {
       panel.destroy();
     });
   });
+});
+
+describe("UISurface tree context", () => {
+  const probe = (): TreeContextProbe => new TreeContextProbe(new Container());
+
+  it.each([
+    ["built before the surface is mounted", true],
+    ["added after the surface is mounted", false],
+  ])("hands the entity name and the focus stack to a child %s", (_n, first) => {
+    const { scene } = createUITestContext();
+    const stack = {} as UIFocusStack;
+    scene.registerScoped(UIFocusStackKey, stack);
+    const entity = spawnEntityInScene(scene, "Hud");
+    const leaf = probe();
+    const surface = new UISurface();
+    if (first) surface.addElement(leaf);
+
+    entity.add(surface);
+    if (!first) surface.addElement(leaf);
+
+    expect(leaf.received).toEqual({ label: "Hud", focusStack: stack });
+  });
+
+  it("reaches a nested child, with a null stack in a scene that registered none", () => {
+    const { scene } = createUITestContext();
+    const entity = spawnEntityInScene(scene, "Inventory");
+    const surface = entity.add(new UISurface());
+    const leaf = probe();
+
+    surface.panel().scrollView().addElement(leaf);
+
+    expect(leaf.received).toEqual({ label: "Inventory", focusStack: null });
+  });
+
+  it("drops the context from the whole tree when the surface is destroyed", () => {
+    const { scene } = createUITestContext();
+    const entity = spawnEntityInScene(scene, "Hud");
+    const surface = entity.add(new UISurface());
+    const leaf = probe();
+    surface.panel().addElement(leaf);
+    expect(leaf.attached).toBe(true);
+
+    surface.onDestroy!();
+
+    expect(leaf.attached).toBe(false);
+  });
+});
+
+describe("UISurface focus scope", () => {
+  /** A surface mounted on an active entity in a scene that has a stack. */
+  function mount(opts: UISurfaceOptions): {
+    surface: UISurface;
+    stack: UIFocusStack;
+    drive: () => void;
+  } {
+    const { scene } = createUITestContext();
+    const stack = new UIFocusStack();
+    scene.registerScoped(UIFocusStackKey, stack);
+    const entity = spawnEntityInScene(scene, "PauseMenu");
+    const surface = entity.add(new UISurface(opts));
+    /** One frame of what the focus system does to every scene's stack. */
+    const drive = (): void => {
+      if (stack._observe()) stack._drive(null);
+      else stack._suspend();
+    };
+    return { surface, stack, drive };
+  }
+
+  it("builds one scope, on the root panel, only when its options ask", () => {
+    const { surface, stack, drive } = mount({ focus: { wrap: false } });
+    expect(surface.focusScope).not.toBeNull();
+    expect(surface.root.focusScope).toBe(surface.focusScope);
+    drive();
+    expect(stack.active).toBe(surface.focusScope);
+
+    const plain = mount({});
+    expect(plain.surface.focusScope).toBeNull();
+    plain.drive();
+    expect(plain.stack.active).toBeNull();
+  });
+
+  it("refreshes that one scope when the root panel is given a focus option", () => {
+    const { surface, stack, drive } = mount({ focus: { wrap: false } });
+    const button = surface.button("Resume", { width: 100, height: 30 });
+    surface.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+    const scope = surface.focusScope;
+    drive();
+    expect(scope?.focused).toBe(button);
+
+    surface.root.update({ focus: { wrap: true } });
+    drive();
+
+    expect(surface.focusScope).toBe(scope);
+    expect(surface.root.focusScope).toBe(scope);
+    expect(stack.active).toBe(scope);
+    expect(scope?.focused).toBe(button);
+  });
+
+  it.each([
+    ["before", true],
+    ["after", false],
+  ])(
+    "drives a nested dialog's scope built %s the surface is mounted",
+    (_n, first) => {
+      const { scene } = createUITestContext();
+      const stack = new UIFocusStack();
+      scene.registerScoped(UIFocusStackKey, stack);
+      const entity = spawnEntityInScene(scene, "PauseMenu");
+      const surface = new UISurface({ focus: true });
+      if (!first) entity.add(surface);
+      const dialog = surface.panel({ focus: true });
+      if (first) {
+        expect(dialog.focusScope).toBeNull();
+        entity.add(surface);
+      }
+
+      if (stack._observe()) stack._drive(null);
+
+      // The surface's walk stops at a panel that owns a scope.
+      expect(dialog.focusScope).not.toBeNull();
+      expect(stack.active).toBe(dialog.focusScope);
+    },
+  );
+
+  it.each(["visible", "enabled"] as const)(
+    "hands input back while %s is false, on the row it had",
+    (flag) => {
+      const { surface, drive } = mount({ focus: true });
+      const button = surface.button("Resume", { width: 100, height: 30 });
+      surface.root.yogaNode.calculateLayout(
+        undefined,
+        undefined,
+        Direction.LTR,
+      );
+      const scope = surface.focusScope!;
+      drive();
+      expect(scope.focused).toBe(button);
+
+      surface[flag] = false;
+      drive();
+      expect(scope.hasInput).toBe(false);
+
+      surface[flag] = true;
+      drive();
+      expect(scope.hasInput).toBe(true);
+      expect(scope.focused).toBe(button);
+    },
+  );
+
+  it.each([
+    ["its own scope", { focus: true }, false],
+    ["a scope a panel below the root owns", {}, true],
+  ])("unregisters %s when the surface is destroyed", (_n, opts, nested) => {
+    const { surface, stack, drive } = mount(opts);
+    if (nested) surface.panel({ focus: true });
+    drive();
+    expect(stack.active).not.toBeNull();
+
+    surface.onDestroy!();
+
+    expect(surface.focusScope).toBeNull();
+    expect(stack._observe()).toBe(false);
+    expect(stack.active).toBeNull();
+  });
+
+  it.each([
+    ["the surface", true],
+    ["a panel under it", false],
+  ])(
+    "warns when %s asks for focus in a scene with no focus stack",
+    (_n, onRoot) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { scene } = createUITestContext();
+      const entity = spawnEntityInScene(scene, "PauseMenu");
+
+      const surface = entity.add(new UISurface(onRoot ? { focus: true } : {}));
+      const scope = onRoot
+        ? surface.focusScope
+        : surface.panel({ focus: true }).focusScope;
+
+      expect(scope).not.toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toContain('the "PauseMenu" UI tree');
+      warn.mockRestore();
+    },
+  );
 });

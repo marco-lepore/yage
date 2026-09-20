@@ -20,6 +20,14 @@ export class PixiProgressBar extends PixiUIBase<ProgressBar> {
     super(view, props);
   }
 
+  /** A progress bar shows a value and answers nothing the player does. */
+  protected override get interactive(): boolean {
+    return false;
+  }
+
+  /** A progress bar has no action; a confirm press on it does nothing. */
+  activate(): void {}
+
   update(props: Record<string, unknown>): void {
     const p = props as unknown as Partial<PixiProgressBarProps>;
 

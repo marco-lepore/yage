@@ -3,6 +3,7 @@
 
 # Generated at build time. Gitignored in docs/.gitignore, which Prettier
 # does not read: it reads the root .gitignore only.
+docs/.astro/
 docs/public/llms/
 docs/src/content/docs/api/
 dist-lab/

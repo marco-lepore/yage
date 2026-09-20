@@ -217,6 +217,13 @@ interface UIElementLike {
   displayObject?: {
     toGlobal(point: { x: number; y: number }): { x: number; y: number };
   };
+  /**
+   * The element's own interaction state, matched structurally so core keeps
+   * no dependency on `@yagejs/ui`. Fills {@link UINodeSnapshot.state}.
+   *
+   * @internal
+   */
+  _inspectState?(): unknown;
 }
 
 /** Backward-compatible summary snapshot returned by query helpers. */
@@ -367,6 +374,12 @@ export interface UINodeSnapshot {
    */
   bounds: { x: number; y: number; width: number; height: number } | null;
   children: UINodeSnapshot[];
+  /**
+   * The element's own interaction state, in the shape the element reports (a
+   * button's focused, hovered, pressed and disabled flags). `null` for an
+   * element that reports none and for the synthetic root of a scene with
+   * several surfaces.
+   */
   state: unknown | null;
 }
 
@@ -2029,7 +2042,7 @@ export class Inspector {
       },
       bounds: this.buildUIBounds(node, size, adapter),
       children,
-      state: null,
+      state: node._inspectState?.() ?? null,
     };
   }
 

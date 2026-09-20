@@ -10,6 +10,12 @@ import type { UIElement, UITextProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
+import { FocusOutline, layoutBox } from "./internal/focus-outline.js";
+import { FocusState } from "./focus/FocusState.js";
+import {
+  requestHoverFocus,
+  requestPressFocus,
+} from "./focus/pointer-request.js";
 
 const DEFAULT_ELLIPSIS = "…";
 
@@ -44,6 +50,8 @@ export class UIText implements UIElement {
   private readonly _bitmap: boolean | undefined;
   private readonly _resolution: number | undefined;
   private readonly pointerEvents: PointerEvents;
+  private readonly _focus: FocusState;
+  private readonly _focusOutline: FocusOutline;
   private _destroyed = false;
 
   constructor(props: UITextProps) {
@@ -74,6 +82,25 @@ export class UIText implements UIElement {
     this.displayObject = this.text;
     applyConsumeInput(this.text, props.consumeInput);
     this.pointerEvents = new PointerEvents(this.text, props);
+
+    // Out of focus navigation until a game asks for it with `focusable`.
+    // Asked for, the label carries focus like every other focusable element,
+    // and a press on it brings the keyboard here.
+    this._focusOutline = new FocusOutline({
+      container: this.text,
+      box: () => layoutBox(this.yogaNode),
+    });
+    this._focusOutline.set(props);
+    this._focus = new FocusState(this, props, {
+      focusableByDefault: false,
+      paint: (focused) => this._focusOutline.setFocused(focused),
+    });
+    this.text.on("pointerover", () => {
+      requestHoverFocus(this);
+    });
+    this.text.on("pointerdown", () => {
+      requestPressFocus(this);
+    });
 
     this.yogaNode.setMeasureFunc((width, widthMode) => {
       this._measured = true;
@@ -142,6 +169,7 @@ export class UIText implements UIElement {
    * style write.
    */
   applyLayout(): void {
+    this._focusOutline.refresh();
     const width = this.yogaNode.getComputedWidth();
     if (this._measured) {
       // The callback already wrapped or truncated this text to the constraint
@@ -261,6 +289,8 @@ export class UIText implements UIElement {
     }
     if ("consumeInput" in p) applyConsumeInput(this.text, p.consumeInput);
     this.pointerEvents.set(p);
+    this._focus.set(p);
+    this._focusOutline.set(p);
     applyLayoutProps(this.yogaNode, p);
 
     if ("visible" in p) {
@@ -268,10 +298,22 @@ export class UIText implements UIElement {
     }
   }
 
+  /**
+   * What the Inspector reports for this label: whether it takes part in
+   * focus navigation, which is off unless the game asked for it, and whether
+   * it holds focus right now. A test reads this instead of a screenshot.
+   * @internal
+   */
+  _inspectState(): { focused: boolean; focusable: boolean } {
+    return { focused: this._focus.focused, focusable: this._focus.focusable };
+  }
+
   /** Idempotent — a second call is a no-op. */
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+    this._focus.destroy();
+    this._focusOutline.destroy();
     clearConsumeInput(this.text);
     this.yogaNode.free();
     this.text.destroy();

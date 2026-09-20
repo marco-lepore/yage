@@ -11,6 +11,12 @@ import type { UIElement, UIImageProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
+import { FocusOutline } from "./internal/focus-outline.js";
+import { FocusState } from "./focus/FocusState.js";
+import {
+  requestHoverFocus,
+  requestPressFocus,
+} from "./focus/pointer-request.js";
 
 /** A dimension the caller sized. `auto` and unset leave the size to layout. */
 function isSizedDimension(value: { readonly unit: Unit }): boolean {
@@ -37,6 +43,8 @@ export class UIImage implements UIElement {
 
   private textureInput: TextureInput;
   private readonly pointerEvents: PointerEvents;
+  private readonly _focus: FocusState;
+  private readonly _focusOutline: FocusOutline;
   private _destroyed = false;
 
   constructor(props: UIImageProps) {
@@ -47,6 +55,37 @@ export class UIImage implements UIElement {
     this.container = new Sprite(texture);
     applyConsumeInput(this.container, props.consumeInput);
     this.pointerEvents = new PointerEvents(this.container, props);
+
+    // Out of focus navigation until a game asks for it with `focusable` —
+    // which is what an inventory grid of picture cells does. Asked for, the
+    // cell is outlined like every other focusable element; the pointer moves
+    // focus here, which keeps the mouse and the keyboard on the same cell.
+    //
+    // `applyLayout` sizes the sprite by scaling it, so the box is divided
+    // back into the sprite's own space and the outline is told that scale;
+    // the stroke then comes out the themed thickness at any picture size.
+    this._focusOutline = new FocusOutline({
+      container: this.container,
+      box: () => ({
+        x: 0,
+        y: 0,
+        width: this.yogaNode.getComputedWidth() / (this.container.scale.x || 1),
+        height:
+          this.yogaNode.getComputedHeight() / (this.container.scale.y || 1),
+      }),
+      scale: () => this.container.scale,
+    });
+    this._focusOutline.set(props);
+    this._focus = new FocusState(this, props, {
+      focusableByDefault: false,
+      paint: (focused) => this._focusOutline.setFocused(focused),
+    });
+    this.container.on("pointerover", () => {
+      requestHoverFocus(this);
+    });
+    this.container.on("pointerdown", () => {
+      requestPressFocus(this);
+    });
 
     if (props.tint !== undefined) this.container.tint = props.tint;
     if (props.alpha !== undefined) this.container.alpha = props.alpha;
@@ -93,6 +132,7 @@ export class UIImage implements UIElement {
     const h = this.yogaNode.getComputedHeight();
     this.container.width = w;
     this.container.height = h;
+    this._focusOutline.refresh();
   }
 
   /**
@@ -137,6 +177,8 @@ export class UIImage implements UIElement {
     if ("alpha" in p) this.container.alpha = p.alpha ?? 1;
     if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
     this.pointerEvents.set(p);
+    this._focus.set(p);
+    this._focusOutline.set(p);
 
     applyLayoutProps(this.yogaNode, p);
     this.syncAspectRatio();
@@ -146,10 +188,22 @@ export class UIImage implements UIElement {
     }
   }
 
+  /**
+   * What the Inspector reports for this image: whether it takes part in
+   * focus navigation, which is off unless the game asked for it, and whether
+   * it holds focus right now. A test reads this instead of a screenshot.
+   * @internal
+   */
+  _inspectState(): { focused: boolean; focusable: boolean } {
+    return { focused: this._focus.focused, focusable: this._focus.focusable };
+  }
+
   /** Idempotent — a second call is a no-op. */
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+    this._focus.destroy();
+    this._focusOutline.destroy();
     clearConsumeInput(this.container);
     this.yogaNode.free();
     this.container.destroy();

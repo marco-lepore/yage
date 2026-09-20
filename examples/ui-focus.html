@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Keyboard &amp; Gamepad Focus</title>
+    <link rel="stylesheet" href="/shared.css" />
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>Keyboard &amp; Gamepad Focus</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span>
+        <kbd>Arrows</kbd> / <kbd>WASD</kbd> / d-pad / left stick move, and
+        repeat while held &middot; <kbd>Enter</kbd> or <kbd>A</kbd> confirms
+        &middot; <kbd>Esc</kbd> or <kbd>B</kbd> cancels &middot; <b>Tabs:</b>
+        <kbd>&larr;</kbd> <kbd>&rarr;</kbd> run the strip,
+        <kbd>Enter</kbd> relabels the grid &middot; <b>Menu:</b> the rows pass
+        <kbd>focusStyle: null</kbd> and show a <kbd>&gt;</kbd> marker from
+        <kbd>onFocusChange</kbd>; every other element draws the outline set on
+        the plugin. <kbd>&uarr;</kbd> <kbd>&darr;</kbd> step over the disabled
+        row and wrap at the ends &middot; <b>Grid:</b> all four directions move
+        by position, and off an edge focus carries on into the next pane
+        &middot; <b>Steppers:</b> <kbd>&larr;</kbd> <kbd>&rarr;</kbd> change the
+        value and keep focus. <kbd>Pointer focus</kbd> picks what the mouse does
+        to focus: <kbd>press</kbd> focuses on click, <kbd>hover</kbd> focuses
+        under the pointer, <kbd>none</kbd> leaves focus to the keys. The
+        <kbd>Dialog owns the pointer</kbd> checkbox picks whether the open
+        dialog blocks clicks on the menu behind it &middot; <b>Widgets:</b> the
+        slider and the radios step on <kbd>&larr;</kbd> <kbd>&rarr;</kbd>;
+        <kbd>Enter</kbd> opens the select or types into the field, which then
+        holds the keys until <kbd>Enter</kbd> or <kbd>Esc</kbd> &middot;
+        <b>Save Slots:</b> hold <kbd>&darr;</kbd> and the list scrolls to follow
+        the focus &middot; <b>Dialog:</b> <kbd>Enter</kbd> on
+        <kbd>Quit Game</kbd> or a save slot opens it; <kbd>Esc</kbd> closes it
+        and focus returns to the row that opened it &middot; <kbd>F</kbd> fires
+        a gameplay action, and the status panel counts every
+        <kbd>Enter</kbd> gameplay still hears
+      </span>
+    </div>
+    <script type="module" src="/src/ui-focus/main.ts"></script>
+  </body>
+</html>

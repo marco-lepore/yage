@@ -134,7 +134,7 @@ function OrdersPanel({ orders, fulfill, endDay }: OrdersProps) {
 }
 ```
 
-Size the viewport with `LayoutProps` (`height` / `flexGrow`). Content overflowing the scroll axis is clipped and pannable (wheel + drag work anywhere over the box, including gaps and the gutter). Dragging starts after 10 px and does not activate a child button when released. Props: `direction` (`"vertical"` default / `"horizontal"`), `gap`, `padding`, `bg`, `onScroll(offset)`, and `scrollbar` — `true` (default) / `false`, or a `ScrollbarOptions` object (`thickness`, `color`, `alpha`, `radius`, `minThumbLength`, `margin`). When the scrollbar is shown a gutter equal to the thumb footprint is auto-reserved so content never sits under it (`node.scrollbarGutter` is the px). Keep fixed elements (a footer button, a header) as **siblings** of `<ScrollView>`, not children. A `ref` exposes `scrollBy()` / `scrollTo()` / `scrollOffset` / `maxScroll`. The same node is available without React via the `UIPanel` / `UISurface` `.scrollView(opts)` builder.
+Size the viewport with `LayoutProps` (`height` / `flexGrow`). Content overflowing the scroll axis is clipped and pannable (wheel + drag work anywhere over the box, including gaps and the gutter). Dragging starts after 10 px and does not activate a child button when released. Props: `direction` (`"vertical"` default / `"horizontal"`), `gap`, `padding`, `bg`, `onScroll(offset)`, the three hover callbacks (`onHover`, `onPointerOver`, `onPointerOut`, firing anywhere over the box), and `scrollbar` — `true` (default) / `false`, or a `ScrollbarOptions` object (`thickness`, `color`, `alpha`, `radius`, `minThumbLength`, `margin`). When the scrollbar is shown a gutter equal to the thumb footprint is auto-reserved so content never sits under it (`node.scrollbarGutter` is the px). Keep fixed elements (a footer button, a header) as **siblings** of `<ScrollView>`, not children. A `ref` exposes `scrollBy()` / `scrollTo()` / `scrollOffset` / `maxScroll`. The same node is available without React via the `UIPanel` / `UISurface` `.scrollView(opts)` builder.
 
 > Appending JSX children to a layout-leaf element (one with no `addElement`, e.g. `<PixiSelect>`) silently drops them. The reconciler emits a one-shot dev `console.warn` pointing you at `<ScrollView>` / a container.
 
@@ -188,7 +188,8 @@ under such a panel still works. The `<Tooltip>` overlay and its bubbles use
 
 ### Hover events
 
-`Panel`, `Button`, `Text`, `Image`, `NineSlice`, `ProgressBar` accept hover
+`Panel`, `Button`, `Text`, `SplitText`, `Image`, `NineSlice`, `ProgressBar`,
+`Checkbox`, `ScrollView` and the interactive `Pixi*` wrappers accept hover
 callbacks (the container is already interactive, so these need no new
 listeners). Three independent, combinable props:
 
@@ -203,7 +204,116 @@ listeners). Three independent, combinable props:
 <Panel onPointerOver={preview} onPointerOut={clearPreview}>…</Panel>
 ```
 
-Callbacks are suppressed on a disabled `<Button>`.
+Callbacks are suppressed on a component with a disabled state while that
+state is on: `<Button>`, `<Checkbox>`, and a `Pixi*` wrapper whose widget
+carries an enabled flag.
+
+### Keyboard and gamepad focus
+
+Every JSX prop type derives from its imperative counterpart, so the focus
+props arrive with no separate declaration: `focusable`, `focusId`,
+`focusNeighbors`, `onFocusChange`, `onAdjust` and `focusStyle` on every
+component, and `focus` on `<Panel>` — whose keys include `wrap`, `autoFocus`,
+`input`, `pointerFocus`, `modal`, `scrollPadding` and the scope-wide cue
+callbacks. Full behaviour: the focus section of `llms/packages/ui.md`.
+
+```tsx
+<Panel gap={8} focus={{ wrap: true, onCancel: close }}>
+  <Button width={220} onClick={resume}>
+    Resume
+  </Button>
+  <Button width={220} disabled onClick={upload}>
+    Upload
+  </Button>
+
+  <Panel
+    direction="row"
+    focusable
+    focusId="volume"
+    focusNeighbors={{ down: "saves-first" }}
+    onAdjust={(d) => setVolume((v) => v + d * 5)}
+  >
+    <Text>{`Volume ${volume}`}</Text>
+  </Panel>
+
+  <Checkbox label="Music" checked={music} onChange={setMusic} />
+</Panel>
+```
+
+**Focus draws nothing until a game asks for it.** `onFocusChange` is where
+most games show it — a marker beside the row, a swapped sprite, a sound:
+
+```tsx
+const [focusedId, setFocusedId] = useState<string | null>(null);
+
+<Panel direction="row" gap={6}>
+  <Text width={10}>{focusedId === "continue" ? ">" : ""}</Text>
+  <Button
+    flex={1}
+    onFocusChange={(focused) => setFocusedId(focused ? "continue" : null)}
+    onClick={resume}
+  >
+    Continue
+  </Button>
+</Panel>;
+```
+
+`focusStyle` asks for the package's own outline, drawn just inside the
+component's box, with `color`, `width`, `radius` and `inset` on one component
+over the `focusStyle` given to `UIPlugin` for the whole UI. `focusStyle={null}`
+on a component drops a UI-wide outline for that component alone. Hover and
+press keep their fills, so a row the pointer is on shows both.
+
+`focusBg` fills the row that holds the focus. `<Button>` takes it beside
+`hoverBg` and `pressBg`, and a `focusable` `<Panel>` takes it on its own: a
+panel with no `bg` is transparent at rest and filled while the focus is on it.
+Omitted, a focused component keeps its resting background. A fill naming only
+a colour keeps the resting corner radius.
+
+```tsx
+<Panel
+  direction="row"
+  gap={6}
+  padding={4}
+  focusable
+  focusBg={{ color: 0x2c4a6f, radius: 4 }}
+>
+  <Text>{slot.label}</Text>
+  <Text>{slot.playtime}</Text>
+</Panel>
+```
+
+**The pointer and focus are separate.** Pressing a component focuses it;
+passing the pointer over one leaves focus where the keyboard put it.
+`focus={{ pointerFocus: "hover" }}` restores the console-style lit row, and
+`"none"` keeps the pointer out of focus entirely.
+
+**The scope reading input owns the pointer.** While a `focus` panel holds the
+keys, everything drawn under it stops answering the pointer, so a confirm
+dialog cannot be clicked through. A `<ScrollView>`, or any other container
+that clips what it draws, clips the block too: a `focus` panel inside one
+covers that view's own rows and leaves every point outside the view clickable.
+`focus={{ modal: false }}` turns it off.
+
+Holding confirm on the focused component paints it pressed and runs its action
+on the release; letting go after moving the focus away runs nothing.
+
+**Re-rendering with a fresh `focus` object refreshes the scope's options in
+place.** The reconciler passes every prop on every commit, so a new object
+literal each render is the normal case and focus stays where it is. Put the
+menu's callbacks in `focus` — `onCancel`, `onFocusMove`, `onActivate`,
+`onMoveBlocked` — and they are replaced per render without rebuilding
+anything. The object is the whole declaration: a key a render leaves out goes
+back to its default, so a callback you stop passing stops running. Dropping the prop, by an explicit `undefined` or a conditional
+spread, disposes the scope and hands input to the next shown one.
+
+`UIRoot` takes the same option, for a tree whose outermost element is not a
+single `<Panel>`:
+
+```ts
+const root = entity.add(new UIRoot({ anchor: Anchor.Center, focus: true }));
+root.focusScope; // UIFocusScope | null
+```
 
 ### Tooltip
 

@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  beforeAll,
+  afterEach,
+} from "vitest";
 
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
@@ -69,6 +77,10 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockGraphics extends MockContainer {
+    /** The rectangle of the most recent rounded draw. */
+    lastRect:
+      | { x: number; y: number; width: number; height: number; radius?: number }
+      | undefined;
     clear(): MockGraphics {
       return this;
     }
@@ -76,14 +88,32 @@ const { mocks } = vi.hoisted(() => {
     rect(...args: unknown[]): MockGraphics {
       return this;
     }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    roundRect(...args: unknown[]): MockGraphics {
+    roundRect(
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      radius?: number,
+    ): MockGraphics {
+      this.lastRect = {
+        x,
+        y,
+        width,
+        height,
+        ...(radius === undefined ? {} : { radius }),
+      };
       return this;
     }
     /** The style passed to the most recent `fill`. */
     lastFill: { color?: number; alpha?: number } | undefined;
     fill(style?: { color?: number; alpha?: number }): MockGraphics {
       this.lastFill = style;
+      return this;
+    }
+    /** The style passed to the most recent `stroke`. */
+    lastStroke: { color?: number; width?: number } | undefined;
+    stroke(style?: { color?: number; width?: number }): MockGraphics {
+      this.lastStroke = style;
       return this;
     }
   }
@@ -216,8 +246,11 @@ vi.mock("pixi.js", () => ({
 import Yoga, { Direction, Edge } from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UIButton } from "./UIButton.js";
+import type { UIButtonProps } from "./types.js";
 import { UIText } from "./UIText.js";
 import { UIPanel } from "./UIPanel.js";
+import { getFocusState } from "./focus/FocusState.js";
+import { setUIFocusStyle } from "./internal/focus-outline.js";
 import { ErrorBoundary, Logger, LogLevel } from "@yagejs/core";
 import { bindUIErrorBoundary } from "./error-boundary.js";
 
@@ -931,6 +964,164 @@ describe("UIButton", () => {
       );
       expect(panel.children).toEqual([child]);
       expect(btn.children).toHaveLength(0);
+    });
+  });
+
+  // The focus and press rules a button shares with a checkbox are in
+  // focus-props.test.ts.
+  describe("focus", () => {
+    // An outline is drawn only where a style asks for one.
+    beforeEach(() => setUIFocusStyle({}));
+    afterEach(() => setUIFocusStyle(undefined));
+
+    type Graphics = InstanceType<typeof mocks.MockGraphics>;
+
+    /** A laid-out 100x30 button, so its background is painted. */
+    function build(props: Partial<UIButtonProps> = {}): UIButton {
+      const btn = new UIButton({
+        children: "Test",
+        width: 100,
+        height: 30,
+        background: { color: 0x204060, radius: 8 },
+        ...props,
+      });
+      layout(btn);
+      return btn;
+    }
+
+    function layout(btn: UIButton): void {
+      btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      btn.applyLayout();
+    }
+
+    /** Move focus the way a scope does. */
+    function setFocused(btn: UIButton, focused: boolean): void {
+      getFocusState(btn)?._setFocused(focused);
+    }
+
+    function containerOf(
+      btn: UIButton,
+    ): InstanceType<typeof mocks.MockContainer> {
+      return btn.container as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+    }
+
+    /** The colour the background Graphics was last filled with. */
+    function paintedColor(btn: UIButton): number | undefined {
+      return (containerOf(btn).children[0] as Graphics).lastFill?.color;
+    }
+
+    /** The outline a focused button draws, or `undefined` before it takes focus. */
+    function outline(btn: UIButton): Graphics | undefined {
+      return containerOf(btn).children.find(
+        (child): child is Graphics =>
+          child instanceof mocks.MockGraphics && child.measurable === false,
+      );
+    }
+
+    it("reports the focus it was given and rounds the outline with its background", () => {
+      const btn = build();
+      expect(btn.focused).toBe(false);
+
+      setFocused(btn, true);
+
+      expect(btn.focused).toBe(true);
+      // Half the 2 px stroke sits inside the box edge, radius included.
+      expect(outline(btn)?.lastRect).toEqual({
+        x: 1,
+        y: 1,
+        width: 98,
+        height: 28,
+        radius: 7,
+      });
+    });
+
+    it("takes the outline style a game asked this button for, at build or update", () => {
+      const btn = build({
+        focusStyle: { color: 0x33ff88, width: 4, radius: 0, inset: 2 },
+      });
+      setFocused(btn, true);
+
+      // Inset by 2 plus half of the 4 px stroke on every side.
+      expect(outline(btn)?.lastRect).toEqual({
+        x: 4,
+        y: 4,
+        width: 92,
+        height: 22,
+        radius: 0,
+      });
+      expect(outline(btn)?.lastStroke).toEqual({ color: 0x33ff88, width: 4 });
+
+      btn.update({ focusStyle: { color: 0x112233 } });
+      expect(outline(btn)?.lastStroke?.color).toBe(0x112233);
+    });
+
+    it("tears the outline down with the button", () => {
+      const btn = build();
+      setFocused(btn, true);
+      const ring = outline(btn);
+
+      btn.destroy();
+
+      expect(ring?.destroyed).toBe(true);
+    });
+
+    it("fills a focused button only where the caller asked for one", () => {
+      const plain = build();
+      setFocused(plain, true);
+      expect(paintedColor(plain)).toBe(0x204060);
+
+      const btn = build({ focusBackground: { color: 0xff0000 } });
+      setFocused(btn, true);
+      expect(paintedColor(btn)).toBe(0xff0000);
+
+      // A colour-only focus fill follows the resting corner radius.
+      btn.update({ background: { color: 0x402040, radius: 2 } });
+      expect(paintedColor(btn)).toBe(0xff0000);
+      expect((containerOf(btn).children[0] as Graphics).lastRect?.radius).toBe(
+        2,
+      );
+      expect(outline(btn)?.lastRect?.radius).toBe(1);
+    });
+
+    it("paints disabled over pressed over hovered over focused over resting", () => {
+      const btn = build({ focusBackground: { color: 0xff0000 } });
+      const container = containerOf(btn);
+      expect(paintedColor(btn)).toBe(0x204060);
+
+      setFocused(btn, true);
+      expect(paintedColor(btn)).toBe(0xff0000);
+
+      // Hover wins the fill, and the outline stays.
+      container.emit("pointerover");
+      expect(paintedColor(btn)).toBe(0x285078);
+      expect(outline(btn)?.visible).toBe(true);
+
+      container.emit("pointerdown");
+      expect(paintedColor(btn)).toBe(0x183048);
+
+      btn.setDisabled(true);
+      expect(paintedColor(btn)).toBe(0x204060);
+    });
+
+    it("keeps the named focus fill when the pointer leaves the button", () => {
+      const btn = build({ focusBackground: { color: 0xff0000 } });
+      const container = containerOf(btn);
+
+      container.emit("pointerover");
+      setFocused(btn, true);
+      container.emit("pointerout");
+
+      expect(paintedColor(btn)).toBe(0xff0000);
+    });
+
+    it("reports hover to the Inspector", () => {
+      const btn = build();
+
+      containerOf(btn).emit("pointerover");
+
+      expect(btn._inspectState()).toMatchObject({ hovered: true });
     });
   });
 });

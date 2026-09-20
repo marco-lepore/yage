@@ -24,11 +24,31 @@ import {
   SceneRenderTreeProviderKey,
 } from "@yagejs/renderer";
 import type {
+  DisplayContainer,
   SceneRenderTree,
   SceneRenderTreeProvider,
 } from "@yagejs/renderer";
+import type { Node as YogaNode } from "yoga-layout";
+import { createYogaNode } from "./yoga-helpers.js";
+import type { UIElement } from "./types.js";
+import type { UITreeContext } from "./internal/tree-context.js";
 
 // ---- Minimal mock container for test context ----
+
+/** Translation and scale composed down a container chain. */
+interface ComposedTransform {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+}
+
+const IDENTITY: Readonly<ComposedTransform> = {
+  x: 0,
+  y: 0,
+  scaleX: 1,
+  scaleY: 1,
+};
 
 export class MockContainer {
   children: MockContainer[] = [];
@@ -51,6 +71,13 @@ export class MockContainer {
   destroyed = false;
   eventMode = "passive";
   cursor = "default";
+  measurable = true;
+  /**
+   * The clip Pixi reads on the container itself. A point the mask does not
+   * hold prunes this container and everything under it before any child's own
+   * hit area is consulted, which is what an `overflow: hidden` panel does.
+   */
+  mask: MockContainer | null = null;
 
   addChild(child: MockContainer): MockContainer {
     this.children.push(child);
@@ -79,6 +106,39 @@ export class MockContainer {
 
   sortChildren(): void {
     this.children.sort((a, b) => a.zIndex - b.zIndex);
+  }
+
+  /**
+   * Convert `point` — given in `from`'s local space, or in global space when
+   * `from` is left out — into this container's local space.
+   *
+   * Translation and scale only. Rotation is out of scope: nothing in the UI
+   * layer rotates a container, and leaving it out keeps the arithmetic a
+   * reader can check by hand against the coordinates a test writes.
+   */
+  toLocal(
+    point: { x: number; y: number },
+    from?: MockContainer,
+    out?: { x: number; y: number },
+  ): { x: number; y: number } {
+    const source = from?.composedTransform() ?? IDENTITY;
+    const target = this.composedTransform();
+    const globalX = source.x + point.x * source.scaleX;
+    const globalY = source.y + point.y * source.scaleY;
+    const result = out ?? { x: 0, y: 0 };
+    result.x = (globalX - target.x) / target.scaleX;
+    result.y = (globalY - target.y) / target.scaleY;
+    return result;
+  }
+
+  /** This container's position and scale, composed from the root down. */
+  private composedTransform(): ComposedTransform {
+    const composed = this.parent?.composedTransform() ?? { ...IDENTITY };
+    composed.x += this.position.x * composed.scaleX;
+    composed.y += this.position.y * composed.scaleY;
+    composed.scaleX *= this.scale.x;
+    composed.scaleY *= this.scale.y;
+    return composed;
   }
 
   destroy(): void {
@@ -229,4 +289,46 @@ export function createUITestContext(): UITestContext {
 
 export function spawnEntityInScene(scene: Scene, name = "entity"): Entity {
   return scene.spawn(name);
+}
+
+/**
+ * A leaf that records the tree context its container hands it. The caller
+ * passes the display object, built from whichever `pixi.js` stand-in its file
+ * mocks.
+ */
+export class TreeContextProbe implements UIElement {
+  readonly yogaNode: YogaNode = createYogaNode();
+  received: UITreeContext | undefined;
+  /** How many times the tree has taken the context away. */
+  detachments = 0;
+
+  constructor(readonly displayObject: DisplayContainer) {}
+
+  get attached(): boolean {
+    return this.received !== undefined;
+  }
+
+  get visible(): boolean {
+    return this.displayObject.visible;
+  }
+
+  set visible(v: boolean) {
+    this.displayObject.visible = v;
+  }
+
+  update(): void {}
+
+  destroy(): void {
+    this.yogaNode.free();
+    this.displayObject.destroy();
+  }
+
+  _attachToTree(context: UITreeContext): void {
+    this.received = context;
+  }
+
+  _detachFromTree(): void {
+    this.received = undefined;
+    this.detachments += 1;
+  }
 }

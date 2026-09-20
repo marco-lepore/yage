@@ -51,6 +51,39 @@ export class PixiFancyButton extends PixiUIBase<FancyButton> {
     this.prevProps = { ...props };
   }
 
+  /** Whether the button refuses the pointer and a confirm press. */
+  override get disabled(): boolean {
+    return !this.view.enabled;
+  }
+
+  /**
+   * Press the button through the widget's own press signal, so a click and a
+   * confirm run the same wrapped `onClick` behind one disabled guard.
+   *
+   * The widget swaps its view off that signal and lands on the mouse-release
+   * face, so the correct face is set afterwards. A callback that destroyed
+   * the button leaves nothing to repaint.
+   */
+  activate(): void {
+    if (this.disabled) return;
+    this.view.onPress.emit();
+    if (!this.view.destroyed) this.view.setState(this.faceState());
+  }
+
+  protected override setPressed(): void {
+    this.view.setState(this.faceState());
+  }
+
+  /**
+   * The face the button belongs on: disabled outranks a press held by any
+   * device, which outranks hover, which outranks the default face.
+   */
+  private faceState(): "default" | "hover" | "pressed" | "disabled" {
+    if (this.disabled) return "disabled";
+    if (this.pressed) return "pressed";
+    return this.hovered ? "hover" : "default";
+  }
+
   update(props: Record<string, unknown>): void {
     const p = props as unknown as Partial<PixiFancyButtonProps>;
 

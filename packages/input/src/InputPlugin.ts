@@ -22,6 +22,41 @@ import { InputDebugContributor } from "./InputDebugContributor.js";
 // can contribute diagnostics without adding a runtime dependency on debug.
 const DebugRegistryKey = new ServiceKey<DebugRegistry>("debugRegistry");
 
+// An `<input>` of one of these types accepts no typed text, so a key sent to
+// it is game input like any other.
+const NON_TEXT_INPUT_TYPES = new Set([
+  "button",
+  "checkbox",
+  "color",
+  "file",
+  "hidden",
+  "image",
+  "radio",
+  "range",
+  "reset",
+  "submit",
+]);
+
+/**
+ * Whether the browser sent this key press to an element that accepts typed
+ * text: a `<textarea>`, an `<input>` of a text-accepting type (what
+ * `@pixi/ui`'s text input creates), or a `contenteditable` element. Key
+ * events reach `window` whatever their target, so without this check typing a
+ * save name presses every action bound to those letters.
+ *
+ * The event target is used, not `document.activeElement`: `@pixi/ui`'s input
+ * blurs and removes its field to end an edit, so nothing is focused by the
+ * bubble phase, yet the key that ended the edit belongs to the field.
+ */
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  if (target instanceof HTMLTextAreaElement) return true;
+  return (
+    target instanceof HTMLInputElement && !NON_TEXT_INPUT_TYPES.has(target.type)
+  );
+}
+
 /** Input plugin — wires keyboard and pointer listeners, registers InputManager. */
 export class InputPlugin implements Plugin {
   readonly name = "input";
@@ -94,9 +129,14 @@ export class InputPlugin implements Plugin {
     const onKeyDown = (e: Event): void => {
       const ke = e as KeyboardEvent;
       if (ke.repeat) return;
+      // A key sent to a text field is text and raises no action.
+      if (isTextEntryTarget(ke.target)) return;
       if (preventSet.has(ke.code)) ke.preventDefault();
       this.manager._enqueueKeyDown(ke.code);
     };
+    // Releases are never filtered: a key held when a text field took focus
+    // was enqueued as a press, and dropping its release would hold that
+    // action down. A release whose press was skipped changes nothing.
     const onKeyUp = (e: Event): void => {
       const ke = e as KeyboardEvent;
       if (preventSet.has(ke.code)) ke.preventDefault();
