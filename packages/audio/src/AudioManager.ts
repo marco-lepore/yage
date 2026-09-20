@@ -3,14 +3,17 @@ import {
   globalRandom,
   type RandomService,
   type ErrorBoundary,
+  type ScopedProcessQueue,
 } from "@yagejs/core";
 import { SoundHandle } from "./SoundHandle.js";
 import type {
   AudioConfig,
+  AudioCrossfadeOptions,
   AudioPlayOptions,
   SoundRef,
   SoundRequestHandle,
 } from "./types.js";
+import { assertFadeDuration, assertVolume } from "./internal/validation.js";
 
 interface SoundRequestState {
   active: boolean;
@@ -29,7 +32,7 @@ interface ChannelState {
   volume: number;
   muted: boolean;
   paused: boolean;
-  handles: Map<SoundHandle, { instanceVolume: number }>;
+  handles: Set<SoundHandle>;
   shared: Map<string, SharedPlaybackState>;
 }
 
@@ -53,6 +56,7 @@ function aliasOf(ref: SoundRef): string {
 export class AudioManager {
   private readonly _sound: SoundLibrary;
   private readonly _random: RandomService;
+  private readonly _fadeQueue: ScopedProcessQueue | undefined;
   private readonly _channels = new Map<string, ChannelState>();
 
   private _autoMuteOnBlur: boolean;
@@ -68,17 +72,21 @@ export class AudioManager {
     sound: SoundLibrary,
     config?: AudioConfig,
     random?: RandomService,
+    fadeQueue?: ScopedProcessQueue,
   ) {
     this._sound = sound;
     this._random = random ?? globalRandom;
+    this._fadeQueue = fadeQueue;
 
     const channelDefs = config?.channels ?? DEFAULT_CHANNELS;
     for (const [name, cfg] of Object.entries(channelDefs)) {
+      const volume = cfg.volume ?? 1;
+      assertVolume(`AudioManager: channel "${name}"`, volume);
       this._channels.set(name, {
-        volume: cfg.volume ?? 1,
+        volume,
         muted: false,
         paused: false,
-        handles: new Map(),
+        handles: new Set(),
         shared: new Map(),
       });
     }
@@ -99,6 +107,45 @@ export class AudioManager {
    */
   play(ref: SoundRef, options?: AudioPlayOptions): SoundHandle {
     return this._startPlayback(ref, options, true).handle;
+  }
+
+  /**
+   * Fade `outgoing` to silence while fading a new sound in. Returns the new
+   * handle immediately; the outgoing handle stops when its fade completes.
+   */
+  crossfade(
+    outgoing: SoundHandle,
+    next: SoundRef,
+    options: AudioCrossfadeOptions,
+  ): SoundHandle {
+    const outgoingChannel = this._findHandleChannel(outgoing);
+    if (outgoingChannel === undefined || !outgoing.playing) {
+      throw new Error(
+        "AudioManager.crossfade: outgoing handle is not playing in this manager.",
+      );
+    }
+    if (!this._fadeQueue) {
+      throw new Error(
+        "AudioManager.crossfade: fades require an installed AudioPlugin.",
+      );
+    }
+
+    assertFadeDuration("AudioManager.crossfade", options.duration);
+    const targetVolume = options.volume ?? 1;
+    assertVolume("AudioManager.crossfade", targetVolume);
+    this._assertSoundExists(next, "AudioManager.crossfade");
+
+    const { duration, easing, ...playOptions } = options;
+    const incoming = this.play(next, {
+      ...playOptions,
+      channel: playOptions.channel ?? outgoingChannel,
+      volume: 0,
+    });
+    const fadeOptions =
+      easing === undefined ? { duration } : { duration, easing };
+    incoming.fadeTo(targetVolume, fadeOptions);
+    outgoing.fadeTo(0, { ...fadeOptions, stopOnComplete: true });
+    return incoming;
   }
 
   /**
@@ -174,7 +221,7 @@ export class AudioManager {
   stopChannel(channel: string): void {
     const state = this._channels.get(channel);
     if (!state) return;
-    for (const handle of [...state.handles.keys()]) {
+    for (const handle of [...state.handles]) {
       handle.stop();
     }
   }
@@ -186,10 +233,11 @@ export class AudioManager {
   }
 
   setChannelVolume(channel: string, volume: number): void {
+    assertVolume("AudioManager.setChannelVolume", volume);
     const state = this._ensureChannel(channel);
     state.volume = volume;
-    for (const [handle, meta] of state.handles) {
-      handle.volume = volume * meta.instanceVolume;
+    for (const handle of state.handles) {
+      handle._refreshVolume();
     }
   }
 
@@ -316,6 +364,11 @@ export class AudioManager {
     this._errorBoundary = boundary;
   }
 
+  /** Cancel every fade owned by this manager. @internal */
+  _dispose(): void {
+    this._fadeQueue?.cancelAll();
+  }
+
   /**
    * Run one developer callback: a throw is recorded against `kind` and
    * rethrown, and with no boundary registered the callback runs raw. The
@@ -382,7 +435,7 @@ export class AudioManager {
         volume: 1,
         muted: false,
         paused: false,
-        handles: new Map(),
+        handles: new Set(),
         shared: new Map(),
       };
       this._channels.set(name, state);
@@ -395,16 +448,11 @@ export class AudioManager {
     options: AudioPlayOptions | undefined,
     attachOnEnd: boolean,
   ): StartedPlayback {
-    const alias = aliasOf(ref);
-    if (!this._sound.exists(alias)) {
-      throw new Error(
-        `AudioManager.play: no sound registered as "${alias}". Preload it ` +
-          `with sound(...) or register it with registerSound().`,
-      );
-    }
-
-    const channel = this._ensureChannel(options?.channel ?? "sfx");
+    const alias = this._assertSoundExists(ref, "AudioManager.play");
+    const channelName = options?.channel ?? "sfx";
     const instanceVolume = options?.volume ?? 1;
+    assertVolume("AudioManager.play", instanceVolume);
+    const channel = this._ensureChannel(channelName);
     const result = this._sound.play(alias, {
       volume: channel.volume * instanceVolume,
       loop: options?.loop ?? false,
@@ -417,7 +465,15 @@ export class AudioManager {
     }
 
     const handle = new SoundHandle(result);
-    channel.handles.set(handle, { instanceVolume });
+    handle._setMixer(
+      channelName,
+      instanceVolume,
+      (volume) => {
+        result.volume = channel.volume * volume;
+      },
+      this._fadeQueue,
+    );
+    channel.handles.add(handle);
     const cleanup = (): void => {
       channel.handles.delete(handle);
     };
@@ -434,6 +490,24 @@ export class AudioManager {
     if (channel.muted) handle.muted = true;
     if (channel.paused) handle.paused = true;
     return { alias, channel, handle, instance: result };
+  }
+
+  private _assertSoundExists(ref: SoundRef, context: string): string {
+    const alias = aliasOf(ref);
+    if (!this._sound.exists(alias)) {
+      throw new Error(
+        `${context}: no sound registered as "${alias}". Preload it ` +
+          `with sound(...) or register it with registerSound().`,
+      );
+    }
+    return alias;
+  }
+
+  private _findHandleChannel(handle: SoundHandle): string | undefined {
+    for (const [name, state] of this._channels) {
+      if (state.handles.has(handle)) return name;
+    }
+    return undefined;
   }
 
   private _startSharedPlayback(

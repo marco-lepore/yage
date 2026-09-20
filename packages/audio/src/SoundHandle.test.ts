@@ -57,6 +57,10 @@ describe("SoundHandle", () => {
     expect(handle.playing).toBe(true);
   });
 
+  it("defaults standalone handles to the sfx channel", () => {
+    expect(handle.channel).toBe("sfx");
+  });
+
   it("becomes not playing on end event", () => {
     instance._emit("end");
     expect(handle.playing).toBe(false);
@@ -75,6 +79,21 @@ describe("SoundHandle", () => {
   it("volume setter delegates to instance", () => {
     handle.volume = 0.5;
     expect(instance.volume).toBe(0.5);
+  });
+
+  it("rejects a non-finite or out-of-range volume", () => {
+    expect(() => (handle.volume = Number.NaN)).toThrow(
+      "SoundHandle.volume: volume must be a finite number from 0 to 1, got NaN.",
+    );
+    expect(() => (handle.volume = -0.1)).toThrow(
+      "SoundHandle.volume: volume must be a finite number from 0 to 1, got -0.1.",
+    );
+  });
+
+  it("rejects fadeTo when the handle has no manager fade queue", () => {
+    expect(() => handle.fadeTo(0, { duration: 1 })).toThrow(
+      "SoundHandle.fadeTo: this handle was not created by an installed AudioManager.",
+    );
   });
 
   it("speed setter delegates to instance", () => {

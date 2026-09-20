@@ -14,6 +14,8 @@ export { SoundComponent } from "./SoundComponent.js";
 export { AudioManagerKey } from "./types.js";
 export type {
   AudioConfig,
+  AudioCrossfadeOptions,
+  AudioFadeOptions,
   ChannelConfig,
   AudioPlayOptions,
   SoundComponentOptions,

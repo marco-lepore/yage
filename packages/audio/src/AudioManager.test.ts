@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { SoundLibrary, IMediaInstance } from "@pixi/sound";
 
-import { ErrorBoundary, Logger, LogLevel } from "@yagejs/core";
+import {
+  easeInQuad,
+  ErrorBoundary,
+  Logger,
+  LogLevel,
+  Process,
+} from "@yagejs/core";
+import type { ScopedProcessQueue } from "@yagejs/core";
 import { AudioManager } from "./AudioManager.js";
 import { sound } from "./assets.js";
 
@@ -45,6 +52,27 @@ function createMockInstance(id = 1): MockMediaInstance {
 type MockSoundLibrary = SoundLibrary & {
   _instances: Map<string, MockMediaInstance>;
 };
+
+class TestFadeQueue implements ScopedProcessQueue {
+  readonly processes = new Set<Process>();
+
+  run(process: Process): Process {
+    this.processes.add(process);
+    return process;
+  }
+
+  cancelAll(): void {
+    for (const process of this.processes) process.cancel();
+    this.processes.clear();
+  }
+
+  advance(seconds: number): void {
+    for (const process of [...this.processes]) {
+      process._update(seconds);
+      if (process.completed) this.processes.delete(process);
+    }
+  }
+}
 
 function setAudioContextState(
   s: SoundLibrary,
@@ -114,6 +142,17 @@ describe("AudioManager", () => {
       manager.play("test", { channel: "custom" });
       expect(manager.getChannelVolume("custom")).toBe(1);
     });
+
+    it("rejects an invalid configured volume", () => {
+      expect(
+        () =>
+          new AudioManager(mockSound, {
+            channels: { music: { volume: -0.1 } },
+          }),
+      ).toThrow(
+        'AudioManager: channel "music": volume must be a finite number from 0 to 1, got -0.1.',
+      );
+    });
   });
 
   describe("play()", () => {
@@ -134,6 +173,15 @@ describe("AudioManager", () => {
         loop: false,
         speed: 1,
       });
+    });
+
+    it("rejects an invalid instance volume before playback", () => {
+      expect(() =>
+        manager.play("test", { volume: Number.POSITIVE_INFINITY }),
+      ).toThrow(
+        "AudioManager.play: volume must be a finite number from 0 to 1, got Infinity.",
+      );
+      expect(mockSound.play).not.toHaveBeenCalled();
     });
 
     it("defaults to sfx channel", () => {
@@ -368,11 +416,206 @@ describe("AudioManager", () => {
   });
 
   describe("setChannelVolume()", () => {
-    it("recalculates volume on active handles", () => {
+    it("recalculates media volume without changing handle volume", () => {
       const handle = manager.play("test", { volume: 0.8 });
       manager.setChannelVolume("sfx", 0.5);
-      // 0.5 * 0.8 = 0.4
-      expect(handle.volume).toBeCloseTo(0.4);
+      expect(handle.volume).toBe(0.8);
+      expect(mockSound._instances.get("test")?.volume).toBeCloseTo(0.4);
+    });
+
+    it("preserves a handle volume changed after play", () => {
+      const handle = manager.play("test", { volume: 0.8 });
+      handle.volume = 0.25;
+
+      manager.setChannelVolume("sfx", 0.4);
+
+      expect(handle.volume).toBe(0.25);
+      expect(mockSound._instances.get("test")?.volume).toBeCloseTo(0.1);
+    });
+
+    it("rejects an invalid volume before creating a channel", () => {
+      expect(() => manager.setChannelVolume("new", Number.NaN)).toThrow(
+        "AudioManager.setChannelVolume: volume must be a finite number from 0 to 1, got NaN.",
+      );
+      expect(manager.getChannelVolume("new")).toBe(1);
+    });
+  });
+
+  describe("fades", () => {
+    let queue: TestFadeQueue;
+
+    beforeEach(() => {
+      queue = new TestFadeQueue();
+      manager = new AudioManager(mockSound, undefined, undefined, queue);
+    });
+
+    it("fades logical volume while channel changes compose with it", () => {
+      const handle = manager.play("music", {
+        channel: "music",
+        volume: 1,
+      });
+      const instance = mockSound._instances.get("music");
+      expect(instance).toBeDefined();
+
+      handle.fadeTo(0, { duration: 2 });
+      queue.advance(1);
+      expect(handle.volume).toBeCloseTo(0.5);
+      expect(instance?.volume).toBeCloseTo(0.35);
+
+      manager.setChannelVolume("music", 0.4);
+      expect(handle.volume).toBeCloseTo(0.5);
+      expect(instance?.volume).toBeCloseTo(0.2);
+
+      queue.advance(1);
+      expect(handle.volume).toBe(0);
+      expect(instance?.volume).toBe(0);
+    });
+
+    it("cancels and replaces the current fade", () => {
+      const handle = manager.play("music");
+      const first = handle.fadeTo(0, { duration: 2 });
+      queue.advance(1);
+
+      handle.fadeTo(1, { duration: 1 });
+      expect(first.completed).toBe(true);
+      queue.advance(1);
+
+      expect(handle.volume).toBe(1);
+    });
+
+    it("captures fade options before scheduling", () => {
+      const handle = manager.play("music");
+      const options = { duration: 1, stopOnComplete: false };
+      handle.fadeTo(0.5, options);
+
+      options.duration = 2;
+      options.stopOnComplete = true;
+      queue.advance(1);
+
+      expect(handle.volume).toBe(0.5);
+      expect(handle.playing).toBe(true);
+    });
+
+    it("finishes at the exact target across fractional frame steps", () => {
+      const handle = manager.play("music");
+      const fade = handle.fadeTo(0, { duration: 0.1 });
+
+      for (let frame = 0; frame < 6; frame++) queue.advance(1 / 60);
+
+      expect(fade.completed).toBe(true);
+      expect(handle.volume).toBe(0);
+    });
+
+    it("can stop the handle after fading to zero", () => {
+      const handle = manager.play("music");
+      handle.fadeTo(0, { duration: 1, stopOnComplete: true });
+
+      queue.advance(1);
+
+      expect(handle.playing).toBe(false);
+    });
+
+    it("rejects invalid inputs before replacing the current fade", () => {
+      const handle = manager.play("music");
+      const current = handle.fadeTo(0, { duration: 2 });
+
+      expect(() => handle.fadeTo(2, { duration: 1 })).toThrow(
+        "SoundHandle.fadeTo: volume must be a finite number from 0 to 1, got 2.",
+      );
+      expect(() => handle.fadeTo(0, { duration: 0 })).toThrow(
+        "SoundHandle.fadeTo: duration must be a finite number > 0 in seconds, got 0.",
+      );
+      expect(current.completed).toBe(false);
+    });
+
+    it("rejects a non-finite easing result at the volume write", () => {
+      const handle = manager.play("music");
+      handle.fadeTo(0, { duration: 1, easing: () => Number.NaN });
+
+      expect(() => queue.advance(0.5)).toThrow(
+        "SoundHandle.fadeTo: easing must return a finite number, got NaN.",
+      );
+    });
+  });
+
+  describe("crossfade()", () => {
+    let queue: TestFadeQueue;
+
+    beforeEach(() => {
+      queue = new TestFadeQueue();
+      manager = new AudioManager(mockSound, undefined, undefined, queue);
+    });
+
+    it("fades both sounds and returns the incoming handle", () => {
+      const outgoing = manager.play("old", {
+        channel: "music",
+        volume: 0.8,
+      });
+
+      const incoming = manager.crossfade(outgoing, "new", {
+        duration: 2,
+        easing: easeInQuad,
+        loop: true,
+        volume: 0.6,
+      });
+
+      expect(incoming.channel).toBe("music");
+      expect(incoming.volume).toBe(0);
+      expect(mockSound.play).toHaveBeenLastCalledWith("new", {
+        volume: 0,
+        loop: true,
+        speed: 1,
+      });
+
+      queue.advance(1);
+      expect(outgoing.volume).toBeCloseTo(0.6);
+      expect(incoming.volume).toBeCloseTo(0.15);
+
+      queue.advance(1);
+      expect(outgoing.playing).toBe(false);
+      expect(incoming.playing).toBe(true);
+      expect(incoming.volume).toBeCloseTo(0.6);
+    });
+
+    it("uses an explicitly requested incoming channel", () => {
+      const outgoing = manager.play("old", { channel: "music" });
+
+      const incoming = manager.crossfade(outgoing, "new", {
+        duration: 1,
+        channel: "ambience",
+      });
+
+      expect(incoming.channel).toBe("ambience");
+    });
+
+    it("inherits an empty channel name", () => {
+      const outgoing = manager.play("old", { channel: "" });
+
+      const incoming = manager.crossfade(outgoing, "new", { duration: 1 });
+
+      expect(incoming.channel).toBe("");
+    });
+
+    it("validates the next sound before starting either fade", () => {
+      const outgoing = manager.play("old", { channel: "music" });
+      (mockSound.exists as ReturnType<typeof vi.fn>).mockReturnValueOnce(false);
+
+      expect(() =>
+        manager.crossfade(outgoing, "missing", { duration: 1 }),
+      ).toThrow('AudioManager.crossfade: no sound registered as "missing"');
+      expect(outgoing.volume).toBe(1);
+      expect(queue.processes.size).toBe(0);
+      expect(mockSound.play).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects a handle owned by another manager", () => {
+      const other = new AudioManager(mockSound, undefined, undefined, queue);
+      const outgoing = other.play("old");
+
+      expect(() => manager.crossfade(outgoing, "new", { duration: 1 })).toThrow(
+        "AudioManager.crossfade: outgoing handle is not playing in this manager.",
+      );
+      expect(mockSound.play).toHaveBeenCalledTimes(1);
     });
   });
 
