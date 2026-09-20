@@ -18,6 +18,7 @@ export type { OverlayLightingRendererOptions } from "./OverlayLightingRenderer.j
 export { LightingWorldKey, LightingWorldManagerKey } from "./types.js";
 export type {
   AmbientLightOptions,
+  LightConeOptions,
   LightGrid,
   LightingConfig,
   LightingRenderer,

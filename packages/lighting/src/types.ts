@@ -22,6 +22,15 @@ export interface AmbientLightOptions {
   color?: number;
 }
 
+/** A spotlight cone on a {@link LightSource}. */
+export interface LightConeOptions {
+  /**
+   * Full spread in radians, above 0 and at most a whole turn. The cone points
+   * along the entity's world rotation.
+   */
+  angle: number;
+}
+
 /** Values passed to a renderer when its scene is attached. */
 export interface LightingRendererContext {
   readonly scene: Scene;

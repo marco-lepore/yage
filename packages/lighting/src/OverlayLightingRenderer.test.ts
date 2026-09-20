@@ -93,11 +93,11 @@ function createHarness(ambientLevel = 0.2): Harness {
 }
 
 /** A camera whose world-to-screen projection is a fixed translation. */
-function createCamera(): CameraComponent {
+function createCamera(rotation = 0): CameraComponent {
   return {
     zoom: 2,
     effectiveZoom: 2,
-    effectiveRotation: 0,
+    effectiveRotation: rotation,
     viewportWidth: 800,
     viewportHeight: 600,
     getEffectivePositionInto: (out: Vec2Buffer) => out.set(0, 0),
@@ -112,6 +112,7 @@ function addLight(
     y: number;
     radius: number;
     intensity?: number;
+    cone?: number;
     castShadows?: boolean;
   },
 ): LightSource {
@@ -122,6 +123,7 @@ function addLight(
       radius: options.radius,
       intensity: options.intensity ?? 0.8,
       color: 0xff8844,
+      ...(options.cone === undefined ? {} : { cone: { angle: options.cone } }),
       ...(options.castShadows === undefined
         ? {}
         : { castShadows: options.castShadows }),
@@ -396,6 +398,81 @@ describe("OverlayLightingRenderer", () => {
     expect(comparison.blocked).toBeGreaterThan(100);
     expect(comparison.missingShadow).toEqual([]);
     expect(comparison.falseShadow).toEqual([]);
+  });
+
+  it("draws a cone as a pie slice turned by its entity", () => {
+    const harness = createHarness();
+    const light = addLight(harness.world, {
+      x: 0,
+      y: 0,
+      radius: 100,
+      cone: Math.PI / 2,
+    });
+
+    const backend = new OverlayLightingRenderer({
+      scene: harness.scene,
+      world: harness.world,
+      renderer: harness.renderer,
+    });
+    const frame = { camera: null, width: 800, height: 600 };
+    backend.render(frame);
+
+    const graphic = lightContainer(harness).children[0] as Graphics;
+    expect(graphic.rotation).toBe(0);
+    // The slice spans a quarter turn around the direction the entity faces.
+    expect(graphic.containsPoint({ x: 60, y: 0 })).toBe(true);
+    expect(graphic.containsPoint({ x: 60, y: 40 })).toBe(true);
+    expect(graphic.containsPoint({ x: 0, y: 60 })).toBe(false);
+    expect(graphic.containsPoint({ x: -60, y: 0 })).toBe(false);
+
+    const invalidations = harness.invalidate.mock.calls.length;
+    light.entity.get(Transform).setRotation(Math.PI);
+    backend.render(frame);
+    expect(graphic.rotation).toBeCloseTo(Math.PI);
+    expect(harness.invalidate).toHaveBeenCalledTimes(invalidations + 1);
+
+    light.coneAngle = Math.PI * 2;
+    backend.render(frame);
+    expect(graphic.rotation).toBe(0);
+    expect(graphic.containsPoint({ x: -60, y: 0 })).toBe(true);
+
+    backend.destroy();
+  });
+
+  it("turns a cone back by the camera's own rotation", () => {
+    const harness = createHarness();
+    const light = addLight(harness.world, {
+      x: 0,
+      y: 0,
+      radius: 100,
+      cone: Math.PI / 2,
+    });
+    light.entity.get(Transform).setRotation(Math.PI / 2);
+
+    const backend = new OverlayLightingRenderer({
+      scene: harness.scene,
+      world: harness.world,
+      renderer: harness.renderer,
+    });
+    // The camera turns the whole scene, so a lamp facing a fixed world
+    // direction points somewhere else on screen.
+    backend.render({
+      camera: createCamera(Math.PI / 6),
+      width: 800,
+      height: 600,
+    });
+
+    const graphic = lightContainer(harness).children[0] as Graphics;
+    expect(graphic.rotation).toBeCloseTo(Math.PI / 2 - Math.PI / 6);
+
+    backend.render({
+      camera: createCamera(Math.PI / 2),
+      width: 800,
+      height: 600,
+    });
+    expect(graphic.rotation).toBeCloseTo(0);
+
+    backend.destroy();
   });
 
   it("leaves a light unmasked while it ignores shadows", () => {

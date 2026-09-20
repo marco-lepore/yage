@@ -8,9 +8,9 @@ import type {
   LightingRenderer,
   LightingRenderFrame,
 } from "./types.js";
-import { OccluderFootprintPool } from "./occlusion.js";
+import { LampView, OccluderFootprintPool } from "./occlusion.js";
 import type { OccluderFootprint } from "./occlusion.js";
-import { assertColor, assertUnit, clampUnit } from "./validation.js";
+import { FULL_TURN, assertColor, assertUnit, clampUnit } from "./validation.js";
 
 const DEFAULT_AMBIENT_LEVEL = 0.15;
 const DEFAULT_AMBIENT_COLOR = 0xffffff;
@@ -20,9 +20,9 @@ const DEFAULT_AMBIENT_COLOR = 0xffffff;
  *
  * `levelAt(x, y)` reports a continuous value from 0 to 1. The ambient level
  * and every radial source contribution are added, then clamped. A source
- * contributes only where an enabled occluder does not stand between it and
- * the point; `levelGridInto` answers the same question for a whole grid in
- * one call.
+ * contributes in proportion to how much of its lamp an enabled occluder
+ * leaves visible from the point, which for a point lamp is all of it or none;
+ * `levelGridInto` answers the same question for a whole grid in one call.
  */
 export class LightingWorld {
   private readonly positionScratch = new Vec2Buffer();
@@ -30,6 +30,8 @@ export class LightingWorld {
   private readonly footprints = new OccluderFootprintPool();
   /** Footprints near enough to shadow the light being summed. */
   private readonly inReach: OccluderFootprint[] = [];
+  /** The lamp being summed, as the point being sampled sees it. */
+  private readonly lamp = new LampView();
   /** Double-precision cell totals, so a grid cell matches `levelAt` exactly. */
   private accumulator = new Float64Array(0);
   readonly scene: Scene;
@@ -101,14 +103,42 @@ export class LightingWorld {
       const distanceSquared = dx * dx + dy * dy;
       const radius = source.radius;
       if (distanceSquared >= radius * radius) continue;
-      if (
-        source.castShadows &&
-        this.shadowed(footprintCount, sourceX, sourceY, x, y)
-      ) {
-        continue;
+      const distance = Math.sqrt(distanceSquared);
+      const coneAngle = source.coneAngle;
+      if (coneAngle < FULL_TURN) {
+        const rotation = source.rotation;
+        if (
+          !inCone(
+            dx,
+            dy,
+            distance,
+            Math.cos(rotation),
+            Math.sin(rotation),
+            Math.cos(coneAngle / 2),
+          )
+        ) {
+          continue;
+        }
       }
-      const falloff = 1 - Math.sqrt(distanceSquared) / radius;
-      level += source.intensity * falloff;
+      let coverage = 1;
+      if (source.castShadows) {
+        const halfSize = source.size / 2;
+        if (halfSize === 0) {
+          if (this.shadowed(footprintCount, sourceX, sourceY, x, y)) continue;
+        } else {
+          coverage = this.covered(
+            footprintCount,
+            sourceX,
+            sourceY,
+            x,
+            y,
+            halfSize,
+          );
+          if (coverage === 0) continue;
+        }
+      }
+      const falloff = 1 - distance / radius;
+      level += source.intensity * falloff * coverage;
       if (level >= 1) return 1;
     }
     return clampUnit(level);
@@ -150,6 +180,13 @@ export class LightingWorld {
       const sourceY = position.y;
       const radius = source.radius;
       const intensity = source.intensity;
+      const halfSize = source.size / 2;
+      const coneAngle = source.coneAngle;
+      const coned = coneAngle < FULL_TURN;
+      const rotation = source.rotation;
+      const aimX = coned ? Math.cos(rotation) : 0;
+      const aimY = coned ? Math.sin(rotation) : 0;
+      const coneCosine = coned ? Math.cos(coneAngle / 2) : 0;
 
       const minCol = Math.max(
         0,
@@ -170,11 +207,15 @@ export class LightingWorld {
       if (minCol > maxCol || minRow > maxRow) continue;
 
       const inReach = this.inReach;
+      const lamp = this.lamp;
       inReach.length = 0;
       if (source.castShadows) {
+        // Rays run from a cell to anywhere on the lamp, so a wide lamp reaches
+        // its own half-width past the light's radius.
+        const reach = radius + halfSize;
         for (let i = 0; i < footprintCount; i++) {
           const footprint = this.footprints.get(i);
-          if (!footprint.withinRange(sourceX, sourceY, radius)) continue;
+          if (!footprint.withinRange(sourceX, sourceY, reach)) continue;
           if (footprint.contains(sourceX, sourceY)) continue;
           inReach.push(footprint);
         }
@@ -191,16 +232,29 @@ export class LightingWorld {
           const dy = y - sourceY;
           const distanceSquared = dx * dx + dy * dy;
           if (distanceSquared >= radius * radius) continue;
-          let blocked = false;
-          for (const footprint of inReach) {
-            if (!footprint.blocks(sourceX, sourceY, x, y)) continue;
-            blocked = true;
-            break;
+          const distance = Math.sqrt(distanceSquared);
+          if (coned && !inCone(dx, dy, distance, aimX, aimY, coneCosine)) {
+            continue;
           }
-          if (blocked) continue;
+          let coverage = 1;
+          if (halfSize === 0) {
+            let blocked = false;
+            for (const footprint of inReach) {
+              if (!footprint.blocks(sourceX, sourceY, x, y)) continue;
+              blocked = true;
+              break;
+            }
+            if (blocked) continue;
+          } else if (lamp.aimAt(x, y, sourceX, sourceY, halfSize)) {
+            for (const footprint of inReach) {
+              footprint.projectShadow(lamp);
+              if (lamp.blocked) break;
+            }
+            coverage = lamp.litShare;
+            if (coverage === 0) continue;
+          }
           levels[index] =
-            levels[index]! +
-            intensity * (1 - Math.sqrt(distanceSquared) / radius);
+            levels[index]! + intensity * (1 - distance / radius) * coverage;
         }
       }
     }
@@ -225,6 +279,29 @@ export class LightingWorld {
       if (footprint.blocks(sourceX, sourceY, x, y)) return true;
     }
     return false;
+  }
+
+  /**
+   * Share of a lamp of half-width `halfSize` that reaches a point, from 0 to
+   * 1. An occluder that holds the light is skipped, as it is for a point lamp.
+   */
+  private covered(
+    footprintCount: number,
+    sourceX: number,
+    sourceY: number,
+    x: number,
+    y: number,
+    halfSize: number,
+  ): number {
+    const lamp = this.lamp;
+    if (!lamp.aimAt(x, y, sourceX, sourceY, halfSize)) return 1;
+    for (let i = 0; i < footprintCount; i++) {
+      const footprint = this.footprints.get(i);
+      if (footprint.contains(sourceX, sourceY)) continue;
+      footprint.projectShadow(lamp);
+      if (lamp.blocked) return 0;
+    }
+    return lamp.litShare;
   }
 
   private ensureAccumulator(cellCount: number): Float64Array {
@@ -300,6 +377,22 @@ export class LightingWorld {
       this._occluders.clear();
     }
   }
+}
+
+/**
+ * Whether a point lies inside a light's cone. `aimX`/`aimY` is the cone's unit
+ * direction and `cosine` the cosine of half its spread; a point standing on
+ * the lamp has no direction and counts as lit.
+ */
+function inCone(
+  dx: number,
+  dy: number,
+  distance: number,
+  aimX: number,
+  aimY: number,
+  cosine: number,
+): boolean {
+  return distance === 0 || dx * aimX + dy * aimY >= cosine * distance;
 }
 
 function assertPositiveInteger(value: number, name: string): void {
