@@ -52,6 +52,30 @@ from `@yagejs/effects` instead.
 when you need a pixi feature `SpriteComponent` doesn't surface — full pixi
 API is available. See the [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
 
+### What `anchor` does
+
+`anchor` is a fraction of the texture: `{ x: 0, y: 0 }` is its top-left
+corner, `{ x: 0.5, y: 0.5 }` its middle, `{ x: 1, y: 1 }` its bottom-right
+corner. That point of the texture is the one drawn on the entity's position.
+
+It also decides where the sprite turns. The entity's rotation turns the
+sprite's own space about the entity's position, so whichever point of the
+texture the anchor put there is the point the art turns about. A barrel whose
+art fills the texture rolls in place with `anchor: { x: 0.5, y: 0.5 }`, and
+tips from side to side about its base with `anchor: { x: 0.5, y: 1 }`.
+Scale behaves the same way: the art grows away from the anchor point.
+
+The two cannot be separated. `anchor` moves where the art sits and where it
+turns together, so holding the art at one offset while turning it about a
+different point is out of reach. For that, parent the sprite's entity under an
+entity placed at the turning point and rotate the parent — an entity's
+rotation carries every descendant around its own position.
+
+`AnimatedSpriteComponent`, `TextComponent` and `SplitTextComponent` take
+`anchor` too. `GraphicsComponent` has no texture to take a fraction of, and
+takes a `pivot` in pixels instead — see
+[Where the drawing turns](/guides/rendering/graphics/#where-the-drawing-turns).
+
 ### Temporary visual modifiers
 
 Every visual component has a `modifiers` host for temporary feedback that
