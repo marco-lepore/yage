@@ -216,6 +216,7 @@ function renderShadowMask(
     scene: harness.scene,
     world: harness.world,
     renderer: harness.renderer,
+    bounce: null,
   });
   backend.render({ camera: null, width: 800, height: 600 });
   const container = lightContainer(harness);
@@ -239,6 +240,7 @@ describe("OverlayLightingRenderer", () => {
       scene: harness.scene,
       world: harness.world,
       renderer: harness.renderer,
+      bounce: null,
     });
     const camera = createCamera();
     const frame = { camera, width: 800, height: 600 };
@@ -290,6 +292,7 @@ describe("OverlayLightingRenderer", () => {
       scene: harness.scene,
       world: harness.world,
       renderer: harness.renderer,
+      bounce: null,
     });
     backend.render({ camera: null, width: 800, height: 600 });
 
@@ -317,6 +320,7 @@ describe("OverlayLightingRenderer", () => {
       scene: harness.scene,
       world: harness.world,
       renderer: harness.renderer,
+      bounce: null,
     });
     const frame = { camera: null, width: 800, height: 600 };
     backend.render(frame);
@@ -413,6 +417,7 @@ describe("OverlayLightingRenderer", () => {
       scene: harness.scene,
       world: harness.world,
       renderer: harness.renderer,
+      bounce: null,
     });
     const frame = { camera: null, width: 800, height: 600 };
     backend.render(frame);
@@ -453,6 +458,7 @@ describe("OverlayLightingRenderer", () => {
       scene: harness.scene,
       world: harness.world,
       renderer: harness.renderer,
+      bounce: null,
     });
     // The camera turns the whole scene, so a lamp facing a fixed world
     // direction points somewhere else on screen.
@@ -489,6 +495,7 @@ describe("OverlayLightingRenderer", () => {
       scene: harness.scene,
       world: harness.world,
       renderer: harness.renderer,
+      bounce: null,
     });
     const frame = { camera: null, width: 800, height: 600 };
     backend.render(frame);

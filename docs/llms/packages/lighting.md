@@ -32,25 +32,91 @@ picture is exactly what `levelAt()` reports. Above it the drawn edge runs along
 the middle of the soft border the query answers with, so the two agree
 everywhere except inside that border.
 
-Configure the built-in renderer:
+## Renderers by name
+
+`renderers` maps a name to a `LightingRendererFactory`, and a scene picks one
+of those names. `defaultRenderer` draws every scene that names none.
+
+The rule, checked at install:
+
+- Leave `renderers` out and the plugin configures the built-in overlay under
+  the name `"overlay"`, which is also the default.
+- Set `renderers` and `defaultRenderer` is required, naming one of the entries.
+  Leaving it out throws, and so does a name that is not among them.
 
 ```ts
 import { LightingPlugin, overlayLighting } from "@yagejs/lighting";
 
 engine.use(
   new LightingPlugin({
-    renderer: overlayLighting({
-      layer: "lighting",
-      order: 900,
-      resolutionScale: 0.5,
-      antialias: true,
-    }),
+    renderers: {
+      overlay: overlayLighting({
+        layer: "lighting",
+        order: 900,
+        resolutionScale: 0.5,
+        antialias: true,
+      }),
+      none: null,
+    },
+    defaultRenderer: "overlay",
   }),
 );
 ```
 
-Pass `renderer: null` to keep `levelAt()` and disable visual output. The
-`RendererPlugin` dependency is still required.
+```ts
+class CaveScene extends Scene {
+  readonly name = "cave";
+  readonly lighting = { renderer: "none" };
+}
+```
+
+`Scene.lighting` is read once, when the scene is entered and its lighting world
+is created, so a live scene cannot swap renderer. A name that is not configured
+throws at that point, naming the scene and the configured names. A `null` entry
+keeps `levelAt()` and draws nothing; the `RendererPlugin` dependency is still
+required.
+
+## Bounced light
+
+`bounce` adds a blurred, low-resolution copy of the finished light buffer over
+the scene, so light creeps past shadow edges and around corners. It is a scene
+setting, beside `renderer`, because it is a look: a cave wants a lot of it and
+a lit street very little. It is off unless set, and it never changes what
+`levelAt()` reports.
+
+```ts
+class CaveScene extends Scene {
+  readonly name = "cave";
+  readonly lighting = {
+    bounce: {
+      strength: 0.8, // 0..1, how much of the blurred copy is added back
+      radius: 90, // blur radius in screen pixels
+    },
+  };
+}
+```
+
+`LightingConfig.bounce` is the default for scenes that set none:
+
+```ts
+engine.use(new LightingPlugin({ bounce: { strength: 0.4, radius: 40 } }));
+
+class MenuScene extends Scene {
+  readonly name = "menu";
+  readonly lighting = { bounce: null }; // no bounce, whatever the default is
+}
+```
+
+Leaving `bounce` off the scene takes the plugin's value; `null` leaves that
+scene without bounce. Both are read once, when the scene is entered, and a
+scene's value is checked there with an error naming the scene. The extra pass
+costs one more offscreen buffer per scene and runs only on frames where the
+light buffer itself was redrawn.
+
+`radius` is virtual pixels of blur reach and does not follow the renderer's
+`resolutionScale`: the blurred copy is drawn at a fixed low density of its own,
+so lowering `resolutionScale` sharpens nothing about the bounce and softens
+nothing either.
 
 ## LightSource
 
@@ -240,7 +306,7 @@ immutable value you retain or share.
 
 ## Custom renderer
 
-`LightingConfig.renderer` accepts a per-scene `LightingRendererFactory`:
+An entry of `LightingConfig.renderers` is a `LightingRendererFactory`:
 
 ```ts
 import type {
@@ -248,7 +314,7 @@ import type {
   LightingRendererFactory,
 } from "@yagejs/lighting";
 
-const renderer: LightingRendererFactory = ({ scene, world, renderer }) => {
+const glow: LightingRendererFactory = ({ scene, world, renderer, bounce }) => {
   const backend: LightingRenderer = {
     render(frame) {
       // Read world.sources and world.occluders.
@@ -262,11 +328,39 @@ const renderer: LightingRendererFactory = ({ scene, world, renderer }) => {
   return backend;
 };
 
-engine.use(new LightingPlugin({ renderer }));
+engine.use(
+  new LightingPlugin({ renderers: { glow }, defaultRenderer: "glow" }),
+);
 ```
 
 YAGE creates one backend per entered scene. Renderer callbacks are attributed
 through the engine error boundary and still rethrow.
+
+`LightingComposite` is the last step every built-in renderer uses, and a custom
+renderer that draws its light into a container can reuse it. It owns the
+offscreen buffer, multiplies it over the scene, and applies the `bounce` the
+factory was handed, which is the scene's own setting, or the plugin's, or
+`null`:
+
+```ts
+import { LightingComposite } from "@yagejs/lighting";
+
+const composite = new LightingComposite(renderer, {
+  source: lightContainer, // what this renderer draws into
+  parent: layer.container, // a screen-space layer
+  width: renderer.virtualSize.width,
+  height: renderer.virtualSize.height,
+  resolutionScale: 0.5,
+  bounce,
+});
+
+// Per frame: invalidate() after the light changed, then render().
+composite.invalidate();
+composite.render(); // true when the buffer was redrawn
+
+// In the renderer's destroy(), before the source container goes:
+composite.destroy();
+```
 
 A custom renderer that draws shadows should apply the rule `levelAt()` applies,
 or the drawn light and the queried light disagree. The query is the truth

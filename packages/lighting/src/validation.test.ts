@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FULL_TURN,
+  assertBounce,
   assertColor,
   assertNonNegative,
   assertPositive,
@@ -17,6 +18,7 @@ describe("lighting validation", () => {
     for (const value of [-0.01, 1.01, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(() => assertUnit(value, "value")).toThrow(RangeError);
     }
+    expect(() => assertUnit(1.01, "value")).toThrow(/got 1\.01/);
   });
 
   it("accepts positive finite values and rejects zero or less", () => {
@@ -25,6 +27,7 @@ describe("lighting validation", () => {
     for (const value of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(() => assertPositive(value, "value")).toThrow(RangeError);
     }
+    expect(() => assertPositive(0, "value")).toThrow(/got 0/);
   });
 
   it("accepts zero and above and rejects negative or unbounded values", () => {
@@ -54,6 +57,18 @@ describe("lighting validation", () => {
     for (const value of [-1, 0x1000000, 1.5, Number.NaN]) {
       expect(() => assertColor(value, "color")).toThrow(RangeError);
     }
+  });
+
+  it("checks both halves of a bounce setting under one name", () => {
+    expect(() =>
+      assertBounce({ strength: 0.5, radius: 24 }, "x"),
+    ).not.toThrow();
+    expect(() => assertBounce({ strength: 2, radius: 24 }, "x")).toThrow(
+      "x strength must be a finite number from 0 to 1, got 2.",
+    );
+    expect(() => assertBounce({ strength: 0.5, radius: -1 }, "x")).toThrow(
+      "x radius must be a finite number greater than 0, got -1.",
+    );
   });
 
   it("clamps values to the unit interval", () => {

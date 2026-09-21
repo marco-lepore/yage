@@ -2,10 +2,14 @@ import { ErrorBoundaryKey, SceneHookRegistryKey } from "@yagejs/core";
 import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
 import { LightingSystem } from "./LightingSystem.js";
-import { LightingWorldManager } from "./LightingWorldManager.js";
+import { LightingWorldManager, describeNames } from "./LightingWorldManager.js";
 import { overlayLighting } from "./OverlayLightingRenderer.js";
 import { LightingWorldKey, LightingWorldManagerKey } from "./types.js";
-import type { LightingConfig } from "./types.js";
+import type { LightingConfig, LightingRendererFactory } from "./types.js";
+import { assertBounce } from "./validation.js";
+
+/** Name the built-in overlay is registered under when nothing replaces it. */
+const DEFAULT_RENDERER_NAME = "overlay";
 
 /** Installs per-scene lighting worlds and the render-phase lighting system. */
 export class LightingPlugin implements Plugin {
@@ -23,16 +27,24 @@ export class LightingPlugin implements Plugin {
 
   install(context: EngineContext): void {
     const renderer = context.resolve(RendererKey);
-    const factory =
-      this.config.renderer === undefined
-        ? overlayLighting()
-        : this.config.renderer;
-    const manager = new LightingWorldManager(
-      renderer,
-      this.config.ambient ?? {},
-      factory,
-      context.tryResolve(ErrorBoundaryKey),
+    const configured = this.config.renderers;
+    const renderers: Readonly<Record<string, LightingRendererFactory | null>> =
+      configured ?? { [DEFAULT_RENDERER_NAME]: overlayLighting() };
+    const defaultRenderer = resolveDefaultRenderer(
+      this.config.defaultRenderer,
+      configured !== undefined,
+      renderers,
     );
+    const bounce = this.config.bounce ?? null;
+    if (bounce) assertBounce(bounce, "LightingPlugin bounce");
+    const errorBoundary = context.tryResolve(ErrorBoundaryKey);
+    const manager = new LightingWorldManager(renderer, {
+      ambient: this.config.ambient ?? {},
+      renderers,
+      defaultRenderer,
+      bounce,
+      ...(errorBoundary !== undefined ? { errorBoundary } : undefined),
+    });
     this.manager = manager;
     context.register(LightingWorldManagerKey, manager);
 
@@ -58,4 +70,32 @@ export class LightingPlugin implements Plugin {
     this.manager?.destroy();
     this.manager = undefined;
   }
+}
+
+/**
+ * Which renderer draws a scene that names none. A game that configures its own
+ * `renderers` says which of them that is; leaving the whole map out takes the
+ * built-in overlay.
+ */
+function resolveDefaultRenderer(
+  named: string | undefined,
+  hasOwnRenderers: boolean,
+  renderers: Readonly<Record<string, LightingRendererFactory | null>>,
+): string {
+  if (named === undefined) {
+    if (hasOwnRenderers) {
+      throw new Error(
+        "LightingPlugin has its own renderers, so defaultRenderer must name " +
+          `one of them: ${describeNames(renderers)}.`,
+      );
+    }
+    return DEFAULT_RENDERER_NAME;
+  }
+  if (!Object.hasOwn(renderers, named)) {
+    throw new Error(
+      `LightingPlugin defaultRenderer "${named}" is not one of the configured ` +
+        `renderers: ${describeNames(renderers)}.`,
+    );
+  }
+  return named;
 }

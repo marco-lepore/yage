@@ -3,9 +3,25 @@ import type { RendererPlugin } from "@yagejs/renderer";
 import { LightingWorld } from "./LightingWorld.js";
 import type {
   AmbientLightOptions,
+  BounceLightOptions,
   LightingRenderer,
   LightingRendererFactory,
 } from "./types.js";
+import { assertBounce } from "./validation.js";
+
+/** What a {@link LightingWorldManager} builds each scene's world from. */
+export interface LightingWorldManagerOptions {
+  /** Ambient light every world starts from. */
+  readonly ambient: AmbientLightOptions;
+  /** The renderers a scene picks from through `Scene.lighting`. */
+  readonly renderers: Readonly<Record<string, LightingRendererFactory | null>>;
+  /** Which entry draws a scene that names none. */
+  readonly defaultRenderer: string;
+  /** Bounced light for scenes that set none of their own, or `null`. */
+  readonly bounce: BounceLightOptions | null;
+  /** Engine error boundary, when one is installed. */
+  readonly errorBoundary?: ErrorBoundary;
+}
 
 /** Owns every live scene's {@link LightingWorld}. */
 export class LightingWorldManager {
@@ -13,9 +29,7 @@ export class LightingWorldManager {
 
   constructor(
     private readonly renderer: RendererPlugin,
-    private readonly ambient: AmbientLightOptions,
-    private readonly rendererFactory: LightingRendererFactory | null,
-    private readonly errorBoundary?: ErrorBoundary,
+    private readonly options: LightingWorldManagerOptions,
   ) {}
 
   /** Create the scene's world and renderer, or return the existing world. */
@@ -23,15 +37,17 @@ export class LightingWorldManager {
     const existing = this.worlds.get(scene);
     if (existing) return existing;
 
-    const world = new LightingWorld(scene, this.ambient, this.errorBoundary);
-    const factory = this.rendererFactory;
+    const errorBoundary = this.options.errorBoundary;
+    const world = new LightingWorld(scene, this.options.ambient, errorBoundary);
+    const factory = this.resolveFactory(scene);
+    const bounce = this.resolveBounce(scene);
     if (factory) {
       let backend: LightingRenderer | undefined;
       const create = (): void => {
-        backend = factory({ scene, world, renderer: this.renderer });
+        backend = factory({ scene, world, renderer: this.renderer, bounce });
       };
-      if (this.errorBoundary) {
-        this.errorBoundary.wrapCallback(create, {
+      if (errorBoundary) {
+        errorBoundary.wrapCallback(create, {
           kind: "Lighting renderer factory",
           scene: scene.name,
         });
@@ -85,4 +101,38 @@ export class LightingWorldManager {
     }
     if (firstError !== undefined) throw firstError;
   }
+
+  /** The factory the scene names, or the configured default. */
+  private resolveFactory(scene: Scene): LightingRendererFactory | null {
+    const { renderers, defaultRenderer } = this.options;
+    const name = scene.lighting?.renderer ?? defaultRenderer;
+    if (!Object.hasOwn(renderers, name)) {
+      throw new Error(
+        `Scene "${scene.name}" asks for lighting renderer "${name}", which is ` +
+          `not configured. Configured renderers: ${describeNames(renderers)}.`,
+      );
+    }
+    return renderers[name] ?? null;
+  }
+
+  /**
+   * The scene's own bounce setting, or the configured default. An absent
+   * property takes the default; `null` turns bounce off for this scene.
+   */
+  private resolveBounce(scene: Scene): BounceLightOptions | null {
+    const own = scene.lighting?.bounce;
+    if (own === undefined) return this.options.bounce;
+    if (own !== null)
+      assertBounce(own, `Scene "${scene.name}" lighting bounce`);
+    return own;
+  }
+}
+
+/** The configured renderer names, quoted, for an error message. */
+export function describeNames(
+  renderers: Readonly<Record<string, unknown>>,
+): string {
+  const names = Object.keys(renderers);
+  if (names.length === 0) return "none";
+  return names.map((name) => `"${name}"`).join(", ");
 }

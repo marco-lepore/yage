@@ -10,6 +10,10 @@
  * the queried level with the drawn one under a camera that is neither
  * centred nor at zoom 1.
  *
+ * The scene picks its renderer by name and carries its own bounce setting,
+ * which `?bounce=1` turns on, so the spec can load the same page with and
+ * without it.
+ *
  * The scene is static and the page runs the engine's own loop, so the spec
  * waits on a frame counter rather than a frozen clock. A debug overlay scene
  * would bring a lighting world of its own, whose unlit overlay would cover
@@ -26,6 +30,7 @@ import {
   LightSource,
   LightingPlugin,
   LightingWorldKey,
+  overlayLighting,
 } from "@yagejs/lighting";
 import type { LightingWorld } from "@yagejs/lighting";
 import { injectStyles, setupContainer } from "./shared.js";
@@ -46,8 +51,16 @@ class FrameCounter extends Component {
   }
 }
 
+const bounced = new URLSearchParams(window.location.search).has("bounce");
+
 class ShadowScene extends Scene {
   readonly name = "lighting-shadows";
+  // A reach wide enough to carry light to the probe deep behind the wall,
+  // rather than only to the pixels along the shadow's edge.
+  readonly lighting = {
+    renderer: "overlay",
+    bounce: bounced ? { strength: 0.7, radius: 192 } : null,
+  };
 
   camera!: CameraEntity;
   world!: LightingWorld;
@@ -116,7 +129,13 @@ engine.use(
     container,
   }),
 );
-engine.use(new LightingPlugin({ ambient: { level: 0 } }));
+engine.use(
+  new LightingPlugin({
+    ambient: { level: 0 },
+    renderers: { overlay: overlayLighting() },
+    defaultRenderer: "overlay",
+  }),
+);
 await engine.start();
 
 const scene = new ShadowScene();

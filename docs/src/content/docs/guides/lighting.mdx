@@ -215,20 +215,31 @@ occluder stands between it and the surface. A light with a cone is drawn as a
 pie slice, turned by its entity. Coloured lights tint the surfaces they reach,
 as real coloured illumination does.
 
+Renderers are configured under names, and `defaultRenderer` picks the one a
+scene gets when it asks for nothing:
+
 ```typescript
 import { LightingPlugin, overlayLighting } from "@yagejs/lighting";
 
 engine.use(
   new LightingPlugin({
-    renderer: overlayLighting({
-      layer: "lighting",
-      order: 900,
-      resolutionScale: 0.5,
-      antialias: true,
-    }),
+    renderers: {
+      overlay: overlayLighting({
+        layer: "lighting",
+        order: 900,
+        resolutionScale: 0.5,
+        antialias: true,
+      }),
+    },
+    defaultRenderer: "overlay",
   }),
 );
 ```
+
+Leave `renderers` out entirely and you get `overlayLighting()` under the name
+`"overlay"`, which is also the default. Once you write your own `renderers`,
+`defaultRenderer` is required and has to name one of your entries — the plugin
+throws at install rather than guessing which of them a scene should get.
 
 The default layer is screen-space and uses order `900`. A UI layer at the
 conventional order `1000` stays above the lighting. Lower
@@ -238,9 +249,90 @@ sharper gradient edges.
 The renderer follows the highest-priority enabled camera in each scene. With
 no camera, world coordinates map directly to the viewport.
 
-For tests or gameplay that needs only `levelAt()`, pass `renderer: null`. You
-still install `RendererPlugin`; the option only disables lighting's visual
-backend.
+## Pick a renderer per scene
+
+A scene names one of the configured renderers:
+
+```typescript
+class CaveScene extends Scene {
+  readonly name = "cave";
+  readonly lighting = { renderer: "overlay" };
+}
+```
+
+The name is read once, when the scene's lighting world is created, so a scene
+keeps the renderer it entered with. A name that is not in `renderers` throws
+there, and the message lists the names that are.
+
+An entry can be `null`, which keeps `levelAt()` and draws nothing. That is
+what tests and headless gameplay want:
+
+```typescript
+engine.use(
+  new LightingPlugin({
+    renderers: { none: null },
+    defaultRenderer: "none",
+  }),
+);
+```
+
+You still install `RendererPlugin`; a `null` entry only turns off lighting's
+visual backend.
+
+## Let light bounce off surfaces
+
+Real light does not stop at a shadow's edge: a lit floor throws some of it
+back, so the dark side of a crate is dim rather than black. `bounce` adds a
+blurred, low-resolution copy of the finished light over the scene, which
+approximates that. It sits on the scene beside `renderer`, because how much
+light a room throws back is part of how that room looks:
+
+```typescript
+class CaveScene extends Scene {
+  readonly name = "cave";
+  readonly lighting = {
+    renderer: "overlay",
+    bounce: { strength: 0.8, radius: 90 },
+  };
+}
+```
+
+`strength` runs from `0` to `1` and says how much of the blurred copy is added
+back. `radius` is how far the blur reaches, in screen pixels: small values
+soften shadow edges, large ones spread a glow across the room. The copy is
+drawn at a low density of its own, so `radius` means the same thing whatever
+the renderer's `resolutionScale` is.
+
+Set `bounce` on the plugin for the value every scene starts from, and `null`
+on a scene that wants none of it:
+
+```typescript
+engine.use(
+  new LightingPlugin({
+    ambient: { level: 0.1 },
+    bounce: { strength: 0.4, radius: 40 },
+  }),
+);
+
+class MenuScene extends Scene {
+  readonly name = "menu";
+  readonly lighting = { bounce: null };
+}
+```
+
+A scene that leaves `bounce` out takes the plugin's value, and bounce is off
+when neither sets one. Like the renderer name, it is read once, when the scene
+is entered, and a scene's own value is checked there with an error naming the
+scene.
+
+:::note[Bounced light is a picture, not a rule]
+`levelAt()` never sees the bounced light, so a character standing in a
+bounce-lit shadow still queries as unlit. Raise `ambient.level` instead when
+you want gameplay to agree that the dark is not pitch black.
+:::
+
+The pass costs one more offscreen buffer per scene, and it runs only on frames
+where the lights themselves were redrawn.
 
 ## Register occluder geometry
 
@@ -314,7 +406,7 @@ soft border.
 
 ## Supply another renderer
 
-Set `renderer` to a factory when a game needs a different visual result:
+Add a factory to `renderers` when a game needs a different visual result:
 
 ```typescript
 import type { LightingRendererFactory } from "@yagejs/lighting";
@@ -323,6 +415,7 @@ const customLighting: LightingRendererFactory = ({
   scene,
   world,
   renderer,
+  bounce,
 }) => ({
   render(frame) {
     // Read world.sources and world.occluders.
@@ -334,7 +427,12 @@ const customLighting: LightingRendererFactory = ({
   },
 });
 
-engine.use(new LightingPlugin({ renderer: customLighting }));
+engine.use(
+  new LightingPlugin({
+    renderers: { custom: customLighting },
+    defaultRenderer: "custom",
+  }),
+);
 ```
 
 YAGE calls the factory once for each entered scene and calls `destroy()` when
@@ -342,6 +440,33 @@ that scene exits. Each source contains renderer-neutral light data, so a
 custom renderer can draw visibility polygons, material lighting, or another
 visual treatment without changing game entities. Apply the same occlusion rule
 the query applies, or the drawn light and the queried light disagree.
+
+The `bounce` the factory receives is what this scene resolved to: its own
+setting, or the plugin's, or `null`. Hand it to `LightingComposite`, the step
+the built-in renderer finishes with, and a custom renderer gets the same
+multiply composite and the same bounced light for free:
+
+```typescript
+import { LightingComposite } from "@yagejs/lighting";
+
+const composite = new LightingComposite(renderer, {
+  source: lightContainer, // the container this renderer draws into
+  parent: layer.container, // a screen-space render layer
+  width: renderer.virtualSize.width,
+  height: renderer.virtualSize.height,
+  resolutionScale: 0.5,
+  bounce,
+});
+
+// In the renderer's destroy(), before the source container goes:
+composite.destroy();
+```
+
+Call `composite.invalidate()` whenever the drawn light changed and
+`composite.render()` once per frame. It redraws nothing while the light stands
+still, and it returns whether the buffer was redrawn. `composite.destroy()`
+releases its buffers and takes the overlay out of the layer; the container you
+drew into stays yours.
 
 Both `LightSource` and `LightOccluder` expose an immutable `position` in world
 pixels. For coordinate reads inside a render loop, keep a `Vec2Buffer` and

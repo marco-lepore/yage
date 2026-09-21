@@ -51,9 +51,9 @@ class LightSensor extends Component {
 ```
 
 `levelAt()` adds the ambient level and every light contribution, then clamps
-the result to `0..1`. The package also registers renderer-neutral
-`LightOccluder` data for custom renderers. The built-in renderer does not cast
-shadows.
+the result to `0..1`. A `LightOccluder` blocks light in the query and in the
+built-in renderer alike, so a wall casts a shadow in the picture and in the
+answer. Occluder data is renderer-neutral and available to custom renderers.
 
 See [yage.dev/guides/lighting](https://yage.dev/guides/lighting) for setup,
 configuration, and custom renderer details.

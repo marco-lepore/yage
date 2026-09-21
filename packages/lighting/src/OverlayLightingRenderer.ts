@@ -1,8 +1,8 @@
 import { Vec2Buffer } from "@yagejs/core";
-import { Container, Graphics, Sprite } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import type { FillGradient } from "pixi.js";
 import { SceneRenderTreeKey, radialGradient } from "@yagejs/renderer";
-import type { RenderTargetHandle } from "@yagejs/renderer";
+import { LightingComposite } from "./LightingComposite.js";
 import type { LightOccluder } from "./LightOccluder.js";
 import type { LightSource } from "./LightSource.js";
 import { OccluderFootprintPool } from "./occlusion.js";
@@ -85,6 +85,9 @@ interface OccluderState {
  * picture is exactly what `LightingWorld.levelAt()` reports; above it the
  * drawn edge runs along the middle of the soft border the query answers with,
  * so the two agree everywhere except inside that border.
+ *
+ * The bounced light the scene resolved to reaches the picture through
+ * {@link LightingComposite}, which every lighting renderer shares.
  */
 export class OverlayLightingRenderer implements LightingRenderer {
   private readonly positionScratch = new Vec2Buffer();
@@ -92,8 +95,7 @@ export class OverlayLightingRenderer implements LightingRenderer {
   private readonly world;
   private readonly source = new Container();
   private readonly ambient = new Graphics();
-  private readonly target: RenderTargetHandle;
-  private readonly overlay: Sprite;
+  private readonly composite: LightingComposite;
   private readonly visuals = new Map<LightSource, SourceVisual>();
   private readonly footprints = new OccluderFootprintPool();
   private readonly occluderStates = new Map<LightOccluder, OccluderState>();
@@ -149,19 +151,16 @@ export class OverlayLightingRenderer implements LightingRenderer {
 
     this.source.label = `lighting-source:${context.scene.name}`;
     this.source.addChild(this.ambient);
-    this.target = context.renderer.createRenderTarget(this.source, {
+    this.composite = new LightingComposite(context.renderer, {
+      source: this.source,
+      parent: layer.container,
       width,
       height,
       resolutionScale,
       antialias: options.antialias ?? true,
-      clearColor: 0x000000,
+      bounce: context.bounce,
       label: `lighting:${context.scene.name}`,
     });
-    this.overlay = new Sprite(this.target.texture);
-    this.overlay.label = `lighting-overlay:${context.scene.name}`;
-    this.overlay.eventMode = "none";
-    this.overlay.blendMode = "multiply";
-    layer.container.addChild(this.overlay);
   }
 
   render(frame: LightingRenderFrame): void {
@@ -175,8 +174,8 @@ export class OverlayLightingRenderer implements LightingRenderer {
     changed = this.syncAmbient() || changed;
     changed = this.syncShadowView(frame) || changed;
     changed = this.syncSources(frame) || changed;
-    if (changed) this.target.invalidate();
-    this.target.renderIfNeeded();
+    if (changed) this.composite.invalidate();
+    this.composite.render();
   }
 
   destroy(): void {
@@ -187,11 +186,7 @@ export class OverlayLightingRenderer implements LightingRenderer {
     }
     this.visuals.clear();
     this.occluderStates.clear();
-    if (!this.overlay.destroyed) {
-      this.overlay.removeFromParent();
-      this.overlay.destroy();
-    }
-    this.target.destroy();
+    this.composite.destroy();
     this.source.destroy({ children: true });
   }
 
@@ -201,9 +196,7 @@ export class OverlayLightingRenderer implements LightingRenderer {
     assertPositive(height, "Lighting viewport height");
     this.width = width;
     this.height = height;
-    this.target.resize(width, height);
-    this.overlay.width = width;
-    this.overlay.height = height;
+    this.composite.resize(width, height);
     return true;
   }
 
