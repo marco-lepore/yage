@@ -30,7 +30,7 @@ export interface LightingCompositeOptions {
   resolutionScale?: number;
   /** Antialias the light buffer. Default `false`. */
   antialias?: boolean;
-  /** Bounced light added over the buffer, or `null` for none. */
+  /** Bounced light combined with the buffer, or `null` for none. */
   bounce?: BounceLightOptions | null;
   /** Label prefix for the buffers and sprites, shown in the Pixi devtools. */
   label?: string;
@@ -41,10 +41,10 @@ export interface LightingCompositeOptions {
  * renderer draws one scene's light into, and multiplies that buffer over the
  * scene.
  *
- * With bounce configured, what is multiplied over the scene is the light plus
- * a blurred, low-resolution copy of itself, which spreads light past shadow
- * edges and around corners the way a lit surface throws light back into a
- * room. The copy is a visual treatment and never reaches
+ * With bounce configured, what is multiplied over the scene is the light
+ * combined with a blurred, low-resolution copy of itself, which spreads light
+ * past shadow edges and around corners the way a lit surface throws light back
+ * into a room. The copy is a visual treatment and never reaches
  * `LightingWorld.levelAt()`.
  *
  * A renderer calls {@link invalidate} whenever its light changed and
@@ -69,6 +69,8 @@ export class LightingComposite {
     this.height = height;
     const label = options.label ?? "lighting";
     const resolutionScale = options.resolutionScale ?? 1;
+    const bounce = options.bounce ?? null;
+    if (bounce) assertBounce(bounce, "LightingComposite bounce");
 
     this.buffer = renderer.createRenderTarget(options.source, {
       width,
@@ -79,9 +81,7 @@ export class LightingComposite {
       label,
     });
 
-    const bounce = options.bounce ?? null;
     if (bounce) {
-      assertBounce(bounce, "LightingComposite bounce");
       const sharp = this.addSprite(this.buffer);
       const blurred = this.addSprite(this.buffer);
       this.blur = new BlurFilter({
@@ -90,8 +90,10 @@ export class LightingComposite {
         strength: bounce.radius * BOUNCE_RESOLUTION,
         quality: BOUNCE_QUALITY,
         resolution: BOUNCE_RESOLUTION,
+        // Pixi draws a filtered sprite with the filter's blend mode, not the
+        // sprite's. "normal" with the alpha below is the mix.
+        blendMode: (bounce.blend ?? "max") === "max" ? "max" : "normal",
       });
-      blurred.blendMode = "add";
       blurred.alpha = bounce.strength;
       blurred.filters = [this.blur];
       this.bounceSource = new Container();

@@ -26,6 +26,7 @@ export type { LightingCompositeOptions } from "./LightingComposite.js";
 export { LightingWorldKey, LightingWorldManagerKey } from "./types.js";
 export type {
   AmbientLightOptions,
+  BounceBlend,
   BounceLightOptions,
   LightConeOptions,
   LightGrid,

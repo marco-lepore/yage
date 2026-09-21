@@ -7,8 +7,10 @@ import type {
 } from "@yagejs/renderer";
 import { describe, expect, it, vi } from "vitest";
 import { LightingComposite } from "./LightingComposite.js";
+import type { BounceLightOptions } from "./types.js";
 
 interface BlurOptions {
+  blendMode: string;
   strength: number;
   quality: number;
   resolution: number;
@@ -75,7 +77,7 @@ function createHarness(): Harness {
 
 function createComposite(
   harness: Harness,
-  bounce: { strength: number; radius: number } | null = null,
+  bounce: BounceLightOptions | null = null,
 ): LightingComposite {
   return new LightingComposite(harness.renderer, {
     source: harness.source,
@@ -124,7 +126,7 @@ describe("LightingComposite", () => {
     expect(buffer?.invalidate).toHaveBeenCalledTimes(1);
   });
 
-  it("adds a blurred copy of the buffer when bounce is configured", () => {
+  it("combines a blurred copy with the buffer when bounce is configured", () => {
     const harness = createHarness();
     createComposite(harness, { strength: 0.4, radius: 18 });
 
@@ -142,7 +144,6 @@ describe("LightingComposite", () => {
     const [sharp, blurred] = (bounced?.source.children ?? []) as Sprite[];
     expect(sharp?.texture).toBe(buffer?.texture);
     expect(blurred?.texture).toBe(buffer?.texture);
-    expect(blurred?.blendMode).toBe("add");
     expect(blurred?.alpha).toBe(0.4);
     const [filter] = blurred?.filters as Filter[];
     expect(filter).toBeInstanceOf(BlurFilter);
@@ -151,6 +152,7 @@ describe("LightingComposite", () => {
       strength: 18 * 0.25,
       quality: 6,
       resolution: 0.25,
+      blendMode: "max",
     });
 
     // The scene sees the composed buffer, not the raw light.
@@ -187,7 +189,24 @@ describe("LightingComposite", () => {
     expect(sharp?.width).toBe(400);
   });
 
-  it("rejects a bounce setting outside its ranges", () => {
+  it("draws the blurred copy with the blend the bounce names", () => {
+    const blendOf = (bounce: BounceLightOptions): unknown => {
+      const harness = createHarness();
+      createComposite(harness, bounce);
+      const [, blurred] = (harness.targets[1]?.source.children ??
+        []) as Sprite[];
+      const [filter] = blurred?.filters as Filter[];
+      return (filter as unknown as { options: BlurOptions }).options.blendMode;
+    };
+
+    // Pixi draws a filtered sprite with the filter's blend mode, so the
+    // filter is what has to carry it.
+    expect(blendOf({ strength: 0.4, radius: 18 })).toBe("max");
+    expect(blendOf({ strength: 0.4, radius: 18, blend: "max" })).toBe("max");
+    expect(blendOf({ strength: 0.4, radius: 18, blend: "mix" })).toBe("normal");
+  });
+
+  it("rejects a bounce setting before it allocates a buffer", () => {
     const harness = createHarness();
 
     expect(() => createComposite(harness, { strength: 2, radius: 18 })).toThrow(
@@ -196,6 +215,16 @@ describe("LightingComposite", () => {
     expect(() =>
       createComposite(harness, { strength: 0.4, radius: 0 }),
     ).toThrow("LightingComposite bounce radius");
+    expect(() =>
+      createComposite(harness, {
+        strength: 0.4,
+        radius: 18,
+        blend: "add" as never,
+      }),
+    ).toThrow(
+      'LightingComposite bounce blend must be "max" or "mix", got "add".',
+    );
+    expect(harness.targets).toHaveLength(0);
   });
 
   it("releases both buffers and leaves the light source alone", () => {

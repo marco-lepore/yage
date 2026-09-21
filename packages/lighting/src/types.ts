@@ -32,15 +32,30 @@ export interface LightConeOptions {
 }
 
 /**
- * Bounced light, added over a scene's finished light buffer as a blurred copy
- * of that buffer, so light creeps past shadow edges and around corners. It is
- * a visual treatment: `LightingWorld.levelAt()` never sees it.
+ * How the blurred copy of the light meets the light itself.
+ *
+ * - `"max"` keeps the brighter of the two in each colour channel. Lit areas
+ *   and shadow borders stay as drawn; only the dark is lifted.
+ * - `"mix"` blends the whole picture toward the blurred copy. The scene's
+ *   overall brightness stays the same and every shadow edge softens.
+ */
+export type BounceBlend = "max" | "mix";
+
+/**
+ * Bounced light: a blurred copy of a scene's finished light buffer combined
+ * with that buffer, so light creeps past shadow edges and around corners. It
+ * is a visual treatment: `LightingWorld.levelAt()` never sees it.
  */
 export interface BounceLightOptions {
-  /** How much of the blurred copy is added back, from 0 to 1. */
+  /**
+   * How strongly the blurred copy shows, from 0 to 1: its brightness under
+   * `"max"`, its share of the picture under `"mix"`.
+   */
   strength: number;
   /** Blur radius of that copy, in screen pixels. */
   radius: number;
+  /** How the copy meets the light. Default `"max"`. */
+  blend?: BounceBlend;
 }
 
 /** How one scene's lighting is drawn. */

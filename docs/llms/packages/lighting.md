@@ -78,8 +78,8 @@ required.
 
 ## Bounced light
 
-`bounce` adds a blurred, low-resolution copy of the finished light buffer over
-the scene, so light creeps past shadow edges and around corners. It is a scene
+`bounce` combines the finished light buffer with a blurred, low-resolution
+copy of itself, so light creeps past shadow edges and around corners. It is a scene
 setting, beside `renderer`, because it is a look: a cave wants a lot of it and
 a lit street very little. It is off unless set, and it never changes what
 `levelAt()` reports.
@@ -89,12 +89,24 @@ class CaveScene extends Scene {
   readonly name = "cave";
   readonly lighting = {
     bounce: {
-      strength: 0.8, // 0..1, how much of the blurred copy is added back
+      strength: 0.8, // 0..1, how strongly the blurred copy shows
       radius: 90, // blur radius in screen pixels
+      blend: "max", // "max" (default) or "mix"
     },
   };
 }
 ```
+
+`blend` says how the blurred copy meets the light:
+
+- `"max"`, the default, keeps the brighter of the two in each colour channel.
+  Lit areas and shadow borders stay as drawn and only the dark is lifted, up to
+  `strength` times the blurred copy. It suits the shader renderer, whose soft
+  borders it leaves alone.
+- `"mix"` blends the whole picture toward the blurred copy by `strength`. The
+  scene's overall brightness stays the same, every shadow edge softens, and the
+  brightest spots dim slightly. It suits the overlay, whose hard edges it
+  softens.
 
 `LightingConfig.bounce` is the default for scenes that set none:
 

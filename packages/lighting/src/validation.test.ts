@@ -69,6 +69,14 @@ describe("lighting validation", () => {
     expect(() => assertBounce({ strength: 0.5, radius: -1 }, "x")).toThrow(
       "x radius must be a finite number greater than 0, got -1.",
     );
+    for (const blend of ["max", "mix"] as const) {
+      expect(() =>
+        assertBounce({ strength: 0.5, radius: 24, blend }, "x"),
+      ).not.toThrow();
+    }
+    expect(() =>
+      assertBounce({ strength: 0.5, radius: 24, blend: "add" as never }, "x"),
+    ).toThrow('x blend must be "max" or "mix", got "add".');
   });
 
   it("clamps values to the unit interval", () => {

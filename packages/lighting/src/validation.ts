@@ -51,6 +51,12 @@ export function assertColor(value: number, name: string): void {
 export function assertBounce(bounce: BounceLightOptions, name: string): void {
   assertUnit(bounce.strength, `${name} strength`);
   assertPositive(bounce.radius, `${name} radius`);
+  const blend = bounce.blend;
+  if (blend !== undefined && blend !== "max" && blend !== "mix") {
+    throw new Error(
+      `${name} blend must be "max" or "mix", got ${JSON.stringify(blend)}.`,
+    );
+  }
 }
 
 export function clampUnit(value: number): number {

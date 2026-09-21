@@ -282,8 +282,8 @@ visual backend.
 ## Let light bounce off surfaces
 
 Real light does not stop at a shadow's edge: a lit floor throws some of it
-back, so the dark side of a crate is dim rather than black. `bounce` adds a
-blurred, low-resolution copy of the finished light over the scene, which
+back, so the dark side of a crate is dim rather than black. `bounce` combines
+the finished light with a blurred, low-resolution copy of itself, which
 approximates that. It sits on the scene beside `renderer`, because how much
 light a room throws back is part of how that room looks:
 
@@ -297,11 +297,28 @@ class CaveScene extends Scene {
 }
 ```
 
-`strength` runs from `0` to `1` and says how much of the blurred copy is added
-back. `radius` is how far the blur reaches, in screen pixels: small values
+`strength` runs from `0` to `1` and says how strongly the blurred copy shows.
+`radius` is how far the blur reaches, in screen pixels: small values
 soften shadow edges, large ones spread a glow across the room. The copy is
 drawn at a low density of its own, so `radius` means the same thing whatever
 the renderer's `resolutionScale` is.
+
+`blend` picks how the blurred copy meets the light, and the two choices look
+different:
+
+- `"max"`, the default, keeps the brighter of the two. Lit areas and shadow
+  borders stay exactly as drawn, and only the dark is lifted. Pick it when the
+  shadows themselves should stay crisp, which is usually the case with the
+  shader renderer's soft borders.
+- `"mix"` blends the whole picture toward the blurred copy. The room keeps its
+  overall brightness, every shadow edge softens and the brightest spots dim a
+  little. Pick it to take the hard edge off the overlay renderer's shadows.
+
+```typescript
+readonly lighting = {
+  bounce: { strength: 0.6, radius: 60, blend: "mix" },
+};
+```
 
 Set `bounce` on the plugin for the value every scene starts from, and `null`
 on a scene that wants none of it:
