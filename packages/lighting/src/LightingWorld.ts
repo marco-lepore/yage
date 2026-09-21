@@ -8,6 +8,7 @@ import type {
   LightingRenderer,
   LightingRenderFrame,
 } from "./types.js";
+import { coneFactor, coneInnerCosine, coneOuterCosine } from "./cone.js";
 import { LampView, OccluderFootprintPool } from "./occlusion.js";
 import type { OccluderFootprint } from "./occlusion.js";
 import { FULL_TURN, assertColor, assertUnit, clampUnit } from "./validation.js";
@@ -105,20 +106,19 @@ export class LightingWorld {
       if (distanceSquared >= radius * radius) continue;
       const distance = Math.sqrt(distanceSquared);
       const coneAngle = source.coneAngle;
+      let cone = 1;
       if (coneAngle < FULL_TURN) {
         const rotation = source.rotation;
-        if (
-          !inCone(
-            dx,
-            dy,
-            distance,
-            Math.cos(rotation),
-            Math.sin(rotation),
-            Math.cos(coneAngle / 2),
-          )
-        ) {
-          continue;
-        }
+        cone = coneFactorAt(
+          dx,
+          dy,
+          distance,
+          Math.cos(rotation),
+          Math.sin(rotation),
+          coneOuterCosine(coneAngle),
+          coneInnerCosine(coneAngle, source.coneSoftness),
+        );
+        if (cone === 0) continue;
       }
       let coverage = 1;
       if (source.castShadows) {
@@ -138,7 +138,7 @@ export class LightingWorld {
         }
       }
       const falloff = 1 - distance / radius;
-      level += source.intensity * falloff * coverage;
+      level += source.intensity * falloff * coverage * cone;
       if (level >= 1) return 1;
     }
     return clampUnit(level);
@@ -186,7 +186,8 @@ export class LightingWorld {
       const rotation = source.rotation;
       const aimX = coned ? Math.cos(rotation) : 0;
       const aimY = coned ? Math.sin(rotation) : 0;
-      const coneCosine = coned ? Math.cos(coneAngle / 2) : 0;
+      const coneOuter = coneOuterCosine(coneAngle);
+      const coneInner = coneInnerCosine(coneAngle, source.coneSoftness);
 
       const minCol = Math.max(
         0,
@@ -233,8 +234,18 @@ export class LightingWorld {
           const distanceSquared = dx * dx + dy * dy;
           if (distanceSquared >= radius * radius) continue;
           const distance = Math.sqrt(distanceSquared);
-          if (coned && !inCone(dx, dy, distance, aimX, aimY, coneCosine)) {
-            continue;
+          let cone = 1;
+          if (coned) {
+            cone = coneFactorAt(
+              dx,
+              dy,
+              distance,
+              aimX,
+              aimY,
+              coneOuter,
+              coneInner,
+            );
+            if (cone === 0) continue;
           }
           let coverage = 1;
           if (halfSize === 0) {
@@ -254,7 +265,8 @@ export class LightingWorld {
             if (coverage === 0) continue;
           }
           levels[index] =
-            levels[index]! + intensity * (1 - distance / radius) * coverage;
+            levels[index]! +
+            intensity * (1 - distance / radius) * coverage * cone;
         }
       }
     }
@@ -380,19 +392,21 @@ export class LightingWorld {
 }
 
 /**
- * Whether a point lies inside a light's cone. `aimX`/`aimY` is the cone's unit
- * direction and `cosine` the cosine of half its spread; a point standing on
- * the lamp has no direction and counts as lit.
+ * How much of a light a cone lets reach a point, from 0 outside it to 1
+ * inside. `aimX`/`aimY` is the cone's unit direction; a point standing on the
+ * lamp has no direction and counts as fully lit.
  */
-function inCone(
+function coneFactorAt(
   dx: number,
   dy: number,
   distance: number,
   aimX: number,
   aimY: number,
-  cosine: number,
-): boolean {
-  return distance === 0 || dx * aimX + dy * aimY >= cosine * distance;
+  outer: number,
+  inner: number,
+): number {
+  if (distance === 0) return 1;
+  return coneFactor((dx * aimX + dy * aimY) / distance, outer, inner);
 }
 
 function assertPositiveInteger(value: number, name: string): void {

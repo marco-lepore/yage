@@ -155,14 +155,15 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 
 ### `@yagejs/lighting`
 
-| File                             | Purpose                                   |
-| -------------------------------- | ----------------------------------------- |
-| `src/LightingPlugin.ts`          | Plugin entry and per-scene setup          |
-| `src/LightingWorld.ts`           | Registered lights and `levelAt()` queries |
-| `src/LightSource.ts`             | Entity-bound radial light                 |
-| `src/LightOccluder.ts`           | Renderer-neutral occluder geometry        |
-| `src/LightingSystem.ts`          | Render-phase backend synchronization      |
-| `src/OverlayLightingRenderer.ts` | Built-in multiply-overlay renderer        |
+| File                             | Purpose                                         |
+| -------------------------------- | ----------------------------------------------- |
+| `src/LightingPlugin.ts`          | Plugin entry and per-scene setup                |
+| `src/LightingWorld.ts`           | Registered lights and `levelAt()` queries       |
+| `src/LightSource.ts`             | Entity-bound radial light                       |
+| `src/LightOccluder.ts`           | Renderer-neutral occluder geometry              |
+| `src/LightingSystem.ts`          | Render-phase backend synchronization            |
+| `src/OverlayLightingRenderer.ts` | Built-in multiply-overlay renderer              |
+| `src/ShaderLightingRenderer.ts`  | Soft-shadow renderer, one shaded quad per light |
 
 ### `@yagejs/physics`
 

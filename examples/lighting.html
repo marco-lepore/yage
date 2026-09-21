@@ -12,12 +12,32 @@
     <div id="game-container"></div>
     <div class="controls">
       <span>
-        Static warm and cool lights share the scene with an orbiting lamp.
+        A warm lamp, a sweeping spotlight and an orbiting lamp share a room of
+        solid furniture that blocks their light.
       </span>
       <span>
         The white probe moves through their falloff and reads
         <code>LightingWorld.levelAt()</code>. The HUD uses the same light data
         as the visual renderer.
+      </span>
+      <span>
+        The address bar picks the look:
+        <code>?renderer=soft</code> for shadows with soft borders and a faded
+        cone edge, <code>?renderer=hard</code> for the overlay's single hard
+        line. <code>?size=</code> is the lamp diameter in pixels,
+        <code>?softness=</code> the share of the spotlight's spread its edge
+        fades over, <code>?bounce=</code> how strongly bounced light shows,
+        <code>?blend=mix</code>
+        to blend toward it rather than keep the brighter of the two,
+        <code>?res=</code> the light buffer's density, and
+        <code>?lights=</code> adds that many drifting lamps.
+      </span>
+      <span>
+        <a href="/lighting.html?renderer=soft&amp;size=28">soft, wide lamps</a>
+        ·
+        <a href="/lighting.html?renderer=hard&amp;size=28">hard, wide lamps</a>
+        ·
+        <a href="/lighting.html?renderer=soft&amp;bounce=0.5">bounced light</a>
       </span>
     </div>
     <script type="module" src="/src/lighting/main.ts"></script>

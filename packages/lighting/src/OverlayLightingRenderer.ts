@@ -2,10 +2,12 @@ import { Vec2Buffer } from "@yagejs/core";
 import { Container, Graphics } from "pixi.js";
 import type { FillGradient } from "pixi.js";
 import { SceneRenderTreeKey, radialGradient } from "@yagejs/renderer";
+import { AmbientFill } from "./ambient-fill.js";
+import { CameraView } from "./camera-view.js";
+import { coneMidHalfAngle } from "./cone.js";
 import { LightingComposite } from "./LightingComposite.js";
-import type { LightOccluder } from "./LightOccluder.js";
 import type { LightSource } from "./LightSource.js";
-import { OccluderFootprintPool } from "./occlusion.js";
+import { OccluderWatch } from "./occlusion.js";
 import type { OccluderFootprint } from "./occlusion.js";
 import type {
   LightingRenderer,
@@ -51,6 +53,9 @@ interface SourceVisual {
   intensity: number;
   color: number;
   coneAngle: number;
+  coneSoftness: number;
+  /** Half-spread of the drawn pie slice, in radians. */
+  coneHalf: number;
   /** Screen-space direction the cone points along, in radians. */
   aim: number;
   x: number;
@@ -63,15 +68,6 @@ interface SourceVisual {
   shadowRevision: number;
 }
 
-/** One occluder's world transform, compared per frame to catch a move. */
-interface OccluderState {
-  x: number;
-  y: number;
-  rotation: number;
-  scaleX: number;
-  scaleY: number;
-}
-
 /**
  * Draws ambient colour plus radial lights into an offscreen buffer, then
  * multiplies that buffer over the scene.
@@ -81,8 +77,9 @@ interface OccluderState {
  * is opaque: each light is drawn through an inverse mask covering everything
  * its occluders hide.
  *
- * Shadow edges are hard whatever a light's `size` says. At `size: 0` the
- * picture is exactly what `LightingWorld.levelAt()` reports; above it the
+ * Shadow edges are hard whatever a light's `size` says, and a cone's edge is
+ * hard whatever its `softness` says. At `size: 0` with an unsoftened cone the
+ * picture is exactly what `LightingWorld.levelAt()` reports; above either, the
  * drawn edge runs along the middle of the soft border the query answers with,
  * so the two agree everywhere except inside that border.
  *
@@ -91,29 +88,16 @@ interface OccluderState {
  */
 export class OverlayLightingRenderer implements LightingRenderer {
   private readonly positionScratch = new Vec2Buffer();
-  private readonly occluderScratch = new Vec2Buffer();
   private readonly world;
   private readonly source = new Container();
-  private readonly ambient = new Graphics();
+  private readonly ambient: AmbientFill;
   private readonly composite: LightingComposite;
   private readonly visuals = new Map<LightSource, SourceVisual>();
-  private readonly footprints = new OccluderFootprintPool();
-  private readonly occluderStates = new Map<LightOccluder, OccluderState>();
-  /** Bumped whenever an occluder appears, moves or leaves. */
-  private occlusionRevision = 0;
-  /** Whether {@link footprints} already matches this frame's occluders. */
-  private footprintsResolved = false;
+  private readonly occluders = new OccluderWatch();
   /** Camera transform the shadow masks are drawn under. */
-  private viewX = 0;
-  private viewY = 0;
-  private viewRotation = 0;
-  private viewZoom = 1;
-  private viewOffsetX = 0;
-  private viewOffsetY = 0;
+  private readonly view = new CameraView();
   private width: number;
   private height: number;
-  private ambientLevel = -1;
-  private ambientColor = -1;
   private destroyed = false;
 
   constructor(
@@ -150,7 +134,8 @@ export class OverlayLightingRenderer implements LightingRenderer {
     }
 
     this.source.label = `lighting-source:${context.scene.name}`;
-    this.source.addChild(this.ambient);
+    this.ambient = new AmbientFill("lighting-ambient");
+    this.source.addChild(this.ambient.graphics);
     this.composite = new LightingComposite(context.renderer, {
       source: this.source,
       parent: layer.container,
@@ -168,10 +153,9 @@ export class OverlayLightingRenderer implements LightingRenderer {
       throw new Error("OverlayLightingRenderer.render called after destroy().");
     }
 
-    this.footprintsResolved = false;
-    this.syncOccluders();
+    this.occluders.sync(this.world.occluders);
     let changed = this.resize(frame.width, frame.height);
-    changed = this.syncAmbient() || changed;
+    changed = this.ambient.sync(this.world, this.width, this.height) || changed;
     changed = this.syncShadowView(frame) || changed;
     changed = this.syncSources(frame) || changed;
     if (changed) this.composite.invalidate();
@@ -185,7 +169,7 @@ export class OverlayLightingRenderer implements LightingRenderer {
       visual.gradient.destroy();
     }
     this.visuals.clear();
-    this.occluderStates.clear();
+    this.occluders.clear();
     this.composite.destroy();
     this.source.destroy({ children: true });
   }
@@ -200,122 +184,16 @@ export class OverlayLightingRenderer implements LightingRenderer {
     return true;
   }
 
-  private syncAmbient(): boolean {
-    const level = this.world.ambientLevel;
-    const color = this.world.ambientColor;
-    if (
-      level === this.ambientLevel &&
-      color === this.ambientColor &&
-      this.ambient.width === this.width &&
-      this.ambient.height === this.height
-    ) {
-      return false;
-    }
-    this.ambientLevel = level;
-    this.ambientColor = color;
-    this.ambient
-      .clear()
-      .rect(0, 0, this.width, this.height)
-      .fill(scaleColor(color, level));
-    return true;
-  }
-
-  /** Notice an occluder appearing, moving, rescaling, rotating or leaving. */
-  private syncOccluders(): void {
-    const occluders = this.world.occluders;
-    let changed = false;
-    for (const occluder of this.occluderStates.keys()) {
-      if (occluders.has(occluder)) continue;
-      this.occluderStates.delete(occluder);
-      changed = true;
-    }
-    for (const occluder of occluders) {
-      const position = occluder.getPositionInto(this.occluderScratch);
-      const scale = occluder.scale;
-      const rotation = occluder.rotation;
-      const state = this.occluderStates.get(occluder);
-      if (!state) {
-        this.occluderStates.set(occluder, {
-          x: position.x,
-          y: position.y,
-          rotation,
-          scaleX: scale.x,
-          scaleY: scale.y,
-        });
-        changed = true;
-        continue;
-      }
-      if (
-        state.x === position.x &&
-        state.y === position.y &&
-        state.rotation === rotation &&
-        state.scaleX === scale.x &&
-        state.scaleY === scale.y
-      ) {
-        continue;
-      }
-      state.x = position.x;
-      state.y = position.y;
-      state.rotation = rotation;
-      state.scaleX = scale.x;
-      state.scaleY = scale.y;
-      changed = true;
-    }
-    if (changed) this.occlusionRevision++;
-  }
-
-  /**
-   * Put the shadow masks under the camera's own transform. Shadow geometry is
-   * world-space, so the camera moves it the way it moves the scene and the
-   * geometry itself only has to be rebuilt when a light or an occluder moves.
-   */
+  /** Follow the camera, and report whether a drawn mask moved with it. */
   private syncShadowView(frame: LightingRenderFrame): boolean {
-    const camera = frame.camera;
-    let x = 0;
-    let y = 0;
-    let rotation = 0;
-    let zoom = 1;
-    let offsetX = 0;
-    let offsetY = 0;
-    if (camera) {
-      const position = camera.getEffectivePositionInto(this.occluderScratch);
-      x = position.x;
-      y = position.y;
-      rotation = camera.effectiveRotation;
-      zoom = camera.effectiveZoom;
-      offsetX = camera.viewportWidth / 2;
-      offsetY = camera.viewportHeight / 2;
-    }
-    if (
-      x === this.viewX &&
-      y === this.viewY &&
-      rotation === this.viewRotation &&
-      zoom === this.viewZoom &&
-      offsetX === this.viewOffsetX &&
-      offsetY === this.viewOffsetY
-    ) {
-      return false;
-    }
-    this.viewX = x;
-    this.viewY = y;
-    this.viewRotation = rotation;
-    this.viewZoom = zoom;
-    this.viewOffsetX = offsetX;
-    this.viewOffsetY = offsetY;
+    if (!this.view.read(frame)) return false;
     let masked = false;
     for (const visual of this.visuals.values()) {
       if (!visual.shadows) continue;
-      this.applyShadowView(visual.shadows);
+      this.view.applyTo(visual.shadows);
       masked = masked || visual.masked;
     }
     return masked;
-  }
-
-  private applyShadowView(shadows: Graphics): void {
-    shadows.pivot.set(this.viewX, this.viewY);
-    shadows.scale.set(this.viewZoom);
-    shadows.rotation = -this.viewRotation;
-    shadows.position.set(this.viewOffsetX, this.viewOffsetY);
   }
 
   private syncSources(frame: LightingRenderFrame): boolean {
@@ -340,6 +218,7 @@ export class OverlayLightingRenderer implements LightingRenderer {
         : position;
       const radius = source.radius * scale;
       const coneAngle = source.coneAngle;
+      const coneSoftness = source.coneSoftness;
       const gradientRadius = gradientRadiusFor(coneAngle, radius);
       let visual = this.visuals.get(source);
       if (!visual) {
@@ -365,20 +244,23 @@ export class OverlayLightingRenderer implements LightingRenderer {
         visual.intensity = source.intensity;
         visual.gradientRadius = gradientRadius;
         visual.radius = radius;
-        visual.coneAngle = coneAngle;
+        setCone(visual, coneAngle, coneSoftness);
         redrawLight(visual);
         changed = true;
-      } else if (visual.radius !== radius || visual.coneAngle !== coneAngle) {
+      } else if (
+        visual.radius !== radius ||
+        visual.coneAngle !== coneAngle ||
+        visual.coneSoftness !== coneSoftness
+      ) {
         visual.radius = radius;
-        visual.coneAngle = coneAngle;
+        setCone(visual, coneAngle, coneSoftness);
         redrawLight(visual);
         changed = true;
       }
 
       // Shadow geometry rides the camera transform; a light's own graphic is
       // already projected, so its cone turns by the camera's rotation here.
-      const aim =
-        coneAngle < FULL_TURN ? source.rotation - this.viewRotation : 0;
+      const aim = coneAngle < FULL_TURN ? source.rotation - this.view.turn : 0;
       if (visual.aim !== aim) {
         visual.aim = aim;
         visual.graphics.rotation = aim;
@@ -410,7 +292,7 @@ export class OverlayLightingRenderer implements LightingRenderer {
     const castShadows = source.castShadows;
     const radius = source.radius;
     if (
-      visual.shadowRevision === this.occlusionRevision &&
+      visual.shadowRevision === this.occluders.revision &&
       visual.castShadows === castShadows &&
       visual.shadowX === worldX &&
       visual.shadowY === worldY &&
@@ -418,13 +300,13 @@ export class OverlayLightingRenderer implements LightingRenderer {
     ) {
       return false;
     }
-    visual.shadowRevision = this.occlusionRevision;
+    visual.shadowRevision = this.occluders.revision;
     visual.castShadows = castShadows;
     visual.shadowX = worldX;
     visual.shadowY = worldY;
     visual.shadowRadius = radius;
 
-    const count = castShadows ? this.resolveFootprints() : 0;
+    const count = castShadows ? this.occluders.footprintCount() : 0;
     const shadows =
       count > 0
         ? (visual.shadows ?? this.createShadows(visual))
@@ -433,7 +315,7 @@ export class OverlayLightingRenderer implements LightingRenderer {
     if (shadows) {
       shadows.clear();
       for (let i = 0; i < count; i++) {
-        const footprint = this.footprints.get(i);
+        const footprint = this.occluders.get(i);
         if (!footprint.withinRange(worldX, worldY, radius)) continue;
         // A light inside an occluder shines out of it, so a lamp mounted on a
         // pillar still lights the room.
@@ -453,18 +335,10 @@ export class OverlayLightingRenderer implements LightingRenderer {
     return true;
   }
 
-  private resolveFootprints(): number {
-    if (!this.footprintsResolved) {
-      this.footprints.refresh(this.world.occluders);
-      this.footprintsResolved = true;
-    }
-    return this.footprints.count;
-  }
-
   private createShadows(visual: SourceVisual): Graphics {
     const shadows = new Graphics();
     shadows.label = "lighting-shadows";
-    this.applyShadowView(shadows);
+    this.view.applyTo(shadows);
     visual.container.addChild(shadows);
     visual.shadows = shadows;
     return shadows;
@@ -482,8 +356,9 @@ export class OverlayLightingRenderer implements LightingRenderer {
     graphics.position.set(x, y);
     container.addChild(graphics);
     const coneAngle = source.coneAngle;
+    const coneSoftness = source.coneSoftness;
     const gradientRadius = gradientRadiusFor(coneAngle, radius);
-    const aim = coneAngle < FULL_TURN ? source.rotation - this.viewRotation : 0;
+    const aim = coneAngle < FULL_TURN ? source.rotation - this.view.turn : 0;
     graphics.rotation = aim;
     const visual: SourceVisual = {
       container,
@@ -500,6 +375,8 @@ export class OverlayLightingRenderer implements LightingRenderer {
       intensity: source.intensity,
       color: source.color,
       coneAngle,
+      coneSoftness,
+      coneHalf: coneMidHalfAngle(coneAngle, coneSoftness),
       aim,
       x,
       y,
@@ -554,13 +431,24 @@ function createLightGradient(
   }) as FillGradient;
 }
 
+/** Record a cone and the half-spread the hard pie slice is drawn at. */
+function setCone(
+  visual: SourceVisual,
+  coneAngle: number,
+  coneSoftness: number,
+): void {
+  visual.coneAngle = coneAngle;
+  visual.coneSoftness = coneSoftness;
+  visual.coneHalf = coneMidHalfAngle(coneAngle, coneSoftness);
+}
+
 function redrawLight(visual: SourceVisual): void {
   const graphics = visual.graphics.clear();
   if (visual.coneAngle >= FULL_TURN) {
     graphics.circle(0, 0, visual.radius).fill(visual.gradient);
     return;
   }
-  const half = visual.coneAngle / 2;
+  const half = visual.coneHalf;
   graphics
     .moveTo(0, 0)
     .arc(0, 0, visual.radius, -half, half)
@@ -720,11 +608,4 @@ function subtendedAngle(
     Math.abs(firstX * secondY - firstY * secondX),
     firstX * secondX + firstY * secondY,
   );
-}
-
-function scaleColor(color: number, level: number): number {
-  const r = Math.round(((color >> 16) & 0xff) * level);
-  const g = Math.round(((color >> 8) & 0xff) * level);
-  const b = Math.round((color & 0xff) * level);
-  return (r << 16) | (g << 8) | b;
 }

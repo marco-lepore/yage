@@ -597,3 +597,100 @@ function segmentsTouch(
   const d4 = cdx * (by - cy) - cdy * (bx - cx);
   return d1 * d2 <= 0 && d3 * d4 <= 0;
 }
+
+/** One occluder's world transform, compared per frame to catch a move. */
+interface OccluderState {
+  x: number;
+  y: number;
+  rotation: number;
+  scaleX: number;
+  scaleY: number;
+}
+
+/**
+ * @internal One scene's occluders as a renderer sees them: a revision number
+ * that changes whenever the set or any occluder's world transform does, and
+ * the footprints behind it, resolved at most once a frame.
+ *
+ * A renderer rebuilds a light's shadow geometry when the revision it last drew
+ * from is stale, so a still scene redraws nothing.
+ */
+export class OccluderWatch {
+  private readonly pool = new OccluderFootprintPool();
+  private readonly states = new Map<LightOccluder, OccluderState>();
+  private readonly scratch = new Vec2Buffer();
+  private occluders: Iterable<LightOccluder> = [];
+  private resolved = false;
+  private _revision = 0;
+
+  /** Changes whenever an occluder appears, moves, rescales, turns or leaves. */
+  get revision(): number {
+    return this._revision;
+  }
+
+  /** Re-read the set for this frame. Call once, before the lights are drawn. */
+  sync(occluders: ReadonlySet<LightOccluder>): void {
+    this.occluders = occluders;
+    this.resolved = false;
+    let changed = false;
+    for (const occluder of this.states.keys()) {
+      if (occluders.has(occluder)) continue;
+      this.states.delete(occluder);
+      changed = true;
+    }
+    for (const occluder of occluders) {
+      const position = occluder.getPositionInto(this.scratch);
+      const scale = occluder.scale;
+      const rotation = occluder.rotation;
+      const state = this.states.get(occluder);
+      if (!state) {
+        this.states.set(occluder, {
+          x: position.x,
+          y: position.y,
+          rotation,
+          scaleX: scale.x,
+          scaleY: scale.y,
+        });
+        changed = true;
+        continue;
+      }
+      if (
+        state.x === position.x &&
+        state.y === position.y &&
+        state.rotation === rotation &&
+        state.scaleX === scale.x &&
+        state.scaleY === scale.y
+      ) {
+        continue;
+      }
+      state.x = position.x;
+      state.y = position.y;
+      state.rotation = rotation;
+      state.scaleX = scale.x;
+      state.scaleY = scale.y;
+      changed = true;
+    }
+    if (changed) this._revision++;
+  }
+
+  /** How many footprints the synced set holds, resolving them if needed. */
+  footprintCount(): number {
+    if (!this.resolved) {
+      this.pool.refresh(this.occluders);
+      this.resolved = true;
+    }
+    return this.pool.count;
+  }
+
+  /** The footprint at `index`, valid below {@link footprintCount}. */
+  get(index: number): OccluderFootprint {
+    return this.pool.get(index);
+  }
+
+  /** Forget every tracked occluder, for a renderer being torn down. */
+  clear(): void {
+    this.states.clear();
+    this.occluders = [];
+    this.resolved = false;
+  }
+}

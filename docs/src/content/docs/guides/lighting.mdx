@@ -106,6 +106,10 @@ several metres behind it.
 
 At `size: 0` a light is a point and its shadows have hard edges.
 
+`levelAt()` answers with the band whichever renderer a scene uses. To see it on
+screen, give the scene `shaderLighting()` — see [Draw shadows with soft
+borders](#draw-shadows-with-soft-borders).
+
 ### Narrow a light into a spotlight
 
 `cone` limits a light to one direction. The angle is the full spread in
@@ -130,6 +134,26 @@ A cone changes where direct light lands, so `levelAt()` answers by it too: a
 guard outside the beam reads as dark even when it is well inside the light's
 radius. The default spread is a whole turn, `Math.PI * 2`, which reaches every
 direction.
+
+`softness` fades the cone's edge over a share of its spread, from `0` for an
+edge on a line to `1` for a beam that is brightest along its aim and fades all
+the way out:
+
+```typescript
+const lantern = lamp.add(
+  new LightSource({
+    radius: 260,
+    cone: { angle: Math.PI / 3, softness: 0.5 },
+  }),
+);
+
+lantern.coneSoftness = 0.8; // fade over more of the spread
+```
+
+The fade is part of the query, so a guard half-way into a soft edge reads as
+half lit. `shaderLighting()` draws it; `overlayLighting()` draws one hard edge
+through the middle of it. A whole-turn cone reaches every direction, so
+softness does nothing to it.
 
 ## Query the light level
 
@@ -209,6 +233,9 @@ lighting.setAmbient(0.2, 0x8090b8);
 
 ## Configure the built-in renderer
 
+`@yagejs/lighting` ships two renderers. This section covers `overlayLighting()`,
+the default; `shaderLighting()` has its own section below.
+
 The default renderer draws ambient colour and radial lights into an offscreen
 buffer, then multiplies it over the scene. A light is drawn only where no
 occluder stands between it and the surface. A light with a cone is drawn as a
@@ -278,6 +305,106 @@ engine.use(
 
 You still install `RendererPlugin`; a `null` entry only turns off lighting's
 visual backend.
+
+## Draw shadows with soft borders
+
+`shaderLighting()` is the second built-in renderer. It draws each light as one
+quad and works out, for every pixel that quad covers, how much of the lamp the
+occluders leave visible there — the same sum `levelAt()` does. A crate's shadow
+is therefore crisp against the floor it stands on and blurred several metres
+behind it, a lamp wider than a post lights around the post, and a spotlight's
+edge fades over as much of its spread as `softness` says.
+
+```typescript
+import {
+  LightingPlugin,
+  overlayLighting,
+  shaderLighting,
+} from "@yagejs/lighting";
+
+engine.use(
+  new LightingPlugin({
+    renderers: {
+      soft: shaderLighting(),
+      hard: overlayLighting(),
+    },
+    defaultRenderer: "soft",
+  }),
+);
+
+class CaveScene extends Scene {
+  readonly name = "cave";
+  readonly lighting = { renderer: "soft" };
+}
+
+class MenuScene extends Scene {
+  readonly name = "menu";
+  readonly lighting = { renderer: "hard" };
+}
+```
+
+Both renderers answer to the same `levelAt()`, so two scenes of one game can
+name different renderers and a character still reads as equally lit in each.
+
+### Which renderer a scene wants
+
+The overlay builds a shape per light and a shadow mask per light, and rebuilds
+them whenever that light or an occluder moves. Its cost grows with how many
+lights move and how much occluder outline each one reaches, and it spends
+almost nothing per pixel.
+
+The shader renderer spends nothing on shapes and everything per pixel: for each
+pixel a light covers, it walks the occluder shapes in that light's reach. Its
+cost grows with lit screen area times shapes nearby. A crowd of small lamps is
+cheap for it; a few lights that each cover the whole screen against a room full
+of geometry is not.
+
+So: a room where shadow quality is the point, or a scene with many moving
+lamps, wants `shaderLighting()`. A scene whose lights are large and whose
+shadow edges do not need a border is cheaper on `overlayLighting()`.
+
+`shaderLighting()` takes the same `layer` and `order` as the overlay, plus
+`resolutionScale` and `fallback`:
+
+```typescript
+shaderLighting({
+  layer: "lighting",
+  order: 900,
+  resolutionScale: 1,
+  fallback: overlayLighting(),
+});
+```
+
+`resolutionScale` starts at `1`, where the drawn light lands on the same pixel
+grid `levelAt()` is asked about. The overlay starts at `0.5`. Lower it to cut
+fill cost, at the price of a coarser shadow border.
+
+:::note[The picture equals the query]
+Whichever renderer draws a scene, `levelAt()` is the truth. The shader renderer
+draws what it answers, up to two sources of rounding: it divides a lamp into
+128 slots and rounds each hidden stretch out to whole slots at both ends, which
+is 2/128 of that light's contribution for each separate stretch hidden from a
+pixel, and the light buffer holds eight bits a channel. The overlay draws one
+hard line through the middle of the border, so a character inside the border is
+drawn on one side of the line and queried as partly lit.
+:::
+
+### When the shader cannot run
+
+`fallback` takes another renderer factory, and a scene gets it instead when the
+browser hands Pixi a WebGL 1 context. That context's shader language has none
+of what this renderer is written in, and it is the one device limit the
+renderer can read before it draws anything. A scene on such a context with no
+`fallback` throws as it is entered, naming the option.
+
+A shader that a driver refuses on a context that does have the language is a
+different case, and `fallback` does not cover it: the refusal goes to the
+browser console, not to the renderer, so nothing in the engine sees it. A game
+that wants a cheaper renderer on weaker devices configures both under names and
+picks one per scene.
+
+The renderer ships a WebGL shader and a WebGPU shader. Both draw the same
+picture from the same uniforms and the same occluder data.
 
 ## Let light bounce off surfaces
 
@@ -408,11 +535,13 @@ Disabling the component or its entity lets light through again. Occluders are
 also available to custom lighting renderers through `LightingWorld.occluders`.
 
 :::note[The overlay draws hard edges]
-The built-in renderer draws one hard shadow edge whatever a light's `size`
-says. At `size: 0` the picture is exactly what `levelAt()` reports. Above it
-the drawn edge runs along the middle of the soft border the query answers
-with, so a character in that border is drawn on one side of the line and
-queried as partly lit. The query is the truth whichever renderer a scene uses.
+`overlayLighting()` draws one hard shadow edge whatever a light's `size` says.
+At `size: 0` the picture is exactly what `levelAt()` reports. Above it the
+drawn edge runs along the middle of the soft border the query answers with, so
+a character in that border is drawn on one side of the line and queried as
+partly lit. `shaderLighting()` draws the border itself — see [Draw shadows with
+soft borders](#draw-shadows-with-soft-borders). The query is the truth
+whichever renderer a scene uses.
 :::
 
 Projecting every occluder onto a wide lamp costs more than testing a straight

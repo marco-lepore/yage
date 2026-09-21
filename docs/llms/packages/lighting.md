@@ -27,10 +27,13 @@ stands between it and the surface. A light with a cone is drawn as a pie
 slice. Coloured lights tint the surfaces they reach. UI on the conventional
 order `1000` remains above the lighting layer.
 
-Shadow edges are hard whatever a light's `size` says. At `size: 0` the drawn
-picture is exactly what `levelAt()` reports. Above it the drawn edge runs along
+The overlay draws hard shadow edges whatever a light's `size` says, and a hard
+cone edge whatever its `softness` says. With neither set, the drawn picture is
+exactly what `levelAt()` reports. With either set, the drawn edge runs along
 the middle of the soft border the query answers with, so the two agree
 everywhere except inside that border.
+
+`shaderLighting()` draws those borders. See "Shader renderer" below.
 
 ## Renderers by name
 
@@ -75,6 +78,86 @@ is created, so a live scene cannot swap renderer. A name that is not configured
 throws at that point, naming the scene and the configured names. A `null` entry
 keeps `levelAt()` and draws nothing; the `RendererPlugin` dependency is still
 required.
+
+## Shader renderer
+
+`shaderLighting(options)` is the second built-in renderer. It draws one quad
+per light whose fragment shader runs the same projection `levelAt()` runs, so a
+shadow's border widens with the distance from the blocker, a lamp wider than
+its blocker lights around it, and a cone's `softness` fades its edge.
+
+```ts
+import {
+  LightingPlugin,
+  overlayLighting,
+  shaderLighting,
+} from "@yagejs/lighting";
+
+engine.use(
+  new LightingPlugin({
+    renderers: {
+      soft: shaderLighting({
+        layer: "lighting",
+        order: 900,
+        resolutionScale: 1,
+      }),
+      hard: overlayLighting(),
+    },
+    defaultRenderer: "soft",
+  }),
+);
+
+class CaveScene extends Scene {
+  readonly name = "cave";
+  readonly lighting = { renderer: "soft" };
+}
+
+class StreetScene extends Scene {
+  readonly name = "street";
+  readonly lighting = { renderer: "hard" };
+}
+```
+
+Which one to pick:
+
+- `overlayLighting()` costs one Pixi `Graphics` and one mask per light, rebuilt
+  whenever that light or an occluder moves, so its cost grows with the number
+  of moving lights and with how much occluder outline each one reaches. It has
+  no per-pixel work beyond the gradient.
+- `shaderLighting()` costs one quad per light and one loop over that light's
+  occluder shapes per covered pixel, so its cost grows with lit screen area
+  times shapes in reach. A crowd of small lights is cheap; a few lights
+  covering the whole screen against a wall of geometry is not. Lower
+  `resolutionScale` to trade shadow-border agreement for fill cost.
+
+`ShaderLightingRendererOptions` is `{ layer?, order?, resolutionScale?,
+fallback? }`. `resolutionScale` defaults to `1`, where the drawn light matches
+`levelAt()` pixel for pixel; the overlay's default is `0.5`.
+
+The drawn picture equals what `levelAt()` reports, up to two sources of
+rounding. The shader divides a lamp into 128 slots and rounds each hidden
+stretch out to whole slots at both ends, which is 2/128 of that light's
+contribution per stretch hidden from a pixel, and the light buffer holds 8
+bits per channel.
+
+Occluder shapes reach the shader through one data texture per scene, so there
+is no cap on how much outline a light may reach and nothing is dropped
+silently. A run is written again only for the lights that moved.
+
+`fallback` takes another `LightingRendererFactory` and is built instead of this
+renderer when the browser gives Pixi a WebGL 1 context, whose shader language
+has none of what the renderer is written in. That is the one device limit the
+renderer reads before drawing; a shader that fails to build on a context that
+does have the language is reported to the browser console by Pixi and by the
+driver, not to the factory, so nothing answers it. A scene on a WebGL 1
+context with no `fallback` throws when it is entered, naming the option.
+
+```ts
+shaderLighting({ fallback: overlayLighting() });
+```
+
+The renderer ships a WebGL shader and a WebGPU shader. Both draw the same
+picture from the same uniforms and the same edge texture.
 
 ## Bounced light
 
@@ -146,7 +229,10 @@ const light = torch.add(
     intensity: 0.9, // 0..1; default 1
     color: 0xffb060, // default 0xffffff
     size: 24, // lamp diameter in world pixels; default 0
-    cone: { angle: Math.PI / 3 }, // spotlight spread; omit for every direction
+    cone: {
+      angle: Math.PI / 3, // spotlight spread; omit for every direction
+      softness: 0.4, // 0..1 share of the spread the edge fades over; default 0
+    },
     castShadows: true, // default true
     enabled: true, // default true
   }),
@@ -155,8 +241,8 @@ const light = torch.add(
 
 The centre follows `Transform.worldPosition`, including parent transforms.
 Transform scale does not change `radius`. Set `light.radius`,
-`light.intensity`, `light.color`, `light.size`, `light.coneAngle`, or
-`light.castShadows` to update a live light. Disabling the component or its
+`light.intensity`, `light.color`, `light.size`, `light.coneAngle`,
+`light.coneSoftness`, or `light.castShadows` to update a live light. Disabling the component or its
 entity removes it until it becomes active again.
 
 `radius` is how far the light reaches and `size` is how wide the lamp itself
@@ -169,6 +255,12 @@ switching off. The border widens with the distance from the blocker. At
 along the entity's world rotation, and `light.coneAngle` reads or sets it. A
 whole turn, `Math.PI * 2`, is the default and reaches every direction. A cone
 changes where light lands in the query as well as in the picture.
+
+`cone.softness` runs from 0 to 1 and says how much of the spread the light
+fades over at the cone's edge, with `light.coneSoftness` reading or setting it.
+At `0` the cone ends on a line. A whole-turn cone reaches every direction, so
+softness does nothing to it. The fade is in the query as well, so a guard
+half-way into a soft edge reads as half lit.
 
 With `castShadows: false` a light passes through every occluder, in the query
 and in the drawn picture. Use it for a global fill or a highlight that has to

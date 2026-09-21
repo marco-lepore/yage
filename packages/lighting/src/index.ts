@@ -20,6 +20,12 @@ export {
 } from "./OverlayLightingRenderer.js";
 export type { OverlayLightingRendererOptions } from "./OverlayLightingRenderer.js";
 
+export {
+  ShaderLightingRenderer,
+  shaderLighting,
+} from "./ShaderLightingRenderer.js";
+export type { ShaderLightingRendererOptions } from "./ShaderLightingRenderer.js";
+
 export { LightingComposite } from "./LightingComposite.js";
 export type { LightingCompositeOptions } from "./LightingComposite.js";
 

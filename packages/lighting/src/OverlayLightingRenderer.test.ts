@@ -113,6 +113,7 @@ function addLight(
     radius: number;
     intensity?: number;
     cone?: number;
+    coneSoftness?: number;
     castShadows?: boolean;
   },
 ): LightSource {
@@ -123,7 +124,16 @@ function addLight(
       radius: options.radius,
       intensity: options.intensity ?? 0.8,
       color: 0xff8844,
-      ...(options.cone === undefined ? {} : { cone: { angle: options.cone } }),
+      ...(options.cone === undefined
+        ? {}
+        : {
+            cone: {
+              angle: options.cone,
+              ...(options.coneSoftness === undefined
+                ? {}
+                : { softness: options.coneSoftness }),
+            },
+          }),
       ...(options.castShadows === undefined
         ? {}
         : { castShadows: options.castShadows }),
@@ -440,6 +450,47 @@ describe("OverlayLightingRenderer", () => {
     backend.render(frame);
     expect(graphic.rotation).toBe(0);
     expect(graphic.containsPoint({ x: -60, y: 0 })).toBe(true);
+
+    backend.destroy();
+  });
+
+  it("draws a soft cone's one hard edge inside the fade", () => {
+    const harness = createHarness();
+    const light = addLight(harness.world, {
+      x: 0,
+      y: 0,
+      radius: 100,
+      cone: Math.PI / 2,
+      coneSoftness: 0.6,
+    });
+
+    const backend = new OverlayLightingRenderer({
+      scene: harness.scene,
+      world: harness.world,
+      renderer: harness.renderer,
+      bounce: null,
+    });
+    const frame = { camera: null, width: 800, height: 600 };
+    backend.render(frame);
+
+    // The query fades from full at 10 degrees off the aim to nothing at 45.
+    // The slice's own edge sits between the two.
+    const graphic = lightContainer(harness).children[0] as Graphics;
+    const at = (degrees: number): boolean =>
+      graphic.containsPoint({
+        x: Math.cos((degrees * Math.PI) / 180) * 60,
+        y: Math.sin((degrees * Math.PI) / 180) * 60,
+      });
+    expect(at(8)).toBe(true);
+    expect(at(20)).toBe(true);
+    expect(at(40)).toBe(false);
+    expect(at(46)).toBe(false);
+
+    // Take the softness away and the edge goes back out to the spread itself.
+    light.coneSoftness = 0;
+    backend.render(frame);
+    expect(at(40)).toBe(true);
+    expect(at(46)).toBe(false);
 
     backend.destroy();
   });

@@ -37,7 +37,12 @@ class Cave extends Scene {
 }
 ```
 
-The built-in renderer draws coloured, soft-edged light over an ambient floor.
+Two renderers ship with the package. `overlayLighting()`, the default, draws
+coloured light over an ambient floor with one hard edge per shadow.
+`shaderLighting()` draws the same lights with shadow borders that widen with
+the distance from the blocker and with a spotlight edge that fades. A scene
+picks one by name.
+
 Use the scene-scoped `LightingWorldKey` for gameplay queries:
 
 ```ts

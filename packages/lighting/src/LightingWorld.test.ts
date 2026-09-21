@@ -22,6 +22,7 @@ function addLight(
     color?: number;
     size?: number;
     cone?: number;
+    coneSoftness?: number;
     rotation?: number;
     castShadows?: boolean;
   } = {},
@@ -39,7 +40,16 @@ function addLight(
       intensity: options.intensity ?? 0.5,
       color: options.color ?? 0xffffff,
       size: options.size ?? 0,
-      ...(options.cone === undefined ? {} : { cone: { angle: options.cone } }),
+      ...(options.cone === undefined
+        ? {}
+        : {
+            cone: {
+              angle: options.cone,
+              ...(options.coneSoftness === undefined
+                ? {}
+                : { softness: options.coneSoftness }),
+            },
+          }),
       castShadows: options.castShadows ?? true,
     }),
   );
@@ -533,6 +543,30 @@ describe("LightingWorld cone", () => {
     expect(world.levelAt(-100, 0)).toBeCloseTo(0.5);
   });
 
+  it("fades a soft cone's edge across the share it is given", () => {
+    const world = createWorld();
+    addLight(world, {
+      radius: 200,
+      intensity: 1,
+      cone: Math.PI / 2,
+      coneSoftness: 0.6,
+    });
+
+    // At 100 pixels out, full light reaches 10 degrees off the aim, nothing
+    // reaches past 45, and the directions between carry a share of it.
+    const at = (degrees: number): number =>
+      world.levelAt(
+        Math.cos((degrees * Math.PI) / 180) * 100,
+        Math.sin((degrees * Math.PI) / 180) * 100,
+      );
+    expect(at(0)).toBeCloseTo(0.5);
+    expect(at(8)).toBeCloseTo(0.5);
+    expect(at(50)).toBe(0);
+    const edge = at(32);
+    expect(edge).toBeGreaterThan(0);
+    expect(edge).toBeLessThan(0.5);
+  });
+
   it("reports a lamp's own position as lit whichever way it faces", () => {
     const world = createWorld();
     addLight(world, {
@@ -602,6 +636,7 @@ describe("LightingWorld.levelGridInto", () => {
       intensity: 0.8,
       size: 18,
       cone: Math.PI / 2,
+      coneSoftness: 0.5,
       rotation: Math.PI,
     });
     addOccluder(

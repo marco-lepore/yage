@@ -29,6 +29,12 @@ export interface LightConeOptions {
    * along the entity's world rotation.
    */
   angle: number;
+  /**
+   * Share of the spread the light fades across at the cone's edge, from 0 to
+   * 1. Default `0`, a cone that ends on a line. A whole-turn cone reaches
+   * every direction, so softness does nothing to it.
+   */
+  softness?: number;
 }
 
 /**
