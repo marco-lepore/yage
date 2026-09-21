@@ -10,6 +10,7 @@ describe("LightSource", () => {
     expect(light.color).toBe(0xffffff);
     expect(light.size).toBe(0);
     expect(light.coneAngle).toBe(Math.PI * 2);
+    expect(light.coneSoftness).toBe(0);
     expect(light.enabled).toBe(true);
   });
 
@@ -21,14 +22,19 @@ describe("LightSource", () => {
     expect(
       () => new LightSource({ radius: 80, cone: { angle: Math.PI * 2.5 } }),
     ).toThrow(RangeError);
+    expect(
+      () =>
+        new LightSource({ radius: 80, cone: { angle: Math.PI, softness: 2 } }),
+    ).toThrow(RangeError);
 
     const light = new LightSource({
       radius: 80,
       size: 12,
-      cone: { angle: Math.PI / 3 },
+      cone: { angle: Math.PI / 3, softness: 0.25 },
     });
     expect(light.size).toBe(12);
     expect(light.coneAngle).toBeCloseTo(Math.PI / 3);
+    expect(light.coneSoftness).toBe(0.25);
   });
 
   it("rejects invalid live values without changing current state", () => {
@@ -55,12 +61,16 @@ describe("LightSource", () => {
     expect(() => {
       light.coneAngle = Number.POSITIVE_INFINITY;
     }).toThrow(RangeError);
+    expect(() => {
+      light.coneSoftness = -0.5;
+    }).toThrow(RangeError);
 
     expect(light.radius).toBe(80);
     expect(light.intensity).toBe(0.5);
     expect(light.color).toBe(0x123456);
     expect(light.size).toBe(20);
     expect(light.coneAngle).toBe(Math.PI);
+    expect(light.coneSoftness).toBe(0);
     expect(light.enabled).toBe(true);
   });
 });

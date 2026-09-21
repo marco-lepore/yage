@@ -29,6 +29,53 @@ export interface LightConeOptions {
    * along the entity's world rotation.
    */
   angle: number;
+  /**
+   * Share of the spread the light fades across at the cone's edge, from 0 to
+   * 1. Default `0`, a cone that ends on a line. A whole-turn cone reaches
+   * every direction, so softness does nothing to it.
+   */
+  softness?: number;
+}
+
+/**
+ * How the blurred copy of the light meets the light itself.
+ *
+ * - `"max"` keeps the brighter of the two in each colour channel. Lit areas
+ *   and shadow borders stay as drawn; only the dark is lifted.
+ * - `"mix"` blends the whole picture toward the blurred copy. The scene's
+ *   overall brightness stays the same and every shadow edge softens.
+ */
+export type BounceBlend = "max" | "mix";
+
+/**
+ * Bounced light: a blurred copy of a scene's finished light buffer combined
+ * with that buffer, so light creeps past shadow edges and around corners. It
+ * is a visual treatment: `LightingWorld.levelAt()` never sees it.
+ */
+export interface BounceLightOptions {
+  /**
+   * How strongly the blurred copy shows, from 0 to 1: its brightness under
+   * `"max"`, its share of the picture under `"mix"`.
+   */
+  strength: number;
+  /** Blur radius of that copy, in screen pixels. */
+  radius: number;
+  /** How the copy meets the light. Default `"max"`. */
+  blend?: BounceBlend;
+}
+
+/** How one scene's lighting is drawn. */
+export interface SceneLightingOptions {
+  /**
+   * Name of an entry in {@link LightingConfig.renderers}. Omit for the
+   * plugin's `defaultRenderer`.
+   */
+  readonly renderer?: string;
+  /**
+   * Bounced light for this scene. Omit for {@link LightingConfig.bounce};
+   * `null` leaves this scene without bounce whatever that default says.
+   */
+  readonly bounce?: BounceLightOptions | null;
 }
 
 /** Values passed to a renderer when its scene is attached. */
@@ -36,6 +83,8 @@ export interface LightingRendererContext {
   readonly scene: Scene;
   readonly world: LightingWorld;
   readonly renderer: RendererPlugin;
+  /** Bounced light this scene is drawn with, or `null` for none. */
+  readonly bounce: BounceLightOptions | null;
 }
 
 /** Current view state passed to a lighting renderer once per render phase. */
@@ -66,10 +115,21 @@ export interface LightingConfig {
   /** Ambient light configuration. */
   ambient?: AmbientLightOptions;
   /**
-   * Per-scene renderer factory. Omit for {@link OverlayLightingRenderer};
-   * pass `null` for light-level queries without visual output.
+   * The renderers scenes pick from by name, through `Scene.lighting`. Omit
+   * for `{ overlay: overlayLighting() }`. A `null` entry gives light-level
+   * queries without visual output.
    */
-  renderer?: LightingRendererFactory | null;
+  renderers?: Readonly<Record<string, LightingRendererFactory | null>>;
+  /**
+   * Which entry of {@link renderers} draws a scene that names none. Default
+   * `"overlay"`, and it must be a key of {@link renderers}.
+   */
+  defaultRenderer?: string;
+  /**
+   * Bounced light for every scene that sets none of its own through
+   * `Scene.lighting`. Default off.
+   */
+  bounce?: BounceLightOptions;
 }
 
 /** A rectangular sample region for `LightingWorld.levelGridInto`. */

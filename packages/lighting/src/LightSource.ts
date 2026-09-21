@@ -22,7 +22,10 @@ export interface LightSourceOptions {
   color?: number;
   /** Lamp diameter in world pixels, from 0 upwards. Default `0`. */
   size?: number;
-  /** Spotlight cone. Omit for a light that shines in every direction. */
+  /**
+   * Spotlight cone, with an optional soft edge. Omit for a light that shines
+   * in every direction.
+   */
   cone?: LightConeOptions;
   /** Whether occluders block this light. Default `true`. */
   castShadows?: boolean;
@@ -39,7 +42,8 @@ export interface LightSourceOptions {
  * {@link size} is the lamp itself rather than its reach: a lamp wider than a
  * point is partly hidden behind a blocker's edge, so its shadows carry a soft
  * border that widens with the distance from the blocker. {@link coneAngle}
- * narrows the light to a spotlight aimed along the entity's world rotation.
+ * narrows the light to a spotlight aimed along the entity's world rotation,
+ * and {@link coneSoftness} fades its edge.
  */
 export class LightSource extends Component {
   private readonly transform = this.sibling(Transform);
@@ -49,6 +53,7 @@ export class LightSource extends Component {
   private _color: number;
   private _size: number;
   private _coneAngle: number;
+  private _coneSoftness: number;
   /**
    * Whether occluders block this light. Set it to `false` for a light that
    * shines through walls, such as a global fill or a UI highlight.
@@ -63,6 +68,7 @@ export class LightSource extends Component {
     assertNonNegative(options.size ?? 0, "LightSource size");
     if (options.cone) {
       assertSpread(options.cone.angle, "LightSource cone angle");
+      assertUnit(options.cone.softness ?? 0, "LightSource cone softness");
     }
 
     this._radius = options.radius;
@@ -70,6 +76,7 @@ export class LightSource extends Component {
     this._color = options.color ?? 0xffffff;
     this._size = options.size ?? 0;
     this._coneAngle = options.cone?.angle ?? FULL_TURN;
+    this._coneSoftness = options.cone?.softness ?? 0;
     this.castShadows = options.castShadows ?? true;
     this.enabled = options.enabled ?? true;
   }
@@ -138,6 +145,21 @@ export class LightSource extends Component {
     assertSpread(value, "LightSource cone angle");
     if (value === this._coneAngle) return;
     this._coneAngle = value;
+  }
+
+  /**
+   * Share of the cone's spread the light fades across at its edge, from 0 to
+   * 1. At `0` the cone ends on a line. A renderer that draws one hard edge
+   * draws it through the middle of the fade.
+   */
+  get coneSoftness(): number {
+    return this._coneSoftness;
+  }
+
+  set coneSoftness(value: number) {
+    assertUnit(value, "LightSource cone softness");
+    if (value === this._coneSoftness) return;
+    this._coneSoftness = value;
   }
 
   /** RGB tint used by renderers that support coloured light. */

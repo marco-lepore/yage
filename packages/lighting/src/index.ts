@@ -1,7 +1,12 @@
+// Side-effect import activates `declare module "@yagejs/core"` augmentation
+// that types Scene's `readonly lighting` field.
+import "./scene-augmentation.js";
+
 export { LightingPlugin } from "./LightingPlugin.js";
 export { LightingSystem } from "./LightingSystem.js";
 export { LightingWorld } from "./LightingWorld.js";
 export { LightingWorldManager } from "./LightingWorldManager.js";
+export type { LightingWorldManagerOptions } from "./LightingWorldManager.js";
 
 export { LightSource } from "./LightSource.js";
 export type { LightSourceOptions } from "./LightSource.js";
@@ -15,9 +20,20 @@ export {
 } from "./OverlayLightingRenderer.js";
 export type { OverlayLightingRendererOptions } from "./OverlayLightingRenderer.js";
 
+export {
+  ShaderLightingRenderer,
+  shaderLighting,
+} from "./ShaderLightingRenderer.js";
+export type { ShaderLightingRendererOptions } from "./ShaderLightingRenderer.js";
+
+export { LightingComposite } from "./LightingComposite.js";
+export type { LightingCompositeOptions } from "./LightingComposite.js";
+
 export { LightingWorldKey, LightingWorldManagerKey } from "./types.js";
 export type {
   AmbientLightOptions,
+  BounceBlend,
+  BounceLightOptions,
   LightConeOptions,
   LightGrid,
   LightingConfig,
@@ -26,4 +42,5 @@ export type {
   LightingRendererFactory,
   LightingRenderFrame,
   LightOccluderShape,
+  SceneLightingOptions,
 } from "./types.js";

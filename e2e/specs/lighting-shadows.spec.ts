@@ -56,16 +56,21 @@ async function probe(page: Page, x: number, y: number): Promise<Probe> {
   );
 }
 
+/** Load the fixture, with an optional query string, and wait until it drew. */
+async function open(page: Page, query = ""): Promise<void> {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(`/lighting-shadows.html${query}`);
+  await page.waitForFunction(
+    () => (window as LightingWindow).__lighting__ !== undefined,
+  );
+  await settle(page);
+  expect(errors).toEqual([]);
+}
+
 test.describe("Lighting shadows", () => {
   test.beforeEach(async ({ page }) => {
-    const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
-    await page.goto("/lighting-shadows.html");
-    await page.waitForFunction(
-      () => (window as LightingWindow).__lighting__ !== undefined,
-    );
-    await settle(page);
-    expect(errors).toEqual([]);
+    await open(page);
   });
 
   test("draws the same shadow the query reports", async ({ page }) => {
@@ -121,5 +126,29 @@ test.describe("Lighting shadows", () => {
     ]);
     expect(drawnInside).toBeCloseTo(inside.level, 1);
     expect(drawnOutside).toBeCloseTo(outside.level, 1);
+  });
+});
+
+test.describe("Bounced light", () => {
+  /** The drawn and queried level just past the wall's shadow edge. */
+  async function shadowLevels(
+    page: Page,
+    query: string,
+  ): Promise<{ drawn: number; queried: number }> {
+    await open(page, query);
+    const shadowed = await probe(page, 290, 200);
+    const [drawn] = await drawnLevels(page, [shadowed]);
+    return { drawn: drawn ?? 0, queried: shadowed.level };
+  }
+
+  test("brightens the shadow without changing what the query reports", async ({
+    page,
+  }) => {
+    const plain = await shadowLevels(page, "");
+    const bounced = await shadowLevels(page, "?bounce=1");
+
+    expect(bounced.drawn).toBeGreaterThan(plain.drawn + 0.05);
+    expect(bounced.queried).toBe(plain.queried);
+    expect(bounced.queried).toBe(0);
   });
 });
