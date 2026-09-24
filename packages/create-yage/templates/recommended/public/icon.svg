@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Full-bleed background: platforms that mask icons into circles or
+       squircles crop the edges, so keep the artwork inside the centre 80%. -->
+  <rect width="512" height="512" fill="#0f172a"/>
+  <circle cx="256" cy="256" r="150" fill="#ca8a04"/>
+  <circle cx="256" cy="256" r="126" fill="#facc15"/>
+  <path d="M200 186 L256 256 L312 186 M256 256 L256 332" fill="none"
+    stroke="#0f172a" stroke-width="38" stroke-linecap="round"
+    stroke-linejoin="round"/>
+</svg>

@@ -16,13 +16,61 @@ npm run dev
 The scaffolder asks you to pick a template:
 
 - **Recommended** — a playable platformer seed with physics, input, animations,
-  sound effects, enemies, and collectibles. Great for learning the engine.
+  sound effects, enemies, and collectibles. Great for learning the engine. Its
+  production build is an installable app that runs offline (see below).
 - **Minimal** — just `@yagejs/core` + `@yagejs/renderer` and an empty scene. Start
   from scratch and add packages as you go (`src/main.ts` has commented-out
   examples showing how to wire each plugin).
 
 Both templates include a Vite config, TypeScript setup, and an `AGENTS.md`
 for AI-assisted development.
+
+### Installable and offline (Recommended template)
+
+The Recommended template builds your game as a Progressive Web App. Players
+can install it to their home screen or desktop, and it keeps working without
+a network connection after the first visit. The setup is the
+[`vite-plugin-pwa`](https://vite-pwa-org.netlify.app/) entry in
+`vite.config.ts`.
+
+You do not list your assets anywhere. Each `npm run build` caches every file
+in `dist/` for offline play: your code, the physics WebAssembly module, and
+everything under `public/`. When you add or change an asset, the next build
+picks it up.
+
+Before you ship:
+
+- Change `name`, `short_name`, and `description` in the `manifest` block of
+  `vite.config.ts`.
+- Replace the icons in `public/`: `icon.svg` (browser tab),
+  `pwa-192x192.png` and `pwa-512x512.png` (installed app), and
+  `apple-touch-icon.png` (180×180, iOS home screen). Android crops the 512
+  icon to a circle or rounded square, so keep the artwork inside the centre
+  80%.
+- Serve the site over HTTPS. Browsers only install service workers on
+  secure origins; `localhost` is the exception.
+
+Things to know:
+
+- **The dev server has no service worker.** `npm run dev` always serves fresh
+  files. Test the installed and offline behaviour with `npm run build` and
+  `npm run preview`.
+- **A new version reaches players on the next launch.** After you deploy, an
+  open game downloads the new files in the background and keeps running the
+  old version. Reloading the page does not switch versions. The new version
+  starts once every tab or window of the game is closed and the game is
+  opened again.
+- **Files over 10 MB fail the build.** The error names each file. Raise
+  `maximumFileSizeToCacheInBytes` in `vite.config.ts` if a large music track
+  needs to be available offline.
+- **Players download the whole game on their first visit.** Every file in
+  the build is fetched up front, not only the first scene's assets.
+- **Files from other servers are not cached.** Assets loaded from a CDN or
+  another origin need a `runtimeCaching` rule in the `workbox` block.
+- **To remove it**, delete the `VitePWA(...)` entry and the
+  `vite-plugin-pwa` dependency. Players who installed the game keep the old
+  service worker until you deploy one that unregisters itself; see
+  `selfDestroying` in the plugin's documentation.
 
 ## Option 2: Manual install
 

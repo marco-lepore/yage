@@ -10,6 +10,14 @@ npm run dev
 
 Pick `recommended` for a playable platformer seed (physics, input, animations, enemies, collectibles) or `minimal` for an empty scene with just core + renderer.
 
+The `recommended` template's production build is an installable, offline-capable PWA (`vite-plugin-pwa` in `vite.config.ts`):
+
+- Workbox precaches every file in `dist/` (`globPatterns: ["**/*"]`), including the Rapier `.wasm` and all of `public/`. Assets are never listed by hand; each build picks up new or changed files.
+- A file over `maximumFileSizeToCacheInBytes` (10 MB) fails `vite build` with an error naming it; raise the limit. Cross-origin assets need a `runtimeCaching` rule.
+- `registerType: "prompt"` with no update UI: a deploy installs in the background, and the new version starts only after every tab or window of the game is closed. A reload keeps the old version.
+- No service worker in `npm run dev`; verify with `npm run build && npm run preview`. Production needs HTTPS.
+- Before shipping, edit the `manifest` name, short name and description, and replace `public/icon.svg`, `public/pwa-192x192.png`, `public/pwa-512x512.png` (also the maskable icon: keep art in the centre 80%), and `public/apple-touch-icon.png` (180×180).
+
 ## Manual Installation
 
 ```bash
