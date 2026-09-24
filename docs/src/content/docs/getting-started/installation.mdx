@@ -55,11 +55,6 @@ Things to know:
 - **The dev server has no service worker.** `npm run dev` always serves fresh
   files. Test the installed and offline behaviour with `npm run build` and
   `npm run preview`.
-- **A new version reaches players on the next launch.** After you deploy, an
-  open game downloads the new files in the background and keeps running the
-  old version. Reloading the page does not switch versions. The new version
-  starts once every tab or window of the game is closed and the game is
-  opened again.
 - **Files over 10 MB fail the build.** The error names each file. Raise
   `maximumFileSizeToCacheInBytes` in `vite.config.ts` if a large music track
   needs to be available offline.
@@ -71,6 +66,100 @@ Things to know:
   `vite-plugin-pwa` dependency. Players who installed the game keep the old
   service worker until you deploy one that unregisters itself; see
   `selfDestroying` in the plugin's documentation.
+
+#### Releasing a new version
+
+To release, run `npm run build` and upload `dist/` to your host in place of
+the previous build. There is no version number to bump. The build writes a
+content hash of every file into `dist/sw.js`, so any changed file produces a
+different `sw.js`.
+
+Each player's browser checks for a new version when the game opens. It
+downloads `sw.js` from your server and compares it with the copy it has
+installed. When the file differs:
+
+1. The game starts from the cache, on the version the player already has.
+2. The browser downloads the changed files in the background.
+3. The new version waits while any tab or window of the game is open.
+   Reloading the page does not switch versions.
+4. Once every tab or window is closed, the next launch runs the new version.
+
+A player therefore sees a release on the second launch after you deploy it.
+The old version keeps all of its files until the switch, so a game never runs
+with a mix of old and new files. A player who is offline keeps the cached
+version until they next open the game online.
+
+Configure your host or CDN so it does not cache `sw.js` and `index.html` for
+long. Browsers always fetch `sw.js` fresh, but a CDN that serves a stale copy
+hides the release from every player. The other files in `dist/` can use long
+cache lifetimes.
+
+The installed app's name and icon update separately from your code. The
+browser refreshes them from the manifest on its own schedule, which can take
+a day or more on Android.
+
+#### Offer an update in-game
+
+To let players switch to a new version without closing the game, register
+the service worker from your own code and show a prompt when a new version
+is waiting. Add `src/pwa.ts`:
+
+```ts
+/// <reference types="vite-plugin-pwa/vanillajs" />
+import { registerSW } from "virtual:pwa-register";
+
+let updateReady = false;
+
+const updateSW = registerSW({
+  // A new version finished downloading and is waiting to take over.
+  onNeedRefresh() {
+    updateReady = true;
+  },
+  // Without this, an open game only checks for a new version at launch.
+  onRegisteredSW(_swUrl, registration) {
+    if (!registration) return;
+    setInterval(() => void registration.update(), 60 * 60 * 1000);
+  },
+});
+
+/** True once a new version is downloaded and waiting. */
+export function isUpdateReady(): boolean {
+  return updateReady;
+}
+
+/** Switch to the waiting version. The page reloads. */
+export function applyUpdate(): Promise<void> {
+  return updateSW();
+}
+```
+
+Import it once from `src/main.ts`, for example with
+`import { isUpdateReady, applyUpdate } from "./pwa";`. Importing
+`virtual:pwa-register` replaces the plugin's own registration script, so
+nothing else changes in `vite.config.ts`.
+
+Then decide where the game asks. `applyUpdate()` reloads the page, which
+discards everything in memory, so call it where losing the current state is
+acceptable: on the title screen, in a pause menu, or right after a save. A
+game that saves between levels can apply the update without asking:
+
+```ts
+engine.events.on("scene:replaced", () => {
+  if (isUpdateReady()) void applyUpdate();
+});
+```
+
+Things to know:
+
+- **Only players who have opened the game before get the reload.** On a
+  player's first visit, the service worker does not control the page yet.
+  If you deploy during that session, `applyUpdate()` switches versions but
+  does not reload, and the new version runs on the next launch.
+- **Updates can only be tested in a production build.** Build, run
+  `npm run preview`, open the game, and reload it once so the service worker
+  controls the page. Then rebuild with a change. The open tab reports the new
+  version on its next check. To check right away, click Update under
+  Application → Service workers in Chrome's developer tools.
 
 ## Option 2: Manual install
 

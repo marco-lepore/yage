@@ -118,7 +118,11 @@ sets this up.
   behaviour with `npm run build` followed by `npm run preview`.
 - **Updates start on the next launch.** A deploy downloads in the background.
   The running game keeps its version, even across reloads, until every tab or
-  window of it is closed.
+  window of it is closed. Host or CDN caching must not keep a stale `sw.js`
+  or `index.html`.
+- **To prompt players to update in-game**, follow
+  https://yage.dev/getting-started/installation/#offer-an-update-in-game. The
+  template does not include that code.
 - **Before shipping:** change `name`, `short_name`, and `description` in the
   `manifest` block, and replace `public/icon.svg`, `public/pwa-192x192.png`,
   `public/pwa-512x512.png`, and `public/apple-touch-icon.png`. Android crops
