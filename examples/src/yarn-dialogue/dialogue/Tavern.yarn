@@ -10,7 +10,10 @@ title: Start
 
 title: Menu
 ---
-<<if visited("Bard")>>
+// `$after_song` is set by the Bard node and cleared here, so this line only
+// follows the song itself. (`visited("Bard")` would stay true for good.)
+<<if $after_song>>
+    <<set $after_song to false>>
     Barkeep: Enjoyed the song? #line:menu_after_song
 <<else>>
     Barkeep: What'll it be? #line:menu

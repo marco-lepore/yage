@@ -392,6 +392,23 @@ test.describe("Examples", () => {
     await tap("Enter");
     await until("p.choosing === true");
 
+    // "Ascolta il bardo" is the second option: intro, one song, thanks.
+    await tap("ArrowDown");
+    await tap("Enter");
+    await until('p.lastLine === "Bard: Una canzone per la sala!"');
+    await tap("Enter");
+    await tap("Enter");
+    await tap("Enter");
+    await tap("Enter");
+    await until('p.lastLine === "Bard: Grazie, grazie!"');
+    await tap("Enter");
+    await tap("Enter");
+    // Right after the song the barkeep asks about it.
+    await until('p.lastLine === "Barkeep: Ti è piaciuta la canzone?"');
+    await tap("Enter");
+    await tap("Enter");
+    await until("p.choosing === true");
+
     // "Buonanotte" is the fourth option; it ends the conversation.
     await tap("ArrowDown");
     await tap("ArrowDown");
@@ -406,6 +423,10 @@ test.describe("Examples", () => {
     // spent and 4 coins isn't a light purse, so the `when: always` line plays.
     await tap("KeyT");
     await until('p.lastLine === "Barkeep: Di nuovo qui? Prendi uno sgabello."');
+    // The song was last conversation, so the menu opens with the usual line.
+    await tap("Enter");
+    await tap("Enter");
+    await until('p.lastLine === "Barkeep: Cosa ti porto?"');
 
     const inspectorErrors = await page.evaluate(
       () => window.__yage__!.inspector.getErrors().callbackErrors,

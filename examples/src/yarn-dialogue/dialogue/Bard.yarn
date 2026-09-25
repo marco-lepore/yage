@@ -3,10 +3,15 @@
 
 title: Bard
 ---
-Bard: A song for the house! #line:bard_intro
+<<if visited("Bard")>>
+    Bard: Back for an encore? #line:bard_encore
+<<else>>
+    Bard: A song for the house! #line:bard_intro
+<<endif>>
 => Bard: ♪ Oh, the lantern burns so bright tonight... ♪ #line:song_lantern
 => Bard: ♪ The miller's ghost goes round and round... ♪ #line:song_mill
 => Bard: ♪ Here's to the traveller, {$coins} coins to spend! ♪ <<if $coins > 0>> #line:song_coins
 Bard: Thank you, thank you! #line:bard_thanks
+<<set $after_song to true>>
 <<jump Menu>>
 ===
