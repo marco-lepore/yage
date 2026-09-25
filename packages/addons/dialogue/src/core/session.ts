@@ -32,7 +32,12 @@ import {
   type ResolvedChoice,
 } from "./runner.js";
 import { MemoryVariableStorage, materialize } from "./vars.js";
-import { analyzeScript, validatePlay, DialoguePlayError } from "./validate.js";
+import {
+  analyzeScript,
+  validatePlay,
+  waitSeconds,
+  DialoguePlayError,
+} from "./validate.js";
 import type { VarsOf } from "./defineScript.js";
 import type {
   ChoiceStep,
@@ -513,6 +518,8 @@ export class DialogueSession {
       functions,
       commands: { ...this.builtinCommands, ...commands },
       fallbackCommand,
+      defaultWait:
+        !Object.hasOwn(commands, "wait") && fallbackCommand === undefined,
     });
 
     // Seed-if-absent: a declared default applies only when the storage
@@ -832,18 +839,15 @@ export class DialogueSession {
   /**
    * The default `wait` handler: hold the conversation for `seconds` (or
    * `args[0]`, as Yarn's `<<wait 2>>` compiles) on this session's clock. A skip
-   * passes straight through; a value that isn't a finite number of seconds
-   * >= 0 is reported and ignored.
+   * passes straight through. A literal duration that isn't a finite number of
+   * seconds >= 0 fails `play()`; one computed by an expression is reported
+   * and ignored.
    */
   private readonly waitCommand: CommandHandler = (command, ctx) => {
     if (ctx.mode === "skip") return undefined;
     const raw = command.args?.[0] ?? command["seconds"];
-    const seconds = typeof raw === "string" ? Number(raw) : raw;
-    if (
-      typeof seconds !== "number" ||
-      !Number.isFinite(seconds) ||
-      seconds < 0
-    ) {
+    const seconds = waitSeconds(raw);
+    if (seconds === undefined) {
       this.opts.onError?.(
         `ignored "wait": its first argument must be a number of seconds >= 0, got ${String(raw)}`,
         undefined,

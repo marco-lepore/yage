@@ -271,6 +271,43 @@ describe("loadYarn — lines, characters, and flow", () => {
     );
     expect((await run(yarn)).transcript).toEqual(["in B"]);
   });
+
+  it("jump / detour {expression} evaluates the expression once", async () => {
+    const titles = ["A", "B", "Start"];
+    let calls = 0;
+    const next_node = (): string => titles[calls++ % titles.length]!;
+    const yarn = loadYarn(
+      start(
+        "<<detour {next_node()}>>\n<<jump {next_node()}>>",
+        node("A", "in A") + node("B", "in B"),
+      ),
+    );
+    const h = await run(yarn, [], { functions: { next_node } });
+    expect(h.transcript).toEqual(["in A", "in B"]);
+    expect(calls).toBe(2);
+  });
+
+  it("a node may be titled __proto__", async () => {
+    const yarn = loadYarn(
+      start("<<jump __proto__>>", node("__proto__", "in proto\n<<give>>")),
+    );
+    expect(Object.hasOwn(yarn.nodes, "__proto__")).toBe(true);
+    // Its commands are checked like any node's.
+    expect(() => harness().session.play(yarn)).toThrow(/give/);
+    expect((await run(yarn, [], { handled: ["give"] })).transcript).toEqual([
+      "in proto",
+      "<<give>>",
+    ]);
+  });
+
+  it("// starts a comment in a line, as in Yarn; \\/ keeps a slash", async () => {
+    const yarn = loadYarn(
+      start("Mae: Visit https:\\/\\/yarnspinner.dev // not shown"),
+    );
+    expect((await run(yarn)).transcript).toEqual([
+      "Mae: Visit https://yarnspinner.dev",
+    ]);
+  });
 });
 
 describe("loadYarn — variables and expressions", () => {

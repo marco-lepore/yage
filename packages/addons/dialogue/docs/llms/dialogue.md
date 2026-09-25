@@ -564,8 +564,10 @@ is the `[expression=…/]` reveal marker; the line-initial face is
   conversation on the session clock: frozen by `setPaused`, passed straight through
   by a skip, dropped by `stop()`. It is a default handler: your own `wait` handler
   or your `fallbackCommand` replaces it. `blocking` defaults to `true` for a
-  `wait` (set `blocking: false` for a fire-and-forget handler of your own). A bad
-  duration is reported through `onError` and ignored.
+  `wait` (set `blocking: false` for a fire-and-forget handler of your own). A
+  literal duration that isn't a number of seconds >= 0 makes `play()` throw a
+  `DialoguePlayError`; one computed by an expression is reported through
+  `onError` and ignored.
 
 ## DialogueController (L2a Component) — host owns focus/pause
 
@@ -1027,6 +1029,7 @@ compiles and `baseLanguage` is `"en"`.
 | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | node `title:`                                                       | a node of that id; `<<if>>` / options / `<<once>>` / line groups add helper nodes `Title#1`, `Title#2`, …                                                              |
 | `Mae: Hello`                                                        | `say`, `speaker: "Mae"`; every character gets a speaker `{ name }` (id = the name; a `DialogueActor` binds to it). First unescaped `:` splits; `\:` keeps a colon      |
+| `Hi. // note`                                                       | `//` starts a comment anywhere in a line, as in Yarn; `\/\/` keeps the slashes (`https:\/\/…`)                                                                         |
 | `{$expr}` in a line / option                                        | `{0}`-style token + `expressions`                                                                                                                                      |
 | `#line:abc`                                                         | text `{ key: "line:abc", fallback }`; the string lands in `catalogs[baseLanguage]`                                                                                     |
 | `#view:` `#voice:` `#speed:` `#auto:`                               | the say step's `view` / `voice` / `speed` / `autoAdvance`                                                                                                              |
@@ -1070,7 +1073,9 @@ const localization = await createLocalization({
 engine.use(new LocalizationPlugin(localization)); // the controller finds it
 ```
 
-A translated line drops its `Name:` prefix (the speaker shows the name); give a
+A translated line whose source has a character drops its `Name:` prefix: the text
+up to its first unescaped `:`, as Yarn's runtime reads it (write `\:` for a colon
+in a translation without the prefix). The speaker shows the name; give a
 speaker a `name` message via `speakers` to translate names. Untagged lines aren't
 translatable.
 

@@ -641,6 +641,8 @@ The Yarn language works as it does in Yarn Spinner:
 - **Storylets**: line groups (`=>`) and node groups (`when:` headers), picked the
   way Yarn Spinner picks them: the least-seen content first, then the most
   specific condition, then at random. `has_any_content()` works on a node group.
+- **Comments**: `//` starts a comment anywhere in a line, as in Yarn Spinner.
+  Write `\/\/` to show the slashes, as in `https:\/\/yarnspinner.dev`.
 - **Commands**: `<<wait 2>>` waits two seconds with no handler; every other command
   reaches your `commands` handler with its words in `cmd.args` (numbers and
   `true` / `false` as values, `{expressions}` evaluated, `"quoted text"` as text).
@@ -688,7 +690,10 @@ const localization = await createLocalization({
 engine.use(new LocalizationPlugin(localization));
 ```
 
-A translated line drops its `Name:` prefix, because the speaker shows the name.
+A translated line drops its `Name:` prefix when its source line has a
+character, because the speaker shows the name. As in Yarn Spinner, the prefix is
+the text up to the first `:`. Write `\:` for a colon in a translation that has no
+prefix.
 Character names stay as written; to translate one, give that speaker a `name`
 message through the `speakers` option. Lines without a `#line:` tag show as
 written in every language.
@@ -863,7 +868,8 @@ or `play-sfx` actually mean.
   conversation's own clock: pausing freezes it, and a skip passes straight through.
   It needs no handler; installing your own `wait` handler, or a `fallbackCommand`,
   replaces it. A `wait` holds the conversation while its handler runs unless it
-  sets `blocking: false`.
+  sets `blocking: false`. When the default handler runs it, a duration that isn't
+  a number of seconds of 0 or more makes `play()` throw.
 - Every command type a script uses must have a handler or a `fallbackCommand`, or
   `play()` throws — no command silently does nothing. `set` is the only built-in,
   and `wait` has the default handler above.

@@ -71,6 +71,16 @@ const NUMERIC_EXPR_OPS: ReadonlySet<string> = new Set([
  *  the `[expression=…/]` reveal marker, not a command.) */
 const BUILTIN_COMMANDS: ReadonlySet<string> = new Set(["set"]);
 
+/** A `wait` duration in seconds (a numeric string reads as a number), or
+ *  `undefined` when it isn't a finite number >= 0. */
+export function waitSeconds(raw: unknown): number | undefined {
+  const seconds =
+    typeof raw === "string" && raw.trim() !== "" ? Number(raw) : raw;
+  return typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0
+    ? seconds
+    : undefined;
+}
+
 /** What a binary operator requires of a literal operand, for the load-time type
  *  walk. `null` = no constraint (equality / logical ops accept any type). */
 function operandRequirement(op: BinaryOp): "number" | "numberOrString" | null {
@@ -89,6 +99,9 @@ export interface ScriptAnalysis {
   readonly calledFunctions: ReadonlySet<string>;
   /** Non-built-in command `type`s the script fires (for handler coverage). */
   readonly commandTypes: ReadonlySet<string>;
+  /** Literal `wait` durations the default handler can't hold for, as
+   *  `where: got value` (checked at play when that handler runs them). */
+  readonly invalidWaits: readonly string[];
 }
 
 const analysisCache = new WeakMap<DialogueScript, ScriptAnalysis>();
@@ -112,6 +125,7 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
   const setTargets = new Set<string>();
   const calledFunctions = new Set<string>();
   const commandTypes = new Set<string>();
+  const invalidWaits: string[] = [];
 
   // `where` is threaded so a wrong-type operand reports the same context the
   // atomic `{ var, op, value }` check uses.
@@ -292,6 +306,14 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
           if (isExpr(arg)) collectExpr(arg, where);
         }
       }
+      if (cmd.type === "wait") {
+        const raw = cmd.args?.[0] ?? cmd["seconds"];
+        if (!isExpr(raw) && waitSeconds(raw) === undefined) {
+          invalidWaits.push(
+            `${where}: got ${JSON.stringify(raw) ?? "nothing"}`,
+          );
+        }
+      }
       if (!BUILTIN_COMMANDS.has(cmd.type)) commandTypes.add(cmd.type);
     }
   };
@@ -344,7 +366,14 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
     }
   }
 
-  return { declaredTypes, readVars, setTargets, calledFunctions, commandTypes };
+  return {
+    declaredTypes,
+    readVars,
+    setTargets,
+    calledFunctions,
+    commandTypes,
+    invalidWaits,
+  };
 }
 
 /** The environment a `play()` installs, as far as validation cares. */
@@ -353,6 +382,9 @@ export interface PlayEnv {
   readonly functions: Readonly<Record<string, DialogueFunction>>;
   readonly commands: Readonly<Record<string, unknown>>;
   readonly fallbackCommand: unknown;
+  /** True when `wait` runs the session's default handler (the game installed
+   *  neither a `wait` handler nor a fallback). */
+  readonly defaultWait: boolean;
 }
 
 /**
@@ -422,6 +454,15 @@ export function validatePlay(analysis: ScriptAnalysis, env: PlayEnv): void {
           `(add to commands, or set fallbackCommand)`,
       );
     }
+  }
+
+  // 6. The default `wait` handler needs a number of seconds >= 0. A duration
+  //    from an expression is only known when the command runs.
+  const [badWait] = analysis.invalidWaits;
+  if (env.defaultWait && badWait !== undefined) {
+    throw new DialoguePlayError(
+      `"wait" needs a number of seconds >= 0 as its first argument or "seconds" (${badWait})`,
+    );
   }
 }
 

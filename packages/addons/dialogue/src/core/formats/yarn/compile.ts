@@ -49,12 +49,16 @@ import {
   type YarnPos,
   type YarnStmt,
 } from "./parse.js";
+import { waitSeconds } from "../../validate.js";
 import { convertSourceText, splitCharacter } from "./text.js";
 
 /** Storage names Yarn Spinner keeps its own bookkeeping under. */
 const VISITING = "$Yarn.Internal.Visiting.";
 const ONCE = "$Yarn.Internal.Once.";
 const VIEW_COUNT = "$Yarn.Internal.Content.ViewCount.";
+/** Where a `<<jump {expr}>>` / `<<detour {expr}>>` stores its evaluated target,
+ *  so the expression runs once however many titles it is compared against. */
+const TARGET = "$Yarn.Internal.Target";
 
 /** A node title, as Yarn Spinner 2 accepts it (3 is stricter). */
 const TITLE = /^[^\s[\]<>{}|:#$"]+$/;
@@ -137,7 +141,7 @@ class Compiler {
   private readonly assignments: { name: string; value: Expr }[] = [];
   /** Where each node's visits are read, to reject `tracking: never` nodes. */
   private readonly visitReads: { title: string; pos: YarnPos }[] = [];
-  /** Extra declared defaults: once flags and view counters. */
+  /** Extra declared defaults: once flags, view counters, the jump target. */
   private readonly internal: VarMap = {};
 
   constructor(
@@ -161,7 +165,9 @@ class Compiler {
     for (const d of pending) this.declare(d.pos, d.rest);
     for (const members of this.groups.values()) this.resolveWhen(members);
 
-    const irNodes: Record<string, { id: string; steps: Step[] }> = {};
+    // Null prototype: a node title is any string, `__proto__` included.
+    const irNodes: Record<string, { id: string; steps: Step[] }> =
+      Object.create(null);
     const add = (segments: readonly Segment[]): void => {
       for (const seg of segments) irNodes[seg.id] = seg;
     };
@@ -730,6 +736,13 @@ class Compiler {
     return name;
   }
 
+  /** The variable a dynamic `<<jump>>` / `<<detour>>` target goes in,
+   *  declared `""`. */
+  targetVar(): string {
+    this.internal[TARGET] = "";
+    return TARGET;
+  }
+
   /** A `$Yarn.Internal.Content.ViewCount.<id>` counter, declared `0`. */
   viewCounter(id: string): string {
     const name = VIEW_COUNT + id;
@@ -1104,9 +1117,7 @@ class NodeCompiler {
     if (args.length !== 1 || seconds === undefined) {
       this.c.fail(pos, "<<wait>> takes one argument: the seconds to wait");
     }
-    if (isExpr(seconds)) return;
-    const n = typeof seconds === "string" ? Number(seconds) : seconds;
-    if (typeof n !== "number" || !Number.isFinite(n) || n < 0) {
+    if (!isExpr(seconds) && waitSeconds(seconds) === undefined) {
       this.c.fail(
         pos,
         `<<wait>> needs a number of seconds >= 0, got "${String(seconds)}"`,
@@ -1183,7 +1194,7 @@ class NodeCompiler {
       );
     }
     const target = this.c.expr(rest.slice(1, -1), pos);
-    cur.steps.push(...exits);
+    cur.steps.push(setStep(this.c.targetVar(), target), ...exits);
     const join = this.segment();
     for (const title of this.c.titles()) {
       const hop = this.segment();
@@ -1194,7 +1205,7 @@ class NodeCompiler {
         condition: {
           kind: "binary",
           op: "==",
-          left: target,
+          left: { kind: "varRef", name: TARGET },
           right: literal(title),
         },
         target: hop.id,

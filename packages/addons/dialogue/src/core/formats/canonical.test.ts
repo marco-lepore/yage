@@ -57,6 +57,31 @@ describe("loadScript — structural validation", () => {
     expect(() => loadScript(s)).toThrow(/jump target "missing"/);
   });
 
+  it("node ids are own keys: inherited names don't resolve, __proto__ is a node", () => {
+    const inherited = script({
+      nodes: { a: { id: "a", steps: [{ kind: "goto", target: "toString" }] } },
+    });
+    expect(() => loadScript(inherited)).toThrow(/jump target "toString"/);
+    expect(() => loadScript(script({ start: "constructor" }))).toThrow(
+      /start node "constructor" not found/,
+    );
+
+    // JSON.parse keeps `__proto__` as an own key; a string `set` value makes
+    // the loader rebuild the node record.
+    const proto = JSON.parse(
+      `{"id": "proto", "start": "a", "nodes": {
+        "a": { "id": "a", "steps": [{ "kind": "goto", "target": "__proto__" }] },
+        "__proto__": { "id": "__proto__", "steps": [{ "kind": "command",
+          "commands": [{ "type": "set", "var": "n", "value": "1 + 1" }] }] }
+      }}`,
+    ) as DialogueScript;
+    expect(Object.hasOwn(proto.nodes, "__proto__")).toBe(true);
+    const loaded = loadScript(proto);
+    expect(Object.hasOwn(loaded.nodes, "__proto__")).toBe(true);
+    const step = loaded.nodes["__proto__"]?.steps[0] as CommandStep;
+    expect(isExpr(step.commands[0]?.["value"])).toBe(true);
+  });
+
   it("rejects a choice with no options", () => {
     const s = script({
       nodes: {

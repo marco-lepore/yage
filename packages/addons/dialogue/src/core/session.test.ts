@@ -2606,20 +2606,68 @@ describe("DialogueSession — default wait", () => {
     expect(h.text.lastText).toBe("one");
   });
 
-  it("accepts numeric text and reports a bad duration without holding", async () => {
-    const onError = vi.fn();
-    const h = makeHarness({ onError });
+  it("accepts numeric text", async () => {
+    const h = makeHarness();
     h.session.play(waitScript("0.25"));
     await toWait(h);
     h.session.update(0.3);
     await flush();
     expect(h.text.lastText).toBe("two");
+  });
 
-    h.session.play(waitScript("soon"));
+  it("a literal bad duration fails play(), naming the node and value", () => {
+    const h = makeHarness();
+    for (const bad of ["soon", -1, Infinity, undefined]) {
+      expect(() => h.session.play(waitScript(bad))).toThrow(DialoguePlayError);
+    }
+    expect(() => h.session.play(waitScript(-1))).toThrow(
+      /"wait" needs a number of seconds >= 0.*node "a".*got -1/,
+    );
+    const seconds: DialogueScript = {
+      id: "wait-seconds",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "command", commands: [{ type: "wait", seconds: -1 }] },
+          ],
+        },
+      },
+    };
+    expect(() => h.session.play(seconds)).toThrow(/got -1/);
+    // The game's own handler decides what its arguments mean.
+    const own = makeHarness({ commands: { wait: () => {} } });
+    expect(() => own.session.play(waitScript("soon"))).not.toThrow();
+  });
+
+  it("reports a bad duration computed by an expression, without holding", async () => {
+    const onError = vi.fn();
+    const h = makeHarness({ onError });
+    h.session.play({
+      id: "wait-expr",
+      start: "a",
+      declare: { delay: -1 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "one" },
+            {
+              kind: "command",
+              commands: [
+                { type: "wait", args: [{ kind: "varRef", name: "delay" }] },
+              ],
+            },
+            { kind: "say", text: "two" },
+          ],
+        },
+      },
+    });
     await toWait(h);
     expect(h.text.lastText).toBe("two");
     expect(onError).toHaveBeenCalledWith(
-      expect.stringMatching(/ignored "wait"/),
+      expect.stringMatching(/ignored "wait".*got -1/),
       undefined,
     );
   });

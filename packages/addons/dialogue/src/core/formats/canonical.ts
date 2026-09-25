@@ -50,7 +50,7 @@ export function loadScript(raw: DialogueScript): LoadedScript {
     throw new DialogueScriptError(`script "${raw.id}" has no nodes`);
   }
   const start = raw.start ?? nodeIds[0]!;
-  if (!raw.nodes[start]) {
+  if (!Object.hasOwn(raw.nodes, start)) {
     throw new DialogueScriptError(
       `start node "${start}" not found in "${raw.id}"`,
     );
@@ -127,7 +127,7 @@ function validateStep(
   step: Step,
 ): void {
   const targetExists = (t: string | undefined): void => {
-    if (t !== undefined && !script.nodes[t]) {
+    if (t !== undefined && !Object.hasOwn(script.nodes, t)) {
       throw new DialogueScriptError(
         `node "${nodeId}": jump target "${t}" does not exist`,
       );
@@ -247,7 +247,8 @@ function validateStep(
 
 function resolveExpressions(script: DialogueScript): DialogueScript {
   let nodesChanged = false;
-  const nodes: Record<NodeId, DialogueNode> = {};
+  // Null prototype: a node id is any string, `__proto__` included.
+  const nodes: Record<NodeId, DialogueNode> = Object.create(null);
   for (const [id, node] of Object.entries(script.nodes)) {
     let stepsChanged = false;
     const steps = node.steps.map((step) => {

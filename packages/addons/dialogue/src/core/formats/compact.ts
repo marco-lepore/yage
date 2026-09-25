@@ -94,7 +94,8 @@ export function parseCompact(text: string): DialogueScript {
   // Pass 2: the script id, nodes, and steps. The current choice run is buffered
   // and flushed into one choice step the moment a non-`?` line ends it.
   let id: string | undefined;
-  const nodes: Record<string, DialogueNode> = {};
+  // Null prototype: a node id is any string, `__proto__` included.
+  const nodes: Record<string, DialogueNode> = Object.create(null);
   const nodeOrder: string[] = [];
   let current: { id: string; steps: Step[] } | null = null;
   let choiceRun: ChoiceOption[] | null = null;
