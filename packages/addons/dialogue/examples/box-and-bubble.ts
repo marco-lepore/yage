@@ -132,8 +132,8 @@ class Guide extends Component {
 }
 
 /**
- * Inspector-readable record of what the conversation surfaced. The e2e reads
- * this with `inspector.getComponentData("dialogue-host", "DialogueProbe")`.
+ * Inspector-readable record of what the conversation surfaced. Read it with
+ * `inspector.getComponentData("dialogue-host", "DialogueProbe")`.
  */
 class DialogueProbe extends Component {
   lastLine = "";
@@ -185,7 +185,7 @@ class DialogueScene extends Scene {
       worldLayer: "bubble-world",
     });
 
-    // A small probe component the e2e reads via the Inspector.
+    // A small probe component, readable through the Inspector.
     const host: Entity = this.spawn("dialogue-host");
     const probe = host.add(new DialogueProbe());
 

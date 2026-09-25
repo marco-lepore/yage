@@ -555,7 +555,14 @@ main().catch(console.error);
    (score, win/lose banners, toasts) render in-canvas**, not in DOM overlays. Use
    a screen-space layer (`{ name: "hud", order: 1000, space: "screen" }`) plus
    `TextComponent`s.
-3. Add a card to `examples/index.html`.
+3. Add an entry to `examples/src/catalog.ts`: title, one-line summary,
+   section, the packages it uses beyond `core` and `renderer`, any addons, and
+   the yage.dev guide it matches. The index (`examples/index.html`) builds its
+   list, search, and filters from this file, and the Vite config fails the
+   build when a root `*.html` has no entry or an entry has no page. The index
+   runs the page in a frame: there the back link and `<h1>` are hidden, the
+   game shrinks to the height left over, and `.controls` scrolls once it
+   passes 40% of the frame.
 4. Vite (`examples/vite.config.ts`) and the E2E smoke suite
    (`e2e/specs/examples.spec.ts`) both auto-discover every root `*.html`, so a
    new example is built and smoke-tested with no config change. Add an entry to
