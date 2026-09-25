@@ -533,12 +533,21 @@ export class DialogueRunner {
         }
         continue;
       }
+      let fired: FiredCommand;
+      try {
+        fired = this.fired(cmd);
+      } catch (e) {
+        // A function in an argument threw: report it like a failed `set`, and
+        // skip the command rather than hand its handler half-evaluated args.
+        this.onError?.(
+          `ignored "${cmd.type}": its arguments failed to evaluate: ${e instanceof Error ? e.message : String(e)}`,
+          e,
+        );
+        continue;
+      }
       let result: void | Promise<void>;
       try {
-        result = this.handlers.onCommand(
-          this.fired(cmd),
-          this.commandContext(mode),
-        );
+        result = this.handlers.onCommand(fired, this.commandContext(mode));
       } catch {
         // A handler that throws *synchronously* must not wedge the conversation
         // either (same contract as the blocking-await catch below): swallow and

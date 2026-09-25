@@ -1,7 +1,8 @@
 /**
  * Yarn line text → dialogue text. Two callers share it: the compiler, on a
  * line's source (where each `{expression}` becomes a numbered `{0}` token the
- * line evaluates when shown), and the localisation loader, on a translated
+ * line evaluates when shown, numbered as Yarn Spinner's string tables number
+ * them), and the localisation loader, on a translated
  * string table entry (which already carries the numbered tokens).
  *
  * Yarn escapes map onto the dialogue markup's: `\[` / `\]` / `\\` stay escaped
@@ -15,33 +16,40 @@
 
 import { findBraceEnd } from "./parse.js";
 
-/** One `{…}` in a line's source: an expression, or a literal `{` from `\{`. */
+/** One `{…}` token in a line's source: an expression, or a literal `{` from
+ *  `\{`. `name` is the token it fills. */
 export type TextPart =
-  | { readonly kind: "expr"; readonly source: string }
-  | { readonly kind: "literal"; readonly value: string };
+  | { readonly kind: "expr"; readonly name: string; readonly source: string }
+  | { readonly kind: "literal"; readonly name: string; readonly value: string };
+
+/** The token an escaped `\{` becomes. Not a number, so the numbered tokens
+ *  count expressions only, as a Yarn string table's `{0}`, `{1}` do. */
+export const LITERAL_BRACE = "lbrace";
 
 export interface ConvertedText {
-  /** Dialogue text; the i-th {@link parts} entry fills the `{i}` token. */
+  /** Dialogue text; each {@link parts} entry fills its `{name}` token. */
   readonly text: string;
   readonly parts: readonly TextPart[];
 }
 
 /**
- * Convert a line's source. Each `{expression}` becomes `{i}` with its source
- * in `parts[i]`; an escaped `\{` also becomes a token (a literal part), so no
- * literal brace can be read as a variable token. Returns `undefined` for an
- * unclosed `{`.
+ * Convert a line's source. The i-th `{expression}` becomes `{i}`; an escaped
+ * `\{` becomes the `{lbrace}` token (a literal part), so no literal brace can
+ * be read as a variable token. Returns `undefined` for an unclosed `{`.
  */
 export function convertSourceText(raw: string): ConvertedText | undefined {
   const parts: TextPart[] = [];
+  let exprs = 0;
   let text = "";
   for (let i = 0; i < raw.length; i++) {
     const c = raw[i]!;
     if (c === "\\" && i + 1 < raw.length) {
       const next = raw[++i]!;
       if (next === "{") {
-        text += `{${parts.length}}`;
-        parts.push({ kind: "literal", value: "{" });
+        text += `{${LITERAL_BRACE}}`;
+        if (!parts.some((p) => p.name === LITERAL_BRACE)) {
+          parts.push({ kind: "literal", name: LITERAL_BRACE, value: "{" });
+        }
       } else {
         text += escaped(next);
       }
@@ -50,8 +58,9 @@ export function convertSourceText(raw: string): ConvertedText | undefined {
     if (c === "{") {
       const end = findBraceEnd(raw, i + 1);
       if (end < 0) return undefined;
-      text += `{${parts.length}}`;
-      parts.push({ kind: "expr", source: raw.slice(i + 1, end).trim() });
+      const name = String(exprs++);
+      text += `{${name}}`;
+      parts.push({ kind: "expr", name, source: raw.slice(i + 1, end).trim() });
       i = end;
       continue;
     }

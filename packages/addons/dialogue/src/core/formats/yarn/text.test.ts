@@ -14,9 +14,9 @@ describe("convertSourceText", () => {
     ).toEqual({
       text: "You have {0} of {1} {2}",
       parts: [
-        { kind: "expr", source: "$gold" },
-        { kind: "expr", source: "$max + 1" },
-        { kind: "expr", source: '"coins"' },
+        { kind: "expr", name: "0", source: "$gold" },
+        { kind: "expr", name: "1", source: "$max + 1" },
+        { kind: "expr", name: "2", source: '"coins"' },
       ],
     });
   });
@@ -24,8 +24,19 @@ describe("convertSourceText", () => {
   it("maps Yarn escapes onto dialogue text", () => {
     const out = convertSourceText("a \\[b\\] \\\\ \\{x\\} \\# \\/ \\< \\> \\:");
     expect(out).toEqual({
-      text: "a \\[b\\] \\\\ {0}x} # / < > :",
-      parts: [{ kind: "literal", value: "{" }],
+      text: "a \\[b\\] \\\\ {lbrace}x} # / < > :",
+      parts: [{ kind: "literal", name: "lbrace", value: "{" }],
+    });
+  });
+
+  it("numbers expressions only, as a Yarn string table does", () => {
+    expect(convertSourceText("\\{ {$x} \\{ {$y}")).toEqual({
+      text: "{lbrace} {0} {lbrace} {1}",
+      parts: [
+        { kind: "literal", name: "lbrace", value: "{" },
+        { kind: "expr", name: "0", source: "$x" },
+        { kind: "expr", name: "1", source: "$y" },
+      ],
     });
   });
 

@@ -705,6 +705,33 @@ describe("loadYarn — projects and localisation", () => {
     expect(loadYarn(start("x"), { id: "custom" }).id).toBe("custom");
   });
 
+  it("a translation's {0} fills the first expression, whatever \\{ precedes it", async () => {
+    const yarn = loadYarn({
+      "dlg/Game.yarnproject": project({
+        localisation: { de: { strings: "de.csv" } },
+      }),
+      "dlg/Start.yarn": start(
+        '<<declare $who = "Ari">>\n\\{ {$who} #line:brace',
+      ),
+      "dlg/de.csv": "language,id,text\nde,line:brace,{0} \\{\n",
+    });
+    expect(yarn.catalogs["en"]?.["line:brace"]).toBe("{lbrace} {0}");
+    const german: I18nAdapter = {
+      locale: "de",
+      resolve: (text, values) =>
+        interpolateDialogueText(
+          typeof text === "string"
+            ? text
+            : (yarn.catalogs["de"]?.[text.key] ?? text.fallback),
+          values ?? {},
+        ),
+    };
+    expect((await run(yarn)).transcript).toEqual(["{ Ari"]);
+    expect((await run(yarn, [], { i18n: german })).transcript).toEqual([
+      "Ari {",
+    ]);
+  });
+
   it("collects #line strings and localisation tables into catalogs", async () => {
     const csv = [
       "language,id,text,file,node,lineNumber,lock,comment",

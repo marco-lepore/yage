@@ -109,10 +109,28 @@ export function parseLenientJson(text: string): unknown {
       i = end < 0 ? text.length : end + 1;
       continue;
     }
-    if (c === "," && /^\s*[}\]]/.test(text.slice(i + 1))) continue;
     out += c;
   }
-  return JSON.parse(out);
+  // Trailing commas, once comments are gone (so `, // note ]` counts too).
+  let json = "";
+  for (let i = 0; i < out.length; i++) {
+    const c = out.charAt(i);
+    if (c === '"') {
+      const start = i;
+      for (i++; i < out.length && out[i] !== '"'; i++) {
+        if (out[i] === "\\") i++;
+      }
+      json += out.slice(start, i + 1);
+      continue;
+    }
+    if (c === ",") {
+      let j = i + 1;
+      while (j < out.length && /\s/.test(out.charAt(j))) j++;
+      if (out[j] === "}" || out[j] === "]") continue;
+    }
+    json += c;
+  }
+  return JSON.parse(json);
 }
 
 /**

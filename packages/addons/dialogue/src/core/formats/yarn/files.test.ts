@@ -58,6 +58,12 @@ describe("parseLenientJson", () => {
       parseLenientJson('{ // c\n "a": [1, 2,], /* x */ "b": "x,]//y", }'),
     ).toEqual({ a: [1, 2], b: "x,]//y" });
   });
+
+  it("drops a trailing comma followed by a comment", () => {
+    expect(
+      parseLenientJson('{ "a": [\n  "x", // all\n], /* end */\n}'),
+    ).toEqual({ a: ["x"] });
+  });
 });
 
 describe("parseCsv", () => {

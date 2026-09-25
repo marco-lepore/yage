@@ -1293,9 +1293,9 @@ class NodeCompiler {
     const converted = convertSourceText(split.text);
     if (!converted) this.c.fail(content.pos, "'{' has no closing '}'");
     let expressions: Record<string, Expr> | undefined;
-    converted.parts.forEach((part, i) => {
+    converted.parts.forEach((part) => {
       expressions ??= {};
-      expressions[String(i)] =
+      expressions[part.name] =
         part.kind === "literal"
           ? literal(part.value)
           : this.c.expr(part.source, content.pos);

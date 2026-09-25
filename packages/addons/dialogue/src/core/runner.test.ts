@@ -1219,6 +1219,49 @@ describe("evalCondition", () => {
 });
 
 describe("DialogueRunner — a synchronously-throwing command handler", () => {
+  it("reports args that fail to evaluate and skips that command", async () => {
+    const script: DialogueScript = {
+      id: "arg-throw",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "command",
+              commands: [
+                {
+                  type: "give",
+                  args: [{ kind: "call", fn: "count_items", args: [] }],
+                },
+                { type: "after" },
+              ],
+            },
+            { kind: "say", text: "next" },
+          ],
+        },
+      },
+    };
+    const onError = vi.fn();
+    const rec = makeRecorder();
+    const runner = makeRunner(script, rec.handlers, {
+      onError,
+      functions: {
+        count_items: () => {
+          throw new Error("inventory offline");
+        },
+      },
+    });
+    runner.start();
+    await flush();
+    expect(rec.commands.map((c) => c.command.type)).toEqual(["after"]);
+    expect(lineTexts(rec)).toEqual(["next"]);
+    expect(onError).toHaveBeenCalledWith(
+      'ignored "give": its arguments failed to evaluate: inventory offline',
+      expect.any(Error),
+    );
+  });
+
   it("does not wedge a chosen option's command path", async () => {
     const script: DialogueScript = {
       id: "sync-throw-choice",

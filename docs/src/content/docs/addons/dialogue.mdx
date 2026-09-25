@@ -873,8 +873,10 @@ or `play-sfx` actually mean.
   conversation's own clock: pausing freezes it, and a skip passes straight through.
   It needs no handler; installing your own `wait` handler, or a `fallbackCommand`,
   replaces it. A `wait` holds the conversation while its handler runs unless it
-  sets `blocking: false`. When the default handler runs it, a duration that isn't
-  a number of seconds of 0 or more makes `play()` throw.
+  sets `blocking: false`. When the default handler runs it, a written-out duration
+  that isn't a number of seconds of 0 or more makes `play()` throw. A duration
+  computed by an expression is only known when the command runs: an invalid one
+  is reported through `onError` and the conversation carries on without waiting.
 - Every command type a script uses must have a handler or a `fallbackCommand`, or
   `play()` throws — no command silently does nothing. `set` is the only built-in,
   and `wait` has the default handler above.
