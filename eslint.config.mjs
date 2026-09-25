@@ -185,6 +185,58 @@ export default tseslint.config(
     },
   },
 
+  // Examples are copied by people and agents, so they get the runtime rules
+  // game code follows (examples/AGENTS.md). Each block below sets a rule no
+  // other block sets for examples/**, so none replaces another.
+  {
+    files: ["examples/src/**/*.ts", "examples/src/**/*.tsx"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "Math",
+          property: "random",
+          message:
+            "Use the scene's RandomService (this.use(RandomKey)); ?test seeds it, so runs are reproducible.",
+        },
+      ],
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@yagejs/core",
+              importNames: ["defineBlueprint", "Blueprint"],
+              message:
+                "Blueprints are deprecated; define an Entity subclass with setup().",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  // The index page is a DOM app around the examples, not game code, so it
+  // keeps browser timers.
+  {
+    files: ["examples/src/**/*.ts", "examples/src/**/*.tsx"],
+    ignores: ["examples/src/index/**"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        {
+          name: "setTimeout",
+          message:
+            "Use a ProcessComponent slot, pc.run(Process.delay(...)) or TimerEntity; they follow pause and time scale.",
+        },
+        {
+          name: "setInterval",
+          message:
+            "Use a looping ProcessComponent slot or a component's update(dt).",
+        },
+      ],
+    },
+  },
+
   // A. Browser code outside the shell, the preview, and the play page. No
   //    server code, no Node built-ins, no engine: every module here reaches
   //    the engine through PreviewCoordinator's API.
