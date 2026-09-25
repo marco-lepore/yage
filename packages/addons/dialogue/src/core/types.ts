@@ -33,8 +33,8 @@ export interface Command {
    * If true, a handler that returns a promise *pauses* the conversation until it
    * resolves (the runner enters its `awaiting-command` wait-state). Use for
    * cinematic sequencing — "wait for the NPC to walk off, then continue". A
-   * non-blocking handler's promise is fire-and-forget. A `wait` command always
-   * blocks.
+   * non-blocking handler's promise is fire-and-forget. For a `wait` command
+   * it defaults to `true`.
    */
   readonly blocking?: boolean;
   /** Reveal-relative firing time for a `say`-line command. Default `show`. */

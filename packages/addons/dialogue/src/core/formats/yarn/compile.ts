@@ -24,6 +24,7 @@
  *   any variable.
  */
 
+import { isExpr } from "../../expr.js";
 import { parseYarnExpr } from "../../expr-parse.js";
 import type { DialogueText } from "../../i18n.js";
 import type {
@@ -128,6 +129,14 @@ class Compiler {
   private readonly strings = new Map<string, YarnLineString>();
   /** Types implied by how undeclared variables are used. */
   private readonly implied = new Map<string, Set<YarnType>>();
+  /** Every `$variable` the script reads or sets, with where it first appears
+   *  (an undeclared one needs a type the script implies). */
+  private readonly referenced = new Map<string, YarnPos>();
+  /** `<<set>>` values, re-typed at the end so an assignment from a variable
+   *  typed later still passes its type on. */
+  private readonly assignments: { name: string; value: Expr }[] = [];
+  /** Where each node's visits are read, to reject `tracking: never` nodes. */
+  private readonly visitReads: { title: string; pos: YarnPos }[] = [];
   /** Extra declared defaults: once flags and view counters. */
   private readonly internal: VarMap = {};
 
@@ -174,6 +183,14 @@ class Compiler {
     }
 
     // Visit counting, now that every `visited()` reader is known.
+    for (const read of this.visitReads) {
+      if (this.untracked.has(read.title)) {
+        this.fail(
+          read.pos,
+          `visited("${read.title}") reads the visits of "${read.title}", which has 'tracking: never'`,
+        );
+      }
+    }
     for (const title of this.untracked) this.tracked.delete(title);
     for (const seg of Object.values(irNodes)) {
       seg.steps = seg.steps.flatMap((step) => this.exitStep(step));
@@ -186,8 +203,26 @@ class Compiler {
     nodes: Record<string, { id: string; steps: Step[] }>,
   ): DialogueScript {
     const declare: VarMap = {};
-    for (const [name, types] of this.implied) {
-      if (this.declarations.has(name) || types.size !== 1) continue;
+    // An assignment from a variable whose type was implied later.
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (const { name, value } of this.assignments) {
+        const before = this.implied.get(name)?.size ?? 0;
+        this.implyAssignment(name, value);
+        if ((this.implied.get(name)?.size ?? 0) !== before) changed = true;
+      }
+    }
+    for (const [name, pos] of this.referenced) {
+      if (this.declarations.has(name)) continue;
+      const types = [...(this.implied.get(name) ?? [])];
+      if (types.length !== 1) {
+        this.fail(
+          pos,
+          types.length === 0
+            ? `can't tell what type ${name} is; declare it (<<declare ${name} = …>>)`
+            : `${name} is used as both ${types.join(" and ")}; declare it (<<declare ${name} = …>>)`,
+        );
+      }
       const [type] = types;
       declare[name] = type === "number" ? 0 : type === "string" ? "" : false;
     }
@@ -403,13 +438,14 @@ class Compiler {
     }
     const source = m[2]!.trim();
     const declaredType = m[3];
-    const expr = this.expr(source, pos);
-    const value = storedValue(source, expr);
-    if (value === undefined) {
-      // Anything but a plain value is a smart variable, evaluated on read.
-      this.declarations.set(name, { pos, smart: expr });
+    const tree = this.parse(source, pos);
+    if (!isPlainValue(source, tree)) {
+      // Anything but a plain value is a smart variable. Its tree is lowered
+      // where it is read, once node groups and every declaration are known.
+      this.declarations.set(name, { pos, smart: tree });
       return;
     }
+    const value = storedValue(this.lower(tree, pos));
     if (declaredType !== undefined) {
       const expected = typeName(declaredType);
       const cases = this.enums.get(declaredType);
@@ -435,16 +471,19 @@ class Compiler {
   /** Parse and lower a Yarn expression: enum cases become literals, smart
    *  variables expand, `visited()` / `visited_count()` read visit counters. */
   expr(source: string, pos: YarnPos): Expr {
-    let tree: Expr;
+    return this.lower(this.parse(source, pos), pos);
+  }
+
+  /** Parse a Yarn expression without lowering it. */
+  private parse(source: string, pos: YarnPos): Expr {
     try {
-      tree = parseYarnExpr(enumShorthand(source));
+      return parseYarnExpr(enumShorthand(source));
     } catch (e) {
-      this.fail(
+      return this.fail(
         pos,
         `${e instanceof Error ? e.message : String(e)} in "${source}"`,
       );
     }
-    return this.lower(tree, pos);
   }
 
   /** An expression used as a condition (its value is a boolean). */
@@ -489,7 +528,10 @@ class Compiler {
   private lowerName(name: string, pos: YarnPos): Expr {
     if (name.startsWith("$")) {
       const decl = this.declarations.get(name);
-      if (!decl?.smart) return { kind: "varRef", name };
+      if (!decl?.smart) {
+        this.reference(name, pos);
+        return { kind: "varRef", name };
+      }
       if (this.expanding.has(name)) {
         this.fail(pos, `smart variable ${name} refers to itself`);
       }
@@ -528,6 +570,7 @@ class Compiler {
   private visitRead(expr: Extract<Expr, { kind: "call" }>, pos: YarnPos): Expr {
     const title = this.titleArg(expr, pos);
     this.tracked.add(title);
+    this.visitReads.push({ title, pos });
     const count: Expr = { kind: "varRef", name: VISITING + title };
     return expr.fn === "visited_count"
       ? count
@@ -593,8 +636,21 @@ class Compiler {
     }
   }
 
+  /** Note a `$variable` the script reads or sets. */
+  reference(name: string, pos: YarnPos): void {
+    if (name.startsWith("$Yarn.Internal.")) return;
+    if (!this.referenced.has(name)) this.referenced.set(name, pos);
+  }
+
+  /** `<<set $x …>>`: the target is referenced, and the value's type is its. */
+  assign(name: string, value: Expr, pos: YarnPos): void {
+    this.reference(name, pos);
+    this.assignments.push({ name, value });
+    this.implyAssignment(name, value);
+  }
+
   /** `<<set $x …>>`: the value's type is the variable's. */
-  implyAssignment(name: string, value: Expr): void {
+  private implyAssignment(name: string, value: Expr): void {
     const type = this.typeOf(value);
     if (type) this.implyVar({ kind: "varRef", name }, type);
   }
@@ -926,7 +982,7 @@ class NodeCompiler {
     const join = this.segment();
     const out: ChoiceOption[] = [];
     for (const option of options) {
-      const text = this.text(option, false);
+      const text = this.text(option, true);
       const gate = this.gate(option);
       let target = join.id;
       if (option.body.length > 0) {
@@ -937,7 +993,13 @@ class NodeCompiler {
           target: join.id,
         });
       }
-      const { meta, disabled } = optionTags(option.tags);
+      const tags = optionTags(option.tags);
+      const disabled = tags.disabled;
+      // Options have no speaker; a `Name:` prefix is kept as `meta.character`.
+      const meta =
+        text.character === undefined
+          ? tags.meta
+          : { ...tags.meta, character: text.character };
       out.push({
         text: text.text,
         ...(text.expressions ? { expressions: text.expressions } : {}),
@@ -1025,6 +1087,7 @@ class NodeCompiler {
           this.c.fail(pos, `"${name}" is not a valid command name`);
         }
         const args = this.args(rest, pos);
+        if (name === "wait") this.checkWait(args, pos);
         const command: Command = {
           type: name,
           ...(args.length > 0 ? { args } : {}),
@@ -1032,6 +1095,22 @@ class NodeCompiler {
         cur.steps.push({ kind: "command", commands: [command] });
         return cur;
       }
+    }
+  }
+
+  /** `<<wait>>` takes one duration in seconds; a literal one is checked now. */
+  private checkWait(args: readonly (VarValue | Expr)[], pos: YarnPos): void {
+    const [seconds] = args;
+    if (args.length !== 1 || seconds === undefined) {
+      this.c.fail(pos, "<<wait>> takes one argument: the seconds to wait");
+    }
+    if (isExpr(seconds)) return;
+    const n = typeof seconds === "string" ? Number(seconds) : seconds;
+    if (typeof n !== "number" || !Number.isFinite(n) || n < 0) {
+      this.c.fail(
+        pos,
+        `<<wait>> needs a number of seconds >= 0, got "${String(seconds)}"`,
+      );
     }
   }
 
@@ -1063,7 +1142,7 @@ class NodeCompiler {
         right: value,
       };
     }
-    this.c.implyAssignment(name, value);
+    this.c.assign(name, value, pos);
     return setStep(name, value);
   }
 
@@ -1174,6 +1253,7 @@ class NodeCompiler {
 
   private say(stmt: YarnContent, beforeOptions: boolean): SayStep {
     const text = this.text(stmt, true);
+    if (text.character !== undefined) this.c.addCharacter(text.character);
     const fields: {
       view?: string;
       voice?: string;
@@ -1238,7 +1318,6 @@ class NodeCompiler {
           ? literal(part.value)
           : this.c.expr(part.source, content.pos);
     });
-    if (split.character !== undefined) this.c.addCharacter(split.character);
     const lineTag = content.tags.find((t) => t.startsWith("line:"));
     let text: DialogueText = converted.text;
     if (lineTag !== undefined) {
@@ -1367,24 +1446,32 @@ function typeName(name: string): YarnType | undefined {
 }
 
 /**
- * The value a declaration stores, or undefined when it declares a smart
- * variable. Yarn Spinner stores a plain literal, a negative number, or an enum
- * case; anything else, even `(1)` or `1 + 2`, is evaluated on each read.
+ * Whether a declaration stores its value (else it declares a smart variable).
+ * Yarn Spinner stores a plain literal, a negative number, or an enum case;
+ * anything else, even `(1)` or `1 + 2`, is evaluated on each read.
  */
-function storedValue(source: string, expr: Expr): VarValue | undefined {
-  if (expr.kind === "literal") {
-    // An enum case lowers to a literal too; `(…)` never stores.
-    return source.startsWith("(") ? undefined : expr.value;
-  }
+function isPlainValue(source: string, tree: Expr): boolean {
+  if (tree.kind === "literal") return !source.startsWith("(");
+  if (tree.kind === "varRef") return !tree.name.startsWith("$"); // an enum case
+  return (
+    tree.kind === "unary" &&
+    tree.op === "-" &&
+    tree.operand.kind === "literal" &&
+    typeof tree.operand.value === "number"
+  );
+}
+
+/** A plain declaration's lowered value. */
+function storedValue(expr: Expr): VarValue {
+  if (expr.kind === "literal") return expr.value;
   if (
     expr.kind === "unary" &&
-    expr.op === "-" &&
     expr.operand.kind === "literal" &&
     typeof expr.operand.value === "number"
   ) {
     return -expr.operand.value;
   }
-  return undefined;
+  return null;
 }
 
 /**

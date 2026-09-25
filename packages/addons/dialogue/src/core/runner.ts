@@ -100,10 +100,10 @@ export interface ReturnPoint {
 }
 
 /** Whether a command holds the conversation while its handler's promise is
- *  pending: an explicit `blocking` command, or any `wait` (a wait that didn't
- *  hold would do nothing). */
+ *  pending: its `blocking` flag, which for a `wait` defaults to `true` (a wait
+ *  that didn't hold would do nothing). */
 export function isBlockingCommand(command: Command): boolean {
-  return command.blocking === true || command.type === "wait";
+  return command.blocking ?? command.type === "wait";
 }
 
 type RunnerState =

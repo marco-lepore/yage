@@ -2759,3 +2759,37 @@ describe("DialogueSession — default wait with a seconds field", () => {
     expect(h.text.lastText).toBe("two");
   });
 });
+
+describe("DialogueSession — a wait's blocking flag", () => {
+  it("a game's wait handler with blocking: false is fire-and-forget", async () => {
+    let release: (() => void) | undefined;
+    const wait = vi.fn(
+      () => new Promise<void>((resolve) => (release = resolve)),
+    );
+    const h = makeHarness({ commands: { wait } });
+    h.session.play({
+      id: "nb",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "one" },
+            {
+              kind: "command",
+              commands: [{ type: "wait", seconds: 5, blocking: false }],
+            },
+            { kind: "say", text: "two" },
+          ],
+        },
+      },
+    });
+    h.text.finishReveal();
+    await flush();
+    h.session.advance();
+    await flush();
+    expect(wait).toHaveBeenCalledTimes(1);
+    expect(h.text.lastText).toBe("two");
+    release?.();
+  });
+});

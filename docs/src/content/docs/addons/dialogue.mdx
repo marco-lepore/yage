@@ -625,14 +625,19 @@ The Yarn language works as it does in Yarn Spinner:
   conditions, and hashtags.
 - **Options** (`->`) with bodies, `<<if …>>` conditions, and `<<once>>`. An option
   whose condition fails is hidden; add `#disabled` to show it greyed out instead.
-  When no option is available, the conversation carries on after the group.
+  When no option is available, the conversation carries on after the group. A
+  `Name:` before an option's text is left out of its label and kept in the
+  option's `meta.character`.
 - **Flow**: `<<if>>` / `<<elseif>>` / `<<else>>`, `<<once>>` blocks,
   `<<jump Node>>`, `<<jump {$node}>>`, `<<detour Node>>`, `<<return>>`, `<<stop>>`.
 - **Variables**: `<<declare>>` (with `as` types), `<<set … to …>>` and `+=` / `-=` /
   `*=` / `/=` / `%=`, smart variables, and enums. A variable you use without
-  declaring gets a default from how you use it (`0`, `""`, or `false`).
+  declaring gets a default from how you use it (`0`, `""`, or `false`). When the
+  script doesn't show its type (it is only shown in text, say), `loadYarn` asks
+  you to declare it.
 - **Functions**: `visited()`, `visited_count()`, and the
-  [built-in functions](#built-in-functions).
+  [built-in functions](#built-in-functions). A node with `tracking: never` can't
+  be read with `visited()`.
 - **Storylets**: line groups (`=>`) and node groups (`when:` headers), picked the
   way Yarn Spinner picks them: the least-seen content first, then the most
   specific condition, then at random. `has_any_content()` works on a node group.
@@ -857,7 +862,8 @@ or `play-sfx` actually mean.
 - `{ type: "wait", seconds: 1.5 }` holds the conversation for that long, on the
   conversation's own clock: pausing freezes it, and a skip passes straight through.
   It needs no handler; installing your own `wait` handler, or a `fallbackCommand`,
-  replaces it.
+  replaces it. A `wait` holds the conversation while its handler runs unless it
+  sets `blocking: false`.
 - Every command type a script uses must have a handler or a `fallbackCommand`, or
   `play()` throws — no command silently does nothing. `set` is the only built-in,
   and `wait` has the default handler above.

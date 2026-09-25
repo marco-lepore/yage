@@ -563,7 +563,8 @@ is the `[expression=…/]` reveal marker; the line-initial face is
 - **`wait`** — `{ type: "wait", seconds: 2 }` (or `args: [2]`) holds the
   conversation on the session clock: frozen by `setPaused`, passed straight through
   by a skip, dropped by `stop()`. It is a default handler: your own `wait` handler
-  or your `fallbackCommand` replaces it. A `wait` command always blocks. A bad
+  or your `fallbackCommand` replaces it. `blocking` defaults to `true` for a
+  `wait` (set `blocking: false` for a fire-and-forget handler of your own). A bad
   duration is reported through `onError` and ignored.
 
 ## DialogueController (L2a Component) — host owns focus/pause
@@ -1022,27 +1023,27 @@ compiles and `baseLanguage` is `"en"`.
 
 **Mapping** (everything lowers onto the existing IR; the runtime has no Yarn code):
 
-| Yarn                                                                | Dialogue                                                                                                                                                          |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| node `title:`                                                       | a node of that id; `<<if>>` / options / `<<once>>` / line groups add helper nodes `Title#1`, `Title#2`, …                                                         |
-| `Mae: Hello`                                                        | `say`, `speaker: "Mae"`; every character gets a speaker `{ name }` (id = the name; a `DialogueActor` binds to it). First unescaped `:` splits; `\:` keeps a colon |
-| `{$expr}` in a line / option                                        | `{0}`-style token + `expressions`                                                                                                                                 |
-| `#line:abc`                                                         | text `{ key: "line:abc", fallback }`; the string lands in `catalogs[baseLanguage]`                                                                                |
-| `#view:` `#voice:` `#speed:` `#auto:`                               | the say step's `view` / `voice` / `speed` / `autoAdvance`                                                                                                         |
-| other hashtags                                                      | `meta` (`#k:v` → `meta.k`, `#flag` → `true`); the line before an option group also gets `meta.lastline`                                                           |
-| `-> Option <<if c>>`                                                | `choice` option with `condition` (hidden when false; `#disabled` shows it greyed); no option available → continue after the group                                 |
-| `<<if>>` / `<<elseif>>` / `<<else>>`                                | conditional jumps                                                                                                                                                 |
-| `<<set $x to e>>`, `+= -= *= /= %=`                                 | built-in `set`                                                                                                                                                    |
-| `<<declare $x = v [as T]>>`                                         | `declare` default; undeclared variables get a default from their use (`0`, `""`, `false`)                                                                         |
-| smart variable (`<<declare $rich = $gold > 50>>`)                   | expanded where read; can't be set                                                                                                                                 |
-| `<<enum>>` / `.Case` / `Enum.Case`                                  | literal values (auto-numbered 0,1,… or the given values)                                                                                                          |
-| `<<jump T>>` / `<<jump {$e}>>`                                      | `goto` with `leaveDetours: true`                                                                                                                                  |
-| `<<detour T>>` / `<<return>>` / `<<stop>>`                          | `detour` / `return` / `end`                                                                                                                                       |
-| `<<once>>…<<else>>…<<endonce>>`, `Line <<once>>`, `-> Opt <<once>>` | gated on `$Yarn.Internal.Once.<id>`                                                                                                                               |
-| `visited("T")` / `visited_count("T")`                               | reads `$Yarn.Internal.Visiting.T` (counted when `T` finishes)                                                                                                     |
-| `=> line` (line group) / `when:` node groups / `has_any_content()`  | `select` (least viewed → most specific → random); counters `$Yarn.Internal.Content.ViewCount.<id>`                                                                |
-| `<<wait 2>>`                                                        | the default `wait` handler                                                                                                                                        |
-| `<<give_item sword {$n}>>`                                          | command `{ type: "give_item", args: ["sword", <$n>] }` (numbers / `true` / `false` words become values, `"quoted"` stays text)                                    |
+| Yarn                                                                | Dialogue                                                                                                                                                               |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| node `title:`                                                       | a node of that id; `<<if>>` / options / `<<once>>` / line groups add helper nodes `Title#1`, `Title#2`, …                                                              |
+| `Mae: Hello`                                                        | `say`, `speaker: "Mae"`; every character gets a speaker `{ name }` (id = the name; a `DialogueActor` binds to it). First unescaped `:` splits; `\:` keeps a colon      |
+| `{$expr}` in a line / option                                        | `{0}`-style token + `expressions`                                                                                                                                      |
+| `#line:abc`                                                         | text `{ key: "line:abc", fallback }`; the string lands in `catalogs[baseLanguage]`                                                                                     |
+| `#view:` `#voice:` `#speed:` `#auto:`                               | the say step's `view` / `voice` / `speed` / `autoAdvance`                                                                                                              |
+| other hashtags                                                      | `meta` (`#k:v` → `meta.k`, `#flag` → `true`); the line before an option group also gets `meta.lastline`                                                                |
+| `-> Option <<if c>>`                                                | `choice` option with `condition` (hidden when false; `#disabled` shows it greyed); no option available → continue after the group; a `Name:` prefix → `meta.character` |
+| `<<if>>` / `<<elseif>>` / `<<else>>`                                | conditional jumps                                                                                                                                                      |
+| `<<set $x to e>>`, `+= -= *= /= %=`                                 | built-in `set`                                                                                                                                                         |
+| `<<declare $x = v [as T]>>`                                         | `declare` default; undeclared variables get a default from their use (`0`, `""`, `false`); one whose use implies no single type is a load error                        |
+| smart variable (`<<declare $rich = $gold > 50>>`)                   | expanded where read; can't be set                                                                                                                                      |
+| `<<enum>>` / `.Case` / `Enum.Case`                                  | literal values (auto-numbered 0,1,… or the given values)                                                                                                               |
+| `<<jump T>>` / `<<jump {$e}>>`                                      | `goto` with `leaveDetours: true`                                                                                                                                       |
+| `<<detour T>>` / `<<return>>` / `<<stop>>`                          | `detour` / `return` / `end`                                                                                                                                            |
+| `<<once>>…<<else>>…<<endonce>>`, `Line <<once>>`, `-> Opt <<once>>` | gated on `$Yarn.Internal.Once.<id>`                                                                                                                                    |
+| `visited("T")` / `visited_count("T")`                               | reads `$Yarn.Internal.Visiting.T` (counted when `T` finishes); on a `tracking: never` node, a load error                                                               |
+| `=> line` (line group) / `when:` node groups / `has_any_content()`  | `select` (least viewed → most specific → random); counters `$Yarn.Internal.Content.ViewCount.<id>`                                                                     |
+| `<<wait 2>>`                                                        | the default `wait` handler                                                                                                                                             |
+| `<<give_item sword {$n}>>`                                          | command `{ type: "give_item", args: ["sword", <$n>] }` (numbers / `true` / `false` words become values, `"quoted"` stays text)                                         |
 
 Variables keep their `$` (`cells({ $gold: {…} })`, `handle.setVar("$gold", 5)`).
 Yarn's bookkeeping (`$Yarn.Internal.*`) is declared and lives in the storage, so it

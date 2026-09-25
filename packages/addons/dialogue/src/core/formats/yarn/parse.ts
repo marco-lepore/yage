@@ -552,7 +552,8 @@ function splitCommand(inner: string): { name: string; rest: string } {
 
 /**
  * Index of the `>>` closing a `<<` whose content starts at `from`, skipping
- * `"…"` strings and `{…}` expressions; -1 when unclosed.
+ * `"…"` strings, `{…}` expressions, and `\`-escaped characters; -1 when
+ * unclosed.
  */
 export function findCommandEnd(s: string, from: number): number {
   let depth = 0;
@@ -564,7 +565,9 @@ export function findCommandEnd(s: string, from: number): number {
       else if (c === '"') quoted = false;
       continue;
     }
-    if (c === '"') quoted = true;
+    if (c === "\\")
+      i++; // an escaped character, such as `\{`, is text
+    else if (c === '"') quoted = true;
     else if (c === "{") depth++;
     else if (c === "}") depth = Math.max(0, depth - 1);
     else if (depth === 0 && c === ">" && s[i + 1] === ">") return i;

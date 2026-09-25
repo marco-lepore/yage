@@ -306,10 +306,27 @@ describe("loadYarn — variables and expressions", () => {
   it("undeclared variables get a default from how the script uses them", () => {
     const yarn = loadYarn(
       start(
-        '<<set $count to $count + 1>>\n<<if $met>>\nHi\n<<endif>>\n<<set $title to "Sir">>\n{$unknown}',
+        '<<set $count to $count + 1>>\n<<if $met>>\nHi\n<<endif>>\n<<set $title to "Sir">>\n<<set $copy to $late>>\n<<if $late > 2>>\n<<endif>>',
       ),
     );
-    expect(yarn.declare).toEqual({ $count: 0, $met: false, $title: "" });
+    expect(yarn.declare).toEqual({
+      $count: 0,
+      $met: false,
+      $title: "",
+      $late: 0,
+      $copy: 0,
+    });
+  });
+
+  it("a variable whose type the script doesn't imply must be declared", () => {
+    expect(() => loadYarn(start("Hi {$name}"))).toThrow(
+      /<yarn>:3: can't tell what type \$name is; declare it/,
+    );
+    expect(() =>
+      loadYarn(start("<<set $x to 1>>\n<<if $x and true>>\n<<endif>>")),
+    ).toThrow(/\$x is used as both number and boolean; declare it/);
+    const declared = loadYarn(start('<<declare $name = "Ari">>\nHi {$name}'));
+    expect(declared.declare).toEqual({ $name: "Ari" });
   });
 
   it("a variable the game provides overrides an implied default", async () => {
@@ -388,6 +405,19 @@ describe("loadYarn — visits and once", () => {
     ]);
   });
 
+  it("visited() on a node with tracking: never is an error at load", () => {
+    expect(() =>
+      loadYarn(
+        start(
+          '<<if visited("T")>>\nx\n<<endif>>',
+          "title: T\ntracking: never\n---\nt\n===\n",
+        ),
+      ),
+    ).toThrow(
+      /<yarn>:3: visited\("T"\) reads the visits of "T", which has 'tracking: never'/,
+    );
+  });
+
   it("<<once>> blocks, lines, and options run once across plays", async () => {
     const yarn = loadYarn(
       start(
@@ -451,6 +481,13 @@ describe("loadYarn — line groups and node groups", () => {
     ]);
   });
 
+  it("a smart variable reading has_any_content() sees the group's conditions", async () => {
+    const src =
+      "title: G\nwhen: $x > 1\n---\nIn G.\n===\n" +
+      'title: Start\n---\n<<declare $x = 0>>\n<<declare $any = has_any_content("G")>>\n{$any}\n<<set $x to 5>>\n{$any}\n===\n';
+    expect((await run(loadYarn(src))).transcript).toEqual(["false", "true"]);
+  });
+
   it("nodes sharing a title without when: headers are an error", () => {
     expect(() => loadYarn(node("A", "x") + node("A", "y"))).toThrow(
       /node "A" is already defined at <yarn>:1/,
@@ -480,6 +517,26 @@ describe("loadYarn — commands", () => {
     expect(() => harness().session.play(yarn)).toThrow(
       /no handler for command type\(s\): shake/,
     );
+  });
+
+  it("<<wait>> needs one duration, checked when it's a literal", () => {
+    expect(() => loadYarn(start("<<wait>>"))).toThrow(
+      /<yarn>:3: <<wait>> takes one argument/,
+    );
+    expect(() => loadYarn(start("<<wait abc>>"))).toThrow(
+      /<<wait>> needs a number of seconds >= 0, got "abc"/,
+    );
+    expect(() => loadYarn(start("<<wait -1>>"))).toThrow(/>= 0/);
+    expect(() =>
+      loadYarn(start("<<declare $d = 1>>\n<<wait {$d}>>\n<<wait 0.5>>")),
+    ).not.toThrow();
+  });
+
+  it("an escaped brace in a command's words is text", async () => {
+    const h = await run(loadYarn(start("<<give \\{x>>")), [], {
+      handled: ["give"],
+    });
+    expect(h.transcript).toEqual(["<<give {x>>"]);
   });
 
   it("<<wait>> holds the conversation on the session clock", async () => {
@@ -515,6 +572,19 @@ describe("loadYarn — tags, markup, and metadata", () => {
       autoAdvance: 1.5,
       meta: { mood: "happy", urgent: true },
     });
+  });
+
+  it("an option's Name: prefix leaves the label and lands in meta.character", () => {
+    const yarn = loadYarn(start("-> Mae: I'll go.\n-> Stay"));
+    const choice = yarn.nodes["Start"]!.steps[0];
+    expect(choice).toMatchObject({
+      kind: "choice",
+      options: [
+        { text: "I'll go.", meta: { character: "Mae" } },
+        { text: "Stay" },
+      ],
+    });
+    expect(yarn.speakers).toBeUndefined();
   });
 
   it("the line right before options gets meta.lastline", () => {
