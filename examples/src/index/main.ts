@@ -364,7 +364,8 @@ function wireEvents(): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)
       return;
     event.preventDefault();
-    history.pushState(null, "", import.meta.env.BASE_URL);
+    // Drop the hash but keep the path, so this works under any base.
+    history.pushState(null, "", location.pathname + location.search);
     route();
   });
 
