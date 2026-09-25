@@ -11,12 +11,6 @@ export type NodeId = string;
 export type SpeakerId = string;
 
 /**
- * A side effect attached to a step or a choice. The runner handles a couple of
- * built-ins (`set` mutates branching vars, `goto` jumps) and surfaces the rest
- * to the host via the command event, so the game decides what `give-item` or
- * `play-sfx` actually mean. Keep it a flat tagged record so scripts stay JSON.
- */
-/**
  * When a command attached to a `say` line fires, relative to its reveal:
  * `show` (as the line appears — default), `afterReveal` (once fully typed), or
  * `advance` (as the player leaves the line). Ignored for `command`/choice
@@ -24,18 +18,44 @@ export type SpeakerId = string;
  */
 export type CommandTiming = "show" | "afterReveal" | "advance";
 
+/**
+ * A side effect attached to a step or a choice. The runner handles the
+ * built-in `set` (`{ type: "set", var, value }` writes a variable) itself and
+ * surfaces every other command to the host, so the game decides what
+ * `give-item` or `play-sfx` actually mean. `wait` (`{ type: "wait", seconds:
+ * 2 }`) has a default handler that pauses on the conversation's clock; install
+ * your own `wait` to replace it. Keep it a flat tagged record so scripts stay
+ * JSON.
+ */
 export interface Command {
   readonly type: string;
   /**
    * If true, a handler that returns a promise *pauses* the conversation until it
    * resolves (the runner enters its `awaiting-command` wait-state). Use for
    * cinematic sequencing — "wait for the NPC to walk off, then continue". A
-   * non-blocking handler's promise is fire-and-forget.
+   * non-blocking handler's promise is fire-and-forget. A `wait` command always
+   * blocks.
    */
   readonly blocking?: boolean;
   /** Reveal-relative firing time for a `say`-line command. Default `show`. */
   readonly at?: CommandTiming;
+  /**
+   * Positional arguments. Each is a literal value or an {@link Expr} that is
+   * evaluated when the command fires, so a handler always reads plain values
+   * from {@link FiredCommand.args}. A string is a literal string here, never
+   * parsed. A Yarn `<<give_item sword {$count}>>` compiles to
+   * `{ type: "give_item", args: ["sword", <$count>] }`.
+   */
+  readonly args?: readonly (VarValue | Expr)[];
   readonly [key: string]: unknown;
+}
+
+/**
+ * A command as a handler or observer receives it: the authored
+ * {@link Command} with its `args` evaluated to plain values.
+ */
+export interface FiredCommand extends Command {
+  readonly args?: readonly VarValue[];
 }
 
 /** Whether the runner is playing normally or fast-forwarding through a skip. */
@@ -61,7 +81,7 @@ export interface CommandContext {
  * per-`play()` overrides.
  */
 export type CommandHandler = (
-  command: Command,
+  command: FiredCommand,
   ctx: CommandContext,
 ) => void | Promise<void>;
 
@@ -99,8 +119,8 @@ export type VarMap = Record<string, VarValue>;
 // ── Expression IR ───────────────────────────────────────────────────────────
 // `Condition` and a `set`'s value are expression *trees*, not atomic
 // comparisons — so `gold - 50` and `has_item("key") and not rude` are plain
-// data. The operator set is modeled on Yarn Spinner so a future Yarn front-end
-// maps 1:1 onto this IR.
+// data. The operator set is modeled on Yarn Spinner, so the Yarn front-end
+// (`formats/yarn/`) maps 1:1 onto this IR.
 
 /** Comparison operators (symbol + Yarn word forms). `is`/`eq` ≡ `==`. */
 export type ComparisonOp =
@@ -191,12 +211,20 @@ export interface VariableStorage {
 export type DialogueFunction = (...args: VarValue[]) => VarValue;
 
 /**
- * Per-`play()` overrides, layered over the controller-installed
- * storage/functions/commands for entity-specifics. `storage` replaces the
- * controller's (use {@link compose} to layer); `functions`/`commands` merge
- * key-by-key with the call site winning; `fallbackCommand` wins when set.
+ * Per-`play()` options, layered over the controller-installed
+ * storage/functions/commands for entity-specifics. `start` picks the node the
+ * conversation begins at; `storage` replaces the controller's (use
+ * {@link compose} to layer); `functions`/`commands` merge key-by-key with the
+ * call site winning; `fallbackCommand` wins when set.
  */
 export interface DialoguePlayOptions {
+  /**
+   * Node to begin at, instead of the script's `start`. One script can then
+   * hold every conversation of a scene (a Yarn project's nodes, one per NPC)
+   * and each `play()` picks its entry point. An unknown node throws
+   * {@link DialoguePlayError} before anything changes.
+   */
+  readonly start?: NodeId | undefined;
   readonly storage?: VariableStorage | undefined;
   readonly functions?: Readonly<Record<string, DialogueFunction>> | undefined;
   readonly commands?: Readonly<Record<string, CommandHandler>> | undefined;
@@ -228,6 +256,8 @@ export interface SayStep {
   /** Authored text, or a catalog message whose fallback is the authored
    *  text. Markup is allowed in both. */
   readonly text: DialogueText;
+  /** Computed `{name}` tokens for {@link text}. See {@link TextExpressions}. */
+  readonly expressions?: TextExpressions;
   /** Expression variant for the speaker's avatar (e.g. "happy", "angry"). */
   readonly expression?: string;
   /** Reveal-speed multiplier for this whole line (1 = base). */
@@ -246,6 +276,9 @@ export interface SayStep {
 export interface ChoiceOption {
   /** Authored text or catalog message. Markup allowed. */
   readonly text: DialogueText;
+  /** Computed `{name}` tokens for {@link text} and {@link disabledReason}. See
+   *  {@link TextExpressions}. */
+  readonly expressions?: TextExpressions;
   /** Node to jump to when picked. Omit to just continue the current node. */
   readonly target?: NodeId;
   readonly condition?: Condition;
@@ -276,6 +309,8 @@ export interface ChoiceStep {
   readonly kind: "choice";
   /** Optional prompt shown above the options. */
   readonly text?: DialogueText;
+  /** Computed `{name}` tokens for the prompt. See {@link TextExpressions}. */
+  readonly expressions?: TextExpressions;
   readonly speaker?: SpeakerId;
   readonly options: readonly ChoiceOption[];
   /** Presentation preset for the prompt/chrome (e.g. "box"/"bubble"), like a
@@ -297,6 +332,62 @@ export interface CommandStep {
 export interface GotoStep {
   readonly kind: "goto";
   readonly target: NodeId;
+  /**
+   * Also drop every pending {@link DetourStep}, so finishing `target` ends the
+   * conversation instead of returning (a Yarn `<<jump>>`). By default a jump
+   * inside a detour keeps it pending: `target` returns to the detour's caller
+   * when it finishes.
+   */
+  readonly leaveDetours?: boolean;
+}
+
+/**
+ * Let the runtime pick one branch — a random bark, or the best-fitting
+ * storylet. Of the options whose `condition` holds, the runner keeps those
+ * picked the fewest times (read from each option's `counter` variable), then
+ * those with the highest `priority`, then picks one of the rest at random, adds
+ * 1 to its `counter`, and jumps to its `target` (pending detours stay pending,
+ * as with a {@link GotoStep}). With no option available the conversation goes
+ * on to the next step. Yarn line groups (`=>`) and node groups (`when:`)
+ * compile to this.
+ */
+export interface SelectStep {
+  readonly kind: "select";
+  readonly options: readonly SelectOption[];
+}
+
+export interface SelectOption {
+  readonly target: NodeId;
+  readonly condition?: Condition;
+  /** Preferred over lower priorities once the pick counts tie. Default 0. */
+  readonly priority?: number;
+  /**
+   * Variable holding how many times this option was picked. The runner reads
+   * it to prefer the least-picked options and adds 1 when it picks this one,
+   * so a group cycles through its options before repeating. Without it the
+   * option always counts as never picked.
+   */
+  readonly counter?: string;
+}
+
+/**
+ * Run another node, then come back: the conversation continues at the step
+ * after this one once the target node finishes (it runs off its last step or
+ * reaches a {@link ReturnStep}). Detours nest. An {@link EndStep} inside a
+ * detour still ends the whole conversation.
+ */
+export interface DetourStep {
+  readonly kind: "detour";
+  readonly target: NodeId;
+}
+
+/**
+ * Leave the current node early. Inside a detour, the conversation continues
+ * after the {@link DetourStep} that entered it; otherwise it ends. Running off
+ * the last step of a node behaves the same way.
+ */
+export interface ReturnStep {
+  readonly kind: "return";
 }
 
 /** Ends the conversation immediately. */
@@ -304,7 +395,30 @@ export interface EndStep {
   readonly kind: "end";
 }
 
-export type Step = SayStep | ChoiceStep | CommandStep | GotoStep | EndStep;
+export type Step =
+  | SayStep
+  | ChoiceStep
+  | CommandStep
+  | GotoStep
+  | SelectStep
+  | DetourStep
+  | ReturnStep
+  | EndStep;
+
+/**
+ * Computed values for a text's `{name}` tokens: each entry is an expression
+ * (an {@link Expr}, or a string parsed like a condition) evaluated every time
+ * the text is shown, and its value fills the `{name}` token of the same name.
+ * A token with no entry reads the variable of that name.
+ *
+ * ```ts
+ * { kind: "say", text: "That leaves {left} gold.", expressions: { left: "gold - 50" } }
+ * ```
+ *
+ * The text itself keeps only the token, so a translated catalog entry carries
+ * `{left}` too, never the expression.
+ */
+export type TextExpressions = Readonly<Record<string, Expr | string>>;
 
 export interface DialogueNode {
   readonly id: NodeId;

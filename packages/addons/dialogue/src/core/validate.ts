@@ -21,7 +21,8 @@
  */
 
 import { isExpr } from "./expr.js";
-import { tokensIn, type DialogueText } from "./i18n.js";
+import { BUILTIN_FUNCTION_NAMES } from "./functions.js";
+import { dialogueTextFallback, tokensIn, type DialogueText } from "./i18n.js";
 import type {
   BinaryOp,
   ChoiceStep,
@@ -32,6 +33,7 @@ import type {
   DialogueScript,
   Expr,
   SayStep,
+  TextExpressions,
   VariableStorage,
   VarValue,
 } from "./types.js";
@@ -64,8 +66,9 @@ const NUMERIC_EXPR_OPS: ReadonlySet<string> = new Set([
 ]);
 /** Built-in command types the runner handles — exempt from the "must have a
  *  handler" check. Only `set` (runner-owned flow op); every other command type,
- *  including a face change, needs a handler. (A mid-line face change is the
- *  `[expression=…/]` reveal marker, not a command.) */
+ *  including a face change, needs a handler. (`wait` has a default handler the
+ *  session installs, so it passes the check that way. A mid-line face change is
+ *  the `[expression=…/]` reveal marker, not a command.) */
 const BUILTIN_COMMANDS: ReadonlySet<string> = new Set(["set"]);
 
 /** What a binary operator requires of a literal operand, for the load-time type
@@ -169,13 +172,22 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
     }
   };
 
-  // A message's own `values` satisfy its tokens; the rest must be vars.
-  const checkTokens = (text: DialogueText | undefined): void => {
+  // A message's own `values` and the text's computed `expressions` satisfy
+  // its tokens; the rest must be vars. Each expression's own reads count.
+  const checkTokens = (
+    text: DialogueText | undefined,
+    expressions?: TextExpressions,
+    where = "text",
+  ): void => {
+    for (const expr of Object.values(expressions ?? {})) {
+      if (isExpr(expr)) collectExpr(expr, where);
+    }
     if (!text) return;
     const authored = typeof text === "string" ? text : text.fallback;
     const own = typeof text === "string" ? undefined : text.values;
     for (const token of tokensIn(authored)) {
       if (own && Object.hasOwn(own, token)) continue;
+      if (expressions && Object.hasOwn(expressions, token)) continue;
       readVars.add(token);
     }
   };
@@ -269,6 +281,17 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
         }
         continue;
       }
+      const args = cmd.args;
+      if (args !== undefined) {
+        if (!Array.isArray(args)) {
+          throw new DialogueScriptError(
+            `${where}: command "${cmd.type}" args must be an array`,
+          );
+        }
+        for (const arg of args as readonly unknown[]) {
+          if (isExpr(arg)) collectExpr(arg, where);
+        }
+      }
       if (!BUILTIN_COMMANDS.has(cmd.type)) commandTypes.add(cmd.type);
     }
   };
@@ -283,21 +306,19 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
       switch (step.kind) {
         case "say": {
           const s = step as SayStep;
-          checkTokens(s.text);
+          checkTokens(s.text, s.expressions, `${where} say`);
           checkCommands(s.commands, `${where} say`);
           break;
         }
         case "choice": {
           const c = step as ChoiceStep;
-          checkTokens(c.text);
+          checkTokens(c.text, c.expressions, `${where} choice`);
           for (const opt of c.options) {
-            checkTokens(opt.text);
-            checkTokens(opt.disabledReason);
-            checkCondition(
-              opt.condition,
-              `${where} choice option "${opt.text}"`,
-            );
-            checkCommands(opt.commands, `${where} choice option "${opt.text}"`);
+            const at = `${where} choice option "${dialogueTextFallback(opt.text)}"`;
+            checkTokens(opt.text, opt.expressions, at);
+            checkTokens(opt.disabledReason, opt.expressions, at);
+            checkCondition(opt.condition, at);
+            checkCommands(opt.commands, at);
           }
           break;
         }
@@ -307,8 +328,18 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
           checkCondition(cs.condition, `${where} command`);
           break;
         }
+        case "select":
+          for (const opt of step.options) {
+            checkCondition(opt.condition, `${where} select`);
+            // A pick count is read and written by the runner itself.
+            if (opt.counter !== undefined) {
+              readVars.add(opt.counter);
+              setTargets.add(opt.counter);
+            }
+          }
+          break;
         default:
-          break; // goto / end carry no references
+          break; // goto / detour / return / end carry no references
       }
     }
   }
@@ -362,9 +393,9 @@ export function validatePlay(analysis: ScriptAnalysis, env: PlayEnv): void {
     }
   }
 
-  // 3. Every function the script calls must be installed.
+  // 3. Every function the script calls must be installed or built in.
   for (const fn of analysis.calledFunctions) {
-    if (!Object.hasOwn(env.functions, fn)) {
+    if (!Object.hasOwn(env.functions, fn) && !BUILTIN_FUNCTION_NAMES.has(fn)) {
       throw new DialoguePlayError(
         `script calls function "${fn}" but no such function is installed`,
       );

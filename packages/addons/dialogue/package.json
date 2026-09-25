@@ -11,7 +11,8 @@
     "dialogue",
     "narrative",
     "branching",
-    "visual-novel"
+    "visual-novel",
+    "yarn-spinner"
   ],
   "license": "MIT",
   "author": "Marco Lepore",
@@ -54,6 +55,16 @@
       "require": {
         "types": "./dist/yaml.d.cts",
         "default": "./dist/yaml.cjs"
+      }
+    },
+    "./yarn": {
+      "import": {
+        "types": "./dist/yarn.d.ts",
+        "default": "./dist/yarn.js"
+      },
+      "require": {
+        "types": "./dist/yarn.d.cts",
+        "default": "./dist/yarn.cjs"
       }
     }
   },

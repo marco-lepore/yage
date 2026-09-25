@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DialogueExprError, parseExpr } from "./expr-parse.js";
+import { DialogueExprError, parseExpr, parseYarnExpr } from "./expr-parse.js";
 import { DialogueScriptError } from "./validate.js";
 import { createScope, evaluate } from "./expr.js";
 import { MemoryVariableStorage } from "./vars.js";
@@ -198,8 +198,71 @@ describe("parseExpr — errors carry line/col", () => {
     expect(() => parseExpr("'oops")).toThrow(/unterminated string/);
   });
 
-  it("a deferred operator is unsupported in v1", () => {
-    // `*` / `/` / `%` / `^` are reserved but unwired — they don't tokenize.
-    expect(() => parseExpr("a * b")).toThrow(/unexpected character/);
+  it("an unknown character", () => {
+    expect(() => parseExpr("a & b")).toThrow(/unexpected character/);
+  });
+});
+
+describe("parseExpr — multiplicative and xor operators", () => {
+  it("`* / %` bind tighter than `+ -`", () => {
+    expect(parseExpr("a + b * 2")).toEqual(
+      bin("+", v("a"), bin("*", v("b"), lit(2))),
+    );
+    expect(parseExpr("a / 2 - b % 3")).toEqual(
+      bin("-", bin("/", v("a"), lit(2)), bin("%", v("b"), lit(3))),
+    );
+  });
+
+  it("`* / %` are left-associative", () => {
+    expect(parseExpr("a / b * c")).toEqual(
+      bin("*", bin("/", v("a"), v("b")), v("c")),
+    );
+  });
+
+  it("unary minus binds tighter than `*`", () => {
+    expect(parseExpr("-a * 2")).toEqual(bin("*", un("-", v("a")), lit(2)));
+  });
+
+  it("`xor` normalises to `^` and sits between `or` and `and`", () => {
+    expect(parseExpr("a xor b")).toEqual(bin("^", v("a"), v("b")));
+    expect(parseExpr("a ^ b")).toEqual(bin("^", v("a"), v("b")));
+    expect(parseExpr("a or b xor c and d")).toEqual(
+      bin("||", v("a"), bin("^", v("b"), bin("&&", v("c"), v("d")))),
+    );
+  });
+
+  it("evaluates through the shared evaluator", () => {
+    const scope = createScope(new MemoryVariableStorage({ gold: 10 }), {});
+    expect(evaluate(parseExpr("gold * 3 % 7"), scope)).toBe(2);
+    expect(evaluate(parseExpr("gold / 4"), scope)).toBe(2.5);
+    expect(evaluate(parseExpr("true xor false"), scope)).toBe(true);
+    expect(evaluate(parseExpr("true ^ true"), scope)).toBe(false);
+  });
+});
+
+describe("parseYarnExpr — Yarn Spinner precedence", () => {
+  it("and / or / xor share one left-associative level", () => {
+    expect(parseYarnExpr("a or b and c")).toEqual(
+      bin("&&", bin("||", v("a"), v("b")), v("c")),
+    );
+    expect(parseYarnExpr("a and b xor c")).toEqual(
+      bin("^", bin("&&", v("a"), v("b")), v("c")),
+    );
+  });
+
+  it("comparisons bind tighter than equality", () => {
+    expect(parseYarnExpr("a == b > c")).toEqual(
+      bin("==", v("a"), bin(">", v("b"), v("c"))),
+    );
+  });
+
+  it("arithmetic keeps the usual order", () => {
+    expect(parseYarnExpr("$a + $b * 2 >= 10 and not $c")).toEqual(
+      bin(
+        "&&",
+        bin(">=", bin("+", v("$a"), bin("*", v("$b"), lit(2))), lit(10)),
+        un("!", v("$c")),
+      ),
+    );
   });
 });

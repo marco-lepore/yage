@@ -1,5 +1,5 @@
 import { dialogueTextFallback } from "./i18n.js";
-import { createRecord } from "@yagejs/core";
+import { createRecord, type RandomService } from "@yagejs/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createScope, evalCondition } from "./expr.js";
@@ -41,6 +41,7 @@ function makeRunner(
     storage?: VariableStorage;
     functions?: Readonly<Record<string, DialogueFunction>>;
     onError?: (message: string, error: unknown) => void;
+    random?: RandomService;
   } = {},
 ): DialogueRunner {
   const memory = new MemoryVariableStorage();
@@ -50,7 +51,12 @@ function makeRunner(
   }
   return new DialogueRunner(
     asLoaded(script),
-    { storage, functions: opts.functions ?? {}, onError: opts.onError },
+    {
+      storage,
+      functions: opts.functions ?? {},
+      onError: opts.onError,
+      random: opts.random,
+    },
     handlers,
   );
 }
@@ -1275,5 +1281,395 @@ describe("DialogueRunner — a synchronously-throwing command handler", () => {
       "after-boom-cmd",
     ]);
     expect(lineTexts(rec)).toEqual(["alive"]);
+  });
+});
+
+describe("DialogueRunner — start node", () => {
+  const script: DialogueScript = {
+    id: "entries",
+    start: "a",
+    nodes: {
+      a: { id: "a", steps: [{ kind: "say", text: "from a" }] },
+      b: { id: "b", steps: [{ kind: "say", text: "from b" }] },
+    },
+  };
+
+  it("starts at the script's start node by default", () => {
+    const rec = makeRecorder();
+    makeRunner(script, rec.handlers).start();
+    expect(lineTexts(rec)).toEqual(["from a"]);
+  });
+
+  it("start(nodeId) begins at another node", () => {
+    const rec = makeRecorder();
+    const runner = makeRunner(script, rec.handlers);
+    runner.start("b");
+    expect(lineTexts(rec)).toEqual(["from b"]);
+    expect(runner.getNodeId()).toBe("b");
+  });
+
+  it("start(nodeId) throws on an unknown node", () => {
+    const rec = makeRecorder();
+    expect(() => makeRunner(script, rec.handlers).start("nope")).toThrow(
+      /start node "nope" does not exist/,
+    );
+  });
+});
+
+describe("DialogueRunner — detour and return", () => {
+  it("runs the detoured node, then continues after the detour", async () => {
+    const script: DialogueScript = {
+      id: "detour",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "before" },
+            { kind: "detour", target: "side" },
+            { kind: "say", text: "after" },
+          ],
+        },
+        side: { id: "side", steps: [{ kind: "say", text: "aside" }] },
+      },
+    };
+    const rec = makeRecorder();
+    const runner = makeRunner(script, rec.handlers);
+    runner.start();
+    runner.advance();
+    await flush();
+    expect(lineTexts(rec)).toEqual(["before", "aside"]);
+    expect(runner.getReturnStack()).toEqual([{ nodeId: "a", stepIndex: 2 }]);
+    runner.advance(); // run off the end of `side` → back to `a`
+    await flush();
+    expect(lineTexts(rec)).toEqual(["before", "aside", "after"]);
+    expect(runner.getReturnStack()).toEqual([]);
+    runner.advance();
+    await flush();
+    expect(rec.ended).toBe(1);
+  });
+
+  it("a return step leaves the detoured node early; nested detours unwind in order", async () => {
+    const script: DialogueScript = {
+      id: "nested",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "detour", target: "b" },
+            { kind: "say", text: "a2" },
+          ],
+        },
+        b: {
+          id: "b",
+          steps: [
+            { kind: "detour", target: "c" },
+            { kind: "say", text: "b2" },
+            { kind: "return" },
+            { kind: "say", text: "never" },
+          ],
+        },
+        c: { id: "c", steps: [{ kind: "say", text: "c1" }] },
+      },
+    };
+    const rec = makeRecorder();
+    const runner = makeRunner(script, rec.handlers);
+    runner.start();
+    await flush();
+    runner.advance();
+    await flush();
+    runner.advance();
+    await flush();
+    expect(lineTexts(rec)).toEqual(["c1", "b2", "a2"]);
+  });
+
+  it("a goto inside a detour keeps the pending return", async () => {
+    const script: DialogueScript = {
+      id: "goto-in-detour",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "detour", target: "b" },
+            { kind: "say", text: "back in a" },
+          ],
+        },
+        b: { id: "b", steps: [{ kind: "goto", target: "c" }] },
+        c: { id: "c", steps: [{ kind: "say", text: "c" }] },
+      },
+    };
+    const rec = makeRecorder();
+    const runner = makeRunner(script, rec.handlers);
+    runner.start();
+    await flush();
+    runner.advance();
+    await flush();
+    expect(lineTexts(rec)).toEqual(["c", "back in a"]);
+  });
+
+  it("an end step inside a detour ends the whole conversation", async () => {
+    const script: DialogueScript = {
+      id: "end-in-detour",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "detour", target: "b" },
+            { kind: "say", text: "never" },
+          ],
+        },
+        b: { id: "b", steps: [{ kind: "end" }] },
+      },
+    };
+    const rec = makeRecorder();
+    const runner = makeRunner(script, rec.handlers);
+    runner.start();
+    await flush();
+    expect(rec.ended).toBe(1);
+    expect(lineTexts(rec)).toEqual([]);
+    expect(runner.getReturnStack()).toEqual([]);
+  });
+
+  it("a return with no detour pending ends the conversation", async () => {
+    const script: DialogueScript = {
+      id: "bare-return",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [{ kind: "return" }, { kind: "say", text: "never" }],
+        },
+      },
+    };
+    const rec = makeRecorder();
+    makeRunner(script, rec.handlers).start();
+    await flush();
+    expect(rec.ended).toBe(1);
+  });
+});
+
+describe("DialogueRunner — command args", () => {
+  it("evaluates expression args when the command fires; literals pass through", async () => {
+    const script: DialogueScript = {
+      id: "args",
+      start: "a",
+      declare: { count: 2 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "command",
+              commands: [
+                {
+                  type: "give",
+                  args: [
+                    "sword",
+                    {
+                      kind: "binary",
+                      op: "+",
+                      left: { kind: "varRef", name: "count" },
+                      right: { kind: "literal", value: 1 },
+                    },
+                    true,
+                  ],
+                },
+              ],
+            },
+            { kind: "command", commands: [{ type: "plain", args: ["x", 1] }] },
+          ],
+        },
+      },
+    };
+    const rec = makeRecorder();
+    makeRunner(script, rec.handlers).start();
+    await flush();
+    expect(rec.commands.map((c) => c.command.args)).toEqual([
+      ["sword", 3, true],
+      ["x", 1],
+    ]);
+  });
+
+  it("a set whose value is not a finite number is reported and skipped", async () => {
+    const onError = vi.fn();
+    const storage = new MemoryVariableStorage({ gold: 5 });
+    const script: DialogueScript = {
+      id: "nan",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "command",
+              commands: [
+                {
+                  type: "set",
+                  var: "gold",
+                  value: {
+                    kind: "binary",
+                    op: "/",
+                    left: { kind: "literal", value: 1 },
+                    right: { kind: "literal", value: 0 },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    makeRunner(script, makeRecorder().handlers, { storage, onError }).start();
+    await flush();
+    expect(storage.get("gold")).toBe(5);
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /ignored "set gold": the value is not a finite number, got Infinity/,
+      ),
+      undefined,
+    );
+  });
+});
+
+describe("DialogueRunner — goto leaveDetours", () => {
+  it("drops pending detours, so the target's end ends the conversation", async () => {
+    const script: DialogueScript = {
+      id: "leave",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "detour", target: "b" },
+            { kind: "say", text: "never" },
+          ],
+        },
+        b: {
+          id: "b",
+          steps: [{ kind: "goto", target: "c", leaveDetours: true }],
+        },
+        c: { id: "c", steps: [{ kind: "say", text: "c" }] },
+      },
+    };
+    const rec = makeRecorder();
+    const runner = makeRunner(script, rec.handlers);
+    runner.start();
+    await flush();
+    expect(runner.getReturnStack()).toEqual([]);
+    runner.advance();
+    await flush();
+    expect(lineTexts(rec)).toEqual(["c"]);
+    expect(rec.ended).toBe(1);
+  });
+});
+
+/** A random source that always draws `value` (0 → first pick, 0.99 → last). */
+function fixedRandom(value: number): RandomService {
+  return {
+    float: () => value,
+    range: (min, max) => min + value * (max - min),
+    int: (min, max) => Math.min(max, Math.floor(min + value * (max - min + 1))),
+    pick: (arr) =>
+      arr[Math.min(arr.length - 1, Math.floor(value * arr.length))]!,
+    shuffle: (arr) => arr,
+    getSeed: () => 0,
+  };
+}
+
+describe("DialogueRunner — select", () => {
+  const script = (counters: boolean): DialogueScript => ({
+    id: "barks",
+    start: "a",
+    declare: counters ? { n1: 0, n2: 0, n3: 0, gate: false } : { gate: false },
+    nodes: {
+      a: {
+        id: "a",
+        steps: [
+          {
+            kind: "select",
+            options: [
+              { target: "one", ...(counters ? { counter: "n1" } : {}) },
+              { target: "two", ...(counters ? { counter: "n2" } : {}) },
+              {
+                target: "three",
+                condition: "gate",
+                priority: 5,
+                ...(counters ? { counter: "n3" } : {}),
+              },
+            ],
+          },
+          { kind: "say", text: "none available" },
+        ],
+      },
+      one: { id: "one", steps: [{ kind: "say", text: "one" }] },
+      two: { id: "two", steps: [{ kind: "say", text: "two" }] },
+      three: { id: "three", steps: [{ kind: "say", text: "three" }] },
+    },
+  });
+
+  it("picks among available options at random and counts the pick", async () => {
+    const storage = new MemoryVariableStorage({ n1: 0, n2: 0, n3: 0 });
+    const rec = makeRecorder();
+    makeRunner(script(true), rec.handlers, {
+      storage,
+      random: fixedRandom(0.99),
+    }).start();
+    await flush();
+    expect(lineTexts(rec)).toEqual(["two"]);
+    expect(storage.get("n2")).toBe(1);
+  });
+
+  it("prefers the least-picked options, cycling before repeating", async () => {
+    const storage = new MemoryVariableStorage({ n1: 0, n2: 0, n3: 0 });
+    const seen: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const rec = makeRecorder();
+      makeRunner(script(true), rec.handlers, {
+        storage,
+        random: fixedRandom(0),
+      }).start();
+      await flush();
+      seen.push(...lineTexts(rec));
+    }
+    expect(seen).toEqual(["one", "two", "one", "two"]);
+  });
+
+  it("among equally-picked options the highest priority wins", async () => {
+    const storage = new MemoryVariableStorage({ gate: true });
+    const rec = makeRecorder();
+    makeRunner(script(true), rec.handlers, { storage }).start();
+    await flush();
+    expect(lineTexts(rec)).toEqual(["three"]);
+  });
+
+  it("with nothing available the conversation goes on to the next step", async () => {
+    const rec = makeRecorder();
+    makeRunner(
+      {
+        id: "none",
+        start: "a",
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              {
+                kind: "select",
+                options: [
+                  { target: "b", condition: { kind: "literal", value: false } },
+                ],
+              },
+              { kind: "say", text: "fallthrough" },
+            ],
+          },
+          b: { id: "b", steps: [{ kind: "say", text: "b" }] },
+        },
+      },
+      rec.handlers,
+    ).start();
+    await flush();
+    expect(lineTexts(rec)).toEqual(["fallthrough"]);
   });
 });

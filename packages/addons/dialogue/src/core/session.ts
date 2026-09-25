@@ -17,19 +17,25 @@
  * knowing about either.
  */
 
+import type { RandomService } from "@yagejs/core";
+
 import { loadScript } from "./formats/canonical.js";
 import type { DialogueExtraChannel } from "./channels/types.js";
-import { createScope, holds } from "./expr.js";
-import { IdentityI18n, type I18nAdapter } from "./i18n.js";
+import { createScope, evaluate, holds, type EvalScope } from "./expr.js";
+import { parseExpr } from "./expr-parse.js";
+import { IdentityI18n, type DialogueText, type I18nAdapter } from "./i18n.js";
 import { EMPTY_PARSED, parseMarkup, stripMarkup } from "./markup.js";
 import type { RevealBeat } from "./LineReveal.js";
-import { DialogueRunner, type ResolvedChoice } from "./runner.js";
+import {
+  DialogueRunner,
+  isBlockingCommand,
+  type ResolvedChoice,
+} from "./runner.js";
 import { MemoryVariableStorage, materialize } from "./vars.js";
 import { analyzeScript, validatePlay, DialoguePlayError } from "./validate.js";
 import type { VarsOf } from "./defineScript.js";
 import type {
   ChoiceStep,
-  Command,
   CommandContext,
   CommandHandler,
   CommandTiming,
@@ -37,12 +43,14 @@ import type {
   DialogueHandle,
   DialoguePlayOptions,
   DialogueScript,
+  FiredCommand,
   LoadedScript,
   LoadedSpeaker,
   MarkerToken,
   ParsedText,
   RunMode,
   SayStep,
+  TextExpressions,
   VariableStorage,
   VarMap,
 } from "./types.js";
@@ -277,8 +285,19 @@ export interface DialogueSessionOptions {
   /** Argument-capable read functions (`has_item("key")`) for conditions/`set`
    *  expressions. Per-`play()` `overrides.functions` merge on top. */
   readonly functions?: Readonly<Record<string, DialogueFunction>> | undefined;
+  /**
+   * Random source for `select` steps and the random built-in functions
+   * (`random`, `dice`, `random_range`, …). Default `globalRandom`; the
+   * controller passes its scene's seeded `RandomService`, so a seeded run
+   * picks the same lines.
+   */
+  readonly random?: RandomService | undefined;
   /** Command handlers (`type` → handler). Per-`play()` `overrides.commands`
-   *  merge on top (call site wins). */
+   *  merge on top (call site wins). A `wait` with no handler of yours (and no
+   *  {@link fallbackCommand}) gets the session's default: `{ type: "wait",
+   *  seconds: 2 }` (or `args: [2]`) holds the conversation for that long on
+   *  this session's clock — frozen while paused, passed straight through by a
+   *  skip. */
   readonly commands?: Readonly<Record<string, CommandHandler>> | undefined;
   /** Catch-all for command types with no explicit handler. */
   readonly fallbackCommand?: CommandHandler | undefined;
@@ -292,12 +311,13 @@ export interface DialogueSessionOptions {
   readonly onChoiceShown?: (e: { options: readonly string[] }) => void;
   readonly onChoiceMade?: (e: { index: number; text: string }) => void;
   /**
-   * Observation hook fired for every non-built-in command (`set` is runner-owned
-   * and never reaches it) — the host forwards it to {@link DialogueCommandEvent}.
-   * The actual *handling* (and any `blocking` await) is the binding's `commands`
-   * map / `fallbackCommand`, not this; this returns nothing.
+   * Observation hook fired for every non-built-in command (`set` is
+   * runner-owned and never reaches it) — the host forwards it to
+   * {@link DialogueCommandEvent}. The actual *handling* (and any `blocking`
+   * await) is the binding's `commands` map / `fallbackCommand`, not this; this
+   * returns nothing.
    */
-  readonly onCommand?: (command: Command, ctx: CommandContext) => void;
+  readonly onCommand?: (command: FiredCommand, ctx: CommandContext) => void;
   readonly onEnded?: (e: { scriptId: string }) => void;
   /** A line finished its typewriter reveal — the "typing finished" hook
    *  (audio blip, etc.). Plain (markup-stripped) text, like {@link onLine}. */
@@ -347,6 +367,8 @@ export class DialogueSession {
   // Resolved per play() (controller install + call-site overrides).
   private storage: VariableStorage | undefined;
   private functions: Readonly<Record<string, DialogueFunction>> = {};
+  /** Eval scope over the resolved storage + functions, for text expressions. */
+  private scope: EvalScope | undefined;
   private commands: Readonly<Record<string, CommandHandler>> = {};
   private fallbackCommand: CommandHandler | undefined;
 
@@ -370,6 +392,10 @@ export class DialogueSession {
   private autoAdvanceDefault: number | null = null;
   private resolved: readonly ResolvedChoice[] = [];
   private selected = 0;
+  /** Default-handler `wait`s counting down on this session's clock
+   *  (`update(dt)`). Cleared by `stop()`: an abandoned conversation's wait
+   *  never resolves, and its runner is dropped with it. */
+  private waits: { remaining: number; resolve: () => void }[] = [];
   /** Count of in-flight blocking line-command batches (show/afterReveal/advance).
    *  Input is gated while > 0. An ownership counter (not a shared boolean) so an
    *  overlapping batch resolving — e.g. the afterReveal batch finishing while a
@@ -465,6 +491,12 @@ export class DialogueSession {
     // never starts.
     const script = loadScript(rawScript);
     const analysis = analyzeScript(script);
+    const start = overrides?.start ?? script.start;
+    if (!Object.hasOwn(script.nodes, start)) {
+      throw new DialoguePlayError(
+        `start node "${start}" does not exist in script "${script.id}"`,
+      );
+    }
 
     // Resolve the environment: controller install + call-site overrides
     // (storage replaces; functions/commands merge, call site winning).
@@ -475,7 +507,13 @@ export class DialogueSession {
 
     // Hard error on an environment that can't satisfy the script — runs before
     // seeding so the declared-default/storage conflict check sees the host value.
-    validatePlay(analysis, { storage, functions, commands, fallbackCommand });
+    // The session's default handlers count as installed.
+    validatePlay(analysis, {
+      storage,
+      functions,
+      commands: { ...this.builtinCommands, ...commands },
+      fallbackCommand,
+    });
 
     // Seed-if-absent: a declared default applies only when the storage
     // doesn't already hold the name — never clobber a game-linked value. Done
@@ -509,6 +547,7 @@ export class DialogueSession {
     this.scriptId = script.id;
     this.storage = storage;
     this.functions = functions;
+    this.scope = createScope(storage, functions, this.opts.random);
     this.commands = commands;
     this.fallbackCommand = fallbackCommand;
 
@@ -535,7 +574,12 @@ export class DialogueSession {
 
     const runner = new DialogueRunner(
       script,
-      { storage: guarded, functions, onError: this.opts.onError },
+      {
+        storage: guarded,
+        functions,
+        random: this.opts.random,
+        onError: this.opts.onError,
+      },
       {
         onSay: (step, speaker) => {
           if (live()) this.handleSay(step, speaker);
@@ -552,7 +596,7 @@ export class DialogueSession {
     );
     this.runner = runner;
     this.opts.onStarted?.({ scriptId: this.scriptId });
-    runner.start();
+    runner.start(start);
 
     // Typed, generation-stamped handle: after stop()/replay it no-ops
     // (setVar via the guarded view) / returns an empty snapshot (getVars).
@@ -741,6 +785,7 @@ export class DialogueSession {
     // makes any still-pending async continuation bail on resume.
     this.generation++;
     this.runner = undefined;
+    this.waits = [];
     this.autoTimer = undefined;
     this.blockedCount = 0;
     this.advancing = false;
@@ -765,6 +810,7 @@ export class DialogueSession {
         this.opts.onError?.("dialogue: channel update() failed", error);
       }
     }
+    this.tickWaits(dt);
     if (!this.runner || this.mode !== "saying") return;
     if (this.autoTimer !== undefined && this.allRevealsComplete()) {
       this.autoTimer -= dt;
@@ -781,6 +827,51 @@ export class DialogueSession {
         this.advance();
       }
     }
+  }
+
+  /**
+   * The default `wait` handler: hold the conversation for `seconds` (or
+   * `args[0]`, as Yarn's `<<wait 2>>` compiles) on this session's clock. A skip
+   * passes straight through; a value that isn't a finite number of seconds
+   * >= 0 is reported and ignored.
+   */
+  private readonly waitCommand: CommandHandler = (command, ctx) => {
+    if (ctx.mode === "skip") return undefined;
+    const raw = command.args?.[0] ?? command["seconds"];
+    const seconds = typeof raw === "string" ? Number(raw) : raw;
+    if (
+      typeof seconds !== "number" ||
+      !Number.isFinite(seconds) ||
+      seconds < 0
+    ) {
+      this.opts.onError?.(
+        `ignored "wait": its first argument must be a number of seconds >= 0, got ${String(raw)}`,
+        undefined,
+      );
+      return undefined;
+    }
+    if (seconds === 0) return undefined;
+    return new Promise<void>((resolve) =>
+      this.waits.push({ remaining: seconds, resolve }),
+    );
+  };
+
+  /** Default handlers for command types the game hasn't handled. */
+  private readonly builtinCommands: Readonly<Record<string, CommandHandler>> = {
+    wait: this.waitCommand,
+  };
+
+  /** Count down the pending `wait`s; a finished one resumes its runner. */
+  private tickWaits(dt: number): void {
+    if (this.waits.length === 0) return;
+    const done: (() => void)[] = [];
+    this.waits = this.waits.filter((w) => {
+      w.remaining -= dt;
+      if (w.remaining > 0) return true;
+      done.push(w.resolve);
+      return false;
+    });
+    for (const resolve of done) resolve();
   }
 
   /** True while any blocking line-command batch is awaited (input is gated). */
@@ -811,6 +902,42 @@ export class DialogueSession {
    */
   private readView(): VarMap {
     return this.storage ? materialize(this.storage) : {};
+  }
+
+  /** Parse resolved text, with plural rules for the adapter's locale. */
+  private markup(text: string): ParsedText {
+    return parseMarkup(text, { locale: this.i18n.locale });
+  }
+
+  /** Resolved text with its markup stripped (logs, labels, history). */
+  private plain(text: string): string {
+    return stripMarkup(text, { locale: this.i18n.locale });
+  }
+
+  /** Resolve `text` for display: the read view plus the text's own computed
+   *  `{name}` tokens ({@link TextExpressions}), evaluated now. */
+  private resolveText(
+    text: DialogueText,
+    expressions: TextExpressions | undefined,
+    view: VarMap,
+  ): string {
+    return this.i18n.resolve(text, this.textValues(expressions, view));
+  }
+
+  private textValues(
+    expressions: TextExpressions | undefined,
+    view: VarMap,
+  ): VarMap {
+    const scope = this.scope;
+    if (!expressions || !scope) return view;
+    const values: VarMap = { ...view };
+    for (const [name, expr] of Object.entries(expressions)) {
+      values[name] = evaluate(
+        typeof expr === "string" ? parseExpr(expr) : expr,
+        scope,
+      );
+    }
+    return values;
   }
 
   // ── input-agnostic API ────────────────────────────────────────────────────
@@ -927,13 +1054,21 @@ export class DialogueSession {
     // scope (per-name reads + functions). Both off the current storage, for this
     // side-effect-free lookahead.
     const view = materialize(storage);
-    const scope = createScope(storage, this.functions);
+    const scope = createScope(storage, this.functions, this.opts.random);
     const out: PreviewedLine[] = [];
+    // Detours followed with a local stack, the way the runner would.
+    const returns: { node: string; i: number }[] = [];
     let node = nodeId;
     let i = 0;
     for (let guard = 0; guard < limit; guard++) {
       const step = script.nodes[node]?.steps[i];
-      if (!step) break;
+      if (!step || step.kind === "return") {
+        const back = returns.pop();
+        if (!back) break;
+        node = back.node;
+        i = back.i;
+        continue;
+      }
       if (step.kind === "say") {
         const speaker = step.speaker
           ? script.speakers?.[step.speaker]
@@ -943,9 +1078,13 @@ export class DialogueSession {
           : undefined;
         out.push({
           speaker: name,
-          text: stripMarkup(this.i18n.resolve(step.text, view)),
+          text: this.plain(this.resolveText(step.text, step.expressions, view)),
         });
         i++;
+      } else if (step.kind === "detour") {
+        returns.push({ node, i: i + 1 });
+        node = step.target;
+        i = 0;
       } else if (step.kind === "command") {
         if (step.target !== undefined && holds(step.condition, scope)) {
           node = step.target;
@@ -954,10 +1093,11 @@ export class DialogueSession {
           i++;
         }
       } else if (step.kind === "goto") {
+        if (step.leaveDetours) returns.length = 0;
         node = step.target;
         i = 0;
       } else {
-        break; // choice or end — stop the linear preview
+        break; // choice, select, or end — stop the linear preview
       }
     }
     return out;
@@ -1017,7 +1157,13 @@ export class DialogueSession {
     if (!chosen) return;
     this.opts.onSelectionChanged?.({
       index: chosen.index,
-      text: stripMarkup(this.i18n.resolve(chosen.option.text, this.readView())),
+      text: this.plain(
+        this.resolveText(
+          chosen.option.text,
+          chosen.option.expressions,
+          this.readView(),
+        ),
+      ),
     });
   }
 
@@ -1056,7 +1202,11 @@ export class DialogueSession {
     if (!chosen || chosen.disabled) return; // never commit a missing or disabled row
     this.selected = position;
     this.confirming = true;
-    const text = this.i18n.resolve(chosen.option.text, this.readView());
+    const text = this.resolveText(
+      chosen.option.text,
+      chosen.option.expressions,
+      this.readView(),
+    );
     this.opts.onChoiceMade?.({ index: chosen.index, text });
     this.runner?.choose(chosen.index);
   }
@@ -1269,17 +1419,17 @@ export class DialogueSession {
     speaker: LoadedSpeaker | undefined,
     view: VarMap,
   ): { line: PresentedLine; plain: string; name: string | undefined } {
-    const resolved = this.i18n.resolve(step.text, view);
+    const resolved = this.resolveText(step.text, step.expressions, view);
     return {
       line: {
         speaker: this.speakerView(speaker, view),
-        text: parseMarkup(resolved),
+        text: this.markup(resolved),
         speed: step.speed ?? 1,
         view: step.view,
         meta: step.meta,
         voice: step.voice,
       },
-      plain: stripMarkup(resolved),
+      plain: this.plain(resolved),
       name: this.speakerName(speaker, view),
     };
   }
@@ -1293,7 +1443,7 @@ export class DialogueSession {
     return {
       speaker: this.speakerView(speaker, view),
       text: step.text
-        ? parseMarkup(this.i18n.resolve(step.text, view))
+        ? this.markup(this.resolveText(step.text, step.expressions, view))
         : EMPTY_PARSED,
       speed: 1,
       view: step.view,
@@ -1307,18 +1457,26 @@ export class DialogueSession {
     view: VarMap,
   ): PresentedChoice[] {
     return choices.map((c) => ({
-      label: stripMarkup(this.i18n.resolve(c.option.text, view)),
+      label: this.plain(
+        this.resolveText(c.option.text, c.option.expressions, view),
+      ),
       meta: c.option.meta,
       disabled: c.disabled,
       disabledReason:
         c.disabled && c.option.disabledReason !== undefined
-          ? stripMarkup(this.i18n.resolve(c.option.disabledReason, view))
+          ? this.plain(
+              this.resolveText(
+                c.option.disabledReason,
+                c.option.expressions,
+                view,
+              ),
+            )
           : undefined,
     }));
   }
 
   private handleCommand(
-    command: Command,
+    command: FiredCommand,
     ctx: CommandContext,
   ): void | Promise<void> {
     // Observation first (the host emits DialogueCommandEvent); then the binding's
@@ -1338,7 +1496,12 @@ export class DialogueSession {
         this.opts.onError?.("dialogue: channel command() failed", error);
       }
     }
-    const handler = this.commands[command.type] ?? this.fallbackCommand;
+    // The game's handlers win — a named one, then its catch-all — and the
+    // session's default handler (`wait`) fills the gap.
+    const handler =
+      this.commands[command.type] ??
+      this.fallbackCommand ??
+      this.builtinCommands[command.type];
     return handler?.(command, ctx);
   }
 
@@ -1426,7 +1589,7 @@ export class DialogueSession {
     const batch = all.filter((c) => (c.at ?? "show") === at);
     if (batch.length === 0) return;
     const gen = this.generation;
-    const blocking = batch.some((c) => c.blocking);
+    const blocking = batch.some(isBlockingCommand);
     if (blocking) this.blockedCount++;
     try {
       await this.runner.runCommands(batch, mode);

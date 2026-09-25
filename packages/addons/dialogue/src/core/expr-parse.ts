@@ -4,17 +4,18 @@
  * value would — `literal | varRef | call | unary | binary | group`, no new node
  * kinds — so the evaluator (`expr.ts`) and the load-time walk (`validate.ts`)
  * are reused unchanged. This is purely a parser: it does no type-checking and
- * no name resolution (that stays in `validate.ts`), which keeps it reusable 1:1
- * for a future Yarn front-end.
+ * no name resolution (that stays in `validate.ts`), so the Yarn front-end
+ * reuses it with Yarn's precedence ({@link parseYarnExpr}).
  *
- * The operator set mirrors Yarn Spinner. v1 wires what the authoring examples
- * exercise: `or`/`||`, `and`/`&&`, `not`/`!`, the comparisons (`== != > < >= <=`
- * plus the word forms `eq neq gt lt gte lte is`), unary `-`, binary `+ -`, calls
- * `f(a, b)`, and parentheses. `xor`/`^` and `* / %` are reserved but not yet
- * wired (the IR + evaluator already accept them, so adding them later is purely
- * additive). Word-form operators normalise to their symbol equivalents in the IR
- * (`and` → `&&`, `eq` → `==`, `gt` → `>`, …), so `a and b` and `a && b` parse to
- * the identical tree.
+ * The operator set mirrors Yarn Spinner: `or`/`||`, `xor`/`^`, `and`/`&&`,
+ * `not`/`!`, the comparisons (`== != > < >= <=` plus the word forms `eq neq gt
+ * lt gte lte is`), unary `-`, binary `+ - * / %`, calls `f(a, b)`, and
+ * parentheses. Word-form operators normalise to their symbol equivalents in the
+ * IR (`and` → `&&`, `xor` → `^`, `eq` → `==`, `gt` → `>`, …), so `a and b` and
+ * `a && b` parse to the identical tree.
+ *
+ * Precedence, loosest first: `or`, `xor`, `and`, the comparisons, `+ -`,
+ * `* / %`, then the unary `not` / `-`. Binary operators are left-associative.
  *
  * An identifier is `[A-Za-z_$]` followed by `[A-Za-z0-9_.$]` repeats — `.` and
  * `$` are included (so `$gold` and `quest.stage` each read as ONE name,
@@ -49,8 +50,17 @@ export class DialogueExprError extends DialogueScriptError {
  * dangling operator.
  */
 export function parseExpr(src: string): Expr {
-  const tokens = tokenize(src);
-  return new Parser(tokens).parse();
+  return new Parser(tokenize(src), INFIX_BP).parse();
+}
+
+/**
+ * Parse with Yarn Spinner's precedence, which differs from {@link parseExpr}'s
+ * in two places: `and`, `or`, and `xor` share one level (so `a or b and c` is
+ * `(a or b) and c`), and `< > <= >=` bind tighter than `== !=`. Used by the
+ * Yarn front-end only, so a Yarn expression means what it means in Yarn.
+ */
+export function parseYarnExpr(src: string): Expr {
+  return new Parser(tokenize(src), YARN_INFIX_BP).parse();
 }
 
 // ── Tokenizer ───────────────────────────────────────────────────────────────
@@ -75,8 +85,10 @@ type TokenKind =
   | "<="
   | "+"
   | "-"
-  // reserved but unwired in v1 (kept out of the parser → using it errors)
-  | "xor"
+  | "*"
+  | "/"
+  | "%"
+  | "^"
   // punctuation
   | "("
   | ")"
@@ -98,7 +110,7 @@ const KEYWORDS: Readonly<Record<string, TokenKind>> = {
   and: "&&",
   or: "||",
   not: "!",
-  xor: "xor",
+  xor: "^",
   is: "==",
   eq: "==",
   neq: "!=",
@@ -256,6 +268,10 @@ function tokenize(src: string): Token[] {
       c === "!" ||
       c === "+" ||
       c === "-" ||
+      c === "*" ||
+      c === "/" ||
+      c === "%" ||
+      c === "^" ||
       c === "(" ||
       c === ")" ||
       c === ","
@@ -294,20 +310,45 @@ function unescape(c: string): string {
 /** Left binding power per infix operator. Higher binds tighter. */
 const INFIX_BP: Partial<Record<TokenKind, number>> = {
   "||": 1,
-  "&&": 2,
-  "==": 3,
-  "!=": 3,
+  "^": 2,
+  "&&": 3,
+  "==": 4,
+  "!=": 4,
+  ">": 4,
+  "<": 4,
+  ">=": 4,
+  "<=": 4,
+  "+": 5,
+  "-": 5,
+  "*": 6,
+  "/": 6,
+  "%": 6,
+};
+
+/** Yarn Spinner's binding powers (see {@link parseYarnExpr}). */
+const YARN_INFIX_BP: Partial<Record<TokenKind, number>> = {
+  "||": 1,
+  "^": 1,
+  "&&": 1,
+  "==": 2,
+  "!=": 2,
   ">": 3,
   "<": 3,
   ">=": 3,
   "<=": 3,
   "+": 4,
   "-": 4,
+  "*": 5,
+  "/": 5,
+  "%": 5,
 };
 
 class Parser {
   private pos = 0;
-  constructor(private readonly tokens: Token[]) {}
+  constructor(
+    private readonly tokens: Token[],
+    private readonly bp: Partial<Record<TokenKind, number>>,
+  ) {}
 
   parse(): Expr {
     const expr = this.parseBinary(0);
@@ -326,7 +367,7 @@ class Parser {
     let left = this.parseUnary();
     for (;;) {
       const t = this.peek();
-      const bp = INFIX_BP[t.kind];
+      const bp = this.bp[t.kind];
       if (bp === undefined || bp < minBp) break;
       this.next();
       const right = this.parseBinary(bp + 1); // left-associative

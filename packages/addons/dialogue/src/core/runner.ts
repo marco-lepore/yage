@@ -8,10 +8,12 @@
  * Branching reads one {@link VariableStorage} namespace through an
  * {@link EvalScope} (per-name reads + installed functions): `set` / `ctx.setVar`
  * write storage, conditions and `set` values are evaluated as expression trees.
- * The runner resolves built-in commands (`set`) itself and surfaces every other
+ * The runner resolves the built-in `set` command itself and surfaces every other
  * command to the host through `onCommand` — that's the seam where the game turns
  * `{ type: "give-item", id: "key" }` into an actual effect.
  */
+
+import { globalRandom, type RandomService } from "@yagejs/core";
 
 import {
   createScope,
@@ -28,10 +30,13 @@ import type {
   CommandContext,
   Condition,
   DialogueFunction,
+  FiredCommand,
   LoadedScript,
   LoadedSpeaker,
+  NodeId,
   RunMode,
   SayStep,
+  SelectStep,
   Step,
   VariableStorage,
   VarMap,
@@ -43,6 +48,9 @@ import type {
 export interface RunnerEnv {
   readonly storage: VariableStorage;
   readonly functions: Readonly<Record<string, DialogueFunction>>;
+  /** Random source for `select` steps and the random built-in functions.
+   *  Default `globalRandom`. */
+  readonly random?: RandomService | undefined;
   /**
    * Surfaces a non-fatal runtime diagnostic — currently a `set` whose write the
    * storage rejected (a getter-only `cells` accessor). The runner ignores the
@@ -76,12 +84,26 @@ export interface RunnerHandlers {
     speaker: LoadedSpeaker | undefined,
   ): void;
   /**
-   * A non-built-in command fired (give-item, play-sfx, …). May return a promise;
-   * if the command is `blocking`, the runner waits for it.
+   * A non-built-in command fired (give-item, play-sfx, …), its `args`
+   * evaluated. May return a promise; if the command is `blocking`, the runner
+   * waits for it.
    */
-  onCommand(command: Command, ctx: CommandContext): void | Promise<void>;
+  onCommand(command: FiredCommand, ctx: CommandContext): void | Promise<void>;
   /** Conversation finished (ran off the end or hit an `end` step). */
   onEnd(): void;
+}
+
+/** Where a detour returns to: the step after the {@link DetourStep}. */
+export interface ReturnPoint {
+  readonly nodeId: NodeId;
+  readonly stepIndex: number;
+}
+
+/** Whether a command holds the conversation while its handler's promise is
+ *  pending: an explicit `blocking` command, or any `wait` (a wait that didn't
+ *  hold would do nothing). */
+export function isBlockingCommand(command: Command): boolean {
+  return command.blocking === true || command.type === "wait";
 }
 
 type RunnerState =
@@ -97,6 +119,8 @@ export class DialogueRunner {
    *  (a re-played conversation re-shows its `once` options; {@link getChosenOnce}
    *  exposes the set so a save cursor could capture/restore it). */
   private readonly chosenOnce = new Set<string>();
+  /** Pending detours, innermost last. Popped when a detoured node finishes. */
+  private readonly returnStack: ReturnPoint[] = [];
   private nodeId: string;
   private stepIndex = 0;
   private state: RunnerState = "idle";
@@ -106,6 +130,7 @@ export class DialogueRunner {
   /** Storage (write through this so a read-only `cells` accessor throws) +
    *  functions, wrapped once as the condition/`set`-value eval scope. */
   private readonly storage: VariableStorage;
+  private readonly random: RandomService;
   private readonly scope: EvalScope;
   private readonly onError:
     | ((message: string, error: unknown) => void)
@@ -119,7 +144,8 @@ export class DialogueRunner {
   ) {
     this.nodeId = script.start;
     this.storage = env.storage;
-    this.scope = createScope(env.storage, env.functions);
+    this.random = env.random ?? globalRandom;
+    this.scope = createScope(env.storage, env.functions, this.random);
     this.onError = env.onError;
   }
 
@@ -148,14 +174,23 @@ export class DialogueRunner {
     return this.chosenOnce;
   }
 
+  /** Pending detours, innermost last (durable cursor; save seam). */
+  getReturnStack(): readonly ReturnPoint[] {
+    return this.returnStack;
+  }
+
   isEnded(): boolean {
     return this.state === "ended";
   }
 
-  /** Begin at the start node. Idempotent guard against double-start. The cursor
-   *  (`nodeId`/`stepIndex`) is already at the start from the ctor + field init. */
-  start(): void {
+  /** Begin at `nodeId`, or the script's start node. Idempotent guard against
+   *  double-start. Throws on a node the script doesn't have. */
+  start(nodeId: NodeId = this.script.start): void {
     if (this.state !== "idle") return;
+    if (!Object.hasOwn(this.script.nodes, nodeId)) {
+      throw new Error(`dialogue: start node "${nodeId}" does not exist`);
+    }
+    this.nodeId = nodeId;
     void this.run();
   }
 
@@ -221,11 +256,25 @@ export class DialogueRunner {
       if (this.isEnded()) return;
       const step = this.currentStep();
       if (!step) {
-        this.end();
-        return;
+        // Running off a node's last step finishes it, like a `return`.
+        if (this.leaveNode()) return;
+        continue;
       }
       if (await this.handleStep(step)) return; // returned true → blocking, wait
     }
+  }
+
+  /** Finish the current node: resume the innermost detour, or end the
+   *  conversation when none is pending. @returns true when it ended. */
+  private leaveNode(): boolean {
+    const back = this.returnStack.pop();
+    if (!back) {
+      this.end();
+      return true;
+    }
+    this.nodeId = back.nodeId;
+    this.stepIndex = back.stepIndex;
+    return false;
   }
 
   /** @returns true if the step blocks (waiting for advance/choose/command/end). */
@@ -271,12 +320,73 @@ export class DialogueRunner {
         return false;
       }
       case "goto":
+        if (step.leaveDetours) this.returnStack.length = 0;
         this.jump(step.target);
         return false;
+      case "select": {
+        const target = this.select(step);
+        if (target === undefined) this.stepIndex++;
+        else this.jump(target);
+        return false;
+      }
+      case "detour":
+        this.returnStack.push({
+          nodeId: this.nodeId,
+          stepIndex: this.stepIndex + 1,
+        });
+        this.jump(step.target);
+        return false;
+      case "return":
+        return this.leaveNode();
       case "end":
         this.end();
         return true;
     }
+  }
+
+  /**
+   * Pick a {@link SelectStep} option: available ones, then the least-picked,
+   * then the highest priority, then at random. Counts the pick. Returns the
+   * target, or `undefined` when nothing is available.
+   */
+  private select(step: SelectStep): string | undefined {
+    const count = (counter: string | undefined): number => {
+      if (counter === undefined) return 0;
+      const n = this.storage.get(counter);
+      return typeof n === "number" ? n : 0;
+    };
+    let best: { target: string; counter: string | undefined }[] = [];
+    let bestCount = Infinity;
+    let bestPriority = -Infinity;
+    for (const option of step.options) {
+      if (!this.test(option.condition)) continue;
+      const picked = count(option.counter);
+      const priority = option.priority ?? 0;
+      if (
+        picked < bestCount ||
+        (picked === bestCount && priority > bestPriority)
+      ) {
+        best = [];
+        bestCount = picked;
+        bestPriority = priority;
+      }
+      if (picked === bestCount && priority === bestPriority) {
+        best.push({ target: option.target, counter: option.counter });
+      }
+    }
+    if (best.length === 0) return undefined;
+    const chosen = this.random.pick(best);
+    if (chosen.counter !== undefined) {
+      try {
+        this.storage.set(chosen.counter, bestCount + 1);
+      } catch (e) {
+        this.onError?.(
+          `ignored the pick count "${chosen.counter}": ${e instanceof Error ? e.message : String(e)}`,
+          e,
+        );
+      }
+    }
+    return chosen.target;
   }
 
   private jump(target: string): void {
@@ -287,6 +397,7 @@ export class DialogueRunner {
   private end(): void {
     if (this.state === "ended") return;
     this.state = "ended";
+    this.returnStack.length = 0;
     this.handlers.onEnd();
   }
 
@@ -357,15 +468,16 @@ export class DialogueRunner {
     commands: readonly Command[] | undefined,
   ): Promise<void> {
     if (!commands || commands.length === 0) return;
-    if (commands.some((c) => c.blocking)) this.state = "awaiting-command";
+    if (commands.some(isBlockingCommand)) this.state = "awaiting-command";
     await this.executeBatch(commands);
   }
 
   /**
    * The wait-state-free command executor, shared by {@link fireBatch} (inline
    * firing) and {@link runCommands} (the Session's line-timed firing). Applies
-   * built-in `set`; surfaces the rest to the host with the current mode; awaits
-   * `blocking` handlers and fire-and-forgets the others. Touches no wait-state.
+   * built-in `set`; surfaces the rest to the host with the current mode and
+   * evaluated `args`; awaits blocking handlers ({@link isBlockingCommand}) and
+   * fire-and-forgets the others. Touches no wait-state.
    */
   private async executeBatch(
     commands: readonly Command[] | undefined,
@@ -379,10 +491,14 @@ export class DialogueRunner {
         // accessor — report it and keep going rather than let the throw escape
         // the async run()/choose() chain and wedge the conversation (same
         // contract as a throwing command handler below).
-        const value = cmd.value;
-        const next = isExpr(value)
-          ? evaluate(value, this.scope)
-          : (value as VarValue);
+        const next = this.valueOf(cmd.value);
+        if (typeof next === "number" && !Number.isFinite(next)) {
+          this.onError?.(
+            `ignored "set ${cmd.var}": the value is not a finite number, got ${next}`,
+            undefined,
+          );
+          continue;
+        }
         try {
           this.storage.set(cmd.var, next);
         } catch (e) {
@@ -395,7 +511,10 @@ export class DialogueRunner {
       }
       let result: void | Promise<void>;
       try {
-        result = this.handlers.onCommand(cmd, this.commandContext(mode));
+        result = this.handlers.onCommand(
+          this.fired(cmd),
+          this.commandContext(mode),
+        );
       } catch {
         // A handler that throws *synchronously* must not wedge the conversation
         // either (same contract as the blocking-await catch below): swallow and
@@ -403,7 +522,7 @@ export class DialogueRunner {
         continue;
       }
       if (!isPromise(result)) continue;
-      if (cmd.blocking) {
+      if (isBlockingCommand(cmd)) {
         try {
           await result;
         } catch {
@@ -415,6 +534,19 @@ export class DialogueRunner {
         void Promise.resolve(result).catch(() => {});
       }
     }
+  }
+
+  /** A literal passes through; an expression tree evaluates now. */
+  private valueOf(value: unknown): VarValue {
+    return isExpr(value) ? evaluate(value, this.scope) : (value as VarValue);
+  }
+
+  /** The command a handler receives: `args` evaluated to plain values. A
+   *  command without expression args is passed through unchanged. */
+  private fired(cmd: Command): FiredCommand {
+    const args = cmd.args;
+    if (!args || !args.some(isExpr)) return cmd as FiredCommand;
+    return { ...cmd, args: args.map((a) => this.valueOf(a)) };
   }
 
   /** The context handed to a command handler. `setVar` writes through the

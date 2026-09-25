@@ -296,8 +296,8 @@ is demonstrated, to avoid sprawl.
 - `package.json` `exports` declares `"."` and `"./presenters"`, each with
   `import`/`require`/`types` triples. Add one entry per extra subpath the addon
   needs, and give `tsup` one entry file per declared subpath. Dialogue declares
-  three: `"."`, `"./presenters"`, and `"./yaml"`, built from `src/index.ts`,
-  `src/presenters.ts`, and `src/yaml.ts`. See `packages/renderer/package.json`
+  four: `"."`, `"./presenters"`, `"./yaml"`, and `"./yarn"`, built from
+  `src/index.ts`, `src/presenters.ts`, `src/yaml.ts`, and `src/yarn.ts`. See `packages/renderer/package.json`
   for the two-key shape and `packages/addons/dialogue/` for the worked example.
 - `@yagejs/renderer` is `optional` in `peerDependenciesMeta`, because only
   `./presenters` needs it. `pixi.js` is **not** a peer at all, since presenters
@@ -394,12 +394,13 @@ it into its explicit `Serializable<TEncoded>` root. The addon does not register
 itself with `@yagejs/save`, traverse the entity graph, or own a save slot.
 
 **Capture the whole cursor, not just the obvious bits.** For dialogue that means
-`{ nodeId, stepIndex, vars, chosenOnce }`. Omitting `chosenOnce` makes spent
+`{ nodeId, stepIndex, vars, chosenOnce, returnStack }`. Omitting `chosenOnce` makes spent
 "once" choices available again after a load, with no error. Restoring mid-line
 re-presents the current line.
 
 For dialogue, the entire runner cursor is reachable through read-only getters on
-`runner.ts`: `getVars()`, `getNodeId()`, `getStepIndex()`, and `getChosenOnce()`.
+`runner.ts`: `getVars()`, `getNodeId()`, `getStepIndex()`, `getChosenOnce()`,
+and `getReturnStack()` (pending detours).
 A domain snapshot API can therefore capture the cursor without coupling dialogue
 to `@yagejs/save`.
 

@@ -1,0 +1,38 @@
+// The barkeep's side of the tavern. Open this folder in VS Code with the
+// Yarn Spinner extension to edit it; the game compiles it with `loadYarn`.
+
+title: Start
+---
+<<declare $price = 3>>
+Barkeep: Welcome to the Crooked Lantern, traveller! #line:welcome
+<<jump Menu>>
+===
+
+title: Menu
+---
+<<if visited("Bard")>>
+    Barkeep: Enjoyed the song? #line:menu_after_song
+<<else>>
+    Barkeep: What'll it be? #line:menu
+<<endif>>
+-> Order a drink ({$price} coins) <<if $coins >= $price>> #disabled #line:order
+    <<detour Drink>>
+-> Listen to the bard #line:listen
+    <<jump Bard>>
+-> Any rumours? <<once>> #line:rumours
+    Barkeep: They say the old mill is [wave]haunted[/wave]. #line:rumour_mill
+-> Goodnight #line:goodnight
+    Barkeep: Safe travels! #line:safe_travels
+    <<stop>>
+<<jump Menu>>
+===
+
+title: Drink
+---
+<<pay {$price}>>
+Barkeep: One Lantern Ale, coming up. #line:ale
+<<wait 1>>
+<<if visited_count("Drink") >= 1>>
+    Barkeep: Another one? You'll float home. [pause=400/] #line:another
+<<endif>>
+===

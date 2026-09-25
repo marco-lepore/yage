@@ -1,13 +1,14 @@
 /**
  * Canonical loader: validates + normalises a hand-authored / JSON
  * {@link DialogueScript} into a frozen, structurally-checked script the runner
- * can trust. Other "common formats" (a Yarn/ink-style screenplay parser) are
- * additional modules in this folder that emit the same canonical shape — the
- * runner only ever sees the canonical model.
+ * can trust. The other formats (YAML, the compact DSL, Yarn Spinner) are
+ * modules in this folder that emit the same canonical shape — the runner only
+ * ever sees the canonical model.
  */
 
 import { analyzeScript, DialogueScriptError } from "../validate.js";
 import { isDialogueText } from "../i18n.js";
+import { isExpr } from "../expr.js";
 import { parseExpr } from "../expr-parse.js";
 import type {
   ChoiceOption,
@@ -22,16 +23,23 @@ import type {
   LoadedSpeaker,
   NodeId,
   SayStep,
+  SelectStep,
   SpeakerId,
   Step,
+  TextExpressions,
 } from "../types.js";
 
 export { DialogueScriptError };
+
+/** Scripts this loader produced. Loading one again returns it unchanged, so
+ *  `play()` on a script a front-end already loaded skips the second walk. */
+const loaded = new WeakSet<object>();
 
 export function loadScript(raw: DialogueScript): LoadedScript {
   if (!raw || typeof raw !== "object") {
     throw new DialogueScriptError("script must be an object");
   }
+  if (loaded.has(raw)) return raw as LoadedScript;
   if (!raw.id) throw new DialogueScriptError("script.id is required");
   if (!raw.nodes || typeof raw.nodes !== "object") {
     throw new DialogueScriptError(`script "${raw.id}" has no nodes`);
@@ -77,6 +85,7 @@ export function loadScript(raw: DialogueScript): LoadedScript {
   // resolve to declared vars/externals; type-incompatible ops error. Memoized on
   // the frozen script, so the session's play-time re-check is free.
   analyzeScript(script);
+  loaded.add(script);
   return script;
 }
 
@@ -140,9 +149,25 @@ function validateStep(
       );
     }
   };
+  const expressionsAreValid = (exprs: unknown, field: string): void => {
+    if (exprs === undefined) return;
+    if (!exprs || typeof exprs !== "object" || Array.isArray(exprs)) {
+      throw new DialogueScriptError(
+        `node "${nodeId}": ${field} must be an object of named expressions`,
+      );
+    }
+    for (const [name, expr] of Object.entries(exprs)) {
+      if (typeof expr !== "string" && !isExpr(expr)) {
+        throw new DialogueScriptError(
+          `node "${nodeId}": ${field}.${name} must be an expression string or tree`,
+        );
+      }
+    }
+  };
   switch (step.kind) {
     case "say":
       textIsValid(step.text, "say.text");
+      expressionsAreValid(step.expressions, "say.expressions");
       speakerExists(step.speaker);
       break;
     case "choice":
@@ -152,9 +177,11 @@ function validateStep(
         );
       }
       if (step.text !== undefined) textIsValid(step.text, "choice.text");
+      expressionsAreValid(step.expressions, "choice.expressions");
       speakerExists(step.speaker);
       for (const [i, opt] of step.options.entries()) {
         textIsValid(opt.text, `choice option ${i}.text`);
+        expressionsAreValid(opt.expressions, `choice option ${i}.expressions`);
         if (opt.disabledReason !== undefined) {
           textIsValid(opt.disabledReason, `choice option ${i}.disabledReason`);
         }
@@ -172,6 +199,36 @@ function validateStep(
       }
       targetExists(step.target);
       break;
+    case "detour":
+      if (step.target === undefined) {
+        throw new DialogueScriptError(`node "${nodeId}": detour has no target`);
+      }
+      targetExists(step.target);
+      break;
+    case "select":
+      if (!Array.isArray(step.options) || step.options.length === 0) {
+        throw new DialogueScriptError(
+          `node "${nodeId}": select has no options`,
+        );
+      }
+      for (const [i, opt] of step.options.entries()) {
+        if (opt.target === undefined) {
+          throw new DialogueScriptError(
+            `node "${nodeId}": select option ${i} has no target`,
+          );
+        }
+        targetExists(opt.target);
+        if (
+          opt.priority !== undefined &&
+          (typeof opt.priority !== "number" || !Number.isFinite(opt.priority))
+        ) {
+          throw new DialogueScriptError(
+            `node "${nodeId}": select option ${i} priority must be a finite number, got ${String(opt.priority)}`,
+          );
+        }
+      }
+      break;
+    case "return":
     case "end":
       break;
     default:
@@ -216,7 +273,11 @@ function resolveStep(step: Step): Step {
       return resolveChoice(step);
     case "command":
       return resolveCommandStep(step);
+    case "select":
+      return resolveSelect(step);
     case "goto":
+    case "detour":
+    case "return":
     case "end":
       return step;
   }
@@ -224,7 +285,13 @@ function resolveStep(step: Step): Step {
 
 function resolveSay(step: SayStep): SayStep {
   const commands = rewriteCommands(step.commands);
-  return commands ? { ...step, commands } : step;
+  const expressions = rewriteExpressions(step.expressions);
+  if (!commands && !expressions) return step;
+  return {
+    ...step,
+    ...(commands ? { commands } : {}),
+    ...(expressions ? { expressions } : {}),
+  };
 }
 
 function resolveCommandStep(step: CommandStep): CommandStep {
@@ -238,6 +305,17 @@ function resolveCommandStep(step: CommandStep): CommandStep {
   };
 }
 
+function resolveSelect(step: SelectStep): SelectStep {
+  let changed = false;
+  const options = step.options.map((opt) => {
+    const condition = rewriteCondition(opt.condition);
+    if (!condition) return opt;
+    changed = true;
+    return { ...opt, condition };
+  });
+  return changed ? { ...step, options } : step;
+}
+
 function resolveChoice(step: ChoiceStep): ChoiceStep {
   let changed = false;
   const options = step.options.map((opt) => {
@@ -248,18 +326,38 @@ function resolveChoice(step: ChoiceStep): ChoiceStep {
     }
     return opt;
   });
-  return changed ? { ...step, options } : step;
+  const expressions = rewriteExpressions(step.expressions);
+  if (!changed && !expressions) return step;
+  return { ...step, options, ...(expressions ? { expressions } : {}) };
 }
 
 function rewriteOption(opt: ChoiceOption): ChoiceOption | undefined {
   const condition = rewriteCondition(opt.condition);
   const commands = rewriteCommands(opt.commands);
-  if (!condition && !commands) return undefined;
+  const expressions = rewriteExpressions(opt.expressions);
+  if (!condition && !commands && !expressions) return undefined;
   return {
     ...opt,
     ...(condition ? { condition } : {}),
     ...(commands ? { commands } : {}),
+    ...(expressions ? { expressions } : {}),
   };
+}
+
+/** Parse each string entry of a text's `expressions` into its `Expr` tree.
+ *  Returns a new record only when at least one entry was a string. */
+function rewriteExpressions(
+  expressions: TextExpressions | undefined,
+): TextExpressions | undefined {
+  if (!expressions) return undefined;
+  const entries = Object.entries(expressions);
+  if (!entries.some(([, expr]) => typeof expr === "string")) return undefined;
+  return Object.fromEntries(
+    entries.map(([name, expr]) => [
+      name,
+      typeof expr === "string" ? parseExpr(expr) : expr,
+    ]),
+  );
 }
 
 /** A string condition → its `Expr` tree; anything else → `undefined` (no rewrite). */

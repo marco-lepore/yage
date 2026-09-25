@@ -89,10 +89,10 @@ widens the bubble instead of clipping (configure `minWidth` / `maxWidth` / `heig
 on the bubble geometry).
 </Aside>
 
-## Three entry points
+## Four entry points
 
-The package is split so the headless path never pulls a renderer — and so the
-JSON / TypeScript / expression authors never pull the YAML parser:
+The package is split so the headless path never pulls a renderer — and so
+authors who don't use YAML or Yarn Spinner never bundle those parsers:
 
 ```ts
 // Headless + input only — no pixi, no yaml, fully unit-testable.
@@ -103,6 +103,9 @@ import { defaultDialogueTheme, createBoxDialogue } from "@yagejs-addons/dialogue
 
 // YAML-literal authoring — the only entry that pulls `yaml`.
 import { loadYaml } from "@yagejs-addons/dialogue/yaml";
+
+// Yarn Spinner authoring — .yarn files and a .yarnproject.
+import { loadYarn } from "@yagejs-addons/dialogue/yarn";
 ```
 
 | Entry          | Imports                          | Contains |
@@ -110,6 +113,7 @@ import { loadYaml } from "@yagejs-addons/dialogue/yaml";
 | `.`            | `@yagejs/core`, `@yagejs/input`  | runner, session, types, markup, i18n, canonical (JSON) format, the `parseExpr` string→expression parser, the `parseCompact` / `loadCompact` compact DSL, events, `DialogueController`, input bindings |
 | `./presenters` | + `@yagejs/renderer` (brings pixi)  | chrome, text views, composites, avatars, factories, `defaultDialogueTheme()`, textured nine-slice variants, radial (experimental) |
 | `./yaml`       | + `yaml`                         | `loadYaml` — kept off the root so you only bundle the YAML parser if you author in YAML |
+| `./yarn`       | nothing extra                    | `loadYarn`, `DialogueYarnError` — the [Yarn Spinner](#yarn-spinner) compiler |
 
 ## Writing a script
 
@@ -252,7 +256,8 @@ re-render, and a choice menu's conditions don't live-refresh while it's open.
 A `Condition` and a `set` value are expression **trees**, so `gold - 50` and
 `has_item("key") and not rude` are plain data. Nodes are `literal | varRef | call
 | unary | binary | group`; operators follow Yarn (`== != > < >= <=` with word
-forms, `and`/`or`/`xor`/`not`, `+ - * / %`). The flat `{ var, op, value }`
+forms, `and`/`or`/`xor`/`not`, `+ - * / %`). In a string, `or` binds loosest, then
+`xor`, `and`, the comparisons, `+ -`, and `* / %`. The flat `{ var, op, value }`
 comparison still works as the degenerate one-level tree.
 
 ```ts
@@ -289,6 +294,40 @@ above are simply:
 
 You can call `parseExpr(src)` directly (it throws `DialogueExprError` with
 `line`/`col` on a bad string), but you rarely need to — the loaders run it for you.
+
+#### Built-in functions
+
+These work in any condition, `set` value, or text expression without installing
+anything. They are Yarn Spinner's standard library:
+
+| Function | Result |
+| -------- | ------ |
+| `random()` | a number from 0 up to (not including) 1 |
+| `random_range(min, max)` / `random_range_float(min, max)` | a whole number from `min` to `max` / any number from `min` up to `max` |
+| `dice(sides)` | a whole number from 1 to `sides` |
+| `round(n)`, `round_places(n, places)` | rounded; a half goes to the even neighbour (2.5 → 2) |
+| `floor(n)`, `ceil(n)`, `int(n)`, `decimal(n)` | rounded down / up / toward zero; the fractional part |
+| `inc(n)`, `dec(n)` | the next whole number above / below |
+| `min(a, b)`, `max(a, b)` | the smaller / larger |
+| `string(v)`, `number(v)`, `bool(v)` | converted |
+| `format_invariant(n)`, `format(pattern, v)` | text: `format("{0:F1} kg", 2.25)` → `"2.3 kg"` |
+
+A function you install with the same name replaces the built-in, and a variable
+may share a built-in's name. The random ones draw from the scene's seeded random
+service, so a run with a fixed seed makes the same picks.
+
+#### Computed text
+
+A line can show a value computed when it appears. Put a `{name}` token in the text
+and the expression under `expressions`:
+
+```ts
+{ kind: "say", text: "That leaves {left} gold.", expressions: { left: "gold - 50" } }
+```
+
+`say` steps, choice prompts, and choice options (text and `disabledReason`) take
+`expressions`. A token without an entry reads the variable of that name. The text
+keeps only the token, so a translation writes `{left}` too.
 
 #### Author the whole script in YAML
 
@@ -437,11 +476,37 @@ rather than silently mis-branching:
 
 | Kind      | Purpose |
 | --------- | ------- |
-| `say`     | A line spoken by an optional `speaker`. Supports markup, `speed`, `autoAdvance` (seconds), `expression`, `commands`, `view`, `meta`, `voice`. |
-| `choice`  | A branch with `options` (each: `text`, `target?`, `condition?`, `once?`, `presentation?`, `disabledReason?`, `commands?`, `meta?`) and an optional prompt `text`. |
+| `say`     | A line spoken by an optional `speaker`. Supports markup, `expressions`, `speed`, `autoAdvance` (seconds), `expression`, `commands`, `view`, `meta`, `voice`. |
+| `choice`  | A branch with `options` (each: `text`, `expressions?`, `target?`, `condition?`, `once?`, `presentation?`, `disabledReason?`, `commands?`, `meta?`) and an optional prompt `text`. |
 | `command` | Fire commands without showing anything; optionally a conditional `goto` via `condition` + `target`. |
-| `goto`    | Unconditional jump to another node. |
-| `end`     | Ends the conversation. |
+| `goto`    | Jump to another node. Inside a detour the detour stays pending, unless `leaveDetours: true`. |
+| `detour`  | Run another node, then carry on after this step once it finishes. Detours nest. |
+| `return`  | Leave the node early: back to the detour that entered it, or the end of the conversation. |
+| `select`  | Let the runtime pick one of several `options` (see below). |
+| `end`     | Ends the conversation, detours included. |
+
+A node **finishes** when it runs off its last step or reaches `return`. Inside a
+detour that returns to the caller; otherwise the conversation ends.
+
+A **`select`** step picks one branch for you — a random bark, or the storylet that
+fits best. Each option has a `target`, and optionally a `condition`, a `priority`,
+and a `counter` variable. Of the options whose condition holds, the runner keeps
+the ones picked the fewest times (read from their `counter`, which it adds 1 to on
+each pick), then the highest `priority`, and picks one of the rest at random. So a
+group of barks cycles through every line before it repeats one. With nothing
+available, the conversation goes on to the next step.
+
+```ts
+{ kind: "select", options: [
+  { target: "bark_weather", counter: "seen_weather" },
+  { target: "bark_gossip", counter: "seen_gossip" },
+  { target: "bark_hero", condition: "saved_town", priority: 1, counter: "seen_hero" },
+] }
+```
+
+**Pick the starting node per conversation** with `play(script, { start: "shop" })`.
+One script can then hold every conversation in a scene. An unknown node throws a
+`DialoguePlayError` and leaves any running conversation alone.
 
 A **condition** is a variable name (truthy check), an atomic comparison
 `{ var, op, value }` (`op` is one of `== != > >= < <= truthy falsy`), a full
@@ -485,6 +550,144 @@ Rules to keep in mind:
   default list and bubble presenters grey the row and append the reason in
   parentheses; the experimental radial wheel greys it without a reason.
 
+## Yarn Spinner
+
+Write your dialogue in [Yarn Spinner](https://yarnspinner.dev) — `.yarn` files,
+usually with a `.yarnproject` — and edit it with the Yarn Spinner extension for
+VS Code or any other Yarn editor. `loadYarn` compiles the files into one script
+that plays through the same `DialogueController`, presenters, and events as any
+other script.
+
+<Steps>
+
+1. **Load the folder.** With Vite, `import.meta.glob` reads every file as text:
+
+   ```ts
+   import { loadYarn } from "@yagejs-addons/dialogue/yarn";
+
+   const story = loadYarn(
+     import.meta.glob("./dialogue/**/*.{yarn,yarnproject,csv}", {
+       query: "?raw",
+       import: "default",
+       eager: true,
+     }),
+   );
+   ```
+
+   You can also pass one file's text: `loadYarn(source)`.
+
+2. **Play a node.** Each `play()` picks its starting node; without `start` it
+   begins at `Start`, else the first node:
+
+   ```ts
+   controller.play(story, { start: "Shopkeeper" });
+   ```
+
+3. **Handle your commands** the same way as for any script, and bridge game state
+   with the storage. Yarn variable names keep their `$`:
+
+   ```ts
+   new DialogueController({
+     ...createBoxDialogue(),
+     storage: compose(
+       cells({ $gold: { get: () => player.gold, set: (v) => (player.gold = Number(v)) } }),
+       new MemoryVariableStorage(),
+     ),
+     functions: { has_item: (id) => inventory.has(String(id)) },
+     commands: {
+       // <<give_item sword 2>>
+       give_item: (cmd) => inventory.add(String(cmd.args?.[0]), Number(cmd.args?.[1] ?? 1)),
+     },
+   });
+   ```
+
+</Steps>
+
+A character name before the `:` on a line becomes the speaker, and each
+character gets a speaker with that name. A `DialogueActor` for a speech bubble
+binds to the same name (`new DialogueActor({ speaker: "Mae" })`). The `speakers` option adds
+nameplate colours, avatars, or a translatable name:
+
+```ts
+loadYarn(files, { speakers: { Mae: { color: 0xffcc00 } } });
+```
+
+`loadYarn` throws a `DialogueYarnError` naming the file and line of a mistake.
+Like every script, a function or command with no handler fails when `play()` is
+called, naming it. To stop the Yarn editor from warning about your own commands
+and functions, list them in the project's `definitions` file.
+
+### What you can write
+
+The Yarn language works as it does in Yarn Spinner:
+
+- **Lines** with characters, `{$expressions}`, markup, `<<if …>>` and `<<once>>`
+  conditions, and hashtags.
+- **Options** (`->`) with bodies, `<<if …>>` conditions, and `<<once>>`. An option
+  whose condition fails is hidden; add `#disabled` to show it greyed out instead.
+  When no option is available, the conversation carries on after the group.
+- **Flow**: `<<if>>` / `<<elseif>>` / `<<else>>`, `<<once>>` blocks,
+  `<<jump Node>>`, `<<jump {$node}>>`, `<<detour Node>>`, `<<return>>`, `<<stop>>`.
+- **Variables**: `<<declare>>` (with `as` types), `<<set … to …>>` and `+=` / `-=` /
+  `*=` / `/=` / `%=`, smart variables, and enums. A variable you use without
+  declaring gets a default from how you use it (`0`, `""`, or `false`).
+- **Functions**: `visited()`, `visited_count()`, and the
+  [built-in functions](#built-in-functions).
+- **Storylets**: line groups (`=>`) and node groups (`when:` headers), picked the
+  way Yarn Spinner picks them: the least-seen content first, then the most
+  specific condition, then at random. `has_any_content()` works on a node group.
+- **Commands**: `<<wait 2>>` waits two seconds with no handler; every other command
+  reaches your `commands` handler with its words in `cmd.args` (numbers and
+  `true` / `false` as values, `{expressions}` evaluated, `"quoted text"` as text).
+
+Some hashtags on a line set how it plays: `#view:bubble`, `#voice:clip_id`,
+`#speed:0.5`, and `#auto:2` (auto-advance after 2 seconds). Other hashtags land in
+the line's `meta` (`#portrait:mae_happy` → `meta.portrait`), where the
+[presenters read them](#per-line-position-and-in-box-avatars-meta). The line just
+before a group of options also gets `meta.lastline`.
+
+Markup follows Yarn Spinner's runtime: `[pause=500/]` waits 500 milliseconds (a
+decimal such as `[pause=0.5/]` is seconds), a self-closing marker swallows one
+space after it (set `trimwhitespace=false` to keep it), and a span's extra
+properties are dropped (`[wave size=2]` is `[wave]`).
+
+Visit counts, `<<once>>` flags, and storylet view counts are variables in your
+storage under Yarn Spinner's own names (`$Yarn.Internal.Visiting.Shop`, …), so
+they persist between conversations and save with the rest of your storage.
+
+`<<call>>`, `<<local>>`, and `#shadow:` lines are not supported.
+
+### Projects and localisation
+
+With a `.yarnproject` among the files, its `sourceFiles` and `excludeFiles`
+patterns choose the `.yarn` files, relative to the project file. Without one,
+every `.yarn` file you pass is compiled. The script is named after the project
+file.
+
+Tag a line `#line:some_id` to make it translatable. `loadYarn` collects the tagged
+lines into `story.catalogs`: the base language from your `.yarn` files, and each
+language whose `localisation` entry in the project points at a strings table
+(`it.csv`, in the format Yarn Spinner's tools write). Include the CSV files in
+the glob. Give the catalogs to your localization — with `@yagejs-addons/i18n`,
+the controller then follows its locale, and switching language updates the line
+on screen:
+
+```ts
+import { createLocalization, LocalizationPlugin } from "@yagejs-addons/i18n";
+
+const localization = await createLocalization({
+  locale: "en",
+  fallbackLocale: story.baseLanguage,
+  catalogs: story.catalogs,
+});
+engine.use(new LocalizationPlugin(localization));
+```
+
+A translated line drops its `Name:` prefix, because the speaker shows the name.
+Character names stay as written; to translate one, give that speaker a `name`
+message through the `speakers` option. Lines without a `#line:` tag show as
+written in every language.
+
 ## Inline markup
 
 Markup is a small BBCode-ish syntax that nests, inherits down the stack, and
@@ -499,8 +702,11 @@ below).
 | `[color=#ffcc00]…[/color]` / `[color=gold]…` | colour (hex or named) |
 | `[wave]` `[shake]` `[pulse]` `[rainbow]` | the four built-in per-glyph effects (any `[name]…[/name]` is an effect — see below) |
 | `[speed=2]…[/speed]` | reveal-speed multiplier for the span |
+| `[/]` | closes every open span |
 | `[pause=0.6/]` | **self-closing** — holds the typewriter 0.6s at this offset |
 | `[sfx=ding/]` `[expression=happy/]` `[shake amount=3/]` | **self-closing marker** — a reveal event at this char offset (see below) |
+| `[plural value={n} one="% coin" other="% coins"/]` | **replacement** — becomes text (see below) |
+| `[nomarkup]…[/nomarkup]` | everything inside is plain text |
 | `\[` `\]` | a literal bracket |
 
 A tag ending in `/` is a **self-closing reveal token** — a `[pause=N/]` hold or a
@@ -508,9 +714,10 @@ A tag ending in `/` is a **self-closing reveal token** — a `[pause=N/]` hold o
 *then* fires, while `[shake/][pause=0.6/]` fires *then* holds. A marker adds no
 styling — it fires as a reveal event when the cursor reaches it. The Yarn-style
 shortcut `[name=val/]` is exactly `[name name=val/]`, so it composes with explicit
-`key=value` props: `[shake=500 amount=3/]` → `props { shake: "500", amount: "3" }`
-(values can't contain whitespace or `/`). Translators **must keep the trailing
-`/`** for a token to survive re-ordering. (`[pause=0.6/]` is the only pause
+`key=value` props: `[shake=500 amount=3/]` → `props { shake: "500", amount: "3" }`.
+Quote a value that holds spaces or `/` (`[sfx name="big boom"/]`), and a space may
+sit before the closing `/]`. Translators **must keep the trailing `/`** for a
+token to survive re-ordering. (`[pause=0.6/]` is the only pause
 spelling — a bare `[pause=0.6]` without the slash opens an effect span named
 `pause` instead of holding.)
 
@@ -525,7 +732,23 @@ effect (including the bundled one) renders the run as plain styled text. So you
 widen the effect set by writing a text channel that reads the `effect` name —
 nothing in the core or parser is a closed list.
 
-`parseMarkup(str)` and `stripMarkup(str)` are exported for tooling.
+**Replacement markers** become text after `{token}`s are filled in, so one line
+covers every count or choice of word, and each translation writes the forms its
+language needs:
+
+- `[select value={pronoun} he="his" she="her" they="their"/]` shows the form
+  named by the value.
+- `[plural value={count} one="% coin" other="% coins"/]` shows the form for the
+  number in the current locale (`zero`, `one`, `two`, `few`, `many`, `other`;
+  `other` is the fallback).
+- `[ordinal value={place} one="%st" two="%nd" few="%rd" other="%th"/]` does the
+  same with ordinal forms (1st, 2nd, 23rd, 11th).
+
+A `%` in the chosen form becomes the value. A marker with no `value`, or no form
+for it, stays in the text as written, so a mistake shows on screen.
+
+`parseMarkup(str, { locale })` and `stripMarkup(str, { locale })` are exported for
+tooling.
 
 Every character count in the parsed result — `ParsedText.length`,
 `TextRun.graphemeCount`, a token's `atChar`, and the `charsPerSec` reveal rate —
@@ -628,8 +851,16 @@ or `play-sfx` actually mean.
 - A command with `blocking: true` whose handler returns a promise **pauses** the
   conversation until it resolves — for cinematic sequencing ("wait for the NPC to
   walk off, then continue").
+- A command's `args` are positional values: `{ type: "give-item", args: ["sword", 2] }`.
+  An expression in `args` is evaluated when the command fires, so your handler
+  always gets plain values (`cmd.args?.[0]`). Yarn commands arrive this way.
+- `{ type: "wait", seconds: 1.5 }` holds the conversation for that long, on the
+  conversation's own clock: pausing freezes it, and a skip passes straight through.
+  It needs no handler; installing your own `wait` handler, or a `fallbackCommand`,
+  replaces it.
 - Every command type a script uses must have a handler or a `fallbackCommand`, or
-  `play()` throws — no command silently does nothing. `set` is the only built-in.
+  `play()` throws — no command silently does nothing. `set` is the only built-in,
+  and `wait` has the default handler above.
 - Faces aren't a command; they're set on the line: the line-initial face is
   `SayStep.expression`, and a mid-line face change is the `[expression=…/]` reveal
   marker (the avatar interprets it — see [Reveal events](#reveal-events-typewriter-ticks-and-inline-markers)).
@@ -645,7 +876,7 @@ a scene can listen with `this.on(...)`):
 | `DialogueLineEvent` | `{ speaker?, text }` (plain, markup-stripped — handy for a backlog/a11y) |
 | `DialogueChoiceShownEvent` | `{ options }` |
 | `DialogueChoiceMadeEvent` | `{ index, text }` |
-| `DialogueCommandEvent` | `{ command, mode }` |
+| `DialogueCommandEvent` | `{ command, mode }` (`command.args` already evaluated) |
 | `DialogueEndedEvent` | `{ scriptId }` |
 | `DialogueRevealMarkerEvent` | `{ marker, viaSkip }` — an inline `[name k=v/]` reveal marker reached its char offset ([Reveal events](#reveal-events-typewriter-ticks-and-inline-markers)) |
 | `DialogueRevealCompletedEvent` | `{ speaker?, text }` — a line finished its typewriter reveal (the "typing finished" hook) |

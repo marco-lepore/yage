@@ -1,0 +1,12 @@
+// The bard picks one song per visit from a line group: the most specific
+// song that fits first, then whichever has been heard least.
+
+title: Bard
+---
+Bard: A song for the house! #line:bard_intro
+=> Bard: ♪ Oh, the lantern burns so bright tonight... ♪ #line:song_lantern
+=> Bard: ♪ The miller's ghost goes round and round... ♪ #line:song_mill
+=> Bard: ♪ Here's to the traveller, {$coins} coins to spend! ♪ <<if $coins > 0>> #line:song_coins
+Bard: Thank you, thank you! #line:bard_thanks
+<<jump Menu>>
+===

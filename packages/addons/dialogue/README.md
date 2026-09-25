@@ -31,7 +31,7 @@ npm install @yagejs/core @yagejs/input @yagejs/renderer
   needs it (and it brings `pixi.js` transitively, so you never install pixi
   yourself). If you consume only the headless runner you can skip it.
 
-## Two entry points
+## Entry points
 
 The package is split so the headless path never pulls a renderer:
 
@@ -50,6 +50,26 @@ import {
 | -------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `.`            | `@yagejs/core`, `@yagejs/input`    | runner, session, types, markup, i18n, canonical format, events, `DialogueController`, input bindings                              |
 | `./presenters` | + `@yagejs/renderer` (brings pixi) | chrome, text views, composites, avatars, factories, `defaultDialogueTheme()`, textured nine-slice variants, radial (experimental) |
+| `./yaml`       | + `yaml`                           | `loadYaml` — YAML-literal scripts                                                                                                 |
+| `./yarn`       | nothing extra                      | `loadYarn` — compiles Yarn Spinner `.yarn` files and a `.yarnproject` (with its localisation tables) into a playable script       |
+
+## Yarn Spinner
+
+Write dialogue in `.yarn` files, edit them with the Yarn Spinner VS Code
+extension, and play them natively:
+
+```ts
+import { loadYarn } from "@yagejs-addons/dialogue/yarn";
+
+const story = loadYarn(
+  import.meta.glob("./dialogue/**/*.{yarn,yarnproject,csv}", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }),
+);
+controller.play(story, { start: "Shopkeeper" });
+```
 
 ## Defaults & opt-ins
 

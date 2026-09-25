@@ -303,6 +303,93 @@ test.describe("Examples", () => {
     expect(result.errors.callbackErrors).toEqual([]);
   });
 
+  test("yarn-dialogue plays a Yarn project, switches language, and runs commands", async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+    page.on("pageerror", (error) => errors.push(error.message));
+
+    await page.goto("/yarn-dialogue.html?test");
+    await page.waitForFunction(
+      () => {
+        const insp = window.__yage__?.inspector;
+        return (
+          insp?.time.isFrozen() === true &&
+          insp.getSceneStack().at(-1)?.name === "yarn-tavern"
+        );
+      },
+      undefined,
+      { timeout: 10_000 },
+    );
+
+    interface Probe {
+      lastLine: string;
+      lines: number;
+      coins: number;
+      locale: string;
+      active: boolean;
+      choosing: boolean;
+    }
+    const probe = () =>
+      page.evaluate(
+        () =>
+          window.__yage__!.inspector.getComponentData(
+            "tavern-probe",
+            "TavernProbe",
+          ) as Probe,
+      );
+    const tap = (code: string) =>
+      page.evaluate((code) => {
+        const insp = window.__yage__!.inspector;
+        insp.input.tap(code, 1);
+        insp.time.step(3);
+      }, code);
+    const until = (check: string) =>
+      page.waitForFunction((check) => {
+        const p = window.__yage__!.inspector.getComponentData(
+          "tavern-probe",
+          "TavernProbe",
+        ) as Record<string, unknown>;
+        return new Function("p", `return ${check}`)(p) === true;
+      }, check);
+
+    await page.evaluate(() => window.__yage__!.inspector.time.step(5));
+    const first = await probe();
+    expect(first.locale).toBe("en");
+    expect(first.coins).toBe(7);
+    expect(first.lastLine).toBe(
+      "Barkeep: Welcome to the Crooked Lantern, traveller!",
+    );
+
+    // L switches to Italian in place: no line is replayed.
+    await tap("KeyL");
+    expect(await probe()).toMatchObject({ locale: "it", lines: first.lines });
+
+    // Enter completes the reveal, Enter again moves on — in Italian now.
+    await tap("Enter");
+    await tap("Enter");
+    await until('p.lastLine === "Barkeep: Cosa ti porto?"');
+    await tap("Enter");
+    await tap("Enter");
+    await until("p.choosing === true");
+
+    // The first option orders a drink: `<<pay {$price}>>` spends 3 coins.
+    await tap("Enter");
+    await until(
+      'p.lastLine === "Barkeep: Una Birra della Lanterna, arriva subito."',
+    );
+    expect((await probe()).coins).toBe(4);
+
+    const inspectorErrors = await page.evaluate(
+      () => window.__yage__!.inspector.getErrors().callbackErrors,
+    );
+    expect(inspectorErrors).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
   test("localization switches visible text without replaying gameplay", async ({
     page,
   }) => {

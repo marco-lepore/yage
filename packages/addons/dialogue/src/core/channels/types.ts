@@ -9,7 +9,7 @@
  * interface itself imposes no engine dependency.
  */
 
-import type { Command, CommandContext } from "../types.js";
+import type { CommandContext, FiredCommand } from "../types.js";
 import type { PresentedLine } from "../session.js";
 import type { RevealBeat } from "../LineReveal.js";
 
@@ -51,7 +51,7 @@ export interface DialogueExtraChannel {
    * `buy` command here. (A mid-line face change is an `[expression=…/]` reveal
    * marker on {@link revealBeat}, not a command.)
    */
-  command?(command: Command, ctx: CommandContext): void;
+  command?(command: FiredCommand, ctx: CommandContext): void;
   /** The conversation cleared (a `stop()` or its natural end) — reset any
    *  per-conversation state. Distinct from {@link dispose} (final teardown). */
   clear?(): void;

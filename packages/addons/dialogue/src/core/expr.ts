@@ -2,11 +2,14 @@
  * Expression evaluator. `Condition`s and `set` values are expression
  * *trees* — `literal | varRef | call | unary | binary | group` — evaluated
  * against an {@link EvalScope} (variable reads + installed functions). The
- * operator set mirrors Yarn Spinner so a future Yarn parser maps onto this IR
+ * operator set mirrors Yarn Spinner, so the Yarn front-end maps onto this IR
  * 1:1; the atomic `{ var, op, value }` comparison evaluates as the degenerate
  * one-level tree (lowered into a `binary` node in {@link evalCondition}).
  */
 
+import { globalRandom, type RandomService } from "@yagejs/core";
+
+import { createBuiltinFunctions } from "./functions.js";
 import { materialize } from "./vars.js";
 import type {
   Condition,
@@ -28,15 +31,32 @@ export interface EvalScope {
   vars(): VarMap;
 }
 
-/** Build an {@link EvalScope} over a storage + the installed functions. */
+/** Built-in function tables, one per random source. */
+const builtins = new WeakMap<
+  RandomService,
+  Readonly<Record<string, DialogueFunction>>
+>();
+
+/** Build an {@link EvalScope} over a storage + the installed functions. A
+ *  call resolves an installed function first, then the built-in function of
+ *  the same name (whose random ones draw from `random`). */
 export function createScope(
   storage: VariableStorage,
   functions: Readonly<Record<string, DialogueFunction>>,
+  random: RandomService = globalRandom,
 ): EvalScope {
+  let library = builtins.get(random);
+  if (!library)
+    builtins.set(random, (library = createBuiltinFunctions(random)));
+  const table = library;
   return {
     get: (name) => storage.get(name) ?? null,
     call: (fn, args) => {
-      const f = functions[fn];
+      const f = Object.hasOwn(functions, fn)
+        ? functions[fn]
+        : Object.hasOwn(table, fn)
+          ? table[fn]
+          : undefined;
       // play-time validation guarantees a function exists; guard anyway so a
       // hand-built runner fails loudly instead of throwing an opaque TypeError.
       if (!f) throw new Error(`dialogue: no function "${fn}" is installed`);

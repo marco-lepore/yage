@@ -288,3 +288,86 @@ describe("loadScript — text fields accept strings and { key, fallback } messag
     ).toThrow(/choice option 0\.text/);
   });
 });
+
+describe("loadScript — detours, text expressions, command args", () => {
+  it("returns an already-loaded script unchanged", () => {
+    const loaded = loadScript({
+      id: "once",
+      start: "a",
+      nodes: { a: { id: "a", steps: [{ kind: "end" }] } },
+    });
+    expect(loadScript(loaded)).toBe(loaded);
+  });
+
+  it("a detour needs an existing target", () => {
+    expect(() =>
+      loadScript({
+        id: "d",
+        start: "a",
+        nodes: { a: { id: "a", steps: [{ kind: "detour", target: "zz" }] } },
+      }),
+    ).toThrow(/jump target "zz" does not exist/);
+  });
+
+  it("parses string text expressions into trees", () => {
+    const script = loadScript({
+      id: "e",
+      start: "a",
+      declare: { gold: 1 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "say",
+              text: "{left}",
+              expressions: { left: "gold - 1" },
+            },
+          ],
+        },
+      },
+    });
+    const step = script.nodes["a"]!.steps[0]!;
+    expect(step.kind === "say" && isExpr(step.expressions?.["left"])).toBe(
+      true,
+    );
+  });
+
+  it("rejects malformed expressions and args", () => {
+    expect(() =>
+      loadScript({
+        id: "bad-expr",
+        start: "a",
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              {
+                kind: "say",
+                text: "{x}",
+                expressions: { x: 5 as unknown as string },
+              },
+            ],
+          },
+        },
+      }),
+    ).toThrow(/say\.expressions\.x must be an expression/);
+    expect(() =>
+      loadScript({
+        id: "bad-args",
+        start: "a",
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              {
+                kind: "command",
+                commands: [{ type: "go", args: "x" as unknown as [] }],
+              },
+            ],
+          },
+        },
+      }),
+    ).toThrow(/args must be an array/);
+  });
+});
