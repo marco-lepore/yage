@@ -70,19 +70,22 @@ const fakeElementClasses = {
 
 /**
  * A UI element whose container sits at `origin` in canvas pixels, draws at
- * `scale` and turns `rotation` radians about that origin. `layout` stays
- * parent-relative, as Yoga reports it, so a test can see the two disagree.
+ * `scale` (`scaleY` on the y axis when given) and turns `rotation` radians
+ * about that origin. `layout` stays parent-relative, as Yoga reports it, so a
+ * test can see the two disagree.
  */
 function fakeUIElement(opts: {
   layout: { left: number; top: number; width: number; height: number };
   origin?: { x: number; y: number };
   scale?: number;
+  scaleY?: number;
   rotation?: number;
   children?: FakeUIElement[];
   type?: keyof typeof fakeElementClasses;
 }): FakeUIElement {
   const origin = opts.origin;
-  const scale = opts.scale ?? 1;
+  const scaleX = opts.scale ?? 1;
+  const scaleY = opts.scaleY ?? scaleX;
   const cos = Math.cos(opts.rotation ?? 0);
   const sin = Math.sin(opts.rotation ?? 0);
   const shape = {
@@ -91,8 +94,8 @@ function fakeUIElement(opts: {
       ? {
           displayObject: {
             toGlobal: (point: { x: number; y: number }) => ({
-              x: origin.x + (point.x * cos - point.y * sin) * scale,
-              y: origin.y + (point.x * sin + point.y * cos) * scale,
+              x: origin.x + point.x * scaleX * cos - point.y * scaleY * sin,
+              y: origin.y + point.x * scaleX * sin + point.y * scaleY * cos,
             }),
           },
         }
@@ -2310,6 +2313,8 @@ async function pointerSetup(opts?: {
   omitDispatch?: boolean;
   buttonHasContainer?: boolean;
   buttonScale?: number;
+  buttonScaleY?: number;
+  buttonRotation?: number;
   secondSurface?: boolean;
 }) {
   const base = setup();
@@ -2321,7 +2326,16 @@ async function pointerSetup(opts?: {
     layout: { left: 20, top: 10, width: 60, height: 30 },
     ...(opts?.buttonHasContainer === false
       ? {}
-      : { origin: { x: 440, y: 320 }, scale: opts?.buttonScale ?? 2 }),
+      : {
+          origin: { x: 440, y: 320 },
+          scale: opts?.buttonScale ?? 2,
+          ...(opts?.buttonScaleY === undefined
+            ? {}
+            : { scaleY: opts.buttonScaleY }),
+          ...(opts?.buttonRotation === undefined
+            ? {}
+            : { rotation: opts.buttonRotation }),
+        }),
   });
   const rootElement = fakeUIElement({
     type: "UIPanel",
@@ -2623,14 +2637,24 @@ describe("Inspector.pointer", () => {
     );
   });
 
-  it("throws, naming the node, for one drawn with no area", async () => {
-    const { inspector, buttonId, dispatched, hitTestUIPath } =
-      await pointerSetup({ buttonScale: 0 });
+  it.each([
+    ["scaled to 0", { buttonScale: 0 }],
+    // The box around a flattened, turned button still has an area.
+    [
+      "flattened on one axis and turned",
+      { buttonScaleY: 0, buttonRotation: 0.5 },
+    ],
+  ])(
+    "throws, naming the node, for one drawn with no area: %s",
+    async (_name, button) => {
+      const { inspector, buttonId, dispatched, hitTestUIPath } =
+        await pointerSetup(button);
 
-    expect(() => inspector.pointer.click(buttonId)).toThrow(
-      `Inspector.pointer.click(): UI node "${buttonId}" (UIButton) is drawn with no area, 0 x 0`,
-    );
-    expect(hitTestUIPath).not.toHaveBeenCalled();
-    expect(dispatched).toHaveLength(0);
-  });
+      expect(() => inspector.pointer.click(buttonId)).toThrow(
+        `Inspector.pointer.click(): UI node "${buttonId}" (UIButton) is drawn with no area`,
+      );
+      expect(hitTestUIPath).not.toHaveBeenCalled();
+      expect(dispatched).toHaveLength(0);
+    },
+  );
 });

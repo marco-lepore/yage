@@ -144,6 +144,14 @@ describe("readElementRect", () => {
     ["a container scaled to 0 below the host", [{}, { sx: 0 }, { x: 10 }]],
     ["an element scaled to 0", [{}, { x: 60, sx: 0, pivotX: 20 }]],
     ["an element flattened on one axis", [{}, { sx: 1, sy: 0 }]],
+    [
+      "an element flattened on one axis and rotated",
+      [{}, { sx: 1, sy: 0, rotation: Math.PI / 4 }],
+    ],
+    [
+      "a flattened container below a turned and scaled host",
+      [{ rotation: 0.3, sx: 1.7 }, { sx: 1, sy: 0 }, { rotation: 0.9 }],
+    ],
   ])(
     "reports an element drawn with no area under %s and leaves the rect alone",
     (_name, links) => {
