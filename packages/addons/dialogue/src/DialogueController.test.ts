@@ -13,9 +13,11 @@ import {
   type DialogueControllerOptions,
 } from "./DialogueController.js";
 import { CompositeInputBinding, PointerInputBinding } from "./input/index.js";
+import { loadYarn } from "./core/formats/yarn/load.js";
 import {
   DialogueAutoAdvanceEvent,
   DialogueChoiceMadeEvent,
+  DialogueCommandEvent,
   DialogueLineEvent,
   DialogueRevealCompletedEvent,
   DialogueRevealMarkerEvent,
@@ -916,5 +918,61 @@ describe("DialogueController — i18n adapter resolution", () => {
     expect(lines).toEqual([]);
     host.remove(DialogueController);
     expect(a.listeners.size).toBe(0);
+  });
+});
+
+describe("DialogueController — Yarn scripts", () => {
+  it("plays a Yarn project from a chosen node, with evaluated command args", async () => {
+    const yarn = loadYarn({
+      "dlg/Game.yarnproject":
+        '{ "projectFileVersion": 3, "baseLanguage": "en" }',
+      "dlg/Start.yarn": "title: Start\n---\nNot here.\n===\n",
+      "dlg/Shop.yarn": [
+        "title: Shop",
+        "---",
+        "<<declare $price = 5>>",
+        "Mae: That's {$price} gold.",
+        "<<sell sword {$price * 2}>>",
+        "===",
+      ].join("\n"),
+    });
+    const { scene } = createMockScene();
+    const host = scene.spawn("dlg");
+    const sold: unknown[] = [];
+    const controller = host.add(
+      makeController(noopBinding, {
+        text: new DrivableText(),
+        commands: { sell: (cmd) => void sold.push(cmd.args) },
+      }),
+    );
+    const lines: { speaker?: string | undefined; text: string }[] = [];
+    const commandArgs: unknown[] = [];
+    host.on(DialogueLineEvent, (e) => lines.push(e));
+    host.on(DialogueCommandEvent, (e) => commandArgs.push(e.command.args));
+
+    controller.play(yarn, { start: "Shop" });
+    expect(lines).toEqual([{ speaker: "Mae", text: "That's 5 gold." }]);
+    controller.advance(); // reveal
+    controller.advance(); // next
+    await flush();
+    expect(sold).toEqual([["sword", 10]]);
+    expect(commandArgs).toEqual([["sword", 10]]);
+  });
+
+  it("line groups draw from the scene's seeded random service", async () => {
+    const yarn = loadYarn("title: Start\n---\n=> A\n=> B\n=> C\n=> D\n===\n");
+    const pick = async (): Promise<string> => {
+      const { scene } = createMockScene(); // seeded with a fixed seed
+      const host = scene.spawn("dlg");
+      const controller = host.add(makeController());
+      const lines: string[] = [];
+      host.on(DialogueLineEvent, (e) => lines.push(e.text));
+      controller.play(yarn);
+      await flush();
+      return lines.join();
+    };
+    const first = await pick();
+    expect(["A", "B", "C", "D"]).toContain(first);
+    for (let i = 0; i < 5; i++) expect(await pick()).toBe(first);
   });
 });

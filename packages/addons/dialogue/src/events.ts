@@ -1,11 +1,12 @@
 import { defineEvent } from "@yagejs/core";
-import type { Command, MarkerToken, RunMode } from "./core/types.js";
+import type { FiredCommand, MarkerToken, RunMode } from "./core/types.js";
 
 /**
  * Lifecycle + command events the {@link DialogueController} emits from its host
  * entity. A scene listens with `this.on(DialogueEndedEvent, …)` (events bubble
  * entity → scene). `DialogueCommandEvent` is the main game hook: every script
- * command that isn't a built-in (`set`) arrives here for the game to interpret.
+ * command that isn't the built-in `set` arrives here for the game to interpret,
+ * its `args` evaluated.
  */
 export const DialogueStartedEvent = defineEvent<{ scriptId: string }>(
   "dialogue:started",
@@ -27,7 +28,7 @@ export const DialogueChoiceMadeEvent = defineEvent<{
 }>("dialogue:choice-made");
 
 export const DialogueCommandEvent = defineEvent<{
-  command: Command;
+  command: FiredCommand;
   mode: RunMode;
 }>("dialogue:command");
 

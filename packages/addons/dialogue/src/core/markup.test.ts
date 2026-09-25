@@ -440,3 +440,84 @@ describe("firstUnknownTag", () => {
     expect(firstUnknownTag("price is \\[skill=8]")).toBeNull();
   });
 });
+
+describe("parseMarkup — Yarn-compatible syntax", () => {
+  const plain = (s: string, locale?: string) =>
+    stripMarkup(s, locale === undefined ? {} : { locale });
+
+  it("[/] closes every open span", () => {
+    const parsed = parseMarkup("[b][i]both[/]plain");
+    expect(parsed.runs).toEqual([
+      { text: "both", style: { bold: true, italic: true }, graphemeCount: 4 },
+      { text: "plain", style: {}, graphemeCount: 5 },
+    ]);
+  });
+
+  it("whitespace before the closing /] and quoted values with spaces", () => {
+    expect(parseMarkup("a[pause=0.5 /]b").tokens).toEqual([
+      { kind: "pause", atChar: 1, seconds: 0.5 },
+    ]);
+    expect(parseMarkup('x[sfx name="big boom" at="a/b" /]').tokens).toEqual([
+      {
+        kind: "marker",
+        atChar: 1,
+        name: "sfx",
+        props: { name: "big boom", at: "a/b" },
+      },
+    ]);
+    expect(parseMarkup('[sfx="say \\"hi\\""/]').tokens[0]).toMatchObject({
+      props: { sfx: 'say "hi"' },
+    });
+  });
+
+  it("tag names may contain digits and underscores", () => {
+    expect(parseMarkup("[sfx_2/]").tokens[0]).toMatchObject({ name: "sfx_2" });
+    expect(plain("[1] is a footnote, [] is text")).toBe(
+      "[1] is a footnote, [] is text",
+    );
+  });
+
+  it("[nomarkup] keeps its contents as plain text", () => {
+    expect(plain("a [nomarkup][b]raw[/b] [x/][/nomarkup] c")).toBe(
+      "a [b]raw[/b] [x/] c",
+    );
+    expect(parseMarkup("[nomarkup][pause=1/]").tokens).toEqual([]);
+  });
+
+  it("select picks the form named by the value", () => {
+    const s = '[select value=f m="he" f="she" nb="they"/] waved';
+    expect(plain(s)).toBe("she waved");
+    expect(plain('[select value=x m="he"/]!')).toBe(
+      '[select value=x m="he"/]!',
+    );
+  });
+
+  it("plural and ordinal follow the locale's categories, % is the value", () => {
+    const apples = '[plural value=VALUE one="% apple" other="% apples"/]';
+    expect(plain(apples.replace("VALUE", "1"), "en")).toBe("1 apple");
+    expect(plain(apples.replace("VALUE", "3"), "en")).toBe("3 apples");
+    const ord =
+      '[ordinal value=VALUE one="%st" two="%nd" few="%rd" other="%th"/]';
+    expect(plain(ord.replace("VALUE", "22"), "en")).toBe("22nd");
+    expect(plain(ord.replace("VALUE", "13"), "en")).toBe("13th");
+    // Polish: 5 is "many"; with no `many` form it falls back to `other`.
+    const pl =
+      '[plural value=5 one="% jabłko" few="% jabłka" many="% jabłek"/]';
+    expect(plain(pl, "pl")).toBe("5 jabłek");
+    expect(plain('[plural value=2 one="x"/]', "en")).toBe(
+      '[plural value=2 one="x"/]',
+    );
+  });
+
+  it("replacement text takes the surrounding style", () => {
+    const parsed = parseMarkup(
+      '[b][plural value=2 one="% hit" other="% hits"/][/b]',
+      {
+        locale: "en",
+      },
+    );
+    expect(parsed.runs).toEqual([
+      { text: "2 hits", style: { bold: true }, graphemeCount: 6 },
+    ]);
+  });
+});

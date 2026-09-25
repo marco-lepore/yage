@@ -16,13 +16,148 @@ npm run dev
 The scaffolder asks you to pick a template:
 
 - **Recommended** — a playable platformer seed with physics, input, animations,
-  sound effects, enemies, and collectibles. Great for learning the engine.
+  sound effects, enemies, and collectibles. Great for learning the engine. Its
+  production build is an installable app that runs offline (see below).
 - **Minimal** — just `@yagejs/core` + `@yagejs/renderer` and an empty scene. Start
   from scratch and add packages as you go (`src/main.ts` has commented-out
   examples showing how to wire each plugin).
 
 Both templates include a Vite config, TypeScript setup, and an `AGENTS.md`
 for AI-assisted development.
+
+### Installable and offline (Recommended template)
+
+The Recommended template builds your game as a Progressive Web App. Players
+can install it to their home screen or desktop, and it keeps working without
+a network connection after the first visit. The setup is the
+[`vite-plugin-pwa`](https://vite-pwa-org.netlify.app/) entry in
+`vite.config.ts`.
+
+You do not list your assets anywhere. Each `npm run build` caches every file
+in `dist/` for offline play: your code, the physics WebAssembly module, and
+everything under `public/`. When you add or change an asset, the next build
+picks it up.
+
+Before you ship:
+
+- Change `name`, `short_name`, and `description` in the `manifest` block of
+  `vite.config.ts`.
+- Replace the icons in `public/`: `icon.svg` (browser tab),
+  `pwa-192x192.png` and `pwa-512x512.png` (installed app), and
+  `apple-touch-icon.png` (180×180, iOS home screen). Android crops the 512
+  icon to a circle or rounded square, so keep the artwork inside the centre
+  80%.
+- Serve the site over HTTPS. Browsers only install service workers on
+  secure origins; `localhost` is the exception.
+
+Things to know:
+
+- **The dev server has no service worker.** `npm run dev` always serves fresh
+  files. Installing, offline play, and updates only work in the production
+  build, which `npm run preview` serves locally.
+- **Files over 10 MB fail the build.** The error names each file. Raise
+  `maximumFileSizeToCacheInBytes` in `vite.config.ts` if a large music track
+  needs to be available offline.
+- **Players download the whole game on their first visit.** Every file in
+  the build is fetched up front, not only the first scene's assets.
+- **Files from other servers are not cached.** Assets loaded from a CDN or
+  another origin need a `runtimeCaching` rule in the `workbox` block.
+- **To remove it**, delete the `VitePWA(...)` entry and the
+  `vite-plugin-pwa` dependency. Players who installed the game keep the old
+  service worker until you deploy one that unregisters itself; see
+  `selfDestroying` in the plugin's documentation.
+
+#### Releasing a new version
+
+To release, run `npm run build` and upload `dist/` to your host in place of
+the previous build. There is no version number to bump. The build writes a
+content hash of every file into `dist/sw.js`, so any changed file produces a
+different `sw.js`.
+
+Each player's browser checks for a new version when the game opens. It
+downloads `sw.js` from your server and compares it with the copy it has
+installed. When the file differs:
+
+1. The game starts from the cache, on the version the player already has.
+2. The browser downloads the changed files in the background.
+3. The new version waits while any tab or window of the game is open.
+   Reloading the page does not switch versions.
+4. Once every tab or window is closed, the next launch runs the new version.
+
+A player therefore sees a release on the second launch after you deploy it.
+The old version keeps all of its files until the switch, so a game never runs
+with a mix of old and new files. A player who is offline keeps the cached
+version until they next open the game online.
+
+Configure your host or CDN so it does not cache `sw.js` and `index.html` for
+long. Browsers always fetch `sw.js` fresh, but a CDN that serves a stale copy
+hides the release from every player. The other files in `dist/` can use long
+cache lifetimes.
+
+The installed app's name and icon update separately from your code. The
+browser refreshes them from the manifest on its own schedule, which can take
+a day or more on Android.
+
+#### Offer an update in-game
+
+To let players switch to a new version without closing the game, register
+the service worker from your own code and show a prompt when a new version
+is waiting. Add `src/pwa.ts`:
+
+```ts
+/// <reference types="vite-plugin-pwa/vanillajs" />
+import { registerSW } from "virtual:pwa-register";
+
+let updateReady = false;
+
+const updateSW = registerSW({
+  // A new version finished downloading and is waiting to take over.
+  onNeedRefresh() {
+    updateReady = true;
+  },
+  // Without this, an open game only checks for a new version at launch.
+  onRegisteredSW(_swUrl, registration) {
+    if (!registration) return;
+    setInterval(() => {
+      // Fails while the player is offline; the next check tries again.
+      registration.update().catch(() => {});
+    }, 60 * 60 * 1000);
+  },
+});
+
+/** True once a new version is downloaded and waiting. */
+export function isUpdateReady(): boolean {
+  return updateReady;
+}
+
+/** Switch to the waiting version. The page reloads. */
+export function applyUpdate(): Promise<void> {
+  return updateSW();
+}
+```
+
+Import it once from `src/main.ts`, for example with
+`import { isUpdateReady, applyUpdate } from "./pwa";`. Importing
+`virtual:pwa-register` replaces the plugin's own registration script, so
+nothing else changes in `vite.config.ts`.
+
+Then decide where the game asks. `applyUpdate()` reloads the page, which
+discards everything in memory, so call it where losing the current state is
+acceptable: on the title screen, in a pause menu, or right after a save. A
+game that saves between levels can apply the update without asking:
+
+```ts
+engine.events.on("scene:replaced", () => {
+  if (isUpdateReady()) void applyUpdate();
+});
+```
+
+Things to know:
+
+- **Only players who have opened the game before get the reload.** On a
+  player's first visit, the service worker does not control the page yet.
+  If you deploy during that session, `applyUpdate()` switches versions but
+  does not reload, and the new version runs on the next launch.
 
 ## Option 2: Manual install
 

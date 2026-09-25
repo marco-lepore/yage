@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Yarn Spinner Dialogue</title>
+    <link rel="stylesheet" href="/shared.css" />
+  </head>
+  <body>
+    <a class="back-link" href="/#yarn-dialogue">&larr; All Examples</a>
+    <h1>Yarn Spinner Dialogue</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span
+        ><kbd>Enter</kbd> advance / confirm · <kbd>↑</kbd><kbd>↓</kbd> choose ·
+        <kbd>L</kbd> English ⇄ Italian · <kbd>T</kbd> talk again</span
+      >
+      <span
+        >A tavern conversation written in <code>.yarn</code> files and a
+        <code>.yarnproject</code> (edit them with the Yarn Spinner VS Code
+        extension), compiled by <code>loadYarn</code> and played by the dialogue
+        addon's default box. The Italian lines come from the project's
+        <code>it.csv</code> strings table.</span
+      >
+    </div>
+    <script type="module" src="/src/yarn-dialogue/main.ts"></script>
+  </body>
+</html>

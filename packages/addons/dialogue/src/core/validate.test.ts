@@ -27,6 +27,7 @@ function env(over: Partial<PlayEnv> = {}): PlayEnv {
     functions: over.functions ?? {},
     commands: over.commands ?? {},
     fallbackCommand: over.fallbackCommand,
+    defaultWait: over.defaultWait ?? false,
   };
 }
 

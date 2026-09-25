@@ -10,6 +10,42 @@ npm run dev
 
 Pick `recommended` for a playable platformer seed (physics, input, animations, enemies, collectibles) or `minimal` for an empty scene with just core + renderer.
 
+The `recommended` template's production build is an installable, offline-capable PWA (`vite-plugin-pwa` in `vite.config.ts`):
+
+- Workbox precaches every file in `dist/` (`globPatterns: ["**/*"]`), including the Rapier `.wasm` and all of `public/`. Assets are never listed by hand; each build picks up new or changed files.
+- A file over `maximumFileSizeToCacheInBytes` (10 MB) fails `vite build` with an error naming it; raise the limit. Cross-origin assets need a `runtimeCaching` rule.
+- Releasing = `npm run build` + upload `dist/`. No version number: `dist/sw.js` embeds a content hash per file, and the browser byte-compares `sw.js` at each launch. On a difference it downloads changed files in the background; `registerType: "prompt"` with no update UI means the new version waits until every tab or window of the game is closed (a reload keeps the old version), so players see a release on their second launch. Host/CDN must not cache `sw.js` or `index.html` for long.
+- No service worker in `npm run dev`: installing, offline play, and updates only exist in the production build (`npm run preview` serves it locally). Production needs HTTPS.
+- In-game update prompt (not in the template; add on request) — `src/pwa.ts`, imported from `main.ts`. Importing `virtual:pwa-register` replaces the injected `registerSW.js`; `vite.config.ts` is unchanged:
+
+  ```ts
+  /// <reference types="vite-plugin-pwa/vanillajs" />
+  import { registerSW } from "virtual:pwa-register";
+
+  let updateReady = false;
+  const updateSW = registerSW({
+    onNeedRefresh() {
+      updateReady = true; // new version downloaded and waiting
+    },
+    onRegisteredSW(_swUrl, registration) {
+      if (!registration) return;
+      // without this an open game only checks at launch
+      setInterval(
+        () => {
+          registration.update().catch(() => {}); // rejects while offline; retried next hour
+        },
+        60 * 60 * 1000,
+      );
+    },
+  });
+  export const isUpdateReady = (): boolean => updateReady;
+  export const applyUpdate = (): Promise<void> => updateSW(); // reloads the page
+  ```
+
+  `applyUpdate()` reloads, discarding in-memory state: call it from a title screen, pause menu, or after a save, e.g. `engine.events.on("scene:replaced", () => { if (isUpdateReady()) void applyUpdate(); })`. On a player's first visit the page is not yet controlled by the service worker, so `applyUpdate()` switches versions without reloading and the new version runs on the next launch.
+
+- Before shipping, edit the `manifest` name, short name and description, and replace `public/icon.svg`, `public/pwa-192x192.png`, `public/pwa-512x512.png` (also the maskable icon: keep art in the centre 80%), and `public/apple-touch-icon.png` (180×180).
+
 ## Manual Installation
 
 ```bash

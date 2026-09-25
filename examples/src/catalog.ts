@@ -464,6 +464,16 @@ export const EXAMPLES: readonly Example[] = [
     guide: "/addons/dialogue/",
   },
   {
+    slug: "yarn-dialogue",
+    title: "Yarn Spinner Dialogue",
+    summary:
+      "A tavern conversation written in Yarn Spinner files, with options, a greeting that changes between visits, a game command, and a live switch to Italian.",
+    section: "gameplay",
+    packages: ["input"],
+    addons: ["dialogue", "i18n"],
+    guide: "/addons/dialogue/#yarn-spinner",
+  },
+  {
     slug: "inventory-addon",
     title: "Inventory Addon",
     summary:
