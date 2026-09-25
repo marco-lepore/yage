@@ -150,8 +150,54 @@ test.describe("Examples", () => {
       }
 
       expect(errors, `console/page errors in ${slug}`).toEqual([]);
+
+      // A NaN camera position draws every world-space layer off-screen while
+      // the example otherwise runs without errors. JSON writes NaN as null.
+      const { camera } = JSON.parse(json) as {
+        camera: { position: { x: number | null; y: number | null } } | null;
+      };
+      if (camera) {
+        expect(
+          Number.isFinite(camera.position.x) &&
+            Number.isFinite(camera.position.y),
+          `finite camera position in ${slug}`,
+        ).toBe(true);
+      }
     });
   }
+
+  test("platformer jump reaches its full height", async ({ page }) => {
+    await page.goto("/platformer.html?test");
+    await page.waitForFunction(
+      () =>
+        window.__yage__?.inspector.getSceneStack().at(-1)?.name ===
+        "platformer",
+      undefined,
+      { timeout: 10_000 },
+    );
+
+    const result = await page.evaluate(async () => {
+      const inspector = window.__yage__!.inspector;
+      // Let the player fall from the spawn point and land.
+      await inspector.time.stepAsync(90);
+      const groundY = inspector.getEntityPosition("PlayerEntity")!.y;
+
+      inspector.input.keyDown("Space");
+      await inspector.time.stepAsync(1);
+      inspector.input.keyUp("Space");
+      let apexY = groundY;
+      for (let frame = 0; frame < 60; frame++) {
+        await inspector.time.stepAsync(1);
+        apexY = Math.min(apexY, inspector.getEntityPosition("PlayerEntity")!.y);
+      }
+
+      return { height: groundY - apexY, errors: inspector.getErrors() };
+    });
+
+    // A 505 px/s jump against 980 px/s² gravity peaks near 130 px.
+    expect(result.height).toBeGreaterThan(120);
+    expect(result.errors.callbackErrors).toEqual([]);
+  });
 
   test("abilities-addon replaces active loadouts cleanly", async ({ page }) => {
     const errors: string[] = [];
