@@ -114,12 +114,12 @@ React components mirror the imperative `@yagejs/ui` API:
 ```tsx
 import { Panel, Text, Button, Image, ProgressBar, Checkbox } from "@yagejs/ui-react";
 
-function HUD() {
-  const [score, setScore] = useState(0);
+function ClickDemo() {
+  const [clicks, setClicks] = useState(0);
 
   return (
     <Panel direction="column" gap={8} padding={16} bg={{ color: 0x000000, alpha: 0.7 }}>
-      <Text style={{ fontSize: 24, fill: 0xffffff }}>{`Score: ${score}`}</Text>
+      <Text style={{ fontSize: 24, fill: 0xffffff }}>{`Clicks: ${clicks}`}</Text>
 
       {/* width/height are optional — omit them and the button shrinks to
           fit its content. */}
@@ -127,15 +127,15 @@ function HUD() {
         bg={{ color: 0x4444aa }}
         hoverBg={{ color: 0x5555cc }}
         textStyle={{ fontSize: 16, fill: 0xffffff }}
-        onClick={() => setScore(s => s + 1)}
+        onClick={() => setClicks((c) => c + 1)}
       >
-        Add Point
+        Click me
       </Button>
 
       <ProgressBar
         width={200}
         height={16}
-        value={score / 10}
+        value={clicks / 10}
         fillBackground={{ color: 0x44cc44 }}
         trackBackground={{ color: 0x333333 }}
       />
@@ -657,16 +657,18 @@ and pointing you at `<ScrollView>` or another container.
 
 ### useEngine / useScene
 
-Access the engine context or current scene from any React component:
+`useEngine()` returns the `EngineContext`, and `useScene()` returns the scene
+the tree is mounted in. Resolve engine services from the context:
 
 ```tsx
-import { useEngine, useScene } from "@yagejs/ui-react";
+import { SceneManagerKey } from "@yagejs/core";
+import { Button, useEngine } from "@yagejs/ui-react";
 
 function PauseButton() {
-  const engine = useEngine();
+  const scenes = useEngine().resolve(SceneManagerKey);
 
   return (
-    <Button onClick={() => engine.scenes.push(new PauseScene())} width={100} height={40}>
+    <Button onClick={() => void scenes.push(new PauseScene())} width={100} height={40}>
       Pause
     </Button>
   );
@@ -680,20 +682,27 @@ records, maps, sets, lists, single-cell values, and compound stores. One
 overload per shape, plus a selector escape hatch. Dispatch is symbol-driven
 (each shape carries a `[STATE_KIND]` brand from `@yagejs/core`).
 
+A store created at module scope is for state that `@yagejs/save` persists,
+such as settings or unlocked levels. The score and lives of the current run
+live in a component on a host entity instead. Read those with
+[`useSceneSelector`](#usesceneselector), as
+[State Management](/patterns/state-management/#reading-state-from-react-ui)
+shows.
+
 ```tsx
 import { createRecord } from "@yagejs/core";
 import { useStore } from "@yagejs/ui-react";
 
-// Plain record (object with shallow merge)
-const gameStore = createRecord({ default: () => ({ score: 0, health: 100 }) });
+// Saved settings: a plain record (object with shallow merge)
+const settings = createRecord({ default: () => ({ volume: 0.8, subtitles: true }) });
 
-// Write from ECS (systems, components, event handlers)
-gameStore.set({ score: gameStore.get().score + 10 });
+// Write from a component or an event handler
+settings.set({ volume: 0.5 });
 
 // Read from React — auto-rerenders on change
-function ScoreDisplay() {
-  const { score } = useStore(gameStore);
-  return <Text style={{ fontSize: 32 }}>{`Score: ${score}`}</Text>;
+function VolumeLabel() {
+  const { volume } = useStore(settings);
+  return <Text style={{ fontSize: 16 }}>{`Volume: ${Math.round(volume * 100)}%`}</Text>;
 }
 ```
 
@@ -766,7 +775,8 @@ selector result changes.
 
 ### useSceneSelector
 
-Read arbitrary scene state:
+Read arbitrary scene state. The selector runs every frame, and the component
+re-renders only when the result changes:
 
 ```tsx
 import { useSceneSelector } from "@yagejs/ui-react";
@@ -774,6 +784,18 @@ import { useSceneSelector } from "@yagejs/ui-react";
 function EntityCounter() {
   const count = useSceneSelector((scene) => scene.getEntities().length);
   return <Text>{`Entities: ${count}`}</Text>;
+}
+```
+
+This is how a React HUD reads game state hosted on an entity. The key is the
+one the host was spawned with:
+
+```tsx
+function CoinCounter() {
+  const coins = useSceneSelector(
+    (scene) => scene.findByKey<HudEntity>(HUD_KEY)?.progress.coins ?? 0,
+  );
+  return <Text>{`Coins: ${coins}`}</Text>;
 }
 ```
 

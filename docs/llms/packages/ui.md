@@ -68,6 +68,9 @@ const panel = entity.get(UISurface);
 
 // Text
 const label = panel.text("Score: 0", { fontSize: 24, fill: 0xffffff });
+// The label only shows the score. The score lives in a component on a host
+// entity that calls setText when it changes (patterns.md, "Game state on a
+// host entity").
 label.setText("Score: 100");
 label.setStyle({ fill: 0x00ff00 }); // replace — unset props revert to default
 label.mergeStyle({ fill: 0x00ff00 }); // patch — keeps the current font/size/etc

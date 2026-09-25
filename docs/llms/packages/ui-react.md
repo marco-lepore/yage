@@ -399,8 +399,8 @@ import {
   useSceneSelector,
 } from "@yagejs/ui-react";
 
-// Engine/scene context
-const engine = useEngine();
+// Engine/scene context. useEngine() returns the EngineContext, not the Engine.
+const scenes = useEngine().resolve(SceneManagerKey); // e.g. scenes.push(new PauseScene())
 const scene = useScene();
 
 // Reactive source — one overload per Reactive* shape, plus a selector escape hatch.
@@ -416,8 +416,13 @@ useStore(source, select); // selector receives the source itself, not a snapshot
 // ECS query (polled each frame)
 const count = useQuery([EnemyTag], (result) => result.size);
 
-// Scene selector (polled each frame)
+// Scene selector (polled each frame, re-renders only when the result changes)
 const entityCount = useSceneSelector((scene) => scene.getEntities().length);
+
+// Game state hosted on an entity (see patterns.md "Game state on a host entity")
+const coins = useSceneSelector(
+  (scene) => scene.findByKey<HudEntity>(HUD_KEY)?.progress.coins ?? 0,
+);
 ```
 
 `useStore(compound)` is supported — it returns the encoded snapshot of the whole tree. Reading individual leaves keeps subscription granularity per-leaf. Dispatch is symbol-driven (each shape carries a `[STATE_KIND]` brand from `@yagejs/core`).
@@ -431,22 +436,25 @@ const lang = useStore(game.settings, (s) => s.get().lang); // selector on leaf
 const hp = useStore(game, (s) => s.player.get().health); // selector on compound
 ```
 
-## In-memory record for UI
+## Stores vs game state
 
-For ECS↔UI bridges that don't need persistence, use `createRecord` from `@yagejs/core`:
+A module-level store (`createStore`, `createRecord`, ...) is only for state that `@yagejs/save` persists: settings, unlocks, cross-session records. Run state (score, lives, inventory, a level clock) lives in a component on a host entity; React reads it with `useSceneSelector` + `scene.findByKey` (above), and changes go through entity events to that component.
 
 ```ts
 import { createRecord } from "@yagejs/core";
 import { useStore } from "@yagejs/ui-react";
 
-const ui = createRecord({ default: () => ({ score: 0, health: 100 }) });
+// Saved settings (persisted with @yagejs/save)
+const settings = createRecord({
+  default: () => ({ volume: 0.8, subtitles: true }),
+});
 
-// ECS side: write
-ui.set({ score: ui.get().score + 10 });
+// A component or event handler writes
+settings.set({ volume: 0.5 });
 
 // React side: read (auto-rerenders)
-const score = useStore(ui, (src) => src.get().score);
+const volume = useStore(settings, (src) => src.get().volume);
 
 // Manual subscribe
-const unsub = ui.subscribe(() => console.log(ui.get()));
+const unsub = settings.subscribe(() => console.log(settings.get()));
 ```

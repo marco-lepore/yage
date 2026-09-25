@@ -347,6 +347,10 @@ label.setText("Score: 100");
 label.setStyle({ fill: 0x00ff00 });
 ```
 
+A label only shows a value. The score itself lives in a component on a host
+entity, which calls `setText` when the score changes. See
+[State Management](/patterns/state-management/#game-state-on-a-host-entity).
+
 ### Wrapping and truncation
 
 Without `truncate`, a text wraps to the width it is given, either by its
@@ -473,7 +477,7 @@ const btn = panel.button("Start Game", {
   pressBackground: { color: 0x333388, radius: 6 },
   textStyle: { fontSize: 18, fill: 0xffffff },
   onClick: () => {
-    engine.scenes.push(new GameScene());
+    void this.use(SceneManagerKey).push(new GameScene());
   },
 });
 
