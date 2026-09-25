@@ -383,6 +383,30 @@ test.describe("Examples", () => {
     );
     expect((await probe()).coins).toBe(4);
 
+    // Past the ale and its one-second `<<wait>>`, back to the menu.
+    await tap("Enter");
+    await tap("Enter");
+    await page.evaluate(() => window.__yage__!.inspector.time.step(90));
+    await until('p.lastLine === "Barkeep: Cosa ti porto?"');
+    await tap("Enter");
+    await tap("Enter");
+    await until("p.choosing === true");
+
+    // "Buonanotte" is the fourth option; it ends the conversation.
+    await tap("ArrowDown");
+    await tap("ArrowDown");
+    await tap("ArrowDown");
+    await tap("Enter");
+    await until('p.lastLine === "Barkeep: Buon viaggio!"');
+    await tap("Enter");
+    await tap("Enter");
+    await until("p.active === false");
+
+    // Talking again runs the Greeting node group: the `when: once` welcome is
+    // spent and 4 coins isn't a light purse, so the `when: always` line plays.
+    await tap("KeyT");
+    await until('p.lastLine === "Barkeep: Di nuovo qui? Prendi uno sgabello."');
+
     const inspectorErrors = await page.evaluate(
       () => window.__yage__!.inspector.getErrors().callbackErrors,
     );

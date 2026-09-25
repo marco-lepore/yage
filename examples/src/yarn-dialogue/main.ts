@@ -7,8 +7,10 @@
  * sources and lists `it.csv` as the Italian strings table. The script shows
  * characters, `{$expressions}` in lines and options, `<<if>>`, options gated on
  * a condition (`#disabled` keeps one greyed out), `<<once>>`, `<<detour>>`,
- * `<<jump>>`, `visited()`, a line group (`=>`), the built-in `<<wait>>`, and a
- * game command (`<<pay 3>>`) that spends the player's coins.
+ * `<<jump>>`, `visited()`, a line group (`=>`), a node group (`Greeting.yarn`:
+ * `when:` headers pick the barkeep's greeting, so it changes when you talk
+ * again), the built-in `<<wait>>`, and a game command (`<<pay 3>>`) that spends
+ * the player's coins.
  *
  * **Enter** advances / confirms, **↑↓** choose, **L** switches English ⇄
  * Italian mid-line (the line on screen swaps in place), **T** talks again once

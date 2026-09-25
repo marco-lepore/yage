@@ -1,5 +1,7 @@
 language,id,text,file,node,lineNumber,lock,comment
-it,line:welcome,"Barkeep: Benvenuto alla Lanterna Storta, viaggiatore!",Tavern.yarn,Start,7,,
+it,line:welcome,"Barkeep: Benvenuto alla Lanterna Storta, viaggiatore!",Greeting.yarn,Greeting,8,,
+it,line:greet_broke,"Barkeep: Borsa leggera stasera? Almeno il fuoco è gratis.",Greeting.yarn,Greeting,14,,
+it,line:greet_back,Barkeep: Di nuovo qui? Prendi uno sgabello.,Greeting.yarn,Greeting,20,,
 it,line:menu_after_song,Barkeep: Ti è piaciuta la canzone?,Tavern.yarn,Menu,14,,
 it,line:menu,Barkeep: Cosa ti porto?,Tavern.yarn,Menu,16,,
 it,line:order,Ordina da bere ({0} monete),Tavern.yarn,Menu,18,,

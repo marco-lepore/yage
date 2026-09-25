@@ -4,7 +4,7 @@
 title: Start
 ---
 <<declare $price = 3>>
-Barkeep: Welcome to the Crooked Lantern, traveller! #line:welcome
+<<detour Greeting>>
 <<jump Menu>>
 ===
 
