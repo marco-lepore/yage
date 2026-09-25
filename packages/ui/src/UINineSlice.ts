@@ -7,7 +7,8 @@ import type {
   TextureInput,
 } from "@yagejs/renderer";
 import { resolveTextureInput } from "@yagejs/renderer";
-import type { UIElement, UINineSliceProps } from "./types.js";
+import type { UINineSliceProps } from "./types.js";
+import { UIElementBase } from "./UIElementBase.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
@@ -20,7 +21,7 @@ import {
 import { warnNineSliceTooSmall } from "./internal/nine-slice-guard.js";
 
 /** Displays a nine-slice texture as a UI element. Requires explicit width/height from layout. */
-export class UINineSlice implements UIElement {
+export class UINineSlice extends UIElementBase {
   readonly container: NineSliceSprite;
   readonly yogaNode: YogaNode;
 
@@ -35,6 +36,7 @@ export class UINineSlice implements UIElement {
   private _destroyed = false;
 
   constructor(props: UINineSliceProps) {
+    super();
     this.yogaNode = createYogaNode();
     this.textureInput = props.texture;
 
@@ -86,6 +88,7 @@ export class UINineSlice implements UIElement {
     if (props.alpha !== undefined) this.container.alpha = props.alpha;
 
     applyLayoutProps(this.yogaNode, props);
+    this.applyTransformProps(props);
 
     if (props.visible === false) {
       this.container.visible = false;
@@ -138,6 +141,7 @@ export class UINineSlice implements UIElement {
     this._focusOutline.set(p);
 
     applyLayoutProps(this.yogaNode, p);
+    this.applyTransformProps(p);
 
     if ("visible" in p) {
       this.visible = p.visible ?? true;

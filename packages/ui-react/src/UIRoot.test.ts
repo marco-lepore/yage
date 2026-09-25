@@ -119,6 +119,31 @@ describe("UIRoot offset", () => {
   });
 });
 
+describe("UIRoot placement", () => {
+  it("stacks top-level elements about their transform origins", () => {
+    const { root, layer } = mountUIRoot("menu");
+    root.render(
+      createElement(
+        Fragment,
+        null,
+        createElement(Panel, { width: 40, height: 20 }),
+        createElement(Panel, {
+          width: 60,
+          height: 30,
+          transformOrigin: 0.5,
+          scale: 1.5,
+        }),
+      ),
+    );
+
+    const [first, second] =
+      getRootInstances(outerContainer(layer) as never) ?? [];
+    expect(first?.displayObject.position).toMatchObject({ x: 0, y: 0 });
+    expect(second?.displayObject.pivot).toMatchObject({ x: 30, y: 15 });
+    expect(second?.displayObject.position).toMatchObject({ x: 30, y: 35 });
+  });
+});
+
 describe("UIRoot overflow warnings", () => {
   it("names the entity that owns the tree", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

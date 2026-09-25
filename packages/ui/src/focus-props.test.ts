@@ -8,71 +8,7 @@ import {
   afterEach,
 } from "vitest";
 
-vi.mock("pixi.js", async () => {
-  const { pixiMock, MockContainer, MockGraphics, MockSprite, MockText } =
-    await import("./test-pixi.js");
-  /** Sizes itself the way Pixi does: by scaling against its texture. */
-  class MockScalingSprite extends MockSprite {
-    constructor(texture: { width: number; height: number }) {
-      super(texture);
-      for (const [size, axis] of [
-        ["width", "x"],
-        ["height", "y"],
-      ] as const) {
-        Object.defineProperty(this, size, {
-          get: () => texture[size] * this.scale[axis],
-          set: (value: number) => {
-            this.scale[axis] = value / texture[size];
-          },
-        });
-      }
-    }
-  }
-  /** Adds the path calls a checkmark is drawn with. */
-  class MockPathGraphics extends MockGraphics {
-    moveTo(): this {
-      return this;
-    }
-    lineTo(): this {
-      return this;
-    }
-  }
-  /** Splits into one line holding one word per run of non-space characters. */
-  class MockSplitText extends MockContainer {
-    style: Record<string, unknown>;
-    chars: InstanceType<typeof MockText>[] = [];
-    words: InstanceType<typeof MockContainer>[] = [];
-    lines: InstanceType<typeof MockContainer>[] = [];
-    constructor(readonly opts: { text: string; style?: object }) {
-      super();
-      this.style = { ...opts.style };
-      this.split();
-    }
-    get text(): string {
-      return this.opts.text;
-    }
-    split(): void {
-      this.chars = [...this.text.replace(/\s/g, "")].map(
-        (text) => new MockText({ text }),
-      );
-      this.words = this.text.split(/\s+/).map(() => new MockContainer());
-      this.lines = [this.addChild(new MockContainer())];
-    }
-  }
-  const measureText = (text: string) => ({
-    width: text.length * 10,
-    height: 16,
-  });
-  return {
-    ...pixiMock,
-    Graphics: MockPathGraphics,
-    Sprite: MockScalingSprite,
-    SplitText: MockSplitText,
-    SplitBitmapText: MockSplitText,
-    CanvasTextMetrics: { measureText },
-    BitmapFontManager: { measureText },
-  };
-});
+vi.mock("pixi.js", async () => (await import("./test-pixi.js")).widgetPixiMock);
 
 vi.mock("@yagejs/renderer", async (importOriginal) => ({
   ...((await importOriginal()) as object),
@@ -134,8 +70,11 @@ function outlineOf(element: UIElement): MockGraphics | undefined {
 }
 
 function emitOn(element: UIElement, event: string): void {
+  // A picture listens on its sprite, which is what the pointer hits.
+  const target =
+    element instanceof UIImage ? element.sprite : element.displayObject;
   // A scroll view's drag listener reads the pointer position off the event.
-  (element.displayObject as unknown as MockContainer).emit(event, {
+  (target as unknown as MockContainer).emit(event, {
     global: { x: 0, y: 0 },
   });
 }
@@ -477,17 +416,16 @@ describe("UIImage focus outline", () => {
     img.yogaNode.calculateLayout(240, 60, Direction.LTR);
     img.applyLayout();
 
-    // The sprite scales its 120x40 texture by 2 and 1.5, so the outline is
-    // scaled back: 240 px across, with a 2 px stroke on both axes.
+    // The sprite scales its 120x40 texture by 2 and 1.5 inside the element's
+    // own container, where the outline is drawn unscaled: 240 px across, with
+    // a 2 px stroke on both axes.
     const ring = outlineOf(img);
-    const sprite = img.container.scale;
+    const sprite = img.sprite.scale;
     expect([sprite.x, sprite.y]).toEqual([2, 1.5]);
     expect(ring?.lastStroke).toEqual({ color: 0xffffff, width: 2 });
-    expect(
-      ((ring?.lastRect?.width ?? 0) + 2) * (ring?.scale.x ?? 1) * sprite.x,
-    ).toBeCloseTo(240);
-    expect((ring?.scale.x ?? 1) * sprite.x).toBeCloseTo(1);
-    expect((ring?.scale.y ?? 1) * sprite.y).toBeCloseTo(1);
+    expect((ring?.lastRect?.width ?? 0) + 2).toBeCloseTo(240);
+    expect((ring?.lastRect?.height ?? 0) + 2).toBeCloseTo(60);
+    expect([ring?.scale.x, ring?.scale.y]).toEqual([1, 1]);
     img.destroy();
   });
 });

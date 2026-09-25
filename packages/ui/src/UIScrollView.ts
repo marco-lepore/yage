@@ -17,6 +17,7 @@ import type {
   UIElement,
   UITextBuilderProps,
 } from "./types.js";
+import { UIElementBase } from "./UIElementBase.js";
 import {
   createYogaNode,
   applyLayoutProps,
@@ -48,11 +49,14 @@ interface ResolvedScrollbar {
   margin: number;
 }
 
-/** Top-left corner of an element, the point a scroll-into-view projects. */
-const ORIGIN = { x: 0, y: 0 } as const;
+/** Reused layout corner of an element, the point scroll-into-view projects. */
+const corner = { x: 0, y: 0 };
 
 /** Reused destination of that projection, so a call allocates nothing. */
 const projected = { x: 0, y: 0 };
+
+/** Reused destination of a pointer brought into a viewport's space. */
+const pointerLocal = { x: 0, y: 0 };
 
 const SCROLLBAR_DEFAULTS = {
   thickness: 4,
@@ -90,7 +94,7 @@ function resolveScrollbar(
  * clipped by a mask and panned by a wheel/drag-driven offset that survives
  * re-renders (the node instance is stable; only children are diffed).
  */
-export class UIScrollView implements UIContainerElement {
+export class UIScrollView extends UIElementBase implements UIContainerElement {
   readonly yogaNode: YogaNode;
   private readonly viewport: Container;
   private readonly content: UIPanel;
@@ -150,6 +154,7 @@ export class UIScrollView implements UIContainerElement {
   }
 
   constructor(props: UIScrollViewProps) {
+    super();
     this.vertical = (props.direction ?? "vertical") === "vertical";
     this._sb = resolveScrollbar(props.scrollbar);
     this.onScroll = props.onScroll;
@@ -182,6 +187,7 @@ export class UIScrollView implements UIContainerElement {
     });
 
     this.yogaNode = createYogaNode();
+    this.applyTransformProps(props);
     this.yogaNode.setOverflow(Overflow.Hidden);
     // Let a flex parent size the viewport smaller than its (overflowing)
     // content — the Yoga equivalent of the CSS `min-height:0` scroll-
@@ -388,11 +394,14 @@ export class UIScrollView implements UIContainerElement {
       );
     }
 
-    // The element's top-left in the content panel's own space, which does not
-    // move with the scroll offset.
+    // The layout corner, position less pivot: the element's scale and
+    // rotation do not move it, and neither does the scroll offset.
+    const display = element.displayObject;
+    corner.x = display.position.x - display.pivot.x;
+    corner.y = display.position.y - display.pivot.y;
     const p = this.content.container.toLocal(
-      ORIGIN,
-      element.displayObject,
+      corner,
+      display.parent ?? undefined,
       projected,
     );
     const extent = this.vertical
@@ -599,15 +608,25 @@ export class UIScrollView implements UIContainerElement {
     this._setOffset(this._offset + delta * unit);
   };
 
+  /**
+   * Where the pointer is along the scroll axis, in the viewport's own space,
+   * so a scaled or rotated view drags along its own axis at its own scale.
+   */
+  private _pointerAlongAxis(e: FederatedPointerEvent): number {
+    const local = this.viewport.toLocal(e.global, undefined, pointerLocal);
+    return this.vertical ? local.y : local.x;
+  }
+
   private readonly _onPointerDown = (e: FederatedPointerEvent): void => {
     this._dragging = true;
-    this._dragStart = this.vertical ? e.global.y : e.global.x;
+    this._dragStart = this._pointerAlongAxis(e);
     this._dragStartOffset = this._offset;
   };
 
   private readonly _onPointerMove = (e: FederatedPointerEvent): void => {
     if (!this._dragging) return;
-    const cur = this.vertical ? e.global.y : e.global.x;
+    const cur = this._pointerAlongAxis(e);
+    if (!Number.isFinite(cur)) return;
     if (!this._panning) {
       if (Math.abs(cur - this._dragStart) < 10) return;
       this._panning = true;
@@ -715,6 +734,7 @@ export class UIScrollView implements UIContainerElement {
     }
 
     applyLayoutProps(this.yogaNode, props);
+    this.applyTransformProps(props);
     this.yogaNode.setOverflow(Overflow.Hidden);
     // Re-reserve the gutter: covers a scrollbar style/visibility change, a
     // direction flip (edges swap), and any padding reset by applyLayoutProps.

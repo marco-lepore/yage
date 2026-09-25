@@ -19,9 +19,10 @@ hit.path.some((node) => node.type === "UIButton"); // true
 
 `click`, `down`, `up` and `move` dispatch; `hitTest` resolves and reports
 without dispatching. A target is a `UINodeSnapshot.id`, aimed at the centre of
-that node's `bounds`, or a virtual-space point. The returned hit carries
-`path` — every user-interface node the chain crossed, innermost first — plus
-the `point` used and `consumed`. A button's label is a node of its own and
+that node's `bounds`, or a virtual-space point. An id whose `bounds` have no
+area, such as an element scaled to 0, throws, naming the node. The returned hit
+carries `path` — every user-interface node the chain crossed, innermost first —
+plus the `point` used and `consumed`. A button's label is a node of its own and
 sits on top of the button, so search `path` for the element you mean.
 
 The verbs drive one primary mouse pointer; a touch pointer or a second finger

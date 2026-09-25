@@ -245,14 +245,17 @@ needs `await`.
 **Aim at a node id rather than at pixels.** A target is either the `id` of a
 node in the Inspector's user-interface snapshot, or a point in virtual-space
 pixels. An id resolves to the centre of the node's `bounds`, its box on screen,
-so a layout change that moves the button moves the click with it. The node's
-`layout` field is measured from its parent node and gives no position on the
-canvas. The nodes are the tree under `ui.root` in a scene snapshot, which
-`inspector.snapshot().scenes` lists and `inspector.snapshotScene(name)`
-returns. In a scene with several surfaces, `ui.root` is a wrapper node whose
-children are the surfaces' root nodes, and the wrapper itself cannot be
-clicked. A lab scenario reads the snapshot from `window.__yage__.inspector`
-too, because its drive context has no snapshot method.
+so a layout change that moves the button moves the click with it. The box covers
+the element as it is drawn, so a scaled or rotated button is clicked in its
+middle, and an element scaled to 0 cannot be clicked by id: the call throws,
+naming the node. The node's `layout` field is measured from its parent node and
+gives no position on the canvas. The nodes are the tree under `ui.root` in a
+scene snapshot, which `inspector.snapshot().scenes` lists and
+`inspector.snapshotScene(name)` returns. In a scene with several surfaces,
+`ui.root` is a wrapper node whose children are the surfaces' root nodes, and the
+wrapper itself cannot be clicked. A lab scenario reads the snapshot from
+`window.__yage__.inspector` too, because its drive context has no snapshot
+method.
 
 **Look through the whole path.** Every verb returns what the hit test found.
 `path` lists the node under the point and then each node that contains it,

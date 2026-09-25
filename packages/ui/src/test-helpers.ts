@@ -32,35 +32,27 @@ import type { Node as YogaNode } from "yoga-layout";
 import { createYogaNode } from "./yoga-helpers.js";
 import type { UIElement } from "./types.js";
 import type { UITreeContext } from "./internal/tree-context.js";
+import { toLocalThrough } from "./test-affine.js";
 
 // ---- Minimal mock container for test context ----
 
-/** Translation and scale composed down a container chain. */
-interface ComposedTransform {
-  x: number;
-  y: number;
-  scaleX: number;
-  scaleY: number;
-}
-
-const IDENTITY: Readonly<ComposedTransform> = {
-  x: 0,
-  y: 0,
-  scaleX: 1,
-  scaleY: 1,
-};
-
-export class MockContainer {
-  children: MockContainer[] = [];
-  position = {
-    x: 0,
-    y: 0,
-    set(this: { x: number; y: number }, ax: number, ay: number) {
+/** A settable point, the shape Pixi's `position`, `scale` and `pivot` take. */
+function settablePoint(x: number, y: number) {
+  return {
+    x,
+    y,
+    set(this: { x: number; y: number }, ax: number, ay: number = ax) {
       this.x = ax;
       this.y = ay;
     },
   };
-  scale = { x: 1, y: 1 };
+}
+
+export class MockContainer {
+  children: MockContainer[] = [];
+  position = settablePoint(0, 0);
+  scale = settablePoint(1, 1);
+  pivot = settablePoint(0, 0);
   rotation = 0;
   visible = true;
   alpha = 1;
@@ -110,35 +102,15 @@ export class MockContainer {
 
   /**
    * Convert `point` — given in `from`'s local space, or in global space when
-   * `from` is left out — into this container's local space.
-   *
-   * Translation and scale only. Rotation is out of scope: nothing in the UI
-   * layer rotates a container, and leaving it out keeps the arithmetic a
-   * reader can check by hand against the coordinates a test writes.
+   * `from` is left out — into this container's local space. See
+   * {@link toLocalThrough}.
    */
   toLocal(
     point: { x: number; y: number },
     from?: MockContainer,
     out?: { x: number; y: number },
   ): { x: number; y: number } {
-    const source = from?.composedTransform() ?? IDENTITY;
-    const target = this.composedTransform();
-    const globalX = source.x + point.x * source.scaleX;
-    const globalY = source.y + point.y * source.scaleY;
-    const result = out ?? { x: 0, y: 0 };
-    result.x = (globalX - target.x) / target.scaleX;
-    result.y = (globalY - target.y) / target.scaleY;
-    return result;
-  }
-
-  /** This container's position and scale, composed from the root down. */
-  private composedTransform(): ComposedTransform {
-    const composed = this.parent?.composedTransform() ?? { ...IDENTITY };
-    composed.x += this.position.x * composed.scaleX;
-    composed.y += this.position.y * composed.scaleY;
-    composed.scaleX *= this.scale.x;
-    composed.scaleY *= this.scale.y;
-    return composed;
+    return toLocalThrough(this, point, from, out);
   }
 
   destroy(): void {

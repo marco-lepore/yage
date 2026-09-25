@@ -364,13 +364,13 @@ export interface UINodeSnapshot {
    */
   layout: { x: number; y: number; width: number; height: number };
   /**
-   * The element's box in virtual-space pixels: its container's top-left and
-   * bottom-right corners mapped out of the renderer and through the
-   * canvas-to-virtual conversion, rounded to a thousandth of a pixel so the
-   * same box reads the same at any canvas size. `null` when no renderer
-   * adapter is registered, or for an element that owns no container. A
-   * rotated element reports the axis-aligned box of those two corners, which
-   * is approximate.
+   * The box the element is drawn in, in virtual-space pixels: the four
+   * corners of its container's own layout box mapped out of the renderer and
+   * through the canvas-to-virtual conversion, and the axis-aligned box around
+   * them, rounded to a thousandth of a pixel so the same box reads the same
+   * at any canvas size. A scaled or rotated element reports the box it
+   * covers on screen. `null` when no renderer adapter is registered, or for
+   * an element that owns no container.
    */
   bounds: { x: number; y: number; width: number; height: number } | null;
   children: UINodeSnapshot[];
@@ -2047,8 +2047,9 @@ export class Inspector {
   }
 
   /**
-   * Maps the element's local box out of the renderer and into virtual space.
-   * An adapter without `canvasToVirtual` reports canvas CSS pixels, which the
+   * Maps the four corners of the element's local box out of the renderer and
+   * into virtual space, and returns the axis-aligned box around them. An
+   * adapter without `canvasToVirtual` reports canvas CSS pixels, which the
    * {@link RendererAdapter} contract says equal virtual pixels only while the
    * canvas is at its virtual size.
    *
@@ -2069,13 +2070,27 @@ export class Inspector {
       const canvas = displayObject.toGlobal(point);
       return adapter.canvasToVirtual?.(canvas.x, canvas.y) ?? canvas;
     };
-    const start = toVirtual({ x: 0, y: 0 });
-    const end = toVirtual({ x: size.width, y: size.height });
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    for (const corner of [
+      { x: 0, y: 0 },
+      { x: size.width, y: 0 },
+      { x: 0, y: size.height },
+      { x: size.width, y: size.height },
+    ]) {
+      const point = toVirtual(corner);
+      left = Math.min(left, point.x);
+      top = Math.min(top, point.y);
+      right = Math.max(right, point.x);
+      bottom = Math.max(bottom, point.y);
+    }
     return {
-      x: roundBound(Math.min(start.x, end.x)),
-      y: roundBound(Math.min(start.y, end.y)),
-      width: roundBound(Math.abs(end.x - start.x)),
-      height: roundBound(Math.abs(end.y - start.y)),
+      x: roundBound(left),
+      y: roundBound(top),
+      width: roundBound(right - left),
+      height: roundBound(bottom - top),
     };
   }
 
@@ -2168,6 +2183,11 @@ export class Inspector {
     if (!entry.bounds) {
       throw new Error(
         `Inspector.pointer.${call}(): UI node "${id}" has no bounds. Pass a point instead.`,
+      );
+    }
+    if (!(entry.bounds.width * entry.bounds.height > 0)) {
+      throw new Error(
+        `Inspector.pointer.${call}(): UI node "${id}" (${entry.type}) is drawn with no area, ${entry.bounds.width} x ${entry.bounds.height}, so no point on it can be hit. It may be scaled to 0 or not laid out yet.`,
       );
     }
     return {

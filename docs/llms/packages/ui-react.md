@@ -186,6 +186,33 @@ hover/click callbacks (those still fire), and a `<Tooltip>` trigger placed
 under such a panel still works. The `<Tooltip>` overlay and its bubbles use
 `consumeInput={false}` so they never block input to the UI behind them.
 
+### Scale, rotation and draw order
+
+Every component takes `transformOrigin` (fractions of its size, default `0`),
+`scale` (number or `{ x, y }`, default `1`), `rotation` (radians) and `zIndex`
+(order among siblings, default `0`). They change how it is drawn, never its
+layout box; `ui.md` "Scale, rotation and draw order" has the rules for
+clipping, scrolling and draw order.
+
+```tsx
+const [hovered, setHovered] = useState(false);
+
+<Panel
+  width={120}
+  height={160}
+  transformOrigin={0.5}
+  scale={hovered ? 1.08 : 1}
+  zIndex={hovered ? 1 : 0}
+  onHover={setHovered}
+/>;
+```
+
+Every render passes each prop again, so a `scale` prop replaces a value written
+to the element another way. Animate through state: a scene-scoped tween
+(`makeSceneScopedQueue(engine.resolve(ProcessSystemKey), scene)` from
+`useEngine()` / `useScene()`) writing the scale into component state pops a
+dialog in over a few frames. Removing a prop resets it: `scale` to `1`, `transformOrigin` to `0`.
+
 ### Hover events
 
 `Panel`, `Button`, `Text`, `SplitText`, `Image`, `NineSlice`, `ProgressBar`,

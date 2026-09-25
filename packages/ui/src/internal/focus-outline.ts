@@ -10,6 +10,7 @@ import type { DisplayContainer } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import type { FocusProps, UIFocusOutlineBox, UIFocusStyle } from "../types.js";
 import { getUIDefaultTextStyle } from "../text-defaults.js";
+import { ABOVE_ELEMENTS } from "./element-transform.js";
 
 /** Outline colour when the UI default text style names no colour number. */
 const FALLBACK_COLOR = 0xffffff;
@@ -19,9 +20,6 @@ const DEFAULT_WIDTH = 2;
 const DEFAULT_RADIUS = 4;
 /** Gap between the element's box and the outline's outer edge. */
 const DEFAULT_INSET = 0;
-
-/** What a container that scales nothing reports. */
-const UNSCALED = { x: 1, y: 1 };
 
 // When two engines share a page, the most recently installed UIPlugin wins.
 let uiFocusStyle: UIFocusStyle | undefined;
@@ -96,22 +94,17 @@ export function resolveFocusStyle(
 export interface FocusOutlineHost {
   /** Container the outline is drawn into, as a non-measurable child. */
   readonly container: DisplayContainer;
-  /** The rectangle to outline, in `container`'s own local space. */
-  box(): UIFocusOutlineBox;
   /**
-   * What `container` scales its contents by. The outline is drawn in layout
-   * px and scaled back down, so the stroke keeps its thickness on a widget
-   * that layout sizes by scaling. Omitted means the container does not scale.
+   * The rectangle to outline, in `container`'s own local space, which is
+   * measured in layout pixels.
    */
-  scale?(): { readonly x: number; readonly y: number };
+  box(): UIFocusOutlineBox;
 }
 
 /** The geometry and colour one stroke was laid down from. */
 interface DrawnOutline {
   readonly x: number;
   readonly y: number;
-  readonly scaleX: number;
-  readonly scaleY: number;
   readonly edge: number;
   readonly width: number;
   readonly height: number;
@@ -168,6 +161,7 @@ export class FocusOutline {
     // Left out of local bounds, so taking focus changes no measured size, nor
     // the width and height a wrapper's `applyLayout` writes into its widget.
     graphics.measurable = false;
+    graphics.zIndex = ABOVE_ELEMENTS;
     this.host.container.addChild(graphics);
     this.graphics = graphics;
     return graphics;
@@ -207,16 +201,11 @@ export class FocusOutline {
     box: UIFocusOutlineBox,
     style: ResolvedFocusStyle,
   ): void {
-    const readScale = this.host.scale;
-    const scale = readScale ? readScale.call(this.host) : UNSCALED;
-    const scaleX = scale.x || 1;
-    const scaleY = scale.y || 1;
-
     // Half the stroke sits either side of the path, so the path runs half a
     // width inside the box and the outline's outer edge lands on the box.
     const edge = style.inset + style.width / 2;
-    const width = box.width * scaleX - edge * 2;
-    const height = box.height * scaleY - edge * 2;
+    const width = box.width - edge * 2;
+    const height = box.height - edge * 2;
     const radius = Math.max(0, style.radius - edge);
 
     // Skip a stroke identical to the one already drawn: a focused element
@@ -227,8 +216,6 @@ export class FocusOutline {
       drawn !== undefined &&
       drawn.x === box.x &&
       drawn.y === box.y &&
-      drawn.scaleX === scaleX &&
-      drawn.scaleY === scaleY &&
       drawn.edge === edge &&
       drawn.width === width &&
       drawn.height === height &&
@@ -241,8 +228,6 @@ export class FocusOutline {
     this.drawn = {
       x: box.x,
       y: box.y,
-      scaleX,
-      scaleY,
       edge,
       width,
       height,
@@ -251,11 +236,7 @@ export class FocusOutline {
       strokeWidth: style.width,
     };
 
-    // The corner is a point in the container's space; the extent is in layout
-    // px, and the graphics is scaled back by the same amount. A host that
-    // declares no scale leaves the graphics at scale 1.
     graphics.position.set(box.x, box.y);
-    if (readScale) graphics.scale.set(1 / scaleX, 1 / scaleY);
     graphics.clear();
 
     if (width <= 0 || height <= 0) return;

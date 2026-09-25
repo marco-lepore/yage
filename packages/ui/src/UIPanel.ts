@@ -8,6 +8,7 @@ import { UIText } from "./UIText.js";
 import { UIButton } from "./UIButton.js";
 import { UIScrollView } from "./UIScrollView.js";
 import { isTextureBackground, resolvePadding } from "./types.js";
+import { UIElementBase } from "./UIElementBase.js";
 import type {
   BackgroundOptions,
   UIElement,
@@ -51,6 +52,7 @@ import {
 } from "./internal/focus-stack-warning.js";
 import { applyFlexContainerProps } from "./internal/flex-container.js";
 import type { FlexContainerDefaults } from "./internal/flex-container.js";
+import { BELOW_ELEMENTS, placeElement } from "./internal/element-transform.js";
 
 /** What a panel's container props fall back to when one is dropped. */
 const PANEL_DEFAULTS: FlexContainerDefaults = {
@@ -68,7 +70,7 @@ const PANEL_DEFAULTS: FlexContainerDefaults = {
  * any nested child panel. Manages a Yoga container node, a PixiJS Container,
  * optional background, and an ordered list of UIElement children.
  */
-export class UIPanel implements UIContainerElement {
+export class UIPanel extends UIElementBase implements UIContainerElement {
   readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
@@ -115,9 +117,11 @@ export class UIPanel implements UIContainerElement {
   private readonly _hitCatcher: Container;
 
   constructor(opts: UIPanelProps) {
+    super();
     this.container = new Container();
     this.yogaNode = createYogaNode();
     this._hitCatcher = new Container();
+    this._hitCatcher.zIndex = BELOW_ELEMENTS;
     this._hitCatcher.eventMode = "static";
     this._hitCatcher.hitArea = this._hitArea;
     this.container.addChild(this._hitCatcher);
@@ -306,7 +310,8 @@ export class UIPanel implements UIContainerElement {
       // Scalar getters, not `getComputedLayout()`: the Yoga binding returns
       // that as a value object, allocating a fresh six-field object per child
       // per frame, and only the two edges below are read.
-      child.displayObject.position.set(
+      placeElement(
+        child,
         child.yogaNode.getComputedLeft(),
         child.yogaNode.getComputedTop(),
       );
@@ -428,6 +433,7 @@ export class UIPanel implements UIContainerElement {
     if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
 
     applyLayoutProps(this.yogaNode, p);
+    this.applyTransformProps(p);
 
     if ("visible" in p) {
       this.visible = p.visible ?? true;

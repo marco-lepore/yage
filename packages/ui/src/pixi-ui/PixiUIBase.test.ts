@@ -33,6 +33,11 @@ beforeEach(() => {
 
 const view = (): never => new MockContainer() as never;
 
+/** The @pixi/ui widget a wrapper holds inside its own container. */
+function viewOf(element: UIElement): unknown {
+  return (element as unknown as { view: unknown }).view;
+}
+
 /** Lay out one element on its own, so its Yoga box carries real numbers. */
 function layout(element: UIElement, width: number, height: number): void {
   element.yogaNode.calculateLayout(width, height, Direction.LTR);
@@ -102,9 +107,9 @@ describe("PixiUI wrappers", () => {
   it("removed mutable props restore their constructor defaults", () => {
     const button = new PixiFancyButton({ defaultView: view(), disabled: true });
     button.update({ disabled: undefined });
-    expect(
-      (button.displayObject as unknown as { enabled: boolean }).enabled,
-    ).toBe(true);
+    expect((viewOf(button) as unknown as { enabled: boolean }).enabled).toBe(
+      true,
+    );
 
     const slider = new PixiSlider({
       bg: view(),
@@ -121,7 +126,7 @@ describe("PixiUI wrappers", () => {
       max: undefined,
       step: undefined,
     });
-    expect(slider.displayObject).toMatchObject({
+    expect(viewOf(slider)).toMatchObject({
       value: 0,
       min: 0,
       max: 100,
@@ -135,7 +140,7 @@ describe("PixiUI wrappers", () => {
       padding: 4,
     });
     input.update({ value: undefined, secure: undefined, padding: undefined });
-    expect(input.displayObject).toMatchObject({
+    expect(viewOf(input)).toMatchObject({
       value: "",
       secure: false,
       padding: 0,
@@ -148,7 +153,7 @@ describe("PixiUI wrappers", () => {
       text: "Label",
     });
     checkbox.update({ checked: undefined, text: undefined });
-    expect(checkbox.displayObject).toMatchObject({ checked: false, text: "" });
+    expect(viewOf(checkbox)).toMatchObject({ checked: false, text: "" });
 
     const progress = new PixiProgressBar({
       bg: view(),
@@ -156,7 +161,7 @@ describe("PixiUI wrappers", () => {
       value: 50,
     });
     progress.update({ value: undefined });
-    expect(progress.displayObject).toMatchObject({ progress: 0 });
+    expect(viewOf(progress)).toMatchObject({ progress: 0 });
   });
 
   it("keeps an authored selection when the items are relabelled", () => {
@@ -168,7 +173,7 @@ describe("PixiUI wrappers", () => {
     });
     // No row picked yet, so the authored `selected` still owns the row.
     select.update({ items: ["Facile", "Difficile"] });
-    expect(select.displayObject).toMatchObject({ value: 1 });
+    expect(viewOf(select)).toMatchObject({ value: 1 });
   });
 
   it("keeps a select's layout size while its dropdown is open", () => {
@@ -186,13 +191,13 @@ describe("PixiUI wrappers", () => {
 
     // Open: the closed button is hidden and the list sits on the stage, so the
     // Select's own bounds are empty — layout must not follow them.
-    (select.displayObject as unknown as { open(): void }).open();
+    (viewOf(select) as unknown as { open(): void }).open();
     expect(measure()).toBe(180);
 
     select.update({ items: ["Facile", "Difficile"] });
     expect(measure()).toBe(180);
 
-    (select.displayObject as unknown as { close(): void }).close();
+    (viewOf(select) as unknown as { close(): void }).close();
     expect(measure()).toBe(180);
   });
 
@@ -204,18 +209,18 @@ describe("PixiUI wrappers", () => {
       selected: 0,
     });
     // The player opens the dropdown and picks the third row.
-    (select.displayObject as unknown as { value: number }).value = 2;
+    (viewOf(select) as unknown as { value: number }).value = 2;
 
     select.update({ items: ["X", "Y", "Z"] });
-    expect(select.displayObject).toMatchObject({ value: 2 });
+    expect(viewOf(select)).toMatchObject({ value: 2 });
 
     // A shorter list clamps rather than dropping to the first row.
     select.update({ items: ["X", "Y"] });
-    expect(select.displayObject).toMatchObject({ value: 1 });
+    expect(viewOf(select)).toMatchObject({ value: 1 });
 
     // An explicit `selected` still wins.
     select.update({ items: ["P", "Q"], selected: 0 });
-    expect(select.displayObject).toMatchObject({ value: 0 });
+    expect(viewOf(select)).toMatchObject({ value: 0 });
   });
 
   it("re-measures a wrapper whose text changes size", () => {
@@ -238,7 +243,7 @@ describe("PixiUI wrappers", () => {
       selected: 1,
     });
     select.update({ items: ["C", "D"], selected: 0 });
-    expect(select.displayObject).toMatchObject({
+    expect(viewOf(select)).toMatchObject({
       value: 0,
       addedItems: { items: ["C", "D"] },
     });
@@ -255,7 +260,7 @@ describe("PixiUI wrappers", () => {
       ],
       selected: 1,
     });
-    expect(radio.displayObject).toMatchObject({ selected: 1 });
+    expect(viewOf(radio)).toMatchObject({ selected: 1 });
   });
 
   it("keeps selection in range when item updates shrink a list", () => {
@@ -266,7 +271,7 @@ describe("PixiUI wrappers", () => {
       selected: 1,
     });
     select.update({ items: ["C"] });
-    expect(select.displayObject).toMatchObject({ value: 0 });
+    expect(viewOf(select)).toMatchObject({ value: 0 });
 
     const radio = new PixiRadioGroup({
       items: [
@@ -282,7 +287,7 @@ describe("PixiUI wrappers", () => {
         items: [{ checkedView: view(), uncheckedView: view(), text: "C" }],
       }),
     ).not.toThrow();
-    expect(radio.displayObject).toMatchObject({ selected: 0 });
+    expect(viewOf(radio)).toMatchObject({ selected: 0 });
   });
 
   it("clears a select when an item update empties the list", () => {
@@ -295,7 +300,7 @@ describe("PixiUI wrappers", () => {
 
     select.update({ items: [] });
 
-    expect(select.displayObject).toMatchObject({
+    expect(viewOf(select)).toMatchObject({
       value: -1,
       openButton: { text: "" },
       closeButton: { text: "" },
@@ -310,7 +315,7 @@ describe("PixiUI wrappers", () => {
       selected: 1,
     });
     select.update({ items: ["C", "D"], selected: undefined });
-    expect(select.displayObject).toMatchObject({ value: 0 });
+    expect(viewOf(select)).toMatchObject({ value: 0 });
 
     const radio = new PixiRadioGroup({
       items: [
@@ -328,13 +333,13 @@ describe("PixiUI wrappers", () => {
       ],
       selected: undefined,
     });
-    expect(radio.displayObject).toMatchObject({ selected: 0 });
+    expect(viewOf(radio)).toMatchObject({ selected: 0 });
   });
 
   it("changes the placeholder of an existing input", () => {
     const input = new PixiInput({ bg: view(), placeholder: "Search" });
     const placeholder = (
-      input.displayObject as unknown as {
+      viewOf(input) as unknown as {
         placeholder: { text: string; visible: boolean };
       }
     ).placeholder;
@@ -363,7 +368,7 @@ describe("PixiUI wrappers", () => {
       onChange: callback,
       onEnter: callback,
     });
-    const inputView = input.displayObject as unknown as {
+    const inputView = viewOf(input) as unknown as {
       onChange: { callbacks: Set<unknown> };
       onEnter: { callbacks: Set<unknown> };
     };
@@ -379,18 +384,17 @@ describe("PixiUI focus outline", () => {
   // These cases measure the outline a game asks for once for the whole UI.
   beforeEach(() => setUIFocusStyle({}));
 
-  /** What the outline's rectangle comes to on screen, through both scales. */
+  /** Where the outline's rectangle lands in the element's own space. */
   function onScreenRect(
     element: UIElement,
   ): { left: number; top: number; right: number; bottom: number } | undefined {
     const outline = focusOutline(element);
     const rect = outline?.lastRect;
     if (!outline || !rect) return undefined;
-    const viewScale = (element.displayObject as unknown as MockContainer).scale;
     const x = (value: number): number =>
-      (outline.position.x + value * outline.scale.x) * viewScale.x;
+      outline.position.x + value * outline.scale.x;
     const y = (value: number): number =>
-      (outline.position.y + value * outline.scale.y) * viewScale.y;
+      outline.position.y + value * outline.scale.y;
     // The stroke straddles the path, so the outer edge is half a width out.
     const half = outline.lastStrokeWidth / 2;
     return {
@@ -411,10 +415,12 @@ describe("PixiUI focus outline", () => {
     const outline = focusOutline(button);
     expect(button.focused).toBe(true);
     expect(outline?.visible).toBe(true);
-    // The outline undoes the scale layout sized the view by.
-    const scale = (button.displayObject as unknown as MockContainer).scale.x;
+    // Layout stretches the view inside the element's container, and the
+    // outline is drawn in that container, unscaled.
+    const scale = (viewOf(button) as unknown as MockContainer).scale.x;
     expect(scale).toBeGreaterThan(1);
-    expect(outline?.scale.x).toBeCloseTo(1 / scale);
+    expect(outline?.parent).toBe(button.displayObject);
+    expect(outline?.scale.x).toBe(1);
     const box = onScreenRect(button);
     expect(box?.left).toBeCloseTo(0);
     expect((box?.right ?? 0) - (box?.left ?? 0)).toBeCloseTo(120);
@@ -432,7 +438,7 @@ describe("PixiUI focus outline", () => {
     setFocused(button, true);
     layout(button, 220, 30);
 
-    const buttonView = button.displayObject as unknown as MockContainer;
+    const buttonView = viewOf(button) as unknown as MockContainer;
     expect(buttonView.scale.x).not.toBeCloseTo(buttonView.scale.y);
 
     const box = onScreenRect(button);
@@ -440,11 +446,9 @@ describe("PixiUI focus outline", () => {
     expect((box?.bottom ?? 0) - (box?.top ?? 0)).toBeCloseTo(30);
 
     const outline = focusOutline(button);
-    const stroke = outline?.lastStrokeWidth ?? 0;
-    expect(stroke).toBeGreaterThan(0);
-    expect(stroke * (outline?.scale.y ?? 1) * buttonView.scale.y).toBeCloseTo(
-      stroke * (outline?.scale.x ?? 1) * buttonView.scale.x,
-    );
+    expect(outline?.lastStrokeWidth ?? 0).toBeGreaterThan(0);
+    expect(outline?.scale.x).toBe(1);
+    expect(outline?.scale.y).toBe(1);
   });
 
   it("does not measure, so focus never resizes the widget", () => {
@@ -453,7 +457,7 @@ describe("PixiUI focus outline", () => {
       checkedView: view(),
       uncheckedView: view(),
     });
-    const checkboxView = checkbox.displayObject as unknown as MockContainer;
+    const checkboxView = viewOf(checkbox) as unknown as MockContainer;
     checkbox.yogaNode.setWidth(64);
     checkbox.yogaNode.setHeight(24);
     layout(checkbox, 64, 24);
@@ -491,7 +495,7 @@ describe("PixiUI focus outline", () => {
 
     for (const wrapper of [checkbox, radio]) {
       const drawn = (
-        wrapper.displayObject as unknown as MockContainer
+        viewOf(wrapper) as unknown as MockContainer
       ).getLocalBounds();
       setFocused(wrapper, true);
       // A row far wider and taller than the widget.
@@ -510,7 +514,7 @@ describe("PixiUI focus outline", () => {
 
   it("puts the outline on the drawn corner of a scaled widget", () => {
     const button = new PixiFancyButton({ defaultView: view() });
-    const buttonView = button.displayObject as unknown as MockContainer;
+    const buttonView = viewOf(button) as unknown as MockContainer;
     // Art drawn above and left of the origin, on a widget sized by scaling.
     buttonView.ownX = -10;
     buttonView.ownY = -5;
@@ -623,7 +627,7 @@ describe("PixiUI focus outline", () => {
       slider: view(),
     });
 
-    (slider.displayObject as unknown as MockContainer).emit(event);
+    (viewOf(slider) as unknown as MockContainer).emit(event);
 
     const request = takePointerRequest();
     expect(request?.element).toBe(slider);
@@ -633,7 +637,7 @@ describe("PixiUI focus outline", () => {
   it("asks for nothing from a disabled widget the pointer presses", () => {
     const button = new PixiFancyButton({ defaultView: view(), disabled: true });
 
-    (button.displayObject as unknown as MockContainer).emit("pointerdown");
+    (viewOf(button) as unknown as MockContainer).emit("pointerdown");
 
     expect(takePointerRequest()).toBeNull();
   });
@@ -668,7 +672,7 @@ describe("PixiUI focus participation", () => {
 
   it("makes no pointer request from a widget that only shows a value", () => {
     const bar = new PixiProgressBar({ bg: view(), fill: view(), value: 50 });
-    const container = bar.displayObject as unknown as MockContainer;
+    const container = viewOf(bar) as unknown as MockContainer;
 
     container.emit("pointerover");
     container.emit("pointerdown");
@@ -694,6 +698,93 @@ describe("PixiUI focus participation", () => {
   });
 });
 
+describe("PixiUI wrapper transform", () => {
+  it("scales a fancy button's container once and never its widget", () => {
+    const button = new PixiFancyButton({
+      defaultView: view(),
+      width: 120,
+      height: 40,
+      scale: 1.5,
+    });
+    layout(button, 120, 40);
+
+    const container = button.displayObject as unknown as MockContainer;
+    const widget = viewOf(button) as MockFancyButton;
+    expect(widget.options.scale).toBeUndefined();
+    expect(container.scale).toMatchObject({ x: 1.5, y: 1.5 });
+    // Layout stretches the widget inside the container, never the container.
+    expect(widget.scale.x).toBeGreaterThan(1);
+
+    button.update({ scale: undefined });
+    expect(container.scale).toMatchObject({ x: 1, y: 1 });
+    expect(() => button.update({ scale: Number.NaN })).toThrow(
+      "PixiFancyButton.scale: must be finite, got NaN",
+    );
+    button.destroy();
+  });
+});
+
+describe("PixiSelect dropdown transform", () => {
+  /** The Select's lifted list and the Select itself. */
+  function parts(select: PixiSelect): {
+    widget: MockContainer & { onRender: (() => void) | null };
+    list: MockContainer;
+  } {
+    const widget = viewOf(select) as MockContainer & {
+      onRender: (() => void) | null;
+      view: MockContainer;
+    };
+    return { widget, list: widget.view };
+  }
+
+  it("follows the select on every rendered frame while open", () => {
+    // Under a stage, so the list has somewhere to be lifted to.
+    const stage = new MockContainer();
+    const select = new PixiSelect({
+      closedBG: view(),
+      openBG: view(),
+      items: ["A", "B"],
+    });
+    stage.addChild(select.displayObject as unknown as MockContainer);
+    const { widget, list } = parts(select);
+
+    select.activate();
+    expect(list.parent).toBe(stage);
+    expect(list.appliedMatrices).toEqual([{ from: widget, under: stage }]);
+
+    // Every rendered frame reads the Select's transform again.
+    widget.onRender?.();
+    expect(list.appliedMatrices).toHaveLength(2);
+    expect(list.appliedMatrices[1]).toEqual({ from: widget, under: stage });
+    select.destroy();
+  });
+
+  it("puts the list back unskewed and stops following it on close", () => {
+    const stage = new MockContainer();
+    const select = new PixiSelect({
+      closedBG: view(),
+      openBG: view(),
+      items: ["A", "B"],
+    });
+    stage.addChild(select.displayObject as unknown as MockContainer);
+    const { widget, list } = parts(select);
+    select.activate();
+    // What a matrix with a non-uniform scale and a rotation leaves behind.
+    list.skew.set(0.2, -0.1);
+    list.scale.set(2, 3);
+    list.rotation = 0.4;
+
+    select.activate();
+
+    expect(list.parent).toBe(widget);
+    expect(widget.onRender).toBeNull();
+    expect(list.skew).toMatchObject({ x: 0, y: 0 });
+    expect(list.scale).toMatchObject({ x: 1, y: 1 });
+    expect(list.rotation).toBe(0);
+    select.destroy();
+  });
+});
+
 describe("PixiFancyButton activation", () => {
   it("does nothing while the button is disabled", () => {
     const onClick = vi.fn();
@@ -712,11 +803,11 @@ describe("PixiFancyButton activation", () => {
 describe("PixiFancyButton press feedback", () => {
   /** The face the wrapped widget is showing. */
   function face(button: PixiFancyButton): string {
-    return (button.displayObject as unknown as MockFancyButton).state;
+    return (viewOf(button) as unknown as MockFancyButton).state;
   }
 
   function containerOf(button: PixiFancyButton): MockContainer {
-    return button.displayObject as unknown as MockContainer;
+    return viewOf(button) as unknown as MockContainer;
   }
 
   /** What Pixi dispatches for one mouse gesture: the pointer event, then the mouse one. */
@@ -896,9 +987,8 @@ describe("PixiFancyButton press feedback", () => {
 describe("PixiSelect press feedback", () => {
   /** The face the closed button is showing. */
   function closedFace(select: PixiSelect): string {
-    return (
-      select.displayObject as unknown as { openButton: { state: string } }
-    ).openButton.state;
+    return (viewOf(select) as unknown as { openButton: { state: string } })
+      .openButton.state;
   }
 
   it("presses the closed button while a confirm press is held", () => {
@@ -926,13 +1016,13 @@ describe("PixiCheckbox activation", () => {
     });
 
     checkbox.activate();
-    expect(checkbox.displayObject).toMatchObject({ checked: true });
+    expect(viewOf(checkbox)).toMatchObject({ checked: true });
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith(true);
 
     onChange.mockClear();
     checkbox.update({ checked: false });
-    expect(checkbox.displayObject).toMatchObject({ checked: false });
+    expect(viewOf(checkbox)).toMatchObject({ checked: false });
     expect(onChange).not.toHaveBeenCalled();
   });
 });
@@ -958,12 +1048,12 @@ describe("PixiSlider stepping", () => {
     onUpdate.mockClear();
 
     expect(adjust(slider, "right")).toBe(true);
-    expect(slider.displayObject).toMatchObject({ value: 60 });
+    expect(viewOf(slider)).toMatchObject({ value: 60 });
     expect(onUpdate).toHaveBeenCalledWith(60);
     expect(onChange).toHaveBeenCalledWith(60);
 
     expect(adjust(slider, "left")).toBe(true);
-    expect(slider.displayObject).toMatchObject({ value: 50 });
+    expect(viewOf(slider)).toMatchObject({ value: 50 });
   });
 
   it("releases the press at either end and on the other axis", () => {
@@ -971,16 +1061,16 @@ describe("PixiSlider stepping", () => {
 
     slider.update({ value: 100 });
     expect(adjust(slider, "right")).toBe(false);
-    expect(slider.displayObject).toMatchObject({ value: 100 });
+    expect(viewOf(slider)).toMatchObject({ value: 100 });
 
     slider.update({ value: 0 });
     expect(adjust(slider, "left")).toBe(false);
-    expect(slider.displayObject).toMatchObject({ value: 0 });
+    expect(viewOf(slider)).toMatchObject({ value: 0 });
 
     slider.update({ value: 50 });
     expect(adjust(slider, "up")).toBe(false);
     expect(adjust(slider, "down")).toBe(false);
-    expect(slider.displayObject).toMatchObject({ value: 50 });
+    expect(viewOf(slider)).toMatchObject({ value: 50 });
   });
 });
 
@@ -1000,7 +1090,7 @@ describe("PixiSelect stepping", () => {
     select.update({ onSelect });
 
     expect(adjust(select, "right")).toBe(true);
-    expect(select.displayObject).toMatchObject({
+    expect(viewOf(select)).toMatchObject({
       value: 2,
       openButton: { text: "Hard" },
       closeButton: { text: "Hard" },
@@ -1012,7 +1102,7 @@ describe("PixiSelect stepping", () => {
 
     expect(adjust(select, "left")).toBe(true);
     expect(adjust(select, "left")).toBe(true);
-    expect(select.displayObject).toMatchObject({ value: 0 });
+    expect(viewOf(select)).toMatchObject({ value: 0 });
     expect(adjust(select, "left")).toBe(false);
   });
 });
@@ -1037,7 +1127,7 @@ describe("PixiSelect open list", () => {
   }
 
   function inner(select: PixiSelect): SelectView {
-    return select.displayObject as unknown as SelectView;
+    return viewOf(select) as unknown as SelectView;
   }
 
   /** The face of every row, in order: `hover` is the highlighted one. */
@@ -1177,13 +1267,13 @@ describe("PixiRadioGroup stepping", () => {
 
     expect(adjust(vertical, "up")).toBe(false);
     expect(adjust(vertical, "down")).toBe(true);
-    expect(vertical.displayObject).toMatchObject({ selected: 1 });
+    expect(viewOf(vertical)).toMatchObject({ selected: 1 });
     expect(onChange).toHaveBeenCalledWith(1, "B");
 
     expect(adjust(vertical, "down")).toBe(false);
     expect(adjust(vertical, "right")).toBe(false);
     expect(adjust(vertical, "left")).toBe(false);
-    expect(vertical.displayObject).toMatchObject({ selected: 1 });
+    expect(viewOf(vertical)).toMatchObject({ selected: 1 });
   });
 
   it("claims left and right when it stacks across", () => {
@@ -1191,7 +1281,7 @@ describe("PixiRadioGroup stepping", () => {
 
     expect(adjust(horizontal, "down")).toBe(false);
     expect(adjust(horizontal, "right")).toBe(true);
-    expect(horizontal.displayObject).toMatchObject({ selected: 1 });
+    expect(viewOf(horizontal)).toMatchObject({ selected: 1 });
   });
 });
 
@@ -1199,7 +1289,7 @@ describe("PixiInput editing", () => {
   /** A key press arriving at the hidden DOM field `Input` listens on. */
   function typeKey(field: PixiInput, key: string): void {
     (
-      field.displayObject as unknown as {
+      viewOf(field) as unknown as {
         onKeyUpBinding(e: KeyboardEvent): void;
       }
     ).onKeyUpBinding({ key } as KeyboardEvent);
@@ -1242,7 +1332,7 @@ describe("PixiInput editing", () => {
       field.update({ value: "Adabcd" });
       end(field);
 
-      expect(field.displayObject).toMatchObject({ value });
+      expect(viewOf(field)).toMatchObject({ value });
       expect(field.isEditing).toBe(false);
       expect(isCapturingInput(field)).toBe(false);
       expect(onEnter).toHaveBeenCalledTimes(1);
@@ -1257,7 +1347,7 @@ describe("PixiInput editing", () => {
     field.activate();
     typeKey(field, "a");
 
-    expect(field.displayObject).toMatchObject({ value: "Ada" });
+    expect(viewOf(field)).toMatchObject({ value: "Ada" });
     expect(field.isEditing).toBe(true);
     expect(onChange).toHaveBeenCalledWith("Ada");
   });

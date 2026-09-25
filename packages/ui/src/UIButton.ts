@@ -11,6 +11,7 @@ import type {
   UIButtonProps,
   UITextProps,
 } from "./types.js";
+import { UIElementBase } from "./UIElementBase.js";
 import { resolvePadding } from "./types.js";
 import {
   createYogaNode,
@@ -44,6 +45,7 @@ import {
 import { runUICallback } from "./error-boundary.js";
 
 import { type ColorBackground, isTextureBackground } from "./types.js";
+import { placeElement } from "./internal/element-transform.js";
 
 /** Background a button falls back to when the caller supplies none. */
 const DEFAULT_BG: ColorBackground = { color: 0x444444, alpha: 1, radius: 4 };
@@ -90,7 +92,7 @@ function isExplicitSize(v: LayoutValue | undefined): boolean {
  * extra setup. Pass `width` / `height` explicitly to fix the size, or omit
  * them to let Yoga shrink-to-fit the content.
  */
-export class UIButton implements UIContainerElement {
+export class UIButton extends UIElementBase implements UIContainerElement {
   readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
@@ -140,6 +142,7 @@ export class UIButton implements UIContainerElement {
   private readonly _focusOutline: FocusOutline;
 
   constructor(p: UIButtonProps) {
+    super();
     this.yogaNode = createYogaNode();
 
     this._hasExplicitWidth = isExplicitSize(p.width);
@@ -160,6 +163,7 @@ export class UIButton implements UIContainerElement {
     this.container.eventMode = "static";
     this.container.cursor = "pointer";
     applyConsumeInput(this.container, p.consumeInput);
+    this.applyTransformProps(p);
 
     this.bgRenderer = new BackgroundRenderer();
     this.bgRenderer.set(this.bgOpts, this.container, 0);
@@ -354,7 +358,8 @@ export class UIButton implements UIContainerElement {
       // Scalar getters, not `getComputedLayout()`: the Yoga binding returns
       // that as a value object, allocating a fresh six-field object per child
       // per frame, and only the two edges below are read.
-      child.displayObject.position.set(
+      placeElement(
+        child,
         child.yogaNode.getComputedLeft(),
         child.yogaNode.getComputedTop(),
       );
@@ -612,6 +617,7 @@ export class UIButton implements UIContainerElement {
 
     applyLayoutProps(this.yogaNode, p);
     this._applyProps(p);
+    this.applyTransformProps(p);
 
     if ("visible" in p) {
       this.visible = p.visible ?? true;

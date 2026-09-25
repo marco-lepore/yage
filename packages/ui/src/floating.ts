@@ -7,6 +7,7 @@ import { computePosition } from "./positioning.js";
 import type { Dimensions, Placement, Rect } from "./positioning.js";
 import { bindUIErrorBoundary, runUICallback } from "./error-boundary.js";
 import { readElementRect } from "./focus/element-rect.js";
+import { placeElement } from "./internal/element-transform.js";
 
 /**
  * Per-floating-element config. All optional; the floating layer fills
@@ -272,7 +273,7 @@ export function layoutFloat(
     inst.applyLayout?.();
     const w = inst.yogaNode.getComputedWidth();
     const h = inst.yogaNode.getComputedHeight();
-    inst.displayObject.position.set(0, totalH);
+    placeElement(inst, 0, totalH);
     totalH += h;
     maxW = Math.max(maxW, w);
   }

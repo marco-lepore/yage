@@ -13,6 +13,7 @@ const { mocks } = vi.hoisted(() => {
       },
     };
     scale = { x: 1, y: 1 };
+    pivot = { x: 0, y: 0 };
     rotation = 0;
     visible = true;
     alpha = 1;

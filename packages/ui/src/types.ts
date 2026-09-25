@@ -12,6 +12,7 @@ import type {
 } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import type { UITreeContext } from "./internal/tree-context.js";
+import type { ElementTransform } from "./internal/element-transform.js";
 
 /** View type accepted by @pixi/ui components (texture path, Texture, Container, Sprite, or Graphics). */
 export type PixiViewType =
@@ -181,6 +182,28 @@ export interface LayoutProps {
   /** Offset from the containing block's bottom edge — px or `"<n>%"` (only applies to `position: "absolute"`). */
   bottom?: PositionValue;
   visible?: boolean;
+  /**
+   * The point `scale` and `rotation` turn about, as fractions of the
+   * element's computed size: `0` is the top-left corner, `0.5` the centre,
+   * `{ x: 0.5, y: 1 }` the middle of the bottom edge. Default `0`. This prop,
+   * `scale`, `rotation` and `zIndex` change how the element is drawn, never
+   * its Yoga box.
+   */
+  transformOrigin?: number | { x: number; y: number };
+  /**
+   * Scale about {@link LayoutProps.transformOrigin}, one number for both axes
+   * or one per axis. Default `1`. `0` and negative values are allowed.
+   */
+  scale?: number | { x: number; y: number };
+  /** Rotation in radians about {@link LayoutProps.transformOrigin}. Default `0`. */
+  rotation?: number;
+  /**
+   * Draw and pointer order among the siblings in the same container: a
+   * higher value draws on top and takes the pointer first. Default `0`;
+   * siblings with equal values keep the order they were added in. To rise
+   * above an element in a neighbouring container, raise that container.
+   */
+  zIndex?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +218,13 @@ export interface UIElement {
   applyLayout?(): void;
   update(props: Record<string, unknown>): void;
   destroy(): void;
+  /**
+   * The element's `transformOrigin`, `scale`, `rotation` and `zIndex`. The
+   * parent's layout pass reads it to place the element; an element without
+   * one is placed at its top-left corner with no pivot.
+   * @internal
+   */
+  readonly _transform?: ElementTransform;
   /**
    * Take the context of the UI tree this element belongs to: the name a
    * development warning prints, and the scene's focus stack. Containers
@@ -692,7 +722,6 @@ export interface PixiFancyButtonProps
   onClick?: () => void;
   disabled?: boolean;
   anchor?: number;
-  scale?: number;
   animations?: FancyButtonAnimations;
   textOffset?: { x?: number; y?: number } & {
     [K in "default" | "hover" | "pressed" | "disabled"]?: {

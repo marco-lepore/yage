@@ -11,6 +11,7 @@ import { Direction } from "yoga-layout";
 import { Anchor } from "./types.js";
 import { UISurface } from "./UISurface.js";
 import { setViewport } from "./yoga-helpers.js";
+import { placeElement } from "./internal/element-transform.js";
 
 /**
  * Resolves anchor positions and runs Yoga layout for all UISurface components.
@@ -57,7 +58,7 @@ export class UILayoutSystem extends System {
       const pw = node.yogaNode.getComputedWidth();
       const ph = node.yogaNode.getComputedHeight();
 
-      // 4. Position the root container. Two modes:
+      // 4. Place the root panel. Two modes:
       //    - "anchor" (default) resolves `anchor` against the viewport.
       //    - "transform" reads `entity.get(Transform).worldPosition` in
       //      the layer's local coord space and uses `anchor` as a pivot
@@ -70,21 +71,18 @@ export class UILayoutSystem extends System {
       //    billboards).
       const anchor = surface._anchor;
 
+      let left = 0;
+      let top = 0;
       if (surface._positioning === "transform") {
         const source = entity
           .get(Transform)
           .getWorldPositionInto(this.positionScratch);
+        left = source.x;
+        top = source.y;
         if (anchor !== undefined) {
           const pivot = pivotOffsetFromAnchor(anchor, pw, ph);
-          surface.container.position.set(
-            source.x + pivot.x + surface._offset.x,
-            source.y + pivot.y + surface._offset.y,
-          );
-        } else {
-          surface.container.position.set(
-            source.x + surface._offset.x,
-            source.y + surface._offset.y,
-          );
+          left += pivot.x;
+          top += pivot.y;
         }
       } else if (anchor !== undefined) {
         const pos = resolveAnchor(
@@ -94,13 +92,14 @@ export class UILayoutSystem extends System {
           pw,
           ph,
         );
-        surface.container.position.set(
-          pos.x + surface._offset.x,
-          pos.y + surface._offset.y,
-        );
-      } else {
-        surface.container.position.set(surface._offset.x, surface._offset.y);
+        left = pos.x;
+        top = pos.y;
       }
+      placeElement(
+        surface.root,
+        left + surface._offset.x,
+        top + surface._offset.y,
+      );
     }
   }
 }

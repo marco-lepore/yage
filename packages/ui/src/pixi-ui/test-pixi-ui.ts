@@ -34,14 +34,36 @@ export interface MockBounds {
 }
 
 /**
+ * Records what a transform was built from, in place of Pixi's arithmetic: the
+ * container whose world transform it was read from, whether it was inverted,
+ * and the matrix appended to it.
+ */
+export class MockMatrix {
+  static readonly IDENTITY = new MockMatrix();
+  source: MockContainer | null = null;
+  inverted = false;
+  appended: MockMatrix | null = null;
+  invert(): this {
+    this.inverted = true;
+    return this;
+  }
+  append(other: MockMatrix): this {
+    this.appended = other;
+    return this;
+  }
+}
+
+/**
  * The shared container, measured the way Pixi v8 measures: width and height
  * come from `getLocalBounds` and the scale.
  */
 export class MockContainer extends PlainContainer {
   declare children: MockContainer[];
-  worldTransform = {
-    clone: () => ({ invert: () => ({ append: () => ({}) }) }),
-  };
+  /** What each matrix `setFromMatrix` was given was built from, in order. */
+  readonly appliedMatrices: {
+    from: MockContainer | null;
+    under: MockContainer | null;
+  }[] = [];
   /** Pixi v8 leaves a child out of `getLocalBounds` unless it measures. */
   measurable = true;
   /** The box this container draws itself, before any child is folded in. */
@@ -98,7 +120,26 @@ export class MockContainer extends PlainContainer {
     this.scale.y = local !== 0 ? value / local : 1;
   }
 
-  setFromMatrix(): void {}
+  getGlobalTransform(matrix: MockMatrix): MockMatrix {
+    matrix.source = this;
+    matrix.inverted = false;
+    matrix.appended = null;
+    return matrix;
+  }
+
+  setFromMatrix(matrix: MockMatrix): void {
+    if (matrix === MockMatrix.IDENTITY) {
+      this.position.set(0, 0);
+      this.scale.set(1, 1);
+      this.skew.set(0, 0);
+      this.rotation = 0;
+      return;
+    }
+    this.appliedMatrices.push({
+      from: matrix.appended?.source ?? null,
+      under: matrix.inverted ? matrix.source : null,
+    });
+  }
 }
 
 /** A sprite draws around its anchor; every other view keeps its origin. */
@@ -173,8 +214,10 @@ export class MockFancyButton extends MockContainer {
   private _enabled = true;
   private _isDown = false;
   private _isMouseIn = false;
-  constructor() {
+  /** What the wrapper passed in; the widget sets its own scale from it. */
+  constructor(readonly options: { scale?: number } = {}) {
     super();
+    this.scale.set(options.scale ?? 1);
     this.onPress.connect(() => this.setState("hover"));
     this.on("mousedown", () => {
       this._isDown = true;
@@ -516,6 +559,7 @@ export class MockTexture {
 /** The module a test file hands `vi.mock("pixi.js", …)`. */
 export const pixiMock = {
   Container: MockContainer,
+  Matrix: MockMatrix,
   Graphics: MockGraphics,
   Sprite: MockSprite,
   Texture: MockTexture,

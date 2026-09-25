@@ -370,6 +370,72 @@ parent's content box. `left` / `top` / `right` / `bottom` accept a number
 `top: "100%"` is flush below the parent. This is useful for edge-anchored
 overlays like tooltips, without measuring. Omit unused edges.
 
+## Scale, rotation and draw order
+
+Every element accepts four props that change how it is drawn, never where
+layout puts it:
+
+```ts
+transformOrigin?: number | { x: number; y: number }; // default 0 (top-left)
+scale?: number | { x: number; y: number }; // default 1
+rotation?: number; // radians, default 0
+zIndex?: number; // default 0
+```
+
+`transformOrigin` is the point `scale` and `rotation` turn about, as fractions
+of the element's computed size: `0.5` is the centre, `{ x: 0.5, y: 1 }` the
+middle of the bottom edge. Set it to `0.5` for a pop or a spin about the
+centre. The four are also get/set accessors on every element class, which is
+the form a tween drives:
+
+```ts
+const pc = entity.get(ProcessComponent);
+const card = row.panel({
+  width: 120,
+  height: 160,
+  transformOrigin: 0.5,
+  onHover: (on) => {
+    card.zIndex = on ? 1 : 0;
+    pc.run(
+      Tween.custom((v) => (card.scale = v), card.scale.x, on ? 1.08 : 1, 0.12),
+    );
+  },
+});
+card.rotation = 0.1;
+card.scale; // { x, y }: the same object on every read, updated in place
+```
+
+- **Clipping and scrolling follow the layout box.** Inside an
+  `overflow: "hidden"` panel or a `UIScrollView`, a scaled element is clipped
+  at the container's own edge. A scroll view's range and `scrollIntoView`
+  ignore an element's `scale` and `rotation`, so a popped row never changes
+  how far the list scrolls.
+- **`zIndex` orders siblings.** A higher value draws on top and takes the
+  pointer first; equal values keep the order the elements were added in. It
+  orders children of one container only: to lift a card above the next row,
+  raise the row. A background and a focus outline stay below and above every
+  child whatever its `zIndex`. On a `UISurface`, `zIndex` orders the surface
+  among the other children of its layer; a layer with a `sort` function
+  overwrites it every frame.
+- **The props write at once.** A setter or `update()` reaches the screen in
+  the frame it runs. Scale and rotate an element through these props, not
+  through `element.displayObject.scale` or `.rotation`: the next setter call
+  replaces a value written there.
+- Every value must be finite; a `NaN` or `Infinity` throws, naming the class
+  and the prop (`UIButton.scale: must be finite, got NaN`). `0` and negative
+  scales are allowed. A present key holding `undefined` resets the prop.
+
+Unlike a sprite's `anchor` or a graphic's `pivot`, `transformOrigin` never
+moves the element: layout places it, and the origin is only the turning point.
+
+`image.displayObject` is a plain container; `image.sprite` is the picture.
+
+A custom element takes the four props by extending `UIElementBase` and calling
+`this.applyTransformProps(props)` from its constructor and `update()`. A custom
+container places each child with `placeElement(child, left, top)`, which
+honours the child's `transformOrigin`. An element that implements `UIElement`
+directly is placed at its top-left corner and ignores the four props.
+
 ## Hover / pointer events
 
 `UIButton`, `UICheckbox`, `UIPanel`, `UIText`, `UIImage`, `UINineSlice`,
@@ -684,7 +750,9 @@ interface UIFocusOutlineBox {
 }
 ```
 
-The coordinates are in the widget view's own space. The default covers both
+The coordinates are in the element's own space, in layout pixels. Layout
+stretches the widget view inside the element, so a box measured on the view
+goes through the protected `fromViewSpace(box)` first. The default covers both
 the box layout gave the widget and everything the widget draws, so a part
 reaching outside that box — a slider knob standing taller than its track — is
 inside the outline rather than cut by it. A widget whose drawn extent moves

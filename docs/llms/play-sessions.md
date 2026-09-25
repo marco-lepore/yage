@@ -147,7 +147,9 @@ const hit = pointer.click(menu.children[0].id); // centre of that node's bounds
 hit.path.some((node) => node.type === "UIButton"); // did a button take it
 ```
 
-A click by id needs `bounds` on the snapshot node, which the renderer fills in.
+A click by id needs `bounds` on the snapshot node, which the renderer fills in:
+the box the element covers on screen, scale and rotation included. An element
+drawn with no area, such as one scaled to 0, throws.
 `layout` beside it is Yoga's parent-relative box and locates nothing on screen.
 Every verb needs `RendererPlugin`. The four verbs that dispatch also need one
 rendered frame; `hitTest` does not. Each guard throws and names what to do.

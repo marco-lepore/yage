@@ -1,4 +1,4 @@
-import { Sprite } from "pixi.js";
+import { Container, Sprite } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode, Unit } from "yoga-layout";
 import type {
@@ -7,11 +7,12 @@ import type {
   TextureInput,
 } from "@yagejs/renderer";
 import { resolveTextureInput } from "@yagejs/renderer";
-import type { UIElement, UIImageProps } from "./types.js";
+import type { UIImageProps } from "./types.js";
+import { UIElementBase } from "./UIElementBase.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
-import { FocusOutline } from "./internal/focus-outline.js";
+import { FocusOutline, layoutBox } from "./internal/focus-outline.js";
 import { FocusState } from "./focus/FocusState.js";
 import {
   requestHoverFocus,
@@ -32,14 +33,16 @@ function isSizedDimension(value: { readonly unit: Unit }): boolean {
  * pixel size, and its parent can stretch it like any other flex child. A
  * `flexGrow`, `flex` or `flexBasis` sizes the main axis as well, so with one
  * of those set the texture stretches as if both axes were sized.
+ *
+ * The sprite sits inside a plain container, {@link UIImage.displayObject},
+ * whose own space is measured in layout pixels. Layout stretches the sprite
+ * inside it, so the element's `scale` and `rotation` stay the game's.
  */
-export class UIImage implements UIElement {
-  readonly container: DisplaySprite;
+export class UIImage extends UIElementBase {
+  /** The sprite drawing the texture, stretched to the layout box. */
+  readonly sprite: DisplaySprite;
+  readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
-
-  get displayObject(): DisplayContainer {
-    return this.container;
-  }
 
   private textureInput: TextureInput;
   private readonly pointerEvents: PointerEvents;
@@ -48,50 +51,43 @@ export class UIImage implements UIElement {
   private _destroyed = false;
 
   constructor(props: UIImageProps) {
+    super();
     this.yogaNode = createYogaNode();
     this.textureInput = props.texture;
 
     const texture = resolveTextureInput(this.textureInput);
-    this.container = new Sprite(texture);
-    applyConsumeInput(this.container, props.consumeInput);
-    this.pointerEvents = new PointerEvents(this.container, props);
+    this.displayObject = new Container();
+    this.sprite = new Sprite(texture);
+    this.displayObject.addChild(this.sprite);
+    // Pointer handlers and the consume mark sit on the sprite the pointer hits.
+    applyConsumeInput(this.sprite, props.consumeInput);
+    this.pointerEvents = new PointerEvents(this.sprite, props);
 
     // Out of focus navigation until a game asks for it with `focusable` —
     // which is what an inventory grid of picture cells does. Asked for, the
     // cell is outlined like every other focusable element; the pointer moves
     // focus here, which keeps the mouse and the keyboard on the same cell.
-    //
-    // `applyLayout` sizes the sprite by scaling it, so the box is divided
-    // back into the sprite's own space and the outline is told that scale;
-    // the stroke then comes out the themed thickness at any picture size.
     this._focusOutline = new FocusOutline({
-      container: this.container,
-      box: () => ({
-        x: 0,
-        y: 0,
-        width: this.yogaNode.getComputedWidth() / (this.container.scale.x || 1),
-        height:
-          this.yogaNode.getComputedHeight() / (this.container.scale.y || 1),
-      }),
-      scale: () => this.container.scale,
+      container: this.displayObject,
+      box: () => layoutBox(this.yogaNode),
     });
     this._focusOutline.set(props);
     this._focus = new FocusState(this, props, {
       focusableByDefault: false,
       paint: (focused) => this._focusOutline.setFocused(focused),
     });
-    this.container.on("pointerover", () => {
+    this.sprite.on("pointerover", () => {
       requestHoverFocus(this);
     });
-    this.container.on("pointerdown", () => {
+    this.sprite.on("pointerdown", () => {
       requestPressFocus(this);
     });
 
-    if (props.tint !== undefined) this.container.tint = props.tint;
-    if (props.alpha !== undefined) this.container.alpha = props.alpha;
+    if (props.tint !== undefined) this.sprite.tint = props.tint;
+    if (props.alpha !== undefined) this.sprite.alpha = props.alpha;
 
     // Yoga measure function — returns texture natural dimensions
-    const sprite = this.container;
+    const sprite = this.sprite;
     this.yogaNode.setMeasureFunc((width, widthMode, height, heightMode) => {
       const texW = sprite.texture.width;
       const texH = sprite.texture.height;
@@ -118,10 +114,11 @@ export class UIImage implements UIElement {
     });
 
     applyLayoutProps(this.yogaNode, props);
+    this.applyTransformProps(props);
     this.syncAspectRatio();
 
     if (props.visible === false) {
-      this.container.visible = false;
+      this.displayObject.visible = false;
       this.yogaNode.setDisplay(Display.None);
     }
   }
@@ -130,8 +127,8 @@ export class UIImage implements UIElement {
   applyLayout(): void {
     const w = this.yogaNode.getComputedWidth();
     const h = this.yogaNode.getComputedHeight();
-    this.container.width = w;
-    this.container.height = h;
+    this.sprite.width = w;
+    this.sprite.height = h;
     this._focusOutline.refresh();
   }
 
@@ -146,7 +143,7 @@ export class UIImage implements UIElement {
    * axis discards the dimension the caller did set.
    */
   private syncAspectRatio(): void {
-    const { width: texW, height: texH } = this.container.texture;
+    const { width: texW, height: texH } = this.sprite.texture;
     const widthSized = isSizedDimension(this.yogaNode.getWidth());
     const heightSized = isSizedDimension(this.yogaNode.getHeight());
     const flexSized =
@@ -158,29 +155,30 @@ export class UIImage implements UIElement {
   }
 
   get visible(): boolean {
-    return this.container.visible;
+    return this.displayObject.visible;
   }
 
   set visible(v: boolean) {
-    this.container.visible = v;
+    this.displayObject.visible = v;
     this.yogaNode.setDisplay(v ? Display.Flex : Display.None);
   }
 
   update(p: Partial<UIImageProps>): void {
     if (p.texture !== undefined && p.texture !== this.textureInput) {
       this.textureInput = p.texture;
-      this.container.texture = resolveTextureInput(p.texture);
+      this.sprite.texture = resolveTextureInput(p.texture);
       this.yogaNode.markDirty();
     }
 
-    if ("tint" in p) this.container.tint = p.tint ?? 0xffffff;
-    if ("alpha" in p) this.container.alpha = p.alpha ?? 1;
-    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
+    if ("tint" in p) this.sprite.tint = p.tint ?? 0xffffff;
+    if ("alpha" in p) this.sprite.alpha = p.alpha ?? 1;
+    if ("consumeInput" in p) applyConsumeInput(this.sprite, p.consumeInput);
     this.pointerEvents.set(p);
     this._focus.set(p);
     this._focusOutline.set(p);
 
     applyLayoutProps(this.yogaNode, p);
+    this.applyTransformProps(p);
     this.syncAspectRatio();
 
     if ("visible" in p) {
@@ -204,8 +202,9 @@ export class UIImage implements UIElement {
     this._destroyed = true;
     this._focus.destroy();
     this._focusOutline.destroy();
-    clearConsumeInput(this.container);
+    clearConsumeInput(this.sprite);
     this.yogaNode.free();
-    this.container.destroy();
+    this.sprite.destroy();
+    this.displayObject.destroy();
   }
 }

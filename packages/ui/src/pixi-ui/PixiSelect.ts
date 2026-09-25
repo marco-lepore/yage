@@ -1,6 +1,6 @@
 import type { FancyButton } from "@pixi/ui";
 import { Select } from "@pixi/ui";
-import { Container } from "pixi.js";
+import { Container, Matrix } from "pixi.js";
 import type {
   FocusDirection,
   PixiSelectProps,
@@ -33,9 +33,10 @@ function topAncestor(node: Container): Container {
  * This subclass lifts the dropdown container (`view`, which holds the open
  * background, close button, and the scrollable list) to the top of the render
  * tree while open, so it draws above all other UI like a web dropdown. The
- * reparent preserves the dropdown's on-screen position and scale via the world
- * transform, so it stays put and correctly sized regardless of the fit scale
- * between the UI layer and the stage.
+ * dropdown takes the Select's world transform, so it stays put and correctly
+ * sized regardless of the fit scale between the UI layer and the stage, and
+ * it takes it again on every rendered frame while open, so it follows the
+ * Select as it moves, scales or turns.
  */
 class PortalSelect extends Select {
   /** Notified after every open/close with the resulting open state. */
@@ -45,6 +46,9 @@ class PortalSelect extends Select {
   private _originalIndex = 0;
   /** The row a confirm press commits, or `-1` while no row is lit. */
   private _highlight = -1;
+  // Scratch for the portal transform, reused on every frame the list is open.
+  private readonly _hostMatrix = new Matrix();
+  private readonly _selectMatrix = new Matrix();
 
   // `Select.toggle()` sets `view.visible` directly and doesn't delegate to
   // `open`/`close`, so all three are hooked to catch every path. If a future
@@ -64,18 +68,11 @@ class PortalSelect extends Select {
   }
 
   /** Reparent the dropdown to the top of the render tree, keeping its
-   *  on-screen position and scale. Idempotent. */
+   *  on-screen transform. Idempotent. */
   portalDropdown(): void {
     if (this._portalHost) return;
     const host = topAncestor(this);
     if (host === this || host === this.view.parent) return;
-    // Local transform under `host` that reproduces the dropdown's current world
-    // transform (it sits at the Select's origin, local (0,0), so its world
-    // transform equals the Select's).
-    const local = host.worldTransform
-      .clone()
-      .invert()
-      .append(this.worldTransform);
     // Appended last, `view` already draws on top of the stage's other children;
     // the high zIndex only matters if something else put the stage in sorted
     // mode. Don't force `sortableChildren` — that would leave the stage sorting
@@ -83,20 +80,29 @@ class PortalSelect extends Select {
     this._originalIndex = this.getChildIndex(this.view);
     this.view.zIndex = DROPDOWN_Z;
     host.addChild(this.view);
-    this.view.setFromMatrix(local);
     this._portalHost = host;
+    this.syncPortal(host);
+    this.onRender = () => this.syncPortal(host);
+  }
+
+  /** The list sits at the Select's origin, so both world transforms match. */
+  private syncPortal(host: Container): void {
+    const local = host
+      .getGlobalTransform(this._hostMatrix)
+      .invert()
+      .append(this.getGlobalTransform(this._selectMatrix));
+    this.view.setFromMatrix(local);
   }
 
   /** Put the dropdown back inside the Select at its original slot. Idempotent. */
   restoreDropdown(): void {
     if (!this._portalHost) return;
     this._portalHost = null;
+    this.onRender = null;
     // Scene torn down while open: the dropdown was destroyed with the stage.
     if (this.view.destroyed || this.destroyed) return;
     this.view.zIndex = 0;
-    this.view.position.set(0, 0);
-    this.view.scale.set(1, 1);
-    this.view.rotation = 0;
+    this.view.setFromMatrix(Matrix.IDENTITY);
     this.addChildAt(this.view, this._originalIndex);
   }
 
@@ -282,7 +288,7 @@ export class PixiSelect
    */
   protected override focusOutlineBox(): UIFocusOutlineBox {
     const { width, height } = this.view.closedSize;
-    return { x: 0, y: 0, width, height };
+    return this.fromViewSpace({ x: 0, y: 0, width, height });
   }
 
   /** Open or close the dropdown. */
