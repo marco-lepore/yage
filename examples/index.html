@@ -3,775 +3,222 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <title>YAGE Examples</title>
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      body {
-        background: #111;
-        color: #ccc;
-        font-family: system-ui, sans-serif;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 2rem 1rem;
-        gap: 1.5rem;
-      }
-      h1 {
-        font-size: 1.6rem;
-        color: #eee;
-      }
-      .subtitle {
-        font-size: 0.9rem;
-        color: #888;
-      }
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 1rem;
-        max-width: 900px;
-        width: 100%;
-      }
-      .card {
-        background: #1a1a1a;
-        border: 1px solid #333;
-        border-radius: 8px;
-        padding: 1.25rem;
-        text-decoration: none;
-        color: inherit;
-        transition:
-          border-color 0.15s,
-          background 0.15s;
-      }
-      .card:hover {
-        border-color: #555;
-        background: #222;
-      }
-      .card h2 {
-        font-size: 1.05rem;
-        color: #fff;
-        margin-bottom: 0.4rem;
-      }
-      .card p {
-        font-size: 0.85rem;
-        color: #999;
-        line-height: 1.4;
-        margin-bottom: 0.6rem;
-      }
-      .tags {
-        display: flex;
-        gap: 0.4rem;
-        flex-wrap: wrap;
-      }
-      .tag {
-        font-size: 0.7rem;
-        padding: 2px 8px;
-        border-radius: 4px;
-        background: #2a2a2a;
-        color: #aaa;
-        border: 1px solid #333;
-      }
-      .tag.core {
-        color: #38bdf8;
-        border-color: #1e3a5f;
-      }
-      .tag.renderer {
-        color: #22c55e;
-        border-color: #14532d;
-      }
-      .tag.lighting {
-        color: #f59e0b;
-        border-color: #78350f;
-      }
-      .tag.physics {
-        color: #f97316;
-        border-color: #7c2d12;
-      }
-      .tag.particles {
-        color: #e879f9;
-        border-color: #701a75;
-      }
-      .tag.input {
-        color: #facc15;
-        border-color: #713f12;
-      }
-      .tag.audio {
-        color: #c084fc;
-        border-color: #581c87;
-      }
-      .tag.ui {
-        color: #fb923c;
-        border-color: #9a3412;
-      }
-      .tag.tilemap {
-        color: #2dd4bf;
-        border-color: #134e4a;
-      }
-      .tag.addon {
-        color: #f472b6;
-        border-color: #831843;
-      }
-    </style>
+    <meta
+      name="description"
+      content="Runnable examples of YAGE, a 2D game engine for the web."
+    />
   </head>
   <body>
-    <h1>YAGE Examples</h1>
-    <p class="subtitle">Click an example to launch it</p>
+    <div class="shell" id="shell">
+      <aside class="sidebar" id="sidebar" aria-label="Examples">
+        <header class="brand">
+          <a class="brand-link" href="/" id="home-link">
+            <img id="logo" alt="" width="26" height="26" />
+            <span class="brand-name">YAGE</span>
+            <span class="brand-sub">Examples</span>
+          </a>
+        </header>
 
-    <div class="grid">
-      <a class="card" href="/hello-world.html">
-        <h2>Hello World</h2>
-        <p>
-          Simplest setup: a few colored shapes on screen. Proves the engine +
-          renderer pipeline works.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
+        <div class="search">
+          <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" />
+          </svg>
+          <input
+            id="search"
+            type="search"
+            placeholder="Search examples"
+            aria-label="Search examples"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <kbd class="search-key" aria-hidden="true">/</kbd>
         </div>
-      </a>
 
-      <a class="card" href="/split-text.html">
-        <h2>Split Text</h2>
-        <p>
-          Per-glyph animated text auto-cycling through effects: typewriter,
-          wave, rainbow, glitch, explode, fall-to-pieces, and assemble.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-        </div>
-      </a>
+        <details class="filters" id="filters">
+          <summary>
+            <span>Filter by package</span>
+            <span class="filter-count" id="filter-count" hidden></span>
+          </summary>
+          <div
+            class="chips"
+            id="chips"
+            role="group"
+            aria-label="Packages"
+          ></div>
+        </details>
 
-      <a class="card" href="/dialogue-addon.html">
-        <h2>Dialogue Addon</h2>
-        <p>
-          The first YAGE addon (@yagejs-addons/dialogue): branching dialogue
-          with a typewriter box, a world-space speech bubble, a choice, and
-          [wave]/[shake] per-glyph effects — all from a zero-asset
-          defaultTheme().
-        </p>
-        <div class="tags">
-          <span class="tag addon">addon</span>
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag input">input</span>
+        <div class="results" id="results" aria-live="polite">
+          <span id="results-text"></span>
+          <button type="button" class="link-button" id="clear-filters" hidden>
+            Clear
+          </button>
         </div>
-      </a>
 
-      <a class="card" href="/virtual-controls.html">
-        <h2>Virtual Controls Addon</h2>
-        <p>
-          Mobile touch overlay (@yagejs-addons/virtual-controls): a floating
-          virtual joystick + auto-clustered action buttons that drive the action
-          map and getStick(), with claimed touches consumed so they never leak
-          into gameplay. Switch between 1/2/4-button layouts live.
-        </p>
-        <div class="tags">
-          <span class="tag addon">addon</span>
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag input">input</span>
-        </div>
-      </a>
+        <nav class="nav" id="nav" aria-label="Example list"></nav>
 
-      <a class="card" href="/inventory-addon.html">
-        <h2>Inventory Addon</h2>
-        <p>
-          Slot inventory (@yagejs-addons/inventory): a 5×3 grid backpack + a
-          key-items list, stacking with per-item caps, partial pickups,
-          Use/Equip/Drop actions with injected availability, sorting, and a
-          gold-key door checked while the UI is closed.
-        </p>
-        <div class="tags">
-          <span class="tag addon">addon</span>
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag input">input</span>
-        </div>
-      </a>
+        <footer class="sidebar-footer">
+          <a href="https://yage.dev">Docs</a>
+          <a href="https://github.com/marco-lepore/yage">GitHub</a>
+        </footer>
+      </aside>
 
-      <a class="card" href="/interaction.html">
-        <h2>Interaction Addon</h2>
-        <p>
-          Proximity interaction (@yagejs-addons/interaction): walk up, see a
-          prompt, press E. Headless — the game renders the prompt from one
-          focus-changed event. NPC/coin/door composition, plus an overlapping
-          pair resolved deterministically by priority.
-        </p>
-        <div class="tags">
-          <span class="tag addon">addon</span>
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag input">input</span>
-        </div>
-      </a>
+      <div class="backdrop" id="backdrop" hidden></div>
 
-      <a class="card" href="/quests-addon.html">
-        <h2>Quests Addon</h2>
-        <p>
-          Headless quest log (@yagejs-addons/quests): objectives bound to
-          inventory pickups and a dialogue turn-in command with no addon
-          dependency, prerequisite chaining, and auto-complete rollup.
-        </p>
-        <div class="tags">
-          <span class="tag addon">addon</span>
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag input">input</span>
+      <main class="main" id="main">
+        <div class="overview" id="overview">
+          <header class="overview-head">
+            <button
+              type="button"
+              class="icon-button menu-button"
+              data-action="menu"
+              aria-label="Show the example list"
+              title="Show the example list"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <div>
+              <h1>Examples</h1>
+              <p class="lede" id="lede">
+                Small, runnable programs, each showing one part of YAGE. Pick
+                one to run it here. The list stays in place, so you can move
+                between examples without losing your spot.
+              </p>
+            </div>
+          </header>
+          <div id="overview-sections"></div>
+          <p class="empty" id="overview-empty" hidden>
+            No examples match.
+            <button type="button" class="link-button" data-action="clear">
+              Clear the search and filters
+            </button>
+          </p>
         </div>
-      </a>
 
-      <a class="card" href="/i18n.html">
-        <h2>Localization</h2>
-        <p>
-          One localization service (@yagejs-addons/i18n) updates renderer text,
-          imperative and React UI, dialogue, inventory, and a quest title when
-          the language switches mid-line, without replaying gameplay.
-        </p>
-        <div class="tags">
-          <span class="tag addon">addon</span>
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag ui">ui</span>
-          <span class="tag input">input</span>
+        <div class="stage" id="stage" hidden>
+          <header class="stage-bar">
+            <button
+              type="button"
+              class="icon-button menu-button"
+              data-action="menu"
+              aria-label="Show the example list"
+              title="Show the example list"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <div class="stage-heading">
+              <p class="eyebrow" id="stage-section"></p>
+              <h1 id="stage-title"></h1>
+            </div>
+            <div class="stage-actions">
+              <div class="button-group">
+                <button
+                  type="button"
+                  class="icon-button"
+                  id="prev"
+                  aria-label="Previous example"
+                  title="Previous example (K)"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M15 18l-6-6 6-6" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="icon-button"
+                  id="next"
+                  aria-label="Next example"
+                  title="Next example (J)"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
+                </button>
+              </div>
+              <div class="button-group">
+                <button
+                  type="button"
+                  class="icon-button"
+                  id="reload"
+                  aria-label="Restart the example"
+                  title="Restart the example"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="icon-button"
+                  id="fullscreen"
+                  aria-label="Full screen"
+                  title="Full screen"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5" />
+                  </svg>
+                </button>
+              </div>
+              <div class="button-group links">
+                <a
+                  class="text-button"
+                  id="guide"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M12 7a4 4 0 0 0-4-3H3v15h6a3 3 0 0 1 3 2 3 3 0 0 1 3-2h6V4h-5a4 4 0 0 0-4 3zM12 7v14"
+                    />
+                  </svg>
+                  <span>Guide</span>
+                </a>
+                <a
+                  class="text-button"
+                  id="source"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M9 8l-5 4 5 4M15 8l5 4-5 4" />
+                  </svg>
+                  <span>Source</span>
+                </a>
+                <a
+                  class="text-button"
+                  id="standalone"
+                  target="_blank"
+                  rel="noopener"
+                  title="Open this example on its own page"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"
+                    />
+                  </svg>
+                  <span>Open</span>
+                </a>
+              </div>
+            </div>
+          </header>
+          <div class="stage-info">
+            <p class="stage-summary" id="stage-summary"></p>
+            <div class="badges" id="stage-badges"></div>
+          </div>
+          <div class="stage-frame" id="stage-frame">
+            <div class="frame-slot" id="frame-slot"></div>
+            <p class="focus-hint" id="focus-hint" aria-hidden="true">
+              Click the example to use the keyboard
+            </p>
+          </div>
         </div>
-      </a>
-
-      <a class="card" href="/steering.html">
-        <h2>Steering Addon</h2>
-        <p>
-          Steering (@yagejs-addons/steering): a chaser, a radius-gated fleer,
-          contained wanderers, a waypoint patrol, a boid flock, an
-          obstacle-avoiding router, and a crate-shoving dynamic body on impulse
-          drive (PhysicsSteeringAgent) — all reacting to one WASD-controlled
-          player.
-        </p>
-        <div class="tags">
-          <span class="tag addon">addon</span>
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag physics">physics</span>
-          <span class="tag input">input</span>
-        </div>
-      </a>
-
-      <a class="card" href="/synth.html">
-        <h2>Synth Addon</h2>
-        <p>
-          Procedural sound effects (@yagejs-addons/synth): every preset
-          synthesized at boot and registered with the audio engine under an
-          alias — no audio files. Click a pad to hear it and see the rendered
-          waveform, with detuned variants and a seamless ambient loop.
-        </p>
-        <div class="tags">
-          <span class="tag addon">addon</span>
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag audio">audio</span>
-        </div>
-      </a>
-
-      <a class="card" href="/abilities-addon.html">
-        <h2>Abilities Addon</h2>
-        <p>
-          Phase-based abilities + a hit contract (@yagejs-addons/abilities): a
-          close-quarters brawl with swappable fist and kick loadouts, a lunging
-          punch, a homing fireball, a buffered dash-cancel, a charge kick with
-          bullet time, tap-dash/hold-run movement, a hold-block/tap-parry guard
-          split, an item-lane potion, a zoomed-in follow camera, and a hotbar
-          with per-action cooldown wipes. Enemies telegraph a melee strike or a
-          fireball depending on range, with hitstop, camera shake, impact
-          particles, and hit/parry/death SFX scaling with hit weight. Press E to
-          swap loadouts or R to reset.
-        </p>
-        <div class="tags">
-          <span class="tag addon">addon</span>
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag physics">physics</span>
-          <span class="tag particles">particles</span>
-          <span class="tag input">input</span>
-          <span class="tag audio">audio</span>
-        </div>
-      </a>
-
-      <a class="card" href="/feel-addon.html">
-        <h2>Feel Addon</h2>
-        <p>
-          Two scenes of composable feedback cues (@yagejs-addons/feel), from
-          impact shake, callouts, trails, and afterimages to cue composition,
-          slow motion, animation, callbacks, and a scene-wide shockwave.
-        </p>
-        <div class="tags">
-          <span class="tag addon">addon</span>
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag input">input</span>
-        </div>
-      </a>
-
-      <a class="card" href="/responsive-ui.html">
-        <h2>Responsive play area</h2>
-        <p>
-          800×600 play area that stays fully visible at any window aspect. HUD,
-          grid, and fog fill the margins around it.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-        </div>
-      </a>
-
-      <a class="card" href="/debug.html">
-        <h2>Debug Overlay</h2>
-        <p>
-          FPS, entity count, system timing HUD, physics collider wireframes, and
-          input state. Toggle with backtick.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag physics">physics</span>
-          <span class="tag input">input</span>
-        </div>
-      </a>
-
-      <a class="card" href="/camera.html">
-        <h2>Camera</h2>
-        <p>
-          WASD player with smooth camera follow, deadzone, bounds, shake, and
-          zoom controls.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-        </div>
-      </a>
-
-      <a class="card" href="/camera-layers.html">
-        <h2>Camera Layers &amp; Parallax</h2>
-        <p>
-          Per-layer translateRatio bindings produce classic parallax. UI pins to
-          screen via the auto-bindable opt-out. Pause scene stacks with its own
-          camera.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag ui">ui</span>
-        </div>
-      </a>
-
-      <a class="card" href="/physics-basics.html">
-        <h2>Physics Basics</h2>
-        <p>
-          Drop shapes that bounce in a box. Apply impulses and flip gravity.
-          Shows rigid bodies, colliders, and restitution.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag physics">physics</span>
-        </div>
-      </a>
-
-      <a class="card" href="/physics-collisions.html">
-        <h2>Collisions &amp; Sensors</h2>
-        <p>
-          Collect coins and dodge danger zones. Demonstrates sensors, trigger
-          events, collision layers, and kinematic bodies.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag physics">physics</span>
-        </div>
-      </a>
-
-      <a class="card" href="/physics-joints.html">
-        <h2>Physics Joints</h2>
-        <p>
-          Swing on a click-to-grapple rope, switch it to an elastic bungee
-          mid-swing, while a spring tether drags a companion ball behind.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag physics">physics</span>
-          <span class="tag input">input</span>
-        </div>
-      </a>
-
-      <a class="card" href="/platformer.html">
-        <h2>2D Platformer</h2>
-        <p>
-          Side-scrolling platformer with camera follow, moving platforms,
-          collectibles, death pits, and physics-based player control.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag physics">physics</span>
-        </div>
-      </a>
-
-      <a class="card" href="/save-stores.html">
-        <h2>Save Stores</h2>
-        <p>
-          Typed reactive stores for settings (auto-persisted), save slots with
-          metadata, and progression. Continue restores the latest run on reload.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag core">save</span>
-        </div>
-      </a>
-
-      <a class="card" href="/render-targets.html">
-        <h2>Render Targets &amp; Blend Modes</h2>
-        <p>
-          Draw a live radar into an offscreen texture and reuse it on two
-          screens. Cycle the buffer resolution and watch it stop redrawing when
-          the source is unchanged.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-        </div>
-      </a>
-
-      <a class="card" href="/lighting.html">
-        <h2>Lighting</h2>
-        <p>
-          Add warm, cool, and moving radial lights, then use the same light data
-          for gameplay with a continuous <code>levelAt()</code> query.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag lighting">lighting</span>
-        </div>
-      </a>
-
-      <a class="card" href="/effects-showcase.html">
-        <h2>Effects Showcase</h2>
-        <p>
-          Toggle bloom, outline, CRT, vignette, and seven other presets at
-          component / layer / scene / screen scope.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag core">effects</span>
-        </div>
-      </a>
-
-      <a class="card" href="/shooter.html">
-        <h2>2D Shooter</h2>
-        <p>
-          Mega Man-style platformer-shooter with squash-stretch, hit flash,
-          camera shake, knockback, and manual particle spawning.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag physics">physics</span>
-        </div>
-      </a>
-
-      <a class="card" href="/pooling.html">
-        <h2>Entity Pooling</h2>
-        <p>
-          A fountain of physics sparks runs two ways: recycled through an
-          EntityPool, or spawned and destroyed one entity per shot. Live
-          counters show pool members, leased vs free, and how many entities each
-          mode has actually built.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag physics">physics</span>
-          <span class="tag input">input</span>
-        </div>
-      </a>
-
-      <a class="card" href="/particles.html">
-        <h2>Particles</h2>
-        <p>
-          GPU-friendly particle emitters driven by mouse input. Hold click to
-          emit, press Space to burst. Switch between the four presets (1-4) and
-          the six built-in shapes (5-0), none of which need an image asset, or
-          press T to run the same emitter on your own texture.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag particles">particles</span>
-          <span class="tag input">input</span>
-        </div>
-      </a>
-      <a class="card" href="/audio.html">
-        <h2>Audio</h2>
-        <p>
-          Channel-based audio with SFX pads, music toggle, per-channel volume
-          control, and master mute. Wraps @pixi/sound.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag audio">audio</span>
-          <span class="tag input">input</span>
-        </div>
-      </a>
-
-      <a class="card" href="/ui.html">
-        <h2>UI</h2>
-        <p>
-          Screen-space UI with the builder API: nine-slice textured panels and
-          buttons, logo image, progress bars (HP/XP), checkboxes, and a HUD
-          overlay.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag ui">ui</span>
-        </div>
-      </a>
-
-      <a class="card" href="/ui-react.html">
-        <h2>UI (React)</h2>
-        <p>
-          Same menu built with the React custom renderer. Nine-slice textures,
-          reactive progress bars, auto-filling XP, checkboxes, and image
-          elements.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag ui">ui</span>
-        </div>
-      </a>
-
-      <a class="card" href="/scroll-view.html">
-        <h2>Scrollable Cards</h2>
-        <p>
-          Declarative <code>&lt;ScrollView&gt;</code> of reactive card
-          components: scrolls past a fixed-height panel via wheel or drag, keeps
-          a sibling "End Day" button fixed, and preserves scroll position across
-          store-driven re-renders.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag ui">ui</span>
-        </div>
-      </a>
-
-      <a class="card" href="/pixi-ui-kitchen-sink.html">
-        <h2>@pixi/ui Kitchen Sink</h2>
-        <p>
-          Every @pixi/ui wrapper: FancyButton, Checkbox, ProgressBar, Slider,
-          Input, Select, and RadioGroup — all Yoga-aware via React.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag ui">ui</span>
-        </div>
-      </a>
-
-      <a class="card" href="/ui-focus.html">
-        <h2>Keyboard &amp; Gamepad Focus</h2>
-        <p>
-          A menu driven entirely by the arrow keys or a stick: a vertical column
-          that steps over a disabled row, a tab strip, an icon grid, and a save
-          list that scrolls the focused row into view. Enter confirms and Escape
-          cancels, and a confirm dialog nested in the menu takes the keys while
-          it is open, then hands them back to the row that opened it.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag ui">ui</span>
-        </div>
-      </a>
-
-      <a class="card" href="/input-remapping.html">
-        <h2>Input Remapping</h2>
-        <p>
-          Two-player rebindable controls with conflict detection, group
-          enable/disable, and a React-based rebind UI. Keyboard and gamepad
-          bindings are remappable.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag input">input</span>
-          <span class="tag ui">ui</span>
-        </div>
-      </a>
-
-      <a class="card" href="/gamepad.html">
-        <h2>Gamepad</h2>
-        <p>
-          Twin-stick ship driven by left stick + right stick aim, RT/A boost,
-          with a HUD that visualizes stick / trigger / button state and the
-          active controller. Falls back to WASD when no pad is plugged in.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag input">input</span>
-        </div>
-      </a>
-
-      <a class="card" href="/multitouch.html">
-        <h2>Multi-touch</h2>
-        <p>
-          Per-pointer state with labeled disks, fading trails, and tap-to-ripple
-          — driven by <code>getPointers()</code> +
-          <code>onPointerDown / Up / Move</code>. Open on a phone to see
-          multiple fingers tracked independently; works with mouse too.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag input">input</span>
-        </div>
-      </a>
-
-      <a class="card" href="/ui-consume.html">
-        <h2>UI auto-consume</h2>
-        <p>
-          A <code>MouseLeft</code>-bound shoot action with two UI panels
-          overlaid — one default (auto-consumes the click), one with
-          <code>consumeInput: false</code> (lets the click through). Click
-          around to see when the play-area action fires vs. when the panel eats
-          the input.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag input">input</span>
-          <span class="tag ui">ui</span>
-        </div>
-      </a>
-
-      <a class="card" href="/tilemap.html">
-        <h2>Tilemap</h2>
-        <p>
-          Renders a Tiled dungeon map with @pixi/tilemap. WASD to pan the
-          camera, mouse wheel to zoom.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag tilemap">tilemap</span>
-        </div>
-      </a>
-
-      <a class="card" href="/pathfinding.html">
-        <h2>Pathfinding</h2>
-        <p>
-          Grid A* via @yagejs/pathfinding on a real Tiled dungeon map:
-          gridFromColliders builds the walkability grid from the map's "walls"
-          object layer, then click anywhere to route the agent there with the
-          computed path drawn as it walks.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag input">input</span>
-          <span class="tag tilemap">tilemap</span>
-        </div>
-      </a>
-
-      <a class="card" href="/scene-pause.html">
-        <h2>Scene Pause &amp; TimeScale</h2>
-        <p>
-          Multi-scene stack with pause menu, HUD overlay, and per-scene time
-          scaling. Physics bodies sleep when paused.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag physics">physics</span>
-          <span class="tag ui">ui</span>
-        </div>
-      </a>
-
-      <a class="card" href="/scene-transitions.html">
-        <h2>Scene Transitions</h2>
-        <p>
-          Push/pop/replace with fade, flash, crossFade, a custom slideIn, a
-          per-scene defaultTransition, and a live stack status panel.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-        </div>
-      </a>
-
-      <a class="card" href="/loading-scene.html">
-        <h2>Loading Scene</h2>
-        <p>
-          A Boot scene preloads the target scene's assets, renders a progress
-          bar, and hands off via a fade transition. LoadingScene base class with
-          ~12 lines of overrides.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag ui">ui</span>
-        </div>
-      </a>
-
-      <a class="card" href="/ui-layers.html">
-        <h2>UI Layers</h2>
-        <p>
-          Named z-ordered UI layers for HUD, menu, and dialog panels. Toggle
-          layers to see stacking order.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag ui">ui</span>
-        </div>
-      </a>
-
-      <a class="card" href="/world-ui.html">
-        <h2>World-space UI</h2>
-        <p>
-          Entity-anchored nameplates and health bars.
-          <code>ScreenFollow</code> projects each enemy's world position through
-          the camera every frame and a <code>UIPanel</code> with
-          <code>positioning: "transform"</code> reads it — UI tracks the enemy
-          and stays axis-aligned and constant-size under zoom and rotation.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag ui">ui</span>
-        </div>
-      </a>
-      <a class="card" href="/world-ui-react.html">
-        <h2>Diegetic UI (React)</h2>
-        <p>
-          The world-space UI demo rebuilt with React. Enemy namecards use
-          <code>ScreenFollow</code> plus a <code>positioning: "transform"</code>
-          <code>&lt;UIRoot&gt;</code>, and a React <code>&lt;Tooltip&gt;</code>
-          portaled into the screen-space overlay stays anchored to its moving
-          namecard every frame.
-        </p>
-        <div class="tags">
-          <span class="tag core">core</span>
-          <span class="tag renderer">renderer</span>
-          <span class="tag ui">ui-react</span>
-        </div>
-      </a>
+      </main>
     </div>
+    <script type="module" src="/src/index/main.ts"></script>
   </body>
 </html>

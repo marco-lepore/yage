@@ -488,3 +488,90 @@ test.describe("Examples", () => {
     expect(errors).toEqual([]);
   });
 });
+
+// The index page (examples/index.html): a sidebar of every example and a
+// stage that runs the selected one in a frame.
+test.describe("Examples index", () => {
+  test("lists every page and runs the selected one in a frame", async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("console", (msg) => {
+      if (msg.type() === "error") errors.push(msg.text());
+    });
+    page.on("pageerror", (err) => errors.push(err.message));
+
+    await page.goto("/");
+    const links = page.locator(".nav-link");
+    await expect(links).toHaveCount(slugs.length);
+    const hrefs = await links.evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("href")),
+    );
+    expect([...hrefs].sort()).toEqual(slugs.map((slug) => `#${slug}`).sort());
+
+    await page.locator('.nav-link[href="#physics-joints"]').click();
+    await expect(page).toHaveURL(/#physics-joints$/);
+    await expect(page.locator(".frame-slot iframe")).toHaveAttribute(
+      "src",
+      "/physics-joints.html",
+    );
+    // Inside the frame the page drops the title and back link the index shows.
+    const frame = page.frameLocator(".frame-slot iframe");
+    await expect(frame.locator("#game-container")).toBeVisible();
+    await expect(frame.locator(".back-link")).toBeHidden();
+
+    // Next selects the following entry in the list; Back returns to the first.
+    const nextHref = hrefs[hrefs.indexOf("#physics-joints") + 1] ?? "";
+    expect(nextHref).not.toBe("");
+    await page.locator("#next").click();
+    await expect(page).toHaveURL(new RegExp(`${nextHref}$`));
+    await expect(page.locator(".nav-link[aria-current=page]")).toHaveAttribute(
+      "href",
+      nextHref,
+    );
+    await page.goBack();
+    await expect(page).toHaveURL(/#physics-joints$/);
+    await expect(page.locator(".frame-slot iframe")).toHaveCount(1);
+
+    expect(errors).toEqual([]);
+  });
+
+  test("search and package filters narrow the list", async ({ page }) => {
+    await page.goto("/");
+    const visibleLinks = page.locator(".nav-link:visible");
+    await expect(visibleLinks).toHaveCount(slugs.length);
+
+    await page.locator("#search").fill("joint");
+    await expect(visibleLinks).toHaveCount(1);
+    await page.locator("#search").fill("");
+    await expect(visibleLinks).toHaveCount(slugs.length);
+
+    // The addons chip keeps only rows that carry an addon badge.
+    await page.locator("#filters summary").click();
+    await page.locator(".chip", { hasText: /^addons$/ }).click();
+    const rows = page.locator(".overview-row:visible");
+    const shown = await rows.count();
+    expect(shown).toBeGreaterThan(0);
+    expect(shown).toBeLessThan(slugs.length);
+    await expect(
+      rows.filter({ hasNot: page.locator(".badge.addon") }),
+    ).toHaveCount(0);
+
+    // Enter runs the first match.
+    await page.locator("#search").fill("dialogue");
+    await page.locator("#search").press("Enter");
+    await expect(page).toHaveURL(/#dialogue-addon$/);
+
+    await page.locator("#clear-filters").click();
+    await expect(visibleLinks).toHaveCount(slugs.length);
+  });
+
+  test("a standalone page links back to its entry in the index", async ({
+    page,
+  }) => {
+    await page.goto("/physics-joints.html");
+    const back = page.locator(".back-link");
+    await expect(back).toBeVisible();
+    await expect(back).toHaveAttribute("href", "/#physics-joints");
+  });
+});

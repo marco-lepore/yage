@@ -20,9 +20,8 @@ npm run dev --workspace=@yagejs/examples
 # then open http://localhost:5199/dialogue-addon.html
 ```
 
-See `examples/src/dialogue-addon.ts` (a thin wrapper that calls this example's
-`start()`), `examples/dialogue-addon.html`, and the menu card in
-`examples/index.html`.
+See `examples/src/dialogue-addon/`, `examples/dialogue-addon.html`, and its
+entry in `examples/src/catalog.ts`.
 
 ## What it demonstrates
 
