@@ -197,11 +197,17 @@ export abstract class Component {
    * ```ts
    * readonly anim = this.sibling(AnimatedSpriteComponent);
    * ```
-   * The actual resolution is deferred until first property access.
+   * The actual resolution is deferred until first property access. The
+   * reference passes `instanceof cls` before it resolves, so an engine API
+   * that checks the type of what it is handed (`camera.follow(this.transform)`)
+   * accepts it.
    */
   protected sibling<C extends Component>(cls: ComponentClass<C>): C {
     let resolved: C | undefined;
-    return new Proxy(Object.create(lazyRefPrototype) as object, {
+    // The class prototype, not `lazyRefPrototype`: with no `getPrototypeOf`
+    // trap, `instanceof` reads the target's prototype chain, so the type check
+    // passes without resolving, and the Inspector still skips the field.
+    return new Proxy(Object.create(cls.prototype as object) as object, {
       get: (_target, prop) => {
         resolved ??= this.entity.get(cls);
         const value = (resolved as Record<string | symbol, unknown>)[prop];
