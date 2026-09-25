@@ -89,6 +89,40 @@ describe("Component", () => {
     expect(c.lastFixedDt).toBe(8);
   });
 
+  describe("sibling()", () => {
+    class Base extends Component {}
+    class Derived extends Base {}
+    class Unrelated extends Component {}
+    class Holder extends Component {
+      readonly ref = this.sibling(Derived);
+    }
+
+    it("passes instanceof for its class and base classes before resolving", () => {
+      // Unbound: resolving would throw on the missing entity.
+      const holder = new Holder();
+      expect(holder.ref instanceof Derived).toBe(true);
+      expect(holder.ref instanceof Base).toBe(true);
+      expect(holder.ref instanceof Component).toBe(true);
+      expect(holder.ref instanceof Unrelated).toBe(false);
+    });
+
+    it("reads and writes through to the resolved sibling", () => {
+      class Counter extends Component {
+        count = 1;
+      }
+      class Reader extends Component {
+        readonly counter = this.sibling(Counter);
+      }
+      const entity = new Entity("host");
+      const counter = entity.add(new Counter());
+      const reader = entity.add(new Reader());
+
+      reader.counter.count = 5;
+      expect(counter.count).toBe(5);
+      expect(reader.counter.count).toBe(5);
+    });
+  });
+
   describe("destroy()", () => {
     it("removes the component from its entity and fires onDestroy", () => {
       class DestroyableComponent extends Component {

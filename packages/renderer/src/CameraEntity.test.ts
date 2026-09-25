@@ -56,7 +56,13 @@ vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
 }));
 
-import { Transform, Vec2, Vec2Buffer, ErrorBoundaryKey } from "@yagejs/core";
+import {
+  Component,
+  Transform,
+  Vec2,
+  Vec2Buffer,
+  ErrorBoundaryKey,
+} from "@yagejs/core";
 import { CameraEntity } from "./CameraEntity.js";
 import { CameraComponent } from "./CameraComponent.js";
 import { CameraBoundsComponent } from "./CameraBoundsComponent.js";
@@ -517,6 +523,38 @@ describe("CameraEntity follow targets", () => {
     expect(cam.position.y).toBe(-4);
 
     expect(follow).toBe(cam.get(CameraFollow));
+  });
+
+  it("follows a Transform that a component declared with sibling()", () => {
+    class Tracker extends Component {
+      private readonly transform = this.sibling(Transform);
+      private readonly camera: CameraEntity;
+
+      constructor(camera: CameraEntity) {
+        super();
+        this.camera = camera;
+      }
+
+      onAdd(): void {
+        this.camera.follow(this.transform, { smoothing: 1, snap: true });
+      }
+    }
+
+    const { scene } = createRendererTestContext();
+    const cam = scene.spawn(CameraEntity);
+    const player = scene.spawn("player");
+    const transform = player.add(
+      new Transform({ position: new Vec2(100, 600) }),
+    );
+    player.add(new Tracker(cam));
+
+    expect(cam.position.x).toBe(100);
+    expect(cam.position.y).toBe(600);
+
+    transform.setPosition(140, 580);
+    cam.get(CameraFollow).update(1 / 60);
+    expect(cam.position.x).toBe(140);
+    expect(cam.position.y).toBe(580);
   });
 
   it("leaves the camera where it is when the target entity has no Transform", () => {

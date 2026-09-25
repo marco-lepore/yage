@@ -142,7 +142,7 @@ class PlayerController extends Component {
 
     // -- Platform carrying: inherit velocity from the moving platform --
     let platformVelX = 0;
-    let platformVelY = 0;
+    let velY = vel.y;
     if (this.onGround && hit) {
       const mover = hit.entity.tryGet(MovingPlatform);
       if (mover) {
@@ -150,8 +150,9 @@ class PlayerController extends Component {
         // Track a descending platform. Contact pushes the player up when the
         // platform rises, but nothing pulls the player down when it turns
         // downward — without this the player free-falls after it and hangs
-        // in the air at the top of the path.
-        platformVelY = Math.max(mover.velocity.y, 0);
+        // in the air at the top of the path. Any other time the body keeps
+        // its own vertical velocity, so a jump keeps rising after takeoff.
+        if (mover.velocity.y > 0) velY = Math.max(vel.y, mover.velocity.y);
       }
     }
 
@@ -190,10 +191,7 @@ class PlayerController extends Component {
     // A jump below overwrites the vertical velocity, so tracking the
     // platform here never eats a jump.
     this.rb.setVelocity(
-      new Vec2(
-        dx * PlayerController.SPEED + platformVelX,
-        Math.max(vel.y, platformVelY),
-      ),
+      new Vec2(dx * PlayerController.SPEED + platformVelX, velY),
     );
 
     // -- Jump execution --
