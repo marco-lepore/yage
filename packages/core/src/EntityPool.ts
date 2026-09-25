@@ -87,11 +87,20 @@ export type AcquireResult<
  *   onAcquire(x: number, y: number) { this.get(Transform).setPosition(x, y); }
  * }
  *
- * // In the scene's onEnter — the members' components resolve scene services.
- * this.sparks = new EntityPool(this, Spark, { prewarm: 32 });
+ * // The component that uses the pool owns it. Created in onAdd(), after the
+ * // scene has entered, so the members' components resolve scene services.
+ * class Fountain extends Component {
+ *   private sparks!: EntityPool<Spark>;
  *
- * const spark = this.sparks.acquire(x, y);   // Spark: elastic pools always give one
- * this.sparks.release(spark);                // dormant, back in the pool
+ *   onAdd() {
+ *     this.sparks = new EntityPool(this.scene, Spark, { prewarm: 32 });
+ *   }
+ *
+ *   burst(x: number, y: number) {
+ *     const spark = this.sparks.acquire(x, y); // Spark: elastic pools always give one
+ *     this.sparks.release(spark);              // dormant, back in the pool
+ *   }
+ * }
  * ```
  *
  * `acquire`'s arguments are the entity's own `onAcquire` parameters, and its

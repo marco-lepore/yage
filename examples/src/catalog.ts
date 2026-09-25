@@ -87,7 +87,7 @@ export const EXAMPLES: readonly Example[] = [
     slug: "hello-world",
     title: "Hello World",
     summary:
-      "The smallest setup: a few shapes drawn by the engine and renderer.",
+      "The smallest setup: one entity type and a component that spins it.",
     section: "start",
     packages: [],
     guide: "/getting-started/your-first-game/",

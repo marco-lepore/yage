@@ -1,25 +1,27 @@
 ---
 title: "Your First Game"
-description: "Create a spinning triangle in under 30 lines of code"
+description: "Create a spinning triangle from a component, an entity type, and a scene"
 ---
 
 import GameEmbed from '../../../components/GameEmbed.astro';
 
-In this guide you will create a spinning green triangle from scratch. The
-finished example is under 30 lines of TypeScript.
+In this guide you will create a spinning green triangle from scratch. You
+write the three pieces a YAGE game is built from: a component that holds the
+behaviour, an entity type that puts the triangle together, and a scene that
+spawns it. The finished example is under 50 lines of TypeScript.
 
 <GameEmbed demo="first-game" width={800} height={600} />
 
 ## The Full Code
 
 ```typescript
-import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { Component, Engine, Entity, Scene, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent, RendererPlugin, CameraEntity } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 
 class Spin extends Component {
   private readonly transform = this.sibling(Transform);
-  private speed: number;
+  private readonly speed: number;
   constructor(speed = 2) {
     super();
     this.speed = speed;
@@ -29,20 +31,24 @@ class Spin extends Component {
   }
 }
 
+class Triangle extends Entity {
+  setup(params: { position: Vec2 }): void {
+    this.add(new Transform({ position: params.position }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.poly([0, -45, 40, 35, -40, 35]).fill({ color: 0x22c55e });
+      }),
+    );
+    this.add(new Spin());
+  }
+}
+
 class HelloWorldScene extends Scene {
   readonly name = "hello-world";
 
   onEnter() {
     this.spawn(CameraEntity, { position: new Vec2(400, 300) });
-
-    const tri = this.spawn("triangle");
-    tri.add(new Transform({ position: new Vec2(400, 300) }));
-    tri.add(
-      new GraphicsComponent().draw((g) => {
-        g.poly([0, -45, 40, 35, -40, 35]).fill({ color: 0x22c55e });
-      }),
-    );
-    tri.add(new Spin());
+    this.spawn(Triangle, { position: new Vec2(400, 300) });
   }
 }
 
@@ -62,13 +68,14 @@ engine.scenes.push(new HelloWorldScene());
 ### 1. Imports
 
 ```typescript
-import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { Component, Engine, Entity, Scene, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent, RendererPlugin, CameraEntity } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 ```
 
 - **`Component`** is the base class every custom behaviour extends.
 - **`Engine`** is the entry point that orchestrates plugins and the game loop.
+- **`Entity`** is the base class for entity types, such as the triangle.
 - **`Scene`** is the base class for defining game scenes.
 - **`Transform`** stores an entity's position, rotation, and scale.
 - **`Vec2`** is a 2D vector used throughout the engine.
@@ -82,7 +89,7 @@ import { DebugPlugin } from "@yagejs/debug";
 ```typescript
 class Spin extends Component {
   private readonly transform = this.sibling(Transform);
-  private speed: number;
+  private readonly speed: number;
   constructor(speed = 2) {
     super();
     this.speed = speed;
@@ -94,10 +101,42 @@ class Spin extends Component {
 ```
 
 `Spin` grabs its sibling `Transform` component and rotates it every frame.
-The `update(dt)` method receives the delta time in seconds so the rotation
-speed stays consistent regardless of frame rate.
+The `update(dt)` method receives the delta time in seconds, so the triangle
+turns 2 radians per second at any frame rate.
 
-### 3. Setting Up the Engine
+Game logic in YAGE lives in components like this one. Entities and scenes
+have no `update()` method of their own.
+
+### 3. An Entity Type — `Triangle`
+
+```typescript
+class Triangle extends Entity {
+  setup(params: { position: Vec2 }): void {
+    this.add(new Transform({ position: params.position }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.poly([0, -45, 40, 35, -40, 35]).fill({ color: 0x22c55e });
+      }),
+    );
+    this.add(new Spin());
+  }
+}
+```
+
+An entity is a container for components. `Triangle` extends `Entity` and
+builds itself in `setup()`, which runs when a scene spawns it. The `params`
+argument holds what the spawn call passes in, here the position.
+
+`setup()` attaches three components to the entity:
+
+1. **`Transform`** — places the triangle at the position from `params`.
+2. **`GraphicsComponent`** — draws a green triangle using three vertices
+   defined as a flat `[x, y, ...]` array.
+3. **`Spin`** — the custom behaviour that rotates the triangle every frame.
+
+Every `Triangle` you spawn gets the same three components.
+
+### 4. Setting Up the Engine
 
 ```typescript
 const engine = new Engine({ debug: true });
@@ -116,7 +155,7 @@ engine.scenes.push(new HelloWorldScene());
 - **`engine.start()`** initialises all plugins and starts the game loop.
 - **`engine.scenes.push()`** pushes a scene onto the scene stack.
 
-### 4. Setting Up the Scene
+### 5. Setting Up the Scene
 
 ```typescript
 class HelloWorldScene extends Scene {
@@ -124,49 +163,51 @@ class HelloWorldScene extends Scene {
 
   onEnter() {
     this.spawn(CameraEntity, { position: new Vec2(400, 300) });
-    // ...
+    this.spawn(Triangle, { position: new Vec2(400, 300) });
   }
 }
 ```
 
 `HelloWorldScene` extends `Scene` and implements `onEnter()`, which runs when
-the scene becomes active. `this.spawn(CameraEntity, { ... })` creates the
-camera as an entity in the scene.
+the scene becomes active. `onEnter()` spawns the entities the scene starts
+with. The triangle's behaviour stays in `Spin`, not in the scene.
 
-Setting the camera position to `(400, 300)` shifts the world origin to the
-top-left corner of the default 800 × 600 viewport. The triangle is then spawned
-at world position `(400, 300)` and lands in the middle of the screen. By
-default the camera is at `(0, 0)` which puts world origin at the *centre* of
-the viewport — see [Camera → Coordinate Convention](/guides/rendering/camera/#coordinate-convention)
+`this.spawn(CameraEntity, { ... })` creates the camera as an entity in the
+scene. Setting the camera position to `(400, 300)` shifts the world origin to
+the top-left corner of the default 800 × 600 viewport. The triangle is then
+spawned at world position `(400, 300)` and lands in the middle of the screen.
+By default the camera is at `(0, 0)` which puts world origin at the *centre*
+of the viewport — see [Camera → Coordinate Convention](/guides/rendering/camera/#coordinate-convention)
 in the Rendering guide for the full explanation.
 
-### 5. Spawning an Entity
+### 6. Spawning an Entity
 
 ```typescript
-const tri = scene.spawn("triangle");
+this.spawn(Triangle, { position: new Vec2(400, 300) });
 ```
 
-`scene.spawn()` creates a new entity. The string argument is a human-readable
-name used by the debug tools.
+`this.spawn()` creates an entity of the given class and passes the second
+argument to its `setup()`. TypeScript checks that argument against the
+`setup()` parameter, so a missing field is a compile error. The debug tools
+list the entity under its class name, `Triangle`. `CameraEntity` is spawned
+the same way: it is an entity type that `@yagejs/renderer` provides.
 
-### 6. Adding Components
+An entity that exists once and has no behaviour of its own, such as a
+background, does not need a class. Pass `spawn()` a name instead, and add the
+components to the entity it returns:
 
 ```typescript
-tri.add(new Transform({ position: new Vec2(400, 300) }));
-tri.add(
+const background = this.spawn("background");
+background.add(new Transform());
+background.add(
   new GraphicsComponent().draw((g) => {
-    g.poly([0, -45, 40, 35, -40, 35]).fill({ color: 0x22c55e });
+    g.rect(0, 0, 800, 600).fill({ color: 0x111827 });
   }),
 );
-tri.add(new Spin());
 ```
 
-Three components are attached to the entity:
-
-1. **`Transform`** — positions the triangle at the centre of the viewport.
-2. **`GraphicsComponent`** — draws a green triangle using three vertices
-   defined as a flat `[x, y, ...]` array.
-3. **`Spin`** — the custom behaviour that rotates the triangle every frame.
+Anything you spawn more than once, or that has behaviour, is an entity class
+like `Triangle`.
 
 ## Running It
 
@@ -178,5 +219,7 @@ debug overlay in the corner.
 
 - Add keyboard input with `@yagejs/input` to control the triangle.
 - Swap the shape for a sprite using `SpriteComponent` from `@yagejs/renderer`.
+- Read [Entity Subclasses](/patterns/entity-subclasses/) for more on entity
+  types and `setup()`.
 - Read [Project Structure](/getting-started/project-structure/) to understand
   the full package layout.

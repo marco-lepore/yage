@@ -3,27 +3,31 @@ title: "Entity Subclasses"
 description: "Define entity types with setup() and traits"
 ---
 
-Entity subclasses are the recommended way to define reusable entity types in
-YAGE. They give you a typed `setup()` method for initialization and work
-naturally with TypeScript's type system.
+An entity type in YAGE is an `Entity` subclass. The subclass gets a typed
+`setup()` method for initialization and works naturally with TypeScript's type
+system.
+
+A named spawn, such as `scene.spawn("background")` followed by `.add(...)`, is
+only for a one-off entity: one that is spawned once and has no behaviour of its
+own. Anything spawned more than once, or with behaviour, is a subclass.
 
 ## Basic Subclass
 
 ```typescript
-import { Entity, Transform, Vec2 } from "@yagejs/core";
-import { SpriteComponent } from "@yagejs/renderer";
+import { Entity, ProcessComponent, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent, type TextureHandle } from "@yagejs/renderer";
 
 interface PlayerParams {
   position: Vec2;
-  texture: Texture;
+  texture: TextureHandle;
 }
 
-class Player extends Entity<PlayerParams> {
+class Player extends Entity {
   setup(params: PlayerParams) {
     this.add(new Transform({ position: params.position }));
     this.add(new SpriteComponent({ texture: params.texture }));
     this.add(new ProcessComponent());
-    this.add(new HealthComponent({ max: 100 }));
+    this.add(new Health(100)); // a component of your game
   }
 }
 ```
@@ -31,20 +35,29 @@ class Player extends Entity<PlayerParams> {
 Spawn it from a scene:
 
 ```typescript
+import { texture } from "@yagejs/renderer";
+
+const HeroTex = texture("assets/hero.png");
+
 const player = scene.spawn(Player, {
-  position: Vec2.create(100, 200),
-  texture: heroTexture,
+  position: new Vec2(100, 200),
+  texture: HeroTex,
 });
 ```
 
-`scene.spawn()` infers the params type from the class, so you get full
-autocomplete and type checking. If you omit a required `setup()` field, the
-error names the field that's actually missing (`Property 'spawnPoint' is
+`scene.spawn()` reads the params type from the `setup()` parameter, so you get
+full autocomplete and type checking. If you omit a required `setup()` field,
+the error names the field that's actually missing (`Property 'texture' is
 missing`) rather than blaming an unrelated property.
+
+An entity subclass assembles components. The game logic goes in those
+components: `update()`, `fixedUpdate()`, event handlers, and methods. An
+`Entity` subclass cannot declare `update()` or `fixedUpdate()`; both are typed
+`never`.
 
 ## Why setup() Instead of constructor
 
-The `constructor` runs before the entity is wired into the scene's ECS world.
+The `constructor` runs before the entity is attached to the scene's ECS world.
 At that point the entity has no scene reference, no access to engine services,
 and components cannot query siblings.
 
@@ -63,8 +76,8 @@ children it already spawned. It is left there to be inspected. Use
 discards everything it reserved.
 
 ```typescript
-class Enemy extends Entity<EnemyParams> {
-  setup(params: EnemyParams) {
+class Enemy extends Entity {
+  setup(params: { position: Vec2 }) {
     // Safe — the entity is attached to the scene, so scene-dependent
     // components (physics body, collider) can be added here.
     this.add(new Transform({ position: params.position }));
@@ -133,55 +146,101 @@ whether an entity has a trait without knowing its concrete class.
 ```typescript
 import { defineTrait } from "@yagejs/core";
 
-const Interactable = defineTrait("Interactable");
-const Damageable = defineTrait("Damageable");
+const Interactable = defineTrait<{ interact(): void }>("Interactable");
+const Damageable = defineTrait<{ takeDamage(amount: number): void }>("Damageable");
 ```
+
+The type parameter lists the members an entity with the trait must have.
 
 ### Applying Traits
 
-Use the `@trait()` decorator on entity subclasses:
+Use the `@trait()` decorator on entity subclasses. The class must declare
+every member the trait lists, or it fails to compile:
 
 ```typescript
-import { trait } from "@yagejs/core";
+import { Component, Entity, Transform, Vec2, trait } from "@yagejs/core";
+import { SpriteComponent, texture } from "@yagejs/renderer";
+
+const ChestTex = texture("assets/chest.png");
+const OpenChestTex = texture("assets/chest-open.png");
+
+// The rule for opening a chest lives in a component.
+class ChestLid extends Component {
+  private readonly sprite = this.sibling(SpriteComponent);
+  private readonly transform = this.sibling(Transform);
+  private opened = false;
+
+  open() {
+    if (this.opened) return;
+    this.opened = true;
+    this.sprite.setTexture(OpenChestTex);
+    this.scene.spawn(Loot, { position: this.transform.position });
+  }
+}
 
 @trait(Interactable)
-class Chest extends Entity<ChestParams> {
-  setup(params: ChestParams) {
+class Chest extends Entity {
+  setup(params: { position: Vec2 }) {
     this.add(new Transform({ position: params.position }));
-    this.add(new SpriteComponent({ texture: chestTexture }));
+    this.add(new SpriteComponent({ texture: ChestTex }));
+    this.add(new ChestLid());
   }
 
   interact() {
-    this.get(SpriteComponent).texture = openChestTexture;
-    spawnLoot(this.transform.position);
+    this.get(ChestLid).open();
   }
 }
 
 @trait(Interactable)
 @trait(Damageable)
-class NPC extends Entity<NPCParams> {
-  setup(params: NPCParams) {
+class NPC extends Entity {
+  setup(params: { position: Vec2 }) {
     this.add(new Transform({ position: params.position }));
-    this.add(new HealthComponent({ max: 50 }));
+    this.add(new Health(50));
+    this.add(new Conversation());
   }
 
   interact() {
-    openDialogue(this);
+    this.get(Conversation).start();
+  }
+
+  takeDamage(amount: number) {
+    this.get(Health).damage(amount);
   }
 }
 ```
 
+Each trait method hands the call to a component of the entity, and the
+component holds the rule.
+
 ### Querying by Trait
 
-Use `entity.hasTrait()` as a type guard to discover capabilities at runtime:
+Use `entity.hasTrait()` as a type guard to discover capabilities at runtime.
+This component, on the player, interacts with everything in reach when the
+`interact` action is pressed:
 
 ```typescript
-// Find all interactable entities near the player
-const nearby = scene.queryArea(playerPos, interactRadius);
+import { Component, Transform } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
 
-for (const entity of nearby) {
-  if (entity.hasTrait(Interactable)) {
-    entity.interact(); // TypeScript knows this method exists
+class Interactor extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly transform = this.sibling(Transform);
+  private readonly reach = 48;
+
+  update() {
+    if (!this.input.isJustPressed("interact")) return;
+    const here = this.transform.position;
+    const nearby = this.scene.findEntities({
+      filter: (e) =>
+        (e.tryGet(Transform)?.position.distance(here) ?? Infinity) <= this.reach,
+    });
+
+    for (const entity of nearby) {
+      if (entity.hasTrait(Interactable)) {
+        entity.interact(); // TypeScript knows this method exists
+      }
+    }
   }
 }
 ```
@@ -204,22 +263,21 @@ prompt can work with chests, NPCs, doors, and any future entity that gains the
 ## Blueprints (Deprecated Alternative)
 
 Blueprints (`defineBlueprint()`) are the older way to define entity factories.
-They still work and you may encounter them in existing code, but entity
-subclasses are preferred for new code because they offer better type safety
-and a more natural class-based API.
+`defineBlueprint` and `Blueprint` are deprecated. They still work and you may
+encounter them in existing code, but entity subclasses offer better type
+safety and a class-based API.
 
 ```typescript
-// Legacy approach — still functional, but prefer entity subclasses
+// Deprecated: write an Entity subclass instead
 import { defineBlueprint } from "@yagejs/core";
 
-const CoinBlueprint = defineBlueprint("Coin", (entity, params: CoinParams) => {
+const CoinBlueprint = defineBlueprint("Coin", (entity, params: { position: Vec2 }) => {
   entity.add(new Transform({ position: params.position }));
-  entity.add(new SpriteComponent({ texture: coinTexture }));
+  entity.add(new SpriteComponent({ texture: CoinTex }));
 });
 
-const coin = scene.spawn(CoinBlueprint, { position });
+const coin = scene.spawn(CoinBlueprint, { position: new Vec2(64, 32) });
 ```
 
-If you're starting a new project, use entity subclasses. If you're maintaining
-code that already uses blueprints, there is no urgency to migrate — both
-patterns coexist without conflict.
+Write new entity types as subclasses. Blueprints you already have keep
+spawning, and both kinds can live in one scene.

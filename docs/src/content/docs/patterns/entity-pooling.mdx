@@ -19,7 +19,7 @@ pooled and spawn-and-destroy — with live counters, so you can see what changes
 A pooled class looks like any other entity subclass, plus one required hook:
 
 ```typescript
-import { Entity, EntityPool, Scene, Transform, Vec2 } from "@yagejs/core";
+import { Component, Entity, EntityPool, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
@@ -52,16 +52,17 @@ every acquisition, and it is where the entity returns to a known state.
 
 ## Creating the pool
 
-Create pools in `onEnter()`, so the members' components can resolve the scene's
-services — the physics world and the render tree are registered by then.
+The component that fires the bullets creates the pool in its `onAdd()` and
+keeps it in a field. By then the scene's services are registered, including
+the physics world and the render tree, so the members' components can resolve
+them.
 
 ```typescript
-class ArenaScene extends Scene {
-  readonly name = "arena";
+class Gun extends Component {
   private bullets!: EntityPool<Bullet>;
 
-  onEnter() {
-    this.bullets = new EntityPool(this, Bullet, { prewarm: 32 });
+  onAdd() {
+    this.bullets = new EntityPool(this.scene, Bullet, { prewarm: 32 });
   }
 }
 ```
@@ -73,10 +74,12 @@ If the entity's `setup()` takes parameters, pass them as `setup` and the
 constructor demands them, the same way `scene.spawn` does:
 
 ```typescript
-new EntityPool(this, Spark, { setup: { color: 0x38bdf8 }, prewarm: 16 });
+new EntityPool(this.scene, Spark, { setup: { color: 0x38bdf8 }, prewarm: 16 });
 ```
 
 ## Firing and recycling
+
+Inside `Gun`:
 
 ```typescript
 const bullet = this.bullets.acquire(muzzleX, muzzleY, aimDir, 1);
@@ -101,7 +104,7 @@ Pass `maxSize` to bound the total number of members. A saturated `acquire`
 then returns `undefined`, and the return type says so:
 
 ```typescript
-const bullets = new EntityPool(this, Bullet, { maxSize: 64 });
+const bullets = new EntityPool(this.scene, Bullet, { maxSize: 64 });
 
 const bullet = bullets.acquire(x, y, dir, 1);
 if (!bullet) return;                       // 64 already in flight
@@ -113,7 +116,7 @@ running `onRelease` and then `onAcquire` in the same call. The default victim
 is the member acquired longest ago; `reclaimPriority` picks another:
 
 ```typescript
-const sparks = new EntityPool(this, Spark, {
+const sparks = new EntityPool(this.scene, Spark, {
   maxSize: 200,
   reclaimPriority: (spark) => spark.remainingLife,  // steal the faintest
 });
@@ -164,9 +167,9 @@ is a different enemy across the map.
 in. Read it back through `.current`:
 
 ```typescript
-import { Entity, type EntityHandle } from "@yagejs/core";
+import { Component, type EntityHandle } from "@yagejs/core";
 
-class Turret extends Entity {
+class TurretAim extends Component {
   private target?: EntityHandle<Enemy>;
 
   onSpotted(enemy: Enemy) {
