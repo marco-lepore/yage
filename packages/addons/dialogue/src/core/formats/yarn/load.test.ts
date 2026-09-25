@@ -285,6 +285,19 @@ describe("loadYarn — lines, characters, and flow", () => {
     const h = await run(yarn, [], { functions: { next_node } });
     expect(h.transcript).toEqual(["in A", "in B"]);
     expect(calls).toBe(2);
+    // The target lives in the step, not in storage another conversation shares.
+    expect(Object.keys(yarn.declare ?? {})).not.toContain(
+      "$Yarn.Internal.Target",
+    );
+  });
+
+  it("a jump {expression} naming no node ends the conversation", async () => {
+    const yarn = loadYarn(
+      start('<<declare $to = "Nowhere">>\nBefore\n<<jump {$to}>>\nNever'),
+    );
+    const h = await run(yarn);
+    expect(h.transcript).toEqual(["Before"]);
+    expect(h.session.isActive()).toBe(false);
   });
 
   it("a node may be titled __proto__", async () => {

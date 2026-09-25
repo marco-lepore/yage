@@ -2523,6 +2523,56 @@ describe("DialogueSession — text expressions", () => {
     ]);
   });
 
+  it("preview follows computed goto / detour targets and stops on an unknown one", () => {
+    const h = makeHarness();
+    const script = (to: string): DialogueScript => ({
+      id: "pv-computed",
+      start: "a",
+      declare: { to },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "start" },
+            { kind: "detour", target: { kind: "varRef", name: "to" } },
+            { kind: "say", text: "end" },
+          ],
+        },
+        b: { id: "b", steps: [{ kind: "say", text: "aside" }] },
+      },
+    });
+    h.session.play(script("b"));
+    expect(h.session.preview("a").map((l) => l.text)).toEqual([
+      "start",
+      "aside",
+      "end",
+    ]);
+    // A fresh session: the storage keeps `to` across plays.
+    const other = makeHarness();
+    other.session.play(script("nowhere"));
+    expect(other.session.preview("a").map((l) => l.text)).toEqual(["start"]);
+  });
+
+  it("a computed target's function calls are checked at play()", () => {
+    const h = makeHarness();
+    const script: DialogueScript = {
+      id: "target-fn",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "goto",
+              target: { kind: "call", fn: "next_node", args: [] },
+            },
+          ],
+        },
+      },
+    };
+    expect(() => h.session.play(script)).toThrow(/next_node/);
+  });
+
   it("an expression that reads an unprovided variable fails at play()", () => {
     const h = makeHarness();
     expect(() =>

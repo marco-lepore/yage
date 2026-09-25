@@ -328,10 +328,17 @@ export interface CommandStep {
   readonly target?: NodeId;
 }
 
+/**
+ * A goto or detour target: a node id, or an expression evaluated when the step
+ * runs (a Yarn `<<jump {$next}>>`). An expression that doesn't name a node of
+ * the script is reported through `onError` and ends the conversation.
+ */
+export type StepTarget = NodeId | Expr;
+
 /** Unconditional jump to another node. */
 export interface GotoStep {
   readonly kind: "goto";
-  readonly target: NodeId;
+  readonly target: StepTarget;
   /**
    * Also drop every pending {@link DetourStep}, so finishing `target` ends the
    * conversation instead of returning (a Yarn `<<jump>>`). By default a jump
@@ -378,7 +385,7 @@ export interface SelectOption {
  */
 export interface DetourStep {
   readonly kind: "detour";
-  readonly target: NodeId;
+  readonly target: StepTarget;
 }
 
 /**

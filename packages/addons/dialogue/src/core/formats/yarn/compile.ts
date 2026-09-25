@@ -36,6 +36,7 @@ import type {
   SelectOption,
   SpeakerDef,
   Step,
+  StepTarget,
   VarMap,
   VarValue,
 } from "../../types.js";
@@ -56,9 +57,6 @@ import { convertSourceText, splitCharacter } from "./text.js";
 const VISITING = "$Yarn.Internal.Visiting.";
 const ONCE = "$Yarn.Internal.Once.";
 const VIEW_COUNT = "$Yarn.Internal.Content.ViewCount.";
-/** Where a `<<jump {expr}>>` / `<<detour {expr}>>` stores its evaluated target,
- *  so the expression runs once however many titles it is compared against. */
-const TARGET = "$Yarn.Internal.Target";
 
 /** A node title, as Yarn Spinner 2 accepts it (3 is stricter). */
 const TITLE = /^[^\s[\]<>{}|:#$"]+$/;
@@ -141,7 +139,7 @@ class Compiler {
   private readonly assignments: { name: string; value: Expr }[] = [];
   /** Where each node's visits are read, to reject `tracking: never` nodes. */
   private readonly visitReads: { title: string; pos: YarnPos }[] = [];
-  /** Extra declared defaults: once flags, view counters, the jump target. */
+  /** Extra declared defaults: once flags and view counters. */
   private readonly internal: VarMap = {};
 
   constructor(
@@ -706,10 +704,6 @@ class Compiler {
     return this.nodes.has(title) || this.groups.has(title);
   }
 
-  titles(): readonly string[] {
-    return this.titleOrder;
-  }
-
   isSmart(name: string): boolean {
     return this.declarations.get(name)?.smart !== undefined;
   }
@@ -734,13 +728,6 @@ class Compiler {
     const name = ONCE + id;
     this.internal[name] = false;
     return name;
-  }
-
-  /** The variable a dynamic `<<jump>>` / `<<detour>>` target goes in,
-   *  declared `""`. */
-  targetVar(): string {
-    this.internal[TARGET] = "";
-    return TARGET;
   }
 
   /** A `$Yarn.Internal.Content.ViewCount.<id>` counter, declared `0`. */
@@ -1159,9 +1146,9 @@ class NodeCompiler {
 
   /**
    * `<<jump T>>` leaves this node and any detours pending on it for good;
-   * `<<detour T>>` runs `T` and comes back. `{expression}` targets pick the
-   * node whose title equals the value; with no such node the conversation
-   * ends.
+   * `<<detour T>>` runs `T` and comes back. An `{expression}` target is
+   * evaluated when the step runs; a value naming no node is reported through
+   * `onError` and ends the conversation.
    */
   private jump(
     kind: "jump" | "detour",
@@ -1169,7 +1156,7 @@ class NodeCompiler {
     pos: YarnPos,
     cur: Segment,
   ): Segment {
-    const step = (target: string): Step =>
+    const step = (target: StepTarget): Step =>
       kind === "jump"
         ? { kind: "goto", target, leaveDetours: true }
         : { kind: "detour", target };
@@ -1193,26 +1180,10 @@ class NodeCompiler {
         `<<${kind}>> needs a node title or {expression}, got "${rest}"`,
       );
     }
-    const target = this.c.expr(rest.slice(1, -1), pos);
-    cur.steps.push(setStep(this.c.targetVar(), target), ...exits);
-    const join = this.segment();
-    for (const title of this.c.titles()) {
-      const hop = this.segment();
-      hop.steps.push(step(title), { kind: "goto", target: join.id });
-      cur.steps.push({
-        kind: "command",
-        commands: [],
-        condition: {
-          kind: "binary",
-          op: "==",
-          left: { kind: "varRef", name: TARGET },
-          right: literal(title),
-        },
-        target: hop.id,
-      });
-    }
-    cur.steps.push({ kind: "end" });
-    return join;
+    // Evaluated once when the step runs; a result that names no node ends
+    // the conversation with an error, as Yarn Spinner stops on one.
+    cur.steps.push(...exits, step(this.c.expr(rest.slice(1, -1), pos)));
+    return cur;
   }
 
   /** A command's words: quoted strings, `{expressions}`, numbers, booleans,

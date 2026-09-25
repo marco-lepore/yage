@@ -126,6 +126,15 @@ function validateStep(
   nodeId: string,
   step: Step,
 ): void {
+  // A goto / detour target is a node id, or an expression checked when it runs.
+  const stepTargetIsValid = (t: unknown, kind: string): void => {
+    if (typeof t === "string") return targetExists(t);
+    if (!isExpr(t)) {
+      throw new DialogueScriptError(
+        `node "${nodeId}": ${kind} target must be a node id or an expression`,
+      );
+    }
+  };
   const targetExists = (t: string | undefined): void => {
     if (t !== undefined && !Object.hasOwn(script.nodes, t)) {
       throw new DialogueScriptError(
@@ -197,13 +206,13 @@ function validateStep(
       if (step.target === undefined) {
         throw new DialogueScriptError(`node "${nodeId}": goto has no target`);
       }
-      targetExists(step.target);
+      stepTargetIsValid(step.target, "goto");
       break;
     case "detour":
       if (step.target === undefined) {
         throw new DialogueScriptError(`node "${nodeId}": detour has no target`);
       }
-      targetExists(step.target);
+      stepTargetIsValid(step.target, "detour");
       break;
     case "select":
       if (!Array.isArray(step.options) || step.options.length === 0) {

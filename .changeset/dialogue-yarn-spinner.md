@@ -9,7 +9,7 @@ Play Yarn Spinner dialogue. The new `@yagejs-addons/dialogue/yarn` entry exports
 To run Yarn content natively, the dialogue model grows these general features:
 
 - `play(script, { start })` begins at any node; an unknown node throws `DialoguePlayError` before anything changes.
-- `detour` and `return` steps run a node as a subroutine; `goto` takes `leaveDetours`.
+- `detour` and `return` steps run a node as a subroutine; `goto` takes `leaveDetours`. A `goto` or `detour` target can be an expression (`StepTarget`), evaluated when the step runs; a value naming no node is reported through `onError` and ends the conversation.
 - A `select` step lets the runtime pick one option: available ones, then the least picked (each option's `counter` variable), then the highest `priority`, then at random.
 - `say` steps, choice prompts, and choice options take `expressions`: computed `{name}` tokens evaluated each time the text shows.
 - A command's `args` are positional values; expressions among them are evaluated when the command fires. `CommandHandler`, `onCommand`, `DialogueCommandEvent`, and extra channels now receive a `FiredCommand`, whose `args` are plain values.

@@ -48,6 +48,7 @@ import type {
   DialogueHandle,
   DialoguePlayOptions,
   DialogueScript,
+  StepTarget,
   FiredCommand,
   LoadedScript,
   LoadedSpeaker,
@@ -1046,7 +1047,8 @@ export class DialogueSession {
 
   /**
    * Side-effect-free lookahead: the lines a node would show along its linear
-   * path — following `goto` and conditional `command` jumps using the *current*
+   * path — following `goto`, `detour`, and conditional `command` jumps (and
+   * computed targets) using the *current*
    * variable snapshot — stopping at the first choice or the end. Runs no
    * commands and mutates nothing. For a "skip with a summary" affordance.
    */
@@ -1086,8 +1088,10 @@ export class DialogueSession {
         });
         i++;
       } else if (step.kind === "detour") {
+        const target = this.previewTarget(script, step.target, scope);
+        if (target === undefined) break;
         returns.push({ node, i: i + 1 });
-        node = step.target;
+        node = target;
         i = 0;
       } else if (step.kind === "command") {
         if (step.target !== undefined && holds(step.condition, scope)) {
@@ -1097,14 +1101,30 @@ export class DialogueSession {
           i++;
         }
       } else if (step.kind === "goto") {
+        const target = this.previewTarget(script, step.target, scope);
+        if (target === undefined) break;
         if (step.leaveDetours) returns.length = 0;
-        node = step.target;
+        node = target;
         i = 0;
       } else {
         break; // choice, select, or end — stop the linear preview
       }
     }
     return out;
+  }
+
+  /** A goto / detour target for {@link preview}: a computed one evaluated
+   *  against the current variables; `undefined` when it names no node. */
+  private previewTarget(
+    script: DialogueScript,
+    target: StepTarget,
+    scope: EvalScope,
+  ): string | undefined {
+    if (typeof target === "string") return target;
+    const value = evaluate(target, scope);
+    return typeof value === "string" && Object.hasOwn(script.nodes, value)
+      ? value
+      : undefined;
   }
 
   /** Move the choice cursor by `delta`, skipping disabled rows and wrapping.

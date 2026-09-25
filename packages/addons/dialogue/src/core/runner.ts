@@ -38,6 +38,7 @@ import type {
   SayStep,
   SelectStep,
   Step,
+  StepTarget,
   VariableStorage,
   VarMap,
   VarValue,
@@ -319,23 +320,29 @@ export class DialogueRunner {
         this.stepIndex++;
         return false;
       }
-      case "goto":
+      case "goto": {
+        const target = this.targetOf(step.target);
+        if (target === undefined) return true;
         if (step.leaveDetours) this.returnStack.length = 0;
-        this.jump(step.target);
+        this.jump(target);
         return false;
+      }
       case "select": {
         const target = this.select(step);
         if (target === undefined) this.stepIndex++;
         else this.jump(target);
         return false;
       }
-      case "detour":
+      case "detour": {
+        const target = this.targetOf(step.target);
+        if (target === undefined) return true;
         this.returnStack.push({
           nodeId: this.nodeId,
           stepIndex: this.stepIndex + 1,
         });
-        this.jump(step.target);
+        this.jump(target);
         return false;
+      }
       case "return":
         return this.leaveNode();
       case "end":
@@ -387,6 +394,23 @@ export class DialogueRunner {
       }
     }
     return chosen.target;
+  }
+
+  /** A goto / detour target as a node id. An expression is evaluated once,
+   *  here; one that names no node is reported and ends the conversation
+   *  (returns `undefined`). */
+  private targetOf(target: StepTarget): NodeId | undefined {
+    if (typeof target === "string") return target;
+    const value = this.valueOf(target);
+    if (typeof value === "string" && Object.hasOwn(this.script.nodes, value)) {
+      return value;
+    }
+    this.onError?.(
+      `ended the conversation: jump target ${JSON.stringify(value)} is not a node of "${this.script.id}"`,
+      undefined,
+    );
+    this.end();
+    return undefined;
   }
 
   private jump(target: string): void {

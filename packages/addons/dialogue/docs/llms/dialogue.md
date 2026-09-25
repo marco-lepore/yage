@@ -149,6 +149,10 @@ Step kinds: `say` | `choice` | `command` | `goto` | `select` | `detour` |
 - `DetourStep`: `target` — run that node, then continue after this step once it
   runs off its last step or hits a `return`. Detours nest; `end` inside one still
   ends the conversation.
+- `StepTarget` = `NodeId | Expr`: a goto / detour `target` may be an `Expr`,
+  evaluated when the step runs. A value that isn't a node id of the script is
+  reported through `onError` and ends the conversation. Its reads and calls are
+  checked at `play()` like any expression.
 - `ReturnStep` — leave the node early (back to the detour's caller, or end).
 - `SelectStep`: `options: { target, condition?, priority?, counter? }[]` — the
   runtime picks one: available options, then the least picked (read from each
@@ -1040,7 +1044,7 @@ compiles and `baseLanguage` is `"en"`.
 | `<<declare $x = v [as T]>>`                                         | `declare` default; undeclared variables get a default from their use (`0`, `""`, `false`); one whose use implies no single type is a load error                        |
 | smart variable (`<<declare $rich = $gold > 50>>`)                   | expanded where read; can't be set                                                                                                                                      |
 | `<<enum>>` / `.Case` / `Enum.Case`                                  | literal values (auto-numbered 0,1,… or the given values)                                                                                                               |
-| `<<jump T>>` / `<<jump {$e}>>`                                      | `goto` with `leaveDetours: true`                                                                                                                                       |
+| `<<jump T>>` / `<<jump {$e}>>`                                      | `goto` with `leaveDetours: true` (`{$e}` → an `Expr` target)                                                                                                           |
 | `<<detour T>>` / `<<return>>` / `<<stop>>`                          | `detour` / `return` / `end`                                                                                                                                            |
 | `<<once>>…<<else>>…<<endonce>>`, `Line <<once>>`, `-> Opt <<once>>` | gated on `$Yarn.Internal.Once.<id>`                                                                                                                                    |
 | `visited("T")` / `visited_count("T")`                               | reads `$Yarn.Internal.Visiting.T` (counted when `T` finishes); on a `tracking: never` node, a load error                                                               |

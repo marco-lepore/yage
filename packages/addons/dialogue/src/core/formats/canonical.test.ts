@@ -57,6 +57,34 @@ describe("loadScript — structural validation", () => {
     expect(() => loadScript(s)).toThrow(/jump target "missing"/);
   });
 
+  it("a goto / detour target is a node id or an expression", () => {
+    const expr = script({
+      nodes: {
+        a: {
+          id: "a",
+          steps: [{ kind: "goto", target: { kind: "varRef", name: "to" } }],
+        },
+      },
+    });
+    expect(() => loadScript(expr)).not.toThrow();
+    const bad = script({
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "detour", target: 3 } as unknown as {
+              kind: "detour";
+              target: string;
+            },
+          ],
+        },
+      },
+    });
+    expect(() => loadScript(bad)).toThrow(
+      /detour target must be a node id or an expression/,
+    );
+  });
+
   it("node ids are own keys: inherited names don't resolve, __proto__ is a node", () => {
     const inherited = script({
       nodes: { a: { id: "a", steps: [{ kind: "goto", target: "toString" }] } },

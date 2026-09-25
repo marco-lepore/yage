@@ -1316,6 +1316,50 @@ describe("DialogueRunner — start node", () => {
   });
 });
 
+describe("DialogueRunner — computed goto / detour targets", () => {
+  const computed = (to: string): DialogueScript => ({
+    id: "computed",
+    start: "a",
+    declare: { to },
+    nodes: {
+      a: {
+        id: "a",
+        steps: [
+          { kind: "detour", target: { kind: "varRef", name: "to" } },
+          { kind: "goto", target: { kind: "varRef", name: "to" } },
+        ],
+      },
+      b: { id: "b", steps: [{ kind: "say", text: "in b" }] },
+    },
+  });
+
+  it("evaluates the expression when the step runs and follows it", async () => {
+    const rec = makeRecorder();
+    const runner = makeRunner(computed("b"), rec.handlers);
+    runner.start();
+    await flush();
+    runner.advance(); // detour returns into a; the goto enters b again
+    await flush();
+    expect(lineTexts(rec)).toEqual(["in b", "in b"]);
+  });
+
+  it("a value naming no node is reported and ends the conversation", async () => {
+    const onError = vi.fn();
+    const rec = makeRecorder();
+    const runner = makeRunner(computed("nowhere"), rec.handlers, { onError });
+    runner.start();
+    await flush();
+    expect(rec.ended).toBe(1);
+    expect(lineTexts(rec)).toEqual([]);
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /jump target "nowhere" is not a node of "computed"/,
+      ),
+      undefined,
+    );
+  });
+});
+
 describe("DialogueRunner — detour and return", () => {
   it("runs the detoured node, then continues after the detour", async () => {
     const script: DialogueScript = {

@@ -488,6 +488,11 @@ rather than silently mis-branching:
 A node **finishes** when it runs off its last step or reaches `return`. Inside a
 detour that returns to the caller; otherwise the conversation ends.
 
+A `goto` or `detour` `target` can also be an expression, such as
+`{ kind: "varRef", name: "next" }`. It is evaluated when the step runs. If the
+value isn't the id of a node in the script, the conversation ends and the error
+is reported through `onError`.
+
 A **`select`** step picks one branch for you — a random bark, or the storylet that
 fits best. Each option has a `target`, and optionally a `condition`, a `priority`,
 and a `counter` variable. Of the options whose condition holds, the runner keeps

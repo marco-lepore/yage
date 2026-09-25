@@ -360,8 +360,15 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
             }
           }
           break;
+        case "goto":
+        case "detour":
+          // A computed target reads like any expression.
+          if (typeof step.target !== "string") {
+            collectExpr(step.target, `${where} ${step.kind}`);
+          }
+          break;
         default:
-          break; // goto / detour / return / end carry no references
+          break; // return / end carry no references
       }
     }
   }
