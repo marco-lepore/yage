@@ -589,6 +589,7 @@ panel.addElement(img);
 
 `UIImage`, `UINineSlice`, and texture backgrounds accept `TextureInput`: a
 registered asset key, a texture handle, or a raw renderer texture.
+`img.sprite` is the picture itself.
 
 #### Sizing
 
@@ -1098,6 +1099,86 @@ original layout.
 |---|---|---|
 | `position` | `"relative" \| "absolute"` | Default `"relative"`. |
 | `left` / `top` / `right` / `bottom` | `number` | Pixel offset from the named edge of the parent's content box. |
+
+## Scale, rotation and draw order
+
+Every element can grow, shrink and turn where layout put it, which is what a
+hover pop, a card flip or a dialog that springs open needs. Four props do it:
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `transformOrigin` | `number \| { x, y }` | `0` | The point scale and rotation turn about, as fractions of the element's size. `0.5` is the centre. |
+| `scale` | `number \| { x, y }` | `1` | Size multiplier about the origin. `0` and negative values are allowed. |
+| `rotation` | `number` | `0` | Radians about the origin. |
+| `zIndex` | `number` | `0` | Draw and pointer order among the element's siblings. |
+
+Each is also a property on the element, so a tween can drive it. A card that
+grows about its centre while the pointer is on it, and draws over its
+neighbours while it does:
+
+```typescript
+import {
+  ProcessComponent,
+  Tween,
+  easeOutBack,
+  easeOutQuad,
+} from "@yagejs/core";
+
+const pc = entity.get(ProcessComponent);
+const card = row.panel({
+  width: 120,
+  height: 160,
+  transformOrigin: 0.5,
+  background: { color: 0x202030, radius: 8 },
+  onHover: (hovering) => {
+    card.zIndex = hovering ? 1 : 0;
+    pc.run(
+      Tween.custom(
+        (v) => (card.scale = v),
+        card.scale.x,
+        hovering ? 1.08 : 1,
+        0.12,
+        easeOutQuad,
+      ),
+    );
+  },
+});
+```
+
+A dialog that springs open from nothing, about its centre:
+
+```typescript
+const dialog = menu.panel({
+  padding: 12,
+  transformOrigin: 0.5,
+  scale: 0,
+  background: { color: 0x181822, radius: 6 },
+});
+dialog.text("Delete this save?");
+
+pc.run(Tween.custom((v) => (dialog.scale = v), 0, 1, 0.2, easeOutBack));
+```
+
+A few things follow from the element keeping the box layout gave it:
+
+- **Neighbours stay put.** The props change how the element is drawn, never its
+  layout box, so a popped card overlaps its siblings instead of pushing them
+  apart — the way a CSS `transform` behaves.
+- **Clipping and scrolling use the layout box.** In an `overflow: "hidden"`
+  panel or a scroll view, a grown element is cut at the container's edge. Put a
+  hover pop in a panel that does not clip. A scroll view's scroll range, and the
+  row it scrolls to, ignore scale and rotation.
+- **`zIndex` orders siblings only.** A raised element draws over, and takes the
+  pointer from, the siblings it overlaps. It cannot rise above an element in a
+  neighbouring container: raise that container instead. Backgrounds stay under
+  every child and focus outlines over them, whatever the `zIndex`. On a
+  `UISurface`, `zIndex` orders the whole surface among the other contents of
+  its layer, and a layer with its own `sort` function overwrites it.
+
+Scale and rotate an element through these props rather than through
+`element.displayObject.scale`: the next time the prop is set, it replaces a
+value written there. Every value must be a finite number; `NaN` or `Infinity`
+throws, naming the element and the prop.
 
 ## Background Options
 

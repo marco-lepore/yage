@@ -30,6 +30,4 @@ The scope reading input owns the pointer as well as the keys. Everything drawn u
 
 `@yagejs/input` is an optional peer dependency. With it absent, or with `input: null`, a scope reads no device, warns once, and stays drivable by hand; pointer focus, the scroll follow and pointer ownership keep working, since such a scope still holds the keys.
 
-An element whose layout size is written as a scale on its display object — a `UIImage` fitting a texture to its slot, any of the six `@pixi/ui` wrappers — measures as the box it is drawn at, whatever that fit scale is. Both the focus search and a floating tooltip or popover read that box, so focus moves to the neighbour that is adjacent on screen and a tooltip anchored to such an element sits against the picture the player sees.
-
 A container hands each child a tree context through the internal `UIElement._attachToTree(context)` and `_detachFromTree()` hooks. One downward channel carries both the name a development warning prints and the scene's focus stack. An element written outside the package implements those two hooks to print its tree's name in a warning and to host a focus scope.

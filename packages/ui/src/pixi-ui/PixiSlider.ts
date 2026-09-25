@@ -90,7 +90,7 @@ export class PixiSlider extends PixiUIBase<SteppableSlider> {
    * move with the value.
    */
   protected override focusOutlineBox(): UIFocusOutlineBox {
-    return this.view.travelBox();
+    return this.fromViewSpace(this.view.travelBox());
   }
 
   /**

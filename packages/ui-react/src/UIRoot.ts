@@ -19,6 +19,7 @@ import {
   UIFocusScope,
   UIFocusStackKey,
   bindUIErrorBoundary,
+  placeElement,
 } from "@yagejs/ui";
 import type {
   UIElement,
@@ -352,7 +353,7 @@ export class UIRoot extends Component {
       const h = inst.yogaNode.getComputedHeight();
 
       // Stack root elements vertically
-      inst.displayObject.position.set(0, totalHeight);
+      placeElement(inst, 0, totalHeight);
       totalHeight += h;
       maxWidth = Math.max(maxWidth, w);
     }

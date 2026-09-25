@@ -9,6 +9,7 @@ import { isTextureBackground } from "./types.js";
 import { resolveTextureInput } from "@yagejs/renderer";
 import type { NineSliceInsets } from "./internal/nine-slice-guard.js";
 import { warnNineSliceTooSmall } from "./internal/nine-slice-guard.js";
+import { BELOW_ELEMENTS } from "./internal/element-transform.js";
 
 /** Expand `nineSlice`, one number or four named sides, to the four sprite insets. */
 function resolveNineSliceInsets(
@@ -161,6 +162,7 @@ export class BackgroundRenderer {
 
     if (!this.displayObject) {
       this.displayObject = this.createDisplayObject(opts);
+      this.displayObject.zIndex = BELOW_ELEMENTS;
       parent.addChildAt(
         this.displayObject as unknown as DisplayContainer,
         insertIndex,

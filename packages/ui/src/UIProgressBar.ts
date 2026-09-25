@@ -2,11 +2,8 @@ import { Container } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display } from "yoga-layout";
 import type { DisplayContainer } from "@yagejs/renderer";
-import type {
-  BackgroundOptions,
-  UIElement,
-  UIProgressBarProps,
-} from "./types.js";
+import type { BackgroundOptions, UIProgressBarProps } from "./types.js";
+import { UIElementBase } from "./UIElementBase.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
@@ -23,7 +20,7 @@ const DEFAULT_TRACK: BackgroundOptions = { color: 0x333333, alpha: 1 };
 const DEFAULT_FILL: BackgroundOptions = { color: 0x44aa44, alpha: 1 };
 
 /** A progress bar with track and fill backgrounds. */
-export class UIProgressBar implements UIElement {
+export class UIProgressBar extends UIElementBase {
   readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
@@ -43,6 +40,7 @@ export class UIProgressBar implements UIElement {
   private _destroyed = false;
 
   constructor(props: UIProgressBarProps) {
+    super();
     this.yogaNode = createYogaNode();
     this.container = new Container();
     applyConsumeInput(this.container, props.consumeInput);
@@ -88,6 +86,7 @@ export class UIProgressBar implements UIElement {
     );
 
     applyLayoutProps(this.yogaNode, props);
+    this.applyTransformProps(props);
 
     if (props.visible === false) {
       this.container.visible = false;
@@ -155,6 +154,7 @@ export class UIProgressBar implements UIElement {
     this._focusOutline.set(p);
 
     applyLayoutProps(this.yogaNode, p);
+    this.applyTransformProps(p);
 
     // Re-apply fill sizing with new value
     if (this.lastWidth > 0 || this.lastHeight > 0) {

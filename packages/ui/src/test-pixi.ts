@@ -8,6 +8,8 @@
  * is safe.
  */
 
+import { toLocalThrough } from "./test-affine.js";
+
 type Listener = (...args: unknown[]) => void;
 
 function point(): { x: number; y: number; set(x: number, y?: number): void } {
@@ -26,6 +28,8 @@ export class MockContainer {
   parent: MockContainer | null = null;
   position = point();
   scale = { ...point(), x: 1, y: 1 };
+  pivot = point();
+  skew = point();
   rotation = 0;
   visible = true;
   alpha = 1;
@@ -75,6 +79,18 @@ export class MockContainer {
 
   sortChildren(): void {
     this.children.sort((a, b) => a.zIndex - b.zIndex);
+  }
+
+  /**
+   * Convert `point` from `from`'s local space, or from global space, into
+   * this container's. See {@link toLocalThrough}.
+   */
+  toLocal(
+    point: { x: number; y: number },
+    from?: MockContainer,
+    out?: { x: number; y: number },
+  ): { x: number; y: number } {
+    return toLocalThrough(this, point, from, out);
   }
 
   on(event: string, fn: Listener): this {
@@ -227,6 +243,62 @@ export class MockTilingSprite extends MockContainer {
   }
 }
 
+/** Sizes itself the way Pixi does: by scaling against its texture. */
+export class MockScalingSprite extends MockSprite {
+  constructor(texture: { width: number; height: number }) {
+    super(texture);
+    for (const [size, axis] of [
+      ["width", "x"],
+      ["height", "y"],
+    ] as const) {
+      Object.defineProperty(this, size, {
+        get: () => texture[size] * this.scale[axis],
+        set: (value: number) => {
+          this.scale[axis] = value / texture[size];
+        },
+      });
+    }
+  }
+}
+
+/** Adds the path calls a checkmark is drawn with. */
+export class MockPathGraphics extends MockGraphics {
+  moveTo(): this {
+    return this;
+  }
+  lineTo(): this {
+    return this;
+  }
+}
+
+/** Splits into one line holding one word per run of non-space characters. */
+export class MockSplitText extends MockContainer {
+  style: Record<string, unknown>;
+  chars: MockText[] = [];
+  words: MockContainer[] = [];
+  lines: MockContainer[] = [];
+  constructor(readonly opts: { text: string; style?: object }) {
+    super();
+    this.style = { ...opts.style };
+    this.split();
+  }
+  get text(): string {
+    return this.opts.text;
+  }
+  split(): void {
+    this.chars = [...this.text.replace(/\s/g, "")].map(
+      (text) => new MockText({ text }),
+    );
+    this.words = this.text.split(/\s+/).map(() => new MockContainer());
+    this.lines = [this.addChild(new MockContainer())];
+  }
+}
+
+const measureText = (text: string): { width: number; height: number } => ({
+  width: text.length * 10,
+  height: 16,
+});
+
 /** The module a test file hands `vi.mock("pixi.js", …)`. */
 export const pixiMock = {
   Container: MockContainer,
@@ -237,4 +309,20 @@ export const pixiMock = {
   Sprite: MockSprite,
   NineSliceSprite: MockNineSliceSprite,
   TilingSprite: MockTilingSprite,
+};
+
+/**
+ * {@link pixiMock} with what every widget class needs to be built: a sprite
+ * that sizes by scale, the checkmark's path calls, and split text. A test
+ * file that mocks the texture resolver hands its sprites a texture with a
+ * size.
+ */
+export const widgetPixiMock = {
+  ...pixiMock,
+  Graphics: MockPathGraphics,
+  Sprite: MockScalingSprite,
+  SplitText: MockSplitText,
+  SplitBitmapText: MockSplitText,
+  CanvasTextMetrics: { measureText },
+  BitmapFontManager: { measureText },
 };

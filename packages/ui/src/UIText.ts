@@ -6,7 +6,8 @@ import { BitmapText, Text } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { MeasureMode } from "yoga-layout";
 import { Display } from "yoga-layout";
-import type { UIElement, UITextProps } from "./types.js";
+import type { UITextProps } from "./types.js";
+import { UIElementBase } from "./UIElementBase.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
@@ -20,7 +21,7 @@ import {
 const DEFAULT_ELLIPSIS = "…";
 
 /** Lightweight wrapper around a PixiJS Text for use in UI panels. */
-export class UIText implements UIElement {
+export class UIText extends UIElementBase {
   readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
   private readonly text: Text | BitmapText;
@@ -55,6 +56,7 @@ export class UIText implements UIElement {
   private _destroyed = false;
 
   constructor(props: UITextProps) {
+    super();
     this.yogaNode = createYogaNode();
 
     this._source = props.children ?? "";
@@ -80,6 +82,7 @@ export class UIText implements UIElement {
     }
 
     this.displayObject = this.text;
+    this.applyTransformProps(props);
     applyConsumeInput(this.text, props.consumeInput);
     this.pointerEvents = new PointerEvents(this.text, props);
 
@@ -292,6 +295,7 @@ export class UIText implements UIElement {
     this._focus.set(p);
     this._focusOutline.set(p);
     applyLayoutProps(this.yogaNode, p);
+    this.applyTransformProps(p);
 
     if ("visible" in p) {
       this.visible = p.visible ?? true;

@@ -3,7 +3,8 @@ import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
 import { buildTextOptions } from "@yagejs/renderer";
 import type { DisplayContainer } from "@yagejs/renderer";
-import type { UIElement, UICheckboxProps } from "./types.js";
+import type { UICheckboxProps } from "./types.js";
+import { UIElementBase } from "./UIElementBase.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { getUIDefaultTextStyle } from "./text-defaults.js";
@@ -23,7 +24,7 @@ const DEFAULT_CHECK_COLOR = 0xffffff;
 const LABEL_GAP = 6;
 
 /** Interactive checkbox with optional label. */
-export class UICheckbox implements UIElement {
+export class UICheckbox extends UIElementBase {
   readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
@@ -53,6 +54,7 @@ export class UICheckbox implements UIElement {
   private readonly _focusOutline: FocusOutline;
 
   constructor(props: UICheckboxProps) {
+    super();
     this.yogaNode = createYogaNode();
     this.container = new Container();
     this.container.eventMode = "static";
@@ -98,6 +100,7 @@ export class UICheckbox implements UIElement {
     });
 
     applyLayoutProps(this.yogaNode, props);
+    this.applyTransformProps(props);
 
     // Every listener writes the pointer's own press flag and repaints from
     // both flags. Hover only hovers the row; a press asks a focus scope to
@@ -307,6 +310,7 @@ export class UICheckbox implements UIElement {
     }
 
     applyLayoutProps(this.yogaNode, p);
+    this.applyTransformProps(p);
 
     if ("visible" in p) {
       this.visible = p.visible ?? true;

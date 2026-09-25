@@ -974,6 +974,18 @@ function declaredBaseName(file, className) {
   return base;
 }
 
+/** `component` and the classes it extends, each in a file of its own name. */
+function uiClassChain(files, component) {
+  const chain = [component];
+  for (;;) {
+    const name = chain[chain.length - 1];
+    const module = componentModule(files, name);
+    const base = module && declaredBaseName(module, name);
+    if (base === undefined || chain.includes(base)) return chain;
+    chain.push(base);
+  }
+}
+
 /**
  * Every interactive `@yagejs/ui` component takes keyboard and gamepad focus,
  * so the widget set decides focus coverage rather than whoever needed a
@@ -1045,14 +1057,10 @@ export function checkFocusWidgetCoverage(files) {
   }
 
   /** Whether the component, or a base class of it, constructs a `FocusState`. */
-  function buildsFocusState(component, seen = new Set()) {
-    if (seen.has(component)) return false;
-    seen.add(component);
-    const module = componentModule(files, component);
-    if (!module) return false;
-    if (module.code.includes("new FocusState(")) return true;
-    const base = declaredBaseName(module, component);
-    return base !== undefined && buildsFocusState(base, seen);
+  function buildsFocusState(component) {
+    return uiClassChain(files, component).some((name) =>
+      componentModule(files, name)?.code.includes("new FocusState("),
+    );
   }
 
   const errors = [];
@@ -1113,6 +1121,57 @@ export function checkFocusWidgetCoverage(files) {
         `The ${component} coverage exemption is stale: ${UI_TYPES_PATH} has no such widget that is interactive or reaches FocusProps.`,
       ),
     );
+  }
+  return errors;
+}
+
+/**
+ * Every `@yagejs/ui` element extends `UIElementBase`, which holds the
+ * `transformOrigin`, `scale`, `rotation` and `zIndex` every element's props
+ * accept. An element class without it drops those props. A class is an
+ * element when it implements an element interface or declares both
+ * `displayObject` and `yogaNode`, since a subclass of the base needs no
+ * `implements` clause. Test stand-ins (`test-*.ts`) are left out.
+ */
+export function checkElementTransformCoverage(files) {
+  const elementInterfaces = [
+    "UIElement",
+    "UIContainerElement",
+    "UIInputCaptureElement",
+  ];
+  const errors = [];
+  for (const file of files) {
+    if (!file.path.startsWith(UI_SOURCE_PREFIX)) continue;
+    if (posix.basename(file.path).startsWith("test-")) continue;
+    const source = sourceFile(file.path, file.code);
+    ts.forEachChild(source, function visit(node) {
+      ts.forEachChild(node, visit);
+      if (!ts.isClassDeclaration(node) || !node.name) return;
+      const name = node.name.text;
+      const members = new Set(
+        node.members.map((member) => member.name?.getText(source)),
+      );
+      const isElement =
+        (members.has("displayObject") && members.has("yogaNode")) ||
+        (node.heritageClauses ?? []).some(
+          (clause) =>
+            clause.token === ts.SyntaxKind.ImplementsKeyword &&
+            clause.types.some((type) =>
+              elementInterfaces.includes(type.expression.getText(source)),
+            ),
+        );
+      const base = classBaseName(node);
+      if (!isElement || name === "UIElementBase") return;
+      if (base && uiClassChain(files, base).includes("UIElementBase")) return;
+      errors.push(
+        finding(
+          "element-transform-coverage",
+          file.path,
+          lineOf(source, node),
+          `${name} is a UI element but does not extend UIElementBase, so it drops transformOrigin, scale, rotation and zIndex.`,
+        ),
+      );
+    });
   }
   return errors;
 }
@@ -1627,6 +1686,66 @@ export function positiveControlFailures() {
         ]).length === 1,
     },
     {
+      name: "element-transform-coverage",
+      passed:
+        checkElementTransformCoverage([
+          {
+            path: "packages/ui/src/UIDial.ts",
+            code: "class UIDial implements UIElement {}",
+          },
+        ]).length === 1 &&
+        checkElementTransformCoverage([
+          {
+            path: "packages/ui/src/UIDial.ts",
+            code: "class UIDial extends UIElementBase implements UIElement {}",
+          },
+        ]).length === 0,
+    },
+    {
+      name: "element-transform-coverage-finds-an-element-by-its-members",
+      passed: [
+        ["", 1],
+        [" extends UIElementBase", 0],
+      ].every(
+        ([heritage, count]) =>
+          checkElementTransformCoverage([
+            {
+              path: "packages/ui/src/UIDial.ts",
+              code: `class UIDial${heritage} { readonly displayObject = null; readonly yogaNode = null; }`,
+            },
+          ]).length === count,
+      ),
+    },
+    {
+      name: "element-transform-coverage-follows-the-base-class",
+      passed: [
+        ["UIElementBase", 0],
+        ["Object", 1],
+      ].every(
+        ([root, count]) =>
+          checkElementTransformCoverage([
+            {
+              path: "packages/ui/src/pixi-ui/PixiBase.ts",
+              code: `export abstract class PixiBase extends ${root} {}`,
+            },
+            {
+              path: "packages/ui/src/pixi-ui/PixiDial.ts",
+              code: "class PixiDial extends PixiBase implements UIInputCaptureElement {}",
+            },
+          ]).length === count,
+      ),
+    },
+    {
+      name: "element-transform-coverage-ignores-test-stand-ins",
+      passed:
+        checkElementTransformCoverage([
+          {
+            path: "packages/ui/src/focus/test-nodes.ts",
+            code: "class TestNode implements UIContainerElement {}",
+          },
+        ]).length === 0,
+    },
+    {
       name: "inline-import-type",
       passed:
         checkInlineImportTypes([
@@ -1694,6 +1813,7 @@ export function runChecks(root = repoRoot) {
     ...checkAddonContextRegistration(sources),
     ...checkLocalizedWidgetCoverage(sources),
     ...checkFocusWidgetCoverage(sources),
+    ...checkElementTransformCoverage(sources),
     ...checkInlineImportTypes(sources),
     ...checkVec2VoidMethods(sources),
     ...checkCoreEventBusKeys(sources),

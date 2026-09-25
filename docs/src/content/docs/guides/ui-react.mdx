@@ -261,6 +261,39 @@ in YAGE use `<Panel direction="column" | "row">`.
 </ZStack>
 ```
 
+### Scale, rotation and draw order
+
+Every component takes `transformOrigin`, `scale`, `rotation` and `zIndex`.
+They change how it is drawn, never where layout puts it, and
+`transformOrigin={0.5}` turns and scales about the centre. The
+[imperative UI guide](/guides/ui/#scale-rotation-and-draw-order) has the
+details.
+
+A card that pops while the pointer is on it:
+
+```tsx
+function Card({ title }: { title: string }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <Panel
+      width={120}
+      height={160}
+      transformOrigin={0.5}
+      scale={hovered ? 1.08 : 1}
+      zIndex={hovered ? 1 : 0}
+      onHover={setHovered}
+      bg={{ color: 0x202030, radius: 8 }}
+    >
+      <Text>{title}</Text>
+    </Panel>
+  );
+}
+```
+
+Drive a transform through the prop, as above. A component passes every prop
+it has again on each render, so a `scale` prop replaces any value written to
+the element some other way.
+
 ### Hover events
 
 `<Panel>`, `<Button>`, `<Text>`, `<SplitText>`, `<Image>`, `<NineSlice>`,

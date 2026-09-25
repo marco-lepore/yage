@@ -1,3 +1,4 @@
+import { Container } from "pixi.js";
 import type { DisplayContainer } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
@@ -6,8 +7,8 @@ import type {
   FocusProps,
   LayoutProps,
   PointerEventProps,
-  UIElement,
 } from "../types.js";
+import { UIElementBase } from "../UIElementBase.js";
 import { createYogaNode, applyLayoutProps } from "../yoga-helpers.js";
 import { runUICallback } from "../error-boundary.js";
 import { PointerEvents } from "../pointer-events.js";
@@ -24,10 +25,16 @@ import {
  *
  * Handles: Yoga node + measure function, prevProps storage, bridgeSignal helper,
  * visible prop, applyLayout, hover fan-out, focus, and destroy cleanup.
+ *
+ * The widget view sits inside a plain container, {@link displayObject}, whose
+ * own space is measured in layout pixels. A widget that layout sizes is
+ * stretched inside that container, so the element's `scale` and `rotation`
+ * stay the game's.
  */
 export abstract class PixiUIBase<
   T extends DisplayContainer,
-> implements UIElement {
+> extends UIElementBase {
+  readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
   protected readonly view: T;
   protected prevProps: Record<string, unknown> = {};
@@ -48,21 +55,21 @@ export abstract class PixiUIBase<
   private _paintedPressed = false;
   private _destroyed = false;
 
-  get displayObject(): DisplayContainer {
-    return this.view;
-  }
-
   get visible(): boolean {
-    return this.view.visible;
+    return this.displayObject.visible;
   }
 
   set visible(v: boolean) {
-    this.view.visible = v;
+    this.displayObject.visible = v;
     this.yogaNode.setDisplay(v ? Display.Flex : Display.None);
   }
 
   constructor(view: T, props: LayoutProps & PointerEventProps & FocusProps) {
+    super();
     this.view = view;
+    // Passive; the pointer handlers below stay on the view the pointer hits.
+    this.displayObject = new Container();
+    this.displayObject.addChild(view);
     this.yogaNode = createYogaNode();
 
     this.yogaNode.setMeasureFunc((w, wMode, h, hMode) => {
@@ -81,6 +88,7 @@ export abstract class PixiUIBase<
     });
 
     applyLayoutProps(this.yogaNode, props);
+    this.applyTransformProps(props);
     if (props.visible === false) this.visible = false;
 
     if (this.interactive) {
@@ -134,9 +142,8 @@ export abstract class PixiUIBase<
     }
 
     this._focusOutline = new FocusOutline({
-      container: this.view,
+      container: this.displayObject,
       box: () => this.focusOutlineBox(),
-      scale: () => this.view.scale,
     });
     this._focusOutline.set(props);
 
@@ -244,8 +251,8 @@ export abstract class PixiUIBase<
   }
 
   /**
-   * The rectangle the focus outline is drawn around, in the widget view's own
-   * space.
+   * The rectangle the focus outline is drawn around, in this element's own
+   * space, which is measured in layout pixels.
    *
    * A widget layout sizes is outlined around both its layout box and
    * everything it draws, so a part reaching outside the box is inside the
@@ -254,21 +261,10 @@ export abstract class PixiUIBase<
    * with a box that holds every value, so the outline stays still.
    */
   protected focusOutlineBox(): UIFocusOutlineBox {
-    const bounds = this.view.getLocalBounds();
-    if (!this.sizedByLayout()) {
-      return {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-      };
-    }
-    // The layout box is in the parent's px; this box is in the widget's local
-    // space.
-    const scaleX = this.view.scale.x || 1;
-    const scaleY = this.view.scale.y || 1;
-    const width = this.yogaNode.getComputedWidth() / scaleX;
-    const height = this.yogaNode.getComputedHeight() / scaleY;
+    const bounds = this.fromViewSpace(this.view.getLocalBounds());
+    if (!this.sizedByLayout()) return bounds;
+    const width = this.yogaNode.getComputedWidth();
+    const height = this.yogaNode.getComputedHeight();
     const left = Math.min(0, bounds.x);
     const top = Math.min(0, bounds.y);
     return {
@@ -276,6 +272,18 @@ export abstract class PixiUIBase<
       y: top,
       width: Math.max(width, bounds.x + bounds.width) - left,
       height: Math.max(height, bounds.y + bounds.height) - top,
+    };
+  }
+
+  /** Map a rectangle from the widget view's own space into this element's. */
+  protected fromViewSpace(box: UIFocusOutlineBox): UIFocusOutlineBox {
+    const { x: scaleX, y: scaleY } = this.view.scale;
+    const { x: offsetX, y: offsetY } = this.view.position;
+    return {
+      x: offsetX + box.x * scaleX,
+      y: offsetY + box.y * scaleY,
+      width: box.width * scaleX,
+      height: box.height * scaleY,
     };
   }
 
@@ -352,6 +360,7 @@ export abstract class PixiUIBase<
   protected updateBase(props: Record<string, unknown>): void {
     if (this.disabled) this._dropPress();
     applyLayoutProps(this.yogaNode, props as LayoutProps);
+    this.applyTransformProps(props as LayoutProps);
     if ("visible" in props)
       this.visible = (props.visible as boolean | undefined) ?? true;
     this.pointerEvents?.set(props as PointerEventProps);
@@ -380,6 +389,7 @@ export abstract class PixiUIBase<
     this.bridgedCallbacks.clear();
     this.yogaNode.free();
     this.view.destroy();
+    this.displayObject.destroy();
   }
 
   private _paintFocus(focused: boolean): void {

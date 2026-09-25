@@ -226,9 +226,11 @@ hit.path.some((node) => node.type === "UIButton"); // true
   without dispatching. `down` and `up` take `{ button }`, left by default;
   `move` takes none and carries whichever button a `down` left held.
 - The target is a `UINodeSnapshot.id`, resolved to the centre of that node's
-  `bounds`, or a virtual-space point. `bounds` is the snapshot's on-screen box;
-  `layout` beside it is Yoga's parent-relative box and locates nothing on the
-  canvas.
+  `bounds`, or a virtual-space point. `bounds` is the snapshot's on-screen box:
+  the axis-aligned box around the element's four corners, so a scaled or
+  rotated element reports the area it covers. `layout` beside it is Yoga's
+  parent-relative box and locates nothing on the canvas. An id whose `bounds`
+  have no area, such as an element scaled to 0, throws, naming the node.
 - The returned hit carries `path` — every node the chain crosses, innermost
   first, empty when the point reached none — plus the `point` used and
   `consumed`. A button's label is a node of its own and sits on top of the

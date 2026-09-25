@@ -57,6 +57,43 @@ function roundBound(value: number): number {
   return Math.round(value * 1000) / 1000 + 0;
 }
 
+/** The axis-aligned box around a UI element's projected corners, rounded. */
+function boundsAround(
+  corners: readonly { x: number; y: number }[],
+): NonNullable<UINodeSnapshot["bounds"]> {
+  const xs = corners.map((point) => point.x);
+  const ys = corners.map((point) => point.y);
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  return {
+    x: roundBound(left),
+    y: roundBound(top),
+    width: roundBound(Math.max(...xs) - left),
+    height: roundBound(Math.max(...ys) - top),
+  };
+}
+
+/**
+ * Whether a UI element's projected corners `(0, 0)`, `(w, 0)` and `(0, h)`
+ * span any area. A box scaled to 0 on one axis spans none even when turned,
+ * where the box around it still has an area. The tolerance is relative to the
+ * edge lengths, so rounding in the projection still counts as flat.
+ */
+function spansArea(corners: readonly { x: number; y: number }[]): boolean {
+  const [origin, u, v] = corners as [
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+  ];
+  const ux = u.x - origin.x;
+  const uy = u.y - origin.y;
+  const vx = v.x - origin.x;
+  const vy = v.y - origin.y;
+  return (
+    Math.abs(ux * vy - uy * vx) > 1e-9 * Math.hypot(ux, uy) * Math.hypot(vx, vy)
+  );
+}
+
 /**
  * Thrown internally by a drive's frame-budget guard once `maxFrames` is
  * spent. `executeDrive` catches its own marker to report `timedOut: true`
@@ -141,6 +178,8 @@ interface UIIndexEntry {
   id: string;
   type: string;
   bounds: UINodeSnapshot["bounds"];
+  /** Whether the element is drawn with any area a pointer can hit. */
+  drawnWithArea: boolean;
   displayObject: object | undefined;
 }
 
@@ -364,13 +403,13 @@ export interface UINodeSnapshot {
    */
   layout: { x: number; y: number; width: number; height: number };
   /**
-   * The element's box in virtual-space pixels: its container's top-left and
-   * bottom-right corners mapped out of the renderer and through the
-   * canvas-to-virtual conversion, rounded to a thousandth of a pixel so the
-   * same box reads the same at any canvas size. `null` when no renderer
-   * adapter is registered, or for an element that owns no container. A
-   * rotated element reports the axis-aligned box of those two corners, which
-   * is approximate.
+   * The box the element is drawn in, in virtual-space pixels: the four
+   * corners of its container's own layout box mapped out of the renderer and
+   * through the canvas-to-virtual conversion, and the axis-aligned box around
+   * them, rounded to a thousandth of a pixel so the same box reads the same
+   * at any canvas size. A scaled or rotated element reports the box it
+   * covers on screen. `null` when no renderer adapter is registered, or for
+   * an element that owns no container.
    */
   bounds: { x: number; y: number; width: number; height: number } | null;
   children: UINodeSnapshot[];
@@ -2032,6 +2071,7 @@ export class Inspector {
       width: layout?.width ?? 0,
       height: layout?.height ?? 0,
     };
+    const corners = this.projectUICorners(node, size, adapter);
     return {
       id,
       type: node.constructor.name,
@@ -2040,43 +2080,35 @@ export class Inspector {
         y: layout?.top ?? 0,
         ...size,
       },
-      bounds: this.buildUIBounds(node, size, adapter),
+      bounds: corners && boundsAround(corners),
       children,
       state: node._inspectState?.() ?? null,
     };
   }
 
   /**
-   * Maps the element's local box out of the renderer and into virtual space.
-   * An adapter without `canvasToVirtual` reports canvas CSS pixels, which the
+   * Maps the four corners of the element's local box, `(0, 0)`, `(w, 0)`,
+   * `(0, h)` and `(w, h)`, out of the renderer and into virtual space. An
+   * adapter without `canvasToVirtual` reports canvas CSS pixels, which the
    * {@link RendererAdapter} contract says equal virtual pixels only while the
    * canvas is at its virtual size.
-   *
-   * Values are rounded, so the same box reads the same at any canvas size and
-   * a snapshot diff stays meaningful. See {@link roundBound}.
    */
-  private buildUIBounds(
+  private projectUICorners(
     node: UIElementLike,
     size: { width: number; height: number },
     adapter: RendererAdapter | undefined,
-  ): UINodeSnapshot["bounds"] {
+  ): { x: number; y: number }[] | null {
     const displayObject = node.displayObject;
     if (!adapter || !displayObject) return null;
-    const toVirtual = (point: {
-      x: number;
-      y: number;
-    }): { x: number; y: number } => {
-      const canvas = displayObject.toGlobal(point);
+    return [
+      { x: 0, y: 0 },
+      { x: size.width, y: 0 },
+      { x: 0, y: size.height },
+      { x: size.width, y: size.height },
+    ].map((corner) => {
+      const canvas = displayObject.toGlobal(corner);
       return adapter.canvasToVirtual?.(canvas.x, canvas.y) ?? canvas;
-    };
-    const start = toVirtual({ x: 0, y: 0 });
-    const end = toVirtual({ x: size.width, y: size.height });
-    return {
-      x: roundBound(Math.min(start.x, end.x)),
-      y: roundBound(Math.min(start.y, end.y)),
-      width: roundBound(Math.abs(end.x - start.x)),
-      height: roundBound(Math.abs(end.y - start.y)),
-    };
+    });
   }
 
   /**
@@ -2088,14 +2120,16 @@ export class Inspector {
     const entries: UIIndexEntry[] = [];
     const visit = (node: UIElementLike, id: string): void => {
       const layout = node.yogaNode?.getComputedLayout();
+      const corners = this.projectUICorners(
+        node,
+        { width: layout?.width ?? 0, height: layout?.height ?? 0 },
+        adapter,
+      );
       entries.push({
         id,
         type: node.constructor.name,
-        bounds: this.buildUIBounds(
-          node,
-          { width: layout?.width ?? 0, height: layout?.height ?? 0 },
-          adapter,
-        ),
+        bounds: corners && boundsAround(corners),
+        drawnWithArea: corners !== null && spansArea(corners),
         displayObject: node.displayObject,
       });
       for (const [index, child] of (node.children ?? []).entries()) {
@@ -2168,6 +2202,11 @@ export class Inspector {
     if (!entry.bounds) {
       throw new Error(
         `Inspector.pointer.${call}(): UI node "${id}" has no bounds. Pass a point instead.`,
+      );
+    }
+    if (!entry.drawnWithArea) {
+      throw new Error(
+        `Inspector.pointer.${call}(): UI node "${id}" (${entry.type}) is drawn with no area, so no point on it can be hit. It may be scaled to 0 on an axis or not laid out yet.`,
       );
     }
     return {

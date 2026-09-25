@@ -83,6 +83,10 @@ export type { UIInputCaptureElement } from "./focus/input-capture.js";
 /** @internal The downward channel a custom element's `_attachToTree` takes. */
 export type { UITreeContext } from "./internal/tree-context.js";
 
+// Custom elements and containers
+export { UIElementBase } from "./UIElementBase.js";
+export { placeElement } from "./internal/element-transform.js";
+
 // Plugin
 export { UIPlugin } from "./UIPlugin.js";
 

@@ -21,7 +21,8 @@ import {
 } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { MeasureMode, Display } from "yoga-layout";
-import type { UIElement, UISplitTextProps } from "./types.js";
+import type { UISplitTextProps } from "./types.js";
+import { UIElementBase } from "./UIElementBase.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
@@ -84,7 +85,7 @@ function shallowEqualStyle(
  * @experimental `SplitText` is experimental in Pixi; char spacing can differ
  * slightly from `Text` (kerning is lost once glyphs are split).
  */
-export class UISplitText implements UIElement {
+export class UISplitText extends UIElementBase {
   readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
   /** The underlying Pixi `SplitText` / `SplitBitmapText`. */
@@ -110,6 +111,7 @@ export class UISplitText implements UIElement {
   private _destroyed = false;
 
   constructor(props: UISplitTextProps) {
+    super();
     this.yogaNode = createYogaNode();
     this._source = props.children ?? "";
     this._bitmap = props.bitmap;
@@ -147,6 +149,7 @@ export class UISplitText implements UIElement {
     if (props.visible === false) this.splitText.visible = false;
 
     this.displayObject = this.splitText;
+    this.applyTransformProps(props);
     applyConsumeInput(this.splitText, props.consumeInput);
     this.pointerEvents = new PointerEvents(this.splitText, props);
 
@@ -330,6 +333,7 @@ export class UISplitText implements UIElement {
     this._focus.set(p);
     this._focusOutline.set(p);
     applyLayoutProps(this.yogaNode, p);
+    this.applyTransformProps(p);
     if ("visible" in p) this.visible = p.visible ?? true;
   }
 

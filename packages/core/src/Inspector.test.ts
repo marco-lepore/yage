@@ -69,27 +69,33 @@ const fakeElementClasses = {
 };
 
 /**
- * A UI element whose container sits at `origin` in canvas pixels and draws at
- * `scale`. `layout` stays parent-relative, as Yoga reports it, so a test can
- * see the two disagree.
+ * A UI element whose container sits at `origin` in canvas pixels, draws at
+ * `scale` (`scaleY` on the y axis when given) and turns `rotation` radians
+ * about that origin. `layout` stays parent-relative, as Yoga reports it, so a
+ * test can see the two disagree.
  */
 function fakeUIElement(opts: {
   layout: { left: number; top: number; width: number; height: number };
   origin?: { x: number; y: number };
   scale?: number;
+  scaleY?: number;
+  rotation?: number;
   children?: FakeUIElement[];
   type?: keyof typeof fakeElementClasses;
 }): FakeUIElement {
   const origin = opts.origin;
-  const scale = opts.scale ?? 1;
+  const scaleX = opts.scale ?? 1;
+  const scaleY = opts.scaleY ?? scaleX;
+  const cos = Math.cos(opts.rotation ?? 0);
+  const sin = Math.sin(opts.rotation ?? 0);
   const shape = {
     yogaNode: { getComputedLayout: () => opts.layout },
     ...(origin
       ? {
           displayObject: {
             toGlobal: (point: { x: number; y: number }) => ({
-              x: origin.x + point.x * scale,
-              y: origin.y + point.y * scale,
+              x: origin.x + point.x * scaleX * cos - point.y * scaleY * sin,
+              y: origin.y + point.x * scaleX * sin + point.y * scaleY * cos,
             }),
           },
         }
@@ -240,6 +246,30 @@ describe("Inspector", () => {
     const child = root.children[0];
     expect(child?.layout).toEqual({ x: 20, y: 10, width: 60, height: 30 });
     expect(child?.bounds).toEqual({ x: 200, y: 150, width: 60, height: 30 });
+  });
+
+  it("reports the box around all four corners of a rotated element", async () => {
+    const { inspector, scenes, ctx } = setup();
+    ctx.register(RendererAdapterKey, letterboxAdapter);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+
+    // A 60 x 30 box turned a quarter about its canvas origin (440, 320) at
+    // scale 2 covers canvas x 380..440 and y 320..440. The two corners the
+    // box is laid out from alone would span no width at all.
+    const rootElement = fakeUIElement({
+      layout: { left: 0, top: 0, width: 60, height: 30 },
+      origin: { x: 440, y: 320 },
+      scale: 2,
+      rotation: Math.PI / 2,
+    });
+    class UISurface extends Component {
+      readonly root = rootElement;
+    }
+    scene.spawn("hud").add(new UISurface());
+
+    const root = inspector.snapshot().scenes[0]?.ui?.root;
+    expect(root?.bounds).toEqual({ x: 170, y: 150, width: 30, height: 60 });
   });
 
   it("keeps a child's UI bounds inside its parent's", async () => {
@@ -2282,6 +2312,9 @@ async function pointerSetup(opts?: {
   omitCanvasToVirtual?: boolean;
   omitDispatch?: boolean;
   buttonHasContainer?: boolean;
+  buttonScale?: number;
+  buttonScaleY?: number;
+  buttonRotation?: number;
   secondSurface?: boolean;
 }) {
   const base = setup();
@@ -2293,7 +2326,16 @@ async function pointerSetup(opts?: {
     layout: { left: 20, top: 10, width: 60, height: 30 },
     ...(opts?.buttonHasContainer === false
       ? {}
-      : { origin: { x: 440, y: 320 }, scale: 2 }),
+      : {
+          origin: { x: 440, y: 320 },
+          scale: opts?.buttonScale ?? 2,
+          ...(opts?.buttonScaleY === undefined
+            ? {}
+            : { scaleY: opts.buttonScaleY }),
+          ...(opts?.buttonRotation === undefined
+            ? {}
+            : { rotation: opts.buttonRotation }),
+        }),
   });
   const rootElement = fakeUIElement({
     type: "UIPanel",
@@ -2594,4 +2636,25 @@ describe("Inspector.pointer", () => {
       `Inspector.pointer.hitTest(): UI node "${buttonId}" has no bounds.`,
     );
   });
+
+  it.each([
+    ["scaled to 0", { buttonScale: 0 }],
+    // The box around a flattened, turned button still has an area.
+    [
+      "flattened on one axis and turned",
+      { buttonScaleY: 0, buttonRotation: 0.5 },
+    ],
+  ])(
+    "throws, naming the node, for one drawn with no area: %s",
+    async (_name, button) => {
+      const { inspector, buttonId, dispatched, hitTestUIPath } =
+        await pointerSetup(button);
+
+      expect(() => inspector.pointer.click(buttonId)).toThrow(
+        `Inspector.pointer.click(): UI node "${buttonId}" (UIButton) is drawn with no area`,
+      );
+      expect(hitTestUIPath).not.toHaveBeenCalled();
+      expect(dispatched).toHaveLength(0);
+    },
+  );
 });

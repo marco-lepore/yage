@@ -157,8 +157,9 @@ const boxes = (): { checkedView: string; uncheckedView: string } => ({
   checkedView: "checked",
   uncheckedView: "unchecked",
 });
-const view = (element: { displayObject: unknown }): Record<string, unknown> =>
-  element.displayObject as Record<string, unknown>;
+/** The @pixi/ui widget a wrapper holds inside its own container. */
+const view = (element: object): Record<string, unknown> =>
+  (element as { view: Record<string, unknown> }).view;
 
 describe("LocalizedPixiFancyButton", () => {
   it("follows the locale and takes a new message", () => {

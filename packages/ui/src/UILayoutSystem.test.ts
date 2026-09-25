@@ -12,6 +12,14 @@ const { mocks } = vi.hoisted(() => {
       },
     };
     scale = { x: 1, y: 1 };
+    pivot = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number = ax) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
     rotation = 0;
     visible = true;
     alpha = 1;
@@ -133,6 +141,7 @@ import { Transform, Vec2 } from "@yagejs/core";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { UIFocusRelayoutSystem, UILayoutSystem } from "./UILayoutSystem.js";
 import { Anchor } from "./types.js";
+import type { UISurfaceOptions } from "./types.js";
 import { createUITestContext, spawnEntityInScene } from "./test-helpers.js";
 
 beforeAll(() => {
@@ -379,6 +388,72 @@ describe("UILayoutSystem", () => {
 
       expect(applyLayout).not.toHaveBeenCalled();
     });
+  });
+
+  describe("root transform", () => {
+    const roots: {
+      name: string;
+      options: UISurfaceOptions;
+      at?: Vec2;
+      relayout?: boolean;
+      pivot: { x: number; y: number };
+      position: { x: number; y: number };
+    }[] = [
+      {
+        // The corner stays at (350, 285); the pivot is the panel's centre.
+        name: "an anchored root",
+        options: { anchor: Anchor.Center, transformOrigin: 0.5 },
+        pivot: { x: 50, y: 15 },
+        position: { x: 400, y: 300 },
+      },
+      {
+        name: "a transform-positioned root",
+        options: {
+          positioning: "transform",
+          anchor: Anchor.Center,
+          transformOrigin: 0.5,
+        },
+        at: new Vec2(500, 300),
+        pivot: { x: 50, y: 15 },
+        position: { x: 500, y: 300 },
+      },
+      {
+        name: "a transform-positioned root with no anchor",
+        options: { positioning: "transform", transformOrigin: 0.5 },
+        at: new Vec2(500, 300),
+        pivot: { x: 50, y: 15 },
+        position: { x: 550, y: 315 },
+      },
+      {
+        name: "a root in the pass after focus",
+        options: { offset: { x: 10, y: 20 }, transformOrigin: 1 },
+        relayout: true,
+        pivot: { x: 100, y: 30 },
+        position: { x: 110, y: 50 },
+      },
+    ];
+
+    it.each(roots)(
+      "places $name about its transform origin",
+      ({ options, at, relayout, pivot, position }) => {
+        const ctx = setup();
+        let pass = system;
+        if (relayout) {
+          pass = new UIFocusRelayoutSystem();
+          pass._setContext(ctx.context);
+          pass.onRegister!(ctx.context);
+        }
+        const entity = spawnEntityInScene(ctx.scene);
+        if (at) entity.add(new Transform({ position: at }));
+        const panel = entity.add(new UISurface(options));
+        panel.button("A", { width: 100, height: 30 });
+
+        pass.update(16);
+
+        expect(panel.container.pivot).toMatchObject(pivot);
+        expect(panel.container.position).toMatchObject(position);
+      },
+    );
   });
 
   describe("transform positioning", () => {
