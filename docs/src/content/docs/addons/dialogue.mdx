@@ -651,9 +651,13 @@ The Yarn language works as it does in Yarn Spinner:
 - **Commands**: `<<wait 2>>` waits two seconds with no handler; every other command
   reaches your `commands` handler with its words in `cmd.args` (numbers and
   `true` / `false` as values, `{expressions}` evaluated, `"quoted text"` as text).
+  As in Yarn Spinner, a handler that returns a promise holds the dialogue until
+  the promise settles, so `<<walk_to Mae door>>` can play a whole sequence before
+  the next line. A handler that returns nothing finishes at once.
 
 Some hashtags on a line set how it plays: `#view:bubble`, `#voice:clip_id`,
-`#speed:0.5`, and `#auto:2` (auto-advance after 2 seconds). Other hashtags land in
+`#expression:happy` (the speaker's face when the line starts), `#speed:0.5`, and
+`#auto:2` (auto-advance after 2 seconds). Other hashtags land in
 the line's `meta` (`#portrait:mae_happy` → `meta.portrait`), where the
 [presenters read them](#per-line-position-and-in-box-avatars-meta). The line just
 before a group of options also gets `meta.lastline`.

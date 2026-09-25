@@ -104,8 +104,14 @@ interface GroupMember {
 /** Say-line hashtags that set a first-class step field (the compact DSL's
  *  line hint names). */
 const SAY_FIELDS: Readonly<
-  Record<string, "view" | "voice" | "speed" | "autoAdvance">
-> = { view: "view", voice: "voice", speed: "speed", auto: "autoAdvance" };
+  Record<string, "view" | "voice" | "expression" | "speed" | "autoAdvance">
+> = {
+  view: "view",
+  voice: "voice",
+  expression: "expression",
+  speed: "speed",
+  auto: "autoAdvance",
+};
 
 export function compileYarn(
   files: readonly YarnFile[],
@@ -1088,9 +1094,12 @@ class NodeCompiler {
         }
         const args = this.args(rest, pos);
         if (name === "wait") this.checkWait(args, pos);
+        // Blocking, as in Yarn Spinner: a handler that returns a promise holds
+        // the dialogue until it settles; one that returns nothing is instant.
         const command: Command = {
           type: name,
           ...(args.length > 0 ? { args } : {}),
+          blocking: true,
         };
         cur.steps.push({ kind: "command", commands: [command] });
         return cur;
@@ -1239,6 +1248,7 @@ class NodeCompiler {
     const fields: {
       view?: string;
       voice?: string;
+      expression?: string;
       speed?: number;
       autoAdvance?: number;
     } = {};
@@ -1250,7 +1260,7 @@ class NodeCompiler {
       if (key === "line") continue;
       const field = SAY_FIELDS[key];
       if (field && colon > 0) {
-        if (field === "view" || field === "voice") {
+        if (field === "view" || field === "voice" || field === "expression") {
           fields[field] = value;
         } else {
           const n = Number(value);

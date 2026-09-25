@@ -603,13 +603,40 @@ describe("loadYarn — commands", () => {
     await settle();
     expect(h.transcript).toEqual(["A", "<<wait 2>>", "B"]);
   });
+
+  it("a command whose handler returns a promise holds the dialogue until it settles", async () => {
+    let arrive = (): void => {};
+    const walks: string[] = [];
+    const yarn = loadYarn(start("<<walk_to Mae door>>\n<<nod>>\nMae: Here."));
+    const h = harness({
+      commands: {
+        walk_to: (cmd) => {
+          walks.push(String(cmd.args?.[1]));
+          return new Promise<void>((resolve) => (arrive = resolve));
+        },
+        nod: () => {}, // returns nothing: instant
+      },
+    });
+    h.session.play(yarn);
+    for (let i = 0; i < 5; i++) await settle();
+    expect(walks).toEqual(["door"]);
+    expect(h.transcript).toEqual(["<<walk_to Mae door>>"]);
+    arrive();
+    await settle();
+    await settle();
+    expect(h.transcript).toEqual([
+      "<<walk_to Mae door>>",
+      "<<nod>>",
+      "Mae: Here.",
+    ]);
+  });
 });
 
 describe("loadYarn — tags, markup, and metadata", () => {
-  it("hashtags become meta; #view / #voice / #speed / #auto set the line's fields", () => {
+  it("hashtags become meta; #view / #voice / #expression / #speed / #auto set the line's fields", () => {
     const yarn = loadYarn(
       start(
-        "Mae: Hi. #view:bubble #voice:vo_1 #speed:2 #auto:1.5 #mood:happy #urgent",
+        "Mae: Hi. #view:bubble #voice:vo_1 #expression:happy #speed:2 #auto:1.5 #mood:happy #urgent",
       ),
     );
     expect(yarn.nodes["Start"]!.steps[0]).toEqual({
@@ -618,6 +645,7 @@ describe("loadYarn — tags, markup, and metadata", () => {
       text: "Hi.",
       view: "bubble",
       voice: "vo_1",
+      expression: "happy",
       speed: 2,
       autoAdvance: 1.5,
       meta: { mood: "happy", urgent: true },
