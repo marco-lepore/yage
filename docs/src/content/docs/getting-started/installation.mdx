@@ -53,8 +53,8 @@ Before you ship:
 Things to know:
 
 - **The dev server has no service worker.** `npm run dev` always serves fresh
-  files. Test the installed and offline behaviour with `npm run build` and
-  `npm run preview`.
+  files. Installing, offline play, and updates only work in the production
+  build, which `npm run preview` serves locally.
 - **Files over 10 MB fail the build.** The error names each file. Raise
   `maximumFileSizeToCacheInBytes` in `vite.config.ts` if a large music track
   needs to be available offline.
@@ -158,11 +158,6 @@ Things to know:
   player's first visit, the service worker does not control the page yet.
   If you deploy during that session, `applyUpdate()` switches versions but
   does not reload, and the new version runs on the next launch.
-- **Updates can only be tested in a production build.** Build, run
-  `npm run preview`, open the game, and reload it once so the service worker
-  controls the page. Then rebuild with a change. The open tab reports the new
-  version on its next check. To check right away, click Update under
-  Application → Service workers in Chrome's developer tools.
 
 ## Option 2: Manual install
 

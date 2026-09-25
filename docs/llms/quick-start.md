@@ -15,7 +15,7 @@ The `recommended` template's production build is an installable, offline-capable
 - Workbox precaches every file in `dist/` (`globPatterns: ["**/*"]`), including the Rapier `.wasm` and all of `public/`. Assets are never listed by hand; each build picks up new or changed files.
 - A file over `maximumFileSizeToCacheInBytes` (10 MB) fails `vite build` with an error naming it; raise the limit. Cross-origin assets need a `runtimeCaching` rule.
 - Releasing = `npm run build` + upload `dist/`. No version number: `dist/sw.js` embeds a content hash per file, and the browser byte-compares `sw.js` at each launch. On a difference it downloads changed files in the background; `registerType: "prompt"` with no update UI means the new version waits until every tab or window of the game is closed (a reload keeps the old version), so players see a release on their second launch. Host/CDN must not cache `sw.js` or `index.html` for long.
-- No service worker in `npm run dev`; verify with `npm run build && npm run preview`. Production needs HTTPS.
+- No service worker in `npm run dev`: installing, offline play, and updates only exist in the production build (`npm run preview` serves it locally). Production needs HTTPS.
 - In-game update prompt (not in the template; add on request) — `src/pwa.ts`, imported from `main.ts`. Importing `virtual:pwa-register` replaces the injected `registerSW.js`; `vite.config.ts` is unchanged:
 
   ```ts

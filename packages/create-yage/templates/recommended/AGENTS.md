@@ -116,6 +116,11 @@ sets this up.
   to the `workbox` block for them.
 - **No service worker in `npm run dev`.** Check installed and offline
   behaviour with `npm run build` followed by `npm run preview`.
+- **To test an update:** open the game from `npm run preview` and reload it
+  once so the service worker controls the page. Rebuild with a change, then
+  click Update under Application → Service workers in Chrome's developer
+  tools. The new version waits until every tab of the game is closed, or
+  until your code applies it.
 - **Updates start on the next launch.** A deploy downloads in the background.
   The running game keeps its version, even across reloads, until every tab or
   window of it is closed. Host or CDN caching must not keep a stale `sw.js`
