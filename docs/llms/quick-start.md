@@ -30,7 +30,12 @@ The `recommended` template's production build is an installable, offline-capable
     onRegisteredSW(_swUrl, registration) {
       if (!registration) return;
       // without this an open game only checks at launch
-      setInterval(() => void registration.update(), 60 * 60 * 1000);
+      setInterval(
+        () => {
+          registration.update().catch(() => {}); // rejects while offline; retried next hour
+        },
+        60 * 60 * 1000,
+      );
     },
   });
   export const isUpdateReady = (): boolean => updateReady;

@@ -118,7 +118,10 @@ const updateSW = registerSW({
   // Without this, an open game only checks for a new version at launch.
   onRegisteredSW(_swUrl, registration) {
     if (!registration) return;
-    setInterval(() => void registration.update(), 60 * 60 * 1000);
+    setInterval(() => {
+      // Fails while the player is offline; the next check tries again.
+      registration.update().catch(() => {});
+    }, 60 * 60 * 1000);
   },
 });
 
