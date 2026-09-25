@@ -41,7 +41,12 @@ export { parseExpr, DialogueExprError } from "./expr-parse.js";
 // `createScope` (expr.ts) and `tokensIn` (i18n.ts) are intentionally NOT exported
 // — internal plumbing; `session.ts`/`runner.ts`/`validate.ts` import them by path.
 export { DialogueRunner } from "./runner.js";
-export type { RunnerHandlers, ResolvedChoice, RunnerEnv } from "./runner.js";
+export type {
+  RunnerHandlers,
+  ResolvedChoice,
+  RunnerEnv,
+  ReturnPoint,
+} from "./runner.js";
 export {
   IdentityI18n,
   interpolateDialogueText,

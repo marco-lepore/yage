@@ -2375,3 +2375,519 @@ describe("DialogueSession — retranslate with nothing on screen", () => {
     expect(reads).toBe(whileShowing);
   });
 });
+
+describe("DialogueSession — play({ start })", () => {
+  const script: DialogueScript = {
+    id: "hub",
+    start: "a",
+    nodes: {
+      a: { id: "a", steps: [{ kind: "say", text: "A" }] },
+      b: { id: "b", steps: [{ kind: "say", text: "B" }] },
+    },
+  };
+
+  it("begins at the requested node", () => {
+    const h = makeHarness();
+    h.session.play(script, { start: "b" });
+    expect(h.text.lastText).toBe("B");
+  });
+
+  it("an unknown start node throws before the running conversation changes", () => {
+    const h = makeHarness();
+    h.session.play(script);
+    expect(() => h.session.play(script, { start: "zzz" })).toThrow(
+      DialoguePlayError,
+    );
+    expect(h.session.isActive()).toBe(true);
+    expect(h.text.lastText).toBe("A");
+  });
+});
+
+describe("DialogueSession — text expressions", () => {
+  const script: DialogueScript = {
+    id: "expr-text",
+    start: "a",
+    declare: { gold: 80 },
+    nodes: {
+      a: {
+        id: "a",
+        steps: [
+          {
+            kind: "say",
+            text: "That leaves {left} of {gold} gold.",
+            expressions: { left: "gold - 50" },
+          },
+          {
+            kind: "choice",
+            text: "Pay {cost}?",
+            expressions: { cost: "50" },
+            options: [
+              {
+                text: "Pay, keeping {rest}",
+                expressions: { rest: "gold - 50" },
+                target: "b",
+              },
+              {
+                text: "Haggle",
+                condition: "false",
+                presentation: "disabled",
+                disabledReason: "Needs {n} charm",
+                expressions: { n: "2 * 3" },
+              },
+            ],
+          },
+        ],
+      },
+      b: { id: "b", steps: [{ kind: "say", text: "Paid." }] },
+    },
+  };
+
+  it("fills say, prompt, option, and disabled-reason tokens from their expressions", async () => {
+    const h = makeHarness();
+    const onChoiceMade = vi.fn();
+    const withEvents = makeHarness({ onChoiceMade });
+    h.session.play(script);
+    expect(h.text.lastText).toBe("That leaves 30 of 80 gold.");
+    h.text.finishReveal();
+    await flush();
+    h.session.advance();
+    await flush();
+    expect(h.text.lastText).toBe("Pay 50?");
+    expect(h.choices.lastLabels).toEqual(["Pay, keeping 30", "Haggle"]);
+    expect(h.choices.presented.at(-1)?.choices[1]?.disabledReason).toBe(
+      "Needs 6 charm",
+    );
+
+    withEvents.session.play(script);
+    withEvents.text.finishReveal();
+    await flush();
+    withEvents.session.advance();
+    await flush();
+    withEvents.session.confirm();
+    expect(onChoiceMade).toHaveBeenCalledWith({
+      index: 0,
+      text: "Pay, keeping 30",
+    });
+  });
+
+  it("evaluates each time the text is shown, after earlier writes", async () => {
+    const h = makeHarness();
+    h.session.play({
+      id: "live",
+      start: "a",
+      declare: { n: 1 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "{d}", expressions: { d: "n * 10" } },
+            {
+              kind: "command",
+              commands: [{ type: "set", var: "n", value: "n + 1" }],
+            },
+            { kind: "say", text: "{d}", expressions: { d: "n * 10" } },
+          ],
+        },
+      },
+    });
+    expect(h.text.lastText).toBe("10");
+    h.text.finishReveal();
+    await flush();
+    h.session.advance();
+    await flush();
+    expect(h.text.lastText).toBe("20");
+  });
+
+  it("preview resolves expressions and follows detours", () => {
+    const h = makeHarness();
+    h.session.play({
+      id: "pv",
+      start: "a",
+      declare: { n: 2 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "start" },
+            { kind: "detour", target: "b" },
+            { kind: "say", text: "{x}", expressions: { x: "n + 1" } },
+          ],
+        },
+        b: { id: "b", steps: [{ kind: "say", text: "aside" }] },
+      },
+    });
+    expect(h.session.preview("a").map((l) => l.text)).toEqual([
+      "start",
+      "aside",
+      "3",
+    ]);
+  });
+
+  it("preview follows computed goto / detour targets and stops on an unknown one", () => {
+    const h = makeHarness();
+    const script = (to: string): DialogueScript => ({
+      id: "pv-computed",
+      start: "a",
+      declare: { to },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "start" },
+            { kind: "detour", target: { kind: "varRef", name: "to" } },
+            { kind: "say", text: "end" },
+          ],
+        },
+        b: { id: "b", steps: [{ kind: "say", text: "aside" }] },
+      },
+    });
+    h.session.play(script("b"));
+    expect(h.session.preview("a").map((l) => l.text)).toEqual([
+      "start",
+      "aside",
+      "end",
+    ]);
+    // A fresh session: the storage keeps `to` across plays.
+    const other = makeHarness();
+    other.session.play(script("nowhere"));
+    expect(other.session.preview("a").map((l) => l.text)).toEqual(["start"]);
+  });
+
+  it("a computed target's function calls are checked at play()", () => {
+    const h = makeHarness();
+    const script: DialogueScript = {
+      id: "target-fn",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "goto",
+              target: { kind: "call", fn: "next_node", args: [] },
+            },
+          ],
+        },
+      },
+    };
+    expect(() => h.session.play(script)).toThrow(/next_node/);
+  });
+
+  it("an expression that reads an unprovided variable fails at play()", () => {
+    const h = makeHarness();
+    expect(() =>
+      h.session.play({
+        id: "missing",
+        start: "a",
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              { kind: "say", text: "{x}", expressions: { x: "nowhere + 1" } },
+            ],
+          },
+        },
+      }),
+    ).toThrow(/reads "nowhere"/);
+  });
+});
+
+describe("DialogueSession — default wait", () => {
+  const waitScript = (seconds: unknown): DialogueScript => ({
+    id: "wait",
+    start: "a",
+    nodes: {
+      a: {
+        id: "a",
+        steps: [
+          { kind: "say", text: "one" },
+          {
+            kind: "command",
+            commands: [{ type: "wait", args: [seconds as number] }],
+          },
+          { kind: "say", text: "two" },
+        ],
+      },
+    },
+  });
+
+  async function toWait(h: Harness): Promise<void> {
+    h.text.finishReveal();
+    await flush();
+    h.session.advance();
+    await flush();
+  }
+
+  it("holds the conversation for args[0] seconds on the session clock", async () => {
+    const h = makeHarness();
+    h.session.play(waitScript(1));
+    await toWait(h);
+    expect(h.text.lastText).toBe("one");
+    h.session.update(0.6);
+    await flush();
+    expect(h.text.lastText).toBe("one");
+    h.session.update(0.5);
+    await flush();
+    expect(h.text.lastText).toBe("two");
+  });
+
+  it("freezes while paused", async () => {
+    const h = makeHarness();
+    h.session.play(waitScript(0.5));
+    await toWait(h);
+    h.session.setPaused(true);
+    h.session.update(1);
+    await flush();
+    expect(h.text.lastText).toBe("one");
+    h.session.setPaused(false);
+    h.session.update(0.6);
+    await flush();
+    expect(h.text.lastText).toBe("two");
+  });
+
+  it("a stop() drops the pending wait", async () => {
+    const h = makeHarness();
+    h.session.play(waitScript(0.5));
+    await toWait(h);
+    h.session.stop();
+    h.session.update(1);
+    await flush();
+    expect(h.session.isActive()).toBe(false);
+    expect(h.text.lastText).toBe("one");
+  });
+
+  it("accepts numeric text", async () => {
+    const h = makeHarness();
+    h.session.play(waitScript("0.25"));
+    await toWait(h);
+    h.session.update(0.3);
+    await flush();
+    expect(h.text.lastText).toBe("two");
+  });
+
+  it("a literal bad duration fails play(), naming the node and value", () => {
+    const h = makeHarness();
+    for (const bad of ["soon", -1, Infinity, undefined]) {
+      expect(() => h.session.play(waitScript(bad))).toThrow(DialoguePlayError);
+    }
+    expect(() => h.session.play(waitScript(-1))).toThrow(
+      /"wait" needs a number of seconds >= 0.*node "a".*got -1/,
+    );
+    const seconds: DialogueScript = {
+      id: "wait-seconds",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "command", commands: [{ type: "wait", seconds: -1 }] },
+          ],
+        },
+      },
+    };
+    expect(() => h.session.play(seconds)).toThrow(/got -1/);
+    // The game's own handler decides what its arguments mean.
+    const own = makeHarness({ commands: { wait: () => {} } });
+    expect(() => own.session.play(waitScript("soon"))).not.toThrow();
+  });
+
+  it("reports a bad duration computed by an expression, without holding", async () => {
+    const onError = vi.fn();
+    const h = makeHarness({ onError });
+    h.session.play({
+      id: "wait-expr",
+      start: "a",
+      declare: { delay: -1 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "one" },
+            {
+              kind: "command",
+              commands: [
+                { type: "wait", args: [{ kind: "varRef", name: "delay" }] },
+              ],
+            },
+            { kind: "say", text: "two" },
+          ],
+        },
+      },
+    });
+    await toWait(h);
+    expect(h.text.lastText).toBe("two");
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringMatching(/ignored "wait".*got -1/),
+      undefined,
+    );
+  });
+
+  it("a game's own wait handler, or its fallback, replaces the default", async () => {
+    const own = vi.fn();
+    const h = makeHarness({ commands: { wait: own } });
+    h.session.play(waitScript(5));
+    await toWait(h);
+    expect(own).toHaveBeenCalledTimes(1);
+    expect(h.text.lastText).toBe("two");
+
+    const fallback = vi.fn();
+    const f = makeHarness({ fallbackCommand: fallback });
+    f.session.play(waitScript(5));
+    await toWait(f);
+    expect(fallback).toHaveBeenCalledTimes(1);
+    expect(f.text.lastText).toBe("two");
+  });
+
+  it("is observable through onCommand like any other command", async () => {
+    const onCommand = vi.fn();
+    const h = makeHarness({ onCommand });
+    h.session.play(waitScript(0));
+    await toWait(h);
+    expect(onCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "wait", args: [0] }),
+      expect.anything(),
+    );
+  });
+});
+
+describe("DialogueSession — built-in functions", () => {
+  it("scripts call the built-in library without installing it; an installed function wins", () => {
+    const script: DialogueScript = {
+      id: "fns",
+      start: "a",
+      declare: { hp: 7.6 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "{r}", expressions: { r: "round(hp)" } },
+          ],
+        },
+      },
+    };
+    const h = makeHarness();
+    h.session.play(script);
+    expect(h.text.lastText).toBe("8");
+
+    const custom = makeHarness({ functions: { round: () => 42 } });
+    custom.session.play(script);
+    expect(custom.text.lastText).toBe("42");
+  });
+
+  it("a variable may share a built-in function's name", () => {
+    const h = makeHarness();
+    expect(() =>
+      h.session.play({
+        id: "round-var",
+        start: "a",
+        declare: { round: 1 },
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              {
+                kind: "command",
+                commands: [{ type: "set", var: "round", value: "round + 1" }],
+              },
+            ],
+          },
+        },
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe("DialogueSession — replacement markers use the adapter's locale", () => {
+  it("plural picks the form for the i18n adapter's locale after interpolation", () => {
+    const i18n: I18nAdapter = {
+      locale: "pl",
+      resolve: (text, values) =>
+        (typeof text === "string" ? text : text.fallback).replace(
+          /\{(\w+)\}/g,
+          (_, k: string) => String(values?.[k]),
+        ),
+    };
+    const h = makeHarness({ i18n });
+    h.session.play({
+      id: "pl",
+      start: "a",
+      declare: { n: 3 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "say",
+              text: '[plural value={n} one="% jabłko" few="% jabłka" many="% jabłek"/]',
+            },
+          ],
+        },
+      },
+    });
+    expect(h.text.lastText).toBe("3 jabłka");
+  });
+});
+
+describe("DialogueSession — default wait with a seconds field", () => {
+  it("{ type: 'wait', seconds } holds like args[0] (the compact DSL's `do wait seconds=…`)", async () => {
+    const h = makeHarness();
+    h.session.play({
+      id: "w",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "one" },
+            { kind: "command", commands: [{ type: "wait", seconds: 0.5 }] },
+            { kind: "say", text: "two" },
+          ],
+        },
+      },
+    });
+    h.text.finishReveal();
+    await flush();
+    h.session.advance();
+    await flush();
+    h.session.update(0.4);
+    await flush();
+    expect(h.text.lastText).toBe("one");
+    h.session.update(0.2);
+    await flush();
+    expect(h.text.lastText).toBe("two");
+  });
+});
+
+describe("DialogueSession — a wait's blocking flag", () => {
+  it("a game's wait handler with blocking: false is fire-and-forget", async () => {
+    let release: (() => void) | undefined;
+    const wait = vi.fn(
+      () => new Promise<void>((resolve) => (release = resolve)),
+    );
+    const h = makeHarness({ commands: { wait } });
+    h.session.play({
+      id: "nb",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "one" },
+            {
+              kind: "command",
+              commands: [{ type: "wait", seconds: 5, blocking: false }],
+            },
+            { kind: "say", text: "two" },
+          ],
+        },
+      },
+    });
+    h.text.finishReveal();
+    await flush();
+    h.session.advance();
+    await flush();
+    expect(wait).toHaveBeenCalledTimes(1);
+    expect(h.text.lastText).toBe("two");
+    release?.();
+  });
+});

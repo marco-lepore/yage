@@ -21,7 +21,8 @@
  */
 
 import { isExpr } from "./expr.js";
-import { tokensIn, type DialogueText } from "./i18n.js";
+import { BUILTIN_FUNCTION_NAMES } from "./functions.js";
+import { dialogueTextFallback, tokensIn, type DialogueText } from "./i18n.js";
 import type {
   BinaryOp,
   ChoiceStep,
@@ -32,6 +33,7 @@ import type {
   DialogueScript,
   Expr,
   SayStep,
+  TextExpressions,
   VariableStorage,
   VarValue,
 } from "./types.js";
@@ -64,9 +66,20 @@ const NUMERIC_EXPR_OPS: ReadonlySet<string> = new Set([
 ]);
 /** Built-in command types the runner handles — exempt from the "must have a
  *  handler" check. Only `set` (runner-owned flow op); every other command type,
- *  including a face change, needs a handler. (A mid-line face change is the
- *  `[expression=…/]` reveal marker, not a command.) */
+ *  including a face change, needs a handler. (`wait` has a default handler the
+ *  session installs, so it passes the check that way. A mid-line face change is
+ *  the `[expression=…/]` reveal marker, not a command.) */
 const BUILTIN_COMMANDS: ReadonlySet<string> = new Set(["set"]);
+
+/** A `wait` duration in seconds (a numeric string reads as a number), or
+ *  `undefined` when it isn't a finite number >= 0. */
+export function waitSeconds(raw: unknown): number | undefined {
+  const seconds =
+    typeof raw === "string" && raw.trim() !== "" ? Number(raw) : raw;
+  return typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0
+    ? seconds
+    : undefined;
+}
 
 /** What a binary operator requires of a literal operand, for the load-time type
  *  walk. `null` = no constraint (equality / logical ops accept any type). */
@@ -86,6 +99,9 @@ export interface ScriptAnalysis {
   readonly calledFunctions: ReadonlySet<string>;
   /** Non-built-in command `type`s the script fires (for handler coverage). */
   readonly commandTypes: ReadonlySet<string>;
+  /** Literal `wait` durations the default handler can't hold for, as
+   *  `where: got value` (checked at play when that handler runs them). */
+  readonly invalidWaits: readonly string[];
 }
 
 const analysisCache = new WeakMap<DialogueScript, ScriptAnalysis>();
@@ -109,6 +125,7 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
   const setTargets = new Set<string>();
   const calledFunctions = new Set<string>();
   const commandTypes = new Set<string>();
+  const invalidWaits: string[] = [];
 
   // `where` is threaded so a wrong-type operand reports the same context the
   // atomic `{ var, op, value }` check uses.
@@ -169,13 +186,22 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
     }
   };
 
-  // A message's own `values` satisfy its tokens; the rest must be vars.
-  const checkTokens = (text: DialogueText | undefined): void => {
+  // A message's own `values` and the text's computed `expressions` satisfy
+  // its tokens; the rest must be vars. Each expression's own reads count.
+  const checkTokens = (
+    text: DialogueText | undefined,
+    expressions?: TextExpressions,
+    where = "text",
+  ): void => {
+    for (const expr of Object.values(expressions ?? {})) {
+      if (isExpr(expr)) collectExpr(expr, where);
+    }
     if (!text) return;
     const authored = typeof text === "string" ? text : text.fallback;
     const own = typeof text === "string" ? undefined : text.values;
     for (const token of tokensIn(authored)) {
       if (own && Object.hasOwn(own, token)) continue;
+      if (expressions && Object.hasOwn(expressions, token)) continue;
       readVars.add(token);
     }
   };
@@ -269,6 +295,25 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
         }
         continue;
       }
+      const args = cmd.args;
+      if (args !== undefined) {
+        if (!Array.isArray(args)) {
+          throw new DialogueScriptError(
+            `${where}: command "${cmd.type}" args must be an array`,
+          );
+        }
+        for (const arg of args as readonly unknown[]) {
+          if (isExpr(arg)) collectExpr(arg, where);
+        }
+      }
+      if (cmd.type === "wait") {
+        const raw = cmd.args?.[0] ?? cmd["seconds"];
+        if (!isExpr(raw) && waitSeconds(raw) === undefined) {
+          invalidWaits.push(
+            `${where}: got ${JSON.stringify(raw) ?? "nothing"}`,
+          );
+        }
+      }
       if (!BUILTIN_COMMANDS.has(cmd.type)) commandTypes.add(cmd.type);
     }
   };
@@ -283,21 +328,19 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
       switch (step.kind) {
         case "say": {
           const s = step as SayStep;
-          checkTokens(s.text);
+          checkTokens(s.text, s.expressions, `${where} say`);
           checkCommands(s.commands, `${where} say`);
           break;
         }
         case "choice": {
           const c = step as ChoiceStep;
-          checkTokens(c.text);
+          checkTokens(c.text, c.expressions, `${where} choice`);
           for (const opt of c.options) {
-            checkTokens(opt.text);
-            checkTokens(opt.disabledReason);
-            checkCondition(
-              opt.condition,
-              `${where} choice option "${opt.text}"`,
-            );
-            checkCommands(opt.commands, `${where} choice option "${opt.text}"`);
+            const at = `${where} choice option "${dialogueTextFallback(opt.text)}"`;
+            checkTokens(opt.text, opt.expressions, at);
+            checkTokens(opt.disabledReason, opt.expressions, at);
+            checkCondition(opt.condition, at);
+            checkCommands(opt.commands, at);
           }
           break;
         }
@@ -307,13 +350,37 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
           checkCondition(cs.condition, `${where} command`);
           break;
         }
+        case "select":
+          for (const opt of step.options) {
+            checkCondition(opt.condition, `${where} select`);
+            // A pick count is read and written by the runner itself.
+            if (opt.counter !== undefined) {
+              readVars.add(opt.counter);
+              setTargets.add(opt.counter);
+            }
+          }
+          break;
+        case "goto":
+        case "detour":
+          // A computed target reads like any expression.
+          if (typeof step.target !== "string") {
+            collectExpr(step.target, `${where} ${step.kind}`);
+          }
+          break;
         default:
-          break; // goto / end carry no references
+          break; // return / end carry no references
       }
     }
   }
 
-  return { declaredTypes, readVars, setTargets, calledFunctions, commandTypes };
+  return {
+    declaredTypes,
+    readVars,
+    setTargets,
+    calledFunctions,
+    commandTypes,
+    invalidWaits,
+  };
 }
 
 /** The environment a `play()` installs, as far as validation cares. */
@@ -322,6 +389,9 @@ export interface PlayEnv {
   readonly functions: Readonly<Record<string, DialogueFunction>>;
   readonly commands: Readonly<Record<string, unknown>>;
   readonly fallbackCommand: unknown;
+  /** True when `wait` runs the session's default handler (the game installed
+   *  neither a `wait` handler nor a fallback). */
+  readonly defaultWait: boolean;
 }
 
 /**
@@ -362,9 +432,9 @@ export function validatePlay(analysis: ScriptAnalysis, env: PlayEnv): void {
     }
   }
 
-  // 3. Every function the script calls must be installed.
+  // 3. Every function the script calls must be installed or built in.
   for (const fn of analysis.calledFunctions) {
-    if (!Object.hasOwn(env.functions, fn)) {
+    if (!Object.hasOwn(env.functions, fn) && !BUILTIN_FUNCTION_NAMES.has(fn)) {
       throw new DialoguePlayError(
         `script calls function "${fn}" but no such function is installed`,
       );
@@ -391,6 +461,15 @@ export function validatePlay(analysis: ScriptAnalysis, env: PlayEnv): void {
           `(add to commands, or set fallbackCommand)`,
       );
     }
+  }
+
+  // 6. The default `wait` handler needs a number of seconds >= 0. A duration
+  //    from an expression is only known when the command runs.
+  const [badWait] = analysis.invalidWaits;
+  if (env.defaultWait && badWait !== undefined) {
+    throw new DialoguePlayError(
+      `"wait" needs a number of seconds >= 0 as its first argument or "seconds" (${badWait})`,
+    );
   }
 }
 

@@ -18,6 +18,7 @@ import {
   Component,
   ErrorBoundaryKey,
   LoggerKey,
+  RandomKey,
   ServiceKey,
   isDev,
   type Logger,
@@ -85,9 +86,12 @@ export interface DialogueControllerOptions<
   /** Argument-capable read functions (`has_item("key")`) shared across plays. */
   readonly functions?: Readonly<Record<string, DialogueFunction>> | undefined;
   /** Command handlers (`type` → handler) shared across plays; per-`play()`
-   *  `overrides.commands` merge on top (call site wins). */
+   *  `overrides.commands` merge on top (call site wins). A `wait` command
+   *  (`{ type: "wait", seconds }`, Yarn's `<<wait 2>>`) needs no handler: it
+   *  holds the conversation on its own clock unless you install one. */
   readonly commands?: Readonly<Record<string, CommandHandler>> | undefined;
-  /** Catch-all for command types with no explicit handler. */
+  /** Catch-all for command types with no explicit handler (it also takes
+   *  `wait` over the default). */
   readonly fallbackCommand?: CommandHandler | undefined;
   /**
    * Device → session binding. Three modes:
@@ -224,6 +228,9 @@ export class DialogueController<
       },
       {
         i18n,
+        // The scene's seeded generator: `select` steps and the random
+        // built-ins repeat under a fixed seed.
+        random: this.use(RandomKey),
         skipMultiplier: this.opts.skipMultiplier,
         // Controller-installed environment — persists across plays.
         storage: this.opts.storage,

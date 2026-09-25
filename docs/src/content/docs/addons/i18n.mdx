@@ -78,6 +78,10 @@ const hp = msg("hud.hp", "HP {hp}", { hp: 55 });
 `msg` returns plain frozen data; nothing is translated until a localized class
 resolves it. The same message works everywhere below.
 
+A `.` in a key reaches into a nested catalog object (`{ hud: { hp: … } }` holds
+`"hud.hp"`). Any other character, `:` included, is part of the key, so a Yarn
+Spinner line id such as `"line:abc"` is used as is.
+
 ## Renderer text
 
 ```ts

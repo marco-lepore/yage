@@ -1,0 +1,21 @@
+// The barkeep's greeting is a node group: every node titled Greeting is one
+// candidate, and its `when:` header says when it fits. Each conversation runs
+// the fitting candidate seen least, then the most specific one.
+
+title: Greeting
+when: once
+---
+Barkeep: Welcome to the Crooked Lantern, traveller! #line:welcome
+===
+
+title: Greeting
+when: $coins < 3
+---
+Barkeep: Light purse tonight? The fire's free, at least. #line:greet_broke
+===
+
+title: Greeting
+when: always
+---
+Barkeep: Back again? Pull up a stool. #line:greet_back
+===

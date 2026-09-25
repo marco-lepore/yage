@@ -16,7 +16,7 @@ npm install @yagejs/core @yagejs/input @yagejs/renderer
 are optional peers (only the `./presenters` subpath needs them). `yaml` is the
 addon's one bundled runtime dep, pulled ONLY by the `./yaml` subpath.
 
-## Three entry points (export split — load-bearing)
+## Four entry points (export split — load-bearing)
 
 - **`.`** (root) — headless + non-pixi. Runner, session, types, markup, i18n,
   canonical (JSON) format, the string→expression parser (`parseExpr`), the compact
@@ -29,6 +29,9 @@ addon's one bundled runtime dep, pulled ONLY by the `./yaml` subpath.
   `yaml`. Kept off the root so JSON / TypeScript / expression authors never bundle
   the parser (`yaml@2` isn't side-effect-free, so a root re-export couldn't be
   tree-shaken).
+- **`./yarn`** — the Yarn Spinner compiler (`loadYarn`, `DialogueYarnError`). No
+  extra dependency; kept off the root so games that don't use Yarn don't bundle it.
+  See **Yarn Spinner** below.
 
 ```ts
 import {
@@ -41,6 +44,7 @@ import {
   createBoxDialogue,
 } from "@yagejs-addons/dialogue/presenters";
 import { loadYaml } from "@yagejs-addons/dialogue/yaml";
+import { loadYarn } from "@yagejs-addons/dialogue/yarn";
 ```
 
 ## 5-minute setup (zero assets)
@@ -129,15 +133,46 @@ const script = defineScript({
 key** in `speakers` — steps reference it (`speaker: "gwen"`) and presenters anchor
 actors by it; the loader stamps it on, so never write `id` inside the entry.
 
-Step kinds: `say` | `choice` | `command` | `goto` | `end`.
+Step kinds: `say` | `choice` | `command` | `goto` | `select` | `detour` |
+`return` | `end`.
 
-- `SayStep`: `text` (a `DialogueText`), `speaker?`, `expression?`, `speed?`,
-  `autoAdvance?` (seconds), `commands?`, `view?`, `meta?`, `voice?`.
-- `ChoiceStep`: `text?` (prompt, a `DialogueText`), `speaker?`, `options`, `view?`, `meta?`.
-- `ChoiceOption`: `text` (a `DialogueText`), `target?`, `condition?`, `once?`,
-  `presentation?` (`"hidden"` default | `"disabled"`), `disabledReason?` (a
-  `DialogueText`), `commands?`, `meta?`.
+- `SayStep`: `text` (a `DialogueText`), `expressions?`, `speaker?`, `expression?`,
+  `speed?`, `autoAdvance?` (seconds), `commands?`, `view?`, `meta?`, `voice?`.
+- `ChoiceStep`: `text?` (prompt, a `DialogueText`), `expressions?`, `speaker?`,
+  `options`, `view?`, `meta?`.
+- `ChoiceOption`: `text` (a `DialogueText`), `expressions?`, `target?`,
+  `condition?`, `once?`, `presentation?` (`"hidden"` default | `"disabled"`),
+  `disabledReason?` (a `DialogueText`), `commands?`, `meta?`.
 - `CommandStep`: `commands` (+ optional `condition`/`target` conditional jump).
+- `GotoStep`: `target`, `leaveDetours?` (drop pending detours, so finishing
+  `target` ends the conversation — Yarn's `<<jump>>`; default keeps them).
+- `DetourStep`: `target` — run that node, then continue after this step once it
+  runs off its last step or hits a `return`. Detours nest; `end` inside one still
+  ends the conversation.
+- `StepTarget` = `NodeId | Expr`: a goto / detour `target` may be an `Expr`,
+  evaluated when the step runs. A value that isn't a node id of the script is
+  reported through `onError` and ends the conversation. Its reads and calls are
+  checked at `play()` like any expression.
+- `ReturnStep` — leave the node early (back to the detour's caller, or end).
+- `SelectStep`: `options: { target, condition?, priority?, counter? }[]` — the
+  runtime picks one: available options, then the least picked (read from each
+  `counter` variable, which the runner increments on a pick), then the highest
+  `priority`, then at random (the session's random source). None available →
+  next step. Yarn line groups / node groups compile to this.
+
+**Computed text tokens** — `expressions` maps a `{name}` token to an expression
+(string, parsed like a condition, or an `Expr`) evaluated each time the text shows;
+a token without an entry reads the variable. The text keeps only the token, so a
+translation carries `{left}` too:
+
+```ts
+{ kind: "say", text: "That leaves {left} gold.", expressions: { left: "gold - 50" } }
+```
+
+**Entry point per play** — `play(script, { start: "shop" })` begins at another
+node (an unknown node throws `DialoguePlayError` before anything changes). One
+script can hold every conversation of a scene.
+
 - `Condition`: a **string expression** (`"hp > 0 and has_item('key')"`, parsed at
   load — see below), the atomic `{ var, op, value }` (op = `== != > >= < <= truthy
 falsy`), an `Expr` tree, or `(vars) => boolean` (TS-only, not JSON; receives a
@@ -248,10 +283,24 @@ parseExpr("hp > 0 and has_item('key')");
 - **Reserved words** (can't be referenced _bare in a string_ — use `{ var, op,
 value }`, `defineScript`, or rename): `and or not xor is eq neq gt lt gte lte
 true false null`.
-- v1 wires `or/|| and/&& not/!`, the comparisons (+ word forms), unary `-`, binary
-  `+ -`, calls, and parens. `xor/^` and `* / %` are reserved but unwired (additive
-  later — the IR + evaluator already accept them). Word forms normalise to symbols
-  in the IR (`and` → `&&`, `eq` → `==`, …).
+- Operators: `or/||`, `xor/^`, `and/&&`, `not/!`, the comparisons (+ word forms),
+  unary `-`, `+ - * / %`, calls, and parens. Precedence, loosest first: `or`,
+  `xor`, `and`, comparisons, `+ -`, `* / %`, unary. Word forms normalise to symbols
+  in the IR (`and` → `&&`, `xor` → `^`, `eq` → `==`, …). (Yarn scripts use Yarn's
+  own precedence — see **Yarn Spinner**.)
+
+### Built-in functions
+
+Callable in any condition / `set` value / text expression without installing them
+(Yarn Spinner's standard library): `random()`, `random_range(min, max)` (whole,
+inclusive), `random_range_float(min, max)`, `dice(sides)`, `round(n)` (halves to
+even), `round_places(n, places)`, `floor`, `ceil`, `inc`, `dec`, `decimal`, `int`,
+`min(a, b)`, `max(a, b)`, `string(v)`, `number(v)`, `bool(v)`,
+`format_invariant(n)`, `format(pattern, v)` (`{0}`, `{0:F2}`, `{0:N0}`, `{0:D3}`,
+`{0:P0}`). An installed function of the same name wins; a variable may share a
+built-in's name. The random ones draw from the session's `random` source
+(`DialogueSessionOptions.random`, default `globalRandom`); `DialogueController`
+passes its scene's seeded `RandomService`.
 
 ### YAML authoring — `loadYaml` (the `./yaml` subpath)
 
@@ -400,6 +449,17 @@ escapes a literal bracket. (NOTE: ruby/furigana and glossary `[term]`/`[gloss]`
 markup were removed — they now parse as ordinary effect spans the bundled presenter
 renders as plain text, so old scripts still parse.)
 
+**Yarn-compatible syntax**: `[/]` closes every open span; whitespace may sit
+before `/]` (`[pause=0.5 /]`); a value may be quoted to hold spaces or `/`
+(`[sfx name="big boom"/]`, `\` escapes inside quotes); tag names may hold digits
+and `_`; `[nomarkup]…[/nomarkup]` is plain text. **Replacement markers** turn into
+text after `{token}` interpolation: `[select value={g} m="he" f="she"/]` picks the
+property named by `value`; `[plural value={n} one="% coin" other="% coins"/]` and
+`[ordinal value={n} one="%st" two="%nd" few="%rd" other="%th"/]` pick by the
+`I18nAdapter`'s locale (CLDR categories, falling back to `other`); `%` becomes the
+value. A marker with no `value` or no matching form stays in the text as written.
+`parseMarkup(text, { locale })` / `stripMarkup(text, { locale })` take the locale.
+
 **Self-closing tokens** (a trailing `/`) are the reveal-timeline controls — a
 `[pause=0.6/]` hold and a `[name k=v/]` marker. They share **one ordered stream**
 (`ParsedText.tokens: RevealToken[]`, each `{ kind: "pause" | "marker", atChar, … }`),
@@ -489,15 +549,29 @@ handle.getVars(); // snapshot of the storage's variables
 
 ### Commands — rules in, consequences out
 
-Runner owns built-in `set` (writes the storage, guarded). Every other command
-dispatches to `commands[type]` (or `fallbackCommand`) **and** fires
-`DialogueCommandEvent` (observation). `ctx.mode` is `"play" | "skip"`. A `say`
-line's commands fire by timing `at: "show" | "afterReveal" | "advance"` (default
-`show`). `blocking: true` + an async handler pauses the conversation until it
-resolves (cinematic sequencing). Every non-built-in command `type` a script uses
-must resolve to a handler/fallback, else play-time error. (There is **no**
-`expression` command — `set` is the only built-in. A mid-line face change is the
-`[expression=…/]` reveal marker; the line-initial face is `SayStep.expression`.)
+Runner owns built-in `set` (writes the storage, guarded; a non-finite value is
+reported through `onError` and not written). Every other command dispatches to
+`commands[type]` (or `fallbackCommand`) **and** fires `DialogueCommandEvent`
+(observation). `ctx.mode` is `"play" | "skip"`. A `say` line's commands fire by
+timing `at: "show" | "afterReveal" | "advance"` (default `show`). `blocking: true` +
+an async handler pauses the conversation until it resolves (cinematic sequencing).
+Every non-built-in command `type` a script uses must resolve to a handler/fallback,
+else play-time error. (There is **no** `expression` command. A mid-line face change
+is the `[expression=…/]` reveal marker; the line-initial face is
+`SayStep.expression`.)
+
+- **`args`** — `Command.args?: (VarValue | Expr)[]`, positional arguments. A literal
+  passes through (a string is text, never parsed); an `Expr` is evaluated when the
+  command fires. Handlers, `DialogueCommandEvent`, and extra channels receive a
+  `FiredCommand` whose `args` are plain values: `(cmd) => give(cmd.args?.[0])`.
+- **`wait`** — `{ type: "wait", seconds: 2 }` (or `args: [2]`) holds the
+  conversation on the session clock: frozen by `setPaused`, passed straight through
+  by a skip, dropped by `stop()`. It is a default handler: your own `wait` handler
+  or your `fallbackCommand` replaces it. `blocking` defaults to `true` for a
+  `wait` (set `blocking: false` for a fire-and-forget handler of your own). A
+  literal duration that isn't a number of seconds >= 0 makes `play()` throw a
+  `DialoguePlayError`; one computed by an expression is reported through
+  `onError` and ignored.
 
 ## DialogueController (L2a Component) — host owns focus/pause
 
@@ -914,6 +988,103 @@ A mid-line restore **re-presents** the current line, so `present()` re-fires to 
 extras. `createVoiceChannel.present()` stops any active clip first, so a restore
 restarts the line's clip cleanly (the restore-safety property). Build nothing now.
 
+## Yarn Spinner — `loadYarn` (the `./yarn` subpath)
+
+Write dialogue in Yarn Spinner (`.yarn` files and a `.yarnproject`, edited in the
+Yarn Spinner VS Code extension or any Yarn editor) and play it through a
+`DialogueController` with no other setup. `loadYarn` compiles every node into ONE
+validated, frozen script (the same IR every loader returns).
+
+```ts
+import { loadYarn } from "@yagejs-addons/dialogue/yarn";
+
+// A whole folder: .yarnproject + .yarn files + localisation .csv tables.
+const yarn = loadYarn(
+  import.meta.glob("./dialogue/**/*.{yarn,yarnproject,csv}", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }),
+  { speakers: { Mae: { color: 0xffcc00 } } }, // optional
+);
+controller.play(yarn, { start: "Shopkeeper" }); // default start: `Start`, else the first node
+```
+
+`loadYarn(source: string | Record<string, unknown>, options?)` → `YarnScript`
+(a `LoadedScript` plus `catalogs` and `baseLanguage`). Options: `id?` (the
+`scriptId`; default the `.yarnproject` name, else the lone `.yarn` file's name,
+else `"yarn"`), `speakers?` (`Partial<SpeakerDef>` by character name — adds
+`color`, `avatar`, or a translatable `name`). Values must be the file text
+(`import.meta.glob` with `query: "?raw", import: "default"`); other file types are
+ignored. Errors throw `DialogueYarnError` (a `DialogueScriptError` with `file` and
+`line`).
+
+**Project**: with a `.yarnproject` among the files (`projectFileVersion` 2–4; `//`
+comments and trailing commas allowed), `sourceFiles` / `excludeFiles` globs
+(default `**/*.yarn`, relative to the project file, case-insensitive) pick the
+sources, and each `localisation.<lang>.strings` CSV (Yarn's
+`language,id,text,…` table, read by column name) becomes `catalogs[lang]`. A listed
+CSV missing from the files is an error. Without a project, every `.yarn` file
+compiles and `baseLanguage` is `"en"`.
+
+**Mapping** (everything lowers onto the existing IR; the runtime has no Yarn code):
+
+| Yarn                                                                | Dialogue                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| node `title:`                                                       | a node of that id; `<<if>>` / options / `<<once>>` / line groups add helper nodes `Title#1`, `Title#2`, …                                                                                                                             |
+| `Mae: Hello`                                                        | `say`, `speaker: "Mae"`; every character gets a speaker `{ name }` (id = the name; a `DialogueActor` binds to it). First unescaped `:` splits; `\:` keeps a colon                                                                     |
+| `Hi. // note`                                                       | `//` starts a comment anywhere in a line, as in Yarn; `\/\/` keeps the slashes (`https:\/\/…`)                                                                                                                                        |
+| `{$expr}` in a line / option                                        | `{0}`-style token + `expressions`                                                                                                                                                                                                     |
+| `#line:abc`                                                         | text `{ key: "line:abc", fallback }`; the string lands in `catalogs[baseLanguage]`                                                                                                                                                    |
+| `#view:` `#voice:` `#expression:` `#speed:` `#auto:`                | the say step's `view` / `voice` / `expression` (the line-initial face) / `speed` / `autoAdvance`                                                                                                                                      |
+| other hashtags                                                      | `meta` (`#k:v` → `meta.k`, `#flag` → `true`); the line before an option group also gets `meta.lastline`                                                                                                                               |
+| `-> Option <<if c>>`                                                | `choice` option with `condition` (hidden when false; `#disabled` shows it greyed); no option available → continue after the group; a `Name:` prefix → `meta.character`                                                                |
+| `<<if>>` / `<<elseif>>` / `<<else>>`                                | conditional jumps                                                                                                                                                                                                                     |
+| `<<set $x to e>>`, `+= -= *= /= %=`                                 | built-in `set`                                                                                                                                                                                                                        |
+| `<<declare $x = v [as T]>>`                                         | `declare` default; undeclared variables get a default from their use (`0`, `""`, `false`); one whose use implies no single type is a load error                                                                                       |
+| smart variable (`<<declare $rich = $gold > 50>>`)                   | expanded where read; can't be set                                                                                                                                                                                                     |
+| `<<enum>>` / `.Case` / `Enum.Case`                                  | literal values (auto-numbered 0,1,… or the given values)                                                                                                                                                                              |
+| `<<jump T>>` / `<<jump {$e}>>`                                      | `goto` with `leaveDetours: true` (`{$e}` → an `Expr` target)                                                                                                                                                                          |
+| `<<detour T>>` / `<<return>>` / `<<stop>>`                          | `detour` / `return` / `end`                                                                                                                                                                                                           |
+| `<<once>>…<<else>>…<<endonce>>`, `Line <<once>>`, `-> Opt <<once>>` | gated on `$Yarn.Internal.Once.<id>`                                                                                                                                                                                                   |
+| `visited("T")` / `visited_count("T")`                               | reads `$Yarn.Internal.Visiting.T` (counted when `T` finishes); on a `tracking: never` node, a load error                                                                                                                              |
+| `=> line` (line group) / `when:` node groups / `has_any_content()`  | `select` (least viewed → most specific → random); counters `$Yarn.Internal.Content.ViewCount.<id>`                                                                                                                                    |
+| `<<wait 2>>`                                                        | the default `wait` handler                                                                                                                                                                                                            |
+| `<<give_item sword {$n}>>`                                          | command `{ type: "give_item", args: ["sword", <$n>], blocking: true }` (numbers / `true` / `false` words become values, `"quoted"` stays text); a handler returning a promise holds the dialogue until it settles, as in Yarn Spinner |
+
+Variables keep their `$` (`cells({ $gold: {…} })`, `handle.setVar("$gold", 5)`).
+Yarn's bookkeeping (`$Yarn.Internal.*`) is declared and lives in the storage, so it
+persists and saves like any variable. Expressions use Yarn's precedence (`and`,
+`or`, `xor` share one level; comparisons bind tighter than `==`). Functions and
+commands are checked at `play()` like any script (`DialoguePlayError` names the
+missing ones); declare them in the project's `definitions` file too so the editor
+knows them.
+
+**Markup** follows Yarn Spinner's Unity/Godot runtime: `[pause=500/]` is
+milliseconds (a decimal is seconds, bare `[pause/]` is 1 s); a self-closing marker
+swallows one following space unless `trimwhitespace=false`; properties on a span
+tag are dropped (`[wave size=2]` → `[wave]`). Translations get the same treatment.
+
+**Localisation**: feed `yarn.catalogs` to your localization. With
+`@yagejs-addons/i18n`:
+
+```ts
+const localization = await createLocalization({
+  locale: "en",
+  fallbackLocale: yarn.baseLanguage,
+  catalogs: yarn.catalogs, // merge with your UI catalogs as needed
+});
+engine.use(new LocalizationPlugin(localization)); // the controller finds it
+```
+
+A translated line whose source has a character drops its `Name:` prefix: the text
+up to its first unescaped `:`, as Yarn's runtime reads it (write `\:` for a colon
+in a translation without the prefix). The speaker shows the name; give a
+speaker a `name` message via `speakers` to translate names. Untagged lines aren't
+translatable.
+
+Not supported: `<<call>>`, `<<local>>`, `#shadow:` lines (read as a `meta` entry).
+
 ## Line `meta` keys the default presenters read
 
 `meta` is the opaque per-line bag (`SayStep.meta`); the default presenters read a
@@ -1059,11 +1230,11 @@ bundle, unpolished, geometry/API may change. Opt-in only.
 
 Mid-dialogue _cursor_ save/restore is NOT supported yet: no snapshot/restore
 exists, `@yagejs/save` is NOT a dependency, and the runner's positional getters
-(`getNodeId()`, `getStepIndex()`, `getChosenOnce()`) are NOT reachable through
+(`getNodeId()`, `getStepIndex()`, `getChosenOnce()`, `getReturnStack()`) are NOT reachable through
 `DialogueController`/`DialogueSession` — do not try to capture a conversation
 cursor. (`handle.getVars()` IS reachable, but it's the variable snapshot, not a
 resumable cursor.) The storage model makes the future API purely additive: a
-cursor is `{ nodeId, stepIndex, chosenOnce }` + the in-memory default store's
+cursor is `{ nodeId, stepIndex, chosenOnce, returnStack }` + the in-memory default store's
 contents (game-backed `cells` serialize through the game's own save). Save
 outside conversations (or replay the script) until v1.1 adds the seam.
 

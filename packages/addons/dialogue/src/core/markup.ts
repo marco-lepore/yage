@@ -9,12 +9,28 @@
  *   [wave]animated[/wave]      (effect span — OPEN vocabulary: any [name]..[/name];
  *                               the bundled view animates wave/shake/pulse/rainbow)
  *   [speed=2]faster[/speed]  [speed=0.5]slower[/speed]
+ *   [/]                        (closes every open span)
  *   [pause=0.4/]               (self-closing reveal PAUSE — holds at its offset, in seconds)
  *   [sfx=ding/]                (self-closing reveal MARKER — fires at its offset)
  *   [expression=happy/]        (self-named shortcut → props { expression: happy })
  *   [shake amount=3/]          (marker with explicit key=value props)
- *   [shake=500 amount=3/]      (shortcut + props compose → { shake: 500, amount: 3 })
+ *   [shake=500 amount=3 /]     (shortcut + props compose → { shake: 500, amount: 3 })
+ *   [sfx name="big boom"/]     (a quoted value may hold spaces and `/`)
+ *   [plural value=3 one="% apple" other="% apples"/]   (replacement markers:
+ *   [ordinal value=2 one="%st" two="%nd" few="%rd" other="%th"/]  `select`,
+ *   [select value=f m="he" f="she" other="they"/]       `plural`, `ordinal` —
+ *                               see below)
+ *   [nomarkup][not a tag][/nomarkup]   (everything inside is plain text)
  *   \[literal bracket]
+ *
+ * **Replacement markers** turn into text instead of a token: `select` picks the
+ * property named by `value`; `plural` and `ordinal` pick the property named by
+ * the locale's plural category for the number `value` (`zero`, `one`, `two`,
+ * `few`, `many`, `other`, falling back to `other`). A `%` in the picked text
+ * becomes `value`. They take the value after `{token}` interpolation, so
+ * `[plural value={count} one="% coin" other="% coins"/]` works, and each
+ * translation writes the forms its language needs. A marker with no `value`,
+ * or no matching form, stays in the text as written.
  *
  * Tags nest; styles inherit down the stack (so [b][color=red]X[/color][/b]
  * is bold+red). A trailing `/` makes a tag **self-closing** — a zero-width
@@ -120,8 +136,82 @@ function stripUndefined(s: Partial<RunStyle>): Partial<RunStyle> {
 // shortcut composes with explicit props (`[shake=500 amount=3/]` → group 3 `500`,
 // group 4 ` amount=3`) and the trailing slash stays unambiguous. Groups 4–5 are
 // additive: an existing styled/closing tag matches them empty.
-const TAG_RE =
-  /\[(\/?)([a-zA-Z]+)(?:=([^\s\]/]*))?((?:\s+[A-Za-z_][\w-]*=[^\s\]/]*)*)(\/)?\]/g;
+// A value is a `"quoted string"` (spaces and `/` allowed, `\` escapes the next
+// character) or a bare run without whitespace, `]`, `/`, or `"`. Whitespace may
+// sit before the closing `/]`. A closing tag with no name (`[/]`) closes every
+// open span.
+const VALUE = String.raw`"(?:[^"\\]|\\.)*"|[^\s\]/"]*`;
+const TAG_RE = new RegExp(
+  String.raw`\[(\/?)([A-Za-z]\w*)?(?:=(${VALUE}))?((?:\s+[A-Za-z_][\w-]*=(?:${VALUE}))*)\s*(\/)?\]`,
+  "g",
+);
+const PROP_RE = new RegExp(String.raw`([A-Za-z_][\w-]*)=(${VALUE})`, "g");
+
+/** A tag value as written → its text: quotes dropped, `\x` → `x`. */
+function unquote(value: string): string {
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1).replace(/\\(.)/g, "$1");
+  }
+  return value;
+}
+
+/** The replacement markers, which become text rather than a token. */
+const REPLACEMENT_MARKERS = new Set(["select", "plural", "ordinal"]);
+
+const pluralRules = new Map<string, Intl.PluralRules>();
+
+/** The plural category for `n` in `locale` (the runtime's default locale when
+ *  `locale` is missing or not a valid tag). */
+function pluralCategory(
+  n: number,
+  locale: string | undefined,
+  type: "cardinal" | "ordinal",
+): string {
+  const key = `${locale ?? ""}|${type}`;
+  let rules = pluralRules.get(key);
+  if (!rules) {
+    try {
+      rules = new Intl.PluralRules(locale, { type });
+    } catch {
+      rules = new Intl.PluralRules(undefined, { type });
+    }
+    pluralRules.set(key, rules);
+  }
+  return rules.select(n);
+}
+
+/**
+ * The text a `select` / `plural` / `ordinal` marker stands for, or `undefined`
+ * when it has no `value` or no form for it.
+ */
+function replacementText(
+  name: string,
+  props: Readonly<Record<string, string>>,
+  locale: string | undefined,
+): string | undefined {
+  const value = props["value"];
+  if (value === undefined) return undefined;
+  let key: string;
+  if (name === "select") {
+    key = value.toLowerCase();
+  } else {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return undefined;
+    key = pluralCategory(
+      n,
+      locale,
+      name === "ordinal" ? "ordinal" : "cardinal",
+    );
+  }
+  const form = props[key] ?? (name === "select" ? undefined : props["other"]);
+  return form?.replace(/%/g, value);
+}
+
+/** Options for {@link parseMarkup} / {@link stripMarkup}. */
+export interface MarkupOptions {
+  /** Locale for `plural` / `ordinal` markers. Default: the runtime's locale. */
+  readonly locale?: string | undefined;
+}
 
 /**
  * Grapheme segmenter for all reveal bookkeeping. Pixi's `SplitText` /
@@ -145,7 +235,10 @@ export function splitGraphemes(text: string): string[] {
   return out;
 }
 
-export function parseMarkup(input: string): ParsedText {
+export function parseMarkup(
+  input: string,
+  options: MarkupOptions = {},
+): ParsedText {
   const runs: TextRun[] = [];
   const tokens: RevealToken[] = [];
   const stack: Frame[] = [];
@@ -184,10 +277,21 @@ export function parseMarkup(input: string): ParsedText {
     lastIndex = TAG_RE.lastIndex;
 
     const closing = m[1] === "/";
-    const name = m[2]!.toLowerCase();
-    const arg = m[3];
+    const name = m[2]?.toLowerCase();
+    const arg = m[3] === undefined ? undefined : unquote(m[3]);
     const propsStr = m[4];
     const selfClosing = m[5] === "/";
+
+    if (name === undefined) {
+      // `[/]` closes every open span; any other nameless bracket is text.
+      if (closing && arg === undefined && !propsStr && !selfClosing) {
+        flush();
+        stack.length = 0;
+      } else {
+        buffer += m[0];
+      }
+      continue;
+    }
 
     // A tag carrying `key=value` props but no trailing `/` is neither a styled
     // span (those take no props) nor a self-closing marker (those require the
@@ -215,8 +319,18 @@ export function parseMarkup(input: string): ParsedText {
 
     // Self-closing reveal token (`[name k=v/]`): the trailing `/` distinguishes
     // it from a styling tag of the same name (`[shake]…[/shake]` is an effect
-    // span; `[shake/]` is a marker). `pause` is the one parser-reserved name —
-    // it becomes a typed PauseToken (hold), everything else a MarkerToken.
+    // span; `[shake/]` is a marker). `pause` is parser-reserved — it becomes a
+    // typed PauseToken (hold) — and the replacement markers become text;
+    // everything else is a MarkerToken.
+    if (selfClosing && REPLACEMENT_MARKERS.has(name)) {
+      const text = replacementText(
+        name,
+        markerProps(name, arg, propsStr),
+        options.locale,
+      );
+      buffer += text ?? m[0];
+      continue;
+    }
     if (selfClosing) {
       flush();
       if (name === "pause") {
@@ -232,6 +346,17 @@ export function parseMarkup(input: string): ParsedText {
           props: markerProps(name, arg, propsStr),
         });
       }
+      continue;
+    }
+
+    if (name === "nomarkup" && !propsStr) {
+      // Everything up to the matching close is plain text, brackets and all.
+      const rest = input.slice(lastIndex);
+      const end = rest.search(/\[\/nomarkup\]/i);
+      buffer += end < 0 ? rest : rest.slice(0, end);
+      lastIndex =
+        end < 0 ? input.length : lastIndex + end + "[/nomarkup]".length;
+      TAG_RE.lastIndex = lastIndex;
       continue;
     }
 
@@ -264,9 +389,8 @@ function markerProps(
   const props: Record<string, string> = {};
   if (arg !== undefined) props[name] = arg;
   if (propsStr) {
-    for (const tok of propsStr.trim().split(/\s+/)) {
-      const eq = tok.indexOf("=");
-      if (eq > 0) props[tok.slice(0, eq).toLowerCase()] = tok.slice(eq + 1);
+    for (const m of propsStr.matchAll(PROP_RE)) {
+      props[m[1]!.toLowerCase()] = unquote(m[2]!);
     }
   }
   return props;
@@ -339,8 +463,8 @@ function sameStyle(a: RunStyle, b: RunStyle): boolean {
 }
 
 /** Strip every tag, returning plain text (useful for measuring / a11y / logs). */
-export function stripMarkup(input: string): string {
-  return parseMarkup(input)
+export function stripMarkup(input: string, options?: MarkupOptions): string {
+  return parseMarkup(input, options)
     .runs.map((r) => r.text)
     .join("");
 }
@@ -375,12 +499,15 @@ export function firstUnknownTag(input: string): string | null {
     // frame, a self-closing marker (`[sfx=ding/]`, `m[5]`) parses to a
     // MarkerToken, and a props-bearing tag with no slash (`[name k=v]`, `m[4]`)
     // is kept as literal text.
-    if (m[1] === "/" || m[4] || m[5] === "/") continue;
-    const name = m[2]!.toLowerCase();
+    if (m[1] === "/" || m[4] || m[5] === "/" || m[2] === undefined) continue;
+    const name = m[2].toLowerCase();
     // Every other opening tag opens a span — a built-in text attribute or, for
     // any other name, an effect. The lone droppable case is a built-in styling
     // tag whose argument doesn't parse (styleForTag returns null).
-    if (styleForTag(name, m[3]) === null) return name;
+    if (
+      styleForTag(name, m[3] === undefined ? undefined : unquote(m[3])) === null
+    )
+      return name;
   }
   return null;
 }

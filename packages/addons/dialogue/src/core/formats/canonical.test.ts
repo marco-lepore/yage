@@ -57,6 +57,59 @@ describe("loadScript — structural validation", () => {
     expect(() => loadScript(s)).toThrow(/jump target "missing"/);
   });
 
+  it("a goto / detour target is a node id or an expression", () => {
+    const expr = script({
+      nodes: {
+        a: {
+          id: "a",
+          steps: [{ kind: "goto", target: { kind: "varRef", name: "to" } }],
+        },
+      },
+    });
+    expect(() => loadScript(expr)).not.toThrow();
+    const bad = script({
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "detour", target: 3 } as unknown as {
+              kind: "detour";
+              target: string;
+            },
+          ],
+        },
+      },
+    });
+    expect(() => loadScript(bad)).toThrow(
+      /detour target must be a node id or an expression/,
+    );
+  });
+
+  it("node ids are own keys: inherited names don't resolve, __proto__ is a node", () => {
+    const inherited = script({
+      nodes: { a: { id: "a", steps: [{ kind: "goto", target: "toString" }] } },
+    });
+    expect(() => loadScript(inherited)).toThrow(/jump target "toString"/);
+    expect(() => loadScript(script({ start: "constructor" }))).toThrow(
+      /start node "constructor" not found/,
+    );
+
+    // JSON.parse keeps `__proto__` as an own key; a string `set` value makes
+    // the loader rebuild the node record.
+    const proto = JSON.parse(
+      `{"id": "proto", "start": "a", "nodes": {
+        "a": { "id": "a", "steps": [{ "kind": "goto", "target": "__proto__" }] },
+        "__proto__": { "id": "__proto__", "steps": [{ "kind": "command",
+          "commands": [{ "type": "set", "var": "n", "value": "1 + 1" }] }] }
+      }}`,
+    ) as DialogueScript;
+    expect(Object.hasOwn(proto.nodes, "__proto__")).toBe(true);
+    const loaded = loadScript(proto);
+    expect(Object.hasOwn(loaded.nodes, "__proto__")).toBe(true);
+    const step = loaded.nodes["__proto__"]?.steps[0] as CommandStep;
+    expect(isExpr(step.commands[0]?.["value"])).toBe(true);
+  });
+
   it("rejects a choice with no options", () => {
     const s = script({
       nodes: {
@@ -286,5 +339,88 @@ describe("loadScript — text fields accept strings and { key, fallback } messag
         }),
       ),
     ).toThrow(/choice option 0\.text/);
+  });
+});
+
+describe("loadScript — detours, text expressions, command args", () => {
+  it("returns an already-loaded script unchanged", () => {
+    const loaded = loadScript({
+      id: "once",
+      start: "a",
+      nodes: { a: { id: "a", steps: [{ kind: "end" }] } },
+    });
+    expect(loadScript(loaded)).toBe(loaded);
+  });
+
+  it("a detour needs an existing target", () => {
+    expect(() =>
+      loadScript({
+        id: "d",
+        start: "a",
+        nodes: { a: { id: "a", steps: [{ kind: "detour", target: "zz" }] } },
+      }),
+    ).toThrow(/jump target "zz" does not exist/);
+  });
+
+  it("parses string text expressions into trees", () => {
+    const script = loadScript({
+      id: "e",
+      start: "a",
+      declare: { gold: 1 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "say",
+              text: "{left}",
+              expressions: { left: "gold - 1" },
+            },
+          ],
+        },
+      },
+    });
+    const step = script.nodes["a"]!.steps[0]!;
+    expect(step.kind === "say" && isExpr(step.expressions?.["left"])).toBe(
+      true,
+    );
+  });
+
+  it("rejects malformed expressions and args", () => {
+    expect(() =>
+      loadScript({
+        id: "bad-expr",
+        start: "a",
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              {
+                kind: "say",
+                text: "{x}",
+                expressions: { x: 5 as unknown as string },
+              },
+            ],
+          },
+        },
+      }),
+    ).toThrow(/say\.expressions\.x must be an expression/);
+    expect(() =>
+      loadScript({
+        id: "bad-args",
+        start: "a",
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              {
+                kind: "command",
+                commands: [{ type: "go", args: "x" as unknown as [] }],
+              },
+            ],
+          },
+        },
+      }),
+    ).toThrow(/args must be an array/);
   });
 });

@@ -125,6 +125,22 @@ describe("createLocalization (i18next)", () => {
     ).toBe("it game Default formal");
   });
 
+  it("reads a key containing ':' as one key, not a namespace", async () => {
+    // Yarn Spinner line ids look like "line:abc123".
+    const l10n = await createLocalization({
+      locale: "de",
+      fallbackLocale: "en",
+      catalogs: {
+        en: { "line:greet": "Hello, {0}!" },
+        de: { "line:greet": "Hallo, {0}!" },
+      },
+    });
+    expect(l10n.resolve(msg("line:greet", "Hi"), { 0: "Ari" })).toBe(
+      "Hallo, Ari!",
+    );
+    expect(l10n.resolve(msg("line:missing", "Fallback"))).toBe("Fallback");
+  });
+
   it("validates catalogs at creation", async () => {
     await expect(
       createLocalization({ locale: "en", fallbackLocale: "en", catalogs: {} }),
