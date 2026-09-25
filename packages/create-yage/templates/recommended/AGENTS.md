@@ -20,7 +20,12 @@ positions there, or spawn more entities.
 ## Project layout
 
 ```
+├── vite.config.ts                 # Vite, WebAssembly, and installable-app setup
 ├── public/
+│   ├── icon.svg                   # browser tab icon
+│   ├── pwa-192x192.png            # installed-app icons
+│   ├── pwa-512x512.png
+│   ├── apple-touch-icon.png       # iOS home-screen icon (180×180)
 │   └── assets/                    # sprites, sounds, and their credits
 │       ├── CREDITS.md
 │       ├── coin.png
@@ -95,6 +100,39 @@ See `public/assets/CREDITS.md` for source links and license details.
 
 Replace them with your own assets, and keep the file paths matching the
 handles your scene's `preload` declares.
+
+## Installable app and offline play
+
+The production build is a Progressive Web App: players can install it, and it
+runs offline after the first visit. `vite-plugin-pwa` in `vite.config.ts`
+sets this up.
+
+- **Assets need no registration.** Every build caches every file in `dist/`
+  for offline play, including everything in `public/` and the physics
+  `.wasm`. Adding a file to `public/assets/` is enough.
+- **Files over 10 MB fail the build.** The error names each file. Raise
+  `maximumFileSizeToCacheInBytes` in `vite.config.ts` to allow them.
+- **Assets from another server are not cached.** Add a `runtimeCaching` rule
+  to the `workbox` block for them.
+- **No service worker in `npm run dev`.** Check installed and offline
+  behaviour with `npm run build` followed by `npm run preview`.
+- **To test an update:** open the game from `npm run preview` and reload it
+  once so the service worker controls the page. Rebuild with a change, then
+  click Update under Application → Service workers in Chrome's developer
+  tools. The new version waits until every tab of the game is closed, or
+  until your code applies it.
+- **Updates start on the next launch.** A deploy downloads in the background.
+  The running game keeps its version, even across reloads, until every tab or
+  window of it is closed. Host or CDN caching must not keep a stale `sw.js`
+  or `index.html`.
+- **To prompt players to update in-game**, follow
+  https://yage.dev/getting-started/installation/#offer-an-update-in-game. The
+  template does not include that code.
+- **Before shipping:** change `name`, `short_name`, and `description` in the
+  `manifest` block, and replace `public/icon.svg`, `public/pwa-192x192.png`,
+  `public/pwa-512x512.png`, and `public/apple-touch-icon.png`. Android crops
+  the 512 icon to a circle or rounded square, so keep artwork inside the
+  centre 80%. Serve the site over HTTPS.
 
 ## Save state
 
