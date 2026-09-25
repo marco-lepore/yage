@@ -116,6 +116,9 @@ export async function createLocalization(
   await backend.init({
     lng: locale,
     fallbackLng: fallbackLocale,
+    // One namespace holds every catalog, so a key containing ':' (a Yarn
+    // Spinner line id such as "line:abc123") is a key, not a namespace prefix.
+    nsSeparator: false,
     resources: Object.fromEntries(
       Object.entries(catalogs).map(([tag, catalog]) => [
         tag,
