@@ -506,25 +506,68 @@ Each example is one flat HTML file at the `examples/` root plus a source folder
 under `examples/src/`. The HTML's URL is `/<name>.html`. The source lives at
 `examples/src/<name>/main.ts` (use `main.tsx` for React examples).
 
+Example code follows the same rules as game code, because people and agents
+copy it. Read `examples/AGENTS.md` first: entity types are `Entity`
+subclasses, components hold the rules, game state lives in a component on a
+host entity, and time and randomness come from the engine. `src/platformer/`
+is the reference example.
+
 1. Create `examples/src/<name>/main.ts`. Larger examples split into sibling
-   files in the same folder (`scene.ts`, `player.ts`, `hud.ts`, `constants.ts`,
-   …), and `main.ts` then holds only plugin setup and boot. Relative imports use the
-   `./foo.js` form. Shared helpers come from `../shared/bootstrap.js`
-   (`installDebugFromUrl`, `setupGameContainer`, `getContainer`). Boot with:
+   files in the same folder, as `src/platformer/` does (`constants.ts`,
+   `level.ts`, `player.ts`, `hud.ts`, `scene.ts`), and `main.ts` then holds
+   only plugin setup and boot. Relative imports use the `./foo.js` form. Shared
+   helpers come from `../shared/bootstrap.js` (`installDebugFromUrl`,
+   `setupGameContainer`, `getContainer`). A single-file example looks like
+   this:
 
 ```typescript
-import { Engine, Scene } from "@yagejs/core";
-import { RendererPlugin } from "@yagejs/renderer";
+import {
+  Component,
+  Engine,
+  Entity,
+  Scene,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
+import { GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
 import {
   installDebugFromUrl,
   setupGameContainer,
 } from "../shared/bootstrap.js";
 // import "./styles.css"; // only if the example has a styles.css
 
+/** The rule: turn at a fixed speed. Logic lives in components. */
+class Spin extends Component {
+  private readonly transform = this.sibling(Transform);
+
+  constructor(private readonly speed: number) {
+    super();
+  }
+
+  update(dt: number): void {
+    this.transform.rotate(this.speed * dt); // dt is in seconds
+  }
+}
+
+/** The entity type: a subclass that assembles its components. */
+class SpinnerEntity extends Entity {
+  setup(params: { x: number; y: number }): void {
+    this.add(new Transform({ position: new Vec2(params.x, params.y) }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.rect(-40, -40, 80, 80).fill({ color: 0x38bdf8 });
+      }),
+    );
+    this.add(new Spin(2));
+  }
+}
+
 class MyScene extends Scene {
   readonly name = "my-scene";
+
+  // onEnter assembles the scene; it holds no state and no rules.
   onEnter(): void {
-    // Spawn entities
+    this.spawn(SpinnerEntity, { x: 400, y: 300 });
   }
 }
 
@@ -554,7 +597,7 @@ main().catch(console.error);
    for static instructions and controls only. **Game state and gameplay feedback
    (score, win/lose banners, toasts) render in-canvas**, not in DOM overlays. Use
    a screen-space layer (`{ name: "hud", order: 1000, space: "screen" }`) plus
-   `TextComponent`s.
+   `TextComponent`s, as `src/platformer/hud.ts` does.
 3. Add an entry to `examples/src/catalog.ts`: title, one-line summary,
    section, the packages it uses beyond `core` and `renderer`, any addons, and
    the yage.dev guide it matches. The index (`examples/index.html`) builds its
@@ -567,6 +610,8 @@ main().catch(console.error);
    (`e2e/specs/examples.spec.ts`) both auto-discover every root `*.html`, so a
    new example is built and smoke-tested with no config change. Add an entry to
    `e2e/specs/examples-atlas.ts` only to script input, set a warmup, or skip.
+5. Run `npm run lint -w @yagejs/examples`. It rejects `setTimeout`,
+   `setInterval`, `Math.random` and blueprints in example code.
 
 ### Add a New AssetHandle Factory
 
