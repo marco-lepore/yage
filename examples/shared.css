@@ -62,18 +62,20 @@ h1 {
 }
 
 /* In the examples index the page runs in a frame, and the index shows the
-   title and the way back. The game takes the height the controls leave, and
-   long controls scroll on their own instead of pushing the game out of view. */
+   title and the way back. When the page is taller than the frame, the game
+   gives up height first but keeps at least 40% of the frame. Every other block
+   (controls, pads, notes) can shrink after it and scrolls on its own instead
+   of pushing the game out of view. */
 html[data-embedded] .back-link,
 html[data-embedded] body > h1 {
   display: none;
 }
 html[data-embedded] #game-container {
+  flex: 0 4 auto;
+  min-height: 40%;
+}
+html[data-embedded] body > :not(#game-container) {
   flex: 0 1 auto;
   min-height: 0;
-}
-html[data-embedded] .controls {
-  flex: none;
-  max-height: 40%;
   overflow-y: auto;
 }

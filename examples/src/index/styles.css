@@ -701,12 +701,18 @@ svg {
     z-index: 20;
     width: min(20rem, 86vw);
     translate: -100% 0;
-    transition: translate 0.2s ease;
+    /* Hidden once it has slid out, so Tab skips its links while closed. */
+    visibility: hidden;
+    transition:
+      translate 0.2s ease,
+      visibility 0s linear 0.2s;
   }
 
   .shell[data-drawer="open"] .sidebar {
     translate: 0 0;
+    visibility: visible;
     box-shadow: 0 0 40px rgb(0 0 0 / 0.4);
+    transition: translate 0.2s ease;
   }
 
   .menu-button {

@@ -706,4 +706,50 @@ test.describe("Examples index", () => {
     await expect(back).toBeVisible();
     await expect(back).toHaveAttribute("href", "/#physics-joints");
   });
+
+  test("the phone-width drawer takes focus and gives it back", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    const sidebar = page.locator("#sidebar");
+    const menu = page.locator(".overview [data-action=menu]");
+    // Closed, the drawer is out of the tab order as well as off screen.
+    await expect(sidebar).toBeHidden();
+
+    await menu.click();
+    await expect(sidebar).toBeVisible();
+    await expect(page.locator("#search")).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await expect(sidebar).toBeHidden();
+    await expect(menu).toBeFocused();
+  });
+
+  test("a framed page keeps the game in view on a small screen", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 700 });
+    await page.goto("/#synth");
+    const frame = page.frameLocator(".frame-slot iframe");
+    await expect(frame.locator("#pads")).toBeVisible();
+    // The pads and controls scroll inside the space the game leaves; the game
+    // keeps 40% of the page's content height and nothing ends below the frame.
+    const layout = await frame.locator("body").evaluate((body) => {
+      const style = getComputedStyle(body);
+      const content =
+        body.clientHeight -
+        parseFloat(style.paddingTop) -
+        parseFloat(style.paddingBottom);
+      const game = body.querySelector("#game-container");
+      const last = body.lastElementChild?.previousElementSibling;
+      return {
+        game: (game?.getBoundingClientRect().height ?? 0) / content,
+        bottom: last?.getBoundingClientRect().bottom ?? Infinity,
+        height: body.clientHeight,
+      };
+    });
+    expect(layout.game).toBeGreaterThanOrEqual(0.399);
+    expect(layout.bottom).toBeLessThanOrEqual(layout.height);
+  });
 });

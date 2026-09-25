@@ -45,6 +45,7 @@ const state: {
 } = { terms: [], filters: new Set(), current: undefined };
 
 const shell = byId("shell");
+const sidebar = byId("sidebar");
 const search = byId<HTMLInputElement>("search");
 const nav = byId("nav");
 const backdrop = byId("backdrop");
@@ -312,8 +313,11 @@ function showOverview(): void {
  */
 function mountFrame(example: Example): void {
   const frame = el("iframe", { title: example.title, src: pageUrl(example) });
-  // Hand the keyboard to the example as soon as it loads.
-  frame.addEventListener("load", () => frame.contentWindow?.focus());
+  // Hand the keyboard to the example as soon as it loads, unless the drawer
+  // was opened in the meantime and holds focus.
+  frame.addEventListener("load", () => {
+    if (!drawerOpen()) frame.contentWindow?.focus();
+  });
   frameHost.replaceChildren(frame);
   updateFocusHint();
 }
@@ -338,14 +342,29 @@ function reveal(link: HTMLElement): void {
   nav.scrollTop += box.top - list.top - (list.height - box.height) / 2;
 }
 
-function openDrawer(): void {
+/** The menu button that opened the drawer, to give focus back to on close. */
+let drawerOpener: HTMLElement | null = null;
+
+function drawerOpen(): boolean {
+  return shell.dataset["drawer"] === "open";
+}
+
+function openDrawer(event: Event): void {
+  drawerOpener =
+    event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
   shell.dataset["drawer"] = "open";
   backdrop.hidden = false;
+  // The drawer comes before the page in tab order, so Tab from the menu
+  // button would never reach it. Start inside it instead.
+  search.focus();
 }
 
 function closeDrawer(): void {
+  if (!drawerOpen()) return;
   delete shell.dataset["drawer"];
   backdrop.hidden = true;
+  if (sidebar.contains(document.activeElement)) drawerOpener?.focus();
+  drawerOpener = null;
 }
 
 function visibleNavLinks(): HTMLAnchorElement[] {
@@ -375,9 +394,13 @@ function wireEvents(): void {
       go(firstMatch());
     } else if (event.key === "Escape") {
       event.preventDefault();
+      // First Escape clears the search; the next closes the drawer when it is
+      // open (focus returns to its menu button), or leaves the search box.
       if (search.value) {
         search.value = "";
         setQuery("");
+      } else if (drawerOpen()) {
+        closeDrawer();
       } else {
         search.blur();
       }
