@@ -12,8 +12,10 @@ const corner = { x: 0, y: 0 };
  * box around the four projected corners. A scroll offset is included.
  *
  * Returns `false`, leaving `out` untouched, for an element never laid out or
- * when a corner is not finite (`target` or a container above it is scaled to
- * 0). The intermediate points are module-level and reused; keep only `out`.
+ * drawn with no area: scaled to 0 itself, inside a container scaled to 0, or
+ * under a `target` scaled to 0. Focus skips such an element and its tooltip
+ * hides. The intermediate points are module-level and reused; keep only
+ * `out`.
  */
 export function readElementRect(
   target: DisplayContainer,
@@ -38,6 +40,7 @@ export function readElementRect(
     if (p.y < top) top = p.y;
     if (p.y > bottom) bottom = p.y;
   }
+  if (!((right - left) * (bottom - top) > 0)) return false;
   out.x = left;
   out.y = top;
   out.width = right - left;

@@ -107,12 +107,6 @@ describe("readElementRect", () => {
       { x: 12, y: 48, width: 160, height: 48 },
     ],
     [
-      "reports an element scaled to 0 as a box of zero size",
-      [{}, { x: 60, y: 70, sx: 0, pivotX: 20, pivotY: 10 }],
-      [40, 20],
-      { x: 60, y: 70, width: 0, height: 0 },
-    ],
-    [
       "normalises the corners under a mirrored ancestor",
       [{}, { sx: -1, sy: 1 }, {}],
       [40, 20],
@@ -145,13 +139,21 @@ describe("readElementRect", () => {
     expect(out.height).toBeCloseTo(40);
   });
 
-  it("reports a host scaled to 0 as not measurable and leaves the rect alone", () => {
-    const { host, box } = chain([{ sx: 0 }, { x: 10, y: 10 }]);
+  it.each<[string, Link[]]>([
+    ["a host scaled to 0", [{ sx: 0 }, { x: 10, y: 10 }]],
+    ["a container scaled to 0 below the host", [{}, { sx: 0 }, { x: 10 }]],
+    ["an element scaled to 0", [{}, { x: 60, sx: 0, pivotX: 20 }]],
+    ["an element flattened on one axis", [{}, { sx: 1, sy: 0 }]],
+  ])(
+    "reports an element drawn with no area under %s and leaves the rect alone",
+    (_name, links) => {
+      const { host, box } = chain(links);
 
-    const out = emptyRect();
-    expect(readElementRect(host, makeElement(box, 40, 20), out)).toBe(false);
-    expect(out).toEqual(emptyRect());
-  });
+      const out = emptyRect();
+      expect(readElementRect(host, makeElement(box, 40, 20), out)).toBe(false);
+      expect(out).toEqual(emptyRect());
+    },
+  );
 
   it("reports a node that never laid out and leaves the rect alone", () => {
     const { host, box } = chain([{}, {}]);
