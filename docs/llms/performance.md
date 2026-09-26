@@ -51,15 +51,28 @@ stopped — while keeping the Rapier body, the Pixi display object, and the
 component instances allocated:
 
 ```ts
+import type { Entity } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+
 // Recycling a bullet: no spawn, no destroy queue, no reallocation.
-bullet.setActive(false);
+function park(bullet: Entity) {
+  bullet.setActive(false);
+}
 
 // ...on the next shot. Reposition through the body, not the Transform:
 // physics owns a dynamic body's transform and overwrites a direct write.
-const rb = bullet.get(RigidBodyComponent);
-rb.setPosition(muzzleX, muzzleY);
-rb.setVelocity({ x: dirX * 900, y: dirY * 900 });
-bullet.setActive(true);
+function refire(
+  bullet: Entity,
+  muzzleX: number,
+  muzzleY: number,
+  dirX: number,
+  dirY: number,
+) {
+  const rb = bullet.get(RigidBodyComponent);
+  rb.setPosition(muzzleX, muzzleY);
+  rb.setVelocity({ x: dirX * 900, y: dirY * 900 });
+  bullet.setActive(true);
+}
 ```
 
 `EntityPool` keeps that bookkeeping for a group of them. It tracks which
@@ -67,6 +80,9 @@ members are out and which are free, grows or caps the group, and calls the
 entity's own `onAcquire` each time one is handed out:
 
 ```ts
+import { Entity, EntityPool, Scene } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+
 class Bullet extends Entity {
   setup() {
     /* Transform, GraphicsComponent, RigidBodyComponent, collider */
@@ -78,11 +94,22 @@ class Bullet extends Entity {
   }
 }
 
-// In the scene's onEnter.
-this.bullets = new EntityPool(this, Bullet, { prewarm: 32 });
+class ArenaScene extends Scene {
+  readonly name = "arena";
+  private bullets!: EntityPool<Bullet>;
 
-const bullet = this.bullets.acquire(muzzleX, muzzleY, dirX, dirY);
-this.bullets.release(bullet); // dormant, ready for the next shot
+  onEnter() {
+    this.bullets = new EntityPool(this, Bullet, { prewarm: 32 });
+  }
+
+  fire(muzzleX: number, muzzleY: number, dirX: number, dirY: number) {
+    return this.bullets.acquire(muzzleX, muzzleY, dirX, dirY);
+  }
+
+  retire(bullet: Bullet) {
+    this.bullets.release(bullet); // dormant, ready for the next shot
+  }
+}
 ```
 
 See the core package reference for the full API, and the `pooling` example for

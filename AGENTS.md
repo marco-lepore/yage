@@ -88,7 +88,7 @@ Enforced by tooling — match these conventions exactly:
 
 - **Unit tests**: co-located (`Foo.ts` → `Foo.test.ts` in the same directory)
 - **E2E tests**: `e2e/` directory at repo root (Playwright)
-- **Test utilities**: `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core/test-utils`
+- **Test utilities**: `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core`
 - **E2E assertions**: use the Inspector API (`window.__yage__.inspector`), not screenshots
 
 ## Documentation
