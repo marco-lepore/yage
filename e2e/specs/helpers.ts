@@ -104,7 +104,7 @@ export async function waitForSceneStackLength(
   timeout = 5_000,
 ): Promise<void> {
   await page.waitForFunction(
-    (len) => window.__yage__?.inspector.getSceneStack().length === len,
+    (len) => window.__yage__?.inspector?.getSceneStack().length === len,
     expectedLength,
     { timeout },
   );
@@ -119,7 +119,7 @@ export async function waitForTopScene(
   timeout = 5_000,
 ): Promise<void> {
   await page.waitForFunction(
-    (n) => window.__yage__?.inspector.getSceneStack().at(-1)?.name === n,
+    (n) => window.__yage__?.inspector?.getSceneStack().at(-1)?.name === n,
     name,
     { timeout },
   );

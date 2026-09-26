@@ -33,6 +33,8 @@ An engine built with `debug: true` publishes `window.__yage__` as `start()` begi
 await window.__yage__.ready; // start() finished: plugins installed, loop running, onStart done
 ```
 
+`inspector` appears when `DebugPlugin` installs it, partway through `start()` and after the global is published. Read it after `ready`; a predicate that can run earlier reads `window.__yage__?.inspector?.…`, because `window.__yage__.inspector.x` throws while it is still undefined.
+
 `ready` is what an out-of-page driver waits on after a page load or reload. The global appears before startup work, so its presence alone does not mean the engine got anywhere; a boot failure rejects `ready` with the error that stopped it, instead of leaving a poller to time out.
 
 The host pushes the first scene after `await engine.start()`, so `ready` does not cover it. Wait for a scene separately. The clock is running at this point unless `DebugPlugin` was given `startFrozen`, so poll rather than step — `stepUntil` and `step` throw on a clock that is not frozen:

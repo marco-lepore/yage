@@ -73,7 +73,7 @@ test.describe("LoadingScene fixture", () => {
 
     await page.waitForFunction(
       () =>
-        window.__yage__?.inspector.getSceneStack()[0]?.name === "game-scene",
+        window.__yage__?.inspector?.getSceneStack()[0]?.name === "game-scene",
     );
 
     stack = await getSceneStack(page);
@@ -123,7 +123,7 @@ test.describe("LoadingScene fixture", () => {
 
     await page.waitForFunction(
       () =>
-        window.__yage__?.inspector.getSceneStack()[0]?.name === "game-scene",
+        window.__yage__?.inspector?.getSceneStack()[0]?.name === "game-scene",
     );
 
     stack = await getSceneStack(page);

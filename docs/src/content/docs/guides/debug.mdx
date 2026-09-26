@@ -434,7 +434,10 @@ await page.evaluate(() => window.__yage__.ready);
 
 The global appears before startup work, so finding it says nothing about how
 far boot got, and a failed boot rejects `ready` with the error that stopped it
-rather than leaving the script to time out.
+rather than leaving the script to time out. `inspector` appears partway through
+startup, when `DebugPlugin` installs it. Read it after `ready`. A check that can
+run earlier should use `window.__yage__?.inspector?.…`, because the plain
+`window.__yage__.inspector.…` throws while the inspector is still missing.
 
 The host pushes the first scene after `await engine.start()`, so `ready` does
 not cover that. Wait for a scene separately, and poll for it rather than

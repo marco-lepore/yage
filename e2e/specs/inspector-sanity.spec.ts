@@ -17,7 +17,7 @@ test.describe("Inspector scene sanity", () => {
     await gotoFixture(page, "/inspector-scene.html");
     await waitForClock(page);
     await page.waitForFunction(
-      () => window.__yage__?.inspector.getExtension("sanity") !== undefined,
+      () => window.__yage__?.inspector?.getExtension("sanity") !== undefined,
     );
     const baseline = await page.evaluate(() => {
       const time = window.__yage__!.inspector.time;
