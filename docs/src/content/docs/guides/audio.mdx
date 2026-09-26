@@ -9,7 +9,7 @@ entity-bound audio, and a `sound()` asset factory for preloading.
 
 ## AudioPlugin Setup
 
-```typescript
+```typescript yage-context="engine"
 import { AudioPlugin } from "@yagejs/audio";
 
 engine.use(new AudioPlugin({
@@ -24,17 +24,20 @@ engine.use(new AudioPlugin({
 
 Use the `sound()` factory to create preloadable asset handles:
 
-```typescript
+```typescript yage-group="audio" yage-file="assets.ts"
 import { sound } from "@yagejs/audio";
 
-const CoinSfx  = sound("assets/coin.wav");
-const BgMusic   = sound("assets/music.mp3");
+export const CoinSfx  = sound("assets/coin.wav");
+export const BgMusic   = sound("assets/music.mp3");
 ```
 
 Add them to your scene's `preload` array so they load before `onEnter`:
 
-```typescript
+```typescript yage-group="audio" yage-file="assets.ts"
+import { Scene } from "@yagejs/core";
+
 class GameScene extends Scene {
+  readonly name = "game";
   readonly preload = [CoinSfx, BgMusic];
 }
 ```
@@ -43,8 +46,9 @@ class GameScene extends Scene {
 
 Resolve the `AudioManager` from the DI container and call `play`:
 
-```typescript
+```typescript yage-group="audio" yage-context="scene-enter"
 import { AudioManagerKey } from "@yagejs/audio";
+import { BgMusic, CoinSfx } from "./assets.js";
 
 const audio = this.use(AudioManagerKey);
 
@@ -66,9 +70,11 @@ the scene never preloaded.
 `hasSound(ref)` makes the same check and returns a boolean, so an alias built at
 runtime can fall back to a default:
 
-```typescript
-const step = `sfx/step-${surface}.wav`;
-audio.play(audio.hasSound(step) ? step : "sfx/step-default.wav");
+```typescript yage-group="audio" yage-context="scene-enter"
+function playStep(surface: string) {
+  const step = `sfx/step-${surface}.wav`;
+  audio.play(audio.hasSound(step) ? step : "sfx/step-default.wav");
+}
 ```
 
 It answers registration alone. Whether audio is audible is a different
@@ -77,8 +83,8 @@ below cover the rest.
 
 **Play options:**
 
-```typescript
-audio.play(alias, {
+```typescript yage-group="audio" yage-context="scene-enter"
+audio.play(CoinSfx, {
   channel: "sfx",    // which channel (default: "sfx")
   volume: 1,         // instance volume 0–1 (default: 1)
   loop: false,       // loop playback (default: false)
@@ -88,11 +94,12 @@ audio.play(alias, {
 
 Additional play methods:
 
-```typescript
+```typescript yage-group="audio" yage-context="scene-enter"
 // Only play if not already playing via playOnce
 audio.playOnce(BgMusic, { channel: "music", loop: true });
 
 // Own one request for playback shared by alias and channel
+const finishCharge = () => console.log("charge finished");
 const request = audio.requestOnce("charge", { onEnd: finishCharge });
 request.release();
 
@@ -116,7 +123,7 @@ calling `onEnd`.
 
 `play` returns a `SoundHandle` for controlling playback:
 
-```typescript
+```typescript yage-group="audio" yage-context="scene-enter"
 const handle = audio.play(BgMusic, { channel: "music", loop: true });
 
 handle.playing;        // boolean
@@ -130,7 +137,7 @@ handle.stop();         // stop playback
 
 You can also stop via the manager:
 
-```typescript
+```typescript yage-group="audio" yage-context="scene-enter"
 audio.stop(handle);
 ```
 
@@ -139,7 +146,7 @@ audio.stop(handle);
 Fade a handle to a target volume with `fadeTo`. The method returns a `Process`,
 so you can cancel it or wait for it with `toPromise()`:
 
-```typescript
+```typescript yage-group="audio" yage-context="scene-enter"
 import { easeInOutQuad } from "@yagejs/core";
 
 const fade = handle.fadeTo(0, {
@@ -157,7 +164,12 @@ the first fade.
 
 Use `crossfade` to replace one playing sound with another:
 
-```typescript
+```typescript yage-group="audio" yage-context="scene-enter"
+import { sound } from "@yagejs/audio";
+
+const StageMusic = sound("assets/stage.mp3");
+const current = audio.play(BgMusic, { channel: "music", loop: true });
+
 const next = audio.crossfade(current, StageMusic, {
   duration: 1.2,
   easing: easeInOutQuad,
@@ -185,7 +197,7 @@ and do not pause with an individual scene. They follow the global
 Channels group sounds for independent volume control. The default channels are
 `"sfx"` and `"music"`, but you can define any channels in the config.
 
-```typescript
+```typescript yage-group="audio" yage-context="scene-enter"
 // Volume control
 audio.setChannelVolume("music", 0.3);
 audio.getChannelVolume("music"); // 0.3
@@ -204,7 +216,7 @@ audio.stopChannel("sfx");
 
 ## Global Mute
 
-```typescript
+```typescript yage-group="audio" yage-context="scene-enter"
 audio.muteAll();
 audio.unmuteAll();
 audio.stopAll();
@@ -222,7 +234,9 @@ until the user first interacts with the page**. That is expected browser
 behavior, not a YAGE bug — the classic symptom is "my title music doesn't
 play until I click somewhere." To handle the gap cleanly, use `onUnlock`:
 
-```typescript
+```typescript yage-group="unlock" yage-context="scene-enter"
+import { AudioManagerKey } from "@yagejs/audio";
+
 const audio = this.use(AudioManagerKey);
 
 audio.onUnlock(() => {
@@ -234,8 +248,12 @@ audio.onUnlock(() => {
 the next gesture that resumes it. It returns a disposer, so you can cancel a
 pending registration:
 
-```typescript
-const dispose = audio.onUnlock(() => startMusic());
+```typescript yage-group="unlock" yage-context="scene-enter"
+const startMusic = () => {
+  audio.play("music/title", { channel: "music", loop: true });
+};
+
+const dispose = audio.onUnlock(startMusic);
 // …later
 dispose();
 // or: audio.offUnlock(startMusic);
@@ -243,7 +261,7 @@ dispose();
 
 Expose the pending state to the UI if you want a "tap to enable audio" hint:
 
-```typescript
+```typescript yage-group="unlock" yage-context="scene-enter"
 if (!audio.isUnlocked()) {
   // render a prompt; it's safe to dismiss on first click —
   // @pixi/sound will have resumed the context by then
@@ -260,12 +278,15 @@ Most web games go silent when the user backgrounds the tab. `AudioManager`
 suspends the underlying `AudioContext` when the window loses focus and
 resumes it on return:
 
-```typescript
+```typescript yage-context="engine,scene-enter"
+import { AudioManagerKey, AudioPlugin } from "@yagejs/audio";
+
 engine.use(new AudioPlugin({
   autoMuteOnBlur: true, // default: true
 }));
 
 // Or toggle at runtime:
+const audio = this.use(AudioManagerKey);
 audio.autoMuteOnBlur = false;
 ```
 
@@ -288,10 +309,12 @@ the audio counterpart to the renderer's `registerTexture(key, texture)`, and
 it's how a procedural-audio addon plugs a synthesized sound effect into the
 engine.
 
-```typescript
+```typescript yage-context="scene-enter"
 import { registerSound, AudioManagerKey } from "@yagejs/audio";
+import { synthBuffer, synthPresets } from "@yagejs-addons/synth";
 
-const buffer = synthesizeShot(); // any code that produces an AudioBuffer
+// Any code that produces an AudioBuffer; here, @yagejs-addons/synth
+const buffer = synthBuffer(synthPresets.shoot());
 registerSound("shoot", buffer);
 
 const audio = this.use(AudioManagerKey);
@@ -326,8 +349,9 @@ GPU resource to release.
 `SoundComponent` binds a sound to an entity. The sound is automatically stopped
 when the entity is destroyed.
 
-```typescript
+```typescript yage-group="audio" yage-file="entity.ts" yage-context="entity"
 import { SoundComponent } from "@yagejs/audio";
+import { BgMusic } from "./assets.js";
 
 entity.add(new SoundComponent({
   alias: BgMusic.path,
@@ -340,7 +364,7 @@ entity.add(new SoundComponent({
 
 Control playback from the component:
 
-```typescript
+```typescript yage-group="audio" yage-file="entity.ts" yage-context="entity"
 const sc = entity.get(SoundComponent);
 const handle = sc.play();
 sc.stop();

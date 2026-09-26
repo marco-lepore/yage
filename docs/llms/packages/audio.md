@@ -9,7 +9,7 @@ installs is applied when it does.
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { AudioPlugin } from "@yagejs/audio";
 
 engine.use(
@@ -27,14 +27,17 @@ engine.use(
 
 Browsers suspend the `AudioContext` until the user interacts with the page. `@pixi/sound` already resumes it on the first pointer/touch gesture, so "play on click" works without extra setup. That means **music scheduled on page-load stays silent until first click** — not a bug, but surprising. Use `isUnlocked` / `onUnlock` to schedule autoplay that survives the delay:
 
-```ts
+```ts yage-context="scene-enter"
+import { AudioManagerKey } from "@yagejs/audio";
+
 const audio = this.use(AudioManagerKey);
+const startMusic = () => {
+  audio.play("music/title", { channel: "music", loop: true });
+};
 
 audio.isUnlocked(); // boolean — AudioContext.state === "running"
-audio.onUnlock(() =>
-  audio.play("music/title", { channel: "music", loop: true }),
-);
-audio.offUnlock(cb); // remove a pending listener (disposer from onUnlock also works)
+audio.onUnlock(startMusic);
+audio.offUnlock(startMusic); // remove a pending listener (disposer from onUnlock also works)
 
 audio.autoMuteOnBlur = true; // default true — toggles @pixi/sound's WebAudioContext.autoPause (suspends context on window blur)
 ```
@@ -54,9 +57,12 @@ const CoinSfx = sound("assets/coin.wav");
 
 ## AudioManager
 
-```ts
-import { AudioManagerKey } from "@yagejs/audio";
+```ts yage-context="scene-enter"
+import { AudioManagerKey, sound } from "@yagejs/audio";
+import type { AudioPlayOptions } from "@yagejs/audio";
 
+const CoinSfx = sound("assets/coin.wav");
+const opts: AudioPlayOptions = { channel: "sfx" };
 const audio = this.use(AudioManagerKey);
 
 // Play — takes a `sound()` handle or the alias string it registers
@@ -111,23 +117,39 @@ audio.resumeChannel("music");
 Fade types and signatures:
 
 ```ts
-interface AudioFadeOptions {
+import {
+  AudioManager as BaseAudioManager,
+  SoundHandle as BaseSoundHandle,
+} from "@yagejs/audio";
+import type {
+  AudioCrossfadeOptions as BaseAudioCrossfadeOptions,
+  AudioFadeOptions as BaseAudioFadeOptions,
+  SoundRef,
+} from "@yagejs/audio";
+import type { EasingFunction, Process } from "@yagejs/core";
+
+interface AudioFadeOptions extends BaseAudioFadeOptions {
   duration: number;
   easing?: EasingFunction; // default: easeLinear
   stopOnComplete?: boolean; // requires target volume 0
 }
 
-interface AudioCrossfadeOptions extends AudioPlayOptions {
+interface AudioCrossfadeOptions extends BaseAudioCrossfadeOptions {
   duration: number;
   easing?: EasingFunction; // default: easeLinear
 }
 
-SoundHandle.fadeTo(volume: number, options: AudioFadeOptions): Process;
-AudioManager.crossfade(
-  outgoing: SoundHandle,
-  next: SoundRef,
-  options: AudioCrossfadeOptions,
-): SoundHandle;
+declare class SoundHandle extends BaseSoundHandle {
+  fadeTo(volume: number, options: AudioFadeOptions): Process;
+}
+
+declare class AudioManager extends BaseAudioManager {
+  crossfade(
+    outgoing: SoundHandle,
+    next: SoundRef,
+    options: AudioCrossfadeOptions,
+  ): SoundHandle;
+}
 ```
 
 `SoundHandle.volume` is a value from 0 to 1 before channel volume is applied.
@@ -164,10 +186,12 @@ active. A released request receives no callback. Stopping the shared
 
 **`registerSound(alias, buffer)` / `unregisterSound(alias)`** — register a runtime-generated `AudioBuffer` under an alias so it resolves and plays exactly like a preloaded sound, through the same `AudioManager` channels, mute, and blur auto-pause. Audio analogue of the renderer's `registerTexture(key, texture)`.
 
-```ts
+```ts yage-context="scene-enter"
 import { registerSound, AudioManagerKey } from "@yagejs/audio";
+import { synthBuffer, synthPresets } from "@yagejs-addons/synth";
 
-const buffer = synthesizeShot(); // any code that produces an AudioBuffer
+// Any code that produces an AudioBuffer; here, @yagejs-addons/synth
+const buffer = synthBuffer(synthPresets.shoot());
 registerSound("shoot", buffer);
 
 const audio = this.use(AudioManagerKey);
@@ -189,8 +213,10 @@ Semantics:
 
 Entity-bound audio. Auto-stops on entity destroy.
 
-```ts
-import { SoundComponent } from "@yagejs/audio";
+```ts yage-context="entity"
+import { SoundComponent, sound } from "@yagejs/audio";
+
+const CoinSfx = sound("assets/coin.wav");
 
 entity.add(
   new SoundComponent({

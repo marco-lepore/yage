@@ -29,9 +29,11 @@ engine.use(
 
 Play sounds via the asset system or a `SoundComponent`:
 
-```ts
+```ts yage-context="entity"
+import { SoundComponent, sound } from "@yagejs/audio";
+
 const jumpSfx = sound("jump.mp3");
-entity.add(new SoundComponent({ source: jumpSfx, channel: "sfx" }));
+entity.add(new SoundComponent({ alias: jumpSfx.path, channel: "sfx" }));
 ```
 
 ## What's in the box
