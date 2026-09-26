@@ -541,6 +541,11 @@ test("can the player jump onto the ledge?", async ({ page }) => {
 
 `setSeed(seed)` reseeds the scene RNG that game code reads through `RandomKey`, a scene-scoped `ServiceKey<RandomService>` resolved in a Component with `this.use(RandomKey)` (`float`, `range`, `int`, `pick`, `shuffle`, `getSeed`). Read random values through it rather than `Math.random()`, or a replay diverges from the seeded run. For boot-time or cross-scene code that runs outside a scene, use `globalRandom` — but `setSeed` does not reseed it, so keep replay-critical rolls on `RandomKey`.
 
+`inspector.setSeed(seed)` calls `engine.sceneRandom.setSeed(seed)`. Game code
+that pins a seed as part of play, such as a daily-challenge run, calls
+`engine.sceneRandom.setSeed(seed)` itself. Either call throws when the seed is
+`NaN` or infinite.
+
 The two spec styles serve very different purposes:
 
 | | Permanent Inspector tests in CI | Throwaway agent-vision specs |

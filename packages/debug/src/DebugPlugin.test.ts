@@ -105,6 +105,8 @@ import {
   SceneHookRegistryKey,
   SceneManager,
   SceneManagerKey,
+  SceneRandomSource,
+  SceneRandomSourceKey,
   SystemScheduler,
   SystemSchedulerKey,
   Transform,
@@ -218,7 +220,6 @@ function createContext() {
     attachTimeController: vi.fn(),
     detachTimeController: vi.fn(),
     setEventLogEnabled: vi.fn(),
-    setDefaultSceneSeed: vi.fn(),
     addExtension: vi.fn((namespace: string, api: object) => {
       inspectorExtensions.set(namespace, api);
       return api;
@@ -234,6 +235,8 @@ function createContext() {
   const bus = new EventBus();
   const hookRegistry = new SceneHookRegistry();
   const sceneManager = new SceneManager();
+  const sceneRandom = new SceneRandomSource(sceneManager);
+  vi.spyOn(sceneRandom, "setDefaultSeed");
 
   const provider: SceneRenderTreeProvider = {
     createForScene: (): SceneRenderTree => ({
@@ -291,11 +294,20 @@ function createContext() {
   context.register(RendererKey, renderer as never);
   context.register(GameLoopKey, loop as never);
   context.register(InspectorKey, inspector as never);
+  context.register(SceneRandomSourceKey, sceneRandom);
 
   sceneManager._setContext(context);
   scheduler._start(context);
 
-  return { context, scheduler, app, loop, sceneManager, inspector };
+  return {
+    context,
+    scheduler,
+    app,
+    loop,
+    sceneManager,
+    inspector,
+    sceneRandom,
+  };
 }
 
 function getAttachedClock(context: EngineContext): IDebugClock {
@@ -320,7 +332,7 @@ afterEach(() => {
 
 describe("DebugPlugin", () => {
   it("attaches the time controller without exposing a global clock", async () => {
-    const { context, scheduler, app, inspector } = createContext();
+    const { context, scheduler, app, inspector, sceneRandom } = createContext();
     const plugin = new DebugPlugin();
 
     plugin.install(context);
@@ -333,7 +345,7 @@ describe("DebugPlugin", () => {
     ).not.toHaveProperty("clock");
     expect(clock.isFrozen).toBe(false);
     expect(app.stop).not.toHaveBeenCalled();
-    expect(inspector.setDefaultSceneSeed).not.toHaveBeenCalled();
+    expect(sceneRandom.setDefaultSeed).not.toHaveBeenCalled();
     expect(inspector.attachTimeController).toHaveBeenCalledOnce();
     expect(inspector.setEventLogEnabled).toHaveBeenCalledWith(true);
 
@@ -353,18 +365,30 @@ describe("DebugPlugin", () => {
     plugin.onDestroy();
   });
 
-  it("forwards a deterministic seed to the inspector when configured", async () => {
-    const { context, scheduler, inspector } = createContext();
+  it("installs a deterministic seed as the scene RNG default and clears it on destroy", async () => {
+    const { context, scheduler, sceneRandom } = createContext();
     const plugin = new DebugPlugin({ deterministicSeed: 0x00c0ffee });
 
     plugin.install(context);
     plugin.registerSystems(scheduler);
     await plugin.onStart();
 
-    expect(inspector.setDefaultSceneSeed).toHaveBeenCalledWith(0x00c0ffee);
+    expect(sceneRandom.setDefaultSeed).toHaveBeenCalledWith(0x00c0ffee);
+    expect(sceneRandom.createSceneRandom().getSeed()).toBe(0x00c0ffee);
 
     plugin.onDestroy();
+
+    expect(sceneRandom.setDefaultSeed).toHaveBeenLastCalledWith(undefined);
   });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects a deterministicSeed of %s at construction",
+    (seed) => {
+      expect(() => new DebugPlugin({ deterministicSeed: seed })).toThrow(
+        `DebugPlugin: deterministicSeed must be finite, got ${seed}.`,
+      );
+    },
+  );
 
   it("stops Pixi's ticker during install when startFrozen is set", async () => {
     const { context, scheduler, app } = createContext();

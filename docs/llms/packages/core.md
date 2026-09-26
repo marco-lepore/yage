@@ -737,8 +737,8 @@ flows into the constructor unchanged, no `as` cast or widening helper needed.
 
 Seeded per-scene RNG. `RandomKey` is a scene-scoped `ServiceKey<RandomService>`;
 resolve it in a Component with `this.use(RandomKey)`. It stays deterministic
-under `inspector.setSeed(seed)` and replays; `Math.random()` does not, so using
-it breaks replay determinism.
+under a pinned seed and replays; `Math.random()` does not, so using it breaks
+replay determinism.
 
 ```ts
 import { RandomKey } from "@yagejs/core";
@@ -752,8 +752,23 @@ rng.shuffle(array); // shuffle in place, returns the same array
 rng.getSeed(); // current seed
 ```
 
+`engine.sceneRandom` is the engine's `SceneRandomSource` (DI:
+`SceneRandomSourceKey`). It creates each scene's RNG and owns the seed:
+
+```ts
+class SceneRandomSource {
+  setSeed(seed: number): void; // reseed every scene on the stack and every later one
+  createSceneRandom(): RandomService; // the engine calls this as each scene enters
+}
+```
+
+A scene RNG starts from the `setSeed` seed when one is set, else from
+`DebugPlugin`'s `deterministicSeed`, else from a fresh random seed. `setSeed`
+converts the seed with `normalizeSeed` and throws on `NaN` or `Infinity`.
+`inspector.setSeed(seed)` calls `engine.sceneRandom.setSeed(seed)`.
+
 `globalRandom` is a process-wide `RandomService` for boot-time or cross-scene
-code that runs outside any scene. `inspector.setSeed` does not reseed it, so keep
+code that runs outside any scene. `setSeed` does not reseed it, so keep
 replay-critical rolls on the scene RNG (`RandomKey`).
 
 ### Preloading a Scene Ahead of Time
@@ -1063,7 +1078,7 @@ console.log(engine.logger.formatRecentLogs(20));
 
 ### Well-known DI Keys
 
-`EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`
+`EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SceneRandomSourceKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`
 
 ## LoadingScene
 

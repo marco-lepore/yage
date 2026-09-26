@@ -14,14 +14,8 @@ import {
   ServiceKey,
   SystemSchedulerKey,
 } from "./EngineContext.js";
-import {
-  RandomKey,
-  createDefaultRandomSeed,
-  createRandomService,
-  normalizeSeed,
-  type InternalRandomService,
-  type RandomService,
-} from "./Random.js";
+import { RandomKey } from "./Random.js";
+import { SceneRandomSourceKey } from "./SceneRandomSource.js";
 import {
   RendererAdapterKey,
   type RendererAdapter,
@@ -747,8 +741,6 @@ export class Inspector {
   >();
   private readonly sceneIds = new WeakMap<Scene, string>();
   private nextSceneId = 0;
-  private defaultSceneSeed: number | undefined;
-  private sceneSeedOverride: number | undefined;
   private timeController: InspectorTimeController | null = null;
   private eventLogEnabled = false;
   private eventCapacity = 500;
@@ -1613,43 +1605,13 @@ export class Inspector {
     return { callbackErrors: [...boundary.getCallbackErrors()] };
   }
 
-  /** Create a new scene-scoped RNG instance using the current inspector seed policy. */
-  createSceneRandom(): RandomService {
-    const seed =
-      this.sceneSeedOverride ??
-      this.defaultSceneSeed ??
-      createDefaultRandomSeed();
-    return createRandomService(seed);
-  }
-
-  /** Force every current and future scene RNG to the provided seed. */
+  /**
+   * Reseed every scene RNG on the stack and every one created later. Same as
+   * `engine.sceneRandom.setSeed(seed)`, which game code calls without going
+   * through the Inspector.
+   */
   setSeed(seed: number): void {
-    const normalized = normalizeSeed(seed);
-    this.sceneSeedOverride = normalized;
-    for (const scene of this.engine.scenes.all) {
-      this.resolveInternalRandom(scene)?.setSeed(normalized);
-    }
-  }
-
-  /** @internal DebugPlugin installs a deterministic default seed through this hook. */
-  setDefaultSceneSeed(seed: number | undefined): void {
-    this.defaultSceneSeed =
-      seed === undefined ? undefined : normalizeSeed(seed);
-    if (
-      this.sceneSeedOverride !== undefined ||
-      this.defaultSceneSeed === undefined
-    ) {
-      return;
-    }
-    for (const scene of this.engine.scenes.all) {
-      this.resolveInternalRandom(scene)?.setSeed(this.defaultSceneSeed);
-    }
-  }
-
-  private resolveInternalRandom(
-    scene: Scene,
-  ): InternalRandomService | undefined {
-    return scene._resolveScoped(RandomKey) as InternalRandomService | undefined;
+    this.engine.context.resolve(SceneRandomSourceKey).setSeed(seed);
   }
 
   /** @internal DebugPlugin attaches the frozen-time controller through this hook. */

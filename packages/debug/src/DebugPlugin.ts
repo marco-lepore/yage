@@ -5,6 +5,7 @@ import {
   InspectorKey,
   SceneManagerKey,
   SceneHookRegistryKey,
+  SceneRandomSourceKey,
 } from "@yagejs/core";
 import type {
   EngineContext,
@@ -149,6 +150,12 @@ export class DebugPlugin implements Plugin {
   private clock: DebugClock | null = null;
 
   constructor(config?: DebugConfig) {
+    const seed = config?.deterministicSeed;
+    if (seed !== undefined && !Number.isFinite(seed)) {
+      throw new Error(
+        `DebugPlugin: deterministicSeed must be finite, got ${seed}.`,
+      );
+    }
     this.config = config ?? {};
   }
 
@@ -157,8 +164,8 @@ export class DebugPlugin implements Plugin {
     this.renderer = context.resolve(RendererKey);
     if (this.config.deterministicSeed !== undefined) {
       context
-        .resolve(InspectorKey)
-        .setDefaultSceneSeed(this.config.deterministicSeed);
+        .resolve(SceneRandomSourceKey)
+        .setDefaultSeed(this.config.deterministicSeed);
     }
     if (this.config.startFrozen) {
       // Stop Pixi's ticker before `loop.start()` runs, so no frames tick
@@ -324,7 +331,7 @@ export class DebugPlugin implements Plugin {
     }
     inspector.setEventLogEnabled(false);
     if (this.config.deterministicSeed !== undefined) {
-      inspector.setDefaultSceneSeed(undefined);
+      this.context.resolve(SceneRandomSourceKey).setDefaultSeed(undefined);
     }
     this.clock = null;
 
