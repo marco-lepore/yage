@@ -100,6 +100,8 @@ Two sets of docs. A new public API, config option, or gotcha goes into both, not
 
 A new human docs page must be mapped to its Markdown counterpart in `docs/scripts/llm-docs.mjs` (or listed as having none in `docs/scripts/llm-docs.test.mjs`), and every served Markdown file must be linked from `docs/llms.txt`, or the docs tests fail.
 
+Every TypeScript fence in the docs, package READMEs, addon and tool LLM references and these AGENTS files is type-checked against the built package declarations by `npx turbo typecheck`. Each fence is an isolated module that writes its own imports; the `yage-context`, `yage-group` and `yage-expect-error` annotations for hosts, multi-fence examples and deliberate errors are described in `docs/scripts/README.md`.
+
 Rebuild both after changes:
 
 ```bash
