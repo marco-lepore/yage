@@ -5,11 +5,11 @@ light-level queries, and per-scene renderer backends.
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { LightingPlugin } from "@yagejs/lighting";
 import { RendererPlugin } from "@yagejs/renderer";
 
-engine.use(new RendererPlugin());
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
 engine.use(
   new LightingPlugin({
     ambient: {
@@ -47,7 +47,7 @@ The rule, checked at install:
 - Set `renderers` and `defaultRenderer` is required, naming one of the entries.
   Leaving it out throws, and so does a name that is not among them.
 
-```ts
+```ts yage-context="engine"
 import { LightingPlugin, overlayLighting } from "@yagejs/lighting";
 
 engine.use(
@@ -67,6 +67,8 @@ engine.use(
 ```
 
 ```ts
+import { Scene } from "@yagejs/core";
+
 class CaveScene extends Scene {
   readonly name = "cave";
   readonly lighting = { renderer: "none" };
@@ -86,7 +88,8 @@ per light whose fragment shader runs the same projection `levelAt()` runs, so a
 shadow's border widens with the distance from the blocker, a lamp wider than
 its blocker lights around it, and a cone's `softness` fades its edge.
 
-```ts
+```ts yage-context="engine"
+import { Scene } from "@yagejs/core";
 import {
   LightingPlugin,
   overlayLighting,
@@ -153,6 +156,8 @@ driver, not to the factory, so nothing answers it. A scene on a WebGL 1
 context with no `fallback` throws when it is entered, naming the option.
 
 ```ts
+import { overlayLighting, shaderLighting } from "@yagejs/lighting";
+
 shaderLighting({ fallback: overlayLighting() });
 ```
 
@@ -168,6 +173,8 @@ a lit street very little. It is off unless set, and it never changes what
 `levelAt()` reports.
 
 ```ts
+import { Scene } from "@yagejs/core";
+
 class CaveScene extends Scene {
   readonly name = "cave";
   readonly lighting = {
@@ -193,7 +200,10 @@ class CaveScene extends Scene {
 
 `LightingConfig.bounce` is the default for scenes that set none:
 
-```ts
+```ts yage-context="engine"
+import { Scene } from "@yagejs/core";
+import { LightingPlugin } from "@yagejs/lighting";
+
 engine.use(new LightingPlugin({ bounce: { strength: 0.4, radius: 40 } }));
 
 class MenuScene extends Scene {
@@ -217,7 +227,7 @@ nothing either.
 
 Add `LightSource` to an entity with a `Transform`:
 
-```ts
+```ts yage-context="scene"
 import { Transform, Vec2 } from "@yagejs/core";
 import { LightSource } from "@yagejs/lighting";
 
@@ -310,6 +320,8 @@ from the light to the point missing every enabled occluder.
 Sample a whole grid in one call with `levelGridInto`:
 
 ```ts
+import { Component } from "@yagejs/core";
+import { LightingWorldKey } from "@yagejs/lighting";
 import type { LightGrid } from "@yagejs/lighting";
 
 const grid: LightGrid = {
@@ -320,10 +332,19 @@ const grid: LightGrid = {
   cellWidth: 16,
   cellHeight: 16,
 };
-const levels = new Float32Array(grid.cols * grid.rows);
 
-lighting.levelGridInto(levels, grid); // returns the same buffer
-levels[row * grid.cols + col]; // 0..1 at that cell's centre
+class LightField extends Component {
+  private readonly lighting = this.service(LightingWorldKey);
+  private readonly levels = new Float32Array(grid.cols * grid.rows);
+
+  update(): void {
+    this.lighting.levelGridInto(this.levels, grid); // returns the same buffer
+  }
+
+  levelAtCell(col: number, row: number): number {
+    return this.levels[row * grid.cols + col] ?? 0; // 0..1 at that cell's centre
+  }
+}
 ```
 
 The buffer is row-major and the caller owns it, so a field rebuilt every frame
@@ -338,7 +359,11 @@ positive and finite, or when `x` or `y` is not finite.
 
 `LightingWorld` also exposes:
 
-```ts
+```ts yage-context="component"
+import { LightingWorldKey } from "@yagejs/lighting";
+
+const lighting = this.service(LightingWorldKey);
+
 lighting.sources; // ReadonlySet<LightSource>
 lighting.occluders; // ReadonlySet<LightOccluder>
 lighting.ambientLevel;
@@ -350,7 +375,10 @@ lighting.ambientColor;
 Occluders are renderer-neutral data centred on an entity's `Transform`:
 
 ```ts
+import type { Entity } from "@yagejs/core";
 import { LightOccluder } from "@yagejs/lighting";
+
+declare const wall: Entity, pillar: Entity, rock: Entity; // each has a Transform
 
 wall.add(
   new LightOccluder({
@@ -398,9 +426,15 @@ Both `LightSource` and `LightOccluder` expose world coordinates as an immutable
 For repeated reads, reuse a buffer from `@yagejs/core`:
 
 ```ts
-const position = new Vec2Buffer();
-light.getPositionInto(position);
-occluder.getPositionInto(position);
+import { Vec2Buffer } from "@yagejs/core";
+import type { LightOccluder, LightSource } from "@yagejs/lighting";
+
+const position = new Vec2Buffer(); // allocate once, reuse for every read
+
+function readPositions(light: LightSource, occluder: LightOccluder): void {
+  light.getPositionInto(position);
+  occluder.getPositionInto(position);
+}
 ```
 
 `getPositionInto` overwrites and returns the supplied buffer without
@@ -412,7 +446,8 @@ immutable value you retain or share.
 
 An entry of `LightingConfig.renderers` is a `LightingRendererFactory`:
 
-```ts
+```ts yage-context="engine"
+import { LightingPlugin } from "@yagejs/lighting";
 import type {
   LightingRenderer,
   LightingRendererFactory,
@@ -447,23 +482,39 @@ factory was handed, which is the scene's own setting, or the plugin's, or
 `null`:
 
 ```ts
+import { Container } from "pixi.js";
 import { LightingComposite } from "@yagejs/lighting";
+import type { LightingRendererFactory } from "@yagejs/lighting";
+import { SceneRenderTreeKey } from "@yagejs/renderer";
 
-const composite = new LightingComposite(renderer, {
-  source: lightContainer, // what this renderer draws into
-  parent: layer.container, // a screen-space layer
-  width: renderer.virtualSize.width,
-  height: renderer.virtualSize.height,
-  resolutionScale: 0.5,
-  bounce,
-});
+const composited: LightingRendererFactory = ({ scene, renderer, bounce }) => {
+  const lightContainer = new Container();
+  const layer = scene
+    .use(SceneRenderTreeKey)
+    .ensureLayer({ name: "lighting", order: 900, space: "screen" });
 
-// Per frame: invalidate() after the light changed, then render().
-composite.invalidate();
-composite.render(); // true when the buffer was redrawn
+  const composite = new LightingComposite(renderer, {
+    source: lightContainer, // what this renderer draws into
+    parent: layer.container, // a screen-space layer
+    width: renderer.virtualSize.width,
+    height: renderer.virtualSize.height,
+    resolutionScale: 0.5,
+    bounce,
+  });
 
-// In the renderer's destroy(), before the source container goes:
-composite.destroy();
+  return {
+    render() {
+      // Per frame: invalidate() after the light changed, then render().
+      composite.invalidate();
+      composite.render(); // true when the buffer was redrawn
+    },
+    destroy() {
+      // Before the source container goes:
+      composite.destroy();
+      lightContainer.destroy({ children: true });
+    },
+  };
+};
 ```
 
 A custom renderer that draws shadows should apply the rule `levelAt()` applies,

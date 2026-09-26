@@ -3,7 +3,7 @@
 Radial 2D lights, light-level queries, and interchangeable lighting renderers
 for [YAGE](https://yage.dev).
 
-```ts
+```ts yage-group="readme"
 import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
 import {
   LightSource,
@@ -13,7 +13,7 @@ import {
 import { RendererPlugin } from "@yagejs/renderer";
 
 const engine = new Engine();
-engine.use(new RendererPlugin());
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
 engine.use(
   new LightingPlugin({
     ambient: { level: 0.2, color: 0xb0b8cc },
@@ -45,7 +45,7 @@ picks one by name.
 
 Use the scene-scoped `LightingWorldKey` for gameplay queries:
 
-```ts
+```ts yage-group="readme"
 class LightSensor extends Component {
   private readonly lighting = this.service(LightingWorldKey);
 
