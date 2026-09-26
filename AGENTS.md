@@ -135,6 +135,10 @@ npx playwright test     # E2E tests (requires build first)
 
 `packages/addons/*` (npm scope `@yagejs-addons`) is the layer between engine plugins and the game: installable, opinionated implementations of common gameplay patterns (dialogue, inventory, combat). Addons are **independently versioned** (kept out of the engine's `fixed` changeset group) and declare engine packages as **peer dependencies**. Before adding or changing anything under `packages/addons/`, read `packages/addons/AGENTS.md` — the addon authoring guide (layer model L0–L3, capability channels, rules-in/consequences-out, the seven rules, naming/packaging, export split, controlled save state).
 
+## Examples
+
+`examples/` holds the runnable examples at examples.yage.dev. People and agents copy them, so example code follows every rule in this file. Before adding or changing an example, read [`examples/AGENTS.md`](examples/AGENTS.md): entity types as subclasses, rules in components, game state on a host entity, engine time and the scene's random generator instead of browser timers and `Math.random`. `src/platformer/` is the reference example to copy.
+
 ## Reference
 
 See `docs/AGENT_GUIDE.md` for the full architecture guide — package dependency graph, key files, common modification patterns, lifecycle details, and pitfalls.

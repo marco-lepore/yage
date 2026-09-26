@@ -7,48 +7,51 @@ This page covers practical patterns that come up in most games built with YAGE.
 
 ## Entity Spawning
 
-Spawn entities dynamically using `scene.spawn`:
+An entity type is an `Entity` subclass whose `setup()` adds its components.
+`scene.spawn()` passes its second argument to `setup()`, typed from the
+signature. The [Entity Subclasses](/patterns/entity-subclasses/) guide covers
+the pattern in depth.
 
 ```typescript
-// Simple spawn
-const bullet = this.scene.spawn("bullet");
-bullet.add(new Transform({ position: firePos }));
-bullet.add(new SpriteComponent({ texture: bulletTex }));
-bullet.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
-bullet.add(new ColliderComponent({ shape: { type: "circle", radius: 4 } }));
-bullet.get(RigidBodyComponent).setVelocity(direction.scale(800));
-```
-
-For reusable entity templates, prefer an `Entity` subclass with a
-`setup()` method — see the [Entity Subclasses](/patterns/entity-subclasses/)
-guide:
-
-```typescript
-import { Entity, Transform, Vec2 } from "@yagejs/core";
-import { GraphicsComponent } from "@yagejs/renderer";
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+import { InputManagerKey } from "@yagejs/input";
 
-interface CoinParams { x: number; y: number; }
+interface BulletParams { position: Vec2; velocity: Vec2; }
 
-class Coin extends Entity {
-  override setup({ x, y }: CoinParams): void {
-    this.add(new Transform({ position: new Vec2(x, y) }));
-    this.add(new GraphicsComponent().draw(drawCoin));
-    this.add(new RigidBodyComponent({ type: "static" }));
-    this.add(new ColliderComponent({
-      shape: { type: "circle", radius: 10 },
-      sensor: true,
-    }));
+class Bullet extends Entity {
+  setup({ position, velocity }: BulletParams): void {
+    this.add(new Transform({ position }));
+    this.add(new SpriteComponent({ texture: bulletTex }));
+    const body = this.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
+    this.add(new ColliderComponent({ shape: { type: "circle", radius: 4 } }));
+    body.setVelocity(velocity);
   }
 }
 
-this.scene.spawn(Coin, { x: 200, y: 300 });
+// A component on the player spawns bullets.
+class Gun extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly transform = this.sibling(Transform);
+
+  update(): void {
+    if (this.input.isJustPressed("fire")) {
+      this.scene.spawn(Bullet, {
+        position: this.transform.worldPosition,
+        velocity: new Vec2(800, 0),
+      });
+    }
+  }
+}
 ```
 
-`defineBlueprint` is still available for parametric factories where a
-class would be overkill, but entity subclasses are the preferred pattern
-for anything stateful — they let you add methods, fields, and `update()`
-ticks alongside the construction logic.
+A named spawn, such as `scene.spawn("background")`, suits a one-off entity with
+no behaviour of its own: a background, a UI root or a HUD host.
+
+`defineBlueprint` still works but is deprecated. Write an entity subclass
+instead, which can also carry methods and fields. Per-frame logic goes in a
+component: an `Entity` subclass has no `update()`.
 
 ## Entity Destruction
 
@@ -79,17 +82,21 @@ Components are automatically cleaned up when their entity is destroyed.
 Attach child entities for health bars, indicators, or attached effects:
 
 ```typescript
-const player = scene.spawn("player");
-player.add(new Transform({ position: new Vec2(100, 100) }));
-player.add(new SpriteComponent({ texture: playerTex }));
+class Player extends Entity {
+  setup({ x, y }: { x: number; y: number }): void {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new SpriteComponent({ texture: playerTex }));
 
-// Health bar follows the player
-const healthBar = scene.spawn("health-bar");
-healthBar.add(new Transform({ position: new Vec2(0, -30) })); // offset above
-healthBar.add(new GraphicsComponent().draw(drawHealthBar));
-
-player.addChild("healthBar", healthBar);
+    // Health bar follows the player
+    const healthBar = this.spawnChild("healthBar");
+    healthBar.add(new Transform({ position: new Vec2(0, -30) })); // offset above
+    healthBar.add(new GraphicsComponent().draw(drawHealthBar));
+  }
+}
 ```
+
+`spawnChild` spawns the child and attaches it in one call. To attach an entity
+that already exists, call `parent.addChild(name, child)`.
 
 Child transforms are relative to the parent. When the parent moves, children
 follow. Destroying the parent destroys all children.
@@ -382,29 +389,48 @@ collider.onCollision((ev) => {
 
 ## Scoring
 
-Use events to decouple scoring from game objects:
+Keep the score in a component on a host entity, and let events change it:
 
 ```typescript
 const CoinCollected = defineEvent("coin:collected");
 const EnemyDefeated = defineEvent<{ points: number }>("enemy:defeated");
 
-class GameScene extends Scene {
-  private score = 0;
+class Score extends Component {
+  private _points = 0;
 
-  onEnter(): void {
-    this.on(CoinCollected, () => {
-      this.score += 10;
+  get points(): number {
+    return this._points;
+  }
+
+  onAdd(): void {
+    // Coins and enemies emit on themselves; the events bubble to the scene.
+    this.listenScene(CoinCollected, () => {
+      this._points += 10;
     });
-
-    this.on(EnemyDefeated, (data) => {
-      this.score += data.points;
+    this.listenScene(EnemyDefeated, ({ points }) => {
+      this._points += points;
     });
   }
 }
+
+class ScoreKeeper extends Entity {
+  setup(): void {
+    this.add(new Score());
+  }
+}
+
+// In the scene's onEnter:
+this.spawn(ScoreKeeper, { key: "score" });
+
+// Anywhere else in the scene:
+const points = this.scene.findByKey("score")?.get(Score).points ?? 0;
 ```
 
-Coins and enemies emit events without knowing about the score — the scene
-orchestrates state changes.
+Coins and enemies emit events without knowing about the score. The `Score`
+component hears them and keeps the total. The host is destroyed with the
+scene, so the score starts at 0 each time the scene is entered.
+[State Management](/patterns/state-management/#game-state-on-a-host-entity)
+has the full recipe, including a HUD and a React read.
 
 ## Ground Detection with Raycasting
 
@@ -412,65 +438,74 @@ For platformers, use a short downward raycast to detect ground:
 
 ```typescript
 class PlayerController extends Component {
-  private readonly rb = this.sibling(RigidBodyComponent);
   private readonly transform = this.sibling(Transform);
+  private readonly processes = this.sibling(ProcessComponent);
   private world!: PhysicsWorld;
-  private grounded = false;
-  private coyoteTimer = 0;
+  /** Running while a jump is still allowed. */
+  private coyote!: ProcessSlot;
 
   onAdd(): void {
     this.world = this.use(PhysicsWorldKey);
+    // On the physics clock, like the fixedUpdate that restarts it.
+    this.coyote = this.processes.slot({ duration: COYOTE_TIME, clock: "fixed" });
   }
 
-  fixedUpdate(dt: number): void {
+  fixedUpdate(): void {
     // Raycast downward from entity center
     const hit = this.world.raycast(
       this.transform.worldPosition,
-      { x: 0, y: 1 },          // down
-      PLAYER_HALF_HEIGHT + 2,   // just past the feet
+      Vec2.DOWN,
+      PLAYER_HALF_HEIGHT + 2, // just past the feet
     );
+    // Standing on ground keeps the window open. It closes by itself
+    // COYOTE_TIME seconds after the player walks off a ledge.
+    if (hit) this.coyote.restart();
+  }
 
-    if (hit) {
-      this.grounded = true;
-      this.coyoteTimer = COYOTE_TIME;
-    } else {
-      this.coyoteTimer -= dt;
-      this.grounded = this.coyoteTimer > 0;
-    }
+  get canJump(): boolean {
+    return this.coyote.running;
   }
 }
 ```
 
 **Coyote time** gives the player a brief window to jump after walking off a
-ledge, making platforming feel more forgiving.
+ledge, making platforming feel more forgiving. The window is a `ProcessSlot`
+rather than a number counted down by hand, so it pauses with the scene and
+follows its time scale. The entity needs a `ProcessComponent`. The
+[platformer example](https://github.com/marco-lepore/yage/blob/main/examples/src/platformer/player.ts)
+pairs it with a jump buffer.
 
 ## Entity Finding
 
-Find specific entities by name:
+Find specific entities by name, or by the key they were spawned with:
 
 ```typescript
 const player = scene.findEntity("player");
+const score = scene.findByKey("score"); // spawned with { key: "score" }
 ```
 
 Query entities by component:
 
 ```typescript
-import { filterEntities } from "@yagejs/core";
-
-const enemies = filterEntities(scene.getEntities(), {
-  has: [EnemyTag, HealthComponent],
+const enemies = scene.findEntities({
+  filter: (e) => e.has(EnemyTag) && e.has(HealthComponent),
 });
 ```
 
-Or use the `QueryCache` for efficient repeated queries from systems:
+For a set a component reads every frame, register a live query with the
+`QueryCache`. It updates as components are added and removed. Unregister it
+when the component goes away, or it keeps receiving updates. The cache is
+shared by the engine, so the query also matches entities in the other scenes
+on the stack:
 
 ```typescript
-class DamageSystem extends System {
+class EnemyRadar extends Component {
   private enemies!: QueryResult;
 
-  onRegister(): void {
+  onAdd(): void {
     const cache = this.use(QueryCacheKey);
     this.enemies = cache.register([HealthComponent, EnemyTag]);
+    this.addCleanup(() => cache.unregister(this.enemies));
   }
 
   update(): void {

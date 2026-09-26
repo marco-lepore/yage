@@ -60,18 +60,39 @@ files.
    Bubble presenters create a missing configured `worldLayer` in world space
    at order 0. Declare that layer yourself to choose a different world order.
 
-2. **Spawn a host entity and add the controller.** Spread a factory bundle into
-   `DialogueController` and override any one piece.
+2. **Give the conversation an entity of its own.** Spread a factory bundle
+   into `DialogueController` and override any one piece. A small component on
+   the same entity removes it when the conversation ends, so the scene's
+   `onEnter` only spawns it.
 
    ```ts
-   import { DialogueController, DialogueEndedEvent } from "@yagejs-addons/dialogue";
+   import { Component, Entity } from "@yagejs/core";
+   import {
+     DialogueController,
+     DialogueEndedEvent,
+     type DialogueScript,
+   } from "@yagejs-addons/dialogue";
    import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
 
+   /** Removes its entity when the conversation reaches an `end` step. */
+   class CloseOnEnd extends Component {
+     onAdd(): void {
+       this.listen(this.entity, DialogueEndedEvent, () => this.entity.destroy());
+     }
+   }
+
+   /** A box conversation: plays one script, then removes itself. */
+   class Conversation extends Entity {
+     setup(params: { script: DialogueScript }): void {
+       const dlg = this.add(new DialogueController({ ...createBoxDialogue() }));
+       this.add(new CloseOnEnd());
+       dlg.play(params.script);
+     }
+   }
+
+   // In the scene:
    onEnter() {
-     const host = this.spawn("dialogue");
-     const dlg = host.add(new DialogueController({ ...createBoxDialogue() }));
-     host.on(DialogueEndedEvent, () => host.destroy());
-     dlg.play(script);
+     this.spawn(Conversation, { script });
    }
    ```
 
@@ -795,10 +816,21 @@ beats** you can hook for positional sound and effects:
   machine-gun of blips).
 
 ```ts
-host.add(new DialogueController({ ...createBoxDialogue(theme), onRevealTick: () => sfx.play("type") }));
-host.on(DialogueRevealMarkerEvent, ({ marker }) => {
-  if (marker.name === "sfx") sfx.play(marker.props.sfx); // [sfx=door/] → play "door"
-});
+/** Plays the sound a `[sfx=door/]` marker names when the text reaches it. */
+class MarkerSounds extends Component {
+  private readonly audio = this.service(AudioManagerKey);
+
+  onAdd(): void {
+    this.listen(this.entity, DialogueRevealMarkerEvent, ({ marker }) => {
+      const alias = marker.props.sfx;
+      if (marker.name === "sfx" && alias) this.audio.play(alias); // [sfx=door/] → play "door"
+    });
+  }
+}
+
+// On the conversation's entity:
+this.add(new DialogueController({ ...createBoxDialogue(theme), onRevealTick: () => sfx.play("type") }));
+this.add(new MarkerSounds());
 ```
 
 The addon **name-matches no marker**. The avatar channel interprets
@@ -930,11 +962,12 @@ own — you run the timer, which keeps the clock policy (does it pause? does it 
 down?) entirely in your game.
 
 The shape: a non-blocking `choice-timer` command just before the choice step
-carries the budget and the default; your host runs a timer **on its own clock**
-and commits the default with `controller.choose(default)` when it runs out. The
-only addon support is that the choice step's `meta` is handed to the choice
-presenter (via `ChoiceContext.meta`), so a custom presenter can draw a countdown
-from `meta.timeout`.
+carries the budget and the default; a component on the conversation's entity
+runs a timer **on the game's clock** and commits the default with
+`controller.choose(default)` when it runs out. The only addon support is that
+the choice step's `meta` is handed to the choice presenter (via
+`ChoiceContext.meta`), so a custom presenter can draw a countdown from
+`meta.timeout`.
 
 ```ts
 // In the script: arm the timer, then show the choice.
@@ -951,51 +984,80 @@ from `meta.timeout`.
 ```
 
 ```ts
-// In the host: arm/cancel off the dialogue events; tick on your own clock.
-let pending: { seconds: number; def: number } | undefined;
-let remaining = -1;
-let def = 0;
+// In the host: a component owns the timer, as a slot on the entity's
+// ProcessComponent, and listens for the dialogue events itself.
+import { Component, Entity, ProcessComponent, type ProcessSlot } from "@yagejs/core";
+import {
+  DialogueController,
+  DialogueChoiceMadeEvent,
+  DialogueChoiceShownEvent,
+  DialogueEndedEvent,
+  type DialogueScript,
+} from "@yagejs-addons/dialogue";
+import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
 
-new DialogueController({
-  ...createBoxDialogue(),
-  commands: {
-    // The command just stashes the budget — the timer arms when the menu shows.
-    "choice-timer": (cmd) => {
-      pending = { seconds: Number(cmd.seconds), def: Number(cmd.default) };
-    },
-  },
-});
+/** Commits a default option when a timed choice runs out of time. */
+class ChoiceTimer extends Component {
+  private readonly dialogue = this.sibling(DialogueController);
+  private readonly processes = this.sibling(ProcessComponent);
+  private timer!: ProcessSlot;
+  private pending: { seconds: number; option: number } | undefined;
+  private option = 0;
 
-// Re-arm or cancel on EVERY choice-shown — this guard keeps a stale timer from
-// firing into a later, unrelated menu.
-host.on(DialogueChoiceShownEvent, () => {
-  remaining = -1; // drop any prior timer first…
-  if (pending) {
-    // …then re-arm only if THIS menu was the timed one.
-    remaining = pending.seconds;
-    def = pending.def;
-    pending = undefined;
+  onAdd(): void {
+    this.timer = this.processes.slot();
+    // The default must be an ENABLED option.
+    this.timer.onComplete(() => this.dialogue.choose(this.option));
+
+    // Re-arm or cancel on EVERY choice-shown: this keeps a stale timer from
+    // firing into a later, unrelated menu.
+    this.listen(this.entity, DialogueChoiceShownEvent, () => {
+      this.timer.cancel(); // drop any prior timer first…
+      if (!this.pending) return; // …then re-arm only if THIS menu is the timed one.
+      this.option = this.pending.option;
+      this.timer.start({ duration: this.pending.seconds });
+      this.pending = undefined;
+    });
+    this.listen(this.entity, DialogueChoiceMadeEvent, () => this.reset());
+    this.listen(this.entity, DialogueEndedEvent, () => this.reset());
   }
-});
-host.on(DialogueChoiceMadeEvent, () => { remaining = -1; pending = undefined; });
-host.on(DialogueEndedEvent, () => { remaining = -1; pending = undefined; });
 
-// In your own update(dt): the conversation's setPaused does NOT freeze this —
-// pause your timer with whatever pauses the game.
-function update(dt: number) {
-  if (remaining < 0 || paused) return;
-  remaining -= dt;
-  if (remaining <= 0) {
-    remaining = -1;
-    controller.choose(def); // commit the default; must be an ENABLED option
+  /** Called by the `choice-timer` command. The timer starts when the menu shows. */
+  arm(seconds: number, option: number): void {
+    this.pending = { seconds, option };
+  }
+
+  private reset(): void {
+    this.timer.cancel();
+    this.pending = undefined;
+  }
+}
+
+class TimedConversation extends Entity {
+  setup(params: { script: DialogueScript }): void {
+    this.add(new ProcessComponent());
+    const timer = new ChoiceTimer();
+    const dlg = this.add(
+      new DialogueController({
+        ...createBoxDialogue(),
+        commands: {
+          // The command only stashes the budget and the default.
+          "choice-timer": (cmd) => timer.arm(Number(cmd.seconds), Number(cmd.default)),
+        },
+      }),
+    );
+    this.add(timer);
+    dlg.play(params.script);
   }
 }
 ```
 
 Two mistakes are easy to make: skipping the choice-shown re-arm/cancel (so a
-stale timer fires into the wrong menu later), and forgetting that the timer is on
-*your* clock — `setPaused` freezes the conversation but not your timer, so pause
-it yourself.
+stale timer fires into the wrong menu later), and forgetting which clock the
+timer runs on. The slot runs on the scene's clock, so it stops while the scene
+is paused and follows the scene's time scale. `setPaused` freezes the
+conversation but not the slot: pause the slot too (`pause()` / `resume()`)
+with whatever pauses the conversation.
 
 ## Cutscenes, pause, and focus
 

@@ -11,10 +11,11 @@ are pushed onto or popped from the scene stack.
 
 ## Defining a Scene
 
-Extend the `Scene` base class:
+Every scene is a subclass of the `Scene` base class:
 
 ```typescript
-import { Scene, Transform, Vec2 } from "@yagejs/core";
+import { Scene, Vec2 } from "@yagejs/core";
+import { Player } from "./player";
 
 class GameplayScene extends Scene {
   readonly name = "gameplay";
@@ -22,9 +23,8 @@ class GameplayScene extends Scene {
   readonly transparentBelow = false; // hide scenes underneath
 
   onEnter() {
-    const player = this.spawn("player");
-    player.add(new Transform({ position: new Vec2(400, 300) }));
-    player.add(new PlayerController());
+    // Spawn what the scene starts with. Player's components hold its logic.
+    this.spawn(Player, { position: new Vec2(400, 300) });
   }
 
   onExit() {
@@ -42,6 +42,12 @@ class GameplayScene extends Scene {
   }
 }
 ```
+
+`onEnter()` assembles the scene: it spawns the entities, sets up the camera,
+and starts the music. It holds no game state and no rules. `Player` is an
+entity type, an `Entity` subclass whose `setup()` adds its components. Game
+logic lives in those components. See
+[Entities & Components](/concepts/entities-and-components/) for both.
 
 ### Scene Hooks
 
@@ -67,27 +73,35 @@ per-frame logic:
 
 ```typescript
 import {
+  Entity,
   Process,
   ProcessSystemKey,
   Scene,
+  Transform,
+  defineEvent,
   makeSceneScopedQueue,
 } from "@yagejs/core";
+
+const RoundOver = defineEvent("arena:round-over");
+
+// The backdrop's per-frame drift is a component on its entity.
+class Backdrop extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new ParallaxDrift());
+  }
+}
 
 class ArenaScene extends Scene {
   readonly name = "arena";
 
   onEnter() {
-    // A component on an entity the scene spawns drifts the backdrop.
-    this.spawn("backdrop").add(new ParallaxDrift());
+    this.spawn(Backdrop);
 
     // A queue that pauses and ends with the scene runs the round timer.
-    const processSystem = this.context.resolve(ProcessSystemKey);
-    const queue = makeSceneScopedQueue(processSystem, this);
-    queue.run(Process.delay(60, () => this.endRound()));
-  }
-
-  private endRound() {
-    // …
+    // Components that end the round listen for RoundOver.
+    const queue = makeSceneScopedQueue(this.use(ProcessSystemKey), this);
+    queue.run(Process.delay(60, () => this.emit(RoundOver)));
   }
 }
 ```
@@ -208,11 +222,24 @@ their type, so a call carrying one still returns `Entity[]`. See
 
 ## Subclassing Scene
 
-Scenes are always classes. Override `onEnter` to spawn entities, resolve
-services, and wire up the scene:
+Scenes are always `Scene` subclasses. Override `onEnter` to spawn entities
+and resolve services. Game logic, such as reading input, goes in a component
+on an entity the scene spawns.
+
+An entity that is spawned once and has no behaviour of its own, such as a logo
+or a background, does not need an entity class. Spawn it by name and add its
+components. An entity with behaviour, or one you spawn more than once, is an
+`Entity` subclass:
 
 ```typescript
-import { Component, Scene, SceneManagerKey, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Entity,
+  Scene,
+  SceneManagerKey,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 import { SpriteComponent, texture } from "@yagejs/renderer";
 import { InputManagerKey } from "@yagejs/input";
 
@@ -230,15 +257,22 @@ class TitleController extends Component {
   }
 }
 
+class TitleMenu extends Entity {
+  setup() {
+    this.add(new TitleController());
+  }
+}
+
 class TitleScene extends Scene {
   readonly name = "title";
 
   onEnter() {
+    // Spawned once, no behaviour of its own: a named spawn is enough.
     const logo = this.spawn("logo");
     logo.add(new Transform({ position: new Vec2(640, 200) }));
     logo.add(new SpriteComponent({ texture: LogoTex }));
 
-    this.spawn("controller").add(new TitleController());
+    this.spawn(TitleMenu);
   }
 }
 
@@ -257,10 +291,14 @@ returned promise resolves once the deferred operation completes.
 class TitleScene extends Scene {
   readonly name = "title";
 
+  constructor(private readonly skipToGame: boolean) {
+    super();
+  }
+
   onEnter() {
-    // Skip the title screen if a saved game exists — fully safe inside onEnter.
-    if (saveSystem.hasAutosave()) {
-      this.context.resolve(SceneManagerKey).replace(new GameplayScene());
+    // Skip the title screen — fully safe inside onEnter.
+    if (this.skipToGame) {
+      void this.use(SceneManagerKey).replace(new GameplayScene());
     }
   }
 }

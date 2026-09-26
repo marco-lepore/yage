@@ -1,83 +1,79 @@
-import { Component, MathUtils, Transform, Vec2 } from "@yagejs/core";
+import { Component, Entity, MathUtils, Transform, Vec2 } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import {
-  DialogueChoiceShownEvent,
-  DialogueChoiceMadeEvent,
-  DialogueEndedEvent,
-  type DialogueController,
-} from "@yagejs-addons/dialogue";
-import { WIDTH, HEIGHT, HUD_LAYER, SKIP_HOLD } from "./constants.js";
+  WIDTH,
+  HEIGHT,
+  HUD_LAYER,
+  SKIP_HOLD,
+  START_GOLD,
+} from "./constants.js";
 
-// ── HUD (screen space): hint, live gold + items, auto toggle, ff/skip ring ────
+// ── Purse: the game state the conversations read and write ───────────────────
 
-export class Hud extends Component {
-  private readonly input = this.service(InputManagerKey);
-  private auto = false;
-  private autoLabel!: TextComponent;
-  private status!: TextComponent;
-  private lastStatus = "";
-  private meter!: GraphicsComponent;
-  /** Last-drawn meter state — redraw only on change (idle frames skip the
-   *  Graphics clear+refill entirely). */
-  private meterFf = false;
-  private meterSkipHeld = false;
-  private meterSkipT = -1;
+/**
+ * The player's gold and items. The dialogue host bridges the scripts into it:
+ * `gold` is a two-way storage cell, `has_item()` reads the items, and the
+ * `give-gold` / `give-item` / `take-item` commands change them. The status line
+ * redraws on every change.
+ */
+export class Purse extends Component {
+  private _gold = START_GOLD;
+  private readonly items = new Set<string>();
 
-  /** Set by the scene once the controller exists (toggled by the V key). */
-  onAutoToggle?: (on: boolean) => void;
-
-  constructor(
-    private readonly getGold: () => number,
-    private readonly getItems: () => readonly string[],
-  ) {
+  constructor(private readonly status: TextComponent) {
     super();
   }
 
-  onAdd(): void {
-    this.spawnText(
-      12,
-      12,
-      "WASD move · F talk · hold J fast · hold X skip · V auto · P pause · H hide",
-      13,
-      0xb8b8c0,
-      { x: 0, y: 0 },
-    );
-    this.status = this.spawnText(12, 34, this.statusText(), 14, 0xffe08a, {
-      x: 0,
-      y: 0,
-    });
-    this.autoLabel = this.spawnText(
-      WIDTH - 12,
-      12,
-      this.autoText(),
-      13,
-      0x8888aa,
-      { x: 1, y: 0 },
-    );
+  get gold(): number {
+    return this._gold;
+  }
 
-    const meterEntity = this.scene.spawn("hud-meter");
-    meterEntity.add(
-      new Transform({ position: new Vec2(WIDTH / 2, HEIGHT - 28) }),
-    );
-    this.meter = meterEntity.add(new GraphicsComponent({ layer: HUD_LAYER }));
+  set gold(value: number) {
+    this._gold = value;
+    this.refresh();
+  }
+
+  has(id: string): boolean {
+    return this.items.has(id);
+  }
+
+  give(id: string): void {
+    this.items.add(id);
+    this.refresh();
+  }
+
+  take(id: string): void {
+    this.items.delete(id);
+    this.refresh();
+  }
+
+  onAdd(): void {
+    this.refresh();
+  }
+
+  private refresh(): void {
+    const bag = this.items.size > 0 ? [...this.items].join(", ") : "(empty)";
+    this.status.setText(`Gold: ${this._gold}    Items: ${bag}`);
+  }
+}
+
+// ── the fast-forward / skip meter ────────────────────────────────────────────
+
+/** Bottom-centre meter: a fast-forward glyph while J is held, and a ring that
+ *  fills while X is held (a full ring confirms the skip). */
+export class InputMeter extends Component {
+  private readonly input = this.service(InputManagerKey);
+  /** Last-drawn state — the meter redraws only when it changes. */
+  private ff = false;
+  private skipHeld = false;
+  private skipT = -1;
+
+  constructor(private readonly meter: GraphicsComponent) {
+    super();
   }
 
   update(): void {
-    // Live gold + items — redraw only when the text actually changes.
-    const next = this.statusText();
-    if (next !== this.lastStatus) {
-      this.lastStatus = next;
-      this.status.setText(next);
-    }
-
-    if (this.input.isJustPressed("auto")) {
-      this.auto = !this.auto;
-      this.onAutoToggle?.(this.auto);
-      this.autoLabel.setText(this.autoText());
-    }
-
-    // Bottom-centre meter: fast-forward glyph while J held; skip ring while X held.
     const ff = this.input.isPressed("attack");
     const skipHeld = this.input.isPressed("skip");
     const skipT = MathUtils.clamp(
@@ -85,18 +81,14 @@ export class Hud extends Component {
       0,
       1,
     );
-    if (
-      ff === this.meterFf &&
-      skipHeld === this.meterSkipHeld &&
-      skipT === this.meterSkipT
-    ) {
+    if (ff === this.ff && skipHeld === this.skipHeld && skipT === this.skipT) {
       return;
     }
-    this.meterFf = ff;
-    this.meterSkipHeld = skipHeld;
-    this.meterSkipT = skipT;
-    this.meter.graphics.clear(); // redrawn on change — don't accumulate
+    this.ff = ff;
+    this.skipHeld = skipHeld;
+    this.skipT = skipT;
     this.meter.draw((g) => {
+      g.clear();
       if (ff) {
         g.poly([-9, -7, 0, 0, -9, 7]).fill({ color: 0xffffff, alpha: 0.9 });
         g.poly([1, -7, 10, 0, 1, 7]).fill({ color: 0xffffff, alpha: 0.9 });
@@ -116,210 +108,68 @@ export class Hud extends Component {
       }
     });
   }
-
-  private statusText(): string {
-    const items = this.getItems();
-    const bag = items.length > 0 ? items.join(", ") : "(empty)";
-    return `Gold: ${this.getGold()}    Items: ${bag}`;
-  }
-
-  private autoText(): string {
-    return this.auto ? "AUTO ▶ ON" : "AUTO ❙❙ OFF";
-  }
-
-  private spawnText(
-    x: number,
-    y: number,
-    text: string,
-    size: number,
-    fill: number,
-    anchor: { x: number; y: number },
-  ): TextComponent {
-    const e = this.scene.spawn("hud-text");
-    e.add(new Transform({ position: new Vec2(x, y) }));
-    return e.add(
-      new TextComponent({
-        text,
-        style: { fontSize: size, fill, fontFamily: "sans-serif" },
-        layer: HUD_LAYER,
-        anchor,
-      }),
-    );
-  }
 }
 
-// ── Inspector probe (keeps the example harness-clean for smoke tests) ─────────
+// ── HUD entity (screen space) ────────────────────────────────────────────────
 
-export class DialogueProbe extends Component {
-  lastLine = "";
-  lineCount = 0;
-  lastChoice = "";
-
-  onLine(text: string): void {
-    this.lastLine = text;
-    this.lineCount++;
-  }
-  onChoice(text: string): void {
-    this.lastChoice = text;
-  }
+/** The options {@link spawnHudText} takes. */
+export interface HudTextOptions {
+  readonly x: number;
+  readonly y: number;
+  readonly text: string;
+  readonly size: number;
+  readonly fill: number;
+  readonly anchor: { readonly x: number; readonly y: number };
+  readonly visible?: boolean;
 }
 
-// ── Lifecycle levers on two keys (both persist across plays) ───────────────────
-
-/**
- * P / H drive two of the three orthogonal lifecycle levers (the third,
- * `setInputEnabled`, toggles a live binding at runtime; the ambient gossip
- * below skips device input entirely with `input: null` instead):
- *   • **P → `setPaused`** — freezes every conversation (typewriter, auto-advance,
- *     caret, input) behind a dim overlay with no state loss; press again to
- *     resume exactly where it left off. `lifecycle.paused` freezes the player
- *     too, so the whole world reads as paused.
- *   • **H → `setHidden`** — hides the dialogue UI mid-line and brings it back
- *     with its reveal progress intact (the bubble + caret, never an empty box).
- *     Gated to an active conversation so an idle press can't strand a
- *     later line hidden.
- */
-export class LifecycleControls extends Component {
-  private readonly input = this.service(InputManagerKey);
-  private overlay!: GraphicsComponent;
-  private banner!: TextComponent;
-
-  constructor(
-    private readonly controllers: readonly DialogueController[],
-    private readonly lifecycle: { paused: boolean; hidden: boolean },
-  ) {
-    super();
-  }
-
-  onAdd(): void {
-    // Screen-space dim + PAUSED banner on the top HUD layer (above the dialogue
-    // box), hidden until P. Toggled via `.visible` — DisplaySystem doesn't sync it.
-    const dim = this.scene.spawn("pause-overlay");
-    dim.add(new Transform());
-    this.overlay = dim.add(
-      new GraphicsComponent({ layer: HUD_LAYER }).draw((g) => {
-        g.rect(0, 0, WIDTH, HEIGHT).fill({ color: 0x05060a, alpha: 0.55 });
-      }),
-    );
-    this.overlay.graphics.visible = false;
-
-    const banner = this.scene.spawn("pause-banner");
-    banner.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2) }));
-    this.banner = banner.add(
-      new TextComponent({
-        text: "❙❙ PAUSED",
-        style: { fontSize: 34, fill: 0xffe08a, fontFamily: "sans-serif" },
-        layer: HUD_LAYER,
-        anchor: { x: 0.5, y: 0.5 },
-      }),
-    );
-    this.banner.text.visible = false;
-  }
-
-  update(): void {
-    if (this.input.isJustPressed("pause")) {
-      this.lifecycle.paused = !this.lifecycle.paused;
-      for (const c of this.controllers) c.setPaused(this.lifecycle.paused);
-      this.overlay.graphics.visible = this.lifecycle.paused;
-      this.banner.text.visible = this.lifecycle.paused;
-    }
-    if (
-      this.input.isJustPressed("hide") &&
-      this.controllers.some((c) => c.isActive())
-    ) {
-      this.lifecycle.hidden = !this.lifecycle.hidden;
-      for (const c of this.controllers) c.setHidden(this.lifecycle.hidden);
-    }
-  }
+/** One line of HUD text as a child entity of `parent`. HUD hosts have no
+ *  Transform, so `x` and `y` are screen pixels. */
+export function spawnHudText(
+  parent: Entity,
+  name: string,
+  { x, y, text, size, fill, anchor, visible = true }: HudTextOptions,
+): TextComponent {
+  const child = parent.spawnChild(name);
+  child.add(new Transform({ position: new Vec2(x, y) }));
+  return child.add(
+    new TextComponent({
+      text,
+      style: { fontSize: size, fill, fontFamily: "sans-serif" },
+      layer: HUD_LAYER,
+      anchor,
+      visible,
+    }),
+  );
 }
 
-// ── timed-choice recipe: host-owned countdown on the game clock ───────────────
+/** The controls hint, the gold + items line and the fast-forward meter. */
+export class HudEntity extends Entity {
+  /** The player's gold and items, hosted on this entity. */
+  purse!: Purse;
 
-/**
- * Timed choices aren't an engine feature — they're this recipe. A non-blocking
- * `choice-timer` command stashes `{ seconds, default }`; the timer arms when the menu
- * is shown and commits the default option via `controller.choose` on expiry.
- * Two rules keep it honest:
- *
- *   • **Re-arm/cancel on every `DialogueChoiceShownEvent`** (and cancel on
- *     choice-made / ended). Without it, a timer armed for one menu could fire
- *     into a LATER, unrelated menu — the dangling-timer footgun.
- *   • **The countdown runs on `update(dt)` — the game clock** — so it must pause
- *     with the game. `setPaused` freezes the conversation but NOT this component,
- *     so the timer gates itself on the shared pause flag (pause your own timer).
- */
-export class ChoiceTimer extends Component {
-  private remaining = -1; // seconds left; < 0 = disarmed
-  private pending: { seconds: number; def: number } | undefined;
-  private def = 0;
-  private label!: TextComponent;
-
-  constructor(
-    private readonly controller: DialogueController,
-    private readonly isPaused: () => boolean,
-  ) {
-    super();
-  }
-
-  onAdd(): void {
-    const e = this.scene.spawn("dlg-timer");
-    e.add(new Transform({ position: new Vec2(WIDTH / 2, 70) }));
-    this.label = e.add(
-      new TextComponent({
-        text: "",
-        style: { fontSize: 20, fill: 0xff6b6b, fontFamily: "sans-serif" },
-        layer: HUD_LAYER,
-        anchor: { x: 0.5, y: 0.5 },
-      }),
+  setup(): void {
+    spawnHudText(this, "hint", {
+      x: 12,
+      y: 12,
+      text: "WASD move · F talk · hold J fast · hold X skip · V auto · P pause · H hide",
+      size: 13,
+      fill: 0xb8b8c0,
+      anchor: { x: 0, y: 0 },
+    });
+    const status = spawnHudText(this, "status", {
+      x: 12,
+      y: 34,
+      text: "",
+      size: 14,
+      fill: 0xffe08a,
+      anchor: { x: 0, y: 0 },
+    });
+    const meter = this.spawnChild("meter");
+    meter.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT - 28) }));
+    this.purse = this.add(new Purse(status));
+    this.add(
+      new InputMeter(meter.add(new GraphicsComponent({ layer: HUD_LAYER }))),
     );
-    this.label.text.visible = false;
-
-    this.entity.on(DialogueChoiceShownEvent, () => this.onShown());
-    this.entity.on(DialogueChoiceMadeEvent, () => this.cancel());
-    this.entity.on(DialogueEndedEvent, () => this.cancel());
-  }
-
-  /** The `choice-timer` command handler stashes its params here. */
-  arm(seconds: number, def: number): void {
-    this.pending = { seconds, def };
-  }
-
-  private onShown(): void {
-    this.remaining = -1; // guard: drop any prior timer first…
-    if (this.pending) {
-      // …then re-arm only if THIS menu is timed.
-      this.remaining = this.pending.seconds;
-      this.def = this.pending.def;
-      this.pending = undefined;
-    }
-    this.refresh();
-  }
-
-  private cancel(): void {
-    this.remaining = -1;
-    this.pending = undefined;
-    this.label.text.visible = false;
-  }
-
-  update(dt: number): void {
-    if (this.remaining < 0 || this.isPaused()) return; // pause your own timer
-    this.remaining -= dt;
-    if (this.remaining <= 0) {
-      const def = this.def;
-      this.remaining = -1;
-      this.label.text.visible = false;
-      this.controller.choose(def); // commit the default on expiry
-      return;
-    }
-    this.refresh();
-  }
-
-  private refresh(): void {
-    if (this.remaining < 0) {
-      this.label.text.visible = false;
-      return;
-    }
-    this.label.setText(`⏳ ${Math.ceil(this.remaining)}s`);
-    this.label.text.visible = true;
   }
 }

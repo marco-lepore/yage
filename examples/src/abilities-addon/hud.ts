@@ -1,6 +1,6 @@
-import { Component, Transform, Vec2 } from "@yagejs/core";
-import type { Entity, Scene } from "@yagejs/core";
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
+import type { TextComponentOptions } from "@yagejs/renderer";
 import {
   Abilities,
   Health,
@@ -9,60 +9,80 @@ import {
   HealthHealed,
   HitGuarded,
 } from "@yagejs-addons/abilities";
-import { HEIGHT, HUD_LAYER, WIDTH } from "./constants.js";
+import { HEIGHT, HUD_LAYER, PLAYER_KEY, WIDTH } from "./constants.js";
 import { statsOf } from "./stats.js";
 import { PlayerController } from "./player.js";
 import { GUARD_HOLD_ID } from "./player-abilities.js";
 
-/**
- * Spawn the centered "You Died" banner on the screen-space HUD layer, hidden.
- * Returns a handle to reveal it. The scene owns the banner entities, so a
- * reset (which rebuilds the scene) starts with a fresh hidden banner.
- */
-export function spawnDeadBanner(scene: Scene): { show(): void } {
-  const titleEntity = scene.spawn("dead-banner");
-  titleEntity.add(
-    new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 - 12) }),
-  );
-  const title = titleEntity.add(
-    new TextComponent({
-      text: "You Died",
-      anchor: { x: 0.5, y: 0.5 },
-      style: {
-        fontFamily: "system-ui, sans-serif",
-        fontSize: 30,
-        fill: 0xef4444,
-        fontWeight: "bold",
-      },
-      layer: HUD_LAYER,
-      visible: false,
-    }),
-  );
+/** One line of HUD text as a child entity of `parent`, on the screen-space
+ *  HUD layer. `position` is relative to the parent's Transform, or in screen
+ *  pixels when the parent has none. */
+function spawnHudText(
+  parent: Entity,
+  name: string,
+  position: Vec2,
+  options: TextComponentOptions,
+): TextComponent {
+  const child = parent.spawnChild(name);
+  child.add(new Transform({ position }));
+  return child.add(new TextComponent({ ...options, layer: HUD_LAYER }));
+}
 
-  const subEntity = scene.spawn("dead-banner-sub");
-  subEntity.add(
-    new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 + 18) }),
-  );
-  const sub = subEntity.add(
-    new TextComponent({
-      text: "Reload to try again",
-      anchor: { x: 0.5, y: 0.5 },
-      style: {
-        fontFamily: "system-ui, sans-serif",
-        fontSize: 14,
-        fill: 0x94a3b8,
-      },
-      layer: HUD_LAYER,
-      visible: false,
-    }),
-  );
+// ---------------------------------------------------------------------------
+// Death banner
+// ---------------------------------------------------------------------------
 
-  return {
-    show(): void {
-      title.visible = true;
-      sub.visible = true;
-    },
-  };
+/** Shows the banner texts when the player dies. */
+export class DeadBanner extends Component {
+  constructor(private readonly texts: readonly TextComponent[]) {
+    super();
+  }
+
+  onAdd(): void {
+    this.listenScene(HealthDied, (_data, entity) => {
+      if (!entity?.tags.has("player")) return;
+      for (const text of this.texts) text.visible = true;
+    });
+  }
+}
+
+/** The centered "You Died" banner, hidden until the player dies. An R reset
+ *  rebuilds the scene, so every run starts with the banner hidden. */
+export class DeadBannerEntity extends Entity {
+  setup(): void {
+    const title = spawnHudText(
+      this,
+      "dead-banner",
+      new Vec2(WIDTH / 2, HEIGHT / 2 - 12),
+      {
+        text: "You Died",
+        anchor: { x: 0.5, y: 0.5 },
+        style: {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 30,
+          fill: 0xef4444,
+          fontWeight: "bold",
+        },
+        visible: false,
+      },
+    );
+    const hint = spawnHudText(
+      this,
+      "dead-banner-sub",
+      new Vec2(WIDTH / 2, HEIGHT / 2 + 18),
+      {
+        text: "Press R to try again",
+        anchor: { x: 0.5, y: 0.5 },
+        style: {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 14,
+          fill: 0x94a3b8,
+        },
+        visible: false,
+      },
+    );
+    this.add(new DeadBanner([title, hint]));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -117,7 +137,7 @@ export class Hud extends Component {
   }
 
   update(): void {
-    const player = this.scene.findEntity("PlayerEntity");
+    const player = this.scene.findByKey(PLAYER_KEY);
     const health = player?.tryGet(Health);
     const controller = player?.tryGet(PlayerController);
     const stats = player && statsOf(player);
@@ -135,6 +155,25 @@ export class Hud extends Component {
         this.log.text,
       ].join("\n"),
     );
+  }
+}
+
+/** The status text in the top-left corner: HP, loadout, stats, controls and
+ *  the combat log. */
+export class HudEntity extends Entity {
+  setup(): void {
+    const log = this.add(new CombatLog());
+    // The e2e tests read this text by its entity name, "hud".
+    const text = spawnHudText(this, "hud", new Vec2(16, 16), {
+      text: "",
+      style: {
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: 13,
+        fill: 0xe2e8f0,
+        lineHeight: 18,
+      },
+    });
+    this.add(new Hud(text, log));
   }
 }
 
@@ -192,7 +231,7 @@ export class HotbarSlot extends Component {
   }
 
   update(): void {
-    const player = this.scene.findEntity("PlayerEntity");
+    const player = this.scene.findByKey(PLAYER_KEY);
     const abilities = player?.tryGet(Abilities);
     const controller = player?.tryGet(PlayerController);
     if (!abilities || !controller) return;
@@ -229,20 +268,33 @@ export class HotbarSlot extends Component {
   }
 }
 
-export function spawnHotbar(scene: Scene): void {
-  const totalWidth =
-    HOTBAR_SLOTS.length * HOTBAR_SLOT_SIZE +
-    (HOTBAR_SLOTS.length - 1) * HOTBAR_GAP;
-  const startX = WIDTH / 2 - totalWidth / 2 + HOTBAR_SLOT_SIZE / 2;
-  const y = HEIGHT - 44;
-
-  HOTBAR_SLOTS.forEach((def, i) => {
-    const x = startX + i * (HOTBAR_SLOT_SIZE + HOTBAR_GAP);
-
-    const countdownEntity = scene.spawn(`hotbar-${def.kind}-time`);
-    countdownEntity.add(new Transform({ position: new Vec2(x, y + 7) }));
-    const countdown = countdownEntity.add(
-      new TextComponent({
+/** One hotbar slot: the panel with its cooldown wipe, the key and ability
+ *  name above center, and the `X.X` countdown below it. */
+export class HotbarSlotEntity extends Entity {
+  setup(params: { def: HotbarSlotDef; position: Vec2 }): void {
+    const { def } = params;
+    this.add(new Transform({ position: params.position }));
+    // Added before the texts: a layer draws in the order visuals join it, so
+    // the panel stays behind the label and the countdown.
+    this.add(new GraphicsComponent({ layer: HUD_LAYER }));
+    spawnHudText(this, `hotbar-${def.kind}-label`, new Vec2(0, -15), {
+      text: `${def.key}\n${def.name}`,
+      style: {
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: 8,
+        fill: 0x94a3b8,
+        align: "center",
+        lineHeight: 9,
+      },
+      anchor: { x: 0.5, y: 0.5 },
+    });
+    // The e2e tests read the countdown by its entity name,
+    // `hotbar-<kind>-time`.
+    const countdown = spawnHudText(
+      this,
+      `hotbar-${def.kind}-time`,
+      new Vec2(0, 7),
+      {
         text: "0.0",
         style: {
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
@@ -252,30 +304,26 @@ export function spawnHotbar(scene: Scene): void {
           align: "center",
         },
         anchor: { x: 0.5, y: 0.5 },
-        layer: HUD_LAYER,
-      }),
+      },
     );
+    this.add(new HotbarSlot(def.kind, countdown));
+  }
+}
 
-    const labelEntity = scene.spawn(`hotbar-${def.kind}-label`);
-    labelEntity.add(new Transform({ position: new Vec2(x, y - 15) }));
-    labelEntity.add(
-      new TextComponent({
-        text: `${def.key}\n${def.name}`,
-        style: {
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-          fontSize: 8,
-          fill: 0x94a3b8,
-          align: "center",
-          lineHeight: 9,
-        },
-        anchor: { x: 0.5, y: 0.5 },
-        layer: HUD_LAYER,
-      }),
-    );
-
-    const slotEntity = scene.spawn(`hotbar-${def.kind}`);
-    slotEntity.add(new Transform({ position: new Vec2(x, y) }));
-    slotEntity.add(new GraphicsComponent({ layer: HUD_LAYER }));
-    slotEntity.add(new HotbarSlot(def.kind, countdown));
-  });
+/** The bottom-center hotbar: one `HotbarSlotEntity` child per
+ *  `HOTBAR_SLOTS` entry. */
+export class HotbarEntity extends Entity {
+  setup(): void {
+    const totalWidth =
+      HOTBAR_SLOTS.length * HOTBAR_SLOT_SIZE +
+      (HOTBAR_SLOTS.length - 1) * HOTBAR_GAP;
+    const startX = WIDTH / 2 - totalWidth / 2 + HOTBAR_SLOT_SIZE / 2;
+    const y = HEIGHT - 44;
+    HOTBAR_SLOTS.forEach((def, i) => {
+      this.spawnChild(`hotbar-${def.kind}`, HotbarSlotEntity, {
+        def,
+        position: new Vec2(startX + i * (HOTBAR_SLOT_SIZE + HOTBAR_GAP), y),
+      });
+    });
+  }
 }

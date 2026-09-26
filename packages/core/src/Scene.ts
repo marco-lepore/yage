@@ -1020,8 +1020,9 @@ export abstract class Scene {
   /**
    * Register a scene-scoped service. Plugins call this from their
    * `beforeEnter` hook to expose per-scene state (render tree, physics
-   * world, …) resolvable via `Component.use(key)`. Game code can also use
-   * it to attach scene-local services without needing a plugin.
+   * world, …) resolvable via `Component.use(key)`. It is not for game
+   * state: score, lives or a run timer live in a component on a host entity
+   * spawned with a `key` and found with `findByKey`.
    *
    * Auto-cleared on scene exit — every key registered here is unregistered
    * after `onExit` runs (and after plugin `afterExit` hooks see them).

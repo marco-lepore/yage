@@ -6,12 +6,43 @@ description: "The building blocks of your game world"
 ## Entities
 
 An entity is a named container for components with O(1) type-based lookups.
-Create entities through a scene:
+An entity type is an `Entity` subclass. Its `setup()` method adds the
+components, and a scene creates an instance with `scene.spawn(Class, params)`:
 
 ```typescript
-const player = scene.spawn("player");
-const bullet = scene.spawn("bullet");
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent, texture } from "@yagejs/renderer";
+
+const HeroTex = texture("assets/hero.png");
+
+class Player extends Entity {
+  setup(params: { position: Vec2 }) {
+    this.add(new Transform({ position: params.position }));
+    this.add(new SpriteComponent({ texture: HeroTex }));
+    this.add(new PlayerController());
+  }
+}
+
+const player = scene.spawn(Player, { position: new Vec2(100, 200) });
 ```
+
+`scene.spawn()` passes its second argument to `setup()`, and TypeScript checks
+it against the `setup()` parameter. The entity's name, which the debug tools
+and `scene.findEntity` use, is its class name. See
+[Entity Subclasses](/patterns/entity-subclasses/) for more on `setup()`.
+
+An entity that is spawned once and has no behaviour of its own, such as a
+background or a UI root, does not need a class. Spawn it by name and add its
+components to the entity that `spawn()` returns:
+
+```typescript
+const background = scene.spawn("background");
+background.add(new Transform());
+background.add(new SpriteComponent({ texture: BackdropTex }));
+```
+
+Anything with behaviour, or anything you spawn more than once, is an `Entity`
+subclass.
 
 An entity subclass has no per-frame hook. `update` and `fixedUpdate` are typed
 as `never` on `Entity`, so a subclass that declares either name fails to
@@ -27,23 +58,23 @@ import { SpriteComponent, texture } from "@yagejs/renderer";
 
 const HeroTex = texture("assets/hero.png");
 
-// Add components
-player.add(new Transform({ position: new Vec2(100, 200) }));
-player.add(new SpriteComponent({ texture: HeroTex }));
+// Add components (inside setup(), this is this.add(...))
+entity.add(new Transform({ position: new Vec2(100, 200) }));
+entity.add(new SpriteComponent({ texture: HeroTex }));
 
 // Get a component (throws if missing)
-const transform = player.get(Transform);
+const transform = entity.get(Transform);
 
 // Get a component (returns undefined if missing)
-const sprite = player.tryGet(SpriteComponent);
+const sprite = entity.tryGet(SpriteComponent);
 
 // Check existence
-if (player.has(SpriteComponent)) {
+if (entity.has(SpriteComponent)) {
   // ...
 }
 
 // Remove a component
-player.remove(SpriteComponent);
+entity.remove(SpriteComponent);
 ```
 
 `entity.get(Type)` throws an error when the component is not found — use it
@@ -241,7 +272,7 @@ one `setActive` writes. `isActive` is `activeSelf` combined with every
 ancestor's, so deactivating a parent puts the whole subtree to sleep:
 
 ```typescript
-const enemy = scene.spawn("enemy");
+const enemy = scene.spawn(Enemy);
 const healthBar = enemy.spawnChild("hp", HealthBar);
 
 enemy.setActive(false);
@@ -528,40 +559,54 @@ the work the new component would do this frame in the component that adds it.
 
 ### Cached Service Resolution
 
-Use `this.use(key)` inside a component to resolve a service from the DI
-container. The result is cached after the first call:
+Declare the services a component needs as fields with `this.service(key)`. The
+field holds a lazy reference: the service is resolved from the DI container on
+first property access and cached from then on.
 
 ```typescript
+import { Component } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
+import { RigidBodyComponent } from "@yagejs/physics";
 
 class PlayerController extends Component {
-  update(dt: number) {
-    const input = this.use(InputManagerKey);
+  private readonly input = this.service(InputManagerKey);
+  private readonly body = this.sibling(RigidBodyComponent);
 
-    if (input.isPressed("jump")) {
-      this.sibling(RigidBody).applyImpulse({ x: 0, y: -500 });
+  update() {
+    if (this.input.isJustPressed("jump")) {
+      this.body.applyImpulse({ x: 0, y: -500 });
     }
   }
 }
 ```
+
+`this.use(key)` resolves the service immediately and caches it too. Call it
+from `onAdd()` or later, once the component is on an entity in a scene.
 
 ### Lazy Sibling References
 
-`this.sibling(Type)` returns a lazy reference to another component on the same
-entity. The lookup is deferred until first access and then cached:
+Declare the other components a component works with as fields with
+`this.sibling(Type)`. The field holds a lazy reference to that component on the
+same entity. The lookup is deferred until first access and then cached:
 
 ```typescript
-class Enemy extends Component {
-  update(dt: number) {
-    const transform = this.sibling(Transform);
-    const health = this.sibling(Health);
+import { Component, Transform } from "@yagejs/core";
 
-    if (health.current < health.max * 0.5) {
-      // flee logic using transform.position
+class Enemy extends Component {
+  private readonly transform = this.sibling(Transform);
+  private readonly health = this.sibling(Health);
+
+  update() {
+    if (this.health.current < this.health.max * 0.5) {
+      // flee logic using this.transform.position
     }
   }
 }
 ```
+
+Declare these references once, as fields. Each call to `this.service()` or
+`this.sibling()` creates a new reference, so a call inside `update()` repeats
+the work every frame.
 
 ### Error Boundary
 

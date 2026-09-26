@@ -206,9 +206,10 @@ new SynthPlugin({
 });
 audio.playRandom(synthVariantAliases("shoot", 4));
 
-// 2. Jitter the playback rate at the call site (variants register only the
-//    suffixed aliases, so play one of those).
-audio.play("shoot.1", { speed: 0.95 + Math.random() * 0.1 });
+// 2. Jitter the playback rate at the call site with the scene's generator
+//    (RandomKey, not Math.random). Variants register only the suffixed
+//    aliases, so play one of those.
+audio.play("shoot.1", { speed: this.use(RandomKey).range(0.95, 1.05) });
 
 // Building the takes yourself — register each one:
 const takes = synthVariants("shoot", synthPresets.shoot(), 4, 0.08);

@@ -3,13 +3,14 @@ import {
   Component,
   Engine,
   Entity,
-  EventBusKey,
   LoadingScene,
+  Process,
+  ProcessSystemKey,
   Scene,
   Transform,
   Vec2,
 } from "@yagejs/core";
-import type { AssetLoader } from "@yagejs/core";
+import type { AssetLoader, ProcessSystem } from "@yagejs/core";
 import { fade, GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import {
@@ -29,29 +30,33 @@ const HEIGHT = 360;
 
 // ---------------------------------------------------------------------------
 // Synthetic "slow asset" type so the progress bar is visible on every run.
-// Each entry resolves after a randomised delay.
+// Each asset carries its load time in seconds as its handle's `data`, and the
+// loader waits that long in engine time, so a paused or frozen game clock
+// holds the load too.
 // ---------------------------------------------------------------------------
-const slowLoader: AssetLoader<string> = {
-  load: (path: string) =>
-    new Promise((resolve) => {
-      const delay = 250 + Math.random() * 600;
-      setTimeout(() => resolve(`loaded:${path}`), delay);
-    }),
-};
+function createSlowLoader(processes: ProcessSystem): AssetLoader<string> {
+  return {
+    load: async (path, data) => {
+      const seconds = typeof data === "number" ? data : 0.5;
+      await processes.add(Process.delay(seconds)).toPromise();
+      return `loaded:${path}`;
+    },
+  };
+}
 
-function slowAsset(name: string): AssetHandle<string> {
-  return new AssetHandle<string>("slow", name);
+function slowAsset(name: string, seconds: number): AssetHandle<string> {
+  return new AssetHandle<string>("slow", name, seconds);
 }
 
 const PRELOAD = [
-  slowAsset("player"),
-  slowAsset("enemies"),
-  slowAsset("level-1"),
-  slowAsset("level-2"),
-  slowAsset("music"),
-  slowAsset("sfx"),
-  slowAsset("ui-sprites"),
-  slowAsset("particles"),
+  slowAsset("player", 0.3),
+  slowAsset("enemies", 0.55),
+  slowAsset("level-1", 0.8),
+  slowAsset("level-2", 0.4),
+  slowAsset("music", 0.85),
+  slowAsset("sfx", 0.25),
+  slowAsset("ui-sprites", 0.65),
+  slowAsset("particles", 0.45),
 ];
 
 // ---------------------------------------------------------------------------
@@ -134,20 +139,14 @@ class PressAnyKeyPrompt extends Entity {
 class PressAnyKeyLogic extends Component {
   private readonly input = this.service(InputManagerKey);
   private ready = false;
-  private unsub?: () => void;
 
   override onAdd(): void {
     const scene = this.scene;
-    const bus = scene.context.resolve(EventBusKey);
-    this.unsub = bus.on("scene:loading:done", (ev) => {
+    this.listenBus("scene:loading:done", (ev) => {
       if (ev.scene !== scene) return;
       this.showPromptLabel();
       this.ready = true;
     });
-  }
-
-  override onDestroy(): void {
-    this.unsub?.();
   }
 
   update(): void {
@@ -160,7 +159,7 @@ class PressAnyKeyLogic extends Component {
   }
 
   private showPromptLabel(): void {
-    const labelEntity = this.scene.spawn("press-any-key-label");
+    const labelEntity = this.entity.spawnChild("press-any-key-label");
     const panel = labelEntity.add(
       new UISurface({
         anchor: Anchor.BottomCenter,
@@ -197,7 +196,10 @@ engine.use(new UIPlugin());
 async function main(): Promise<void> {
   await installDebugFromUrl(engine);
   await engine.start();
-  engine.assets.registerLoader("slow", slowLoader);
+  engine.assets.registerLoader(
+    "slow",
+    createSlowLoader(engine.context.resolve(ProcessSystemKey)),
+  );
   await engine.scenes.push(new AutoBoot());
 
   // UI wiring — attached after start so a click never runs a scene operation
@@ -212,11 +214,13 @@ async function main(): Promise<void> {
       void engine.scenes.replace(new PressAnyKeyBoot());
     });
 
+  // Numbers each fresh load, so its assets get paths nothing has cached.
+  let freshLoads = 0;
   document.getElementById("btn-uncache")?.addEventListener("click", () => {
-    const salt = Math.random().toString(36).slice(2, 6);
+    const run = ++freshLoads;
     class ReloadedGameScene extends GameScene {
-      override readonly preload = PRELOAD.map((h) =>
-        slowAsset(`${h.path}-${salt}`),
+      override readonly preload = PRELOAD.map(
+        (h) => new AssetHandle<string>(h.type, `${h.path}-${run}`, h.data),
       );
     }
     class ReloadBoot extends AutoBoot {

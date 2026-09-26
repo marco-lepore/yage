@@ -56,7 +56,10 @@ class Particle extends Entity {
   }
 }
 
+/** Shrinks and fades the particle over its lifetime, then destroys it. */
 class ParticleFader extends Component {
+  private readonly transform = this.sibling(Transform);
+  private readonly graphics = this.sibling(GraphicsComponent);
   private elapsed = 0;
   constructor(private readonly lifetime: number) {
     super();
@@ -69,18 +72,14 @@ class ParticleFader extends Component {
       return;
     }
     const fade = 1 - t;
-    const sprite = this.entity.get(GraphicsComponent);
-    sprite.draw((g) => {
-      g.clear();
-      g.circle(0, 0, 8 * fade).fill({ color: 0x38bdf8, alpha: fade });
-    });
+    this.transform.setScale(fade, fade);
+    this.graphics.alpha = fade;
   }
 }
 
 class ShootController extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly shotCounter: ShotCounter;
-  private disposers: Array<() => void> = [];
 
   constructor(shotCounter: ShotCounter) {
     super();
@@ -88,7 +87,7 @@ class ShootController extends Component {
   }
 
   override onAdd(): void {
-    this.disposers.push(
+    this.addCleanup(
       // Action listener: rising edge of `shoot` — fires once per pointerdown
       // that the consume system lets through. Clicks on UI panels with
       // `consumeInput: true` are auto-claimed at drain time, so this never
@@ -104,11 +103,6 @@ class ShootController extends Component {
       }),
     );
   }
-
-  override onDestroy(): void {
-    for (const off of this.disposers) off();
-    this.disposers.length = 0;
-  }
 }
 
 class HudUpdater extends Component {
@@ -123,6 +117,34 @@ class HudUpdater extends Component {
     this.text.setText(
       `shots fired: ${this.shots.shots}    ui clicks: ${this.clicks.uiClicks}`,
     );
+  }
+}
+
+/** Fires a burst at every click the UI lets through, and counts it. */
+class PlayerEntity extends Entity {
+  setup(params: { shots: ShotCounter }): void {
+    this.add(new Transform());
+    this.add(new ShootController(params.shots));
+  }
+}
+
+/** The bottom-centre readout of shots fired and UI clicks. */
+class HudEntity extends Entity {
+  setup(params: { shots: ShotCounter; clicks: UIClickCounter }): void {
+    const panel = this.add(
+      new UISurface({
+        anchor: Anchor.BottomCenter,
+        offset: { x: 0, y: -20 },
+        padding: 10,
+        background: { color: 0x000000, alpha: 0.6, radius: 6 },
+      }),
+    );
+    const text = panel.text("shots fired: 0    ui clicks: 0", {
+      fontFamily: "ui-monospace, Menlo, monospace",
+      fontSize: 16,
+      fill: 0xe2e8f0,
+    });
+    this.add(new HudUpdater(text, params.shots, params.clicks));
   }
 }
 
@@ -155,25 +177,10 @@ class DemoScene extends Scene {
     );
 
     // -- Shoot controller (listens to `shoot` action) --
-    const player = this.spawn("player");
-    player.add(new Transform());
-    player.add(new ShootController(shots));
+    this.spawn(PlayerEntity, { shots });
 
     // -- HUD --
-    const hudPanel = this.spawn("hud").add(
-      new UISurface({
-        anchor: Anchor.BottomCenter,
-        offset: { x: 0, y: -20 },
-        padding: 10,
-        background: { color: 0x000000, alpha: 0.6, radius: 6 },
-      }),
-    );
-    const hudText = hudPanel.text("shots fired: 0    ui clicks: 0", {
-      fontFamily: "ui-monospace, Menlo, monospace",
-      fontSize: 16,
-      fill: 0xe2e8f0,
-    });
-    this.spawn("hud-updater").add(new HudUpdater(hudText, shots, clicks));
+    this.spawn(HudEntity, { shots, clicks });
 
     // -- Consume panel (top-left, default `consumeInput: true`) --
     const consumePanel = this.spawn("ui-consume").add(

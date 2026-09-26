@@ -22,18 +22,17 @@
  *   for a beat afterward. Every committed attack/counter phase additionally
  *   carries `priority: SUPER_ARMOR_PRIORITY` (above the addon's built-in
  *   stagger reaction) so a committed attack still takes damage but can't be
- *   flinched or knocked back out of it — see the ability defs below.
+ *   flinched or knocked back out of it — see `player-abilities.ts`.
  * - Enemies: a telegraphed melee `hitbox` (windup → active → recovery, with
  *   a `telegraph` step that flashes the sprite and bursts particles through
  *   the whole windup) plus a `projectile` ranged attack (`SHOOT`), aimed at
  *   the player and carrying the same telegraph through its cast. Unlike the
  *   player, enemies carry no `priority` (super armor) on these defs — a
  *   landed hit interrupts a telegraphed swing at any point, so punishing the
- *   tell actually stops the attack instead of only chipping through it (see
- *   `07-reactions.md`'s evidence note for the diagnosis). An engagement
- *   token (`EngagementToken`) lets only one enemy hold it at a time: the
- *   holder runs the melee / close-in / shoot logic below, everyone else
- *   orbits/strafes at mid range instead of piling onto the player.
+ *   tell actually stops the attack instead of only chipping through it. An
+ *   engagement token (`EngagementToken`) lets only one enemy hold it at a
+ *   time: the holder runs the melee / close-in / shoot logic, everyone
+ *   else orbits/strafes at mid range instead of piling onto the player.
  *   `EnemyAI` picks melee / close-in / shoot off distance to the player each
  *   frame, and attacks gate movement the same way the cast always has.
  * - `Health` + `Stagger` + `HitReceiver` on both sides. `Facing` on every
@@ -83,15 +82,14 @@
  * (see `examples/public/assets/CREDITS.md`) via `AnimatedSpriteComponent` +
  * `AnimationController`. The addon's own `anim` timeline step drives a core
  * `KeyframeAnimator`, not a sprite sheet, so this example defines its own
- * `spriteAnim`/`spriteHold` steps (see the "Boxer sprite animation" section
- * below) that pick the right directional frames off `AnimationController`,
- * plus a `telegraph` step for the enemy windup tell.
+ * `spriteAnim`/`spriteHold` steps (`steps.ts`, over the tables in
+ * `boxer-sprites.ts`) that pick the right directional frames off
+ * `AnimationController`, plus a `telegraph` step for the enemy windup tell.
  *
  * H toggles the engine's built-in physics debug overlay (`DebugPlugin`'s
  * `toggleKey`) — collider wireframes for every body, including the
  * sensors `hitbox`/`projectile` spawn, colored by body type (yellow for
- * sensors). No example-side hitbox overlay was needed; see the evidence
- * note on `20-example-ergonomics-batch.md`.
+ * sensors). No example-side hitbox overlay is needed.
  */
 
 import { Engine } from "@yagejs/core";

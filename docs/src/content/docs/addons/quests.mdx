@@ -52,6 +52,10 @@ const log = new QuestLog(quests);
 log.start("gatherHerbs"); // { ok: true } — prereqs met (none)
 ```
 
+A quest log is progression that the game saves and keeps from scene to scene,
+so it sits at module level next to the game's save root (see [Save](#save)).
+Components read and advance it from there.
+
 ## Bind objectives to other addons — no addon dependency
 
 Quests declares no dependency on dialogue, inventory, or any other addon.
@@ -61,40 +65,63 @@ guard needed**: the log silently ignores progress calls on a quest that isn't
 currently active, so firing unconditionally on every pickup/kill is correct.
 
 ```ts
+import { Component } from "@yagejs/core";
 import { InventoryItemAddedEvent } from "@yagejs-addons/inventory";
 
-// Inventory pickup -> advance the collect objective.
-player.on(InventoryItemAddedEvent, (e) => {
-  if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
-});
+/** Turns game events into quest progress. Add it to the player. */
+class QuestProgress extends Component {
+  onAdd(): void {
+    // Inventory pickup on the player -> advance the collect objective.
+    this.listen(this.entity, InventoryItemAddedEvent, (e) => {
+      if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
+    });
+
+    // The game's own entity event, bubbling up from any wolf -> advance wolf kills.
+    this.listenScene(WolfDiedEvent, () => log.advance("thinThePack", "wolf"));
+  }
+}
 
 // Dialogue command -> complete the turn-in objective (the healer's script
 // runs `[turnIn/]` via a command handler injected at play() time).
 dialogue.play(healerScript, {
   commands: { turnIn: () => log.complete("gatherHerbs", "turnIn") },
 });
-
-// The game's own entity event -> advance wolf kills.
-wolf.on(WolfDiedEvent, () => log.advance("thinThePack", "wolf"));
 ```
 
 <Aside type="tip">
-This is the whole binding mechanism — one line per objective, driven by your
-game's own events. Quests stays decoupled from inventory and dialogue: you
+This is the whole binding mechanism — one handler per objective, driven by
+your game's own events. Quests stays decoupled from inventory and dialogue: you
 translate their events into `advance()` calls yourself.
 </Aside>
 
 ## React to consequences
 
-```ts
-log.on("questCompleted", ({ questId }) => {
-  hud.toast(`Quest complete: ${quests.get(questId).title}`);
-  if (questId === "gatherHerbs") log.start("thinThePack"); // chain, one line
-});
+React from a component. `log.on(...)` returns an unsubscribe function; pass it
+to `addCleanup` so the subscription ends when the component is removed:
 
-log.on("objectiveProgressChanged", ({ questId, objectiveId, progress, count }) => {
-  tracker.set(objectiveId, `${progress}/${count}`); // "3/5"
-});
+```ts
+import { Component } from "@yagejs/core";
+import { TextComponent } from "@yagejs/renderer";
+
+/** On the HUD's quest label: progress, completion, and the next quest. */
+class QuestTracker extends Component {
+  private readonly text = this.sibling(TextComponent);
+
+  onAdd(): void {
+    this.addCleanup(
+      log.on("objectiveProgressChanged", ({ progress, count }) => {
+        this.text.setText(`${progress}/${count}`); // "3/5"
+      }),
+    );
+    this.addCleanup(
+      log.on("questCompleted", ({ questId }) => {
+        // Event payloads carry string ids; tryGet looks one up without a cast.
+        this.text.setText(`Quest complete: ${quests.tryGet(questId)?.title ?? questId}`);
+        if (questId === "gatherHerbs") log.start("thinThePack"); // chain, one line
+      }),
+    );
+  }
+}
 ```
 
 Model events: `questStarted`, `objectiveProgressChanged { progress, count, done }`,
@@ -197,10 +224,21 @@ directly, mount a `QuestController` on any persistent entity — it re-emits the
 model's six events onto the engine bus (entity → scene):
 
 ```ts
+import { Component } from "@yagejs/core";
 import { QuestController, QuestCompletedEvent } from "@yagejs-addons/quests";
 
 player.add(new QuestController({ log }));
-scene.on(QuestCompletedEvent, ({ questId }) => achievements.check(questId));
+
+/** Any component in the scene hears the mirrored events. */
+class Achievements extends Component {
+  onAdd(): void {
+    this.listenScene(QuestCompletedEvent, ({ questId }) => this.check(questId));
+  }
+
+  private check(questId: string): void {
+    // unlock whatever this quest earns
+  }
+}
 ```
 
 The controller is entirely optional — `log.on(...)` reaches the same

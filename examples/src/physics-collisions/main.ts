@@ -32,6 +32,7 @@ const WALL = 16;
 const PLAYER_SPEED = 200; // px per second
 const START_POS = new Vec2(WIDTH / 2, HEIGHT / 2);
 const HUD_LAYER = "hud";
+const COIN_POINTS = 10;
 
 // Collision layer setup
 const layers = new CollisionLayers();
@@ -39,19 +40,6 @@ const LAYER_PLAYER = layers.define("player");
 const LAYER_WALL = layers.define("wall");
 const LAYER_COIN = layers.define("coin");
 const LAYER_DANGER = layers.define("danger");
-
-// In-canvas score HUD, bound by the scene once it spawns the text.
-let score = 0;
-let scoreText: TextComponent | undefined;
-
-function bindScore(text: TextComponent): void {
-  scoreText = text;
-}
-
-function setScore(v: number): void {
-  score = v;
-  scoreText?.setText(`Score: ${score}`);
-}
 
 // ---------------------------------------------------------------------------
 // Events
@@ -70,7 +58,14 @@ const HurtSfx = sound("/assets/hurt.wav");
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
   private readonly input = this.service(InputManagerKey);
+  private readonly audio = this.service(AudioManagerKey);
   private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly transform = this.sibling(Transform);
+
+  onAdd(): void {
+    // Danger zones emit on themselves; the event bubbles to the scene.
+    this.listenScene(DangerEntered, () => this.respawn());
+  }
 
   update(): void {
     const dir = this.input.getVector("left", "right", "up", "down");
@@ -79,6 +74,13 @@ class PlayerController extends Component {
     } else {
       this.rb.setVelocity(Vec2.ZERO);
     }
+  }
+
+  /** Back to the start position. */
+  private respawn(): void {
+    this.audio.play(HurtSfx, { channel: "sfx" });
+    this.rb.setPosition(START_POS.x, START_POS.y);
+    this.transform.setPosition(START_POS.x, START_POS.y);
   }
 }
 
@@ -202,21 +204,53 @@ class DangerEntity extends Entity {
 }
 
 // ---------------------------------------------------------------------------
-// Scene
+// HUD — the run's score and the text that shows it
 // ---------------------------------------------------------------------------
-class CollisionsScene extends Scene {
-  readonly name = "physics-collisions";
-  readonly preload = [CoinSfx, HurtSfx];
-  readonly layers: readonly LayerDef[] = [
-    { name: HUD_LAYER, order: 1000, space: "screen" },
-  ];
 
+/**
+ * Coins add points; touching a danger zone resets the score to zero. The
+ * component lives on the HUD entity, so the score starts fresh every time
+ * the scene is entered. Other code reads it with
+ * `scene.findByKey<HudEntity>(HUD_KEY)?.score`.
+ */
+class Score extends Component {
   private readonly audio = this.service(AudioManagerKey);
+  private readonly text = this.sibling(TextComponent);
+  private _points = 0;
 
-  onEnter(): void {
-    const hudEntity = this.spawn("hud");
-    hudEntity.add(new Transform({ position: new Vec2(WIDTH - 16, 16) }));
-    const scoreText = hudEntity.add(
+  get points(): number {
+    return this._points;
+  }
+
+  onAdd(): void {
+    this.refresh();
+    this.listenScene(CoinCollected, () => {
+      this._points += COIN_POINTS;
+      this.audio.play(CoinSfx, { channel: "sfx" });
+      this.refresh();
+    });
+    this.listenScene(DangerEntered, () => {
+      this._points = 0;
+      this.refresh();
+    });
+  }
+
+  private refresh(): void {
+    this.text.setText(`Score: ${this._points}`);
+  }
+}
+
+/** Spawn key of the HUD entity, for `scene.findByKey`. */
+const HUD_KEY = "hud";
+
+/** Score readout in the top-right corner, on the screen-space layer. */
+class HudEntity extends Entity {
+  /** The run's score, hosted on this entity. */
+  score!: Score;
+
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(WIDTH - 16, 16) }));
+    this.add(
       new TextComponent({
         text: "",
         anchor: { x: 1, y: 0 },
@@ -224,24 +258,38 @@ class CollisionsScene extends Scene {
         layer: HUD_LAYER,
       }),
     );
-    bindScore(scoreText);
+    this.score = this.add(new Score());
+  }
+}
 
-    setScore(0);
+// ---------------------------------------------------------------------------
+// Scene
+// ---------------------------------------------------------------------------
+const COIN_POSITIONS: readonly (readonly [x: number, y: number])[] = [
+  [150, 150],
+  [650, 150],
+  [400, 100],
+  [200, 450],
+  [600, 450],
+  [100, 300],
+  [700, 300],
+  [350, 500],
+  [450, 200],
+  [300, 350],
+];
 
-    // Scene-level event listeners
-    this.on(CoinCollected, () => {
-      setScore(score + 10);
-      this.audio.play(CoinSfx.path, { channel: "sfx" });
-    });
-    // Player
-    const player = this.spawn(PlayerEntity);
+class CollisionsScene extends Scene {
+  readonly name = "physics-collisions";
+  readonly preload = [CoinSfx, HurtSfx];
+  readonly layers: readonly LayerDef[] = [
+    { name: HUD_LAYER, order: 1000, space: "screen" },
+  ];
 
-    this.on(DangerEntered, () => {
-      this.audio.play(HurtSfx.path, { channel: "sfx" });
-      setScore(0);
-      player.get(RigidBodyComponent).setPosition(START_POS.x, START_POS.y);
-      player.get(Transform).setPosition(START_POS.x, START_POS.y);
-    });
+  // The scene only assembles the level. The HUD entity keeps the score and
+  // the player respawns itself.
+  onEnter(): void {
+    this.spawn(HudEntity, { key: HUD_KEY });
+    this.spawn(PlayerEntity);
 
     // Walls
     this.spawn(WallEntity, { x: WIDTH / 2, y: WALL / 2, w: WIDTH, h: WALL });
@@ -260,20 +308,8 @@ class CollisionsScene extends Scene {
     });
 
     // Coins
-    const coinPositions = [
-      [150, 150],
-      [650, 150],
-      [400, 100],
-      [200, 450],
-      [600, 450],
-      [100, 300],
-      [700, 300],
-      [350, 500],
-      [450, 200],
-      [300, 350],
-    ];
-    for (const [x, y] of coinPositions) {
-      this.spawn(CoinEntity, { x: x!, y: y! });
+    for (const [x, y] of COIN_POSITIONS) {
+      this.spawn(CoinEntity, { x, y });
     }
 
     // Danger zones

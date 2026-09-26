@@ -31,6 +31,9 @@ const WIDTH = 800;
 const HEIGHT = 600;
 const WORLD = 2000;
 
+/** Spawn key of the player, for `scene.findByKey`. */
+const PLAYER_KEY = "player";
+
 // ---------------------------------------------------------------------------
 // Health state
 // ---------------------------------------------------------------------------
@@ -80,7 +83,7 @@ class FaceTowardsPlayer extends Component {
   }
 
   update(): void {
-    const player = this.scene.findEntity("player");
+    const player = this.scene.findByKey(PLAYER_KEY);
     if (!player) return;
     const parent = this.entity.parent;
     if (!parent) return;
@@ -162,11 +165,10 @@ class EnemyNameplate extends Entity {
   }
 }
 
-// Builds + owns the namecard's stats tooltip. Holds the `dispose()` so the
-// overlay slot + hover handler are released when the nameplate is destroyed
-// (cascade-destroyed with the enemy).
+// Builds + owns the namecard's stats tooltip. Its `dispose()` is a cleanup,
+// so the overlay slot + hover handler are released when the nameplate is
+// destroyed (cascade-destroyed with the enemy).
 class NameplateTooltip extends Component {
-  private dispose: (() => void) | null = null;
   // Live HP line — kept so the card reflects damage instead of freezing the
   // values captured when `content()` ran. `content` is called once, so a
   // tooltip with dynamic data holds its own node references and mutates them.
@@ -219,7 +221,7 @@ class NameplateTooltip extends Component {
     // owns the panel's `onHover`; compose (`(h) => { …; tip.setActive(h); }`)
     // if the namecard ever needs its own hover reaction too.
     this.panel.setPointerHandlers({ onHover: tip.setActive });
-    this.dispose = tip.dispose;
+    this.addCleanup(tip.dispose);
   }
 
   // The damage CTA mutates Health each click; keep the card's HP line in sync
@@ -237,8 +239,6 @@ class NameplateTooltip extends Component {
   }
 
   onDestroy(): void {
-    this.dispose?.();
-    this.dispose = null;
     this.hpText = null;
   }
 }
@@ -337,7 +337,6 @@ class PlayerController extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly transform = this.sibling(Transform);
   private readonly camera: CameraEntity;
-  private disposeClickListener: (() => void) | null = null;
 
   constructor(camera: CameraEntity) {
     super();
@@ -352,22 +351,19 @@ class PlayerController extends Component {
     this.camera.bounds = { minX: 0, minY: 0, maxX: WORLD, maxY: WORLD };
     // InputManager.onPointerDown delivers `screenPos` already routed through
     // the renderer's `canvasToVirtual` — so it stays accurate under any fit
-    // mode / aspect ratio mismatch. Hand-rolling `clientX/rect.width*WIDTH`
-    // (the previous version) silently drifts whenever the canvas CSS aspect
-    // doesn't match the declared virtual aspect.
+    // mode / aspect ratio mismatch. Computing `clientX / rect.width * WIDTH`
+    // by hand drifts whenever the canvas CSS aspect doesn't match the
+    // declared virtual aspect.
     this.input.setCamera(this.camera);
-    this.disposeClickListener = this.input.onPointerDown((p) => {
-      // `p.button`, not `p.buttons`: down listeners fire before the press is
-      // drained into `buttons`, so `buttons` is empty for a fresh click.
-      if (p.button !== 0) return;
-      const world = this.camera.screenToWorld(p.screenPos.x, p.screenPos.y);
-      this.handleClick(world);
-    });
-  }
-
-  onDestroy(): void {
-    this.disposeClickListener?.();
-    this.disposeClickListener = null;
+    this.addCleanup(
+      this.input.onPointerDown((p) => {
+        // `p.button`, not `p.buttons`: down listeners fire before the press
+        // is drained into `buttons`, so `buttons` is empty for a fresh click.
+        if (p.button !== 0) return;
+        const world = this.camera.screenToWorld(p.screenPos.x, p.screenPos.y);
+        this.handleClick(world);
+      }),
+    );
   }
 
   update(dt: number): void {
@@ -412,6 +408,20 @@ class PlayerController extends Component {
   }
 }
 
+class PlayerEntity extends Entity {
+  setup(params: { camera: CameraEntity }): void {
+    this.add(new Transform({ position: new Vec2(WORLD / 2, WORLD / 2) }));
+    this.add(
+      new GraphicsComponent({ layer: "world" }).draw((g) => {
+        g.circle(0, 0, 12).fill({ color: 0x38bdf8 });
+        g.circle(0, 0, 12).stroke({ color: 0xffffff, width: 2 });
+        g.circle(0, 0, 3).fill({ color: 0xffffff });
+      }),
+    );
+    this.add(new PlayerController(params.camera));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Scene
 // ---------------------------------------------------------------------------
@@ -453,16 +463,7 @@ class DemoScene extends Scene {
       e.tags.add("enemy");
     }
 
-    const player = this.spawn("player");
-    player.add(new Transform({ position: new Vec2(WORLD / 2, WORLD / 2) }));
-    player.add(
-      new GraphicsComponent({ layer: "world" }).draw((g) => {
-        g.circle(0, 0, 12).fill({ color: 0x38bdf8 });
-        g.circle(0, 0, 12).stroke({ color: 0xffffff, width: 2 });
-        g.circle(0, 0, 3).fill({ color: 0xffffff });
-      }),
-    );
-    player.add(new PlayerController(cam));
+    this.spawn(PlayerEntity, { camera: cam }, { key: PLAYER_KEY });
   }
 
   private drawGrid(): void {

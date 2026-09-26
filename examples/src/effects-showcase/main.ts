@@ -8,6 +8,8 @@
  * every world-level toggle. Scene-scope (`tree.fx`) and screen-scope
  * (`renderer.fx`) effects DO cover the UI — that's what those scopes mean,
  * and toggling crt or vignette puts the UI under the same treatment.
+ *
+ * `controls.ts` lists every effect and the scope it attaches at.
  */
 
 import { Engine } from "@yagejs/core";
@@ -19,7 +21,6 @@ import {
 } from "../shared/bootstrap.js";
 import { VIRTUAL_WIDTH, VIRTUAL_HEIGHT } from "./constants.js";
 import { ShowcaseScene } from "./scene.js";
-import { installSidebarWheel } from "./sidebar-scroll.js";
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
@@ -35,8 +36,6 @@ async function main(): Promise<void> {
   );
   engine.use(new UIPlugin());
   await installDebugFromUrl(engine);
-
-  installSidebarWheel(container);
 
   await engine.start();
   await engine.scenes.push(new ShowcaseScene());
