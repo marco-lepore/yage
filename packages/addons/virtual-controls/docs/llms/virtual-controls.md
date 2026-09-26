@@ -42,7 +42,12 @@ Bound action names must exist in the `InputPlugin` action map — the overlay
 drives existing actions, it does not define them (an unknown name warns and
 is skipped until it exists):
 
-```ts
+```ts yage-context="engine"
+import { Scene } from "@yagejs/core";
+import { InputPlugin } from "@yagejs/input";
+import { VirtualControls } from "@yagejs-addons/virtual-controls";
+import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
+
 engine.use(
   new InputPlugin({
     actions: {
@@ -57,6 +62,8 @@ engine.use(
 );
 
 class GameScene extends Scene {
+  readonly name = "game";
+
   onEnter() {
     this.spawn("touch-controls").add(
       new VirtualControls({
@@ -107,7 +114,13 @@ host entity and add a fresh component.
 
 Change one configured button without rebuilding the overlay:
 
-```ts
+```ts yage-context="entity"
+import { VirtualControls } from "@yagejs-addons/virtual-controls";
+
+declare const gameOver: boolean;
+declare const canJump: boolean;
+
+const controls = entity.get(VirtualControls);
 controls.setButtonVisible("restart", gameOver);
 controls.setButtonEnabled("jump", canJump);
 ```
@@ -161,6 +174,9 @@ update after the action exists.
 ## Config surface
 
 ```ts
+import { VirtualControls } from "@yagejs-addons/virtual-controls";
+import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
+
 new VirtualControls({
   stick: {
     // or sticks: [ … ] for twin-stick
@@ -222,15 +238,23 @@ Implement two pixi-free contracts from the root entry and hit-testing/routing
 stays in the model (views only draw):
 
 ```ts
-interface ControlsPresenter {
+import type { Scene } from "@yagejs/core";
+import type {
+  ControlView as BaseControlView,
+  ControlsPresenter as BaseControlsPresenter,
+  VirtualButton,
+  VirtualStick,
+} from "@yagejs-addons/virtual-controls";
+
+interface ControlsPresenter extends BaseControlsPresenter {
   mount(scene: Scene): void;
   createStickView(stick: VirtualStick): ControlView; // poll stick.basePos/knobPos/active/layout
   createButtonView(button: VirtualButton): ControlView; // poll button.pressed/visible/enabled/layout/label
   dispose(): void;
 }
-interface ControlView {
-  update(dt): void;
-  setVisible(v): void;
+interface ControlView extends BaseControlView {
+  update(dt: number): void;
+  setVisible(v: boolean): void;
   dispose(): void;
 }
 ```
