@@ -1,109 +1,14 @@
 ---
 title: "Events"
-description: "Global and entity-scoped event system"
+description: "Entity events for game logic, and the engine event bus"
 ---
 
-## EventBus
-
-The `EventBus` is a global publish/subscribe system. Every `bus.on()` call
-returns an unsubscribe function — call it to stop listening:
-
-```typescript
-import { EventBus } from "@yagejs/core";
-
-const bus = new EventBus();
-
-// Subscribe — returns an unsubscribe function
-const off = bus.on("player:hit", (data) => {
-  console.log("Ouch!", data);
-});
-
-// Subscribe for a single occurrence
-bus.once("level:complete", (data) => {
-  console.log("Level cleared:", data);
-});
-
-// Emit an event
-bus.emit("player:hit", { damage: 25 });
-
-// Unsubscribe when done
-off();
-```
-
-## Built-in Engine Events
-
-The engine emits these events automatically through the global `EventBus`:
-
-| Event | Payload | When |
-|---|---|---|
-| `entity:created` | `{ entity }` | An entity is spawned |
-| `entity:destroyed` | `{ entity }` | An entity is destroyed, on the end-of-frame flush or on scene teardown |
-| `component:added` | `{ entity, component }` | A component is added to an entity |
-| `component:removed` | `{ entity, componentClass }` | A component is removed from an entity |
-| `scene:pushed` | `{ scene }` | A scene is pushed onto the stack |
-| `scene:popped` | `{ scene }` | A scene is popped from the stack |
-| `scene:replaced` | `{ oldScene, newScene }` | The top scene is replaced |
-| `scene:transition:started` | `{ kind, fromScene, toScene }` | A scene transition begins |
-| `scene:transition:ended` | `{ kind, fromScene, toScene }` | A scene transition finishes |
-| `scene:loading:progress` | `{ scene, ratio }` | A loading scene reports progress (0 to 1) |
-| `scene:loading:done` | `{ scene }` | A loading scene has finished loading |
-| `engine:started` | `undefined` | The engine loop has started |
-| `engine:stopped` | `undefined` | The engine is being destroyed |
-| `screen:fullscreen` | `{ active }` | The canvas host entered or left fullscreen |
-| `screen:orientation` | `{ type }` | The device orientation changed |
-
-`entity` in the `entity:*` and `component:*` payloads is the live `Entity`,
-so a listener can read its tags and components. The `scene` fields carry
-`{ name }`, except the loading events, which carry the `Scene`.
-
-From a component, subscribe with `this.listenBus(event, handler)`. The
-subscription is released when the component is removed or its entity is
-destroyed:
-
-```typescript
-import { Component } from "@yagejs/core";
-
-class ScoreTracker extends Component {
-  score = 0;
-
-  onAdd() {
-    this.listenBus("entity:destroyed", ({ entity }) => {
-      if (entity.tags.has("enemy")) {
-        this.score += 100;
-      }
-    });
-  }
-}
-```
-
-Outside a component, resolve the bus with `context.resolve(EventBusKey)` and
-keep the unsubscribe function `bus.on` returns.
-
-## Typed EventBus
-
-A bus created without a type argument passes every payload as `unknown`. For
-custom events with full type safety, create a typed bus with an interface:
-
-```typescript
-import { EventBus } from "@yagejs/core";
-
-interface GameEvents {
-  "player:hit": { damage: number; source: string };
-  "item:collected": { itemId: string; value: number };
-  "wave:started": { waveNumber: number };
-}
-
-const bus = new EventBus<GameEvents>();
-
-// Fully typed — data shape is inferred
-bus.on("player:hit", (data) => {
-  //                   ^? { damage: number; source: string }
-  console.log(data.damage);
-});
-
-// Type error if payload doesn't match
-bus.emit("item:collected", { itemId: "gem", value: 50 });
-```
+Game logic talks through entity events. You declare an event once with
+`defineEvent`, emit it on the entity where something happens, and listen for it
+from a component. An event emitted on an entity also reaches the scene, so a
+component elsewhere can react to every entity's events. The engine's
+`EventBus` is separate: it carries engine events such as `entity:created` and
+`scene:pushed`.
 
 ## EventToken and defineEvent
 
@@ -112,14 +17,16 @@ Entity and scene events are addressed by an `EventToken`, not by a string.
 every `on` and `emit` site is checked against the same shape:
 
 ```typescript yage-context="scene"
-import { defineEvent } from "@yagejs/core";
+import { Entity, defineEvent } from "@yagejs/core";
 
 // Define once in a shared module
 export const PlayerHitEvent = defineEvent<{ damage: number }>("player:hit");
 export const WaveStartEvent = defineEvent<{ waveNumber: number }>("wave:started");
 
+class Player extends Entity {}
+
 // Tokens address entity.on / entity.emit and scene.on / scene.emit
-const player = scene.spawn("player");
+const player = scene.spawn(Player);
 player.on(PlayerHitEvent, (data) => {
   console.log(data.damage);
 });
@@ -128,8 +35,8 @@ player.emit(PlayerHitEvent, { damage: 30 });
 scene.emit(WaveStartEvent, { waveNumber: 2 });
 ```
 
-The `EventBus` is keyed by string and does not take tokens:
-`bus.on(PlayerHitEvent, ...)` does not compile.
+The [engine `EventBus`](#engine-eventbus) is keyed by string and does not take
+tokens: `bus.on(PlayerHitEvent, ...)` does not compile.
 
 Dispatch is by the token's name, not by the token object. Two `defineEvent`
 calls with the same name are one channel, and their payload types are not
@@ -177,22 +84,21 @@ when that entity is destroyed.
 
 ## Scene-Level Event Subscription
 
-A scene can subscribe to an `EventToken` and pick up **both** events it
-emits itself and events emitted by any of its entities. The handler
-takes an optional second argument — the source `Entity` for bubbled
-events, or `undefined` for scene-emitted ones — so a single handler can
-distinguish the two cases:
+A component can listen at the scene level with `this.listenScene`. It hears
+**both** events the scene emits itself and events emitted by any of the
+scene's entities. The handler takes an optional second argument: the source
+`Entity` for bubbled events, or `undefined` for scene-emitted ones. A single
+handler can tell the two cases apart:
 
-```typescript
-import { Scene, defineEvent, type Entity } from "@yagejs/core";
+```typescript yage-context="scene"
+import { Component, Entity, defineEvent } from "@yagejs/core";
 
 const DamagedEvent = defineEvent<{ amount: number }>("damaged");
 
-class GameScene extends Scene {
-  readonly name = "game";
-
-  onEnter() {
-    this.on(DamagedEvent, (data, entity?: Entity) => {
+/** Rolls every entity's damage into one feed. */
+class DamageFeed extends Component {
+  onAdd() {
+    this.listenScene(DamagedEvent, (data, entity?: Entity) => {
       if (entity) {
         // Bubbled — the source called `entity.emit(DamagedEvent, ...)`
         console.log(`${entity.name} took ${data.amount} damage`);
@@ -201,29 +107,115 @@ class GameScene extends Scene {
         console.log(`scene-wide damage broadcast: ${data.amount}`);
       }
     });
+  }
+}
 
-    // Triggers the `entity = undefined` branch above
-    this.emit(DamagedEvent, { amount: 5 });
+class Enemy extends Entity {}
+const enemy = scene.spawn(Enemy);
 
-    // Triggers the bubbled branch with `entity = enemy`
-    const enemy = this.spawn("enemy");
-    enemy.emit(DamagedEvent, { amount: 10 });
+// Triggers the bubbled branch, with `entity = enemy`
+enemy.emit(DamagedEvent, { amount: 10 });
+
+// Triggers the `entity = undefined` branch
+scene.emit(DamagedEvent, { amount: 5 });
+```
+
+The handler signature is `(data, entity?)` for every subscription. Check
+`entity` to decide whether you can read source state (`entity.get(Health)`,
+etc.) or you're handling a scene-wide broadcast.
+
+A subscription made with `this.listenScene` is released with the component.
+Outside a component, `scene.on(token, handler)` subscribes and returns an
+unsubscribe function. Every scene-level subscription is released when the
+scene exits, together with its entities. A scene instance that is pushed again
+starts with no subscriptions.
+
+This is how one component reacts to every entity's events without each entity
+knowing who's listening. When a `Health` component on any entity emits
+`DamagedEvent`, a component such as `DamageFeed` can roll those into a damage
+total, trigger a screen shake, or update the HUD. The component that keeps
+the state is the one that listens, as in
+[State Management](/patterns/state-management/#game-state-on-a-host-entity).
+
+A scene's `onEnter` may connect an event to a component method in one line,
+such as `this.on(PlayerHit, () => player.get(Health).damage(1))`. The state and
+the rule stay in the component.
+
+## Engine EventBus
+
+The engine's `EventBus` carries the engine's own events: entities created and
+destroyed, scenes pushed and popped, the engine starting and stopping. Resolve
+it with `EventBusKey`. Every `bus.on()` call returns an unsubscribe function;
+call it to stop listening:
+
+```typescript yage-context="context"
+import { EventBusKey } from "@yagejs/core";
+
+const bus = context.resolve(EventBusKey);
+
+// Subscribe — returns an unsubscribe function
+const off = bus.on("scene:pushed", ({ scene }) => {
+  console.log("Scene pushed:", scene.name);
+});
+
+// Subscribe for a single occurrence
+bus.once("engine:started", () => {
+  console.log("Engine started");
+});
+
+// Unsubscribe when done
+off();
+```
+
+The bus is typed with the engine's event map, `EngineEvents`, so it accepts
+only the events below. Game events are `defineEvent` tokens emitted on an
+entity or a scene, as described above.
+
+### Built-in Engine Events
+
+The engine emits these events automatically:
+
+| Event | Payload | When |
+|---|---|---|
+| `entity:created` | `{ entity }` | An entity is spawned |
+| `entity:destroyed` | `{ entity, scene }` | An entity is destroyed, on the end-of-frame flush or on scene teardown |
+| `component:added` | `{ entity, component }` | A component is added to an entity |
+| `component:removed` | `{ entity, componentClass }` | A component is removed from an entity |
+| `scene:pushed` | `{ scene }` | A scene is pushed onto the stack |
+| `scene:popped` | `{ scene }` | A scene is popped from the stack |
+| `scene:replaced` | `{ oldScene, newScene }` | The top scene is replaced |
+| `scene:transition:started` | `{ kind, fromScene, toScene }` | A scene transition begins |
+| `scene:transition:ended` | `{ kind, fromScene, toScene }` | A scene transition finishes |
+| `scene:loading:progress` | `{ scene, ratio }` | A loading scene reports progress (0 to 1) |
+| `scene:loading:done` | `{ scene }` | A loading scene has finished loading |
+| `engine:started` | `undefined` | The engine loop has started |
+| `engine:stopped` | `undefined` | The engine is being destroyed |
+| `screen:fullscreen` | `{ active }` | The canvas host entered or left fullscreen |
+| `screen:orientation` | `{ type }` | The device orientation changed |
+
+`entity` in the `entity:*` and `component:*` payloads is the live `Entity`,
+so a listener can read its tags and components. The `scene` fields carry
+`{ name }`, except in `entity:destroyed` and the loading events, which carry
+the `Scene`.
+
+From a component, subscribe with `this.listenBus(event, handler)`. The
+subscription is released when the component is removed or its entity is
+destroyed:
+
+```typescript
+import { Component } from "@yagejs/core";
+
+/** Counts destroyed entities for a debug readout. */
+class DestroyedCount extends Component {
+  count = 0;
+
+  onAdd() {
+    this.listenBus("entity:destroyed", () => {
+      this.count += 1;
+    });
   }
 }
 ```
 
-`Scene.on` returns an unsubscribe function. The handler signature is
-`(data, entity?)` for every subscription — check `entity` to decide
-whether you can read source state (`entity.get(Health)`, etc.) or
-you're handling a scene-wide broadcast.
-
-Scene-level subscriptions are released when the scene exits, together with
-its entities. Subscribe in `onEnter`, as above, or from a component with
-`this.listenScene(token, handler)`, which is released with the component. A
-scene instance that is pushed again starts with no subscriptions.
-
-This is the canonical way to react to per-entity events at the scene
-level — for example, when a `Health` component on any entity emits
-`DamagedEvent`, a scene-level subscriber can roll those into a global
-damage feed, trigger a screen-shake, or update an aggregate UI store
-without each entity having to know who's listening.
+For a rule about a specific kind of entity, such as scoring a defeated enemy,
+have that entity emit its own event and listen with `this.listenScene`.

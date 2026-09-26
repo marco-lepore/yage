@@ -583,7 +583,7 @@ Extract objects grouped by their class or name:
 import { Entity, Transform } from "@yagejs/core";
 import { TilemapComponent } from "@yagejs/tilemap";
 
-class Enemy extends Entity {
+class EnemyEntity extends Entity {
   setup({ x, y }: { x: number; y: number }) {
     this.add(new Transform({ position: { x, y } }));
   }
@@ -595,7 +595,7 @@ const objects = tilemap.getObjects("spawns");
 // e.g. { "player": [{ x, y, ... }], "enemy": [{ x, y, width, height, ... }] }
 
 for (const obj of objects["enemy"] ?? []) {
-  this.spawn(Enemy, { x: obj.x, y: obj.y });
+  this.spawn(EnemyEntity, { x: obj.x, y: obj.y });
 }
 ```
 

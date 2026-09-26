@@ -1,6 +1,6 @@
 ---
 title: "Responsive Canvas"
-description: "Fit modes, drawing into bars, HUD anchoring, DOM overlays"
+description: "Fit modes, drawing into bars, HUD anchoring, DOM overlays, fullscreen, and mobile pages"
 ---
 
 The canvas is **responsive by default**. `RendererPlugin` tracks a host
@@ -286,8 +286,10 @@ const renderer = new RendererPlugin({ width: 800, height: 600, container: host }
 engine.use(renderer);
 
 button.addEventListener("click", () => {
-  if (renderer.isFullscreen) renderer.exitFullscreen();
-  else renderer.requestFullscreen();
+  const toggle = renderer.isFullscreen
+    ? renderer.exitFullscreen()
+    : renderer.requestFullscreen();
+  toggle.catch((err: unknown) => console.warn(err)); // rejects if unsupported
 });
 ```
 
@@ -351,3 +353,126 @@ The renderer prefers `window.screen.orientation.addEventListener
 ("change", …)` and falls back to `window.addEventListener
 ("orientationchange", …)` on browsers that don't expose the modern
 API (older iOS Safari). Both wire onto the same bus event.
+
+## Mobile readiness
+
+On a phone, the browser takes space from your game: the address and tool
+bars, the notch, the rounded corners, and the home indicator. The setup in
+this section gives the game all of the space the phone leaves it. Both
+`create-yage` templates already have the page setup. The Recommended template
+also has a fullscreen button and can be installed to the Home Screen.
+
+### Page setup
+
+Let the page cover the whole screen with `viewport-fit=cover` in the viewport
+tag:
+
+```html
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+/>
+```
+
+Without it, iOS keeps the page inside a rectangle that avoids the notch and
+the rounded corners, and paints the page background around it.
+
+Then size the game's container to the visible screen and keep it clear of the
+notch and the home indicator:
+
+```css
+#game {
+  box-sizing: border-box;
+  background: #0f172a; /* the renderer's backgroundColor */
+  width: 100vw;
+  height: 100vh; /* for browsers without dvh */
+  height: 100dvh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+```
+
+- **Use `100dvh`, not `100vh`.** On a phone, `100vh` is the height with the
+  browser's toolbars hidden. While the toolbars are showing, the bottom of a
+  `100vh` game sits behind them. `100dvh` is the height the player can see.
+- **Don't rely on scrolling to hide the toolbars.** Mobile Safari does not
+  hide them reliably, and a game page does not scroll.
+- **The safe-area padding keeps the game clear of the notch, the rounded
+  corners, and the home indicator.** Each `env(safe-area-inset-*)` value is
+  the size of what to avoid on that side, and `0` where there is nothing to
+  avoid. The values are only non-zero with `viewport-fit=cover`.
+  `RendererPlugin` sizes the canvas to the area inside the container's
+  padding, so no renderer config is needed.
+- **Give the container a background.** The padding shows the container's
+  own background. In fullscreen the browser draws only the container, so a
+  background set on `body` alone leaves black strips. Use the renderer's
+  `backgroundColor`.
+
+### Fullscreen button
+
+A [fullscreen](#fullscreen) button gives the game the whole screen where the
+browser allows it:
+
+- **Put the button inside the renderer's `container`.** The renderer makes
+  the container fullscreen, so a button inside it stays on screen to exit.
+- **Hide the button when fullscreen is unavailable.** iPhone cannot show a
+  page fullscreen, and neither can an iframe without `allow="fullscreen"`.
+  Check `document.fullscreenEnabled` before showing the button:
+
+  ```typescript
+  const button = document.getElementById("fullscreen")!;
+  const doc = document as Document & { webkitFullscreenEnabled?: boolean };
+  button.hidden = !(
+    doc.fullscreenEnabled === true || doc.webkitFullscreenEnabled === true
+  );
+  ```
+
+  iPad Safari before 16.4 only has `webkitFullscreenEnabled`.
+- **Hide the button in an installed app that opens fullscreen.** The game
+  already fills the screen there. Check
+  `matchMedia("(display-mode: fullscreen)").matches`.
+- **Move focus off the button after a click.** Otherwise the button keeps
+  focus, and a game key such as Enter presses it again. Call
+  `button.blur()` in the click handler.
+- **iPad Safari adds its own controls.** In fullscreen it shows an exit
+  button over the page that the page cannot hide, and a swipe down exits
+  fullscreen.
+
+The Recommended template's `src/fullscreen.ts` is a complete button that
+follows these rules and changes its label on `screen:fullscreen`.
+
+### Rotate-device overlay
+
+Safari cannot lock the screen orientation: it has no
+`screen.orientation.lock()`. Chrome on Android can lock it, but only while
+the game is fullscreen or installed. For a landscape game, show an overlay
+that asks the player to turn the device while the orientation is portrait.
+Update the overlay on the `screen:orientation` event (see
+[Orientation](#orientation)). The event only fires on a change, so also check
+`renderer.orientation` once at startup.
+
+### Add to Home Screen
+
+On iPhone, the only way to remove Safari's toolbars is for the player to add
+the game to the Home Screen and open it from there. It then opens without
+browser toolbars.
+
+- **iOS has no install prompt.** Players use **Share → Add to Home Screen**
+  in Safari. To help them, show your own instructions.
+- **Before iOS 26, the page needs a web app manifest.** Since iOS 26, every
+  site added to the Home Screen opens without toolbars. Earlier versions only
+  do so when the manifest sets `display` to `"standalone"`. iOS does not
+  support `"fullscreen"`. To also hide Android's status and navigation bars,
+  add `display_override: ["fullscreen"]`, which iOS ignores.
+- **`<link rel="apple-touch-icon" href="/apple-touch-icon.png">`** sets the
+  Home Screen icon, 180×180 pixels.
+- **`<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`**
+  lets the installed game draw under the status bar. The safe-area padding
+  keeps the game clear of the clock and battery.
+
+The Recommended template's production build has this manifest and these
+tags. See
+[Installable and offline](/getting-started/installation/#installable-and-offline-recommended-template).
+To make another project installable, copy the Recommended template's
+`VitePWA` entry in `vite.config.ts`, its icons in `public/`, and the icon and
+status-bar tags in its `index.html`.

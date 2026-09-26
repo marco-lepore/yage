@@ -1,9 +1,19 @@
-import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Component,
+  MathUtils,
+  RandomKey,
+  Scene,
+  Transform,
+  Vec2,
+  easeOutCubic,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   SplitTextComponent,
   TextComponent,
 } from "@yagejs/renderer";
+import type { DisplayBitmapText, DisplayText } from "@yagejs/renderer";
 import {
   installDebugFromUrl,
   setupGameContainer,
@@ -15,18 +25,14 @@ const HEIGHT = 600;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
-const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
-const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
-
 /** HSL (h in degrees, s/l in 0–1) to a packed 0xRRGGBB int for `.tint`. */
 function hsl(h: number, s: number, l: number): number {
   const c = (1 - Math.abs(2 * l - 1)) * s;
   const hp = (((h % 360) + 360) % 360) / 60;
   const x = c * (1 - Math.abs((hp % 2) - 1));
-  let r = 0;
-  let g = 0;
-  let b = 0;
+  let r: number;
+  let g: number;
+  let b: number;
   if (hp < 1) [r, g, b] = [c, x, 0];
   else if (hp < 2) [r, g, b] = [x, c, 0];
   else if (hp < 3) [r, g, b] = [0, c, x];
@@ -53,26 +59,38 @@ const EFFECTS = [
   { name: "Assemble", duration: 3.0 },
 ] as const;
 
+type Effect = (typeof EFFECTS)[number];
+
 const GLITCH_TINTS = [0xffffff, 0x00ffff, 0xff3df0, 0xfff04d];
+
+/**
+ * One glyph of the title: its display object, its home position, and the
+ * scratch state `enterEffect` re-seeds for each effect (velocity for the
+ * physics effects, start pose for Assemble).
+ */
+interface Glyph {
+  readonly char: DisplayText | DisplayBitmapText;
+  readonly homeX: number;
+  readonly homeY: number;
+  vx: number;
+  vy: number;
+  vr: number;
+  startX: number;
+  startY: number;
+  startRotation: number;
+}
 
 class SplitTextShowcase extends Component {
   private readonly split = this.sibling(SplitTextComponent);
+  private readonly rng = this.service(RandomKey);
 
-  private homes: { x: number; y: number }[] = [];
+  private glyphs: Glyph[] = [];
   private cx = 0;
   private cy = 0;
 
   private current = 0;
+  private effect: Effect = EFFECTS[0];
   private localT = 0;
-
-  // Per-glyph scratch state, re-seeded on each effect enter (velocity for the
-  // physics effects, start pose for Assemble).
-  private vx: number[] = [];
-  private vy: number[] = [];
-  private vr: number[] = [];
-  private sx: number[] = [];
-  private sy: number[] = [];
-  private srot: number[] = [];
 
   constructor(private readonly label: TextComponent) {
     super();
@@ -83,109 +101,108 @@ class SplitTextShowcase extends Component {
 
     this.localT += dt;
     const t = this.localT;
-    const chars = this.split.chars;
-    const name = EFFECTS[this.current]!.name;
 
-    switch (name) {
+    switch (this.effect.name) {
       case "Typewriter": {
         const per = 0.13;
         const fade = 0.18;
-        for (let k = 0; k < chars.length; k++) {
-          const c = chars[k]!;
-          const p = clamp01((t - k * per) / fade);
-          c.alpha = p;
-          c.scale.set(1 + (1 - p) * 0.9);
+        for (const [k, g] of this.glyphs.entries()) {
+          const p = MathUtils.clamp((t - k * per) / fade, 0, 1);
+          g.char.alpha = p;
+          g.char.scale.set(1 + (1 - p) * 0.9);
         }
         break;
       }
       case "Wave": {
-        for (let k = 0; k < chars.length; k++) {
-          const c = chars[k]!;
+        for (const [k, g] of this.glyphs.entries()) {
           const phase = t * 4 + k * 0.45;
-          c.y = this.homes[k]!.y + Math.sin(phase) * 16;
-          c.rotation = Math.sin(phase) * 0.18;
+          g.char.y = g.homeY + Math.sin(phase) * 16;
+          g.char.rotation = Math.sin(phase) * 0.18;
         }
         break;
       }
       case "Rainbow": {
-        for (let k = 0; k < chars.length; k++) {
-          const c = chars[k]!;
-          c.tint = hsl(t * 120 + k * 30, 0.85, 0.62);
-          c.y = this.homes[k]!.y + Math.sin(t * 3 + k * 0.4) * 6;
+        for (const [k, g] of this.glyphs.entries()) {
+          g.char.tint = hsl(t * 120 + k * 30, 0.85, 0.62);
+          g.char.y = g.homeY + Math.sin(t * 3 + k * 0.4) * 6;
         }
         break;
       }
       case "Glitch": {
-        for (let k = 0; k < chars.length; k++) {
-          const c = chars[k]!;
-          const h = this.homes[k]!;
-          c.x = h.x + (Math.random() - 0.5) * 7;
-          c.y = h.y + (Math.random() - 0.5) * 7;
-          c.alpha = Math.random() < 0.08 ? 0.2 : 1;
+        for (const g of this.glyphs) {
+          const c = g.char;
+          c.x = g.homeX + this.rng.range(-3.5, 3.5);
+          c.y = g.homeY + this.rng.range(-3.5, 3.5);
+          c.alpha = this.rng.float() < 0.08 ? 0.2 : 1;
           c.tint =
-            Math.random() < 0.18
-              ? GLITCH_TINTS[(Math.random() * GLITCH_TINTS.length) | 0]!
-              : 0xffffff;
-          c.rotation = Math.random() < 0.12 ? (Math.random() - 0.5) * 0.35 : 0;
+            this.rng.float() < 0.18 ? this.rng.pick(GLITCH_TINTS) : 0xffffff;
+          c.rotation =
+            this.rng.float() < 0.12 ? this.rng.range(-0.175, 0.175) : 0;
         }
         break;
       }
       case "Explode": {
-        const dur = EFFECTS[this.current]!.duration;
-        for (let k = 0; k < chars.length; k++) {
-          const c = chars[k]!;
-          this.vy[k]! += 800 * dt; // gentle gravity so shards arc
-          c.x += this.vx[k]! * dt;
-          c.y += this.vy[k]! * dt;
-          c.rotation += this.vr[k]! * dt;
-          c.alpha = clamp01(1 - t / (dur * 0.9));
+        const dur = this.effect.duration;
+        for (const g of this.glyphs) {
+          const c = g.char;
+          g.vy += 800 * dt; // gentle gravity so shards arc
+          c.x += g.vx * dt;
+          c.y += g.vy * dt;
+          c.rotation += g.vr * dt;
+          c.alpha = MathUtils.clamp(1 - t / (dur * 0.9), 0, 1);
         }
         break;
       }
       case "Fall to pieces": {
-        for (let k = 0; k < chars.length; k++) {
-          const c = chars[k]!;
-          this.vy[k]! += 1600 * dt; // gravity
-          c.x += this.vx[k]! * dt;
-          c.y += this.vy[k]! * dt;
-          c.rotation += this.vr[k]! * dt;
-          c.alpha = clamp01(1 - (t - 1.0) / 2.4);
+        for (const g of this.glyphs) {
+          const c = g.char;
+          g.vy += 1600 * dt; // gravity
+          c.x += g.vx * dt;
+          c.y += g.vy * dt;
+          c.rotation += g.vr * dt;
+          c.alpha = MathUtils.clamp(1 - (t - 1.0) / 2.4, 0, 1);
         }
         break;
       }
       case "Assemble": {
-        const p = easeOutCubic(clamp01(t / 1.7));
-        for (let k = 0; k < chars.length; k++) {
-          const c = chars[k]!;
-          const h = this.homes[k]!;
-          c.x = lerp(this.sx[k]!, h.x, p);
-          c.y = lerp(this.sy[k]!, h.y, p);
-          c.rotation = lerp(this.srot[k]!, 0, p);
-          c.scale.set(lerp(0.2, 1, p));
-          c.alpha = clamp01(t / 0.8);
+        const p = easeOutCubic(MathUtils.clamp(t / 1.7, 0, 1));
+        for (const g of this.glyphs) {
+          const c = g.char;
+          c.x = MathUtils.lerp(g.startX, g.homeX, p);
+          c.y = MathUtils.lerp(g.startY, g.homeY, p);
+          c.rotation = MathUtils.lerp(g.startRotation, 0, p);
+          c.scale.set(MathUtils.lerp(0.2, 1, p));
+          c.alpha = MathUtils.clamp(t / 0.8, 0, 1);
         }
         break;
       }
     }
 
-    if (this.localT >= EFFECTS[this.current]!.duration) {
+    if (this.localT >= this.effect.duration) {
       this.enterEffect((this.current + 1) % EFFECTS.length);
     }
   }
 
-  /** Capture glyph homes + block center on the first frame after the split. */
+  /** Capture glyph homes + block center on the first update. */
   private ready(): boolean {
-    if (this.homes.length) return true;
+    if (this.glyphs.length) return true;
     const chars = this.split.chars;
     if (!chars.length) return false;
 
-    this.homes = chars.map((c) => ({ x: c.x, y: c.y }));
+    this.glyphs = chars.map((char) => ({
+      char,
+      homeX: char.x,
+      homeY: char.y,
+      vx: 0,
+      vy: 0,
+      vr: 0,
+      startX: 0,
+      startY: 0,
+      startRotation: 0,
+    }));
     const b = this.split.splitText.getLocalBounds();
     this.cx = b.x + b.width / 2;
     this.cy = b.y + b.height / 2;
-    // Pivot at the block center so the whole title is centered on the
-    // entity's Transform (DisplaySystem syncs position but leaves pivot to us).
-    this.split.splitText.pivot.set(this.cx, this.cy);
 
     this.enterEffect(0);
     return true;
@@ -193,56 +210,39 @@ class SplitTextShowcase extends Component {
 
   /** Reset glyphs to home and seed the next effect's scratch state. */
   private enterEffect(index: number): void {
+    const effect = EFFECTS[index]!;
     this.current = index;
+    this.effect = effect;
     this.localT = 0;
+    this.label.setText(`${effect.name}   ·   ${index + 1} / ${EFFECTS.length}`);
 
-    const chars = this.split.chars;
-    for (let k = 0; k < chars.length; k++) {
-      const c = chars[k]!;
-      const h = this.homes[k]!;
-      c.x = h.x;
-      c.y = h.y;
+    for (const g of this.glyphs) {
+      const c = g.char;
+      c.x = g.homeX;
+      c.y = g.homeY;
       c.rotation = 0;
       c.scale.set(1);
       c.alpha = 1;
       c.tint = 0xffffff;
-    }
 
-    const effect = EFFECTS[index]!;
-    this.label.setText(`${effect.name}   ·   ${index + 1} / ${EFFECTS.length}`);
-
-    this.vx = [];
-    this.vy = [];
-    this.vr = [];
-    this.sx = [];
-    this.sy = [];
-    this.srot = [];
-
-    if (effect.name === "Explode") {
-      for (let k = 0; k < chars.length; k++) {
-        const h = this.homes[k]!;
-        const dx = h.x - this.cx;
-        const dy = h.y - this.cy;
+      if (effect.name === "Explode") {
+        const dx = g.homeX - this.cx;
+        const dy = g.homeY - this.cy;
         const len = Math.hypot(dx, dy) || 1;
-        const speed = 220 + Math.random() * 400;
-        this.vx[k] = (dx / len) * speed + (Math.random() - 0.5) * 150;
-        this.vy[k] = (dy / len) * speed - 250 - Math.random() * 200;
-        this.vr[k] = (Math.random() - 0.5) * 25;
-      }
-    } else if (effect.name === "Fall to pieces") {
-      for (let k = 0; k < chars.length; k++) {
-        this.vx[k] = (Math.random() - 0.5) * 180;
-        this.vy[k] = -180 - Math.random() * 220; // small initial hop
-        this.vr[k] = (Math.random() - 0.5) * 30;
-      }
-    } else if (effect.name === "Assemble") {
-      for (let k = 0; k < chars.length; k++) {
-        const h = this.homes[k]!;
-        const ang = Math.random() * Math.PI * 2;
-        const r = 260 + Math.random() * 260;
-        this.sx[k] = h.x + Math.cos(ang) * r;
-        this.sy[k] = h.y + Math.sin(ang) * r;
-        this.srot[k] = (Math.random() - 0.5) * 8;
+        const speed = this.rng.range(220, 620);
+        g.vx = (dx / len) * speed + this.rng.range(-75, 75);
+        g.vy = (dy / len) * speed - this.rng.range(250, 450);
+        g.vr = this.rng.range(-12.5, 12.5);
+      } else if (effect.name === "Fall to pieces") {
+        g.vx = this.rng.range(-90, 90);
+        g.vy = -this.rng.range(180, 400); // small initial hop
+        g.vr = this.rng.range(-15, 15);
+      } else if (effect.name === "Assemble") {
+        const ang = this.rng.range(0, Math.PI * 2);
+        const r = this.rng.range(260, 520);
+        g.startX = g.homeX + Math.cos(ang) * r;
+        g.startY = g.homeY + Math.sin(ang) * r;
+        g.startRotation = this.rng.range(-4, 4);
       }
     }
   }
@@ -282,6 +282,8 @@ class SplitTextScene extends Scene {
     title.add(
       new SplitTextComponent({
         text: "SPLIT TEXT",
+        // Center the block on the entity's Transform.
+        anchor: { x: 0.5, y: 0.5 },
         // Center each glyph's transform origin so rotation / scale pivot
         // around the glyph, not its top-left corner.
         charAnchor: 0.5,

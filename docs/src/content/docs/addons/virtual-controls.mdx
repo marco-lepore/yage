@@ -53,18 +53,18 @@ engine.use(
 );
 ```
 
-Then spawn the controls in the scenes that want them:
+Then give the controls an entity of their own, and spawn it in the scenes that
+want them:
 
 ```ts
-import { Scene } from "@yagejs/core";
+import { Entity, Scene } from "@yagejs/core";
 import { VirtualControls } from "@yagejs-addons/virtual-controls";
 import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
 
-class GameScene extends Scene {
-  readonly name = "game";
-
-  onEnter() {
-    this.spawn("touch-controls").add(
+/** The on-screen joystick and buttons. They press the actions above. */
+class TouchControls extends Entity {
+  setup(): void {
+    this.add(
       new VirtualControls({
         stick: { actions: ["left", "right", "up", "down"] }, // L/R/U/D order
         buttons: [
@@ -76,11 +76,20 @@ class GameScene extends Scene {
     );
   }
 }
+
+class GameScene extends Scene {
+  readonly name = "game";
+
+  onEnter() {
+    this.spawn(TouchControls);
+  }
+}
 ```
 
 The tuple binds the four directions in left/right/up/down order (`null`
 skips one); the object form `{ left: "moveLeft", … }` works too when the
-names differ.
+names differ. Gameplay components read the same actions they read from a
+keyboard, so they need no change.
 
 That's a floating joystick on the left half of the screen and two buttons in
 the bottom-right corner. Every default is derived, not hardcoded:
@@ -225,6 +234,23 @@ The component emits entity events (they bubble to the scene):
 `VirtualStickEngageEvent` / `VirtualStickReleaseEvent` (`{ id }`). They're the
 hook for haptics, UI sounds, tutorials — or buttons that deliberately have no
 `action` and exist only as events.
+
+React to them from a component. `listenScene` hears the events from the
+controls' entity, and the subscription ends with the component:
+
+```ts
+import { Component } from "@yagejs/core";
+import { VirtualButtonPressEvent } from "@yagejs-addons/virtual-controls";
+
+/** A short buzz on every button press, where the device supports it. */
+class ButtonHaptics extends Component {
+  onAdd(): void {
+    this.listenScene(VirtualButtonPressEvent, () => navigator.vibrate?.(10));
+  }
+}
+```
+
+Add it to any entity in the scene, such as the `TouchControls` entity above.
 
 For a tutorial highlight or a custom HUD hint, read a control's resolved geometry
 by id: `controls.button("a")?.layout` or `controls.stick("left")?.layout`.

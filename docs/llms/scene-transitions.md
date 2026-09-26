@@ -55,6 +55,8 @@ class MenuScene extends Scene {
 await engine.scenes.push(new MenuScene(), { transition: null });
 ```
 
+`engine.scenes` is the `SceneManager`; Scene and Component code reaches it with `this.use(SceneManagerKey)` (never a module-level `engine`) and passes the same options.
+
 `SceneTransitionOptions` is `{ transition?: SceneTransition | null }` for
 `push`, `pop`, and `replace`. Omission uses the destination's
 `defaultTransition`; a transition object overrides it; `null` skips it.
@@ -106,7 +108,7 @@ transitions. All built-ins live in `@yagejs/renderer` (PIXI-based).
 | `irisReveal({ duration?, center?, easing? })`                  | One-way variant of `iris` — the destination scene's container is masked by an expanding circle so the new scene "blooms" over the previous one. No color overlay, no mid-point swap. Default 0.6s, virtual-center, `easeLinear`.                                                                               |
 | `chessboard({ duration?, rows?, cols? })`                      | Reveals the destination through a staggered checkerboard mask painted onto the incoming scene's container. Even-parity cells grow over `[0, 0.7]`, odd-parity over `[0.3, 1]` (0.4-wide overlap, smoothstep-eased); the previous scene stays visible underneath until each cell covers it. Default 0.7s, 6×10. |
 | `slidePush({ duration?, direction?, reverseOnPop?, easing? })` | Both scenes translate in lockstep — the incoming scene pushes the outgoing one off the opposite edge. `direction` is the outgoing scene's exit direction (default `"left"`). `reverseOnPop` (default `true`) mirrors the motion on `pop`. Default 0.5s, `easeOutCubic`.                                        |
-| `getSceneContainer(ctx, scene)`                                | Helper — resolves a scene's PIXI root container. Returns `undefined` if `scene` is undefined or its tree isn't materialized.                                                                                                                                                                                   |
+| `getSceneContainer(ctx, scene)`                                | Helper — resolves a scene's root `DisplayContainer`. Returns `undefined` if `scene` is undefined or its tree isn't materialized.                                                                                                                                                                               |
 | `getVirtualBounds(ctx)`                                        | Helper — `{ width, height }` of the scene-root coord space (= `renderer.virtualSize`).                                                                                                                                                                                                                         |
 
 `fade` / `flash` / `iris` parent their overlay to `renderer.worldRoot` and size against `renderer.visibleCanvasRect`, so under `letterbox` the overlay covers the play area (bars stay visible) and under `expand` it paints into the bars too. Pass `coverScreen: true` to parent on `app.stage` instead and cover the canvas including bars even under letterbox — useful when the host page background is jarring.
@@ -162,7 +164,7 @@ scene.isTransitioning; // same, accessible from the scene
 
 Two helpers cover most needs:
 
-- `getSceneContainer(ctx, scene)` — reach a scene's PIXI root container inside `begin`/`tick`/`end`. Manipulate `alpha`, `visible`, `position`, `filters` directly.
+- `getSceneContainer(ctx, scene)` — reach a scene's root `DisplayContainer` (a `@yagejs/renderer` alias; don't import the type from `pixi.js`) inside `begin`/`tick`/`end`. Manipulate `alpha`, `visible`, `position`, `filters` directly.
 - `getVirtualBounds(ctx)` — `{ width, height }` of the scene-root coordinate space. Use this to size masks / translations / geometry parented to a scene root (or any descendant of `_worldRoot`, which carries the responsive-fit transform).
 
 Coordinate-space rule: pick the parent and size source for what your transition needs to cover.
@@ -237,6 +239,6 @@ await engine.scenes.replace(new Boot(), {
 
 See `loading-scene.md` for the full Boot scene contract.
 
-## Return values
+## pop() is async
 
-`push`, `pop`, `replace`, and `popAll` return promises that resolve when the operation, including any transition, has finished. `pop()` resolves to the removed scene, or `undefined` on an empty stack. Await a call before code that needs the new stack, or mark a call you do not wait for with `void`.
+`SceneManager.pop()` returns `Promise<Scene | undefined>`: the removed scene, once the queued pop and its transition have run. `await` it, or mark an unawaited call with `void`.

@@ -1,4 +1,8 @@
-import { Assets, Texture } from "pixi.js";
+import {
+  registerTexture,
+  type GraphicsContext,
+  type RendererPlugin,
+} from "@yagejs/renderer";
 import {
   defaultDialogueTheme,
   type DialogueTheme,
@@ -9,91 +13,91 @@ import {
   FACE_SAGE,
   FACE_PIP_SMILE,
   FACE_PIP_THINK,
+  FRAME_TEXTURE,
+  BUBBLE_TEXTURE,
 } from "./constants.js";
 
+// ── textures (drawn at boot, so the demo stays asset-free) ──────────────────
+
+const FACE_SIZE = 72;
+const FRAME_SIZE = 48;
+// The bubble is small, so it wears a thinner border than the wide box frame.
+const FRAME_BORDER = 12;
+const BUBBLE_BORDER = 6;
+
+/** A simple face for the avatar portraits. `stern` angles the brows and turns
+ *  the smile into a frown. */
+function drawFace(g: GraphicsContext, skin: number, stern: boolean): void {
+  const s = FACE_SIZE;
+  const ink = 0x15151f;
+  g.circle(s / 2, s / 2, s / 2 - 3)
+    .fill({ color: skin })
+    .stroke({ color: 0x000000, alpha: 0.45, width: 2 });
+  for (const ex of [0.36, 0.64]) {
+    g.circle(s * ex, s * 0.44, 4).fill({ color: ink });
+  }
+  const browY = stern ? 0.38 : 0.32; // the inner brow drops for a scowl
+  g.moveTo(s * 0.28, s * 0.34)
+    .lineTo(s * 0.44, s * browY)
+    .moveTo(s * 0.72, s * 0.34)
+    .lineTo(s * 0.56, s * browY)
+    .stroke({ color: ink, width: 3 });
+  // A frown is the top of a circle below the mouth; a smile is the bottom of
+  // one above it. `moveTo` the arc's start so no line joins it to the brows.
+  const [cy, from, to] = stern
+    ? [s * 0.82, Math.PI * 1.15, Math.PI * 1.85]
+    : [s * 0.62, Math.PI * 0.15, Math.PI * 0.85];
+  g.moveTo(s / 2 + 9 * Math.cos(from), cy + 9 * Math.sin(from))
+    .arc(s / 2, cy, 9, from, to)
+    .stroke({ color: ink, width: 3 });
+}
+
+/** A nine-slice frame: a coloured `border`-px ring around a fill. The border
+ *  must equal the nine-slice insets so the corners map 1:1. */
+function drawFrame(
+  g: GraphicsContext,
+  edge: number,
+  fill: number,
+  border: number,
+): void {
+  g.rect(0, 0, FRAME_SIZE, FRAME_SIZE).fill({ color: edge });
+  g.rect(border, border, FRAME_SIZE - 2 * border, FRAME_SIZE - 2 * border).fill(
+    { color: fill },
+  );
+}
+
+/**
+ * Draw the portraits and the textured frames once, and register each under its
+ * key. The scripts name a portrait by key (`meta.portrait`), and the "Textured"
+ * preset names its frames the same way, so the presenters resolve them
+ * synchronously. Registered keys are engine-wide and survive the scene
+ * rebuilds the Font and Theme buttons do.
+ */
+export function registerTownTextures(renderer: RendererPlugin): void {
+  const bake = (
+    key: string,
+    size: number,
+    draw: (g: GraphicsContext) => void,
+  ): void => {
+    registerTexture(
+      key,
+      renderer.createTexture(draw, { width: size, height: size }),
+    );
+  };
+  bake(FACE_NEUTRAL, FACE_SIZE, (g) => drawFace(g, 0xe8c9a0, false));
+  bake(FACE_STERN, FACE_SIZE, (g) => drawFace(g, 0xe8c9a0, true));
+  bake(FACE_SAGE, FACE_SIZE, (g) => drawFace(g, 0x9fc6e8, false));
+  bake(FACE_PIP_SMILE, FACE_SIZE, (g) => drawFace(g, 0xffcf9a, false));
+  bake(FACE_PIP_THINK, FACE_SIZE, (g) => drawFace(g, 0xffcf9a, true));
+  bake(FRAME_TEXTURE, FRAME_SIZE, (g) =>
+    drawFrame(g, 0x8a6d3b, 0x2b2417, FRAME_BORDER),
+  );
+  bake(BUBBLE_TEXTURE, FRAME_SIZE, (g) =>
+    drawFrame(g, 0x8a6d3b, 0x241d12, BUBBLE_BORDER),
+  );
+}
+
 // ── theme presets (cycled by the "Theme" button) ─────────────────────────────
-
-/** A canvas-drawn nine-slice frame (a coloured `border`-px ring around a fill)
- *  for the textured preset — keeps the demo asset-free. The `border` must equal
- *  the nine-slice insets so the corners map 1:1. */
-function makeFrameTexture(edge: number, fill: number, border: number): Texture {
-  const size = 48;
-  const hex = (c: number): string => `#${c.toString(16).padStart(6, "0")}`;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    ctx.fillStyle = hex(edge);
-    ctx.fillRect(0, 0, size, size);
-    ctx.fillStyle = hex(fill);
-    ctx.fillRect(border, border, size - 2 * border, size - 2 * border);
-  }
-  return Texture.from(canvas);
-}
-
-/** A simple canvas-drawn face for the Captain's in-box avatar — keeps the demo
- *  asset-free. `stern` angles the brows + frowns; otherwise a neutral look. */
-function makeFace(skin: number, stern: boolean): Texture {
-  const s = 72;
-  const canvas = document.createElement("canvas");
-  canvas.width = s;
-  canvas.height = s;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    const hex = (c: number): string => `#${c.toString(16).padStart(6, "0")}`;
-    ctx.fillStyle = hex(skin);
-    ctx.beginPath();
-    ctx.arc(s / 2, s / 2, s / 2 - 3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(0,0,0,0.45)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.fillStyle = "#15151f";
-    for (const ex of [0.36, 0.64]) {
-      ctx.beginPath();
-      ctx.arc(s * ex, s * 0.44, 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.strokeStyle = "#15151f";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    const browY = stern ? 0.38 : 0.32; // inner brow drops for a scowl
-    ctx.moveTo(s * 0.28, s * 0.34);
-    ctx.lineTo(s * 0.44, s * browY);
-    ctx.moveTo(s * 0.72, s * 0.34);
-    ctx.lineTo(s * 0.56, s * browY);
-    ctx.stroke();
-    ctx.beginPath();
-    if (stern)
-      ctx.arc(s / 2, s * 0.82, 9, Math.PI * 1.15, Math.PI * 1.85); // frown
-    else ctx.arc(s / 2, s * 0.62, 9, Math.PI * 0.15, Math.PI * 0.85); // smile
-    ctx.stroke();
-  }
-  return Texture.from(canvas);
-}
-
-// Built once, then registered under their `meta.portrait` keys per scene mount.
-let faceNeutral: Texture | undefined;
-let faceStern: Texture | undefined;
-let faceSage: Texture | undefined;
-let facePipSmile: Texture | undefined;
-let facePipThink: Texture | undefined;
-
-/** Build the portrait textures once and register them under their meta.portrait
- * keys in Pixi's Assets cache, so the in-box avatars resolve synchronously. */
-export function registerPortraitTextures(): void {
-  faceNeutral ??= makeFace(0xe8c9a0, false);
-  faceStern ??= makeFace(0xe8c9a0, true);
-  faceSage ??= makeFace(0x9fc6e8, false);
-  facePipSmile ??= makeFace(0xffcf9a, false);
-  facePipThink ??= makeFace(0xffcf9a, true);
-  Assets.cache.set(FACE_NEUTRAL, faceNeutral);
-  Assets.cache.set(FACE_STERN, faceStern);
-  Assets.cache.set(FACE_SAGE, faceSage);
-  Assets.cache.set(FACE_PIP_SMILE, facePipSmile);
-  Assets.cache.set(FACE_PIP_THINK, facePipThink);
-}
 
 const insets = (
   n: number,
@@ -103,12 +107,6 @@ const insets = (
   right: n,
   bottom: n,
 });
-// The bubble is small, so it wears a thinner border than the wide box frame.
-const FRAME_BORDER = 12;
-const BUBBLE_BORDER = 6;
-// Built once on first use of the textured preset, then reused across rebuilds.
-let frameTex: Texture | undefined;
-let bubbleTex: Texture | undefined;
 
 interface ThemePreset {
   readonly label: string;
@@ -137,20 +135,16 @@ export const THEME_PRESETS: readonly ThemePreset[] = [
   },
   {
     label: "Textured",
-    build: () => {
-      frameTex ??= makeFrameTexture(0x8a6d3b, 0x2b2417, FRAME_BORDER);
-      bubbleTex ??= makeFrameTexture(0x8a6d3b, 0x241d12, BUBBLE_BORDER);
-      return {
-        ...defaultDialogueTheme(),
-        nameColor: 0xffcf8a,
-        textColor: 0xf3e6cf,
-        textured: {
-          default: {
-            frame: { texture: frameTex, insets: insets(FRAME_BORDER) },
-            bubble: { texture: bubbleTex, insets: insets(BUBBLE_BORDER) },
-          },
+    build: () => ({
+      ...defaultDialogueTheme(),
+      nameColor: 0xffcf8a,
+      textColor: 0xf3e6cf,
+      textured: {
+        default: {
+          frame: { texture: FRAME_TEXTURE, insets: insets(FRAME_BORDER) },
+          bubble: { texture: BUBBLE_TEXTURE, insets: insets(BUBBLE_BORDER) },
         },
-      };
-    },
+      },
+    }),
   },
 ];

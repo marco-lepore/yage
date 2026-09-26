@@ -1,4 +1,12 @@
-import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  Entity,
+  Scene,
+  Transform,
+  Vec2,
+  createRandomService,
+} from "@yagejs/core";
 import {
   LightOccluder,
   LightSource,
@@ -41,12 +49,8 @@ const bounce: BounceLightOptions | null =
       }
     : null;
 
-/** Small repeatable generator, so every setting gets the same crowd of lamps. */
-let seed = 12345;
-function random(): number {
-  seed = (seed * 1664525 + 1013904223) >>> 0;
-  return seed / 0x100000000;
-}
+/** Seeds the crowd's generator, so every setting gets the same crowd of lamps. */
+const CROWD_SEED = 12345;
 
 /**
  * Sweeps the open strip between the pillar and the counter. The travel stays
@@ -103,14 +107,16 @@ class Sweep extends Component {
 /** Carries one of the crowd of stress lamps round a small circle. */
 class Drift extends Component {
   private readonly transform = this.sibling(Transform);
-  private elapsed = random() * 10;
+  private elapsed: number;
 
   constructor(
     private readonly x: number,
     private readonly y: number,
     private readonly reach: number,
+    phase: number,
   ) {
     super();
+    this.elapsed = phase;
   }
 
   update(dt: number): void {
@@ -119,6 +125,100 @@ class Drift extends Component {
       this.x + Math.cos(this.elapsed * 0.6) * this.reach,
       this.y + Math.sin(this.elapsed * 0.9) * this.reach,
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Entities
+// ---------------------------------------------------------------------------
+
+/** A piece of solid furniture. It blocks light, so the lamps cast shadows. */
+class OccluderEntity extends Entity {
+  setup(params: { x: number; y: number; shape: LightOccluderShape }): void {
+    this.add(new Transform({ position: new Vec2(params.x, params.y) }));
+    this.add(new LightOccluder({ shape: params.shape }));
+  }
+}
+
+/** A lamp with a coloured marker on the spot it shines from. */
+class LampEntity extends Entity {
+  setup(params: {
+    x: number;
+    y: number;
+    radius: number;
+    color: number;
+    intensity: number;
+    /** Makes the lamp a spotlight. */
+    cone?: { angle: number; softness: number };
+    /** `sweep` turns the lamp in place; `orbit` moves it along the open strip. */
+    motion?: "sweep" | "orbit";
+  }): void {
+    const { x, y, radius, color, intensity, cone, motion } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
+      new GraphicsComponent({ layer: "markers" }).draw((graphics) => {
+        graphics.circle(0, 0, 8).fill(color);
+        graphics.circle(0, 0, 13).stroke({
+          color,
+          width: 2,
+          alpha: 0.8,
+        });
+      }),
+    );
+    this.add(
+      new LightSource({
+        radius,
+        intensity,
+        color,
+        size: lampSize,
+        ...(cone ? { cone } : {}),
+      }),
+    );
+    if (motion === "sweep") this.add(new Sweep());
+    if (motion === "orbit") this.add(new Orbit());
+  }
+}
+
+/** One of the crowd of stress lamps: a light with no marker, drifting. */
+class CrowdLampEntity extends Entity {
+  setup(params: {
+    x: number;
+    y: number;
+    radius: number;
+    intensity: number;
+    color: number;
+    reach: number;
+    phase: number;
+  }): void {
+    const { x, y, radius, intensity, color, reach, phase } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
+      new LightSource({
+        radius,
+        intensity,
+        color,
+        size: lampSize,
+      }),
+    );
+    this.add(new Drift(x, y, reach, phase));
+  }
+}
+
+/** The probe marker. It roams the room and writes the light level to `readout`. */
+class ProbeEntity extends Entity {
+  setup(params: { readout: TextComponent }): void {
+    this.add(new Transform({ position: new Vec2(80, 410) }));
+    this.add(
+      new GraphicsComponent({ layer: "markers" }).draw((graphics) => {
+        graphics.circle(0, 0, 7).fill(0xffffff);
+        graphics.circle(0, 0, 12).stroke({
+          color: 0xffffff,
+          width: 2,
+          alpha: 0.65,
+        });
+      }),
+    );
+    this.add(new LightProbe(params.readout));
   }
 }
 
@@ -136,57 +236,78 @@ class LightingScene extends Scene {
 
     // The solid furniture blocks light, so the lamps below cast shadows and
     // the probe drops to the ambient level wherever a piece stands in the way.
-    this.spawnOccluder("pillar", 400, 210, {
-      type: "box",
-      width: 70,
-      height: 280,
-    });
-    this.spawnOccluder("counter", 400, 450, {
-      type: "box",
-      width: 200,
-      height: 40,
-    });
-    this.spawnOccluder("planter", 155, 435, { type: "circle", radius: 42 });
-    this.spawnOccluder("barrel", 645, 430, { type: "circle", radius: 48 });
 
-    this.spawnLamp("warm-lamp", 220, 210, 190, 0xffa34d, 0.95);
+    // Pillar
+    this.spawn(OccluderEntity, {
+      x: 400,
+      y: 210,
+      shape: { type: "box", width: 70, height: 280 },
+    });
+    // Counter
+    this.spawn(OccluderEntity, {
+      x: 400,
+      y: 450,
+      shape: { type: "box", width: 200, height: 40 },
+    });
+    // Planter
+    this.spawn(OccluderEntity, {
+      x: 155,
+      y: 435,
+      shape: { type: "circle", radius: 42 },
+    });
+    // Barrel
+    this.spawn(OccluderEntity, {
+      x: 645,
+      y: 430,
+      shape: { type: "circle", radius: 48 },
+    });
+
+    // Warm lamp
+    this.spawn(LampEntity, {
+      x: 220,
+      y: 210,
+      radius: 190,
+      color: 0xffa34d,
+      intensity: 0.95,
+    });
 
     // A spotlight, so the cone and the softness of its edge are on screen
     // beside the shadows the same settings soften.
-    const beam = this.spawnLamp("beam-lamp", 590, 205, 220, 0x66aaff, 0.85, {
-      angle: Math.PI / 3,
-      softness: coneSoftness,
+    this.spawn(LampEntity, {
+      x: 590,
+      y: 205,
+      radius: 220,
+      color: 0x66aaff,
+      intensity: 0.85,
+      cone: { angle: Math.PI / 3, softness: coneSoftness },
+      motion: "sweep",
     });
-    beam.add(new Sweep());
 
-    const orbiting = this.spawnLamp(
-      "orbiting-lamp",
-      580,
-      392,
-      140,
-      0xff66b8,
-      0.7,
-    );
-    orbiting.add(new Orbit());
+    // Orbiting lamp
+    this.spawn(LampEntity, {
+      x: 580,
+      y: 392,
+      radius: 140,
+      color: 0xff66b8,
+      intensity: 0.7,
+      motion: "orbit",
+    });
 
     const palette = [0xffa34d, 0x66aaff, 0xff66b8, 0x8ce38c];
     // Dimmed as the crowd grows, so a roomful of lamps does not wash the
     // picture out at full brightness.
     const intensity = Math.min(0.6, Math.max(0.08, 6 / (extraLights || 1)));
+    const random = createRandomService(CROWD_SEED);
     for (let index = 0; index < extraLights; index++) {
-      const x = 60 + random() * 680;
-      const y = 90 + random() * 420;
-      const lamp = this.spawn(`crowd-lamp-${index}`);
-      lamp.add(new Transform({ position: new Vec2(x, y) }));
-      lamp.add(
-        new LightSource({
-          radius: 90 + random() * 60,
-          intensity,
-          color: palette[index % palette.length] ?? 0xffffff,
-          size: lampSize,
-        }),
-      );
-      lamp.add(new Drift(x, y, 20 + random() * 30));
+      this.spawn(CrowdLampEntity, {
+        x: random.range(60, 740),
+        y: random.range(90, 510),
+        radius: random.range(90, 150),
+        intensity,
+        color: palette[index % palette.length] ?? 0xffffff,
+        reach: random.range(20, 50),
+        phase: random.range(0, 10),
+      });
     }
 
     const hud = this.spawn("light-readout");
@@ -209,19 +330,7 @@ class LightingScene extends Scene {
       }),
     );
 
-    const probe = this.spawn("light-probe");
-    probe.add(new Transform({ position: new Vec2(80, 410) }));
-    probe.add(
-      new GraphicsComponent({ layer: "markers" }).draw((graphics) => {
-        graphics.circle(0, 0, 7).fill(0xffffff);
-        graphics.circle(0, 0, 12).stroke({
-          color: 0xffffff,
-          width: 2,
-          alpha: 0.65,
-        });
-      }),
-    );
-    probe.add(new LightProbe(readout));
+    this.spawn(ProbeEntity, { readout });
   }
 
   private drawRoom(): void {
@@ -241,50 +350,6 @@ class LightingScene extends Scene {
         graphics.circle(645, 430, 48).fill(0x416eb0);
       }),
     );
-  }
-
-  private spawnOccluder(
-    name: string,
-    x: number,
-    y: number,
-    shape: LightOccluderShape,
-  ): void {
-    const entity = this.spawn(name);
-    entity.add(new Transform({ position: new Vec2(x, y) }));
-    entity.add(new LightOccluder({ shape }));
-  }
-
-  private spawnLamp(
-    name: string,
-    x: number,
-    y: number,
-    radius: number,
-    color: number,
-    intensity: number,
-    cone?: { angle: number; softness: number },
-  ) {
-    const lamp = this.spawn(name);
-    lamp.add(new Transform({ position: new Vec2(x, y) }));
-    lamp.add(
-      new GraphicsComponent({ layer: "markers" }).draw((graphics) => {
-        graphics.circle(0, 0, 8).fill(color);
-        graphics.circle(0, 0, 13).stroke({
-          color,
-          width: 2,
-          alpha: 0.8,
-        });
-      }),
-    );
-    lamp.add(
-      new LightSource({
-        radius,
-        intensity,
-        color,
-        size: lampSize,
-        ...(cone ? { cone } : {}),
-      }),
-    );
-    return lamp;
   }
 }
 

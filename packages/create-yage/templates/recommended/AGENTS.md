@@ -12,10 +12,19 @@ This is a [YAGE](https://yage.dev) 2D game engine project (TypeScript + Vite).
 ## What's in the starter
 
 The starter is a playable platformer. Move with `A`/`D` or the arrow keys,
-and jump with `Space`. Collect yellow coins. Avoid the red spiky hazards and
-the purple slimes. Touching a hazard or a slime respawns the player at the
-start. The level is defined in `src/scenes/GameScene.ts`. Change the entity
-positions there, or spawn more entities.
+and jump with `Space`. Collect yellow coins; the counter in the top-left
+corner counts them. Avoid the red spiky hazards and the purple slimes.
+Touching a hazard or a slime respawns the player at the start, and sends each
+slime back to where it started. The level is defined in
+`src/scenes/GameScene.ts`. Change the entity positions there, or spawn more
+entities.
+
+The Fullscreen button in the top-right corner is set up in
+`src/fullscreen.ts`. It is hidden where the browser cannot show the page
+fullscreen, such as on iPhone, and in the installed app on Android, which
+already opens fullscreen. See
+https://yage.dev/guides/rendering/responsive/#mobile-readiness for what the
+page does on phones.
 
 ## Project layout
 
@@ -37,16 +46,21 @@ positions there, or spawn more entities.
 │       └── slime_purple.png
 └── src/
     ├── main.ts                    # boot: Engine, plugins, initial scene
+    ├── assets.ts                  # texture and sound handles, frame sizes
+    ├── events.ts                  # game events (PlayerHit, CoinCollected)
+    ├── fullscreen.ts              # the Fullscreen button in index.html
     ├── layers.ts                  # physics collision layers
     ├── traits.ts                  # shared entity traits
     ├── scenes/
-    │   └── GameScene.ts           # camera, preload, spawns, event listeners
+    │   └── GameScene.ts           # assembles the level: preload, camera, spawns
     ├── entities/
-    │   ├── Player/                # entity plus its controller component
+    │   ├── Player/                # entity plus its components
     │   │   ├── index.ts
-    │   │   └── PlayerController.ts
+    │   │   ├── PlayerController.ts # input, movement, animation
+    │   │   └── PlayerRespawn.ts   # back to the start when hit
     │   ├── Coin.ts
     │   ├── Hazard.ts
+    │   ├── Hud.ts                 # coin counter; hosts the run's coin count
     │   ├── Platform.ts
     │   ├── Slime.ts
     │   └── Wall.ts
@@ -57,7 +71,7 @@ positions there, or spawn more entities.
 See https://yage.dev/patterns/project-layout for the full conventions.
 **Short version:**
 
-- **One scene per file.** A scene preloads assets, sets up the camera, and spawns entities. If a scene grows past ~150 lines, extract entity classes.
+- **One scene per file.** A scene preloads assets, sets up the camera, and spawns entities. Game rules stay out of it. If a scene grows past ~150 lines, extract entity classes.
 - **Simple entity → single file; complex entity → folder.** Move an entity into a folder only when it has a second supporting file.
 - **Entity-specific components live next to the entity**, such as `Player/PlayerController.ts`. Use `components/` only for components shared across multiple entities, such as `Oscillate`.
 - **`main.ts` stays short.** It creates the engine, registers plugins, and pushes the first scene. Keep game logic out of it.
@@ -73,16 +87,86 @@ See https://yage.dev/patterns/project-layout for the full conventions.
 
 Add more as you need them: `@yagejs/particles`, `@yagejs/tilemap`, `@yagejs/ui`, `@yagejs/ui-react`, `@yagejs/save`.
 
+## Writing game code
+
+Follow these rules for every entity, component, and scene you add.
+
+- **An entity type is an `Entity` subclass.** Its `setup(params)` adds the
+  entity's components. Spawn it with `this.spawn(Coin, { x, y })`, and YAGE
+  calls `setup(params)`. A function that builds and returns an entity should be
+  a subclass instead. Spawn by name (`this.spawn("background")`) only for a
+  one-off entity with no behaviour of its own, such as the background grid or
+  a UI root.
+- **Components hold the game logic.** Rules go in a component's `update(dt)`
+  or `fixedUpdate(dt)`, its event handlers, and its methods. Systems are for
+  engine internals only.
+- **A component listens for events itself.** Declare an event with
+  `defineEvent` and emit it on the entity (`this.entity.emit(PlayerHit)`).
+  Entity events bubble to the scene. Listen with
+  `this.listen(entity, PlayerHit, fn)` for one entity, or
+  `this.listenScene(PlayerHit, fn)` for the event from any entity in the
+  scene. Both unsubscribe when the component is removed. Events are declared
+  in `src/events.ts`. `PlayerRespawn` emits `PlayerHit`, and each slime's
+  `SlimeAI` listens for it.
+- **`onEnter` assembles the scene.** It spawns entities, sets up the camera,
+  and starts music. It holds no game state and no rules.
+- **Game state lives in a component on a host entity.** Put the score, lives,
+  or a run timer in a component. Spawn its entity with a key, and reach it
+  with `scene.findByKey`, a query, or the reference `spawn()` returns. The
+  starter's coin count works this way: `CoinCounter` in `src/entities/Hud.ts`
+  listens for `CoinCollected` and keeps the count, and the scene spawns its
+  entity with a key:
+
+  ```ts
+  // In onEnter:
+  this.spawn(Hud, { key: HUD_KEY });
+  // In any component:
+  const coins = this.scene.findByKey<Hud>(HUD_KEY)?.counter.coins;
+  ```
+
+  Do not keep game state in a module-level variable, a field on the `Scene`,
+  or a `ServiceKey` service. A module-level store (`createStore`,
+  `createRecord`) is only for state that `@yagejs/save` persists.
+
+- **Time comes from the engine.** `dt` and every duration are in seconds. A
+  cooldown or a time window is a slot on the entity's `ProcessComponent`:
+
+  ```ts
+  class Dash extends Component {
+    private readonly processes = this.sibling(ProcessComponent);
+    private cooldown!: ProcessSlot;
+
+    onAdd(): void {
+      this.cooldown = this.processes.slot({ duration: 0.8 });
+    }
+
+    tryDash(): void {
+      if (this.cooldown.running) return;
+      this.cooldown.restart();
+      // ...move the entity
+    }
+  }
+  ```
+
+  A one-off delay is `this.processes.run(Process.delay(0.5, fn))`. Do not use
+  `setTimeout` or `setInterval`: they keep running while the game is paused
+  and ignore the time scale.
+
+- **Randomness comes from the scene.** `this.use(RandomKey)` returns the
+  scene's `RandomService`, with `float()`, `range(min, max)`,
+  `int(min, max)`, `pick(array)`, and `shuffle(array)`. Do not use
+  `Math.random`. `window.__yage__.inspector.setSeed(1)` seeds every scene's
+  generator, so a test run is reproducible.
+- Resolve engine services with `this.service(Key)` or `this.use(Key)` inside
+  components, never through a module-level `engine` variable.
+
 ## Key conventions
 
 - `Vec2` is immutable — operations return new instances
 - `Transform` is mutable — call `.setPosition(...)`, `.rotate(...)` in place
 - Pixels are the primary unit across every public API
-- Put game logic in components. Systems are for engine internals only
 - Use `setVelocity` on `RigidBodyComponent`, not `applyImpulse` — impulses need careful unit math
-- Spawn entities with `scene.spawn(EntityClass, params)` — YAGE calls `setup(params)` automatically
-- Resolve services with `this.service(Key)` or `this.use(Key)` inside components
-- Declare asset handles with `texture()` / `sound()` at module scope and list them in `Scene.preload`. Every listed handle is loaded before `onEnter` runs
+- Declare asset handles with `texture()` / `sound()` in `src/assets.ts` and list them in `Scene.preload`. Every listed handle is loaded before `onEnter` runs. Pass the handle itself where an API takes an asset (`audio.play(jumpSfx)`, `sheet: coinTex`), not its `.path`
 
 ## Assets
 
@@ -99,7 +183,7 @@ as `texture("/assets/player-idle.png")` resolves to
 See `public/assets/CREDITS.md` for source links and license details.
 
 Replace them with your own assets, and keep the file paths matching the
-handles your scene's `preload` declares.
+handles in `src/assets.ts`.
 
 ## Installable app and offline play
 

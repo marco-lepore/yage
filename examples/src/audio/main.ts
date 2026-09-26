@@ -2,20 +2,23 @@ import {
   Engine,
   Scene,
   Component,
+  Entity,
   Transform,
   Vec2,
   ProcessComponent,
   KeyframeAnimator,
+  RandomKey,
+  defineEvent,
   easeInOutQuad,
+  type ProcessSlot,
 } from "@yagejs/core";
-import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
-import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import {
-  AudioPlugin,
-  AudioManagerKey,
-  SoundComponent,
-  sound,
-} from "@yagejs/audio";
+  RendererPlugin,
+  GraphicsComponent,
+  TextComponent,
+} from "@yagejs/renderer";
+import { InputPlugin, InputManagerKey } from "@yagejs/input";
+import { AudioPlugin, AudioManagerKey, sound } from "@yagejs/audio";
 import type { SoundHandle } from "@yagejs/audio";
 import {
   installDebugFromUrl,
@@ -25,9 +28,10 @@ import "./styles.css";
 
 const WIDTH = 800;
 const HEIGHT = 600;
+const FLASH_SECONDS = 0.2;
 
 // ---------------------------------------------------------------------------
-// DOM status labels — wired up by AudioController.onAdd() to the unlock API.
+// DOM status labels — the browser's audio state, written by AudioController.
 // ---------------------------------------------------------------------------
 function setUnlockLabel(unlocked: boolean): void {
   const el = document.getElementById("unlock-state");
@@ -55,44 +59,138 @@ const SFX_HANDLES = {
 
 const BgMusic = sound("/assets/bgm.mp3");
 
-const SFX_ALIASES = Object.keys(SFX_HANDLES) as (keyof typeof SFX_HANDLES)[];
+type SfxAlias = keyof typeof SFX_HANDLES;
 
-// Colors for each SFX
-const SFX_COLORS = {
-  laser_shot: { fill: 0x38bdf8, stroke: 0x0ea5e9, label: "SHOT" },
-  laser_burst: { fill: 0x22c55e, stroke: 0x16a34a, label: "BURST" },
-  explosion: { fill: 0xf97316, stroke: 0xea580c, label: "BOOM" },
+const SFX_ALIASES = Object.keys(SFX_HANDLES) as SfxAlias[];
+
+// Colors and key label for each SFX pad
+const SFX_PADS = {
+  laser_shot: { fill: 0x38bdf8, stroke: 0x0ea5e9, key: "1", label: "SHOT" },
+  laser_burst: { fill: 0x22c55e, stroke: 0x16a34a, key: "2", label: "BURST" },
+  explosion: { fill: 0xf97316, stroke: 0xea580c, key: "3", label: "BOOM" },
 } as const;
 
 // ---------------------------------------------------------------------------
-// FlashOnPlay — visual ring that flashes when its SFX fires
+// Events
 // ---------------------------------------------------------------------------
-class FlashOnPlay extends Component {
-  private readonly _gfx = this.sibling(GraphicsComponent);
-  private readonly _transform = this.sibling(Transform);
-  private _timer = 0;
+/** A sound effect started playing. */
+const SfxPlayed = defineEvent<{ alias: SfxAlias }>("audio:sfx-played");
+/** Background music started or stopped. */
+const MusicToggled = defineEvent<{ playing: boolean }>("audio:music-toggled");
 
-  update(dt: number): void {
-    if (this._timer > 0) {
-      this._timer = Math.max(0, this._timer - dt);
-      const t = this._timer / 0.2;
-      this._gfx.graphics.alpha = 0.3 + 0.7 * t;
-      const s = 1 + 0.3 * t;
-      this._transform.setScale(s, s);
-    }
-  }
-
-  flash(): void {
-    this._timer = 0.2;
+// ---------------------------------------------------------------------------
+// LabelBox — a line of text on a dark box
+// ---------------------------------------------------------------------------
+class LabelBox extends Entity {
+  /** `position` is the centre of the box. */
+  setup(params: {
+    position: Vec2;
+    width: number;
+    height: number;
+    text: string;
+    fill: number;
+    stroke?: number;
+  }): void {
+    const { width: w, height: h, stroke } = params;
+    this.add(new Transform({ position: params.position }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.rect(-w / 2, -h / 2, w, h).fill({ color: params.fill });
+        if (stroke !== undefined) {
+          g.rect(-w / 2, -h / 2, w, h).stroke({ color: stroke, width: 1 });
+        }
+      }),
+    );
+    this.add(
+      new TextComponent({
+        text: params.text,
+        anchor: { x: 0.5, y: 0.5 },
+        style: { fontFamily: "monospace", fontSize: 11, fill: 0xcccccc },
+      }),
+    );
   }
 }
 
 // ---------------------------------------------------------------------------
-// VolumeBar — draws a horizontal bar reflecting a channel's volume
+// SfxPad — a disc that flashes when its sound plays, and its key label
+// ---------------------------------------------------------------------------
+class FlashOnPlay extends Component {
+  private readonly processes = this.sibling(ProcessComponent);
+  private readonly alias: SfxAlias;
+  private readonly disc: GraphicsComponent;
+  private readonly discTransform: Transform;
+  /** Running while the flash fades back to the resting look. */
+  private flash!: ProcessSlot;
+
+  constructor(options: {
+    alias: SfxAlias;
+    disc: GraphicsComponent;
+    discTransform: Transform;
+  }) {
+    super();
+    this.alias = options.alias;
+    this.disc = options.disc;
+    this.discTransform = options.discTransform;
+  }
+
+  onAdd(): void {
+    this.flash = this.processes.slot({
+      duration: FLASH_SECONDS,
+      update: () => this.show(1 - this.flash.ratio),
+    });
+    this.show(0);
+    this.listenScene(SfxPlayed, ({ alias }) => {
+      if (alias === this.alias) this.flash.restart();
+    });
+  }
+
+  /** Brightness and size for a flash strength from 0 (resting) to 1. */
+  private show(strength: number): void {
+    this.disc.alpha = 0.3 + 0.7 * strength;
+    const scale = 1 + 0.3 * strength;
+    this.discTransform.setScale(scale, scale);
+  }
+}
+
+class SfxPad extends Entity {
+  setup(params: { alias: SfxAlias; position: Vec2 }): void {
+    const pad = SFX_PADS[params.alias];
+    this.add(new Transform({ position: params.position }));
+    // The disc is a child, so its flash scales it without moving the label.
+    const disc = this.spawnChild("disc");
+    const discTransform = disc.add(new Transform());
+    const discVisual = disc.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 55).fill({ color: pad.fill, alpha: 0.3 });
+        g.circle(0, 0, 55).stroke({ color: pad.stroke, width: 2 });
+        g.circle(0, 0, 30).fill({ color: pad.fill, alpha: 0.6 });
+      }),
+    );
+    this.spawnChild("key-label", LabelBox, {
+      position: new Vec2(0, 80),
+      width: 60,
+      height: 20,
+      text: `${pad.key} ${pad.label}`,
+      fill: 0x222222,
+      stroke: 0x444444,
+    });
+    this.add(new ProcessComponent());
+    this.add(
+      new FlashOnPlay({
+        alias: params.alias,
+        disc: discVisual,
+        discTransform,
+      }),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// VolumeBarEntity — a horizontal bar showing a channel's volume
 // ---------------------------------------------------------------------------
 class VolumeBar extends Component {
-  private _channel: string;
-  private _color: number;
+  private readonly _channel: string;
+  private readonly _color: number;
   private readonly _audio = this.service(AudioManagerKey);
   private readonly _gfx = this.sibling(GraphicsComponent);
 
@@ -117,22 +215,86 @@ class VolumeBar extends Component {
   }
 }
 
+class VolumeBarEntity extends Entity {
+  /** `position` is the bar's top-left corner. */
+  setup(params: {
+    channel: string;
+    title: string;
+    color: number;
+    position: Vec2;
+  }): void {
+    this.add(new Transform({ position: params.position }));
+    this.add(new GraphicsComponent());
+    this.add(new VolumeBar(params.channel, params.color));
+    this.spawnChild("title", LabelBox, {
+      position: new Vec2(100, -12),
+      width: 200,
+      height: 16,
+      text: params.title,
+      fill: 0x111111,
+    });
+  }
+}
+
 // ---------------------------------------------------------------------------
-// MusicIndicator — pulses while music is playing (using KeyframeAnimator)
+// MusicDisc — pulses while music is playing (using KeyframeAnimator)
 // ---------------------------------------------------------------------------
 class MusicIndicator extends Component {
   private readonly _gfx = this.sibling(GraphicsComponent);
-  private readonly _anim = this.sibling(
-    KeyframeAnimator,
-  ) as KeyframeAnimator<"pulse">;
+  private readonly _anim: KeyframeAnimator<"pulse">;
 
-  setPlaying(v: boolean): void {
+  constructor(anim: KeyframeAnimator<"pulse">) {
+    super();
+    this._anim = anim;
+  }
+
+  onAdd(): void {
+    this.setPlaying(false);
+    this.listenScene(MusicToggled, ({ playing }) => this.setPlaying(playing));
+  }
+
+  private setPlaying(v: boolean): void {
     if (v) {
       this._anim.play("pulse");
     } else {
       this._anim.stop("pulse");
-      this._gfx.graphics.alpha = 0.2;
+      this._gfx.alpha = 0.2;
     }
+  }
+}
+
+class MusicDisc extends Entity {
+  setup(params: { position: Vec2 }): void {
+    this.add(new Transform({ position: params.position }));
+    const visual = this.add(
+      new GraphicsComponent().draw((g) => {
+        // Disc shape
+        g.circle(0, 0, 35).fill({ color: 0xa78bfa, alpha: 0.2 });
+        g.circle(0, 0, 35).stroke({ color: 0x7c3aed, width: 2 });
+        g.circle(0, 0, 18).fill({ color: 0xa78bfa, alpha: 0.4 });
+        g.circle(0, 0, 8).fill({ color: 0x7c3aed });
+        // "Vinyl" lines
+        g.circle(0, 0, 25).stroke({ color: 0x7c3aed, width: 1, alpha: 0.3 });
+      }),
+    );
+    this.add(new ProcessComponent());
+    const anim = this.add(
+      new KeyframeAnimator<"pulse">({
+        pulse: {
+          keyframes: [
+            { time: 0, data: 0.6 },
+            { time: 0.525, data: 1.0 },
+            { time: 1.05, data: 0.6 },
+          ],
+          setter: (alpha) => {
+            visual.alpha = alpha as number;
+          },
+          loop: true,
+          easing: easeInOutQuad,
+        },
+      }),
+    );
+    this.add(new MusicIndicator(anim));
   }
 }
 
@@ -142,25 +304,15 @@ class MusicIndicator extends Component {
 class AudioController extends Component {
   private readonly _audio = this.service(AudioManagerKey);
   private readonly _input = this.service(InputManagerKey);
-  private _flashers = new Map<string, FlashOnPlay>();
   private _musicHandle: SoundHandle | null = null;
-  private _musicIndicator!: MusicIndicator;
   private _muted = false;
-
-  setFlashers(map: Map<string, FlashOnPlay>): void {
-    this._flashers = map;
-  }
-
-  setMusicIndicator(indicator: MusicIndicator): void {
-    this._musicIndicator = indicator;
-  }
 
   onAdd(): void {
     // Surface the AudioContext lock state to the page. Browsers suspend the
     // context until the first user gesture — onUnlock fires exactly once when
     // the context flips to "running" (or synchronously if already unlocked).
     setUnlockLabel(this._audio.isUnlocked());
-    this._audio.onUnlock(() => setUnlockLabel(true));
+    this.addCleanup(this._audio.onUnlock(() => setUnlockLabel(true)));
     setBlurLabel(this._audio.autoMuteOnBlur);
   }
 
@@ -169,10 +321,9 @@ class AudioController extends Component {
     if (this._input.isJustPressed("sfx1")) this._playSfx("laser_shot");
     if (this._input.isJustPressed("sfx2")) this._playSfx("laser_burst");
     if (this._input.isJustPressed("sfx3")) this._playSfx("explosion");
-    if (this._input.isJustPressed("random"))
-      this._playSfx(
-        SFX_ALIASES[Math.floor(Math.random() * SFX_ALIASES.length)]!,
-      );
+    if (this._input.isJustPressed("random")) {
+      this._playSfx(this.use(RandomKey).pick(SFX_ALIASES));
+    }
 
     // Music toggle
     if (this._input.isJustPressed("music")) this._toggleMusic();
@@ -201,29 +352,34 @@ class AudioController extends Component {
     }
   }
 
-  private _playSfx(alias: keyof typeof SFX_HANDLES): void {
-    this._audio.play(SFX_HANDLES[alias].path, { channel: "sfx" });
-    this._flashers.get(alias)?.flash();
+  private _playSfx(alias: SfxAlias): void {
+    this._audio.play(SFX_HANDLES[alias], { channel: "sfx" });
+    this.entity.emit(SfxPlayed, { alias });
   }
 
   private _toggleMusic(): void {
     if (this._musicHandle?.playing) {
       this._audio.stop(this._musicHandle);
       this._musicHandle = null;
-      this._musicIndicator.setPlaying(false);
     } else {
-      this._musicHandle = this._audio.play(BgMusic.path, {
+      this._musicHandle = this._audio.play(BgMusic, {
         channel: "music",
         loop: true,
       });
-      this._musicIndicator.setPlaying(true);
     }
+    this.entity.emit(MusicToggled, { playing: this._musicHandle !== null });
   }
 
   private _adjustVolume(channel: string, delta: number): void {
     const cur = this._audio.getChannelVolume(channel);
     const next = Math.max(0, Math.min(1, cur + delta));
     this._audio.setChannelVolume(channel, next);
+  }
+}
+
+class MixerEntity extends Entity {
+  setup(): void {
+    this.add(new AudioController());
   }
 }
 
@@ -235,113 +391,36 @@ class AudioScene extends Scene {
   readonly preload = [...Object.values(SFX_HANDLES), BgMusic];
 
   onEnter(): void {
-    const flashers = new Map<string, FlashOnPlay>();
-
     // --- SFX pads (three circles) ---
     const padY = 220;
     const padSpacing = 200;
     const padStartX = WIDTH / 2 - padSpacing;
-
     SFX_ALIASES.forEach((alias, i) => {
-      const x = padStartX + i * padSpacing;
-      const colors = SFX_COLORS[alias];
-
-      const pad = this.spawn(alias);
-      pad.add(new Transform({ position: new Vec2(x, padY) }));
-      pad.add(
-        new GraphicsComponent().draw((g) => {
-          g.circle(0, 0, 55).fill({ color: colors.fill, alpha: 0.3 });
-          g.circle(0, 0, 55).stroke({ color: colors.stroke, width: 2 });
-          g.circle(0, 0, 30).fill({ color: colors.fill, alpha: 0.6 });
-        }),
-      );
-      const flash = pad.add(new FlashOnPlay());
-      flashers.set(alias, flash);
-
-      // Key label
-      const label = this.spawn(`${alias}-label`);
-      label.add(new Transform({ position: new Vec2(x, padY + 80) }));
-      label.add(
-        new GraphicsComponent().draw((g) => {
-          g.rect(-30, -10, 60, 20).fill({ color: 0x222222 });
-          g.rect(-30, -10, 60, 20).stroke({ color: 0x444444, width: 1 });
-        }),
-      );
+      this.spawn(SfxPad, {
+        alias,
+        position: new Vec2(padStartX + i * padSpacing, padY),
+      });
     });
 
     // --- Music indicator ---
-    const musicY = 380;
-    const musicEnt = this.spawn("music-indicator");
-    musicEnt.add(new Transform({ position: new Vec2(WIDTH / 2, musicY) }));
-    const musicGfx = musicEnt.add(
-      new GraphicsComponent().draw((g) => {
-        // Disc shape
-        g.circle(0, 0, 35).fill({ color: 0xa78bfa, alpha: 0.2 });
-        g.circle(0, 0, 35).stroke({ color: 0x7c3aed, width: 2 });
-        g.circle(0, 0, 18).fill({ color: 0xa78bfa, alpha: 0.4 });
-        g.circle(0, 0, 8).fill({ color: 0x7c3aed });
-        // "Vinyl" lines
-        g.circle(0, 0, 25).stroke({ color: 0x7c3aed, width: 1, alpha: 0.3 });
-      }),
-    );
-    musicEnt.add(new ProcessComponent());
-    musicEnt.add(
-      new KeyframeAnimator({
-        pulse: {
-          keyframes: [
-            { time: 0, data: 0.6 },
-            { time: 525, data: 1.0 },
-            { time: 1050, data: 0.6 },
-          ],
-          setter: (alpha) => {
-            musicGfx.graphics.alpha = alpha as number;
-          },
-          loop: true,
-          easing: easeInOutQuad,
-        },
-      }),
-    );
-    const musicIndicator = musicEnt.add(new MusicIndicator());
-    musicIndicator.setPlaying(false);
+    this.spawn(MusicDisc, { position: new Vec2(WIDTH / 2, 380) });
 
     // --- Channel volume bars ---
     const barY = 470;
+    this.spawn(VolumeBarEntity, {
+      channel: "music",
+      title: "MUSIC VOLUME",
+      color: 0xa78bfa,
+      position: new Vec2(WIDTH / 2 - 220, barY),
+    });
+    this.spawn(VolumeBarEntity, {
+      channel: "sfx",
+      title: "SFX VOLUME",
+      color: 0x38bdf8,
+      position: new Vec2(WIDTH / 2 + 20, barY),
+    });
 
-    // Music volume
-    const musicBar = this.spawn("music-vol");
-    musicBar.add(new Transform({ position: new Vec2(WIDTH / 2 - 220, barY) }));
-    musicBar.add(new GraphicsComponent());
-    musicBar.add(new VolumeBar("music", 0xa78bfa));
-
-    // Music label
-    const musicLabel = this.spawn("music-label");
-    musicLabel.add(
-      new Transform({ position: new Vec2(WIDTH / 2 - 220, barY - 20) }),
-    );
-    musicLabel.add(
-      new GraphicsComponent().draw((g) => {
-        g.rect(0, 0, 200, 16).fill({ color: 0x111111 });
-      }),
-    );
-
-    // SFX volume
-    const sfxBar = this.spawn("sfx-vol");
-    sfxBar.add(new Transform({ position: new Vec2(WIDTH / 2 + 20, barY) }));
-    sfxBar.add(new GraphicsComponent());
-    sfxBar.add(new VolumeBar("sfx", 0x38bdf8));
-
-    // SFX label
-    const sfxLabel = this.spawn("sfx-label");
-    sfxLabel.add(
-      new Transform({ position: new Vec2(WIDTH / 2 + 20, barY - 20) }),
-    );
-    sfxLabel.add(
-      new GraphicsComponent().draw((g) => {
-        g.rect(0, 0, 200, 16).fill({ color: 0x111111 });
-      }),
-    );
-
-    // --- Decorative header lines ---
+    // --- Decorative header line ---
     const header = this.spawn("header-line");
     header.add(new Transform({ position: new Vec2(WIDTH / 2, 100) }));
     header.add(
@@ -350,24 +429,8 @@ class AudioScene extends Scene {
       }),
     );
 
-    // --- Entity with SoundComponent (demonstrates entity-bound audio) ---
-    const ambientEntity = this.spawn("ambient-pad");
-    ambientEntity.add(new Transform({ position: new Vec2(0, 0) }));
-    ambientEntity.add(
-      new SoundComponent({
-        alias: BgMusic.path,
-        channel: "music",
-        loop: true,
-        playOnAdd: false,
-      }),
-    );
-
     // --- Main controller ---
-    const controller = this.spawn("controller");
-    controller.add(new Transform());
-    const ctrl = controller.add(new AudioController());
-    ctrl.setFlashers(flashers);
-    ctrl.setMusicIndicator(musicIndicator);
+    this.spawn(MixerEntity);
   }
 }
 

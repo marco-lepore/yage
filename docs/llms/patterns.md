@@ -188,7 +188,7 @@ input intents, lanes, priorities, holds, or timed step windows.
 
 ## System Patterns
 
-Systems are for engine-level cross-cutting concerns (rendering, physics, audio sync). Game developers typically write Components instead. Use Systems when you need efficient cross-entity iteration via `QueryCache` and strict phase ordering.
+Systems are for engine-level cross-cutting concerns (rendering, physics, audio sync) and ship inside plugins. Game rules go in Components, never in a `System` subclass. A component that needs a live set of entities registers its own `QueryCache` query (see QueryCache below).
 
 ### Writing a System
 
@@ -267,6 +267,29 @@ enemies.first; // first match or undefined
 enemies.toArray(); // snapshot as array (allocates)
 ```
 
+A component that registers a query unregisters it on removal, or the query keeps receiving updates:
+
+```ts
+import {
+  Component,
+  QueryCacheKey,
+  Transform,
+  type QueryResult,
+} from "@yagejs/core";
+
+class EnemyTag extends Component {}
+
+class EnemyRadar extends Component {
+  private enemies!: QueryResult;
+
+  onAdd() {
+    const cache = this.use(QueryCacheKey);
+    this.enemies = cache.register([Transform, EnemyTag]);
+    this.addCleanup(() => cache.unregister(this.enemies));
+  }
+}
+```
+
 ## Entity Patterns
 
 ### Subclass with setup()
@@ -333,19 +356,33 @@ class Turret extends Entity {
 ### Traits for polymorphic behavior
 
 ```ts yage-context="scene"
-import { Entity, defineTrait, trait } from "@yagejs/core";
+import { Component, Entity, defineTrait, trait } from "@yagejs/core";
 
 const Damageable = defineTrait<{ takeDamage(n: number): void }>("Damageable");
 
+// The rule and its state live in a component.
+class Durability extends Component {
+  private hp: number;
+
+  constructor(hp: number) {
+    super();
+    this.hp = hp;
+  }
+
+  damage(n: number) {
+    this.hp -= n;
+    if (this.hp <= 0) this.entity.destroy();
+  }
+}
+
 @trait(Damageable)
 class Crate extends Entity {
-  private hp = 3;
-  takeDamage(n: number) {
-    this.hp -= n;
-    if (this.hp <= 0) this.destroy();
-  }
   setup() {
-    /* ... */
+    this.add(new Durability(3));
+  }
+
+  takeDamage(n: number) {
+    this.get(Durability).damage(n); // the trait method hands off to the component
   }
 }
 
@@ -355,9 +392,11 @@ for (const e of scene.findEntities({ trait: Damageable })) {
 }
 ```
 
+Each trait method hands the call to a component of the entity; the component holds the state and the rule.
+
 ### Blueprints (deprecated)
 
-`defineBlueprint()` still works for simple parametric factories (coins, bullets, platforms) but entity subclasses with `setup()` are preferred for anything that needs methods, internal state, or traits.
+`defineBlueprint()` is deprecated. Existing blueprints still work, but new code uses an entity subclass with `setup()`, including for simple parametric factories (coins, bullets, platforms).
 
 ## Process Patterns
 
@@ -723,7 +762,8 @@ describe("FooPlugin", () => {
 ### Pause menu
 
 ```ts
-import { Scene } from "@yagejs/core";
+import { Component, Scene, SceneManagerKey } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
 
 class PauseScene extends Scene {
   readonly name = "pause";
@@ -731,11 +771,27 @@ class PauseScene extends Scene {
   override readonly transparentBelow = true; // keep rendering below
 
   onEnter() {
-    // Push: engine.scenes.push(new PauseScene());
-    // Resume: engine.scenes.pop();
+    // Build the menu here; a Resume button calls
+    // void this.use(SceneManagerKey).pop();
+  }
+}
+
+// In the game scene: components reach the scene manager through DI.
+class PauseOnKey extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly scenes = this.service(SceneManagerKey);
+
+  update() {
+    if (this.input.isJustPressed("pause")) {
+      void this.scenes.push(new PauseScene());
+    }
   }
 }
 ```
+
+Scene and Component code reaches the scene manager with `this.use(SceneManagerKey)` or `this.service(SceneManagerKey)`, never through a module-level `engine` variable. `engine.scenes` is for `main.ts`.
+
+To update the game scene's HUD on pause, override the game scene's `onPause()` / `onResume()` hooks and call a HUD component method in one line: `this.findByKey<Hud>(HUD_KEY)?.status.setPaused(true)`, where `Hud` is an entity that keeps its `StatusLine` component as `status`. The pause scene does not touch the game scene.
 
 ### Time scale
 
@@ -781,10 +837,12 @@ The factor is `1` while the scene is frozen — nothing integrates then.
 ### Hitstop, slow motion, bullet time, freeze frames (SceneTime)
 
 ```ts yage-context="entity,component"
-import { SceneTimeKey } from "@yagejs/core";
+import { Entity, SceneTimeKey } from "@yagejs/core";
+
+class Enemy extends Entity {}
 
 const player = this.entity;
-const enemy = this.scene.spawn("enemy");
+const enemy = this.scene.spawn(Enemy);
 const feedbackHost = this.scene.spawn("feedback-host");
 
 // Per-scene service; arbitrates competing time effects so callers never
@@ -824,82 +882,183 @@ time.fixedElapsed; // simulation seconds on the fixed timestep — stamp/compare
 
 ### Cross-scene access
 
-```ts yage-context="engine"
-import { Scene } from "@yagejs/core";
+```ts yage-context="component"
+import { SceneManagerKey, defineEvent } from "@yagejs/core";
 
-class GameScene extends Scene {
-  readonly name = "game";
-}
+const DifficultyChanged = defineEvent<{ level: number }>("settings:difficulty");
 
-const game = engine.scenes.all.find((s) => s.name === "game") as GameScene;
-game.timeScale = 0.25;
+// In a scene or component of the options scene on top:
+const game = this.use(SceneManagerKey).all.find((s) => s.name === "game");
+if (game) game.timeScale = 0.25; // Scene's own API, no cast
+game?.emit(DifficultyChanged, { level: 2 }); // components there hear it with listenScene
 ```
+
+Don't cast a scene to its subclass to read its fields: game state lives in components, reached with `findByKey`. Game events are `defineEvent` tokens emitted on a scene or entity; the engine `EventBus` carries engine events only and does not take tokens.
 
 ## State Management Patterns
 
-Do not use module-level `let` variables for game state (e.g. `let score = 0`). Module-level state breaks save/load, prevents scene isolation, and cannot be reset on restart. Use `ServiceKey` + DI registration or `createRecord()` instead.
+Game state (score, lives, inventory, a level clock) lives in a component on a host entity. Reach it with `spawn(Class, { key })` + `scene.findByKey`, a query, or the reference `spawn()` returned. Where it does not go:
 
-### DI service for game state
+- Not a module-level `let` (`let score = 0`): never reset on restart, breaks scene isolation and tests.
+- Not a field on the `Scene` subclass changed from `onEnter` closures: the rules end up in the scene, and readers have to cast `this.scene`.
+- Not a `ServiceKey` (`context.register`, `scene.registerScoped`): service keys are for plugin-owned infrastructure only (renderer, physics world, input manager).
 
-```ts yage-context="component"
-import { ServiceKey } from "@yagejs/core";
+Module-level `createStore` / `createRecord` is only for state that `@yagejs/save` persists (see "Saved state" below).
 
-interface GameState {
-  score: number;
-  health: number;
+### Game state on a host entity
+
+```tsx
+import { Component, Entity, Scene, defineEvent } from "@yagejs/core";
+import { Anchor, UISurface, type UIText } from "@yagejs/ui";
+import { Text, useSceneSelector } from "@yagejs/ui-react";
+
+// constants.ts
+export const CoinCollected = defineEvent("coin:collected");
+export const PlayerDied = defineEvent("player:died");
+export const HUD_KEY = "hud"; // spawn key, for scene.findByKey
+
+// hud.ts
+export class RunProgress extends Component {
+  private readonly label: UIText;
+  private _coins = 0;
+  private _lives = 3;
+
+  constructor(label: UIText) {
+    super();
+    this.label = label;
+  }
+
+  get coins(): number {
+    return this._coins;
+  }
+
+  get lives(): number {
+    return this._lives;
+  }
+
+  onAdd(): void {
+    this.refresh();
+    // Coins and hazards emit on themselves; the events bubble to the scene.
+    this.listenScene(CoinCollected, () => {
+      this._coins += 1;
+      this.refresh();
+    });
+    this.listenScene(PlayerDied, () => {
+      this._lives = Math.max(0, this._lives - 1);
+      this.refresh();
+    });
+  }
+
+  private refresh(): void {
+    this.label.setText(`Coins ${this._coins}   Lives ${this._lives}`);
+  }
 }
 
-const GameStateKey = new ServiceKey<GameState>("gameState");
-this.context.register(GameStateKey, { score: 0, health: 100 });
-// Access: this.use(GameStateKey).score
+export class HudEntity extends Entity {
+  progress!: RunProgress; // the run's state, hosted on this entity
+
+  setup(): void {
+    const panel = this.add(
+      new UISurface({ anchor: Anchor.TopRight, offset: { x: -16, y: 16 } }),
+    );
+    const label = panel.text("", { fontSize: 20, fill: 0xffe66d });
+    this.progress = this.add(new RunProgress(label));
+  }
+}
+
+// scene.ts — onEnter only spawns
+class PlayerEntity extends Entity {}
+
+class LevelScene extends Scene {
+  readonly name = "level";
+  onEnter(): void {
+    this.spawn(HudEntity, { key: HUD_KEY });
+    this.spawn(PlayerEntity);
+  }
+}
+
+// Any component in the scene reads it:
+class GoalGate extends Component {
+  get open(): boolean {
+    const coins = this.scene.findByKey<HudEntity>(HUD_KEY)?.progress.coins ?? 0;
+    return coins >= 10; // every coin collected
+  }
+}
+
+// React reads it (selector polled each frame, re-renders on change):
+function CoinCounter() {
+  const coins = useSceneSelector(
+    (scene) => scene.findByKey<HudEntity>(HUD_KEY)?.progress.coins ?? 0,
+  );
+  return <Text>{`Coins: ${coins}`}</Text>;
+}
 ```
 
-### Reactive store (for React UI)
+- The state resets with the scene: the host is destroyed on exit and spawned again by the next `onEnter`. No reset code.
+- Emitters (`this.entity.emit(CoinCollected)` in a coin's trigger) know nothing about the score. Only `RunProgress` changes it.
+- The Inspector reports component getters, so e2e tests read `coins` / `lives`.
+- `onEnter` may connect an event to a component method in one line (`this.on(PlayerHit, () => player.get(Health).damage(1))`), with no state or rules in the scene. Prefer the component listening for itself with `listenScene`.
+- Reference: `examples/src/platformer/hud.ts` (`RunProgress` on `HudEntity`, keeps coin count and win state); playable at https://examples.yage.dev/platformer.html.
+
+### Saved state (module-level store)
 
 ```ts
-import { createRecord } from "@yagejs/core";
+import { Component, createStore } from "@yagejs/core";
+import { createSave, localStorageAdapter } from "@yagejs/save";
 import { useStore } from "@yagejs/ui-react";
 
-const store = createRecord({ default: () => ({ score: 0 }) });
-store.set({ score: 10 }); // ECS writes
-const score = useStore(store, (src) => src.get().score); // React reads (selector takes source)
-```
+// Module scope is right for saved state: @yagejs/save restores it before
+// the scene that reads it is entered.
+export const records = createStore((s) => ({
+  bestCoins: s.counter({ default: 0 }),
+  unlocked: s.set<string>(),
+}));
 
-### Event-driven state
-
-```ts yage-context="entity,scene-enter"
-import { defineEvent } from "@yagejs/core";
-
-const state = { score: 0 };
-const CoinCollected = defineEvent("coin:collected");
-this.on(CoinCollected, () => {
-  state.score += 10;
+const save = createSave({
+  adapter: localStorageAdapter({ namespace: "my-game" }),
 });
-entity.emit(CoinCollected); // from trigger handler
+save.autoPersist("records", records); // ids at the call site; see packages/save.md
+
+// A component writes when its rule says so:
+class RunProgress extends Component {
+  private _coins = 0;
+
+  finishRun(): void {
+    if (this._coins > records.bestCoins.value())
+      records.bestCoins.set(this._coins);
+  }
+}
+
+// React reads (re-renders on change):
+const best = useStore(records.bestCoins);
 ```
 
 ## Common Game Patterns
 
-### Blueprints for spawning
+### Spawning an entity type
+
+An entity type is an `Entity` subclass with `setup(params)`; its rules go in components. `defineBlueprint` is deprecated (see "Blueprints (deprecated)" above). A named spawn (`scene.spawn("background")`) is only for a one-off entity with no behaviour of its own: a UI root, a background, a HUD host.
 
 ```ts yage-context="scene"
-import { defineBlueprint, Transform, Vec2 } from "@yagejs/core";
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 
-const CoinBP = defineBlueprint<{ x: number; y: number }>(
-  "coin",
-  (entity, { x, y }) => {
-    entity.add(new Transform({ position: new Vec2(x, y) }));
-    entity.add(new RigidBodyComponent({ type: "static" }));
-    entity.add(
+class CoinPickup extends Component {} // emits CoinCollected when the player touches it
+
+class Coin extends Entity {
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new RigidBodyComponent({ type: "static" }));
+    this.add(
       new ColliderComponent({
         shape: { type: "circle", radius: 10 },
         sensor: true,
       }),
     );
-  },
-);
-scene.spawn(CoinBP, { x: 200, y: 300 });
+    this.add(new CoinPickup()); // the pickup rule lives in a component
+  }
+}
+scene.spawn(Coin, { x: 200, y: 300 });
 ```
 
 ### Health/damage
@@ -924,20 +1083,44 @@ class HealthComponent extends Component {
 
 ### Ground detection (raycast)
 
-```ts yage-context="component"
-import { Transform } from "@yagejs/core";
+```ts
+import {
+  Component,
+  ProcessComponent,
+  Transform,
+  Vec2,
+  type ProcessSlot,
+} from "@yagejs/core";
 import { PhysicsWorldKey } from "@yagejs/physics";
 
-const world = this.use(PhysicsWorldKey);
-const position = this.entity.get(Transform).worldPosition;
-const halfHeight = 16;
+class PlayerController extends Component {
+  private readonly processes = this.sibling(ProcessComponent);
+  private coyote!: ProcessSlot;
 
-// Sensors are skipped by default, so a trigger zone underfoot is not ground.
-// excludeEntity skips the caster's own collider, which the ray starts inside.
-const hit = world.raycast(position, { x: 0, y: 1 }, halfHeight + 2, {
-  excludeEntity: this.entity,
-});
-const grounded = hit !== null; // add coyote timer for better feel
+  onAdd() {
+    // Coyote time is a ProcessSlot on the physics clock, not a number counted
+    // down by hand.
+    this.coyote = this.processes.slot({ duration: 0.1, clock: "fixed" });
+  }
+
+  fixedUpdate() {
+    const world = this.use(PhysicsWorldKey);
+    const position = this.entity.get(Transform).worldPosition;
+    const halfHeight = 16;
+
+    // Sensors are skipped by default, so a trigger zone underfoot is not ground.
+    // excludeEntity skips the caster's own collider, which the ray starts inside.
+    const hit = world.raycast(position, Vec2.DOWN, halfHeight + 2, {
+      excludeEntity: this.entity,
+    });
+    // Restart on every grounded step; the slot closes by itself.
+    if (hit) this.coyote.restart();
+  }
+
+  get canJump(): boolean {
+    return this.coyote.running;
+  }
+}
 ```
 
 ## Common Gotchas

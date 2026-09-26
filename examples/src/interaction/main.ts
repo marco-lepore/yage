@@ -30,8 +30,9 @@
 
 import {
   Component,
+  defineEvent,
   Engine,
-  type Entity,
+  Entity,
   MathUtils,
   Scene,
   Transform,
@@ -56,13 +57,41 @@ const HEIGHT = 600;
 const PLAYER_SPEED = 180;
 const BOUNDS = { minX: 40, maxX: WIDTH - 40, minY: 100, maxY: HEIGHT - 40 };
 
+// ── events the interactables emit on themselves ──────────────────────────────
+
+const NpcTalked = defineEvent("npc:talked");
+const CoinPickedUp = defineEvent("coin:picked-up");
+const GemTaken = defineEvent("gem:taken");
+
 // ── demo state (the "consequence" side of rules-in/consequences-out) ────────
 
-interface DemoState {
-  npcTalks: number;
-  coinsCollected: number;
-  gemsTaken: number;
-  doorOpen: boolean;
+/** What the player has done in the room. The NPC, the coin and the gems emit
+ *  an event on themselves when used; the events bubble to the scene, where
+ *  this component counts them. */
+class RoomTally extends Component {
+  npcTalks = 0;
+  coinsCollected = 0;
+  gemsTaken = 0;
+
+  onAdd(): void {
+    this.listenScene(NpcTalked, () => {
+      this.npcTalks++;
+      console.log(
+        `[npc] "Nice weather for scavenging." (talked ${this.npcTalks}x)`,
+      );
+    });
+    this.listenScene(CoinPickedUp, () => this.coinsCollected++);
+    this.listenScene(GemTaken, () => this.gemsTaken++);
+  }
+}
+
+/** Open or shut. The door's prompt reads it every frame. */
+class Door extends Component {
+  open = false;
+
+  toggle(): void {
+    this.open = !this.open;
+  }
 }
 
 // ── player movement (plain WASD, no physics) ─────────────────────────────────
@@ -119,11 +148,10 @@ class MenuView {
 }
 
 /** Drives interaction from the two interactor events, re-rendering only when
- *  something actually changed. Added after the `Interactor` so its input runs
- *  against that frame's freshly-resolved set. */
+ *  something actually changed. Its entity is spawned after the player, so its
+ *  input runs against that frame's freshly-resolved set. */
 class InteractionMenu extends Component {
   private readonly input = this.service(InputManagerKey);
-  private readonly interactor = this.sibling(Interactor);
   private options: readonly Interactable[] = [];
   /** The highlighted target, held by identity rather than by index: `inRange`
    *  re-ranks as the player moves, so two equal-priority targets can swap
@@ -131,15 +159,19 @@ class InteractionMenu extends Component {
    *  `null` means "no explicit pick" — the focus. */
   private selected: Interactable | null = null;
 
-  constructor(private readonly view: MenuView) {
+  constructor(
+    private readonly interactor: Interactor,
+    private readonly view: MenuView,
+  ) {
     super();
   }
 
   onAdd(): void {
+    const player = this.interactor.entity;
     // The set in reach changed — including a NON-focused target entering or
     // leaving, which the focus event alone never reports. This is what a
     // selection UI has to listen to.
-    this.listen(this.entity, InteractionInRangeChangedEvent, ({ inRange }) => {
+    this.listen(player, InteractionInRangeChangedEvent, ({ inRange }) => {
       this.options = inRange;
       // Drop a pick that walked out of reach; a re-rank alone keeps it.
       if (this.selected && !inRange.includes(this.selected))
@@ -147,7 +179,7 @@ class InteractionMenu extends Component {
       this.render();
     });
     // The focus or its prompt text changed — the door's live "Open"/"Close".
-    this.listen(this.entity, InteractionFocusChangedEvent, () => this.render());
+    this.listen(player, InteractionFocusChangedEvent, () => this.render());
     this.render();
   }
 
@@ -179,80 +211,127 @@ class InteractionMenu extends Component {
   }
 }
 
-// ── scene ─────────────────────────────────────────────────────────────────────
+// ── entities ──────────────────────────────────────────────────────────────────
 
-class InteractionRoomScene extends Scene {
-  readonly name = "interaction-room";
+class PlayerEntity extends Entity {
+  interactor!: Interactor;
+  tally!: RoomTally;
 
-  onEnter(): void {
-    const state: DemoState = {
-      npcTalks: 0,
-      coinsCollected: 0,
-      gemsTaken: 0,
-      doorOpen: false,
-    };
-
-    this.drawRoom();
-
-    const player = this.spawn("player");
-    player.add(new Transform({ position: new Vec2(400, 300) }));
-    player.add(
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(400, 300) }));
+    this.add(
       new GraphicsComponent().draw((g) => {
         g.circle(0, 0, 16).fill({ color: 0x38bdf8 });
         g.circle(0, 0, 16).stroke({ color: 0x0ea5e9, width: 2 });
       }),
     );
-    player.add(new PlayerMover());
-    // action: null — the InteractionMenu below owns the interact input so it
-    // can act on the highlighted option, not just the focus.
-    const interactor = player.add(new Interactor({ range: 60, action: null }));
+    this.add(new PlayerMover());
+    // action: null — the InteractionMenu owns the interact input so it can
+    // act on the highlighted option, not just the focus.
+    this.interactor = this.add(new Interactor({ range: 60, action: null }));
+    this.tally = this.add(new RoomTally());
+  }
+}
 
-    // ── NPC: stands in for a dialogue addon call ───────────────────────────
-    const npc = this.spawnMarker("npc", 400, 150, 0xf97316);
-    npc.add(
+/** The rounded square the NPC, the coin and the door are drawn as. */
+function markerVisual(color: number): GraphicsComponent {
+  return new GraphicsComponent().draw((g) => {
+    g.roundRect(-14, -14, 28, 28, 6).fill({ color, alpha: 0.9 });
+    g.roundRect(-14, -14, 28, 28, 6).stroke({
+      color: 0xffffff,
+      width: 1.5,
+      alpha: 0.5,
+    });
+  });
+}
+
+/** Stands in for a dialogue addon call
+ *  (`onInteract: () => dialogue.play(script)` in a real game). */
+class NpcEntity extends Entity {
+  setup(params: { x: number; y: number }): void {
+    this.add(new Transform({ position: new Vec2(params.x, params.y) }));
+    this.add(markerVisual(0xf97316));
+    this.add(
       new Interactable({
         prompt: "Talk",
-        onInteract: () => {
-          state.npcTalks++;
-          console.log(
-            `[npc] "Nice weather for scavenging." (talked ${state.npcTalks}x)`,
-          );
-        },
+        onInteract: () => this.emit(NpcTalked),
       }),
     );
+  }
+}
 
-    // ── Coin: stands in for an inventory addon call ────────────────────────
-    const coinEntity = this.spawnMarker("coin", 620, 300, 0xfacc15);
-    coinEntity.add(
+/** Stands in for an inventory addon call. */
+class CoinEntity extends Entity {
+  setup(params: { x: number; y: number }): void {
+    this.add(new Transform({ position: new Vec2(params.x, params.y) }));
+    this.add(markerVisual(0xfacc15));
+    this.add(
       new Interactable({
         prompt: "Pick up",
         onInteract: () => {
-          state.coinsCollected++;
-          coinEntity.destroy();
+          this.emit(CoinPickedUp);
+          this.destroy();
         },
       }),
     );
+  }
+}
 
-    // ── Door: live prompt provider, no re-wiring on toggle ─────────────────
-    const door = this.spawnMarker("door", 180, 300, 0xa78bfa);
-    door.add(
+/** A live prompt provider: the prompt follows the door's state with no
+ *  re-wiring on toggle. */
+class DoorEntity extends Entity {
+  door!: Door;
+
+  setup(params: { x: number; y: number }): void {
+    this.add(new Transform({ position: new Vec2(params.x, params.y) }));
+    this.add(markerVisual(0xa78bfa));
+    const door = this.add(new Door());
+    this.door = door;
+    this.add(
       new Interactable({
-        prompt: () => (state.doorOpen ? "Close" : "Open"),
+        prompt: () => (door.open ? "Close" : "Open"),
+        onInteract: () => door.toggle(),
+      }),
+    );
+  }
+}
+
+/** One gem of the loot pile. */
+class GemEntity extends Entity {
+  setup(params: {
+    x: number;
+    y: number;
+    color: number;
+    prompt: string;
+    priority: number;
+  }): void {
+    const { x, y, color, prompt, priority } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 9).fill({ color });
+        g.circle(0, 0, 9).stroke({ color: 0xffffff, width: 1.5, alpha: 0.6 });
+      }),
+    );
+    this.add(
+      new Interactable({
+        prompt,
+        priority,
+        radius: 10, // a small reach bonus so the whole pile sits in one range
         onInteract: () => {
-          state.doorOpen = !state.doorOpen;
+          this.emit(GemTaken);
+          this.destroy();
         },
       }),
     );
+  }
+}
 
-    // ── Loot pile: stacked targets → the selection menu ────────────────────
-    // Three gems within one range circle. The ruby's priority makes it the
-    // default (top of `inRange`); Q cycles to the others.
-    this.spawnGem("ruby", 390, 460, 0xef4444, "Take ruby", 10, state);
-    this.spawnGem("emerald", 410, 460, 0x10b981, "Take emerald", 0, state);
-    this.spawnGem("sapphire", 400, 476, 0x3b82f6, "Take sapphire", 0, state);
-
-    // ── the menu UI: fixed panel, top-right ────────────────────────────────
-    const panelEntity = this.spawn("menu-panel");
+/** The menu UI: a fixed panel, top-right. The entity has no Transform, so
+ *  its children's positions are screen pixels. */
+class MenuEntity extends Entity {
+  setup(params: { interactor: Interactor }): void {
+    const panelEntity = this.spawnChild("menu-panel");
     panelEntity.add(new Transform({ position: new Vec2(WIDTH - 214, 98) }));
     const panel = panelEntity.add(
       new GraphicsComponent().draw((g) => {
@@ -260,71 +339,103 @@ class InteractionRoomScene extends Scene {
         g.roundRect(0, 0, 190, 116, 8).stroke({ color: 0x2c2c4a, width: 1.5 });
       }),
     );
-    const menuTextEntity = this.spawn("menu-text");
-    menuTextEntity.add(new Transform({ position: new Vec2(WIDTH - 200, 110) }));
-    const menuText = menuTextEntity.add(
+    const textEntity = this.spawnChild("menu-text");
+    textEntity.add(new Transform({ position: new Vec2(WIDTH - 200, 110) }));
+    const text = textEntity.add(
       new TextComponent({
         text: "",
         style: { fontSize: 14, fill: 0xffffff, fontFamily: "sans-serif" },
         anchor: { x: 0, y: 0 },
       }),
     );
-    player.add(new InteractionMenu(new MenuView(panel, menuText)));
+    this.add(new InteractionMenu(params.interactor, new MenuView(panel, text)));
+  }
+}
 
-    // E2E / console handle.
-    exposeProbe({ interactor, state });
+// ── inspector probe ───────────────────────────────────────────────────────────
+
+/** Inspector-readable state for a human poking around:
+ *  `inspector.getComponentData("interaction-probe", "InteractionProbe")`. */
+class InteractionProbe extends Component {
+  constructor(
+    private readonly player: PlayerEntity,
+    private readonly door: DoorEntity,
+  ) {
+    super();
   }
 
-  private spawnMarker(
-    name: string,
-    x: number,
-    y: number,
-    color: number,
-  ): Entity {
-    const e = this.spawn(name);
-    e.add(new Transform({ position: new Vec2(x, y) }));
-    e.add(
-      new GraphicsComponent().draw((g) => {
-        g.roundRect(-14, -14, 28, 28, 6).fill({ color, alpha: 0.9 });
-        g.roundRect(-14, -14, 28, 28, 6).stroke({
-          color: 0xffffff,
-          width: 1.5,
-          alpha: 0.5,
-        });
-      }),
-    );
-    return e;
+  /** The focused target's prompt, or `null` when nothing is in range. */
+  get focus(): string | null {
+    return this.player.interactor.focus?.prompt ?? null;
   }
 
-  private spawnGem(
-    name: string,
-    x: number,
-    y: number,
-    color: number,
-    prompt: string,
-    priority: number,
-    state: DemoState,
-  ): Entity {
-    const e = this.spawn(name);
-    e.add(new Transform({ position: new Vec2(x, y) }));
-    e.add(
-      new GraphicsComponent().draw((g) => {
-        g.circle(0, 0, 9).fill({ color });
-        g.circle(0, 0, 9).stroke({ color: 0xffffff, width: 1.5, alpha: 0.6 });
-      }),
-    );
-    e.add(
-      new Interactable({
-        prompt,
-        priority,
-        radius: 10, // a small reach bonus so the whole pile sits in one range
-        onInteract: () => {
-          state.gemsTaken++;
-          e.destroy();
-        },
-      }),
-    );
-    return e;
+  /** The prompts of everything in range, best focus first. */
+  get inRange(): string[] {
+    return this.player.interactor.inRange.map((t) => t.prompt ?? "Interact");
+  }
+
+  get npcTalks(): number {
+    return this.player.tally.npcTalks;
+  }
+
+  get coinsCollected(): number {
+    return this.player.tally.coinsCollected;
+  }
+
+  get gemsTaken(): number {
+    return this.player.tally.gemsTaken;
+  }
+
+  get doorOpen(): boolean {
+    return this.door.door.open;
+  }
+}
+
+// ── scene ─────────────────────────────────────────────────────────────────────
+
+class InteractionRoomScene extends Scene {
+  readonly name = "interaction-room";
+
+  // The scene only assembles the room. The interactables report what
+  // happened to them, and the player's RoomTally counts it.
+  onEnter(): void {
+    this.drawRoom();
+
+    const player = this.spawn(PlayerEntity);
+    this.spawn(NpcEntity, { x: 400, y: 150 });
+    this.spawn(CoinEntity, { x: 620, y: 300 });
+    const door = this.spawn(DoorEntity, { x: 180, y: 300 });
+
+    // ── Loot pile: stacked targets → the selection menu ────────────────────
+    // Three gems within one range circle. The ruby's priority makes it the
+    // default (top of `inRange`); Q cycles to the others.
+    this.spawn(GemEntity, {
+      x: 390,
+      y: 460,
+      color: 0xef4444,
+      prompt: "Take ruby",
+      priority: 10,
+    });
+    this.spawn(GemEntity, {
+      x: 410,
+      y: 460,
+      color: 0x10b981,
+      prompt: "Take emerald",
+      priority: 0,
+    });
+    this.spawn(GemEntity, {
+      x: 400,
+      y: 476,
+      color: 0x3b82f6,
+      prompt: "Take sapphire",
+      priority: 0,
+    });
+
+    // Spawned after the player so the menu reads the in-range set the
+    // player's Interactor resolved this frame, and draws above the room.
+    this.spawn(MenuEntity, { interactor: player.interactor });
+
+    this.spawn("interaction-probe").add(new InteractionProbe(player, door));
   }
 
   private drawRoom(): void {
@@ -352,19 +463,6 @@ class InteractionRoomScene extends Scene {
       }),
     );
   }
-}
-
-// ── inspector/e2e probe ───────────────────────────────────────────────────────
-
-interface InteractionProbeHandle {
-  readonly interactor: Interactor;
-  readonly state: DemoState;
-}
-
-function exposeProbe(handle: InteractionProbeHandle): void {
-  (
-    window as unknown as { __interaction__: InteractionProbeHandle }
-  ).__interaction__ = handle;
 }
 
 // ── boot ─────────────────────────────────────────────────────────────────────

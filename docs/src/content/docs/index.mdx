@@ -35,7 +35,7 @@ import GameEmbed from "../../components/GameEmbed.astro";
 <Tabs>
   <TabItem label="main.ts">
 ```typescript yage-group="pong" yage-file="main.ts"
-import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { Engine, Scene, Vec2 } from "@yagejs/core";
 import { RendererPlugin, CameraEntity } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { UIPlugin } from "@yagejs/ui";
@@ -80,38 +80,44 @@ export const GoalEvent = defineEvent<{ side: Side }>("goal");
   </TabItem>
   <TabItem label="Ball.ts">
 ```typescript yage-group="pong" yage-file="Ball.ts"
-import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { Component, Entity, RandomKey, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 import { GoalEvent, type Side } from "./types";
 
+// listenScene hears an event that any entity emits. It stops with the component.
+class Serve extends Component {
+  private rb = this.sibling(RigidBodyComponent);
+  private random = this.service(RandomKey); // the scene's seeded generator
+
+  constructor(private center: Vec2) { super(); }
+
+  onAdd() {
+    // After a goal, serve again from the centre
+    this.listenScene(GoalEvent, ({ side }) => this.launch(side === "right" ? "left" : "right"));
+    this.launch(this.random.pick(["left", "right"] as const));
+  }
+
+  private launch(toward: Side) {
+    this.rb.setPosition(this.center.x, this.center.y);
+    this.rb.setVelocity({ x: (toward === "right" ? 1 : -1) * 250, y: this.random.range(-100, 100) });
+  }
+}
+
 // Entities are game objects. setup() receives typed params from scene.spawn().
 export class Ball extends Entity {
-  private w!: number;
-  private h!: number;
-  private rb!: RigidBodyComponent;
-
   setup({ w, h }: { w: number; h: number }) {
-    this.w = w; this.h = h;
-    this.add(new Transform({ position: new Vec2(w / 2, h / 2) }));
+    const center = new Vec2(w / 2, h / 2);
+    this.add(new Transform({ position: center }));
     this.add(new GraphicsComponent().draw((g) => g.circle(0, 0, 8).fill(0xffffff)));
     // Dynamic body — moved by physics forces
-    this.rb = new RigidBodyComponent({ type: "dynamic", fixedRotation: true });
-    this.add(this.rb);
+    this.add(new RigidBodyComponent({ type: "dynamic", fixedRotation: true }));
     this.add(new ColliderComponent({
       shape: { type: "circle", radius: 8 },
       restitution: 1, // fully elastic bounce
       friction: 0,
     }));
-
-    // Listen for goals to reset position
-    this.scene.on(GoalEvent, ({ side }) => this.launch(side === "right" ? "left" : "right"));
-    this.launch(Math.random() > 0.5 ? "left" : "right");
-  }
-
-  private launch(toward: Side) {
-    this.rb.setPosition(this.w / 2, this.h / 2);
-    this.rb.setVelocity({ x: (toward === "right" ? 1 : -1) * 250, y: (Math.random() - 0.5) * 200 });
+    this.add(new Serve(center));
   }
 }
 ```
@@ -171,7 +177,7 @@ export class Paddle extends Entity {
   </TabItem>
   <TabItem label="GameArea.ts">
 ```typescript yage-group="pong" yage-file="GameArea.ts"
-import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 import { UISurface, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
@@ -204,25 +210,29 @@ export class Goal extends Entity {
   }
 }
 
+// Game state lives in a component: it hears every goal and updates the text
+class Score extends Component {
+  private points = { left: 0, right: 0 };
+
+  constructor(private left: UIText, private right: UIText) { super(); }
+
+  onAdd() {
+    this.listenScene(GoalEvent, ({ side }) => {
+      this.points[side]++;
+      this.left.setText(String(this.points.left));
+      this.right.setText(String(this.points.right));
+    });
+  }
+}
+
 // Screen-space UI — anchored to viewport, not affected by camera
 export class Scoreboard extends Entity {
-  private leftText!: UIText;
-  private rightText!: UIText;
-  private score = { left: 0, right: 0 };
-
   setup() {
     const style = { fontSize: 48, fill: 0xffffff, fontFamily: "monospace" };
     const panel = this.add(
       new UISurface({ anchor: Anchor.TopCenter, offset: { x: 0, y: 16 }, direction: "row", gap: 60 }),
     );
-    this.leftText = panel.text("0", style);
-    this.rightText = panel.text("0", style);
-
-    this.scene.on(GoalEvent, ({ side }) => {
-      this.score[side]++;
-      this.leftText.setText(String(this.score.left));
-      this.rightText.setText(String(this.score.right));
-    });
+    this.add(new Score(panel.text("0", style), panel.text("0", style)));
   }
 }
 ```

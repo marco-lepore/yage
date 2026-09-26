@@ -1,16 +1,19 @@
 /**
  * Save Stores example
  *
- * A small "real" game with menu / gameplay / settings / pause scenes, where
- * every persistence call goes through the engine's DI: the React UI binds to
- * leaves via `useStore`, and the scenes' own Components resolve the
- * registered Save instance through `SaveServiceKey`.
+ * A small "real" game with menu / gameplay / settings / pause scenes. Its
+ * state is two **compound** stores (`stores.ts`): `game` bundles every
+ * run-state leaf (a record and a counter) and `settings` holds the options.
+ * Two `save.autoPersist(id, store)` registrations cover the whole game
+ * state: one storage key per compound, serialized and hydrated atomically.
  *
- * This example showcases the **compound** store pattern: a single
- * `createStore((s) => …)` bundles every run-state leaf (counters,
- * a record, a value), and a separate compound stores settings. Two
- * `save.autoPersist(id, store)` registrations cover the whole game state —
- * one storage key per compound — with atomic serialize/hydrate.
+ * The Save instance is created in `main()`, and only the boot code there uses
+ * it directly: it restores both stores and starts auto-persisting them before
+ * the engine exists. Everything else reaches it through the engine's DI:
+ * SavePlugin registers it under `SaveServiceKey`, and the `SaveSlots`
+ * component resolves it to list, save, load and delete slots. The React UI
+ * reads the stores with `useStore` and forwards clicks to the scene's menu
+ * component, to `SaveSlots`, or to the rules in `stores.ts`.
  */
 
 import { Engine } from "@yagejs/core";
@@ -19,17 +22,20 @@ import { UIPlugin } from "@yagejs/ui";
 import { UIReactPlugin } from "@yagejs/ui-react";
 import { InputPlugin } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
-import { SavePlugin } from "@yagejs/save";
-import { loadFonts } from "../shared/ui-theme.js";
+import { SavePlugin, createSave, localStorageAdapter } from "@yagejs/save";
 import { setupGameContainer } from "../shared/bootstrap.js";
-import { save, game, settings, GAME_ID, SETTINGS_ID } from "./stores.js";
+import { game, settings, GAME_ID, SETTINGS_ID } from "./stores.js";
 import { MenuScene } from "./scenes.js";
 
 // ---------------------------------------------------------------------------
-// 8. Boot
+// 9. Boot
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
+  const save = createSave({
+    adapter: localStorageAdapter({ namespace: "yage-save-stores-example" }),
+  });
+
   // Pre-engine: restore stored data so the menu reflects last-saved state.
   await Promise.all([
     save.restore(GAME_ID, game),
@@ -63,7 +69,6 @@ async function main(): Promise<void> {
   engine.use(new SavePlugin({ save }));
   engine.use(new DebugPlugin());
 
-  await loadFonts();
   await engine.start();
   await engine.scenes.push(new MenuScene());
 }

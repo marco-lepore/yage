@@ -63,6 +63,10 @@ predicate), `objectiveIds(quest)`.
 const log = new QuestLog(quests); // TDefs inferred from `quests`, zero <T>
 ```
 
+A log is saved progression that outlives scenes, so it sits at module level
+next to the game's explicit save root (see Save). Components read and advance
+it; reactions to its events live in components, not in `onEnter` closures.
+
 ### Lifecycle
 
 - `start(quest): QuestStartResult` — `{ ok: true }` from `available`. Else
@@ -84,8 +88,9 @@ const log = new QuestLog(quests); // TDefs inferred from `quests`, zero <T>
   and completes any non-terminal known quest regardless of prerequisites or
   progress.
 - `fail(quest): void` — `active` or `available` -> `failed`. No-op if already
-  terminal. Terminal in v1 (no re-open/retry) — a failed quest never reaches
-  `completed`, so any quest that `requires` it stays `locked` permanently.
+  terminal. `failed` is terminal (there is no re-open or retry) — a failed
+  quest never reaches `completed`, so any quest that `requires` it stays
+  `locked` permanently.
 
 Unknown **objective** id (unreachable through the typed API) throws. Unknown
 **quest** id behaves exactly like "not active" everywhere except `start`
@@ -154,12 +159,17 @@ call `restore` after loading it.
 ## QuestController (optional L2a)
 
 ```ts yage-group="herbs"
+import { Component, type Entity } from "@yagejs/core";
 import { QuestController, QuestCompletedEvent } from "@yagejs-addons/quests";
-import type { Entity, Scene } from "@yagejs/core";
 
-function mountQuestController(player: Entity, scene: Scene) {
-  player.add(new QuestController({ log })); // TDefs inferred from `log`
-  scene.on(QuestCompletedEvent, ({ questId }) => {});
+declare const player: Entity;
+
+player.add(new QuestController({ log })); // TDefs inferred from `log`
+// in any component of the scene:
+class Achievements extends Component {
+  onAdd(): void {
+    this.listenScene(QuestCompletedEvent, ({ questId }) => {});
+  }
 }
 ```
 
@@ -182,14 +192,26 @@ likes and calls `advance`/`complete` directly — the silent-no-op-on-inactive
 contract means no active-state guard is needed in the adapter:
 
 ```ts yage-group="herbs"
+import { defineEvent } from "@yagejs/core";
 import { InventoryItemAddedEvent } from "@yagejs-addons/inventory";
 
-function bindHerbPickups(player: Entity) {
-  player.on(InventoryItemAddedEvent, (e) => {
-    if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
-  });
+const WolfDiedEvent = defineEvent("game:wolf-died"); // the game's own event
+
+// A component on the player (not an `entity.on` closure in onEnter):
+class QuestProgress extends Component {
+  onAdd(): void {
+    this.listen(this.entity, InventoryItemAddedEvent, (e) => {
+      if (e.itemId !== "redHerb") return;
+      log.advance("gatherHerbs", "herb", e.quantity);
+    });
+    // WolfDiedEvent bubbles from any wolf to the scene.
+    this.listenScene(WolfDiedEvent, () => log.advance("thinThePack", "wolf"));
+  }
 }
 ```
+
+`log.on(...)` returns an unsubscribe; from a component, pass it to
+`this.addCleanup(...)` so the subscription ends with the component.
 
 For a current-inventory requirement, set `autoComplete: false` on the quest
 and synchronize absolute progress on both inventory additions and removals:
@@ -220,10 +242,11 @@ syncWood();
 if (log.canComplete("bringWood")) log.completeQuest("bringWood");
 ```
 
-## Deferred to v1.x
+## Not included
 
-Journal/tracker presenter (`./presenters`), published per-addon adapters
-(`./adapters`), auto-start/auto-offer chaining, quest abandon/reset/retry,
-timed objectives, hidden objectives, "any N of M" branching, prerequisite
-cycle detection, reward payloads, i18n resolver (text is addressable by
-`(questId, objectiveId)` already).
+The addon ships no journal or tracker presenter and no per-addon adapters;
+the game draws its own UI and connects other addons through events. It does
+not auto-start or auto-offer quests, abandon, reset or retry them, time or
+hide objectives, branch on "any N of M", detect prerequisite cycles, or pay
+rewards. There is no i18n resolver; quest and objective text is addressable
+by `(questId, objectiveId)` for the game to localize.

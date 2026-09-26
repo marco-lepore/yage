@@ -98,7 +98,7 @@ PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlid
 
 Each JSX prop type extends its `@yagejs/ui` imperative counterpart (e.g. `ButtonProps` extends `UIButtonProps`). A prop the imperative class accepts is always a valid JSX prop too. `consumeInput` works on every element, including `Checkbox`, `ScrollView`, and the Pixi\* wrappers.
 
-**Prop removal resets to default.** Dropping a prop between renders resets it instead of leaving the old value: a cleared `background` removes the fill on `Panel` and `ScrollView` and returns `Button` to its default grey, an unbound handler stops firing, a removed layout value (`width`, `margin`, and the rest) goes back to its Yoga default. This applies to every element. Two JSX patterns both drop a prop this way: an explicit `undefined` (`bg={selected ? hl : undefined}`) and a conditional spread (`{...(open ? { onClick } : {})}`).
+**Prop removal resets to default.** Dropping a prop between renders resets it instead of leaving the old value: a cleared `background` removes the fill on `Panel` and `ScrollView` and returns `Button` to its default grey, an unbound handler stops firing, a removed layout value (`width`, `margin`, and the rest) goes back to its Yoga default. This applies to every element. Two JSX patterns both drop a prop this way: an explicit `undefined` (`bg={selected ? hl : undefined}`) and a conditional spread (`{...(open ? { onClick } : {})}`). Exception: the `Pixi*` wrappers read their views (`bg`, `fill`, `slider`, checkbox views), text styles and `PixiSlider`'s `showValue` only when the element is created; a later value, `undefined` included, does nothing. Give the element a new `key` to change one.
 
 **`bg` is shorthand for `background`** on `Panel`, `Button`, and `ScrollView`. `Button` also has `hoverBg` and `pressBg` for its hover/press backgrounds. Passing both `bg` and `background` on the same element resolves to `background` and fires a dev warning once per element type. `PixiProgressBar`, `PixiSlider`, and `PixiInput` have their own `bg` prop — a required `@pixi/ui` view-slot value, not this alias — and are unaffected.
 
@@ -465,6 +465,8 @@ without React) and re-anchored each frame by `@yagejs/ui`'s
 ```ts
 import {
   Component,
+  Entity,
+  SceneManagerKey,
   createCounter,
   createList,
   createMap,
@@ -490,8 +492,17 @@ const value = createValue({ default: "idle" });
 const compound = createStore((s) => ({ gold: s.counter() }));
 class EnemyTag extends Component {}
 
-// Engine/scene context
-const engine = useEngine();
+// Host entity from patterns.md "Game state on a host entity"
+declare const HUD_KEY: string; // its spawn key
+declare class RunProgress extends Component {
+  get coins(): number;
+}
+declare class HudEntity extends Entity {
+  progress: RunProgress;
+}
+
+// Engine/scene context. useEngine() returns the EngineContext, not the Engine.
+const scenes = useEngine().resolve(SceneManagerKey); // e.g. scenes.push(new PauseScene())
 const scene = useScene();
 
 // Reactive source — one overload per Reactive* shape, plus a selector escape hatch.
@@ -507,8 +518,13 @@ useStore(record, (src) => src.get().hp); // selector receives the source itself,
 // ECS query (polled each frame)
 const count = useQuery([EnemyTag], (result) => result.size);
 
-// Scene selector (polled each frame)
+// Scene selector (polled each frame, re-renders only when the result changes)
 const entityCount = useSceneSelector((scene) => scene.getEntities().size);
+
+// Game state hosted on an entity (see patterns.md "Game state on a host entity")
+const coins = useSceneSelector(
+  (scene) => scene.findByKey<HudEntity>(HUD_KEY)?.progress.coins ?? 0,
+);
 ```
 
 `useStore(compound)` is supported — it returns the encoded snapshot of the whole tree. Reading individual leaves keeps subscription granularity per-leaf. Dispatch is symbol-driven (each shape carries a `[STATE_KIND]` brand from `@yagejs/core`).
@@ -532,22 +548,25 @@ const lang = useStore(game.settings, (s) => s.get().lang); // selector on leaf
 const hp = useStore(game, (s) => s.player.get().health); // selector on compound
 ```
 
-## In-memory record for UI
+## Stores vs game state
 
-For ECS↔UI bridges that don't need persistence, use `createRecord` from `@yagejs/core`:
+A module-level store (`createStore`, `createRecord`, ...) is only for state that `@yagejs/save` persists: settings, unlocks, cross-session records. Run state (score, lives, inventory, a level clock) lives in a component on a host entity; React reads it with `useSceneSelector` + `scene.findByKey` (above), and changes go through entity events to that component.
 
 ```ts
 import { createRecord } from "@yagejs/core";
 import { useStore } from "@yagejs/ui-react";
 
-const ui = createRecord({ default: () => ({ score: 0, health: 100 }) });
+// Saved settings (persisted with @yagejs/save)
+const settings = createRecord({
+  default: () => ({ volume: 0.8, subtitles: true }),
+});
 
-// ECS side: write
-ui.set({ score: ui.get().score + 10 });
+// A component or event handler writes
+settings.set({ volume: 0.5 });
 
 // React side: read (auto-rerenders)
-const score = useStore(ui, (src) => src.get().score);
+const volume = useStore(settings, (src) => src.get().volume);
 
 // Manual subscribe
-const unsub = ui.subscribe(() => console.log(ui.get()));
+const unsub = settings.subscribe(() => console.log(settings.get()));
 ```

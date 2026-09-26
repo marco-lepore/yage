@@ -72,7 +72,10 @@ const UIElementHost = "ui-element" as unknown as UIElementHostComponent;
 // reconciler forwards as "reset this prop to its default" (see `diffProps`),
 // so `bg={cond ? x : undefined}` type-checks under
 // `exactOptionalPropertyTypes`. Required props stay required, and the
-// imperative `@yagejs/ui` options are unchanged.
+// imperative `@yagejs/ui` options are unchanged. The `Pixi*` wrappers read
+// some options only when the element is created (views such as `bg`/`fill`,
+// text styles, `PixiSlider`'s `showValue`); a later value, `undefined`
+// included, does not change them, so a new `key` is how to swap one.
 // ---------------------------------------------------------------------------
 
 type OptionalResetProps<T> = {

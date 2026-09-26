@@ -1,4 +1,4 @@
-import { Transform, Vec2 } from "@yagejs/core";
+import { Component, Transform, Vec2 } from "@yagejs/core";
 import type { Entity, SceneTime } from "@yagejs/core";
 import { AnimatedSpriteComponent } from "@yagejs/renderer";
 import { RigidBodyComponent } from "@yagejs/physics";
@@ -111,8 +111,7 @@ export const telegraph = defineStep<{ baseTint: number; burstCount?: number }>(
   "telegraph",
   {
     enter(params, ctx) {
-      ctx.entity.get(AnimatedSpriteComponent).animatedSprite.tint =
-        TELEGRAPH_TINT;
+      ctx.entity.get(AnimatedSpriteComponent).tint = TELEGRAPH_TINT;
       fxOf(ctx.entity).chargeBurst(
         ctx.entity.get(Transform).worldPosition,
         params.burstCount ?? 10,
@@ -125,39 +124,38 @@ export const telegraph = defineStep<{ baseTint: number; burstCount?: number }>(
       );
     },
     exit(params, ctx) {
-      ctx.entity.get(AnimatedSpriteComponent).animatedSprite.tint =
-        params.baseTint;
+      ctx.entity.get(AnimatedSpriteComponent).tint = params.baseTint;
     },
   },
 );
 
-/** Per-entity strobe phase for `invulnFlash` below — a plain boolean toggled
- *  each tick, the same WeakMap-per-entity-state shape as `boxerAnimState`. */
-export const invulnFlashOn = new WeakMap<Entity, boolean>();
+/** Strobe phase of the `invulnFlash` step, toggled on each tick. Add it to
+ *  every entity whose ability defs use `invulnFlash`. */
+export class InvulnFlashStrobe extends Component {
+  on = false;
+}
 
 /** Window step: strobes the sprite between `baseTint` and the pale
  *  `INVULN_FLASH_TINT` for its span. Paired at the *same* `from`/`to` as an
  *  `invulnerable` window on the same def (`DASH`, `COUNTER`) so a
  *  def-authored invulnerability window is visually legible, not just
- *  mechanical — `runInvulnFlash` above is the post-hit i-frame twin, whose
+ *  mechanical — `runInvulnFlash` is the post-hit i-frame twin, whose
  *  duration isn't a timeline window so it can't use `enter`/`tick`/`exit`. */
 export const invulnFlash = defineStep<{ baseTint: number }>("invulnFlash", {
   enter(_params, ctx) {
-    invulnFlashOn.set(ctx.entity, true);
-    ctx.entity.get(AnimatedSpriteComponent).animatedSprite.tint =
-      INVULN_FLASH_TINT;
+    ctx.entity.get(InvulnFlashStrobe).on = true;
+    ctx.entity.get(AnimatedSpriteComponent).tint = INVULN_FLASH_TINT;
   },
   tick(params, ctx) {
-    const on = !(invulnFlashOn.get(ctx.entity) ?? false);
-    invulnFlashOn.set(ctx.entity, on);
-    ctx.entity.get(AnimatedSpriteComponent).animatedSprite.tint = on
+    const strobe = ctx.entity.get(InvulnFlashStrobe);
+    strobe.on = !strobe.on;
+    ctx.entity.get(AnimatedSpriteComponent).tint = strobe.on
       ? INVULN_FLASH_TINT
       : params.baseTint;
   },
   exit(params, ctx) {
-    invulnFlashOn.delete(ctx.entity);
-    ctx.entity.get(AnimatedSpriteComponent).animatedSprite.tint =
-      params.baseTint;
+    ctx.entity.get(InvulnFlashStrobe).on = false;
+    ctx.entity.get(AnimatedSpriteComponent).tint = params.baseTint;
   },
 });
 

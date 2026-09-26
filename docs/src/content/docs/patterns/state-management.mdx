@@ -1,115 +1,164 @@
 ---
 title: "State Management"
-description: "Game state with DI services, reactive stores, and event-driven patterns"
+description: "Game state in a component on a host entity, events that change it, and stores for saved data"
 ---
 
-YAGE provides several ways to manage game state depending on your needs:
-DI-registered services for shared state, reactive stores for UI binding, and
-events for decoupled communication.
+Game state such as a score, lives, an inventory or a level clock lives in a
+component on a host entity. Other entities change it by emitting events, and
+any code in the scene reads it through the host. State that
+[`@yagejs/save`](/guides/save-and-load/) persists goes in a reactive store
+instead.
 
-## Service Key Pattern
+## Game state on a host entity
 
-The most common approach is a plain class registered as a DI service:
+Spawn one entity to host the state, and give it a key. A component on that
+entity keeps the state in fields, listens for the events that change it, and
+exposes it through getters. This HUD counts the coins and lives of one run:
 
-```typescript yage-group="state" yage-file="state.ts"
-import { ServiceKey } from "@yagejs/core";
-
-export interface GameState {
-  score: number;
-  health: number;
-  level: number;
-}
-
-export const GameStateKey = new ServiceKey<GameState>("gameState");
-```
-
-Register it in your scene:
-
-```typescript yage-group="state" yage-file="state.ts"
-import { Scene } from "@yagejs/core";
-
-class GameScene extends Scene {
-  readonly name = "game";
-
-  onEnter(): void {
-    const state: GameState = { score: 0, health: 100, level: 1 };
-    this.context.register(GameStateKey, state);
-  }
-}
-```
-
-Access it from any component or system in the scene:
-
-```typescript yage-group="state" yage-file="state.ts"
-import { Component } from "@yagejs/core";
-
-class ScoreDisplay extends Component {
-  private readonly state = this.use(GameStateKey);
-
-  update(): void {
-    this.state.score; // read
-  }
-}
-```
-
-This pattern is simple and type-safe. If the service needs to persist, include
-its durable fields in an explicit `Serializable<TEncoded>` save root.
-
-## Reactive Stores (for React UI)
-
-When bridging ECS state to React UI, use `createRecord`:
-
-```typescript yage-group="state" yage-file="store.ts"
-import { createRecord } from "@yagejs/core";
-
-export const uiStore = createRecord({
-  default: () => ({
-    score: 0,
-    health: 100,
-    message: "",
-  }),
-});
-```
-
-**Write from ECS** (systems, components, event handlers):
-
-```typescript yage-group="state" yage-file="store.ts"
-// In a component or event handler
-uiStore.set({ score: uiStore.get().score + 10 });
-```
-
-**Read from React** (auto-rerenders on change):
-
-```tsx yage-group="state" yage-file="hud.tsx"
-import { Text, useStore } from "@yagejs/ui-react";
-import { uiStore } from "./store.js";
-
-function HUD() {
-  const score = useStore(uiStore, (src) => src.get().score);
-  return <Text>{`Score: ${score}`}</Text>;
-}
-```
-
-The store acts as a one-way bridge: ECS writes, React reads. This keeps
-game logic in the ECS layer and rendering in the UI layer.
-
-## Event-Driven State
-
-For decoupled state changes, use typed events:
-
-```typescript yage-group="state" yage-file="events.ts"
+```typescript yage-group="state" yage-file="constants.ts"
+// constants.ts
 import { defineEvent } from "@yagejs/core";
 
 export const CoinCollected = defineEvent("coin:collected");
 export const PlayerDied = defineEvent("player:died");
+export const GoalReached = defineEvent("goal:reached");
+
+export const TOTAL_COINS = 9;
+
+/** Spawn key of the HUD entity, for `scene.findByKey`. */
+export const HUD_KEY = "hud";
 ```
 
-**Emit from entities** (via entity events — bubble up to the scene):
+```typescript yage-group="state" yage-file="hud.ts"
+// hud.ts
+import { Component, Entity } from "@yagejs/core";
+import { Anchor, UISurface, type UIText } from "@yagejs/ui";
+import { CoinCollected, PlayerDied } from "./constants";
+
+/** Coins and lives for one run. */
+export class RunProgress extends Component {
+  private readonly label: UIText;
+  private _coins = 0;
+  private _lives = 3;
+
+  constructor(label: UIText) {
+    super();
+    this.label = label;
+  }
+
+  get coins(): number {
+    return this._coins;
+  }
+
+  get lives(): number {
+    return this._lives;
+  }
+
+  onAdd(): void {
+    this.refresh();
+    // Coins and hazards emit on themselves. The events bubble to the scene,
+    // where this component hears them.
+    this.listenScene(CoinCollected, () => {
+      this._coins += 1;
+      this.refresh();
+    });
+    this.listenScene(PlayerDied, () => {
+      this._lives = Math.max(0, this._lives - 1);
+      this.refresh();
+    });
+  }
+
+  private refresh(): void {
+    this.label.setText(`Coins ${this._coins}   Lives ${this._lives}`);
+  }
+}
+
+/** The HUD, and the host of the run's state. */
+export class HudEntity extends Entity {
+  progress!: RunProgress;
+
+  setup(): void {
+    const panel = this.add(
+      new UISurface({ anchor: Anchor.TopRight, offset: { x: -16, y: 16 } }),
+    );
+    const label = panel.text("", { fontSize: 20, fill: 0xffe66d });
+    this.progress = this.add(new RunProgress(label));
+  }
+}
+```
+
+The scene's `onEnter` only spawns the host, with the key that other code looks
+it up by:
+
+```typescript yage-group="state" yage-file="scene.ts"
+// scene.ts
+import { Entity, Scene } from "@yagejs/core";
+import { HUD_KEY } from "./constants";
+import { HudEntity } from "./hud";
+
+class PlayerEntity extends Entity {}
+
+class LevelScene extends Scene {
+  readonly name = "level";
+
+  onEnter(): void {
+    this.spawn(HudEntity, { key: HUD_KEY });
+    this.spawn(PlayerEntity);
+    // ...the rest of the level
+  }
+}
+```
+
+Any component in the scene reads the state through the key:
+
+```typescript yage-group="state" yage-file="goal.ts"
+import { Component } from "@yagejs/core";
+import { HUD_KEY, TOTAL_COINS } from "./constants";
+import type { HudEntity } from "./hud";
+
+class GoalGate extends Component {
+  get open(): boolean {
+    const progress = this.scene.findByKey<HudEntity>(HUD_KEY)?.progress;
+    return progress !== undefined && progress.coins === TOTAL_COINS;
+  }
+}
+```
+
+What this gives you:
+
+- **A fresh run on every enter.** The host is destroyed with the scene, so
+  entering the scene again starts from zero coins. There is no reset code.
+- **One owner for the rules.** Coins and hazards emit an event and know
+  nothing about the score. `RunProgress` is the only code that changes it.
+- **Three ways to reach it.** Use `scene.findByKey(HUD_KEY)` with the spawn
+  key, a query such as `scene.findEntities({ filter: (e) => e.has(RunProgress) })`,
+  or the reference that `spawn()` returned.
+- **Visible to tests.** The Inspector reports a component's getters, so an
+  e2e test can read `coins` and `lives` from the running game.
+
+The [platformer example](https://examples.yage.dev/platformer.html) is built
+this way: a `RunProgress` component on its HUD entity keeps the coin count and
+the win state. Its source is in
+[`examples/src/platformer/hud.ts`](https://github.com/marco-lepore/yage/blob/main/examples/src/platformer/hud.ts).
+
+## Changing state with events
+
+Declare an event with `defineEvent`:
+
+```typescript
+import { defineEvent } from "@yagejs/core";
+
+const CoinCollected = defineEvent("coin:collected");
+const PlayerDied = defineEvent("player:died");
+```
+
+**Emit from the entity where it happens.** An entity event bubbles up to the
+scene:
 
 ```typescript yage-group="state" yage-file="coin.ts"
 import { Component } from "@yagejs/core";
 import { ColliderComponent } from "@yagejs/physics";
-import { CoinCollected } from "./events.js";
+import { CoinCollected } from "./constants";
 
 class CoinPickup extends Component {
   onAdd(): void {
@@ -124,109 +173,151 @@ class CoinPickup extends Component {
 }
 ```
 
-**Listen at the scene level:**
+**Listen from the component that owns the state**, with `this.listenScene`,
+as `RunProgress` does above. The subscription ends when the component is
+removed.
 
-```typescript yage-group="state" yage-file="scene.ts"
-import { Scene } from "@yagejs/core";
-import { CoinCollected, PlayerDied } from "./events.js";
-import { GameStateKey } from "./state.js";
-import { uiStore } from "./store.js";
+The scene's `onEnter` may also connect an event to a component method in one
+line:
 
-class GameScene extends Scene {
-  readonly name = "game";
+```typescript
+import { Component, Entity, Scene, defineEvent } from "@yagejs/core";
+
+const PlayerHit = defineEvent("player:hit");
+
+class Health extends Component {
+  hp = 3;
+
+  damage(amount: number): void {
+    this.hp = Math.max(0, this.hp - amount);
+  }
+}
+
+class Player extends Entity {
+  setup(): void {
+    this.add(new Health());
+  }
+}
+
+class LevelScene extends Scene {
+  readonly name = "level";
 
   onEnter(): void {
-    const state = this.use(GameStateKey);
+    const player = this.spawn(Player);
+    this.on(PlayerHit, () => player.get(Health).damage(1));
+  }
+}
+```
 
-    this.on(CoinCollected, () => {
-      state.score += 10;
-      uiStore.set({ score: state.score });
-    });
+Keep it to that one line. The state and the rule stay in the component.
 
-    this.on(PlayerDied, () => {
-      state.health = 100;
-      state.score = 0;
-      // Reset player position...
+This keeps entities decoupled: a coin doesn't need to know about the score. It
+emits an event, and the component that keeps the score does the rest.
+
+## Reading state from React UI
+
+A React tree reads entity-hosted state with `useSceneSelector`. The selector
+runs every frame, and the component re-renders only when the result changes:
+
+```tsx yage-group="state" yage-file="coin-counter.tsx"
+import { Text, useSceneSelector } from "@yagejs/ui-react";
+import { HUD_KEY } from "./constants";
+import type { HudEntity } from "./hud";
+
+function CoinCounter() {
+  const coins = useSceneSelector(
+    (scene) => scene.findByKey<HudEntity>(HUD_KEY)?.progress.coins ?? 0,
+  );
+  return <Text>{`Coins: ${coins}`}</Text>;
+}
+```
+
+The React tree reads the state. Changes still go through events to the
+component that owns it.
+
+## Saved state in stores
+
+State that `@yagejs/save` keeps between sessions, such as settings, unlocked
+levels or a best score, lives in a reactive store. Create it at module scope
+with `createStore`, or with a leaf factory such as `createRecord`. This is the
+only game state that belongs at module scope, because the save layer restores
+it before the scene that reads it is entered.
+
+```typescript yage-group="state" yage-file="persistence/stores.ts"
+// persistence/stores.ts
+import { createStore } from "@yagejs/core";
+
+export const records = createStore((s) => ({
+  bestCoins: s.counter({ default: 0 }),
+  unlocked: s.set<string>(),
+}));
+```
+
+A component writes to the store when its rule says so:
+
+```typescript yage-group="state" yage-file="best-coins.ts"
+import { Component } from "@yagejs/core";
+import { GoalReached } from "./constants";
+import { records } from "./persistence/stores";
+
+class RunProgress extends Component {
+  private _coins = 0;
+
+  onAdd(): void {
+    // ...the CoinCollected and PlayerDied listeners from hud.ts
+    this.listenScene(GoalReached, () => {
+      if (this._coins > records.bestCoins.value()) {
+        records.bestCoins.set(this._coins);
+      }
     });
   }
 }
 ```
 
-This keeps entities decoupled — a coin doesn't need to know about the score
-system, it just emits an event.
+React reads a store with `useStore`, which re-renders on every change:
+
+```tsx yage-group="state" yage-file="best-coins.tsx"
+import { Text, useStore } from "@yagejs/ui-react";
+import { records } from "./persistence/stores";
+
+function BestCoins() {
+  const best = useStore(records.bestCoins);
+  return <Text>{`Best: ${best}`}</Text>;
+}
+```
+
+Register the store with the save system by id, for example
+`save.autoPersist("records", records)`. The [Save & Load](/guides/save-and-load/)
+guide covers slots, restore order and migrations. For a domain model that the
+store factories don't fit, implement `Serializable<TEncoded>` yourself, as
+[Custom state roots](/guides/save-and-load/#custom-state-roots) shows.
 
 ## Combining Patterns
 
-A typical game combines all three:
+A typical game uses all three:
 
-```typescript
-import { Scene, ServiceKey, createRecord, defineEvent } from "@yagejs/core";
-
-interface GameState {
-  score: number;
-  health: number;
-  level: number;
-}
-
-// 1. Game state as a DI service
-const GameStateKey = new ServiceKey<GameState>("gameState");
-
-// 2. UI store for React binding
-const uiStore = createRecord({ default: () => ({ score: 0, health: 100 }) });
-
-// 3. Events for decoupled communication
-const CoinCollected = defineEvent("coin:collected");
-
-class GameScene extends Scene {
-  readonly name = "game";
-
-  onEnter(): void {
-    const state: GameState = { score: 0, health: 100, level: 1 };
-    this.context.register(GameStateKey, state);
-
-    this.on(CoinCollected, () => {
-      state.score += 10;
-      uiStore.set({ score: state.score });
-    });
-  }
-}
-```
-
-- **ServiceKey** — source of truth, accessible from any component
-- **Store** — React-friendly projection of the state
-- **Events** — triggers that cause state transitions
-
-## Serialization
-
-If your state service needs to survive save/load, make it serializable:
-
-```typescript
-class GameStateService {
-  score = 0;
-  health = 100;
-  level = 1;
-
-  serialize() {
-    return { score: this.score, health: this.health, level: this.level };
-  }
-
-  hydrate(data: { score: number; health: number; level: number }) {
-    this.score = data.score;
-    this.health = data.health;
-    this.level = data.level;
-  }
-}
-```
-
-Expose this service through a game-owned `Serializable<TEncoded>` adapter, or
-make the service itself implement that interface. Restore the state before
-constructing the scene that consumes it.
+- **A component on a host entity** holds the run's state and the rules that
+  change it.
+- **Events** tell that component that something happened.
+- **A store** holds what `@yagejs/save` persists. React reads it with
+  `useStore`.
 
 ## Anti-Patterns
 
-- **Global mutable state** — avoid `window.score` or module-level `let score`.
-  This breaks scene isolation and makes testing difficult.
-- **Component-to-component direct references** — don't reach into another
-  entity's components to modify their state. Use events or shared services.
-- **Storing state in the UI layer** — keep game logic state in the ECS layer.
-  The UI should read state, not own it.
+- **Global mutable state.** Avoid `window.score` or a module-level
+  `let score`. Nothing resets it when the scene restarts, and it breaks scene
+  isolation and testing. A module-level store for saved state is the one
+  exception.
+- **Game state in a service.** Don't register game state under a `ServiceKey`
+  with `context.register` or `scene.registerScoped`. Service keys are for
+  plugin infrastructure, such as the renderer, the physics world and the input
+  manager. A service is not an entity, so queries, `findByKey` and the
+  Inspector don't see it.
+- **Game state on the scene.** Avoid a field on the `Scene` subclass that
+  closures in `onEnter` change. The rules end up in the scene instead of a
+  component, and other code has to cast `this.scene` to read the field.
+- **Changing another entity's components directly.** Don't reach into another
+  entity's components to change their state. Emit an event, and let the
+  component that owns the state change it.
+- **Storing state in the UI layer.** Keep game state in components. The UI
+  reads state; it doesn't own it.

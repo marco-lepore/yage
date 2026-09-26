@@ -421,7 +421,6 @@ EarlyUpdate:
 
 FixedUpdate:
   PhysicsSystem (priority 0, from @yagejs/physics)
-  UserGameplaySystem (priority 10, user code)
   ProcessFixedUpdateSystem (priority 500, from @yagejs/core)
   ComponentFixedUpdateSystem (priority 1000, from @yagejs/core)
 
@@ -447,6 +446,8 @@ EndOfFrame:
   InputClearSystem (priority 9000, from @yagejs/input)
 ```
 
+Game rules run inside `ComponentFixedUpdateSystem` and `ComponentUpdateSystem`, as component `fixedUpdate` and `update` methods. Game code does not add systems of its own.
+
 ---
 
 ## 6. Component Exposure
@@ -467,14 +468,17 @@ export class ColliderComponent extends Component {
 
 User code imports and uses them:
 
-```typescript yage-context="scene"
-import { Transform } from "@yagejs/core";
+```typescript
+import { Entity, Transform } from "@yagejs/core";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
-const entity = scene.spawn("ball");
-entity.add(new Transform()); // RigidBodyComponent reads it on add
-entity.add(new RigidBodyComponent({ type: "dynamic" }));
-entity.add(new ColliderComponent({ shape: { type: "circle", radius: 20 } }));
+class Ball extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new RigidBodyComponent({ type: "dynamic" }));
+    this.add(new ColliderComponent({ shape: { type: "circle", radius: 20 } }));
+  }
+}
 ```
 
 ### Component-System Communication
@@ -548,7 +552,7 @@ class DebugPlugin implements Plugin {
 | Event                      | Data                                                 | When                                                              |
 | -------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------- |
 | `entity:created`           | `{ entity: Entity }`                                 | After `scene.spawn()`                                             |
-| `entity:destroyed`         | `{ entity: Entity }`                                 | After entity is cleaned up in endOfFrame                          |
+| `entity:destroyed`         | `{ entity: Entity; scene: Scene }`                   | After entity is cleaned up in endOfFrame                          |
 | `component:added`          | `{ entity: Entity; component: Component }`           | After `entity.add()`                                              |
 | `component:removed`        | `{ entity: Entity; componentClass: ComponentClass }` | After `entity.remove()`                                           |
 | `scene:pushed`             | `{ scene: Scene }`                                   | After `sceneManager.push()`                                       |
@@ -563,147 +567,195 @@ class DebugPlugin implements Plugin {
 | `screen:fullscreen`        | `{ active: boolean }`                                | Canvas host enters or leaves fullscreen (from `@yagejs/renderer`) |
 | `screen:orientation`       | `{ type: OrientationType }`                          | Device orientation changes (from `@yagejs/renderer`)              |
 
-Entity payloads carry the live `Entity`. Scene payloads are `SceneRef` views, except the loading events, which carry the full `Scene`.
+Entity payloads carry the live `Entity`. Scene payloads are `SceneRef` views, except `entity:destroyed` and the loading events, which carry the full `Scene`.
 
 ---
 
 ## 8. Creating a Custom Plugin (Step-by-Step)
 
-### Example: A Score Tracking Plugin
+A plugin owns infrastructure that the whole engine shares: a device, a browser API, a remote service. Game state is not a plugin. A score, lives or an inventory lives in a component on a host entity, and changes reach it as entity events:
 
-**Goal**: track the player score across scenes, emit an event on every change, and expose the score through a service key.
+```typescript yage-context="scene"
+import { Component, defineEvent } from "@yagejs/core";
+
+const EnemyDefeated = defineEvent<{ points: number }>("enemy:defeated");
+export const ScoreChanged = defineEvent<{ score: number }>("score:changed");
+
+/** The score, on a host entity spawned with { key: "score" }. */
+class Score extends Component {
+  private _points = 0;
+
+  get points(): number {
+    return this._points;
+  }
+
+  onAdd() {
+    // Enemies emit on themselves; the event bubbles to the scene.
+    this.listenScene(EnemyDefeated, ({ points }) => {
+      this._points += points;
+      this.entity.emit(ScoreChanged, { score: this._points });
+    });
+  }
+}
+
+// Anywhere in the scene:
+const points = scene.findByKey("score")?.get(Score).points;
+```
+
+The full recipe is "Game state on a host entity" in `docs/llms/patterns.md`.
+
+### Example: A Telemetry Plugin
+
+**Goal**: let game code queue analytics records, send them to a server in batches, and expose the queue through a service key.
 
 #### Step 1: Define the Service Key and Types
 
-```typescript yage-group="score" yage-file="types.ts"
-// packages/score/src/types.ts
+```typescript yage-group="telemetry" yage-file="types.ts"
+// packages/telemetry/src/types.ts
 import { ServiceKey } from "@yagejs/core";
-import type { ScoreManager } from "./ScoreManager";
+import type { Telemetry } from "./Telemetry";
 
-export const ScoreManagerKey = new ServiceKey<ScoreManager>("scoreManager");
+export const TelemetryKey = new ServiceKey<Telemetry>("telemetry");
 
-export interface ScoreEvents {
-  "score:changed": { score: number; delta: number };
-  "score:milestone": { score: number; milestone: number };
+export interface TelemetryConfig {
+  /** URL that receives each batch as a POST with a JSON body. */
+  endpoint: string;
+  /** Records per batch. Default 20. */
+  batchSize?: number;
+}
+
+export interface TelemetryRecord {
+  name: string;
+  data: Record<string, unknown>;
 }
 ```
 
 #### Step 2: Implement the Service
 
-The engine's `EventBus<EngineEvents>` is typed to the engine's own events, so a plugin with events of its own creates a separate bus for them:
+```typescript yage-group="telemetry" yage-file="Telemetry.ts"
+// packages/telemetry/src/Telemetry.ts
+import type { TelemetryRecord } from "./types";
 
-```typescript yage-group="score" yage-file="ScoreManager.ts"
-// packages/score/src/ScoreManager.ts
-import { EventBus } from "@yagejs/core";
-import type { ScoreEvents } from "./types";
+export class Telemetry {
+  readonly batchSize: number;
+  private readonly endpoint: string;
+  private queue: TelemetryRecord[] = [];
 
-export class ScoreManager {
-  readonly events = new EventBus<ScoreEvents>();
-  private _score: number = 0;
-  private milestones: number[];
-
-  constructor(milestones: number[] = [100, 500, 1000]) {
-    this.milestones = milestones;
+  constructor(endpoint: string, batchSize: number) {
+    this.endpoint = endpoint;
+    this.batchSize = batchSize;
   }
 
-  get score(): number {
-    return this._score;
+  /** Queue one record. It is sent with the next batch. */
+  track(name: string, data: Record<string, unknown> = {}): void {
+    this.queue.push({ name, data });
   }
 
-  add(points: number): void {
-    const oldScore = this._score;
-    this._score += points;
+  get pending(): number {
+    return this.queue.length;
+  }
 
-    this.events.emit("score:changed", {
-      score: this._score,
-      delta: points,
-    });
-
-    // Check milestones
-    for (const m of this.milestones) {
-      if (oldScore < m && this._score >= m) {
-        this.events.emit("score:milestone", {
-          score: this._score,
-          milestone: m,
-        });
-      }
+  /**
+   * Send every queued record, and return whether the browser accepted them.
+   * `sendBeacon` returns at once, and returns `false` when the browser
+   * refuses the request; the records then stay queued.
+   */
+  flush(): boolean {
+    if (this.queue.length === 0) return true;
+    if (!navigator.sendBeacon(this.endpoint, JSON.stringify(this.queue))) {
+      return false;
     }
-  }
-
-  reset(): void {
-    const delta = -this._score;
-    this._score = 0;
-    this.events.emit("score:changed", { score: 0, delta });
+    this.queue = [];
+    return true;
   }
 }
 ```
 
 #### Step 3: Implement the Plugin
 
-```typescript yage-group="score" yage-file="ScorePlugin.ts"
-// packages/score/src/ScorePlugin.ts
-import type { Plugin, EngineContext } from "@yagejs/core";
-import { ScoreManager } from "./ScoreManager";
-import { ScoreManagerKey } from "./types";
+```typescript yage-group="telemetry" yage-file="TelemetryPlugin.ts"
+// packages/telemetry/src/TelemetryPlugin.ts
+import { EventBusKey, type EngineContext, type Plugin } from "@yagejs/core";
+import { Telemetry } from "./Telemetry";
+import { TelemetryKey, type TelemetryConfig } from "./types";
 
-export interface ScoreConfig {
-  milestones?: number[];
-}
-
-export class ScorePlugin implements Plugin {
-  readonly name = "score";
+export class TelemetryPlugin implements Plugin {
+  readonly name = "telemetry";
   readonly version = "1.0.0";
   // No dependencies -- works with @yagejs/core alone
 
-  private config: ScoreConfig;
-  private manager: ScoreManager | undefined;
+  private readonly endpoint: string;
+  private readonly batchSize: number;
+  private telemetry: Telemetry | undefined;
+  private unsubscribe: (() => void) | undefined;
 
-  constructor(config?: ScoreConfig) {
-    this.config = config ?? {};
+  constructor(config: TelemetryConfig) {
+    // Validate at the entry, before anything is installed.
+    const batchSize = config.batchSize ?? 20;
+    if (config.endpoint === "") {
+      throw new Error("TelemetryPlugin: endpoint must not be empty");
+    }
+    if (!Number.isInteger(batchSize) || batchSize < 1) {
+      throw new Error(
+        `TelemetryPlugin: batchSize must be an integer of at least 1, got ${batchSize}`,
+      );
+    }
+    this.endpoint = config.endpoint;
+    this.batchSize = batchSize;
   }
 
   install(context: EngineContext): void {
-    this.manager = new ScoreManager(this.config.milestones);
-    context.register(ScoreManagerKey, this.manager);
+    const telemetry = new Telemetry(this.endpoint, this.batchSize);
+    this.telemetry = telemetry;
+    context.register(TelemetryKey, telemetry);
+
+    // Record every scene push from the engine's own events.
+    this.unsubscribe = context
+      .resolve(EventBusKey)
+      .on("scene:pushed", ({ scene }) => {
+        telemetry.track("scene:pushed", { scene: scene.name });
+      });
   }
 
   onDestroy(): void {
-    this.manager = undefined;
+    this.unsubscribe?.();
+    this.telemetry?.flush(); // send what is left
+    this.telemetry = undefined;
   }
 }
 ```
 
 #### Step 4: Export the Public API
 
-```typescript yage-group="score" yage-file="index.ts"
-// packages/score/src/index.ts
-export { ScorePlugin } from "./ScorePlugin";
-export type { ScoreConfig } from "./ScorePlugin";
-export { ScoreManager } from "./ScoreManager";
-export { ScoreManagerKey } from "./types";
-export type { ScoreEvents } from "./types";
+```typescript yage-group="telemetry" yage-file="index.ts"
+// packages/telemetry/src/index.ts
+export { TelemetryPlugin } from "./TelemetryPlugin";
+export { Telemetry } from "./Telemetry";
+export { TelemetryKey } from "./types";
+export type { TelemetryConfig, TelemetryRecord } from "./types";
 ```
 
 #### Step 5: Use It
 
-```typescript yage-group="score" yage-file="game.ts"
-import { Engine, Scene } from "@yagejs/core";
+```typescript yage-group="telemetry" yage-file="game.ts"
+import { Component, Engine, defineEvent } from "@yagejs/core";
 // The package entry from Step 4. A game imports it by package name.
-import { ScorePlugin, ScoreManagerKey } from "./index";
+import { TelemetryPlugin, TelemetryKey } from "./index";
+
+/** A game event: the goal entity emits it when the player reaches it. */
+const GoalReached = defineEvent("level:goal-reached");
 
 const engine = new Engine();
-engine.use(new ScorePlugin({ milestones: [100, 500, 1000, 5000] }));
+engine.use(new TelemetryPlugin({ endpoint: "https://example.com/telemetry" }));
 
-class GameScene extends Scene {
-  readonly name = "game";
+/** Reports a finished level. */
+class LevelReport extends Component {
+  private readonly telemetry = this.service(TelemetryKey);
 
-  onEnter() {
-    const score = this.context.resolve(ScoreManagerKey);
-    score.events.on("score:milestone", ({ milestone }) => {
-      console.log(`Reached ${milestone}`);
+  onAdd() {
+    this.listenScene(GoalReached, () => {
+      this.telemetry.track("level:complete", { scene: this.scene.name });
     });
-    score.add(50);
-    console.log(score.score); // 50
   }
 }
 ```
@@ -712,36 +764,48 @@ class GameScene extends Scene {
 
 If the plugin needs per-frame logic, add a system:
 
-```typescript yage-group="score" yage-file="ScoreDisplaySystem.ts"
-// ScoreDisplaySystem.ts
+```typescript yage-group="telemetry" yage-file="TelemetryFlushSystem.ts"
+// TelemetryFlushSystem.ts
 import { System, Phase } from "@yagejs/core";
 import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
-import type { ScoreManager } from "./ScoreManager";
-import { ScoreManagerKey } from "./types";
+import type { Telemetry } from "./Telemetry";
+import { TelemetryKey } from "./types";
 
-export class ScoreDisplaySystem extends System {
-  readonly phase = Phase.LateUpdate;
-  readonly priority = 50;
+/** Seconds to wait before retrying a batch the browser refused. */
+const RETRY_SECONDS = 5;
 
-  private scoreManager!: ScoreManager;
+export class TelemetryFlushSystem extends System {
+  readonly phase = Phase.EndOfFrame;
+  readonly priority = 0;
+
+  private telemetry!: Telemetry;
+  private retryIn = 0;
 
   onRegister(context: EngineContext) {
-    this.scoreManager = context.resolve(ScoreManagerKey);
+    this.telemetry = context.resolve(TelemetryKey);
   }
 
   update(dt: number) {
-    // Update score display entity, if present
+    if (this.retryIn > 0) {
+      this.retryIn -= dt;
+      return;
+    }
+    // One request per full batch, after the frame's game code has run. A
+    // refused batch stays queued and is retried after RETRY_SECONDS, not on
+    // every frame.
+    if (this.telemetry.pending < this.telemetry.batchSize) return;
+    if (!this.telemetry.flush()) this.retryIn = RETRY_SECONDS;
   }
 }
 
-// In ScorePlugin:
-class ScorePlugin implements Plugin {
-  readonly name = "score";
+// In TelemetryPlugin:
+class TelemetryPlugin implements Plugin {
+  readonly name = "telemetry";
   readonly version = "1.0.0";
-  // ...config, install() and onDestroy() from Step 3
+  // ...fields, constructor, install() and onDestroy() from Step 3
 
   registerSystems(scheduler: SystemScheduler) {
-    scheduler.add(new ScoreDisplaySystem());
+    scheduler.add(new TelemetryFlushSystem());
   }
 }
 ```
@@ -827,7 +891,7 @@ events.on("screen:fullscreen", ({ active }) => {
 });
 ```
 
-`EventBus<EngineEvents>` only accepts the events in `EngineEvents`. A plugin's own events go on a bus it owns, as `ScoreManager` does above.
+`EventBus<EngineEvents>` only accepts the events in `EngineEvents`. Game events are `defineEvent` tokens emitted on entities and scenes, as the `Score` component in section 8 does.
 
 ---
 

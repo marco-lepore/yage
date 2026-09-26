@@ -218,9 +218,11 @@ up:
 
 ```ts yage-context="engine"
 import type { AudioManager } from "@yagejs/audio";
+import type { RandomService } from "@yagejs/core";
 import { SynthPlugin, synthPresets, synthVariantAliases } from "@yagejs-addons/synth";
 
 declare const audio: AudioManager; // this.use(AudioManagerKey)
+declare const random: RandomService; // this.use(RandomKey)
 
 // Several takes, picked at random per play.
 engine.use(new SynthPlugin({
@@ -228,9 +230,9 @@ engine.use(new SynthPlugin({
 }));
 audio.playRandom(synthVariantAliases("shoot", 4));
 
-// Or jitter the playback rate at the call site (variants register only the
-// suffixed aliases, so play one of those).
-audio.play("shoot.1", { speed: 0.95 + Math.random() * 0.1 });
+// Or jitter the playback rate at the call site, with the scene's random
+// generator. Variants register only the suffixed aliases, so play one of those.
+audio.play("shoot.1", { speed: random.range(0.95, 1.05) });
 ```
 
 A `variants: n` entry registers `alias.1` … `alias.n` — nothing under the bare

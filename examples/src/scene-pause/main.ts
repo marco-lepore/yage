@@ -8,8 +8,22 @@
  * - SettingsScene (Settings button on pause) — default
  *   `transparentBelow=false`; both the game HUD and the pause menu are
  *   hidden by the renderer while this is on top, then re-shown on pop.
+ *
+ * The game's speed and pause status live in a `Playback` component on the
+ * game scene's HUD entity. The pause menu finds the game scene through the
+ * scene manager and reaches the component with `findByKey`.
  */
-import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  Entity,
+  RandomKey,
+  Scene,
+  SceneManagerKey,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
+import type { RandomService } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
@@ -25,51 +39,135 @@ import {
 } from "../shared/bootstrap.js";
 import {
   textStyle,
-  loadFonts,
   allAssets,
   nineSliceBtn,
   panelBg,
 } from "../shared/ui-theme.js";
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 const WIDTH = 800;
 const HEIGHT = 600;
 const WALL = 20;
+const INITIAL_BALLS = 8;
 const PALETTE = [0xff6b6b, 0x4ecdc4, 0xffe66d, 0xa78bfa, 0xf97316, 0x38bdf8];
 
+const GAME_SCENE = "game";
+/** Spawn key of the game scene's HUD entity, for `scene.findByKey`. */
+const HUD_KEY = "hud";
+
 // ---------------------------------------------------------------------------
-// GameScene — bouncing physics balls with HUD and timeScale control
+// Walls and balls
 // ---------------------------------------------------------------------------
-// The HUD panel lives in GameScene so it always renders (UI layout runs on all
-// scenes, even paused ones). The HudUpdater component updates text each frame
-// while the game is active; when paused, the text freezes — which is fine
-// because the pause menu itself makes the state obvious.
+class WallEntity extends Entity {
+  setup(params: { x: number; y: number; w: number; h: number }): void {
+    const { x, y, w, h } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x333333 });
+      }),
+    );
+    this.add(new RigidBodyComponent({ type: "static" }));
+    this.add(
+      new ColliderComponent({
+        shape: { type: "box", width: w, height: h },
+        restitution: 0.5,
+      }),
+    );
+  }
+}
+
+interface BallParams {
+  position: Vec2;
+  radius: number;
+  color: number;
+}
+
+class BallEntity extends Entity {
+  setup(params: BallParams): void {
+    const { position, radius, color } = params;
+    this.add(new Transform({ position }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, radius).fill({ color, alpha: 0.85 });
+        g.circle(0, 0, radius).stroke({
+          color: 0xffffff,
+          width: 1,
+          alpha: 0.3,
+        });
+      }),
+    );
+    this.add(new RigidBodyComponent({ type: "dynamic", ccd: true }));
+    this.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius },
+        restitution: 0.7,
+        density: 1,
+      }),
+    );
+  }
+}
+
+/** A ball of random size and colour somewhere near the top of the box. */
+function randomBall(random: RandomService): BallParams {
+  return {
+    position: new Vec2(random.range(100, WIDTH - 100), random.range(60, 260)),
+    radius: random.range(12, 28),
+    color: random.pick(PALETTE),
+  };
+}
+
 // ---------------------------------------------------------------------------
-class GameScene extends Scene {
-  readonly name = "game";
-  readonly preload = [...allAssets];
+// HUD — the game's speed and pause status
+// ---------------------------------------------------------------------------
 
-  /** Exposed so PauseScene can update the HUD status text on enter/exit. */
-  statusText!: UIText;
-  tsText!: UIText;
+/**
+ * The game scene's time scale and pause status, and the HUD lines that show
+ * them. Other code reaches it with
+ * `scene.findByKey<HudEntity>(HUD_KEY)?.playback`.
+ */
+class Playback extends Component {
+  constructor(private readonly texts: { speed: UIText; status: UIText }) {
+    super();
+  }
 
-  onEnter(): void {
-    // Walls
-    this.wall(WIDTH / 2, HEIGHT - WALL / 2, WIDTH, WALL);
-    this.wall(WIDTH / 2, WALL / 2, WIDTH, WALL);
-    this.wall(WALL / 2, HEIGHT / 2, WALL, HEIGHT);
-    this.wall(WIDTH - WALL / 2, HEIGHT / 2, WALL, HEIGHT);
+  get speed(): number {
+    return this.scene.timeScale;
+  }
 
-    // Initial balls
-    for (let i = 0; i < 8; i++) this.spawnBall();
+  get paused(): boolean {
+    return this.scene.isPaused;
+  }
 
-    // Input controller
-    const ctrl = this.spawn("controller");
-    ctrl.add(new Transform());
-    ctrl.add(new GameController());
+  onAdd(): void {
+    this.refresh();
+  }
 
-    // HUD (part of GameScene — renders even when paused)
-    const hudEntity = this.spawn("hud");
-    const hud = hudEntity.add(
+  setSpeed(scale: number): void {
+    this.scene.timeScale = scale;
+    this.refresh();
+  }
+
+  /** Rewrites both HUD lines from the scene's current state. */
+  refresh(): void {
+    this.texts.speed.setText(`TimeScale: ${this.speed}x`);
+    this.texts.status.setText(
+      this.paused ? "Status: PAUSED" : "Status: Running",
+    );
+  }
+}
+
+/**
+ * HUD panel in the top-left corner. It lives in the game scene, so it keeps
+ * rendering while a menu pauses the game.
+ */
+class HudEntity extends Entity {
+  playback!: Playback;
+
+  setup(): void {
+    const hud = this.add(
       new UISurface({
         anchor: Anchor.TopLeft,
         offset: { x: 16, y: 16 },
@@ -80,116 +178,126 @@ class GameScene extends Scene {
       }),
     );
     hud.text("Scene Pause Demo", textStyle("title", { fontSize: 16 }));
-    this.tsText = hud.text(
-      "TimeScale: 1.0x",
-      textStyle("body", { fill: 0xfacc15 }),
-    );
-    this.statusText = hud.text(
-      "Status: Running",
-      textStyle("body", { fill: 0x22c55e }),
-    );
-
-    hudEntity.add(new HudUpdater());
-  }
-
-  spawnBall(): void {
-    const x = 100 + Math.random() * (WIDTH - 200);
-    const y = 60 + Math.random() * 200;
-    const r = 12 + Math.random() * 16;
-    const color = PALETTE[Math.floor(Math.random() * PALETTE.length)]!;
-    const e = this.spawn("ball");
-    e.add(new Transform({ position: new Vec2(x, y) }));
-    e.add(
-      new GraphicsComponent().draw((g) => {
-        g.circle(0, 0, r).fill({ color, alpha: 0.85 });
-        g.circle(0, 0, r).stroke({ color: 0xffffff, width: 1, alpha: 0.3 });
-      }),
-    );
-    e.add(new RigidBodyComponent({ type: "dynamic", ccd: true }));
-    e.add(
-      new ColliderComponent({
-        shape: { type: "circle", radius: r },
-        restitution: 0.7,
-        density: 1,
-      }),
-    );
-  }
-
-  private wall(x: number, y: number, w: number, h: number): void {
-    const e = this.spawn("wall");
-    e.add(new Transform({ position: new Vec2(x, y) }));
-    e.add(
-      new GraphicsComponent().draw((g) => {
-        g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x333333 });
-      }),
-    );
-    e.add(new RigidBodyComponent({ type: "static" }));
-    e.add(
-      new ColliderComponent({
-        shape: { type: "box", width: w, height: h },
-        restitution: 0.5,
-      }),
-    );
+    const speed = hud.text("", textStyle("body", { fill: 0xfacc15 }));
+    const status = hud.text("", textStyle("body", { fill: 0x22c55e }));
+    this.playback = this.add(new Playback({ speed, status }));
   }
 }
 
 // ---------------------------------------------------------------------------
-// GameController — timeScale keys + pause toggle + spawn
+// GameController — time scale keys, pause, and dropping balls
 // ---------------------------------------------------------------------------
 class GameController extends Component {
   private readonly input = this.service(InputManagerKey);
+  private readonly scenes = this.service(SceneManagerKey);
+  private readonly random = this.service(RandomKey);
 
   update(): void {
-    const scene = this.scene as GameScene;
-
-    if (this.input.isJustPressed("slowMo")) scene.timeScale = 0.25;
-    if (this.input.isJustPressed("normal")) scene.timeScale = 1;
-    if (this.input.isJustPressed("fast")) scene.timeScale = 2;
+    if (this.input.isJustPressed("slowMo")) this.setSpeed(0.25);
+    if (this.input.isJustPressed("normal")) this.setSpeed(1);
+    if (this.input.isJustPressed("fast")) this.setSpeed(2);
 
     if (this.input.isJustPressed("pause")) {
-      // Fire-and-forget: push is async. If push ever rejects (e.g. preload
-      // failure), consume the rejection so a stray keypress doesn't surface
-      // an unhandled rejection to the console.
-      engine.scenes.push(new PauseScene()).catch(() => {});
+      void this.scenes.push(new PauseScene());
     }
 
     if (this.input.isJustPressed("spawn")) {
-      scene.spawnBall();
+      this.scene.spawn(BallEntity, randomBall(this.random));
     }
+  }
+
+  private setSpeed(scale: number): void {
+    this.scene.findByKey<HudEntity>(HUD_KEY)?.playback.setSpeed(scale);
+  }
+}
+
+class ControllerEntity extends Entity {
+  setup(): void {
+    this.add(new GameController());
   }
 }
 
 // ---------------------------------------------------------------------------
-// HudUpdater — updates timeScale text while game is active
+// GameScene — bouncing physics balls with HUD and timeScale control
 // ---------------------------------------------------------------------------
-class HudUpdater extends Component {
-  update(): void {
-    const game = this.scene as GameScene;
-    game.tsText.setText(`TimeScale: ${game.timeScale}x`);
+class GameScene extends Scene {
+  readonly name = GAME_SCENE;
+  readonly preload = [...allAssets];
+
+  onEnter(): void {
+    this.spawn(WallEntity, {
+      x: WIDTH / 2,
+      y: HEIGHT - WALL / 2,
+      w: WIDTH,
+      h: WALL,
+    });
+    this.spawn(WallEntity, { x: WIDTH / 2, y: WALL / 2, w: WIDTH, h: WALL });
+    this.spawn(WallEntity, { x: WALL / 2, y: HEIGHT / 2, w: WALL, h: HEIGHT });
+    this.spawn(WallEntity, {
+      x: WIDTH - WALL / 2,
+      y: HEIGHT / 2,
+      w: WALL,
+      h: HEIGHT,
+    });
+
+    const random = this.use(RandomKey);
+    for (let i = 0; i < INITIAL_BALLS; i++) {
+      this.spawn(BallEntity, randomBall(random));
+    }
+
+    this.spawn(ControllerEntity);
+    this.spawn(HudEntity, { key: HUD_KEY });
+  }
+
+  // A paused scene's components get no update(), so the pause hooks tell
+  // the HUD to show the new status.
+  onPause(): void {
+    this.findByKey<HudEntity>(HUD_KEY)?.playback.refresh();
+  }
+
+  onResume(): void {
+    this.findByKey<HudEntity>(HUD_KEY)?.playback.refresh();
   }
 }
 
 // ---------------------------------------------------------------------------
 // PauseScene — freezes everything below (pauseBelow=true)
 // ---------------------------------------------------------------------------
-class PauseScene extends Scene {
-  readonly name = "pause-menu";
-  override readonly pauseBelow = true;
-  override readonly transparentBelow = true;
 
-  onEnter(): void {
-    // Update HUD status text directly (since HudUpdater is paused)
-    const game = engine.scenes.all.find((s) => s.name === "game") as
-      | GameScene
-      | undefined;
-    game?.statusText.setText("Status: PAUSED");
+/** What the pause menu's buttons and the Esc key do. */
+class PauseMenu extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly scenes = this.service(SceneManagerKey);
 
-    const entity = this.spawn("pause-ui");
+  update(): void {
+    if (this.input.isJustPressed("pause")) this.resume();
+  }
+
+  /** Closes the menu. With a `speed`, the game resumes at that time scale. */
+  resume(speed?: number): void {
+    if (speed !== undefined) this.gamePlayback()?.setSpeed(speed);
+    void this.scenes.pop();
+  }
+
+  openSettings(): void {
+    void this.scenes.push(new SettingsScene());
+  }
+
+  /** The game scene is below the menu on the stack; its HUD holds the speed. */
+  private gamePlayback(): Playback | undefined {
+    const game = this.scenes.all.find((scene) => scene.name === GAME_SCENE);
+    return game?.findByKey<HudEntity>(HUD_KEY)?.playback;
+  }
+}
+
+class PauseMenuEntity extends Entity {
+  setup(): void {
+    const menu = this.add(new PauseMenu());
     // alignItems: "stretch" with auto-sized buttons: the widest button's
     // natural label (Settings + the parenthetical) defines the panel's
     // content width, and the shorter buttons stretch to match — uniform
     // stack without picking an explicit width that risks overflowing.
-    const panel = entity.add(
+    const panel = this.add(
       new UISurface({
         anchor: Anchor.Center,
         direction: "column",
@@ -205,87 +313,71 @@ class PauseScene extends Scene {
 
     panel.button("Resume", {
       textStyle: textStyle("button"),
-      onClick: () => void engine.scenes.pop(),
+      onClick: () => menu.resume(),
       ...nineSliceBtn,
     });
 
     panel.button("Resume in Slow-Mo (0.25x)", {
       textStyle: textStyle("button"),
-      onClick: () => {
-        if (game) game.timeScale = 0.25;
-        void engine.scenes.pop();
-      },
+      onClick: () => menu.resume(0.25),
       ...nineSliceBtn,
     });
 
     panel.button("Resume at Normal Speed", {
       textStyle: textStyle("button"),
-      onClick: () => {
-        if (game) game.timeScale = 1;
-        void engine.scenes.pop();
-      },
+      onClick: () => menu.resume(1),
       ...nineSliceBtn,
     });
 
+    // Pushing a scene with the default `transparentBelow=false` hides every
+    // below-stack scene's render tree — game HUD AND this pause menu.
+    // Compare with the Resume buttons above, which pop the pause overlay
+    // and uncover the running game.
     panel.button("Settings (transparentBelow=false)", {
       textStyle: textStyle("button"),
-      onClick: () => {
-        // Pushing a scene with the default `transparentBelow=false` hides
-        // every below-stack scene's render tree — game HUD AND this pause
-        // menu. Compare with the Resume button above which pops the pause
-        // overlay and uncovers the running game.
-        engine.scenes.push(new SettingsScene()).catch(() => {});
-      },
+      onClick: () => menu.openSettings(),
       ...nineSliceBtn,
     });
-
-    // Escape to resume
-    const esc = this.spawn("esc-handler");
-    esc.add(new Transform());
-    esc.add(new PauseEscHandler());
-  }
-
-  onExit(): void {
-    const game = engine.scenes.all.find((s) => s.name === "game") as
-      | GameScene
-      | undefined;
-    game?.statusText.setText("Status: Running");
   }
 }
 
-class PauseEscHandler extends Component {
-  private readonly input = this.service(InputManagerKey);
+class PauseScene extends Scene {
+  readonly name = "pause-menu";
+  override readonly pauseBelow = true;
+  override readonly transparentBelow = true;
 
-  update(): void {
-    if (this.input.isJustPressed("pause")) {
-      void engine.scenes.pop();
-    }
+  onEnter(): void {
+    this.spawn(PauseMenuEntity);
   }
 }
 
 // ---------------------------------------------------------------------------
 // SettingsScene — full-screen overlay using DEFAULT transparentBelow=false
 // ---------------------------------------------------------------------------
-// Pushed from the pause menu via `engine.scenes.push(new SettingsScene())`.
-// Because `transparentBelow` defaults to `false`, the renderer hides every
-// below-stack scene's tree while this scene is on top — the game's HUD and
-// the pause menu BOTH stop rendering. Pop to reveal them again.
-//
-// This is the manual-test fixture for PR #66: before that change, the
-// `transparentBelow=false` contract was documented but unenforced and the
-// pause menu would bleed through. The expected behaviour now is a clean
-// black canvas behind the settings panel until pop.
+// Pushed from the pause menu. Because `transparentBelow` defaults to
+// `false`, the renderer hides every below-stack scene's tree while this
+// scene is on top — the game's HUD and the pause menu BOTH stop rendering,
+// and the settings panel sits on a black canvas. Pop to reveal them again.
 // ---------------------------------------------------------------------------
-class SettingsScene extends Scene {
-  readonly name = "settings";
-  override readonly pauseBelow = true;
-  // `transparentBelow` is left at the default `false` deliberately —
-  // declaring it here just for the demo's visibility.
-  override readonly transparentBelow = false;
 
-  onEnter(): void {
-    const entity = this.spawn("settings-ui");
-    const panel = entity.add(
+/** Back button and Esc both close the settings. */
+class SettingsMenu extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly scenes = this.service(SceneManagerKey);
+
+  update(): void {
+    if (this.input.isJustPressed("pause")) this.back();
+  }
+
+  back(): void {
+    void this.scenes.pop();
+  }
+}
+
+class SettingsMenuEntity extends Entity {
+  setup(): void {
+    const menu = this.add(new SettingsMenu());
+    const panel = this.add(
       new UISurface({
         anchor: Anchor.Center,
         direction: "column",
@@ -304,23 +396,29 @@ class SettingsScene extends Scene {
 
     panel.button("Back", {
       textStyle: textStyle("button"),
-      onClick: () => void engine.scenes.pop(),
+      onClick: () => menu.back(),
       ...nineSliceBtn,
     });
+  }
+}
 
-    const esc = this.spawn("settings-esc");
-    esc.add(new Transform());
-    esc.add(new PauseEscHandler());
+class SettingsScene extends Scene {
+  readonly name = "settings";
+  override readonly pauseBelow = true;
+  // `transparentBelow` is left at the default `false` deliberately —
+  // declaring it here just for the demo's visibility.
+  override readonly transparentBelow = false;
+
+  onEnter(): void {
+    this.spawn(SettingsMenuEntity);
   }
 }
 
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-let engine: Engine;
-
 async function main() {
-  engine = new Engine({ debug: true });
+  const engine = new Engine({ debug: true });
 
   engine.use(
     new RendererPlugin({
@@ -348,7 +446,6 @@ async function main() {
   engine.use(new UIPlugin());
   await installDebugFromUrl(engine);
 
-  await loadFonts();
   await engine.start();
   await engine.scenes.push(new GameScene());
 }

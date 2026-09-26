@@ -58,6 +58,7 @@ declare class Entity extends BaseEntity {
     Class: new () => E,
     ...rest: ClassSpawnArgs<E>
   ): E;
+  /** @deprecated Blueprint overload; use an Entity subclass. */
   spawnChild<P>(
     name: string,
     blueprint: Blueprint<P>,
@@ -67,6 +68,8 @@ declare class Entity extends BaseEntity {
 }
 ```
 
+- An entity type is an `Entity` subclass whose `setup(params)` adds its components, spawned with `scene.spawn(Class, params)` or `entity.spawnChild(name, Class, params)`. A named spawn (`scene.spawn("background")`, then `.add(...)`) is only for a one-off entity: spawned once, with no behaviour of its own (background, UI root, HUD host).
+- `defineBlueprint` / `Blueprint` and the `spawn` / `spawnChild` overloads that take one are deprecated. Existing blueprints still spawn; new entity types are subclasses.
 - `entity.scene` throws with a clear error when the entity is detached (not yet spawned, or already destroyed — both the end-of-frame flush and scene teardown clear it). Prefer it in user code — throwing beats letting a `null` propagate silently. Use `entity.tryScene` only in defensive paths (e.g. systems iterating query results during teardown) where detachment is expected.
 - `entity.isDestroyed` is true after `destroy()` and for entities torn down with their scene on exit. Teardown also emits `entity:destroyed` once per entity, so listeners tracking entity lifetimes are notified of every destruction, including destruction caused by scene exit.
 - `destroy()` deactivates immediately: `isActive` reads `false`, the entity leaves every query, and component `onDisable` fires in the same call. The rest of teardown — `onDestroy`, detaching from the scene — waits for the end-of-frame flush, so `isDestroyed` and component removal still happen later.
@@ -350,46 +353,38 @@ defineStates({
 A group of entities cycled by deactivation rather than spawn and destroy. A member is built once and reused, so its Rapier body, Pixi display object and component instances stay allocated between lives.
 
 ```ts
-import {
-  Entity,
-  EntityPool,
-  Scene,
-  type EntityHandle,
-  type Vec2,
-} from "@yagejs/core";
+import { Component, Entity, EntityPool, type Vec2 } from "@yagejs/core";
 import { RigidBodyComponent } from "@yagejs/physics";
 
 class Bullet extends Entity {
-  target: EntityHandle | undefined;
+  damage = 0;
   setup() {
     /* Transform, GraphicsComponent, RigidBodyComponent, collider */
   }
   // Required for a pooled class. Its parameters become acquire()'s arguments.
-  onAcquire(x: number, y: number, dir: Vec2) {
+  onAcquire(x: number, y: number, dir: Vec2, damage: number) {
+    this.damage = damage;
     const rb = this.get(RigidBodyComponent);
     rb.setPosition(x, y);
     rb.setVelocity({ x: dir.x * 900, y: dir.y * 900 });
   }
   onRelease() {
-    this.target = undefined;
+    this.damage = 0;
   } // optional, game-level cleanup
 }
 
-class Level extends Scene {
-  readonly name = "level";
+// The component that fires owns the pool.
+class Gun extends Component {
   private bullets!: EntityPool<Bullet>;
 
-  onEnter() {
-    // In onEnter — members' components resolve scene services during setup().
-    this.bullets = new EntityPool(this, Bullet, { prewarm: 32 });
+  onAdd() {
+    // Members' components resolve scene services during setup().
+    this.bullets = new EntityPool(this.scene, Bullet, { prewarm: 32 });
   }
 
-  fire(x: number, y: number, dir: Vec2): Bullet {
-    return this.bullets.acquire(x, y, dir); // Bullet
-  }
-
-  retire(bullet: Bullet): void {
-    this.bullets.release(bullet);
+  fire(x: number, y: number, dir: Vec2) {
+    const bullet = this.bullets.acquire(x, y, dir, 1); // Bullet
+    // ...on impact: this.bullets.release(bullet), or bullet.destroy()
   }
 }
 ```
@@ -443,7 +438,7 @@ interface EntityPoolOptions<
 - Release cancels scheduled actions, keeps inert state. It cancels the member's `ProcessComponent` (a pending `Process.delay` would otherwise fire unprompted on a later lease), but position, health, animation frame, `timeScale`, and entity listeners all survive a cycle. Reset them in `onAcquire`, and register listeners in `setup()` or drop them in `onRelease`.
 - Bookkeeping completes before the hooks run. A throwing `onAcquire` leaves the member leased and active; a throwing `onRelease` still parks it. Both throws are attributed to the entity and propagate.
 - Releasing an entity the pool has not leased — a double release, another pool's member — is a reported no-op. `setActive` called from outside does not change who holds the lease.
-- Pools belong to their scene and are disposed on exit; `acquire` on a disposed pool throws. Build them in `onEnter()`, where scene services exist.
+- Pools belong to their scene and are disposed on exit; `acquire` on a disposed pool throws. Create a pool once the scene has entered, where scene services exist: in the `onAdd()` of the component that uses it, as above. The pool belongs to the scene, not to that component, and lasts until scene exit or `dispose()`.
 - A member that picked up a parent while leased (attached via `addChild`) is detached before it goes back into the pool, after `onRelease` has run — so `onRelease` can still read `entity.parent`, but the next lease never inherits a stale one.
 - The pool owns its members' lifetimes. `entity.destroy()` on a member releases it back to the pool instead of tearing it down, so retire sites holding a plain `Entity` (collision handlers, `update`, event listeners) need no pool reference and the same code works pooled or not. `isDestroyed` stays `false` for such a member; destroying an entity with a member below it detaches and returns that member. Only `dispose()` destroys members.
 - Pools and their members are runtime objects. Save durable game facts through an explicit state root, then reconstruct and prewarm pools during scene setup.
@@ -459,7 +454,7 @@ import { Component, Entity, type EntityHandle } from "@yagejs/core";
 
 class Enemy extends Entity {}
 
-class Turret extends Component {
+class TurretAim extends Component {
   private target?: EntityHandle<Enemy>;
 
   onSpotted(enemy: Enemy) {
@@ -552,9 +547,9 @@ someEntity.emit(DamagedEvent, { amount: 10 }); // handler runs with entity = som
 
 `Scene.on` returns an unsubscribe function. The handler param is `(data, entity?)` regardless of which side emitted — game code should check `entity` to decide whether to read source state.
 
-Scene-level subscriptions are released when the scene exits, together with its entities, so subscribe in `onEnter` (or from a component through `listenScene`). A scene instance pushed again starts with none.
+Scene-level subscriptions are released when the scene exits, together with its entities. Game code subscribes from a component through `this.listenScene(token, handler)`, which also unsubscribes when the component is removed. `onEnter` may connect an event to a component method in one line (`this.on(PlayerDied, () => player.get(Respawn).respawn())`) but holds no state or rules. A scene instance pushed again starts with no subscriptions.
 
-`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)`, and via `Scene.use(key)` / `Scene.service(key)`. Both are public and scope-aware — scene scope first, then engine — so any holder of a scene reference resolves through them, not only the scene subclass: an entity's `setup()` calls `this.scene.use(RandomKey)`. `use` throws when the key resolves nowhere; `service` returns a lazy proxy that resolves on first property access. Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `Scene.tryResolveScoped<T>(key)` (public) reads a scene-scoped service without engine-scope fallback, returning `undefined` when absent. Use it in systems that iterate scenes.
+`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)`, and via `Scene.use(key)` / `Scene.service(key)`. Both are public and scope-aware — scene scope first, then engine — so any holder of a scene reference resolves through them, not only the scene subclass: an entity's `setup()` calls `this.scene.use(RandomKey)`. `use` throws when the key resolves nowhere; `service` returns a lazy proxy that resolves on first property access. Plugins call it from `beforeEnter` to register per-scene infrastructure. It is not for game state: score, lives or a run timer live in a component on a host entity spawned with a `key` and found with `scene.findByKey` (`core-concepts.md` → Game State). Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `Scene.tryResolveScoped<T>(key)` (public) reads a scene-scoped service without engine-scope fallback, returning `undefined` when absent. Use it in systems that iterate scenes.
 
 ### SceneTime — hitstop, slow motion, bullet time, freeze frames
 
@@ -804,7 +799,7 @@ Tag processes with `pc.run(p, { tags: ["vfx"] })` then cancel groups with `pc.ca
 
 Durations are in seconds and must be finite and > 0: `new Process({ duration })`, `Process.delay`, `Sequence.wait`, `Tween.to`/`custom`/`vec2`, `pc.slot({ duration })` and `slot.start({ duration })` throw on anything else, as do non-finite tween endpoints. `Tween.stagger`'s `stepSeconds` is the exception: finite and >= 0, where `0` starts every item at once. A duration completes on the tick that reaches it — `Process.delay(0.25)` on the fixed clock ends on step 15 of 1/60 s, not 16, even though the float sum of the steps lands a hair short. `elapsed` still reports the real accumulated time, overshoot included, and a looping process carries only the overshoot into the next pass.
 
-`slot.start(overrides)` applies its overrides to that run alone: the next bare `start()` uses the config the slot was created with, and `slot.tags` returns the running slot's tags, then the configured tags once it completes. `start()` on a running slot is a no-op, so overrides passed there are dropped with it — use `restart(overrides)`.
+`slot.start(overrides)` applies its overrides to that run alone: the next bare `start()` uses the config the slot was created with, and `slot.tags` returns the running slot's tags, then the configured tags once it completes. `start()` on a running slot is a no-op, so overrides passed there are dropped with it — use `restart(overrides)`. A slot with `loop: true` never completes, so its `onComplete` never runs; for a repeating timer, loop a sequence: `pc.run(new Sequence().wait(2).call(spawnWave).loop().build())`.
 
 `new Process({ onCancel, onReset })`: `onCancel` runs when `cancel()` stops the process before it completed, `onReset` when it is reset for a re-run. Implement them on a process that owns other processes or keeps state outside its `update` callback. `Sequence` supplies both, so cancelling a sequence cancels the step processes it started — including a `Tween` instance the game built, passed to `.then()`/`.parallel()`, and still holds — and a built sequence (or a `Tween.stagger` output) can be reused as a step of another sequence.
 
@@ -1018,18 +1013,21 @@ deferred operation completes.
 ```ts
 import { Scene, SceneManagerKey } from "@yagejs/core";
 
-declare const saveSystem: { hasAutosave(): boolean }; // the game's save code
-
 class GameScene extends Scene {
   readonly name = "game";
 }
 
 class TitleScene extends Scene {
   readonly name = "title";
+
+  constructor(private readonly skipToGame: boolean) {
+    super();
+  }
+
   onEnter() {
     // Safe — `replace` is queued and runs after TitleScene's onEnter returns.
-    if (saveSystem.hasAutosave()) {
-      this.context.resolve(SceneManagerKey).replace(new GameScene());
+    if (this.skipToGame) {
+      void this.use(SceneManagerKey).replace(new GameScene());
     }
   }
 }

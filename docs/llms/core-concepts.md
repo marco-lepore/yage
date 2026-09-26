@@ -15,9 +15,9 @@ Engine
 
 **Systems** are for cross-cutting engine concerns (physics stepping, rendering sync, input polling). Game code rarely needs custom systems.
 
-**Entities** are named containers with O(1) component lookups by class. Can be subclassed with `setup()` for game objects.
+**Entities** are named containers with O(1) component lookups by class. An entity type is an `Entity` subclass whose `setup(params)` adds its components; spawn it with `scene.spawn(Class, params)`.
 
-**Scenes** own entities and have lifecycle hooks. Stack-based management (push/pop/replace).
+**Scenes** own entities and have lifecycle hooks. Stack-based management (push/pop/replace). Every scene is a `Scene` subclass; its `onEnter` assembles the scene (spawns, camera, music) and holds no state or rules.
 
 ## Frame Execution Order
 
@@ -123,8 +123,8 @@ class PlayerEntity extends Entity {
 }
 
 // Spawn
-const e = scene.spawn("name"); // plain entity
-const p = scene.spawn(PlayerEntity, { x: 0, y: 0 }); // subclass with setup()
+const p = scene.spawn(PlayerEntity, { x: 0, y: 0 }); // entity type: subclass with setup()
+const e = scene.spawn("background"); // one-off entity: spawned once, no behaviour of its own
 
 // Components
 e.add(new Transform({ position: new Vec2(10, 20) }));
@@ -136,8 +136,8 @@ e.remove(Transform); // remove + call onDestroy
 // having to name its own class — useful under subclassing.
 
 // Tags
-const enemy = new Entity("enemy", ["hostile", "npc"]);
-enemy.tags.has("hostile");
+e.tags.add("hostile");
+e.tags.has("hostile");
 
 // Hierarchy
 const parent = scene.spawn("parent");
@@ -263,6 +263,8 @@ scene.on(HitEvent, (data, emittingEntity) => {
 });
 ```
 
+Game code subscribes from a component: `this.listen(entity, HitEvent, fn)` or `this.listenScene(HitEvent, fn)`. Both unsubscribe when the component is removed. The engine `EventBus` below is for engine events, not game events.
+
 ### Engine EventBus (global)
 
 ```ts yage-context="context"
@@ -279,9 +281,54 @@ bus.once("engine:started", () => {
 
 Built-in events: `entity:created`, `entity:destroyed`, `component:added`, `component:removed`, `scene:pushed`, `scene:popped`, `scene:replaced`, `scene:transition:started`, `scene:transition:ended`, `scene:loading:progress`, `scene:loading:done`, `engine:started`, `engine:stopped`, `screen:fullscreen`, `screen:orientation`. Payloads: the `EngineEvents` table in `packages/core.md`. From a component, `this.listenBus(event, handler)` subscribes with auto-cleanup.
 
+## Game State
+
+Score, lives, a quest log, a run timer: state that game rules change lives in a component on a host entity. Spawn the host with a `key` and reach it with `scene.findByKey`, a query, or the reference `spawn()` returned. The host dies with its scene, so the state starts fresh each time the scene is entered.
+
+```ts yage-context="scene"
+import { Component, Entity, Scene, defineEvent } from "@yagejs/core";
+
+const CoinCollected = defineEvent("coin:collected");
+const HUD_KEY = "hud";
+
+class RunProgress extends Component {
+  coins = 0;
+
+  onAdd() {
+    // Coins emit on themselves; the event bubbles to the scene.
+    this.listenScene(CoinCollected, () => {
+      this.coins += 1;
+    });
+  }
+}
+
+class HudEntity extends Entity {
+  progress!: RunProgress;
+
+  setup() {
+    this.progress = this.add(new RunProgress());
+  }
+}
+
+class GameScene extends Scene {
+  readonly name = "game";
+
+  onEnter() {
+    this.spawn(HudEntity, { key: HUD_KEY });
+  }
+}
+
+// Anywhere with a scene reference:
+const coins = scene.findByKey<HudEntity>(HUD_KEY)?.progress.coins;
+```
+
+- Not a module-level `let`, not a field on the `Scene`, not a `ServiceKey`.
+- Module-level `createStore` / `createRecord` is only for state that `@yagejs/save` persists (`packages/save.md`).
+- Full recipe: `patterns.md` → "Game state on a host entity".
+
 ## Dependency Injection
 
-`EngineContext` is a typed DI container using `ServiceKey<T>`.
+`EngineContext` is a typed DI container using `ServiceKey<T>`. A `ServiceKey` is for plugin-owned infrastructure (renderer, physics world, input manager); game state goes on a host entity (Game State above).
 
 ```ts yage-context="context"
 import { ServiceKey } from "@yagejs/core";
@@ -331,7 +378,7 @@ Note: `push`/`replace` are async — `await` them to ensure `onEnter` has fired.
 
 ## Processes
 
-Ongoing actions updated each frame, managed by `ProcessComponent`.
+Ongoing actions updated each frame, managed by `ProcessComponent`. Timers in game code are processes, slots, or a `TimerEntity`. `setTimeout` / `setInterval` keep running while the game is paused and ignore time scale.
 
 ```ts yage-group="processes" yage-context="entity"
 import { Process, ProcessComponent, Tween, easeOutQuad } from "@yagejs/core";
@@ -353,6 +400,8 @@ const cd = pc.slot({ duration: 1, onComplete: () => fire() });
 cd.start(); // activate
 cd.running; // boolean
 cd.ratio; // 0..1 progress
+// A slot with loop: true never completes, so onComplete never runs.
+// For a repeating callback, loop a sequence (see Sequence below).
 cd.restart(); // cancel + restart
 cd.cancel();
 ```

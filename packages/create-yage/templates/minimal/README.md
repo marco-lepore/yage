@@ -9,8 +9,8 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 to see an empty scene. Start editing
-`src/scenes/MainScene.ts` to build your game.
+Open http://localhost:5173 to see a placeholder rectangle. Start editing
+`src/scenes/MainScene.ts` and `src/entities/Placeholder.ts` to build your game.
 
 ## Scripts
 

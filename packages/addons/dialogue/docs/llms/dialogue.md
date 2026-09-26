@@ -59,10 +59,11 @@ when absent. Existing host layers keep their order; differing requested orders
 warn once per scene tree, name, and requested order in development.
 
 ```ts yage-group="intro" yage-file="scene.ts"
-import { Scene, Entity } from "@yagejs/core";
+import { Component, Entity, Scene } from "@yagejs/core";
 import {
   DialogueController,
   DialogueEndedEvent,
+  type DialogueScript,
 } from "@yagejs-addons/dialogue";
 import {
   createBoxDialogue,
@@ -70,18 +71,36 @@ import {
 } from "@yagejs-addons/dialogue/presenters";
 import { script } from "./script.js"; // the defineScript example below
 
+/** Removes its entity when the conversation reaches an `end` step. */
+class CloseOnEnd extends Component {
+  onAdd(): void {
+    this.listen(this.entity, DialogueEndedEvent, () => this.entity.destroy());
+  }
+}
+
+/** A box conversation: plays one script, then removes itself. */
+class Conversation extends Entity {
+  setup(params: { script: DialogueScript }): void {
+    const dlg = this.add(new DialogueController({ ...createBoxDialogue() }));
+    this.add(new CloseOnEnd());
+    dlg.play(params.script);
+  }
+}
+
 class TalkScene extends Scene {
   readonly name = "talk";
   readonly layers = [...DIALOGUE_LAYERS]; // optional: declare the default orders explicitly
 
   onEnter() {
-    const host = this.spawn("dialogue") as Entity;
-    const dlg = host.add(new DialogueController({ ...createBoxDialogue() }));
-    host.on(DialogueEndedEvent, () => host.destroy());
-    dlg.play(script);
+    this.spawn(Conversation, { script }); // onEnter only spawns
   }
 }
 ```
+
+React to dialogue events (`DialogueEndedEvent`, `DialogueCommandEvent`, …) from
+a component: `this.listen(this.entity, …)` on the controller's entity, or
+`this.listenScene(…)` on any other entity, since the events bubble to the
+scene. Not with `entity.on(…)` closures in `onEnter`.
 
 `createBoxDialogue(theme?)` — bottom-of-screen box; theme defaults to
 `defaultDialogueTheme()`. `createBubbleDialogue(theme?, { worldLayer })` — diegetic
@@ -279,9 +298,8 @@ const hasKey: Condition = {
 ### String authoring — `parseExpr` (the canonical reading of every string)
 
 `parseExpr(src): Expr` parses a condition / `set`-value string into the IR above
-(no new node kinds). It is **purely syntactic** — no type-checking, no name
-resolution — so a future Yarn front-end reuses it 1:1. Throws `DialogueExprError`
-(carries `line` / `col`) on a bad source.
+(no new node kinds). It is **purely syntactic**: no type-checking, no name
+resolution. Throws `DialogueExprError` (carries `line` / `col`) on a bad source.
 
 `loadScript` / `loadYaml` run `parseExpr` over **every** string condition and
 string `set` value at load (a one-pass pre-walk), for every loader incl. JSON, so
@@ -781,18 +799,25 @@ player.movementEnabled = !dlg.isActive();
 ## Timed choices — a recipe, not a feature
 
 There is no `timeout` in the model. Express a timed choice with a non-blocking
-`choice-timer` command before the choice step: the host arms a timer **on its own
-clock** and commits a default with `controller.choose(default)` on expiry. The
-one addon hook is `ChoiceContext.meta` — the choice step's `meta` passes through,
-so a custom choice presenter can render a countdown from `meta.timeout`.
+`choice-timer` command before the choice step: a component on the controller's
+entity arms a `ProcessComponent` slot **on the game's clock** and commits a
+default with `controller.choose(default)` on expiry. The one addon hook is
+`ChoiceContext.meta` — the choice step's `meta` passes through, so a custom
+choice presenter can render a countdown from `meta.timeout`.
 
-```ts yage-context="scene"
+```ts
+import {
+  Component,
+  Entity,
+  ProcessComponent,
+  type ProcessSlot,
+} from "@yagejs/core";
 import {
   DialogueController,
   DialogueChoiceMadeEvent,
   DialogueChoiceShownEvent,
   DialogueEndedEvent,
-  type CommandHandler,
+  type DialogueScript,
   type Step,
 } from "@yagejs-addons/dialogue";
 import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
@@ -814,54 +839,66 @@ const steps: Step[] = [
   },
 ];
 
-// host: the timer rides YOUR clock; arm/cancel off the dialogue events.
-let pending: { seconds: number; def: number } | undefined;
-let remaining = -1;
-let def = 0;
-let paused = false; // your game's pause state
-const commands: Record<string, CommandHandler> = {
-  "choice-timer": (c) => {
-    pending = { seconds: Number(c.seconds), def: Number(c.default) };
-  },
-};
-const host = scene.spawn("npc");
-const controller = host.add(
-  new DialogueController({ ...createBoxDialogue(), commands }),
-);
-// dangling-timer guard — re-arm/cancel here
-host.on(DialogueChoiceShownEvent, () => {
-  remaining = -1; // drop any prior timer FIRST…
-  if (pending) {
-    // …then re-arm if timed
-    remaining = pending.seconds;
-    def = pending.def;
-    pending = undefined;
+// host: a component owns the timer (a ProcessSlot) and listens for itself.
+class ChoiceTimer extends Component {
+  private readonly dialogue = this.sibling(DialogueController);
+  private readonly processes = this.sibling(ProcessComponent);
+  private timer!: ProcessSlot;
+  private pending: { seconds: number; option: number } | undefined;
+  private option = 0;
+
+  onAdd(): void {
+    this.timer = this.processes.slot();
+    this.timer.onComplete(() => this.dialogue.choose(this.option));
+    // dangling-timer guard: re-arm or cancel on every menu
+    this.listen(this.entity, DialogueChoiceShownEvent, () => {
+      this.timer.cancel(); // drop any prior timer FIRST…
+      if (!this.pending) return; // …then re-arm if THIS menu is timed
+      this.option = this.pending.option;
+      this.timer.start({ duration: this.pending.seconds });
+      this.pending = undefined;
+    });
+    this.listen(this.entity, DialogueChoiceMadeEvent, () => this.reset());
+    this.listen(this.entity, DialogueEndedEvent, () => this.reset());
   }
-});
-host.on(DialogueChoiceMadeEvent, () => {
-  remaining = -1;
-  pending = undefined;
-});
-host.on(DialogueEndedEvent, () => {
-  remaining = -1;
-  pending = undefined;
-});
-// in your own update(dt): pause it yourself when you pause the conversation
-function update(dt: number) {
-  if (remaining >= 0 && !paused) {
-    remaining -= dt;
-    if (remaining <= 0) {
-      remaining = -1;
-      controller.choose(def);
-    }
+
+  // the command's handler
+  arm(seconds: number, option: number): void {
+    this.pending = { seconds, option };
+  }
+
+  private reset(): void {
+    this.timer.cancel();
+    this.pending = undefined;
+  }
+}
+
+class TimedConversation extends Entity {
+  setup(params: { script: DialogueScript }): void {
+    this.add(new ProcessComponent());
+    const timer = new ChoiceTimer();
+    const dlg = this.add(
+      new DialogueController({
+        ...createBoxDialogue(),
+        commands: {
+          "choice-timer": (c) =>
+            timer.arm(Number(c.seconds), Number(c.default)),
+        },
+      }),
+    );
+    this.add(timer);
+    dlg.play(params.script);
   }
 }
 ```
 
 - **Re-arm/cancel on every `DialogueChoiceShownEvent`** is load-bearing: without
   it a timer armed for one menu fires into a LATER, unrelated menu.
-- The timer is on the **host** clock, so `setPaused` does NOT freeze it — pause
-  your own timer with whatever pauses the conversation.
+- The slot is on the **scene** clock (stops with a scene pause, follows its
+  time scale), so the controller's `setPaused` does NOT freeze it — `pause()` /
+  `resume()` the slot with whatever pauses the conversation.
+- No `setTimeout` and no hand-counted `remaining -= dt`: a slot restarts,
+  cancels and pauses cleanly.
 - `default` must be an **enabled** option index (a disabled/filtered one is refused).
 
 ## Channels + presenters (L3 capability channels)

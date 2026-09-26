@@ -9,14 +9,21 @@
  * through `playRandom`, so repeats aren't identical.
  */
 
-import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  Entity,
+  Scene,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 import {
   GraphicsComponent,
   RendererPlugin,
   TextComponent,
 } from "@yagejs/renderer";
 import { AudioManagerKey, AudioPlugin } from "@yagejs/audio";
-import type { AudioManager, SoundHandle } from "@yagejs/audio";
+import type { SoundHandle } from "@yagejs/audio";
 import {
   renderSynthSound,
   SynthPlugin,
@@ -178,22 +185,79 @@ function drawWaveform(gfx: GraphicsComponent, samples: Float32Array): void {
 }
 
 // ---------------------------------------------------------------------------
-// Scene
+// Bench — the pad buttons and the sounds they play
 // ---------------------------------------------------------------------------
-class SynthScene extends Scene {
-  readonly name = "synth-bench";
 
-  private readonly _loops = new Map<string, SoundHandle>();
-  private readonly _buttons: HTMLButtonElement[] = [];
+/** Builds a button per pad in the page's `#pads` row. A click plays the pad
+ *  and redraws the waveform and caption for it. The buttons and the running
+ *  loops go away with the component. */
+class SynthBench extends Component {
+  private readonly audio = this.service(AudioManagerKey);
+  private readonly loops = new Map<string, SoundHandle>();
 
-  onEnter(): void {
-    const audio = this.use(AudioManagerKey);
+  constructor(
+    private readonly waveform: GraphicsComponent,
+    private readonly caption: TextComponent,
+  ) {
+    super();
+  }
 
-    const panel = this.spawn("waveform");
+  onAdd(): void {
+    drawWaveform(this.waveform, renderSynthSound(PADS[0]?.sound ?? {}));
+    this.addCleanup(() => {
+      for (const handle of this.loops.values()) this.audio.stop(handle);
+      this.loops.clear();
+    });
+
+    const host = document.getElementById("pads");
+    if (!host) return;
+    for (const pad of PADS) {
+      const button = document.createElement("button");
+      button.className = "pad";
+      button.textContent = pad.label;
+      button.addEventListener("click", () => this.play(pad, button));
+      host.appendChild(button);
+      this.addCleanup(() => button.remove());
+    }
+  }
+
+  private play(pad: Pad, button: HTMLButtonElement): void {
+    drawWaveform(this.waveform, renderSynthSound(pad.sound));
+    this.caption.setText(`${pad.label} — ${describe(pad)}`);
+    if (pad.loop) {
+      this.toggleLoop(pad, button);
+    } else if (pad.variants) {
+      this.audio.playRandom(synthVariantAliases(pad.alias, pad.variants));
+    } else {
+      this.audio.play(pad.alias);
+    }
+  }
+
+  private toggleLoop(pad: Pad, button: HTMLButtonElement): void {
+    const playing = this.loops.get(pad.alias);
+    if (playing?.playing) {
+      this.audio.stop(playing);
+      this.loops.delete(pad.alias);
+      button.classList.remove("on");
+      return;
+    }
+    this.loops.set(
+      pad.alias,
+      this.audio.play(pad.alias, { loop: true, channel: "music" }),
+    );
+    button.classList.add("on");
+  }
+}
+
+/** The waveform panel and caption on the canvas, and the bench that drives
+ *  them. */
+class SynthBenchEntity extends Entity {
+  setup(): void {
+    const panel = this.spawnChild("waveform");
     panel.add(new Transform({ position: new Vec2(0, 0) }));
     const gfx = panel.add(new GraphicsComponent());
 
-    const caption = this.spawn("caption");
+    const caption = this.spawnChild("caption");
     caption.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT - 46) }));
     const label = caption.add(
       new TextComponent({
@@ -203,61 +267,18 @@ class SynthScene extends Scene {
       }),
     );
 
-    drawWaveform(gfx, renderSynthSound(PADS[0]?.sound ?? {}));
-
-    this._buildPads(audio, (pad) => {
-      drawWaveform(gfx, renderSynthSound(pad.sound));
-      label.setText(`${pad.label} — ${describe(pad)}`);
-    });
+    this.add(new SynthBench(gfx, label));
   }
+}
 
-  private _buildPads(audio: AudioManager, onPlay: (pad: Pad) => void): void {
-    const host = document.getElementById("pads");
-    if (!host) return;
-    for (const pad of PADS) {
-      const button = document.createElement("button");
-      button.className = "pad";
-      button.textContent = pad.label;
-      button.addEventListener("click", () => {
-        onPlay(pad);
-        if (pad.loop) {
-          this._toggleLoop(audio, pad, button);
-        } else if (pad.variants) {
-          audio.playRandom(synthVariantAliases(pad.alias, pad.variants));
-        } else {
-          audio.play(pad.alias);
-        }
-      });
-      host.appendChild(button);
-      this._buttons.push(button);
-    }
-  }
+// ---------------------------------------------------------------------------
+// Scene
+// ---------------------------------------------------------------------------
+class SynthScene extends Scene {
+  readonly name = "synth-bench";
 
-  onExit(): void {
-    const audio = this.use(AudioManagerKey);
-    for (const handle of this._loops.values()) audio.stop(handle);
-    this._loops.clear();
-    for (const button of this._buttons) button.remove();
-    this._buttons.length = 0;
-  }
-
-  private _toggleLoop(
-    audio: AudioManager,
-    pad: Pad,
-    button: HTMLButtonElement,
-  ): void {
-    const playing = this._loops.get(pad.alias);
-    if (playing?.playing) {
-      audio.stop(playing);
-      this._loops.delete(pad.alias);
-      button.classList.remove("on");
-      return;
-    }
-    this._loops.set(
-      pad.alias,
-      audio.play(pad.alias, { loop: true, channel: "music" }),
-    );
-    button.classList.add("on");
+  onEnter(): void {
+    this.spawn(SynthBenchEntity);
   }
 }
 

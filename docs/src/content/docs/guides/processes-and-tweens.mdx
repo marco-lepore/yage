@@ -111,6 +111,20 @@ const invincibility = pc.slot({
 });
 ```
 
+A slot with `loop: true` never completes, so its `onComplete` never runs. To
+run something every few seconds, loop a sequence instead:
+
+```typescript yage-group="slots" yage-context="entity"
+import { Sequence } from "@yagejs/core";
+
+function spawnWave() {
+  // spawn the next wave of enemies
+}
+
+// Spawn a wave every 2 seconds, for as long as the entity lives
+pc.run(new Sequence().wait(2).call(() => spawnWave()).loop().build());
+```
+
 Cancelling a slot keeps it registered so it can start again. When its owner
 will never reuse it, remove the slot from the component:
 

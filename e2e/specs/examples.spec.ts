@@ -54,22 +54,6 @@ test.describe("Examples", () => {
       });
       page.on("pageerror", (err) => errors.push(err.message));
 
-      // Seed Math.random before any example code runs. The engine's own RNG is
-      // seeded via DebugPlugin's deterministicSeed, but several examples scatter
-      // entities with bare Math.random(); overriding it here (mulberry32) makes
-      // their layout reproducible without rewriting the examples. Frozen-clock
-      // execution is deterministic, so the call order — and thus the sequence —
-      // is identical across runs.
-      await page.addInitScript(() => {
-        let s = 1 >>> 0;
-        Math.random = () => {
-          s = (s + 0x6d2b79f5) | 0;
-          let t = Math.imul(s ^ (s >>> 15), 1 | s);
-          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-        };
-      });
-
       await page.goto(`/${slug}.html?test`);
 
       // Wait until the engine is up, the clock is frozen at frame zero, AND a
@@ -196,6 +180,36 @@ test.describe("Examples", () => {
 
     // A 505 px/s jump against 980 px/s² gravity peaks near 130 px.
     expect(result.height).toBeGreaterThan(120);
+    expect(result.errors.callbackErrors).toEqual([]);
+  });
+
+  test("loading-scene hands off to the game once its assets load", async ({
+    page,
+  }) => {
+    await page.goto("/loading-scene.html?test");
+    await page.waitForFunction(
+      () => window.__yage__?.inspector.getSceneStack().at(-1)?.name === "boot",
+      undefined,
+      { timeout: 10_000 },
+    );
+
+    // The fake loader waits on engine time, so the frozen clock holds the
+    // load until frames are stepped. stepUntil yields between frames, which
+    // lets the loader's promises settle.
+    const result = await page.evaluate(async () => {
+      const inspector = window.__yage__!.inspector;
+      const frames = await inspector.time.stepUntil(
+        () => {
+          const stack = inspector.getSceneStack();
+          return stack.length === 1 && stack[0]?.name === "game";
+        },
+        { maxFrames: 300 },
+      );
+      return { frames, errors: inspector.getErrors() };
+    });
+
+    // The slowest asset takes 0.85 s, then the fade out runs.
+    expect(result.frames).toBeGreaterThan(40);
     expect(result.errors.callbackErrors).toEqual([]);
   });
 

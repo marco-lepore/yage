@@ -58,8 +58,8 @@ import {
   Interactor,
   InteractionFocusChangedEvent,
 } from "@yagejs-addons/interaction";
-import { Entity, Transform } from "@yagejs/core";
-import type { TextComponent } from "@yagejs/renderer";
+import { Component, Entity, Transform } from "@yagejs/core";
+import { TextComponent } from "@yagejs/renderer";
 
 // Mark any entity as interactable. Both sides need a Transform.
 class Chest extends Entity {
@@ -77,14 +77,22 @@ class Chest extends Entity {
 // The player is the detector. Defaults: range 48px, action "interact",
 // nearest-in-range focus, self-driven off @yagejs/input if present.
 class Player extends Entity {
-  setup(promptLabel: TextComponent) {
+  setup() {
     this.add(new Transform());
     this.add(new Interactor({ range: 70 }));
+  }
+}
 
-    // Headless addon — the game draws the prompt. Fires only on a focus change.
-    this.on(InteractionFocusChangedEvent, ({ prompt }) => {
-      promptLabel.text.text = prompt ?? "";
-      promptLabel.text.visible = prompt !== null;
+// Headless addon — the game draws the prompt. Fires only on a focus change,
+// on the interactor's entity, and bubbles to the scene. A component on the HUD
+// label listens (not a closure in onEnter), and writes through TextComponent.
+class PromptLabel extends Component {
+  private readonly text = this.sibling(TextComponent);
+
+  onAdd(): void {
+    this.listenScene(InteractionFocusChangedEvent, ({ prompt }) => {
+      this.text.setText(prompt ?? "");
+      this.text.visible = prompt !== null;
     });
   }
 }

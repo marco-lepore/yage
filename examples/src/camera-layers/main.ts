@@ -1,14 +1,22 @@
 /**
- * Camera Layers — showcases the recent camera/scene refactors:
+ * Camera Layers — shows how scene layers follow a camera:
  *
  *   - Parallax via CameraBinding.translateRatio per layer.
  *   - World-space Scene.layers follow the camera; the "ui" layer (auto-
  *     provisioned by UISurface as `space: "screen"`) stays fixed to the viewport.
- *   - Stacked scene with its own CameraEntity — demonstrates that the debug
- *     overlay follows the topmost camera and that removing cameras resets
- *     layer transforms (no stale pan/zoom).
+ *   - Stacked scene with its own CameraEntity — the debug overlay follows
+ *     the topmost camera, and removing cameras resets layer transforms
+ *     (no stale pan/zoom).
  */
-import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Entity,
+  Scene,
+  SceneManagerKey,
+  Component,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
@@ -32,6 +40,7 @@ const WORLD_EXTENT = 3000;
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
   private readonly input = this.service(InputManagerKey);
+  private readonly scenes = this.service(SceneManagerKey);
   private readonly transform = this.sibling(Transform);
   private readonly speed = 300;
 
@@ -67,12 +76,42 @@ class PlayerController extends Component {
       this.camera.shake(8, 0.4, { decay: 0.85 });
     }
     if (this.input.isJustPressed("pause")) {
-      void engine.scenes.push(new PauseScene());
+      void this.scenes.push(new PauseScene());
     }
 
     const pos = this.transform.position;
     this.hudText.setText(
       `pos (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})  zoom ${this.camera.zoom.toFixed(2)}`,
+    );
+  }
+}
+
+class PlayerEntity extends Entity {
+  setup(params: { camera: CameraEntity; hudText: UIText }): void {
+    this.add(
+      new Transform({
+        position: new Vec2(WORLD_EXTENT / 2, WORLD_EXTENT / 2),
+      }),
+    );
+    this.add(
+      new GraphicsComponent({ layer: "world" }).draw((g) => {
+        g.poly([0, -16, 12, 12, -12, 12]).fill({ color: 0x22c55e });
+        g.circle(0, 0, 3).fill({ color: 0xffffff });
+      }),
+    );
+    this.add(new PlayerController(params.camera, params.hudText));
+  }
+}
+
+/** A coloured dot scattered over the world, so camera movement is visible. */
+class LandmarkEntity extends Entity {
+  setup(params: { x: number; y: number; color: number }): void {
+    const { x, y, color } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
+      new GraphicsComponent({ layer: "world" }).draw((g) => {
+        g.circle(0, 0, 10).fill({ color, alpha: 0.7 });
+      }),
     );
   }
 }
@@ -107,19 +146,6 @@ class WorldScene extends Scene {
       ],
     });
 
-    const player = this.spawn("player");
-    player.add(
-      new Transform({
-        position: new Vec2(WORLD_EXTENT / 2, WORLD_EXTENT / 2),
-      }),
-    );
-    player.add(
-      new GraphicsComponent({ layer: "world" }).draw((g) => {
-        g.poly([0, -16, 12, 12, -12, 12]).fill({ color: 0x22c55e });
-        g.circle(0, 0, 3).fill({ color: 0xffffff });
-      }),
-    );
-
     // HUD — UISurface auto-provisions the "ui" layer as `space: "screen"`,
     // so it stays pinned to top-left as the world scrolls underneath.
     const hud = this.spawn("hud");
@@ -140,7 +166,7 @@ class WorldScene extends Scene {
       fill: 0x6b7280,
     });
 
-    player.add(new PlayerController(cam, status));
+    this.spawn(PlayerEntity, { camera: cam, hudText: status });
   }
 
   private drawSky(): void {
@@ -221,22 +247,16 @@ class WorldScene extends Scene {
       const x = (i * 237.1) % WORLD_EXTENT;
       const y = (i * 341.7) % WORLD_EXTENT;
       const color = [0xff6b6b, 0x4ecdc4, 0xffe66d, 0xa78bfa][i % 4]!;
-      const lm = this.spawn(`lm-${i}`);
-      lm.add(new Transform({ position: new Vec2(x, y) }));
-      lm.add(
-        new GraphicsComponent({ layer: "world" }).draw((g) => {
-          g.circle(0, 0, 10).fill({ color, alpha: 0.7 });
-        }),
-      );
+      this.spawn(LandmarkEntity, { x, y, color });
     }
   }
 }
 
 // ---------------------------------------------------------------------------
 // Pause scene — stacked on top. Has its own CameraEntity and UI.
-// The underlying WorldScene is frozen but its layers retain their last
-// camera transform (this was the "stale transform" bug we fixed — layers
-// now reset to identity only when *no* camera on any scene is binding them).
+// The underlying WorldScene is frozen but its layers keep their last camera
+// transform: layers reset to identity only when *no* camera on any scene is
+// binding them.
 // ---------------------------------------------------------------------------
 class PauseScene extends Scene {
   override readonly pauseBelow = true;
@@ -244,8 +264,8 @@ class PauseScene extends Scene {
   readonly name = "pause";
 
   onEnter(): void {
-    // Identity camera. Lets the debug overlay pick this scene's camera
-    // via `findTopmostCamera` — verifying the topmost-scene fix.
+    // Identity camera. The debug overlay draws with the topmost scene's
+    // camera, so it picks this one while the pause scene is up.
     this.spawn(CameraEntity);
 
     const overlay = this.spawn("pause-overlay");
@@ -261,49 +281,55 @@ class PauseScene extends Scene {
     panel.text("PAUSED", { fontSize: 32, fill: 0xffffff });
     panel.text("Press P to resume", { fontSize: 14, fill: 0x9ca3af });
 
-    const ctrl = this.spawn("pause-ctrl");
-    ctrl.add(new Transform());
-    ctrl.add(new PauseController());
+    this.spawn(PauseControllerEntity);
   }
 }
 
 class PauseController extends Component {
   private readonly input = this.service(InputManagerKey);
+  private readonly scenes = this.service(SceneManagerKey);
 
   update(): void {
     if (this.input.isJustPressed("pause")) {
-      void engine.scenes.pop();
+      void this.scenes.pop();
     }
+  }
+}
+
+class PauseControllerEntity extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(new PauseController());
   }
 }
 
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-const engine = new Engine({ debug: true });
-engine.use(
-  new RendererPlugin({
-    width: WIDTH,
-    height: HEIGHT,
-    backgroundColor: 0x0f172a,
-    container: setupGameContainer(WIDTH, HEIGHT),
-  }),
-);
-engine.use(
-  new InputPlugin({
-    actions: {
-      up: ["KeyW", "ArrowUp"],
-      down: ["KeyS", "ArrowDown"],
-      left: ["KeyA", "ArrowLeft"],
-      right: ["KeyD", "ArrowRight"],
-      shake: ["Space"],
-      pause: ["KeyP"],
-    },
-    preventDefaultKeys: ["Space"],
-  }),
-);
-engine.use(new UIPlugin());
 async function main(): Promise<void> {
+  const engine = new Engine({ debug: true });
+  engine.use(
+    new RendererPlugin({
+      width: WIDTH,
+      height: HEIGHT,
+      backgroundColor: 0x0f172a,
+      container: setupGameContainer(WIDTH, HEIGHT),
+    }),
+  );
+  engine.use(
+    new InputPlugin({
+      actions: {
+        up: ["KeyW", "ArrowUp"],
+        down: ["KeyS", "ArrowDown"],
+        left: ["KeyA", "ArrowLeft"],
+        right: ["KeyD", "ArrowRight"],
+        shake: ["Space"],
+        pause: ["KeyP"],
+      },
+      preventDefaultKeys: ["Space"],
+    }),
+  );
+  engine.use(new UIPlugin());
   await installDebugFromUrl(engine);
   await engine.start();
   await engine.scenes.push(new WorldScene());

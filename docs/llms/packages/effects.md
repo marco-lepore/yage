@@ -87,7 +87,7 @@ Four presets work best at scene scope (or higher) rather than on a single compon
 - `shockwave` — the ring travels between `center` and the host's bounds and is naturally clipped there, so a component-scoped shockwave on a small sprite looks like a tiny "bump" rather than a ring. Scene scope makes `trigger(heroX, heroY)` line up with the entity's transform.
 - `implosion` — inward displacement samples beyond the output pixel. A small component host clips the warped image at its own bounds, while a layer or scene gives the distortion room around its center.
 
-The `examples/src/effects-showcase/scene.ts` demo sets up `godRay`, `bulgePinch`, and `shockwave` at scene scope — copy that as the worked-out reference.
+The `examples/src/effects-showcase/controls.ts` demo sets up `godRay`, `bulgePinch`, and `shockwave` at scene scope — copy that as the worked-out reference.
 
 Scene scope and screen scope also post-process the UI. `@yagejs/ui` mounts its screen-space `"ui"` layer inside the scene's render tree, so `tree.fx.addEffect(...)` (scene scope) and a renderer-level effect (screen scope) both filter the HUD along with the world. Two ways to keep an effect off the HUD:
 
@@ -142,14 +142,14 @@ Pixel-valued options on older presets and `axisBlur` are in **input-texture pixe
 Six presets ship with built-in resolution-stability:
 
 - `bulgePinch` interprets its center and radius in host-local pixels.
-- `shockwave` accepts container-local coords for `trigger(x, y)` AND for every dimensional option, and converts each frame against the filter target's live `worldTransform`. **This is experimental** — don't depend on `shockwave`'s exact unit behavior across versions.
+- `shockwave` accepts container-local coords for `trigger(x, y)` AND for every dimensional option, and converts each frame against the filter target's live `worldTransform`.
 - `glitch` interprets band displacement and RGB offsets in host-local pixels.
 - `zoomBlur` interprets its center and radii in host-local pixels.
 - `implosion` interprets its center and radius in host-local pixels.
   `expandFromCenter: true` grows the affected radius outward as intensity rises.
 - `dissolve` interprets its noise scale in host-local pixels.
 
-If you need resolution-stable visual output today on the other presets, scale your option values by `renderer.canvasSize.width / renderer.virtualSize.width` at the call site.
+For resolution-stable output on the other presets, scale your option values by `renderer.canvasSize.width / renderer.virtualSize.width` at the call site.
 
 ## Per-preset handle extras
 

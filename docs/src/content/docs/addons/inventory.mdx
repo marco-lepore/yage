@@ -59,70 +59,95 @@ the item's initial, so a working inventory needs no art at all.
    An existing host layer keeps its order. A different requested order produces
    one development warning per scene tree, layer name, and requested order.
 
-2. **Define the catalog and the inventory.** Item ids are the map keys and
-   flow through the types — `inventory.add("potino")` is a compile error.
+2. **Define the catalog.** Item ids are the map keys and flow through the
+   types — `items.add("potino")` is a compile error.
 
    ```ts yage-group="quick-start"
-   import { defineItems, Inventory } from "@yagejs-addons/inventory";
+   import { defineItems } from "@yagejs-addons/inventory";
 
    const catalog = defineItems({
      potion: { name: "Potion", maxStack: 5, description: "Heals 25 HP.", category: "consumable" },
      sword: { name: "Iron Sword", category: "gear" },
    });
-
-   const inventory = new Inventory({
-     catalog,
-     capacity: 15, // slots; omit for an unbounded inventory
-     actions: [
-       { id: "use", label: "Use", consumes: true },
-       { id: "drop", label: "Drop" },
-     ],
-   });
    ```
 
-3. **Spawn a host entity and add the controller.** Spread a factory bundle in
-   — the default input binding (keyboard/gamepad **and** mouse/touch, pointer
-   hit-testing included) wires itself to the bundle's presenters.
+3. **Give the inventory to the entity that carries it.** A component on that
+   entity owns the model and applies what the items do. The addon knows
+   *when* "Use" happens; what it *means* is yours. The component listens for
+   `InventoryActionEvent` on its own entity.
+
+   ```ts yage-group="quick-start"
+   import { Component, Entity, Transform, type Vec2 } from "@yagejs/core";
+   import { Inventory, InventoryActionEvent } from "@yagejs-addons/inventory";
+
+   // Your own component and entity type:
+   declare class Health extends Component {
+     heal(amount: number): void;
+   }
+   declare class Pickup extends Entity {
+     setup(params: { itemId: string; position: Vec2 }): void;
+   }
+
+   /** The player's items, and what using or dropping one does. */
+   class Backpack extends Component {
+     readonly items = new Inventory({
+       catalog,
+       capacity: 15, // slots; omit for an unbounded inventory
+       actions: [
+         { id: "use", label: "Use", consumes: true },
+         { id: "drop", label: "Drop" },
+       ],
+     });
+     private readonly transform = this.sibling(Transform);
+     private readonly health = this.sibling(Health); // your own component
+
+     onAdd(): void {
+       this.listen(this.entity, InventoryActionEvent, (e) => {
+         if (e.actionId === "use" && e.itemId === "potion") this.health.heal(25);
+         if (e.actionId === "drop") {
+           // Pickup is your own entity type for an item lying on the ground.
+           this.scene.spawn(Pickup, { itemId: e.itemId, position: this.transform.position });
+         }
+       });
+     }
+   }
+   ```
+
+4. **Add the panel beside it.** Spread a factory bundle into
+   `InventoryController`. The default input binding (keyboard/gamepad **and**
+   mouse/touch, pointer hit-testing included) wires itself to the bundle's
+   presenters. The scene only spawns the player.
 
    ```ts yage-group="quick-start"
    import { Scene } from "@yagejs/core";
    import { InventoryController } from "@yagejs-addons/inventory";
    import { createInventoryPanel } from "@yagejs-addons/inventory/presenters";
 
+   class Player extends Entity {
+     setup(): void {
+       // ...the player's Transform, sprite, Health, and controller
+       const bag = this.add(new Backpack());
+       this.add(
+         new InventoryController({ ...createInventoryPanel(), inventory: bag.items }),
+       );
+     }
+   }
+
    class MyScene extends Scene {
      readonly name = "my-scene";
 
      onEnter() {
-       const bundle = createInventoryPanel();
-       const host = this.spawn("inventory");
-       const controller = host.add(new InventoryController({ ...bundle, inventory }));
+       this.spawn(Player, { key: "player" });
      }
    }
-   ```
-
-4. **Apply consequences in one event handler.** The addon knows *when* "Use"
-   happens; what it *means* is yours.
-
-   ```ts
-   import type { Entity, Vec2 } from "@yagejs/core";
-   import { InventoryActionEvent } from "@yagejs-addons/inventory";
-
-   declare const host: Entity; // the entity holding the InventoryController
-   declare const player: { heal(amount: number): void; readonly position: Vec2 };
-   declare const world: { spawnPickup(itemId: string, at: Vec2): void };
-
-   host.on(InventoryActionEvent, (e) => {
-     if (e.actionId === "use" && e.itemId === "potion") player.heal(25);
-     if (e.actionId === "drop") world.spawnPickup(e.itemId, player.position);
-   });
    ```
 
 </Steps>
 
 Press the `inventory` action (bind a key to it in your `InputPlugin` map) or
-call `controller.toggle()` — the panel opens with cursor navigation, an action
-menu per item, a detail pane, and mouse/touch support already wired. To rename
-the action names, construct the binding yourself:
+call `toggle()` on the `InventoryController` — the panel opens with cursor
+navigation, an action menu per item, a detail pane, and mouse/touch support
+already wired. To rename the action names, construct the binding yourself:
 `input: inventoryControls(bundle, { actions: { ...INVENTORY_ACTIONS, toggle: ["bag"] } })`.
 
 <Aside type="caution">
@@ -164,7 +189,10 @@ import { createInventoryPanel, defaultInventoryTheme } from "@yagejs-addons/inve
 ## The model is always live
 
 The panel is an *observer* of the `Inventory`; game logic goes straight to the
-model. The classic locked-door interaction never touches the UI:
+model. A component reaches it through the entity that carries it:
+`player.get(Backpack).items`, where `player` comes from `scene.findByKey`, a
+query, or the reference `spawn()` returned. The classic locked-door interaction
+never touches the UI:
 
 ```ts
 import type { Inventory } from "@yagejs-addons/inventory";
@@ -662,25 +690,40 @@ model's change events while something is watching it.
 
 ## Saving
 
-`snapshot()` / `restore()` round-trip the whole state as plain JSON. Include
-the inventory data in the game's explicit save root:
+`snapshot()` / `restore()` round-trip the whole state as plain JSON. An
+inventory the game saves, or carries from scene to scene, is part of the game's
+explicit save root. Create that inventory at module level, next to the root,
+instead of inside a component:
 
 ```ts
 import type { Serializable } from "@yagejs/core";
 import { createSave, localStorageAdapter } from "@yagejs/save";
-import type { Inventory, InventorySnapshot } from "@yagejs-addons/inventory";
+import {
+  Inventory,
+  type InventorySnapshot,
+  type ItemActionDef,
+  type ItemCatalog,
+} from "@yagejs-addons/inventory";
 
-declare const inventory: Inventory;
 const save = createSave({ adapter: localStorageAdapter() });
 
-const gameState: Serializable<{ inventory: InventorySnapshot }> = {
-  serialize: () => ({ inventory: inventory.snapshot() }),
-  hydrate: ({ inventory: data }) => inventory.restore(data),
+// The same catalog and actions as in the quick start.
+declare const catalog: ItemCatalog;
+declare const actions: ItemActionDef[];
+export const playerItems = new Inventory({ catalog, capacity: 15, actions });
+
+export const gameState: Serializable<{ inventory: InventorySnapshot }> = {
+  serialize: () => ({ inventory: playerItems.snapshot() }),
+  hydrate: ({ inventory: data }) => playerItems.restore(data),
 };
 
 await save.persist("game", gameState);
 await save.restore("game", gameState);
 ```
+
+The quick start's `Backpack` component then holds that inventory
+(`readonly items = playerItems;`) instead of creating its own, and the rest of
+the setup stays the same.
 
 `restore` drops entries the current catalog doesn't declare or with invalid
 quantities (returned in `{ dropped }`) instead of resurrecting unknown ids after

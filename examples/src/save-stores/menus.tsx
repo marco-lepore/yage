@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Panel,
   Text,
@@ -7,29 +6,35 @@ import {
   PixiProgressBar,
   useStore,
 } from "@yagejs/ui-react";
-import type { SlotInfo } from "@yagejs/save";
 import {
   textStyle,
   nineSliceBtnReact,
+  panelBg,
   sprites as S,
   nineSlice,
 } from "../shared/ui-theme.js";
 import {
   game,
   settings,
-  save,
-  GAME_ID,
-  PANEL_BG,
   SLOT_NAMES,
-  useSlots,
-  formatTime,
-  type RunMeta,
-  type SlotName,
+  collectCoin,
+  nextChapter,
+  recordDeath,
+  stepVolume,
 } from "./stores.js";
+import type { SaveSlots } from "./slots.js";
+import type { MainMenu, PauseMenu, SettingsMenu } from "./scenes.js";
 
 // ---------------------------------------------------------------------------
-// 3. Reusable UI atoms
+// 4. React panels
+//
+// The panels only display state and forward clicks: to the scene's menu
+// component, to SaveSlots, or to the rules in stores.ts.
 // ---------------------------------------------------------------------------
+
+function formatTime(t: number): string {
+  return new Date(t).toLocaleTimeString();
+}
 
 function MenuButton(props: {
   label: string;
@@ -67,14 +72,9 @@ function SmallButton(props: {
   );
 }
 
-export function MainMenuPanel(props: {
-  onStartNew: () => void;
-  onContinue: (slot: SlotInfo<RunMeta>) => void;
-  onDeleteSlot: (slot: SlotInfo<RunMeta>) => Promise<void>;
-  onOpenSettings: () => void;
-}) {
-  const [refreshKey, setRefreshKey] = useState(0);
-  const slots = useSlots(save, GAME_ID, refreshKey);
+export function MainMenuPanel(props: { menu: MainMenu; slots: SaveSlots }) {
+  const { menu } = props;
+  const slots = useStore(props.slots.list);
   const latest = slots[0];
 
   return (
@@ -84,7 +84,7 @@ export function MainMenuPanel(props: {
       padding={20}
       alignItems="center"
       width={400}
-      bg={PANEL_BG}
+      bg={panelBg}
     >
       <Text style={textStyle("title", { fontSize: 26 })}>Save Stores</Text>
       <Text style={textStyle("subtitle")}>An in-game persistence demo</Text>
@@ -96,10 +96,12 @@ export function MainMenuPanel(props: {
               ? `Continue (Ch. ${latest.metadata?.chapter ?? "?"})`
               : "Continue"
           }
-          onClick={() => latest && props.onContinue(latest)}
+          onClick={() => {
+            if (latest) void menu.continueFrom(latest);
+          }}
         />
-        <MenuButton label="New Game" onClick={props.onStartNew} />
-        <MenuButton label="Settings" onClick={props.onOpenSettings} />
+        <MenuButton label="New Game" onClick={() => menu.newGame()} />
+        <MenuButton label="Settings" onClick={() => menu.openSettings()} />
       </Panel>
 
       <Panel direction="column" gap={4} padding={6} alignItems="center">
@@ -124,14 +126,15 @@ export function MainMenuPanel(props: {
                 <SmallButton
                   label="Load"
                   width={56}
-                  onClick={() => props.onContinue(slot)}
+                  onClick={() => {
+                    void menu.continueFrom(slot);
+                  }}
                 />
                 <SmallButton
                   label="Del"
                   width={48}
-                  onClick={async () => {
-                    await props.onDeleteSlot(slot);
-                    setRefreshKey((k) => k + 1);
+                  onClick={() => {
+                    void props.slots.remove(slot);
                   }}
                 />
               </Panel>
@@ -147,7 +150,7 @@ export function GameplayHUD() {
   const run = useStore(game.progression);
   const deathCount = useStore(game.deaths);
   return (
-    <Panel direction="row" gap={12} padding={8} bg={PANEL_BG}>
+    <Panel direction="row" gap={12} padding={8} bg={panelBg}>
       <Text style={textStyle("body")}>{`Ch. ${run.chapter}`}</Text>
       <Text style={textStyle("body", { fill: 0xfacc15 })}>
         {`Coins: ${run.coins}`}
@@ -161,42 +164,17 @@ export function GameplayHUD() {
 
 export function GameplayActions() {
   return (
-    <Panel direction="row" gap={8} padding={10} bg={PANEL_BG}>
-      <SmallButton
-        label="Collect"
-        width={90}
-        onClick={() =>
-          game.progression.set({
-            coins: game.progression.get().coins + 1,
-          })
-        }
-      />
-      <SmallButton
-        label="Next Ch."
-        width={90}
-        onClick={() =>
-          game.progression.set({
-            chapter: game.progression.get().chapter + 1,
-            coins: 0,
-          })
-        }
-      />
-      <SmallButton
-        label="Die"
-        width={70}
-        onClick={() => game.deaths.increment()}
-      />
+    <Panel direction="row" gap={8} padding={10} bg={panelBg}>
+      <SmallButton label="Collect" width={90} onClick={collectCoin} />
+      <SmallButton label="Next Ch." width={90} onClick={nextChapter} />
+      <SmallButton label="Die" width={70} onClick={recordDeath} />
     </Panel>
   );
 }
 
-export function PauseMenuPanel(props: {
-  onResume: () => void;
-  onSave: (slot: SlotName) => Promise<void>;
-  onMainMenu: () => void;
-  refreshKey: number;
-}) {
-  const slots = useSlots(save, GAME_ID, props.refreshKey);
+export function PauseMenuPanel(props: { menu: PauseMenu; slots: SaveSlots }) {
+  const { menu } = props;
+  const slots = useStore(props.slots.list);
   const slotByName = new Map(slots.map((s) => [s.name, s]));
 
   return (
@@ -205,7 +183,7 @@ export function PauseMenuPanel(props: {
       gap={10}
       padding={20}
       alignItems="center"
-      bg={PANEL_BG}
+      bg={panelBg}
     >
       <Text style={textStyle("title", { fontSize: 22 })}>Paused</Text>
 
@@ -223,7 +201,7 @@ export function PauseMenuPanel(props: {
                 label="Save"
                 width={70}
                 onClick={() => {
-                  void props.onSave(name);
+                  void props.slots.saveTo(name);
                 }}
               />
             </Panel>
@@ -232,18 +210,21 @@ export function PauseMenuPanel(props: {
       </Panel>
 
       <Panel direction="column" gap={6} alignItems="center">
-        <MenuButton label="Resume" onClick={props.onResume} />
-        <MenuButton label="Main Menu" onClick={props.onMainMenu} />
+        <MenuButton label="Resume" onClick={() => menu.resume()} />
+        <MenuButton
+          label="Main Menu"
+          onClick={() => {
+            void menu.quitToMenu();
+          }}
+        />
       </Panel>
     </Panel>
   );
 }
 
-function VolumeRow(props: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-}) {
+function VolumeRow(props: { label: string; channel: "music" | "sfx" }) {
+  const { channel } = props;
+  const value = useStore(settings.audio, (audio) => audio.get()[channel]);
   return (
     <Panel direction="row" gap={10} alignItems="center">
       <Text style={textStyle("body", { fontSize: 13 })}>
@@ -253,29 +234,28 @@ function VolumeRow(props: {
         bg={S.sliderTrack}
         fill={S.sliderFillBlue}
         nineSliceSprite={nineSlice.track}
-        value={Math.round(props.value * 100)}
+        value={Math.round(value * 100)}
         width={180}
         height={12}
       />
       <Text style={textStyle("body", { fontSize: 13 })}>
-        {`${Math.round(props.value * 100)}%`}
+        {`${Math.round(value * 100)}%`}
       </Text>
       <SmallButton
         label="-"
         width={36}
-        onClick={() => props.onChange(Math.max(0, props.value - 0.1))}
+        onClick={() => stepVolume(channel, -0.1)}
       />
       <SmallButton
         label="+"
         width={36}
-        onClick={() => props.onChange(Math.min(1, props.value + 0.1))}
+        onClick={() => stepVolume(channel, 0.1)}
       />
     </Panel>
   );
 }
 
-export function SettingsPanel(props: { onBack: () => void }) {
-  const audio = useStore(settings.audio);
+export function SettingsPanel(props: { menu: SettingsMenu }) {
   const vsync = useStore(settings.vsync);
   return (
     <Panel
@@ -283,21 +263,13 @@ export function SettingsPanel(props: { onBack: () => void }) {
       gap={12}
       padding={20}
       alignItems="center"
-      bg={PANEL_BG}
+      bg={panelBg}
     >
       <Text style={textStyle("title", { fontSize: 22 })}>Settings</Text>
       <Text style={textStyle("subtitle")}>Auto-saved on every change</Text>
 
-      <VolumeRow
-        label="Music"
-        value={audio.music}
-        onChange={(v) => settings.audio.set({ music: v })}
-      />
-      <VolumeRow
-        label="SFX  "
-        value={audio.sfx}
-        onChange={(v) => settings.audio.set({ sfx: v })}
-      />
+      <VolumeRow label="Music" channel="music" />
+      <VolumeRow label="SFX  " channel="sfx" />
 
       <Checkbox
         label="VSync"
@@ -306,7 +278,7 @@ export function SettingsPanel(props: { onBack: () => void }) {
         onChange={(v) => settings.vsync.set(v)}
       />
 
-      <MenuButton label="Back" onClick={props.onBack} />
+      <MenuButton label="Back" onClick={() => props.menu.back()} />
     </Panel>
   );
 }

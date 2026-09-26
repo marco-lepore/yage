@@ -54,13 +54,16 @@ controller. The bundle factory and action preset are domain-named
 as colored tiles with the item's initial. Built-in presenters create their
 screen-space layers before drawing, including when mounted independently.
 
-```ts
-import { Scene } from "@yagejs/core";
+The model lives in a component on the entity that carries it (here the
+player); `InventoryController` on the same entity presents it. Consequences
+live in that component, listening on its own entity.
+
+```ts yage-group="setup"
+import { Component, Entity, Scene } from "@yagejs/core";
 import {
   defineItems,
   Inventory,
   InventoryController,
-  inventoryControls,
   InventoryActionEvent,
 } from "@yagejs-addons/inventory";
 import {
@@ -68,31 +71,53 @@ import {
   INVENTORY_LAYERS,
 } from "@yagejs-addons/inventory/presenters";
 
-declare function heal(amount: number): void; // game code
+// game code:
+declare class Health extends Component {
+  heal(amount: number): void;
+}
 
 const catalog = defineItems({
   potion: { name: "Potion", maxStack: 5, description: "Heals 25 HP." },
   sword: { name: "Iron Sword" },
 });
-const inventory = new Inventory({
-  catalog,
-  capacity: 15,
-  actions: [
-    { id: "use", label: "Use", consumes: true },
-    { id: "drop", label: "Drop" },
-  ],
-});
+
+class Backpack extends Component {
+  readonly items = new Inventory({
+    catalog,
+    capacity: 15,
+    actions: [
+      { id: "use", label: "Use", consumes: true },
+      { id: "drop", label: "Drop" },
+    ],
+  });
+  private readonly health = this.sibling(Health); // game's own component
+
+  onAdd(): void {
+    // The controller emits on this entity; the consequence is the game's.
+    this.listen(this.entity, InventoryActionEvent, (e) => {
+      if (e.actionId === "use" && e.itemId === "potion") this.health.heal(25);
+    });
+  }
+}
+
+class Player extends Entity {
+  setup(): void {
+    const bag = this.add(new Backpack());
+    // theme defaults to defaultInventoryTheme()
+    this.add(
+      new InventoryController({
+        ...createInventoryPanel(),
+        inventory: bag.items,
+      }),
+    );
+  }
+}
 
 class MyScene extends Scene {
   readonly name = "my-scene";
   readonly layers = [...INVENTORY_LAYERS]; // optional: declare the default orders explicitly
   onEnter() {
-    const bundle = createInventoryPanel(); // theme defaults to defaultInventoryTheme()
-    const host = this.spawn("inventory");
-    host.add(new InventoryController({ ...bundle, inventory }));
-    host.on(InventoryActionEvent, (e) => {
-      if (e.actionId === "use" && e.itemId === "potion") heal(25); // consequence = game's
-    });
+    this.spawn(Player, { key: "player" }); // onEnter only spawns
   }
 }
 ```
@@ -107,20 +132,24 @@ construct `inventoryControls(bundle, { actions })` yourself only to rename them.
 ## The model is always live
 
 `Inventory` is plain state + operations; the panel is an observer. Game logic
-never goes through the UI:
+never goes through the UI. It reaches the model through the component that
+owns it (`findByKey`, a query, or the `spawn()` reference), panel open or not:
 
-```ts
-import type { Inventory } from "@yagejs-addons/inventory";
-
-declare const inventory: Inventory;
-declare const keyItems: Inventory;
+```ts yage-group="setup"
 declare function openDoor(): void; // game code
 
-inventory.add("potion", 3); // pickup — full/partial/rejected result
-if (keyItems.has("goldKey")) {
-  // door check, UI closed
-  keyItems.remove("goldKey", 1);
-  openDoor();
+// In any component (a pickup, a door), panel open or closed:
+class WorldObject extends Component {
+  interact(): void {
+    const items = this.scene.findByKey("player")?.get(Backpack).items;
+    if (!items) return;
+    items.add("potion", 3); // pickup — full/partial/rejected result
+    if (items.has("sword")) {
+      // gate check, UI closed
+      items.remove("sword", 1);
+      openDoor();
+    }
+  }
 }
 ```
 
@@ -673,22 +702,33 @@ diff), so a controller backed by a filtered view emits `InventoryChangedEvent`
 with empty `slots`. The view only subscribes to the model while at least one
 listener is attached, so pre-built, currently-inactive tab views cost nothing.
 
-## Save seam
+## Saving
 
-`snapshot()` / `restore()` round-trip the whole state as JSON. Include the
-inventory data in the game's explicit save root:
+`snapshot()` / `restore()` round-trip the whole state as JSON. An inventory the
+game saves, or carries between scenes, is part of the game's explicit save
+root. That is the one case where the `Inventory` is created at module level,
+next to the root. The component then holds it (`readonly items = playerItems;`)
+instead of creating its own:
 
 ```ts
 import type { Serializable } from "@yagejs/core";
 import { createSave, localStorageAdapter } from "@yagejs/save";
-import type { Inventory, InventorySnapshot } from "@yagejs-addons/inventory";
+import {
+  Inventory,
+  type InventorySnapshot,
+  type ItemActionDef,
+  type ItemCatalog,
+} from "@yagejs-addons/inventory";
 
-declare const inventory: Inventory;
+declare const catalog: ItemCatalog; // from defineItems(...)
+declare const actions: ItemActionDef[];
 const save = createSave({ adapter: localStorageAdapter() });
 
+export const playerItems = new Inventory({ catalog, capacity: 15, actions });
+
 const gameState: Serializable<{ inventory: InventorySnapshot }> = {
-  serialize: () => ({ inventory: inventory.snapshot() }),
-  hydrate: ({ inventory: data }) => inventory.restore(data),
+  serialize: () => ({ inventory: playerItems.snapshot() }),
+  hydrate: ({ inventory: data }) => playerItems.restore(data),
 };
 
 await save.persist("game", gameState);

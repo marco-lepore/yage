@@ -36,7 +36,7 @@ The bound action names must exist in your `InputPlugin` action map — the
 overlay drives existing actions (unknown names warn and are skipped):
 
 ```ts yage-context="engine"
-import { Scene } from "@yagejs/core";
+import { Entity, Scene } from "@yagejs/core";
 import { InputPlugin } from "@yagejs/input";
 import { VirtualControls } from "@yagejs-addons/virtual-controls";
 import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
@@ -54,11 +54,10 @@ engine.use(
   }),
 );
 
-class GameScene extends Scene {
-  readonly name = "game";
-
-  onEnter() {
-    this.spawn("touch-controls").add(
+/** The on-screen joystick and buttons. They press the actions above. */
+class TouchControls extends Entity {
+  setup(): void {
+    this.add(
       new VirtualControls({
         stick: { actions: ["left", "right", "up", "down"] }, // L/R/U/D order
         buttons: [
@@ -70,10 +69,23 @@ class GameScene extends Scene {
     );
   }
 }
+
+class GameScene extends Scene {
+  readonly name = "game";
+
+  onEnter() {
+    this.spawn(TouchControls);
+  }
+}
 ```
 
 The overlay appears on touch-first devices and stays hidden on desktops; pass
 `visible: true | false` or call `setVisible()` to decide yourself.
+
+Gameplay components read the same actions they read from a keyboard, so they
+need no change. To react to a button itself (a haptic buzz, a tutorial step),
+listen for `VirtualButtonPressEvent` from a component with
+`this.listenScene(VirtualButtonPressEvent, ({ id }) => …)`.
 
 Docs: [yage.dev/addons/virtual-controls](https://yage.dev/addons/virtual-controls)
 — runnable demo in the repo's `examples/virtual-controls.html`.

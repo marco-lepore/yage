@@ -362,7 +362,7 @@ this automatically through its normal render update.
 
 Add text to a panel with the builder API:
 
-```typescript yage-group="panel" yage-context="entity,engine"
+```typescript yage-group="panel" yage-context="entity,scene-enter"
 import { UISurface } from "@yagejs/ui";
 
 const panel = entity.get(UISurface);
@@ -378,6 +378,10 @@ label.setText("Score: 100");
 label.setStyle({ fill: 0x00ff00 });
 ```
 
+A label only shows a value. The score itself lives in a component on a host
+entity, which calls `setText` when the score changes. See
+[State Management](/patterns/state-management/#game-state-on-a-host-entity).
+
 ### Wrapping and truncation
 
 Without `truncate`, a text wraps to the width it is given, either by its
@@ -392,7 +396,7 @@ string `"ellipsis"` appends. The default `"…"` is a single character (U+2026)
 that not every pixel font includes, so pass `"..."` for a font without it. A
 button passes `truncate` and `truncateWith` on to its label.
 
-```typescript yage-group="panel" yage-context="entity,engine"
+```typescript yage-group="panel" yage-context="entity,scene-enter"
 // The third argument carries the rest of the UIText props.
 panel.text(
   "Sword of the Northern Kings",
@@ -426,7 +430,7 @@ new UIText({ children: "HUD", resolution: window.devicePixelRatio });
 
 The `.text()` builder takes both props in its third argument:
 
-```typescript yage-group="panel" yage-context="entity,engine"
+```typescript yage-group="panel" yage-context="entity,scene-enter"
 panel.text("SCORE", { fontFamily: "PressStart", fontSize: 16 }, { bitmap: true });
 ```
 
@@ -495,8 +499,11 @@ change, so keep static and simple dynamic labels on `UIText`.
 
 ## Buttons
 
-```typescript yage-group="panel" yage-context="entity,engine"
-import { Scene } from "@yagejs/core";
+Buttons usually live in a scene's `onEnter` or in a component, where `this`
+can resolve engine services such as `SceneManagerKey`:
+
+```typescript yage-group="panel" yage-context="entity,scene-enter"
+import { Scene, SceneManagerKey } from "@yagejs/core";
 
 class GameScene extends Scene {
   readonly name = "game";
@@ -510,7 +517,7 @@ const btn = panel.button("Start Game", {
   pressBackground: { color: 0x333388, radius: 6 },
   textStyle: { fontSize: 18, fill: 0xffffff },
   onClick: () => {
-    engine.scenes.push(new GameScene());
+    void this.use(SceneManagerKey).push(new GameScene());
   },
 });
 
@@ -546,7 +553,7 @@ For a fixed-size button whose label might be longer than the box — especially
 with variable-length (i18n) strings — pass `truncate: "clip" | "ellipsis"` to
 keep the label on a single line so it can't spill past the frame:
 
-```typescript yage-group="panel" yage-context="entity,engine"
+```typescript yage-group="panel" yage-context="entity,scene-enter"
 panel.button("A label that is too long to fit", {
   width: 120,
   truncate: "ellipsis", // → "A label that is…"
@@ -566,7 +573,7 @@ stacks its children in a column and centres them on both axes, so an icon
 beside a label needs `direction: "row"`. `gap`, `padding`, `alignItems` and
 `justifyContent` work the same way they do on a panel:
 
-```typescript yage-group="panel" yage-context="entity,engine"
+```typescript yage-group="panel" yage-context="entity,scene-enter"
 import { UIImage } from "@yagejs/ui";
 
 const saveBtn = panel.button("Save", {
@@ -581,7 +588,7 @@ saveBtn.addElement(new UIImage({ texture: "save-icon", width: 16, height: 16 }))
 
 Use a texture background for scalable button artwork:
 
-```typescript yage-group="panel" yage-context="entity,engine"
+```typescript yage-group="panel" yage-context="entity,scene-enter"
 panel.button("Play", {
   width: 180,
   height: 48,
@@ -614,7 +621,7 @@ import { UIImage, UIProgressBar, UICheckbox } from "@yagejs/ui";
 
 ### Images
 
-```typescript yage-group="panel" yage-context="entity,engine"
+```typescript yage-group="panel" yage-context="entity,scene-enter"
 const img = new UIImage({
   texture: "save-icon",
   width: 32,
@@ -634,7 +641,7 @@ Set one of `width` / `height` and the other follows the texture's aspect ratio,
 so a fixed-height card keeps the picture's proportions. Set both and the texture
 stretches to that box:
 
-```typescript yage-group="panel" yage-context="entity,engine"
+```typescript yage-group="panel" yage-context="entity,scene-enter"
 // 58 px tall, as wide as the picture needs.
 panel.addElement(new UIImage({ texture: "card-art", height: 58 }));
 
@@ -656,7 +663,7 @@ together: a 100 x 50 texture at `height: 50, maxWidth: 40` renders 40 x 20.
 
 ### Progress Bars
 
-```typescript yage-group="panel" yage-context="entity,engine"
+```typescript yage-group="panel" yage-context="entity,scene-enter"
 import { UIProgressBar } from "@yagejs/ui";
 
 const bar = new UIProgressBar({
@@ -680,7 +687,7 @@ The bar clamps a value to 0–1, so `value` reads back `1` after
 
 ### Checkboxes
 
-```typescript yage-group="panel" yage-context="entity,engine"
+```typescript yage-group="panel" yage-context="entity,scene-enter"
 import { UICheckbox } from "@yagejs/ui";
 
 const cb = new UICheckbox({
@@ -1145,7 +1152,7 @@ panel.visible = true;   // show
 
 Child elements also support visibility:
 
-```typescript yage-group="panel" yage-context="entity,engine"
+```typescript yage-group="panel" yage-context="entity,scene-enter"
 label.visible = false;
 btn.visible = true;
 ```
@@ -1157,7 +1164,7 @@ shared `LayoutProps`. Use them to lift an element out of its parent's flex
 flow and pin it against the parent's content box — handy for overlays,
 badges, and HUD markers.
 
-```typescript yage-group="panel" yage-context="entity,engine"
+```typescript yage-group="panel" yage-context="entity,scene-enter"
 // Pin a notification badge to the top-right of its parent.
 const badge = panel.panel({
   position: "absolute",

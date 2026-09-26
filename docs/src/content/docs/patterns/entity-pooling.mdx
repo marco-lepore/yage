@@ -18,12 +18,12 @@ pooled and spawn-and-destroy — with live counters, so you can see what changes
 
 A pooled class looks like any other entity subclass, plus one required hook:
 
-```typescript yage-group="bullets" yage-file="bullet.ts"
-import { Entity, EntityPool, Scene, Transform, Vec2 } from "@yagejs/core";
+```typescript yage-group="bullets" yage-context="component"
+import { Component, Entity, EntityPool, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
-export class Bullet extends Entity {
+class Bullet extends Entity {
   damage = 1;
 
   setup() {
@@ -52,16 +52,17 @@ every acquisition, and it is where the entity returns to a known state.
 
 ## Creating the pool
 
-Create pools in `onEnter()`, so the members' components can resolve the scene's
-services — the physics world and the render tree are registered by then.
+The component that fires the bullets creates the pool in its `onAdd()` and
+keeps it in a field. By then the scene's services are registered, including
+the physics world and the render tree, so the members' components can resolve
+them.
 
-```typescript yage-group="bullets" yage-file="bullet.ts"
-class ArenaScene extends Scene {
-  readonly name = "arena";
+```typescript yage-group="bullets" yage-context="component"
+class Gun extends Component {
   private bullets!: EntityPool<Bullet>;
 
-  onEnter() {
-    this.bullets = new EntityPool(this, Bullet, { prewarm: 32 });
+  onAdd() {
+    this.bullets = new EntityPool(this.scene, Bullet, { prewarm: 32 });
   }
 }
 ```
@@ -72,7 +73,7 @@ constructor and `setup()`, not `onAcquire` — prewarming is not an acquisition.
 If the entity's `setup()` takes parameters, pass them as `setup` and the
 constructor demands them, the same way `scene.spawn` does:
 
-```typescript yage-group="sparks" yage-context="scene-enter"
+```typescript yage-group="sparks" yage-context="component"
 import { Entity, EntityPool, Transform } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 
@@ -94,23 +95,17 @@ class Spark extends Entity {
   }
 }
 
-new EntityPool(this, Spark, { setup: { color: 0x38bdf8 }, prewarm: 16 });
+new EntityPool(this.scene, Spark, { setup: { color: 0x38bdf8 }, prewarm: 16 });
 ```
 
 ## Firing and recycling
 
-```typescript yage-group="bullets" yage-file="fire.ts" yage-context="scene-enter"
-import { EntityPool, Vec2 } from "@yagejs/core";
-import { Bullet } from "./bullet.js";
+Inside `Gun`:
 
-const bullets = new EntityPool(this, Bullet, { prewarm: 32 });
-const muzzleX = 320;
-const muzzleY = 400;
-const aimDir = Vec2.UP;
-
-const bullet = bullets.acquire(muzzleX, muzzleY, aimDir, 1);
+```typescript yage-check="syntax" yage-reason="Statements from inside a method of the Gun component above. They reach that Gun's private bullets pool through this, and no checker context can make this a Gun."
+const bullet = this.bullets.acquire(muzzleX, muzzleY, aimDir, 1);
 // ...on impact or when it leaves the screen
-bullets.release(bullet);
+this.bullets.release(bullet);
 ```
 
 `acquire`'s arguments are the entity's own `onAcquire` parameters, so the
@@ -129,15 +124,12 @@ By default the pool is elastic: it grows whenever every member is out, and
 Pass `maxSize` to bound the total number of members. A saturated `acquire`
 then returns `undefined`, and the return type says so:
 
-```typescript yage-group="bullets" yage-file="capped.ts" yage-context="scene-enter"
-import { EntityPool, Vec2 } from "@yagejs/core";
-import { Bullet } from "./bullet.js";
-
+```typescript yage-group="bullets" yage-context="component"
 const x = 320;
 const y = 400;
 const dir = Vec2.UP;
 
-const bullets = new EntityPool(this, Bullet, { maxSize: 64 });
+const bullets = new EntityPool(this.scene, Bullet, { maxSize: 64 });
 
 const bullet = bullets.acquire(x, y, dir, 1);
 if (!bullet) return;                       // 64 already in flight
@@ -148,11 +140,11 @@ one: the lowest-priority member in flight is released and handed straight back,
 running `onRelease` and then `onAcquire` in the same call. The default victim
 is the member acquired longest ago; `reclaimPriority` picks another:
 
-```typescript yage-group="sparks" yage-context="scene-enter"
+```typescript yage-group="sparks" yage-context="component"
 const x = 320;
 const y = 240;
 
-const sparks = new EntityPool(this, Spark, {
+const sparks = new EntityPool(this.scene, Spark, {
   setup: { color: 0x38bdf8 },
   maxSize: 200,
   reclaimPriority: (spark) => spark.remainingLife,  // steal the faintest

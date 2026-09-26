@@ -26,8 +26,12 @@ reused.
 
 ## Quick start
 
-```ts
-import { Scene } from "@yagejs/core";
+The inventory belongs to the entity that carries it. A component on the player
+owns the model and applies what the items do; the `InventoryController` beside
+it draws the panel.
+
+```ts yage-group="quick-start"
+import { Component, Entity, Scene } from "@yagejs/core";
 import {
   defineItems,
   instanceData,
@@ -41,9 +45,9 @@ import {
 } from "@yagejs-addons/inventory/presenters";
 
 // Game code the example calls:
-declare function healPlayer(hp: number): void;
-declare function equip(): void;
-declare function openDoor(): void;
+declare class Health extends Component {
+  heal(amount: number): void;
+}
 
 const catalog = defineItems({
   potion: { name: "Potion", maxStack: 5, description: "Heals 20 HP." },
@@ -51,41 +55,70 @@ const catalog = defineItems({
   key: { name: "Gold Key", instance: instanceData<{ opens: string }>() },
 });
 
-const inventory = new Inventory({
-  catalog,
-  capacity: 15,
-  actions: [
-    { id: "use", label: "Use", consumes: true },
-    { id: "drop", label: "Drop" },
-  ],
-});
+/** The player's items, and what using one does. */
+class Backpack extends Component {
+  readonly items = new Inventory({
+    catalog,
+    capacity: 15,
+    actions: [
+      { id: "use", label: "Use", consumes: true },
+      { id: "drop", label: "Drop" },
+    ],
+  });
+  private readonly health = this.sibling(Health); // the player's own component
 
-class MyScene extends Scene {
-  readonly name = "my-scene";
-  readonly layers = [...INVENTORY_LAYERS];
-  onEnter() {
-    const bundle = createInventoryPanel(); // zero-asset default theme
-    const host = this.spawn("inventory");
-    // Default input = keyboard/gamepad + mouse/touch, already wired.
-    const controller = host.add(
-      new InventoryController({ ...bundle, inventory }),
-    );
-    host.on(InventoryActionEvent, (e) => {
-      if (e.actionId === "use" && e.itemId === "potion") healPlayer(20);
+  onAdd(): void {
+    // The controller emits the action on this entity; its meaning is the game's.
+    this.listen(this.entity, InventoryActionEvent, (e) => {
+      if (e.actionId === "use" && e.itemId === "potion") this.health.heal(20);
     });
   }
 }
 
-// Anywhere in game logic — UI open or not:
-inventory.add("potion", 3);
-if (inventory.has("sword")) equip();
+class Player extends Entity {
+  setup(): void {
+    // ...the player's Transform, sprite, Health, and controller
+    const bag = this.add(new Backpack());
+    // Default input = keyboard/gamepad + mouse/touch, already wired.
+    this.add(
+      new InventoryController({
+        ...createInventoryPanel(), // zero-asset default theme
+        inventory: bag.items,
+      }),
+    );
+  }
+}
+
+class TownScene extends Scene {
+  readonly name = "town";
+  readonly layers = [...INVENTORY_LAYERS];
+
+  onEnter() {
+    this.spawn(Player, { key: "player" });
+  }
+}
+```
+
+Game code reaches the model through the component, with the panel open or
+closed. A pickup or a door component finds the player with
+`this.scene.findByKey("player")`, a query, or the reference `spawn()` returned:
+
+```ts yage-group="quick-start"
+declare const player: Entity; // from findByKey("player"), a query, or spawn()
+// Game code the example calls:
+declare function equip(): void;
+declare function openDoor(): void;
+
+const items = player.get(Backpack).items;
+items.add("potion", 3);
+if (items.has("sword")) equip();
 
 // Per-instance items (durability, rolled stats) carry a `data` payload.
 // Query or grab them by a data predicate, then act on the exact stack:
-inventory.add("key", 1, { data: { opens: "boss-lair" } });
-const bossKey = inventory.find("key", (d) => d.opens === "boss-lair");
+items.add("key", 1, { data: { opens: "boss-lair" } });
+const bossKey = items.find("key", (d) => d.opens === "boss-lair");
 if (bossKey) {
-  inventory.remove(bossKey); // returns { removed, stacks } — the payload comes back
+  items.remove(bossKey); // returns { removed, stacks } — the payload comes back
   openDoor();
 }
 ```
@@ -98,13 +131,20 @@ to `add` on it is a compile error too. To keep the permissive
 `Record<string, unknown>` instead, type the inventory by id only
 (`new Inventory<ItemId>(…)`) or leave the catalog untyped.
 
-Press the `inventory` action (or call `controller.toggle()`) to open the panel.
+Press the `inventory` action (or call `toggle()` on the `InventoryController`) to
+open the panel.
 
-The model is always live — pickups, quest checks (`inventory.has("goldKey")`),
-and removals work with the panel closed. Embedding in an existing menu is
+The model is always live — pickups, quest checks (`items.has("key")`), and
+removals work with the panel closed. Embedding in an existing menu is
 configuration, not a different API: `chrome: false` + `bounds` on the factory,
 `input: null` + `closeOnCancel: false` on the controller, then drive
 `open`/`move`/`confirm` from your menu's focus handling.
+
+This inventory lives as long as the player entity. An inventory the game saves,
+or carries from scene to scene, is part of the game's save root instead: create
+it at module level next to that root, and hand it to the component instead of
+creating one there. `snapshot()` and `restore()` give the root the whole state
+as JSON.
 
 Full docs: [yage.dev](https://yage.dev) → Addons → Inventory.
 

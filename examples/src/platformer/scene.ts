@@ -2,29 +2,21 @@ import { Scene, Transform, Vec2 } from "@yagejs/core";
 import {
   GraphicsComponent,
   CameraEntity,
-  TextComponent,
   type LayerDef,
 } from "@yagejs/renderer";
-import { RigidBodyComponent } from "@yagejs/physics";
 import { AudioManagerKey } from "@yagejs/audio";
 import {
-  WIDTH,
-  HEIGHT,
   WORLD_W,
   WORLD_H,
   HUD_LAYER,
-  SPAWN,
   JumpSfx,
   LandSfx,
   CoinSfx,
   HurtSfx,
   WinSfx,
   BgMusic,
-  CoinCollected,
-  PlayerDied,
-  GoalReached,
 } from "./constants.js";
-import { bindHud, resetGame, addCoin, showWin } from "./hud.js";
+import { HudEntity, HUD_KEY } from "./hud.js";
 import { PlayerEntity } from "./player.js";
 import {
   PlatformEntity,
@@ -51,84 +43,15 @@ export class PlatformerScene extends Scene {
 
   private readonly audio = this.service(AudioManagerKey);
 
+  // The scene only assembles the level. Rules live in components: the
+  // player respawns and stops itself, and the HUD entity keeps the score.
   onEnter(): void {
-    // In-canvas HUD (screen-space): coin counter + centered win banner.
-    const coinEntity = this.spawn("hud");
-    coinEntity.add(new Transform({ position: new Vec2(WIDTH - 16, 16) }));
-    const coinText = coinEntity.add(
-      new TextComponent({
-        text: "",
-        anchor: { x: 1, y: 0 },
-        style: { fontFamily: "monospace", fontSize: 20, fill: 0xffe66d },
-        layer: HUD_LAYER,
-      }),
-    );
-
-    const banner = this.spawn("win-banner");
-    banner.add(
-      new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 - 12) }),
-    );
-    const bannerText = banner.add(
-      new TextComponent({
-        text: "You Win!",
-        anchor: { x: 0.5, y: 0.5 },
-        style: {
-          fontFamily: "system-ui, sans-serif",
-          fontSize: 32,
-          fill: 0x22c55e,
-          fontWeight: "bold",
-        },
-        layer: HUD_LAYER,
-        visible: false,
-      }),
-    );
-
-    const bannerSubEntity = this.spawn("win-banner-sub");
-    bannerSubEntity.add(
-      new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 + 22) }),
-    );
-    const bannerSub = bannerSubEntity.add(
-      new TextComponent({
-        text: "",
-        anchor: { x: 0.5, y: 0.5 },
-        style: {
-          fontFamily: "system-ui, sans-serif",
-          fontSize: 14,
-          fill: 0xffe66d,
-        },
-        layer: HUD_LAYER,
-        visible: false,
-      }),
-    );
-
-    bindHud(coinText, bannerText, bannerSub);
-    resetGame();
-
+    this.spawn(HudEntity, { key: HUD_KEY });
     const cam = this.spawn(CameraEntity);
-
-    // Background music
-    this.audio.play(BgMusic.path, { channel: "music", loop: true });
-
-    // Scene-level event listeners
-    this.on(CoinCollected, () => {
-      addCoin();
-      this.audio.play(CoinSfx.path, { channel: "sfx" });
-    });
+    this.audio.play(BgMusic, { channel: "music", loop: true });
     this.drawBackground();
     this.buildLevel();
-    const player = this.spawn(PlayerEntity, { camera: cam });
-
-    this.on(PlayerDied, () => {
-      this.audio.play(HurtSfx.path, { channel: "sfx" });
-      const rb = player.get(RigidBodyComponent);
-      rb.setVelocity(Vec2.ZERO);
-      rb.setPosition(SPAWN.x, SPAWN.y);
-      player.get(Transform).setPosition(SPAWN.x, SPAWN.y);
-    });
-    this.on(GoalReached, () => {
-      this.audio.play(WinSfx.path, { channel: "sfx" });
-      showWin();
-    });
+    this.spawn(PlayerEntity, { camera: cam });
   }
 
   // -- Background grid --

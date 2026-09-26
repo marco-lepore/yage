@@ -1,4 +1,12 @@
-import { Engine, Scene, Transform, Vec2, Component } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Transform,
+  Vec2,
+  Component,
+  Entity,
+  RandomKey,
+} from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
@@ -8,7 +16,6 @@ import {
 } from "../shared/bootstrap.js";
 import {
   textStyle,
-  loadFonts,
   allAssets,
   nineSliceBtn,
   panelBg,
@@ -21,10 +28,29 @@ const HEIGHT = 600;
 // Spinning background shapes (so we can see UI layers float above the world)
 // ---------------------------------------------------------------------------
 class Spinner extends Component {
-  private readonly speed = 0.3 + Math.random() * 0.7;
+  private speed = 0;
+
+  onAdd(): void {
+    this.speed = this.use(RandomKey).range(0.3, 1);
+  }
+
   update(dt: number): void {
     const t = this.entity.get(Transform);
     t.rotation += this.speed * dt;
+  }
+}
+
+class BackgroundShapeEntity extends Entity {
+  setup(params: { x: number; color: number }): void {
+    const { x, color } = params;
+    this.add(new Transform({ position: new Vec2(x, HEIGHT / 2) }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.rect(-40, -40, 80, 80).fill({ color, alpha: 0.5 });
+        g.rect(-40, -40, 80, 80).stroke({ color: 0x555555, width: 1 });
+      }),
+    );
+    this.add(new Spinner());
   }
 }
 
@@ -43,17 +69,8 @@ class UILayersScene extends Scene {
   onEnter(): void {
     // Background shapes
     const shapes = [0x1e3a5f, 0x3b1f5c, 0x1f3b2f, 0x5c3b1f];
-    for (let i = 0; i < shapes.length; i++) {
-      const e = this.spawn(`bg-${i}`);
-      const x = 150 + i * 170;
-      e.add(new Transform({ position: new Vec2(x, HEIGHT / 2) }));
-      e.add(
-        new GraphicsComponent().draw((g) => {
-          g.rect(-40, -40, 80, 80).fill({ color: shapes[i]!, alpha: 0.5 });
-          g.rect(-40, -40, 80, 80).stroke({ color: 0x555555, width: 1 });
-        }),
-      );
-      e.add(new Spinner());
+    for (const [i, color] of shapes.entries()) {
+      this.spawn(BackgroundShapeEntity, { x: 150 + i * 170, color });
     }
 
     // ---- HUD layer (always visible) ----
@@ -204,7 +221,6 @@ async function main() {
   engine.use(new UIPlugin());
   await installDebugFromUrl(engine);
 
-  await loadFonts();
   await engine.start();
   await engine.scenes.push(new UILayersScene());
 }
