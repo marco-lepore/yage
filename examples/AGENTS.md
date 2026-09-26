@@ -98,6 +98,9 @@ A small example can keep everything in `main.ts`, in the same order.
   returns a `RandomService` (`float()`, `range(min, max)`, `int(min, max)`,
   `pick(arr)`, `shuffle(arr)`). The `?test` harness seeds it, so e2e runs are
   reproducible.
+- When a layout must be the same on every load, such as a demo that compares
+  settings on one crowd, create a fixed-seed generator in the scene with
+  `createRandomService(seed)`, as `src/lighting/` does.
 
 ### Rendering and assets
 

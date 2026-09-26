@@ -1,5 +1,12 @@
-import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
-import type { Entity } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Component,
+  Entity,
+  Transform,
+  Vec2,
+  defineEvent,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   RendererKey,
@@ -59,6 +66,12 @@ const DEMO_ORDER: DemoName[] = [
   "texture",
 ];
 
+/** The demo playing when the page opens. */
+const INITIAL_DEMO: DemoName = "fire";
+
+/** Emitted on the selector when a key picks a different demo. */
+const DemoSelected = defineEvent<{ demo: DemoName }>("particles:demo-selected");
+
 const DEMO_ACTIONS: Record<string, DemoName> = {
   demo_fire: "fire",
   demo_smoke: "smoke",
@@ -113,18 +126,12 @@ const DEMO_CONFIGS: Record<DemoName, (tex: TextureResource) => EmitterConfig> =
   };
 
 // ---------------------------------------------------------------------------
-// ParticleController — follows mouse, hold to emit, space to burst,
-//                      1-4 keys to switch presets
+// Emitter — follows the mouse, hold to emit, space to burst
 // ---------------------------------------------------------------------------
 class ParticleController extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly transform = this.sibling(Transform);
   private readonly emitter = this.sibling(ParticleEmitterComponent);
-  private particlesScene!: ParticlesScene;
-
-  onAdd(): void {
-    this.particlesScene = this.scene as ParticlesScene;
-  }
 
   update(): void {
     const pos = this.input.getPointerPosition();
@@ -143,19 +150,74 @@ class ParticleController extends Component {
     if (this.input.isJustPressed("burst")) {
       emitter.burst(30, pos.x, pos.y);
     }
+  }
+}
 
-    // 1-0 / T → switch demo
-    for (const [action, demo] of Object.entries(DEMO_ACTIONS)) {
-      if (this.input.isJustPressed(action)) {
-        this.particlesScene.switchDemo(demo);
-        break;
-      }
-    }
+class EmitterEntity extends Entity {
+  setup(params: { config: EmitterConfig }): void {
+    this.add(new Transform({ position: new Vec2(400, 300) }));
+    this.add(new ParticleEmitterComponent(params.config));
+    this.add(new ParticleController());
   }
 }
 
 // ---------------------------------------------------------------------------
-// Scene
+// Demo selection — 1-0 and T switch the demo
+// ---------------------------------------------------------------------------
+
+/**
+ * Holds the demo that is playing. Switching destroys the emitter and spawns
+ * a new one from the chosen demo's config.
+ */
+class DemoSelector extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private current: DemoName = INITIAL_DEMO;
+  private texture!: TextureResource;
+  private emitter!: EmitterEntity;
+
+  onAdd(): void {
+    // Only the "texture" demo needs this — every other demo uses a built-in
+    // shape and loads nothing. The selector outlives every emitter it
+    // spawns, so it releases the texture.
+    const texture = this.use(RendererKey).createTexture((g) => {
+      g.circle(0, 0, 8).fill({ color: 0xffffff });
+    });
+    this.texture = texture;
+    this.addCleanup(() => texture.destroy());
+
+    this.emitter = this.scene.spawn(EmitterEntity, {
+      config: DEMO_CONFIGS[this.current](this.texture),
+    });
+  }
+
+  update(): void {
+    for (const [action, demo] of Object.entries(DEMO_ACTIONS)) {
+      if (this.input.isJustPressed(action)) {
+        this.select(demo);
+        break;
+      }
+    }
+  }
+
+  private select(demo: DemoName): void {
+    if (demo === this.current) return;
+    this.current = demo;
+    this.emitter.destroy();
+    this.emitter = this.scene.spawn(EmitterEntity, {
+      config: DEMO_CONFIGS[demo](this.texture),
+    });
+    this.entity.emit(DemoSelected, { demo });
+  }
+}
+
+class DemoSelectorEntity extends Entity {
+  setup(): void {
+    this.add(new DemoSelector());
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Demo bar — one dot per demo at the bottom of the screen
 // ---------------------------------------------------------------------------
 const DEMO_COLORS: Record<DemoName, number> = {
   fire: 0xff6600,
@@ -171,33 +233,58 @@ const DEMO_COLORS: Record<DemoName, number> = {
   texture: 0xffaa66,
 };
 
-class ParticlesScene extends Scene {
-  readonly name = "particles";
+/** Draws its demo's dot, large and ringed while that demo is playing. */
+class DemoDot extends Component {
+  private readonly graphics = this.sibling(GraphicsComponent);
 
-  private particleTex!: TextureResource;
-  currentDemo: DemoName = "fire";
-  private emitterEntity!: Entity;
-  private demoIndicators = new Map<DemoName, GraphicsComponent>();
+  constructor(private readonly demo: DemoName) {
+    super();
+  }
 
-  onEnter(): void {
-    const cam = this.spawn(CameraEntity, { position: new Vec2(400, 300) });
-    const input = this.context.resolve(InputManagerKey);
-    input.setCamera(cam);
+  onAdd(): void {
+    this.draw(this.demo === INITIAL_DEMO);
+    this.listenScene(DemoSelected, ({ demo }) => this.draw(demo === this.demo));
+  }
 
-    // Only the "texture" demo needs this — every other demo uses a built-in
-    // shape and loads nothing.
-    const renderer = this.context.resolve(RendererKey);
-    this.particleTex = renderer.createTexture((g) => {
-      g.circle(0, 0, 8).fill({ color: 0xffffff });
+  private draw(active: boolean): void {
+    const color = DEMO_COLORS[this.demo];
+    this.graphics.draw((g) => {
+      g.clear();
+      if (active) {
+        g.circle(0, 0, 8).fill({ color });
+        g.circle(0, 0, 11).stroke({ color: 0xffffff, width: 1, alpha: 0.6 });
+      } else {
+        g.circle(0, 0, 6).fill({ color, alpha: 0.3 });
+      }
     });
+  }
+}
 
-    // Spawn emitter entity
-    this.emitterEntity = this.spawnEmitter(this.currentDemo);
+class DemoDotEntity extends Entity {
+  setup(params: { demo: DemoName; x: number }): void {
+    this.add(new Transform({ position: new Vec2(params.x, 570) }));
+    this.add(new GraphicsComponent());
+    this.add(new DemoDot(params.demo));
+  }
+}
 
-    // Crosshair at cursor
-    const crosshair = this.spawn("crosshair");
-    crosshair.add(new Transform());
-    crosshair.add(
+// ---------------------------------------------------------------------------
+// Crosshair — tracks the mouse
+// ---------------------------------------------------------------------------
+class CrosshairFollow extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly transform = this.sibling(Transform);
+
+  update(): void {
+    const pos = this.input.getPointerPosition();
+    this.transform.setPosition(pos.x, pos.y);
+  }
+}
+
+class CrosshairEntity extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(
       new GraphicsComponent().draw((g) => {
         g.circle(0, 0, 6).stroke({ color: 0xffffff, width: 1, alpha: 0.4 });
         g.moveTo(-10, 0)
@@ -208,89 +295,35 @@ class ParticlesScene extends Scene {
           .stroke({ color: 0xffffff, width: 1, alpha: 0.25 });
       }),
     );
-    crosshair.add(new CrosshairFollow());
+    this.add(new CrosshairFollow());
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scene
+// ---------------------------------------------------------------------------
+class ParticlesScene extends Scene {
+  readonly name = "particles";
+
+  onEnter(): void {
+    const cam = this.spawn(CameraEntity, { position: new Vec2(400, 300) });
+    const input = this.context.resolve(InputManagerKey);
+    input.setCamera(cam);
+
+    // The selector spawns the emitter for the current demo.
+    this.spawn(DemoSelectorEntity);
+    this.spawn(CrosshairEntity);
 
     // Demo indicator dots at bottom of screen
-    this.spawnDemoBar();
-  }
-
-  private spawnEmitter(demo: DemoName) {
-    const config = DEMO_CONFIGS[demo](this.particleTex);
-    const entity = this.spawn("emitter");
-    entity.add(new Transform({ position: new Vec2(400, 300) }));
-    entity.add(new ParticleEmitterComponent(config));
-    entity.add(new ParticleController());
-    return entity;
-  }
-
-  switchDemo(demo: DemoName): void {
-    if (demo === this.currentDemo) return;
-    const prevDemo = this.currentDemo;
-    this.currentDemo = demo;
-
-    // Destroy old emitter and create new one
-    this.emitterEntity.destroy();
-    this.emitterEntity = this.spawnEmitter(demo);
-
-    // Update demo bar indicators
-    this.updateDemoBar(prevDemo, demo);
-  }
-
-  private spawnDemoBar(): void {
     const spacing = 56;
     const startX = 400 - ((DEMO_ORDER.length - 1) * spacing) / 2;
-
-    for (let i = 0; i < DEMO_ORDER.length; i++) {
-      const name = DEMO_ORDER[i]!;
-      const color = DEMO_COLORS[name];
-      const x = startX + i * spacing;
-      const entity = this.spawn(`demo-${name}`);
-      entity.add(new Transform({ position: new Vec2(x, 570) }));
-      const gfxComp = new GraphicsComponent();
-      entity.add(gfxComp);
-      this.demoIndicators.set(name, gfxComp);
-      this.drawDemoDot(gfxComp, color, name === this.currentDemo);
-    }
-  }
-
-  private drawDemoDot(
-    gfxComp: GraphicsComponent,
-    color: number,
-    active: boolean,
-  ): void {
-    gfxComp.graphics.clear();
-    gfxComp.draw((g) => {
-      if (active) {
-        g.circle(0, 0, 8).fill({ color });
-        g.circle(0, 0, 11).stroke({ color: 0xffffff, width: 1, alpha: 0.6 });
-      } else {
-        g.circle(0, 0, 6).fill({ color, alpha: 0.3 });
-      }
+    DEMO_ORDER.forEach((demo, i) => {
+      this.spawn(DemoDotEntity, { demo, x: startX + i * spacing });
     });
   }
 
   onExit(): void {
     this.context.resolve(InputManagerKey).clearCamera();
-  }
-
-  private updateDemoBar(prev: DemoName, next: DemoName): void {
-    const prevComp = this.demoIndicators.get(prev);
-    if (prevComp) this.drawDemoDot(prevComp, DEMO_COLORS[prev], false);
-    const nextComp = this.demoIndicators.get(next);
-    if (nextComp) this.drawDemoDot(nextComp, DEMO_COLORS[next], true);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// CrosshairFollow — tiny component to track mouse for the crosshair
-// ---------------------------------------------------------------------------
-class CrosshairFollow extends Component {
-  private readonly input = this.service(InputManagerKey);
-  private readonly transform = this.sibling(Transform);
-
-  update(): void {
-    const pos = this.input.getPointerPosition();
-    this.transform.setPosition(pos.x, pos.y);
   }
 }
 

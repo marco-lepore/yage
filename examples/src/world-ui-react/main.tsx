@@ -8,7 +8,14 @@
  * into the scene's screen-space overlay yet must stay anchored to the
  * moving namecard every frame — the world→screen anchoring path.
  */
-import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Entity,
+  Scene,
+  Component,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   CameraEntity,
@@ -150,6 +157,49 @@ function Namecard(props: EnemySpec) {
   );
 }
 
+/** An enemy's body: a circle orbiting its spec's center. */
+class EnemyEntity extends Entity {
+  setup(params: { spec: EnemySpec }): void {
+    const { spec } = params;
+    this.add(new Transform({ position: new Vec2(spec.cx, spec.cy) }));
+    this.add(
+      new GraphicsComponent({ layer: "world" }).draw((g) => {
+        g.circle(0, 0, 14).fill({ color: spec.color });
+        g.circle(0, 0, 14).stroke({ color: 0xffffff, width: 2 });
+      }),
+    );
+    this.add(
+      new Patrol(
+        new Vec2(spec.cx, spec.cy),
+        spec.radius,
+        spec.speed,
+        spec.phase,
+      ),
+    );
+  }
+}
+
+/** The React namecard glued above an enemy by `ScreenFollow`. */
+class NameplateEntity extends Entity {
+  setup(params: {
+    spec: EnemySpec;
+    target: EnemyEntity;
+    camera: CameraEntity;
+  }): void {
+    this.add(new Transform());
+    this.add(
+      new ScreenFollow({
+        target: params.target,
+        camera: params.camera,
+        offset: new Vec2(0, -42),
+      }),
+    );
+    this.add(
+      new UIRoot({ positioning: "transform", anchor: Anchor.BottomCenter }),
+    ).render(<Namecard {...params.spec} />);
+  }
+}
+
 class DemoScene extends Scene {
   readonly name = "world-ui-react";
   readonly layers: readonly LayerDef[] = [
@@ -177,37 +227,8 @@ class DemoScene extends Scene {
     );
 
     for (const spec of ENEMIES) {
-      const body = this.spawn(`enemy-${spec.name}`);
-      body.add(new Transform({ position: new Vec2(spec.cx, spec.cy) }));
-      body.add(
-        new GraphicsComponent({ layer: "world" }).draw((g) => {
-          g.circle(0, 0, 14).fill({ color: spec.color });
-          g.circle(0, 0, 14).stroke({ color: 0xffffff, width: 2 });
-        }),
-      );
-      body.add(
-        new Patrol(
-          new Vec2(spec.cx, spec.cy),
-          spec.radius,
-          spec.speed,
-          spec.phase,
-        ),
-      );
-
-      const plate = this.spawn(`plate-${spec.name}`);
-      plate.add(new Transform());
-      plate.add(
-        new ScreenFollow({
-          target: body,
-          camera: cam,
-          offset: new Vec2(0, -42),
-        }),
-      );
-      plate
-        .add(
-          new UIRoot({ positioning: "transform", anchor: Anchor.BottomCenter }),
-        )
-        .render(<Namecard {...spec} />);
+      const enemy = this.spawn(EnemyEntity, { spec });
+      this.spawn(NameplateEntity, { spec, target: enemy, camera: cam });
     }
   }
 }

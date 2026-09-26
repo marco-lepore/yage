@@ -3,6 +3,7 @@ import {
   Engine,
   Entity,
   MathUtils,
+  RandomKey,
   Scene,
   Transform,
   Vec2,
@@ -105,6 +106,8 @@ class AgentVisual extends Component {
   }
 }
 
+type FlockRuleName = "separation" | "alignment" | "cohesion";
+
 /** One flock rule shared across every boid, added/removed live as a set. */
 interface FlockRule {
   active: boolean;
@@ -122,10 +125,7 @@ class ToggleController extends Component {
 
   constructor(
     private readonly groups: SteeringAgent[][],
-    private readonly flockRules: Record<
-      "separation" | "alignment" | "cohesion",
-      FlockRule
-    >,
+    private readonly flockRules: Record<FlockRuleName, FlockRule>,
   ) {
     super();
   }
@@ -139,7 +139,7 @@ class ToggleController extends Component {
       }
     }
 
-    const ruleActions: [string, "separation" | "alignment" | "cohesion"][] = [
+    const ruleActions: [string, FlockRuleName][] = [
       ["toggleSeparation", "separation"],
       ["toggleAlignment", "alignment"],
       ["toggleCohesion", "cohesion"],
@@ -173,11 +173,182 @@ class AgentEntity extends Entity {
   }
 }
 
+/** The player's dot, moved with WASD. */
+class PlayerEntity extends Entity {
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT - 80) }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 12).fill({ color: 0x38bdf8 });
+        g.circle(0, 0, 12).stroke({ color: 0xe0f2fe, width: 2 });
+      }),
+    );
+    this.add(new PlayerController());
+  }
+}
+
+/**
+ * Ten boids (separation/alignment/cohesion + contain) as child entities.
+ * The flock has no Transform, so each boid's local position is its world
+ * position, which SteeringAgent needs. `rules` holds each flock rule's
+ * behaviour on every boid, so the rule can be switched off and on for the
+ * whole flock.
+ */
+class FlockEntity extends Entity {
+  agents: SteeringAgent[] = [];
+  readonly rules: Record<FlockRuleName, FlockRule> = {
+    separation: { active: true, perBoid: [] },
+    alignment: { active: true, perBoid: [] },
+    cohesion: { active: true, perBoid: [] },
+  };
+
+  setup(): void {
+    const boidRefs: { transform: Transform; agent: SteeringAgent }[] = [];
+    const count = 10;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const position = new Vec2(
+        720 + Math.cos(angle) * 60,
+        420 + Math.sin(angle) * 60,
+      );
+      const boid = this.spawnChild(`boid-${i}`, AgentEntity, {
+        position,
+        color: 0xc084fc,
+        radius: 6,
+        steering: { maxSpeed: 95, behaviors: [] },
+      });
+      boidRefs.push({ transform: boid.get(Transform), agent: boid.agent });
+    }
+
+    for (const self of boidRefs) {
+      const neighbors = (): Kinematic[] =>
+        boidRefs
+          .filter((b) => b !== self)
+          .map((b) => ({
+            position: b.transform.position,
+            velocity: b.agent.velocity,
+          }));
+      const sep = separation(neighbors, { radius: 28, weight: 1.5 });
+      const align = alignment(neighbors, { radius: 60 });
+      const coh = cohesion(neighbors, { radius: 70, weight: 0.8 });
+      self.agent.setBehaviors([
+        sep,
+        align,
+        coh,
+        contain(FIELD, { weight: 1.5 }),
+      ]);
+      this.rules.separation.perBoid.push({ agent: self.agent, behavior: sep });
+      this.rules.alignment.perBoid.push({ agent: self.agent, behavior: align });
+      this.rules.cohesion.perBoid.push({ agent: self.agent, behavior: coh });
+    }
+
+    this.agents = boidRefs.map((b) => b.agent);
+  }
+}
+
+/** A static rock. avoidColliders finds its collider by raycast. */
+class RockEntity extends Entity {
+  setup(params: { position: Vec2; radius: number }): void {
+    const { position, radius } = params;
+    this.add(new Transform({ position }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, radius).fill({ color: 0x57534e });
+        g.circle(0, 0, radius).stroke({ color: 0x292524, width: 2 });
+      }),
+    );
+    this.add(new RigidBodyComponent({ type: "static" }));
+    this.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius },
+      }),
+    );
+  }
+}
+
+/** A light dynamic crate the physics agent shoves out of its way. */
+class CrateEntity extends Entity {
+  setup(params: { position: Vec2 }): void {
+    this.add(new Transform({ position: params.position }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.rect(-10, -10, 20, 20).fill({ color: 0xa16207 });
+        g.rect(-10, -10, 20, 20).stroke({ color: 0x713f12, width: 2 });
+      }),
+    );
+    this.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        gravityScale: 0,
+        linearDamping: 3,
+      }),
+    );
+    this.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 20, height: 20 },
+        density: 0.4,
+      }),
+    );
+  }
+}
+
+/**
+ * A dynamic body driven by PhysicsSteeringAgent (impulse drive): it shoves
+ * the crates aside on its way to the player, and anything hitting it
+ * knocks it off course before steering pulls it back.
+ */
+class PhysicsAgentEntity extends Entity {
+  agent!: PhysicsSteeringAgent;
+
+  setup(params: { target: () => Vec2 }): void {
+    this.add(new Transform({ position: new Vec2(800, 100) }));
+    this.add(new GraphicsComponent());
+    this.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        gravityScale: 0,
+        linearDamping: 0,
+      }),
+    );
+    this.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: 10 },
+        density: 1,
+      }),
+    );
+    this.agent = this.add(
+      new PhysicsSteeringAgent({
+        maxSpeed: 130,
+        maxAcceleration: 400,
+        behaviors: [arrive(params.target, { slowRadius: 160 })],
+      }),
+    );
+    this.add(new AgentVisual(0x4ade80, 10));
+  }
+}
+
+/** Hosts the number-key toggles. */
+class TogglesEntity extends Entity {
+  setup(params: {
+    groups: SteeringAgent[][];
+    flockRules: Record<FlockRuleName, FlockRule>;
+  }): void {
+    this.add(new ToggleController(params.groups, params.flockRules));
+  }
+}
+
 /** Rocks are real static colliders — avoidColliders discovers them by raycast. */
 const ROCKS: { position: Vec2; radius: number }[] = [
   { position: new Vec2(320, 460), radius: 26 },
   { position: new Vec2(410, 415), radius: 22 },
   { position: new Vec2(500, 465), radius: 28 },
+];
+
+/** Where the crates start, between the physics agent and the player. */
+const CRATES: Vec2[] = [
+  new Vec2(650, 200),
+  new Vec2(720, 260),
+  new Vec2(590, 300),
 ];
 
 /** Rectangle the patrol agent walks forever (followPath with loop). */
@@ -193,7 +364,9 @@ class SteeringScene extends Scene {
 
   onEnter(): void {
     const world = this.use(PhysicsWorldKey);
-    const player = this.spawnPlayer();
+    // Wandering draws from the scene's generator, which ?test seeds.
+    const random = this.use(RandomKey);
+    const player = this.spawn(PlayerEntity);
     const playerPos = (): Vec2 => player.get(Transform).position;
     const groups: SteeringAgent[][] = [];
 
@@ -230,7 +403,10 @@ class SteeringScene extends Scene {
           radius: 8,
           steering: {
             maxSpeed: 70,
-            behaviors: [wander(), contain(FIELD, { weight: 2 })],
+            behaviors: [
+              wander({ random: () => random.float() }),
+              contain(FIELD, { weight: 2 }),
+            ],
           },
         }).agent,
       );
@@ -251,10 +427,10 @@ class SteeringScene extends Scene {
     ]);
 
     // 5 — boids (separation/alignment/cohesion + contain).
-    const flock = this.spawnFlock();
+    const flock = this.spawn(FlockEntity);
     groups.push(flock.agents);
 
-    this.spawnRocks();
+    for (const rock of ROCKS) this.spawn(RockEntity, rock);
 
     // 6 — seek + avoidColliders on a higher priority tier: raycasts discover
     // the rock/crate colliders (no obstacle list), and near one the
@@ -275,152 +451,10 @@ class SteeringScene extends Scene {
     ]);
 
     // 7 — the impulse-drive physics agent (shoves crates, takes hits).
-    groups.push([this.spawnPhysicsAgent(playerPos)]);
+    for (const position of CRATES) this.spawn(CrateEntity, { position });
+    groups.push([this.spawn(PhysicsAgentEntity, { target: playerPos }).agent]);
 
-    this.spawn("toggles").add(new ToggleController(groups, flock.rules));
-  }
-
-  private spawnPlayer(): Entity {
-    const player = this.spawn("player");
-    player.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT - 80) }));
-    player.add(
-      new GraphicsComponent().draw((g) => {
-        g.circle(0, 0, 12).fill({ color: 0x38bdf8 });
-        g.circle(0, 0, 12).stroke({ color: 0xe0f2fe, width: 2 });
-      }),
-    );
-    player.add(new PlayerController());
-    return player;
-  }
-
-  private spawnFlock(): {
-    agents: SteeringAgent[];
-    rules: Record<"separation" | "alignment" | "cohesion", FlockRule>;
-  } {
-    const boidRefs: { transform: Transform; agent: SteeringAgent }[] = [];
-    const count = 10;
-    for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2;
-      const position = new Vec2(
-        720 + Math.cos(angle) * 60,
-        420 + Math.sin(angle) * 60,
-      );
-      const boid = this.spawn(AgentEntity, {
-        position,
-        color: 0xc084fc,
-        radius: 6,
-        steering: { maxSpeed: 95, behaviors: [] },
-      });
-      boidRefs.push({ transform: boid.get(Transform), agent: boid.agent });
-    }
-
-    const rules: Record<"separation" | "alignment" | "cohesion", FlockRule> = {
-      separation: { active: true, perBoid: [] },
-      alignment: { active: true, perBoid: [] },
-      cohesion: { active: true, perBoid: [] },
-    };
-    for (const self of boidRefs) {
-      const neighbors = (): Kinematic[] =>
-        boidRefs
-          .filter((b) => b !== self)
-          .map((b) => ({
-            position: b.transform.position,
-            velocity: b.agent.velocity,
-          }));
-      const sep = separation(neighbors, { radius: 28, weight: 1.5 });
-      const align = alignment(neighbors, { radius: 60 });
-      const coh = cohesion(neighbors, { radius: 70, weight: 0.8 });
-      self.agent.setBehaviors([
-        sep,
-        align,
-        coh,
-        contain(FIELD, { weight: 1.5 }),
-      ]);
-      rules.separation.perBoid.push({ agent: self.agent, behavior: sep });
-      rules.alignment.perBoid.push({ agent: self.agent, behavior: align });
-      rules.cohesion.perBoid.push({ agent: self.agent, behavior: coh });
-    }
-
-    return { agents: boidRefs.map((b) => b.agent), rules };
-  }
-
-  private spawnRocks(): void {
-    for (const [i, rock] of ROCKS.entries()) {
-      const entity = this.spawn(`rock-${i}`);
-      entity.add(new Transform({ position: rock.position }));
-      entity.add(
-        new GraphicsComponent().draw((g) => {
-          g.circle(0, 0, rock.radius).fill({ color: 0x57534e });
-          g.circle(0, 0, rock.radius).stroke({ color: 0x292524, width: 2 });
-        }),
-      );
-      entity.add(new RigidBodyComponent({ type: "static" }));
-      entity.add(
-        new ColliderComponent({
-          shape: { type: "circle", radius: rock.radius },
-        }),
-      );
-    }
-  }
-
-  /**
-   * A dynamic body driven by PhysicsSteeringAgent (impulse drive): it shoves
-   * the crates aside on its way to the player, and anything hitting it
-   * knocks it off course before steering pulls it back.
-   */
-  private spawnPhysicsAgent(playerPos: () => Vec2): SteeringAgent {
-    for (const [i, pos] of [
-      new Vec2(650, 200),
-      new Vec2(720, 260),
-      new Vec2(590, 300),
-    ].entries()) {
-      const crate = this.spawn(`crate-${i}`);
-      crate.add(new Transform({ position: pos }));
-      crate.add(
-        new GraphicsComponent().draw((g) => {
-          g.rect(-10, -10, 20, 20).fill({ color: 0xa16207 });
-          g.rect(-10, -10, 20, 20).stroke({ color: 0x713f12, width: 2 });
-        }),
-      );
-      crate.add(
-        new RigidBodyComponent({
-          type: "dynamic",
-          gravityScale: 0,
-          linearDamping: 3,
-        }),
-      );
-      crate.add(
-        new ColliderComponent({
-          shape: { type: "box", width: 20, height: 20 },
-          density: 0.4,
-        }),
-      );
-    }
-
-    const entity = this.spawn("physics-arrive");
-    entity.add(new Transform({ position: new Vec2(800, 100) }));
-    entity.add(new GraphicsComponent());
-    entity.add(
-      new RigidBodyComponent({
-        type: "dynamic",
-        gravityScale: 0,
-        linearDamping: 0,
-      }),
-    );
-    entity.add(
-      new ColliderComponent({
-        shape: { type: "circle", radius: 10 },
-        density: 1,
-      }),
-    );
-    const agent = new PhysicsSteeringAgent({
-      maxSpeed: 130,
-      maxAcceleration: 400,
-      behaviors: [arrive(playerPos, { slowRadius: 160 })],
-    });
-    entity.add(agent);
-    entity.add(new AgentVisual(0x4ade80, 10));
-    return agent;
+    this.spawn(TogglesEntity, { groups, flockRules: flock.rules });
   }
 }
 
