@@ -63,6 +63,10 @@ predicate), `objectiveIds(quest)`.
 const log = new QuestLog(quests); // TDefs inferred from `quests`, zero <T>
 ```
 
+A log is saved progression that outlives scenes, so it sits at module level
+next to the game's explicit save root (see Save). Components read and advance
+it; reactions to its events live in components, not in `onEnter` closures.
+
 ### Lifecycle
 
 - `start(quest): QuestStartResult` — `{ ok: true }` from `available`. Else
@@ -149,7 +153,8 @@ call `restore` after loading it.
 import { QuestController, QuestCompletedEvent } from "@yagejs-addons/quests";
 
 player.add(new QuestController({ log })); // TDefs inferred from `log`
-scene.on(QuestCompletedEvent, ({ questId }) => {});
+// in any component of the scene:
+this.listenScene(QuestCompletedEvent, ({ questId }) => {});
 ```
 
 Mirrors the log's six model events onto the host entity as engine-bus events
@@ -171,11 +176,24 @@ likes and calls `advance`/`complete` directly — the silent-no-op-on-inactive
 contract means no active-state guard is needed in the adapter:
 
 ```ts
+import { Component } from "@yagejs/core";
 import { InventoryItemAddedEvent } from "@yagejs-addons/inventory";
-player.on(InventoryItemAddedEvent, (e) => {
-  if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
-});
+
+// A component on the player (not an `entity.on` closure in onEnter):
+class QuestProgress extends Component {
+  onAdd(): void {
+    this.listen(this.entity, InventoryItemAddedEvent, (e) => {
+      if (e.itemId !== "redHerb") return;
+      log.advance("gatherHerbs", "herb", e.quantity);
+    });
+    // WolfDiedEvent bubbles from any wolf to the scene.
+    this.listenScene(WolfDiedEvent, () => log.advance("thinThePack", "wolf"));
+  }
+}
 ```
+
+`log.on(...)` returns an unsubscribe; from a component, pass it to
+`this.addCleanup(...)` so the subscription ends with the component.
 
 For a current-inventory requirement, set `autoComplete: false` on the quest
 and synchronize absolute progress on both inventory additions and removals:

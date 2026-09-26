@@ -1,8 +1,11 @@
-import { Scene, Transform, Vec2 } from "@yagejs/core";
-import { GraphicsComponent } from "@yagejs/renderer";
+import { Scene } from "@yagejs/core";
+import { Placeholder } from "../entities/Placeholder";
 
 /**
- * Empty starter scene. Edit this file to start building your game.
+ * Starter scene. Edit this file to start building your game.
+ *
+ * `onEnter` assembles the scene: it spawns entities and sets up the camera.
+ * The game's rules live in components on those entities, not here.
  *
  * Some things to try:
  *   - Draw a sprite: `new SpriteComponent(texture("/assets/hero.png"))`
@@ -13,13 +16,6 @@ export class MainScene extends Scene {
   readonly name = "main";
 
   onEnter(): void {
-    const placeholder = this.spawn("placeholder");
-    placeholder.add(new Transform({ position: new Vec2(400, 300) }));
-    placeholder.add(
-      new GraphicsComponent().draw((g) => {
-        g.rect(-160, -40, 320, 80).fill({ color: 0x1e293b });
-        g.rect(-160, -40, 320, 80).stroke({ color: 0x38bdf8, width: 2 });
-      }),
-    );
+    this.spawn(Placeholder, { x: 400, y: 300 });
   }
 }

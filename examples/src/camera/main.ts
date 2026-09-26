@@ -2,9 +2,11 @@ import {
   Engine,
   Scene,
   Component,
+  Entity,
   Transform,
   Vec2,
   ProcessComponent,
+  RandomKey,
   createKeyframeTrack,
   easeInOutQuad,
 } from "@yagejs/core";
@@ -75,6 +77,86 @@ class PlayerController extends Component {
 }
 
 // ---------------------------------------------------------------------------
+// Entities
+// ---------------------------------------------------------------------------
+/** A colored circle that bobs up and down around its spawn point. */
+class LandmarkEntity extends Entity {
+  setup(params: {
+    x: number;
+    y: number;
+    radius: number;
+    color: number;
+    /** Bob height in pixels. */
+    amplitude: number;
+    /** Seconds per full bob. */
+    period: number;
+  }): void {
+    const { x, y, radius, color, amplitude, period } = params;
+    const origin = new Vec2(x, y);
+    const transform = this.add(new Transform({ position: origin }));
+    this.add(
+      new GraphicsComponent({ layer: "world" }).draw((g) => {
+        g.circle(0, 0, radius).fill({ color, alpha: 0.6 });
+        g.circle(0, 0, radius).stroke({ color, width: 2, alpha: 0.9 });
+      }),
+    );
+    const pc = this.add(new ProcessComponent());
+    pc.run(
+      createKeyframeTrack({
+        keyframes: [
+          { time: 0, data: 0 },
+          { time: period / 4, data: -amplitude },
+          { time: period / 2, data: 0 },
+          { time: (period * 3) / 4, data: amplitude },
+          { time: period, data: 0 },
+        ],
+        setter: (offsetY) =>
+          transform.setPosition(origin.x, origin.y + offsetY),
+        loop: true,
+        easing: easeInOutQuad,
+      }),
+    );
+  }
+}
+
+/** The arrow the camera follows. WASD moves it; Space shakes the camera and
+ *  Q / E / R zoom. */
+class PlayerEntity extends Entity {
+  setup(params: { camera: CameraEntity }): void {
+    this.add(new Transform({ position: new Vec2(1000, 1000) }));
+    this.add(
+      new GraphicsComponent({ layer: "player" }).draw((g) => {
+        // Arrow-shaped player
+        g.poly([0, -18, 12, 14, 0, 8, -12, 14]).fill({ color: 0x00ffaa });
+        // Small dot at center
+        g.circle(0, 0, 3).fill({ color: 0xffffff });
+      }),
+    );
+    this.add(new PlayerController(params.camera));
+  }
+}
+
+/** A translucent rectangle standing in for a building. */
+class BuildingEntity extends Entity {
+  setup(params: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    color: number;
+  }): void {
+    const { x, y, w, h, color } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
+      new GraphicsComponent({ layer: "world" }).draw((g) => {
+        g.rect(-w / 2, -h / 2, w, h).fill({ color, alpha: 0.3 });
+        g.rect(-w / 2, -h / 2, w, h).stroke({ color, width: 1.5 });
+      }),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Demo scene
 // ---------------------------------------------------------------------------
 class CameraScene extends Scene {
@@ -96,17 +178,7 @@ class CameraScene extends Scene {
     this.spawnLandmarks();
 
     // Player
-    const player = this.spawn("player");
-    player.add(new Transform({ position: new Vec2(1000, 1000) }));
-    player.add(
-      new GraphicsComponent({ layer: "player" }).draw((g) => {
-        // Arrow-shaped player
-        g.poly([0, -18, 12, 14, 0, 8, -12, 14]).fill({ color: 0x00ffaa });
-        // Small dot at center
-        g.circle(0, 0, 3).fill({ color: 0xffffff });
-      }),
-    );
-    player.add(new PlayerController(cam));
+    this.spawn(PlayerEntity, { camera: cam });
   }
 
   private drawGrid(): void {
@@ -130,63 +202,36 @@ class CameraScene extends Scene {
   }
 
   private spawnLandmarks(): void {
-    const rng = (min: number, max: number) => min + Math.random() * (max - min);
+    const rng = this.use(RandomKey);
 
     // Colored circles scattered around the world
     const colors = [0xff6b6b, 0x4ecdc4, 0xffe66d, 0xa78bfa, 0xf97316, 0x38bdf8];
     for (let i = 0; i < 30; i++) {
-      const x = rng(100, 1900);
-      const y = rng(100, 1900);
-      const color = colors[i % colors.length]!;
-      const radius = rng(10, 30);
-
-      const e = this.spawn(`landmark-${i}`);
-      e.add(new Transform({ position: new Vec2(x, y) }));
-      e.add(
-        new GraphicsComponent({ layer: "world" }).draw((g) => {
-          g.circle(0, 0, radius).fill({ color, alpha: 0.6 });
-          g.circle(0, 0, radius).stroke({ color, width: 2, alpha: 0.9 });
-        }),
-      );
-      const amplitude = rng(3, 12);
-      const freq = rng(0.001, 0.004);
-      const period = (2 * Math.PI) / freq;
-      const origin = new Vec2(x, y);
-      const transform = e.get(Transform);
-      const pc = e.add(new ProcessComponent());
-      pc.run(
-        createKeyframeTrack({
-          keyframes: [
-            { time: 0, data: 0 },
-            { time: period / 4, data: -amplitude },
-            { time: period / 2, data: 0 },
-            { time: (period * 3) / 4, data: amplitude },
-            { time: period, data: 0 },
-          ],
-          setter: (offsetY) =>
-            transform.setPosition(origin.x, origin.y + offsetY),
-          loop: true,
-          easing: easeInOutQuad,
-        }),
-      );
+      const x = rng.range(100, 1900);
+      const y = rng.range(100, 1900);
+      const radius = rng.range(10, 30);
+      const amplitude = rng.range(3, 12);
+      // Bob frequency in radians per second: one bob takes 1.6–6.3 s.
+      const freq = rng.range(1, 4);
+      this.spawn(LandmarkEntity, {
+        x,
+        y,
+        radius,
+        color: colors[i % colors.length]!,
+        amplitude,
+        period: (2 * Math.PI) / freq,
+      });
     }
 
     // A few rectangular "buildings"
     for (let i = 0; i < 8; i++) {
-      const x = rng(200, 1800);
-      const y = rng(200, 1800);
-      const w = rng(40, 100);
-      const h = rng(40, 100);
-      const color = colors[(i + 3) % colors.length]!;
-
-      const e = this.spawn(`building-${i}`);
-      e.add(new Transform({ position: new Vec2(x, y) }));
-      e.add(
-        new GraphicsComponent({ layer: "world" }).draw((g) => {
-          g.rect(-w / 2, -h / 2, w, h).fill({ color, alpha: 0.3 });
-          g.rect(-w / 2, -h / 2, w, h).stroke({ color, width: 1.5 });
-        }),
-      );
+      this.spawn(BuildingEntity, {
+        x: rng.range(200, 1800),
+        y: rng.range(200, 1800),
+        w: rng.range(40, 100),
+        h: rng.range(40, 100),
+        color: colors[(i + 3) % colors.length]!,
+      });
     }
   }
 }

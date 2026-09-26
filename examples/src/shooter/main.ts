@@ -2,20 +2,27 @@
  * 2D shooter example — platformer movement, buffered jumps, bullet firing,
  * and patrolling skeleton enemies with a state machine. The HUD (enemy
  * counter + win banner) renders in-canvas on a screen-space layer; only the
- * fullscreen toggle stays in the DOM. Wiring lives in the sibling modules
- * (constants, assets, ui, particles, player, enemies, scene).
+ * fullscreen toggle stays in the DOM.
+ *
+ * The layout follows the platformer example:
+ * - `constants.ts` — sizes, collision layers, events, asset handles.
+ * - `level.ts`, `player.ts`, `enemies.ts`, `particles.ts`, `hud.ts` — one
+ *   `Entity` subclass per entity type, and the components that hold the
+ *   rules.
+ * - `scene.ts` — the `Scene` subclass; `onEnter` only spawns.
+ * - `main.ts` — engine, plugins and the fullscreen button.
  */
 import { Engine, EventBusKey } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { AudioPlugin } from "@yagejs/audio";
 import { InputPlugin } from "@yagejs/input";
+import { ParticlesPlugin } from "@yagejs/particles";
 import {
   installDebugFromUrl,
   setupGameContainer,
 } from "../shared/bootstrap.js";
 import { WIDTH, HEIGHT } from "./constants.js";
-import { fullscreenBtn } from "./ui.js";
 import { ShooterScene } from "./scene.js";
 import "./styles.css";
 
@@ -28,6 +35,10 @@ async function main() {
   // Mount the fullscreen button inside the same container the renderer will
   // fullscreen, so it stays visible alongside the canvas in fullscreen mode.
   const gameContainer = setupGameContainer(WIDTH, HEIGHT);
+  const fullscreenBtn = document.createElement("button");
+  fullscreenBtn.id = "fullscreen-btn";
+  fullscreenBtn.type = "button";
+  fullscreenBtn.textContent = "⛶ Fullscreen";
   gameContainer.appendChild(fullscreenBtn);
 
   const renderer = new RendererPlugin({
@@ -53,6 +64,7 @@ async function main() {
       preventDefaultKeys: ["Space", "ArrowDown"],
     }),
   );
+  engine.use(new ParticlesPlugin());
   await installDebugFromUrl(engine);
 
   await engine.start();
@@ -60,10 +72,9 @@ async function main() {
   // Fullscreen button: toggle on click, sync label from the bus event so
   // it stays correct when the user exits via Esc or the browser UI.
   const bus = engine.context.resolve(EventBusKey);
-  const updateBtn = (active: boolean): void => {
+  bus.on("screen:fullscreen", ({ active }) => {
     fullscreenBtn.textContent = active ? "⛶ Exit fullscreen" : "⛶ Fullscreen";
-  };
-  bus.on("screen:fullscreen", ({ active }) => updateBtn(active));
+  });
   fullscreenBtn.addEventListener("click", () => {
     if (renderer.isFullscreen) {
       renderer.exitFullscreen().catch((err: unknown) => console.warn(err));

@@ -1,6 +1,7 @@
 import {
   Component,
   Engine,
+  Entity,
   MathUtils,
   Scene,
   Transform,
@@ -11,6 +12,7 @@ import {
   type GraphicsContext,
   RendererPlugin,
   TextComponent,
+  type TextComponentOptions,
 } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin, getKeyDisplayName } from "@yagejs/input";
 import {
@@ -37,6 +39,10 @@ class ShipController extends Component {
   private readonly transform = this.sibling(Transform);
   private readonly graphics = this.sibling(GraphicsComponent);
   private boosting = false;
+
+  onAdd(): void {
+    this.redraw(); // paint the initial ship before its first update
+  }
 
   update(dt: number): void {
     // -- Movement: left stick OR WASD --
@@ -109,20 +115,33 @@ function stepTowardAngle(
   return current + Math.sign(delta) * maxStep;
 }
 
+class ShipEntity extends Entity {
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2) }));
+    this.add(new GraphicsComponent());
+    this.add(new ShipController());
+  }
+}
+
 // ---------------------------------------------------------------------------
 // HUD — visualizes stick / trigger / button state and active-pad info.
-// Lives on the same entity as a GraphicsComponent (for shapes) plus
-// TextComponents (for labels). Redraws each frame.
+// Draws into the strip's GraphicsComponent (for shapes) and writes the
+// header and held-buttons TextComponents. Redraws each frame.
 // ---------------------------------------------------------------------------
 
 class GamepadHud extends Component {
   private readonly input = this.service(InputManagerKey);
-  private readonly graphics = this.sibling(GraphicsComponent);
+  private readonly graphics: GraphicsComponent;
   private readonly headerText: TextComponent;
   private readonly buttonsText: TextComponent;
 
-  constructor(headerText: TextComponent, buttonsText: TextComponent) {
+  constructor(
+    graphics: GraphicsComponent,
+    headerText: TextComponent,
+    buttonsText: TextComponent,
+  ) {
     super();
+    this.graphics = graphics;
     this.headerText = headerText;
     this.buttonsText = buttonsText;
   }
@@ -214,6 +233,82 @@ function drawTriggerBar(
   });
 }
 
+/** The header, the stick / trigger strip and its labels, and the held-buttons
+ *  readout, as child entities. The HUD entity has no Transform, so the
+ *  children's positions are screen pixels. */
+class GamepadHudEntity extends Entity {
+  setup(): void {
+    // Header text — anchored top-left of viewport
+    const headerText = this.spawnHudText("header", new Vec2(20, 20), {
+      text: "",
+      style: {
+        fontFamily: "system-ui, sans-serif",
+        fontSize: 14,
+        fill: 0xe2e8f0,
+      },
+    });
+
+    // HUD strip — anchored bottom-left
+    const strip = this.spawnChild("strip");
+    strip.add(new Transform({ position: new Vec2(20, HEIGHT - 130) }));
+    const graphics = strip.add(new GraphicsComponent());
+
+    // Stick / trigger labels
+    this.spawnStripLabel("l-stick-label", 60 + 20, "L Stick");
+    this.spawnStripLabel("r-stick-label", 200 + 20, "R Stick");
+    this.spawnStripLabel("lt-label", 320 + 20, "LT");
+    this.spawnStripLabel("rt-label", 360 + 20, "RT");
+
+    // Held-buttons text — anchored bottom-right of HUD strip
+    this.spawnHudText("buttons-label", new Vec2(450, HEIGHT - 115), {
+      text: "Buttons held",
+      style: {
+        fontFamily: "system-ui, sans-serif",
+        fontSize: 11,
+        fill: 0x94a3b8,
+      },
+    });
+    const buttonsText = this.spawnHudText(
+      "buttons",
+      new Vec2(450, HEIGHT - 95),
+      {
+        text: "—",
+        style: {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 14,
+          fill: 0xe2e8f0,
+        },
+      },
+    );
+
+    this.add(new GamepadHud(graphics, headerText, buttonsText));
+  }
+
+  /** A caption under the strip, centred on `x`. */
+  private spawnStripLabel(name: string, x: number, text: string): void {
+    this.spawnHudText(name, new Vec2(x, HEIGHT - 130 + 100), {
+      text,
+      anchor: { x: 0.5, y: 0 },
+      style: {
+        fontFamily: "system-ui, sans-serif",
+        fontSize: 11,
+        fill: 0x94a3b8,
+      },
+    });
+  }
+
+  /** One line of text as a child entity. */
+  private spawnHudText(
+    name: string,
+    position: Vec2,
+    options: TextComponentOptions,
+  ): TextComponent {
+    const child = this.spawnChild(name);
+    child.add(new Transform({ position }));
+    return child.add(new TextComponent(options));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Scene
 // ---------------------------------------------------------------------------
@@ -222,65 +317,8 @@ class GamepadScene extends Scene {
   readonly name = "gamepad";
 
   onEnter(): void {
-    // Ship
-    const ship = this.spawn("ship");
-    ship.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2) }));
-    ship.add(new GraphicsComponent());
-    const controller = ship.add(new ShipController());
-    controller.redraw(); // paint the initial ship before its first update
-
-    // Header text — anchored top-left of viewport
-    const headerEntity = this.spawn("header");
-    headerEntity.add(new Transform({ position: new Vec2(20, 20) }));
-    const headerText = headerEntity.add(
-      new TextComponent({
-        text: "",
-        style: {
-          fontFamily: "system-ui, sans-serif",
-          fontSize: 14,
-          fill: 0xe2e8f0,
-        },
-      }),
-    );
-
-    // HUD strip — anchored bottom-left
-    const hudEntity = this.spawn("hud");
-    hudEntity.add(new Transform({ position: new Vec2(20, HEIGHT - 130) }));
-    hudEntity.add(new GraphicsComponent());
-
-    // Stick / trigger labels
-    addHudLabel(this, 60 + 20, HEIGHT - 130 + 100, "L Stick");
-    addHudLabel(this, 200 + 20, HEIGHT - 130 + 100, "R Stick");
-    addHudLabel(this, 320 + 20, HEIGHT - 130 + 100, "LT");
-    addHudLabel(this, 360 + 20, HEIGHT - 130 + 100, "RT");
-
-    // Held-buttons text — anchored bottom-right of HUD strip
-    const buttonsEntity = this.spawn("buttons");
-    buttonsEntity.add(new Transform({ position: new Vec2(450, HEIGHT - 95) }));
-    const buttonsLabel = this.spawn("buttons-label");
-    buttonsLabel.add(new Transform({ position: new Vec2(450, HEIGHT - 115) }));
-    buttonsLabel.add(
-      new TextComponent({
-        text: "Buttons held",
-        style: {
-          fontFamily: "system-ui, sans-serif",
-          fontSize: 11,
-          fill: 0x94a3b8,
-        },
-      }),
-    );
-    const buttonsText = buttonsEntity.add(
-      new TextComponent({
-        text: "—",
-        style: {
-          fontFamily: "system-ui, sans-serif",
-          fontSize: 14,
-          fill: 0xe2e8f0,
-        },
-      }),
-    );
-
-    hudEntity.add(new GamepadHud(headerText, buttonsText));
+    this.spawn(ShipEntity);
+    this.spawn(GamepadHudEntity);
 
     // Footer — controls hint
     const footer = this.spawn("footer");
@@ -296,22 +334,6 @@ class GamepadScene extends Scene {
       }),
     );
   }
-}
-
-function addHudLabel(scene: Scene, x: number, y: number, text: string): void {
-  const entity = scene.spawn("hud-label");
-  entity.add(new Transform({ position: new Vec2(x, y) }));
-  entity.add(
-    new TextComponent({
-      text,
-      anchor: { x: 0.5, y: 0 },
-      style: {
-        fontFamily: "system-ui, sans-serif",
-        fontSize: 11,
-        fill: 0x94a3b8,
-      },
-    }),
-  );
 }
 
 // ---------------------------------------------------------------------------

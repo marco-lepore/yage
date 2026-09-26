@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "lab": "yage-lab dev",
     "lab:test": "yage-lab test",
+    "lint": "eslint src e2e lab",
     "typecheck": "tsc --noEmit"
   },
   "yage-lab": {

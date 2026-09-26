@@ -60,11 +60,19 @@ chest.add(new Interactable({ prompt: "Open", onInteract: () => chest.open() }));
 // nearest-in-range focus, self-driven off @yagejs/input if present.
 const interactor = player.add(new Interactor({ range: 70 }));
 
-// Headless addon — the game draws the prompt. Fires only on a focus change.
-player.on(InteractionFocusChangedEvent, ({ prompt }) => {
-  promptLabel.text.text = prompt ?? "";
-  promptLabel.text.visible = prompt !== null;
-});
+// Headless addon — the game draws the prompt. Fires only on a focus change,
+// on the interactor's entity, and bubbles to the scene. A component on the HUD
+// label listens (not a closure in onEnter), and writes through TextComponent.
+class PromptLabel extends Component {
+  private readonly text = this.sibling(TextComponent);
+
+  onAdd(): void {
+    this.listenScene(InteractionFocusChangedEvent, ({ prompt }) => {
+      this.text.setText(prompt ?? "");
+      this.text.visible = prompt !== null;
+    });
+  }
+}
 ```
 
 ## `InteractableOptions`

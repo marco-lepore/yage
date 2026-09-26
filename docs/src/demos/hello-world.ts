@@ -2,6 +2,7 @@ import {
   Engine,
   Entity,
   Component,
+  RandomKey,
   Scene,
   Transform,
   Vec2,
@@ -9,7 +10,11 @@ import {
   ProcessSlot,
   defineEvent,
 } from "@yagejs/core";
-import { GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
+import {
+  CameraEntity,
+  GraphicsComponent,
+  RendererPlugin,
+} from "@yagejs/renderer";
 import {
   PhysicsPlugin,
   RigidBodyComponent,
@@ -45,9 +50,9 @@ class PaddleAI extends Component {
 
   // onAdd runs once when the component is attached to an entity
   onAdd() {
-    // ProcessSlot is a timer — fires onComplete every 350ms
+    // ProcessSlot is a timer — fires onComplete every 0.35s
     this.slot = this.proc.slot({
-      duration: 350,
+      duration: 0.35,
       onComplete: () => {
         this.react();
         this.slot.restart();
@@ -69,22 +74,42 @@ class PaddleAI extends Component {
 
 // -- Entities -----------------------------------------------------------------
 
+// listenScene hears an event that any entity emits. It stops with the component.
+class Serve extends Component {
+  private rb = this.sibling(RigidBodyComponent);
+  private random = this.service(RandomKey); // the scene's seeded generator
+
+  constructor(private center: Vec2) {
+    super();
+  }
+
+  onAdd() {
+    // After a goal, serve again from the centre
+    this.listenScene(GoalEvent, ({ side }) =>
+      this.launch(side === "right" ? "left" : "right"),
+    );
+    this.launch(this.random.pick(["left", "right"] as const));
+  }
+
+  private launch(toward: Side) {
+    this.rb.setPosition(this.center.x, this.center.y);
+    this.rb.setVelocity({
+      x: (toward === "right" ? 1 : -1) * 250,
+      y: this.random.range(-100, 100),
+    });
+  }
+}
+
 // Entities are game objects. setup() receives typed params from scene.spawn().
 class Ball extends Entity {
-  private w!: number;
-  private h!: number;
-  private rb!: RigidBodyComponent;
-
   setup({ w, h }: { w: number; h: number }) {
-    this.w = w;
-    this.h = h;
-    this.add(new Transform({ position: new Vec2(w / 2, h / 2) }));
+    const center = new Vec2(w / 2, h / 2);
+    this.add(new Transform({ position: center }));
     this.add(
       new GraphicsComponent().draw((g) => g.circle(0, 0, 8).fill(0xffffff)),
     );
     // Dynamic body — moved by physics forces
-    this.rb = new RigidBodyComponent({ type: "dynamic", fixedRotation: true });
-    this.add(this.rb);
+    this.add(new RigidBodyComponent({ type: "dynamic", fixedRotation: true }));
     this.add(
       new ColliderComponent({
         shape: { type: "circle", radius: 8 },
@@ -92,18 +117,7 @@ class Ball extends Entity {
         friction: 0,
       }),
     );
-
-    // Listen for goals to reset position
-    this.scene!.on(GoalEvent, ({ side }) =>
-      this.launch(side === "right" ? "left" : "right"),
-    );
-    this.launch(Math.random() > 0.5 ? "left" : "right");
-  }
-
-  private launch(toward: Side) {
-    this.rb.setPosition(this.w / 2, this.h / 2);
-    const dir = toward === "right" ? 1 : -1;
-    this.rb.setVelocity({ x: dir * 250, y: (Math.random() - 0.5) * 200 });
+    this.add(new Serve(center));
   }
 }
 
@@ -190,13 +204,30 @@ class Goal extends Entity {
   }
 }
 
+// Game state lives in a component: it hears every goal and updates the text
+class Score extends Component {
+  private points = { left: 0, right: 0 };
+
+  constructor(
+    private left: UIText,
+    private right: UIText,
+  ) {
+    super();
+  }
+
+  onAdd() {
+    this.listenScene(GoalEvent, ({ side }) => {
+      this.points[side]++;
+      this.left.setText(String(this.points.left));
+      this.right.setText(String(this.points.right));
+    });
+  }
+}
+
 // Screen-space UI — anchored to viewport, not affected by camera
 class Scoreboard extends Entity {
-  private leftText!: UIText;
-  private rightText!: UIText;
-  private score = { left: 0, right: 0 };
-
   setup() {
+    const style = { fontSize: 48, fill: 0xffffff, fontFamily: "monospace" };
     const panel = this.add(
       new UISurface({
         anchor: Anchor.TopCenter,
@@ -205,15 +236,7 @@ class Scoreboard extends Entity {
         gap: 60,
       }),
     );
-    const style = { fontSize: 48, fill: 0xffffff, fontFamily: "monospace" };
-    this.leftText = panel.text("0", style);
-    this.rightText = panel.text("0", style);
-
-    this.scene!.on(GoalEvent, ({ side }) => {
-      this.score[side]++;
-      this.leftText.setText(String(this.score.left));
-      this.rightText.setText(String(this.score.right));
-    });
+    this.add(new Score(panel.text("0", style), panel.text("0", style)));
   }
 }
 
@@ -229,6 +252,8 @@ class PongScene extends Scene {
   }
 
   onEnter() {
+    this.spawn(CameraEntity, { position: new Vec2(this.W / 2, this.H / 2) });
+
     this.spawn(Scoreboard);
     const ball = this.spawn(Ball, { w: this.W, h: this.H });
     this.spawn(Paddle, { x: 30, y: this.H / 2, ball, side: "left" });

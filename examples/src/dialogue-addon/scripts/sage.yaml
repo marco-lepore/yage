@@ -1,9 +1,9 @@
 # Sage — NO `view` hint on his lines. The default route still floats him in a
 # bubble because he has a registered DialogueActor (speaker-aware routing). His
-# `meta.portrait` (the "sage-face" key the scene registers in Assets) drives the
+# `meta.portrait` (the "sage-face" texture key, registered at boot) drives the
 # bubble-side avatar. He is also the demo's VOICED NPC: each line carries a
-# `voice` id, which a registered createVoiceChannel "plays" (a synthetic clip in
-# this asset-free demo) and which gates auto-advance until the clip ends.
+# `voice` id, which a registered createVoiceChannel plays as a recorded clip
+# over @yagejs/audio, holding auto-advance until the clip ends.
 id: sage
 start: intro
 speakers:

@@ -18,13 +18,21 @@
  * replays it once it has ended.
  */
 
-import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  Entity,
+  Scene,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { RendererPlugin, type LayerDef } from "@yagejs/renderer";
 import { Anchor, UIPlugin } from "@yagejs/ui";
 import { Button, Panel, Text, UIRoot, UIReactPlugin } from "@yagejs/ui-react";
 import {
   createLocalization,
+  LocalizationKey,
   LocalizationPlugin,
   msg,
   type Localization,
@@ -42,6 +50,7 @@ import {
 import { localizeInventoryPanel } from "@yagejs-addons/i18n/inventory";
 import {
   DialogueChoiceMadeEvent,
+  DialogueCommandEvent,
   DialogueController,
   DialogueLineEvent,
   DialogueRevealCompletedEvent,
@@ -191,67 +200,55 @@ function rect(color: number): Graphics {
   return new Graphics().roundRect(0, 0, 180, 34, 6).fill({ color });
 }
 
-/** Event tallies the scene bumps; a language switch must leave them alone. */
-class GameplayCounters {
-  dialogueLines = 0;
-  dialogueCommands = 0;
-  dialogueCompletions = 0;
-  dialogueChoices = 0;
-  inventoryActions = 0;
+// ---------------------------------------------------------------------------
+// Entities: the conversation, the backpack, and the example's own keys
+// ---------------------------------------------------------------------------
+
+/** Hosts Mira's conversation in the dialogue addon's default box. The
+ *  controller finds the `Localization` service by itself. */
+class ConversationEntity extends Entity {
+  dialogue!: DialogueController;
+
+  setup(): void {
+    this.dialogue = this.add(
+      new DialogueController({
+        ...createBoxDialogue(),
+        commands: {
+          // `observe` only marks the moment the line shows. LocalizationProbe
+          // counts it from `DialogueCommandEvent`.
+          observe: () => {},
+        },
+      }),
+    );
+  }
 }
 
-/** Inspector-readable view over the counters and controller state, for the
- *  e2e test and for a human poking at `localization-probe`. */
-class LocalizationProbe extends Component {
-  dropdownSelection = 0;
-  constructor(
-    private readonly localization: Localization,
-    readonly dialogue: DialogueController,
-    readonly inventory: InventoryController<"potion">,
-    readonly model: Inventory<"potion">,
-    private readonly controls: DemoControls,
-    private readonly counters: GameplayCounters,
-  ) {
-    super();
-  }
-  get locale(): string {
-    return this.localization.locale;
-  }
-  get dialogueLines(): number {
-    return this.counters.dialogueLines;
-  }
-  get dialogueCommands(): number {
-    return this.counters.dialogueCommands;
-  }
-  get dialogueCompletions(): number {
-    return this.counters.dialogueCompletions;
-  }
-  get dialogueChoices(): number {
-    return this.counters.dialogueChoices;
-  }
-  get inventoryActions(): number {
-    return this.counters.inventoryActions;
-  }
-  get paused(): boolean {
-    return this.controls.paused;
-  }
-  get dialogueActive(): boolean {
-    return this.dialogue.isActive();
-  }
-  get dialogueChoosing(): boolean {
-    return this.dialogue.isChoosing();
-  }
-  get inventoryOpen(): boolean {
-    return this.inventory.isOpen();
-  }
-  get inventoryMenuOpen(): boolean {
-    return this.inventory.isMenuOpen();
-  }
-  get inventoryQuantity(): number {
-    return this.model.count("potion");
-  }
-  get inventorySelection(): number {
-    return this.inventory.selection();
+/** A four-slot backpack holding two potions, shown in the inventory panel
+ *  with its strings localized. */
+class BackpackEntity extends Entity {
+  model!: Inventory<"potion">;
+  controller!: InventoryController<"potion">;
+
+  setup(): void {
+    this.model = new Inventory({
+      catalog: ITEMS,
+      capacity: 4,
+      actions: [
+        { id: "use", label: "Use" },
+        { id: "inspect", label: "Inspect" },
+      ],
+    });
+    this.model.add("potion", 2);
+    this.controller = this.add(
+      new InventoryController({
+        ...localizeInventoryPanel(
+          createInventoryPanel(undefined, { columns: 2, visibleRows: 2 }),
+          INVENTORY_KEYS,
+        ),
+        inventory: this.model,
+        title: "Backpack",
+      }),
+    );
   }
 }
 
@@ -265,28 +262,15 @@ class LocalizationProbe extends Component {
  */
 class DemoControls extends Component {
   private readonly input = this.service(InputManagerKey);
-  private banner!: LocalizedTextComponent;
+  private readonly localization = this.service(LocalizationKey);
   paused = false;
 
   constructor(
-    private readonly localization: Localization,
     private readonly dialogue: DialogueController,
     private readonly inventory: InventoryController<"potion">,
+    private readonly banner: LocalizedTextComponent,
   ) {
     super();
-  }
-
-  onAdd(): void {
-    const banner = this.scene.spawn("pause-banner");
-    banner.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2) }));
-    this.banner = banner.add(
-      new LocalizedTextComponent({
-        message: msg("paused", "❙❙ PAUSED"),
-        style: { fontSize: 34, fill: 0xffe08a },
-        anchor: { x: 0.5, y: 0.5 },
-      }),
-    );
-    this.banner.text.visible = false;
   }
 
   cycleLocale(): void {
@@ -301,12 +285,99 @@ class DemoControls extends Component {
     if (this.input.isJustPressed("pause")) {
       this.paused = !this.paused;
       this.dialogue.setPaused(this.paused);
-      this.banner.text.visible = this.paused;
+      this.banner.visible = this.paused;
     }
     if (this.input.isJustPressed("replay") && !this.dialogue.isActive()) {
       this.dialogue.play(SCRIPT);
     }
     this.dialogue.setInputEnabled(!this.inventory.isOpen());
+  }
+}
+
+/** Hosts `DemoControls` and the pause banner it shows. The entity has no
+ *  Transform, so the banner's position is in screen pixels. */
+class ControlsEntity extends Entity {
+  controls!: DemoControls;
+
+  setup(params: {
+    conversation: ConversationEntity;
+    backpack: BackpackEntity;
+  }): void {
+    const banner = this.spawnChild("pause-banner");
+    banner.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2) }));
+    const text = banner.add(
+      new LocalizedTextComponent({
+        message: msg("paused", "❙❙ PAUSED"),
+        style: { fontSize: 34, fill: 0xffe08a },
+        anchor: { x: 0.5, y: 0.5 },
+        visible: false,
+      }),
+    );
+    this.controls = this.add(
+      new DemoControls(
+        params.conversation.dialogue,
+        params.backpack.controller,
+        text,
+      ),
+    );
+  }
+}
+
+/** Inspector-readable state for the e2e test and for a human poking at
+ *  `localization-probe`. Counts the events the dialogue and inventory
+ *  controllers emit, which bubble to the scene: a language switch must leave
+ *  the counts alone. */
+class LocalizationProbe extends Component {
+  private readonly localization = this.service(LocalizationKey);
+  dropdownSelection = 0;
+  dialogueLines = 0;
+  dialogueCommands = 0;
+  dialogueCompletions = 0;
+  dialogueChoices = 0;
+  inventoryActions = 0;
+
+  constructor(
+    private readonly conversation: ConversationEntity,
+    private readonly backpack: BackpackEntity,
+    private readonly controls: DemoControls,
+  ) {
+    super();
+  }
+
+  onAdd(): void {
+    this.listenScene(DialogueLineEvent, () => this.dialogueLines++);
+    this.listenScene(DialogueCommandEvent, () => this.dialogueCommands++);
+    this.listenScene(
+      DialogueRevealCompletedEvent,
+      () => this.dialogueCompletions++,
+    );
+    this.listenScene(DialogueChoiceMadeEvent, () => this.dialogueChoices++);
+    this.listenScene(InventoryActionEvent, () => this.inventoryActions++);
+  }
+
+  get locale(): string {
+    return this.localization.locale;
+  }
+  get paused(): boolean {
+    return this.controls.paused;
+  }
+  get dialogueActive(): boolean {
+    return this.conversation.dialogue.isActive();
+  }
+  get dialogueChoosing(): boolean {
+    return this.conversation.dialogue.isChoosing();
+  }
+  get inventoryOpen(): boolean {
+    return this.backpack.controller.isOpen();
+  }
+  get inventoryMenuOpen(): boolean {
+    return this.backpack.controller.isMenuOpen();
+  }
+  get inventoryQuantity(): number {
+    return this.backpack.model.count("potion");
+  }
+  get inventorySelection(): number {
+    return this.backpack.controller.selection();
   }
 }
 
@@ -361,9 +432,9 @@ function Hud({
 class LocalizationScene extends Scene {
   readonly name = "localization-example";
   readonly layers: LayerDef[] = [...DIALOGUE_LAYERS, ...INVENTORY_LAYERS];
-  constructor(private readonly localization: Localization) {
-    super();
-  }
+
+  // The scene only assembles the page. The controllers, DemoControls and the
+  // probe hold the rules and the counts.
   onEnter(): void {
     const renderer = this.spawn("renderer-localized");
     renderer.add(new Transform({ position: { x: 24, y: 24 } }));
@@ -410,65 +481,19 @@ class LocalizationScene extends Scene {
       }),
     );
 
-    const dialogueHost = this.spawn("dialogue-controller");
-    const counters = new GameplayCounters();
-    const dialogue = dialogueHost.add(
-      new DialogueController({
-        ...createBoxDialogue(),
-        commands: {
-          observe: () => {
-            counters.dialogueCommands++;
-          },
-        },
-      }),
-    );
-    const model = new Inventory({
-      catalog: ITEMS,
-      capacity: 4,
-      actions: [
-        { id: "use", label: "Use" },
-        { id: "inspect", label: "Inspect" },
-      ],
-    });
-    model.add("potion", 2);
-    const inventoryHost = this.spawn("inventory-controller");
-    const inventory = inventoryHost.add(
-      new InventoryController({
-        ...localizeInventoryPanel(
-          createInventoryPanel(undefined, { columns: 2, visibleRows: 2 }),
-          INVENTORY_KEYS,
-        ),
-        inventory: model,
-        title: "Backpack",
-      }),
-    );
-    const controls = this.spawn("demo-controls").add(
-      new DemoControls(this.localization, dialogue, inventory),
-    );
+    const conversation = this.spawn(ConversationEntity);
+    const backpack = this.spawn(BackpackEntity);
+    const { controls } = this.spawn(ControlsEntity, { conversation, backpack });
     const probe = this.spawn("localization-probe").add(
-      new LocalizationProbe(
-        this.localization,
-        dialogue,
-        inventory,
-        model,
-        controls,
-        counters,
-      ),
+      new LocalizationProbe(conversation, backpack, controls),
     );
-    dialogueHost.on(DialogueLineEvent, () => counters.dialogueLines++);
-    dialogueHost.on(
-      DialogueRevealCompletedEvent,
-      () => counters.dialogueCompletions++,
-    );
-    dialogueHost.on(DialogueChoiceMadeEvent, () => counters.dialogueChoices++);
-    inventoryHost.on(InventoryActionEvent, () => counters.inventoryActions++);
 
     const root = this.spawn("react-ui").add(
       new UIRoot({ anchor: Anchor.TopRight, offset: { x: -24, y: 20 } }),
     );
     root.render(<Hud controls={controls} probe={probe} />);
 
-    dialogue.play(SCRIPT);
+    conversation.dialogue.play(SCRIPT);
   }
 }
 
@@ -522,6 +547,6 @@ async function main(): Promise<void> {
   engine.use(new UIReactPlugin());
   await installDebugFromUrl(engine);
   await engine.start();
-  await engine.scenes.push(new LocalizationScene(localization));
+  await engine.scenes.push(new LocalizationScene());
 }
 main().catch(console.error);

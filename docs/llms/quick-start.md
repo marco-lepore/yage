@@ -105,39 +105,70 @@ engine.use(
     container: document.getElementById("game")!,
   }),
 );
-engine.use(new InputPlugin({ actions: { jump: ["Space", "KeyW"] } }));
+engine.use(
+  new InputPlugin({
+    actions: {
+      left: ["ArrowLeft", "KeyA"],
+      right: ["ArrowRight", "KeyD"],
+      jump: ["Space", "KeyW"],
+    },
+  }),
+);
 engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
 
 await engine.start();
 engine.scenes.push(new GameScene());
 ```
 
-## Scene Class
+## Scene, Entity, Component
 
-For real games, subclass `Scene`:
+Every scene is a `Scene` subclass. An entity type is an `Entity` subclass whose `setup(params)` adds its components. Game logic lives in components.
 
 ```ts
-import { Scene, Transform, Vec2 } from "@yagejs/core";
-import { SpriteComponent, CameraEntity } from "@yagejs/renderer";
-import { texture } from "@yagejs/renderer";
+import { Component, Entity, Scene, Transform, Vec2 } from "@yagejs/core";
+import { CameraEntity, SpriteComponent, texture } from "@yagejs/renderer";
+import { InputManagerKey } from "@yagejs/input";
 
-class GameScene extends Scene {
-  readonly name = "game";
-  readonly preload = [texture("hero.png"), texture("tileset.png")];
+const HeroTex = texture("hero.png");
 
-  onEnter() {
-    const player = this.spawn(Player, { x: 100, y: 200 });
-    const cam = this.spawn(CameraEntity, { follow: player.get(Transform) });
-  }
+// Game logic lives in a component.
+class PlayerController extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly transform = this.sibling(Transform);
 
-  onExit() {
-    // cleanup
+  update(dt: number) {
+    const dx = this.input.getAxis("left", "right"); // -1..1
+    this.transform.translate(dx * 200 * dt, 0); // 200 px/s; dt is seconds
   }
 }
 
-// Push it:
+// An entity type: an Entity subclass whose setup() takes the spawn params.
+class Player extends Entity {
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new SpriteComponent({ texture: HeroTex }));
+    this.add(new PlayerController());
+  }
+}
+
+class GameScene extends Scene {
+  readonly name = "game";
+  readonly preload = [HeroTex];
+
+  // onEnter assembles the scene. State and rules live in components.
+  onEnter() {
+    const player = this.spawn(Player, { x: 100, y: 200 });
+    this.spawn(CameraEntity, { follow: player });
+  }
+}
+
 engine.scenes.push(new GameScene());
 ```
+
+- `this.spawn(Class, params)` types `params` from `setup()`. The entity's debug name is its class name.
+- `Entity` and `Scene` declare `update` / `fixedUpdate` as `never`; a subclass that defines either fails to compile. Per-frame logic is a component's `update(dt)` / `fixedUpdate(dt)`.
+- A named spawn (`const bg = this.spawn("background"); bg.add(...)`) is only for a one-off entity: spawned once, with no behaviour of its own (background, UI root, HUD host). Anything spawned more than once, or with behaviour, is an `Entity` subclass.
+- Game state (score, lives) lives in a component on a host entity; see `core-concepts.md` → Game State. Not a module-level `let`, a `Scene` field, or a `ServiceKey`.
 
 ## Testing & Debugging
 
@@ -239,15 +270,42 @@ For agent-driven debugging: write a throwaway Playwright spec, boot the game, fr
 `@yagejs/core` ships headless test utilities. `createTestEngine()` returns a started engine with no renderer/physics/input plugins; plugins must be registered before start, so a test that needs one builds the engine itself (`new Engine()` → `engine.use(...)` → `await engine.start()`). `advanceFrames()` ticks the game loop N times so assertions run against deterministic state:
 
 ```ts
-import { createTestEngine, advanceFrames, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Entity,
+  Scene,
+  Transform,
+  advanceFrames,
+  createTestEngine,
+} from "@yagejs/core";
+
+class Drift extends Component {
+  private readonly transform = this.sibling(Transform);
+  update(dt: number) {
+    this.transform.translate(100 * dt, 0);
+  }
+}
+
+class Mover extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new Drift());
+  }
+}
+
+class TestScene extends Scene {
+  readonly name = "test";
+}
 
 const engine = await createTestEngine();
-const scene = new GameScene();
+const scene = new TestScene();
 await engine.scenes.push(scene); // async: preload, then onEnter
-const player = scene.spawn(Player, { x: 0, y: 0 });
+const mover = scene.spawn(Mover);
 
 advanceFrames(engine, 10);
-expect(player.get(Transform).position.x).toBeGreaterThan(0);
+expect(mover.get(Transform).position.x).toBeGreaterThan(0);
 ```
+
+The scene and entity use no renderer, physics, or input, because `createTestEngine()` installs none of those plugins.
 
 For component-in-isolation tests, use `createMockScene()` / `createMockEntity()`. See `patterns.md` → Testing Patterns for the full cookbook (component unit tests, system tests, process tests, integration tests).

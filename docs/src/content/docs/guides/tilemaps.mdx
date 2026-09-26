@@ -531,8 +531,9 @@ const objects = tilemap.getObjects("spawns");
 // Returns: Record<string, MapObject[]>
 // e.g. { "player": [{ x, y, ... }], "enemy": [{ x, y, width, height, ... }] }
 
+// EnemyEntity is an Entity subclass whose setup() takes { x, y }.
 for (const obj of objects["enemy"] ?? []) {
-  this.spawn(EnemyBP, { x: obj.x, y: obj.y });
+  this.spawn(EnemyEntity, { x: obj.x, y: obj.y });
 }
 ```
 

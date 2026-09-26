@@ -1,9 +1,14 @@
 /**
  * 2D platformer example — coyote-time + jump-buffered movement, moving
  * platforms, collectible coins, death pits, and a goal flag. The HUD (coin
- * counter + win banner) renders in-canvas on a screen-space layer; there is
- * no DOM overlay. Wiring lives in the sibling modules (constants, hud, player,
- * level, scene).
+ * counter + win banner) renders in-canvas on a screen-space layer.
+ *
+ * This is the reference layout for examples:
+ * - `constants.ts` — sizes, collision layers, events, asset handles.
+ * - `level.ts`, `player.ts`, `hud.ts` — one `Entity` subclass per entity
+ *   type, and the components that hold the rules.
+ * - `scene.ts` — the `Scene` subclass; `onEnter` only spawns.
+ * - `main.ts` — engine and plugins.
  */
 import { Engine } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";

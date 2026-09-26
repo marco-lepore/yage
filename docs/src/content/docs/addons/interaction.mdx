@@ -84,14 +84,28 @@ games never leave the first row.
 
 3. **Render the prompt from the focus-changed event.** This is the *whole*
    render step — the event fires only when the focus (or its prompt text)
-   actually changes.
+   actually changes. A component on your HUD's prompt label listens for it; the
+   event bubbles from the player to the scene.
 
    ```ts
-   player.on(InteractionFocusChangedEvent, ({ prompt }) => {
-     promptLabel.text.text = prompt ?? "";
-     promptLabel.text.visible = prompt !== null;
-   });
+   import { Component } from "@yagejs/core";
+   import { TextComponent } from "@yagejs/renderer";
+   import { InteractionFocusChangedEvent } from "@yagejs-addons/interaction";
+
+   /** Shows the focused interactable's prompt; hidden when nothing is in reach. */
+   class PromptLabel extends Component {
+     private readonly text = this.sibling(TextComponent);
+
+     onAdd(): void {
+       this.listenScene(InteractionFocusChangedEvent, ({ prompt }) => {
+         this.text.setText(prompt ?? "");
+         this.text.visible = prompt !== null;
+       });
+     }
+   }
    ```
+
+   Add `PromptLabel` next to the label's `TextComponent`.
 
 </Steps>
 

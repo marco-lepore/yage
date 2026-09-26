@@ -34,13 +34,14 @@ public/
 
 ### 1. One scene per file
 
-Scene classes should be **orchestrators**: preload assets, set up the camera,
-spawn entities, wire up event listeners. Geometry, movement logic, and
-collision callbacks belong on the entities themselves.
+A scene class **assembles** the scene: it preloads assets, sets up the camera
+and spawns entities. It holds no game state and no rules. Geometry belongs in
+entity classes. Movement, collision callbacks, event handlers and game state
+such as the score belong in those entities' components.
 
 Rule of thumb: if a scene grows past ~150 lines, that's a signal you're
-inlining entity logic. Extract entity classes until the scene is just a list
-of spawns and a few listeners.
+inlining entity logic. Extract entity classes and components until `onEnter`
+is a list of spawns.
 
 ```typescript
 // Good — the scene is a spawn list
@@ -49,15 +50,20 @@ class GameScene extends Scene {
   readonly preload = [playerTexture, jumpSfx];
 
   onEnter() {
-    this.spawn(Player, { x: 120, y: 400 });
+    this.spawn(Hud, { key: HUD_KEY }); // hosts the score
+    this.spawn(Player, { x: 120, y: 400 }); // respawns itself on PlayerHit
     this.spawn(Platform, { x: 800, y: 560, width: 1600, height: 60 });
     this.spawn(Coin, { x: 380, y: 410 });
     this.spawn(Hazard, { x: 620, y: 340, amplitude: 60, period: 2.2 });
-
-    this.on(PlayerHit, () => respawnPlayer(this));
   }
 }
 ```
+
+The player's controller component reacts to `PlayerHit` itself, with
+`this.listenScene(PlayerHit, () => this.respawn())`. When a component should
+not listen for itself, `onEnter` may connect the event to a component method in
+one line, such as `this.on(PlayerHit, () => player.get(Respawn).respawn())`.
+[State Management](/patterns/state-management/) shows where the score lives.
 
 ### 2. Simple entity → single file; complex entity → folder
 

@@ -1,16 +1,32 @@
-import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
-import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
+/**
+ * Hello World — the final code of the "Your First Game" tutorial
+ * (docs/src/content/docs/getting-started/your-first-game.mdx): a `Spin`
+ * component, a `Triangle` entity type, and a scene that spawns one.
+ */
+import {
+  Component,
+  Engine,
+  Entity,
+  Scene,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
+import {
+  CameraEntity,
+  GraphicsComponent,
+  RendererPlugin,
+} from "@yagejs/renderer";
 import {
   installDebugFromUrl,
   setupGameContainer,
 } from "../shared/bootstrap.js";
 
 // ---------------------------------------------------------------------------
-// Spin — rotates an entity at a constant rate
+// Spin — rotates its entity at a constant rate, in radians per second
 // ---------------------------------------------------------------------------
 class Spin extends Component {
   private readonly transform = this.sibling(Transform);
-  private speed: number;
+  private readonly speed: number;
   constructor(speed = 2) {
     super();
     this.speed = speed;
@@ -21,56 +37,29 @@ class Spin extends Component {
 }
 
 // ---------------------------------------------------------------------------
+// Triangle — a green triangle that spins
+// ---------------------------------------------------------------------------
+class Triangle extends Entity {
+  setup(params: { position: Vec2 }): void {
+    this.add(new Transform({ position: params.position }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.poly([0, -45, 40, 35, -40, 35]).fill({ color: 0x22c55e });
+      }),
+    );
+    this.add(new Spin());
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Scene
 // ---------------------------------------------------------------------------
 class HelloWorldScene extends Scene {
   readonly name = "hello-world";
 
   onEnter(): void {
-    // Blue circle
-    const circle = this.spawn("circle");
-    circle.add(new Transform({ position: new Vec2(250, 300) }));
-    circle.add(
-      new GraphicsComponent().draw((g) => {
-        g.circle(0, 0, 50).fill({ color: 0x38bdf8 });
-        g.circle(0, 0, 50).stroke({ color: 0x0ea5e9, width: 2 });
-      }),
-    );
-
-    // Orange rectangle
-    const rect = this.spawn("rect");
-    rect.add(new Transform({ position: new Vec2(550, 300) }));
-    rect.add(
-      new GraphicsComponent().draw((g) => {
-        g.rect(-60, -40, 120, 80).fill({ color: 0xf97316 });
-        g.rect(-60, -40, 120, 80).stroke({ color: 0xea580c, width: 2 });
-      }),
-    );
-
-    // Green rotating triangle
-    const tri = this.spawn("triangle");
-    tri.add(new Transform({ position: new Vec2(400, 200) }));
-    tri.add(
-      new GraphicsComponent().draw((g) => {
-        g.poly([0, -45, 40, 35, -40, 35]).fill({ color: 0x22c55e });
-        g.poly([0, -45, 40, 35, -40, 35]).stroke({ color: 0x16a34a, width: 2 });
-      }),
-    );
-    tri.add(new Spin(2));
-
-    // Small purple rotating diamond
-    const diamond = this.spawn("diamond");
-    diamond.add(new Transform({ position: new Vec2(400, 430) }));
-    diamond.add(
-      new GraphicsComponent().draw((g) => {
-        g.poly([0, -30, 25, 0, 0, 30, -25, 0]).fill({ color: 0xa78bfa });
-        g.poly([0, -30, 25, 0, 0, 30, -25, 0]).stroke({
-          color: 0x7c3aed,
-          width: 2,
-        });
-      }),
-    );
-    diamond.add(new Spin(-3));
+    this.spawn(CameraEntity, { position: new Vec2(400, 300) });
+    this.spawn(Triangle, { position: new Vec2(400, 300) });
   }
 }
 

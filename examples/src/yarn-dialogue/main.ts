@@ -17,13 +17,20 @@
  * the conversation has ended.
  */
 
-import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  Entity,
+  Scene,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { RendererPlugin, TextComponent, type LayerDef } from "@yagejs/renderer";
 import {
   createLocalization,
+  LocalizationKey,
   LocalizationPlugin,
-  type Localization,
 } from "@yagejs-addons/i18n";
 import {
   DialogueController,
@@ -61,85 +68,25 @@ const TAVERN = loadYarn(
   },
 );
 
-/** The game state the script reads (`$coins`) and the `pay` command spends. */
-interface Purse {
-  coins: number;
-}
+/** The player's coins: the game state the script reads (`$coins`) and the
+ *  `pay` command spends. */
+class Purse extends Component {
+  coins = 7;
 
-/** Inspector-readable state for the e2e test and for a human poking around. */
-class TavernProbe extends Component {
-  lastLine = "";
-  lines = 0;
-  constructor(
-    private readonly purse: Purse,
-    private readonly localization: Localization,
-    readonly dialogue: DialogueController,
-  ) {
-    super();
-  }
-  get coins(): number {
-    return this.purse.coins;
-  }
-  get locale(): string {
-    return this.localization.locale;
-  }
-  get active(): boolean {
-    return this.dialogue.isActive();
-  }
-  get choosing(): boolean {
-    return this.dialogue.isChoosing();
+  pay(amount: number): void {
+    this.coins -= amount;
   }
 }
 
-/** L switches language, T talks again; the HUD shows the purse and locale. */
-class TavernControls extends Component {
-  private readonly input = this.service(InputManagerKey);
-  constructor(
-    private readonly purse: Purse,
-    private readonly localization: Localization,
-    private readonly dialogue: DialogueController,
-    private readonly hud: TextComponent,
-  ) {
-    super();
-  }
-  update(): void {
-    if (this.input.isJustPressed("language")) {
-      this.localization.setLocale(
-        this.localization.locale === "en" ? "it" : "en",
-      );
-    }
-    if (this.input.isJustPressed("replay") && !this.dialogue.isActive()) {
-      this.dialogue.play(TAVERN);
-    }
-    const again = this.dialogue.isActive() ? "" : "   ·   T: talk again";
-    this.hud.setText(
-      `Coins: ${this.purse.coins}   ·   Language: ${this.localization.locale.toUpperCase()} (L)${again}`,
-    );
-  }
-}
+/** Hosts the conversation and the purse its script reads and spends. */
+class TavernEntity extends Entity {
+  purse!: Purse;
+  dialogue!: DialogueController;
 
-class TavernScene extends Scene {
-  readonly name = "yarn-tavern";
-  readonly layers: LayerDef[] = [...DIALOGUE_LAYERS];
-
-  constructor(private readonly localization: Localization) {
-    super();
-  }
-
-  onEnter(): void {
-    const purse: Purse = { coins: 7 };
-
-    const hudEntity = this.spawn("hud");
-    hudEntity.add(new Transform({ position: new Vec2(20, 20) }));
-    const hud = hudEntity.add(
-      new TextComponent({
-        text: "",
-        style: { fontSize: 16, fill: 0xf8f8f2, fontFamily: "sans-serif" },
-      }),
-    );
-
-    const host = this.spawn("tavern-dialogue");
-    const dialogue = host.add(
+  setup(): void {
+    const purse = this.add(new Purse());
+    this.purse = purse;
+    this.dialogue = this.add(
       new DialogueController({
         ...createBoxDialogue(),
         // Yarn variables keep their `$`. `$coins` reads and writes the purse;
@@ -156,25 +103,94 @@ class TavernScene extends Scene {
         ),
         commands: {
           // `<<pay {$price}>>`: the command's words arrive as `args`.
-          pay: (cmd) => {
-            purse.coins -= Number(cmd.args?.[0] ?? 0);
-          },
+          pay: (cmd) => purse.pay(Number(cmd.args?.[0] ?? 0)),
         },
       }),
     );
+  }
+}
 
-    this.spawn("tavern-controls").add(
-      new TavernControls(purse, this.localization, dialogue, hud),
-    );
-    const probe = this.spawn("tavern-probe").add(
-      new TavernProbe(purse, this.localization, dialogue),
-    );
-    host.on(DialogueLineEvent, (e) => {
-      probe.lastLine = e.speaker ? `${e.speaker}: ${e.text}` : e.text;
-      probe.lines++;
+/** Inspector-readable state for the e2e test and for a human poking around. */
+class TavernProbe extends Component {
+  private readonly localization = this.service(LocalizationKey);
+  lastLine = "";
+  lines = 0;
+
+  constructor(private readonly tavern: TavernEntity) {
+    super();
+  }
+
+  onAdd(): void {
+    this.listen(this.tavern, DialogueLineEvent, (e) => {
+      this.lastLine = e.speaker ? `${e.speaker}: ${e.text}` : e.text;
+      this.lines++;
     });
+  }
 
-    dialogue.play(TAVERN);
+  get coins(): number {
+    return this.tavern.purse.coins;
+  }
+  get locale(): string {
+    return this.localization.locale;
+  }
+  get active(): boolean {
+    return this.tavern.dialogue.isActive();
+  }
+  get choosing(): boolean {
+    return this.tavern.dialogue.isChoosing();
+  }
+}
+
+/** L switches language, T talks again; the HUD shows the purse and locale. */
+class TavernControls extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly localization = this.service(LocalizationKey);
+  private readonly hud = this.sibling(TextComponent);
+
+  constructor(private readonly tavern: TavernEntity) {
+    super();
+  }
+
+  update(): void {
+    const { dialogue, purse } = this.tavern;
+    if (this.input.isJustPressed("language")) {
+      this.localization.setLocale(
+        this.localization.locale === "en" ? "it" : "en",
+      );
+    }
+    if (this.input.isJustPressed("replay") && !dialogue.isActive()) {
+      dialogue.play(TAVERN);
+    }
+    const again = dialogue.isActive() ? "" : "   ·   T: talk again";
+    this.hud.setText(
+      `Coins: ${purse.coins}   ·   Language: ${this.localization.locale.toUpperCase()} (L)${again}`,
+    );
+  }
+}
+
+/** The HUD line in the top-left corner, and the keys it lists. */
+class HudEntity extends Entity {
+  setup(params: { tavern: TavernEntity }): void {
+    this.add(new Transform({ position: new Vec2(20, 20) }));
+    this.add(
+      new TextComponent({
+        text: "",
+        style: { fontSize: 16, fill: 0xf8f8f2, fontFamily: "sans-serif" },
+      }),
+    );
+    this.add(new TavernControls(params.tavern));
+  }
+}
+
+class TavernScene extends Scene {
+  readonly name = "yarn-tavern";
+  readonly layers: LayerDef[] = [...DIALOGUE_LAYERS];
+
+  onEnter(): void {
+    const tavern = this.spawn(TavernEntity);
+    this.spawn(HudEntity, { tavern });
+    this.spawn("tavern-probe").add(new TavernProbe(tavern));
+    tavern.dialogue.play(TAVERN);
   }
 }
 
@@ -214,6 +230,6 @@ async function main(): Promise<void> {
   );
   await installDebugFromUrl(engine);
   await engine.start();
-  await engine.scenes.push(new TavernScene(localization));
+  await engine.scenes.push(new TavernScene());
 }
 main().catch(console.error);

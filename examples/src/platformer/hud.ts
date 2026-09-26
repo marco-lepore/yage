@@ -1,58 +1,138 @@
-import { TextComponent } from "@yagejs/renderer";
-import { TOTAL_COINS } from "./constants.js";
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
+import { TextComponent, type TextComponentOptions } from "@yagejs/renderer";
+import { AudioManagerKey } from "@yagejs/audio";
+import {
+  WIDTH,
+  HEIGHT,
+  HUD_LAYER,
+  TOTAL_COINS,
+  CoinCollected,
+  GoalReached,
+  CoinSfx,
+  WinSfx,
+} from "./constants.js";
 
-// Game state — module-private, mutated only through the functions below; no
-// other module reads or reassigns these directly.
-let coins = 0;
-let won = false;
+// ---------------------------------------------------------------------------
+// RunProgress — the run's game state and the HUD that shows it
+// ---------------------------------------------------------------------------
 
-// In-canvas HUD text, bound by the scene once it spawns the HUD entities.
-let coinText: TextComponent | undefined;
-let bannerText: TextComponent | undefined;
-let bannerSub: TextComponent | undefined;
-
-/** Point the HUD functions at the scene's in-canvas text. Called once from the
- * scene after it spawns the HUD entities. */
-export function bindHud(
-  coin: TextComponent,
-  banner: TextComponent,
-  sub: TextComponent,
-): void {
-  coinText = coin;
-  bannerText = banner;
-  bannerSub = sub;
-  refreshHud();
+/** The HUD texts `RunProgress` writes to. */
+interface HudTexts {
+  counter: TextComponent;
+  banner: TextComponent;
+  tally: TextComponent;
 }
 
-function refreshHud(): void {
-  coinText?.setText(`Coins: ${coins} / ${TOTAL_COINS}`);
+/**
+ * Coin count and win state for one run. The component lives on the HUD
+ * entity, so the state starts fresh every time the scene is entered. Code
+ * outside the HUD reads it with
+ * `scene.findByKey<HudEntity>(HUD_KEY)?.progress`.
+ */
+export class RunProgress extends Component {
+  private readonly audio = this.service(AudioManagerKey);
+  private readonly texts: HudTexts;
+  private _coins = 0;
+  private _won = false;
+
+  constructor(texts: HudTexts) {
+    super();
+    this.texts = texts;
+  }
+
+  get coins(): number {
+    return this._coins;
+  }
+
+  get won(): boolean {
+    return this._won;
+  }
+
+  onAdd(): void {
+    this.refresh();
+    // Coins and the goal emit their events on themselves; the events bubble
+    // to the scene, where this component hears them.
+    this.listenScene(CoinCollected, () => {
+      this._coins += 1;
+      this.audio.play(CoinSfx, { channel: "sfx" });
+      this.refresh();
+    });
+    this.listenScene(GoalReached, () => {
+      if (this._won) return;
+      this._won = true;
+      this.audio.play(WinSfx, { channel: "sfx" });
+      this.texts.tally.setText(
+        `Collected ${this._coins} / ${TOTAL_COINS} coins`,
+      );
+      this.texts.banner.visible = true;
+      this.texts.tally.visible = true;
+    });
+  }
+
+  private refresh(): void {
+    this.texts.counter.setText(`Coins: ${this._coins} / ${TOTAL_COINS}`);
+  }
 }
 
-/** Reset coins + win state and the HUD. Call on scene (re)enter. */
-export function resetGame(): void {
-  coins = 0;
-  won = false;
-  refreshHud();
-  if (bannerText) bannerText.visible = false;
-  if (bannerSub) bannerSub.visible = false;
-}
+// ---------------------------------------------------------------------------
+// HudEntity — in-canvas HUD on the screen-space layer
+// ---------------------------------------------------------------------------
 
-/** Collect one coin and refresh the HUD. */
-export function addCoin(): void {
-  coins += 1;
-  refreshHud();
-}
+/** Spawn key of the HUD entity, for `scene.findByKey`. */
+export const HUD_KEY = "hud";
 
-/** Whether the goal has been reached. */
-export function isWon(): boolean {
-  return won;
-}
+/** Coin counter in the top-right corner and a centred win banner. */
+export class HudEntity extends Entity {
+  /** The run's state, hosted on this entity. */
+  progress!: RunProgress;
 
-/** Reveal the win banner with the final coin tally. */
-export function showWin(): void {
-  if (won) return;
-  won = true;
-  bannerSub?.setText(`Collected ${coins} / ${TOTAL_COINS} coins`);
-  if (bannerText) bannerText.visible = true;
-  if (bannerSub) bannerSub.visible = true;
+  setup(): void {
+    const counter = this.spawnHudText("counter", new Vec2(WIDTH - 16, 16), {
+      text: "",
+      anchor: { x: 1, y: 0 },
+      style: { fontFamily: "monospace", fontSize: 20, fill: 0xffe66d },
+    });
+    const banner = this.spawnHudText(
+      "banner",
+      new Vec2(WIDTH / 2, HEIGHT / 2 - 12),
+      {
+        text: "You Win!",
+        anchor: { x: 0.5, y: 0.5 },
+        style: {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 32,
+          fill: 0x22c55e,
+          fontWeight: "bold",
+        },
+        visible: false,
+      },
+    );
+    const tally = this.spawnHudText(
+      "tally",
+      new Vec2(WIDTH / 2, HEIGHT / 2 + 22),
+      {
+        text: "",
+        anchor: { x: 0.5, y: 0.5 },
+        style: {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 14,
+          fill: 0xffe66d,
+        },
+        visible: false,
+      },
+    );
+    this.progress = this.add(new RunProgress({ counter, banner, tally }));
+  }
+
+  /** One line of text as a child entity. The HUD entity has no Transform, so
+   *  `position` is in screen pixels. */
+  private spawnHudText(
+    name: string,
+    position: Vec2,
+    options: TextComponentOptions,
+  ): TextComponent {
+    const child = this.spawnChild(name);
+    child.add(new Transform({ position }));
+    return child.add(new TextComponent({ ...options, layer: HUD_LAYER }));
+  }
 }

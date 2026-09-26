@@ -56,9 +56,10 @@ engine.use(
   }),
 );
 
-class GameScene extends Scene {
-  onEnter() {
-    this.spawn("touch-controls").add(
+// An Entity subclass hosts the overlay; onEnter only spawns it.
+class TouchControls extends Entity {
+  setup(): void {
+    this.add(
       new VirtualControls({
         stick: { actions: ["left", "right", "up", "down"] }, // L/R/U/D order
         buttons: [
@@ -68,6 +69,13 @@ class GameScene extends Scene {
         presenter: createControlsPresenter(),
       }),
     );
+  }
+}
+
+class GameScene extends Scene {
+  readonly name = "game";
+  onEnter() {
+    this.spawn(TouchControls);
   }
 }
 ```
@@ -211,10 +219,21 @@ sizes, and out-of-range deadZone/threshold) throw at construction or at the
 `VirtualButtonPressEvent` / `VirtualButtonReleaseEvent` (`{ id, action }`) and
 `VirtualStickEngageEvent` / `VirtualStickReleaseEvent` (`{ id }`) — the hook
 for haptics, UI sounds, tutorials, or buttons with no `action`. Per-frame
-stick values are polled (`controls.stick().value`), not evented. Destroying
-the host entity resets all mirrored input state but emits NO release events
-(entity events no-op mid-destroy) — don't rely on balanced engage/release
-pairs across a destroy.
+stick values are polled (`controls.stick().value`), not evented. Listen from a
+component, not from a closure in `onEnter`:
+
+```ts
+class ButtonHaptics extends Component {
+  onAdd(): void {
+    // Any VirtualControls in the scene; the event bubbles from its entity.
+    this.listenScene(VirtualButtonPressEvent, () => navigator.vibrate?.(10));
+  }
+}
+```
+
+Destroying the host entity resets all mirrored input state but emits NO
+release events (entity events no-op mid-destroy) — don't rely on balanced
+engage/release pairs across a destroy.
 
 ## Custom presenters
 

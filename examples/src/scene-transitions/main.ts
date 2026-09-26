@@ -2,11 +2,16 @@ import {
   AssetHandle,
   Engine,
   LoadingScene,
+  Process,
+  ProcessSystemKey,
+  RandomKey,
   Scene,
   Transform,
   Vec2,
   easeOutCubic,
   type AssetLoader,
+  type ProcessSystem,
+  type RandomService,
   type SceneTransition,
   type SceneTransitionContext,
 } from "@yagejs/core";
@@ -139,41 +144,57 @@ class GameOverScene extends LabeledScene {
 // composes with the transition system: the mount transition animates the
 // loading screen in, and LoadingScene.transition animates the handoff out.
 
-const slowLoader: AssetLoader<string> = {
-  load: (path: string) =>
-    new Promise((resolve) => {
-      const delay = 150 + Math.random() * 350;
-      setTimeout(() => resolve(`loaded:${path}`), delay);
-    }),
-};
+// A fake asset carries its load time in seconds as its handle's `data`. The
+// loader waits that long in engine time, so a paused or frozen game clock
+// holds the load too.
+function createSlowLoader(processes: ProcessSystem): AssetLoader<string> {
+  return {
+    load: async (path, data) => {
+      const seconds = typeof data === "number" ? data : 0.3;
+      await processes.add(Process.delay(seconds)).toPromise();
+      return `loaded:${path}`;
+    },
+  };
+}
 
-function makeFakePreload(): AssetHandle<string>[] {
-  const salt = Math.random().toString(36).slice(2, 6);
-  return [
-    new AssetHandle<string>("slow", `player-${salt}`),
-    new AssetHandle<string>("slow", `world-${salt}`),
-    new AssetHandle<string>("slow", `sfx-${salt}`),
-    new AssetHandle<string>("slow", `music-${salt}`),
-  ];
+// Each load gets its own paths, so nothing is cached from an earlier load.
+function makeFakePreload(
+  loadId: number,
+  random: RandomService,
+): AssetHandle<string>[] {
+  return ["player", "world", "sfx", "music"].map(
+    (name) =>
+      new AssetHandle<string>(
+        "slow",
+        `${name}-${loadId}`,
+        random.range(0.15, 0.5),
+      ),
+  );
 }
 
 // A dedicated LabeledScene variant that declares the synthetic preload so
 // LoadingScene has something to chew on during the demo.
 class LoadedLevel extends LabeledScene {
   readonly name = "loaded";
-  override readonly preload = makeFakePreload();
-  constructor() {
+  override readonly preload: AssetHandle<string>[];
+  constructor(loadId: number, random: RandomService) {
     super("LOADED", 0x581c87); // purple
+    this.preload = makeFakePreload(loadId, random);
   }
 }
 
 class LoadThenShow extends LoadingScene {
   override readonly name = "loading";
-  readonly target = () => new LoadedLevel();
+  // The factory runs after the loading scene has entered, so the scene's
+  // seeded generator is available.
+  readonly target = () => new LoadedLevel(this.loadId, this.use(RandomKey));
   override readonly minDuration = 0.4;
   override readonly transition: SceneTransition;
 
-  constructor(handoffSeconds: number) {
+  constructor(
+    handoffSeconds: number,
+    private readonly loadId: number,
+  ) {
     super();
     this.transition = fade({ duration: handoffSeconds });
   }
@@ -202,7 +223,10 @@ engine.use(new UIPlugin());
 async function main(): Promise<void> {
   await installDebugFromUrl(engine);
   await engine.start();
-  engine.assets.registerLoader("slow", slowLoader);
+  engine.assets.registerLoader(
+    "slow",
+    createSlowLoader(engine.context.resolve(ProcessSystemKey)),
+  );
   await engine.scenes.push(new MenuScene());
   wireControls();
 }
@@ -312,12 +336,14 @@ function wireControls(): void {
     });
   });
 
+  // Numbers each load, so every LoadedLevel's fake assets get new paths.
+  let loads = 0;
   bind("btn-push-load", () => {
     // Replace the top scene with a loading screen that fades in via the
     // current duration, preloads synthetic "slow" assets, then fades to a
     // dedicated LoadedLevel. Demonstrates LoadingScene composing cleanly
     // with transitions on both ends — mount and handoff.
-    void engine.scenes.replace(new LoadThenShow(currentDuration()), {
+    void engine.scenes.replace(new LoadThenShow(currentDuration(), ++loads), {
       transition: fade({ duration: currentDuration() }),
     });
   });
@@ -328,6 +354,8 @@ function wireControls(): void {
   });
 
   // ----- Live status panel ---------------------------------------------------
+  // Redrawn on every scene stack change and at each transition's start and
+  // end.
   function renderStatus(): void {
     const names = engine.scenes.all.map((s) => s.name).join(" → ") || "(empty)";
     const transitioning = engine.scenes.isTransitioning ? "yes" : "no";
@@ -335,6 +363,14 @@ function wireControls(): void {
       `Stack:         ${names}\n` + `Transitioning: ${transitioning}`;
   }
 
-  setInterval(renderStatus, 50);
+  for (const event of [
+    "scene:pushed",
+    "scene:popped",
+    "scene:replaced",
+    "scene:transition:started",
+    "scene:transition:ended",
+  ] as const) {
+    engine.events.on(event, renderStatus);
+  }
   renderStatus();
 }

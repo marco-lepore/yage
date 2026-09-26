@@ -12,17 +12,17 @@
  *    fits; what didn't fit stays on the floor (`AddResult.added`), and a full
  *    backpack raises the "rejected" toast via `InventoryRejectedEvent`.
  *  • **Item actions with injected availability** — Use (consumes, heals),
- *    Equip/Unequip (game-state-dependent availability), Drop (spawns the item
- *    back into the world), Examine — consequences applied in ONE
- *    `InventoryActionEvent` handler.
+ *    Equip/Unequip (availability depends on what the player holds), Drop
+ *    (spawns the item back into the world), Examine — consequences applied
+ *    in ONE `InventoryActionEvent` handler (`ItemConsequences`).
  *  • **Sorting** — R (while a panel is open) consolidates partial stacks and
  *    orders by catalog order.
  *  • **The model is always live** — the vault door consumes the gold key with
  *    both panels CLOSED (`keyItems.has/remove`), and the HUD potion counter
- *    tracks `InventoryItemAdded/RemovedEvent` in real time.
- *  • **Icons** — the potion declares an `icon` texture (drawn on a canvas at
- *    startup, zero assets); everything else uses the colored-tile fallback.
- *
+ *    tracks `InventoryItemAdded/RemovedEvent` as they happen.
+ *  • **Icons** — the potion declares an `icon` texture (drawn with the
+ *    renderer at boot, no asset file); everything else uses the colored-tile
+ *    fallback.
  *  • **Interactive hotbar** — a chrome-less always-on strip shows a
  *    `filteredView` of the backpack: only items offering "use" (potions,
  *    elixirs), compacted, so the strip has no dead cells. Number keys 1–5
@@ -30,33 +30,44 @@
  *    binding) — the SAME mutation a click in the backpack panel makes, since
  *    it's one shared model underneath.
  *
+ * Files:
+ * - `constants.ts` — sizes, layers, spawn keys, events.
+ * - `catalog.ts` — the item catalog, item actions and the potion icon.
+ * - `bag.ts` — the bag entity: both inventories and the one-panel rule.
+ * - `panels.ts` — the backpack and key-items panels, the hotbar, and the
+ *   component that applies what item actions mean.
+ * - `player.ts`, `room.ts`, `hud.ts` — the player, pickups and vault door,
+ *   and the HUD.
+ * - `scene.ts` — the `Scene` subclass; `onEnter` only spawns.
+ * - `probe.ts` — Inspector-readable state for tests.
+ *
  * Controls: WASD/arrows walk · E interact · I backpack · K key items ·
  * arrows/mouse navigate · E/Enter/click confirm · Esc close · R sort ·
  * 1–5 hotbar quick-use.
  */
 
 import { Engine } from "@yagejs/core";
-import { RendererPlugin } from "@yagejs/renderer";
+import { RendererPlugin, registerTexture } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 import {
   installDebugFromUrl,
   setupGameContainer,
 } from "../shared/bootstrap.js";
-import { HEIGHT, WIDTH } from "./constants.js";
+import { HEIGHT, ICON_POTION, WIDTH } from "./constants.js";
+import { drawPotionIcon, POTION_ICON_SIZE } from "./catalog.js";
 import { InventoryRoomScene } from "./scene.js";
 
 // ── boot ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
-  engine.use(
-    new RendererPlugin({
-      width: WIDTH,
-      height: HEIGHT,
-      backgroundColor: 0x0a0a0a,
-      container: setupGameContainer(WIDTH, HEIGHT),
-    }),
-  );
+  const renderer = new RendererPlugin({
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: 0x0a0a0a,
+    container: setupGameContainer(WIDTH, HEIGHT),
+  });
+  engine.use(renderer);
   engine.use(
     new InputPlugin({
       actions: {
@@ -86,6 +97,15 @@ async function main(): Promise<void> {
   );
   await installDebugFromUrl(engine);
   await engine.start();
+  // The catalog names the potion's icon by key. Bake the drawing into a
+  // texture once and register it under that key before any panel shows it.
+  registerTexture(
+    ICON_POTION,
+    renderer.createTexture(drawPotionIcon, {
+      width: POTION_ICON_SIZE,
+      height: POTION_ICON_SIZE,
+    }),
+  );
   await engine.scenes.push(new InventoryRoomScene());
 }
 
