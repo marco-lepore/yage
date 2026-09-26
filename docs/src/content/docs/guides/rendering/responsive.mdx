@@ -246,8 +246,10 @@ const renderer = new RendererPlugin({ width: 800, height: 600, container: host }
 engine.use(renderer);
 
 button.addEventListener("click", () => {
-  if (renderer.isFullscreen) renderer.exitFullscreen();
-  else renderer.requestFullscreen();
+  const toggle = renderer.isFullscreen
+    ? renderer.exitFullscreen()
+    : renderer.requestFullscreen();
+  toggle.catch((err: unknown) => console.warn(err)); // rejects if unsupported
 });
 ```
 
@@ -333,6 +335,7 @@ notch and the home indicator:
 ```css
 #game {
   box-sizing: border-box;
+  background: #0f172a; /* the renderer's backgroundColor */
   width: 100vw;
   height: 100vh; /* for browsers without dvh */
   height: 100dvh;
@@ -344,7 +347,7 @@ notch and the home indicator:
 - **Use `100dvh`, not `100vh`.** On a phone, `100vh` is the height with the
   browser's toolbars hidden. While the toolbars are showing, the bottom of a
   `100vh` game sits behind them. `100dvh` is the height the player can see.
-- **Don't count on scrolling to hide the toolbars.** Mobile Safari does not
+- **Don't rely on scrolling to hide the toolbars.** Mobile Safari does not
   hide them reliably, and a game page does not scroll.
 - **The safe-area padding keeps the game clear of the notch, the rounded
   corners, and the home indicator.** Each `env(safe-area-inset-*)` value is
@@ -352,8 +355,10 @@ notch and the home indicator:
   avoid. The values are only non-zero with `viewport-fit=cover`.
   `RendererPlugin` sizes the canvas to the area inside the container's
   padding, so no renderer config is needed.
-- **The page background shows in the padding.** Give `body` the same color
-  as the renderer's `backgroundColor`.
+- **Give the container a background.** The padding shows the container's
+  own background. In fullscreen the browser draws only the container, so a
+  background set on `body` alone leaves black strips. Use the renderer's
+  `backgroundColor`.
 
 ### Fullscreen button
 
@@ -374,13 +379,18 @@ browser allows it:
   ```
 
   iPad Safari before 16.4 only has `webkitFullscreenEnabled`.
+- **Hide the button in an installed app that opens fullscreen.** The game
+  already fills the screen there. Check
+  `matchMedia("(display-mode: fullscreen)").matches`.
+- **Move focus off the button after a click.** Otherwise the button keeps
+  focus, and a game key such as Enter presses it again. Call
+  `button.blur()` in the click handler.
 - **iPad Safari adds its own controls.** In fullscreen it shows an exit
   button over the page that the page cannot hide, and a swipe down exits
   fullscreen.
 
-The Recommended template's `src/fullscreen.ts` is a complete button: it is
-hidden where fullscreen is unavailable, and it changes its label on
-`screen:fullscreen`.
+The Recommended template's `src/fullscreen.ts` is a complete button that
+follows these rules and changes its label on `screen:fullscreen`.
 
 ### Rotate-device overlay
 

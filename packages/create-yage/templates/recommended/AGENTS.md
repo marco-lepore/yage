@@ -19,7 +19,8 @@ positions there, or spawn more entities.
 
 The Fullscreen button in the top-right corner is set up in
 `src/fullscreen.ts`. It is hidden where the browser cannot show the page
-fullscreen, such as on iPhone. See
+fullscreen, such as on iPhone, and in the installed app on Android, which
+already opens fullscreen. See
 https://yage.dev/guides/rendering/responsive/#mobile-readiness for what the
 page does on phones.
 

@@ -10,7 +10,7 @@ npm run dev
 
 Pick `recommended` for a playable platformer seed (physics, input, animations, enemies, collectibles) or `minimal` for an empty scene with just core + renderer.
 
-Both templates' `index.html` is set up for phones: `viewport-fit=cover`, and a `#game` container sized `100dvh` (with a `100vh` fallback) and padded by `env(safe-area-inset-*)`. `recommended` also has a Fullscreen button (`src/fullscreen.ts`, hidden where `document.fullscreenEnabled` is not `true`, such as iPhone) and `apple-mobile-web-app-status-bar-style: black-translucent`. Details: `packages/renderer.md` → Mobile readiness.
+Both templates' `index.html` is set up for phones: `viewport-fit=cover`, and a `#game` container sized `100dvh` (with a `100vh` fallback) and padded by `env(safe-area-inset-*)`. `recommended` also has a Fullscreen button (`src/fullscreen.ts`; hidden where neither `document.fullscreenEnabled` nor `webkitFullscreenEnabled` is `true`, such as iPhone, and in an installed app running `display-mode: fullscreen`) and `apple-mobile-web-app-status-bar-style: black-translucent`. Details: `packages/renderer.md` → Mobile readiness.
 
 The `recommended` template's production build is an installable, offline-capable PWA (`vite-plugin-pwa` in `vite.config.ts`):
 
