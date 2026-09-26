@@ -1,18 +1,12 @@
-import { useEffect, useState } from "react";
 import { createStore } from "@yagejs/core";
-import {
-  createSave,
-  localStorageAdapter,
-  type SlotInfo,
-  type Save,
-} from "@yagejs/save";
-import { panelBg } from "../shared/ui-theme.js";
 
 // ---------------------------------------------------------------------------
-// 1. Compound stores
+// 1. Save roots
 //
 // `game` collects every run-state leaf into one save document. `settings` is
-// its own compound because it persists separately (across runs).
+// its own compound because it persists separately (across runs). Both live at
+// module level because @yagejs/save persists them: main.tsx restores them
+// before the engine starts.
 // ---------------------------------------------------------------------------
 
 export const GAME_ID = "save-stores.run";
@@ -32,6 +26,7 @@ export const settings = createStore((s) => ({
   vsync: s.value<boolean>({ default: true }),
 }));
 
+/** Metadata stored with each run slot, shown in the slot lists. */
 export interface RunMeta {
   chapter: number;
   coins: number;
@@ -39,14 +34,45 @@ export interface RunMeta {
   label?: string;
 }
 
+export const SLOT_NAMES = ["manual-1", "manual-2", "manual-3"] as const;
+export type SlotName = (typeof SLOT_NAMES)[number];
+
 // ---------------------------------------------------------------------------
-// 2. Save instance — created in user code, registered via SavePlugin.
+// 2. Rules over the stores
+//
+// The buttons call these functions; the stores notify `useStore` and the
+// auto-persist on every change.
 // ---------------------------------------------------------------------------
 
-export const save = createSave({
-  adapter: localStorageAdapter({ namespace: "yage-save-stores-example" }),
-});
+/** Start a fresh run: chapter 1, no coins, no deaths. */
+export function newRun(): void {
+  game.reset();
+}
 
+export function collectCoin(): void {
+  game.progression.set({ coins: game.progression.get().coins + 1 });
+}
+
+/** Move on to the next chapter, which starts with no coins. */
+export function nextChapter(): void {
+  game.progression.set({
+    chapter: game.progression.get().chapter + 1,
+    coins: 0,
+  });
+}
+
+export function recordDeath(): void {
+  game.deaths.increment();
+}
+
+/** Change one volume by `delta`, kept between 0 and 1. */
+export function stepVolume(channel: "music" | "sfx", delta: number): void {
+  const audio = { ...settings.audio.get() };
+  audio[channel] = Math.min(1, Math.max(0, audio[channel] + delta));
+  settings.audio.set(audio);
+}
+
+/** The metadata a slot saved now would carry. */
 export function snapshotRunMeta(label?: string): RunMeta {
   const p = game.progression.get();
   const meta: RunMeta = {
@@ -57,36 +83,3 @@ export function snapshotRunMeta(label?: string): RunMeta {
   if (label !== undefined) meta.label = label;
   return meta;
 }
-
-export function newRun(): void {
-  game.reset();
-}
-
-// `useSlots` re-reads `save.listSlots(id)` whenever `refreshKey` bumps
-// (called explicitly from save/delete handlers).
-export function useSlots(
-  saveInstance: Save,
-  id: string,
-  refreshKey: number,
-): SlotInfo<RunMeta>[] {
-  const [slots, setSlots] = useState<SlotInfo<RunMeta>[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    void saveInstance.listSlots<RunMeta>(id).then((s) => {
-      if (!cancelled) setSlots(s.sort((a, b) => b.savedAt - a.savedAt));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [saveInstance, id, refreshKey]);
-  return slots;
-}
-
-export const PANEL_BG = panelBg;
-
-export function formatTime(t: number): string {
-  return new Date(t).toLocaleTimeString();
-}
-
-export const SLOT_NAMES = ["manual-1", "manual-2", "manual-3"] as const;
-export type SlotName = (typeof SLOT_NAMES)[number];

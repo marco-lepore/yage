@@ -19,8 +19,11 @@ npm install -D @yagejs-tools/feedback
 
 DOM feedback UI over a real YAGE view. Requires RendererPlugin and DebugPlugin.
 
-```ts
+```ts yage-context="engine"
+/// <reference types="vite/client" />
 import { FeedbackPlugin } from "@yagejs-tools/feedback";
+
+const debug = import.meta.env.DEV;
 engine.use(
   new FeedbackPlugin({
     enabled: debug, // Same application flag as Engine({ debug }).

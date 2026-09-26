@@ -11,6 +11,8 @@ practical recipes, and a custom effect. Press `N` or `P` to move between scenes
 with a slide transition.
 
 ```ts
+import type { Entity } from "@yagejs/core";
+import { SpriteComponent, type CameraEntity } from "@yagejs/renderer";
 import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";
 import {
   feelCameraShake,
@@ -18,6 +20,11 @@ import {
   feelScalePunch,
   feelSquash,
 } from "@yagejs-addons/feel/renderer";
+
+// Your game's objects:
+declare const enemy: Entity;
+declare const camera: CameraEntity;
+const enemySprite = enemy.get(SpriteComponent);
 
 enemy.add(
   new Feel({
@@ -59,7 +66,12 @@ recipes have separate entry points.
 
 Each cue also accepts trigger policy:
 
-```ts
+```ts yage-context="entity"
+import { SpriteComponent } from "@yagejs/renderer";
+import { Feel } from "@yagejs-addons/feel";
+import { feelScalePunch } from "@yagejs-addons/feel/renderer";
+
+const playerSprite = entity.get(SpriteComponent);
 const feel = entity.add(
   new Feel({
     hit: {
@@ -87,7 +99,10 @@ immediately.
 pulses:
 
 ```ts
-interface FeelPulseTiming {
+import type { EasingFunction } from "@yagejs/core";
+import type { FeelPulseTiming as BaseFeelPulseTiming } from "@yagejs-addons/feel";
+
+interface FeelPulseTiming extends BaseFeelPulseTiming {
   duration?: number;
   peakAt?: number;
   attackEasing?: EasingFunction;
@@ -152,6 +167,16 @@ unchanged. Overlapping effects own separate modifiers and remove only their
 own values.
 
 ```ts
+import type { SpriteComponent } from "@yagejs/renderer";
+import { feelParallel } from "@yagejs-addons/feel";
+import {
+  feelPositionSpring,
+  feelRotationSpring,
+  feelScaleSpring,
+} from "@yagejs-addons/feel/renderer";
+
+declare const enemySprite: SpriteComponent;
+
 const springHit = feelParallel(
   feelPositionSpring({ target: enemySprite, offset: { x: -12, y: 0 } }),
   feelRotationSpring({ target: enemySprite, radians: 0.15 }),
@@ -166,7 +191,10 @@ number of rebounds, and `decay` controls how quickly the rebounds weaken.
 ```ts
 import { easeOutQuad } from "@yagejs/core";
 import { bloom } from "@yagejs/effects";
+import type { RenderLayer } from "@yagejs/renderer";
 import { feelEffect } from "@yagejs-addons/feel/renderer";
+
+declare const worldLayer: RenderLayer; // the scene's "world" layer
 
 const bloomPulse = feelEffect(worldLayer.fx, bloom({ bloomScale: 1.5 }), {
   duration: 0.25,
@@ -178,7 +206,7 @@ const bloomPulse = feelEffect(worldLayer.fx, bloom({ bloomScale: 1.5 }), {
 
 Use `feelEffect` for a renderer effect that only needs a temporary intensity
 pulse. `feelGlitch` changes its slice pattern during playback. `feelDissolve`
-moves in one direction instead of returning to zero. The renderer package also
+moves in one direction instead of returning to zero. `@yagejs/effects` also
 supplies `zoomBlur`, `axisBlur`, and `implosion`; static pulses use
 `feelEffect`.
 
@@ -193,12 +221,18 @@ Recipes are ready-made compositions under `@yagejs-addons/feel/recipes`. Each
 recipe returns a normal `FeelNode` for the existing `Feel` component. The
 separate import distinguishes recipes from basic `feelX` nodes.
 
-```ts
+```ts yage-context="entity"
+import type { SpriteComponent } from "@yagejs/renderer";
+import { Feel } from "@yagejs-addons/feel";
 import {
   damageImpact,
   dashBurst,
   enemyDeath,
 } from "@yagejs-addons/feel/recipes";
+
+declare const enemySprite: SpriteComponent;
+declare const playerSprite: SpriteComponent;
+let lastDamage = 0; // set by the game's combat code
 
 const feel = entity.add(
   new Feel({
@@ -241,6 +275,20 @@ so retriggers can overlap without sharing state. Feel-owned filter pulses are
 omitted from save snapshots.
 
 ```ts
+import type { SpriteComponent } from "@yagejs/renderer";
+import { feelParallel } from "@yagejs-addons/feel";
+import {
+  feelDamageNumber,
+  feelGlow,
+  feelImpactRing,
+  feelOutline,
+} from "@yagejs-addons/feel/renderer";
+
+declare const enemySprite: SpriteComponent;
+// Set by the game's combat code:
+let lastDamage = 0;
+let lastHitWasCritical = false;
+
 const criticalHit = feelParallel(
   feelOutline({
     target: enemySprite,
@@ -268,6 +316,19 @@ rendered pose. All three effects own temporary entities and leave gameplay
 transforms unchanged.
 
 ```ts
+import { Transform, type Entity, type Vec2Like } from "@yagejs/core";
+import type { SpriteComponent } from "@yagejs/renderer";
+import { feelParallel } from "@yagejs-addons/feel";
+import {
+  feelAfterimage,
+  feelFlightLines,
+  feelMotionTrail,
+} from "@yagejs-addons/feel/renderer";
+
+declare const player: Entity;
+declare const playerSprite: SpriteComponent;
+declare const velocity: Vec2Like; // the player's current velocity
+
 const dash = feelParallel(
   feelFlightLines({ direction: () => velocity, duration: 0.25 }),
   feelMotionTrail({
@@ -307,11 +368,16 @@ instead when a game displays very large numbers of callouts every frame.
 ## Audio and particles
 
 ```ts
+import type { ParticleEmitterComponent } from "@yagejs/particles";
+import { feelParallel } from "@yagejs-addons/feel";
 import { feelSound } from "@yagejs-addons/feel/audio";
 import {
   feelParticleBurst,
   feelParticleEmit,
 } from "@yagejs-addons/feel/particles";
+
+declare const sparks: ParticleEmitterComponent;
+declare const smoke: ParticleEmitterComponent;
 
 const impact = feelParallel(
   feelSound({ alias: "impact", speed: [0.95, 1.05] }),

@@ -1,4 +1,11 @@
-import { Entity, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Entity,
+  Component,
+  ProcessComponent,
+  Transform,
+  Vec2,
+  type ProcessSlot,
+} from "@yagejs/core";
 import {
   GraphicsComponent,
   type CameraEntity,
@@ -22,11 +29,13 @@ import {
   LAYER_COIN,
   LAYER_GOAL,
   LAYER_DEATH,
+  PlayerDied,
+  GoalReached,
   JumpSfx,
   LandSfx,
+  HurtSfx,
 } from "./constants.js";
 import { MovingPlatform } from "./level.js";
-import { isWon } from "./hud.js";
 
 // ---------------------------------------------------------------------------
 // PlayerController
@@ -40,18 +49,23 @@ class PlayerController extends Component {
   private readonly transform = this.sibling(Transform);
   private readonly rb = this.sibling(RigidBodyComponent);
   private readonly collider = this.sibling(ColliderComponent);
+  private readonly processes = this.sibling(ProcessComponent);
 
   constructor(camera: CameraEntity) {
     super();
     this.camera = camera;
   }
 
-  private grounded = false;
   private onGround = false;
-  private coyoteTimer = 0; // seconds remaining
-  private jumpBufferTimer = 0; // seconds remaining
   private dropPressed = false;
   private wasAirborne = false;
+  /** Set when the goal is reached; the player stops taking input. */
+  private finished = false;
+  // Both windows run on the physics clock, like the movement that reads them.
+  /** Running while a jump is still allowed after leaving the ground. */
+  private coyote!: ProcessSlot;
+  /** Running while a jump pressed just before landing is still pending. */
+  private jumpBuffer!: ProcessSlot;
 
   private static readonly SPEED = 220;
   private static readonly JUMP_VELOCITY = 505;
@@ -62,6 +76,21 @@ class PlayerController extends Component {
 
   onAdd(): void {
     this.physicsWorld = this.use(PhysicsWorldKey);
+    this.coyote = this.processes.slot({
+      duration: PlayerController.COYOTE_SECONDS,
+      clock: "fixed",
+    });
+    this.jumpBuffer = this.processes.slot({
+      duration: PlayerController.JUMP_BUFFER_SECONDS,
+      clock: "fixed",
+    });
+
+    // Death zones and the goal emit on themselves; the events bubble to the
+    // scene.
+    this.listenScene(PlayerDied, () => this.respawn());
+    this.listenScene(GoalReached, () => {
+      this.finished = true;
+    });
 
     // Camera follow
     this.camera.follow(this.transform, {
@@ -79,13 +108,13 @@ class PlayerController extends Component {
   }
 
   update(): void {
-    if (isWon()) return;
+    if (this.finished) return;
 
     // Input edges are per-frame; capture them here and let fixedUpdate
     // consume them. A frame can run zero or two physics steps, so reading
     // isJustPressed there would drop or double-count a press.
     if (this.input.isJustPressed("jump")) {
-      this.jumpBufferTimer = PlayerController.JUMP_BUFFER_SECONDS;
+      this.jumpBuffer.restart();
     }
     if (this.input.isJustPressed("down")) {
       this.dropPressed = true;
@@ -94,7 +123,7 @@ class PlayerController extends Component {
     // -- Visual swap based on airborne state --
     const airborne = !this.onGround;
     if (airborne !== this.wasAirborne) {
-      if (!airborne) this.audio.play(LandSfx.path, { channel: "sfx" });
+      if (!airborne) this.audio.play(LandSfx, { channel: "sfx" });
       this.wasAirborne = airborne;
       this.redrawPlayer(airborne);
     }
@@ -104,8 +133,8 @@ class PlayerController extends Component {
   // effect on the very next step, so the carry stays in step with the
   // platform's own fixedUpdate-authored motion instead of lagging a frame
   // behind it.
-  fixedUpdate(dt: number): void {
-    if (isWon()) return;
+  fixedUpdate(): void {
+    if (this.finished) return;
 
     const vel = this.rb.getVelocity();
 
@@ -123,22 +152,15 @@ class PlayerController extends Component {
     );
     // Raycasts don't consult contact filters, so during a drop-through the
     // ray still reports the one-way platform being fallen through. It isn't
-    // supporting the player, so it must not restore grounded state (and
+    // supporting the player, so it must not reopen the coyote window (and
     // with it the ability to jump mid-drop). Solid ground still counts.
     const passingThroughHit =
       this.collider.isDroppingThrough &&
       hit?.entity.tryGet(ColliderComponent)?.config.oneWay !== undefined;
     this.onGround = hit !== null && !passingThroughHit;
-
-    if (this.onGround) {
-      this.grounded = true;
-      this.coyoteTimer = PlayerController.COYOTE_SECONDS;
-    } else {
-      this.coyoteTimer -= dt;
-      if (this.coyoteTimer <= 0) {
-        this.grounded = false;
-      }
-    }
+    // Standing on ground keeps the coyote window open; it closes on its own
+    // once the player has been airborne for COYOTE_SECONDS.
+    if (this.onGround) this.coyote.restart();
 
     // -- Platform carrying: inherit velocity from the moving platform --
     let platformVelX = 0;
@@ -164,8 +186,7 @@ class PlayerController extends Component {
         hit?.entity.tryGet(ColliderComponent)?.config.oneWay
       ) {
         this.collider.dropThrough(0.25);
-        this.grounded = false;
-        this.coyoteTimer = 0;
+        this.coyote.cancel();
       }
     }
 
@@ -195,20 +216,27 @@ class PlayerController extends Component {
     );
 
     // -- Jump execution --
-    if (this.jumpBufferTimer > 0 && this.grounded) {
+    if (this.jumpBuffer.running && this.coyote.running) {
       this.rb.setVelocityY(-PlayerController.JUMP_VELOCITY);
-      this.grounded = false;
-      this.coyoteTimer = 0;
-      this.jumpBufferTimer = 0;
-      this.audio.play(JumpSfx.path, { channel: "sfx" });
+      this.coyote.cancel();
+      this.jumpBuffer.cancel();
+      this.audio.play(JumpSfx, { channel: "sfx" });
     }
-    this.jumpBufferTimer -= dt;
+  }
+
+  /** Back to the spawn point, at rest. */
+  private respawn(): void {
+    this.audio.play(HurtSfx, { channel: "sfx" });
+    this.rb.setVelocity(Vec2.ZERO);
+    this.rb.setPosition(SPAWN.x, SPAWN.y);
+    this.transform.setPosition(SPAWN.x, SPAWN.y);
   }
 
   private redrawPlayer(airborne: boolean): void {
-    const g = this.graphics.graphics;
-    g.clear();
-    drawPlayerGraphics(g, airborne);
+    this.graphics.draw((g) => {
+      g.clear();
+      drawPlayerGraphics(g, airborne);
+    });
   }
 }
 
@@ -251,6 +279,7 @@ export class PlayerEntity extends Entity {
         mask: LAYER_PLATFORM | LAYER_COIN | LAYER_GOAL | LAYER_DEATH,
       }),
     );
+    this.add(new ProcessComponent());
     this.add(new PlayerController(params.camera));
   }
 }

@@ -5,13 +5,15 @@ import {
   Vec2,
   ProcessComponent,
   Process,
+  RandomKey,
   defineStates,
+  type ProcessSlot,
 } from "@yagejs/core";
-import type { ProcessSlot } from "@yagejs/core";
 import {
   AnimatedSpriteComponent,
   AnimationController,
   type CameraEntity,
+  type VisualTransformModifierHandle,
 } from "@yagejs/renderer";
 import {
   RigidBodyComponent,
@@ -28,8 +30,6 @@ import {
   LAYER_ENEMY,
   Hurt,
   EnemyKilled,
-} from "./constants.js";
-import {
   EnemyIdleTex,
   EnemyWalkTex,
   EnemyReactTex,
@@ -38,14 +38,11 @@ import {
   EnemyDieTex,
   HurtSfx,
   ExplosionSfx,
-} from "./assets.js";
-import { spawnEnemyDeathParticles } from "./particles.js";
+} from "./constants.js";
 
 // ---------------------------------------------------------------------------
 // EnemyController — state machine with animated sprites
 // ---------------------------------------------------------------------------
-const ENEMY_COLOR = 0xe11d48;
-
 type EnemyState = "patrol" | "react" | "attack" | "cooldown" | "hit" | "die";
 type EnemyAnim = "idle" | "walk" | "react" | "attack" | "hit" | "die";
 
@@ -58,6 +55,7 @@ class EnemyController extends Component {
   private physicsWorld!: PhysicsWorld;
   private readonly camera: CameraEntity;
   private readonly audio = this.service(AudioManagerKey);
+  private readonly random = this.service(RandomKey);
   private readonly anim = this.sibling(
     AnimationController,
   ) as AnimationController<EnemyAnim>;
@@ -128,8 +126,9 @@ class EnemyController extends Component {
   private player?: Entity;
 
   // Slots
-  private flashSlot!: ProcessSlot;
   private shakeSlot!: ProcessSlot;
+  /** The sprite's shake offset. It moves only the drawing, not the body. */
+  private shakeOffset!: VisualTransformModifierHandle;
 
   constructor(patrolLeft: number, patrolRight: number, camera: CameraEntity) {
     super();
@@ -142,20 +141,18 @@ class EnemyController extends Component {
     this.physicsWorld = this.use(PhysicsWorldKey);
 
     // Slots
-    this.flashSlot = this.pc.slot({
-      duration: 0.08,
-      cleanup: () => {
-        this.sprite.animatedSprite.tint = 0xffffff;
-      },
-    });
+    this.shakeOffset = this.sprite.modifiers.addTransform();
+    this.addCleanup(() => this.shakeOffset.remove());
     this.shakeSlot = this.pc.slot({
       duration: 0.15,
       update: () => {
-        const s = this.sprite.animatedSprite;
-        s.position.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
+        this.shakeOffset.setPosition({
+          x: this.random.range(-2, 2),
+          y: this.random.range(-2, 2),
+        });
       },
       cleanup: () => {
-        this.sprite.animatedSprite.position.set(0, 0);
+        this.shakeOffset.setPosition(Vec2.ZERO);
       },
     });
 
@@ -269,7 +266,7 @@ class EnemyController extends Component {
     if (this.brain.is("die")) return;
 
     this.hp--;
-    this.audio.play(HurtSfx.path, { channel: "sfx" });
+    this.audio.play(HurtSfx, { channel: "sfx" });
 
     // Knockback (light)
     const vel = this.rb.getVelocity();
@@ -286,10 +283,7 @@ class EnemyController extends Component {
     // Enter hit state
     this.brain.go("hit");
 
-    // Flash white (cleanup resets tint)
-    this.flashSlot.restart();
-
-    // Shake (cleanup resets position)
+    // Shake (cleanup resets the offset)
     this.shakeSlot.restart();
 
     // Play hit animation and return to patrol when done
@@ -309,24 +303,15 @@ class EnemyController extends Component {
 
   private die(): void {
     this.brain.go("die");
-    this.audio.play(ExplosionSfx.path, { channel: "sfx" });
+    this.audio.play(ExplosionSfx, { channel: "sfx" });
 
     // Stop blocking bullets and hurting the player
     this.entity.tags.delete("enemy");
     this.entity.tags.add("dead");
     this.collider.setSensor(true);
 
-    this.pc.cancel(); // cancel all feedback processes
+    this.pc.cancel(); // cancel all feedback processes; the shake resets
 
-    const s = this.sprite.animatedSprite;
-    s.tint = 0xffffff;
-    s.position.set(0, 0);
-
-    const pos = this.transform.position;
-    const scene = this.entity.tryScene;
-    if (scene) {
-      spawnEnemyDeathParticles(scene, pos.x, pos.y, ENEMY_COLOR);
-    }
     this.camera.shake(6, 0.25, { decay: 0.7 });
 
     // Play die animation, then destroy
@@ -338,7 +323,10 @@ class EnemyController extends Component {
       }),
     );
 
-    this.entity.emit(EnemyKilled);
+    // Bubbles to the scene: the HUD counts the kill and the sparks entity
+    // bursts at the enemy's position.
+    const { x, y } = this.transform.position;
+    this.entity.emit(EnemyKilled, { x, y });
   }
 }
 
@@ -354,7 +342,7 @@ export class EnemyEntity extends Entity {
     this.tags.add("enemy");
     this.add(new Transform({ position: new Vec2(x, y) }));
     const idleSource = {
-      sheet: EnemyIdleTex.path,
+      sheet: EnemyIdleTex,
       frameWidth: 24,
       frameHeight: 32,
     };
@@ -369,13 +357,13 @@ export class EnemyEntity extends Entity {
           anchor: { x: ENEMY_BODY_CENTER_X / 24, y: 1 - ENEMY_HALF_H / 32 },
         },
         walk: {
-          source: { sheet: EnemyWalkTex.path, frameWidth: 22, frameHeight: 33 },
+          source: { sheet: EnemyWalkTex, frameWidth: 22, frameHeight: 33 },
           speed: 0.15,
           anchor: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 33 },
         },
         react: {
           source: {
-            sheet: EnemyReactTex.path,
+            sheet: EnemyReactTex,
             frameWidth: 22,
             frameHeight: 32,
           },
@@ -385,7 +373,7 @@ export class EnemyEntity extends Entity {
         },
         attack: {
           source: {
-            sheet: EnemyAttackTex.path,
+            sheet: EnemyAttackTex,
             frameWidth: 43,
             frameHeight: 37,
           },
@@ -394,13 +382,13 @@ export class EnemyEntity extends Entity {
           anchor: { x: ENEMY_BODY_CENTER_X / 43, y: 1 - ENEMY_HALF_H / 37 },
         },
         hit: {
-          source: { sheet: EnemyHitTex.path, frameWidth: 30, frameHeight: 32 },
+          source: { sheet: EnemyHitTex, frameWidth: 30, frameHeight: 32 },
           speed: 0.25,
           loop: false,
           anchor: { x: ENEMY_BODY_CENTER_X / 30, y: 1 - ENEMY_HALF_H / 32 },
         },
         die: {
-          source: { sheet: EnemyDieTex.path, frameWidth: 33, frameHeight: 32 },
+          source: { sheet: EnemyDieTex, frameWidth: 33, frameHeight: 32 },
           speed: 0.2,
           loop: false,
           anchor: { x: ENEMY_BODY_CENTER_X / 33, y: 1 - ENEMY_HALF_H / 32 },

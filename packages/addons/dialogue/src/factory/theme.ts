@@ -103,9 +103,8 @@ export interface DialogueTheme {
   /**
    * Baked bitmap-font name (OPT-IN). Omit for canvas text. When set, the
    * presenters render with the crisp pixel atlas instead of canvas SplitText.
-   * Bold/italic are synthesised on the regular atlas (skew + double-draw);
-   * variant-atlas fields will return if a baseline-compensating crisp path
-   * lands in the renderer.
+   * Bold/italic are synthesised on the regular atlas (skew + double-draw), so
+   * no variant atlases are needed.
    */
   readonly bitmapFont?: string;
   /** Canvas font family (used when {@link bitmapFont} is omitted). */

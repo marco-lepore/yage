@@ -12,10 +12,11 @@ npm install @yagejs/core
 
 - **Engine** - the game loop and plugin host
 - **Scene / SceneManager** - scene stack with push/pop, pause, and time scaling
-- **Entity / Component** - ECS primitives with typed queries
+- **Entity / Component** - ECS primitives with typed queries; an entity type is an `Entity` subclass with `setup()`, and components hold the game logic
 - **Transform / Vec2** - 2D math and spatial positioning
-- **EventBus** - typed, decoupled events with `defineEvent`
-- **Blueprint / Trait** - composition helpers
+- **Events** - typed entity and scene events with `defineEvent`, plus the engine `EventBus` for engine events
+- **Trait** - capabilities an entity subclass declares and code can query at runtime
+- **Blueprint** - deprecated; use an `Entity` subclass
 - **Process / Tween / Sequence** - timers, easing, and keyframe animation
 - **AssetManager** - async resource loading
 - **Inspector** - snapshot introspection for tests and debug tools
@@ -32,9 +33,20 @@ import {
   Vec2,
 } from "@yagejs/core";
 
+// Game logic lives in components.
+class Drift extends Component {
+  private readonly transform = this.sibling(Transform);
+
+  update(dt: number) {
+    this.transform.translate(50 * dt, 0); // 50 px per second
+  }
+}
+
+// An entity type is an Entity subclass that adds its components in setup().
 class Player extends Entity {
   setup() {
     this.add(new Transform({ position: new Vec2(100, 100) }));
+    this.add(new Drift());
   }
 }
 

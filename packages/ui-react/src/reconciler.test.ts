@@ -553,6 +553,48 @@ describe("reconciler dev-warnings", () => {
   });
 
   describe("prop removal (commitUpdate diff)", () => {
+    it("resets an explicit undefined Panel background without replacing the host", () => {
+      const container = new MockContainer();
+      const root = createRoot(container as never);
+      // Same observable as the removal test below: the background renderer's
+      // display object exists only while the panel paints a fill.
+      const fill = (instance: unknown) =>
+        (
+          instance as {
+            bgRenderer: { displayObject: unknown } | undefined;
+          }
+        ).bgRenderer?.displayObject;
+
+      root.render(createElement(Panel, { bg: { color: 0xff0000 } }));
+      const panel = getRootInstances(container as never)![0]!;
+      expect(fill(panel)).toBeDefined();
+
+      root.render(createElement(Panel, { bg: undefined }));
+      expect(getRootInstances(container as never)![0]).toBe(panel);
+      expect(fill(panel)).toBeUndefined();
+
+      root.render(createElement(Panel, {}));
+      expect(getRootInstances(container as never)![0]).toBe(panel);
+      expect(fill(panel)).toBeUndefined();
+    });
+
+    it("resets an explicit undefined Button handler without replacing the host", () => {
+      const container = new MockContainer();
+      const root = createRoot(container as never);
+      const onClick = vi.fn();
+      root.render(createElement(Button, { onClick }, "Click"));
+      const button = getRootInstances(container as never)![0]!;
+      expect(button).toHaveProperty("onClick", onClick);
+
+      root.render(createElement(Button, { onClick: undefined }, "Click"));
+      expect(getRootInstances(container as never)![0]).toBe(button);
+      expect(button).toHaveProperty("onClick", undefined);
+
+      root.render(createElement(Button, {}, "Click"));
+      expect(getRootInstances(container as never)![0]).toBe(button);
+      expect(button).toHaveProperty("onClick", undefined);
+    });
+
     it("resets a removed prop to its default instead of leaving the old value", () => {
       const container = new MockContainer();
       const root = createRoot(container as never);

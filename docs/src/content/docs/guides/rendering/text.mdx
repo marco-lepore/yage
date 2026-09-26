@@ -8,7 +8,8 @@ HUD overlay, a diegetic floor label, a one-off world-space string that
 should zoom and rotate with the camera. It's Transform-synced like a sprite
 and takes a style object that mirrors CSS font properties.
 
-```typescript
+```typescript yage-context="entity"
+import { Transform } from "@yagejs/core";
 import { TextComponent } from "@yagejs/renderer";
 
 entity.add(new Transform());
@@ -38,7 +39,10 @@ Update at runtime with `setText()` / `setStyle()`, or tweak `tint` and
 to the defaults. To change a few properties while keeping the rest, use
 `mergeStyle()`:
 
-```typescript
+```typescript yage-context="entity"
+import { TextComponent } from "@yagejs/renderer";
+
+const text = entity.get(TextComponent);
 text.setStyle({ fill: 0xff0000 }); // replaces: font/size revert to default
 text.mergeStyle({ fill: 0xff0000 }); // patches: keeps the current font/size
 ```
@@ -85,6 +89,8 @@ Set `bitmap: true` and Pixi bakes (or looks up) the glyph atlas from
 every other property:
 
 ```typescript
+import { TextComponent } from "@yagejs/renderer";
+
 // Zero-config: bake a dynamic bitmap font from this text's own style.
 new TextComponent({
   text: "SCORE",
@@ -104,7 +110,7 @@ To bake a bitmap atlas from a `.ttf` at runtime, use
 `installBitmapFont` — it loads the font and returns a name you hand to
 `style.fontFamily`:
 
-```typescript
+```typescript yage-context="entity"
 import { installBitmapFont, TextComponent } from "@yagejs/renderer";
 
 const font = await installBitmapFont("fonts/PressStart2P.ttf", {
@@ -150,7 +156,9 @@ from, so those props are silently ignored. To get emphasis on bitmap
 text, bake the variants up front with `installBitmapFont`'s `variants`
 option — each entry produces a sibling atlas from the same `.ttf`:
 
-```typescript
+```typescript yage-context="entity"
+import { installBitmapFont, TextComponent } from "@yagejs/renderer";
+
 await installBitmapFont("fonts/Body.ttf", {
   name: "Body",
   variants: [
@@ -200,9 +208,11 @@ sibling of `bitmapFont`. Preload the handle so the face registers
 so a font that loads late never applies.
 
 ```typescript
-import { webFont, TextComponent, Scene } from "@yagejs/renderer";
+import { Scene } from "@yagejs/core";
+import { webFont, TextComponent } from "@yagejs/renderer";
 
 class MenuScene extends Scene {
+  readonly name = "menu";
   readonly preload = [webFont("fonts/Inter.woff2", { family: "Inter" })];
 
   onEnter() {
@@ -224,9 +234,11 @@ single declared font is usable both as canvas `Text` **and** as a
 no second name to keep in sync. Pass `bitmap` to the handle:
 
 ```typescript
-import { webFont, TextComponent, Scene } from "@yagejs/renderer";
+import { Scene } from "@yagejs/core";
+import { webFont, TextComponent } from "@yagejs/renderer";
 
 class HudScene extends Scene {
+  readonly name = "hud";
   readonly preload = [
     // `bitmap: true` bakes with defaults; pass an object to tune the bake.
     webFont("fonts/Inter.woff2", {
@@ -278,6 +290,8 @@ To set an app-wide font / fill without importing pixi to poke
 per-text values still win:
 
 ```typescript
+import { RendererPlugin } from "@yagejs/renderer";
+
 new RendererPlugin({
   width: 800,
   height: 600,
@@ -307,9 +321,9 @@ arrays of individually transformable display objects: `chars`, `words`,
 and `lines`. Like `TextComponent` it's Transform-synced and lives on a
 render layer; set `bitmap` to split a bitmap font instead of canvas text.
 
-```typescript
+```typescript yage-context="entity"
 import { SplitTextComponent } from "@yagejs/renderer";
-import { Tween, ProcessComponent } from "@yagejs/core";
+import { Component, Tween, ProcessComponent, Transform } from "@yagejs/core";
 
 entity.add(new Transform());
 const title = entity.add(
@@ -330,9 +344,18 @@ Tween.stagger(title.chars, (char) => Tween.custom((v) => (char.alpha = v), 0, 1,
 );
 
 // Per-letter sine wave (in a component update)
-title.chars.forEach((char, i) => {
-  char.y = Math.sin(this.t * 4 + i * 0.4) * 6;
-});
+class TitleWave extends Component {
+  private readonly title = this.sibling(SplitTextComponent);
+  private t = 0;
+
+  update(dt: number) {
+    this.t += dt;
+    this.title.chars.forEach((char, i) => {
+      char.y = Math.sin(this.t * 4 + i * 0.4) * 6;
+    });
+  }
+}
+entity.add(new TitleWave());
 ```
 
 `anchor` is the normalized transform origin for the whole text block. The
@@ -362,6 +385,8 @@ does nothing — text stays rasterised at resolution 1 and blurs when
 scaled. There's no global toggle; pass `resolution` per text:
 
 ```typescript
+import { TextComponent } from "@yagejs/renderer";
+
 new TextComponent({ text: "HUD", resolution: window.devicePixelRatio });
 ```
 

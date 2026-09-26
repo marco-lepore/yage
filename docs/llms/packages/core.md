@@ -30,7 +30,16 @@ key.
 ### Entity
 
 ```ts
-class Entity {
+import { Entity as BaseEntity } from "@yagejs/core";
+import type {
+  Blueprint,
+  ClassSpawnArgs,
+  EntityHandle,
+  Scene,
+  SpawnOptions,
+} from "@yagejs/core";
+
+declare class Entity extends BaseEntity {
   readonly name: string;
   readonly key?: string; // stable identity (opt-in)
   get scene(): Scene; // throws if detached
@@ -49,6 +58,7 @@ class Entity {
     Class: new () => E,
     ...rest: ClassSpawnArgs<E>
   ): E;
+  /** @deprecated Blueprint overload; use an Entity subclass. */
   spawnChild<P>(
     name: string,
     blueprint: Blueprint<P>,
@@ -58,6 +68,8 @@ class Entity {
 }
 ```
 
+- An entity type is an `Entity` subclass whose `setup(params)` adds its components, spawned with `scene.spawn(Class, params)` or `entity.spawnChild(name, Class, params)`. A named spawn (`scene.spawn("background")`, then `.add(...)`) is only for a one-off entity: spawned once, with no behaviour of its own (background, UI root, HUD host).
+- `defineBlueprint` / `Blueprint` and the `spawn` / `spawnChild` overloads that take one are deprecated. Existing blueprints still spawn; new entity types are subclasses.
 - `entity.scene` throws with a clear error when the entity is detached (not yet spawned, or already destroyed — both the end-of-frame flush and scene teardown clear it). Prefer it in user code — throwing beats letting a `null` propagate silently. Use `entity.tryScene` only in defensive paths (e.g. systems iterating query results during teardown) where detachment is expected.
 - `entity.isDestroyed` is true after `destroy()` and for entities torn down with their scene on exit. Teardown also emits `entity:destroyed` once per entity, so listeners tracking entity lifetimes are notified of every destruction, including destruction caused by scene exit.
 - `destroy()` deactivates immediately: `isActive` reads `false`, the entity leaves every query, and component `onDisable` fires in the same call. The rest of teardown — `onDestroy`, detaching from the scene — waits for the end-of-frame flush, so `isDestroyed` and component removal still happen later.
@@ -68,7 +80,12 @@ class Entity {
 
 ### Component lookup
 
-```ts
+```ts yage-context="entity"
+import { Component } from "@yagejs/core";
+
+class Cls extends Component {}
+const component = new Cls();
+
 entity.add(component); // throws on a second instance of the same exact class
 entity.get(Cls); // throws when nothing matches
 entity.tryGet(Cls); // undefined when nothing matches
@@ -88,10 +105,15 @@ entity.getAll(Cls); // readonly Cls[] — every component assignable to Cls
 
 `setActive(false)` turns an entity off without destroying it — the cheap way to recycle a bullet, a hit spark, or an enemy instead of respawning one.
 
-```ts
+```ts yage-context="scene"
+import { Transform } from "@yagejs/core";
+
+const bullet = scene.spawn("bullet");
+bullet.add(new Transform());
+
 bullet.setActive(false); // hidden, physics body off, updates skipped
 // ...later
-bullet.get(Transform).setPosition(x, y);
+bullet.get(Transform).setPosition(320, 180);
 bullet.setActive(true); // back in play, nothing reallocated
 ```
 
@@ -111,12 +133,18 @@ bullet.setActive(true); // back in play, nothing reallocated
 Subscriptions made through these helpers are released when the component is removed or its entity is destroyed, before `onDestroy`:
 
 ```ts
+import { Component, createCounter, defineEvent } from "@yagejs/core";
+
+const DamagedEvent = defineEvent<{ amount: number }>("combat:damaged");
+const WaveStartEvent = defineEvent<{ wave: number }>("waves:started");
+const score = createCounter();
+
 class Turret extends Component {
   onAdd() {
     this.listen(this.entity, DamagedEvent, ({ amount }) => {}); // any entity's token events
     this.listenScene(WaveStartEvent, (data, entity) => {}); // scene.emit + every entity's bubbled emit
     this.listenBus("entity:destroyed", ({ entity }) => {}); // the engine EventBus
-    this.addCleanup(() => model.off(handler)); // anything else
+    this.addCleanup(score.subscribe(() => {})); // anything else
   }
 }
 ```
@@ -130,6 +158,9 @@ class Turret extends Component {
 `onEnable()` / `onDisable()` fire when a component's _effective_ enabled-ness — `component.enabled && entity.isActive` — changes. `component.effectiveEnabled` reads that state.
 
 ```ts
+import { Component } from "@yagejs/core";
+import { AudioManagerKey, type SoundHandle } from "@yagejs/audio";
+
 class Turret extends Component {
   private beam?: SoundHandle;
   onEnable() {
@@ -158,11 +189,20 @@ Gotcha: a collider disabled and re-enabled while it still overlaps something get
 Within one entity, `update()` / `fixedUpdate()` run in ascending `updatePriority`; ties run in add order. Undeclared = 0, so add order is the order until a component declares a value. A negative value runs before undeclared siblings, a positive one after them. Sibling order only: entities still update in scene add order.
 
 ```ts
+import { Component, Entity } from "@yagejs/core";
+
+class Mover extends Component {}
+class Brain extends Component {}
+
 class BoundsClamp extends Component {
   static updatePriority = 10; // class default: after the follow that moved the camera
 }
-this.add(new Mover());
-this.add(new Brain()).updatePriority = -1; // per instance: decides before Mover moves
+class Guard extends Entity {
+  setup() {
+    this.add(new Mover());
+    this.add(new Brain()).updatePriority = -1; // per instance: decides before Mover moves
+  }
+}
 ```
 
 - `component.updatePriority` is writable at any time, before or after `add()`; the instance value overrides the class's `static updatePriority`, which subclasses inherit.
@@ -176,6 +216,9 @@ this.add(new Brain()).updatePriority = -1; // per instance: decides before Mover
 A field an `Entity` subclass assigns in `setup()` cannot be `readonly`: TypeScript allows a write to a readonly field only from the constructor. Declare it with a definite assignment assertion instead.
 
 ```ts
+import { Entity } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+
 class Player extends Entity {
   private body!: RigidBodyComponent; // not `readonly`
   setup() {
@@ -190,7 +233,9 @@ Use `StateMachine` for stored modes with a fixed set of legal transitions.
 `defineStates` preserves the state-name union, so unknown targets and calls such
 as `go("jmup")` fail type checking.
 
-```ts
+```ts yage-group="guard"
+import { Component, defineStates } from "@yagejs/core";
+
 class GuardBrain extends Component {
   readonly brain = this.stateMachine(
     defineStates({
@@ -203,6 +248,10 @@ class GuardBrain extends Component {
   fixedUpdate(dt: number) {
     if (this.seesPlayer()) this.brain.go("alert");
     this.brain.tick(dt);
+  }
+
+  private seesPlayer(): boolean {
+    return false; // line-of-sight check
   }
 }
 ```
@@ -233,11 +282,22 @@ name, so two machines on one entity need different names. Without a name the
 events stay on the machine and reach only `machine.on`.
 
 ```ts
-readonly mode = this.stateMachine(states, "patrol", { events: "mode" });
+import { Component, defineStates } from "@yagejs/core";
+
+const states = defineStates({
+  patrol: { to: ["alert"] },
+  alert: { to: ["patrol"] },
+});
+
+class GuardBrain extends Component {
+  readonly mode = this.stateMachine(states, "patrol", { events: "mode" });
+}
 // elsewhere: entity.on(brain.mode.events.entered, ...), scene.on(...) too
 ```
 
-```ts
+```ts yage-group="guard"
+import { AnimationController } from "@yagejs/renderer";
+
 class GuardView extends Component {
   private readonly anim = this.sibling(AnimationController);
   private readonly guard = this.sibling(GuardBrain);
@@ -263,6 +323,8 @@ entered with it. Names stay in one union, nesting is one level deep, and a
 parent is never the current state.
 
 ```ts
+import { defineStates } from "@yagejs/core";
+
 defineStates({
   idle: { to: ["shoot", "hit"] },
   shoot: {
@@ -291,33 +353,54 @@ defineStates({
 A group of entities cycled by deactivation rather than spawn and destroy. A member is built once and reused, so its Rapier body, Pixi display object and component instances stay allocated between lives.
 
 ```ts
+import { Component, Entity, EntityPool, type Vec2 } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+
 class Bullet extends Entity {
+  damage = 0;
   setup() {
     /* Transform, GraphicsComponent, RigidBodyComponent, collider */
   }
   // Required for a pooled class. Its parameters become acquire()'s arguments.
-  onAcquire(x: number, y: number, dir: Vec2) {
+  onAcquire(x: number, y: number, dir: Vec2, damage: number) {
+    this.damage = damage;
     const rb = this.get(RigidBodyComponent);
     rb.setPosition(x, y);
     rb.setVelocity({ x: dir.x * 900, y: dir.y * 900 });
   }
   onRelease() {
-    this.target = undefined;
+    this.damage = 0;
   } // optional, game-level cleanup
 }
 
-// In onEnter — members' components resolve scene services during setup().
-this.bullets = new EntityPool(this, Bullet, { prewarm: 32 });
+// The component that fires owns the pool.
+class Gun extends Component {
+  private bullets!: EntityPool<Bullet>;
 
-const bullet = this.bullets.acquire(x, y, dir); // Bullet
-this.bullets.release(bullet);
+  onAdd() {
+    // Members' components resolve scene services during setup().
+    this.bullets = new EntityPool(this.scene, Bullet, { prewarm: 32 });
+  }
+
+  fire(x: number, y: number, dir: Vec2) {
+    const bullet = this.bullets.acquire(x, y, dir, 1); // Bullet
+    // ...on impact: this.bullets.release(bullet), or bullet.destroy()
+  }
+}
 ```
 
 ```ts
-class EntityPool<
+import { EntityPool as BaseEntityPool } from "@yagejs/core";
+import type {
+  EntityPoolOptions as BaseEntityPoolOptions,
+  PoolableEntity,
+  Scene,
+} from "@yagejs/core";
+
+declare class EntityPool<
   T extends PoolableEntity,
   TMax extends number | undefined = undefined,
-> {
+> extends BaseEntityPool<T, TMax> {
   // Third argument carries { setup } when the class's setup() requires params.
   constructor(
     scene: Scene,
@@ -327,14 +410,19 @@ class EntityPool<
   get size(): number; // total members
   get leased(): number; // handed out
   get free(): number; // available
-  acquire(...args: Parameters<T["onAcquire"]>): T | undefined; // T when elastic
+  acquire(
+    ...args: Parameters<T["onAcquire"]>
+  ): undefined extends TMax ? T : T | undefined; // T when elastic
   forceAcquire(...args: Parameters<T["onAcquire"]>): T;
   release(member: T): void;
   releaseAll(): void;
   dispose(): void; // destroys members; the scene does this on exit
 }
 
-interface EntityPoolOptions<T, TMax> {
+interface EntityPoolOptions<
+  T extends PoolableEntity,
+  TMax extends number | undefined = undefined,
+> extends BaseEntityPoolOptions<T, TMax> {
   prewarm?: number; // built up front, parked dormant
   maxSize?: TMax; // total members; unset = elastic
   reclaimPriority?: (member: T) => number; // lowest is reclaimed first
@@ -350,7 +438,7 @@ interface EntityPoolOptions<T, TMax> {
 - Release cancels scheduled actions, keeps inert state. It cancels the member's `ProcessComponent` (a pending `Process.delay` would otherwise fire unprompted on a later lease), but position, health, animation frame, `timeScale`, and entity listeners all survive a cycle. Reset them in `onAcquire`, and register listeners in `setup()` or drop them in `onRelease`.
 - Bookkeeping completes before the hooks run. A throwing `onAcquire` leaves the member leased and active; a throwing `onRelease` still parks it. Both throws are attributed to the entity and propagate.
 - Releasing an entity the pool has not leased — a double release, another pool's member — is a reported no-op. `setActive` called from outside does not change who holds the lease.
-- Pools belong to their scene and are disposed on exit; `acquire` on a disposed pool throws. Build them in `onEnter()`, where scene services exist.
+- Pools belong to their scene and are disposed on exit; `acquire` on a disposed pool throws. Create a pool once the scene has entered, where scene services exist: in the `onAdd()` of the component that uses it, as above. The pool belongs to the scene, not to that component, and lasts until scene exit or `dispose()`.
 - A member that picked up a parent while leased (attached via `addChild`) is detached before it goes back into the pool, after `onRelease` has run — so `onRelease` can still read `entity.parent`, but the next lease never inherits a stale one.
 - The pool owns its members' lifetimes. `entity.destroy()` on a member releases it back to the pool instead of tearing it down, so retire sites holding a plain `Entity` (collision handlers, `update`, event listeners) need no pool reference and the same code works pooled or not. `isDestroyed` stays `false` for such a member; destroying an entity with a member below it detaches and returns that member. Only `dispose()` destroys members.
 - Pools and their members are runtime objects. Save durable game facts through an explicit state root, then reconstruct and prewarm pools during scene setup.
@@ -362,7 +450,11 @@ interface EntityPoolOptions<T, TMax> {
 `entity.handle()` returns an `EntityHandle<T>`: a reference that stops resolving when that entity's life ends. Read it through `.current`.
 
 ```ts
-class Turret extends Entity {
+import { Component, Entity, type EntityHandle } from "@yagejs/core";
+
+class Enemy extends Entity {}
+
+class TurretAim extends Component {
   private target?: EntityHandle<Enemy>;
 
   onSpotted(enemy: Enemy) {
@@ -373,11 +465,19 @@ class Turret extends Entity {
     const enemy = this.target?.current; // undefined once that enemy is gone
     if (enemy) this.aimAt(enemy);
   }
+
+  private aimAt(enemy: Enemy) {
+    /* turn the barrel toward enemy */
+  }
 }
 ```
 
 ```ts
-interface EntityHandle<out T extends Entity = Entity> {
+import type { Entity, EntityHandle as BaseEntityHandle } from "@yagejs/core";
+
+interface EntityHandle<
+  out T extends Entity = Entity,
+> extends BaseEntityHandle<T> {
   readonly current: T | undefined;
 }
 ```
@@ -424,7 +524,7 @@ interface EntityHandle<out T extends Entity = Entity> {
 
 `Scene.on(token, handler)` subscribes to a typed event at the scene level. Handlers fire for **both** scene-emitted events (`scene.emit(token, data)`) and entity events that bubble up (`entity.emit(token, data)`). The handler signature distinguishes the two via an optional second arg:
 
-```ts
+```ts yage-context="scene"
 import { defineEvent, type Entity } from "@yagejs/core";
 
 const DamagedEvent = defineEvent<{ amount: number }>("damaged");
@@ -441,14 +541,15 @@ scene.on(DamagedEvent, (data: { amount: number }, entity?: Entity) => {
 });
 
 scene.emit(DamagedEvent, { amount: 5 }); // handler runs with entity = undefined
+const someEntity = scene.spawn("goblin");
 someEntity.emit(DamagedEvent, { amount: 10 }); // handler runs with entity = someEntity
 ```
 
 `Scene.on` returns an unsubscribe function. The handler param is `(data, entity?)` regardless of which side emitted — game code should check `entity` to decide whether to read source state.
 
-Scene-level subscriptions are released when the scene exits, together with its entities, so subscribe in `onEnter` (or from a component through `listenScene`). A scene instance pushed again starts with none.
+Scene-level subscriptions are released when the scene exits, together with its entities. Game code subscribes from a component through `this.listenScene(token, handler)`, which also unsubscribes when the component is removed. `onEnter` may connect an event to a component method in one line (`this.on(PlayerDied, () => player.get(Respawn).respawn())`) but holds no state or rules. A scene instance pushed again starts with no subscriptions.
 
-`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)`, and via `Scene.use(key)` / `Scene.service(key)`. Both are public and scope-aware — scene scope first, then engine — so any holder of a scene reference resolves through them, not only the scene subclass: an entity's `setup()` calls `this.scene.use(RandomKey)`. `use` throws when the key resolves nowhere; `service` returns a lazy proxy that resolves on first property access. Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `Scene.tryResolveScoped<T>(key)` (public) reads a scene-scoped service without engine-scope fallback, returning `undefined` when absent. Use it in systems that iterate scenes. `_registerScoped` / `_resolveScoped` are kept internal aliases — prefer the public names in new code.
+`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)`, and via `Scene.use(key)` / `Scene.service(key)`. Both are public and scope-aware — scene scope first, then engine — so any holder of a scene reference resolves through them, not only the scene subclass: an entity's `setup()` calls `this.scene.use(RandomKey)`. `use` throws when the key resolves nowhere; `service` returns a lazy proxy that resolves on first property access. Plugins call it from `beforeEnter` to register per-scene infrastructure. It is not for game state: score, lives or a run timer live in a component on a host entity spawned with a `key` and found with `scene.findByKey` (`core-concepts.md` → Game State). Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `Scene.tryResolveScoped<T>(key)` (public) reads a scene-scoped service without engine-scope fallback, returning `undefined` when absent. Use it in systems that iterate scenes.
 
 ### SceneTime — hitstop, slow motion, bullet time, freeze frames
 
@@ -482,22 +583,35 @@ Composition: each `key` is a channel. Within a channel, the latest active reques
 Math signatures:
 
 ```ts
-MathUtils.lerp(a: number, b: number, t: number): number
-MathUtils.inverseLerp(a: number, b: number, v: number): number // clamped 0..1
-MathUtils.lerpAngle(a: number, b: number, t: number): number // radians, shortest path around +/-PI
-MathUtils.shortestAngleBetween(a: number, b: number): number // signed delta in [-PI, PI]
-MathUtils.pingPong(t: number, length: number): number // bounces in [0, length]
-MathUtils.smoothDamp(
-  current: number,
-  target: number,
-  velocity: number,
-  smoothTime: number,
-  deltaTime: number,
-  maxSpeed?: number,
-): SmoothDampResult
+import { MathUtils as BaseMathUtils, Vec2 as BaseVec2 } from "@yagejs/core";
+import type { SmoothDampResult, Vec2Like } from "@yagejs/core";
 
-Vec2.lerp(a: Vec2Like, b: Vec2Like, t: number): Vec2
-Vec2.moveTowards(current: Vec2Like, target: Vec2Like, maxDelta: number): Vec2
+// MathUtils is a plain object; these are its members.
+type MathUtilsObject = typeof BaseMathUtils;
+interface MathUtils extends MathUtilsObject {
+  lerp(a: number, b: number, t: number): number;
+  inverseLerp(a: number, b: number, v: number): number; // clamped 0..1
+  lerpAngle(a: number, b: number, t: number): number; // radians, shortest path around +/-PI
+  shortestAngleBetween(a: number, b: number): number; // signed delta in [-PI, PI]
+  pingPong(t: number, length: number): number; // bounces in [0, length]
+  smoothDamp(
+    current: number,
+    target: number,
+    velocity: number,
+    smoothTime: number,
+    deltaTime: number,
+    maxSpeed?: number,
+  ): SmoothDampResult;
+}
+
+declare class Vec2 extends BaseVec2 {
+  static lerp(a: Vec2Like, b: Vec2Like, t: number): Vec2;
+  static moveTowards(
+    current: Vec2Like,
+    target: Vec2Like,
+    maxDelta: number,
+  ): Vec2;
+}
 ```
 
 `Vec2` is the default for values you keep or share. Its vector operations return
@@ -505,16 +619,43 @@ immutable values. For repeated calculations, allocate a `Vec2Buffer` once and
 pass it as the first argument to an `Into` method:
 
 ```ts
-Vec2.copyInto(out: Vec2Buffer, source: Vec2Like): Vec2Buffer
-Vec2.addInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like): Vec2Buffer
-Vec2.subInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like): Vec2Buffer
-Vec2.scaleInto(out: Vec2Buffer, source: Vec2Like, scalar: number): Vec2Buffer
-Vec2.multiplyInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like): Vec2Buffer
-Vec2.normalizeInto(out: Vec2Buffer, source: Vec2Like): Vec2Buffer
-Vec2.lerpInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like, t: number): Vec2Buffer
-Vec2.rotateInto(out: Vec2Buffer, source: Vec2Like, radians: number): Vec2Buffer
-Vec2.fromAngleInto(out: Vec2Buffer, radians: number, length?: number): Vec2Buffer
-Vec2.moveTowardsInto(out: Vec2Buffer, current: Vec2Like, target: Vec2Like, maxDelta: number): Vec2Buffer
+import { Vec2 as BaseVec2 } from "@yagejs/core";
+import type { Vec2Buffer, Vec2Like } from "@yagejs/core";
+
+declare class Vec2 extends BaseVec2 {
+  static copyInto(out: Vec2Buffer, source: Vec2Like): Vec2Buffer;
+  static addInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like): Vec2Buffer;
+  static subInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like): Vec2Buffer;
+  static scaleInto(
+    out: Vec2Buffer,
+    source: Vec2Like,
+    scalar: number,
+  ): Vec2Buffer;
+  static multiplyInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like): Vec2Buffer;
+  static normalizeInto(out: Vec2Buffer, source: Vec2Like): Vec2Buffer;
+  static lerpInto(
+    out: Vec2Buffer,
+    a: Vec2Like,
+    b: Vec2Like,
+    t: number,
+  ): Vec2Buffer;
+  static rotateInto(
+    out: Vec2Buffer,
+    source: Vec2Like,
+    radians: number,
+  ): Vec2Buffer;
+  static fromAngleInto(
+    out: Vec2Buffer,
+    radians: number,
+    length?: number,
+  ): Vec2Buffer;
+  static moveTowardsInto(
+    out: Vec2Buffer,
+    current: Vec2Like,
+    target: Vec2Like,
+    maxDelta: number,
+  ): Vec2Buffer;
+}
 ```
 
 Each method overwrites and returns the supplied buffer without constructing a
@@ -530,12 +671,17 @@ gives you and express `smoothTime` in seconds. `maxSpeed` is in units per second
 ### Transform reads and writes
 
 ```ts
-transform.setPosition(x: number, y: number): void
-transform.setWorldPosition(x: number, y: number): void
-transform.getPositionInto(out: Vec2Buffer): Vec2Buffer
-transform.getWorldPositionInto(out: Vec2Buffer): Vec2Buffer
-transform.getScaleInto(out: Vec2Buffer): Vec2Buffer
-transform.getWorldScaleInto(out: Vec2Buffer): Vec2Buffer
+import { Transform as BaseTransform } from "@yagejs/core";
+import type { Vec2Buffer } from "@yagejs/core";
+
+declare class Transform extends BaseTransform {
+  setPosition(x: number, y: number): void;
+  setWorldPosition(x: number, y: number): void;
+  getPositionInto(out: Vec2Buffer): Vec2Buffer;
+  getWorldPositionInto(out: Vec2Buffer): Vec2Buffer;
+  getScaleInto(out: Vec2Buffer): Vec2Buffer;
+  getWorldScaleInto(out: Vec2Buffer): Vec2Buffer;
+}
 ```
 
 Scalar writes and `Into` reads do not construct `Vec2` values. Each `Into`
@@ -567,8 +713,20 @@ and derived world values do not validate non-finite results.
 `localToWorld(point)` scales a point by `worldScale`, turns it by `worldRotation`, and offsets it by `worldPosition` — the same composition a child transform goes through. `worldToLocal(point)` is the inverse. Both take a `Vec2Like` and return a `Vec2`.
 
 ```ts
-const muzzle = this.get(Transform).localToWorld({ x: 24, y: -6 });
-scene.spawn(Bullet, { position: muzzle });
+import { Entity, Transform, type Vec2 } from "@yagejs/core";
+
+class Bullet extends Entity {
+  setup({ position }: { position: Vec2 }) {
+    this.add(new Transform({ position }));
+  }
+}
+
+class Gun extends Entity {
+  fire(): void {
+    const muzzle = this.get(Transform).localToWorld({ x: 24, y: -6 });
+    this.scene.spawn(Bullet, { position: muzzle });
+  }
+}
 ```
 
 Use it for an offset authored beside the entity — a muzzle, a spawn point — so it follows the entity however the parent chain turns or scales it. On an axis whose world scale is 0 no local point maps back, so `worldToLocal` is non-finite there; check `Number.isFinite` if such a transform can reach you.
@@ -641,7 +799,7 @@ Tag processes with `pc.run(p, { tags: ["vfx"] })` then cancel groups with `pc.ca
 
 Durations are in seconds and must be finite and > 0: `new Process({ duration })`, `Process.delay`, `Sequence.wait`, `Tween.to`/`custom`/`vec2`, `pc.slot({ duration })` and `slot.start({ duration })` throw on anything else, as do non-finite tween endpoints. `Tween.stagger`'s `stepSeconds` is the exception: finite and >= 0, where `0` starts every item at once. A duration completes on the tick that reaches it — `Process.delay(0.25)` on the fixed clock ends on step 15 of 1/60 s, not 16, even though the float sum of the steps lands a hair short. `elapsed` still reports the real accumulated time, overshoot included, and a looping process carries only the overshoot into the next pass.
 
-`slot.start(overrides)` applies its overrides to that run alone: the next bare `start()` uses the config the slot was created with, and `slot.tags` returns the running slot's tags, then the configured tags once it completes. `start()` on a running slot is a no-op, so overrides passed there are dropped with it — use `restart(overrides)`.
+`slot.start(overrides)` applies its overrides to that run alone: the next bare `start()` uses the config the slot was created with, and `slot.tags` returns the running slot's tags, then the configured tags once it completes. `start()` on a running slot is a no-op, so overrides passed there are dropped with it — use `restart(overrides)`. A slot with `loop: true` never completes, so its `onComplete` never runs; for a repeating timer, loop a sequence: `pc.run(new Sequence().wait(2).call(spawnWave).loop().build())`.
 
 `new Process({ onCancel, onReset })`: `onCancel` runs when `cancel()` stops the process before it completed, `onReset` when it is reset for a re-run. Implement them on a process that owns other processes or keeps state outside its `update` callback. `Sequence` supplies both, so cancelling a sequence cancels the step processes it started — including a `Tween` instance the game built, passed to `.then()`/`.parallel()`, and still holds — and a built sequence (or a `Tween.stagger` output) can be reused as a step of another sequence.
 
@@ -659,9 +817,31 @@ has already completed. The promise carries no result, so read the state the
 process wrote once it resolves.
 
 ```ts
-const fade = pc.run(Tween.custom((v) => (overlay.alpha = v), 0, 1, 0.4));
-await fade.toPromise();
-await this.use(SceneManagerKey).replace(new Level2());
+import {
+  Component,
+  ProcessComponent,
+  Scene,
+  SceneManagerKey,
+  Tween,
+} from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+
+class Level2 extends Scene {
+  readonly name = "level-2";
+}
+
+class ExitDoor extends Component {
+  private readonly pc = this.sibling(ProcessComponent);
+  private readonly overlay = this.sibling(GraphicsComponent); // covers the screen
+
+  async leave(): Promise<void> {
+    const fade = this.pc.run(
+      Tween.custom((v) => (this.overlay.alpha = v), 0, 1, 0.4),
+    );
+    await fade.toPromise();
+    await this.use(SceneManagerKey).replace(new Level2());
+  }
+}
 ```
 
 ### Animation
@@ -677,7 +857,7 @@ Keyframe-based property animation on top of `ProcessComponent`. Runs multiple na
 | `interpolate<T>(from, to, t, easing?)` | Blend two `Interpolatable` values                                                      |
 | `Interpolatable`                       | `number \| Vec2Like` — registered interpolation types                                  |
 
-```ts
+```ts yage-context="entity"
 import { KeyframeAnimator, ProcessComponent, Transform } from "@yagejs/core";
 
 entity.add(new ProcessComponent());
@@ -707,7 +887,12 @@ A track needs at least 2 keyframes to interpolate between, each with a finite `t
 `setter` is **optional** — omit it for "pure timeline" animations that only
 fire keyframe `event` callbacks (cutscenes, audio cues, gameplay beats):
 
-```ts
+```ts yage-context="component"
+import { KeyframeAnimator } from "@yagejs/core";
+import { AudioManagerKey } from "@yagejs/audio";
+
+const audio = this.use(AudioManagerKey);
+
 new KeyframeAnimator({
   intro: {
     keyframes: [
@@ -740,8 +925,12 @@ resolve it in a Component with `this.use(RandomKey)`. It stays deterministic
 under a pinned seed and replays; `Math.random()` does not, so using it breaks
 replay determinism.
 
-```ts
+```ts yage-context="component"
 import { RandomKey } from "@yagejs/core";
+
+const min = 1;
+const max = 6;
+const array = ["red", "green", "blue"];
 
 const rng = this.use(RandomKey);
 rng.float(); // [0, 1)
@@ -756,7 +945,10 @@ rng.getSeed(); // current seed
 `SceneRandomSourceKey`). It creates each scene's RNG and owns the seed:
 
 ```ts
-class SceneRandomSource {
+import { SceneRandomSource as BaseSceneRandomSource } from "@yagejs/core";
+import type { RandomService } from "@yagejs/core";
+
+declare class SceneRandomSource extends BaseSceneRandomSource {
   setSeed(seed: number): void; // reseed every scene on the stack and every later one
   createSceneRandom(): RandomService; // the engine calls this as each scene enters
 }
@@ -773,8 +965,19 @@ replay-critical rolls on the scene RNG (`RandomKey`).
 
 ### Preloading a Scene Ahead of Time
 
-```ts
-await scenes.preload(level2, (ratio) => bar.setFill(ratio));
+```ts yage-context="engine"
+import { Scene } from "@yagejs/core";
+import type { UIProgressBar } from "@yagejs/ui";
+
+class Level2 extends Scene {
+  readonly name = "level-2";
+}
+
+declare const bar: UIProgressBar;
+const level2 = new Level2();
+const scenes = engine.scenes;
+
+await scenes.preload(level2, (ratio) => bar.update({ value: ratio }));
 await scenes.replace(level2);
 ```
 
@@ -786,7 +989,9 @@ preloaded and never pushed keeps its references until `assets.clear()`.
 
 ### Pause on Tab Blur
 
-```ts
+```ts yage-context="scene-enter"
+import { SceneManagerKey } from "@yagejs/core";
+
 const scenes = this.context.resolve(SceneManagerKey);
 
 scenes.autoPauseOnBlur = true; // default: false
@@ -812,7 +1017,8 @@ Core ships the transition contract + orchestration only. Concrete transitions (`
 
 Events: `scene:transition:started { kind, fromScene, toScene }`, `scene:transition:ended { kind, fromScene, toScene }` (fromScene/toScene may be `undefined`).
 
-**Breaking:** `SceneManager.pop()` returns `Promise<Scene | undefined>`.
+`SceneManager.pop()` returns `Promise<Scene | undefined>`: the popped scene,
+or `undefined` when the stack was empty.
 
 #### Reentrant scene swaps
 
@@ -823,11 +1029,23 @@ after the current mutation finishes; the returned promise resolves when the
 deferred operation completes.
 
 ```ts
+import { Scene, SceneManagerKey } from "@yagejs/core";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
+
 class TitleScene extends Scene {
+  readonly name = "title";
+
+  constructor(private readonly skipToGame: boolean) {
+    super();
+  }
+
   onEnter() {
     // Safe — `replace` is queued and runs after TitleScene's onEnter returns.
-    if (saveSystem.hasAutosave()) {
-      this.context.resolve(SceneManagerKey).replace(new GameScene());
+    if (this.skipToGame) {
+      void this.use(SceneManagerKey).replace(new GameScene());
     }
   }
 }
@@ -899,10 +1117,22 @@ Opt-in per-scene entity keys. Most entities (bullets, particles, transient enemi
 | ------------------------- | ------------------------------------------------------------------------------------------ |
 | `SpawnOptions`            | `{ key?: string; active?: boolean }` — trailing arg of `scene.spawn` / `entity.spawnChild` |
 | `entity.key`              | `string \| undefined` — the assigned key                                                   |
-| `entity.requireKey()`     | Returns `key` or throws (use in component `setup()`)                                       |
+| `entity.requireKey()`     | Returns `key` or throws (use in the entity's `setup()` or a component's `onAdd()`)         |
 | `scene.findByKey<E>(key)` | Look up entity by key, scene-scoped, hides destroyed entities                              |
 
-```ts
+```ts yage-context="scene"
+import { Entity } from "@yagejs/core";
+
+class Chest extends Entity {
+  content: string[] = [];
+  setup({ content }: { content: string[] }) {
+    this.content = content;
+  }
+}
+class Plain extends Entity {}
+class Bone extends Entity {}
+const parent = scene.spawn("parent");
+
 scene.spawn(Chest, { content: ["potion"] }, { key: "forest/chest-01" });
 scene.spawn(Plain, { key: "spawn-point" }); // class with no setup-params
 scene.spawn("anchor", { key: "anchor-01" }); // anonymous entity with a key
@@ -923,7 +1153,17 @@ Duplicate keys throw at spawn time with no orphan side-effect — the entity is 
 
 `scene.spawnBatch(build)` creates a set of entities that all exist before any of them is set up, and that arrive in the scene together or not at all. Use it when entities must reference each other, or when a half-built group would be worse than none.
 
-```ts
+```ts yage-context="scene"
+import { Entity, type EntityHandle } from "@yagejs/core";
+
+class Dummy extends Entity {}
+class Turret extends Entity {
+  aimAt?: EntityHandle<Dummy>;
+  setup({ aimAt }: { aimAt: EntityHandle<Dummy> }) {
+    this.aimAt = aimAt;
+  }
+}
+
 const { turret, target } = scene.spawnBatch((batch) => {
   const turret = batch.reserve(Turret, { key: "level/turret" });
   const target = batch.reserve(Dummy, { key: "level/dummy" });
@@ -975,8 +1215,13 @@ The engine creates no Inspector. `DebugPlugin` installs one, and
 `window.__yage__.inspector`. Time mutation requires `DebugPlugin`.
 
 ```ts
-class InspectorPlugin implements Plugin {} // name "inspector"
-function installInspector(context: EngineContext): () => void; // returns the remover
+import { InspectorPlugin as BaseInspectorPlugin } from "@yagejs/core";
+import type { EngineContext } from "@yagejs/core";
+
+declare class InspectorPlugin extends BaseInspectorPlugin {
+  readonly name: "inspector";
+}
+declare function installInspector(context: EngineContext): () => void; // returns the remover
 ```
 
 `installInspector` reuses an Inspector that is already installed and then
@@ -988,7 +1233,13 @@ do it in `onStart`, when every plugin's `install` has run. With `debug: true`
 and no Inspector installed, `start()` warns once in dev builds.
 
 ```ts
-interface InspectorTimeControl {
+import type {
+  InspectorTime as BaseInspectorTime,
+  InspectorTimeControl as BaseInspectorTimeControl,
+  InspectorTimeLease as BaseInspectorTimeLease,
+} from "@yagejs/core";
+
+interface InspectorTimeControl extends BaseInspectorTimeControl {
   freeze(): void;
   thaw(): void;
   step(frames?: number): void;
@@ -1002,10 +1253,11 @@ interface InspectorTimeControl {
     opts?: { maxFrames?: number; dtMs?: number },
   ): Promise<number>;
 }
-interface InspectorTimeLease extends InspectorTimeControl {
+interface InspectorTimeLease
+  extends InspectorTimeControl, BaseInspectorTimeLease {
   release(): void;
 }
-interface InspectorTime extends InspectorTimeControl {
+interface InspectorTime extends InspectorTimeControl, BaseInspectorTime {
   acquire(): InspectorTimeLease;
   isOwned(): boolean;
 }
@@ -1077,7 +1329,7 @@ Category-tagged logger with a ring buffer. Installed on `Engine` and available v
 | `LoggerKey`    | DI key for resolving a `Logger` from `EngineContext`                                                                               |
 
 ```ts
-import { LogLevel } from "@yagejs/core";
+import { Engine, LogLevel } from "@yagejs/core";
 
 const engine = new Engine({ debug: true });
 
@@ -1100,9 +1352,13 @@ console.log(engine.logger.formatRecentLogs(20));
 Base class for a progress-bar loading screen. Orchestrates preload, emits events on the bus, and hands off to a target scene. No rendering — the visual lives in `@yagejs/ui` (`LoadingSceneProgressBar`) or user-written components subscribing to the events. Full reference: `loading-scene.md`.
 
 ```ts
-import { LoadingScene } from "@yagejs/core";
+import { LoadingScene, Scene } from "@yagejs/core";
 import { fade } from "@yagejs/renderer";
 import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
 
 class Boot extends LoadingScene {
   readonly target = new GameScene();
@@ -1126,14 +1382,20 @@ Typed reactive primitives for game-wide singleton state. Used by `@yagejs/ui-rea
 Three independent interfaces; every `Reactive*` shape implements all three:
 
 ```ts
-interface Reactive {
+import type {
+  Reactive as BaseReactive,
+  Resettable as BaseResettable,
+  Serializable as BaseSerializable,
+} from "@yagejs/core";
+
+interface Reactive extends BaseReactive {
   subscribe(fn: () => void): () => void;
 }
-interface Serializable<TEnc> {
+interface Serializable<TEnc> extends BaseSerializable<TEnc> {
   serialize(): TEnc;
   hydrate(raw: TEnc): void;
 }
-interface Resettable {
+interface Resettable extends BaseResettable {
   reset(): void;
 }
 ```
@@ -1141,12 +1403,33 @@ interface Resettable {
 Each shape also carries a `[STATE_KIND]` symbol-brand (`"value" | "counter" | "record" | "map" | "set" | "list" | "store"`) — `useStore` dispatches on it.
 
 ```ts
+import type {
+  DeletableRecordKey,
+  EncodedStore,
+  ListEncoded,
+  Reactive,
+  ReactiveCounter as BaseReactiveCounter,
+  ReactiveList as BaseReactiveList,
+  ReactiveMap as BaseReactiveMap,
+  ReactiveRecord as BaseReactiveRecord,
+  ReactiveSet as BaseReactiveSet,
+  ReactiveValue as BaseReactiveValue,
+  Resettable,
+  Serializable,
+  StoreLeaves,
+} from "@yagejs/core";
+
 interface ReactiveValue<T>
-  extends Reactive, Serializable<{ value: T }>, Resettable {
+  extends
+    BaseReactiveValue<T>,
+    Reactive,
+    Serializable<{ value: T }>,
+    Resettable {
   get(): T;
   set(v: T): void;
 }
-interface ReactiveCounter extends Reactive, Serializable<number>, Resettable {
+interface ReactiveCounter
+  extends BaseReactiveCounter, Reactive, Serializable<number>, Resettable {
   value(): number;
   set(n: number): void;
   increment(by?: number): void;
@@ -1154,7 +1437,7 @@ interface ReactiveCounter extends Reactive, Serializable<number>, Resettable {
   clamp(value: number, min: number, max: number): void;
 }
 interface ReactiveRecord<T extends object>
-  extends Reactive, Serializable<T>, Resettable {
+  extends BaseReactiveRecord<T>, Reactive, Serializable<T>, Resettable {
   get(): Readonly<T>;
   set(partial: Partial<T>): void;
   // Removes the key entirely (`set` can only overwrite). Absent key = no-op, no
@@ -1167,7 +1450,11 @@ interface ReactiveRecord<T extends object>
   delete: (key: DeletableRecordKey<T>) => void;
 }
 interface ReactiveMap<K, V>
-  extends Reactive, Serializable<Array<[K, V]>>, Resettable {
+  extends
+    BaseReactiveMap<K, V>,
+    Reactive,
+    Serializable<Array<[K, V]>>,
+    Resettable {
   get(k: K): V | undefined;
   set(k: K, v: V): void;
   delete(k: K): void;
@@ -1176,7 +1463,8 @@ interface ReactiveMap<K, V>
   size(): number;
   clear(): void;
 }
-interface ReactiveSet<K> extends Reactive, Serializable<K[]>, Resettable {
+interface ReactiveSet<K>
+  extends BaseReactiveSet<K>, Reactive, Serializable<K[]>, Resettable {
   add(k: K): void;
   delete(k: K): void;
   has(k: K): boolean;
@@ -1185,7 +1473,11 @@ interface ReactiveSet<K> extends Reactive, Serializable<K[]>, Resettable {
   clear(): void;
 }
 interface ReactiveList<T>
-  extends Reactive, Serializable<ListEncoded<T>>, Resettable {
+  extends
+    BaseReactiveList<T>,
+    Reactive,
+    Serializable<ListEncoded<T>>,
+    Resettable {
   add(item: T): number; // returns assigned id
   remove(id: number): boolean; // by id, not delete — semantically distinct
   get(id: number): T | undefined;
@@ -1200,7 +1492,7 @@ interface ReactiveList<T>
   getByKey(key: string | number): T | undefined; // item for a domain key
   upsert(key: string | number, item: T): number; // add-or-replace by key; returns id
 }
-interface ReactiveStore<L>
+interface ReactiveStore<L extends StoreLeaves>
   extends Reactive, Serializable<EncodedStore<L>>, Resettable {
   /* plus L's leaves */
 }
@@ -1218,6 +1510,15 @@ import {
   createList,
   createStore,
 } from "@yagejs/core";
+
+interface Settings {
+  music: number;
+  sfx: number;
+}
+interface Potion {
+  name: string;
+  quality: number;
+}
 
 // Leaf factories — usable on their own.
 const settings = createRecord<Settings>({
@@ -1248,7 +1549,7 @@ const game = createStore((s) => ({
   shelf: s.list<Potion>(),
   day: s.value<number>({ default: 1 }),
   settings: s.record<Settings>({
-    default: () => ({ volume: 0.8, lang: "en" }),
+    default: () => ({ music: 0.8, sfx: 1.0 }),
   }),
 }));
 game.gold.increment(10);
@@ -1264,27 +1565,36 @@ See `@yagejs/save` docs for the IO layer that consumes any `Serializable<T>`.
 ## Core Types
 
 ```ts
-interface Plugin {
+import type {
+  Component,
+  EngineContext,
+  Plugin as BasePlugin,
+  SystemScheduler,
+} from "@yagejs/core";
+
+interface Plugin extends BasePlugin {
   readonly name: string;
   readonly version: string;
   readonly dependencies?: readonly string[];
   install?(context: EngineContext): void | Promise<void>;
   registerSystems?(scheduler: SystemScheduler): void;
-  onStart?(): void;
+  onStart?(): void | Promise<void>;
   onDestroy?(): void;
 }
 
-enum Phase {
-  EarlyUpdate,
-  FixedUpdate,
-  Update,
-  LateUpdate,
-  Render,
-  EndOfFrame,
+declare enum Phase {
+  EarlyUpdate = "earlyUpdate",
+  FixedUpdate = "fixedUpdate",
+  Update = "update",
+  LateUpdate = "lateUpdate",
+  Render = "render",
+  EndOfFrame = "endOfFrame",
 }
 
 type EasingFunction = (t: number) => number;
-type ComponentClass<C> = new (...args: never[]) => C;
+type ComponentClass<C extends Component = Component> = abstract new (
+  ...args: never[]
+) => C;
 ```
 
 ### Execution context
@@ -1294,7 +1604,11 @@ call is executing. Code reachable from several phases branches on these
 instead of assuming a phase — `@yagejs/input` uses them to scope edge queries
 to the caller's frame or fixed step:
 
-```ts
+```ts yage-context="context"
+import { SystemSchedulerKey } from "@yagejs/core";
+
+const scheduler = context.resolve(SystemSchedulerKey);
+
 scheduler.currentPhase; // Phase | null — phase running right now; null outside any phase
 scheduler.fixedStepIndex; // number — monotonic count of fixed steps started; identifies
 // the running step during Phase.FixedUpdate (a frame can run

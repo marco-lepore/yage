@@ -1,19 +1,15 @@
 import { Component, Entity, Transform, Vec2, trait } from "@yagejs/core";
 import { AnimatedSpriteComponent } from "@yagejs/renderer";
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
-import { SLIME_FRAME_SIZE, slimeTex } from "../scenes/GameScene";
+import { SLIME_FRAME_SIZE, slimeTex } from "../assets";
+import { PlayerHit } from "../events";
 import { LAYER_HAZARD, LAYER_PLAYER } from "../layers";
 import { Hostile } from "../traits";
 
 /** Ground enemy that chases the player horizontally. Shares `Hostile` trait with `Hazard`. */
 @trait(Hostile)
 export class Slime extends Entity {
-  private spawnX = 0;
-  private spawnY = 0;
-
   setup(params: { x: number; y: number }): void {
-    this.spawnX = params.x;
-    this.spawnY = params.y;
     this.add(
       new Transform({
         position: new Vec2(params.x, params.y),
@@ -23,7 +19,7 @@ export class Slime extends Entity {
 
     const sprite = new AnimatedSpriteComponent({
       source: {
-        sheet: slimeTex.path,
+        sheet: slimeTex,
         frameWidth: SLIME_FRAME_SIZE,
         frameHeight: SLIME_FRAME_SIZE,
       },
@@ -48,21 +44,27 @@ export class Slime extends Entity {
         mask: LAYER_PLAYER,
       }),
     );
-    this.add(new SlimeAI());
-  }
-
-  resetPosition(): void {
-    this.get(RigidBodyComponent).setVelocity(Vec2.ZERO);
-    this.get(RigidBodyComponent).setPosition(this.spawnX, this.spawnY);
-    this.get(Transform).setPosition(this.spawnX, this.spawnY);
+    this.add(new SlimeAI(new Vec2(params.x, params.y)));
   }
 }
 
+/** Walks toward the player, and goes back to its start when the player is hit. */
 class SlimeAI extends Component {
   private readonly transform = this.sibling(Transform);
   private readonly body = this.sibling(RigidBodyComponent);
+  private readonly home: Vec2;
 
   private static readonly SPEED = 50;
+
+  constructor(home: Vec2) {
+    super();
+    this.home = home;
+  }
+
+  onAdd(): void {
+    // The player emits PlayerHit on itself; it bubbles to the scene.
+    this.listenScene(PlayerHit, () => this.returnHome());
+  }
 
   update(): void {
     const player = this.scene?.findEntity("player");
@@ -77,5 +79,11 @@ class SlimeAI extends Component {
     const scale = this.transform.scale;
     const absX = Math.abs(scale.x);
     this.transform.setScale(dir > 0 ? absX : -absX, scale.y);
+  }
+
+  private returnHome(): void {
+    this.body.setVelocity(Vec2.ZERO);
+    this.body.setPosition(this.home.x, this.home.y);
+    this.transform.setPosition(this.home.x, this.home.y);
   }
 }

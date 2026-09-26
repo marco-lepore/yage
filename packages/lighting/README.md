@@ -3,8 +3,15 @@
 Radial 2D lights, light-level queries, and interchangeable lighting renderers
 for [YAGE](https://yage.dev).
 
-```ts
-import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+```ts yage-group="readme"
+import {
+  Component,
+  Engine,
+  Entity,
+  Scene,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 import {
   LightSource,
   LightingPlugin,
@@ -13,26 +20,32 @@ import {
 import { RendererPlugin } from "@yagejs/renderer";
 
 const engine = new Engine();
-engine.use(new RendererPlugin());
+engine.use(new RendererPlugin({ width: 640, height: 360 }));
 engine.use(
   new LightingPlugin({
     ambient: { level: 0.2, color: 0xb0b8cc },
   }),
 );
 
-class Cave extends Scene {
-  readonly name = "cave";
-
-  onEnter(): void {
-    const torch = this.spawn("torch");
-    torch.add(new Transform({ position: new Vec2(320, 180) }));
-    torch.add(
+/** A warm light at a point in the level. */
+class Torch extends Entity {
+  setup(params: { x: number; y: number }): void {
+    this.add(new Transform({ position: new Vec2(params.x, params.y) }));
+    this.add(
       new LightSource({
         radius: 180,
         intensity: 0.9,
         color: 0xffb060,
       }),
     );
+  }
+}
+
+class Cave extends Scene {
+  readonly name = "cave";
+
+  onEnter(): void {
+    this.spawn(Torch, { x: 320, y: 180 });
   }
 }
 ```
@@ -45,7 +58,7 @@ picks one by name.
 
 Use the scene-scoped `LightingWorldKey` for gameplay queries:
 
-```ts
+```ts yage-group="readme"
 class LightSensor extends Component {
   private readonly lighting = this.service(LightingWorldKey);
 
@@ -56,8 +69,8 @@ class LightSensor extends Component {
 ```
 
 `levelAt()` adds the ambient level and every light contribution, then clamps
-the result to `0..1`. A `LightOccluder` blocks light in the query and in the
-built-in renderer alike, so a wall casts a shadow in the picture and in the
+the result to `0..1`. A `LightOccluder` blocks light in the query and in both
+built-in renderers alike, so a wall casts a shadow in the picture and in the
 answer. Occluder data is renderer-neutral and available to custom renderers.
 
 See [yage.dev/guides/lighting](https://yage.dev/guides/lighting) for setup,

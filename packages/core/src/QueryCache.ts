@@ -56,7 +56,7 @@ export class QueryResult {
 export class QueryCache {
   private queries: QueryResult[] = [];
   /**
-   * Every active entity in this cache's scene, for seeding new queries.
+   * Every active entity the cache tracks, for seeding new queries.
    * Dormant entities (`entity.isActive === false`) are excluded, so a query
    * registered while they sleep does not pick them up either.
    */

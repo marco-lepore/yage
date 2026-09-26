@@ -5,8 +5,8 @@ import {
   Vec2,
   ProcessComponent,
   Process,
+  type ProcessSlot,
 } from "@yagejs/core";
-import type { ProcessSlot } from "@yagejs/core";
 import {
   GraphicsComponent,
   AnimatedSpriteComponent,
@@ -31,8 +31,8 @@ import {
   LAYER_BULLET,
   LAYER_ENEMY,
   Hurt,
-} from "./constants.js";
-import {
+  BulletHit,
+  AllEnemiesDefeated,
   FRAME_SIZE,
   PlayerIdleTex,
   PlayerWalkTex,
@@ -44,12 +44,7 @@ import {
   HurtSfx,
   JumpSfx,
   LandSfx,
-} from "./assets.js";
-import { isWon } from "./ui.js";
-import {
-  spawnBulletImpactParticles,
-  spawnEnemyHitParticles,
-} from "./particles.js";
+} from "./constants.js";
 
 // ---------------------------------------------------------------------------
 // PlayerController
@@ -75,12 +70,14 @@ class PlayerController extends Component {
     this.camera = camera;
   }
 
-  private grounded = false;
-  private coyoteTimer = 0;
   private wasGrounded = false;
-  facingRight = true;
+  private facingRight = true;
+  /** Set once every enemy is down; the player stops taking input. */
+  private finished = false;
 
   // Slots
+  /** Running while a jump is still allowed after leaving the ground. */
+  private coyote!: ProcessSlot;
   private shootCd!: ProcessSlot;
   private invincibility!: ProcessSlot;
   private stun!: ProcessSlot;
@@ -102,6 +99,7 @@ class PlayerController extends Component {
     this.physicsWorld = this.use(PhysicsWorldKey);
 
     // Slots
+    this.coyote = this.pc.slot({ duration: PlayerController.COYOTE_SECONDS });
     this.shootCd = this.pc.slot({
       duration: PlayerController.SHOOT_COOLDOWN_SECONDS,
     });
@@ -119,7 +117,7 @@ class PlayerController extends Component {
     this.flash = this.pc.slot({
       duration: 0.1,
       cleanup: () => {
-        this.sprite.animatedSprite.tint = 0xffffff;
+        this.sprite.tint = 0xffffff;
       },
     });
     this.squash = this.pc.slot({
@@ -142,15 +140,22 @@ class PlayerController extends Component {
     };
 
     // Handle contact damage from enemies
-    this.collider.onCollision((ev) => {
-      if (ev.started && ev.other.tags.has("enemy")) {
-        this.tryDamageFrom(ev.other);
-      }
+    this.addCleanup(
+      this.collider.onCollision((ev) => {
+        if (ev.started && ev.other.tags.has("enemy")) {
+          this.tryDamageFrom(ev.other);
+        }
+      }),
+    );
+
+    // The HUD emits this when the last enemy dies; it bubbles to the scene.
+    this.listenScene(AllEnemiesDefeated, () => {
+      this.finished = true;
     });
   }
 
-  update(dt: number): void {
-    if (isWon()) {
+  update(): void {
+    if (this.finished) {
       this.rb.setVelocity(Vec2.ZERO);
       this.anim.unlock();
       this.anim.play("idle");
@@ -175,20 +180,15 @@ class PlayerController extends Component {
     );
     // Raycasts don't consult contact filters, so during a drop-through the
     // ray still reports the one-way platform being fallen through. It isn't
-    // supporting the player, so it must not restore grounded state (and
+    // supporting the player, so it must not reopen the coyote window (and
     // with it the ability to jump mid-drop). Solid ground still counts.
     const passingThroughHit =
       this.collider.isDroppingThrough &&
       hit?.entity.tryGet(ColliderComponent)?.config.oneWay !== undefined;
     const onGround = hit !== null && !passingThroughHit;
-
-    if (onGround) {
-      this.grounded = true;
-      this.coyoteTimer = PlayerController.COYOTE_SECONDS;
-    } else {
-      this.coyoteTimer -= dt;
-      if (this.coyoteTimer <= 0) this.grounded = false;
-    }
+    // Standing on ground keeps the coyote window open; it closes on its own
+    // once the player has been airborne for COYOTE_SECONDS.
+    if (onGround) this.coyote.restart();
 
     // -- Landing squash (proportional to impact velocity) --
     if (onGround && !this.wasGrounded) {
@@ -199,7 +199,7 @@ class PlayerController extends Component {
         this.startSquash(squashX, squashY);
         this.anim.playOneShot("land", { duration: 0.12 });
       }
-      this.audio.play(LandSfx.path, { channel: "sfx" });
+      this.audio.play(LandSfx, { channel: "sfx" });
     }
     this.wasGrounded = onGround;
 
@@ -210,8 +210,7 @@ class PlayerController extends Component {
       hit?.entity.tryGet(ColliderComponent)?.config.oneWay
     ) {
       this.collider.dropThrough(0.25);
-      this.grounded = false;
-      this.coyoteTimer = 0;
+      this.coyote.cancel();
     }
 
     // -- Horizontal movement --
@@ -242,19 +241,18 @@ class PlayerController extends Component {
     // -- Jump (buffered): a press within the window fires on the next grounded
     // frame; the input manager holds the buffer and claim-once prevents refire.
     if (
-      this.grounded &&
+      this.coyote.running &&
       this.input.consumeBufferedPress(
         "jump",
         PlayerController.JUMP_BUFFER_SECONDS,
       )
     ) {
       this.rb.setVelocityY(-PlayerController.JUMP_VELOCITY);
-      this.grounded = false;
-      this.coyoteTimer = 0;
+      this.coyote.cancel();
 
       // Jump stretch
       this.startSquash(0.8, 1.2);
-      this.audio.play(JumpSfx.path, { channel: "sfx" });
+      this.audio.play(JumpSfx, { channel: "sfx" });
     }
 
     // -- Shooting --
@@ -264,7 +262,7 @@ class PlayerController extends Component {
       this.anim.playOneShot("shoot", {
         duration: PlayerController.SHOOT_COOLDOWN_SECONDS,
       });
-      this.audio.play(ShootSfx.path, { channel: "sfx" });
+      this.audio.play(ShootSfx, { channel: "sfx" });
       this.camera.shake(2, 0.1, { decay: 0.8 });
     }
 
@@ -303,7 +301,7 @@ class PlayerController extends Component {
   private takeDamage(knockDir: number): void {
     if (!this.invincibility.completed) return;
 
-    this.audio.play(HurtSfx.path, { channel: "sfx" });
+    this.audio.play(HurtSfx, { channel: "sfx" });
 
     // Knockback
     this.rb.setVelocity(
@@ -314,7 +312,7 @@ class PlayerController extends Component {
     );
 
     // Flash red (cleanup resets tint)
-    this.sprite.animatedSprite.tint = 0xff4444;
+    this.sprite.tint = 0xff4444;
     this.flash.restart();
 
     // Hurt animation + stun
@@ -350,35 +348,38 @@ export class PlayerEntity extends Entity {
   setup(params: { camera: CameraEntity }): void {
     this.tags.add("player");
     this.add(new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }));
-    const idleSource = { sheet: PlayerIdleTex.path, frameWidth: FRAME_SIZE };
-    const spriteComp = this.add(
-      new AnimatedSpriteComponent({ source: idleSource, layer: "player" }),
+    const idleSource = { sheet: PlayerIdleTex, frameWidth: FRAME_SIZE };
+    this.add(
+      new AnimatedSpriteComponent({
+        source: idleSource,
+        anchor: { x: 0.5, y: 0.5 - 3 / FRAME_SIZE },
+        layer: "player",
+      }),
     );
-    spriteComp.animatedSprite.anchor.set(0.5, 0.5 - 3 / FRAME_SIZE);
     this.add(
       new AnimationController<PlayerAnim>({
         idle: { source: idleSource, speed: 0.15 },
         walk: {
-          source: { sheet: PlayerWalkTex.path, frameWidth: FRAME_SIZE },
+          source: { sheet: PlayerWalkTex, frameWidth: FRAME_SIZE },
           speed: 0.2,
         },
         jump: {
-          source: { sheet: PlayerJumpTex.path, frameWidth: FRAME_SIZE },
+          source: { sheet: PlayerJumpTex, frameWidth: FRAME_SIZE },
           speed: 0.12,
           loop: false,
         },
         land: {
-          source: { sheet: PlayerLandTex.path, frameWidth: FRAME_SIZE },
+          source: { sheet: PlayerLandTex, frameWidth: FRAME_SIZE },
           speed: 0.5,
           loop: false,
         },
         shoot: {
-          source: { sheet: PlayerShootTex.path, frameWidth: FRAME_SIZE },
+          source: { sheet: PlayerShootTex, frameWidth: FRAME_SIZE },
           speed: 0.4,
           loop: false,
         },
         hurt: {
-          source: { sheet: PlayerHurtTex.path, frameWidth: FRAME_SIZE },
+          source: { sheet: PlayerHurtTex, frameWidth: FRAME_SIZE },
           speed: 0.3,
           loop: false,
         },
@@ -442,20 +443,17 @@ class BulletEntity extends Entity {
     // Set bullet velocity after body is created
     this.get(RigidBodyComponent).setVelocity(new Vec2(dir * 600, 0));
 
-    // Collision handler
+    // Collision handler. A bullet that already hit something this step is
+    // destroyed and ignores any further contact.
     collider.onCollision((ev) => {
-      const scene = this.tryScene;
-      if (!ev.started || !scene) return;
+      if (!ev.started || this.isDestroyed) return;
       if (ev.other.tags.has("dead")) return; // ignore dying enemies
-      const bPos = this.get(Transform).position;
-
-      if (ev.other.tags.has("enemy")) {
-        ev.other.emit(Hurt, { dir });
-        spawnEnemyHitParticles(scene, bPos.x, bPos.y);
-      } else {
-        const normalAngle = dir > 0 ? Math.PI : 0;
-        spawnBulletImpactParticles(scene, bPos.x, bPos.y, normalAngle);
-      }
+      const { x, y } = this.get(Transform).position;
+      const hitEnemy = ev.other.tags.has("enemy");
+      if (hitEnemy) ev.other.emit(Hurt, { dir });
+      // Bubbles to the scene, where the sparks entity bursts at (x, y). Emit
+      // before destroy(): a destroyed entity's events are dropped.
+      this.emit(BulletHit, { x, y, dir, hitEnemy });
       this.destroy();
     });
   }

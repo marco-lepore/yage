@@ -26,6 +26,23 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
+    "@yagejs/docs#typecheck": {
+      "dependsOn": ["^build"],
+      // The snippet checker also reads every package README, the addon and
+      // tool LLM references and both AGENTS files, none of which live in the
+      // docs package. It checks them against every package's declarations,
+      // which is why docs lists every package as a devDependency.
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/AGENTS.md",
+        "$TURBO_ROOT$/packages/addons/AGENTS.md",
+        "$TURBO_ROOT$/packages/*/README.md",
+        "$TURBO_ROOT$/packages/addons/*/README.md",
+        "$TURBO_ROOT$/packages/tools/*/README.md",
+        "$TURBO_ROOT$/packages/addons/*/docs/llms/**",
+        "$TURBO_ROOT$/packages/tools/*/docs/llms/**"
+      ]
+    },
     "//#measure": {
       // The script walks every package's sources and manifest itself; the
       // root package would otherwise hash only root files.

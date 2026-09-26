@@ -2,11 +2,12 @@ import {
   Component,
   Entity,
   ProcessComponent,
+  RandomKey,
   Transform,
   Vec2,
   trait,
 } from "@yagejs/core";
-import type { Vec2Like } from "@yagejs/core";
+import type { ProcessSlot, Vec2Like } from "@yagejs/core";
 import {
   AnimatedSpriteComponent,
   AnimationController,
@@ -40,15 +41,18 @@ import {
   ENEMY_MELEE_RANGE,
   ENEMY_SPEED,
   ENEMY_TINT,
+  ENGAGEMENT_TOKEN_KEY,
   ORBIT_BACKOFF_RANGE,
   ORBIT_MAX_RANGE,
   ORBIT_MIN_RANGE,
   ORBIT_SEPARATION_RANGE,
   ORBIT_SPEED_MULT,
+  PLAYER_KEY,
   TOKEN_HANDOFF_PAUSE,
 } from "./constants.js";
 import {
   BODY_COLLIDER_RADIUS,
+  BoxerAnimState,
   CAST_DURATION,
   CAST_RELEASE_AT,
   DEFAULT_DIR,
@@ -57,7 +61,6 @@ import {
   SPRITE_SCALE,
   buildBoxerAnimDefs,
   castHandPosition,
-  installFootAnchorTracking,
   playBoxerAnim,
   sourceFor,
 } from "./boxer-sprites.js";
@@ -70,23 +73,27 @@ import {
 } from "./feedback.js";
 import { pushMaxHp } from "./stats.js";
 import type { StatKind, Stats } from "./stats.js";
-import type { AbilitiesDemoScene } from "./scene.js";
 
 // ---------------------------------------------------------------------------
 // Engagement token — at most one enemy "holds" it and is allowed to close to
 // melee range / cast a fireball; every other `EnemyAI` orbits/strafes
 // instead (see `EnemyAI.reposition`), so the player faces one clear threat
-// at a time rather than every enemy converging at once. A scene-wide
-// Component (spawned once in `onEnter`, alongside the VFX hub) rather than
-// per-enemy state, since "who's engaging" is inherently a single shared
-// answer. Auto-assigns to the living enemy nearest the player once free and
-// past its handoff pause — `EnemyAI` never claims the token itself, only
-// releases it.
+// at a time rather than every enemy converging at once. One component on a
+// keyed scene-wide entity rather than per-enemy state, since "who's
+// engaging" is a single shared answer. Auto-assigns to the living enemy
+// nearest the player once free and past its handoff pause — `EnemyAI` never
+// claims the token itself, only releases it.
 // ---------------------------------------------------------------------------
 
 export class EngagementToken extends Component {
+  private readonly pc = this.sibling(ProcessComponent);
   private holder: Entity | null = null;
-  private handoffPause = 0;
+  /** Running while a released token waits before it is reassigned. */
+  private handoff!: ProcessSlot;
+
+  onAdd(): void {
+    this.handoff = this.pc.slot({ duration: TOKEN_HANDOFF_PAUSE });
+  }
 
   hasToken(entity: Entity): boolean {
     return this.holder === entity;
@@ -97,7 +104,7 @@ export class EngagementToken extends Component {
    *  `EnemyAI.reposition` reads this to add a brief outward "backing off"
    *  push on top of the normal orbit. */
   get isHandoffPause(): boolean {
-    return this.holder === null && this.handoffPause > 0;
+    return this.holder === null && this.handoff.running;
   }
 
   /** Frees the token; `update` won't reassign it until `TOKEN_HANDOFF_PAUSE`
@@ -105,7 +112,7 @@ export class EngagementToken extends Component {
   release(entity: Entity): void {
     if (this.holder !== entity) return;
     this.holder = null;
-    this.handoffPause = TOKEN_HANDOFF_PAUSE;
+    this.handoff.restart();
   }
 
   /** Drops a dead/removed holder immediately, skipping the handoff pause —
@@ -114,13 +121,9 @@ export class EngagementToken extends Component {
     if (this.holder === entity) this.holder = null;
   }
 
-  update(dt: number): void {
-    if (this.handoffPause > 0) {
-      this.handoffPause = Math.max(0, this.handoffPause - dt);
-      return;
-    }
-    if (this.holder) return;
-    const player = this.scene.findEntity("PlayerEntity");
+  update(): void {
+    if (this.holder || this.handoff.running) return;
+    const player = this.scene.findByKey(PLAYER_KEY);
     if (!player || (player.tryGet(Health)?.isDead ?? true)) return;
     const playerPos = player.get(Transform).worldPosition;
 
@@ -139,8 +142,28 @@ export class EngagementToken extends Component {
   }
 }
 
+/** Hosts the scene's `EngagementToken`. Spawned once per scene with the
+ *  `ENGAGEMENT_TOKEN_KEY` key. */
+export class EngagementTokenEntity extends Entity {
+  token!: EngagementToken;
+
+  setup(): void {
+    this.add(new ProcessComponent());
+    this.token = this.add(new EngagementToken());
+  }
+}
+
+/** The scene's engagement token. Throws when the scene has no
+ *  `EngagementTokenEntity`. */
 export function tokenOf(entity: Entity): EngagementToken {
-  return (entity.scene as AbilitiesDemoScene).token;
+  const host =
+    entity.scene.findByKey<EngagementTokenEntity>(ENGAGEMENT_TOKEN_KEY);
+  if (!host) {
+    throw new Error(
+      `tokenOf: scene "${entity.scene.name}" has no entity with key "${ENGAGEMENT_TOKEN_KEY}".`,
+    );
+  }
+  return host.token;
 }
 
 /** Enemy melee: `FrontKick`'s own run-up-and-kick cycle doubles as the
@@ -151,9 +174,9 @@ export function tokenOf(entity: Entity): EngagementToken {
  *  `REACTION_PRIORITY`): unlike the player's own attacks, a landed hit
  *  always interrupts this — punishing the telegraph stops the kick outright
  *  instead of only trading damage for damage (see the ability-defs section
- *  doc above). Cooldown raised from 1.3s alongside the engagement-token
- *  handoff pause (`TOKEN_HANDOFF_PAUSE`) to slow the overall attack rate —
- *  see `EnemyAI`. */
+ *  doc in `player-abilities.ts`). The cooldown and the engagement-token
+ *  handoff pause (`TOKEN_HANDOFF_PAUSE`) together set the overall attack
+ *  rate — see `EnemyAI`. */
 export const MELEE: AbilityDef = {
   id: "melee",
   cooldown: 1.6,
@@ -211,9 +234,11 @@ export const SHOOT: AbilityDef = {
       entity: FireballProjectile,
       position: (ctx) => castHandPosition(ctx.entity),
       aim: (ctx) => {
-        const target = ctx.entity.scene.findEntity("PlayerEntity");
+        const target = ctx.entity.scene.findByKey(PLAYER_KEY);
         if (!target) {
-          throw new Error('SHOOT: target "PlayerEntity" was not found.');
+          throw new Error(
+            `SHOOT: no entity with key "${PLAYER_KEY}" to aim at.`,
+          );
         }
         return target
           .get(Transform)
@@ -244,12 +269,16 @@ export class EnemyAI extends Component {
   private readonly health = this.sibling(Health);
   private readonly pc = this.sibling(ProcessComponent);
   private readonly stagger = this.sibling(Stagger);
+  /** The scene's engagement token, resolved once on add. */
+  private token!: EngagementToken;
 
-  // Orbit phase for non-token repositioning — randomized per enemy so
+  // Orbit direction for non-token repositioning — randomized per enemy so
   // circlers spread around the player instead of stacking on one spot.
-  private readonly orbitDir = Math.random() < 0.5 ? 1 : -1;
+  private orbitDir = 1;
 
   onAdd(): void {
+    this.token = tokenOf(this.entity);
+    this.orbitDir = this.use(RandomKey).pick([1, -1]);
     this.listen(this.entity, HealthDied, () => this.die());
     this.listen(this.entity, HitReceived, ({ hit }) =>
       reactToHit(this.entity, this.pc, ENEMY_TINT, hit),
@@ -261,16 +290,15 @@ export class EnemyAI extends Component {
     // current holder, so this doesn't need to track whether I was engaging.
     this.listen(this.entity, AbilityEnded, ({ activation }) => {
       if (activation.lane !== "main") return;
-      tokenOf(this.entity).release(this.entity);
+      this.token.release(this.entity);
     });
   }
 
   update(): void {
-    const token = tokenOf(this.entity);
-    const holdsToken = token.hasToken(this.entity);
+    const holdsToken = this.token.hasToken(this.entity);
     const mainBusy = this.abilities.isActive("main");
 
-    const player = this.scene.findEntity("PlayerEntity");
+    const player = this.scene.findByKey(PLAYER_KEY);
     const playerDead = player?.tryGet(Health)?.isDead ?? true;
     if (!player || playerDead || mainBusy) {
       // No target, or mid-cast/melee/stagger: plant and let the current
@@ -302,7 +330,7 @@ export class EnemyAI extends Component {
     if (holdsToken) {
       moving = this.engage(toPlayer, dist);
     } else {
-      moving = this.reposition(token, toPlayer, dist);
+      moving = this.reposition(toPlayer, dist);
     }
 
     if (!this.anim.locked) {
@@ -312,9 +340,9 @@ export class EnemyAI extends Component {
     this.redraw();
   }
 
-  /** The token holder's behavior — unchanged from before the engagement
-   *  token existed: close to melee range, hold at mid-range to close in, or
-   *  hang back and cast. Returns whether it moved (for the run/idle pick). */
+  /** The token holder's behavior: close to melee range, hold at mid-range to
+   *  close in, or hang back and cast. Returns whether it moved (for the
+   *  run/idle pick). */
   private engage(toPlayer: Vec2, dist: number): boolean {
     if (dist <= ENEMY_MELEE_RANGE) {
       this.rb.setVelocity(Vec2.ZERO);
@@ -335,15 +363,11 @@ export class EnemyAI extends Component {
    *  stack, and stepping back a bit further during the token's handoff
    *  pause (the beat right after the current attacker recovers). Returns
    *  whether it moved. */
-  private reposition(
-    token: EngagementToken,
-    toPlayer: Vec2,
-    dist: number,
-  ): boolean {
+  private reposition(toPlayer: Vec2, dist: number): boolean {
     const inward = toPlayer.normalize(); // unit vector toward the player
     const tangent = new Vec2(-inward.y, inward.x).scale(this.orbitDir);
 
-    const backoff = token.isHandoffPause ? ORBIT_BACKOFF_RANGE : 0;
+    const backoff = this.token.isHandoffPause ? ORBIT_BACKOFF_RANGE : 0;
     let radial = Vec2.ZERO;
     if (dist < ORBIT_MIN_RANGE + backoff) radial = inward.scale(-1);
     else if (dist > ORBIT_MAX_RANGE + backoff) radial = inward;
@@ -384,10 +408,10 @@ export class EnemyAI extends Component {
    *  detaches) so `GameDirector`'s respawns don't pile up. */
   private die(): void {
     const entity = this.entity;
-    tokenOf(entity).clear(entity);
+    this.token.clear(entity);
     playBoxerAnim(entity, "death", { oneShot: true });
     this.rb.setType("static");
-    this.gfx.graphics.clear(); // no HP bar on a corpse
+    this.gfx.draw((g) => g.clear()); // no HP bar on a corpse
     this.pc
       .slot({ duration: CORPSE_LINGER, onComplete: () => entity.destroy() })
       .start();
@@ -423,7 +447,7 @@ export class EnemyEntity extends Entity {
         tint: ENEMY_TINT,
       }),
     );
-    installFootAnchorTracking(this);
+    this.add(new BoxerAnimState());
     this.add(new AnimationController(buildBoxerAnimDefs(ENEMY_ANIMS)));
     this.add(new GraphicsComponent());
     this.add(new RigidBodyComponent({ type: "dynamic", fixedRotation: true }));
@@ -464,6 +488,22 @@ export const MAX_PICKUPS = 3;
 export class Pickup extends Component {
   constructor(readonly spec: PickupSpec) {
     super();
+  }
+}
+
+/** A stat gem on the arena floor, in the colour of the stat it grants. */
+export class PickupEntity extends Entity {
+  setup(params: { spec: PickupSpec; position: Vec2Like }): void {
+    const { spec, position } = params;
+    this.add(new Transform({ position: new Vec2(position.x, position.y) }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.roundRect(-9, -9, 18, 18, 4)
+          .fill({ color: spec.color })
+          .stroke({ color: 0xffffff, width: 1.5, alpha: 0.7 });
+      }),
+    );
+    this.add(new Pickup(spec));
   }
 }
 

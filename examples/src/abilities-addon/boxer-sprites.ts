@@ -1,4 +1,4 @@
-import { Transform, Vec2 } from "@yagejs/core";
+import { Component, Transform, Vec2 } from "@yagejs/core";
 import type { Entity, Vec2Like } from "@yagejs/core";
 import {
   AnimatedSpriteComponent,
@@ -72,22 +72,16 @@ export interface BoxerAnimSpec {
 
 export const BOXER_ANIM_SPECS: Record<BoxerAnim, BoxerAnimSpec> = {
   idle: { sheet: "FightIdle", frames: 34, speed: 0.3, loop: true },
-  // `speed` here (playback rate) is unchanged — the fix for feet visibly
-  // sliding against the ground was on the movement side: `PLAYER_SPEED`/
-  // `ENEMY_SPEED` above were low enough relative to this cycle's own pace
-  // (14 frames at 0.32 covers one loop in ~0.73s) that the body barely
-  // advanced across a full stride, so the planted foot in each frame read as
-  // slipping backward under it rather than pushing off the ground. Judged by
-  // running a straight line and comparing a burst of frames spaced across
-  // one loop: at the original 145px/s the character covered only ~106px per
-  // 0.73s loop (well under a scaled sprite-width — legs cycling with barely
-  // any ground gained); at the current speed it covers ~140px per loop
-  // (confirmed by sampling `AnimationController.frame` against `Transform`
-  // position through a full loop), and consecutive frames in a run now show
-  // steady, proportional forward progress with no stall or flail.
+  // One loop of this cycle takes 14 / (0.32 * 60) ≈ 0.73s. At
+  // `PLAYER_SPEED` (195px/s, in constants.ts) the body covers ~140px per
+  // loop, which matches the drawn stride: the planted foot pushes off the
+  // ground instead of slipping backward under the body. Much less ground per
+  // loop leaves the legs cycling in place and the feet appear to slide, so
+  // change this `speed` and `PLAYER_SPEED` together. Enemies run the same
+  // cycle at `ENEMY_SPEED`, about half the player's pace.
   run: { sheet: "RunForward", frames: 14, speed: 0.32, loop: true },
-  // Same cycle at the same ratio as PLAYER_RUN_SPEED / PLAYER_SPEED, so the
-  // faster held-dash movement keeps the planted foot moving proportionally.
+  // The `run` cycle played faster: 0.46 / 0.32 matches PLAYER_RUN_SPEED /
+  // PLAYER_SPEED (280 / 195), so a held-dash run also covers ~140px per loop.
   sprint: { sheet: "RunForward", frames: 14, speed: 0.46, loop: true },
   // Attack/telegraph speeds (attack1/2/3, chargeRelease, melee, cast) are
   // ~12% slower than a plain sprite-accurate playback rate — every hitbox/
@@ -243,7 +237,7 @@ export const SPRITE_SCALE = 0.6;
  *
  *  Looping locomotion (idle, run) and the hit/stagger reaction instead get
  *  a per-frame anchor — see `FOOT_ANCHOR_PX`/`GROUND_OFFSET_ROWS`/
- *  `applyFootAnchor` below. Their feet genuinely shift within the frame
+ *  `BoxerAnimState` below. Their feet genuinely shift within the frame
  *  across the loop (measured: idle ground-line varies ≤2px per direction,
  *  but run and stagger vary 4-11px vertically and 4.5-11.5px horizontally
  *  per direction), which is what a single static anchor can't plant — it
@@ -267,9 +261,9 @@ export const CAST_HAND_PX: readonly Vec2Like[] = [
 ];
 
 export function castHandPosition(entity: Entity): Vec2 {
-  const state = boxerAnimState.get(entity);
+  const state = entity.get(BoxerAnimState);
   const dir =
-    state?.anim === "cast" ? state.dir : facingToDir(entity.get(Facing));
+    state.anim === "cast" ? state.dir : facingToDir(entity.get(Facing));
   const hand = CAST_HAND_PX[dir - 1]!;
   const anchorX = FRAME_W * SPRITE_ANCHOR.x;
   const anchorY = FRAME_H * SPRITE_ANCHOR.y;
@@ -302,7 +296,7 @@ export const HP_BAR_TOP = -34;
  * slicing each sheet at its real frame count and scanning per-pixel alpha
  * (threshold 10) over `examples/public/assets/boxer/{FightIdle,RunForward,
  * HitBody}_dir{1-8}.png`; regenerate the same way if those sheets change.
- * `applyFootAnchor` turns a `[groundRow, feetX]` pair into the frame's
+ * `BoxerAnimState` turns a `[groundRow, feetX]` pair into the frame's
  * `AnimatedSprite.anchor`, offset by `GROUND_OFFSET_ROWS` so the ground line
  * renders a fixed distance below the torso anchor instead of at it.
  */
@@ -342,60 +336,59 @@ export const FOOT_ANCHOR_PX: Partial<
   ],
 };
 
-/** Per-entity record of what's currently playing — `applyFootAnchor` (called
- *  from the `onFrameChange` hook `installFootAnchorTracking` installs) reads
- *  this to know which `FOOT_ANCHOR_PX` row a texture-array frame index
- *  belongs to; the frame index alone doesn't say which (anim, dir) it's
- *  from. Written by `playBoxerAnim`. */
-export const boxerAnimState = new WeakMap<
-  Entity,
-  { anim: BoxerAnim; dir: number }
->();
-
 /** Frame rows from the torso anchor (`SPRITE_ANCHOR`'s row 66) down to a
  *  typical ground-contact line — subtracted from each frame's own measured
- *  `groundRow` in `applyFootAnchor` below, so the torso (not the foot) stays
+ *  `groundRow` by `BoxerAnimState` below, so the torso (not the foot) stays
  *  this many rows above wherever the foot actually lands that frame. Keeps
  *  the same per-frame wobble compensation `FOOT_ANCHOR_PX` was measured for,
  *  just referenced from the torso row instead of the ground row itself. */
 export const GROUND_OFFSET_ROWS = 45;
 
-/** Per-frame ground-plant compensation for idle/run/stagger, falling back to
- *  the static `SPRITE_ANCHOR` for every other animation (see its doc for the
- *  split). Sets the sprite's anchor to the currently-showing frame's own
- *  measured foot position offset by `GROUND_OFFSET_ROWS`, so the ground line
- *  renders a fixed distance below the torso anchor no matter which frame or
- *  direction is showing — a fixed offset, not the wobble across frames the
- *  table itself compensates for. */
-export function applyFootAnchor(entity: Entity, frame: number): void {
-  const state = boxerAnimState.get(entity);
-  const anchorAnim = state?.anim === "sprint" ? "run" : state?.anim;
-  const px =
-    state && anchorAnim
-      ? FOOT_ANCHOR_PX[anchorAnim]?.[state.dir - 1]?.[frame]
-      : undefined;
-  const sprite = entity.get(AnimatedSpriteComponent).animatedSprite;
-  if (px) {
-    sprite.anchor.set(px[1] / FRAME_W, (px[0] - GROUND_OFFSET_ROWS) / FRAME_H);
-  } else {
-    sprite.anchor.set(SPRITE_ANCHOR.x, SPRITE_ANCHOR.y);
-  }
-}
+/** What a boxer entity is playing, and the per-frame ground-plant
+ *  compensation for idle/run/stagger. `playBoxerAnim` records the (anim, dir)
+ *  pair here, because a texture-array frame index alone doesn't say which
+ *  `FOOT_ANCHOR_PX` row it belongs to. Every displayed frame then sets the
+ *  sprite's anchor to that frame's measured foot position offset by
+ *  `GROUND_OFFSET_ROWS`, so the ground line renders a fixed distance below
+ *  the torso anchor whichever frame or direction is showing. Every other
+ *  animation falls back to the static `SPRITE_ANCHOR` (see its doc for the
+ *  split). Add it right after the entity's `AnimatedSpriteComponent`. */
+export class BoxerAnimState extends Component {
+  private readonly sprite = this.sibling(AnimatedSpriteComponent);
+  /** The animation last started by `playBoxerAnim`; unset until the first. */
+  anim: BoxerAnim | undefined;
+  /** Sheet direction (`dirN`, 1-8) of `anim`. */
+  dir = DEFAULT_DIR;
 
-/** Hooks `AnimatedSprite.onFrameChange` once so `applyFootAnchor` runs on
- *  every displayed frame, including a freshly-switched animation's first
- *  (Pixi fires `onFrameChange` synchronously when `AnimatedSprite.textures`
- *  is reassigned, which `AnimationController.play`/`playOneShot` does on
- *  every real animation switch). Call once per entity, after its
- *  `AnimatedSpriteComponent` is added. */
-export function installFootAnchorTracking(entity: Entity): void {
-  entity.get(AnimatedSpriteComponent).animatedSprite.onFrameChange = (frame) =>
-    applyFootAnchor(entity, frame);
+  onAdd(): void {
+    // Pixi reports a frame change when `AnimatedSprite.textures` is
+    // reassigned, which `AnimationController.play`/`playOneShot` does on
+    // every animation switch, so a new animation's first frame is anchored
+    // too.
+    this.addCleanup(
+      this.sprite.onFrameChange((frame) => this.applyFootAnchor(frame)),
+    );
+  }
+
+  private applyFootAnchor(frame: number): void {
+    const anchorAnim = this.anim === "sprint" ? "run" : this.anim;
+    const px = anchorAnim
+      ? FOOT_ANCHOR_PX[anchorAnim]?.[this.dir - 1]?.[frame]
+      : undefined;
+    // `AnimatedSpriteComponent` takes an anchor only in its constructor and
+    // has no setter, so the per-frame anchor is written to the Pixi sprite.
+    const anchor = this.sprite.animatedSprite.anchor;
+    if (px) {
+      anchor.set(px[1] / FRAME_W, (px[0] - GROUND_OFFSET_ROWS) / FRAME_H);
+    } else {
+      anchor.set(SPRITE_ANCHOR.x, SPRITE_ANCHOR.y);
+    }
+  }
 }
 
 /** Play a boxer animation on the entity's `AnimationController`, direction
  *  from its `Facing` (falling back to `DEFAULT_DIR` without one). Records
- *  the (anim, dir) pair in `boxerAnimState` for `applyFootAnchor` to read.
+ *  the (anim, dir) pair on the entity's `BoxerAnimState`.
  *  `startFrame` jumps a one-shot past its own opening frames instead of
  *  always starting at 0 — `KICK_CHARGE` uses this to open onto the kick's
  *  windup already partway coiled, landing contact sooner without re-timing
@@ -409,13 +402,9 @@ export function playBoxerAnim(
 ): void {
   const facing = entity.tryGet(Facing);
   const dir = facing ? facingToDir(facing) : DEFAULT_DIR;
-  const state = boxerAnimState.get(entity);
-  if (state) {
-    state.anim = anim;
-    state.dir = dir;
-  } else {
-    boxerAnimState.set(entity, { anim, dir });
-  }
+  const state = entity.get(BoxerAnimState);
+  state.anim = anim;
+  state.dir = dir;
   const controller = entity.get(AnimationController);
   const key = boxerKey(anim, dir);
   if (options.oneShot) {

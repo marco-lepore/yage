@@ -50,8 +50,8 @@ export class LocalizedPixiRadioGroup
 
   /**
    * Relabel the rows, one message per row in row order. Each row keeps its
-   * views and the selected row is kept. To change the rows themselves, build
-   * a new group.
+   * views and the selected row is kept. To change the rows themselves, call
+   * {@link setItems}.
    */
   setMessages(messages: readonly Message[]): void {
     if (messages.length !== this._items.length) {

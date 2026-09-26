@@ -981,8 +981,9 @@ export class Entity {
 
   /**
    * Return the stable key, or throw if this entity was spawned without one.
-   * Use inside component `setup()` when the component depends on identity
-   * (e.g. reading from a `createSet` keyed by entity key).
+   * Use it in the entity's `setup()` or in a component's `onAdd()` when the
+   * code depends on identity (e.g. reading from a `createSet` keyed by entity
+   * key). The spawn call assigns the key before `setup()` runs.
    */
   requireKey(): string {
     if (this.key === undefined) {

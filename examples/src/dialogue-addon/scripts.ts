@@ -16,7 +16,7 @@ import gossipYaml from "./scripts/gossip.yaml?raw";
 // `loadCompact` from the root entry (no `yaml` dep), same validated/frozen IR.
 import locksmithCompact from "./scripts/locksmith.dlg?raw";
 
-// ── scripts — authored in `./dialogue/*.yaml`, parsed by `loadYaml` ──────────
+// ── scripts — authored in `./scripts/*.yaml`, parsed by `loadYaml` ───────────
 //
 // The dialogue lives in plain YAML data files (imported above via Vite `?raw`),
 // each mirroring the JSON `DialogueScript` and all content-only
@@ -24,8 +24,8 @@ import locksmithCompact from "./scripts/locksmith.dlg?raw";
 // plain string expressions (`gold >= 50 and not has_item('rusty-key')`,
 // `gold - 50`) — `loadYaml` parses them into the IR and validates at module load,
 // so a malformed file throws here rather than at first `play`. The portrait keys
-// (`cap-stern` / `cap-neutral` / `sage-face`) are the texture keys the scene
-// registers in `Assets` below.
+// (`cap-stern` / `cap-neutral` / `sage-face`) are the texture keys
+// `registerTownTextures` (theme.ts) registers at boot.
 
 /** Mira — markup effects + a persistent visit counter (cycling NPC). */
 export const MIRA = loadYaml(miraYaml);
@@ -54,7 +54,7 @@ export const SAGE = loadYaml(sageYaml);
 export const CAPTAIN = loadYaml(captainYaml);
 /** Ambient gossip — loops forever, each line auto-advancing, no input binding. */
 export const GOSSIP = loadYaml(gossipYaml);
-/** Pip — the one NPC authored in the **compact DSL** (`./dialogue/locksmith.dlg`,
+/** Pip — the one NPC authored in the **compact DSL** (`./scripts/locksmith.dlg`,
  *  parsed by `loadCompact`, not `loadYaml`). Shows the compact-only conveniences:
  *  a `declare`d visit flag + a conditional jump (`-> regreet if: pip_seen`) that
  *  re-greets a returning customer, line-driven `#portrait:`/`#side:` avatars, a

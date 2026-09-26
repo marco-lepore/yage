@@ -9,6 +9,12 @@ description: "Typed service container with ServiceKey"
 YAGE. Plugins register services during `install()`, and the rest of the engine
 resolves them by key.
 
+Services are plugin-owned infrastructure: the renderer, the physics world, the
+input manager, the audio manager. Game state such as a score, lives or an
+inventory is not a service. It lives in a component on a host entity, as
+[State Management](/patterns/state-management/#game-state-on-a-host-entity)
+shows.
+
 ```typescript
 import { EngineContext, ServiceKey } from "@yagejs/core";
 ```
@@ -18,8 +24,12 @@ import { EngineContext, ServiceKey } from "@yagejs/core";
 Every service is identified by a `ServiceKey<T>`. The type parameter ensures
 that `resolve()` returns the correct type without casts:
 
-```typescript
+```typescript yage-group="mixer" yage-context="context"
 import { ServiceKey } from "@yagejs/core";
+
+class AudioMixer {
+  masterVolume = 1;
+}
 
 // Define a key with a descriptive label
 const AudioMixerKey = new ServiceKey<AudioMixer>("AudioMixer");
@@ -35,7 +45,9 @@ the key.
 
 ## Registering and Resolving
 
-```typescript
+```typescript yage-group="mixer" yage-context="context"
+import type { EngineContext } from "@yagejs/core";
+
 // In a plugin's install():
 function install(context: EngineContext) {
   const mixer = new AudioMixer();
@@ -46,7 +58,7 @@ function install(context: EngineContext) {
 const mixer = context.resolve(AudioMixerKey);
 
 // Try resolve (returns undefined if not registered)
-const mixer = context.tryResolve(AudioMixerKey);
+const maybeMixer = context.tryResolve(AudioMixerKey);
 
 // Check existence
 if (context.has(AudioMixerKey)) {
@@ -85,7 +97,7 @@ call so repeated access is free:
 ```typescript
 import { Component } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
-import { PhysicsWorldKey } from "@yagejs/physics";
+import { PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
 
 class PlayerController extends Component {
   update(dt: number) {
@@ -93,7 +105,7 @@ class PlayerController extends Component {
     const physics = this.use(PhysicsWorldKey);
 
     if (input.isPressed("jump")) {
-      const body = this.sibling(RigidBody);
+      const body = this.sibling(RigidBodyComponent);
       body.setVelocityY(-600);
     }
   }
@@ -110,7 +122,8 @@ Systems receive the `EngineContext` in `onRegister`. Store references there or
 call `this.use(key)` during `update`:
 
 ```typescript
-import { System, Phase, EngineContext } from "@yagejs/core";
+import { System, Phase, GameLoopKey, LoggerKey } from "@yagejs/core";
+import type { EngineContext, Logger } from "@yagejs/core";
 
 class DebugOverlaySystem extends System {
   readonly phase = Phase.Render;
@@ -123,67 +136,102 @@ class DebugOverlaySystem extends System {
   }
 
   update(dt: number) {
-    const stats = this.use(GameLoopKey).stats;
-    this.logger.debug(`FPS: ${stats.fps}`);
+    const frame = this.use(GameLoopKey).frameCount;
+    this.logger.debug("overlay", `Frame ${frame}: ${Math.round(1 / dt)} FPS`);
   }
 }
 ```
 
 ## Custom Services
 
-Register your own services for shared game state:
+A plugin of your own registers a service when it wraps infrastructure the
+engine does not provide, such as a browser API:
 
-```typescript
-import { ServiceKey, Plugin, EngineContext } from "@yagejs/core";
+```typescript yage-group="haptics" yage-file="haptics.ts"
+import { ServiceKey, type Plugin, type EngineContext } from "@yagejs/core";
 
-interface Inventory {
-  items: string[];
-  add(item: string): void;
-  has(item: string): boolean;
+/** Vibration on devices that support it. */
+export interface Haptics {
+  pulse(seconds: number): void;
 }
 
-export const InventoryKey = new ServiceKey<Inventory>("Inventory");
+export const HapticsKey = new ServiceKey<Haptics>("haptics");
 
-export function inventoryPlugin(): Plugin {
+export function hapticsPlugin(): Plugin {
   return {
-    name: "inventory",
+    name: "haptics",
+    version: "1.0.0",
     install(context: EngineContext) {
-      context.register(InventoryKey, {
-        items: [],
-        add(item) { this.items.push(item); },
-        has(item) { return this.items.includes(item); },
+      context.register(HapticsKey, {
+        pulse(seconds) {
+          if ("vibrate" in navigator) navigator.vibrate(Math.round(seconds * 1000));
+        },
       });
     },
   };
 }
 ```
 
-Any component or system can then `this.use(InventoryKey)` to access the shared
-inventory.
+Any component can then resolve it with `this.use(HapticsKey)` or
+`this.service(HapticsKey)`:
 
-## Scene-Scoped Services
+```typescript yage-group="haptics" yage-file="hit-feedback.ts"
+import { Component, defineEvent } from "@yagejs/core";
+import { HapticsKey } from "./haptics.js";
 
-`context.register` services live for the engine's lifetime. For state that
-belongs to a single scene, call `scene.registerScoped(key, value)` — plugins
-typically do this from their `beforeEnter` hook, but game code can use it
-directly to attach scene-local services:
+const PlayerHit = defineEvent("player:hit");
 
-```typescript
-import { Scene, ServiceKey } from "@yagejs/core";
+class HitFeedback extends Component {
+  private readonly haptics = this.service(HapticsKey);
 
-const LevelClockKey = new ServiceKey<{ elapsed: number }>("LevelClock");
-
-class LevelScene extends Scene {
-  override onEnter() {
-    this.registerScoped(LevelClockKey, { elapsed: 0 });
+  onAdd(): void {
+    this.listen(this.entity, PlayerHit, () => this.haptics.pulse(0.08));
   }
 }
 ```
 
-Components resolve it the same way as any other service (`this.use(LevelClockKey)`).
+Don't register game state this way. A service is not an entity, so queries,
+`scene.findByKey` and the Inspector don't see it. An engine-level service also
+keeps its state when a scene restarts.
+
+## Scene-Scoped Services
+
+`context.register` services live for the engine's lifetime. A plugin that
+keeps one instance per scene, as the physics world does, declares its key with
+`scope: "scene"`. It registers each scene's instance with
+`scene.registerScoped(key, value)` from a `beforeEnter` scene hook:
+
+```typescript
+import { SceneHookRegistryKey, ServiceKey, type Plugin, type EngineContext } from "@yagejs/core";
+
+/** Walkable cells of one scene's level. */
+export class NavGrid {}
+
+export const NavGridKey = new ServiceKey<NavGrid>("navGrid", { scope: "scene" });
+
+export function navPlugin(): Plugin {
+  return {
+    name: "nav",
+    version: "1.0.0",
+    install(context: EngineContext) {
+      context.resolve(SceneHookRegistryKey).register({
+        beforeEnter: (scene) => {
+          scene.registerScoped(NavGridKey, new NavGrid());
+        },
+      });
+    },
+  };
+}
+```
+
+Components resolve it the same way as any other service (`this.use(NavGridKey)`).
 Every key registered this way is automatically unregistered when the scene
 exits (after `onExit` and plugin `afterExit` hooks run), so the next scene
 starts with a clean slate and there's no cross-scene leakage.
+
+Per-scene game state, such as a level clock, needs no scoped service. A
+component on an entity the scene spawns is destroyed with the scene in the
+same way.
 
 ### Resolving scene-scoped services from anything holding the scene
 
@@ -200,10 +248,12 @@ import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { crt } from "@yagejs/effects";
 
 class LevelScene extends Scene {
+  readonly name = "level";
+
   override onEnter() {
     // Resolves this scene's render tree — registered by RendererPlugin's
     // beforeEnter hook, which ran before onEnter.
-    this.use(SceneRenderTreeKey).fx.addEffect(crt({ scanlines: true }));
+    this.use(SceneRenderTreeKey).fx.addEffect(crt({ lineContrast: 0.4 }));
   }
 }
 ```

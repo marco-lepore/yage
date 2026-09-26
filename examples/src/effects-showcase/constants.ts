@@ -64,8 +64,8 @@ export const TXT_TITLE = {
   fontWeight: "bold" as const,
 };
 
-/** Apply on/off styling to a UIButton. Used to mark the active toggles so
- * the in-game UI mirrors the panel's HTML predecessor. */
+/** Paint a sidebar button as on or off, so the panel shows which toggles
+ * are active. */
 export function paintButton(btn: UIButton, on: boolean): void {
   btn.update({
     background: on ? BTN_ON : BTN_OFF,

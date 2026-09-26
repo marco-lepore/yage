@@ -23,7 +23,19 @@ see [Update Order](/concepts/entities-and-components/#update-order).
 Extend the `System` base class:
 
 ```typescript
-import { System, Phase, EngineContext } from "@yagejs/core";
+import { System, Phase, EngineContext, ServiceKey } from "@yagejs/core";
+
+class ParticleManager {
+  step(dt: number) {
+    // advance every live particle by dt
+  }
+
+  dispose() {
+    // release the particle pool
+  }
+}
+
+const ParticleManagerKey = new ServiceKey<ParticleManager>("my-particles");
 
 class ParticleSystem extends System {
   readonly phase = Phase.Update;
@@ -75,10 +87,16 @@ import { Phase } from "@yagejs/core";
 Within a phase, systems are sorted by **priority** — lower numbers run first:
 
 ```typescript
+import { System, Phase } from "@yagejs/core";
+
 class WindSystem extends System {
   readonly phase = Phase.FixedUpdate;
   // after PhysicsSystem (0), before ComponentFixedUpdateSystem (1000)
   readonly priority = 100;
+
+  update(dt: number) {
+    // apply wind to the physics bodies
+  }
 }
 ```
 
@@ -119,8 +137,8 @@ class SpriteRenderSystem extends System {
       const transform = entity.get(Transform);
       const sprite = entity.get(SpriteComponent);
       // sync sprite position to transform
-      sprite.x = transform.position.x;
-      sprite.y = transform.position.y;
+      sprite.sprite.x = transform.position.x;
+      sprite.sprite.y = transform.position.y;
     }
   }
 }
@@ -137,7 +155,11 @@ components, read them with `entity.getAll(VisualComponent)`.
 A `QueryResult` is a live result set — it updates automatically as entities
 gain or lose components:
 
-```typescript
+```typescript yage-context="context"
+import { QueryCacheKey, Transform } from "@yagejs/core";
+
+const result = context.resolve(QueryCacheKey).register([Transform]);
+
 // Iterate all matching entities
 for (const entity of result) {
   // ...

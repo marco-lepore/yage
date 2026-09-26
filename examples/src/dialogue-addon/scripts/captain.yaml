@@ -2,7 +2,7 @@
 # `meta` the default box presenters read:
 #   • position: top         — a screen-top alert (frame + body text move up together)
 #   • portrait / side       — a line-driven, reflowing in-box avatar (portrait keys
-#                             "cap-stern" / "cap-neutral" registered by the scene)
+#                             "cap-stern" / "cap-neutral", registered at boot)
 #   • a six-option briefing  — the box frame GROWS to fit the menu
 id: captain
 start: n

@@ -28,18 +28,21 @@ from a field initializer — field initializers run before `entity.add(...)`
 binds the component to its entity.
 
 ```ts
+import { Component } from "@yagejs/core";
+import { InputManagerKey, type InputManager } from "@yagejs/input";
+
 // ❌ Throws on construction
-class Foo extends Component {
+class EagerInput extends Component {
   readonly input = this.use(InputManagerKey);
 }
 
 // ✅ Resolves lazily on first access
-class Foo extends Component {
+class LazyInput extends Component {
   readonly input = this.service(InputManagerKey);
 }
 
 // ✅ Resolves at lifecycle time
-class Foo extends Component {
+class HookInput extends Component {
   private input!: InputManager;
   onAdd() {
     this.input = this.use(InputManagerKey);
@@ -52,7 +55,9 @@ class Foo extends Component {
 Sensor colliders never fire `onCollision`; non-sensor colliders never fire
 `onTrigger`. The warning flags a handler attached to the wrong channel.
 
-```ts
+```ts yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+
 const col = entity.add(
   new ColliderComponent({
     shape: { type: "box", width: 32, height: 32 },
@@ -80,7 +85,10 @@ does not declare one. Declaring a layer with `name: "ui"` and no explicit
 layer with a world-space one — UI then scrolls and zooms with the camera.
 
 ```ts
+import { Scene } from "@yagejs/core";
+
 class GameScene extends Scene {
+  readonly name = "game";
   readonly layers = [{ name: "ui", order: 1000, space: "screen" as const }];
 }
 ```
@@ -97,7 +105,10 @@ file but forgotten on a sibling scene that uses the same component.
 Fix: add the layer to the scene's `layers`.
 
 ```ts
+import { Scene } from "@yagejs/core";
+
 class SiblingScene extends Scene {
+  readonly name = "sibling";
   readonly layers = [
     { name: "default", order: 0 },
     { name: "fx", order: 10 }, // declare the layer the component targets

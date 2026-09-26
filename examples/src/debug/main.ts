@@ -1,4 +1,14 @@
-import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Component,
+  Entity,
+  ProcessComponent,
+  RandomKey,
+  Transform,
+  Vec2,
+  type ProcessSlot,
+} from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
@@ -12,28 +22,38 @@ import { setupGameContainer } from "../shared/bootstrap.js";
 const WIDTH = 800;
 const HEIGHT = 600;
 const WALL = 20;
+const MAX_SHAPES = 50;
+const SPAWN_INTERVAL = 0.5; // seconds
 
 // ---------------------------------------------------------------------------
-// ShapeSpawner — auto-spawns shapes, Space to burst, F for impulse
+// ShapeSpawner — spawns a shape every 0.5 s and five more on Space, up to 50
+// in total
 // ---------------------------------------------------------------------------
 class ShapeSpawner extends Component {
   private readonly input = this.service(InputManagerKey);
+  private readonly rng = this.service(RandomKey);
+  private readonly processes = this.sibling(ProcessComponent);
+  /** Running until the next automatic spawn is due. */
+  private spawnInterval!: ProcessSlot;
   private shapeCount = 0;
-  private spawnTimer = 0;
 
-  update(dt: number): void {
+  onAdd(): void {
+    this.spawnInterval = this.processes
+      .slot({ duration: SPAWN_INTERVAL })
+      .start();
+  }
+
+  update(): void {
     const scene = this.scene;
 
-    // Auto-spawn a shape every 0.5s (up to 50)
-    this.spawnTimer += dt;
-    if (this.spawnTimer > 0.5 && this.shapeCount < 50) {
-      this.spawnTimer = 0;
+    if (!this.spawnInterval.running && this.shapeCount < MAX_SHAPES) {
+      this.spawnInterval.restart();
       this.spawnShape(scene);
     }
 
     // Space — burst 5 shapes
     if (this.input.isJustPressed("spawn")) {
-      for (let i = 0; i < 5 && this.shapeCount < 50; i++) {
+      for (let i = 0; i < 5 && this.shapeCount < MAX_SHAPES; i++) {
         this.spawnShape(scene);
       }
     }
@@ -41,48 +61,94 @@ class ShapeSpawner extends Component {
 
   private spawnShape(scene: Scene): void {
     this.shapeCount++;
-    const isCircle = Math.random() > 0.5;
-    const x = 100 + Math.random() * (WIDTH - 200);
-    const restitution = 0.1 + Math.random() * 0.8;
-    const color = PALETTE[Math.floor(Math.random() * PALETTE.length)]!;
+    const isCircle = this.rng.float() > 0.5;
+    const x = this.rng.range(100, WIDTH - 100);
+    const restitution = this.rng.range(0.1, 0.9);
+    const color = this.rng.pick(PALETTE);
+    const shape: ShapeSpec = isCircle
+      ? { type: "circle", radius: this.rng.range(12, 30) }
+      : {
+          type: "box",
+          width: this.rng.range(10, 30) * 2,
+          height: this.rng.range(10, 30) * 2,
+        };
+    scene.spawn(ShapeEntity, { x, color, restitution, shape });
+  }
+}
 
-    const e = scene.spawn(`shape-${this.shapeCount}`);
-    e.add(new Transform({ position: new Vec2(x, 40) }));
+// ---------------------------------------------------------------------------
+// Entities
+// ---------------------------------------------------------------------------
+/** A falling shape's collider; its fill is drawn to the same outline. */
+type ShapeSpec =
+  | { type: "circle"; radius: number }
+  | { type: "box"; width: number; height: number };
 
-    if (isCircle) {
-      const radius = 12 + Math.random() * 18;
-      e.add(
-        new GraphicsComponent().draw((g) => {
-          g.circle(0, 0, radius).fill({ color, alpha: 0.85 });
-        }),
-      );
-      e.add(new RigidBodyComponent({ type: "dynamic", ccd: true }));
-      e.add(
-        new ColliderComponent({
-          shape: { type: "circle", radius },
-          restitution,
-          friction: 0.3,
-          density: 1,
-        }),
-      );
-    } else {
-      const hw = 10 + Math.random() * 20;
-      const hh = 10 + Math.random() * 20;
-      e.add(
-        new GraphicsComponent().draw((g) => {
-          g.rect(-hw, -hh, hw * 2, hh * 2).fill({ color, alpha: 0.85 });
-        }),
-      );
-      e.add(new RigidBodyComponent({ type: "dynamic", ccd: true }));
-      e.add(
-        new ColliderComponent({
-          shape: { type: "box", width: hw * 2, height: hh * 2 },
-          restitution,
-          friction: 0.3,
-          density: 1,
-        }),
-      );
-    }
+/** A dynamic circle or box dropped from the top of the arena. */
+class ShapeEntity extends Entity {
+  setup(params: {
+    x: number;
+    color: number;
+    restitution: number;
+    shape: ShapeSpec;
+  }): void {
+    const { x, color, restitution, shape } = params;
+    this.add(new Transform({ position: new Vec2(x, 40) }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        if (shape.type === "circle") {
+          g.circle(0, 0, shape.radius).fill({ color, alpha: 0.85 });
+        } else {
+          const { width: w, height: h } = shape;
+          g.rect(-w / 2, -h / 2, w, h).fill({ color, alpha: 0.85 });
+        }
+      }),
+    );
+    this.add(new RigidBodyComponent({ type: "dynamic", ccd: true }));
+    this.add(
+      new ColliderComponent({
+        shape,
+        restitution,
+        friction: 0.3,
+        density: 1,
+      }),
+    );
+  }
+}
+
+/** Drops the falling shapes: one every 0.5 s and five more on Space. */
+class SpawnerEntity extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(new ProcessComponent());
+    this.add(new ShapeSpawner());
+  }
+}
+
+/** A static wall around the arena. */
+class WallEntity extends Entity {
+  setup(params: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    color: number;
+  }): void {
+    const { x, y, w, h, color } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.rect(-w / 2, -h / 2, w, h).fill({ color });
+      }),
+    );
+    this.add(new RigidBodyComponent({ type: "static" }));
+    this.add(
+      new ColliderComponent({
+        shape: { type: "box", width: w, height: h },
+        restitution: 0.3,
+        friction: 0.5,
+      }),
+    );
   }
 }
 
@@ -94,15 +160,28 @@ class DebugDemoScene extends Scene {
 
   onEnter(): void {
     // Spawner entity
-    const ctrl = this.spawn("spawner");
-    ctrl.add(new Transform());
-    ctrl.add(new ShapeSpawner());
+    this.spawn(SpawnerEntity);
 
     // Walls (static — gray debug outlines)
-    this.createWall(WIDTH / 2, HEIGHT - WALL / 2, WIDTH, WALL, 0x444444);
-    this.createWall(WIDTH / 2, WALL / 2, WIDTH, WALL, 0x333333);
-    this.createWall(WALL / 2, HEIGHT / 2, WALL, HEIGHT, 0x333333);
-    this.createWall(WIDTH - WALL / 2, HEIGHT / 2, WALL, HEIGHT, 0x333333);
+    const walls = [
+      {
+        x: WIDTH / 2,
+        y: HEIGHT - WALL / 2,
+        w: WIDTH,
+        h: WALL,
+        color: 0x444444,
+      },
+      { x: WIDTH / 2, y: WALL / 2, w: WIDTH, h: WALL, color: 0x333333 },
+      { x: WALL / 2, y: HEIGHT / 2, w: WALL, h: HEIGHT, color: 0x333333 },
+      {
+        x: WIDTH - WALL / 2,
+        y: HEIGHT / 2,
+        w: WALL,
+        h: HEIGHT,
+        color: 0x333333,
+      },
+    ];
+    for (const wall of walls) this.spawn(WallEntity, wall);
 
     // Kinematic platform (blue debug outline)
     const plat = this.spawn("platform");
@@ -132,30 +211,6 @@ class DebugDemoScene extends Scene {
       new ColliderComponent({
         shape: { type: "box", width: 100, height: 100 },
         sensor: true,
-      }),
-    );
-  }
-
-  private createWall(
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    color: number,
-  ): void {
-    const e = this.spawn("wall");
-    e.add(new Transform({ position: new Vec2(x, y) }));
-    e.add(
-      new GraphicsComponent().draw((g) => {
-        g.rect(-w / 2, -h / 2, w, h).fill({ color });
-      }),
-    );
-    e.add(new RigidBodyComponent({ type: "static" }));
-    e.add(
-      new ColliderComponent({
-        shape: { type: "box", width: w, height: h },
-        restitution: 0.3,
-        friction: 0.5,
       }),
     );
   }

@@ -18,7 +18,12 @@ export default defineConfig({
         name: "My YAGE Game",
         short_name: "YAGE Game",
         description: "A game made with YAGE.",
-        display: "fullscreen",
+        // Chrome, Edge, and Samsung Internet read display_override and open
+        // the installed game fullscreen, hiding Android's status and
+        // navigation bars. iOS and Firefox do not read it and open the game
+        // "standalone", without browser toolbars. iOS has no "fullscreen".
+        display: "standalone",
+        display_override: ["fullscreen"],
         background_color: "#0f172a",
         theme_color: "#0f172a",
         icons: [

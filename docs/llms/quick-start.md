@@ -10,6 +10,8 @@ npm run dev
 
 Pick `recommended` for a playable platformer seed (physics, input, animations, enemies, collectibles) or `minimal` for an empty scene with just core + renderer.
 
+Both templates' `index.html` is set up for phones: `viewport-fit=cover`, and a `#game` container sized `100dvh` (with a `100vh` fallback) and padded by `env(safe-area-inset-*)`. `recommended` also has a Fullscreen button (`src/fullscreen.ts`; hidden where neither `document.fullscreenEnabled` nor `webkitFullscreenEnabled` is `true`, such as iPhone, and in an installed app running `display-mode: fullscreen`) and `apple-mobile-web-app-status-bar-style: black-translucent`. Details: `packages/renderer.md` → Mobile readiness.
+
 The `recommended` template's production build is an installable, offline-capable PWA (`vite-plugin-pwa` in `vite.config.ts`):
 
 - Workbox precaches every file in `dist/` (`globPatterns: ["**/*"]`), including the Rapier `.wasm` and all of `public/`. Assets are never listed by hand; each build picks up new or changed files.
@@ -18,7 +20,7 @@ The `recommended` template's production build is an installable, offline-capable
 - No service worker in `npm run dev`: installing, offline play, and updates only exist in the production build (`npm run preview` serves it locally). Production needs HTTPS.
 - In-game update prompt (not in the template; add on request) — `src/pwa.ts`, imported from `main.ts`. Importing `virtual:pwa-register` replaces the injected `registerSW.js`; `vite.config.ts` is unchanged:
 
-  ```ts
+  ```ts yage-check="syntax" yage-reason="vite-plugin-pwa is a dependency of the recommended template only, so the docs checker cannot resolve its virtual:pwa-register types"
   /// <reference types="vite-plugin-pwa/vanillajs" />
   import { registerSW } from "virtual:pwa-register";
 
@@ -89,11 +91,12 @@ await engine.start();
 
 ## Engine Setup
 
-```ts
+```ts yage-group="game" yage-file="main.ts"
 import { Engine } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 import { PhysicsPlugin } from "@yagejs/physics";
+import { GameScene } from "./scene.js";
 
 const engine = new Engine({ debug: true, fixedTimestep: 1 / 60 });
 engine.use(
@@ -103,39 +106,70 @@ engine.use(
     container: document.getElementById("game")!,
   }),
 );
-engine.use(new InputPlugin({ actions: { jump: ["Space", "KeyW"] } }));
+engine.use(
+  new InputPlugin({
+    actions: {
+      left: ["ArrowLeft", "KeyA"],
+      right: ["ArrowRight", "KeyD"],
+      jump: ["Space", "KeyW"],
+    },
+  }),
+);
 engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
 
 await engine.start();
 engine.scenes.push(new GameScene());
 ```
 
-## Scene Class
+## Scene, Entity, Component
 
-For real games, subclass `Scene`:
+Every scene is a `Scene` subclass. An entity type is an `Entity` subclass whose `setup(params)` adds its components. Game logic lives in components.
 
-```ts
-import { Scene, Transform, Vec2 } from "@yagejs/core";
-import { SpriteComponent, CameraEntity } from "@yagejs/renderer";
-import { texture } from "@yagejs/renderer";
+```ts yage-group="game" yage-file="scene.ts" yage-context="engine"
+import { Component, Entity, Scene, Transform, Vec2 } from "@yagejs/core";
+import { CameraEntity, SpriteComponent, texture } from "@yagejs/renderer";
+import { InputManagerKey } from "@yagejs/input";
 
-class GameScene extends Scene {
-  readonly name = "game";
-  readonly preload = [texture("hero.png"), texture("tileset.png")];
+const HeroTex = texture("hero.png");
 
-  onEnter() {
-    const player = this.spawn(Player, { x: 100, y: 200 });
-    const cam = this.spawn(CameraEntity, { follow: player.get(Transform) });
-  }
+// Game logic lives in a component.
+class PlayerController extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly transform = this.sibling(Transform);
 
-  onExit() {
-    // cleanup
+  update(dt: number) {
+    const dx = this.input.getAxis("left", "right"); // -1..1
+    this.transform.translate(dx * 200 * dt, 0); // 200 px/s; dt is seconds
   }
 }
 
-// Push it:
+// An entity type: an Entity subclass whose setup() takes the spawn params.
+class Player extends Entity {
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new SpriteComponent({ texture: HeroTex }));
+    this.add(new PlayerController());
+  }
+}
+
+export class GameScene extends Scene {
+  readonly name = "game";
+  readonly preload = [HeroTex];
+
+  // onEnter assembles the scene. State and rules live in components.
+  onEnter() {
+    const player = this.spawn(Player, { x: 100, y: 200 });
+    this.spawn(CameraEntity, { follow: player });
+  }
+}
+
 engine.scenes.push(new GameScene());
 ```
+
+- `this.spawn(Class, params)` types `params` from `setup()`. The entity's debug name is its class name.
+- `Entity` and `Scene` declare `update` / `fixedUpdate` as `never`; a subclass that defines either fails to compile. Per-frame logic is a component's `update(dt)` / `fixedUpdate(dt)`.
+- A named spawn (`const bg = this.spawn("background"); bg.add(...)`) is only for a one-off entity: spawned once, with no behaviour of its own (background, UI root, HUD host). Anything spawned more than once, or with behaviour, is an `Entity` subclass.
+- Game state (score, lives) lives in a component on a host entity; see `core-concepts.md` → Game State. Not a module-level `let`, a `Scene` field, or a `ServiceKey`.
 
 ## Testing & Debugging
 
@@ -143,7 +177,11 @@ engine.scenes.push(new GameScene());
 
 The Inspector is an introspection API for the browser console while iterating, and for AI agents that want to verify scene state without reading the canvas. The engine does not create one: `DebugPlugin` installs it, or `InspectorPlugin` from `@yagejs/core` without the debug overlay. `debug: true` publishes it as `window.__yage__.inspector` during `engine.start()`. A production build that installs neither plugin ships no Inspector code.
 
-```ts
+```ts yage-context="browser"
+import { Engine } from "@yagejs/core";
+import { DebugPlugin } from "@yagejs/debug";
+import { InputPlugin } from "@yagejs/input";
+
 const engine = new Engine({ debug: true });
 engine.use(new DebugPlugin()); // installs the Inspector; inspector.time (freeze/step) needs it
 engine.use(new InputPlugin({ actions: {} })); // inspector.input needs InputPlugin
@@ -154,8 +192,9 @@ window.__yage__.inspector.snapshot(); // full engine state
 window.__yage__.inspector.getEntities(); // all entities in active scene
 window.__yage__.inspector.getEntity("player"); // first active entity with this name
 window.__yage__.inspector.getComponentData("player", "SpriteComponent");
-const id = window.__yage__.inspector.getEntities()[0].id; // entity id
-window.__yage__.inspector.getComponentData(id, "SpriteComponent"); // one specific entity
+const first = window.__yage__.inspector.getEntities()[0]; // undefined when empty
+if (first)
+  window.__yage__.inspector.getComponentData(first.id, "SpriteComponent"); // one specific entity, by id
 window.__yage__.inspector.getSceneStack(); // scenes + pause state
 window.__yage__.inspector.getErrors(); // failures recorded by ErrorBoundary
 window.__yage__.inspector.time.freeze(); // stop auto-advance
@@ -172,7 +211,7 @@ Snapshot and query calls work with `InspectorPlugin` alone. Frame stepping (`ins
 
 `time.step(N)` is synchronous and never gives async work (a scene transition, a dialogue runner) a chance to resolve. When a step needs to cross one, use the async variants instead — they yield a real macrotask between frames so pending microtasks can drain:
 
-```ts
+```ts yage-context="browser"
 // Advance until a condition holds (throws after `maxFrames`, default 600):
 await window.__yage__.inspector.time.stepUntil(() =>
   window.__yage__.inspector.getSceneStack().some((s) => s.name === "level2"),
@@ -188,7 +227,7 @@ See `packages/debug.md` for `stepUntil`/`stepAsync` options, `snapshotScene(name
 log before an action when checking for a new occurrence. On a frozen clock,
 advance frames while the wait is pending:
 
-```ts
+```ts yage-context="browser"
 await window.__yage__.inspector.drive(async ({ events, input }) => {
   events.clearLog();
   await Promise.all([
@@ -214,7 +253,7 @@ Diagnostics that need optional plugins live under inspector extension
 namespaces. For example, `DebugPlugin` registers `debug` while installed.
 Pass the extension's interface as the type parameter so calls type-check:
 
-```ts
+```ts yage-context="browser"
 import type { DebugDiagnostics } from "@yagejs/debug";
 
 const debug = window.__yage__.inspector.getExtension<DebugDiagnostics>("debug");
@@ -224,7 +263,7 @@ debug?.getLayerTransform("game", "world");
 
 `getEntities()` returns an array of `EntitySnapshot` objects with `id`, `name`, `tags`, `components` (class-name strings), and `position`, so filtering by tag or component name is one line:
 
-```ts
+```ts yage-context="browser"
 const enemies = window.__yage__.inspector
   .getEntities()
   .filter((e) => e.tags.includes("enemy"));
@@ -236,16 +275,43 @@ For agent-driven debugging: write a throwaway Playwright spec, boot the game, fr
 
 `@yagejs/core` ships headless test utilities. `createTestEngine(config?, plugins?)` returns a started engine; `plugins` are installed before it starts, so pass `[new InspectorPlugin()]` for a test that reads the Inspector. `advanceFrames()` ticks the game loop N times so assertions run against deterministic state:
 
-```ts
-import { createTestEngine, advanceFrames, Transform, Vec2 } from "@yagejs/core";
+```ts yage-context="vitest"
+import {
+  Component,
+  Entity,
+  Scene,
+  Transform,
+  advanceFrames,
+  createTestEngine,
+} from "@yagejs/core";
+
+class Drift extends Component {
+  private readonly transform = this.sibling(Transform);
+  update(dt: number) {
+    this.transform.translate(100 * dt, 0);
+  }
+}
+
+class Mover extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new Drift());
+  }
+}
+
+class TestScene extends Scene {
+  readonly name = "test";
+}
 
 const engine = await createTestEngine();
-const scene = new GameScene();
+const scene = new TestScene();
 await engine.scenes.push(scene); // async: preload, then onEnter
-const player = scene.spawn(Player, { x: 0, y: 0 });
+const mover = scene.spawn(Mover);
 
 advanceFrames(engine, 10);
-expect(player.get(Transform).position.x).toBeGreaterThan(0);
+expect(mover.get(Transform).position.x).toBeGreaterThan(0);
 ```
+
+The scene and entity use no renderer, physics, or input, because `createTestEngine()` installs none of those plugins.
 
 For component-in-isolation tests, use `createMockScene()` / `createMockEntity()`. See `patterns.md` → Testing Patterns for the full cookbook (component unit tests, system tests, process tests, integration tests).

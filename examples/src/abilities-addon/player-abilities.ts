@@ -93,7 +93,7 @@ export class HomingFireballProjectile extends Projectile {
 // `duration` extends past the last hitbox/effect window so committing to an
 // attack leaves the lane busy (and the caster exposed) for a beat after the
 // damage window closes, not just until it does. Hitbox/telegraph windows are
-// timed against the ~12%-slowed attack speeds in `BOXER_ANIM_SPECS` above, so
+// timed against the ~12%-slowed attack speeds in `BOXER_ANIM_SPECS`, so
 // contact still lands on the visible extension frame.
 //
 // `SUPER_ARMOR_PRIORITY` (above the built-in stagger reaction's own
@@ -104,9 +104,6 @@ export class HomingFireballProjectile extends Projectile {
 // ever starts. The enemy's `melee`/`shoot` carry no `priority` at all
 // (default 0, below `REACTION_PRIORITY`) — a landed hit always interrupts a
 // telegraphed swing, punishing the tell instead of just chipping through it.
-// See `07-reactions.md`'s evidence note for the diagnosis that led here: the
-// two were symmetric until a playtest pass found enemy attacks never
-// flinching or losing ground even when hit mid-telegraph.
 // ---------------------------------------------------------------------------
 
 export const SUPER_ARMOR_PRIORITY = REACTION_PRIORITY + 10;

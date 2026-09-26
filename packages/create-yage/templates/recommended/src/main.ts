@@ -4,22 +4,22 @@ import { PhysicsPlugin } from "@yagejs/physics";
 import { InputPlugin } from "@yagejs/input";
 import { AudioPlugin } from "@yagejs/audio";
 import { DebugPlugin } from "@yagejs/debug";
+import { setupFullscreenButton } from "./fullscreen";
 import { GameScene } from "./scenes/GameScene";
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
 
-  engine.use(
-    new RendererPlugin({
-      width: 800,
-      height: 600,
-      backgroundColor: 0x0f172a,
-      // Crisp sprites: nearest sampling plus rounded positions. Drop this for
-      // smooth-art games.
-      pixelArtPreset: true,
-      container: document.getElementById("game")!,
-    }),
-  );
+  const renderer = new RendererPlugin({
+    width: 800,
+    height: 600,
+    backgroundColor: 0x0f172a,
+    // Crisp sprites: nearest sampling plus rounded positions. Drop this for
+    // smooth-art games.
+    pixelArtPreset: true,
+    container: document.getElementById("game")!,
+  });
+  engine.use(renderer);
   engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
   engine.use(
     new InputPlugin({
@@ -35,6 +35,7 @@ async function main(): Promise<void> {
   engine.use(new DebugPlugin());
 
   await engine.start();
+  setupFullscreenButton(engine, renderer);
   await engine.scenes.push(new GameScene());
 }
 

@@ -689,6 +689,8 @@ describe("InputPlugin", () => {
       register: mockRegister,
       isEnabled: () => true,
       isFlagEnabled: () => true,
+      setFlag: vi.fn(),
+      toggle: vi.fn(),
       drawVector: () => () => {},
     });
     plugin = new InputPlugin({ actions: { jump: ["Space"] } });

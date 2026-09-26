@@ -224,8 +224,11 @@ Default presenters use Graphics chrome plus the canvas `SplitTextComponent` /
 `textured`, or portrait fields — only a `fontFamily` plus Graphics colors and
 layers. The view selects the path by presence: `font = bitmapFont ?? fontFamily`,
 and it uses the bitmap path only when `bitmapFont` is set. Native bold and italic
-plus per-glyph tint effects are available on the canvas path. Bitmap fonts
-(variant atlases) are an explicit opt-in theme path, never the default. The dialogue addon passes font names as strings and imports no bitmap symbol
+plus per-glyph tint effects are available on the canvas path. Bitmap fonts are
+an explicit opt-in theme path, never the default. On that path dialogue
+synthesises bold and italic on the regular atlas (a skew and a double-draw) and
+uses no variant atlases: each atlas has its own baseline offset, so a glyph
+swapped to a variant atlas would sit out of line. The dialogue addon passes font names as strings and imports no bitmap symbol
 by value. When extending the bitmap path, use the names `@yagejs/renderer`'s
 barrel exports:
 `bitmapFont`, `installBitmapFont`, `BitmapFontVariant`, `resolveTextureInput`,
@@ -238,7 +241,8 @@ and `TextureInput`.
 - **Single system** — one cohesive installed system (dialogue, combat). Usually
   L1 plus L2a or L2b, plus L3. _Dialogue's shape:_ L1 headless core, an **L2a
   Component** with the host owning focus and pause, **L3 channel interfaces**,
-  and an explicit domain `snapshot()` / `restore()` pair for durable state.
+  and durable state (its variables) kept in a `VariableStorage` the game
+  installs.
 - **Pure library** — headless logic only (stats-formula). L1 only.
 
 A single tiny mechanic such as bullet-time is usually a **recipe or example**, a
@@ -392,17 +396,20 @@ A stateful addon exposes `snapshot()` / `restore()` over its **entire durable
 domain state**. The game decides which addon state belongs in a save and adapts
 it into its explicit `Serializable<TEncoded>` root. The addon does not register
 itself with `@yagejs/save`, traverse the entity graph, or own a save slot.
+`Inventory` and `QuestLog` follow this rule.
 
-**Capture the whole cursor, not just the obvious bits.** For dialogue that means
-`{ nodeId, stepIndex, vars, chosenOnce, returnStack }`. Omitting `chosenOnce` makes spent
-"once" choices available again after a load, with no error. Restoring mid-line
-re-presents the current line.
+**Capture the whole state, not just the obvious bits.** A field the snapshot
+omits is not restored on a load, and nothing reports it.
 
-For dialogue, the entire runner cursor is reachable through read-only getters on
-`runner.ts`: `getVars()`, `getNodeId()`, `getStepIndex()`, `getChosenOnce()`,
-and `getReturnStack()` (pending detours).
-A domain snapshot API can therefore capture the cursor without coupling dialogue
-to `@yagejs/save`.
+Dialogue ships no `snapshot()` / `restore()`. Its durable state is its
+variables, which live in the `VariableStorage` the game installs on the
+controller. `createStoreStorage` keeps them in a `@yagejs/core` store that saves
+with the game. A conversation in progress cannot be saved or resumed. The
+runner's read-only getters in `runner.ts` (`getNodeId()`, `getStepIndex()`,
+`getChosenOnce()`, `getReturnStack()`) are not reachable through
+`DialogueController` or `DialogueSession`, and no API starts a runner at a saved
+step. Spent `once` choices are per-conversation state, so each `play()` resets
+them.
 
 ## Docs live inside the addon package
 

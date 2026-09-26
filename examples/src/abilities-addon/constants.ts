@@ -14,8 +14,9 @@ export const CAMERA_ZOOM = 1.2;
 /** Follow smoothing factor (0..1, lower = softer) — see `CameraFollow`. */
 export const CAMERA_FOLLOW_SMOOTHING = 0.1;
 
-// PLAYER_SPEED/ENEMY_SPEED keep their original ~2.07:1 ratio (145:70) — see
-// the tuning note on `BOXER_ANIM_SPECS.run` for why both moved together.
+// PLAYER_SPEED and PLAYER_RUN_SPEED match the `run` and `sprint` cycles in
+// `BOXER_ANIM_SPECS` (see the note on `run`). ENEMY_SPEED is about half
+// PLAYER_SPEED, so the player can outpace a chasing enemy.
 export const PLAYER_SPEED = 195;
 export const PLAYER_RUN_SPEED = 280;
 export const ENEMY_SPEED = 95;
@@ -46,3 +47,9 @@ export const PLAYER_TINT = 0xffffff;
 export const ENEMY_TINT = 0xff8a8a;
 
 export const CORPSE_LINGER = 3;
+
+// Spawn keys of the one-of-a-kind entities, for `scene.findByKey`.
+export const PLAYER_KEY = "player";
+export const CAMERA_KEY = "camera";
+export const VFX_KEY = "vfx";
+export const ENGAGEMENT_TOKEN_KEY = "engagement-token";

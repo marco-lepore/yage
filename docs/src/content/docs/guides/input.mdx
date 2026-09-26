@@ -10,7 +10,7 @@ key was pressed.
 
 ## InputPlugin Setup
 
-```typescript
+```typescript yage-context="engine"
 import { InputPlugin } from "@yagejs/input";
 
 engine.use(
@@ -42,7 +42,9 @@ The map is read, never kept: `actions`, `setActionMap` and `loadBindings` copy
 every key list. They accept a readonly map (`ActionMapInput`), so a catalog
 declared once and shared across scenes can be `as const`:
 
-```typescript
+```typescript yage-context="engine"
+import { InputPlugin } from "@yagejs/input";
+
 export const ACTIONS = {
   jump: ["Space", "GamepadA"],
   attack: ["KeyJ", "MouseLeft"],
@@ -69,10 +71,10 @@ screen. Gamepad and pointer input carry on throughout.
 
 Resolve the `InputManager` from the engine context and query actions by name:
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
 import { InputManagerKey } from "@yagejs/input";
 
-const input = engine.resolve(InputManagerKey);
+const input = engine.context.resolve(InputManagerKey);
 ```
 
 `input.getClockTime()` returns the input system's elapsed time in seconds. The
@@ -82,7 +84,7 @@ one deterministic time source.
 
 ### Press State
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
 input.isPressed("jump");       // true while the key is held
 input.isJustPressed("jump");   // true only in the window the key went down
 input.isJustReleased("jump");  // true only in the window it was released
@@ -112,15 +114,17 @@ A menu that moves one row per key press is tiring to use. Pass
 `{ repeat: true }` and `isJustPressed` is true on the press and again while the
 key stays down — after 0.35 seconds, then every 0.1 second:
 
-```typescript
-if (input.isJustPressed("move-down", { repeat: true })) cursor.step(1);
-if (input.isJustPressed("move-up", { repeat: true })) cursor.step(-1);
+```typescript yage-group="input" yage-context="engine"
+let row = 0; // the highlighted menu row
+
+if (input.isJustPressed("move-down", { repeat: true })) row += 1;
+if (input.isJustPressed("move-up", { repeat: true })) row -= 1;
 ```
 
 Set the two timings per call. They are arguments rather than per-action
 configuration, so two callers can repeat one action at different rates:
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
 input.isJustPressed("move-up", {
   repeat: true,
   repeatDelay: 0.5,      // seconds held before the first repeat
@@ -152,14 +156,21 @@ themselves.
 
 For directional movement, turn two opposing actions into a single value:
 
-```typescript
+```typescript yage-context="component"
+import { Transform } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+
+// Inside a Component's update(dt).
+const input = this.use(InputManagerKey);
+const speed = 200; // pixels per second
+
 const h = input.getAxis("left", "right"); // -1, 0, or 1
 const v = input.getAxis("up", "down");
 
 // Or get both axes as a Vec2 in one call:
 const dir = input.getVector("left", "right", "up", "down");
-// `speed` is in pixels per second; `dt` is in seconds.
-entity.transform.translate(dir.x * speed * dt, dir.y * speed * dt);
+// `dt` is in seconds.
+this.entity.get(Transform).translate(dir.x * speed * dt, dir.y * speed * dt);
 ```
 
 ### Hold Duration
@@ -171,7 +182,9 @@ do not affect that clock, so by default a hold keeps accruing while the scene is
 paused or frozen. To measure a hold in simulation seconds instead, see
 [Counting on Scene Time](#counting-on-scene-time).
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
+declare function chargeAttack(): void;
+
 const seconds = input.getHoldDuration("attack");
 
 // Convenience check — true if held for at least the given duration
@@ -189,7 +202,11 @@ fully releases (for an action bound to several keys, letting go of one key
 while another still holds it doesn't count). Windows follow your calling
 context, frame or fixed step, as described under [Press State](#press-state):
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
+declare function beginCharge(): void;
+declare function quickAttack(): void;
+declare function releaseChargedAttack(): void;
+
 // Fires the frame the hold passes 0.5s — start a charged state here.
 if (input.isJustHeldFor("attack", 0.5)) {
   beginCharge();
@@ -232,17 +249,24 @@ so it ignores `scene.timeScale` and the stack pause that stops the entity along
 with its scene.
 
 ```typescript
-import { SceneTimeKey } from "@yagejs/core";
+import { Component, SceneTimeKey } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
 
-// Inside a Component or Scene subclass.
-const clock = this.use(SceneTimeKey);
+declare function beginCharge(): void;
 
-// The charge stops while the pause menu is up and halves under slow motion.
-if (input.isJustHeldFor("attack", 0.5, { clock })) {
-  beginCharge();
+class ChargeAttack extends Component {
+  update() {
+    const input = this.use(InputManagerKey);
+    const clock = this.use(SceneTimeKey);
+
+    // The charge stops while the pause menu is up and halves under slow motion.
+    if (input.isJustHeldFor("attack", 0.5, { clock })) {
+      beginCharge();
+    }
+
+    const charged = input.getReleaseDuration("attack", { clock });
+  }
 }
-
-const charged = input.getReleaseDuration("attack", { clock });
 ```
 
 The clock does not change which window an edge falls in. That still follows your
@@ -280,7 +304,10 @@ landing" feel. `consumeBufferedPress` returns true if the action was pressed
 within the last window seconds and that press has not been claimed yet; it
 claims the press so it fires at most once, and only a new press re-arms it:
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
+declare const grounded: boolean;
+declare function jump(): void;
+
 // Each frame: jump the moment we're grounded if a jump was pressed in the
 // last 0.12s. The claim prevents a single press from firing twice.
 if (grounded && input.consumeBufferedPress("jump", 0.12)) {
@@ -297,12 +324,21 @@ clock, as described under
 [Counting on Scene Time](#counting-on-scene-time):
 
 ```typescript
-import { SceneTimeKey } from "@yagejs/core";
+import { Component, SceneTimeKey } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
 
-const clock = this.use(SceneTimeKey);
+declare const grounded: boolean;
+declare function jump(): void;
 
-if (grounded && input.consumeBufferedPress("jump", 0.12, { clock })) {
-  jump();
+class JumpBuffer extends Component {
+  update() {
+    const input = this.use(InputManagerKey);
+    const clock = this.use(SceneTimeKey);
+
+    if (grounded && input.consumeBufferedPress("jump", 0.12, { clock })) {
+      jump();
+    }
+  }
 }
 ```
 
@@ -321,10 +357,12 @@ it, consume it on resume and ignore the result. One discard covers presses from
 before and during the pause, because the newest press replaces the stamp:
 
 ```typescript
-import { SceneTimeKey } from "@yagejs/core";
+import { Scene, SceneTimeKey } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 
 class GameScene extends Scene {
+  readonly name = "game";
+
   onResume() {
     const input = this.use(InputManagerKey);
     // Re-enable before discarding: `consumeBufferedPress` returns false without
@@ -362,7 +400,11 @@ class PauseMenu extends Scene {
 
 ## Pointer (Mouse / Touch)
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
+import type { Vec2 } from "@yagejs/core";
+
+declare function shootAt(target: Vec2): void;
+
 // World-space position (automatically accounts for camera offset and zoom)
 const pos = input.getPointerPosition();
 
@@ -380,7 +422,7 @@ The singular getters above always report the **primary** pointer — whichever
 contact the browser flagged `isPrimary` (the mouse cursor or the first finger
 to touch). For multi-touch UIs, iterate every active pointer:
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
 import type { PointerInfo } from "@yagejs/input";
 
 for (const p of input.getPointers()) {
@@ -394,7 +436,9 @@ For tap-driven components, read down edges retained for the current rendered
 frame. A quick down/up pair remains visible even when both browser events arrive
 before the frame runs:
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
+declare function placeMarker(position: Vec2): void;
+
 for (const press of input.getPointerPresses({ button: 0 })) {
   placeMarker(press.worldPos);
 }
@@ -409,7 +453,11 @@ camera move later in the frame does not alter the press record.
 Per-pointer events let you track a single finger across its lifetime (down →
 move → up). Each subscriber returns a disposer:
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
+declare function startTrackingFinger(id: number): void;
+declare function updateTrackedFinger(pointer: PointerInfo): void;
+declare function stopTrackingFinger(id: number): void;
+
 const offDown = input.onPointerDown((p: PointerInfo) => {
   if (p.type === "touch") startTrackingFinger(p.id);
 });
@@ -422,7 +470,12 @@ To act only on a specific mouse button inside a down/up listener, check
 `p.button` — the button whose edge triggered this event (`0` left, `1`
 middle, `2` right; `-1` for moves and query snapshots):
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
+import type { CameraEntity } from "@yagejs/renderer";
+
+declare const camera: CameraEntity;
+declare function attackAt(target: Vec2): void;
+
 input.onPointerDown((p) => {
   if (p.button !== 0) return; // left-click only
   attackAt(camera.screenToWorld(p.screenPos.x, p.screenPos.y));
@@ -454,9 +507,15 @@ the UI element still handles the event. A pointer claim lasts for that press
 cycle.
 
 ```tsx
-<Panel>
-  <Button onClick={openMenu}>Settings</Button>
-</Panel>
+import { Button, Panel } from "@yagejs/ui-react";
+
+function SettingsButton({ openMenu }: { openMenu: () => void }) {
+  return (
+    <Panel>
+      <Button onClick={openMenu}>Settings</Button>
+    </Panel>
+  );
+}
 ```
 
 Clicking "Settings" calls `openMenu` and **does not** fire any
@@ -474,6 +533,8 @@ For overlays that should let clicks through (decorative HUD borders,
 full-screen filters, see-through frames), pass `consumeInput={false}`:
 
 ```tsx
+import { Image, Panel } from "@yagejs/ui-react";
+
 <Panel consumeInput={false}>
   <Image texture="hud-frame" />
 </Panel>
@@ -510,7 +571,10 @@ for Pixi's hit-test to find the container.
 For one-off cases where you want to claim an event imperatively from inside
 a handler:
 
-```ts
+```ts yage-group="input" yage-context="engine"
+declare function clickedOnMyDraggable(position: Vec2): boolean;
+declare function startDrag(pointer: PointerInfo): void;
+
 input.onPointerDown((p) => {
   if (clickedOnMyDraggable(p.screenPos)) {
     input.consumePointer(p.id);
@@ -536,7 +600,10 @@ box) still receives the tap. Pair every such dispatch with `consumePointer`,
 or each forwarded touch leaks into the `MouseLeft/Middle/Right` action edge and
 fires whatever gameplay action is bound there:
 
-```ts
+```ts yage-group="input" yage-context="engine"
+declare const overlayEl: HTMLElement; // the DOM overlay above the canvas
+declare const canvas: HTMLCanvasElement; // the game canvas
+
 overlayEl.addEventListener("pointerdown", (e) => {
   // Forward to the canvas so UI listeners underneath still see the tap. Build
   // the init explicitly — spreading `{ ...e }` drops pointerId/clientX/… since
@@ -626,7 +693,12 @@ Disposer-returning hooks for keys, actions, and wheel input. Use these
 instead of raw DOM listeners — they participate in the action map, group
 enable/disable, and `consumePointer` gating.
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
+declare function save(): void;
+declare function unfreeze(): void;
+declare function playSwooshSfx(): void;
+declare function stopChargeSfx(): void;
+
 const offSpace = input.onKeyDown("Space", () => save());
 input.onKeyUp("Space", () => unfreeze());
 input.onKeyDown("*", (code) => console.log("any key:", code)); // wildcard
@@ -636,7 +708,7 @@ input.onActionReleased("attack", () => stopChargeSfx()); // falling edge
 
 const offWheel = input.onWheel((dx, dy) => {
   input.consumeWheel(); // claims this event only
-  camera.zoomBy(dy * -0.001);
+  camera.zoom *= 1 - dy * 0.001;
 });
 
 offSpace();
@@ -653,6 +725,8 @@ fire, matching `isPressed` / `isJustPressed` behavior.
 `pressedKeys`. Direct callback access via `onWheel(fn)` for raw deltas.
 
 ```typescript
+import { InputPlugin } from "@yagejs/input";
+
 new InputPlugin({
   actions: {
     zoomIn: ["WheelUp", "Equal"],
@@ -705,7 +779,7 @@ code of your own. Read `getStick` when you want the analog value itself.
 
 ### Analog sticks and triggers
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
 const move = input.getStick("left");      // Vec2, deadzoned, magnitude ≤ 1
 const aim = input.getStick("right");
 const charge = input.getTrigger("right"); // 0..1
@@ -715,7 +789,7 @@ Both methods read from the **active pad** — the most-recently-used controller.
 For couch-co-op or any case where you need to address a specific controller,
 pass `{ pad: index }`:
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
 const player1 = input.getStick("left", { pad: 0 });
 const player2 = input.getStick("left", { pad: 1 });
 ```
@@ -729,6 +803,8 @@ Default deadzones: 0.15 for sticks (radial), 0.05 for triggers. Override per
 plugin:
 
 ```typescript
+import { InputPlugin } from "@yagejs/input";
+
 new InputPlugin({
   deadzones: { stick: 0.2, trigger: 0.1 },
   triggerThreshold: 0.6,
@@ -747,7 +823,9 @@ hot-swap (keyboard → controller mid-session) just works. The active pad's own
 activity protects it from being stolen, so two players pressing buttons in
 parallel doesn't ping-pong the active state.
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
+declare const hud: { show(message: string): void };
+
 input.getActivePad();              // GamepadInfo | null
 input.setActivePad(0);             // manual switch (must be a connected pad)
 input.setActivePad(null);          // no active pad; analog falls back to synthetic state
@@ -765,14 +843,17 @@ The platformer example accepts both keyboard and stick input on the same
 action — let analog stick win when it has signal, fall back to digital
 otherwise:
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
 const stickX = input.getStick("left").x;
 const dx = stickX !== 0 ? stickX : input.getAxis("left", "right");
 ```
 
 ### Connect / disconnect events
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
+declare function showPlayerPrompt(message: string): void;
+declare function pauseGame(): void;
+
 const dispose = input.onGamepadConnected((info) => {
   // Replays currently-known pads on subscribe — you don't need a separate
   // gamepads() call to discover existing controllers.
@@ -795,7 +876,12 @@ for "show me what pads are plugged in right now", call `gamepads()`.
 
 ### Press-any-button recipe
 
-```typescript
+```typescript yage-context="engine"
+import { InputManagerKey } from "@yagejs/input";
+
+declare function showHud(message: string): void;
+
+const input = engine.context.resolve(InputManagerKey);
 let dispose: (() => void) | undefined;
 let replayed = false;
 dispose = input.onGamepadConnected((info) => {
@@ -813,7 +899,7 @@ The `replayed` branch disposes after registration when the callback ran before
 
 ### Synthetic injection (testing)
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
 input.fireGamepadButton("GamepadA", true);  // routes through the real path
 input.fireGamepadAxis("leftX", 0.7);
 ```
@@ -824,6 +910,9 @@ this with `DebugPlugin`'s `deterministicSeed` for fully deterministic test
 runs:
 
 ```typescript
+import { DebugPlugin } from "@yagejs/debug";
+import { InputPlugin } from "@yagejs/input";
+
 new InputPlugin({ pollGamepads: false, /* ... */ });
 new DebugPlugin({ deterministicSeed: 42 });
 ```
@@ -835,7 +924,9 @@ sustained synthetic device, create one source per independent owner. Two
 sources can hold the same action without either one releasing the other's
 press.
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
+declare const chargeButton: { readonly isHeld: boolean }; // your on-screen button
+
 input.fireAction("attack");      // one-frame pulse (isJustPressed for 1 frame)
 
 const touchControls = input.createActionSource();
@@ -853,7 +944,9 @@ A hold-to-charge attack driven by a touch button, with zero keymap knowledge.
 `getReleaseDuration` holds the charge length on the release frame, so the
 button can be mirrored in any order:
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
+declare function fireChargedAttack(power: number): void;
+
 touchControls.setHeld("attack", chargeButton.isHeld);
 
 if (input.isJustReleased("attack")) {
@@ -872,7 +965,7 @@ helpers report only the release that ends the action's final hold.
 Allow players to remap controls at runtime — works uniformly for keyboard,
 mouse, and gamepad codes:
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
 const result = input.rebind("jump", "GamepadY", { conflict: "replace" });
 if (!result.ok) {
   console.warn("Rebind conflict with", result.conflict?.action);
@@ -895,7 +988,7 @@ the other action's press for whatever consumes that one. Read
 `input.getActionsForKey(code)` for every action a key drives, and check it
 before a rebind when a key should drive one action only:
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
 const shared = input.getActionsForKey("ShiftLeft"); // e.g. ["dash", "sprint"]
 ```
 
@@ -903,7 +996,7 @@ const shared = input.getActionsForKey("ShiftLeft"); // e.g. ["dash", "sprint"]
 
 Capture the next physical input — for "Press a key to bind" UI:
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
 const code = await input.listenForNextKey();
 // code is "KeyZ" | "MouseLeft" | "GamepadA" | ... | null (cancelled)
 ```
@@ -917,7 +1010,7 @@ they're trying to rebind.
 Disable entire groups of actions when they shouldn't be active — for example,
 disabling movement during a cutscene:
 
-```typescript
+```typescript yage-group="input" yage-context="engine"
 input.disableGroup("movement");
 input.disableGroup("combat");
 

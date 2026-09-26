@@ -14,7 +14,7 @@ Built on [Yoga](https://yogalayout.dev/) for Flexbox layout and [@pixi/ui](https
 
 ```ts
 import { Engine } from "@yagejs/core";
-import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
+import { UIPlugin } from "@yagejs/ui";
 
 const engine = new Engine();
 engine.use(new UIPlugin());
@@ -22,14 +22,17 @@ engine.use(new UIPlugin());
 
 Build panels, text, buttons, and images with Flexbox:
 
-```ts
-entity.add(
+```ts yage-context="entity"
+import { UISurface, Anchor } from "@yagejs/ui";
+
+const hud = entity.add(
   new UISurface({
     anchor: Anchor.TopCenter,
     direction: "row",
     gap: 16,
-  }).text("Score: 0", { fontSize: 32, fill: 0xffffff }),
+  }),
 );
+hud.text("Score: 0", { fontSize: 32, fill: 0xffffff });
 ```
 
 ## What's in the box

@@ -88,7 +88,7 @@ Enforced by tooling — match these conventions exactly:
 
 - **Unit tests**: co-located (`Foo.ts` → `Foo.test.ts` in the same directory)
 - **E2E tests**: `e2e/` directory at repo root (Playwright)
-- **Test utilities**: `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core/test-utils`
+- **Test utilities**: `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core`
 - **E2E assertions**: use the Inspector API (`window.__yage__.inspector`), not screenshots. The page's engine needs `debug: true` and an installed Inspector: `DebugPlugin` installs one, or `InspectorPlugin` from `@yagejs/core` without the overlay
 
 ## Documentation
@@ -99,6 +99,8 @@ Two sets of docs. A new public API, config option, or gotcha goes into both, not
 - **Human docs (yage.dev)** — `docs/src/content/docs/` Astro + Starlight `.mdx` files. Narrative; may embed images, diagrams, and playable examples.
 
 A new human docs page must be mapped to its Markdown counterpart in `docs/scripts/llm-docs.mjs` (or listed as having none in `docs/scripts/llm-docs.test.mjs`), and every served Markdown file must be linked from `docs/llms.txt`, or the docs tests fail.
+
+Every TypeScript fence in the docs, package READMEs, addon and tool LLM references and these AGENTS files is type-checked against the built package declarations by `npx turbo typecheck`. Each fence is an isolated module that writes its own imports; the `yage-context`, `yage-group` and `yage-expect-error` annotations for hosts, multi-fence examples and deliberate errors are described in `docs/scripts/README.md`.
 
 Rebuild both after changes:
 
@@ -134,6 +136,10 @@ npx playwright test     # E2E tests (requires build first)
 ## Addons
 
 `packages/addons/*` (npm scope `@yagejs-addons`) is the layer between engine plugins and the game: installable, opinionated implementations of common gameplay patterns (dialogue, inventory, combat). Addons are **independently versioned** (kept out of the engine's `fixed` changeset group) and declare engine packages as **peer dependencies**. Before adding or changing anything under `packages/addons/`, read `packages/addons/AGENTS.md` — the addon authoring guide (layer model L0–L3, capability channels, rules-in/consequences-out, the seven rules, naming/packaging, export split, controlled save state).
+
+## Examples
+
+`examples/` holds the runnable examples at examples.yage.dev. People and agents copy them, so example code follows every rule in this file. Before adding or changing an example, read [`examples/AGENTS.md`](examples/AGENTS.md): entity types as subclasses, rules in components, game state on a host entity, engine time and the scene's random generator instead of browser timers and `Math.random`. `src/platformer/` is the reference example to copy.
 
 ## Reference
 

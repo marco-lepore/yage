@@ -61,7 +61,8 @@ comments afterward.
 
 Install the runtime plugin after RendererPlugin and DebugPlugin:
 
-```ts
+```ts yage-group="plugin"
+/// <reference types="vite/client" />
 import { Engine } from "@yagejs/core";
 import { FeedbackPlugin } from "@yagejs-tools/feedback";
 
@@ -81,7 +82,7 @@ Set `shortcuts: false` if your host reserves those keys.
 
 Override keyboard bindings in the runtime plugin:
 
-```ts
+```ts yage-group="plugin"
 new FeedbackPlugin({
   enabled: debug,
   shortcuts: {

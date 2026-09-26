@@ -4,7 +4,8 @@ Animate the handoff between scenes during `push`, `pop`, and `replace`. Both sce
 
 ## Usage
 
-```ts
+```ts yage-context="engine"
+import { Scene } from "@yagejs/core";
 import {
   chessboard,
   crossFade,
@@ -14,6 +15,9 @@ import {
   irisReveal,
   slidePush,
 } from "@yagejs/renderer";
+
+declare const nextScene: Scene; // any scene instance
+declare const newScene: Scene;
 
 // Push with a fade
 await engine.scenes.push(nextScene, { transition: fade({ duration: 0.4 }) });
@@ -51,6 +55,8 @@ class MenuScene extends Scene {
 await engine.scenes.push(new MenuScene(), { transition: null });
 ```
 
+`engine.scenes` is the `SceneManager`; Scene and Component code reaches it with `this.use(SceneManagerKey)` (never a module-level `engine`) and passes the same options.
+
 `SceneTransitionOptions` is `{ transition?: SceneTransition | null }` for
 `push`, `pop`, and `replace`. Omission uses the destination's
 `defaultTransition`; a transition object overrides it; `null` skips it.
@@ -61,14 +67,21 @@ then enters the new one without waiting for frames.
 ## Contract
 
 ```ts
-interface SceneTransition {
+import type {
+  EngineContext,
+  Scene,
+  SceneTransition as BaseSceneTransition,
+  SceneTransitionContext as BaseSceneTransitionContext,
+} from "@yagejs/core";
+
+interface SceneTransition extends BaseSceneTransition {
   readonly duration: number; // Total wall-clock seconds
   begin?(ctx: SceneTransitionContext): void;
   tick(dt: number, ctx: SceneTransitionContext): void;
   end?(ctx: SceneTransitionContext): void;
 }
 
-interface SceneTransitionContext {
+interface SceneTransitionContext extends BaseSceneTransitionContext {
   readonly elapsed: number; // Wall-clock seconds since begin()
   readonly kind: "push" | "pop" | "replace";
   readonly engineContext: EngineContext;
@@ -95,7 +108,7 @@ transitions. All built-ins live in `@yagejs/renderer` (PIXI-based).
 | `irisReveal({ duration?, center?, easing? })`                  | One-way variant of `iris` — the destination scene's container is masked by an expanding circle so the new scene "blooms" over the previous one. No color overlay, no mid-point swap. Default 0.6s, virtual-center, `easeLinear`.                                                                               |
 | `chessboard({ duration?, rows?, cols? })`                      | Reveals the destination through a staggered checkerboard mask painted onto the incoming scene's container. Even-parity cells grow over `[0, 0.7]`, odd-parity over `[0.3, 1]` (0.4-wide overlap, smoothstep-eased); the previous scene stays visible underneath until each cell covers it. Default 0.7s, 6×10. |
 | `slidePush({ duration?, direction?, reverseOnPop?, easing? })` | Both scenes translate in lockstep — the incoming scene pushes the outgoing one off the opposite edge. `direction` is the outgoing scene's exit direction (default `"left"`). `reverseOnPop` (default `true`) mirrors the motion on `pop`. Default 0.5s, `easeOutCubic`.                                        |
-| `getSceneContainer(ctx, scene)`                                | Helper — resolves a scene's PIXI root container. Returns `undefined` if `scene` is undefined or its tree isn't materialized.                                                                                                                                                                                   |
+| `getSceneContainer(ctx, scene)`                                | Helper — resolves a scene's root `DisplayContainer`. Returns `undefined` if `scene` is undefined or its tree isn't materialized.                                                                                                                                                                               |
 | `getVirtualBounds(ctx)`                                        | Helper — `{ width, height }` of the scene-root coord space (= `renderer.virtualSize`).                                                                                                                                                                                                                         |
 
 `fade` / `flash` / `iris` parent their overlay to `renderer.worldRoot` and size against `renderer.visibleCanvasRect`, so under `letterbox` the overlay covers the play area (bars stay visible) and under `expand` it paints into the bars too. Pass `coverScreen: true` to parent on `app.stage` instead and cover the canvas including bars even under letterbox — useful when the host page background is jarring.
@@ -131,7 +144,7 @@ scene-visibility and would conflict with each other if chained.
 
 ## Queueing
 
-Concurrent `push`/`pop`/`replace`/`popAll` calls queue via `_pendingChain`. Re-entrant calls from lifecycle hooks throw.
+Concurrent `push`/`pop`/`replace`/`popAll` calls queue and run in call order. A call from inside a scene lifecycle hook (`onEnter`, `onExit`, `onPause`, `onResume`) is queued too: it runs after the current operation finishes, and dev builds log a warning.
 
 `popAll()` is also queued — it waits for any in-flight transition and pending ops to finish before tearing the stack down. There is no mid-run cancellation.
 
@@ -142,7 +155,7 @@ Concurrent `push`/`pop`/`replace`/`popAll` calls queue via `_pendingChain`. Re-e
 
 ## Checking State
 
-```ts
+```ts yage-context="engine,scene"
 engine.scenes.isTransitioning; // true during any active transition
 scene.isTransitioning; // same, accessible from the scene
 ```
@@ -151,7 +164,7 @@ scene.isTransitioning; // same, accessible from the scene
 
 Two helpers cover most needs:
 
-- `getSceneContainer(ctx, scene)` — reach a scene's PIXI root container inside `begin`/`tick`/`end`. Manipulate `alpha`, `visible`, `position`, `filters` directly.
+- `getSceneContainer(ctx, scene)` — reach a scene's root `DisplayContainer` (a `@yagejs/renderer` alias; don't import the type from `pixi.js`) inside `begin`/`tick`/`end`. Manipulate `alpha`, `visible`, `position`, `filters` directly.
 - `getVirtualBounds(ctx)` — `{ width, height }` of the scene-root coordinate space. Use this to size masks / translations / geometry parented to a scene root (or any descendant of `_worldRoot`, which carries the responsive-fit transform).
 
 Coordinate-space rule: pick the parent and size source for what your transition needs to cover.
@@ -166,11 +179,14 @@ Coordinate-space rule: pick the parent and size source for what your transition 
 
 ```ts
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
-import type { Container } from "pixi.js";
-import { getSceneContainer, getVirtualBounds } from "@yagejs/renderer";
+import {
+  getSceneContainer,
+  getVirtualBounds,
+  type DisplayContainer,
+} from "@yagejs/renderer";
 
 function slideIn(duration: number): SceneTransition {
-  let toRoot: Container | undefined;
+  let toRoot: DisplayContainer | undefined;
   let width = 0;
   return {
     duration,
@@ -202,7 +218,19 @@ Notes:
 
 `LoadingScene` (core) carries its own `transition` — the one used for the handoff to its target. That transition composes with any call-site transition passed to `push`/`replace`:
 
-```ts
+```ts yage-context="engine"
+import { LoadingScene, Scene } from "@yagejs/core";
+import { fade } from "@yagejs/renderer";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
+
+class Boot extends LoadingScene {
+  readonly target = () => new GameScene();
+  readonly transition = fade({ duration: 0.3 });
+}
+
 await engine.scenes.replace(new Boot(), {
   transition: fade({ duration: 0.4 }), // mount Boot with this fade
 });
@@ -211,6 +239,6 @@ await engine.scenes.replace(new Boot(), {
 
 See `loading-scene.md` for the full Boot scene contract.
 
-## Breaking Change
+## pop() is async
 
-`SceneManager.pop()` returns `Promise<Scene | undefined>` (was synchronous). Update all call sites to `await` or `void`.
+`SceneManager.pop()` returns `Promise<Scene | undefined>`: the removed scene, once the queued pop and its transition have run. `await` it, or mark an unawaited call with `void`.

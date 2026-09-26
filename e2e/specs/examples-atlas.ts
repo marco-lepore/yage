@@ -38,14 +38,6 @@ export interface ExampleScript {
 export const DEFAULT_WARMUP = 20;
 
 export const EXAMPLE_SCRIPTS: Record<string, ExampleScript> = {
-  // The slow asset loader is driven by wall-clock setTimeout, which keeps
-  // running while the render clock is frozen — so the loaded-vs-loading state
-  // at snapshot time is a race. Revisit once the loader can be frame-driven.
-  "loading-scene": {
-    skip: true,
-    reason: "async loader uses wall-clock timers, not the frozen clock",
-  },
-
   // --- Input-scripted examples (representative coverage) -------------------
 
   // Run right along the ground, then jump. Exercises the platformer

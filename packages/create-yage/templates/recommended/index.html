@@ -2,8 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <meta name="theme-color" content="#0f172a" />
+    <!-- Installed on iOS, the game draws under the status bar. The safe-area
+         padding on #game keeps it clear of the clock and battery. -->
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>My YAGE Game</title>
@@ -21,21 +30,50 @@
         overflow: hidden;
       }
       #game {
+        position: relative;
         display: flex;
         align-items: center;
         justify-content: center;
+        box-sizing: border-box;
+        /* Paints the padding below, also in fullscreen, where body is not
+           drawn behind #game. */
+        background: inherit;
         width: 100vw;
+        /* Fallback for browsers without dvh. */
         height: 100vh;
+        /* The visible height: excludes the mobile browser's toolbars. */
+        height: 100dvh;
+        /* Keeps the game clear of the notch, rounded corners, and home
+           indicator. Each inset is 0 where the screen has none. */
+        padding: env(safe-area-inset-top) env(safe-area-inset-right)
+          env(safe-area-inset-bottom) env(safe-area-inset-left);
       }
       #game canvas {
         display: block;
         max-width: 100%;
         max-height: 100%;
       }
+      #fullscreen {
+        position: absolute;
+        top: calc(env(safe-area-inset-top) + 8px);
+        right: calc(env(safe-area-inset-right) + 8px);
+        padding: 6px 10px;
+        border: 1px solid rgb(226 232 240 / 0.4);
+        border-radius: 6px;
+        background: rgb(15 23 42 / 0.7);
+        color: inherit;
+        font: inherit;
+        font-size: 14px;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
-    <div id="game"></div>
+    <div id="game">
+      <!-- Inside #game so it stays on screen in fullscreen. src/fullscreen.ts
+           shows it where the browser supports fullscreen. -->
+      <button id="fullscreen" type="button" hidden>Fullscreen</button>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

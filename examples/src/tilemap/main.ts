@@ -64,12 +64,13 @@ class Player extends Component {
     this.camera = camera;
   }
 
+  onAdd(): void {
+    this.camera.follow(this.entity.get(Transform));
+  }
+
   update(dt: number): void {
     const dir = this.input.getVector("left", "right", "up", "down");
-    if (dir.x === 0 && dir.y === 0) {
-      this.camera.position = this.entity.get(Transform).position;
-      return;
-    }
+    if (dir.x === 0 && dir.y === 0) return;
 
     const move = dir.normalize().scale(PLAYER_SPEED * dt);
     const t = this.entity.get(Transform);
@@ -84,8 +85,6 @@ class Player extends Component {
     if (!this._hits(t.position.x, nextY)) {
       t.setPosition(t.position.x, nextY);
     }
-
-    this.camera.position = t.position;
   }
 
   private _hits(x: number, y: number): boolean {

@@ -5,32 +5,47 @@ React bindings for building game UI with JSX in the [YAGE](https://yage.dev) 2D 
 ## Install
 
 ```bash
-npm install @yagejs/ui-react react react-dom
+npm install @yagejs/ui @yagejs/ui-react react
 ```
 
-React is a **peer dependency** - bring your own (^18 or ^19).
+React is a **peer dependency** - bring your own React 19.
 
 ## Usage
 
 ```tsx
-import { Engine } from "@yagejs/core";
-import { UIPlugin } from "@yagejs/ui";
-import { createUIRoot, Panel, Text, Button } from "@yagejs/ui-react";
+import { Engine, Scene } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { Anchor, UIPlugin } from "@yagejs/ui";
+import { UIReactPlugin, UIRoot, Panel, Text, Button } from "@yagejs/ui-react";
 
 const engine = new Engine();
+engine.use(
+  new RendererPlugin({ width: 800, height: 600, container: document.body }),
+);
 engine.use(new UIPlugin());
+engine.use(new UIReactPlugin());
 await engine.start();
 
 function HUD({ score }: { score: number }) {
   return (
-    <Panel anchor="TopCenter" direction="row" gap={16}>
-      <Text fontSize={32} fill={0xffffff}>
-        Score: {score}
-      </Text>
-      <Button onPress={() => console.log("pause")}>Pause</Button>
+    <Panel direction="row" gap={16}>
+      <Text style={{ fontSize: 32, fill: 0xffffff }}>{`Score: ${score}`}</Text>
+      <Button onClick={() => console.log("pause")}>Pause</Button>
     </Panel>
   );
 }
+
+class GameScene extends Scene {
+  readonly name = "game";
+
+  onEnter() {
+    const hud = this.spawn("hud");
+    const root = hud.add(new UIRoot({ anchor: Anchor.TopCenter }));
+    root.render(<HUD score={0} />);
+  }
+}
+
+await engine.scenes.push(new GameScene());
 ```
 
 ## What's in the box

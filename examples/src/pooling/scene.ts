@@ -5,7 +5,7 @@ import {
   Transform,
   Vec2,
   EntityPool,
-  globalRandom,
+  RandomKey,
 } from "@yagejs/core";
 import {
   GraphicsComponent,
@@ -115,6 +115,7 @@ class Fountain extends Component {
   };
 
   private readonly input = this.service(InputManagerKey);
+  private readonly random = this.service(RandomKey);
   private elastic!: EntityPool<Spark>;
   private capped!: EntityPool<Spark, number>;
   private live: Spark[] = [];
@@ -167,9 +168,9 @@ class Fountain extends Component {
   }
 
   private fire(): void {
-    const angle = -Math.PI / 2 + globalRandom.range(-0.5, 0.5);
-    const speed = globalRandom.range(420, 700);
-    const x = WIDTH / 2 + globalRandom.range(-8, 8);
+    const angle = -Math.PI / 2 + this.random.range(-0.5, 0.5);
+    const speed = this.random.range(420, 700);
+    const x = WIDTH / 2 + this.random.range(-8, 8);
     const y = HEIGHT - 60;
     const vx = Math.cos(angle) * speed;
     const vy = Math.sin(angle) * speed;
@@ -257,23 +258,11 @@ class StatsHud extends Component {
   }
 }
 
-export class PoolingScene extends Scene {
-  readonly name = "pooling";
-
-  readonly layers: readonly LayerDef[] = [
-    { name: "world", order: 0 },
-    { name: HUD_LAYER, order: 1000, space: "screen" },
-  ];
-
-  onEnter(): void {
-    // Centred on the canvas so the world layer sits at the identity — the
-    // fountain is authored in screen-sized coordinates and never scrolls.
-    this.spawn(CameraEntity, { position: new Vec2(WIDTH / 2, HEIGHT / 2) });
-    this.buildWalls();
-
-    const fountain = this.spawn("fountain");
-    fountain.add(new Transform({ position: new Vec2(16, 14) }));
-    fountain.add(
+/** The fountain and its counters, drawn at the top left of the screen. */
+class FountainEntity extends Entity {
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(16, 14) }));
+    this.add(
       new TextComponent({
         text: "",
         anchor: { x: 0, y: 0 },
@@ -286,27 +275,44 @@ export class PoolingScene extends Scene {
         layer: HUD_LAYER,
       }),
     );
-    fountain.add(new Fountain());
-    fountain.add(new StatsHud());
+    this.add(new Fountain());
+    this.add(new StatsHud());
   }
+}
 
-  private buildWalls(): void {
-    this.wall(WIDTH / 2, HEIGHT - 10, WIDTH, 20);
-    this.wall(-10, HEIGHT / 2, 20, HEIGHT);
-    this.wall(WIDTH + 10, HEIGHT / 2, 20, HEIGHT);
-  }
-
-  private wall(x: number, y: number, w: number, h: number): void {
-    const wall = this.spawn("wall");
-    wall.add(new Transform({ position: new Vec2(x, y) }));
-    wall.add(
+class WallEntity extends Entity {
+  setup(params: { x: number; y: number; w: number; h: number }): void {
+    const { x, y, w, h } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
       new GraphicsComponent({ layer: "world" }).draw((g) => {
         g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x334155 });
       }),
     );
-    wall.add(new RigidBodyComponent({ type: "static" }));
-    wall.add(
+    this.add(new RigidBodyComponent({ type: "static" }));
+    this.add(
       new ColliderComponent({ shape: { type: "box", width: w, height: h } }),
     );
+  }
+}
+
+export class PoolingScene extends Scene {
+  readonly name = "pooling";
+
+  readonly layers: readonly LayerDef[] = [
+    { name: "world", order: 0 },
+    { name: HUD_LAYER, order: 1000, space: "screen" },
+  ];
+
+  onEnter(): void {
+    // Centred on the canvas so the world layer sits at the identity — the
+    // fountain is authored in screen-sized coordinates and never scrolls.
+    this.spawn(CameraEntity, { position: new Vec2(WIDTH / 2, HEIGHT / 2) });
+
+    this.spawn(WallEntity, { x: WIDTH / 2, y: HEIGHT - 10, w: WIDTH, h: 20 });
+    this.spawn(WallEntity, { x: -10, y: HEIGHT / 2, w: 20, h: HEIGHT });
+    this.spawn(WallEntity, { x: WIDTH + 10, y: HEIGHT / 2, w: 20, h: HEIGHT });
+
+    this.spawn(FountainEntity);
   }
 }

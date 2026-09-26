@@ -26,7 +26,10 @@ export interface ProcessSlotConfig {
   cleanup?: () => void;
   /** Tags for filtering. */
   tags?: string[];
-  /** Loop the slot's process. */
+  /**
+   * Loop the slot's process. A looping slot never completes, so `onComplete`
+   * never runs; for a repeating callback, loop a `Sequence` instead.
+   */
   loop?: boolean;
 }
 

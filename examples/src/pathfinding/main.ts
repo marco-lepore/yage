@@ -34,10 +34,11 @@ const AGENT_RADIUS = 6;
 const CAMERA_ZOOM = 1.75;
 
 // ---------------------------------------------------------------------------
-// AgentController — walks the current path's waypoints in order and keeps
-// the camera centred on the agent
+// AgentController — walks the current path's waypoints in order, with the
+// camera following the agent
 // ---------------------------------------------------------------------------
 class AgentController extends Component {
+  private readonly transform = this.sibling(Transform);
   private readonly camera: CameraEntity;
   private path: Vec2[] = [];
   private index = 0;
@@ -47,24 +48,30 @@ class AgentController extends Component {
     this.camera = camera;
   }
 
+  /** Whether the agent still has waypoints to walk. */
+  get moving(): boolean {
+    return this.index < this.path.length;
+  }
+
+  onAdd(): void {
+    this.camera.follow(this.transform);
+  }
+
   setPath(waypoints: Vec2[]): void {
     this.path = waypoints;
     this.index = 0;
   }
 
   update(dt: number): void {
-    const transform = this.entity.get(Transform);
-    if (this.index < this.path.length) {
-      const target = this.path[this.index]!;
-      const next = Vec2.moveTowards(
-        transform.position,
-        target,
-        AGENT_SPEED * dt,
-      );
-      transform.setPosition(next.x, next.y);
-      if (next.x === target.x && next.y === target.y) this.index++;
-    }
-    this.camera.position = transform.position;
+    if (!this.moving) return;
+    const target = this.path[this.index]!;
+    const next = Vec2.moveTowards(
+      this.transform.position,
+      target,
+      AGENT_SPEED * dt,
+    );
+    this.transform.setPosition(next.x, next.y);
+    if (next.x === target.x && next.y === target.y) this.index++;
   }
 }
 
@@ -101,6 +108,8 @@ class GameController extends Component {
   private readonly grid: GridGraph;
   private readonly agent: AgentController;
   private readonly agentEntity: Entity;
+  /** The last path found, or `null` when the last click had no route. */
+  lastPath: Path | null = null;
 
   constructor(grid: GridGraph, agentEntity: Entity) {
     super();
@@ -110,23 +119,26 @@ class GameController extends Component {
   }
 
   override onAdd(): void {
-    this.input.onPointerDown((p) => {
-      if (p.button !== 0) return;
-      const start = this.agentEntity.get(Transform).position;
-      // getPointerPosition() runs the click through the camera set via
-      // InputManager.setCamera, so the goal lands in world (map) pixels
-      // instead of screen pixels.
-      const goal = this.input.getPointerPosition();
-      const path = this.grid.findPath(start, goal);
-      this.drawPath(path);
-      if (path) this.agent.setPath(path.waypoints);
-    });
+    this.addCleanup(
+      this.input.onPointerDown((p) => {
+        if (p.button !== 0) return;
+        const start = this.agentEntity.get(Transform).position;
+        // getPointerPosition() runs the click through the camera set via
+        // InputManager.setCamera, so the goal lands in world (map) pixels
+        // instead of screen pixels.
+        const goal = this.input.getPointerPosition();
+        const path = this.grid.findPath(start, goal);
+        this.lastPath = path;
+        this.drawPath(path);
+        if (path) this.agent.setPath(path.waypoints);
+      }),
+    );
   }
 
   private drawPath(path: Path | null): void {
-    this.graphics.graphics.clear();
-    if (!path) return;
     this.graphics.draw((g) => {
+      g.clear();
+      if (!path) return;
       const [first, ...rest] = path.waypoints;
       if (!first) return;
       g.moveTo(first.x, first.y);
@@ -135,6 +147,45 @@ class GameController extends Component {
       for (const wp of path.waypoints)
         g.circle(wp.x, wp.y, 3).fill({ color: 0xfacc15 });
     });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PathfindingProbe — the last path's length and cost, and whether the agent
+// is still walking it. Tests can read it with
+// `inspector.getComponentData("PathControllerEntity", "PathfindingProbe")`.
+// ---------------------------------------------------------------------------
+class PathfindingProbe extends Component {
+  private readonly controller = this.sibling(GameController);
+
+  constructor(private readonly agent: AgentController) {
+    super();
+  }
+
+  /** Cells on the last path found; 0 before the first click or with no route. */
+  get pathCells(): number {
+    return this.controller.lastPath?.cells.length ?? 0;
+  }
+
+  /** Step cost of the last path found, or `null` with no route. */
+  get pathCost(): number | null {
+    return this.controller.lastPath?.cost ?? null;
+  }
+
+  /** Whether the agent is still walking the path. */
+  get moving(): boolean {
+    return this.agent.moving;
+  }
+}
+
+/** Turns clicks into paths for the agent and draws the last path found. */
+class PathControllerEntity extends Entity {
+  setup(params: { grid: GridGraph; agent: AgentEntity }): void {
+    const { grid, agent } = params;
+    this.add(new Transform());
+    this.add(new GraphicsComponent());
+    this.add(new GameController(grid, agent));
+    this.add(new PathfindingProbe(agent.get(AgentController)));
   }
 }
 
@@ -176,27 +227,8 @@ class PathfindingScene extends Scene {
       camera: cam,
     });
 
-    const controller = this.spawn("controller");
-    controller.add(new Transform());
-    controller.add(new GraphicsComponent());
-    controller.add(new GameController(grid, agent));
-
-    exposeProbe({ grid, agentEntity: agent });
+    this.spawn(PathControllerEntity, { grid, agent });
   }
-}
-
-// ---------------------------------------------------------------------------
-// Inspector/e2e probe
-// ---------------------------------------------------------------------------
-interface PathfindingProbeHandle {
-  readonly grid: GridGraph;
-  readonly agentEntity: Entity;
-}
-
-function exposeProbe(handle: PathfindingProbeHandle): void {
-  (
-    window as unknown as { __pathfinding__: PathfindingProbeHandle }
-  ).__pathfinding__ = handle;
 }
 
 // ---------------------------------------------------------------------------

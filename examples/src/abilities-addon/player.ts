@@ -2,12 +2,14 @@ import {
   Component,
   Entity,
   ProcessComponent,
+  RandomKey,
   SceneManagerKey,
   SceneTimeKey,
   Transform,
   Vec2,
   trait,
 } from "@yagejs/core";
+import type { RandomService } from "@yagejs/core";
 import {
   AnimatedSpriteComponent,
   AnimationController,
@@ -40,16 +42,16 @@ import {
 } from "./constants.js";
 import {
   BODY_COLLIDER_RADIUS,
+  BoxerAnimState,
   DEFAULT_DIR,
   PLAYER_ANIMS,
   SPRITE_ANCHOR,
   SPRITE_SCALE,
   buildBoxerAnimDefs,
-  installFootAnchorTracking,
   playBoxerAnim,
   sourceFor,
 } from "./boxer-sprites.js";
-import { slowmoVelocityCompensation } from "./steps.js";
+import { InvulnFlashStrobe, slowmoVelocityCompensation } from "./steps.js";
 import { BASE_ATK, Stats, playerHitSteps } from "./stats.js";
 import {
   SHAKE_BY_WEIGHT,
@@ -119,12 +121,12 @@ export interface ChargeSpark {
 export const CHARGE_SPARK_COUNT = 10;
 export const CHARGE_SPARK_RING_RADIUS = 42;
 export const CHARGE_SPARK_INWARD_SPEED = 110; // px/s
-export const CHARGE_SPARK_ALPHA = 0.35; // dimmer than the old rising-ember stream
+export const CHARGE_SPARK_ALPHA = 0.35; // at the ring edge, fading inward
 export const CHARGE_SPARK_COLOR = 0xffe066;
 
-export function spawnChargeSpark(): ChargeSpark {
+export function spawnChargeSpark(random: RandomService): ChargeSpark {
   return {
-    angle: Math.random() * Math.PI * 2,
+    angle: random.range(0, Math.PI * 2),
     radius: CHARGE_SPARK_RING_RADIUS,
   };
 }
@@ -132,6 +134,7 @@ export function spawnChargeSpark(): ChargeSpark {
 export class PlayerController extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly time = this.service(SceneTimeKey);
+  private readonly random = this.service(RandomKey);
   private readonly rb = this.sibling(RigidBodyComponent);
   private readonly facing = this.sibling(Facing);
   private readonly abilities = this.sibling(Abilities);
@@ -306,9 +309,7 @@ export class PlayerController extends Component {
    *  beyond what `SceneManager.replace` already guarantees (old scene
    *  `onExit` + every entity destroyed before the new scene enters). */
   private resetDemo(): void {
-    this.use(SceneManagerKey)
-      .replace(new AbilitiesDemoScene())
-      .catch(() => {});
+    void this.use(SceneManagerKey).replace(new AbilitiesDemoScene());
   }
 
   /** Replace the definitions and the input driver as one game-owned loadout. */
@@ -359,9 +360,8 @@ export class PlayerController extends Component {
   // -------------------------------------------------------------------------
 
   private startChargeSparks(): void {
-    this.chargeSparks = Array.from(
-      { length: CHARGE_SPARK_COUNT },
-      spawnChargeSpark,
+    this.chargeSparks = Array.from({ length: CHARGE_SPARK_COUNT }, () =>
+      spawnChargeSpark(this.random),
     );
   }
 
@@ -373,7 +373,9 @@ export class PlayerController extends Component {
     for (let i = 0; i < this.chargeSparks.length; i++) {
       const spark = this.chargeSparks[i]!;
       spark.radius -= CHARGE_SPARK_INWARD_SPEED * dt;
-      if (spark.radius <= 2) this.chargeSparks[i] = spawnChargeSpark();
+      if (spark.radius <= 2) {
+        this.chargeSparks[i] = spawnChargeSpark(this.random);
+      }
     }
   }
 
@@ -474,7 +476,7 @@ export class PlayerEntity extends Entity {
         anchor: SPRITE_ANCHOR,
       }),
     );
-    installFootAnchorTracking(this);
+    this.add(new BoxerAnimState());
     this.add(new AnimationController(buildBoxerAnimDefs(PLAYER_ANIMS)));
     this.add(new GraphicsComponent());
     this.add(new RigidBodyComponent({ type: "dynamic", fixedRotation: true }));
@@ -484,6 +486,7 @@ export class PlayerEntity extends Entity {
       }),
     );
     this.add(new ProcessComponent());
+    this.add(new InvulnFlashStrobe());
     this.add(new Facing());
     this.add(new Stats({ atk: BASE_ATK, def: 0, maxHp: 100 }));
     this.add(new Health({ max: 100 }));

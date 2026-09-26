@@ -29,11 +29,14 @@ engine.use(
 Read input inside a component:
 
 ```ts
+import { Component } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+
 class PlayerController extends Component {
   private readonly input = this.service(InputManagerKey);
 
   update(dt: number): void {
-    if (this.input.isActionDown("jump")) {
+    if (this.input.isPressed("jump")) {
       // jump
     }
   }

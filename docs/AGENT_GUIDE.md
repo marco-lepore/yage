@@ -340,7 +340,7 @@ window.__yage__.inspector.hasComponent("player", "RigidBodyComponent");
 
 // Scene stack
 window.__yage__.inspector.getSceneStack();
-// → [{ name: 'game', entityCount: 12, paused: false }]
+// → [{ id: 'scene-1', name: 'game', entityCount: 12, paused: false }]
 
 // Error state
 window.__yage__.inspector.getErrors();
@@ -349,7 +349,7 @@ window.__yage__.inspector.getErrors();
 
 ### In Playwright Tests
 
-```typescript
+```typescript yage-context="playwright,browser"
 const pos = await page.evaluate(() =>
   window.__yage__.inspector.getEntityPosition("ball"),
 );
@@ -432,7 +432,7 @@ const physics = logs.filter((e) => e.category === "physics");
 
 1. Create `packages/<plugin>/src/MyComponent.ts`:
 
-```typescript
+```typescript yage-group="component-system" yage-file="MyComponent.ts"
 import { Component } from "@yagejs/core";
 
 export class MyComponent extends Component {
@@ -460,7 +460,7 @@ export class MyComponent extends Component {
 
 1. Create `packages/<plugin>/src/MySystem.ts`:
 
-```typescript
+```typescript yage-group="component-system" yage-file="MySystem.ts"
 import { System, Phase, EngineContext, QueryResult } from "@yagejs/core";
 import { QueryCacheKey } from "@yagejs/core";
 import { MyComponent } from "./MyComponent";
@@ -510,25 +510,68 @@ Each example is one flat HTML file at the `examples/` root plus a source folder
 under `examples/src/`. The HTML's URL is `/<name>.html`. The source lives at
 `examples/src/<name>/main.ts` (use `main.tsx` for React examples).
 
-1. Create `examples/src/<name>/main.ts`. Larger examples split into sibling
-   files in the same folder (`scene.ts`, `player.ts`, `hud.ts`, `constants.ts`,
-   …), and `main.ts` then holds only plugin setup and boot. Relative imports use the
-   `./foo.js` form. Shared helpers come from `../shared/bootstrap.js`
-   (`installDebugFromUrl`, `setupGameContainer`, `getContainer`). Boot with:
+Example code follows the same rules as game code, because people and agents
+copy it. Read `examples/AGENTS.md` first: entity types are `Entity`
+subclasses, components hold the rules, game state lives in a component on a
+host entity, and time and randomness come from the engine. `src/platformer/`
+is the reference example.
 
-```typescript
-import { Engine, Scene } from "@yagejs/core";
-import { RendererPlugin } from "@yagejs/renderer";
+1. Create `examples/src/<name>/main.ts`. Larger examples split into sibling
+   files in the same folder, as `src/platformer/` does (`constants.ts`,
+   `level.ts`, `player.ts`, `hud.ts`, `scene.ts`), and `main.ts` then holds
+   only plugin setup and boot. Relative imports use the `./foo.js` form. Shared
+   helpers come from `../shared/bootstrap.js` (`installDebugFromUrl`,
+   `setupGameContainer`, `getContainer`). A single-file example looks like
+   this:
+
+```typescript yage-group="example-boot" yage-file="my-example/main.ts"
+import {
+  Component,
+  Engine,
+  Entity,
+  Scene,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
+import { GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
 import {
   installDebugFromUrl,
   setupGameContainer,
 } from "../shared/bootstrap.js";
 // import "./styles.css"; // only if the example has a styles.css
 
+/** The rule: turn at a fixed speed. Logic lives in components. */
+class Spin extends Component {
+  private readonly transform = this.sibling(Transform);
+
+  constructor(private readonly speed: number) {
+    super();
+  }
+
+  update(dt: number): void {
+    this.transform.rotate(this.speed * dt); // dt is in seconds
+  }
+}
+
+/** The entity type: a subclass that assembles its components. */
+class SpinnerEntity extends Entity {
+  setup(params: { x: number; y: number }): void {
+    this.add(new Transform({ position: new Vec2(params.x, params.y) }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.rect(-40, -40, 80, 80).fill({ color: 0x38bdf8 });
+      }),
+    );
+    this.add(new Spin(2));
+  }
+}
+
 class MyScene extends Scene {
   readonly name = "my-scene";
+
+  // onEnter assembles the scene; it holds no state and no rules.
   onEnter(): void {
-    // Spawn entities
+    this.spawn(SpinnerEntity, { x: 400, y: 300 });
   }
 }
 
@@ -550,6 +593,20 @@ async function main(): Promise<void> {
 main().catch(console.error);
 ```
 
+The shared helpers in `examples/src/shared/bootstrap.ts` have these signatures:
+
+```typescript yage-group="example-boot" yage-file="shared/bootstrap.ts"
+import type { Engine } from "@yagejs/core";
+
+// Installs DebugPlugin when the page URL has ?debug.
+export declare function installDebugFromUrl(engine: Engine): Promise<void>;
+export declare function getContainer(): HTMLElement;
+export declare function setupGameContainer(
+  width: number,
+  height: number,
+): HTMLElement;
+```
+
 2. Create `examples/<name>.html` at the root. It links `/shared.css`, holds a
    `#game-container`, and loads the module — e.g.
    `<script type="module" src="/src/<name>/main.ts"></script>`. Copy an existing
@@ -558,7 +615,7 @@ main().catch(console.error);
    for static instructions and controls only. **Game state and gameplay feedback
    (score, win/lose banners, toasts) render in-canvas**, not in DOM overlays. Use
    a screen-space layer (`{ name: "hud", order: 1000, space: "screen" }`) plus
-   `TextComponent`s.
+   `TextComponent`s, as `src/platformer/hud.ts` does.
 3. Add an entry to `examples/src/catalog.ts`: title, one-line summary,
    section, the packages it uses beyond `core` and `renderer`, any addons, and
    the yage.dev guide it matches. The index (`examples/index.html`) builds its
@@ -571,6 +628,8 @@ main().catch(console.error);
    (`e2e/specs/examples.spec.ts`) both auto-discover every root `*.html`, so a
    new example is built and smoke-tested with no config change. Add an entry to
    `e2e/specs/examples-atlas.ts` only to script input, set a warmup, or skip.
+5. Run `npm run lint -w @yagejs/examples`. It rejects `setTimeout`,
+   `setInterval`, `Math.random` and blueprints in example code.
 
 ### Add a New AssetHandle Factory
 
@@ -578,6 +637,10 @@ main().catch(console.error);
 
 ```typescript
 import { AssetHandle } from "@yagejs/core";
+
+export interface MyAssetType {
+  // The value your loader resolves with
+}
 
 export function myAsset(path: string): AssetHandle<MyAssetType> {
   return new AssetHandle<MyAssetType>("myType", path);
@@ -587,12 +650,23 @@ export function myAsset(path: string): AssetHandle<MyAssetType> {
 2. Register the loader in your plugin's `install()`:
 
 ```typescript
-install(context: EngineContext) {
-  const assets = context.resolve(AssetManagerKey);
-  assets.registerLoader('myType', {
-    load: async (path) => { /* load and return asset */ },
-    unload: (path, asset) => { /* cleanup */ },
-  });
+import { AssetManagerKey, type EngineContext, type Plugin } from "@yagejs/core";
+
+class MyAssetPlugin implements Plugin {
+  readonly name = "my-assets";
+  readonly version = "1.0.0";
+
+  install(context: EngineContext) {
+    const assets = context.resolve(AssetManagerKey);
+    assets.registerLoader("myType", {
+      load: async (path) => {
+        /* load and return asset */
+      },
+      unload: (path, asset) => {
+        /* cleanup */
+      },
+    });
+  }
 }
 ```
 
@@ -625,12 +699,28 @@ class MyEntity extends Entity {
 
 Traits declare capabilities that are enforced at compile time (via the `@trait()` decorator) and queryable at runtime via `hasTrait()`.
 
-```typescript
-import { Entity, defineTrait, trait } from "@yagejs/core";
+```typescript yage-context="scene"
+import {
+  Component,
+  Entity,
+  Transform,
+  Vec2,
+  defineTrait,
+  trait,
+} from "@yagejs/core";
 
 const Interactable = defineTrait<{ interact(): void; priority: number }>(
   "Interactable",
 );
+
+/** The rule lives in a component. */
+class LightSwitch extends Component {
+  on = false;
+
+  toggle() {
+    this.on = !this.on;
+  }
+}
 
 @trait(Interactable)
 class LightEntity extends Entity {
@@ -638,10 +728,11 @@ class LightEntity extends Entity {
 
   setup({ x, y }: { x: number; y: number }) {
     this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new LightSwitch());
   }
 
   interact() {
-    // toggle light
+    this.get(LightSwitch).toggle(); // hand the call to the component
   }
 }
 
@@ -691,8 +782,8 @@ and entity setup reconstructs runtime objects from the restored facts.
 
 Use one `Save` instance with an explicit state root:
 
-```typescript
-import { createStore, createRecord } from "@yagejs/core";
+```typescript yage-context="engine"
+import { Scene, createStore, createRecord } from "@yagejs/core";
 import {
   createSave,
   SavePlugin,
@@ -724,13 +815,19 @@ save.autoPersist("settings", settings);
 engine.use(new SavePlugin({ save }));
 
 // In game code:
-const save = this.service(SaveServiceKey);
-await save.saveSlot("game", "manual-1", game, {
-  metadata: {
-    /* ... */
-  },
-});
-await save.loadSlot("game", "manual-1", game);
+class GameScene extends Scene {
+  readonly name = "game";
+  private readonly save = this.service(SaveServiceKey);
+
+  async saveAndReload() {
+    await this.save.saveSlot("game", "manual-1", game, {
+      metadata: {
+        /* ... */
+      },
+    });
+    await this.save.loadSlot("game", "manual-1", game);
+  }
+}
 ```
 
 ### Rebuild runtime views after load
@@ -746,7 +843,7 @@ the same durable state model.
 Blueprints still work but entity subclasses are preferred for new code.
 
 ```typescript
-import { defineBlueprint, Transform } from "@yagejs/core";
+import { defineBlueprint, Transform, Vec2 } from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";
 
 export const MyBlueprint = defineBlueprint<{ x: number; y: number }>(
@@ -760,14 +857,20 @@ export const MyBlueprint = defineBlueprint<{ x: number; y: number }>(
 // Usage: scene.spawn(MyBlueprint, { x: 100, y: 200 });
 ```
 
-### Scene Class (Recommended for Real Games)
+### Define a Scene
 
-Use a Scene subclass when you need full lifecycle hooks, asset preloading, or reusable/testable scenes. Services are accessed via `this.service(Key)` which returns a lazy proxy safe to assign as a field.
+A scene is always a `Scene` subclass; there is no lighter form, even for a throwaway prototype. `onEnter` assembles the scene: it spawns entities, sets up the camera and starts music. It holds no game state and no rules, which live in components. Services are accessed via `this.service(Key)`, which returns a lazy proxy safe to assign as a field.
 
-```typescript
-import { Scene, Transform, Vec2 } from "@yagejs/core";
+```typescript yage-context="engine"
+import { Entity, Scene, Transform, Vec2 } from "@yagejs/core";
 import { CameraEntity } from "@yagejs/renderer";
 import { InputManagerKey } from "@yagejs/input";
+
+class PlayerEntity extends Entity {
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+  }
+}
 
 class GameScene extends Scene {
   readonly name = "game";
@@ -785,7 +888,7 @@ class GameScene extends Scene {
   }
 }
 
-// Push onto engine
+// Push onto engine (in main.ts). Components use this.use(SceneManagerKey).
 engine.scenes.push(new GameScene());
 ```
 
@@ -793,6 +896,7 @@ engine.scenes.push(new GameScene());
 > direct world access (raycasts, gravity) resolve once in `onAdd()`:
 >
 > ```typescript
+> import { Component } from "@yagejs/core";
 > import { PhysicsWorldKey } from "@yagejs/physics";
 > import type { PhysicsWorld } from "@yagejs/physics";
 >
@@ -809,11 +913,15 @@ engine.scenes.push(new GameScene());
 Create an `Engine`, register plugins with `engine.use()`, then start and push a scene:
 
 ```typescript
-import { Engine } from "@yagejs/core";
+import { Engine, Scene } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { InputPlugin } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
 
 const engine = new Engine({ debug: true });
 engine.use(new RendererPlugin({ width: 800, height: 600 }));
@@ -842,21 +950,22 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 
 ### Conventions
 
-| Convention                         | Details                                                                                                                                                                                                                                                                       |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Immutable Vec2 by default**      | Keep or share values as `Vec2`. Its vector operations return immutable values. For repeated calculations, reuse a caller-owned `Vec2Buffer` with `Into` methods. Never mutate a `Vec2` or pass it as an output.                                                               |
-| **Transform is mutable**           | Use scalar writes such as `setPosition`, `setWorldPosition`, and `translate`. `Into` getters copy into a caller-owned buffer without constructing `Vec2`. Ordinary vector getters return lazy immutable snapshots that never change after being returned.                     |
-| **Components own game logic**      | Components can have `update(dt)` and `fixedUpdate(dt)` methods. The built-in `ComponentUpdateSystem` calls them per entity, in ascending `updatePriority` (add order by default). Systems are for engine internals and cross-cutting concerns (physics, rendering).           |
-| **Phase assignment**               | Physics in `FixedUpdate`. Input polling in `EarlyUpdate`. Rendering in `Render`. Cleanup in `EndOfFrame`.                                                                                                                                                                     |
-| **ServiceKey for DI**              | Always use `ServiceKey<T>` for type-safe service resolution. Keys use their id string for identity. A repeated id is allowed only for the same contract when avoiding an optional runtime dependency, with a nearby comment naming the owner. Never use string keys directly. |
-| **Plain objects for config**       | Plugin configs, action maps, collider shapes -- all plain objects. No `Map`, no classes for config.                                                                                                                                                                           |
-| **Pixels everywhere**              | All user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`.                                                                                                                                                                             |
-| **co-located unit tests**          | `Foo.ts` test goes in `Foo.test.ts` in the same directory.                                                                                                                                                                                                                    |
-| **E2E tests in `e2e/`**            | Integration tests at repo root, not inside packages.                                                                                                                                                                                                                          |
-| **AssetHandle factories**          | Each plugin exports a factory (e.g., `texture()`, `spritesheet()`, `sound()`) that returns `AssetHandle<T>`. Define handles at module scope, load in scene lifecycle.                                                                                                         |
-| **Entity subclass over Blueprint** | Prefer `class Foo extends Entity` with `setup()` for entity types. Use `@trait()` decorator for discoverable capabilities. Blueprints are deprecated but still work.                                                                                                          |
-| **Entity events for game logic**   | Use `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. Use `EventBus` for global engine events.                                                                                                                                                      |
-| **Controlled save state**          | Persist explicit `Serializable<TEncoded>` state roots. Runtime ECS and plugin objects are reconstructed through normal setup after load.                                                                                                                                      |
+| Convention                         | Details                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Immutable Vec2 by default**      | Keep or share values as `Vec2`. Its vector operations return immutable values. For repeated calculations, reuse a caller-owned `Vec2Buffer` with `Into` methods. Never mutate a `Vec2` or pass it as an output.                                                                                                                                                                                          |
+| **Transform is mutable**           | Use scalar writes such as `setPosition`, `setWorldPosition`, and `translate`. `Into` getters copy into a caller-owned buffer without constructing `Vec2`. Ordinary vector getters return lazy immutable snapshots that never change after being returned.                                                                                                                                                |
+| **Components own game logic**      | Components can have `update(dt)` and `fixedUpdate(dt)` methods. The built-in `ComponentUpdateSystem` calls them per entity, in ascending `updatePriority` (add order by default). Systems are for engine internals and cross-cutting concerns (physics, rendering).                                                                                                                                      |
+| **Phase assignment**               | Physics in `FixedUpdate`. Input polling in `EarlyUpdate`. Rendering in `Render`. Cleanup in `EndOfFrame`.                                                                                                                                                                                                                                                                                                |
+| **ServiceKey for DI**              | Use `ServiceKey<T>` for plugin-owned infrastructure only (renderer, physics world, input manager); game state lives on entities, never in a service. Keys use their id string for identity. A repeated id is allowed only for the same contract when avoiding an optional runtime dependency, with a nearby comment naming the owner. Never use string keys directly.                                    |
+| **Game state on entities**         | Score, lives, inventory or a level clock live in a component on a host entity, reached with `spawn(Class, { key })` + `scene.findByKey`, a query, or the reference `spawn()` returned. Not a module-level `let`, a `Scene` field, or a service. Module-level `createStore` / `createRecord` is only for state `@yagejs/save` persists. Recipe: "Game state on a host entity" in `docs/llms/patterns.md`. |
+| **Plain objects for config**       | Plugin configs, action maps, collider shapes -- all plain objects. No `Map`, no classes for config.                                                                                                                                                                                                                                                                                                      |
+| **Pixels everywhere**              | All user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`.                                                                                                                                                                                                                                                                                                        |
+| **co-located unit tests**          | `Foo.ts` test goes in `Foo.test.ts` in the same directory.                                                                                                                                                                                                                                                                                                                                               |
+| **E2E tests in `e2e/`**            | Integration tests at repo root, not inside packages.                                                                                                                                                                                                                                                                                                                                                     |
+| **AssetHandle factories**          | Each plugin exports a factory (e.g., `texture()`, `spritesheet()`, `sound()`) that returns `AssetHandle<T>`. Define handles at module scope, load in scene lifecycle.                                                                                                                                                                                                                                    |
+| **Entity subclass over Blueprint** | Prefer `class Foo extends Entity` with `setup()` for entity types. Use `@trait()` decorator for discoverable capabilities. Blueprints are deprecated but still work.                                                                                                                                                                                                                                     |
+| **Entity events for game logic**   | Use `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. Use `EventBus` for global engine events.                                                                                                                                                                                                                                                                                 |
+| **Controlled save state**          | Persist explicit `Serializable<TEncoded>` state roots. Runtime ECS and plugin objects are reconstructed through normal setup after load.                                                                                                                                                                                                                                                                 |
 
 ### Pitfalls to Avoid
 
@@ -890,18 +999,18 @@ Before submitting code:
 
 ## 9. Architecture Decision Quick Reference
 
-| Decision                                                    | Rationale                                                                                                                                                                                 |
-| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No global state; services live on `EngineContext`           | Prevents stale refs in async, supports multiple engines in tests                                                                                                                          |
-| Components own game logic; Systems implement engine plugins | ComponentUpdateSystem calls component update/fixedUpdate and skips disabled components. Systems use QueryCache for efficient cross-entity iteration                                       |
-| Cached queries (`QueryCache`)                               | O(1) registration, O(matched) iteration, only updates on archetype changes                                                                                                                |
-| Deterministic frame phases                                  | Predictable execution order; no setTimeout, no async in game loop                                                                                                                         |
-| Physics is optional                                         | Core contains no physics code, so games without physics download no WASM                                                                                                                  |
-| Internal coordinate conversion                              | `PhysicsWorld` handles pixels ↔ meters; users never see Rapier units                                                                                                                      |
-| Error attribution (`ErrorBoundary`)                         | A throw is attributed to the system/component/callback that threw, logged, and inspectable, before it stops the loop                                                                      |
-| Logger always on; Inspector opt-in                          | Every engine logs. The Inspector is installed by `DebugPlugin` or `InspectorPlugin`, so a production bundle leaves it out; `window.__yage__` lets Playwright tests assert on engine state |
-| Explicit save roots (`Serializable<TEncoded>`)              | Save files hold selected durable game facts; scene setup rebuilds runtime ECS and plugin objects after load                                                                               |
-| String keys for texture-dependent components                | `FrameSource` (animation), `texture` (particles), and sprite texture keys integrate with asset loading without coupling to PixiJS objects                                                 |
+| Decision                                                                                       | Rationale                                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No global state: engine services live on `EngineContext`, game state in components on entities | Prevents stale refs in async, supports multiple engines in tests, and resets game state with its scene                                                                                    |
+| Components own game logic; Systems implement engine plugins                                    | ComponentUpdateSystem calls component update/fixedUpdate and skips disabled components. Systems use QueryCache for efficient cross-entity iteration                                       |
+| Cached queries (`QueryCache`)                                                                  | O(1) registration, O(matched) iteration, only updates on archetype changes                                                                                                                |
+| Deterministic frame phases                                                                     | Predictable execution order; no setTimeout, no async in game loop                                                                                                                         |
+| Physics is optional                                                                            | Core contains no physics code, so games without physics download no WASM                                                                                                                  |
+| Internal coordinate conversion                                                                 | `PhysicsWorld` handles pixels ↔ meters; users never see Rapier units                                                                                                                      |
+| Error attribution (`ErrorBoundary`)                                                            | A throw is attributed to the system/component/callback that threw, logged, and inspectable, before it stops the loop                                                                      |
+| Logger always on; Inspector opt-in                                                             | Every engine logs. The Inspector is installed by `DebugPlugin` or `InspectorPlugin`, so a production bundle leaves it out; `window.__yage__` lets Playwright tests assert on engine state |
+| Explicit save roots (`Serializable<TEncoded>`)                                                 | Save files hold selected durable game facts; scene setup rebuilds runtime ECS and plugin objects after load                                                                               |
+| String keys for texture-dependent components                                                   | `FrameSource` (animation), `texture` (particles), and sprite texture keys integrate with asset loading without coupling to PixiJS objects                                                 |
 
 ## 10. Error-Handling Model
 

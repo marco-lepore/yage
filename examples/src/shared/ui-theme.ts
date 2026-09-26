@@ -11,24 +11,14 @@ export const FONT_REGULAR = "Kenney Future";
 export const FONT_NARROW = "Kenney Future Narrow";
 
 /**
- * Web-font handles — declarative font loading. Spread into `allAssets` so a
- * scene's `preload` registers the `@font-face` before the first text draw
- * (Pixi caches fallback metrics on first paint otherwise). Replaces the old
- * hand-rolled `<style>` injection + `document.fonts.load()` dance.
+ * Web-font handles. `allAssets` includes them, so a scene with `allAssets` in
+ * its `preload` registers the `@font-face` before the first text draw.
+ * Without that, Pixi caches the fallback font's metrics on first paint.
  */
 export const fonts = {
   regular: webFont("/assets/Kenney Future.ttf", { family: FONT_REGULAR }),
   narrow: webFont("/assets/Kenney Future Narrow.ttf", { family: FONT_NARROW }),
 } as const;
-
-/**
- * @deprecated Fonts now load declaratively via the `fonts` handles in
- * `allAssets` (scene `preload`). Kept as a no-op so existing call sites still
- * work; safe to drop.
- */
-export function loadFonts(): Promise<void> {
-  return Promise.resolve();
-}
 
 /**
  * Engine-level default text style — pass to `new UIPlugin({ defaultTextStyle })`

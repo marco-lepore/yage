@@ -16,11 +16,11 @@ export interface LightOccluderOptions {
 /**
  * Shadow geometry centred on its entity's `Transform`.
  *
- * `LightingWorld.levelAt()` and the built-in overlay renderer both treat an
- * enabled occluder as opaque: a light reaches a point only when the straight
- * line between them misses every occluder. The shape follows the entity's
- * world position, rotation and scale. Custom renderers read the registered
- * occluders from `LightingWorld.occluders`.
+ * `LightingWorld.levelAt()`, `LightingWorld.levelGridInto()` and both
+ * built-in renderers, `overlayLighting()` and `shaderLighting()`, treat an
+ * enabled occluder as opaque to every light with `castShadows` on. The shape
+ * follows the entity's world position, rotation and scale. Custom renderers
+ * read the registered occluders from `LightingWorld.occluders`.
  */
 export class LightOccluder extends Component {
   private readonly transform = this.sibling(Transform);

@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { gotoFixture, stepFrames, waitForClock } from "./helpers.js";
 
 /**
- * The fixture (`examples/src/inventory-addon.ts`) exposes its two models,
+ * The fixture (`e2e/fixtures/src/inventory-addon.ts`) exposes its two models,
  * both controllers, and the demo state on `window.__inventory__`. Tests
  * drive the controller's input-agnostic host API (the same calls the default
  * `InputBinding` makes) and mutate/read the MODEL — the headless source of

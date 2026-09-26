@@ -1,8 +1,13 @@
-import { Process, Transform } from "@yagejs/core";
-import type { Entity, ProcessComponent, Scene, Vec2 } from "@yagejs/core";
-import { AnimatedSpriteComponent, RendererKey } from "@yagejs/renderer";
+import { Component, Entity, Process, Transform } from "@yagejs/core";
+import type { ProcessComponent, Vec2 } from "@yagejs/core";
+import { AnimatedSpriteComponent } from "@yagejs/renderer";
 import type { CameraEntity, GraphicsComponent } from "@yagejs/renderer";
-import { ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
+import {
+  ParticleEmitterComponent,
+  ParticlePresets,
+  shapeTexture,
+} from "@yagejs/particles";
+import type { EmitterConfig } from "@yagejs/particles";
 import { AudioManagerKey, sound } from "@yagejs/audio";
 import { HitReceiver } from "@yagejs-addons/abilities";
 import type { Hit } from "@yagejs-addons/abilities";
@@ -13,7 +18,7 @@ import {
   HP_BAR_WIDTH,
   playStaggerAnim,
 } from "./boxer-sprites.js";
-import type { AbilitiesDemoScene } from "./scene.js";
+import { CAMERA_KEY, VFX_KEY } from "./constants.js";
 
 export const FLASH_TINT = 0xff5a5a;
 export const FLASH_DURATION = 0.08;
@@ -63,7 +68,7 @@ export function runInvulnFlash(
   duration: number,
 ): void {
   if (duration <= 0) return;
-  const sprite = entity.get(AnimatedSpriteComponent).animatedSprite;
+  const sprite = entity.get(AnimatedSpriteComponent);
   pc.run(
     new Process({
       duration,
@@ -107,7 +112,7 @@ export function reactToHit(
   hit: Hit,
 ): void {
   playStaggerAnim(entity, hit.data.stun ?? 0.2);
-  const sprite = entity.get(AnimatedSpriteComponent).animatedSprite;
+  const sprite = entity.get(AnimatedSpriteComponent);
   sprite.tint = FLASH_TINT;
   pc.run(
     Process.delay(FLASH_DURATION, () => {
@@ -147,7 +152,7 @@ export function reactToBlockedHit(
   baseTint: number,
   hit: Hit,
 ): void {
-  const sprite = entity.get(AnimatedSpriteComponent).animatedSprite;
+  const sprite = entity.get(AnimatedSpriteComponent);
   sprite.tint = BLOCK_FLASH_TINT;
   pc.run(
     Process.delay(BLOCK_FLASH_DURATION, () => {
@@ -175,7 +180,7 @@ export function flashAttacker(
   pc: ProcessComponent,
   baseTint: number,
 ): void {
-  const sprite = entity.get(AnimatedSpriteComponent).animatedSprite;
+  const sprite = entity.get(AnimatedSpriteComponent);
   sprite.tint = ATTACKER_FLASH_TINT;
   pc.run(
     Process.delay(ATTACKER_FLASH_DURATION, () => {
@@ -185,23 +190,24 @@ export function flashAttacker(
 }
 
 // ---------------------------------------------------------------------------
-// VFX hub — two scene-wide particle emitters (impact / charge-burst), shared
-// by every combatant rather than one instance per entity: `burst()` takes
-// explicit world coordinates, so a single emitter can fire at any position
-// without tracking a sibling Transform. The player's own charge-hold visual
-// is a hand-rolled converging effect on `PlayerController` instead (see
-// `ChargeSpark` below) — the particle package's emitter config can't express
-// it (see that section's doc comment) — so this hub's `charge` emitter is
-// used only for `chargeBurst`'s one-shot bursts (the enemy melee/cast
-// telegraph's "energy building" tell).
+// VFX hub — three scene-wide particle emitters (impact / charge-burst /
+// parry), shared by every combatant rather than one instance per entity:
+// `burst()` takes explicit world coordinates, so a single emitter can fire at
+// any position without tracking a sibling Transform. The player's own
+// charge-hold visual is a hand-rolled converging effect on `PlayerController`
+// instead (see `ChargeSpark`) — the particle package's emitter config can't
+// express it — so the `charge` emitter here is used only for `chargeBurst`'s
+// one-shot bursts (the enemy melee/cast telegraph's "energy building" tell).
 // ---------------------------------------------------------------------------
 
-export class VfxHub {
+export class VfxHub extends Component {
   constructor(
     private readonly impact: ParticleEmitterComponent,
     private readonly charge: ParticleEmitterComponent,
     private readonly parry: ParticleEmitterComponent,
-  ) {}
+  ) {
+    super();
+  }
 
   impactBurst(pos: Vec2, count: number): void {
     this.impact.burst(count, pos.x, pos.y);
@@ -217,54 +223,70 @@ export class VfxHub {
   }
 }
 
-export function createVfxHub(scene: Scene): VfxHub {
-  const tex = scene.context.resolve(RendererKey).createTexture((g) => {
-    g.circle(0, 0, 6).fill({ color: 0xffffff });
-  });
+/** Hosts the `VfxHub` and its emitters, one child entity per emitter.
+ *  Spawned once per scene with the `VFX_KEY` key; reach the hub with
+ *  `fxOf`. */
+export class VfxEntity extends Entity {
+  hub!: VfxHub;
 
-  const impactEntity = scene.spawn("fx-impact");
-  impactEntity.add(new Transform());
-  const impact = impactEntity.add(
-    new ParticleEmitterComponent({
-      ...ParticlePresets.sparks(tex),
+  setup(): void {
+    // Every emitter draws the built-in 12px white disc, tinted per effect.
+    // `shapeTexture` returns a texture shared by every emitter that asks for
+    // the same shape and size; never destroy it.
+    const disc = shapeTexture({ type: "circle", size: 12 });
+    const impact = this.spawnEmitter("fx-impact", {
+      ...ParticlePresets.sparks(disc),
       tint: 0xffb454,
       maxParticles: 220,
       lifetime: [0.16, 0.32],
-    }),
-  );
-
-  const chargeEntity = scene.spawn("fx-charge");
-  chargeEntity.add(new Transform());
-  const charge = chargeEntity.add(
-    new ParticleEmitterComponent({
-      ...ParticlePresets.fire(tex),
+    });
+    const charge = this.spawnEmitter("fx-charge", {
+      ...ParticlePresets.fire(disc),
       tint: 0xffe066,
       maxParticles: 150,
       rate: 28,
-    }),
-  );
-
-  const parryEntity = scene.spawn("fx-parry");
-  parryEntity.add(new Transform());
-  const parry = parryEntity.add(
-    new ParticleEmitterComponent({
-      ...ParticlePresets.sparks(tex),
+    });
+    const parry = this.spawnEmitter("fx-parry", {
+      ...ParticlePresets.sparks(disc),
       tint: 0x93f7ff,
       maxParticles: 60,
       lifetime: [0.15, 0.3],
       speed: [220, 380],
-    }),
-  );
+    });
+    this.hub = this.add(new VfxHub(impact, charge, parry));
+  }
 
-  return new VfxHub(impact, charge, parry);
+  private spawnEmitter(
+    name: string,
+    config: EmitterConfig,
+  ): ParticleEmitterComponent {
+    const child = this.spawnChild(name);
+    child.add(new Transform());
+    return child.add(new ParticleEmitterComponent(config));
+  }
 }
 
+/** The scene's `VfxHub`. Throws when the scene has no `VfxEntity`. */
 export function fxOf(entity: Entity): VfxHub {
-  return (entity.scene as AbilitiesDemoScene).fx;
+  const vfx = entity.scene.findByKey<VfxEntity>(VFX_KEY);
+  if (!vfx) {
+    throw new Error(
+      `fxOf: scene "${entity.scene.name}" has no entity with key "${VFX_KEY}".`,
+    );
+  }
+  return vfx.hub;
 }
 
+/** The scene's camera. Throws when the scene has no camera spawned with
+ *  `CAMERA_KEY`. */
 export function cameraOf(entity: Entity): CameraEntity {
-  return (entity.scene as AbilitiesDemoScene).camera;
+  const camera = entity.scene.findByKey<CameraEntity>(CAMERA_KEY);
+  if (!camera) {
+    throw new Error(
+      `cameraOf: scene "${entity.scene.name}" has no entity with key "${CAMERA_KEY}".`,
+    );
+  }
+  return camera;
 }
 
 // ---------------------------------------------------------------------------
@@ -283,7 +305,7 @@ export function playHitSfx(
   entity: Entity,
   options?: { speed?: number; volume?: number },
 ): void {
-  entity.scene.context.resolve(AudioManagerKey).play(HitSfx.path, {
+  entity.scene.context.resolve(AudioManagerKey).play(HitSfx, {
     channel: "sfx",
     speed: options?.speed ?? 1,
     volume: options?.volume ?? 0.7,
@@ -293,13 +315,13 @@ export function playHitSfx(
 export function playBlockSfx(entity: Entity): void {
   entity.scene.context
     .resolve(AudioManagerKey)
-    .play(BlockSfx.path, { channel: "sfx", volume: 0.5 });
+    .play(BlockSfx, { channel: "sfx", volume: 0.5 });
 }
 
 export function playDeathSfx(entity: Entity): void {
   entity.scene.context
     .resolve(AudioManagerKey)
-    .play(DeathSfx.path, { channel: "sfx", volume: 0.55 });
+    .play(DeathSfx, { channel: "sfx", volume: 0.55 });
 }
 
 /** Camera-shake profile per landed-hit weight — a heavier hit shakes harder

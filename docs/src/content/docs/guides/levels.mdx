@@ -20,7 +20,7 @@ npm install @yagejs/level
 
 An entity class becomes placeable by declaring itself:
 
-```typescript
+```typescript yage-group="project" yage-file="Crate.ts"
 import { Entity, Transform } from "@yagejs/core";
 import {
   defineLevelAsset,
@@ -79,7 +79,19 @@ argument saying how it is cut into frames. Its members are the renderer's
 `TextureSliceOptions`, so you state the grid once and spread the same object
 into the frame source your `setup()` builds:
 
-```typescript title="src/Torch.ts"
+```typescript title="src/Torch.ts" yage-group="project" yage-file="Torch.ts"
+import { Entity, Transform } from "@yagejs/core";
+import {
+  defineLevelAsset,
+  defineLevelEntity,
+  defineParams,
+  param,
+  type ParamsOf,
+} from "@yagejs/level";
+import { AnimatedSpriteComponent, texture } from "@yagejs/renderer";
+
+const textureAsset = defineLevelAsset({ kind: "texture", create: texture });
+
 const TORCH_FRAMES = { frameWidth: 48 };
 
 const TorchParams = defineParams({
@@ -118,6 +130,19 @@ A slime has a speed, a chest has a number of coins, a door is locked or it is
 not. Each is a parameter whose authored value is the value itself:
 
 ```typescript title="src/Slime.ts"
+import { Component, Entity } from "@yagejs/core";
+import {
+  defineLevelEntity,
+  defineParams,
+  param,
+  type ParamsOf,
+} from "@yagejs/level";
+
+// Your game's own component.
+declare class SlimeBrain extends Component {
+  constructor(speed: number, facing: "left" | "right");
+}
+
 const SlimeParams = defineParams({
   speed: param.number(40, { min: 5, max: 200, step: 5 }),
   coins: param.integer(3, { min: 0 }),
@@ -160,13 +185,23 @@ changes what a level may hold, so a typed value between two steps is accepted.
 Any of them can be `optional`, which makes "nothing at all" a value:
 
 ```typescript
+import { Component, Entity } from "@yagejs/core";
+import { defineParams, param, type ParamsOf } from "@yagejs/level";
+
+// Your game's own component.
+declare class SlimeBrain extends Component {
+  constructor(patience: number);
+}
+
 const SlimeParams = defineParams({
   patience: param.number(3, { optional: true }),
 });
 
-setup(params: ParamsOf<typeof SlimeParams>): void {
-  // params.patience is number | undefined
-  this.add(new SlimeBrain(params.patience ?? Number.POSITIVE_INFINITY));
+class Slime extends Entity {
+  setup(params: ParamsOf<typeof SlimeParams>): void {
+    // params.patience is number | undefined
+    this.add(new SlimeBrain(params.patience ?? Number.POSITIVE_INFINITY));
+  }
 }
 ```
 
@@ -181,7 +216,18 @@ That is how a level names one of several things your code can do: the level
 file stores the name, and the same object turns the name back into the
 function.
 
-```typescript title="src/Door.ts"
+```typescript title="src/Door.ts" yage-group="door" yage-file="Door.ts"
+import { Component, Entity } from "@yagejs/core";
+import {
+  defineLevelEntity,
+  defineParams,
+  param,
+  type ParamsOf,
+} from "@yagejs/level";
+
+// Your game's own component.
+declare class Alarm extends Component {}
+
 const ON_OPEN = {
   nothing: () => {},
   vanish: (door: Door) => door.destroy(),
@@ -234,7 +280,9 @@ carries a pair, and `param.point` carries a pair that is a *place* — which is
 what lets the level editor draw a handle on it, so the author points at the
 ground instead of typing where the ground is.
 
-```typescript title="src/Slime.ts"
+```typescript title="src/Slime.ts" yage-group="points"
+import { defineParams, param } from "@yagejs/level";
+
 const SlimeParams = defineParams({
   drift: param.vec2({ x: 0, y: -12 }),
   patrolEnd: param.point({ x: 120, y: 0 }, { relative: true }),
@@ -255,11 +303,21 @@ That is where the value is *stored*. What `setup()` receives is a world point
 either way, because the level converts through where the placement ends up in
 the world, the instance transform composed with every parent above it:
 
-```typescript
-setup(params: ParamsOf<typeof SlimeParams>): void {
-  this.add(new Transform());
-  // A world position, whatever the level did with this slime.
-  this.add(new Patrol(params.patrolEnd));
+```typescript yage-group="points"
+import { Component, Entity, Transform, type Vec2 } from "@yagejs/core";
+import type { ParamsOf } from "@yagejs/level";
+
+// Your game's own component.
+declare class Patrol extends Component {
+  constructor(end: Vec2);
+}
+
+class Slime extends Entity {
+  setup(params: ParamsOf<typeof SlimeParams>): void {
+    this.add(new Transform());
+    // A world position, whatever the level did with this slime.
+    this.add(new Patrol(params.patrolEnd));
+  }
 }
 ```
 
@@ -270,6 +328,8 @@ hardpoint, the place a pickup pops out of. Those have to keep following the
 entity, so ask for the placement's own frame with `space: "local"`:
 
 ```typescript
+import { defineParams, param } from "@yagejs/level";
+
 const TurretParams = defineParams({
   muzzle: param.point({ x: 24, y: -6 }, { relative: true, space: "local" }),
 });
@@ -279,6 +339,8 @@ const TurretParams = defineParams({
 point where you use it:
 
 ```typescript
+import { Component, Transform, type Vec2 } from "@yagejs/core";
+
 class Gun extends Component {
   constructor(private readonly muzzle: Vec2) {
     super();
@@ -305,6 +367,22 @@ A wave has a list of spawns. A spawn has a type and a delay. `param.object`
 declares a value with members, and `param.array` a list of them:
 
 ```ts
+import { Component, Entity } from "@yagejs/core";
+import {
+  defineLevelEntity,
+  defineParams,
+  param,
+  type ParamsOf,
+} from "@yagejs/level";
+
+// Your game's own components.
+declare class Chest extends Component {
+  constructor(item: string, count: number);
+}
+declare class Spawner extends Component {
+  queue(type: "slime" | "bat", delay: number): void;
+}
+
 const WaveParams = defineParams({
   loot: param.object({
     item: param.string("coin"),
@@ -328,8 +406,9 @@ class Wave extends Entity {
 
   setup(params: ParamsOf<typeof WaveParams>): void {
     this.add(new Chest(params.loot.item, params.loot.count));
+    const spawner = this.add(new Spawner());
     for (const spawn of params.spawns) {
-      this.add(new Spawner(spawn.type, spawn.delay));
+      spawner.queue(spawn.type, spawn.delay);
     }
   }
 }
@@ -356,6 +435,8 @@ For a shape the kinds cannot describe, `param.json` takes any JSON value and
 hands it over unchanged:
 
 ```ts
+import { defineParams, param } from "@yagejs/level";
+
 const TerrainParams = defineParams({
   noise: param.json({ default: { seed: 1, octaves: 3 } }),
 });
@@ -374,6 +455,22 @@ person reads. `param.custom` names both halves: the JSON the level stores, and
 the function that turns it into what `setup()` receives.
 
 ```ts
+import { Component, Entity } from "@yagejs/core";
+import {
+  defineLevelEntity,
+  defineParams,
+  param,
+  type ParamsOf,
+} from "@yagejs/level";
+
+// Your game's own type and component.
+declare class Direction {
+  static fromName(name: string): Direction;
+}
+declare class Walk extends Component {
+  constructor(facing: Direction);
+}
+
 const SlimeParams = defineParams({
   facing: param.custom<Direction>({
     default: "left",
@@ -419,12 +516,20 @@ is a bug. Throwing fails the load with an error naming the parameter.
 A colour is common enough to have a kind of its own:
 
 ```ts
+import { Entity } from "@yagejs/core";
+import { defineParams, param, type ParamsOf } from "@yagejs/level";
+import { SpriteComponent, texture } from "@yagejs/renderer";
+
+const LampTex = texture("assets/lamp.png");
+
 const LampParams = defineParams({
   tint: param.color("#ffcc88"),
 });
 
-setup(params: ParamsOf<typeof LampParams>): void {
-  this.add(new SpriteComponent({ texture, tint: params.tint })); // 0xffcc88
+class Lamp extends Entity {
+  setup(params: ParamsOf<typeof LampParams>): void {
+    this.add(new SpriteComponent({ texture: LampTex, tint: params.tint })); // 0xffcc88
+  }
 }
 ```
 
@@ -440,7 +545,22 @@ A switch that opens a door, a spawner that feeds an arena, a camera that
 follows the player: each needs a slot the level author fills in with another
 placement. `param.entityRef` is that slot.
 
-```typescript title="src/Switch.ts"
+```typescript title="src/Switch.ts" yage-group="door" yage-file="Switch.ts"
+import { Component, Entity, type EntityHandle } from "@yagejs/core";
+import {
+  defineLevelEntity,
+  defineParams,
+  param,
+  type ParamsOf,
+} from "@yagejs/level";
+import { Door } from "./Door.js";
+
+// Your game's own placeable type and component.
+declare class Chime extends Entity {}
+declare class SwitchMechanism extends Component {
+  constructor(door: EntityHandle<Door>);
+}
+
 const SwitchParams = defineParams({
   door: param.entityRef<Door>({ types: ["game.door"] }),
   chime: param.entityRef<Chime>({ types: ["game.chime"], optional: true }),
@@ -541,7 +661,7 @@ the level is loaded.
 
 Then list the classes once:
 
-```typescript title="src/levelProject.ts"
+```typescript title="src/levelProject.ts" yage-group="project" yage-file="levelProject.ts"
 import { defineLevelProject } from "@yagejs/level";
 import { Crate } from "./Crate.js";
 import { Torch } from "./Torch.js";
@@ -551,7 +671,7 @@ export default defineLevelProject({ entities: [Crate, Torch] });
 
 ## Load one into a scene
 
-```typescript
+```typescript yage-group="project" yage-file="ForestScene.ts" yage-check="syntax" yage-reason="Imports a level file as a Vite JSON module, and the snippet checker resolves no JSON modules."
 import { Scene } from "@yagejs/core";
 import {
   buildLevelCatalog,
@@ -564,10 +684,10 @@ import raw from "./levels/forest.yage-level.json";
 import levelProject from "./levelProject.js";
 
 const built = buildLevelCatalog(levelProject);
-if (!built.ok) throw new Error(built.errors[0].message);
+if (!built.ok) throw new Error(built.errors[0]?.message);
 
 const read = readLevel(raw);
-if (!read.ok) throw new Error(read.errors[0].message);
+if (!read.ok) throw new Error(read.errors[0]?.message);
 
 const forest = prepareLevel(read.document, built.catalog);
 
@@ -624,9 +744,13 @@ its authored parent.
 
 ## Placing the same level twice
 
-```typescript
-instantiateLevel(this, room, { namespace: "room-west" });
-instantiateLevel(this, room, {
+```typescript yage-group="twice" yage-context="scene"
+import { instantiateLevel, type PreparedLevel } from "@yagejs/level";
+
+declare const room: PreparedLevel; // prepared once, like `forest` above
+
+instantiateLevel(scene, room, { namespace: "room-west" });
+instantiateLevel(scene, room, {
   namespace: "room-east",
   transform: { position: { x: 1920, y: 0 } },
 });
@@ -639,8 +763,8 @@ moving the entities.
 
 The returned `LevelInstance` is how you reach what was loaded:
 
-```typescript
-const level = instantiateLevel(this, room, { namespace: "room-west" });
+```typescript yage-group="twice" yage-context="scene"
+const level = instantiateLevel(scene, room, { namespace: "room-west" });
 
 const boss = level.get("01J8Z...");
 level.entities; // parent before child
@@ -680,6 +804,8 @@ beside the level glob in `editor/config.ts`.
 same parser and loader:
 
 ```typescript
+import { readLevel } from "@yagejs/level";
+
 const response = await fetch("/levels/forest.yage-level.json");
 const read = readLevel(await response.json());
 ```
@@ -687,7 +813,14 @@ const read = readLevel(await response.json());
 ## Checking a level without loading it
 
 ```typescript
-import { validateLevel } from "@yagejs/level";
+import {
+  validateLevel,
+  type LevelCatalog,
+  type LevelDocument,
+} from "@yagejs/level";
+
+declare const document: LevelDocument;
+declare const catalog: LevelCatalog;
 
 const problems = validateLevel(document, catalog);
 ```
@@ -718,10 +851,13 @@ If you are building something that authors levels — the
 [level editor](/tooling/level-editor/) is one — `defaultParams` gives you the
 parameter object a new placement starts with:
 
-```typescript
-import { defaultParams } from "@yagejs/level";
+```typescript yage-group="tool"
+import { defaultParams, type LevelCatalog } from "@yagejs/level";
+
+declare const catalog: LevelCatalog;
 
 const entry = catalog.get("game.crate");
+if (!entry) throw new Error('No entity type "game.crate" in the catalog.');
 const params = entry.declaration.params
   ? defaultParams(entry.declaration.params)
   : {};
@@ -733,7 +869,7 @@ was authored with, so changing a default afterwards leaves it alone.
 
 An authoring tool can also ask which controls the schema needs:
 
-```typescript
+```typescript yage-group="tool"
 import { describeParams } from "@yagejs/level";
 
 const fields = entry.declaration.params
@@ -791,6 +927,8 @@ the catalog is built.
 ## Reading level files outside the engine
 
 ```typescript
+/// <reference types="node" />
+import { writeFileSync } from "node:fs";
 import {
   emptyLevelDocument,
   formatLevel,

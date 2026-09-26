@@ -4,7 +4,7 @@ Depends on `@yagejs/core`. Keyboard, mouse, gamepad, and pointer input with acti
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { InputPlugin } from "@yagejs/input";
 
 engine.use(
@@ -30,7 +30,9 @@ Registers `InputManagerKey` in `EngineContext`.
 readonly map of action name to key codes, so a shared catalog declared `as
 const` or frozen passes straight in:
 
-```ts
+```ts yage-context="engine"
+import { InputPlugin } from "@yagejs/input";
+
 const ACTIONS = { jump: ["Space", "KeyW"], fire: ["KeyJ"] } as const;
 engine.use(new InputPlugin({ actions: ACTIONS }));
 ```
@@ -51,11 +53,12 @@ player lets go. Gamepad and pointer input are unaffected.
 
 ## InputManager Queries
 
-```ts
-import { SceneTimeKey } from "@yagejs/core";
+```ts yage-group="manager" yage-context="context"
+import type { SceneTime } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 
 const input = context.resolve(InputManagerKey);
+declare const clock: SceneTime; // a scene's clock, see Clocks below
 
 // Raw input time (seconds). Scene pause and time scaling do not affect it.
 input.getClockTime();
@@ -127,7 +130,12 @@ in each window where the hold crosses `repeatDelay + n * repeatInterval`, so
 one call covers the press and the repeats a held key produces.
 
 ```ts
-interface PressRepeatOptions {
+import type {
+  InputClock,
+  PressRepeatOptions as BasePressRepeatOptions,
+} from "@yagejs/input";
+
+interface PressRepeatOptions extends BasePressRepeatOptions {
   repeat?: boolean; // default false
   repeatDelay?: number; // seconds before the first repeat, default 0.35
   repeatInterval?: number; // seconds between repeats, default 0.1
@@ -181,10 +189,14 @@ follow. Measure that entity's holds from the `dt` its own update receives — th
 raw clock is no substitute, since it runs on real time and so ignores
 `scene.timeScale` and stack pause too.
 
-```ts
+```ts yage-context="component"
+import { SceneTimeKey } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+
 // Inside a Component or Scene subclass — `use` returns a non-optional clock.
 // `scene.tryResolveScoped(SceneTimeKey)` returns `SceneTime | undefined`, which
 // the `clock` option does not accept under exactOptionalPropertyTypes.
+const input = this.use(InputManagerKey);
 const clock = this.use(SceneTimeKey);
 input.getHoldDuration("charge", { clock }); // simulation seconds charged
 input.isJustHeldFor("charge", 0.5, { clock }); // crossing measured on the scene
@@ -222,12 +234,19 @@ Discard it in the scene's `onResume` by consuming it and ignoring the result.
 One discard covers both cases, since the newest press replaces the stamp:
 
 ```ts
-onResume() {
-  const input = this.use(InputManagerKey);
-  // Re-enable first: consumeBufferedPress returns false without claiming when
-  // the action is disabled, so the discard would silently do nothing.
-  input.enableGroup("movement");
-  input.consumeBufferedPress("jump", 0.12, { clock: this.use(SceneTimeKey) });
+import { Scene, SceneTimeKey } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+
+class GameScene extends Scene {
+  readonly name = "game";
+
+  onResume() {
+    const input = this.use(InputManagerKey);
+    // Re-enable first: consumeBufferedPress returns false without claiming when
+    // the action is disabled, so the discard would silently do nothing.
+    input.enableGroup("movement");
+    input.consumeBufferedPress("jump", 0.12, { clock: this.use(SceneTimeKey) });
+  }
 }
 ```
 
@@ -239,18 +258,25 @@ which the press is not on. Read the other scene's clock with
 `tryResolveScoped`, which returns `undefined` where `Scene.use` would throw:
 
 ```ts
-onEnter() {
-  const input = this.use(InputManagerKey);
-  const scenes = this.use(SceneManagerKey);
-  const below = scenes.all.find((s) => s.name === "game");
-  const clock = below?.tryResolveScoped(SceneTimeKey);
-  if (clock) input.consumeBufferedPress("pause", 0.2, { clock });
+import { Scene, SceneManagerKey, SceneTimeKey } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+
+class PauseMenu extends Scene {
+  readonly name = "pause";
+
+  onEnter() {
+    const input = this.use(InputManagerKey);
+    const scenes = this.use(SceneManagerKey);
+    const below = scenes.all.find((s) => s.name === "game");
+    const clock = below?.tryResolveScoped(SceneTimeKey);
+    if (clock) input.consumeBufferedPress("pause", 0.2, { clock });
+  }
 }
 ```
 
 ## Pointer
 
-```ts
+```ts yage-group="manager" yage-context="context"
 input.getPointerPosition(); // Vec2 in world coords (if camera set)
 input.getPointerScreenPosition(); // Vec2 in virtual-space coords
 input.isPointerDown(); // primary pointer has any of buttons 0/1/2 held
@@ -262,8 +288,10 @@ The singular getters above always report the **primary** pointer (the one the br
 
 ### Multi-pointer / touch
 
-```ts
+```ts yage-group="manager" yage-context="context"
 import type { PointerInfo } from "@yagejs/input";
+
+declare const id: number; // a PointerEvent.pointerId
 
 input.getPointers(); // readonly PointerInfo[] — one per active mouse / pen / finger
 input.getPointer(id); // PointerInfo | undefined — direct lookup by pointerId
@@ -297,7 +325,7 @@ Touch / pen pointers are removed from `getPointers()` once their last button rel
 
 Register `RendererPlugin` **before** `InputPlugin`. `InputPlugin` auto-resolves `RendererAdapterKey` (exported from `@yagejs/core`) — the canonical renderer registers itself under that key, so pointer events target its canvas and coordinates route through `canvasToVirtual` with zero config. All downstream consumers (`getPointerScreenPosition`, `getPointerPosition` via camera) see virtual-space pixels regardless of `fit` mode or HiDPI scaling.
 
-```ts
+```ts yage-context="engine"
 import { InputPlugin } from "@yagejs/input";
 
 engine.use(
@@ -313,9 +341,13 @@ If input installs before a renderer registers, the resolve silently returns `und
 
 Override `rendererKey` only when you ship a custom renderer registered under a different `ServiceKey<RendererAdapter>`:
 
-```ts
+```ts yage-context="engine"
+import { ServiceKey } from "@yagejs/core";
+import type { RendererAdapter } from "@yagejs/core";
 import { InputPlugin } from "@yagejs/input";
-import { MyCustomRendererKey } from "./my-renderer.js";
+
+// The key your custom renderer registers its RendererAdapter under.
+const MyCustomRendererKey = new ServiceKey<RendererAdapter>("my-game:renderer");
 
 engine.use(
   new InputPlugin({
@@ -332,17 +364,22 @@ engine.use(
 `getPointerPosition()` returns screen coords by default. To get world coords, set the camera in your scene:
 
 ```ts
+import { Scene } from "@yagejs/core";
 import { CameraEntity } from "@yagejs/renderer";
 import { InputManagerKey } from "@yagejs/input";
 
-onEnter(): void {
-  const cam = this.spawn(CameraEntity, {});
-  const input = this.context.resolve(InputManagerKey);
-  input.setCamera(cam); // CameraEntity satisfies CameraLike
-}
+class GameScene extends Scene {
+  readonly name = "game";
 
-onExit(): void {
-  this.context.resolve(InputManagerKey).clearCamera();
+  onEnter(): void {
+    const cam = this.spawn(CameraEntity, {});
+    const input = this.context.resolve(InputManagerKey);
+    input.setCamera(cam); // CameraEntity satisfies CameraLike
+  }
+
+  onExit(): void {
+    this.context.resolve(InputManagerKey).clearCamera();
+  }
 }
 ```
 
@@ -352,7 +389,7 @@ Any object implementing `CameraLike` (has `screenToWorld(x, y)`) works with `set
 
 Disposer-returning hooks for keys, actions, wheel, and (already covered above) pointers. Use these instead of raw DOM listeners — they participate in the action map, group enable/disable, and `consumePointer` gating.
 
-```ts
+```ts yage-context="context"
 import { InputManagerKey } from "@yagejs/input";
 
 const input = context.resolve(InputManagerKey);
@@ -386,7 +423,11 @@ Action listeners honor group enable/disable — a disabled group's actions don't
 
 `wheel` events appear as one-frame action edges (`WheelUp`, `WheelDown`, `WheelLeft`, `WheelRight`) — rebindable like keys, never linger in `pressedKeys`. Direct callback access via `onWheel(fn)` for raw deltas.
 
-```ts
+```ts yage-group="manager" yage-context="context"
+import { InputPlugin } from "@yagejs/input";
+
+declare function scrollMenu(dx: number, dy: number): void;
+
 new InputPlugin({
   actions: {
     zoomIn: ["WheelUp", "Equal"],
@@ -453,7 +494,7 @@ their owner releases them.
 
 Primitives for handler code that wants to claim an event so it doesn't propagate to the action map. Listener notifications still fire (they're explicit user opt-ins); only the gameplay action edges (`MouseLeft`/`Middle`/`Right`, `WheelUp/Down/Left/Right`) are suppressed.
 
-```ts
+```ts yage-group="manager" yage-context="context"
 input.consumePointer(id); // claim a pointer for the rest of its event cycle
 input.isPointerConsumed(id); // boolean
 input.consumeWheel(); // inside onWheel: suppress this event's wheel action edges
@@ -467,7 +508,10 @@ so scrolling a `UIScrollView` does not also fire wheel-bound gameplay actions.
 
 `consumePointer` also covers **forwarding or replaying a synthetic pointer to the canvas**. A DOM overlay above the canvas (virtual joystick, accessibility overlay, input-replay tooling) that dispatches a synthetic `PointerEvent` so listeners underneath still receive it must pair the dispatch with `consumePointer`, or every forwarded tap leaks into the `MouseLeft/Middle/Right` action edge:
 
-```ts
+```ts yage-group="manager" yage-context="context"
+declare const overlayEl: HTMLElement; // the DOM overlay above the canvas
+declare const canvas: HTMLCanvasElement; // the game canvas
+
 overlayEl.addEventListener("pointerdown", (e) => {
   // Build the init explicitly — spreading `{ ...e }` drops pointerId/clientX/…
   // because PointerEvent fields are not own-enumerable properties.
@@ -496,6 +540,9 @@ Every primitive in `@yagejs/ui` (and `UIRoot` in `@yagejs/ui-react`) marks its u
 Per-component escape hatch via `consumeInput?: boolean` (default `true`):
 
 ```tsx
+import { UIPanel } from "@yagejs/ui";
+import { Panel } from "@yagejs/ui-react";
+
 // React
 <Panel consumeInput={false}>
   {/* This panel is transparent to the action map; clicks pass through. */}
@@ -512,6 +559,7 @@ import {
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
 } from "@yagejs/core";
+import { Container } from "pixi.js";
 
 const container = new Container();
 markPointerConsumeContainer(container); // also forces eventMode="static"
@@ -526,6 +574,8 @@ Marking forces `eventMode = "static"` — required for Pixi's hit-test to report
 Sprites are NOT marked by default — gameplay sprites usually want both Pixi events AND the action map. Opt in via `interactive`:
 
 ```ts
+import { SpriteComponent } from "@yagejs/renderer";
+
 new SpriteComponent({
   texture: "button.png",
   interactive: { eventMode: "static", consumeOnInteraction: true },
@@ -537,7 +587,7 @@ component's lifetime.
 
 ## Runtime Rebinding
 
-```ts
+```ts yage-group="manager" yage-context="context"
 // Simple rebind
 input.rebind("jump", "KeyZ");
 
@@ -570,7 +620,7 @@ should drive one action only.
 
 ## Action Groups
 
-```ts
+```ts yage-group="manager" yage-context="context"
 input.setGroups({
   gameplay: ["jump", "left", "right", "fire"],
   menu: ["confirm", "cancel"],
@@ -593,7 +643,7 @@ Always use `InputManagerKey` for all game input. Do not use raw DOM event listen
 For rebinding UI -- intercept the next physical key. Works for keyboard, mouse,
 **and gamepad buttons** (polling routes through the same interception path):
 
-```ts
+```ts yage-group="manager" yage-context="context"
 const key = await input.listenForNextKey(); // "KeyZ" / "MouseLeft" / "GamepadA"
 input.cancelListen();
 ```
@@ -606,6 +656,8 @@ through the same key pipeline as keyboard/mouse, so `isPressed`,
 across devices. Bind gamepad codes alongside keys in the action map:
 
 ```ts
+import { InputPlugin } from "@yagejs/input";
+
 new InputPlugin({
   actions: {
     jump: ["Space", "GamepadA"],
@@ -639,7 +691,7 @@ via `getTrigger`.
 
 ### Analog API
 
-```ts
+```ts yage-group="manager" yage-context="context"
 const leftStick = input.getStick("left"); // Vec2 — radial deadzone, magnitude clamped to 1.0
 const rightStick = input.getStick("right"); // Vec2
 const leftTrigger = input.getTrigger("left"); // number, 0..1
@@ -660,12 +712,14 @@ auto-promotes via input activity (button press or stick/trigger above its
 deadzone). The active pad's own activity keeps it from being reassigned, so
 two players each pressing buttons doesn't bounce active back and forth.
 
-```ts
+```ts yage-group="manager" yage-context="context"
+declare const hud: { show(message: string): void };
+
 input.getActivePad(); // GamepadInfo | null
 input.setActivePad(0); // manual switch (must be connected)
 input.setActivePad(null); // clear; analog falls back to synthetic state
 
-const dispose = input.onActivePadChanged((info) => {
+const unsubscribe = input.onActivePadChanged((info) => {
   // Replays current state on subscribe; fires on every transition.
   hud.show(info ? `Player on pad ${info.index}` : "No controller");
 });
@@ -673,13 +727,15 @@ const dispose = input.onActivePadChanged((info) => {
 
 ### Connect / disconnect
 
-```ts
+```ts yage-group="manager" yage-context="context"
 const dispose = input.onGamepadConnected((info) => {
   // Replays currently-known pads on subscribe.
   console.log("Pad", info.index, info.id);
 });
 
-input.onGamepadDisconnected((info) => /* pause game / show prompt */);
+input.onGamepadDisconnected((info) => {
+  /* pause game / show prompt */
+});
 
 input.gamepads(); // synchronous: { index, id }[] from navigator.getGamepads()
 ```
@@ -691,6 +747,8 @@ freshly-plugged pads won't fire until the user acts. Use `gamepads()` (or a
 ### Config
 
 ```ts
+import { InputPlugin } from "@yagejs/input";
+
 new InputPlugin({
   deadzones: { stick: 0.15, trigger: 0.05 }, // defaults shown
   triggerThreshold: 0.5,
@@ -705,7 +763,7 @@ before input state changes.
 
 ### Synthetic injection (testing + virtual controls)
 
-```ts
+```ts yage-group="manager" yage-context="context"
 input.fireGamepadButton("GamepadA", true); // routes through real path
 input.fireGamepadAxis("leftX", 0.7); // stored under synthetic pad
 
@@ -730,7 +788,9 @@ Use `fireAction` for a one-frame pulse. For a sustained synthetic device,
 create one action source per independent owner. A source cannot release another
 source's hold on the same action.
 
-```ts
+```ts yage-group="manager" yage-context="context"
+declare const held: boolean; // your on-screen button's pressed state
+
 input.fireAction("attack"); // one-frame pulse: isJustPressed true for 1 frame
 
 const touchControls = input.createActionSource();

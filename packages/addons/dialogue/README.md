@@ -58,7 +58,9 @@ import {
 Write dialogue in `.yarn` files, edit them with the Yarn Spinner VS Code
 extension, and play them natively:
 
-```ts
+```ts yage-context="entity"
+/// <reference types="vite/client" />
+import { DialogueController } from "@yagejs-addons/dialogue";
 import { loadYarn } from "@yagejs-addons/dialogue/yarn";
 
 const story = loadYarn(
@@ -68,6 +70,7 @@ const story = loadYarn(
     eager: true,
   }),
 );
+const controller = entity.get(DialogueController);
 controller.play(story, { start: "Shopkeeper" });
 ```
 
@@ -76,8 +79,9 @@ controller.play(story, { start: "Shopkeeper" });
 - **Default presenters are zero-asset**: Graphics objects for chrome plus canvas
   `SplitText`/`Text` for the typewriter, with native bold/italic and per-glyph
   effects. `defaultDialogueTheme()` gives you a working look with no bundled files.
-- **Bitmap fonts** (baked variant atlases via `bakeBitmapFont`) are an **opt-in**
-  theme path, not the default.
+- **Bitmap fonts** are an **opt-in** theme path, not the default: set the
+  theme's `bitmapFont` to a font baked with `@yagejs/renderer`'s
+  `installBitmapFont`. Bold and italic are synthesised on the regular atlas.
 - **Textured chrome/bubble** (nine-slice from your own textures) is an **opt-in**
   variant; pass texture fields on the theme.
 - **Radial choice presenter** is exported under `./presenters` as
@@ -85,9 +89,12 @@ controller.play(story, { start: "Shopkeeper" });
 
 ## Save / load
 
-The runner exposes read-only cursor state so a game can include dialogue in its
-own explicit save model. Dialogue does not depend on a storage package or save
-slots.
+Dialogue variables persist through the storage you install on the controller.
+Back it with your game's state (`createStoreStorage` over a `@yagejs/core` store,
+or `cells`) and the variables save with the rest of your game. A conversation in
+progress cannot be saved or resumed: save between conversations, or replay the
+script from its start on load. Dialogue does not depend on a storage package or
+save slots.
 
 ## Publishing caveat (`@yagejs-addons` scope)
 

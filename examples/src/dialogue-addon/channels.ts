@@ -1,19 +1,20 @@
 import { Transform, Vec2, type Entity, type Scene } from "@yagejs/core";
-import { sound } from "@yagejs/audio";
+import { sound, type AudioManager } from "@yagejs/audio";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
-import type {
-  DialogueExtraChannel,
-  Mountable,
-  PresentedLine,
+import {
+  createVoiceChannel,
+  type DialogueExtraChannel,
+  type Mountable,
+  type PresentedLine,
 } from "@yagejs-addons/dialogue";
 import { HUD_LAYER } from "./constants.js";
 
 // ── extra channels: a built-in voice-over + a custom transcript ────────────────
 //
-// Channels a host *registers* on the conversation, alongside the built-in
-// presenter trio (text / choices / avatar / chrome). They're wired through the
-// controller's `channels` option below. The addon owns no audio and no transcript
-// UI — these are the GAME's, added with zero addon change.
+// Channels a host registers on the conversation, alongside the built-in
+// presenters (text / choices / avatar / chrome), through the controller's
+// `channels` option (see `DialogueHostEntity`). The addon owns no audio and no
+// transcript UI: both are the game's, added without changing the addon.
 
 /** Sage's voice clips — real synthesized speech (macOS `say`, the Daniel voice),
  *  preloaded by the scene. The map turns each opaque `voice` id (authored in the
@@ -24,6 +25,33 @@ export const VOICE: Record<string, ReturnType<typeof sound>> = {
   vo_sage_gate: sound("/assets/voice/sage_gate.mp3"),
   vo_sage_bye: sound("/assets/voice/sage_bye.mp3"),
 };
+
+/**
+ * The built-in voice-over channel, playing each line's `voice` clip on the
+ * "voice" audio channel. It holds auto-advance until the clip ends; `onEnd`
+ * releases it the moment the clip finishes. With `onSkip: "ring"`, completing
+ * the typewriter doesn't cut the voice: the clip plays on, and stops when the
+ * next line appears or the conversation ends. Pausing the conversation (P)
+ * pauses the clip.
+ */
+export function createSageVoice(audio: AudioManager): DialogueExtraChannel {
+  return createVoiceChannel({
+    onSkip: "ring",
+    play: (id, onEnded) => {
+      const clip = VOICE[id];
+      if (!clip) {
+        onEnded(); // an unknown id doesn't hold the line
+        return { stop() {}, pause() {}, resume() {} };
+      }
+      const handle = audio.play(clip, { channel: "voice", onEnd: onEnded });
+      return {
+        stop: () => handle.stop(),
+        pause: () => (handle.paused = true),
+        resume: () => (handle.paused = false),
+      };
+    },
+  });
+}
 
 /**
  * A tiny asset-free WebAudio synth for the **reveal-events** demo: a soft
@@ -83,10 +111,13 @@ export class BlipSynth {
     const [f, ms, gain, type] = tones[name] ?? [880, 100, 0.12, "sine"];
     this.blip(f, ms, gain, type);
   }
-}
 
-// The voice channel's host half is wired inline in `onEnter` (it just plays the
-// line's clip over @yagejs/audio); see `createVoiceChannel({ play })` below.
+  /** Release the audio context (a browser allows only a few at a time). */
+  close(): void {
+    void this.ctx?.close();
+    this.ctx = undefined;
+  }
+}
 
 /**
  * A CUSTOM extra channel — the "another channel" a game adds with zero addon
@@ -102,33 +133,31 @@ export class TranscriptChannel implements DialogueExtraChannel, Mountable {
   private static readonly PAD = 8;
   private static readonly ROW = 16; // line height
   private readonly lines: string[] = [];
-  private bg: Entity | undefined;
-  private textEntity: Entity | undefined;
-  private panel: TextComponent | undefined;
+  private panel: Entity | undefined;
+  private text: TextComponent | undefined;
 
   mount(scene: Scene): void {
     const { W, PAD, ROW, MAX } = TranscriptChannel;
     const h = PAD * 2 + ROW * MAX;
     // Top-left, under the gold/items line: clear of the bottom box AND the speech
-    // bubbles (which float over the centre/right NPCs).
-    const x = 12;
-    const y = 52;
-    // A semi-opaque backing panel keeps the log legible over the playfield.
-    this.bg = scene.spawn("transcript-bg");
-    this.bg.add(new Transform({ position: new Vec2(x, y) }));
-    this.bg.add(
+    // bubbles (which float over the centre/right NPCs). The backing and the text
+    // are children of the panel, so `dispose` destroys all three at once.
+    this.panel = scene.spawn("transcript");
+    this.panel.add(new Transform({ position: new Vec2(12, 52) }));
+    // A semi-opaque backing keeps the log legible over the playfield.
+    const backing = this.panel.spawnChild("backing");
+    backing.add(new Transform());
+    backing.add(
       new GraphicsComponent({ layer: HUD_LAYER }).draw((g) => {
         g.roundRect(0, 0, W, h, 6)
           .fill({ color: 0x0a0c16, alpha: 0.6 })
           .stroke({ color: 0x2a3146, width: 1, alpha: 0.8 });
       }),
     );
-    // Text on top — spawned after the panel, so it renders above it in the layer.
-    this.textEntity = scene.spawn("transcript-text");
-    this.textEntity.add(
-      new Transform({ position: new Vec2(x + PAD, y + PAD) }),
-    );
-    this.panel = this.textEntity.add(
+    // Spawned after the backing, so it renders above it in the layer.
+    const text = this.panel.spawnChild("text");
+    text.add(new Transform({ position: new Vec2(PAD, PAD) }));
+    this.text = text.add(
       new TextComponent({
         text: "",
         style: {
@@ -144,11 +173,9 @@ export class TranscriptChannel implements DialogueExtraChannel, Mountable {
   }
 
   dispose(): void {
-    this.bg?.destroy();
-    this.textEntity?.destroy();
-    this.bg = undefined;
-    this.textEntity = undefined;
+    this.panel?.destroy();
     this.panel = undefined;
+    this.text = undefined;
   }
 
   /** Fires when a say line is PRESENTED — logged at once, not on reveal. */
@@ -157,7 +184,7 @@ export class TranscriptChannel implements DialogueExtraChannel, Mountable {
     const who = line.speaker?.name ? `${line.speaker.name}: ` : "";
     this.lines.push(this.clip(`${who}${body}`, 42));
     if (this.lines.length > TranscriptChannel.MAX) this.lines.shift();
-    this.panel?.setText(this.lines.join("\n"));
+    this.text?.setText(this.lines.join("\n"));
   }
 
   /** Clip a row to a single line. */

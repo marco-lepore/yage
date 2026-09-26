@@ -1,26 +1,24 @@
 import { Entity, Scene, Transform, Vec2 } from "@yagejs/core";
-import {
-  CameraEntity,
-  GraphicsComponent,
-  TextComponent,
-} from "@yagejs/renderer";
+import { CameraEntity, GraphicsComponent } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
-import { HealthDied } from "@yagejs-addons/abilities";
 import {
   ARENA_MARGIN,
   CAMERA_FOLLOW_SMOOTHING,
+  CAMERA_KEY,
   CAMERA_ZOOM,
+  ENGAGEMENT_TOKEN_KEY,
   HEIGHT,
   HUD_LAYER,
+  PLAYER_KEY,
+  VFX_KEY,
   WIDTH,
 } from "./constants.js";
 import { BOXER_PRELOAD } from "./boxer-sprites.js";
-import { BlockSfx, DeathSfx, HitSfx, createVfxHub } from "./feedback.js";
-import type { VfxHub } from "./feedback.js";
-import { EngagementToken, EnemyEntity } from "./enemies.js";
-import { GameDirector } from "./director.js";
-import { CombatLog, Hud, spawnDeadBanner, spawnHotbar } from "./hud.js";
+import { BlockSfx, DeathSfx, HitSfx, VfxEntity } from "./feedback.js";
+import { EngagementTokenEntity, EnemyEntity } from "./enemies.js";
+import { GameDirectorEntity } from "./director.js";
+import { DeadBannerEntity, HotbarEntity, HudEntity } from "./hud.js";
 import { PlayerEntity } from "./player.js";
 
 // ---------------------------------------------------------------------------
@@ -53,33 +51,33 @@ export class AbilitiesDemoScene extends Scene {
     { name: HUD_LAYER, order: 1200, space: "screen" },
   ];
 
-  camera!: CameraEntity;
-  fx!: VfxHub;
-  token!: EngagementToken;
-
+  // The keyed entities (camera, VFX hub, engagement token, player) are
+  // reached from components with `scene.findByKey`.
   onEnter(): void {
     // Positioned at the arena's center so the layer transform this camera
-    // drives is the identity at rest — `PlayerController` hands it a follow
-    // target below once the player exists. Clamped to the arena so the
-    // zoomed-in view never scrolls past the walls into the background.
-    this.camera = this.spawn(CameraEntity, {
-      position: new Vec2(WIDTH / 2, HEIGHT / 2),
-      zoom: CAMERA_ZOOM,
-      bounds: { minX: 0, minY: 0, maxX: WIDTH, maxY: HEIGHT },
-    });
-    this.fx = createVfxHub(this);
-    const tokenEntity = this.spawn("engagement-token");
-    tokenEntity.add(new Transform());
-    this.token = tokenEntity.add(new EngagementToken());
+    // drives is the identity at rest; it follows the player once the player
+    // exists below. Clamped to the arena so the zoomed-in view never scrolls
+    // past the walls into the background.
+    const camera = this.spawn(
+      CameraEntity,
+      {
+        position: new Vec2(WIDTH / 2, HEIGHT / 2),
+        zoom: CAMERA_ZOOM,
+        bounds: { minX: 0, minY: 0, maxX: WIDTH, maxY: HEIGHT },
+      },
+      { key: CAMERA_KEY },
+    );
+    this.spawn(VfxEntity, { key: VFX_KEY });
+    this.spawn(EngagementTokenEntity, { key: ENGAGEMENT_TOKEN_KEY });
 
     this.buildArena();
 
-    const player = this.spawn(PlayerEntity);
+    const player = this.spawn(PlayerEntity, { key: PLAYER_KEY });
     // Shake (see `cameraOf(...).shake(...)` throughout) composes with follow
     // automatically: `CameraShake` only ever offsets `effectivePosition`,
     // never `CameraComponent.position` itself (the field `CameraFollow` and
     // `CameraBoundsComponent` read/write) — so the two never fight or drift.
-    this.camera.follow(player.get(Transform), {
+    camera.follow(player.get(Transform), {
       smoothing: CAMERA_FOLLOW_SMOOTHING,
     });
     this.spawn(EnemyEntity, {
@@ -94,35 +92,11 @@ export class AbilitiesDemoScene extends Scene {
 
     // Drives the stats-boundary demo: respawns, stat-gem drops, and the
     // kill-fed level-up loop (see `GameDirector`).
-    const director = this.spawn("game-director");
-    director.add(new Transform());
-    director.add(new GameDirector());
+    this.spawn(GameDirectorEntity);
 
-    const hudEntity = this.spawn("hud");
-    hudEntity.add(new Transform({ position: new Vec2(16, 16) }));
-    const log = hudEntity.add(new CombatLog());
-    const text = hudEntity.add(
-      new TextComponent({
-        text: "",
-        style: {
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-          fontSize: 13,
-          fill: 0xe2e8f0,
-          lineHeight: 18,
-        },
-        layer: HUD_LAYER,
-      }),
-    );
-    hudEntity.add(new Hud(text, log));
-
-    spawnHotbar(this);
-
-    const deadBanner = spawnDeadBanner(this);
-    this.on(HealthDied, (_data, entity) => {
-      if (entity?.tags.has("player")) {
-        deadBanner.show();
-      }
-    });
+    this.spawn(HudEntity);
+    this.spawn(HotbarEntity);
+    this.spawn(DeadBannerEntity);
   }
 
   private buildArena(): void {

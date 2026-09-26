@@ -13,132 +13,104 @@ import { VIRTUAL_WIDTH, VIRTUAL_HEIGHT } from "./constants.js";
 export class BackgroundEntity extends Entity {
   setup(): void {
     this.add(new Transform({ position: new Vec2(0, 0) }));
-    this.add(new GraphicsComponent({ layer: "background" }));
-    this.redraw();
-  }
+    this.add(
+      new GraphicsComponent({ layer: "background" }).draw((ctx) => {
+        const sky = linearGradient({
+          axis: "vertical",
+          stops: [
+            { offset: 0, color: 0x1e1b4b },
+            { offset: 0.5, color: 0x312e81 },
+            { offset: 1, color: 0x065f46 },
+          ],
+        });
+        ctx.rect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT).fill(sky);
 
-  private redraw(): void {
-    const g = this.tryGet(GraphicsComponent);
-    if (!g) return;
-    g.draw((ctx) => {
-      ctx.clear();
-      const sky = linearGradient({
-        axis: "vertical",
-        stops: [
-          { offset: 0, color: 0x1e1b4b },
-          { offset: 0.5, color: 0x312e81 },
-          { offset: 1, color: 0x065f46 },
-        ],
-      });
-      ctx.rect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT).fill(sky);
+        const sun = radialGradient({
+          center: { x: 0.25, y: 0.25 },
+          outerRadius: 0.7,
+          stops: [
+            { offset: 0, color: 0xfde68a, alpha: 0.4 },
+            { offset: 1, color: 0xfde68a, alpha: 0 },
+          ],
+          space: "local",
+        });
+        ctx.rect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT).fill(sun);
 
-      const sun = radialGradient({
-        center: { x: 0.25, y: 0.25 },
-        outerRadius: 0.7,
-        stops: [
-          { offset: 0, color: 0xfde68a, alpha: 0.4 },
-          { offset: 1, color: 0xfde68a, alpha: 0 },
-        ],
-        space: "local",
-      });
-      ctx.rect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT).fill(sun);
+        // Grid lines so pixelate / chromaticAberration / CRT / halftone /
+        // wave have geometry to chew on.
+        const gridStep = 40;
+        for (let x = 0; x <= VIRTUAL_WIDTH; x += gridStep) {
+          ctx
+            .moveTo(x, 0)
+            .lineTo(x, VIRTUAL_HEIGHT)
+            .stroke({ color: 0xffffff, width: 1, alpha: 0.06 });
+        }
+        for (let y = 0; y <= VIRTUAL_HEIGHT; y += gridStep) {
+          ctx
+            .moveTo(0, y)
+            .lineTo(VIRTUAL_WIDTH, y)
+            .stroke({ color: 0xffffff, width: 1, alpha: 0.06 });
+        }
 
-      // Grid lines so pixelate / chromaticAberration / CRT / halftone /
-      // wave have geometry to chew on.
-      const gridStep = 40;
-      for (let x = 0; x <= VIRTUAL_WIDTH; x += gridStep) {
-        ctx
-          .moveTo(x, 0)
-          .lineTo(x, VIRTUAL_HEIGHT)
-          .stroke({ color: 0xffffff, width: 1, alpha: 0.06 });
-      }
-      for (let y = 0; y <= VIRTUAL_HEIGHT; y += gridStep) {
-        ctx
-          .moveTo(0, y)
-          .lineTo(VIRTUAL_WIDTH, y)
-          .stroke({ color: 0xffffff, width: 1, alpha: 0.06 });
-      }
-
-      const palette = [0xfacc15, 0xf472b6, 0x60a5fa, 0x34d399, 0xfb923c];
-      const rng = createRandomService(1);
-      for (let i = 0; i < 60; i++) {
-        const x = rng.range(0, VIRTUAL_WIDTH);
-        const y = rng.range(0, VIRTUAL_HEIGHT);
-        const r = rng.range(1, 3.5);
-        const color = rng.pick(palette);
-        ctx.circle(x, y, r).fill({ color, alpha: 0.65 });
-      }
-    });
+        // A fixed seed, so the dots land in the same places on every run.
+        const palette = [0xfacc15, 0xf472b6, 0x60a5fa, 0x34d399, 0xfb923c];
+        const rng = createRandomService(1);
+        for (let i = 0; i < 60; i++) {
+          const x = rng.range(0, VIRTUAL_WIDTH);
+          const y = rng.range(0, VIRTUAL_HEIGHT);
+          const r = rng.range(1, 3.5);
+          const color = rng.pick(palette);
+          ctx.circle(x, y, r).fill({ color, alpha: 0.65 });
+        }
+      }),
+    );
   }
 }
 
-/** Blue circle with the demo's pre-attached hitFlash effect. */
+/** Blue circle with a hitFlash effect attached from the start. */
 export class HeroEntity extends Entity {
-  flashHandle: HitFlashHandle | null = null;
+  /** Fired by the sidebar's "Hit Flash trigger" button. */
+  flash!: HitFlashHandle;
 
   setup(): void {
     this.add(new Transform({ position: new Vec2(150, 320) }));
-    this.add(new GraphicsComponent({ layer: "world" }));
-    this.redraw();
-    this.attachHitFlash();
-  }
-
-  private attachHitFlash(): void {
-    const g = this.tryGet(GraphicsComponent);
-    if (!g) return;
-    this.flashHandle = g.fx.addEffect(
+    const graphics = this.add(
+      new GraphicsComponent({ layer: "world" }).draw((ctx) => {
+        ctx.circle(0, 0, 60).fill({ color: 0x38bdf8 });
+        ctx.circle(0, 0, 60).stroke({ color: 0x0ea5e9, width: 4 });
+      }),
+    );
+    this.flash = graphics.fx.addEffect(
       hitFlash({ color: 0xffffff, duration: 0.2 }),
     );
   }
-
-  private redraw(): void {
-    const g = this.tryGet(GraphicsComponent);
-    if (!g) return;
-    g.draw((ctx) => {
-      ctx.clear();
-      ctx.circle(0, 0, 60).fill({ color: 0x38bdf8 });
-      ctx.circle(0, 0, 60).stroke({ color: 0x0ea5e9, width: 4 });
-    });
-  }
 }
 
-/** Orange square — outline / dropShadow target. */
+/** Orange square — outline / dropShadow / graphicsMask target. */
 export class BlockEntity extends Entity {
   setup(): void {
     this.add(new Transform({ position: new Vec2(310, 320) }));
-    this.add(new GraphicsComponent({ layer: "world" }));
-    this.redraw();
-  }
-
-  private redraw(): void {
-    const g = this.tryGet(GraphicsComponent);
-    if (!g) return;
-    g.draw((ctx) => {
-      ctx.clear();
-      ctx.rect(-60, -60, 120, 120).fill({ color: 0xf97316 });
-      ctx.rect(-60, -60, 120, 120).stroke({ color: 0xfb923c, width: 2 });
-    });
+    this.add(
+      new GraphicsComponent({ layer: "world" }).draw((ctx) => {
+        ctx.rect(-60, -60, 120, 120).fill({ color: 0xf97316 });
+        ctx.rect(-60, -60, 120, 120).stroke({ color: 0xfb923c, width: 2 });
+      }),
+    );
   }
 }
 
-/** Green diamond — glow target. */
+/** Green diamond — glow / rectMask / renderAboveEffects target. */
 export class GemEntity extends Entity {
   setup(): void {
     this.add(new Transform({ position: new Vec2(490, 320) }));
-    this.add(new GraphicsComponent({ layer: "world" }));
-    this.redraw();
-  }
-
-  private redraw(): void {
-    const g = this.tryGet(GraphicsComponent);
-    if (!g) return;
-    g.draw((ctx) => {
-      ctx.clear();
-      ctx.poly([0, -55, 50, 0, 0, 55, -50, 0]).fill({ color: 0x22c55e });
-      ctx.poly([0, -55, 50, 0, 0, 55, -50, 0]).stroke({
-        color: 0x16a34a,
-        width: 3,
-      });
-    });
+    this.add(
+      new GraphicsComponent({ layer: "world" }).draw((ctx) => {
+        ctx.poly([0, -55, 50, 0, 0, 55, -50, 0]).fill({ color: 0x22c55e });
+        ctx.poly([0, -55, 50, 0, 0, 55, -50, 0]).stroke({
+          color: 0x16a34a,
+          width: 3,
+        });
+      }),
+    );
   }
 }

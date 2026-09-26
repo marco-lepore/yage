@@ -1,42 +1,25 @@
-import { Scene, Transform, Vec2, defineEvent } from "@yagejs/core";
+import { Scene, Transform } from "@yagejs/core";
 import {
   CameraEntity,
   GraphicsComponent,
-  texture,
   type LayerDef,
 } from "@yagejs/renderer";
-import { sound } from "@yagejs/audio";
-import { RigidBodyComponent } from "@yagejs/physics";
+import {
+  playerIdleTex,
+  playerWalkTex,
+  playerJumpTex,
+  coinTex,
+  slimeTex,
+  jumpSfx,
+  hurtSfx,
+} from "../assets";
+import { Hud, HUD_KEY } from "../entities/Hud";
 import { Player } from "../entities/Player/index";
 import { Platform } from "../entities/Platform";
 import { Coin } from "../entities/Coin";
 import { Hazard } from "../entities/Hazard";
 import { Slime } from "../entities/Slime";
 import { Wall } from "../entities/Wall";
-import { Hostile } from "../traits";
-
-// ---------------------------------------------------------------------------
-// Assets
-// ---------------------------------------------------------------------------
-export const playerIdleTex = texture("/assets/player-idle.png");
-export const playerWalkTex = texture("/assets/player-walk.png");
-export const playerJumpTex = texture("/assets/player-jump.png");
-export const coinTex = texture("/assets/coin.png");
-export const slimeTex = texture("/assets/slime_purple.png");
-export const jumpSfx = sound("/assets/jump.wav");
-export const hurtSfx = sound("/assets/hurt.wav");
-
-/** Player sprite strips use 48×48 frames. */
-export const PLAYER_FRAME_SIZE = 48;
-/** Coin sprite strip uses 16×16 frames. */
-export const COIN_FRAME_SIZE = 16;
-/** Slime sprite sheet first row: 24×24 frames. */
-export const SLIME_FRAME_SIZE = 24;
-
-// ---------------------------------------------------------------------------
-// Events
-// ---------------------------------------------------------------------------
-export const PlayerHit = defineEvent("game:player-hit");
 
 // ---------------------------------------------------------------------------
 // Level constants
@@ -62,41 +45,26 @@ export class GameScene extends Scene {
     { name: "background", order: -10 },
     { name: "world", order: 0 },
     { name: "player", order: 10 },
+    { name: "hud", order: 1000, space: "screen" },
   ];
 
+  // The scene only assembles the level. The rules live in components: the
+  // player respawns itself when something hostile touches it, each slime
+  // returns to its start when the player is hit, and the HUD counts coins.
   onEnter(): void {
+    this.spawn(Hud, { key: HUD_KEY });
     this.drawBackground();
     this.buildLevel();
 
-    const player = this.spawn(Player, { x: SPAWN_X, y: SPAWN_Y });
-
     const camera = this.spawn(CameraEntity, {
-      follow: player.get(Transform),
-      smoothing: 0.12,
-      snap: true,
       bounds: { minX: 0, minY: 0, maxX: WORLD_WIDTH, maxY: WORLD_HEIGHT },
     });
-
-    this.on(PlayerHit, () => {
-      const p = this.findEntity("player");
-      if (!p) return;
-      const rb = p.get(RigidBodyComponent);
-      rb.setVelocity(Vec2.ZERO);
-      rb.setPosition(SPAWN_X, SPAWN_Y);
-      p.get(Transform).setPosition(SPAWN_X, SPAWN_Y);
-      // Cut back to the spawn point. Without this the camera would ease all
-      // the way across the level at `smoothing`, showing the trip back.
-      camera.snapToTarget();
-
-      for (const entity of this.findEntities({ trait: Hostile })) {
-        if (entity instanceof Slime) {
-          entity.resetPosition();
-        }
-      }
-    });
+    this.spawn(Player, { x: SPAWN_X, y: SPAWN_Y, camera });
   }
 
   private drawBackground(): void {
+    // A one-off entity with no behaviour of its own, so a named spawn is
+    // enough. Every entity type with behaviour is an Entity subclass.
     const bg = this.spawn("background");
     bg.add(new Transform());
     bg.add(

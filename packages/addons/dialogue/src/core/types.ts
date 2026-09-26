@@ -282,9 +282,8 @@ export interface ChoiceOption {
   /** Node to jump to when picked. Omit to just continue the current node. */
   readonly target?: NodeId;
   readonly condition?: Condition;
-  /** Hide this option once it has been picked. Tracked as per-conversation
-   *  cursor state (resets on a fresh `play()`; the future save cursor captures
-   *  it), NOT in the variable storage. */
+  /** Hide this option once it has been picked. Tracked per conversation, NOT
+   *  in the variable storage, so it resets on a fresh `play()`. */
   readonly once?: boolean;
   /**
    * What to do when this option's {@link condition} is **false**. Default

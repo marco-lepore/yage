@@ -21,14 +21,19 @@ entry only).
 
 ```ts
 import { SteeringAgent, seek } from "@yagejs-addons/steering";
-import { Transform } from "@yagejs/core";
+import { Entity, Transform } from "@yagejs/core";
 
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 120,
-    behaviors: [seek(() => player.get(Transform).position)],
-  }),
-);
+class Enemy extends Entity {
+  setup(player: Entity) {
+    this.add(new Transform());
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 120,
+        behaviors: [seek(() => player.get(Transform).position)],
+      }),
+    );
+  }
+}
 ```
 
 `SteeringAgent` is a `@yagejs/core` Component; `ComponentFixedUpdateSystem`
@@ -44,19 +49,30 @@ contacts while steering corrects at `maxAcceleration`). Add the body before
 the agent — it reads the body's type when added:
 
 ```ts
+import { arrive } from "@yagejs-addons/steering";
 import { PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
+import { Entity, Transform, type Vec2Like } from "@yagejs/core";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 
-enemy.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
-enemy.add(
-  new ColliderComponent({ shape: { type: "circle", radius: 10 }, density: 1 }),
-);
-enemy.add(
-  new PhysicsSteeringAgent({
-    maxSpeed: 130,
-    maxAcceleration: 500, // default 4x maxSpeed; the per-step impulse is the capped correction
-    behaviors: [arrive(() => target, { slowRadius: 140 })],
-  }),
-);
+class Enemy extends Entity {
+  setup(target: Vec2Like) {
+    this.add(new Transform());
+    this.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
+    this.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: 10 },
+        density: 1,
+      }),
+    );
+    this.add(
+      new PhysicsSteeringAgent({
+        maxSpeed: 130,
+        maxAcceleration: 500, // default 4x maxSpeed; the per-step impulse is the capped correction
+        behaviors: [arrive(() => target, { slowRadius: 140 })],
+      }),
+    );
+  }
+}
 ```
 
 On a kinematic body the agent switches automatically: kinematic bodies
@@ -70,17 +86,32 @@ custom movers implementing the two methods:
 
 ```ts
 import { SteeringAgent, arrive } from "@yagejs-addons/steering";
-import { RigidBodyComponent } from "@yagejs/physics";
+import { Entity, Transform, type Vec2Like } from "@yagejs/core";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 130,
-    maxAcceleration: 500,
-    behaviors: [arrive(() => target)],
-    body: enemy.get(RigidBodyComponent), // read actual velocity + write output
-    drive: "impulse", // needs applyImpulse + getMass on the body; omit for velocity drive
-  }),
-);
+class Enemy extends Entity {
+  setup(target: Vec2Like) {
+    this.add(new Transform());
+    const body = this.add(
+      new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }),
+    );
+    this.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: 10 },
+        density: 1,
+      }),
+    );
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 130,
+        maxAcceleration: 500,
+        behaviors: [arrive(() => target)],
+        body, // read actual velocity + write output
+        drive: "impulse", // needs applyImpulse + getMass on the body; omit for velocity drive
+      }),
+    );
+  }
+}
 ```
 
 Drive modes:
@@ -98,11 +129,17 @@ Drive modes:
   `RigidBodyComponent`). Two-way physics: push and be pushed.
 
 ```ts
-interface VelocityBody {
+import type { Vec2Like } from "@yagejs/core";
+import type {
+  VelocityBody as BaseVelocityBody,
+  ImpulseBody as BaseImpulseBody,
+} from "@yagejs-addons/steering";
+
+interface VelocityBody extends BaseVelocityBody {
   setVelocity(v: Vec2Like): void;
   getVelocity(): Vec2Like;
 }
-interface ImpulseBody {
+interface ImpulseBody extends BaseImpulseBody {
   applyImpulse(i: Vec2Like): void;
   getVelocity(): Vec2Like;
   getMass(): number;
@@ -144,18 +181,40 @@ clock is to take the commanded velocity from `apply` and integrate it
 yourself:
 
 ```ts
-let commanded = Vec2.ZERO;
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 120,
-    behaviors: [seek(() => target)],
-    apply: (velocity) => {
-      commanded = velocity;
-    },
-  }),
-);
-// in a component's own update(dt):
-enemy.get(Transform).translate(commanded.x * dt, commanded.y * dt);
+import { SteeringAgent, seek } from "@yagejs-addons/steering";
+import {
+  Component,
+  Entity,
+  Transform,
+  Vec2,
+  type Vec2Like,
+} from "@yagejs/core";
+
+class FrameMotion extends Component {
+  commanded = Vec2.ZERO;
+  // update(dt) runs on the frame clock
+  update(dt: number) {
+    this.entity
+      .get(Transform)
+      .translate(this.commanded.x * dt, this.commanded.y * dt);
+  }
+}
+
+class Enemy extends Entity {
+  setup(target: Vec2Like) {
+    this.add(new Transform());
+    const motion = this.add(new FrameMotion());
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 120,
+        behaviors: [seek(() => target)],
+        apply: (velocity) => {
+          motion.commanded = velocity;
+        },
+      }),
+    );
+  }
+}
 ```
 
 `enabled = false` stops the `apply` callback, so `commanded` keeps its last
@@ -174,13 +233,19 @@ default priority 0 = plain weighted sum. Zero behaviors, or all ZERO, →
 ZERO.
 
 ```ts
-interface AgentState {
+import type { Entity, Vec2 } from "@yagejs/core";
+import type {
+  AgentState as BaseAgentState,
+  SteeringBehavior as BaseSteeringBehavior,
+} from "@yagejs-addons/steering";
+
+interface AgentState extends BaseAgentState {
   readonly position: Vec2;
   readonly velocity: Vec2;
   readonly maxSpeed: number;
   readonly entity?: Entity;
 }
-interface SteeringBehavior {
+interface SteeringBehavior extends BaseSteeringBehavior {
   readonly weight: number;
   readonly priority: number;
   evaluate(agent: AgentState, dt: number): Vec2;
@@ -190,7 +255,16 @@ interface SteeringBehavior {
 ## `SteeringAgent` (L2a Component)
 
 ```ts
-interface SteeringAgentOptions {
+import type { Entity, Transform, Vec2 } from "@yagejs/core";
+import type {
+  ImpulseBody,
+  SteeringAgentOptions as BaseSteeringAgentOptions,
+  SteeringApplyContext as BaseSteeringApplyContext,
+  SteeringBehavior,
+  VelocityBody,
+} from "@yagejs-addons/steering";
+
+interface SteeringAgentOptions extends BaseSteeringAgentOptions {
   maxSpeed: number; // required, px/s, settable live
   behaviors?: SteeringBehavior[];
   maxAcceleration?: number; // px/s²; default 4 x maxSpeed (top speed in 0.25s); Infinity = instant snap
@@ -200,7 +274,7 @@ interface SteeringAgentOptions {
   faceHeading?: boolean; // default false; rotates Transform to travel direction (>1 px/s)
   enabled?: boolean; // default true
 }
-interface SteeringApplyContext {
+interface SteeringApplyContext extends BaseSteeringApplyContext {
   readonly entity: Entity;
   readonly dt: number;
   readonly transform: Transform;
@@ -228,6 +302,9 @@ counter-impulse, or `apply(ZERO)`), inherited `agent.enabled`.
 ## Targets, obstacles, neighbors — static or live
 
 ```ts
+import type { Vec2Like } from "@yagejs/core";
+import type { AgentState, Kinematic, Obstacle } from "@yagejs-addons/steering";
+
 type PointTarget = Vec2Like | ((agent: AgentState) => Vec2Like);
 type KinematicTarget = Kinematic | ((agent: AgentState) => Kinematic); // { position, velocity }
 type ObstaclesSource =
@@ -273,16 +350,24 @@ returns a non-zero steer.
 
 ```ts
 import { Steering, seek } from "@yagejs-addons/steering";
+import { Vec2 } from "@yagejs/core";
+
+let target = new Vec2(200, 100); // provider reads it on every compute
 const steering = new Steering([seek(() => target)]);
 let pos = new Vec2(0, 0);
 let vel = Vec2.ZERO;
-vel = steering.compute({ position: pos, velocity: vel, maxSpeed: 120 }, dt);
-pos = pos.add(vel.scale(dt));
+
+function tick(dt: number) {
+  vel = steering.compute({ position: pos, velocity: vel, maxSpeed: 120 }, dt);
+  pos = pos.add(vel.scale(dt));
+}
 ```
 
-## Not in v1
+## Not included
 
-Bundled debug presenter — draw `agent.velocity` yourself. By design (not
-deferred): arrival is a callback (`onArrive` — mirror to your own event in a
-line), and there is no snapshot/restore (steering state is transient;
-`followPath` progress saves via `waypointIndex`/`startAt`).
+- No debug presenter. Draw `agent.velocity` yourself.
+- No arrival event. `arrive` and `followPath` call `onArrive`/`onDepart`;
+  emit your own entity event from the callback if you need one.
+- No `snapshot()`/`restore()`. Steering state is transient. To save
+  `followPath` progress, store its `waypointIndex` and pass it back as
+  `startAt`.

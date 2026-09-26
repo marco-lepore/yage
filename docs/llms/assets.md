@@ -26,7 +26,17 @@ the same way. `pixelArtPreset` is the switch for a whole project.
 ## Per-Scene Preload
 
 ```ts
+import { Scene } from "@yagejs/core";
+import { texture } from "@yagejs/renderer";
+import { sound } from "@yagejs/audio";
+import { tiledMap } from "@yagejs/tilemap";
+
+const HeroTex = texture("assets/hero.png");
+const CoinSfx = sound("assets/sfx/coin.ogg");
+const Level1Map = tiledMap("assets/levels/1.json");
+
 class GameScene extends Scene {
+  readonly name = "game";
   readonly preload = [HeroTex, CoinSfx, Level1Map];
   onEnter() {
     const tex = this.assets.get(HeroTex); // safe — preload finished
@@ -41,8 +51,18 @@ class GameScene extends Scene {
 `scenes.preload(scene, onProgress?)` loads a scene's manifest before you push
 it, so the push enters straight away:
 
-```ts
-await engine.scenes.preload(level2, (ratio) => bar.setFill(ratio));
+```ts yage-context="engine"
+import { Scene } from "@yagejs/core";
+import type { UIProgressBar } from "@yagejs/ui";
+
+class Level2 extends Scene {
+  readonly name = "level2";
+}
+
+declare const bar: UIProgressBar;
+const level2 = new Level2();
+
+await engine.scenes.preload(level2, (ratio) => bar.update({ value: ratio }));
 await engine.scenes.replace(level2);
 ```
 
@@ -54,12 +74,24 @@ pushed holds its references until `assets.clear()`.
 
 There's no manifest abstraction beyond plain arrays. Common layout: one handle module per content area, then per-scene manifest arrays compose them.
 
-```ts
+```ts yage-group="manifest" yage-file="content/heroes.ts"
 // content/heroes.ts
+import { texture, spritesheet } from "@yagejs/renderer";
+
 export const HeroTex = texture("assets/hero.png");
 export const HeroSheet = spritesheet("assets/hero.json");
+```
 
+```ts yage-group="manifest" yage-file="content/sfx.ts"
+// content/sfx.ts
+import { sound } from "@yagejs/audio";
+
+export const CoinSfx = sound("assets/sfx/coin.ogg");
+```
+
+```ts yage-group="manifest" yage-file="content/level1.ts"
 // content/level1.ts
+import { tiledMap } from "@yagejs/tilemap";
 import { HeroSheet } from "./heroes.js";
 import { CoinSfx } from "./sfx.js";
 export const Level1Manifest = [
@@ -67,9 +99,15 @@ export const Level1Manifest = [
   HeroSheet,
   CoinSfx,
 ] as const;
+```
 
+```ts yage-group="manifest" yage-file="scenes/Level1.ts"
 // scenes/Level1.ts
+import { Scene } from "@yagejs/core";
+import { Level1Manifest } from "../content/level1.js";
+
 class Level1 extends Scene {
+  readonly name = "level1";
   readonly preload = Level1Manifest;
 }
 ```
@@ -90,8 +128,12 @@ The cache is engine-wide. Scenes don't own assets.
 
 For a small game, never unload — cache hits are cheap. Use `unload`/`clear` between large levels, when streaming chapters, or when freeing audio bound to a scene.
 
-```ts
+```ts yage-group="manifest" yage-file="scenes/Level1Unload.ts"
+import { Scene } from "@yagejs/core";
+import { Level1Manifest } from "../content/level1.js";
+
 class Level1 extends Scene {
+  readonly name = "level1";
   onExit() {
     for (const h of Level1Manifest) this.assets.unload(h);
   }
@@ -106,8 +148,12 @@ Default loaders dispose appropriately: `unload(textureHandle)` calls Pixi `Asset
 when subsequent work needs cleanup to finish:
 
 ```ts
-await assets.unload(map);
-await assets.loadAll([map]);
+import type { AssetHandle, AssetManager } from "@yagejs/core";
+
+async function reload(assets: AssetManager, map: AssetHandle<unknown>) {
+  await assets.unload(map);
+  await assets.loadAll([map]);
+}
 ```
 
 The last release removes the cache entry immediately. Loading the same handle
@@ -163,9 +209,16 @@ For sub-path deployments (`https://example.com/yage/`), set Vite's `base` and pr
 
 ```ts
 // vite.config.ts
-export default defineConfig({ base: "/yage/" });
+import { defineConfig } from "vite";
 
+export default defineConfig({ base: "/yage/" });
+```
+
+```ts
+/// <reference types="vite/client" />
 // content/...
+import { texture } from "@yagejs/renderer";
+
 const asset = (p: string) => `${import.meta.env.BASE_URL}${p}`;
 const HeroTex = texture(asset("assets/hero.png"));
 ```
@@ -174,12 +227,18 @@ const HeroTex = texture(asset("assets/hero.png"));
 
 ## Custom Loaders
 
-```ts
+```ts yage-context="context"
 import { AssetManagerKey, AssetHandle } from "@yagejs/core";
+
+interface Level {
+  /* your level data */
+}
+declare function parseLevel(data: ArrayBuffer): Level; // your format's parser
 
 context.resolve(AssetManagerKey).registerLoader("levelfmt", {
   async load(path: string): Promise<Level> {
-    /* fetch + parse */
+    const res = await fetch(path); // fetch + parse
+    return parseLevel(await res.arrayBuffer());
   },
   unload(path: string, asset: Level): void {
     /* dispose */

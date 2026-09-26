@@ -1,0 +1,29 @@
+// The embedded demos (GameEmbed.astro) type-checked the way a game scaffolded
+// by create-yage sees the engine: the same compiler options as its templates,
+// resolving @yagejs/* to the built package declarations. The Astro build only
+// strips types, so this is the check that catches a demo broken by an API
+// change. Run through `npm run typecheck`.
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "experimentalDecorators": true,
+    // Browser code: keep the monorepo's Node typings out.
+    "types": []
+  },
+  "include": ["src/demos"]
+}

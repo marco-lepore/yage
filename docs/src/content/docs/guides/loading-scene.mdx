@@ -18,10 +18,12 @@ This gives you two layers:
 
 ## Quick Start
 
-```typescript
-import { LoadingScene } from "@yagejs/core";
+```typescript yage-context="engine"
+import { LoadingScene, Scene } from "@yagejs/core";
 import { fade } from "@yagejs/renderer";
 import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class GameScene extends Scene { readonly name = "game"; }
 
 class Boot extends LoadingScene {
   readonly target = new GameScene();
@@ -51,6 +53,17 @@ you'd rather defer until loading actually starts (the factory runs before
 the preload, so `target.preload` is still inspected):
 
 ```typescript
+import { LoadingScene, Scene } from "@yagejs/core";
+import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class GameScene extends Scene {
+  readonly name = "game";
+
+  constructor(readonly config: { level: number }) {
+    super();
+  }
+}
+
 class Boot extends LoadingScene {
   readonly target = () => new GameScene({ level: 1 });
   override onEnter() {
@@ -60,7 +73,8 @@ class Boot extends LoadingScene {
 }
 ```
 
-The factory is invoked exactly once.
+The factory runs each time a load starts. A retry after a failed load calls
+it again, so the retry builds a new target scene.
 
 ## `minDuration` — the anti-flicker
 
@@ -70,7 +84,14 @@ player feels the pop. Set `minDuration` to the shortest time you're
 willing to show the bar:
 
 ```typescript
-readonly minDuration = 0.5; // stays visible at least 0.5s
+import { LoadingScene, Scene } from "@yagejs/core";
+
+class GameScene extends Scene { readonly name = "game"; }
+
+class Boot extends LoadingScene {
+  readonly target = new GameScene();
+  readonly minDuration = 0.5; // stays visible at least 0.5s
+}
 ```
 
 Wall-clock seconds. Ignores `timeScale`.
@@ -80,7 +101,11 @@ Wall-clock seconds. Ignores `timeScale`.
 Attach a `SceneTransition` to animate the handoff:
 
 ```typescript
+import { LoadingScene, Scene } from "@yagejs/core";
 import { crossFade } from "@yagejs/renderer";
+import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class GameScene extends Scene { readonly name = "game"; }
 
 class Boot extends LoadingScene {
   readonly target = new GameScene();
@@ -147,13 +172,19 @@ a splash that sits until the player presses a key. Set `autoContinue =
 false` and call `continue()` when ready:
 
 ```typescript
+import { Component, EventBusKey, LoadingScene, Scene } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class GameScene extends Scene { readonly name = "game"; }
+
 class Boot extends LoadingScene {
   readonly target = new GameScene();
   readonly autoContinue = false;
 
   override onEnter() {
     this.spawn(LoadingSceneProgressBar);
-    this.spawn(PressAnyKeyPrompt);
+    this.spawn("continue-prompt").add(new PressAnyKeyPrompt());
     this.startLoading();
   }
 }
@@ -193,6 +224,11 @@ caller to propagate rejections back to — the scene stays mounted in a
 failed state. Override `onLoadError` to recover in place:
 
 ```typescript
+import { LoadingScene, Scene } from "@yagejs/core";
+import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class GameScene extends Scene { readonly name = "game"; }
+
 class Boot extends LoadingScene {
   readonly target = new GameScene();
   override onEnter() {
@@ -230,7 +266,9 @@ The `AssetManager` caches handles by key. Consequences:
 
 ## `LoadingSceneProgressBar` options (`@yagejs/ui`)
 
-```typescript
+```typescript yage-context="scene-enter"
+import { Anchor, LoadingSceneProgressBar } from "@yagejs/ui";
+
 this.spawn(LoadingSceneProgressBar, {
   width: 400,                                 // virtual px, default 400
   height: 16,                                 // virtual px, default 16

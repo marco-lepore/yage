@@ -8,7 +8,7 @@ import {
   RigidBodyComponent,
   type PhysicsWorld,
 } from "@yagejs/physics";
-import { jumpSfx } from "../../scenes/GameScene";
+import { jumpSfx } from "../../assets";
 import type { PlayerAnim } from "./index";
 import { LAYER_PLAYER, LAYER_PLATFORM } from "../../layers";
 
@@ -59,7 +59,7 @@ export class PlayerController extends Component {
     // Jump
     if (grounded && this.input.isJustPressed("jump")) {
       this.body.setVelocityY(-PlayerController.JUMP_VELOCITY);
-      this.audio.play(jumpSfx.path, { channel: "sfx" });
+      this.audio.play(jumpSfx, { channel: "sfx" });
     }
 
     // Animation state

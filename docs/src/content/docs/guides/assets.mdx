@@ -21,7 +21,7 @@ Each plugin exposes factories that produce typed handles. Handles are
 plain serializable objects — pass them around freely, store them in
 modules, embed them in scene classes.
 
-```typescript
+```typescript yage-group="handles"
 import { texture, spritesheet } from "@yagejs/renderer";
 import { sound } from "@yagejs/audio";
 import { tiledMap } from "@yagejs/tilemap";
@@ -40,7 +40,7 @@ A few factories take options. `texture(path, { scaleMode: "nearest" })`
 makes that one image sample without smoothing, which is what a pixel-art
 sheet wants in a project that is otherwise smooth:
 
-```typescript
+```typescript yage-group="handles"
 const Tiles = texture("assets/tiles.png", { scaleMode: "nearest" });
 ```
 
@@ -52,10 +52,11 @@ pixel art.
 
 The simplest pattern: each scene declares what it needs.
 
-```typescript
+```typescript yage-group="handles"
 import { Scene } from "@yagejs/core";
 
 class GameScene extends Scene {
+  readonly name = "game";
   readonly preload = [HeroTex, CoinSfx, Level1Map];
 
   onEnter() {
@@ -87,8 +88,18 @@ components subscribe to.
 `scenes.preload(scene)` loads a scene's manifest before you push it, so
 the push enters straight away:
 
-```typescript
-await engine.scenes.preload(level2, (ratio) => bar.setFill(ratio));
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
+import type { UIProgressBar } from "@yagejs/ui";
+
+class Level2 extends Scene {
+  readonly name = "level2";
+}
+
+declare const bar: UIProgressBar;
+const level2 = new Level2();
+
+await engine.scenes.preload(level2, (ratio) => bar.update({ value: ratio }));
 await engine.scenes.replace(level2);
 ```
 
@@ -106,16 +117,24 @@ however you like.
 
 A common pattern is one handle module per content area:
 
-```typescript
+```typescript yage-group="manifest" yage-file="content/heroes.ts"
 // content/heroes.ts
+import { texture, spritesheet } from "@yagejs/renderer";
+
 export const HeroTex   = texture("assets/hero.png");
 export const HeroSheet = spritesheet("assets/hero.json");
+```
 
+```typescript yage-group="manifest" yage-file="content/sfx.ts"
 // content/sfx.ts
+import { sound } from "@yagejs/audio";
+
 export const CoinSfx = sound("assets/sfx/coin.ogg");
 export const HitSfx  = sound("assets/sfx/hit.ogg");
 export const JumpSfx = sound("assets/sfx/jump.ogg");
+```
 
+```typescript yage-group="manifest" yage-file="content/level1.ts"
 // content/level1.ts
 import { CoinSfx, HitSfx } from "./sfx.js";
 import { HeroSheet } from "./heroes.js";
@@ -131,11 +150,13 @@ export const Level1Manifest = [
 ] as const;
 ```
 
-```typescript
+```typescript yage-group="manifest" yage-file="scenes/Level1.ts"
 // scenes/Level1.ts
+import { Scene } from "@yagejs/core";
 import { Level1Manifest } from "../content/level1.js";
 
 class Level1 extends Scene {
+  readonly name = "level1";
   readonly preload = Level1Manifest;
   onEnter() { /* … */ }
 }
@@ -174,8 +195,12 @@ asset is already in memory). Reach for `unload`/`clear` when:
 - The user enters a settings menu and you want to free a music track
   bound to a specific scene.
 
-```typescript
+```typescript yage-group="manifest" yage-file="scenes/Level1Unload.ts"
+import { Scene } from "@yagejs/core";
+import { Level1Manifest } from "../content/level1.js";
+
 class Level1 extends Scene {
+  readonly name = "level1";
   readonly preload = Level1Manifest;
   onExit() {
     // Free this level's textures before the next one preloads
@@ -195,8 +220,12 @@ release the `@pixi/sound` instance.
 when subsequent work needs cleanup to finish:
 
 ```ts
-await assets.unload(map);
-await assets.loadAll([map]);
+import type { AssetHandle, AssetManager } from "@yagejs/core";
+
+async function reload(assets: AssetManager, map: AssetHandle<unknown>) {
+  await assets.unload(map);
+  await assets.loadAll([map]);
+}
 ```
 
 The last release removes the cache entry immediately. Loading the same handle
@@ -257,7 +286,16 @@ places to catch it:
   try/catch. The error message names the failing path so you can show
   it to the user or log it to your telemetry.
 
-```typescript
+```typescript yage-context="scene-enter"
+import { Entity } from "@yagejs/core";
+import { texture } from "@yagejs/renderer";
+
+const LateBundle = texture("assets/bonus-level.png");
+
+class ErrorBanner extends Entity {
+  setup(params: { message: string }) { /* show params.message */ }
+}
+
 try {
   await this.assets.loadAll([LateBundle]);
 } catch (err) {
@@ -291,9 +329,16 @@ configure Vite's `base` option **and** prepend it to your handle paths:
 
 ```typescript
 // vite.config.ts
-export default defineConfig({ base: "/yage/" });
+import { defineConfig } from "vite";
 
+export default defineConfig({ base: "/yage/" });
+```
+
+```typescript
+/// <reference types="vite/client" />
 // content/...
+import { texture } from "@yagejs/renderer";
+
 const HeroTex = texture(`${import.meta.env.BASE_URL}assets/hero.png`);
 ```
 
@@ -302,6 +347,9 @@ build time and to `/` in dev. Wrap the prefix once in a helper if
 you have many assets:
 
 ```typescript
+/// <reference types="vite/client" />
+import { texture } from "@yagejs/renderer";
+
 const asset = (p: string) => `${import.meta.env.BASE_URL}${p}`;
 const HeroTex = texture(asset("assets/hero.png"));
 ```
@@ -318,8 +366,15 @@ file, a binary level format, etc.), register a custom loader against the
 
 ```typescript
 import { AssetManagerKey, AssetHandle } from "@yagejs/core";
+import type { EngineContext, Plugin } from "@yagejs/core";
 
-class MyPlugin {
+interface Level { /* your level data */ }
+declare function parseLevel(data: ArrayBuffer): Level; // your format's parser
+
+class MyPlugin implements Plugin {
+  readonly name = "my-plugin";
+  readonly version = "1.0.0";
+
   install(context: EngineContext) {
     context.resolve(AssetManagerKey).registerLoader("levelfmt", {
       async load(path) {

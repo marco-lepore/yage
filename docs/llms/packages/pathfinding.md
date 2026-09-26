@@ -43,8 +43,12 @@ Diagonal policy: `"never"` = 4-connected. `"always"` = 8-connected, cuts wall co
 
 ## gridFromTilemap
 
-```ts
+```ts yage-context="entity"
+import { Transform } from "@yagejs/core";
 import { gridFromTilemap } from "@yagejs/pathfinding/tilemap";
+import { TilemapComponent } from "@yagejs/tilemap";
+
+const tilemap = entity.get(TilemapComponent);
 
 // tilemap.data is @yagejs/tilemap's TilemapData
 const grid = gridFromTilemap(tilemap.data, {
@@ -59,11 +63,15 @@ Callbacks receive base tile ids — Tiled flip/rotation flag bits are masked off
 
 ## gridFromColliders
 
-```ts
+```ts yage-context="entity"
+import { Transform } from "@yagejs/core";
 import { gridFromColliders } from "@yagejs/pathfinding/tilemap";
+import { TilemapComponent } from "@yagejs/tilemap";
 
-// tilemap is a TilemapComponent; shapes are map-local px, physics-agnostic
-// configs (rect/circle/capsule/polygon/polyline) — see @yagejs/tilemap.
+const tilemap = entity.get(TilemapComponent);
+
+// shapes are map-local px, physics-agnostic configs
+// (rect/circle/capsule/polygon/polyline) — see @yagejs/tilemap.
 const grid = gridFromColliders(tilemap.data, {
   shapes: tilemap.getCollisionShapes("pathfinding"), // an object layer name
   origin: tilemap.entity.get(Transform).position,
@@ -78,7 +86,7 @@ Shape overlap is exact per cell, not bounding-box: a rotated rect uses its true 
 
 No adapter reads `@yagejs/physics` collider shapes directly. Build `isWalkable` yourself with `PhysicsWorld.queryShape`, one query per cell, at level-build time:
 
-```ts
+```ts yage-context="scene-enter"
 import { GridGraph } from "@yagejs/pathfinding";
 import { PhysicsWorldKey } from "@yagejs/physics";
 
