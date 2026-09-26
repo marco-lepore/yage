@@ -2,10 +2,14 @@ import { Entity, Transform, Vec2 } from "@yagejs/core";
 import { AnimatedSpriteComponent } from "@yagejs/renderer";
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import { Oscillate } from "../components/Oscillate";
-import { COIN_FRAME_SIZE, coinTex } from "../scenes/GameScene";
+import { COIN_FRAME_SIZE, coinTex } from "../assets";
+import { CoinCollected } from "../events";
 import { LAYER_COIN, LAYER_PLAYER } from "../layers";
 
-/** Collectible coin. Bobs in place and destroys itself on contact. */
+/**
+ * Collectible coin. Bobs in place; on contact it emits `CoinCollected` and
+ * destroys itself. The HUD's `CoinCounter` does the counting.
+ */
 export class Coin extends Entity {
   setup(params: { x: number; y: number }): void {
     this.add(
@@ -16,7 +20,7 @@ export class Coin extends Entity {
     );
 
     const sprite = new AnimatedSpriteComponent({
-      source: { sheet: coinTex.path, frameWidth: COIN_FRAME_SIZE },
+      source: { sheet: coinTex, frameWidth: COIN_FRAME_SIZE },
       layer: "world",
       anchor: { x: 0.5, y: 0.5 },
     });
@@ -37,7 +41,7 @@ export class Coin extends Entity {
 
     collider.onTrigger((ev) => {
       if (ev.entered) {
-        console.log("coin collected");
+        this.emit(CoinCollected);
         this.destroy();
       }
     });

@@ -2,9 +2,11 @@ import {
   Component,
   Engine,
   Entity,
+  ProcessComponent,
   Scene,
   Transform,
   Vec2,
+  type ProcessSlot,
 } from "@yagejs/core";
 import {
   GraphicsComponent,
@@ -36,22 +38,37 @@ const DASH_SPEED = 900; // px/s
 const DASH_TIME = 0.14; // s
 const DASH_COOLDOWN = 0.8; // s
 
+/** Spawn key of the overlay entity, for `scene.findByKey`. */
+const CONTROLS_KEY = "touch-controls";
+
 /**
  * A side-view runner square driven ONLY through the action map + getStick —
  * it has no idea whether a keyboard, a gamepad, or the virtual overlay is
  * feeding it. That's the addon's point: gameplay code stays input-agnostic.
  */
-class Player extends Component {
+class PlayerController extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly transform = this.sibling(Transform);
   private readonly gfx = this.sibling(GraphicsComponent);
+  private readonly processes = this.sibling(ProcessComponent);
   private vy = 0;
   private grounded = true;
   private facing = 1;
-  private dashLeft = 0;
-  dashCooldown = 0;
+  /** Running while a dash moves the player. */
+  private dash!: ProcessSlot;
+  /** Running until the next dash is allowed. */
+  private cooldown!: ProcessSlot;
+
+  /** Seconds until the next dash is allowed; 0 when it is ready. */
+  get dashCooldown(): number {
+    if (!this.cooldown.running) return 0;
+    return Math.max(0, DASH_COOLDOWN - this.cooldown.elapsed);
+  }
 
   override onAdd(): void {
+    this.dash = this.processes.slot({ duration: DASH_TIME });
+    this.cooldown = this.processes.slot({ duration: DASH_COOLDOWN });
+
     this.addCleanup(
       this.input.onAction("jump", () => {
         if (this.grounded) {
@@ -62,10 +79,9 @@ class Player extends Component {
     );
     this.addCleanup(
       this.input.onAction("dash", () => {
-        if (this.dashCooldown <= 0) {
-          this.dashLeft = DASH_TIME;
-          this.dashCooldown = DASH_COOLDOWN;
-        }
+        if (this.cooldown.running) return;
+        this.dash.restart();
+        this.cooldown.restart();
       }),
     );
   }
@@ -76,12 +92,9 @@ class Player extends Component {
     const moveX = stickX !== 0 ? stickX : this.input.getAxis("left", "right");
     if (moveX !== 0) this.facing = Math.sign(moveX);
 
-    let vx = moveX * MOVE_SPEED;
-    if (this.dashLeft > 0) {
-      this.dashLeft -= dt;
-      vx = this.facing * DASH_SPEED;
-    }
-    this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+    const vx = this.dash.running
+      ? this.facing * DASH_SPEED
+      : moveX * MOVE_SPEED;
 
     // Variable jump height: releasing the (held) jump action mid-rise pulls
     // the arc short — synthetic holds from the overlay behave exactly like a
@@ -106,7 +119,7 @@ class Player extends Component {
     this.gfx.graphics
       .clear()
       .roundRect(-18, -18, 36, 36, 6)
-      .fill({ color: this.dashLeft > 0 ? 0xf472b6 : 0x38bdf8 })
+      .fill({ color: this.dash.running ? 0xf472b6 : 0x38bdf8 })
       .roundRect(this.facing > 0 ? 4 : -10, -8, 6, 6, 2)
       .fill({ color: 0x0f172a });
   }
@@ -132,7 +145,8 @@ class RippleBackdrop extends Component {
     // Ground line.
     g.rect(0, GROUND_Y, WIDTH, 2).fill({ color: 0x334155 });
     for (let i = this.ripples.length - 1; i >= 0; i--) {
-      const r = this.ripples[i]!;
+      const r = this.ripples[i];
+      if (!r) continue;
       r.t += dt;
       if (r.t > 0.6) {
         this.ripples.splice(i, 1);
@@ -151,13 +165,23 @@ class RippleBackdrop extends Component {
 /** Live readout of everything the overlay feeds into the input system. */
 class Hud extends Component {
   private readonly input = this.service(InputManagerKey);
-  lastEvent = "—";
+  private readonly text = this.sibling(TextComponent);
+  private readonly player: PlayerController;
+  private lastEvent = "—";
 
-  constructor(
-    private readonly text: TextComponent,
-    private readonly player: Player,
-  ) {
+  constructor(player: PlayerController) {
     super();
+    this.player = player;
+  }
+
+  override onAdd(): void {
+    // The overlay emits on its own entity; the event bubbles to the scene, so
+    // this keeps working when the overlay is rebuilt with another layout.
+    this.listenScene(VirtualButtonPressEvent, (e) => {
+      this.lastEvent = e.action
+        ? `${e.id} → action "${e.action}"`
+        : `${e.id} (event-only, no action)`;
+    });
   }
 
   override update(): void {
@@ -177,26 +201,33 @@ class Hud extends Component {
   }
 }
 
-class ControlsDemoScene extends Scene {
-  readonly name = "virtual-controls-demo";
-  private controlsHost: Entity | null = null;
-  private controls: VirtualControls | null = null;
-  private hud!: Hud;
+// ---------------------------------------------------------------------------
+// Entities
+// ---------------------------------------------------------------------------
 
-  onEnter(): void {
-    const backdrop = this.spawn("backdrop");
-    backdrop.add(new Transform());
-    backdrop.add(new GraphicsComponent());
-    backdrop.add(new RippleBackdrop());
+class BackdropEntity extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(new GraphicsComponent());
+    this.add(new RippleBackdrop());
+  }
+}
 
-    const player = this.spawn("player");
-    player.add(new Transform({ position: new Vec2(WIDTH / 2, GROUND_Y - 18) }));
-    player.add(new GraphicsComponent());
-    const playerComp = player.add(new Player());
+class PlayerEntity extends Entity {
+  controller!: PlayerController;
 
-    const hudEntity = this.spawn("hud");
-    hudEntity.add(new Transform({ position: new Vec2(20, 16) }));
-    const hudText = hudEntity.add(
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(WIDTH / 2, GROUND_Y - 18) }));
+    this.add(new GraphicsComponent());
+    this.add(new ProcessComponent());
+    this.controller = this.add(new PlayerController());
+  }
+}
+
+class HudEntity extends Entity {
+  setup(params: { player: PlayerController }): void {
+    this.add(new Transform({ position: new Vec2(20, 16) }));
+    this.add(
       new TextComponent({
         text: "",
         style: {
@@ -207,31 +238,25 @@ class ControlsDemoScene extends Scene {
         },
       }),
     );
-    this.hud = hudEntity.add(new Hud(hudText, playerComp));
-
-    this.buildControls(2);
+    this.add(new Hud(params.player));
   }
+}
 
-  /**
-   * (Re)build the overlay with N buttons — 1, 2 and 4 all auto-arrange
-   * around the bottom-right corner with no placement config. The control
-   * set is construction-time, so reconfiguring = destroy + respawn; a
-   * finger already down during the swap must lift and re-touch (a freshly
-   * mounted overlay only sees new presses).
-   */
-  buildControls(buttonCount: 1 | 2 | 4): void {
-    this.controlsHost?.destroy();
-
+/**
+ * The overlay with N buttons — 1, 2 and 4 all auto-arrange around the
+ * bottom-right corner with no placement config.
+ */
+class TouchControls extends Entity {
+  setup(params: { buttonCount: 1 | 2 | 4 }): void {
     const buttons = [
       { id: "a", label: "A", action: "jump" },
       { id: "b", label: "B", action: "dash" },
       // Event-only buttons: no action, observed via VirtualButtonPressEvent.
       { id: "x", label: "X" },
       { id: "y", label: "Y" },
-    ].slice(0, buttonCount);
+    ].slice(0, params.buttonCount);
 
-    const host = this.spawn("touch-controls");
-    this.controls = host.add(
+    this.add(
       new VirtualControls({
         // Forced on for this demo page; the default is "auto" (mobile only).
         visible: true,
@@ -244,16 +269,37 @@ class ControlsDemoScene extends Scene {
         }),
       }),
     );
-    host.on(VirtualButtonPressEvent, (e) => {
-      this.hud.lastEvent = e.action
-        ? `${e.id} → action "${e.action}"`
-        : `${e.id} (event-only, no action)`;
-    });
-    this.controlsHost = host;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scene
+// ---------------------------------------------------------------------------
+
+class ControlsDemoScene extends Scene {
+  readonly name = "virtual-controls-demo";
+
+  onEnter(): void {
+    this.spawn(BackdropEntity);
+    const player = this.spawn(PlayerEntity);
+    this.spawn(HudEntity, { player: player.controller });
+    this.buildControls(2);
+  }
+
+  /**
+   * (Re)build the overlay for the page's layout buttons. The control set is
+   * construction-time, so reconfiguring = destroy + respawn; a finger already
+   * down during the swap must lift and re-touch (a freshly mounted overlay
+   * only sees new presses).
+   */
+  buildControls(buttonCount: 1 | 2 | 4): void {
+    this.findByKey(CONTROLS_KEY)?.destroy();
+    this.spawn(TouchControls, { buttonCount }, { key: CONTROLS_KEY });
   }
 
   toggleControls(): void {
-    if (this.controls) this.controls.setVisible(!this.controls.visible);
+    const controls = this.findByKey(CONTROLS_KEY)?.get(VirtualControls);
+    controls?.setVisible(!controls.visible);
   }
 }
 
