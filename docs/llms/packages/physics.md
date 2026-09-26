@@ -320,15 +320,11 @@ Contact geometry for any pair, sensors included (trigger events carry none):
 
 ```ts yage-context="entity,scene" yage-group="collider"
 import type { Vec2 } from "@yagejs/core";
-import { PhysicsWorldKey } from "@yagejs/physics";
 
 declare const other: ColliderComponent; // another entity's collider
 declare const selfShapeIndex: number, otherShapeIndex: number;
 declare const prediction: number;
-declare const handle: number, otherHandle: number; // Rapier collider handles
 declare function spawnSparks(at: Vec2, facing: Vec2): void;
-
-const world = scene.use(PhysicsWorldKey);
 
 collider.contactWith(other, {
   selfShapeIndex, // measure one shape pair; pass the indices from the event
@@ -343,7 +339,6 @@ collider.onTrigger((ev) => {
   const c = collider.contactWith(ev.otherCollider, ev);
   if (c) spawnSparks(c.otherPoint, c.normal.scale(-1)); // on the other's surface, facing out
 });
-world.contactBetween(handle, otherHandle, prediction); // same, by Rapier handle; prediction optional
 ```
 
 Resizing:
@@ -384,6 +379,9 @@ occupy. Querying the full standing collider also touches the floor and can
 report a false blocker.
 
 ```ts yage-context="entity,scene" yage-group="collider"
+import { PhysicsWorldKey } from "@yagejs/physics";
+
+const world = scene.use(PhysicsWorldKey);
 const rb = entity.get(RigidBodyComponent);
 const STAND_WIDTH = 20;
 const CROUCH_HEIGHT = 20;
@@ -541,7 +539,6 @@ declare const origin: Vec2Like, direction: Vec2Like, maxDistance: number;
 declare const shape: ColliderShape, position: Vec2Like, rotation: number;
 declare const center: Vec2Like, radius: number, excludeEntity: Entity;
 declare const filterGroups: number, sensors: QuerySensorMode, dt: number;
-declare const colliderHandle: number; // Rapier collider handle
 
 // Scene-scoped key: the physics plugin's `beforeEnter` hook registers
 // the active scene's `PhysicsWorld` on its scope; a component resolves the
@@ -570,7 +567,7 @@ world.queryShape(shape, position, {
   sensors,
 }); // Entity[]
 world.queryRadius(center, radius, { filterGroups, excludeEntity, sensors }); // Entity[]
-world.queryOverlapping(colliderHandle); // Entity[]
+// What an existing collider overlaps: collider.getOverlapping() (see ColliderComponent).
 
 // sensors: "exclude" (default) reports solid colliders only, "include" reports
 // both, "only" reports sensors. On raycast, castShape, queryShape, queryRadius.
@@ -636,15 +633,14 @@ apply.
 
 `raycast`, `castShape`, `queryShape` and `queryRadius` skip sensor colliders
 unless `sensors` says otherwise, so a ground check or a line of sight reports
-surfaces rather than trigger zones. `queryOverlapping` is the exception: it
-reports Rapier's intersection pairs, which exist when at least one side is a
-sensor, two sensors included. A pair whose colliders both sit on static bodies
-is never among them.
+surfaces rather than trigger zones. `collider.getOverlapping()` is the
+exception: it reports only pairs where at least one side is a sensor, two
+sensors included, and never a pair whose colliders both sit on static bodies.
 
-All five report every live collider at its current pose. When colliders were
-created, re-shaped, enabled, disabled or teleported since the last physics step, the
-query first runs a zero-duration step, so a collider spawned this frame is
-already seen. That step moves nothing and advances no simulated time; contact
+These four and `collider.getOverlapping()` report every live collider at its
+current pose. When colliders were created, re-shaped, enabled, disabled or
+teleported since the last physics step, the query first runs a zero-duration
+step, so a collider spawned this frame is already seen. That step moves nothing and advances no simulated time; contact
 events for pairs that already overlap are collected then and arrive at the next
 delivery, with `contactImpulse` 0. It costs one extra physics step on a frame
 that both changed colliders and queried.
