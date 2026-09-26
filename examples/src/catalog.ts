@@ -107,7 +107,7 @@ export const EXAMPLES: readonly Example[] = [
     summary:
       "Run-and-gun platformer with squash and stretch, hit flash, camera shake, and knockback.",
     section: "start",
-    packages: ["physics", "input", "audio"],
+    packages: ["physics", "input", "audio", "particles"],
     guide: "/patterns/common-game-patterns/",
   },
   {
