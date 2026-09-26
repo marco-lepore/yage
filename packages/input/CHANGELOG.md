@@ -1,5 +1,37 @@
 # @yagejs/input
 
+## 0.12.0
+
+### Patch Changes
+
+- [#376](https://github.com/marco-lepore/yage/pull/376) [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A held action produces repeat edges. `isJustPressed(action, { repeat: true })` is true on the press and again every `repeatInterval` seconds once the hold passes `repeatDelay`, so one query covers the press and the repeats a menu needs. Called with one argument, `isJustPressed` reports the press edge and nothing else.
+
+  `repeatDelay` defaults to 0.35 seconds and `repeatInterval` to 0.1 seconds, and both are arguments rather than per-action state, so two callers can repeat the same action at different rates. A query window reports at most one edge: a frame longer than the interval steps a menu one row, not five. `clock` selects the clock the repeat is counted on and leaves the press edge alone, which always resolves against the caller's frame or fixed-step window. Left out, repeats count on the raw input clock, so a menu over a paused scene keeps moving.
+
+  Gamepad stick directions repeat with no extra code. A push past the direction threshold arrives as an ordinary `GamepadLeftStickDown`-style key edge, so binding a stick direction to a movement action gives it the cadence a key has, at the same rate.
+
+  The call throws when `repeatDelay` is not a finite number of seconds at or above 0, or `repeatInterval` is not a finite number of seconds above 0, naming the value. An interval of 0 has no defined repeat count; a delay of 0 is legal and starts the cadence at the press. The check runs before any state is read, so the same bad argument throws whatever the action's group enablement.
+
+  `PressRepeatOptions`, `DEFAULT_REPEAT_DELAY` and `DEFAULT_REPEAT_INTERVAL` are exported.
+
+  Keys typed into a text field stay out of the action map. A key press the browser sent to a `<textarea>`, a text-accepting `<input>` — the element `@pixi/ui`'s text input creates and focuses — or a `contenteditable` element raises no action and `preventDefaultKeys` leaves the key to the browser, so a player naming a save file does not also walk the character and can type a space. The press belongs to the field it was sent to even when handling it takes the field off the page, so the Escape or Enter that ends an edit fires no game action bound to it. This is a behaviour change for a game that binds letter keys and shows a text field: while the player types, those actions stay quiet.
+
+  Releases are always delivered. A key held when the field took focus keeps its action down until the player lets go, so nothing is stranded down. Gamepad and pointer input are unaffected by browser focus.
+
+  A release the player made is told apart from one the engine forced. `isJustReleasedByPlayer(action)` is true, in the caller's frame or fixed-step window, only for a key-up, a gamepad button-up, a pointer-button release or an on-screen control the finger left; it is false when the window loses focus, the page hides, a pad disconnects, a pointer gesture is cancelled, `clearAll()` runs or an action source releases everything, and false while the action's group is disabled. Read it wherever the release commits something the player cannot take back, such as a charged shot. `isJustReleased`, `onActionReleased` and the release-duration helpers report every end of a hold, forced or not.
+
+- [#374](https://github.com/marco-lepore/yage/pull/374) [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - An action map can be readonly. `ActionMapInput` — `Readonly<Record<string, readonly string[]>>` — is the type of `InputConfig.actions`, `setActionMap(map)` and `loadBindings(map)`, so a catalog declared once and shared across scenes compiles as written:
+
+  ```ts
+  const ACTIONS = { jump: ["Space", "KeyW"], fire: ["KeyJ"] } as const;
+  engine.use(new InputPlugin({ actions: ACTIONS }));
+  ```
+
+  Each of the three copies every key list, so a later rebind leaves the caller's object alone. `exportBindings()` returns a fresh mutable `ActionMapDefinition`, ready to serialize.
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0c90d77`](https://github.com/marco-lepore/yage/commit/0c90d774bdbda47f5a95c92ab7aef11d7a19e7b9), [`6888d06`](https://github.com/marco-lepore/yage/commit/6888d06c6fdf2361f41c5521ebdda83dc833b6c4), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`5efe5f6`](https://github.com/marco-lepore/yage/commit/5efe5f6de138b71048e6f4752ed74647a9fc3e76), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210)]:
+  - @yagejs/core@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes

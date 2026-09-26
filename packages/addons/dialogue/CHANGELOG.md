@@ -1,5 +1,61 @@
 # @yagejs-addons/dialogue
 
+## 0.7.0
+
+### Minor Changes
+
+- [#369](https://github.com/marco-lepore/yage/pull/369) [`edd86b4`](https://github.com/marco-lepore/yage/commit/edd86b496d55298ae9deced1a52bedfcbbb14bf5) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Script text fields take a `DialogueText`: an authored string or a
+  `{ key, fallback, values? }` message (the shape `@yagejs-addons/i18n`'s `msg`
+  returns). `SayStep.text`, `ChoiceStep.text`, `ChoiceOption.text`,
+  `ChoiceOption.disabledReason`, and `SpeakerDef.name` accept it; the separate
+  `SayStep.key`, `ChoiceStep.key`, `ChoiceOption.key`, and `SpeakerDef.nameKey`
+  fields are gone. The compact DSL's `#line:id` tag now produces the message form.
+
+  `I18nAdapter` is `{ locale, resolve(text, values?), subscribe?() }` instead of
+  `{ locale, t(key, fallback, params?) }`. `DialogueController` resolves the
+  adapter from its `i18n` option, then a service registered under the
+  `"localization"` id (the `@yagejs-addons/i18n` plugin), then `IdentityI18n`.
+  When the adapter has `subscribe`, a locale change re-presents the line or
+  choice menu on screen in place through the new `DialogueSession.retranslate()`:
+  a line keeps its reveal progress, a menu keeps its highlighted row, and no
+  event fires.
+
+  A `#line:` tag with no catalog key fails at the line that wrote it, and a
+  message's `values` are checked entry by entry when a script loads.
+
+  `TextChannel` has a new required method, `replaceVisible(line)`, which swaps
+  the text of the line on screen without restarting its reveal. The bundled text
+  views and `CompositeTextPresenter` implement it; a custom text presenter built
+  on `LineReveal` implements it by passing the new text to the new
+  `LineReveal.rebase`.
+
+- [#384](https://github.com/marco-lepore/yage/pull/384) [`24a67fa`](https://github.com/marco-lepore/yage/commit/24a67fa36574489a67b5f8301a11fe738b14068e) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Play Yarn Spinner dialogue. The new `@yagejs-addons/dialogue/yarn` entry exports `loadYarn`, which compiles `.yarn` files — one source, or a whole folder read with `import.meta.glob`, with its `.yarnproject` — into one validated script every `DialogueController` plays. Pick the node per conversation with `controller.play(story, { start: "Shopkeeper" })`.
+
+  `loadYarn` covers lines with characters, `{$expressions}`, markup and hashtags; options with bodies, conditions and `<<once>>`; `<<if>>` / `<<elseif>>` / `<<else>>`; `<<once>>` blocks; `<<jump>>` (also to `{$expression}`), `<<detour>>`, `<<return>>`, `<<stop>>`; `<<declare>>` with types, `<<set>>` with `to` and `+= -= *= /= %=`, smart variables, enums, and implied declarations; `visited()` / `visited_count()`; line groups, node groups and `has_any_content()`; `<<wait>>`; and game commands, whose words arrive as `args` and whose handler can return a promise to hold the dialogue until it settles, as in Yarn Spinner. `#view:`, `#voice:`, `#expression:`, `#speed:` and `#auto:` hashtags set the line's fields; other hashtags land in `meta`. The project's `sourceFiles` / `excludeFiles` pick the sources, and each localisation strings table becomes a catalog in `story.catalogs`, keyed by `#line:` id, ready for `@yagejs-addons/i18n`. Errors throw `DialogueYarnError` with the file and line.
+
+  To run Yarn content natively, the dialogue model grows these general features:
+  - `play(script, { start })` begins at any node; an unknown node throws `DialoguePlayError` before anything changes.
+  - `detour` and `return` steps run a node as a subroutine; `goto` takes `leaveDetours`. A `goto` or `detour` target can be an expression (`StepTarget`), evaluated when the step runs; a value naming no node is reported through `onError` and ends the conversation.
+  - A `select` step lets the runtime pick one option: available ones, then the least picked (each option's `counter` variable), then the highest `priority`, then at random.
+  - `say` steps, choice prompts, and choice options take `expressions`: computed `{name}` tokens evaluated each time the text shows.
+  - A command's `args` are positional values; expressions among them are evaluated when the command fires. `CommandHandler`, `onCommand`, `DialogueCommandEvent`, and extra channels now receive a `FiredCommand`, whose `args` are plain values. An argument that fails to evaluate (a function that throws) is reported through `onError`, and that command is skipped.
+  - `{ type: "wait", seconds }` (or `args: [seconds]`) holds the conversation on its own clock with no handler. A game's own `wait` handler, or its `fallbackCommand`, still takes precedence. When this default runs a `wait`, a literal duration that isn't a number of seconds >= 0 makes `play()` throw `DialoguePlayError`; one computed by an expression is reported through `onError`.
+  - Built-in functions — Yarn Spinner's standard library (`random`, `random_range`, `dice`, `round`, `floor`, `ceil`, `min`, `max`, `format`, …) — work in any script without installing them; an installed function of the same name wins. Randomness, including `select`, comes from the new `DialogueSessionOptions.random`; `DialogueController` passes its scene's seeded `RandomService`.
+  - `parseExpr` now parses `*`, `/`, `%`, and `xor` / `^`.
+  - Markup accepts `[/]` (close every span), whitespace before `/]`, quoted values holding spaces or `/`, tag names with digits and `_`, and `[nomarkup]…[/nomarkup]`. The replacement markers `[select …/]`, `[plural …/]` and `[ordinal …/]` become text, using the `I18nAdapter`'s locale for plural forms; `parseMarkup` and `stripMarkup` take `{ locale }`.
+  - A `set` whose value is not a finite number is reported through `onError` and not written.
+
+  Behaviour changes: text such as `[sfx2/]` or `[nomarkup]` that used to render as written or as an effect span now parses as markup, and a `[select …/]`, `[plural …/]`, or `[ordinal …/]` marker becomes text instead of firing `DialogueRevealMarkerEvent`. A `wait` command with no handler no longer fails `play()`, and a `wait` now holds the conversation while its handler runs unless it sets `blocking: false` (a game's own promise-returning `wait` handler used to be fire-and-forget without `blocking: true`). A node id is matched as an own key only: a `goto` to an inherited name such as `toString` is now a load error, and a node named `__proto__` loads as a node.
+
+### Patch Changes
+
+- [#391](https://github.com/marco-lepore/yage/pull/391) [`c156b12`](https://github.com/marco-lepore/yage/commit/c156b127ceaa5d0c3ee625f83f3bbe7ff49cc530) Thanks [@marco-lepore](https://github.com/marco-lepore)! - The documentation no longer describes a save cursor or variant font atlases that do not ship. A conversation in progress cannot be saved or resumed; dialogue variables persist through the storage installed on the controller, and bold and italic are drawn on the regular font atlas.
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0c90d77`](https://github.com/marco-lepore/yage/commit/0c90d774bdbda47f5a95c92ab7aef11d7a19e7b9), [`1f45e38`](https://github.com/marco-lepore/yage/commit/1f45e38d108b17e37a807c209b5d84159b88867c), [`6888d06`](https://github.com/marco-lepore/yage/commit/6888d06c6fdf2361f41c5521ebdda83dc833b6c4), [`a7fd74e`](https://github.com/marco-lepore/yage/commit/a7fd74e75347a7a1b56ab18fcfb55f2f5cf4da46), [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`851310c`](https://github.com/marco-lepore/yage/commit/851310c54e04f5cdb52819050ca0a50f36b8e4c3), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`5efe5f6`](https://github.com/marco-lepore/yage/commit/5efe5f6de138b71048e6f4752ed74647a9fc3e76), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210)]:
+  - @yagejs/core@0.12.0
+  - @yagejs/renderer@0.12.0
+  - @yagejs/input@0.12.0
+
 ## 0.6.0
 
 ### Minor Changes

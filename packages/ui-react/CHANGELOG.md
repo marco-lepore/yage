@@ -1,5 +1,39 @@
 # @yagejs/ui-react
 
+## 0.12.0
+
+### Patch Changes
+
+- [#366](https://github.com/marco-lepore/yage/pull/366) [`eaf4af7`](https://github.com/marco-lepore/yage/commit/eaf4af741acb662d92c5fb3ae6f2f98ecce8917e) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `<Button>` passes `truncateWith` to the label it creates for a string or number child, alongside `truncate`. `truncateWith` is the string the `"ellipsis"` truncate mode appends. It defaults to `"…"`, which several pixel fonts lack, so pass `truncateWith="..."` when the label uses one of them. A button with JSX children does not create a label, so set `truncateWith` on the `<Text>` you pass it.
+
+- [#391](https://github.com/marco-lepore/yage/pull/391) [`2c56bb0`](https://github.com/marco-lepore/yage/commit/2c56bb04b22f7a6be5535cd8bb5756a2720dae6b) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Declare React 19 as the supported peer. The bundled `react-reconciler` requires React 19, so the advertised React 18 range never worked.
+
+- [#391](https://github.com/marco-lepore/yage/pull/391) [`c6e3095`](https://github.com/marco-lepore/yage/commit/c6e3095da135e173bfe09f801e095f1d87570b22) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Optional JSX props accept an explicit `undefined`, so `bg={selected ? highlight : undefined}` type-checks under `exactOptionalPropertyTypes`. The reconciler already resets a prop passed as `undefined` to its default; only the types rejected it. Required props stay required. The `Pixi*` wrappers still read some options only when the element is created (views, text styles, `PixiSlider`'s `showValue`); changing one of those after mount, to `undefined` or to a new value, needs a new `key`.
+
+- [#386](https://github.com/marco-lepore/yage/pull/386) [`6803d9f`](https://github.com/marco-lepore/yage/commit/6803d9f859cff52f4d32d17a422e006567b9582d) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A laid-out element can scale and rotate about a point of its own choosing, and be drawn over its siblings.
+  - `transformOrigin`, `scale`, `rotation` and `zIndex` reach every JSX component, and removing one between renders resets it.
+  - `UIRoot` stacks its top-level elements about their `transformOrigin`.
+
+- [#376](https://github.com/marco-lepore/yage/pull/376) [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Keyboard and gamepad focus reaches JSX. Every component prop type derives from its imperative counterpart, so `focusable`, `focusId`, `focusNeighbors`, `onFocusChange`, `onAdjust` and `focusStyle` arrive on the elements, and `focus` on `<Panel>` makes that panel a focus scope over the tree below it. The `focus` option's keys arrive the same way, `pointerFocus` and `modal` among them.
+
+  Focus draws nothing until a game asks for it: `onFocusChange` is where most React trees show the focused row, from component state. `focusStyle` asks for the package's own outline, drawn just inside the component's box, and sets its colour, thickness, corner radius and inset on one component over whatever `UIPlugin` was given for the whole UI; `focusStyle={null}` drops a UI-wide outline for that component alone. `<Button>` and a `focusable` `<Panel>` both take `focusBg`, the JSX alias for a filled focused row; omitted, a focused component keeps its resting background.
+
+  Pressing a component focuses it and passing the pointer over one does not, so the mouse cannot take the row the keyboard is on; `focus={{ pointerFocus: "hover" }}` restores the console-style lit row and `"none"` keeps the pointer out of focus entirely. While a `<Panel focus>` holds the keys it owns the pointer, so a confirm dialog cannot be clicked through; `focus={{ modal: false }}` turns that off.
+
+  `UIRootOptions` takes `focus`, which makes the whole React tree one scope — the form for a tree whose outermost element is not a single `<Panel>`. `root.focusScope` reads the scope back, or `null` when the root carries no option.
+
+  Re-rendering with a fresh `focus` object refreshes the scope's options in place rather than rebuilding the scope, so focus survives every render. Removing the prop disposes the scope, and input passes to the next shown scope.
+
+- [#366](https://github.com/marco-lepore/yage/pull/366) [`4218171`](https://github.com/marco-lepore/yage/commit/4218171a4561b1f561b5b62610170c0540a364ba) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A React UI tree moves after it is mounted, and `<ProgressBar>` takes a ref.
+  - `UIRoot.setOffset(x, y)` shifts a mounted tree without changing its anchor, and `UIRoot.offset` reads the pair back. A non-finite value throws and names the argument. The constructor copies the `offset` option it is given, so the caller's object is never written to.
+  - A layout-overflow warning from a React tree names the entity the tree is mounted on, matching the warning from an imperative `UISurface`.
+  - `<ProgressBar>` forwards a ref to its `UIProgressBar` node, so `ref.current.value` reads the fraction it drew. `Panel`, `SplitText` and `ScrollView` forward a ref the same way.
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0c90d77`](https://github.com/marco-lepore/yage/commit/0c90d774bdbda47f5a95c92ab7aef11d7a19e7b9), [`1f45e38`](https://github.com/marco-lepore/yage/commit/1f45e38d108b17e37a807c209b5d84159b88867c), [`6888d06`](https://github.com/marco-lepore/yage/commit/6888d06c6fdf2361f41c5521ebdda83dc833b6c4), [`a7fd74e`](https://github.com/marco-lepore/yage/commit/a7fd74e75347a7a1b56ab18fcfb55f2f5cf4da46), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642), [`37a978e`](https://github.com/marco-lepore/yage/commit/37a978e20e1bb67b00b69844c57d25fecf36ffdb), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`ca6271a`](https://github.com/marco-lepore/yage/commit/ca6271a7e3bbe4da16c0d4a9f7c28cd183ebfbd8), [`edd86b4`](https://github.com/marco-lepore/yage/commit/edd86b496d55298ae9deced1a52bedfcbbb14bf5), [`851310c`](https://github.com/marco-lepore/yage/commit/851310c54e04f5cdb52819050ca0a50f36b8e4c3), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`5efe5f6`](https://github.com/marco-lepore/yage/commit/5efe5f6de138b71048e6f4752ed74647a9fc3e76), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210), [`26ad39f`](https://github.com/marco-lepore/yage/commit/26ad39f22f2b1b483463005537de7e30974e17da), [`6803d9f`](https://github.com/marco-lepore/yage/commit/6803d9f859cff52f4d32d17a422e006567b9582d), [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642), [`52471e3`](https://github.com/marco-lepore/yage/commit/52471e3093691f8f039185785a53d819c0daed2a), [`ad91188`](https://github.com/marco-lepore/yage/commit/ad91188702d2bacb03f507348881506dd7796d58), [`869129b`](https://github.com/marco-lepore/yage/commit/869129b939fd32167a559e7adf275172c7e1baff)]:
+  - @yagejs/core@0.12.0
+  - @yagejs/renderer@0.12.0
+  - @yagejs/ui@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes

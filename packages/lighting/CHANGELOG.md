@@ -1,5 +1,100 @@
 # @yagejs/lighting
 
+## 0.12.0
+
+### Minor Changes
+
+- [#380](https://github.com/marco-lepore/yage/pull/380) [`ae2002c`](https://github.com/marco-lepore/yage/commit/ae2002c497ff793a81ab3c73267143cc3b35202e) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Configure lighting renderers under names, let a scene pick one, and add bounced light.
+
+  **Breaking:** `LightingConfig.renderer` is replaced by `renderers`, a map from a name to a renderer factory, plus `defaultRenderer`. `renderer: overlayLighting(opts)` becomes `renderers: { overlay: overlayLighting(opts) }` with `defaultRenderer: "overlay"`, and `renderer: null` becomes a `null` entry, such as `renderers: { none: null }` with `defaultRenderer: "none"`. Leave `renderers` out for `{ overlay: overlayLighting() }` under the default name `"overlay"`. Set `renderers` and `defaultRenderer` is required, naming one of the entries: the plugin throws at install when it is missing or names something else, listing the configured names.
+
+  `LightingRendererContext` carries a required `bounce` field, so anything that builds that context by hand — a custom renderer's own tests — has to pass it. `LightingWorldManager`'s constructor takes an options object rather than positional ambient and factory arguments.
+
+  A scene chooses its renderer and its bounced light through a `lighting` property this package adds to core's `Scene`:
+
+  ```ts
+  class CaveScene extends Scene {
+    readonly name = "cave";
+    readonly lighting = {
+      renderer: "overlay",
+      bounce: { strength: 0.8, radius: 90 },
+    };
+  }
+
+  engine.use(
+    new LightingPlugin({
+      renderers: { overlay: overlayLighting(), none: null },
+      defaultRenderer: "overlay",
+      bounce: { strength: 0.4, radius: 40 },
+    }),
+  );
+  ```
+
+  The property is read once, when the scene is entered and its lighting world is created, so a live scene keeps what it entered with. An unknown renderer name throws there naming the scene and the configured renderers, and so does a bounce setting outside its range. A `null` renderer entry keeps `levelAt()` and draws nothing.
+
+  Bounced light combines the finished light buffer with a blurred, low-resolution copy of itself, so light creeps past shadow edges and around corners. `blend` picks how: `"max"`, the default, keeps the brighter of the two, so lit areas and shadow borders stay as drawn and only the dark is lifted; `"mix"` blends the whole picture toward the blurred copy, which keeps the scene's overall brightness and softens every shadow edge. `strength` runs from 0 to 1 and says how strongly the copy shows, and `radius` is how far the blur reaches in screen pixels, independent of the renderer's `resolutionScale`. A scene that leaves `bounce` out takes `LightingConfig.bounce`, which the plugin checks at install; `bounce: null` on the scene leaves that scene without any; bounce is off when neither sets one. The pass costs one more offscreen buffer per scene and runs only on frames where the light buffer was redrawn. It is a visual treatment — `levelAt()` never sees it, so raise `ambient.level` when gameplay should agree that a shadow is not pitch black.
+
+  `LightingComposite` is the step that owns a scene's light buffer, multiplies it over the scene and applies `bounce`. The built-in overlay finishes with it, and a custom renderer that draws its light into a container can reuse it; the scene's resolved bounce reaches a renderer through `bounce` on its factory context.
+
+- [#375](https://github.com/marco-lepore/yage/pull/375) [`7bf5d5d`](https://github.com/marco-lepore/yage/commit/7bf5d5dafc35682e6b42982afab9804b2c03de9d) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Occluders block light, in the gameplay query and in the built-in overlay renderer.
+  - A light contributes to a point only when the straight line between them misses every enabled occluder. Touching an edge or a corner counts as blocked, an occluder containing a light does not block it, a point inside an occluder is dark for every light outside it, and shadows are hard. `LightingWorld.levelAt(x, y)` keeps its signature and answers by that rule, so a scene with occluders reads darker where a wall stands in the way.
+  - `OverlayLightingRenderer` draws each light through an inverse mask covering what its occluders hide, so the drawn picture and the query agree. The renderer redraws a light's shadows when the light, an occluder or the camera moves.
+  - `LightSource` takes `castShadows`, default `true`. Set it to `false` for a light that reaches through walls.
+  - `LightOccluder` follows the entity's world scale: a uniform positive scale resizes the shape, any other scale turns it into a scaled outline, matching how a physics collider follows entity scale. `LightOccluder.scale` reports it.
+  - `LightingWorld.levelGridInto(out, grid)` samples a rectangular grid of world points into a caller-owned `Float32Array`, row-major, one sample per cell centre, each equal to `levelAt` at that centre. Each source is summed only over the cells its radius reaches and against the occluders within that radius. The new `LightGrid` type describes the region.
+  - The overlay scales a light's drawn radius by the camera's effective zoom, so a zoom modifier moves the drawn light and its position together.
+
+### Patch Changes
+
+- [#388](https://github.com/marco-lepore/yage/pull/388) [`32daae7`](https://github.com/marco-lepore/yage/commit/32daae7686eff5ac5ea5578c7d87c5db866f76f4) Thanks [@marco-lepore](https://github.com/marco-lepore)! - The README quick starts put consequences in components instead of `onEnter` closures. The inventory quick start keeps the `Inventory` in a `Backpack` component on a `Player` entity subclass rather than at module level; virtual controls use a `TouchControls` entity subclass and a component that listens for button presses; the lighting README's `Torch` is an entity subclass, and its `RendererPlugin` sample passes the required config.
+
+- [#379](https://github.com/marco-lepore/yage/pull/379) [`b77ea72`](https://github.com/marco-lepore/yage/commit/b77ea726c4b5cb165b1cd6602f1790de44b90802) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A light has a size and can be narrowed into a spotlight.
+  - `LightSource` takes `size`, the lamp's diameter in world pixels, default `0`. A lamp wider than a point is partly hidden behind a blocker's edge, so a partly covered point is dimmed by the share of the lamp it can still see rather than switched off, and the shadow's border widens with the distance from the blocker. `light.size` reads and sets it.
+  - `LightingWorld.levelAt(x, y)` and `levelGridInto(out, grid)` scale each source's contribution by that share. The lamp is a line of width `size` centred on the light and square to the direction from the point to it; every occluder's outline is projected onto that line from the point, the projections are merged, and the unblocked share is what is left. At `size: 0` the share is 1 or 0 and the answer is the straight-line test. A wide lamp costs several times more to query, so keep `size` at `0` where a soft border is not wanted.
+  - `LightSource` takes `cone: { angle }`, the full spotlight spread in radians, aimed along the entity's world rotation. A cone limits where direct light lands, in the query as well as in the picture. `light.coneAngle` reads and sets it, and a whole turn is the default. `LightSource.rotation` reports the world rotation the cone points along.
+  - `OverlayLightingRenderer` draws a light with a cone as a pie slice turned by its entity.
+  - Shadow edges in the built-in overlay stay hard whatever a light's `size` says. At `size: 0` the picture is exactly what `levelAt()` reports; above it the drawn edge runs along the middle of the soft border the query answers with. The query is the truth whichever renderer a scene uses.
+
+- [#391](https://github.com/marco-lepore/yage/pull/391) [`c156b12`](https://github.com/marco-lepore/yage/commit/c156b127ceaa5d0c3ee625f83f3bbe7ff49cc530) Thanks [@marco-lepore](https://github.com/marco-lepore)! - The `LightOccluder` documentation says both built-in renderers, `overlayLighting()` and `shaderLighting()`, and the light-level queries treat an enabled occluder as opaque to shadow-casting lights, instead of naming only the overlay renderer.
+
+- [#380](https://github.com/marco-lepore/yage/pull/380) [`5fd8c19`](https://github.com/marco-lepore/yage/commit/5fd8c19075e19ac5fa138ea1bc9e1502b8e99bde) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add a second built-in renderer that draws shadow borders and soft cone edges.
+
+  `shaderLighting()` returns a renderer factory beside `overlayLighting()`. It draws each light as one quad whose fragment shader works out, for every pixel that quad covers, how much of the lamp the occluders leave visible there. That is the sum `LightingWorld.levelAt()` does, so a crate's shadow is crisp against the floor it stands on and blurred several metres behind it, a lamp wider than a post lights around the post, and a spotlight's edge fades.
+
+  ```ts
+  import {
+    LightingPlugin,
+    overlayLighting,
+    shaderLighting,
+  } from "@yagejs/lighting";
+
+  engine.use(
+    new LightingPlugin({
+      renderers: { soft: shaderLighting(), hard: overlayLighting() },
+      defaultRenderer: "soft",
+    }),
+  );
+
+  class CaveScene extends Scene {
+    readonly name = "cave";
+    readonly lighting = { renderer: "soft" };
+  }
+  ```
+
+  `ShaderLightingRendererOptions` takes `layer`, `order`, `resolutionScale` and `fallback`. `resolutionScale` starts at `1`, where the drawn light lands on the same pixel grid `levelAt()` is asked about; the overlay's starts at `0.5`. The drawn picture equals what the query reports up to two sources of rounding: the shader divides a lamp into 128 slots and rounds each hidden stretch out to whole slots at both ends, which is 2/128 of that light's contribution for each separate stretch hidden from a pixel, and the light buffer holds 8 bits per channel. The overlay keeps its single hard edge, through the middle of that border.
+
+  Which one a scene wants: the overlay builds a shape and a shadow mask per light and rebuilds them when a light or an occluder moves, so its cost grows with moving lights and with occluder outline in reach. The shader renderer spends nothing on shapes and walks the shapes in reach for every lit pixel, so its cost grows with lit screen area times shapes nearby.
+
+  `LightConeOptions` takes `softness`, from 0 to 1, with a `coneSoftness` accessor on `LightSource`. It says how much of the cone's spread the light fades over at its edge, and it defaults to `0`, a cone that ends on a line. The fade is part of `levelAt()`, so a guard half-way into a soft edge reads as half lit; `shaderLighting()` draws it and `overlayLighting()` draws one hard edge through the middle of it.
+
+  Occluder shapes reach the shader through one data texture per scene, so nothing caps how much outline a light may reach and nothing is dropped. A WebGL shader and a WebGPU shader ship together, drawing the same picture from the same uniforms and the same occluder data.
+
+  `fallback` takes another renderer factory and is built instead when the browser hands Pixi a WebGL 1 context, whose shader language has none of what this renderer is written in. That is the one device limit the renderer reads before drawing; a scene on such a context with no `fallback` throws as it is entered, naming the option. A shader a driver refuses on a context that does have the language is a different case and `fallback` does not cover it, because the refusal goes to the browser console rather than to anything the engine can read. A game that wants a cheaper renderer on weaker devices configures both under names and picks one per scene.
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0c90d77`](https://github.com/marco-lepore/yage/commit/0c90d774bdbda47f5a95c92ab7aef11d7a19e7b9), [`1f45e38`](https://github.com/marco-lepore/yage/commit/1f45e38d108b17e37a807c209b5d84159b88867c), [`6888d06`](https://github.com/marco-lepore/yage/commit/6888d06c6fdf2361f41c5521ebdda83dc833b6c4), [`a7fd74e`](https://github.com/marco-lepore/yage/commit/a7fd74e75347a7a1b56ab18fcfb55f2f5cf4da46), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`851310c`](https://github.com/marco-lepore/yage/commit/851310c54e04f5cdb52819050ca0a50f36b8e4c3), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`5efe5f6`](https://github.com/marco-lepore/yage/commit/5efe5f6de138b71048e6f4752ed74647a9fc3e76), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210)]:
+  - @yagejs/core@0.12.0
+  - @yagejs/renderer@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes

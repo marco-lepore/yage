@@ -1,5 +1,19 @@
 # create-yage
 
+## 0.12.0
+
+### Minor Changes
+
+- [#390](https://github.com/marco-lepore/yage/pull/390) [`d8a6cbf`](https://github.com/marco-lepore/yage/commit/d8a6cbfd33651f9c9f3b371b1d3c82c52b142956) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Both templates now fit the game to the visible screen on phones. `index.html` adds `viewport-fit=cover`, sizes `#game` with `100dvh` after a `100vh` fallback, and pads it with `env(safe-area-inset-*)`, so the browser toolbars, the notch, the rounded corners, and the home indicator no longer cover the game.
+
+  The `recommended` template adds a Fullscreen button in the top-right corner, set up in `src/fullscreen.ts`. It toggles fullscreen through `RendererPlugin`, updates its label on `screen:fullscreen`, and stays hidden where it would do nothing: on iPhone, in an iframe that does not allow fullscreen, and in an installed app that already opens fullscreen. For the installed app, the manifest now sets `display: "standalone"` with `display_override: ["fullscreen"]`. iOS does not support `"fullscreen"` and opens the game standalone. Chrome, Edge, and Samsung Internet on Android still open it fullscreen. Firefox for Android does not read `display_override`, so it now opens the game standalone, with the status and navigation bars. `index.html` adds `apple-mobile-web-app-status-bar-style: black-translucent`, so on iOS the installed game draws under the status bar and the safe-area padding keeps it clear.
+
+- [#383](https://github.com/marco-lepore/yage/pull/383) [`2a6ae1b`](https://github.com/marco-lepore/yage/commit/2a6ae1be952043a0055444b9bba08f31caf8a5bb) Thanks [@marco-lepore](https://github.com/marco-lepore)! - The `recommended` template's production build is now an installable Progressive Web App that runs offline after the first visit. `vite.config.ts` adds `vite-plugin-pwa`, which caches every file in the build, so assets added to `public/` need no registration. The template ships placeholder icons in `public/` and a `manifest` block to rename before shipping. A deploy reaches players the next time they launch the game. The dev server does not register a service worker.
+
+### Patch Changes
+
+- [#388](https://github.com/marco-lepore/yage/pull/388) [`32daae7`](https://github.com/marco-lepore/yage/commit/32daae7686eff5ac5ea5578c7d87c5db866f76f4) Thanks [@marco-lepore](https://github.com/marco-lepore)! - The templates teach the recommended structure. The `recommended` template's player respawns through its own `PlayerRespawn` component instead of a closure in `onEnter`, slimes return home by listening for `PlayerHit`, and coins emit `CoinCollected`, which a `CoinCounter` component on a keyed `Hud` entity shows on screen. Asset handles and events live in `src/assets.ts` and `src/events.ts`. The `minimal` template spawns a `Placeholder` entity subclass. Both templates' `AGENTS.md` gain a "Writing game code" section: entity subclasses, rules in components, game state on a keyed host entity, `ProcessComponent` slots instead of `setTimeout`, and `RandomKey` instead of `Math.random`.
+
 ## 0.11.0
 
 ### Patch Changes
