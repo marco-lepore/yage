@@ -40,7 +40,7 @@ entity.add(
 - **ColliderComponent** - boxes, circles, polygons, sensors with trigger events
 - **Raycasts** - query the world for collisions along a ray
 - **Collision layers / masks** - filter collisions by group
-- **Joints** - distance, revolute, prismatic, fixed
+- **Joints** - spring, rope, fixed, revolute, prismatic
 
 ## Docs
 

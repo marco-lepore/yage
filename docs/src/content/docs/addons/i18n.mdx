@@ -249,8 +249,8 @@ npc.add(new DialogueController({ ...createBoxDialogue() }));
 
 A locale change mid-line keeps the typewriter where it is and swaps the text
 under it; an open choice menu keeps its highlighted row. Any other translation
-library plugs into dialogue through its `I18nAdapter` option, with or without
-this addon (see the dialogue page).
+library plugs into dialogue, with or without this addon: pass an `I18nAdapter`
+as the `i18n` option of `DialogueController` (see the dialogue page).
 
 ## Inventory
 

@@ -159,8 +159,10 @@ Mirroring (all idempotent, per pointer event):
   deflected past its deadzone wins; an idle plugged-in pad does NOT mask
   the virtual stick. First stick defaults `axes: "left"`, second `"right"`;
   pass `axes: false` to opt out.
-- Analog escape hatch: `controls.stick().value` (dead-zoned, -1..1, +y down)
-  and `.rawValue`. `value` and `getStick()` use the SAME response curve
+- Analog escape hatch: `controls.stick()?.value` (dead-zoned, -1..1, +y
+  down) and `.rawValue`. `stick(id?)` returns the first stick (or the one
+  with that id), and `undefined` when there is none. `value` and
+  `getStick()` use the SAME response curve
   (input's exported `applyRadialDeadzone`), but each applies its own
   deadzone number: the stick's `deadZone` option shapes `value` and the
   digital mirror; `getStick()` applies `InputConfig.deadzones.stick`, same
@@ -227,7 +229,7 @@ sizes, and out-of-range deadZone/threshold) throw at construction or at the
 `VirtualButtonPressEvent` / `VirtualButtonReleaseEvent` (`{ id, action }`) and
 `VirtualStickEngageEvent` / `VirtualStickReleaseEvent` (`{ id }`) — the hook
 for haptics, UI sounds, tutorials, or buttons with no `action`. Per-frame
-stick values are polled (`controls.stick().value`), not evented. Destroying
+stick values are polled (`controls.stick(id)?.value`), not evented. Destroying
 the host entity resets all mirrored input state but emits NO release events
 (entity events no-op mid-destroy) — don't rely on balanced engage/release
 pairs across a destroy.
@@ -274,8 +276,8 @@ built-in theme knobs live on `ControlsTheme`
   rect each frame).
 - Set `touch-action: none` on the canvas container or the browser hijacks
   the second finger for scroll/zoom.
-- `getStick()` reads the virtual stick only while NO physical gamepad is
-  active — the pad wins by design.
+- A physical pad whose stick is deflected past its deadzone overrides the
+  virtual stick in `getStick()`. An idle plugged-in pad does not mask it.
 - Two `VirtualControls` instances both listen for pointers; the
   first-registered claims first. One instance per scene is the intended
   shape.

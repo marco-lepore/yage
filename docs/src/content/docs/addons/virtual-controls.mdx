@@ -200,8 +200,9 @@ The stick mirrors three ways at once:
   input system's own stick deadzone here, exactly as it does for physical
   pads — the stick's `deadZone` option shapes only the digital mirror and its
   `value`.
-- **Direct** — `controls.stick().value` is the dead-zoned vector,
-  `.rawValue` the unfiltered one.
+- **Direct** — `controls.stick()?.value` is the dead-zoned vector,
+  `.rawValue` the unfiltered one. `stick()` returns `undefined` when the
+  overlay has no stick, or none with the id you pass.
 
 ## Stick modes
 

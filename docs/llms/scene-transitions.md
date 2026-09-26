@@ -142,7 +142,7 @@ scene-visibility and would conflict with each other if chained.
 
 ## Queueing
 
-Concurrent `push`/`pop`/`replace`/`popAll` calls queue via `_pendingChain`. Re-entrant calls from lifecycle hooks throw.
+Concurrent `push`/`pop`/`replace`/`popAll` calls queue and run in call order. A call from inside a scene lifecycle hook (`onEnter`, `onExit`, `onPause`, `onResume`) is queued too: it runs after the current operation finishes, and dev builds log a warning.
 
 `popAll()` is also queued — it waits for any in-flight transition and pending ops to finish before tearing the stack down. There is no mid-run cancellation.
 
@@ -177,11 +177,14 @@ Coordinate-space rule: pick the parent and size source for what your transition 
 
 ```ts
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
-import type { Container } from "pixi.js";
-import { getSceneContainer, getVirtualBounds } from "@yagejs/renderer";
+import {
+  getSceneContainer,
+  getVirtualBounds,
+  type DisplayContainer,
+} from "@yagejs/renderer";
 
 function slideIn(duration: number): SceneTransition {
-  let toRoot: Container | undefined;
+  let toRoot: DisplayContainer | undefined;
   let width = 0;
   return {
     duration,
@@ -234,6 +237,6 @@ await engine.scenes.replace(new Boot(), {
 
 See `loading-scene.md` for the full Boot scene contract.
 
-## Breaking Change
+## Return values
 
-`SceneManager.pop()` returns `Promise<Scene | undefined>` (was synchronous). Update all call sites to `await` or `void`.
+`push`, `pop`, `replace`, and `popAll` return promises that resolve when the operation, including any transition, has finished. `pop()` resolves to the removed scene, or `undefined` on an empty stack. Await a call before code that needs the new stack, or mark a call you do not wait for with `void`.

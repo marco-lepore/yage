@@ -88,10 +88,10 @@ nothing:
   patch fields — `frequency`, `duration`, `filter`, and the rest. On a layered
   preset they land on the lead voice, so the layers keep their relationship.
 - **A note sequence** (pickup, coin, victory, defeat) takes its shared voice's
-  fields plus `noteDuration` and `noteSpacing`. Pitch comes from the notes, so
-  `frequency`, `glideTo`, `delay`, and `seamless` are rejected. `dialogueBeeps`
-  is the exception: it generates its notes, so it adds a base `frequency`
-  along with `count`, `spread`, and `phraseSeed`.
+  fields plus `noteDuration` and `noteSpacing`. Pitch and length come from the
+  notes, so `frequency`, `glideTo`, `duration`, `delay`, and `seamless` are
+  rejected. `dialogueBeeps` is the exception: it generates its notes, so it
+  adds a base `frequency` along with `count`, `spread`, and `phraseSeed`.
 - **`gain` works on all of them**: it multiplies every voice's volume, which
   is what you want for making a whole layered sound quieter. `volume` sets a
   single voice's peak instead.

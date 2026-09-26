@@ -114,7 +114,7 @@ reason: put the logic in a component the entity holds.
 |---|---|---|
 | `name` | — | Unique identifier for the scene |
 | `pauseBelow` | `true`  | When `true`, scenes below this one stop updating. Set to `false` for HUD or overlay scenes that should let the underlying scene keep running. |
-| `transparentBelow` | `false` | When `true`, scenes below this one still render. When `false` (the default), below-stack scene trees are hidden — both world layers **and** screen-space UI/HUD. (Detached scenes mounted via `_mountDetached`, e.g. the debug overlay, are not affected.) |
+| `transparentBelow` | `false` | When `true`, scenes below this one still render. When `false` (the default), below-stack scene trees are hidden — both world layers **and** screen-space UI/HUD. The debug overlay is not on the scene stack, so it stays visible. |
 
 A pause menu inherits the default `pauseBelow: true` and adds
 `transparentBelow: true` — the game world is visible but frozen

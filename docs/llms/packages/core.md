@@ -1100,7 +1100,7 @@ Opt-in per-scene entity keys. Most entities (bullets, particles, transient enemi
 | ------------------------- | ------------------------------------------------------------------------------------------ |
 | `SpawnOptions`            | `{ key?: string; active?: boolean }` — trailing arg of `scene.spawn` / `entity.spawnChild` |
 | `entity.key`              | `string \| undefined` — the assigned key                                                   |
-| `entity.requireKey()`     | Returns `key` or throws (use in component `setup()`)                                       |
+| `entity.requireKey()`     | Returns `key` or throws (use in the entity's `setup()` or a component's `onAdd()`)         |
 | `scene.findByKey<E>(key)` | Look up entity by key, scene-scoped, hides destroyed entities                              |
 
 ```ts yage-context="scene"

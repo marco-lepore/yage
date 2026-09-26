@@ -80,13 +80,14 @@ The public handle controls an effect's strength three ways. `setIntensity(value)
 
 ## Scope rationale
 
-Three presets work best at scene scope (or higher) rather than on a single component:
+Four presets work best at scene scope (or higher) rather than on a single component:
 
 - `godRay` — its alpha-aware fragment shader treats fully transparent host pixels as black, so on a per-component sprite the rays render against a black box. At scene scope, the layer rasterizes alpha=1 across the visible area, and the rays blend into the world as intended.
 - `bulgePinch` — distortion samples outside the host's bounding rect, so a sprite-scoped bulge clips at the sprite edges. Apply at scene/layer scope so the lens has room to bend pixels around its `radius`.
 - `shockwave` — the ring travels between `center` and the host's bounds and is naturally clipped there, so a component-scoped shockwave on a small sprite looks like a tiny "bump" rather than a ring. Scene scope makes `trigger(heroX, heroY)` line up with the entity's transform.
+- `implosion` — inward displacement samples beyond the output pixel. A small component host clips the warped image at its own bounds, while a layer or scene gives the distortion room around its center.
 
-The `examples/src/effects-showcase/main.ts` demo sets up each of these at the recommended scope — copy that as the worked-out reference.
+The `examples/src/effects-showcase/scene.ts` demo sets up `godRay`, `bulgePinch`, and `shockwave` at scene scope — copy that as the worked-out reference.
 
 Scene scope and screen scope also post-process the UI. `@yagejs/ui` mounts its screen-space `"ui"` layer inside the scene's render tree, so `tree.fx.addEffect(...)` (scene scope) and a renderer-level effect (screen scope) both filter the HUD along with the world. Two ways to keep an effect off the HUD:
 

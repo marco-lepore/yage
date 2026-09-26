@@ -40,8 +40,7 @@ entity.add(new SoundComponent({ alias: jumpSfx.path, channel: "sfx" }));
 
 - **AudioPlugin / AudioManager** - sound loading and playback
 - **SoundComponent** - attach sounds to entities with auto-cleanup
-- **Channels** - per-channel volume, mute, ducking
-- **Spatial options** - 2D positional audio via pan
+- **Channels** - per-channel volume, mute, pause, and stop
 
 ## Docs
 

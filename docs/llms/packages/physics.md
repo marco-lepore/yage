@@ -578,8 +578,11 @@ world.raycast(origin, direction, maxDistance, { sensors: "include" });
 
 // Advance the simulation directly (a scene's PhysicsSystem does this for you).
 // dt must be finite and >= 0; 0 rebuilds the query index without moving
-// anything.
+// anything. Each step queues its collision events. Code that calls step
+// directly must also call processCollisionEvents() to deliver them, or the
+// queued pairs build up.
 world.step(dt);
+world.processCollisionEvents();
 
 // Shape cast — sweep a shape along a direction and report the first hit.
 // Same result shape as raycast: `distance` is how far the shape travelled,

@@ -100,18 +100,22 @@ entry never imports physics; `{ setVelocity, getVelocity }` is satisfied by
 
 ```ts
 import { SteeringAgent, arrive } from "@yagejs-addons/steering";
-import { Entity, type Vec2Like } from "@yagejs/core";
-import { RigidBodyComponent } from "@yagejs/physics";
+import { Entity, Transform, type Vec2Like } from "@yagejs/core";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 
 class Enemy extends Entity {
   setup(waypoint: Vec2Like) {
-    // Transform, RigidBodyComponent and collider added first.
+    this.add(new Transform());
+    const body = this.add(
+      new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }),
+    );
+    this.add(new ColliderComponent({ shape: { type: "circle", radius: 10 } }));
     this.add(
       new SteeringAgent({
         maxSpeed: 130,
         maxAcceleration: 500,
         behaviors: [arrive(() => waypoint)],
-        body: this.get(RigidBodyComponent),
+        body,
       }),
     );
   }

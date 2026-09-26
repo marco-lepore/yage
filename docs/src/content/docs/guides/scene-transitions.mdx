@@ -219,9 +219,9 @@ engine.events.on("scene:transition:ended", ({ kind }) => {
 Implement the `SceneTransition` interface to create your own. Two helpers
 from `@yagejs/renderer` cover most cases:
 
-- `getSceneContainer(ctx, scene)` — returns the PIXI `Container` for a
-  scene so you can manipulate its `alpha`, `visible`, `position`, or
-  `filters` directly.
+- `getSceneContainer(ctx, scene)` — returns the scene's root
+  `DisplayContainer` (a PixiJS `Container`) so you can manipulate its
+  `alpha`, `visible`, `position`, or `filters` directly.
 - `getVirtualBounds(ctx)` — returns `{ width, height }` of the
   scene-root coordinate space. Use it to size masks, translations, or
   geometry parented to a scene root (or any descendant of `_worldRoot`,
@@ -229,11 +229,14 @@ from `@yagejs/renderer` cover most cases:
 
 ```typescript
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
-import type { Container } from "pixi.js";
-import { getSceneContainer, getVirtualBounds } from "@yagejs/renderer";
+import {
+  getSceneContainer,
+  getVirtualBounds,
+  type DisplayContainer,
+} from "@yagejs/renderer";
 
 function slideIn(duration: number): SceneTransition {
-  let toRoot: Container | undefined;
+  let toRoot: DisplayContainer | undefined;
   let width = 0;
   return {
     duration,
@@ -334,7 +337,8 @@ starts.
 transition and pending ops to finish before tearing the stack down. Use it
 for "restart from menu"-style flows — not as an emergency abort.
 
-:::caution[Breaking Change]
-`SceneManager.pop()` now returns `Promise<Scene | undefined>`. Update existing
-`pop()` calls to use `await` or `void`.
-:::
+`push`, `pop`, `replace`, and `popAll` return promises that resolve when the
+operation, including any transition, has finished. `pop()` resolves to the
+removed scene, or `undefined` when the stack was empty. Await a call before
+code that needs the new stack, or mark a call you do not wait for with
+`void`.

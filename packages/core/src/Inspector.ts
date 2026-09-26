@@ -1183,7 +1183,9 @@ export class Inspector {
    * ```ts
    * const run = await inspector.drive(async ({ input, until }) => {
    *   input.keyDown("KeyD");
-   *   const frames = await until(() => inspector.getEntityPosition("player").x > 950);
+   *   const frames = await until(
+   *     () => (inspector.getEntityPosition("player")?.x ?? 0) > 950,
+   *   );
    *   return { frames };
    * });
    * ```

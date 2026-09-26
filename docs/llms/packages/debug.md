@@ -16,6 +16,7 @@ engine.use(
     maxHudLines: 32,
     flags: { "walls.show-walls": true }, // format: "contributorName.flagName"
     deterministicSeed: 0x00c0ffee, // optional: pin every scene RNG to this seed
+    startFrozen: false, // true boots with inspector.time frozen (default false)
     eventLog: true, // record bus, entity and scene events (default true)
   }),
 );
@@ -665,6 +666,7 @@ import type { Scene } from "@yagejs/core";
 import type {
   DebugContributor as BaseDebugContributor,
   HudDebugApi,
+  StatsApi,
   WorldDebugApi,
 } from "@yagejs/debug/api";
 
@@ -673,6 +675,7 @@ interface DebugContributor extends BaseDebugContributor {
   readonly flags: readonly string[];
   drawWorld?(api: WorldDebugApi): void;
   drawHud?(api: HudDebugApi): void;
+  sample?(stats: StatsApi, dt: number): void; // before drawWorld/drawHud; dt in seconds
   dispose?(): void;
 }
 
@@ -692,6 +695,10 @@ function drawHud(api: HudDebugApi) {
   api.screenHeight;
 }
 ```
+
+`sample` runs every frame the overlay is on, before that contributor's
+`drawWorld` and `drawHud`. `stats` is the overlay's shared rolling store
+(`push`, `average`, `latest`, `min`, `max`).
 
 `SceneWorldDebugApi` exposes `acquireGraphics(): DebugGraphics | undefined`
 and readonly `cameraZoom: number`. `forScene` returns `undefined` for hidden

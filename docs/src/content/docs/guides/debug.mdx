@@ -32,6 +32,8 @@ runtime.
 | `maxHudLines` | `number` | `32` | Max HUD text lines |
 | `flags` | `Record<string, boolean>` | — | Initial flag overrides |
 | `eventLog` | `boolean` | `true` | Record bus, entity and scene events at startup |
+| `deterministicSeed` | `number` | — | Seed every scene's RNG with this value, for reproducible runs |
+| `startFrozen` | `boolean` | `false` | Freeze the Inspector clock before the first frame |
 
 ## Built-In Debug Views
 
@@ -1062,27 +1064,29 @@ import { Component } from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import { ColliderComponent } from "@yagejs/physics";
 
-class PlayerTag extends Component {}
+class KeyRing extends Component {
+  keys = 0;
+}
 declare const pad: Entity;
 declare function openDoor(): void;
 
-// A door pad. The typo is real: `otherr`.
+// A door pad. The bug: only the player has a KeyRing, so `get` throws
+// when a crate slides onto the pad.
 pad.get(ColliderComponent).onTrigger((e) => {
-  // yage-expect-error TS2551
-  if (e.otherr.has(PlayerTag)) openDoor(); // throws on every touch
+  if (e.other.get(KeyRing).keys > 0) openDoor();
 });
 ```
 
 ```
-[yage] ERROR core  Collision handler threw on entity "DoorPad"
-  TypeError: Cannot read properties of undefined (reading 'has')
-Uncaught TypeError: Cannot read properties of undefined (reading 'has')
+[yage] ERROR core  Trigger handler threw on entity "DoorPad" in scene "level1"
+  Error: Entity "Crate" does not have component KeyRing.
+Uncaught Error: Entity "Crate" does not have component KeyRing.
 ```
 
 That console line follows the same dev-only default as any other `logger.error`
 call — see [LoggerConfig](#loggerconfig) above. The thrown error itself is not
 gated by that default, but it doesn't surface through a `try`/`catch` around
-`engine.start()` — a collision handler like the one above fires on a later
+`engine.start()` — a trigger handler like the one above fires on a later
 game-loop tick, well after `start()` has already returned. `GameLoop.tick()`
 is the one place that decides a failure is terminal: an error that escapes an
 entire frame unhandled stops the loop and rethrows out of `tick()`, so it
@@ -1109,8 +1113,8 @@ without scraping console output:
 ```typescript yage-context="engine"
 const errors = engine.inspector.getErrors();
 console.log(errors.callbackErrors);
-// [{ kind: "Collision handler", entity: "DoorPad",
-//    error: "Cannot read properties of undefined (reading 'has')" }]
+// [{ kind: "Trigger handler", entity: "DoorPad", scene: "level1",
+//    error: 'Entity "Crate" does not have component KeyRing.' }]
 ```
 
 `callbackErrors` is a bounded history — the 200 most recent failures. The

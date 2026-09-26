@@ -249,7 +249,7 @@ Built-in step factories:
 - `anim({ at, name })`: starts the named renderer-free `KeyframeAnimator`
   animation. Sprite and renderer animation controllers remain game-owned.
 - `hitbox<TData>({ from, to, every?, shape, offset?, aim?, team?, hit, tags?, layers?, mask?, follow? })`.
-- `spawn<TClass, TData>({ at, entity, params, position?, aim?, team?, hit?, tags?, offset? })`.
+- `spawn<TClass, TData>({ at, entity, params, acquire?, position?, aim?, team?, hit?, tags?, offset? })`.
 - `guard<TData>({ from, to, outcome, policy, punish? })`.
 - `parry({ from, to, punish? })`: always negates as `"parried"`.
 - `block({ from, to, damageScale?, knockbackScale?, stunScale? })`: mutates data and continues as `"hit"`; scales default to 0.
@@ -257,7 +257,7 @@ Built-in step factories:
 - `slowmo({ from, to, scale, includeOwner?, key?, label? })`: cancellation-bound window.
 - `slowmo({ at, for, scale, includeOwner?, key?, label? })`: raw-time request that may outlive the phase or cancellation.
 - `staggerMotion({ from, to, direction, knockback, stun })`.
-- `staggerReaction({ direction, knockback, stun })`: returns the default forced reaction definition at priority 100.
+- `staggerReaction({ direction, knockback, stun, priority? })`: returns the default forced reaction definition. `priority` defaults to `REACTION_PRIORITY` (100).
 
 Delivery steps omit `aim` to read sibling `Facing`; explicit `Aim` is a
 `Vec2Like` or fire-time `(ctx) => Vec2Like`. `resolveAim` normalizes and throws
@@ -266,7 +266,11 @@ target resolver.
 
 ## `Abilities` API
 
+`Abilities` requires a sibling `ProcessComponent`: its phases, linger, and
+cooldowns run as processes on it.
+
 ```ts
+import type { ProcessClock } from "@yagejs/core";
 import { Abilities as BaseAbilities } from "@yagejs-addons/abilities";
 import type {
   AbilitiesOptions as BaseAbilitiesOptions,
@@ -277,6 +281,7 @@ import type {
 
 declare class Abilities extends BaseAbilities {
   constructor(defs: readonly AbilityDef[], options?: AbilitiesOptions);
+  readonly clock: ProcessClock; // options.clock, default "fixed"
   addDefinitions(defs: readonly AbilityDef[]): void;
   replaceDefinitions(defs: readonly AbilityDef[]): void;
 
@@ -488,7 +493,7 @@ interface AbilityDriverOptions<
 ```
 
 ```ts
-import { Entity } from "@yagejs/core";
+import { Entity, ProcessComponent } from "@yagejs/core";
 import { Abilities } from "@yagejs-addons/abilities";
 import type { AbilityDef } from "@yagejs-addons/abilities";
 import { AbilityDriverComponent } from "@yagejs-addons/abilities/input";
@@ -513,6 +518,7 @@ const options = {
 
 class Fighter extends Entity {
   setup(): void {
+    this.add(new ProcessComponent()); // Abilities runs its phases on it
     this.add(new Abilities(defs));
     this.add(new AbilityDriverComponent(options));
   }
@@ -1161,11 +1167,12 @@ state.
 ## Death/corpse recipe
 
 `HealthDied` is policy output, not a built-in death system. Removing a
-component from its own listener is safe. For an immovable corpse on a dynamic
-body:
+component from its own listener is safe. `setType("static")` makes an
+immovable corpse: nothing pushes it and it pushes nothing. The switch clears
+its velocity.
 
 ```ts yage-context="entity"
-import { Component, Vec2 } from "@yagejs/core";
+import { Component } from "@yagejs/core";
 import { RigidBodyComponent } from "@yagejs/physics";
 import { HealthDied } from "@yagejs-addons/abilities";
 
@@ -1174,8 +1181,7 @@ class EnemyController extends Component {} // the game's AI
 const body = entity.get(RigidBodyComponent);
 
 entity.on(HealthDied, () => {
-  body.setVelocity(Vec2.ZERO);
-  body.setEnabledTranslations(false, false);
+  body.setType("static");
   entity.remove(EnemyController);
 });
 ```

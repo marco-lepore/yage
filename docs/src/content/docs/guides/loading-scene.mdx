@@ -73,7 +73,8 @@ class Boot extends LoadingScene {
 }
 ```
 
-The factory is invoked exactly once.
+The factory runs each time a load starts. A retry after a failed load calls
+it again, so the retry builds a new target scene.
 
 ## `minDuration` — the anti-flicker
 

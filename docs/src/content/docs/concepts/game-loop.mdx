@@ -122,7 +122,7 @@ frame as `dt` (in seconds). This value fluctuates with frame rate:
 import { Component, Transform } from "@yagejs/core";
 import type { CameraComponent } from "@yagejs/renderer";
 
-class CameraFollow extends Component {
+class CameraChase extends Component {
   constructor(private readonly camera: CameraComponent) {
     super();
   }
@@ -134,6 +134,10 @@ class CameraFollow extends Component {
   }
 }
 ```
+
+The example only shows `dt` at work. For a real camera, spawn a
+`CameraEntity` with a `follow` target instead. See
+[Following a Target](/guides/rendering/camera/#following-a-target).
 
 For gameplay that must be deterministic (physics, game state), use
 `fixedUpdate(dt)` instead where `dt` is always the constant `fixedTimestep`

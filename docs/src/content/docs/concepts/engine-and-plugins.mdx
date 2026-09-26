@@ -176,7 +176,10 @@ When `engine.start()` is called the engine processes plugins in this sequence:
    services from step 1 are available.
 3. **System wiring** — every `scheduler.add()` keeps its phase sorted by
    priority, at startup and at runtime.
-4. **Loop starts** — `requestAnimationFrame` begins ticking.
+4. **Loop starts** — frames begin to run. `RendererPlugin` connects the loop
+   to the PixiJS application's ticker, so with a renderer the ticker drives
+   each frame. Without a renderer, the loop requests its own frames with
+   `requestAnimationFrame` in a browser.
 5. **`onStart()`** — called once the first frame is queued. Safe to spawn
    entities, push scenes, and interact with the full engine.
 6. **Game runs** — the loop calls systems each frame.

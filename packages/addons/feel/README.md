@@ -206,7 +206,7 @@ const bloomPulse = feelEffect(worldLayer.fx, bloom({ bloomScale: 1.5 }), {
 
 Use `feelEffect` for a renderer effect that only needs a temporary intensity
 pulse. `feelGlitch` changes its slice pattern during playback. `feelDissolve`
-moves in one direction instead of returning to zero. The renderer package also
+moves in one direction instead of returning to zero. `@yagejs/effects` also
 supplies `zoomBlur`, `axisBlur`, and `implosion`; static pulses use
 `feelEffect`.
 

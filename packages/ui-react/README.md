@@ -5,7 +5,7 @@ React bindings for building game UI with JSX in the [YAGE](https://yage.dev) 2D 
 ## Install
 
 ```bash
-npm install @yagejs/ui-react react react-dom
+npm install @yagejs/ui @yagejs/ui-react react
 ```
 
 React is a **peer dependency** - bring your own (^18 or ^19).

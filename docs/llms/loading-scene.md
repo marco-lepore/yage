@@ -58,7 +58,7 @@ declare abstract class LoadingScene extends BaseLoadingScene {
 }
 ```
 
-- `target` — scene to hand off to. Instance or factory; factory is invoked exactly once, after `onEnter`.
+- `target` — scene to hand off to. Instance or factory. The factory runs when a load starts, one microtask after `startLoading()`, and again on every retry after a failed load; an instance is reused.
 - `minDuration` — wall-clock seconds. Prevents flicker on cached loads.
 - `transition` — optional `SceneTransition` for the loading→target `replace`.
 - `autoContinue` — when `true` (default), `continue()` fires automatically after `minDuration`. Set `false` to gate the handoff behind a manual `continue()` call — e.g. "press any key".

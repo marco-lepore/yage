@@ -435,6 +435,8 @@ LateUpdate:
   UILayoutSystem (priority 200, from @yagejs/ui)
   UIRootLayoutSystem (priority 200, from @yagejs/ui-react)
   FloatingOverlaySystem (priority 201, from @yagejs/ui)
+  UIFocusSystem (priority 202, from @yagejs/ui)
+  UIFocusRelayoutSystem (priority 203, from @yagejs/ui)
 
 Render:
   DisplaySystem (priority 0, from @yagejs/renderer)
@@ -490,8 +492,8 @@ import {
 } from "@yagejs/core";
 import { RigidBodyComponent } from "@yagejs/physics";
 
-// System queries for entities with specific components
-class PhysicsSystem extends System {
+// A game's system queries for entities with specific components
+class BuoyancySystem extends System {
   readonly phase = Phase.FixedUpdate;
   private query!: QueryResult;
 
@@ -504,7 +506,7 @@ class PhysicsSystem extends System {
     for (const entity of this.query) {
       const transform = entity.get(Transform);
       const body = entity.get(RigidBodyComponent);
-      // Sync transforms, step physics, etc.
+      // Push bodies below the water line up with body.applyForce()
     }
   }
 }

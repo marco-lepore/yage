@@ -12,9 +12,10 @@ npm install @yagejs-addons/dialogue
 npm install @yagejs/core @yagejs/input @yagejs/renderer
 ```
 
-`@yagejs/core` + `@yagejs/input` are required peers; `@yagejs/renderer` + `pixi.js`
-are optional peers (only the `./presenters` subpath needs them). `yaml` is the
-addon's one bundled runtime dep, pulled ONLY by the `./yaml` subpath.
+`@yagejs/core` + `@yagejs/input` are required peers; `@yagejs/renderer` is an
+optional peer (only the `./presenters` subpath needs it). `pixi.js` is not a peer:
+it comes in through `@yagejs/renderer`. `yaml` is the addon's one bundled runtime
+dep, pulled ONLY by the `./yaml` subpath.
 
 ## Four entry points (export split — load-bearing)
 
@@ -196,8 +197,8 @@ ONE opaque name namespace lives in a **`VariableStorage`** (Yarn-shaped:
 characters — scoping/prefixing is the host's policy. Storage is **installed once
 on the controller** and **persists across plays** — so cycling-NPC counters,
 quest flags, and anything written by `set` survive. (A choice's `once` flag is
-_per-conversation_, not stored — a fresh `play()` clears it; it belongs to the
-future save cursor.) `play(script)` is **content-only**.
+_per-conversation_, not stored — a fresh `play()` clears it.) `play(script)` is
+**content-only**.
 
 - `script.declare` holds variable **defaults** (Yarn `<<declare>>` / `InitialValues`).
   On `play()` each seeds the storage **only if absent** — a game-linked value
@@ -1176,11 +1177,11 @@ controller.addChannel({
 > reach `command?()`: it arrives through the channel's `revealBeat?(beat)` hook and
 > as `DialogueRevealMarkerEvent` (see **Reveal events**).
 
-### Save / restore (v1.1, document-only)
+### Save / restore
 
-A mid-line restore **re-presents** the current line, so `present()` re-fires to the
-extras. `createVoiceChannel.present()` stops any active clip first, so a restore
-restarts the line's clip cleanly (the restore-safety property). Build nothing now.
+A conversation cannot be restored mid-line (see **Save / load**).
+`createVoiceChannel`'s `present()` stops any clip still playing before it starts
+the new line's clip.
 
 ## Yarn Spinner — `loadYarn` (the `./yarn` subpath)
 
@@ -1430,17 +1431,21 @@ advisory but still renders.
 as **`@experimental`**. A Mass-Effect-style wheel; not in any default factory
 bundle, unpolished, geometry/API may change. Opt-in only.
 
-## Save / load — DEFERRED to v1.1
+## Save / load
 
-Mid-dialogue _cursor_ save/restore is NOT supported yet: no snapshot/restore
-exists, `@yagejs/save` is NOT a dependency, and the runner's positional getters
-(`getNodeId()`, `getStepIndex()`, `getChosenOnce()`, `getReturnStack()`) are NOT reachable through
-`DialogueController`/`DialogueSession` — do not try to capture a conversation
-cursor. (`handle.getVars()` IS reachable, but it's the variable snapshot, not a
-resumable cursor.) The storage model makes the future API purely additive: a
-cursor is `{ nodeId, stepIndex, chosenOnce, returnStack }` + the in-memory default store's
-contents (game-backed `cells` serialize through the game's own save). Save
-outside conversations (or replay the script) until v1.1 adds the seam.
+Dialogue has no snapshot/restore API, and `@yagejs/save` is NOT a dependency. A
+conversation in progress cannot be saved or resumed: save between conversations,
+or replay the script from its start on load.
+
+- **Variables** persist through the installed storage. `createStoreStorage(leaf)`
+  keeps them in a `@yagejs/core` store, which saves with the game; `cells` write
+  to game state the game already saves. `handle.getVars()` returns a snapshot of
+  the current values.
+- **Spent `once` choices** are not stored; each `play()` resets them.
+- `DialogueRunner`'s read-only getters (`getNodeId()`, `getStepIndex()`,
+  `getChosenOnce()`, `getReturnStack()`) are NOT reachable through
+  `DialogueController` / `DialogueSession`, which keep their runner private. No
+  API starts a runner at a saved step.
 
 ## Localization
 

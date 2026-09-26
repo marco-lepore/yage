@@ -299,6 +299,7 @@ export default defineScenario({
 | `expect`     | `ExpectStatic`                                          | `@vitest/expect`, Jest-style.                                                                   |
 | `events`     | `Inspector["events"]`                                   | The engine's event log.                                                                         |
 | `input`      | `DriveInput`                                            | Synthetic input, below.                                                                         |
+| `pointer`    | `Inspector["pointer"]`                                  | Real pointer events at the canvas, which reach `@yagejs/ui` buttons and menus. Below.           |
 | `capture`    | `(label?) => Promise<string>`                           | Screenshots into the run's result, resolves with a PNG data URL.                                |
 
 **Every call that advances a frame is async and has to be awaited.**
