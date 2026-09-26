@@ -1,22 +1,26 @@
 /**
- * @yagejs-addons/dialogue — a walkable town that drives the game-state model.
+ * @yagejs-addons/dialogue — a walkable town whose conversations read and change
+ * the game's state.
  *
- * Zero bundled ART assets: the town, the player, and the NPCs are all Graphics;
- * the dialogue presenters are `defaultDialogueTheme()` (Graphics chrome + canvas text).
- * The one bundled asset is Sage's voice-over — real synthesized speech under
- * `public/assets/voice/` (see the voice channel below). The level is wider than
- * the canvas, so a **follow camera** scrolls as you walk.
+ * No bundled art: the town, the player, the NPCs and the portraits are all
+ * Graphics, and the dialogue presenters are `defaultDialogueTheme()` (Graphics
+ * chrome + canvas text). The one bundled asset is Sage's voice-over, real
+ * synthesized speech under `public/assets/voice/` (see the voice channel
+ * below). The level is wider than the canvas, so a **follow camera** scrolls as
+ * you walk.
  *
- * The interactive controller installs a `VariableStorage` ONCE, then every NPC's
- * `play(script)` is content-only and shares it:
+ * One interactive controller (`DialogueHostEntity`) installs a
+ * `VariableStorage` once, and every NPC's `play(script)` is content-only and
+ * shares it:
  *
  *   • `storage`   — `compose(cells({ gold }), MemoryVariableStorage())`. `gold`
- *                   is a two-way `cells` accessor into the game's purse; declared
- *                   flags/counters (`paid`, `opened`, `timesTalked`) live in the
- *                   in-memory store and **persist across conversations**.
+ *                   is a two-way `cells` accessor into the player's purse;
+ *                   declared flags/counters (`paid`, `opened`, `timesTalked`)
+ *                   live in the in-memory store and **persist across
+ *                   conversations**.
  *   • `functions` — `has_item("rusty-key")` (argument-capable reads for gates).
  *   • `commands`  — `give-gold` / `give-item` / `take-item` / `open-gate` (the
- *                   game decides what they do; rules-in / consequences-out).
+ *                   script asks, and the game decides what each one does).
  *
  * Walk up to an NPC and press F:
  *   • Captain Vow (box) — the box presenter's per-line layout: a `meta.position:
@@ -41,8 +45,9 @@
  *                         writes through the cell and `give-item` hands you the key.
  *   • Rook              — a **timed choice** (a recipe, not an engine feature):
  *                         decide within 5s or the host commits a default ("Freeze
- *                         up"). A `choice-timer` command arms a host-owned countdown
- *                         (ChoiceTimer) on the GAME clock — so P pauses it too.
+ *                         up"). A `choice-timer` command arms the countdown
+ *                         (ChoiceTimer, a ProcessComponent slot on the game
+ *                         clock), and P pauses it too.
  *   • Gate Guard        — opens the gate only with the key; the unlock option is
  *                         shown **disabled** ("needs the rusty key") until you hold
  *                         one. On unlock it spends the key (`take-item`) and runs
@@ -63,32 +68,31 @@
  *                         the same shared storage.
  *
  * The HUD shows your live gold + items. Hold **J** to fast-forward, hold **X** to
- * skip, press **V** to toggle auto-advance; the pointer works too. The three
- * lifecycle levers ride two keys: **P** pauses (the conversation freezes
- * intact behind a dim overlay — `setPaused`) and **H** hides the dialogue UI
- * mid-line, restoring it at the same reveal point (`setHidden`). The
- * **Font** button swaps every presenter to a baked bitmap font and back.
+ * skip, press **V** to toggle auto-advance; the pointer works too. **P** pauses
+ * (the conversation freezes intact behind a dim overlay — `setPaused`) and **H**
+ * hides the dialogue UI mid-line, restoring it at the same reveal point
+ * (`setHidden`). The **Font** button swaps every presenter to a baked bitmap
+ * font and back.
  *
- * Two **registered channels** ride alongside the built-in presenter trio — the
- * open-ended extensibility seam, each added with zero addon change via the
- * controller's `channels` option:
+ * Two extra channels run alongside the built-in presenters, each added through
+ * the controller's `channels` option without changing the addon:
  *   • a built-in `createVoiceChannel` voice-over — reads Sage's per-line `voice`
- *     id and plays it over `@yagejs/audio` (a "voice" channel). It **gates
+ *     id and plays it over `@yagejs/audio` (a "voice" channel). It **holds
  *     auto-advance until the clip ends** (so with **V** on, Sage waits for his own
  *     voice — `max(clipEnd, revealEnd)`), **P** pauses the clip with the
- *     conversation, and the gate releases via `@yagejs/audio`'s `onEnd` (no
+ *     conversation, and `@yagejs/audio`'s `onEnd` releases the hold (no
  *     polling). With `onSkip: "ring"`, completing the typewriter does NOT cut the
  *     voice — it's stopped only when you move to the next line.
  *   • a custom `TranscriptChannel` — a `Mountable` observer implementing only
  *     `present`, logging each line the moment it appears (no waiting for the
- *     typewriter) to a small semi-opaque HUD panel; a channel that gates nothing.
+ *     typewriter) to a small semi-opaque HUD panel; a channel that holds nothing.
  *
- * Eight scripts live in plain **YAML data files** under `./dialogue/` (a designer
+ * Eight scripts live in plain **YAML data files** under `./scripts/` (a designer
  * edits them without touching code), imported via Vite's `?raw` suffix and parsed
  * by `loadYaml` (the `/yaml` subpath). Conditions and `set` values are plain string
  * expressions (`"gold >= 50 and not has_item('rusty-key')"`, `"gold - 50"`) instead
  * of hand-built trees — `loadYaml` runs them through the same string→expression
- * parser the JSON loader uses. Pip's script (`./dialogue/locksmith.dlg`) is the
+ * parser the JSON loader uses. Pip's script (`./scripts/locksmith.dlg`) is the
  * same idea in the **compact DSL**: `loadCompact` (the root entry, no `yaml` dep)
  * over a terse, line-oriented format that compiles to the identical frozen IR.
  *
@@ -98,7 +102,11 @@
  */
 
 import { Engine } from "@yagejs/core";
-import { RendererPlugin, installBitmapFont } from "@yagejs/renderer";
+import {
+  RendererKey,
+  RendererPlugin,
+  installBitmapFont,
+} from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 import { AudioPlugin } from "@yagejs/audio";
 import {
@@ -111,7 +119,7 @@ import {
 } from "../shared/bootstrap.js";
 import { WIDTH, HEIGHT } from "./constants.js";
 import { RoomScene } from "./scene.js";
-import { THEME_PRESETS } from "./theme.js";
+import { THEME_PRESETS, registerTownTextures } from "./theme.js";
 import "./styles.css";
 
 async function main(): Promise<void> {
@@ -153,6 +161,9 @@ async function main(): Promise<void> {
   await installDebugFromUrl(engine);
 
   await engine.start();
+  // The portraits and textured frames, drawn once and registered under their
+  // keys before any scene uses them.
+  registerTownTextures(engine.context.resolve(RendererKey));
   await engine.scenes.push(new RoomScene());
   wireControls(engine);
 }
