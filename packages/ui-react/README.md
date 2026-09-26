@@ -8,7 +8,7 @@ React bindings for building game UI with JSX in the [YAGE](https://yage.dev) 2D 
 npm install @yagejs/ui @yagejs/ui-react react
 ```
 
-React is a **peer dependency** - bring your own (^18 or ^19).
+React is a **peer dependency** - bring your own React 19.
 
 ## Usage
 
