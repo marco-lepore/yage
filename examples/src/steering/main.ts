@@ -70,16 +70,15 @@ class PlayerController extends Component {
 // ---------------------------------------------------------------------------
 // AgentVisual — the agent's body: a circle, dimmed while the agent is off.
 // The velocity arrow is debug output, so it goes to the debug overlay through
-// `drawVector` instead of being redrawn here. Takes the agent by reference:
-// components are keyed by exact class, so a sibling lookup on SteeringAgent
-// would miss a PhysicsSteeringAgent.
+// `drawVector` instead of being redrawn here. The sibling lookup on
+// SteeringAgent also finds a PhysicsSteeringAgent, its subclass.
 // ---------------------------------------------------------------------------
 class AgentVisual extends Component {
   private readonly gfx = this.sibling(GraphicsComponent);
+  private readonly agent = this.sibling(SteeringAgent);
   private stopArrow: (() => void) | null = null;
 
   constructor(
-    private readonly agent: SteeringAgent,
     private readonly color: number,
     private readonly radius = 10,
   ) {
@@ -174,7 +173,7 @@ function spawnAgent(
   entity.add(new GraphicsComponent());
   const agent = new SteeringAgent(options);
   entity.add(agent);
-  entity.add(new AgentVisual(agent, color, radius));
+  entity.add(new AgentVisual(color, radius));
   return { entity, agent };
 }
 
@@ -410,7 +409,7 @@ class SteeringScene extends Scene {
       behaviors: [arrive(playerPos, { slowRadius: 160 })],
     });
     entity.add(agent);
-    entity.add(new AgentVisual(agent, 0x4ade80, 10));
+    entity.add(new AgentVisual(0x4ade80, 10));
     return agent;
   }
 }
