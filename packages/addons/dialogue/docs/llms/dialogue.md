@@ -598,8 +598,8 @@ handle?.getVars(); // snapshot of the storage's variables
   (guarded). A read-only `cells` getter (no setter) throws. The **preferred path
   for game mutations is a command** (so game rules run): write-through `cells` is
   for when the _script_ owns the arithmetic (`set gold = gold - 50`).
-- `ctx.setVar(key, value)` is the skill-check seam — a blocking command computes a
-  result a later condition reads.
+- `ctx.setVar(key, value)` is how a skill check reports back: a blocking command
+  computes a result and stores it in a variable that a later condition reads.
 
 ### Commands — rules in, consequences out
 
@@ -654,8 +654,9 @@ interface DialogueControllerOptions extends BaseDialogueControllerOptions {
 }
 ```
 
-`DialogueController<TStorage>` is generic over its storage type (the seam for
-future storage-aware checking; `play()` is typed by the script's declared vars).
+`DialogueController<TStorage>`'s type parameter is inferred from the `storage`
+option and types only that option; `play()` is typed by the script's declared
+vars, not by the storage.
 Methods: `play(script, overrides?): DialogueHandle | undefined` (undefined if the
 component was removed), `isActive()`, `stop()`, `skip()`,
 `setAutoAdvance(seconds | null)`, `preview(nodeId): PreviewedLine[]`, plus the three
@@ -754,9 +755,8 @@ Events (entity → scene bubbling): `DialogueStartedEvent`, `DialogueLineEvent`
 hover), `DialogueSkipUsedEvent` (`{ scriptId }`), `DialogueAutoAdvanceEvent`
 (`{ scriptId }`). Per-grapheme **ticks** are NOT an event — wire the controller
 `onRevealTick(index)` callback option (it fires hundreds of times per line; the host
-filters whitespace). Observation is events-only: the reveal-completed seam is
-session-owned (no public mutable field
-a game can clobber).
+filters whitespace). Observation is events-only: the session tracks when a line
+finishes revealing, and there is no public mutable field a game can clobber.
 
 ### Gating gameplay on a conversation
 
@@ -868,7 +868,7 @@ function update(dt: number) {
 
 Headless channels (core): `TextChannel`, `ChoiceChannel`, `AvatarChannel`,
 `ChromeChannel`. Presenter adapters add the YAGE lifecycle (`mount`/`dispose`)
-and pointer seams: `TextPresenter`, `ChromePresenter`, `ChoicePresenter`.
+and pointer input: `TextPresenter`, `ChromePresenter`, `ChoicePresenter`.
 Defaults: `DialogueChrome`, `ChoiceListPresenter`, `BoxTextView` (box);
 `BubbleChrome`, `BubbleChoicePresenter`, `BubbleTextView` (world). Avatars:
 `PortraitPresenter`, `SceneFigurePresenter`, line-driven `InBoxAvatarPresenter`
@@ -908,7 +908,7 @@ A presenter implements the channel contract; the Session drives it. The
 `text.present(line)` (so a composite/layout owner commits first); geometry
 (`setBox`) is applied before `present`; the text channel fires its
 `setRevealListener` callback **exactly once** per line (synchronously for an empty
-line) — the Session owns that seam, so never expose a public reveal field.
+line) — the Session listens for it, so never expose a public reveal field.
 
 Reuse `LineReveal` for reveal timing rather than re-implementing it — a DOM /
 per-word / accessibility presenter then only maps its grapheme cursor onto its own

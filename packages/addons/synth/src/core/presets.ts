@@ -23,8 +23,8 @@ export type SynthPatchOverrides = Partial<SynthPatch> & {
 /**
  * What a jingle preset takes. Pitch and timing come from the notes, so a
  * jingle honours its shared voice's fields plus the note lengths; passing
- * `frequency`, `glideTo`, `delay`, or `seamless` is a type error rather than
- * a silently ignored field.
+ * `frequency`, `glideTo`, `duration`, `delay`, or `seamless` is a type error
+ * rather than a silently ignored field. Set note length with `noteDuration`.
  */
 export type SynthJingleOverrides = Partial<SynthVoice> & {
   /**

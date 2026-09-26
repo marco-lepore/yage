@@ -6,7 +6,7 @@ description: "Filters at component / layer / scene / screen scope, masks, blend 
 YAGE wraps PixiJS filters and masks behind a consistent handle-based API
 that works identically at four scopes — per-component, per-layer,
 per-scene, per-screen. Pre-built effect presets ship in
-`@yagejs/effects`. Custom shaders are still one `rawFilter(...)` away.
+`@yagejs/effects`. Wrap a custom shader with `rawFilter(...)`.
 
 ## The handle pattern
 
@@ -167,13 +167,10 @@ protocol:
 
 ```ts
 import {
-  // Originals
   hitFlash, bloom, outline, dropShadow, pixelate,
   glow, crt, chromaticAberration, vignette, colorGrade,
-  // Added in 0.5.x
   godRay, shockwave, motionBlur, oldFilm, bulgePinch,
-  halftone, wave,
-  colorize,
+  halftone, wave, colorize,
   glitch, zoomBlur, axisBlur, implosion, dissolve,
 } from "@yagejs/effects";
 ```
@@ -414,9 +411,7 @@ Six presets use stable host coordinates:
 - `bulgePinch` interprets its center and radius in host-local pixels.
 - `shockwave` accepts container-local coords for `trigger(x, y)` AND for
   every dimensional option, and converts each frame against the filter
-  target's live `worldTransform`. **This wrapper pattern is
-  experimental** — the API may shift as the broader fix lands. Don't
-  depend on `shockwave`'s exact unit story across versions.
+  target's live `worldTransform`.
 - `glitch` interprets band displacement and RGB offsets in host-local pixels.
 - `zoomBlur` interprets its center and radii in host-local pixels.
   Set `expandFromCenter: true` to grow a finite outer radius with intensity.
@@ -426,7 +421,7 @@ Six presets use stable host coordinates:
   intensity rises.
 - `dissolve` interprets its noise scale in host-local pixels.
 
-For resolution-stable output today on the other presets, scale your
+For resolution-stable output on the other presets, scale your
 option values by `renderer.canvasSize.width / renderer.virtualSize.width`
 at the call site.
 :::
@@ -520,7 +515,7 @@ Two gotchas inside a `graphicsMask` closure:
    Reference the live source (`panel.width`, `this.layout.width`, a getter)
    inside the closure so each call picks up the current value.
 
-Three factories ship today: `rectMask`, `spriteMask`, and `graphicsMask`.
+Three mask factories are built in: `rectMask`, `spriteMask`, and `graphicsMask`.
 `spriteMask` uses a caller-owned sprite, while `graphicsMask` redraws through
 your callback. Use `defineMask` for a reusable named factory.
 

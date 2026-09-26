@@ -14,7 +14,7 @@ import { defineEvent } from "@yagejs/core";
  */
 
 /** A pointer engaged a stick. Per-frame values are polled, not evented —
- *  read `controls.stick(id).value` (or `input.getStick(side)`). */
+ *  read `controls.stick(id)?.value` (or `input.getStick(side)`). */
 export const VirtualStickEngageEvent = defineEvent<{ id: string }>(
   "virtual-controls:stick-engage",
 );

@@ -118,7 +118,7 @@ export class DialogueRunner {
   /** `option.once` keys already picked — per-conversation **cursor** state, NOT
    *  the variable storage. Fresh per runner, so a new `play()` starts it empty
    *  (a re-played conversation re-shows its `once` options; {@link getChosenOnce}
-   *  exposes the set so a save cursor could capture/restore it). */
+   *  exposes the set read-only). */
   private readonly chosenOnce = new Set<string>();
   /** Pending detours, innermost last. Popped when a detoured node finishes. */
   private readonly returnStack: ReturnPoint[] = [];
@@ -156,26 +156,26 @@ export class DialogueRunner {
   }
 
   // ── read-only cursor state ─────────────────────────────────────────────────
-  // The runner's durable cursor is (nodeId, stepIndex, chosenOnce) + getVars().
-  // These getters let a domain save adapter capture a conversation without
-  // coupling dialogue to a storage package. Keep them read-only.
+  // Where the runner is: node, step, spent `once` keys, and pending detours.
+  // No API sets them, so a conversation cannot be resumed at a saved step: a
+  // runner always begins at the first step of its start node.
 
   /** Current node id in the dialogue cursor. */
   getNodeId(): string {
     return this.nodeId;
   }
 
-  /** Current step index within the node (durable cursor; save seam). */
+  /** Current step index within the node. */
   getStepIndex(): number {
     return this.stepIndex;
   }
 
-  /** One-shot choice keys already picked (`option.once`); save seam. */
+  /** One-shot choice keys already picked (`option.once`) in this conversation. */
   getChosenOnce(): ReadonlySet<string> {
     return this.chosenOnce;
   }
 
-  /** Pending detours, innermost last (durable cursor; save seam). */
+  /** Pending detours, innermost last. */
   getReturnStack(): readonly ReturnPoint[] {
     return this.returnStack;
   }

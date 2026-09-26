@@ -554,7 +554,7 @@ someEntity.emit(DamagedEvent, { amount: 10 }); // handler runs with entity = som
 
 Scene-level subscriptions are released when the scene exits, together with its entities, so subscribe in `onEnter` (or from a component through `listenScene`). A scene instance pushed again starts with none.
 
-`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)`, and via `Scene.use(key)` / `Scene.service(key)`. Both are public and scope-aware — scene scope first, then engine — so any holder of a scene reference resolves through them, not only the scene subclass: an entity's `setup()` calls `this.scene.use(RandomKey)`. `use` throws when the key resolves nowhere; `service` returns a lazy proxy that resolves on first property access. Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `Scene.tryResolveScoped<T>(key)` (public) reads a scene-scoped service without engine-scope fallback, returning `undefined` when absent. Use it in systems that iterate scenes. `_registerScoped` / `_resolveScoped` are kept internal aliases — prefer the public names in new code.
+`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)`, and via `Scene.use(key)` / `Scene.service(key)`. Both are public and scope-aware — scene scope first, then engine — so any holder of a scene reference resolves through them, not only the scene subclass: an entity's `setup()` calls `this.scene.use(RandomKey)`. `use` throws when the key resolves nowhere; `service` returns a lazy proxy that resolves on first property access. Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `Scene.tryResolveScoped<T>(key)` (public) reads a scene-scoped service without engine-scope fallback, returning `undefined` when absent. Use it in systems that iterate scenes.
 
 ### SceneTime — hitstop, slow motion, bullet time, freeze frames
 
@@ -1004,7 +1004,8 @@ Core ships the transition contract + orchestration only. Concrete transitions (`
 
 Events: `scene:transition:started { kind, fromScene, toScene }`, `scene:transition:ended { kind, fromScene, toScene }` (fromScene/toScene may be `undefined`).
 
-**Breaking:** `SceneManager.pop()` returns `Promise<Scene | undefined>`.
+`SceneManager.pop()` returns `Promise<Scene | undefined>`: the popped scene,
+or `undefined` when the stack was empty.
 
 #### Reentrant scene swaps
 

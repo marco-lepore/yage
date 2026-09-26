@@ -141,8 +141,8 @@ function retune(agent: SteeringAgent, boss: Entity) {
 }
 ```
 
-## Not in v1
+## Not included
 
-A bundled debug presenter is deferred — read `agent.velocity` and draw the
+There is no bundled debug presenter. Read `agent.velocity` and draw the
 arrow yourself. See the [steering doc](https://yage.dev/addons/steering/)
 for details.

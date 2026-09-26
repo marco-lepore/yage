@@ -22,7 +22,7 @@ engine.use(
 );
 ```
 
-`deterministicSeed` is opt-in. Leave it unset for normal debug builds; set it from test fixtures so each `Inspector.setSeed(...)` call has a known starting state.
+`deterministicSeed` is opt-in. It seeds every scene RNG as the scene enters, so a test run rolls the same numbers without calling `inspector.setSeed(...)`. A `setSeed` call overrides it for current and later scenes. `globalRandom` is not affected. Leave it unset for normal debug builds so randomness behaves as in production.
 
 ### The debug global
 

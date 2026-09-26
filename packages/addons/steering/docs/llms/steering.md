@@ -363,9 +363,11 @@ function tick(dt: number) {
 }
 ```
 
-## Not in v1
+## Not included
 
-Bundled debug presenter — draw `agent.velocity` yourself. By design (not
-deferred): arrival is a callback (`onArrive` — mirror to your own event in a
-line), and there is no snapshot/restore (steering state is transient;
-`followPath` progress saves via `waypointIndex`/`startAt`).
+- No debug presenter. Draw `agent.velocity` yourself.
+- No arrival event. `arrive` and `followPath` call `onArrive`/`onDepart`;
+  emit your own entity event from the callback if you need one.
+- No `snapshot()`/`restore()`. Steering state is transient. To save
+  `followPath` progress, store its `waypointIndex` and pass it back as
+  `startAt`.

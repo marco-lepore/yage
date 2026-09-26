@@ -13,12 +13,12 @@ EarlyUpdate → FixedUpdate → Update → LateUpdate → Render → EndOfFrame
 
 | Phase | Purpose |
 |---|---|
-| **EarlyUpdate** | Input polling, network message ingestion. Runs once per frame before anything else. |
+| **EarlyUpdate** | Input polling. Runs once per frame before anything else. |
 | **FixedUpdate** | Physics stepping and deterministic gameplay. May run 0--5 times per frame at a constant timestep. |
 | **Update** | Physics interpolation, then general game logic. Component `update(dt)` calls happen here. Variable `dt`. |
-| **LateUpdate** | UI layout, constraint solving, anything that must run after game logic. Variable `dt`. |
-| **Render** | Display sync — sprite transforms are flushed to the GPU, particles are drawn. |
-| **EndOfFrame** | Deferred entity teardown (`onDestroy`, detach from scene), event queue flush. An entity's `isActive` already read `false` earlier, at the `destroy()` call itself. |
+| **LateUpdate** | UI layout, particle simulation, constraint solving, anything that must run after game logic. Variable `dt`. |
+| **Render** | Display sync: transforms are copied to the display objects, then lighting and the debug overlay draw. |
+| **EndOfFrame** | `InputClearSystem` clears this frame's input edges (`isJustPressed`, `isJustReleased`). Then deferred entity teardown runs: `onDestroy`, detach from scene, and the `entity:destroyed` event. An entity's `isActive` already read `false` earlier, at the `destroy()` call itself. |
 
 ## What Runs When
 

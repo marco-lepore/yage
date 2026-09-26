@@ -1439,9 +1439,9 @@ the marker fires as the cursor reaches it.
 
 ### Save / restore
 
-If your game restores a save and **re-presents** the current line, a channel's
-`present()` fires again. `createVoiceChannel` stops any active clip at the start
-of `present`, so the line's clip restarts cleanly.
+A conversation in progress is not saved, so a channel never has to restore one
+mid-line. Dialogue variables persist through the storage you install on the
+controller. [Save / load](#save--load) shows how to save them with your game.
 
 ## Input
 
@@ -1634,7 +1634,11 @@ and passing it as the `choices` channel.
 
 ## Save / load
 
-Dialogue **variables** persist through the storage you install. `handle.getVars()`
-reads the current values, and any game state you exposed through `cells` saves
-with the rest of your game state. Save **between** conversations, or replay a
-script from its start on load.
+A conversation in progress cannot be saved or resumed. Save **between**
+conversations, or replay a script from its start on load.
+
+Dialogue **variables** persist through the storage you install.
+[`createStoreStorage`](#keeping-variables-in-the-game-store) keeps them in your
+game store, which saves with the rest of your game. Game state you exposed
+through `cells` saves with your game state. `handle.getVars()` reads the current
+values. Spent `once` choices are not stored, so each `play()` shows them again.

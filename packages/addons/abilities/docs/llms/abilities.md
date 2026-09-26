@@ -1190,11 +1190,20 @@ Corpses remain hittable unless `HitReceiverOptions.filter` rejects dead
 targets. When wrapping the default team rule, accept when either team is
 undefined or the two teams differ.
 
-## Deferred or game-owned
+## Not included (game-owned)
 
-No built-in presenters/damage numbers/health bars, generic stats/buffs,
-resources, AI decisions, motion-ownership helper, input-driver reload,
-tag-filtered loadout edits, hierarchical/stateful tags, bulk process removal,
-or automatic combat-state persistence. The in-repo
-`examples/abilities-addon.html` shows the intended composition, including
-complete combo/power loadout replacement.
+The addon ships none of these; the game builds them:
+
+- Presenters, damage numbers, and health bars.
+- Generic stats, buffs, and resources.
+- AI decisions.
+- A helper that decides which component writes velocity. Follow the
+  `Stagger` rule above.
+- In-place input-driver reload and tag-filtered loadout edits. Replace the
+  whole loadout instead.
+- Hierarchical or stateful tags. `AbilityDef.tags` are plain strings.
+- Bulk process removal.
+- Automatic combat-state persistence. See Save boundary.
+
+The in-repo `examples/abilities-addon.html` shows the intended composition,
+including complete combo/power loadout replacement.
