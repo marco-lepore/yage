@@ -3,7 +3,12 @@
 Named, composable game-feel cues. Root entry uses `@yagejs/core` only.
 Optional entries: `/renderer`, `/audio`, `/particles`, `/recipes`.
 
-```ts
+```ts yage-context="entity"
+import { SpriteComponent } from "@yagejs/renderer";
+import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";
+import { feelSquash } from "@yagejs-addons/feel/renderer";
+
+const sprite = entity.get(SpriteComponent);
 const feel = entity.add(
   new Feel({
     hit: feelParallel(
@@ -18,17 +23,26 @@ feel.play("hit");
 ## Cue types
 
 ```ts
+import type { EasingFunction } from "@yagejs/core";
+import {
+  Feel as BaseFeel,
+  type FeelCueOptions as BaseFeelCueOptions,
+  type FeelNode,
+  type FeelPlaybackHandle as BaseFeelPlaybackHandle,
+  type FeelPulseTiming as BaseFeelPulseTiming,
+} from "@yagejs-addons/feel";
+
 type FeelOverlap = "restart" | "ignore" | "allow";
 type FeelRange = number | readonly [min: number, max: number];
 
-interface FeelPulseTiming {
+interface FeelPulseTiming extends BaseFeelPulseTiming {
   duration?: number;
   peakAt?: number;
   attackEasing?: EasingFunction;
   releaseEasing?: EasingFunction;
 }
 
-interface FeelCueOptions {
+interface FeelCueOptions extends BaseFeelCueOptions {
   effect: FeelNode;
   overlap?: FeelOverlap; // default "restart"
   chance?: number; // 0..1, default 1
@@ -36,7 +50,8 @@ interface FeelCueOptions {
   intensity?: FeelRange; // default 1
 }
 
-class Feel extends Component {
+// Feel is a Component.
+declare class Feel extends BaseFeel {
   constructor(cues: Readonly<Record<string, FeelNode | FeelCueOptions>>);
   play(
     name: string,
@@ -47,7 +62,7 @@ class Feel extends Component {
   isPlaying(name?: string): boolean;
 }
 
-interface FeelPlaybackHandle {
+interface FeelPlaybackHandle extends BaseFeelPlaybackHandle {
   readonly cue: string;
   readonly active: boolean;
   readonly finished: Promise<void>;
@@ -77,13 +92,32 @@ overlap, disable, and destroy cancel immediately and emit `FeelStoppedEvent`.
 ## Composition
 
 ```ts
-feelParallel(...nodes: FeelNode[]): FeelNode;
-feelSequence(...nodes: FeelNode[]): FeelNode;
-feelDelay(seconds: number, node?: FeelNode): FeelNode;
-feelRepeat(node: FeelNode, times: number, gap?: number): FeelNode;
-feelLoop(node: FeelNode, gap?: number): FeelNode;
-defineFeelEffect(duration, create): FeelNode;
-defineFeelState({ attack?, release?, attackEasing?, releaseEasing? }, create): FeelNode;
+import type {
+  FeelEffectInstance,
+  FeelNode,
+  FeelStateContext,
+  FeelStateInstance,
+  FeelStateTiming,
+  FeelTimedEffectContext,
+} from "@yagejs-addons/feel";
+
+declare function feelParallel(...nodes: FeelNode[]): FeelNode;
+declare function feelSequence(...nodes: FeelNode[]): FeelNode;
+declare function feelDelay(seconds: number, node?: FeelNode): FeelNode;
+declare function feelRepeat(
+  node: FeelNode,
+  times: number,
+  gap?: number,
+): FeelNode;
+declare function feelLoop(node: FeelNode, gap?: number): FeelNode;
+declare function defineFeelEffect(
+  duration: number,
+  create: (context: FeelTimedEffectContext) => FeelEffectInstance,
+): FeelNode;
+declare function defineFeelState(
+  timing: FeelStateTiming, // { attack?, release?, attackEasing?, releaseEasing? }
+  create: (context: FeelStateContext) => FeelStateInstance,
+): FeelNode;
 ```
 
 Every effect leaf gets `FeelEffectContext` with `entity`, `cue`, `intensity`,
@@ -127,38 +161,91 @@ duration: an explicit duration remains retimed with the cue, and no duration
 means an immediate node.
 
 ```ts
-feelSpriteAnimation(name, { target?, mode?: "play" | "force" | "oneShot", duration?, onComplete?, onCancel? });
-feelPositionPunch({ target, offset, duration?, peakAt?, ... });
-feelPositionSpring({ target, offset, duration?, oscillations?, decay? });
-feelRecoil({ target, direction, distance?, duration?, peakAt?, attackEasing?, releaseEasing? });
-feelBounce({ target, distance?, duration?, peakAt?, attackEasing?, releaseEasing? });
-feelRotationPunch({ target, radians, duration?, peakAt?, ... });
-feelRotationSpring({ target, radians, duration?, oscillations?, decay? });
-feelRotationShake({ target, radians?, frequency?, decay?, duration? });
-feelScalePunch({ target, scale?, duration?, peakAt?, ... });
-feelScaleSpring({ target, scale?, duration?, oscillations?, decay? });
-feelScaleShake({ target, amplitude?, frequency?, decay?, duration? });
-feelSquash({ target, axis?, amount?, duration?, peakAt?, ... });
-feelTransformShake({ target, amplitude?, frequency?, decay?, duration? });
-feelCameraShake({ camera, intensity?, duration?, frequency?, decay? });
-feelCameraRotation({ camera, radians?, duration?, peakAt?, ... });
-feelCameraZoom({ camera, scale?, duration?, peakAt?, ... });
-feelEffect(host: EffectsHost, factory: EffectFactory, timing?: FeelPulseTiming);
-feelGlitch({ host, refreshRate?, slices?, offset?, direction?, red?, green?, blue?, duration?, peakAt?, releaseAt?, ... });
-feelDissolve({ target, duration?, easing?, edgeColor?, edgeWidth?, noiseScale?, softness?, seed? });
-feelHitFlash(host: EffectsHost, options?: FeelHitFlashOptions);
-feelShockwave(host: EffectsHost, options?: ShockwaveOptions & { center? });
-feelOutline({ target, thickness?, color?, alpha?, quality?, knockout?, duration?, peakAt?, ... });
-feelGlow({ target, color?, distance?, outerStrength?, innerStrength?, alpha?, quality?, knockout?, duration?, peakAt?, ... });
-feelColorize({ target, color, strength?, duration?, peakAt?, ... });
-feelOpacity({ target, alpha?, duration?, peakAt?, attackEasing?, releaseEasing? });
-feelBlink({ target, duration?, interval? });
-feelFloatingText({ text, position?, style?, offset?, travel?, spread?, sway?, layer?, duration?, fadeAt?, startScale?, peakScale?, peakAt?, settleAt? });
-feelDamageNumber({ value, critical?, prefix?, suffix?, format?, position?, color?, criticalColor?, fontSize?, criticalSize?, outlineColor?, outlineWidth?, style?, criticalStyle?, rise?, spread?, sway?, layer?, duration?, fadeAt? });
-feelImpactRing({ position?, radius?, expand?, thickness?, color?, spikes?, spikeLength?, layer?, duration?, startScale? });
-feelFlightLines({ position?, direction?, count?, length?, width?, spread?, depth?, travel?, color?, alpha?, layer?, duration? });
-feelMotionTrail({ position?, duration?: number | "held", lifetime?, sampleInterval?, minDistance?, maxPoints?, width?, taper?, color?, alpha?, layer? });
-feelAfterimage({ target, count?, interval?, lifetime?, tint?, alpha?, endScale?, layer?, blendMode? });
+import type {
+  EffectFactory,
+  EffectHandle,
+  EffectsHost,
+} from "@yagejs/renderer";
+import type { FeelNode, FeelPulseTiming } from "@yagejs-addons/feel";
+import type {
+  FeelAfterimageOptions,
+  FeelBlinkOptions,
+  FeelBounceOptions,
+  FeelCameraRotationOptions,
+  FeelCameraShakeOptions,
+  FeelCameraZoomOptions,
+  FeelColorizeOptions,
+  FeelDamageNumberOptions,
+  FeelDissolveOptions,
+  FeelFlightLinesOptions,
+  FeelFloatingTextOptions,
+  FeelGlitchOptions,
+  FeelGlowOptions,
+  FeelHitFlashOptions,
+  FeelImpactRingOptions,
+  FeelMotionTrailOptions,
+  FeelOpacityOptions,
+  FeelOutlineOptions,
+  FeelPositionPunchOptions,
+  FeelPositionSpringOptions,
+  FeelRecoilOptions,
+  FeelRotationPunchOptions,
+  FeelRotationShakeOptions,
+  FeelRotationSpringOptions,
+  FeelScalePunchOptions,
+  FeelScaleShakeOptions,
+  FeelScaleSpringOptions,
+  FeelShockwaveOptions,
+  FeelSpriteAnimationOptions,
+  FeelSquashOptions,
+  FeelTransformShakeOptions,
+} from "@yagejs-addons/feel/renderer";
+
+declare function feelSpriteAnimation<T extends string = string>(
+  name: T,
+  opts?: FeelSpriteAnimationOptions<T>, // { target?, mode?: "play" | "force" | "oneShot", duration?, onComplete?, onCancel? }
+): FeelNode;
+declare function feelPositionPunch(opts: FeelPositionPunchOptions): FeelNode; // { target, offset, duration?, peakAt?, ... }
+declare function feelPositionSpring(opts: FeelPositionSpringOptions): FeelNode; // { target, offset, duration?, oscillations?, decay? }
+declare function feelRecoil(opts: FeelRecoilOptions): FeelNode; // { target, direction, distance?, duration?, peakAt?, attackEasing?, releaseEasing? }
+declare function feelBounce(opts: FeelBounceOptions): FeelNode; // { target, distance?, duration?, peakAt?, attackEasing?, releaseEasing? }
+declare function feelRotationPunch(opts: FeelRotationPunchOptions): FeelNode; // { target, radians, duration?, peakAt?, ... }
+declare function feelRotationSpring(opts: FeelRotationSpringOptions): FeelNode; // { target, radians, duration?, oscillations?, decay? }
+declare function feelRotationShake(opts: FeelRotationShakeOptions): FeelNode; // { target, radians?, frequency?, decay?, duration? }
+declare function feelScalePunch(opts: FeelScalePunchOptions): FeelNode; // { target, scale?, duration?, peakAt?, ... }
+declare function feelScaleSpring(opts: FeelScaleSpringOptions): FeelNode; // { target, scale?, duration?, oscillations?, decay? }
+declare function feelScaleShake(opts: FeelScaleShakeOptions): FeelNode; // { target, amplitude?, frequency?, decay?, duration? }
+declare function feelSquash(opts: FeelSquashOptions): FeelNode; // { target, axis?, amount?, duration?, peakAt?, ... }
+declare function feelTransformShake(opts: FeelTransformShakeOptions): FeelNode; // { target, amplitude?, frequency?, decay?, duration? }
+declare function feelCameraShake(opts: FeelCameraShakeOptions): FeelNode; // { camera, intensity?, duration?, frequency?, decay? }
+declare function feelCameraRotation(opts: FeelCameraRotationOptions): FeelNode; // { camera, radians?, duration?, peakAt?, ... }
+declare function feelCameraZoom(opts: FeelCameraZoomOptions): FeelNode; // { camera, scale?, duration?, peakAt?, ... }
+declare function feelEffect<H extends EffectHandle>(
+  host: EffectsHost,
+  factory: EffectFactory<H>,
+  timing?: FeelPulseTiming,
+): FeelNode;
+declare function feelGlitch(opts: FeelGlitchOptions): FeelNode; // { host, refreshRate?, slices?, offset?, direction?, red?, green?, blue?, duration?, peakAt?, releaseAt?, ... }
+declare function feelDissolve(opts: FeelDissolveOptions): FeelNode; // { target, duration?, easing?, edgeColor?, edgeWidth?, noiseScale?, softness?, seed? }
+declare function feelHitFlash(
+  host: EffectsHost,
+  opts?: FeelHitFlashOptions,
+): FeelNode;
+declare function feelShockwave(
+  host: EffectsHost,
+  opts?: FeelShockwaveOptions,
+): FeelNode; // ShockwaveOptions & { center? }
+declare function feelOutline(opts: FeelOutlineOptions): FeelNode; // { target, thickness?, color?, alpha?, quality?, knockout?, duration?, peakAt?, ... }
+declare function feelGlow(opts: FeelGlowOptions): FeelNode; // { target, color?, distance?, outerStrength?, innerStrength?, alpha?, quality?, knockout?, duration?, peakAt?, ... }
+declare function feelColorize(opts: FeelColorizeOptions): FeelNode; // { target, color, strength?, duration?, peakAt?, ... }
+declare function feelOpacity(opts: FeelOpacityOptions): FeelNode; // { target, alpha?, duration?, peakAt?, attackEasing?, releaseEasing? }
+declare function feelBlink(opts: FeelBlinkOptions): FeelNode; // { target, duration?, interval? }
+declare function feelFloatingText(opts: FeelFloatingTextOptions): FeelNode; // { text, position?, style?, offset?, travel?, spread?, sway?, layer?, duration?, fadeAt?, startScale?, peakScale?, peakAt?, settleAt? }
+declare function feelDamageNumber(opts: FeelDamageNumberOptions): FeelNode; // { value, critical?, prefix?, suffix?, format?, position?, color?, criticalColor?, fontSize?, criticalSize?, outlineColor?, outlineWidth?, style?, criticalStyle?, rise?, spread?, sway?, layer?, duration?, fadeAt? }
+declare function feelImpactRing(opts?: FeelImpactRingOptions): FeelNode; // { position?, radius?, expand?, thickness?, color?, spikes?, spikeLength?, layer?, duration?, startScale? }
+declare function feelFlightLines(opts?: FeelFlightLinesOptions): FeelNode; // { position?, direction?, count?, length?, width?, spread?, depth?, travel?, color?, alpha?, layer?, duration? }
+declare function feelMotionTrail(opts?: FeelMotionTrailOptions): FeelNode; // { position?, duration?: number | "held", lifetime?, sampleInterval?, minDistance?, maxPoints?, width?, taper?, color?, alpha?, layer? }
+declare function feelAfterimage(opts: FeelAfterimageOptions): FeelNode; // { target, count?, interval?, lifetime?, tint?, alpha?, endScale?, layer?, blendMode? }
 ```
 
 Visual motion targets a `VisualComponent`. Each playback owns a renderer
@@ -237,12 +324,22 @@ in `start` and release them in `finish`. Developer callbacks can use
 ## `/recipes`
 
 ```ts
-impact({ target, position?, color?, duration?, scale?, shake?, ringRadius?, ringExpand? });
-damageImpact({ target, value, position?, critical?, impact?, number? });
-dashBurst({ target, direction, position?, duration?, peakAt?, attackEasing?, releaseEasing?, stretch?, blur?, lines? });
-spawnPop({ target, duration?, startScale?, offset?, oscillations?, decay?, glow? });
-enemyDeath({ target, onComplete, position?, color?, impactDuration?, dissolveDuration?, scale?, shake?, dissolve?, glow?, ring? });
-voidCollapse({ host, center?, radius?, strength?, darkness?, swirl?, expandFromCenter?, zoomStrength?, implosionDelay?, holdDuration?, color?, colorStrength?, duration?, peakAt?, ... });
+import type { FeelNode } from "@yagejs-addons/feel";
+import type {
+  DamageImpactOptions,
+  DashBurstOptions,
+  EnemyDeathOptions,
+  ImpactOptions,
+  SpawnPopOptions,
+  VoidCollapseOptions,
+} from "@yagejs-addons/feel/recipes";
+
+declare function impact(opts: ImpactOptions): FeelNode; // { target, position?, color?, duration?, scale?, shake?, ringRadius?, ringExpand? }
+declare function damageImpact(opts: DamageImpactOptions): FeelNode; // { target, value, position?, critical?, impact?, number? }
+declare function dashBurst(opts: DashBurstOptions): FeelNode; // { target, direction, position?, duration?, peakAt?, attackEasing?, releaseEasing?, stretch?, blur?, lines? }
+declare function spawnPop(opts: SpawnPopOptions): FeelNode; // { target, duration?, startScale?, offset?, oscillations?, decay?, glow? }
+declare function enemyDeath(opts: EnemyDeathOptions): FeelNode; // { target, onComplete, position?, color?, impactDuration?, dissolveDuration?, scale?, shake?, dissolve?, glow?, ring? }
+declare function voidCollapse(opts: VoidCollapseOptions): FeelNode; // { host, center?, radius?, strength?, darkness?, swirl?, expandFromCenter?, zoomStrength?, implosionDelay?, holdDuration?, color?, colorStrength?, duration?, peakAt?, ... }
 ```
 
 A recipe is a ready-made composition that returns an ordinary `FeelNode`. It
@@ -271,14 +368,19 @@ recipe destroys an entity by itself.
 ## `/audio`
 
 ```ts
-feelSound({
-  alias: string,
-  channel?: string,
-  volume?: number,
-  speed?: FeelRange,
-  once?: boolean,
-  onEnd?: () => void,
-});
+import type { FeelNode, FeelRange } from "@yagejs-addons/feel";
+import type { FeelSoundOptions as BaseFeelSoundOptions } from "@yagejs-addons/feel/audio";
+
+interface FeelSoundOptions extends BaseFeelSoundOptions {
+  alias: string;
+  channel?: string;
+  volume?: number;
+  speed?: FeelRange;
+  once?: boolean;
+  onEnd?: () => void;
+}
+
+declare function feelSound(opts: FeelSoundOptions): FeelNode;
 ```
 
 The cue owns the returned sound handle. The sound keeps the overall playback
@@ -291,8 +393,14 @@ request or a `playOnce` owner.
 ## `/particles`
 
 ```ts
-feelParticleBurst({ emitter, count: number | [min, max], position? });
-feelParticleEmit({ emitter, duration?: number | "held" });
+import type { FeelNode } from "@yagejs-addons/feel";
+import type {
+  FeelParticleBurstOptions,
+  FeelParticleEmitOptions,
+} from "@yagejs-addons/feel/particles";
+
+declare function feelParticleBurst(opts: FeelParticleBurstOptions): FeelNode; // { emitter, count: number | [min, max], position? }
+declare function feelParticleEmit(opts: FeelParticleEmitOptions): FeelNode; // { emitter, duration?: number | "held" }
 ```
 
 Each `feelParticleEmit` playback owns a `ParticleEmissionHandle`. Releasing

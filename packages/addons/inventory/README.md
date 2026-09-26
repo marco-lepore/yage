@@ -27,6 +27,7 @@ reused.
 ## Quick start
 
 ```ts
+import { Scene } from "@yagejs/core";
 import {
   defineItems,
   instanceData,
@@ -38,6 +39,11 @@ import {
   createInventoryPanel,
   INVENTORY_LAYERS,
 } from "@yagejs-addons/inventory/presenters";
+
+// Game code the example calls:
+declare function healPlayer(hp: number): void;
+declare function equip(): void;
+declare function openDoor(): void;
 
 const catalog = defineItems({
   potion: { name: "Potion", maxStack: 5, description: "Heals 20 HP." },
@@ -55,6 +61,7 @@ const inventory = new Inventory({
 });
 
 class MyScene extends Scene {
+  readonly name = "my-scene";
   readonly layers = [...INVENTORY_LAYERS];
   onEnter() {
     const bundle = createInventoryPanel(); // zero-asset default theme
