@@ -50,16 +50,21 @@ import {
 
 ```ts
 import { SteeringAgent, seek } from "@yagejs-addons/steering";
-import { Transform } from "@yagejs/core";
+import { Entity, Transform } from "@yagejs/core";
 
-// enemy is an Entity with a Transform. The default output integrates it:
-// position += velocity * dt. Nothing else to wire.
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 120,
-    behaviors: [seek(() => player.get(Transform).position)],
-  }),
-);
+class Enemy extends Entity {
+  setup(player: Entity) {
+    this.add(new Transform());
+    // The default output integrates the Transform:
+    // position += velocity * dt. Nothing else to wire.
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 120,
+        behaviors: [seek(() => player.get(Transform).position)],
+      }),
+    );
+  }
+}
 ```
 
 Physics body — mount `PhysicsSteeringAgent` next to a `RigidBodyComponent`
@@ -68,15 +73,25 @@ the agent pushes crates, takes knockback, and steering pulls it back on
 course at `maxAcceleration`:
 
 ```ts
+import { arrive } from "@yagejs-addons/steering";
 import { PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
+import { Entity, Transform, type Vec2Like } from "@yagejs/core";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 
-enemy.add(
-  new PhysicsSteeringAgent({
-    maxSpeed: 130,
-    maxAcceleration: 500, // default 4x maxSpeed; the per-step impulse is the capped correction
-    behaviors: [arrive(() => waypoint, { slowRadius: 140 })],
-  }),
-);
+class Enemy extends Entity {
+  setup(waypoint: Vec2Like) {
+    this.add(new Transform());
+    this.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
+    this.add(new ColliderComponent({ shape: { type: "circle", radius: 10 } }));
+    this.add(
+      new PhysicsSteeringAgent({
+        maxSpeed: 130,
+        maxAcceleration: 500, // default 4x maxSpeed; the per-step impulse is the capped correction
+        behaviors: [arrive(() => waypoint, { slowRadius: 140 })],
+      }),
+    );
+  }
+}
 ```
 
 Or use the structural `body` option on the root class — the addon's root
@@ -85,16 +100,22 @@ entry never imports physics; `{ setVelocity, getVelocity }` is satisfied by
 
 ```ts
 import { SteeringAgent, arrive } from "@yagejs-addons/steering";
+import { Entity, type Vec2Like } from "@yagejs/core";
 import { RigidBodyComponent } from "@yagejs/physics";
 
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 130,
-    maxAcceleration: 500,
-    behaviors: [arrive(() => waypoint)],
-    body: enemy.get(RigidBodyComponent),
-  }),
-);
+class Enemy extends Entity {
+  setup(waypoint: Vec2Like) {
+    // Transform, RigidBodyComponent and collider added first.
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 130,
+        maxAcceleration: 500,
+        behaviors: [arrive(() => waypoint)],
+        body: this.get(RigidBodyComponent),
+      }),
+    );
+  }
+}
 ```
 
 See [the full docs](https://yage.dev/addons/steering/) for blending, obstacle
@@ -104,11 +125,16 @@ headless/manual-drive API.
 ## Live escape hatches
 
 ```ts
-agent.steering.add(flee(() => boss.position, { weight: 4 })); // add behavior live
-agent.maxSpeed = 200; // retune
-agent.velocity; // Vec2 the agent is steering toward — for a debug arrow
-agent.stop(); // halt now: zeroes the model AND the body/output
-agent.enabled = false; // pause ticking without removing the component
+import { SteeringAgent, flee } from "@yagejs-addons/steering";
+import { Transform, type Entity } from "@yagejs/core";
+
+function retune(agent: SteeringAgent, boss: Entity) {
+  agent.steering.add(flee(() => boss.get(Transform).position, { weight: 4 })); // add behavior live
+  agent.maxSpeed = 200; // retune
+  agent.velocity; // Vec2 the agent is steering toward — for a debug arrow
+  agent.stop(); // halt now: zeroes the model AND the body/output
+  agent.enabled = false; // pause ticking without removing the component
+}
 ```
 
 ## Not in v1

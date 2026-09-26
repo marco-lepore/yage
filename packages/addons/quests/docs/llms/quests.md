@@ -20,7 +20,7 @@ ids from each quest's own `objectives` map keys. No `<T>` argument is ever
 written — `QuestLog<TDefs>` infers both levels from the `defineQuests` return
 value.
 
-```ts
+```ts yage-group="herbs"
 import { defineQuests, QuestLog } from "@yagejs-addons/quests";
 
 const quests = defineQuests({
@@ -59,7 +59,7 @@ predicate), `objectiveIds(quest)`.
 
 ## QuestLog — the runtime model
 
-```ts
+```ts yage-group="herbs"
 const log = new QuestLog(quests); // TDefs inferred from `quests`, zero <T>
 ```
 
@@ -120,13 +120,21 @@ never gate completion.
 progress, count, done }` · `objectiveCompleted { questId, objectiveId }` ·
 `questCompleted { questId }` · `questFailed { questId }` · `changed { questId
 }` (coarse re-render signal, fires once per mutating call, after the
-fine-grained event(s)).
+fine-grained event(s)). Payload ids are plain `string`: narrow with
+`quests.has(questId)` before passing one to `quests.get` or a typed `log` call.
 
 ### Save
 
 ```ts
-log.snapshot(): QuestSnapshot; // { quests: Record<questId, { phase, objectives }> } — plain JSON
-log.restore(snapshot): void;
+import { QuestLog as BaseQuestLog } from "@yagejs-addons/quests";
+import type { QuestDefInput, QuestSnapshot } from "@yagejs-addons/quests";
+
+declare class QuestLog<
+  TDefs extends Record<string, QuestDefInput>,
+> extends BaseQuestLog<TDefs> {
+  snapshot(): QuestSnapshot; // { quests: Record<questId, { phase, objectives }> } — plain JSON
+  restore(snapshot: QuestSnapshot): void;
+}
 ```
 
 Only started quests appear in a snapshot. `restore` drops quest ids the
@@ -145,11 +153,14 @@ call `restore` after loading it.
 
 ## QuestController (optional L2a)
 
-```ts
+```ts yage-group="herbs"
 import { QuestController, QuestCompletedEvent } from "@yagejs-addons/quests";
+import type { Entity, Scene } from "@yagejs/core";
 
-player.add(new QuestController({ log })); // TDefs inferred from `log`
-scene.on(QuestCompletedEvent, ({ questId }) => {});
+function mountQuestController(player: Entity, scene: Scene) {
+  player.add(new QuestController({ log })); // TDefs inferred from `log`
+  scene.on(QuestCompletedEvent, ({ questId }) => {});
+}
 ```
 
 Mirrors the log's six model events onto the host entity as engine-bus events
@@ -170,17 +181,35 @@ Quests declares only `@yagejs/core`. The game subscribes to whatever events it
 likes and calls `advance`/`complete` directly — the silent-no-op-on-inactive
 contract means no active-state guard is needed in the adapter:
 
-```ts
+```ts yage-group="herbs"
 import { InventoryItemAddedEvent } from "@yagejs-addons/inventory";
-player.on(InventoryItemAddedEvent, (e) => {
-  if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
-});
+
+function bindHerbPickups(player: Entity) {
+  player.on(InventoryItemAddedEvent, (e) => {
+    if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
+  });
+}
 ```
 
 For a current-inventory requirement, set `autoComplete: false` on the quest
 and synchronize absolute progress on both inventory additions and removals:
 
 ```ts
+import { defineQuests, QuestLog } from "@yagejs-addons/quests";
+import { defineItems, Inventory } from "@yagejs-addons/inventory";
+
+const quests = defineQuests({
+  bringWood: {
+    title: "Bring 10 wood",
+    autoComplete: false,
+    objectives: { wood: { count: 10 } },
+  },
+});
+const log = new QuestLog(quests);
+const inventory = new Inventory({
+  catalog: defineItems({ wood: { name: "Wood" } }),
+});
+
 const syncWood = () =>
   log.setProgress("bringWood", "wood", inventory.count("wood"));
 inventory.on("itemAdded", syncWood);

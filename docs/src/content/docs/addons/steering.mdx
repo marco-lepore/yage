@@ -41,16 +41,21 @@ body, no extra wiring:
 
 ```ts
 import { SteeringAgent, seek } from "@yagejs-addons/steering";
-import { Transform } from "@yagejs/core";
+import { Entity, Transform } from "@yagejs/core";
 
-// enemy is an Entity with a Transform. Default output:
-// position += velocity * dt. Nothing else to wire.
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 120,
-    behaviors: [seek(() => player.get(Transform).position)],
-  }),
-);
+class Enemy extends Entity {
+  setup(player: Entity) {
+    this.add(new Transform());
+    // Default output: position += velocity * dt on this Transform.
+    // Nothing else to wire.
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 120,
+        behaviors: [seek(() => player.get(Transform).position)],
+      }),
+    );
+  }
+}
 ```
 
 `SteeringAgent` is a `@yagejs/core` Component: `ComponentFixedUpdateSystem`
@@ -70,17 +75,23 @@ type when it is added:
 ```ts
 import { arrive } from "@yagejs-addons/steering";
 import { PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
+import { Entity, Transform, type Vec2Like } from "@yagejs/core";
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 
-enemy.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
-enemy.add(new ColliderComponent({ shape: { type: "circle", radius: 10 }, density: 1 }));
-enemy.add(
-  new PhysicsSteeringAgent({
-    maxSpeed: 130,
-    maxAcceleration: 500, // default 4 x maxSpeed — see impulse drive below
-    behaviors: [arrive(() => waypoint, { slowRadius: 140 })],
-  }),
-);
+class Enemy extends Entity {
+  setup(waypoint: Vec2Like) {
+    this.add(new Transform());
+    this.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
+    this.add(new ColliderComponent({ shape: { type: "circle", radius: 10 }, density: 1 }));
+    this.add(
+      new PhysicsSteeringAgent({
+        maxSpeed: 130,
+        maxAcceleration: 500, // default 4 x maxSpeed — see impulse drive below
+        behaviors: [arrive(() => waypoint, { slowRadius: 140 })],
+      }),
+    );
+  }
+}
 ```
 
 It defaults to **impulse drive**: steering *composes* with the physics world
@@ -110,16 +121,22 @@ physics import, and a custom mover works by implementing the two methods:
 
 ```ts
 import { SteeringAgent, arrive } from "@yagejs-addons/steering";
+import { Entity, type Vec2Like } from "@yagejs/core";
 import { RigidBodyComponent } from "@yagejs/physics";
 
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 130,
-    maxAcceleration: 500,
-    behaviors: [arrive(() => waypoint)],
-    body: enemy.get(RigidBodyComponent), // { setVelocity, getVelocity } — or your own object
-  }),
-);
+class Enemy extends Entity {
+  setup(waypoint: Vec2Like) {
+    // Transform, RigidBodyComponent and collider added first, as above.
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 130,
+        maxAcceleration: 500,
+        behaviors: [arrive(() => waypoint)],
+        body: this.get(RigidBodyComponent), // { setVelocity, getVelocity } — or your own object
+      }),
+    );
+  }
+}
 ```
 
 With a `body`, behaviors and the acceleration ramp read the body's *actual*
@@ -161,18 +178,31 @@ take the commanded velocity from `apply` and integrate it in a component's
 own `update`:
 
 ```ts
-let commanded = Vec2.ZERO;
+import { SteeringAgent, seek } from "@yagejs-addons/steering";
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
 
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 120,
-    behaviors: [seek(() => player.get(Transform).position)],
-    apply: (velocity) => { commanded = velocity; },
-  }),
-);
+class FrameMotion extends Component {
+  commanded = Vec2.ZERO;
 
-// In a component's own update(dt), on the frame clock:
-enemy.get(Transform).translate(commanded.x * dt, commanded.y * dt);
+  // A component's own update(dt) runs on the frame clock:
+  update(dt: number) {
+    this.entity.get(Transform).translate(this.commanded.x * dt, this.commanded.y * dt);
+  }
+}
+
+class Enemy extends Entity {
+  setup(player: Entity) {
+    this.add(new Transform());
+    const motion = this.add(new FrameMotion());
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 120,
+        behaviors: [seek(() => player.get(Transform).position)],
+        apply: (velocity) => { motion.commanded = velocity; },
+      }),
+    );
+  }
+}
 ```
 
 `agent.enabled = false` stops the `apply` callback, so `commanded` keeps its
@@ -195,27 +225,41 @@ Weights shade a blend:
 
 ```ts
 import { SteeringAgent, flee, wander } from "@yagejs-addons/steering";
+import { Entity, Transform } from "@yagejs/core";
 
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 90,
-    faceHeading: true, // rotate the Transform to face travel direction
-    behaviors: [
-      flee(() => player.get(Transform).position, { radius: 200, weight: 2 }),
-      wander({ weight: 0.5 }),
-    ],
-  }),
-);
+class Enemy extends Entity {
+  setup(player: Entity) {
+    this.add(new Transform());
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 90,
+        faceHeading: true, // rotate the Transform to face travel direction
+        behaviors: [
+          flee(() => player.get(Transform).position, { radius: 200, weight: 2 }),
+          wander({ weight: 0.5 }),
+        ],
+      }),
+    );
+  }
+}
 ```
 
 Priority makes a behavior an override — the classic use is obstacle
 avoidance that must never be out-voted by seek:
 
 ```ts
-behaviors: [
-  seek(() => player.position),
-  avoidObstacles(() => rocks, { priority: 1 }), // near a rock, this steer wins outright
-],
+import { SteeringAgent, seek, avoidObstacles, type Obstacle } from "@yagejs-addons/steering";
+import { Transform, type Entity } from "@yagejs/core";
+
+function chaser(player: Entity, rocks: readonly Obstacle[]) {
+  return new SteeringAgent({
+    maxSpeed: 120,
+    behaviors: [
+      seek(() => player.get(Transform).position),
+      avoidObstacles(() => rocks, { priority: 1 }), // near a rock, this steer wins outright
+    ],
+  });
+}
 ```
 
 With everything on the default priority 0 the model is a plain weighted
@@ -231,19 +275,29 @@ Two discovery modes. The portable one: obstacles and neighbors are
 
 ```ts
 import { SteeringAgent, seek, avoidObstacles } from "@yagejs-addons/steering";
+import { Entity, Transform } from "@yagejs/core";
 
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 120,
-    behaviors: [
-      seek(() => player.position),
-      avoidObstacles(
-        () => rocks.map((r) => ({ position: r.position, radius: r.radius })),
-        { lookAhead: 80, priority: 1 }, // overrides seek when a rock is in the path
-      ),
-    ],
-  }),
-);
+class Rock extends Entity {
+  radius = 24;
+}
+
+class Enemy extends Entity {
+  setup({ player, rocks }: { player: Entity; rocks: readonly Rock[] }) {
+    this.add(new Transform());
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 120,
+        behaviors: [
+          seek(() => player.get(Transform).position),
+          avoidObstacles(
+            () => rocks.map((r) => ({ position: r.get(Transform).position, radius: r.radius })),
+            { lookAhead: 80, priority: 1 }, // overrides seek when a rock is in the path
+          ),
+        ],
+      }),
+    );
+  }
+}
 ```
 
 The physics one (`/physics` entry): `avoidColliders` raycasts the real world
@@ -253,19 +307,26 @@ every other collider count, and the agent's own collider is excluded
 automatically:
 
 ```ts
+import { SteeringAgent, seek } from "@yagejs-addons/steering";
 import { avoidColliders } from "@yagejs-addons/steering/physics";
+import { Entity, Transform } from "@yagejs/core";
 import { PhysicsWorldKey } from "@yagejs/physics";
 
-const world = this.use(PhysicsWorldKey); // in a Scene's onEnter
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 120,
-    behaviors: [
-      seek(() => player.position),
-      avoidColliders(world, { lookAhead: 90, priority: 1 }),
-    ],
-  }),
-);
+class Enemy extends Entity {
+  setup(player: Entity) {
+    const world = this.scene.use(PhysicsWorldKey); // the spawning scene's physics world
+    this.add(new Transform());
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 120,
+        behaviors: [
+          seek(() => player.get(Transform).position),
+          avoidColliders(world, { lookAhead: 90, priority: 1 }),
+        ],
+      }),
+    );
+  }
+}
 ```
 
 `physicsNeighbors` does the same for flocking: a `NeighborsSource` backed by
@@ -274,15 +335,24 @@ counts as a neighbor (entities without a body count as stationary). Pass
 `sensors: "include"` when the agents themselves carry sensor colliders:
 
 ```ts
+import { SteeringAgent, separation, alignment, cohesion } from "@yagejs-addons/steering";
 import { physicsNeighbors } from "@yagejs-addons/steering/physics";
+import { Entity, Transform } from "@yagejs/core";
+import { PhysicsWorldKey } from "@yagejs/physics";
 
-const nearby = physicsNeighbors(world, { radius: 60 });
-boid.add(
-  new SteeringAgent({
-    maxSpeed: 100,
-    behaviors: [separation(nearby, { weight: 1.5 }), alignment(nearby), cohesion(nearby)],
-  }),
-);
+class Boid extends Entity {
+  setup() {
+    const world = this.scene.use(PhysicsWorldKey);
+    const nearby = physicsNeighbors(world, { radius: 60 });
+    this.add(new Transform());
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 100,
+        behaviors: [separation(nearby, { weight: 1.5 }), alignment(nearby), cohesion(nearby)],
+      }),
+    );
+  }
+}
 ```
 
 Flocking (boids) composes from three primitives — separation, alignment,
@@ -290,20 +360,30 @@ cohesion — each reading the same neighbor list:
 
 ```ts
 import { SteeringAgent, separation, alignment, cohesion } from "@yagejs-addons/steering";
+import type { Entity, Vec2 } from "@yagejs/core";
 
-for (const boid of boids) {
-  const neighbors = () =>
-    boids.filter((b) => b !== boid).map((b) => ({ position: b.position, velocity: b.velocity }));
-  boid.entity.add(
-    new SteeringAgent({
-      maxSpeed: 100,
-      behaviors: [
-        separation(neighbors, { radius: 30, weight: 1.5 }),
-        alignment(neighbors, { radius: 60 }),
-        cohesion(neighbors, { radius: 60, weight: 0.8 }),
-      ],
-    }),
-  );
+// The game's own flock records.
+interface Boid {
+  entity: Entity;
+  position: Vec2;
+  velocity: Vec2;
+}
+
+function flock(boids: readonly Boid[]) {
+  for (const boid of boids) {
+    const neighbors = () =>
+      boids.filter((b) => b !== boid).map((b) => ({ position: b.position, velocity: b.velocity }));
+    boid.entity.add(
+      new SteeringAgent({
+        maxSpeed: 100,
+        behaviors: [
+          separation(neighbors, { radius: 30, weight: 1.5 }),
+          alignment(neighbors, { radius: 60 }),
+          cohesion(neighbors, { radius: 60, weight: 0.8 }),
+        ],
+      }),
+    );
+  }
 }
 ```
 
@@ -315,36 +395,53 @@ for (const boid of boids) {
 
 ```ts
 import { SteeringAgent, followPath, contain, wander } from "@yagejs-addons/steering";
-import { defineEvent } from "@yagejs/core";
+import { defineEvent, Entity, Transform, type Vec2Like } from "@yagejs/core";
+import type { GridGraph } from "@yagejs/pathfinding";
 // `grid` is a @yagejs/pathfinding GridGraph — see the pathfinding guide.
 
 // A patrol looping its route forever:
-guard.add(
-  new SteeringAgent({
-    maxSpeed: 120,
-    behaviors: [followPath(patrolPoints, { loop: true })],
-  }),
-);
+class Guard extends Entity {
+  setup(patrolPoints: readonly Vec2Like[]) {
+    this.add(new Transform());
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 120,
+        behaviors: [followPath(patrolPoints, { loop: true })],
+      }),
+    );
+  }
+}
 
 // A pathfinding result, walked once with an arrive-style stop at the end:
 const Arrived = defineEvent("enemy:arrived");
-const path = grid.findPath(start, goal);
-if (path) {
-  enemy.add(
-    new SteeringAgent({
-      maxSpeed: 140,
-      behaviors: [followPath(path.waypoints, { onArrive: () => enemy.emit(Arrived) })],
-    }),
-  );
+
+class Enemy extends Entity {
+  setup({ grid, start, goal }: { grid: GridGraph; start: Vec2Like; goal: Vec2Like }) {
+    this.add(new Transform({ position: start }));
+    const path = grid.findPath(start, goal);
+    if (path) {
+      this.add(
+        new SteeringAgent({
+          maxSpeed: 140,
+          behaviors: [followPath(path.waypoints, { onArrive: () => this.emit(Arrived) })],
+        }),
+      );
+    }
+  }
 }
 
 // A wanderer that never drifts off the field:
-critter.add(
-  new SteeringAgent({
-    maxSpeed: 70,
-    behaviors: [wander(), contain({ x: 0, y: 0, width: 900, height: 600 }, { weight: 2 })],
-  }),
-);
+class Critter extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(
+      new SteeringAgent({
+        maxSpeed: 70,
+        behaviors: [wander(), contain({ x: 0, y: 0, width: 900, height: 600 }, { weight: 2 })],
+      }),
+    );
+  }
+}
 ```
 
 Waypoint progress lives inside the behavior — to follow a new path, swap in
@@ -362,12 +459,16 @@ own loop, your own integration:
 import { Steering, seek } from "@yagejs-addons/steering";
 import { Vec2 } from "@yagejs/core";
 
+let target = new Vec2(200, 100); // read by the provider on every compute
 const steering = new Steering([seek(() => target)]);
 let pos = new Vec2(0, 0);
 let vel = Vec2.ZERO;
-// each tick:
-vel = steering.compute({ position: pos, velocity: vel, maxSpeed: 120 }, dt);
-pos = pos.add(vel.scale(dt));
+
+// Call once per tick of your own loop:
+function tick(dt: number) {
+  vel = steering.compute({ position: pos, velocity: vel, maxSpeed: 120 }, dt);
+  pos = pos.add(vel.scale(dt));
+}
 ```
 
 ## Live escape hatches
@@ -376,11 +477,16 @@ The hosted model and the commanded velocity are always readable and
 mutable — nothing here is locked behind construction-time config:
 
 ```ts
-agent.steering.add(flee(() => boss.position, { weight: 4 })); // add a behavior live
-agent.maxSpeed = 200; // retune
-agent.velocity; // Vec2 the agent is steering toward — draw a debug arrow with it
-agent.stop(); // halt now: zeroes the model AND the body/output
-agent.enabled = false; // pause ticking without removing the component
+import { SteeringAgent, flee } from "@yagejs-addons/steering";
+import { Transform, type Entity } from "@yagejs/core";
+
+function retune(agent: SteeringAgent, boss: Entity) {
+  agent.steering.add(flee(() => boss.get(Transform).position, { weight: 4 })); // add a behavior live
+  agent.maxSpeed = 200; // retune
+  agent.velocity; // Vec2 the agent is steering toward — draw a debug arrow with it
+  agent.stop(); // halt now: zeroes the model AND the body/output
+  agent.enabled = false; // pause ticking without removing the component
+}
 ```
 
 ## Behaviors reference
@@ -408,11 +514,16 @@ consequences — fire your own entity/bus event from inside them in a line, if
 the game wants one:
 
 ```ts
+import { arrive } from "@yagejs-addons/steering";
+import { defineEvent, type Entity, type Vec2Like } from "@yagejs/core";
+
 const ReachedWaypoint = defineEvent("enemy:reached-waypoint");
 
-arrive(waypoint, {
-  onArrive: () => enemy.emit(ReachedWaypoint),
-});
+function arriveAndAnnounce(enemy: Entity, waypoint: Vec2Like) {
+  return arrive(waypoint, {
+    onArrive: () => enemy.emit(ReachedWaypoint),
+  });
+}
 ```
 
 ## Drawing and saving state
