@@ -196,15 +196,59 @@ Emits on the engine `EventBus`:
 
 ```ts
 import { EventBusKey } from "@yagejs/core";
-const renderer = engine.use(
-  new RendererPlugin({ width: 800, height: 600, container: host }),
-);
+const renderer = new RendererPlugin({
+  width: 800,
+  height: 600,
+  container: host,
+});
+engine.use(renderer); // use() returns the engine, not the plugin
 const bus = engine.context.resolve(EventBusKey);
 bus.on("screen:orientation", ({ type }) => layoutHud(type));
-button.addEventListener("click", () => renderer.requestFullscreen());
+button.addEventListener("click", () => {
+  renderer.requestFullscreen().catch(console.warn); // rejects if unsupported
+});
 ```
 
 Listeners are registered in `install()` (gated by `typeof document/window !== "undefined"`) and torn down in `onDestroy()`. iOS Safari requires `requestFullscreen` to run inside a user-gesture handler.
+
+## Mobile readiness
+
+Page setup so a game gets the whole visible screen on phones. Both `create-yage` templates ship the `index.html` part; `recommended` also ships the fullscreen button (`src/fullscreen.ts`) and the installable-app tags.
+
+```html
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+/>
+<style>
+  #game {
+    box-sizing: border-box;
+    background: #0f172a; /* the renderer's backgroundColor */
+    width: 100vw;
+    height: 100vh; /* fallback for browsers without dvh */
+    height: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+</style>
+```
+
+- `viewport-fit=cover`: page covers the notch and rounded-corner areas. Without it iOS insets the page and every `env(safe-area-inset-*)` is `0`.
+- `100dvh`, not `100vh`: on phones `100vh` is the height with the toolbars hidden, so the bottom of the game sits behind them. Never rely on scrolling to hide the toolbars.
+- Safe-area padding on the `container`: `RendererPlugin` fits the game inside the container's content box, so the padding keeps it clear of the notch, corners and home indicator with no renderer config. Give the container its own background (`backgroundColor`): in fullscreen only the container is drawn, so a `body` background alone leaves black strips in the padding.
+- Fullscreen button: place it inside the `container` (the element that goes fullscreen) so it stays visible. Show it only when fullscreen is available and the page is not already an installed app running fullscreen:
+
+  ```ts
+  const doc = document as Document & { webkitFullscreenEnabled?: boolean }; // not in lib.dom
+  button.hidden =
+    matchMedia("(display-mode: fullscreen)").matches ||
+    !(doc.fullscreenEnabled === true || doc.webkitFullscreenEnabled === true);
+  ```
+
+  The prefixed flag covers iPad Safari < 16.4. Neither flag is `true` on iPhone (no element fullscreen) or in an iframe without `allow="fullscreen"`. On iPad, Safari overlays its own exit button and a swipe down exits fullscreen. Call `button.blur()` in the click handler, or the focused button takes game keys such as Enter.
+
+- Rotate overlay: Safari has no `screen.orientation.lock()`; Chrome on Android only locks while fullscreen or installed. Show a "rotate the device" overlay from `screen:orientation`, and read `renderer.orientation` once at startup because the event fires only on change.
+- Add to Home Screen is the only way to remove Safari's toolbars on iPhone. No install prompt on iOS (player uses Share → Add to Home Screen). iOS 26+ opens every Home Screen site without toolbars; earlier iOS needs a web app manifest with `display: "standalone"` (iOS does not support `"fullscreen"`; add `display_override: ["fullscreen"]` for Android, which iOS ignores). Tags: `<link rel="apple-touch-icon" href="/apple-touch-icon.png">` (180×180) and `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">` (installed game draws under the status bar; the safe-area padding clears it). The `recommended` template's `vite-plugin-pwa` setup ships this manifest and both tags; see `quick-start.md`.
 
 ## Components
 
