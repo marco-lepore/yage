@@ -50,6 +50,7 @@ files.
    import { DIALOGUE_LAYERS } from "@yagejs-addons/dialogue/presenters";
 
    class TalkScene extends Scene {
+     readonly name = "talk";
      readonly layers = [...DIALOGUE_LAYERS];
      // ...
    }
@@ -63,15 +64,21 @@ files.
 2. **Spawn a host entity and add the controller.** Spread a factory bundle into
    `DialogueController` and override any one piece.
 
-   ```ts
+   ```ts yage-group="intro" yage-file="scene.ts"
+   import { Scene } from "@yagejs/core";
    import { DialogueController, DialogueEndedEvent } from "@yagejs-addons/dialogue";
    import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+   import { script } from "./script.js"; // the script from "Writing a script" below
 
-   onEnter() {
-     const host = this.spawn("dialogue");
-     const dlg = host.add(new DialogueController({ ...createBoxDialogue() }));
-     host.on(DialogueEndedEvent, () => host.destroy());
-     dlg.play(script);
+   class TalkScene extends Scene {
+     readonly name = "talk";
+
+     onEnter() {
+       const host = this.spawn("dialogue");
+       const dlg = host.add(new DialogueController({ ...createBoxDialogue() }));
+       host.on(DialogueEndedEvent, () => host.destroy());
+       dlg.play(script);
+     }
    }
    ```
 
@@ -123,13 +130,13 @@ handle. A plain `DialogueScript` literal still works and is validated identicall
 at runtime; the typing is the only thing you give up. Both are JSON-able, so you
 can also load a script from disk.
 
-```ts
+```ts yage-group="intro" yage-file="script.ts"
 import { defineScript } from "@yagejs-addons/dialogue";
 
-const script = defineScript({
+export const script = defineScript({
   id: "intro",
   start: "greeting",
-  declare: { rude: false, timesTalked: 0 },   // variable defaults (seed-if-absent)
+  declare: { rude: false, timesTalked: 0, gold: 0 },   // variable defaults (seed-if-absent)
   speakers: {
     gwen: { name: "Gwen", color: 0xffd866 },
   },
@@ -184,6 +191,7 @@ content-only.
   ```ts
   import { cells, compose, MemoryVariableStorage } from "@yagejs-addons/dialogue";
 
+  const player = { gold: 100 };
   const storage = compose(
     cells({ gold: { get: () => player.gold, set: (v) => (player.gold = Number(v)) } }),
     new MemoryVariableStorage(), // catch-all for dialogue-locals + seeded defaults
@@ -198,6 +206,7 @@ content-only.
   import { createRecordStorage } from "@yagejs-addons/dialogue";
 
   // record typed Record<string, string | number | boolean> — no null member
+  const game: { dialogueVars: Record<string, string | number | boolean> } = { dialogueVars: {} };
   const storage = createRecordStorage(game.dialogueVars);
   ```
 
@@ -261,12 +270,14 @@ forms, `and`/`or`/`xor`/`not`, `+ - * / %`). In a string, `or` binds loosest, th
 comparison still works as the degenerate one-level tree.
 
 ```ts
-// "set gold = gold - 50" — needs a writable `gold` cell:
-{ type: "set", var: "gold", value: { kind: "binary", op: "-",
-  left: { kind: "varRef", name: "gold" }, right: { kind: "literal", value: 50 } } }
+import type { Command, Condition } from "@yagejs-addons/dialogue";
 
-// a choice gated on an argument-read function:
-{ condition: { kind: "call", fn: "has_item", args: [{ kind: "literal", value: "rusty-key" }] } }
+// "set gold = gold - 50" — needs a writable `gold` cell:
+const spend: Command = { type: "set", var: "gold", value: { kind: "binary", op: "-",
+  left: { kind: "varRef", name: "gold" }, right: { kind: "literal", value: 50 } } };
+
+// a choice condition that calls an argument-read function:
+const hasKey: Condition = { kind: "call", fn: "has_item", args: [{ kind: "literal", value: "rusty-key" }] };
 ```
 
 #### Write them as strings
@@ -277,9 +288,11 @@ Typing those trees by hand is tedious, so a `Condition` or `set` value can be a
 above are simply:
 
 ```ts
-{ type: "set", var: "gold", value: "gold - 50" }
-{ condition: "has_item('rusty-key')" }
-{ kind: "command", commands: [], condition: "gold >= 50 and not rude", target: "buy" }
+import type { Command, CommandStep, Condition } from "@yagejs-addons/dialogue";
+
+const spend: Command = { type: "set", var: "gold", value: "gold - 50" };
+const hasKey: Condition = "has_item('rusty-key')";
+const buy: CommandStep = { kind: "command", commands: [], condition: "gold >= 50 and not rude", target: "buy" };
 ```
 
 - Identifiers are `[A-Za-z_$]` then `[A-Za-z0-9_.$]`, so `$gold` and `quest.stage`
@@ -322,7 +335,9 @@ A line can show a value computed when it appears. Put a `{name}` token in the te
 and the expression under `expressions`:
 
 ```ts
-{ kind: "say", text: "That leaves {left} gold.", expressions: { left: "gold - 50" } }
+import type { SayStep } from "@yagejs-addons/dialogue";
+
+const line: SayStep = { kind: "say", text: "That leaves {left} gold.", expressions: { left: "gold - 50" } };
 ```
 
 `say` steps, choice prompts, and choice options (text and `disabledReason`) take
@@ -502,11 +517,13 @@ group of barks cycles through every line before it repeats one. With nothing
 available, the conversation goes on to the next step.
 
 ```ts
-{ kind: "select", options: [
+import type { SelectStep } from "@yagejs-addons/dialogue";
+
+const bark: SelectStep = { kind: "select", options: [
   { target: "bark_weather", counter: "seen_weather" },
   { target: "bark_gossip", counter: "seen_gossip" },
   { target: "bark_hero", condition: "saved_town", priority: 1, counter: "seen_hero" },
-] }
+] };
 ```
 
 **Pick the starting node per conversation** with `play(script, { start: "shop" })`.
@@ -528,7 +545,9 @@ explanation shown beside the row (resolved like the option text, so it can be a
 translatable message and `{token}`s interpolate).
 
 ```ts
-{
+import type { ChoiceStep } from "@yagejs-addons/dialogue";
+
+const gate: ChoiceStep = {
   kind: "choice",
   options: [
     {
@@ -540,7 +559,7 @@ translatable message and `{token}`s interpolate).
     },
     { text: "Walk away", target: "leave" }, // always enabled — keeps the step pickable
   ],
-}
+};
 ```
 
 Rules to keep in mind:
@@ -567,16 +586,16 @@ other script.
 
 1. **Load the folder.** With Vite, `import.meta.glob` reads every file as text:
 
-   ```ts
+   ```ts yage-group="yarn" yage-context="engine,entity"
+   /// <reference types="vite/client" />
    import { loadYarn } from "@yagejs-addons/dialogue/yarn";
 
-   const story = loadYarn(
-     import.meta.glob("./dialogue/**/*.{yarn,yarnproject,csv}", {
-       query: "?raw",
-       import: "default",
-       eager: true,
-     }),
-   );
+   const files = import.meta.glob("./dialogue/**/*.{yarn,yarnproject,csv}", {
+     query: "?raw",
+     import: "default",
+     eager: true,
+   });
+   const story = loadYarn(files);
    ```
 
    You can also pass one file's text: `loadYarn(source)`.
@@ -584,7 +603,10 @@ other script.
 2. **Play a node.** Each `play()` picks its starting node; without `start` it
    begins at `Start`, else the first node:
 
-   ```ts
+   ```ts yage-group="yarn" yage-context="engine,entity"
+   import { DialogueController } from "@yagejs-addons/dialogue";
+
+   const controller = entity.get(DialogueController); // the controller on your dialogue entity
    controller.play(story, { start: "Shopkeeper" });
    ```
 
@@ -592,6 +614,12 @@ other script.
    with the storage. Yarn variable names keep their `$`:
 
    ```ts
+   import { DialogueController, cells, compose, MemoryVariableStorage } from "@yagejs-addons/dialogue";
+   import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+
+   const player = { gold: 0 };
+   declare const inventory: { has(id: string): boolean; add(id: string, count: number): void }; // your game's inventory
+
    new DialogueController({
      ...createBoxDialogue(),
      storage: compose(
@@ -613,7 +641,7 @@ character gets a speaker with that name. A `DialogueActor` for a speech bubble
 binds to the same name (`new DialogueActor({ speaker: "Mae" })`). The `speakers` option adds
 nameplate colours, avatars, or a translatable name:
 
-```ts
+```ts yage-group="yarn" yage-context="engine,entity"
 loadYarn(files, { speakers: { Mae: { color: 0xffcc00 } } });
 ```
 
@@ -688,7 +716,7 @@ the glob. Give the catalogs to your localization — with `@yagejs-addons/i18n`,
 the controller then follows its locale, and switching language updates the line
 on screen:
 
-```ts
+```ts yage-group="yarn" yage-context="engine,entity"
 import { createLocalization, LocalizationPlugin } from "@yagejs-addons/i18n";
 
 const localization = await createLocalization({
@@ -794,10 +822,17 @@ beats** you can hook for positional sound and effects:
   every pending marker's consequence, but **discards** the pending ticks (no
   machine-gun of blips).
 
-```ts
-host.add(new DialogueController({ ...createBoxDialogue(theme), onRevealTick: () => sfx.play("type") }));
+```ts yage-context="scene"
+import { AudioManagerKey } from "@yagejs/audio";
+import { DialogueController, DialogueRevealMarkerEvent } from "@yagejs-addons/dialogue";
+import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+
+const sfx = scene.use(AudioManagerKey);
+const host = scene.spawn("dialogue");
+host.add(new DialogueController({ ...createBoxDialogue(), onRevealTick: () => sfx.play("type") }));
 host.on(DialogueRevealMarkerEvent, ({ marker }) => {
-  if (marker.name === "sfx") sfx.play(marker.props.sfx); // [sfx=door/] → play "door"
+  const alias = marker.props.sfx; // [sfx=door/] → play "door"
+  if (marker.name === "sfx" && alias !== undefined) sfx.play(alias);
 });
 ```
 
@@ -815,7 +850,16 @@ The bridge between your game and a conversation is **installed on the
 controller** (`storage`, `functions`, `commands`); `play(script)` is content-only.
 A per-`play()` `overrides` argument layers entity-specifics on top.
 
-```ts
+```ts yage-group="intro" yage-file="game.ts" yage-context="scene"
+import { DialogueController, cells, compose, MemoryVariableStorage } from "@yagejs-addons/dialogue";
+import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+import { script } from "./script.js";
+
+const player = { gold: 100 };
+const inventory = new Set<string>();
+declare function roll(stat: string): Promise<boolean>; // your game's skill check
+
+const host = scene.spawn("dialogue");
 const dlg = host.add(new DialogueController({
   ...createBoxDialogue(),
   storage: compose(
@@ -827,17 +871,17 @@ const dlg = host.add(new DialogueController({
     has_item: (id) => inventory.has(String(id)), // argument-read for conditions
   },
   commands: {
-    "give-item": (cmd) => inventory.add(cmd.id as string),
+    "give-item": (cmd) => { inventory.add(cmd.id as string); },
     "skill-check": async (cmd, ctx) => {
       ctx.setVar("passed", await roll(cmd.stat as string)); // result for THIS conversation
     },
   },
-  fallbackCommand: (cmd) => log(cmd), // optional: catch dynamically-typed commands
+  fallbackCommand: (cmd) => console.log(cmd), // optional: catch dynamically-typed commands
 }));
 
-const handle = dlg.play(script);
-handle.setVar("rude", true); // set a variable live (typed to keyof declare)
-handle.getVars();            // read the storage's current variables
+const handle = dlg.play(script); // undefined if the controller was removed
+handle?.setVar("rude", true); // set a variable live (typed to keyof declare)
+handle?.getVars();            // read the storage's current variables
 ```
 
 - **`cells` getters and `functions` must be cheap and side-effect-free** —
@@ -937,26 +981,40 @@ presenter (via `ChoiceContext.meta`), so a custom presenter can draw a countdown
 from `meta.timeout`.
 
 ```ts
+import type { Step } from "@yagejs-addons/dialogue";
+
 // In the script: arm the timer, then show the choice.
-{ kind: "command", commands: [{ type: "choice-timer", seconds: 5, default: 1 }] },
-{
-  kind: "choice",
-  text: "Quick — what do you do?",
-  meta: { timeout: 5 },                 // a custom presenter can render this
-  options: [
-    { text: "Fight", target: "fight" },
-    { text: "Hesitate", target: "hesitate" }, // index 1 — the default on timeout
-  ],
-}
+const steps: Step[] = [
+  { kind: "command", commands: [{ type: "choice-timer", seconds: 5, default: 1 }] },
+  {
+    kind: "choice",
+    text: "Quick — what do you do?",
+    meta: { timeout: 5 },                 // a custom presenter can render this
+    options: [
+      { text: "Fight", target: "fight" },
+      { text: "Hesitate", target: "hesitate" }, // index 1 — the default on timeout
+    ],
+  },
+];
 ```
 
-```ts
+```ts yage-context="scene"
+import {
+  DialogueController,
+  DialogueChoiceMadeEvent,
+  DialogueChoiceShownEvent,
+  DialogueEndedEvent,
+} from "@yagejs-addons/dialogue";
+import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+
 // In the host: arm/cancel off the dialogue events; tick on your own clock.
 let pending: { seconds: number; def: number } | undefined;
 let remaining = -1;
 let def = 0;
+let paused = false; // your game's own pause state
 
-new DialogueController({
+const host = scene.spawn("npc");
+const controller = host.add(new DialogueController({
   ...createBoxDialogue(),
   commands: {
     // The command just stashes the budget — the timer arms when the menu shows.
@@ -964,7 +1022,7 @@ new DialogueController({
       pending = { seconds: Number(cmd.seconds), def: Number(cmd.default) };
     },
   },
-});
+}));
 
 // Re-arm or cancel on EVERY choice-shown — this guard keeps a stale timer from
 // firing into a later, unrelated menu.
@@ -1018,11 +1076,16 @@ listeners are released. The active conversation and the three requested lever
 settings stay intact, while `play` refuses a new conversation. Enabling the
 component again restores the same state.
 
-```ts
+```ts yage-context="entity"
+import { DialogueController } from "@yagejs-addons/dialogue";
+
+const dlg = entity.get(DialogueController);
+declare function panCamera(): Promise<void>; // your game's camera move; resolves when it ends
+
 // Cutscene takeover: hide + freeze, pan the camera, then restore the exact line.
 dlg.setHidden(true);
 dlg.setPaused(true);
-await camera.panTo(spot);
+await panCamera();
 dlg.setPaused(false);
 dlg.setHidden(false); // the bubble line and its continue caret reappear in place
 ```
@@ -1034,7 +1097,13 @@ can run at once. *Which one is interactive* is up to your game — you set it
 through input focus. (YAGE input is non-consuming by design, so two **enabled** controllers
 would both advance on one key press — focus is the game's policy.)
 
-```ts
+```ts yage-context="scene"
+import { DialogueController } from "@yagejs-addons/dialogue";
+import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+
+const npcA = scene.spawn("npc-a").add(new DialogueController({ ...createBoxDialogue() }));
+const npcB = scene.spawn("npc-b").add(new DialogueController({ ...createBoxDialogue() }));
+
 // Talk to whichever NPC the player is near; the other keeps chatting ambiently.
 function focus(near: "a" | "b") {
   npcA.setInputEnabled(near === "a");
@@ -1085,6 +1154,9 @@ agree. The default is speaker-aware (a narrator goes to the box; an explicit
 bubble). Override the policy in one place:
 
 ```ts
+import { createMixedDialogue, defaultDialogueTheme } from "@yagejs-addons/dialogue/presenters";
+
+const theme = defaultDialogueTheme();
 createMixedDialogue(theme, {
   worldLayer: "world",
   // e.g. all of the boss's lines in bubbles, everything else boxed
@@ -1125,8 +1197,8 @@ import type { TextChannel, PresentedLine, RevealBeat } from "@yagejs-addons/dial
 class DomTextPresenter implements TextChannel {
   private reveal = new LineReveal(45 /* graphemes/sec */);
   private graphemes: string[] = [];
-  private onDone?: () => void;
-  private onBeat?: (beat: RevealBeat) => void;
+  private onDone: (() => void) | undefined;
+  private onBeat: ((beat: RevealBeat) => void) | undefined;
   constructor(private el: HTMLElement) {
     this.reveal.setCompletionListener(() => this.onDone?.());
     // Forward the clock's ticks + inline markers — the Session fans them on.
@@ -1180,8 +1252,11 @@ import {
   InBoxAvatarPresenter,
   BubbleAvatarPresenter,
   DIALOGUE_LAYER_AVATAR,
+  createMixedDialogue,
+  defaultDialogueTheme,
 } from "@yagejs-addons/dialogue/presenters";
 
+const theme = defaultDialogueTheme();
 createMixedDialogue(theme, {
   worldLayer: "world",
   avatar: {
@@ -1205,10 +1280,11 @@ one leaves the text, choices, avatar, and chrome channels untouched.
 A `DialogueExtraChannel` has **only optional methods**, so a one-purpose channel
 implements just what it cares about:
 
-```ts
+```ts yage-group="channels" yage-file="history.ts"
 import type { DialogueExtraChannel } from "@yagejs-addons/dialogue";
 
-const historyLog: DialogueExtraChannel = {
+const log: string[] = [];
+export const historyLog: DialogueExtraChannel = {
   // Fires for each say line once it's fully revealed. A shop would implement
   // `command`; a camera-shake channel `command` + `update`; voice the lot.
   revealComplete: (line) => log.push(line.text.runs.map((r) => r.text).join("")),
@@ -1218,13 +1294,19 @@ const historyLog: DialogueExtraChannel = {
 Register it on the controller — that mounts it (if it needs the scene), wires it
 into the conversation stream, and hands back a disposer:
 
-```ts
+```ts yage-group="channels" yage-file="register.ts" yage-context="entity"
+import { DialogueController } from "@yagejs-addons/dialogue";
+import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+import { historyLog } from "./history.js";
+import { voice } from "./voice.js"; // the voice channel below
+
+const controller = entity.get(DialogueController);
 const off = controller.addChannel(historyLog);
 // ...later, to remove it:
 off();
 
 // Or pre-wire a bundle at construction (a factory can include a voice channel):
-new DialogueController({ ...createBoxDialogue(theme), channels: [voice] });
+new DialogueController({ ...createBoxDialogue(), channels: [voice] });
 ```
 
 Your channel's methods — `present`, `command`, `clear`, `setVisible`, `setPaused`,
@@ -1260,14 +1342,17 @@ hand it a `play` function wired over [`@yagejs/audio`](/packages/audio/) (or any
 player). It starts the clip for a line's `voice` id and gates auto-advance until the
 clip ends:
 
-```ts
-import { createVoiceChannel } from "@yagejs-addons/dialogue";
+```ts yage-group="channels" yage-file="voice.ts" yage-context="scene,entity"
+import { AudioManagerKey } from "@yagejs/audio";
+import { DialogueController, createVoiceChannel } from "@yagejs-addons/dialogue";
 
-const voice = createVoiceChannel({
+const audio = scene.use(AudioManagerKey);
+const controller = entity.get(DialogueController);
+export const voice = createVoiceChannel({
   play: (id, onEnded) => {
-    // Map the line's voice id → a preloaded clip. `@yagejs/audio`'s `onEnd` fires
-    // onEnded on natural completion (not on stop()); pause/resume is `h.paused`.
-    const h = audio.play(clips[id], { channel: "voice", onEnd: onEnded });
+    // The line's voice id is the alias of a preloaded clip. `@yagejs/audio`'s `onEnd`
+    // fires onEnded on natural completion (not on stop()); pause/resume is `h.paused`.
+    const h = audio.play(id, { channel: "voice", onEnd: onEnded });
     return { stop: () => h.stop(), pause: () => (h.paused = true), resume: () => (h.paused = false) };
   },
   onSkip: "cut",                 // "cut" (default): skipping the line stops the clip and
@@ -1279,8 +1364,10 @@ controller.addChannel(voice);
 ```
 
 ```ts
+import type { SayStep } from "@yagejs-addons/dialogue";
+
 // A line with a voice id:
-{ kind: "say", speaker: "guard", text: "Halt! Who goes there?", voice: "vo_guard_halt" }
+const halt: SayStep = { kind: "say", speaker: "guard", text: "Halt! Who goes there?", voice: "vo_guard_halt" };
 ```
 
 It's hardened against two real failure modes: a late `onEnded` from a clip that's
@@ -1297,7 +1384,16 @@ lines play as real (synthesized) voice clips, gating auto-advance until each fin
 A channel sees every non-built-in command, so a shop can grant the purchase and the
 host reads the result back through the play handle:
 
-```ts
+```ts yage-context="entity"
+import { DialogueController, defineScript } from "@yagejs-addons/dialogue";
+
+const controller = entity.get(DialogueController);
+const shopScript = defineScript({
+  id: "shop",
+  start: "buy",
+  nodes: { buy: { id: "buy", steps: [{ kind: "command", commands: [{ type: "buy", item: "sword" }] }] } },
+});
+
 controller.addChannel({
   command(cmd, ctx) {
     if (cmd.type !== "buy") return;
@@ -1317,10 +1413,15 @@ validation; the channel layers its consequence on top of the command pipeline.
 Because a channel receives commands, a `{ type: "shake" }` step drives a camera
 effect with zero addon change:
 
-```ts
+```ts yage-context="scene,entity"
+import { CameraEntity } from "@yagejs/renderer";
+import { DialogueController } from "@yagejs-addons/dialogue";
+
+const camera = scene.spawn(CameraEntity); // or your scene's existing camera
+const controller = entity.get(DialogueController);
 controller.addChannel({
   command: (cmd) => {
-    if (cmd.type === "shake") camera.shake(Number(cmd.power ?? 8));
+    if (cmd.type === "shake") camera.shake(Number(cmd.power ?? 8), 0.3); // intensity (px), seconds
   },
 });
 // script: { kind: "command", commands: [{ type: "shake", power: 12 }] }
@@ -1364,7 +1465,8 @@ Construct the binding yourself when your action map uses different names (e.g.
 camelCase `moveUp`/`moveDown`) or you want a hold-to-skip:
 
 ```ts
-import { dialogueControls } from "@yagejs-addons/dialogue";
+import { DialogueController, dialogueControls } from "@yagejs-addons/dialogue";
+import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
 
 const bundle = createBoxDialogue();
 
@@ -1404,6 +1506,8 @@ reveal rate, and the opt-in textured styles). `defaultDialogueTheme()` returns a
 zero-asset instance each call, so spread-and-tweak is safe:
 
 ```ts
+import { createBoxDialogue, defaultDialogueTheme } from "@yagejs-addons/dialogue/presenters";
+
 const theme = { ...defaultDialogueTheme(), textColor: 0xffe0c0, charsPerSec: 60 };
 createBoxDialogue(theme);
 ```
@@ -1450,7 +1554,9 @@ the look for lines that name no style, and `"none"` (built-in, no entry needed)
 hides the box frame for a single line.
 
 ```ts
-const theme = {
+import { defaultDialogueTheme, type DialogueTheme } from "@yagejs-addons/dialogue/presenters";
+
+const theme: DialogueTheme = {
   ...defaultDialogueTheme(),
   textured: {
     default: {

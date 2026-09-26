@@ -58,7 +58,9 @@ import {
 Write dialogue in `.yarn` files, edit them with the Yarn Spinner VS Code
 extension, and play them natively:
 
-```ts
+```ts yage-context="entity"
+/// <reference types="vite/client" />
+import { DialogueController } from "@yagejs-addons/dialogue";
 import { loadYarn } from "@yagejs-addons/dialogue/yarn";
 
 const story = loadYarn(
@@ -68,6 +70,7 @@ const story = loadYarn(
     eager: true,
   }),
 );
+const controller = entity.get(DialogueController);
 controller.play(story, { start: "Shopkeeper" });
 ```
 
