@@ -116,7 +116,7 @@ async function exercise(
       const say = (error: unknown): string =>
         error instanceof Error ? error.message : String(error);
 
-      const inspector = api.engine.inspector;
+      const inspector = api.inspector;
       const failures: string[] = [];
       const warnings: string[] = [];
       let captures: DriveCapture[] = [];

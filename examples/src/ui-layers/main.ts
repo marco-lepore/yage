@@ -1,4 +1,11 @@
-import { Engine, Scene, Transform, Vec2, Component } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Transform,
+  Vec2,
+  Component,
+  InspectorPlugin,
+} from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
@@ -190,6 +197,7 @@ class UILayersScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

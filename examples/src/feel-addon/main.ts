@@ -13,6 +13,7 @@ import {
   Transform,
   Vec2,
   type Entity,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   CameraEntity,
@@ -1290,6 +1291,7 @@ function orbitAndPulse(target: GraphicsComponent): FeelNode {
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   engine.use(
     new RendererPlugin({
       width: WIDTH,

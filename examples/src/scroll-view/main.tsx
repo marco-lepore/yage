@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Engine, Scene } from "@yagejs/core";
+import { Engine, Scene, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { UIPlugin } from "@yagejs/ui";
 import {
@@ -129,6 +129,7 @@ class ScrollViewScene extends Scene {
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   engine.use(
     new RendererPlugin({
       width: 640,

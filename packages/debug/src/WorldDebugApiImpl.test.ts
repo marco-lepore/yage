@@ -215,7 +215,9 @@ describe("scene debug targets", () => {
       system.onRegister(engine.context);
       expect(() => system.update(0.016)).toThrow(failure);
       expect(later).not.toHaveBeenCalled();
-      expect(engine.inspector.getErrors().callbackErrors).toMatchObject([
+      expect(
+        engine.context.resolve(ErrorBoundaryKey).getCallbackErrors(),
+      ).toMatchObject([
         {
           kind: `Debug contributor ${method}`,
           event: "broken",

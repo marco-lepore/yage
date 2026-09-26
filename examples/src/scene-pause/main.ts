@@ -9,7 +9,14 @@
  *   `transparentBelow=false`; both the game HUD and the pause menu are
  *   hidden by the renderer while this is on top, then re-shown on pop.
  */
-import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Component,
+  Transform,
+  Vec2,
+  InspectorPlugin,
+} from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
@@ -321,6 +328,7 @@ let engine: Engine;
 
 async function main() {
   engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

@@ -9,7 +9,7 @@
  * through `playRandom`, so repeats aren't identical.
  */
 
-import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { Engine, Scene, Transform, Vec2, InspectorPlugin } from "@yagejs/core";
 import {
   GraphicsComponent,
   RendererPlugin,
@@ -276,6 +276,7 @@ function describe(pad: Pad): string {
 // ---------------------------------------------------------------------------
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   engine.use(
     new RendererPlugin({
       width: WIDTH,

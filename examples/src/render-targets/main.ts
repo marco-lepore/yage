@@ -13,7 +13,14 @@
  * render target.
  */
 import { Container, Graphics } from "pixi.js";
-import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  Scene,
+  Transform,
+  Vec2,
+  InspectorPlugin,
+} from "@yagejs/core";
 import {
   GraphicsComponent,
   RendererKey,
@@ -355,6 +362,7 @@ class RenderTargetScene extends Scene {
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   engine.use(
     new RendererPlugin({
       width: WIDTH,

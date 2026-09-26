@@ -6,7 +6,8 @@ import {
   createMockScene,
   createTestEngine,
 } from "./test-utils.js";
-import { ErrorBoundaryKey } from "./EngineContext.js";
+import { ErrorBoundaryKey, InspectorKey } from "./EngineContext.js";
+import { InspectorPlugin } from "./InspectorPlugin.js";
 import { Scene } from "./Scene.js";
 import { SceneTimeKey } from "./SceneTime.js";
 
@@ -1328,17 +1329,16 @@ describe("Component.stateMachine", () => {
       readonly machine = this.stateMachine(trafficStates, "green");
     }
 
-    const engine = await createTestEngine();
+    const engine = await createTestEngine(undefined, [new InspectorPlugin()]);
     const scene = new GameScene();
     await engine.scenes.push(scene);
     const brain = scene.spawn("guard").add(new Brain());
     brain.machine.start();
     brain.machine.tick(0.25);
 
-    const state = engine.inspector.getComponentData("guard", "Brain") as Record<
-      string,
-      unknown
-    >;
+    const state = engine.context
+      .resolve(InspectorKey)
+      .getComponentData("guard", "Brain") as Record<string, unknown>;
     expect(state["machine"]).toEqual({
       state: "green",
       elapsed: 0.25,

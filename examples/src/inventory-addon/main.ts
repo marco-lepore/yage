@@ -35,7 +35,7 @@
  * 1–5 hotbar quick-use.
  */
 
-import { Engine } from "@yagejs/core";
+import { Engine, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 import {
@@ -49,6 +49,7 @@ import { InventoryRoomScene } from "./scene.js";
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   engine.use(
     new RendererPlugin({
       width: WIDTH,

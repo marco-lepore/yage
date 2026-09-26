@@ -94,6 +94,8 @@ vi.mock("pixi.js", () => ({
 
 import {
   EngineContext,
+  EngineKey,
+  Inspector,
   ErrorBoundary,
   ErrorBoundaryKey,
   EventBus,
@@ -363,6 +365,42 @@ describe("DebugPlugin", () => {
     expect(inspector.setEventLogEnabled).toHaveBeenCalledWith(false);
 
     plugin.onDestroy();
+  });
+
+  it("installs an Inspector when the game has none, and removes it on destroy", async () => {
+    const { context, scheduler, sceneManager, loop } = createContext();
+    context.unregister(InspectorKey);
+    const stopObserving = vi.fn();
+    context.register(EngineKey, {
+      context,
+      scenes: sceneManager,
+      loop,
+      events: context.resolve(EventBusKey),
+      _observeFrameEnd: vi.fn(() => stopObserving),
+    } as never);
+    const plugin = new DebugPlugin();
+
+    plugin.install(context);
+    plugin.registerSystems(scheduler);
+    await plugin.onStart();
+    expect(context.resolve(InspectorKey)).toBeInstanceOf(Inspector);
+
+    plugin.onDestroy();
+    expect(context.has(InspectorKey)).toBe(false);
+    expect(stopObserving).toHaveBeenCalledOnce();
+  });
+
+  it("reuses an Inspector the game installed and leaves it in place", async () => {
+    const { context, scheduler, inspector } = createContext();
+    const plugin = new DebugPlugin();
+
+    plugin.install(context);
+    plugin.registerSystems(scheduler);
+    await plugin.onStart();
+    expect(context.resolve(InspectorKey)).toBe(inspector);
+
+    plugin.onDestroy();
+    expect(context.resolve(InspectorKey)).toBe(inspector);
   });
 
   it("installs a deterministic seed as the scene RNG default and clears it on destroy", async () => {

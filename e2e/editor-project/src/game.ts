@@ -1,5 +1,5 @@
 import { PhysicsPlugin } from "@yagejs/physics";
-import { Engine, Scene, type AssetHandle } from "@yagejs/core";
+import { Engine, InspectorPlugin, Scene, type AssetHandle } from "@yagejs/core";
 import {
   buildLevelCatalog,
   instantiateLevel,
@@ -50,6 +50,7 @@ async function main(): Promise<void> {
   if (!container) throw new Error("#game-container is missing.");
 
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   exposeLevelFacts(engine);
   engine.use(
     new RendererPlugin({

@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Engine } from "./Engine.js";
 import { InspectorKey } from "./EngineContext.js";
+import { InspectorPlugin } from "./InspectorPlugin.js";
 import { RandomKey, createRandomService } from "./Random.js";
 import type { RandomService } from "./Random.js";
 import { Scene } from "./Scene.js";
+import type { Plugin } from "./types.js";
 import { SceneManager } from "./SceneManager.js";
 import {
   SceneRandomSource,
@@ -18,8 +20,11 @@ function sequence(rng: RandomService, length = 4): number[] {
   return Array.from({ length }, () => rng.float());
 }
 
-async function startWithScene(): Promise<{ engine: Engine; scene: Scene }> {
+async function startWithScene(
+  ...plugins: Plugin[]
+): Promise<{ engine: Engine; scene: Scene }> {
   const engine = new Engine();
+  for (const plugin of plugins) engine.use(plugin);
   await engine.start();
   const scene = new TestScene();
   await engine.scenes.push(scene);
@@ -151,7 +156,7 @@ describe("SceneRandomSource", () => {
     });
 
     it("Inspector.setSeed reseeds through the engine's sceneRandom", async () => {
-      const { engine, scene } = await startWithScene();
+      const { engine, scene } = await startWithScene(new InspectorPlugin());
       const setSeed = vi.spyOn(engine.sceneRandom, "setSeed");
 
       engine.context.resolve(InspectorKey).setSeed(42);

@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { Engine, Scene, Vec2, Transform } from "@yagejs/core";
+import { Engine, Scene, Vec2, Transform, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { UIPlugin, createNineSliceView } from "@yagejs/ui";
 import {
@@ -343,6 +343,7 @@ class KitchenSinkScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

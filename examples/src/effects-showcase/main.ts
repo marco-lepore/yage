@@ -10,7 +10,7 @@
  * and toggling crt or vignette puts the UI under the same treatment.
  */
 
-import { Engine } from "@yagejs/core";
+import { Engine, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { UIPlugin } from "@yagejs/ui";
 import {
@@ -23,6 +23,7 @@ import { installSidebarWheel } from "./sidebar-scroll.js";
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   const container = setupGameContainer(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
   engine.use(

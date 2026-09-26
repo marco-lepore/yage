@@ -247,6 +247,31 @@ Set flags programmatically:
 registry.setFlag("my-debug", "show-paths", true);
 ```
 
+## The Inspector
+
+The Inspector is the API that tests, agents and the browser console use to read
+and drive a running game: snapshots, entity queries, the event log, frame
+stepping and synthetic input. `DebugPlugin` installs one. To get the Inspector
+without the overlay, in a headless test, a tool, or a build with no renderer,
+install `InspectorPlugin` from `@yagejs/core`:
+
+```typescript
+import { Engine, InspectorKey, InspectorPlugin } from "@yagejs/core";
+
+const engine = new Engine({ debug: true });
+engine.use(new InspectorPlugin());
+await engine.start();
+
+engine.context.resolve(InspectorKey).snapshot();
+window.__yage__.inspector.snapshot(); // debug: true publishes it here too
+```
+
+The engine does not create an Inspector by itself, so a production build that
+installs neither plugin ships none of its code. `debug: true` publishes
+`window.__yage__`; if no Inspector is installed, the engine warns once in a
+development build. Installing both plugins is harmless: whichever installs
+first creates the Inspector, and the other uses it.
+
 ## Inspector Extensions
 
 Visual debug overlays and programmatic debug helpers are separate concerns.
@@ -255,18 +280,21 @@ extensions when a plugin wants to expose imperative helpers to tests or the
 browser console.
 
 ```typescript
-import type { EngineContext } from "@yagejs/core";
 import { InspectorKey } from "@yagejs/core";
 
-install(context: EngineContext): void {
-  const inspector = context.resolve(InspectorKey);
+onStart(): void {
+  // tryResolve: a build without DebugPlugin or InspectorPlugin has none.
+  const inspector = this.context.tryResolve(InspectorKey);
 
-  inspector.addExtension("inventory", {
+  inspector?.addExtension("inventory", {
     listItems: () => this.inventory.snapshot(),
     grantItem: (id: string) => this.inventory.grant(id),
   });
 }
 ```
+
+Register it in `onStart` rather than `install`. Another plugin installs the
+Inspector, and every plugin's `install` has run by the time `onStart` does.
 
 Consume that extension from test code or the browser console:
 
@@ -391,8 +419,9 @@ operation before starting another, including operations through one lease.
 ### Waiting for the engine, and driving it in one call
 
 An engine built with `debug: true` publishes `window.__yage__` as `start()`
-begins. The object carries `inspector`, `logger` and `ready`. `DebugPlugin`
-supplies the controls accessed through `inspector.time`.
+begins. The object carries `logger`, `ready`, and the `inspector` that
+`DebugPlugin` installs. `DebugPlugin` also supplies the controls accessed
+through `inspector.time`.
 
 `ready` settles when `start()` finishes — plugins installed, loop running,
 `onStart` hooks done. It is what a script waits on after loading or reloading
@@ -678,11 +707,12 @@ the component has a physics body. This is useful for tools that keep entities
 inactive while editing:
 
 ```typescript
-import { Transform } from "@yagejs/core";
+import { InspectorKey, Transform } from "@yagejs/core";
 import { ColliderComponent } from "@yagejs/physics";
 
 const collider = entity.get(ColliderComponent);
-const facet = engine.inspector.getComponentFacet(collider, "collider");
+const inspector = engine.context.resolve(InspectorKey);
+const facet = inspector.getComponentFacet(collider, "collider");
 const transform = entity.get(Transform);
 const worldOutlines = facet?.outlines.map((outline) => ({
   ...outline,
@@ -706,8 +736,8 @@ facet appears on component snapshots under `facets.collider`.
 without reflecting component fields or building a scene snapshot. It returns
 `undefined` when the namespace is absent, the contributor has no facet for
 that component, or inspection throws. The plugin owns registration and removes
-its contributor on teardown. Neither this query nor the collider facet needs
-`DebugPlugin`.
+its contributor on teardown. Both need an installed Inspector, which
+`InspectorPlugin` provides without `DebugPlugin`.
 
 #### Honest limits
 
@@ -1039,14 +1069,22 @@ and it surfaces immediately instead of hiding behind a silently disabled
 system.
 
 Every failure is also recorded, so a test or crash reporter can check for it
-without scraping console output:
+without scraping console output. The record lives on the engine's
+`ErrorBoundary`, so a shipped game can read it without an Inspector:
 
 ```typescript
-const errors = engine.inspector.getErrors();
-console.log(errors.callbackErrors);
+import { ErrorBoundaryKey } from "@yagejs/core";
+
+const callbackErrors = engine.context
+  .resolve(ErrorBoundaryKey)
+  .getCallbackErrors();
+console.log(callbackErrors);
 // [{ kind: "Collision handler", entity: "DoorPad",
 //    error: "Cannot read properties of undefined (reading 'has')" }]
 ```
+
+With an Inspector installed, `inspector.getErrors().callbackErrors` returns the
+same list.
 
 `callbackErrors` is a bounded history — the 200 most recent failures. The
 same `Error` object propagating through nested wraps (a collision handler's

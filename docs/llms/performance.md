@@ -29,12 +29,15 @@ don't want processed nor post-process the HUD. `tree.addLayerEffect(factory, lay
 covers several layers with one handle but still runs one filter pass per listed
 layer. See the effects doc for scope options.
 
-## Debug mode cost
+## Debug tooling cost
 
-`debug: true` installs the Inspector and adds per-frame instrumentation
-(snapshots, event recording when the event log is used, extra bookkeeping). Keep
-it on while developing. Turn it off for production builds and when profiling, so
-a measurement reflects the game and not the tooling.
+The engine creates no Inspector. `DebugPlugin` installs one, and so does
+`InspectorPlugin`; an installed Inspector adds about 25 KB of minified code and
+per-frame bookkeeping (event recording while the event log is on, `waitFor`
+deadline checks). `debug: true` only publishes `window.__yage__`. Keep the
+tooling while developing. Leave `DebugPlugin` and `InspectorPlugin` out of
+production builds and profiling runs, so the bundle and a measurement reflect
+the game and not the tooling.
 
 ## Pooling
 

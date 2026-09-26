@@ -19,7 +19,7 @@ import {
 
 | Utility | Returns | Purpose |
 |---|---|---|
-| `createTestEngine(config?)` | `Promise<Engine>` | Headless engine, already started. No renderer, audio, or input plugins |
+| `createTestEngine(config?, plugins?)` | `Promise<Engine>` | Headless engine, already started, with the `plugins` you pass installed. No renderer, audio, or input plugins unless you pass them |
 | `createMockScene(name?)` | `{ scene, context }` | Scene with a working ECS world, no engine |
 | `createMockEntity(name?)` | `{ entity, scene, context }` | Entity spawned into a mock scene |
 | `advanceFrames(engine, n, dtMs?)` | `void` | Tick the game loop `n` times. `dtMs` defaults to `1000 / 60` |
@@ -182,8 +182,9 @@ returns the entity directly, so a test that spawns its own entities can just
 keep the reference.
 
 `createTestEngine` starts the engine, and plugins have to be registered before
-start. A test that needs a plugin builds the engine by hand instead:
-`new Engine()`, `engine.use(...)`, then `await engine.start()`.
+start, so pass them as the second argument: `createTestEngine(undefined,
+[new InspectorPlugin()])` gives a test an Inspector, read with
+`engine.context.resolve(InspectorKey)`.
 
 `advanceFrames` is synchronous — it calls the engine's game loop the specified
 number of times with a fixed ~16.7ms delta, which the loop converts to
@@ -301,14 +302,16 @@ console, confirming that a whole scene reaches the renderer with the entities
 and layers you expect, or letting an AI coding agent verify a scene it just
 generated. The **Inspector** covers those.
 
-The Inspector is a runtime introspection and control API. Construct the engine
-with `debug: true` and it attaches itself to `window.__yage__` during
-`engine.start()`. It sees the same ECS state your tests see, but against a
-live running game.
+The Inspector is a runtime introspection and control API. `DebugPlugin`
+installs it, and `InspectorPlugin` from `@yagejs/core` installs it without the
+debug overlay. Construct the engine with `debug: true` and it is published as
+`window.__yage__.inspector` during `engine.start()`. It sees the same ECS state
+your tests see, but against a live running game.
 
 ```typescript
 const engine = new Engine({ debug: true });
 engine.use(new RendererPlugin({ width: 800, height: 600 }));
+engine.use(new InspectorPlugin()); // or DebugPlugin, which installs one too
 await engine.start();
 ```
 
@@ -355,7 +358,7 @@ const lightState = window.__yage__.inspector.getComponentData(
 | `hasComponent(nameOrId, componentName)` | Boolean: does that entity have this component? |
 | `getComponentData(nameOrId, componentName)` | Reflected public fields and getters from the live component. Typed `unknown`, and `null` when nothing is inspectable |
 | `getSystems()` | Every registered system, with phase/priority/enabled flags |
-| `getErrors()` | Recorded failures from the error boundary (`callbackErrors`) — system, component, and callback throws, most recent last |
+| `getErrors()` | Recorded failures from the error boundary (`callbackErrors`) — system, component, and callback throws, most recent last. The same list is `engine.context.resolve(ErrorBoundaryKey).getCallbackErrors()` without an Inspector |
 
 The four per-entity helpers take either address form. A name resolves the
 first *active* entity with that name in the *active* scene, so a deactivated
@@ -486,9 +489,9 @@ minutes.
 - **Mutation is scoped to debug tooling.** The Inspector can freeze time,
   inject input, and step frames, but it is not a general-purpose world editor.
   Use normal engine APIs for structural scene changes.
-- **Time and input control need their plugins.** `debug: true` gets you the
+- **Time and input control need their plugins.** `InspectorPlugin` gets you the
   queries; `inspector.time.*` throws without `DebugPlugin` installed, and
   `inspector.input.*` throws without `InputPlugin`.
-- **`debug: true` only.** The Inspector is a development tool — production
-  builds should construct `Engine` without `debug: true` to avoid exposing
-  `window.__yage__`.
+- **A development tool.** Production builds should leave out `DebugPlugin` and
+  `InspectorPlugin`, which keeps the Inspector's code out of the bundle, and
+  construct `Engine` without `debug: true` to avoid exposing `window.__yage__`.

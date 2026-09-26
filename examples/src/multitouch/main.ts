@@ -5,6 +5,7 @@ import {
   Scene,
   Transform,
   Vec2,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   GraphicsComponent,
@@ -303,6 +304,7 @@ class MultitouchScene extends Scene {
 
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   const renderer = new RendererPlugin({
     width: WIDTH,

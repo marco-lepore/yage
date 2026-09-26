@@ -1,4 +1,4 @@
-import { Engine, Scene, Vec2 } from "@yagejs/core";
+import { Engine, Scene, Vec2, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent, texture } from "@yagejs/renderer";
 import {
   UIPlugin,
@@ -273,6 +273,7 @@ class UIExampleScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

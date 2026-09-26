@@ -1,4 +1,11 @@
-import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Component,
+  Transform,
+  Vec2,
+  InspectorPlugin,
+} from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -299,6 +306,7 @@ class CrosshairFollow extends Component {
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

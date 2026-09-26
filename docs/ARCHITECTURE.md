@@ -100,8 +100,11 @@ completed.
 4. Call system.onUnregister?() (reverse registration order)
 5. For each plugin (in reverse dependency order):
    a. Call plugin.onDestroy?()            -- Clean up
-6. Dispose the inspector and clear the event bus
+6. Clear the event bus
 ```
+
+An Inspector is removed in step 5, by the `onDestroy` of the plugin that
+installed it.
 
 The stages are independent. If one stage throws, the remaining stages still
 run. `engine.destroy()` rethrows the first error after teardown finishes.
@@ -224,7 +227,6 @@ These keys are registered by `@yagejs/core` itself (not by plugins):
 | `EventBusKey`          | `EventBus<EngineEvents>`       | Engine constructor                    |
 | `SceneManagerKey`      | `SceneManager`                 | Engine constructor                    |
 | `LoggerKey`            | `Logger`                       | Engine constructor                    |
-| `InspectorKey`         | `Inspector`                    | Engine constructor                    |
 | `QueryCacheKey`        | `QueryCache`                   | Engine constructor                    |
 | `ErrorBoundaryKey`     | `ErrorBoundary`                | Engine constructor                    |
 | `GameLoopKey`          | `GameLoop`                     | Engine constructor                    |
@@ -232,6 +234,7 @@ These keys are registered by `@yagejs/core` itself (not by plugins):
 | `ProcessSystemKey`     | `ProcessSystem`                | Engine constructor                    |
 | `AssetManagerKey`      | `AssetManager`                 | Engine constructor                    |
 | `SceneHookRegistryKey` | `SceneHookRegistry`            | Engine constructor                    |
+| `SceneRandomSourceKey` | `SceneRandomSource`            | Engine constructor                    |
 | `SceneTimeKey`         | `SceneTime` (scene-scoped)     | Engine's own `beforeEnter` scene hook |
 | `RandomKey`            | `RandomService` (scene-scoped) | Engine's own `beforeEnter` scene hook |
 
@@ -239,21 +242,22 @@ These keys are registered by `@yagejs/core` itself (not by plugins):
 
 Keys registered by official plugins:
 
-| Key                          | Type                             | Registered by      |
-| ---------------------------- | -------------------------------- | ------------------ |
-| `RendererKey`                | `RendererPlugin`                 | `@yagejs/renderer` |
-| `SceneRenderTreeProviderKey` | `SceneRenderTreeProvider`        | `@yagejs/renderer` |
-| `SceneRenderTreeKey`         | `SceneRenderTree` (scene-scoped) | `@yagejs/renderer` |
-| `PhysicsWorldManagerKey`     | `PhysicsWorldManager`            | `@yagejs/physics`  |
-| `PhysicsWorldKey`            | `PhysicsWorld` (scene-scoped)    | `@yagejs/physics`  |
-| `InputManagerKey`            | `InputManager`                   | `@yagejs/input`    |
-| `AudioManagerKey`            | `AudioManager`                   | `@yagejs/audio`    |
-| `DebugRegistryKey`           | `DebugRegistry`                  | `@yagejs/debug`    |
-| `LightingWorldManagerKey`    | `LightingWorldManager`           | `@yagejs/lighting` |
-| `LightingWorldKey`           | `LightingWorld` (scene-scoped)   | `@yagejs/lighting` |
-| `FloatingOverlayKey`         | `FloatingOverlay` (scene-scoped) | `@yagejs/ui`       |
-| `UIReactPluginKey`           | `UIReactPlugin`                  | `@yagejs/ui-react` |
-| `SaveServiceKey`             | `Save`                           | `@yagejs/save`     |
+| Key                          | Type                             | Registered by                                             |
+| ---------------------------- | -------------------------------- | --------------------------------------------------------- |
+| `RendererKey`                | `RendererPlugin`                 | `@yagejs/renderer`                                        |
+| `SceneRenderTreeProviderKey` | `SceneRenderTreeProvider`        | `@yagejs/renderer`                                        |
+| `SceneRenderTreeKey`         | `SceneRenderTree` (scene-scoped) | `@yagejs/renderer`                                        |
+| `PhysicsWorldManagerKey`     | `PhysicsWorldManager`            | `@yagejs/physics`                                         |
+| `PhysicsWorldKey`            | `PhysicsWorld` (scene-scoped)    | `@yagejs/physics`                                         |
+| `InputManagerKey`            | `InputManager`                   | `@yagejs/input`                                           |
+| `AudioManagerKey`            | `AudioManager`                   | `@yagejs/audio`                                           |
+| `DebugRegistryKey`           | `DebugRegistry`                  | `@yagejs/debug`                                           |
+| `InspectorKey`               | `Inspector`                      | `@yagejs/debug`, or `InspectorPlugin` from `@yagejs/core` |
+| `LightingWorldManagerKey`    | `LightingWorldManager`           | `@yagejs/lighting`                                        |
+| `LightingWorldKey`           | `LightingWorld` (scene-scoped)   | `@yagejs/lighting`                                        |
+| `FloatingOverlayKey`         | `FloatingOverlay` (scene-scoped) | `@yagejs/ui`                                              |
+| `UIReactPluginKey`           | `UIReactPlugin`                  | `@yagejs/ui-react`                                        |
+| `SaveServiceKey`             | `Save`                           | `@yagejs/save`                                            |
 
 Keys marked **(scene-scoped)** are declared with `new ServiceKey(id, { scope: "scene" })` and hold one instance per scene. `Component.use()` resolves the active scene's instance automatically. A plugin provides them from scene lifecycle hooks, registered through `SceneHookRegistryKey`:
 
@@ -292,6 +296,13 @@ class MinimapPlugin implements Plugin {
 ```
 
 Use `context.tryResolve()` for optional dependencies and `context.resolve()` for required ones. A dependency that is optional at runtime must not appear in `dependencies`, or `engine.start()` rejects when it is absent.
+
+Without a declared dependency, install order among plugins follows registration
+order, so a service another plugin registers may not exist yet during
+`install`. Resolve it in `onStart`, which runs after every plugin's `install`.
+`RendererPlugin` and `PhysicsPlugin` register their Inspector facets this way,
+because `DebugPlugin`, which installs the Inspector, installs after the
+renderer.
 
 An optional integration does not always need a service at all.
 `@yagejs/tilemap/physics` exports `toPhysicsColliders()`, a plain function that
@@ -656,7 +667,7 @@ registerSystems(scheduler: SystemScheduler) {
 
 The engine reports an error and rethrows it. It never suppresses one. If a plugin's system throws:
 
-1. `ErrorBoundary` records the system that threw (readable via `Inspector.getErrors().callbackErrors`) and logs it through `Logger`.
+1. `ErrorBoundary` records the system that threw (readable via `ErrorBoundary.getCallbackErrors()`, and `Inspector.getErrors().callbackErrors` when an Inspector is installed) and logs it through `Logger`.
 2. The error is rethrown. Nothing is disabled, unsubscribed, or muted. `system.enabled` is a flag the game sets, and `ErrorBoundary` never changes it.
 3. If nothing inside the frame catches it, `GameLoop.tick()` stops the loop and rethrows so the error reaches the host (`window.onerror`, an unhandled-rejection handler, or the caller's own `try`/`catch`).
 

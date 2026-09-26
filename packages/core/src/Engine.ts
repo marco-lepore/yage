@@ -22,7 +22,6 @@ import { ErrorBoundary } from "./ErrorBoundary.js";
 import { GameLoop } from "./GameLoop.js";
 import { SceneManager } from "./SceneManager.js";
 import { SystemScheduler } from "./SystemScheduler.js";
-import { Inspector } from "./Inspector.js";
 import {
   ComponentUpdateSystem,
   ComponentFixedUpdateSystem,
@@ -38,10 +37,21 @@ import {
   SceneRandomSourceKey,
 } from "./SceneRandomSource.js";
 import { SceneTime, SceneTimeKey } from "./SceneTime.js";
+import { devWarn } from "./internal/dev.js";
+
+/**
+ * Reads the engine's state once a frame has settled. Receives the settled
+ * frame's number (`loop.frameCount`). See {@link Engine._observeFrameEnd}.
+ */
+export type FrameEndObserver = (frame: number) => void;
 
 /** Engine configuration. */
 export interface EngineConfig {
-  /** Enable debug mode (Inspector API, debug logging). */
+  /**
+   * Publish `window.__yage__` for an out-of-page driver when `start()` runs:
+   * `logger`, `ready`, and `inspector` once `DebugPlugin` or
+   * `InspectorPlugin` has installed one.
+   */
   debug?: boolean;
   /** Fixed timestep in seconds (default: 1/60). */
   fixedTimestep?: number;
@@ -66,8 +76,6 @@ export class Engine {
   readonly loop: GameLoop;
   /** The logger. */
   readonly logger: Logger;
-  /** The inspector (debug queries). */
-  readonly inspector: Inspector;
   /** Creates each scene's `RandomKey` RNG and owns the seed it starts from. */
   readonly sceneRandom: SceneRandomSource;
 
@@ -79,6 +87,7 @@ export class Engine {
   readonly assets: AssetManager;
 
   private readonly plugins: Map<string, Plugin> = new Map();
+  private readonly frameEndObservers: FrameEndObserver[] = [];
   /**
    * Plugins whose `install()` was called, in install order. A plugin is
    * pushed before its install is awaited, so a `destroy()` after a failed or
@@ -135,7 +144,6 @@ export class Engine {
     this.scenes = new SceneManager();
     this.scheduler = new SystemScheduler();
     this.sceneRandom = new SceneRandomSource(this.scenes);
-    this.inspector = new Inspector(this);
     this.assets = new AssetManager();
     this.sceneHooks = new SceneHookRegistry();
 
@@ -156,7 +164,6 @@ export class Engine {
     this.context.register(QueryCacheKey, this.queryCache);
     this.context.register(ErrorBoundaryKey, this.errorBoundary);
     this.context.register(GameLoopKey, this.loop);
-    this.context.register(InspectorKey, this.inspector);
     this.context.register(SceneRandomSourceKey, this.sceneRandom);
     this.context.register(SystemSchedulerKey, this.scheduler);
     this.context.register(AssetManagerKey, this.assets);
@@ -166,14 +173,12 @@ export class Engine {
       beforeEnter: (scene) => {
         scene._registerScoped(RandomKey, this.sceneRandom.createSceneRandom());
         scene._registerScoped(SceneTimeKey, new SceneTime(scene));
-        this.inspector.attachSceneEventObserver(scene);
       },
       afterExit: (scene) => {
         // Entities are already destroyed at this point, so entity-owned
         // teardown (component onDestroy) has released its own requests;
         // this catches the rest.
         scene.tryResolveScoped(SceneTimeKey)?._releaseAll();
-        this.inspector.detachSceneEventObserver(scene);
       },
     });
 
@@ -211,7 +216,7 @@ export class Engine {
       endOfFrame: (dt) => {
         this.scheduler.run(Phase.EndOfFrame, dt);
         this.scenes._flushDestroyQueues();
-        this.inspector._completeFrame();
+        this.notifyFrameEnd();
       },
     });
   }
@@ -223,6 +228,53 @@ export class Engine {
    */
   registerSceneHooks(hooks: SceneHooks): () => void {
     return this.sceneHooks.register(hooks);
+  }
+
+  /**
+   * Register an observer that runs once at the very end of every frame, after
+   * `EndOfFrame` systems have run and destroyed entities have been removed.
+   * Nothing else runs between the observers and the start of the next frame.
+   *
+   * **Read-only.** An observer reads engine state; it must not change it. Do
+   * not spawn or destroy entities, add or remove components, emit events, or
+   * push, pop or replace scenes from one. A change made here lands after this
+   * frame's cleanup: an entity destroyed here stays in its scene until the
+   * next frame's flush, an event emitted here is stamped with a frame whose
+   * waits have already been settled, and observers registered earlier never
+   * see it. Per-frame work that changes state belongs in a `System` or a
+   * component.
+   *
+   * Observers run in registration order and receive the settled frame's
+   * number (`loop.frameCount`). Each call goes through
+   * `ErrorBoundary.wrapCallback`: a throw is recorded and rethrown, which
+   * stops the loop like any other error that escapes a frame.
+   *
+   * @returns A function that removes the observer. Calling it twice is
+   * harmless.
+   * @internal The Inspector's installer uses this to expire
+   * `events.waitFor` deadlines.
+   */
+  _observeFrameEnd(observer: FrameEndObserver): () => void {
+    // Wrapped so the same function registered twice is two registrations,
+    // each removed by its own disposer.
+    const entry: FrameEndObserver = (frame) => observer(frame);
+    this.frameEndObservers.push(entry);
+    return () => {
+      const index = this.frameEndObservers.indexOf(entry);
+      if (index !== -1) this.frameEndObservers.splice(index, 1);
+    };
+  }
+
+  private notifyFrameEnd(): void {
+    if (this.frameEndObservers.length === 0) return;
+    const frame = this.loop.frameCount;
+    // A copy, so an observer removed mid-pass still finishes this pass the
+    // way the list stood when the frame ended.
+    for (const observer of [...this.frameEndObservers]) {
+      this.errorBoundary.wrapCallback(() => observer(frame), {
+        kind: "Frame-end observer",
+      });
+    }
   }
 
   /** Register a plugin. Must be called before start(). */
@@ -283,10 +335,14 @@ export class Engine {
     try {
       // Published before any startup work so a driver finds the surface even
       // when boot fails partway; `ready` is what says whether it got there.
-      // Plugins augment this object from their onStart hooks.
+      // `inspector` reads the container, so it appears once a plugin installs
+      // one and disappears when that plugin is destroyed.
       if (this.debug && typeof globalThis !== "undefined") {
+        const context = this.context;
         (globalThis as Record<string, unknown>)["__yage__"] = {
-          inspector: this.inspector,
+          get inspector() {
+            return context.tryResolve(InspectorKey);
+          },
           logger: this.logger,
           ready: this.readyPromise,
         };
@@ -330,6 +386,14 @@ export class Engine {
 
       // Emit engine started event
       this.events.emit("engine:started", undefined);
+
+      if (this.debug && !this.context.has(InspectorKey)) {
+        devWarn(
+          "Engine: debug: true published window.__yage__ without an inspector. " +
+            "Install DebugPlugin (@yagejs/debug) or InspectorPlugin " +
+            "(@yagejs/core) to drive the game through window.__yage__.inspector.",
+        );
+      }
 
       // Everything a driver needs is up: plugins installed, loop running,
       // onStart hooks done. Scene mounting is the host's next call, not this
@@ -413,7 +477,6 @@ export class Engine {
       delete (globalThis as Record<string, unknown>)["__yage__"];
     }
 
-    step(() => this.inspector.dispose());
     step(() => this.events.clear());
 
     if (errors.length === 0) return;

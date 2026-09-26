@@ -101,11 +101,20 @@ class DriveBudgetExceededError extends Error {
 }
 
 // Duplicate service keys locally to avoid runtime deps on optional packages.
-const InputManagerRuntimeKey = new ServiceKey<InputManagerLike>("inputManager");
-const PhysicsWorldManagerRuntimeKey = new ServiceKey<PhysicsWorldManagerLike>(
-  "physicsWorldManager",
+// Marked pure so a bundle that never installs an Inspector drops them too.
+// Owned by @yagejs/input.
+const InputManagerRuntimeKey = /* @__PURE__ */ new ServiceKey<InputManagerLike>(
+  "inputManager",
 );
-const RendererRuntimeKey = new ServiceKey<RendererLike>("renderer");
+// Owned by @yagejs/physics.
+const PhysicsWorldManagerRuntimeKey =
+  /* @__PURE__ */ new ServiceKey<PhysicsWorldManagerLike>(
+    "physicsWorldManager",
+  );
+// Owned by @yagejs/renderer.
+const RendererRuntimeKey = /* @__PURE__ */ new ServiceKey<RendererLike>(
+  "renderer",
+);
 
 /**
  * Mirrors `GamepadAxisKey` from `@yagejs/input` as a local union so the
@@ -730,7 +739,9 @@ interface EngineRef {
 
 /**
  * Programmatic runtime control and state queries for testing and debugging.
- * Exposed on `window.__yage__` in debug mode.
+ * The engine does not create one: `DebugPlugin` or `InspectorPlugin` installs
+ * it under `InspectorKey`, and `debug: true` exposes it as
+ * `window.__yage__.inspector`.
  */
 export class Inspector {
   private readonly engine: EngineRef;
@@ -1689,7 +1700,7 @@ export class Inspector {
     );
   }
 
-  /** @internal Engine teardown releases the event-bus tap through this hook. */
+  /** @internal The installer's teardown releases the event-bus tap through this hook. */
   dispose(): void {
     this.rejectEventWaiters(
       "Inspector.events.waitFor(): Inspector was disposed.",

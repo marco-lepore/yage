@@ -1,0 +1,5 @@
+---
+"@yagejs/physics": patch
+---
+
+`PhysicsPlugin` registers its collider facet with the Inspector in `onStart` instead of `install`, so it finds an Inspector installed by a plugin registered after it, such as `DebugPlugin`.

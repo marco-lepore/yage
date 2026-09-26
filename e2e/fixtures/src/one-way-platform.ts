@@ -5,7 +5,7 @@
  * falls through. Runs the contact-filter hook in the browser's ESM Rapier
  * build — the path games actually ship.
  */
-import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { Engine, Scene, Transform, Vec2, InspectorKey } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
@@ -87,5 +87,5 @@ engine.use(
 engine.use(new PhysicsPlugin());
 engine.use(new DebugPlugin());
 await engine.start();
-engine.inspector.time.freeze();
+engine.context.resolve(InspectorKey).time.freeze();
 await engine.scenes.push(new OneWayScene());

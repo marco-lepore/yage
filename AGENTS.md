@@ -75,7 +75,7 @@ Enforced by tooling — match these conventions exactly:
 - **Entity subclasses with `setup()` for entity types** — preferred pattern for game entities. `defineBlueprint()` still works for simple parametric factories but is deprecated.
 - **Entity events for game logic** — `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. `EventBus` for global engine events.
 - **Controlled save state** — only explicit state roots persist through `@yagejs/save`: a root implements `Serializable<TEncoded>` or comes from a core state factory. Runtime ECS objects, renderer resources, callbacks, and plugin internals are never traversed. Addons expose domain `snapshot()` / `restore()` so a game can include them in a root.
-- **Every dispatch of game-registered code is wrapped**: event, collision, input, and process callbacks through `ErrorBoundary.wrapCallback`; `System`/`Component` updates through `wrapSystem`/`wrapComponent`; scene `onEnter`/`onExit`/`onPause`/`onResume` through `wrapLifecycleHook`. The wrap records the failing callback on `Inspector.getErrors().callbackErrors`, logs, and rethrows; nothing is disabled or unsubscribed. A new dispatch site needs the wrap. Full model: the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
+- **Every dispatch of game-registered code is wrapped**: event, collision, input, and process callbacks through `ErrorBoundary.wrapCallback`; `System`/`Component` updates through `wrapSystem`/`wrapComponent`; scene `onEnter`/`onExit`/`onPause`/`onResume` through `wrapLifecycleHook`. The wrap records the failing callback on the `ErrorBoundary` (`getCallbackErrors()`, also read by `Inspector.getErrors().callbackErrors`), logs, and rethrows; nothing is disabled or unsubscribed. A new dispatch site needs the wrap. Full model: the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
 - **A throwing hook ends the sequence.** When developer code throws inside an engine-owned sequence (scene teardown, destroy cascade, pool disposal, event fan-out), the later steps do not run. Never add a collector that runs the remaining steps or a `try`/`finally` that forces the remaining teardown steps to run. The only fixes in scope: attribution (`wrapCallback`) and the reporting channel (`reportLifecycleError`, where a documented contract says the operation continues). The two shipped exceptions: the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
 - **Predictable failures throw an authored error at the entry.** When a
   failure is knowable at the call (unknown sound alias, missing asset key,
@@ -89,7 +89,7 @@ Enforced by tooling — match these conventions exactly:
 - **Unit tests**: co-located (`Foo.ts` → `Foo.test.ts` in the same directory)
 - **E2E tests**: `e2e/` directory at repo root (Playwright)
 - **Test utilities**: `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core/test-utils`
-- **E2E assertions**: use the Inspector API (`window.__yage__.inspector`), not screenshots
+- **E2E assertions**: use the Inspector API (`window.__yage__.inspector`), not screenshots. The page's engine needs `debug: true` and an installed Inspector: `DebugPlugin` installs one, or `InspectorPlugin` from `@yagejs/core` without the overlay
 
 ## Documentation
 

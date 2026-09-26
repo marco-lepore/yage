@@ -21,7 +21,14 @@
  *           boundary softens without blurring the outer canvas edge.
  *   hud   — screen-space, corner cards tracking `visibleCanvasRect` corners.
  */
-import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Component,
+  Transform,
+  Vec2,
+  InspectorPlugin,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   RendererKey,
@@ -438,6 +445,7 @@ class ResponsiveUIScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

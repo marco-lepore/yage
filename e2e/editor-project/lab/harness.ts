@@ -1,6 +1,6 @@
 import { TilemapPlugin } from "@yagejs/tilemap";
 import { PhysicsPlugin } from "@yagejs/physics";
-import { Engine } from "@yagejs/core";
+import { Engine, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { exposeLevelFacts } from "../src/inspect.js";
 
@@ -10,8 +10,9 @@ const VIEW = { width: 960, height: 600 };
 /**
  * The engine the editor's preview runs.
  *
- * `debug: true` is what exposes `window.__yage__.inspector`, which the E2E path
- * reads the preview through.
+ * `debug: true` publishes `window.__yage__`, and `InspectorPlugin` puts the
+ * inspector the E2E path reads on it. The editor's preview installs an
+ * Inspector of its own first, which the plugin then reuses.
  */
 export default {
   engine: () => {
@@ -45,6 +46,7 @@ export default {
       renderer,
       new PhysicsPlugin({ gravity: { x: 0, y: 0 } }),
       new TilemapPlugin(),
+      new InspectorPlugin(),
     ];
   },
 };

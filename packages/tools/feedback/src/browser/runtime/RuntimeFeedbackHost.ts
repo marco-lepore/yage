@@ -1,5 +1,15 @@
-import { EngineKey, ErrorBoundaryKey, ServiceKey } from "@yagejs/core";
-import type { Engine, EngineContext, InspectorTimeLease } from "@yagejs/core";
+import {
+  EngineKey,
+  ErrorBoundaryKey,
+  InspectorKey,
+  ServiceKey,
+} from "@yagejs/core";
+import type {
+  Engine,
+  EngineContext,
+  Inspector,
+  InspectorTimeLease,
+} from "@yagejs/core";
 import { captureView } from "./capture.js";
 import type {
   FeedbackHost,
@@ -21,8 +31,12 @@ export class RuntimeFeedbackHost implements FeedbackHost {
   ) {
     this.engine = context.resolve(EngineKey);
   }
+  /** Resolved on use: the Inspector is installed by DebugPlugin at start. */
+  private get inspector(): Inspector {
+    return this.context.resolve(InspectorKey);
+  }
   capture(): FeedbackObservation {
-    if (this.engine.inspector.time.isOwned())
+    if (this.inspector.time.isOwned())
       throw new Error(
         "Pause the lab or other clock owner, then click here to leave feedback.",
       );
@@ -46,13 +60,13 @@ export class RuntimeFeedbackHost implements FeedbackHost {
     }
   }
   freeze(): void {
-    this.lease = this.engine.inspector.time.acquire();
+    this.lease = this.inspector.time.acquire();
     this.wasFrozen = this.lease.isFrozen();
     this.lease.freeze();
     this.context.tryResolve(InputKey)?.clearAll();
   }
   toggleFreeze(): boolean {
-    const time = this.engine.inspector.time;
+    const time = this.inspector.time;
     if (time.isOwned())
       throw new Error(
         "Pause the current clock owner before changing freeze state.",
@@ -66,7 +80,7 @@ export class RuntimeFeedbackHost implements FeedbackHost {
     return frozen;
   }
   canStep(): boolean {
-    const time = this.engine.inspector.time;
+    const time = this.inspector.time;
     return time.isFrozen() && !time.isOwned();
   }
   step(frames: 1 | 10): void {
@@ -78,7 +92,7 @@ export class RuntimeFeedbackHost implements FeedbackHost {
       throw new Error(
         "Freeze the game and pause any other clock owner before stepping.",
       );
-    const lease = this.engine.inspector.time.acquire();
+    const lease = this.inspector.time.acquire();
     try {
       this.context.tryResolve(InputKey)?.clearAll();
       lease.step(frames);

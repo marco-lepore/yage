@@ -141,11 +141,11 @@ engine.scenes.push(new GameScene());
 
 ### Inspector (runtime queries)
 
-An engine constructed with `debug: true` installs an introspection API on `window.__yage__` during `engine.start()`. Useful in the browser console while iterating, and for AI agents that want to verify scene state without reading the canvas:
+The Inspector is an introspection API for the browser console while iterating, and for AI agents that want to verify scene state without reading the canvas. The engine does not create one: `DebugPlugin` installs it, or `InspectorPlugin` from `@yagejs/core` without the debug overlay. `debug: true` publishes it as `window.__yage__.inspector` during `engine.start()`. A production build that installs neither plugin ships no Inspector code.
 
 ```ts
 const engine = new Engine({ debug: true });
-engine.use(new DebugPlugin()); // inspector.time (freeze/step) needs DebugPlugin
+engine.use(new DebugPlugin()); // installs the Inspector; inspector.time (freeze/step) needs it
 engine.use(new InputPlugin({ actions: {} })); // inspector.input needs InputPlugin
 await engine.start();
 
@@ -168,7 +168,7 @@ window.__yage__.inspector.events.getLog(); // recorded bus, entity and scene eve
 window.__yage__.inspector.time.getFrame(); // real game-loop frame, automatic or manual
 ```
 
-Snapshot and query calls work with `debug: true` alone. Frame stepping (`inspector.time.*`) needs `DebugPlugin`; synthetic input (`inspector.input.*`) needs `InputPlugin`. Without those plugins, the gated calls throw.
+Snapshot and query calls work with `InspectorPlugin` alone. Frame stepping (`inspector.time.*`) needs `DebugPlugin`; synthetic input (`inspector.input.*`) needs `InputPlugin`. Without those plugins, the gated calls throw. An engine with `debug: true` and no Inspector publishes `window.__yage__` without `inspector` and warns once in dev builds. In code, reach the Inspector with `engine.context.resolve(InspectorKey)`.
 
 `time.step(N)` is synchronous and never gives async work (a scene transition, a dialogue runner) a chance to resolve. When a step needs to cross one, use the async variants instead — they yield a real macrotask between frames so pending microtasks can drain:
 
@@ -234,7 +234,7 @@ For agent-driven debugging: write a throwaway Playwright spec, boot the game, fr
 
 ### Unit tests (deterministic frame stepping)
 
-`@yagejs/core` ships headless test utilities. `createTestEngine()` returns a started engine with no renderer/physics/input plugins; plugins must be registered before start, so a test that needs one builds the engine itself (`new Engine()` → `engine.use(...)` → `await engine.start()`). `advanceFrames()` ticks the game loop N times so assertions run against deterministic state:
+`@yagejs/core` ships headless test utilities. `createTestEngine(config?, plugins?)` returns a started engine; `plugins` are installed before it starts, so pass `[new InspectorPlugin()]` for a test that reads the Inspector. `advanceFrames()` ticks the game loop N times so assertions run against deterministic state:
 
 ```ts
 import { createTestEngine, advanceFrames, Transform, Vec2 } from "@yagejs/core";

@@ -20,7 +20,7 @@ const engine = new Engine({
 
 | Option | Default | Purpose |
 |---|---|---|
-| `debug` | `false` | Enable verbose logging and dev tools |
+| `debug` | `false` | Publish `window.__yage__` for the browser console and test drivers. Its `inspector` comes from `DebugPlugin` or `InspectorPlugin` — see [The Inspector](/guides/debug/#the-inspector) |
 | `fixedTimestep` | `1 / 60` | Seconds per fixed-update tick |
 | `maxFixedStepsPerFrame` | `5` | Cap on fixed-update iterations per frame |
 
@@ -185,3 +185,10 @@ const uiPlugin: Plugin = {
 If a dependency is missing the engine throws at startup with a clear message
 listing the unresolved names. Circular dependencies are also detected and
 reported.
+
+Plugins with no dependency between them install in the order they were
+registered. A plugin that uses a service another plugin provides, without
+depending on it, resolves that service in `onStart` rather than `install`: by
+then every plugin has installed. `RendererPlugin` publishes its render facet to
+the Inspector this way, since `DebugPlugin` installs the Inspector after the
+renderer.

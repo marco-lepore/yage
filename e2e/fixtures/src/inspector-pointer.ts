@@ -1,4 +1,10 @@
-import { Component, Engine, Scene, Transform } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  Scene,
+  Transform,
+  InspectorKey,
+} from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
@@ -131,5 +137,5 @@ engine.use(new UIPlugin());
 engine.use(new DebugPlugin(startFrozen ? { startFrozen: true } : {}));
 
 await engine.start();
-if (!startFrozen) engine.inspector.time.freeze();
+if (!startFrozen) engine.context.resolve(InspectorKey).time.freeze();
 await engine.scenes.push(new PointerScene());

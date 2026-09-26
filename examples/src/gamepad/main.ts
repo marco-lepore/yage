@@ -5,6 +5,7 @@ import {
   Scene,
   Transform,
   Vec2,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   GraphicsComponent,
@@ -320,6 +321,7 @@ function addHudLabel(scene: Scene, x: number, y: number, text: string): void {
 
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

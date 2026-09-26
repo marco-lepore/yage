@@ -3,6 +3,7 @@ import {
   EventBusKey,
   GameLoopKey,
   InspectorKey,
+  installInspector,
   SceneManagerKey,
   SceneHookRegistryKey,
   SceneRandomSourceKey,
@@ -148,6 +149,7 @@ export class DebugPlugin implements Plugin {
   private provider: SceneRenderTreeProvider | null = null;
   private eventUnsubs: Array<() => void> = [];
   private clock: DebugClock | null = null;
+  private uninstallInspector: (() => void) | undefined;
 
   constructor(config?: DebugConfig) {
     const seed = config?.deterministicSeed;
@@ -161,6 +163,10 @@ export class DebugPlugin implements Plugin {
 
   install(context: EngineContext): void {
     this.context = context;
+    // The overlay's clock, step key and event log all run through the
+    // Inspector, so the plugin installs one when the game has not. An
+    // Inspector the game installed itself is reused and left to its owner.
+    this.uninstallInspector = installInspector(context);
     this.renderer = context.resolve(RendererKey);
     if (this.config.deterministicSeed !== undefined) {
       context
@@ -343,6 +349,9 @@ export class DebugPlugin implements Plugin {
 
     this.tearDownDebugInfra();
     this.teardownDebugScene();
+
+    this.uninstallInspector?.();
+    this.uninstallInspector = undefined;
   }
 
   private async materializeDebugScene(): Promise<void> {

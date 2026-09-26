@@ -62,7 +62,7 @@ vi.mock("pixi.js", () => ({
 
 import { localBoxOf } from "./bounds.js";
 import { MarkLayout } from "./markLayout.js";
-import { Component, Engine, Transform, Vec2 } from "@yagejs/core";
+import { Component, Engine, Inspector, Transform, Vec2 } from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";
 import {
@@ -156,7 +156,7 @@ describe("marksOf", () => {
   });
 
   it("keeps an icon for a collider collapsed to a point without losing its local bounds", () => {
-    const inspector = new Engine().inspector;
+    const inspector = new Inspector(new Engine());
     const transform = new Transform({ scale: new Vec2(0, 0) });
     const collider = new Chime();
     const entity = entityWith([transform, collider]);

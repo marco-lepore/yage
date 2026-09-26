@@ -210,6 +210,12 @@ export default {
 };
 ```
 
+The preview installs an Inspector before the harness's plugins, so selection
+boxes built from the render and collider facets work whether or not the
+harness includes `DebugPlugin`. Play runs the harness as written: add
+`InspectorPlugin` or `DebugPlugin` to it to reach `window.__yage__.inspector`
+while playing.
+
 ## Editing a tilemap in Tiled
 
 Select a placement whose asset parameter points to a local Tiled JSON map,

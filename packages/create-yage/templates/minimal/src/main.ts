@@ -1,9 +1,12 @@
-import { Engine } from "@yagejs/core";
+import { Engine, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { MainScene } from "./scenes/MainScene";
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  // Puts the inspector on window.__yage__ for the browser console.
+  // DebugPlugin (below) installs one as well; keeping both is harmless.
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({
@@ -50,7 +53,7 @@ async function main(): Promise<void> {
   //
   // ---------------------------------------------------------------------
   //
-  // Debug overlay + runtime inspector (window.__yage__):
+  // Debug overlay (it also installs the runtime inspector):
   //   npm install @yagejs/debug
   //
   // import { DebugPlugin } from "@yagejs/debug";

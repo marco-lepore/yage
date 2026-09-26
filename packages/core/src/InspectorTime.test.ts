@@ -4,6 +4,8 @@ import { Scene } from "./Scene.js";
 import { Entity } from "./Entity.js";
 import { EntityPool } from "./EntityPool.js";
 import { SceneTimeKey } from "./SceneTime.js";
+import { InspectorKey } from "./EngineContext.js";
+import { InspectorPlugin } from "./InspectorPlugin.js";
 
 const engines: Engine[] = [];
 afterEach(() => {
@@ -12,6 +14,7 @@ afterEach(() => {
 
 async function setup() {
   const engine = new Engine();
+  engine.use(new InspectorPlugin());
   engines.push(engine);
   await engine.start();
   const controller = {
@@ -27,9 +30,10 @@ async function setup() {
       for (let i = 0; i < count; i++) engine.loop.tick(dtMs);
     },
   };
-  engine.inspector.attachTimeController(controller);
-  engine.inspector.events.setEnabled(true);
-  return { engine, inspector: engine.inspector, controller };
+  const inspector = engine.context.resolve(InspectorKey);
+  inspector.attachTimeController(controller);
+  inspector.events.setEnabled(true);
+  return { engine, inspector, controller };
 }
 
 class TestScene extends Scene {

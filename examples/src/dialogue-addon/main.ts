@@ -97,7 +97,7 @@
  * `/presenters`.
  */
 
-import { Engine } from "@yagejs/core";
+import { Engine, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin, installBitmapFont } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 import { AudioPlugin } from "@yagejs/audio";
@@ -116,6 +116,7 @@ import "./styles.css";
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

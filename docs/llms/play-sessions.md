@@ -2,10 +2,11 @@
 
 Driving a running game to answer a question about it: hold keys, advance
 frames, read the state back. `debug: true` on the engine publishes
-`window.__yage__`, which carries the Inspector and `ready`. Anything that steps
-the clock — `drive`, `time.freeze`, `time.stepUntil` — also needs
-`DebugPlugin`, which supplies the clock control; without it those calls throw
-while the readouts still work.
+`window.__yage__`, which carries `ready` and the Inspector that `DebugPlugin`
+installs. Anything that steps the clock — `drive`, `time.freeze`,
+`time.stepUntil` — needs `DebugPlugin`, which supplies the clock control. With
+only `InspectorPlugin` installed, those calls throw while the readouts still
+work.
 
 The full Inspector surface is in `llms/packages/debug.md`, and the scenario lab
 in `llms/tools/lab.md`. This page covers which mechanism to reach for and how

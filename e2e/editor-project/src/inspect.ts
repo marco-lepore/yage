@@ -1,5 +1,5 @@
 import { TilemapComponent } from "@yagejs/tilemap";
-import { Transform, Vec2, type Engine } from "@yagejs/core";
+import { InspectorKey, Transform, Vec2, type Engine } from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";
 import { Crate } from "./Crate.js";
 import { Slime } from "./Slime.js";
@@ -155,7 +155,15 @@ export function exposeLevelFacts(engine: Engine): void {
       return facts;
     },
   };
-  engine.inspector.addExtension(LEVEL_FACTS, facts);
+  // Added once the engine starts: the Inspector is installed during start, by
+  // InspectorPlugin or, in the editor's preview, by the editor itself.
+  engine.use({
+    name: "level-facts",
+    version: "1.0.0",
+    onStart: () => {
+      engine.context.resolve(InspectorKey).addExtension(LEVEL_FACTS, facts);
+    },
+  });
 }
 
 /**

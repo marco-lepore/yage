@@ -5,6 +5,7 @@ import {
   Scene,
   Transform,
   Vec2,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   CameraEntity,
@@ -486,6 +487,7 @@ class DemoScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 const engine = new Engine({ debug: true });
+engine.use(new InspectorPlugin());
 const container = getContainer();
 
 engine.use(

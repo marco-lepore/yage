@@ -69,7 +69,7 @@ See https://yage.dev/patterns/project-layout for the full conventions.
 - `@yagejs/physics` — Rapier2D physics with pixel↔meter conversion
 - `@yagejs/input` — keyboard, mouse, gamepad, action maps
 - `@yagejs/audio` — sound effects and music
-- `@yagejs/debug` — debug overlay and runtime inspector (enabled via `debug: true` in `main.ts`)
+- `@yagejs/debug` — debug overlay and runtime inspector (`DebugPlugin` in `main.ts`)
 
 Add more as you need them: `@yagejs/particles`, `@yagejs/tilemap`, `@yagejs/ui`, `@yagejs/ui-react`, `@yagejs/save`.
 
@@ -151,8 +151,9 @@ diagnostics stay readable. Do not rely on those names for save-file identity.
 
 ## Runtime inspector
 
-`main.ts` starts the engine with `debug: true`, which adds
-`window.__yage__.inspector` in the browser console:
+`main.ts` starts the engine with `debug: true`, which publishes
+`window.__yage__`, and installs `DebugPlugin`, which puts the inspector on it.
+In the browser console:
 
 ```js
 window.__yage__.inspector.snapshot();

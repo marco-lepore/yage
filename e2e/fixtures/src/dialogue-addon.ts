@@ -18,6 +18,7 @@ import {
   Transform,
   Vec2,
   type Entity,
+  InspectorKey,
 } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -523,5 +524,5 @@ engine.use(
 engine.use(new InputPlugin({ actions: { interact: ["Enter"] } }));
 engine.use(new DebugPlugin());
 await engine.start();
-engine.inspector.time.freeze();
+engine.context.resolve(InspectorKey).time.freeze();
 await engine.scenes.push(new DialogueScene());

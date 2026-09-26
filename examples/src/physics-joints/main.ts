@@ -1,4 +1,11 @@
-import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  Scene,
+  Transform,
+  Vec2,
+  InspectorPlugin,
+} from "@yagejs/core";
 import {
   GraphicsComponent,
   RendererPlugin,
@@ -313,6 +320,7 @@ class PhysicsJointsScene extends Scene {
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

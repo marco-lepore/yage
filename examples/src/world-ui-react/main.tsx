@@ -8,7 +8,14 @@
  * into the scene's screen-space overlay yet must stay anchored to the
  * moving namecard every frame — the world→screen anchoring path.
  */
-import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Component,
+  Transform,
+  Vec2,
+  InspectorPlugin,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   CameraEntity,
@@ -212,6 +219,7 @@ class DemoScene extends Scene {
 }
 
 const engine = new Engine({ debug: true });
+engine.use(new InspectorPlugin());
 engine.use(
   new RendererPlugin({
     width: WIDTH,

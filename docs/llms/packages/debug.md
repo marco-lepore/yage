@@ -21,11 +21,13 @@ engine.use(
 );
 ```
 
+`DebugPlugin` installs the Inspector (`InspectorKey`) when the game has not installed one, and removes the one it installed on destroy. An Inspector the game installed through `InspectorPlugin` is reused and left in place. The overlay's clock, step key and event log all run through it.
+
 `deterministicSeed` is opt-in. `DebugPlugin` installs it as the default seed of `engine.sceneRandom`, so every scene RNG starts from it unless `setSeed` pinned another seed, and removes it on destroy. Leave it unset for normal debug builds; set it from test fixtures so a run starts from a known RNG state.
 
 ### The debug global
 
-An engine built with `debug: true` publishes `window.__yage__` as `start()` begins, carrying `inspector`, `logger` and `ready`. `DebugPlugin` supplies the controls accessed through `inspector.time`.
+An engine built with `debug: true` publishes `window.__yage__` as `start()` begins, carrying `logger`, `ready` and, once `DebugPlugin` has installed it, `inspector`. `DebugPlugin` also supplies the controls accessed through `inspector.time`.
 
 ```ts
 await window.__yage__.ready; // start() finished: plugins installed, loop running, onStart done
@@ -441,8 +443,9 @@ and reflect current config. They do not report live collision contacts.
 Component, namespace: K): InspectorFacets[K] | undefined` invokes only that
 namespace's contributor. It does not reflect fields or build a scene snapshot.
 Missing contributor, null/undefined result or a thrown inspection returns
-`undefined`, matching snapshot omission. PhysicsPlugin removes its contributor
-on teardown; no DebugPlugin is required.
+`undefined`, matching snapshot omission. PhysicsPlugin registers its
+contributor in `onStart` and removes it on teardown. An installed Inspector is
+required (`InspectorPlugin` is enough); DebugPlugin is not.
 
 ### Inspector extension namespaces
 
@@ -463,15 +466,17 @@ debug?.setHudVisible(false); // hide HUD text readouts (FPS, timings); world-spa
 // captures to keep wall-clock text out of screenshots.
 ```
 
-Plugins can publish their own inspector helpers the same way:
+Plugins can publish their own inspector helpers the same way. Do it in
+`onStart`: the Inspector is installed by a plugin, and every `install` has run
+by then. Use `tryResolve` so the plugin still works in a build without one:
 
 ```ts
 import { InspectorKey } from "@yagejs/core";
-import type { DebugDiagnostics } from "@yagejs/debug";
 
-const inspector = context.resolve(InspectorKey);
+// In the plugin's onStart():
+const inspector = this.context.tryResolve(InspectorKey);
 
-inspector.addExtension("inventory", {
+inspector?.addExtension("inventory", {
   listItems: () => this.inventory.snapshot(),
   grantItem: (id: string) => this.inventory.grant(id),
 });

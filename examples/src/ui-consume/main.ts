@@ -23,6 +23,7 @@ import {
   Scene,
   Transform,
   Vec2,
+  InspectorPlugin,
 } from "@yagejs/core";
 import { GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
@@ -232,6 +233,7 @@ class DemoScene extends Scene {
 }
 
 const engine = new Engine({ debug: true });
+engine.use(new InspectorPlugin());
 const container = setupGameContainer(WIDTH, HEIGHT);
 
 engine.use(

@@ -1,5 +1,12 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  Scene,
+  Transform,
+  Vec2,
+  InspectorPlugin,
+} from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   InputPlugin,
@@ -592,6 +599,7 @@ class InputRemappingScene extends Scene {
 
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

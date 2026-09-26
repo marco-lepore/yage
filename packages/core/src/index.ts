@@ -114,6 +114,7 @@ export { GameLoop } from "./GameLoop.js";
 export type { GameLoopCallbacks, GameLoopConfig } from "./GameLoop.js";
 
 export { Inspector } from "./Inspector.js";
+export { InspectorPlugin, installInspector } from "./InspectorPlugin.js";
 export type {
   EntitySnapshot,
   SceneSnapshot,

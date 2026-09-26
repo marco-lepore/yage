@@ -7,7 +7,12 @@ import { Component } from "./Component.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { Process } from "./Process.js";
 import { ProcessSystem, ProcessFixedUpdateSystem } from "./ProcessSystem.js";
-import { SceneManagerKey, SystemSchedulerKey } from "./EngineContext.js";
+import {
+  InspectorKey,
+  SceneManagerKey,
+  SystemSchedulerKey,
+} from "./EngineContext.js";
+import { InspectorPlugin } from "./InspectorPlugin.js";
 import type { SceneManager } from "./SceneManager.js";
 import { System } from "./System.js";
 import { Phase } from "./types.js";
@@ -717,13 +722,13 @@ describe("SceneTime engine integration", () => {
   });
 
   it("reports effectiveTimeScale and frozen through the Inspector", async () => {
-    const engine = await createTestEngine();
+    const engine = await createTestEngine(undefined, [new InspectorPlugin()]);
     const scene = new GameScene();
     await engine.scenes.push(scene);
     const time = scene.tryResolveScoped(SceneTimeKey)!;
     time.freezeFor(1);
 
-    const snapshot = engine.inspector.snapshot().scenes[0]!;
+    const snapshot = engine.context.resolve(InspectorKey).snapshot().scenes[0]!;
     expect(snapshot.timeScale).toBe(1);
     expect(snapshot.effectiveTimeScale).toBe(0);
     expect(snapshot.frozen).toBe(true);

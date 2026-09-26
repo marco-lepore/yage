@@ -8,7 +8,14 @@
  *     overlay follows the topmost camera and that removing cameras resets
  *     layer transforms (no stale pan/zoom).
  */
-import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Component,
+  Transform,
+  Vec2,
+  InspectorPlugin,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
@@ -281,6 +288,7 @@ class PauseController extends Component {
 // Boot
 // ---------------------------------------------------------------------------
 const engine = new Engine({ debug: true });
+engine.use(new InspectorPlugin());
 engine.use(
   new RendererPlugin({
     width: WIDTH,

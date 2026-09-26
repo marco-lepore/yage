@@ -18,7 +18,14 @@
  * replays it once it has ended.
  */
 
-import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  Scene,
+  Transform,
+  Vec2,
+  InspectorPlugin,
+} from "@yagejs/core";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { RendererPlugin, type LayerDef } from "@yagejs/renderer";
 import { Anchor, UIPlugin } from "@yagejs/ui";
@@ -481,6 +488,7 @@ async function main(): Promise<void> {
     catalogs,
   });
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   engine.use(new LocalizationPlugin(localization));
   engine.use(
     new RendererPlugin({

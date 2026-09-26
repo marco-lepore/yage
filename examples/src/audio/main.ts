@@ -7,6 +7,7 @@ import {
   ProcessComponent,
   KeyframeAnimator,
   easeInOutQuad,
+  InspectorPlugin,
 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
@@ -376,6 +377,7 @@ class AudioScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

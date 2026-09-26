@@ -1,3 +1,4 @@
+import { InspectorKey } from "@yagejs/core";
 import type { Engine, EngineSnapshot } from "@yagejs/core";
 import type { DebugDiagnostics } from "@yagejs/debug";
 import { RendererKey, VisualComponent } from "@yagejs/renderer";
@@ -16,7 +17,8 @@ export function captureView(
   context: Json,
 ): { capture: FeedbackCapture; image: string } {
   const renderer = engine.context.resolve(RendererKey);
-  const debug = engine.inspector.getExtension<DebugDiagnostics>("debug");
+  const inspector = engine.context.resolve(InspectorKey);
+  const debug = inspector.getExtension<DebugDiagnostics>("debug");
   const wasHudVisible = debug?.isHudVisible() ?? false;
   const { canvas } = renderer;
   let image: string;
@@ -27,7 +29,7 @@ export function captureView(
   } finally {
     if (wasHudVisible) debug?.setHudVisible(true);
   }
-  const snapshot = engine.inspector.snapshot();
+  const snapshot = inspector.snapshot();
   const entities = captureEntities(engine, snapshot);
   return {
     image,

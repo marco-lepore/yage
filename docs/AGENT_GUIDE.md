@@ -99,40 +99,41 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 
 ### `@yagejs/core`
 
-| File                       | Purpose                                                  |
-| -------------------------- | -------------------------------------------------------- |
-| `src/index.ts`             | Barrel export -- all public API                          |
-| `src/Engine.ts`            | Entry point, plugin orchestration                        |
-| `src/EngineContext.ts`     | DI container (ServiceKey, register, resolve)             |
-| `src/Entity.ts`            | Entity class (component CRUD)                            |
-| `src/Component.ts`         | Base component class                                     |
-| `src/System.ts`            | Base system class, Phase enum                            |
-| `src/SystemScheduler.ts`   | Ordered system execution                                 |
-| `src/GameLoop.ts`          | Fixed timestep loop                                      |
-| `src/QueryCache.ts`        | Incremental entity query cache                           |
-| `src/EventBus.ts`          | Typed pub/sub                                            |
-| `src/SceneManager.ts`      | Scene stack (push/pop/replace)                           |
-| `src/Scene.ts`             | Scene base class (entity factory)                        |
-| `src/Process.ts`           | Coroutine / tween / sequence                             |
-| `src/ProcessSlot.ts`       | Reusable restartable process handle (cooldowns, effects) |
-| `src/ProcessComponent.ts`  | Entity component for slots + one-off processes           |
-| `src/TimerEntity.ts`       | Pre-built entity exposing ProcessComponent API           |
-| `src/Trait.ts`             | Trait system (`defineTrait`, `@trait`)                   |
-| `src/Blueprint.ts`         | Reusable entity templates (deprecated)                   |
-| `src/ErrorBoundary.ts`     | System/component error wrapping                          |
-| `src/Inspector.ts`         | Programmatic state queries                               |
-| `src/SceneRandomSource.ts` | Creates each scene's `RandomKey` RNG; owns the seed      |
-| `src/Logger.ts`            | Structured logging                                       |
-| `src/Vec2.ts`              | Immutable 2D vector                                      |
-| `src/Vec2Buffer.ts`        | Caller-owned mutable coordinates for `Into` results      |
-| `src/Transform.ts`         | Position/rotation/scale component                        |
-| `src/MathUtils.ts`         | Math utilities                                           |
-| `src/types.ts`             | Shared type definitions                                  |
-| `src/test-utils.ts`        | Mock factories for testing                               |
-| `package.json`             | Zero runtime dependencies                                |
-| `tsconfig.json`            | Extends root tsconfig.base.json                          |
-| `tsup.config.ts`           | Build config (ESM + CJS + .d.ts)                         |
-| `vitest.config.ts`         | Test config (100% coverage threshold)                    |
+| File                       | Purpose                                                        |
+| -------------------------- | -------------------------------------------------------------- |
+| `src/index.ts`             | Barrel export -- all public API                                |
+| `src/Engine.ts`            | Entry point, plugin orchestration                              |
+| `src/EngineContext.ts`     | DI container (ServiceKey, register, resolve)                   |
+| `src/Entity.ts`            | Entity class (component CRUD)                                  |
+| `src/Component.ts`         | Base component class                                           |
+| `src/System.ts`            | Base system class, Phase enum                                  |
+| `src/SystemScheduler.ts`   | Ordered system execution                                       |
+| `src/GameLoop.ts`          | Fixed timestep loop                                            |
+| `src/QueryCache.ts`        | Incremental entity query cache                                 |
+| `src/EventBus.ts`          | Typed pub/sub                                                  |
+| `src/SceneManager.ts`      | Scene stack (push/pop/replace)                                 |
+| `src/Scene.ts`             | Scene base class (entity factory)                              |
+| `src/Process.ts`           | Coroutine / tween / sequence                                   |
+| `src/ProcessSlot.ts`       | Reusable restartable process handle (cooldowns, effects)       |
+| `src/ProcessComponent.ts`  | Entity component for slots + one-off processes                 |
+| `src/TimerEntity.ts`       | Pre-built entity exposing ProcessComponent API                 |
+| `src/Trait.ts`             | Trait system (`defineTrait`, `@trait`)                         |
+| `src/Blueprint.ts`         | Reusable entity templates (deprecated)                         |
+| `src/ErrorBoundary.ts`     | System/component error wrapping                                |
+| `src/Inspector.ts`         | Programmatic state queries                                     |
+| `src/InspectorPlugin.ts`   | Installs the Inspector (`InspectorPlugin`, `installInspector`) |
+| `src/SceneRandomSource.ts` | Creates each scene's `RandomKey` RNG; owns the seed            |
+| `src/Logger.ts`            | Structured logging                                             |
+| `src/Vec2.ts`              | Immutable 2D vector                                            |
+| `src/Vec2Buffer.ts`        | Caller-owned mutable coordinates for `Into` results            |
+| `src/Transform.ts`         | Position/rotation/scale component                              |
+| `src/MathUtils.ts`         | Math utilities                                                 |
+| `src/types.ts`             | Shared type definitions                                        |
+| `src/test-utils.ts`        | Mock factories for testing                                     |
+| `package.json`             | Zero runtime dependencies                                      |
+| `tsconfig.json`            | Extends root tsconfig.base.json                                |
+| `tsup.config.ts`           | Build config (ESM + CJS + .d.ts)                               |
+| `vitest.config.ts`         | Test config (100% coverage threshold)                          |
 
 ### `@yagejs/renderer`
 
@@ -318,7 +319,7 @@ npx turbo test && npx turbo typecheck && npx turbo build && npx playwright test
 
 ## 5. Using the Inspector API
 
-The Inspector is your primary debugging tool. An engine created with `debug: true` exposes it on `window.__yage__` once `engine.start()` runs.
+The Inspector is your primary debugging tool. The engine does not create one: `DebugPlugin` installs it, and `InspectorPlugin` installs it without the debug overlay. An engine created with `debug: true` exposes it on `window.__yage__` once `engine.start()` runs; in code, resolve it with `engine.context.resolve(InspectorKey)`. A test that reads it passes `new InspectorPlugin()` to `createTestEngine(config, plugins)`. A plugin that registers an Inspector extension or facet contributor does it in `onStart`, when every plugin's `install` has run, and resolves the key with `tryResolve`.
 
 ### In Browser Console
 
@@ -367,7 +368,9 @@ Do not add a separate driver flag.
 
 `time.getFrame()`, snapshot frames, event frames and logger frames all use
 `GameLoop.frameCount`. Deadline waits expire through `Inspector._completeFrame`,
-which runs after end-of-frame systems and after destroy flushing. An event on
+which the installer registers with `Engine._observeFrameEnd`. Frame-end observers
+run after end-of-frame systems and after destroy flushing, and only read state:
+never add an observer that changes it. An event on
 the deadline frame still satisfies its wait. Tests of this behavior must
 advance the real loop. Event waits match retained event history and leave the
 matched events in place. Clear the log before testing a new occurrence. Lab
@@ -887,18 +890,18 @@ Before submitting code:
 
 ## 9. Architecture Decision Quick Reference
 
-| Decision                                                    | Rationale                                                                                                                                           |
-| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No global state; services live on `EngineContext`           | Prevents stale refs in async, supports multiple engines in tests                                                                                    |
-| Components own game logic; Systems implement engine plugins | ComponentUpdateSystem calls component update/fixedUpdate and skips disabled components. Systems use QueryCache for efficient cross-entity iteration |
-| Cached queries (`QueryCache`)                               | O(1) registration, O(matched) iteration, only updates on archetype changes                                                                          |
-| Deterministic frame phases                                  | Predictable execution order; no setTimeout, no async in game loop                                                                                   |
-| Physics is optional                                         | Core contains no physics code, so games without physics download no WASM                                                                            |
-| Internal coordinate conversion                              | `PhysicsWorld` handles pixels ↔ meters; users never see Rapier units                                                                                |
-| Error attribution (`ErrorBoundary`)                         | A throw is attributed to the system/component/callback that threw, logged, and inspectable, before it stops the loop                                |
-| Inspector + Logger as core features                         | Testing and debugging are built in. `window.__yage__` lets Playwright tests assert on engine state                                                  |
-| Explicit save roots (`Serializable<TEncoded>`)              | Save files hold selected durable game facts; scene setup rebuilds runtime ECS and plugin objects after load                                         |
-| String keys for texture-dependent components                | `FrameSource` (animation), `texture` (particles), and sprite texture keys integrate with asset loading without coupling to PixiJS objects           |
+| Decision                                                    | Rationale                                                                                                                                                                                 |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No global state; services live on `EngineContext`           | Prevents stale refs in async, supports multiple engines in tests                                                                                                                          |
+| Components own game logic; Systems implement engine plugins | ComponentUpdateSystem calls component update/fixedUpdate and skips disabled components. Systems use QueryCache for efficient cross-entity iteration                                       |
+| Cached queries (`QueryCache`)                               | O(1) registration, O(matched) iteration, only updates on archetype changes                                                                                                                |
+| Deterministic frame phases                                  | Predictable execution order; no setTimeout, no async in game loop                                                                                                                         |
+| Physics is optional                                         | Core contains no physics code, so games without physics download no WASM                                                                                                                  |
+| Internal coordinate conversion                              | `PhysicsWorld` handles pixels ↔ meters; users never see Rapier units                                                                                                                      |
+| Error attribution (`ErrorBoundary`)                         | A throw is attributed to the system/component/callback that threw, logged, and inspectable, before it stops the loop                                                                      |
+| Logger always on; Inspector opt-in                          | Every engine logs. The Inspector is installed by `DebugPlugin` or `InspectorPlugin`, so a production bundle leaves it out; `window.__yage__` lets Playwright tests assert on engine state |
+| Explicit save roots (`Serializable<TEncoded>`)              | Save files hold selected durable game facts; scene setup rebuilds runtime ECS and plugin objects after load                                                                               |
+| String keys for texture-dependent components                | `FrameSource` (animation), `texture` (particles), and sprite texture keys integrate with asset loading without coupling to PixiJS objects                                                 |
 
 ## 10. Error-Handling Model
 
@@ -906,7 +909,7 @@ Three rules govern how engine code treats a failure in developer-supplied code. 
 
 ### Attribute developer-supplied callbacks
 
-Engine code that invokes a callback the game registered (event handlers, collision handlers, input listeners, process callbacks) runs it through `ErrorBoundary.wrapCallback`, and a `System`/`Component`'s own update call goes through `wrapSystem`/`wrapComponent`. All three record which callback threw, log the error through `Logger`, and rethrow. `Inspector.getErrors().callbackErrors` reads the recorded errors. Nothing is disabled, unsubscribed, muted, or cancelled.
+Engine code that invokes a callback the game registered (event handlers, collision handlers, input listeners, process callbacks) runs it through `ErrorBoundary.wrapCallback`, and a `System`/`Component`'s own update call goes through `wrapSystem`/`wrapComponent`. All three record which callback threw, log the error through `Logger`, and rethrow. `ErrorBoundary.getCallbackErrors()` reads the recorded errors, with or without an Inspector; `Inspector.getErrors().callbackErrors` reads the same list. Nothing is disabled, unsubscribed, muted, or cancelled.
 
 Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`) use `ErrorBoundary.wrapLifecycleHook`. A synchronous throw from one of them is reported and rethrown the same way. A rejected async hook can only be reported, because the call has already returned by the time the rejection settles, leaving no stack to rethrow into. Plugin `beforeEnter` hooks behave differently. `SceneHookRegistry.runBeforeEnter` awaits each one, so a rejection is reported and rethrown, and the scene push or replace that triggered it rejects rather than activating the scene. `Logger`'s own `output` sink catches and reports its own errors, because it cannot route through the boundary it is reporting into.
 
@@ -916,7 +919,7 @@ Every new dispatch site needs the same wrap. Without it, the throw is attributed
 
 ### A throwing hook is terminal: report the failure, do not continue the sequence
 
-When developer-supplied code throws inside an engine-owned sequence (scene teardown, an entity destroy cascade, a pool disposal, an event dispatch to several listeners), the later steps do not run and the resources they would have released stay allocated. That is the intended behavior, not a defect to fix. The engine attributes the failure, records it on `Inspector.getErrors().callbackErrors`, and lets it propagate. The developer can then fix the throwing code, and a shipped game can show or collect a bug report.
+When developer-supplied code throws inside an engine-owned sequence (scene teardown, an entity destroy cascade, a pool disposal, an event dispatch to several listeners), the later steps do not run and the resources they would have released stay allocated. That is the intended behavior, not a defect to fix. The engine attributes the failure, records it on the `ErrorBoundary` (`getCallbackErrors()`), and lets it propagate. The developer can then fix the throwing code, and a shipped game can show or collect a bug report.
 
 Do not add a collector that runs every remaining step and rethrows the first error. Do not wrap a teardown step in `try`/`finally` to force the rest of the sequence to run. Two places do finish the sequence, and neither is a pattern to copy. `Engine.destroy()` runs every stage and rethrows the first error, because the host is quitting. The plugin `afterExit` hooks continue past a failing plugin by documented contract, reporting the error without rethrowing.
 

@@ -1,5 +1,13 @@
 // @vitest-environment happy-dom
-import { AssetHandle, defineEvent, Engine, Scene } from "@yagejs/core";
+import {
+  AssetHandle,
+  defineEvent,
+  Engine,
+  InspectorKey,
+  installInspector,
+  Scene,
+} from "@yagejs/core";
+import type { Inspector } from "@yagejs/core";
 import type { SceneHooks } from "@yagejs/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineHarness } from "../grammar/harness.js";
@@ -26,10 +34,16 @@ afterEach(() => {
   (globalThis as Record<string, unknown>)[LAB_GLOBAL] = undefined;
 });
 
+/** The Inspector `boot` installs, read through `InspectorKey`. */
+function inspectorOf(engine: Engine): Inspector {
+  return engine.context.resolve(InspectorKey);
+}
+
 async function boot(scenario: AnyScenario) {
   const engine = new Engine();
   engines.push(engine);
-  engine.inspector.attachTimeController({
+  installInspector(engine.context);
+  inspectorOf(engine).attachTimeController({
     isFrozen: true,
     freeze() {},
     thaw() {},
@@ -38,7 +52,7 @@ async function boot(scenario: AnyScenario) {
       for (let i = 0; i < frames; i++) engine.loop.tick(dtMs);
     },
   });
-  engine.inspector.events.setEnabled(true);
+  inspectorOf(engine).events.setEnabled(true);
   engine.registerSceneHooks({
     afterExit: () => engine.events.emit("engine:stopped", undefined),
   });
@@ -99,7 +113,7 @@ describe("Lab rebuild event history", () => {
         expect(run).toBe(expectedRun);
         for (const pattern of ["lab:entered", "lab:mounted"]) {
           await expect(
-            engine.inspector.events.waitFor(pattern, { withinFrames: 0 }),
+            inspectorOf(engine).events.waitFor(pattern, { withinFrames: 0 }),
           ).resolves.toMatchObject({ payload: { run: expectedRun } });
         }
         for (const pattern of [
@@ -108,11 +122,11 @@ describe("Lab rebuild event history", () => {
           "engine:stopped",
         ]) {
           await expect(
-            engine.inspector.events.waitFor(pattern, { withinFrames: 0 }),
+            inspectorOf(engine).events.waitFor(pattern, { withinFrames: 0 }),
           ).rejects.toThrow("0 frames");
         }
-        expect(engine.inspector.time.isFrozen()).toBe(true);
-        expect(engine.inspector.time.getFrame()).toBe(0);
+        expect(inspectorOf(engine).time.isFrozen()).toBe(true);
+        expect(inspectorOf(engine).time.getFrame()).toBe(0);
         expect(engine.scenes.isTransitioning).toBe(false);
         expect(unregisters).toHaveLength(expectedRun - 1);
         for (const unregister of unregisters) {
@@ -171,10 +185,12 @@ describe("Lab rebuild event history", () => {
       });
       const { engine, api, unregisters } = await boot(scenario);
       await expect(
-        engine.inspector.events.waitFor("lab:entered", { withinFrames: 0 }),
+        inspectorOf(engine).events.waitFor("lab:entered", { withinFrames: 0 }),
       ).resolves.toMatchObject({ payload: { run: 1 } });
       expect(
-        engine.inspector.events.getLog().map((event) => event.type),
+        inspectorOf(engine)
+          .events.getLog()
+          .map((event) => event.type),
       ).not.toContain("engine:started");
       expect(unregisters).toHaveLength(0);
       for (let expectedRun = 2; expectedRun <= 3; expectedRun++) {
@@ -214,10 +230,10 @@ describe("Lab rebuild event history", () => {
     expect(unregisters[0]).toHaveBeenCalledOnce();
     await engine.scenes.pop();
     await expect(
-      engine.inspector.events.waitFor("lab:entered", { withinFrames: 0 }),
+      inspectorOf(engine).events.waitFor("lab:entered", { withinFrames: 0 }),
     ).resolves.toMatchObject({ payload: { run: 1 } });
     await expect(
-      engine.inspector.events.waitFor("lab:exited", { withinFrames: 0 }),
+      inspectorOf(engine).events.waitFor("lab:exited", { withinFrames: 0 }),
     ).resolves.toMatchObject({ type: "lab:exited" });
   });
 });

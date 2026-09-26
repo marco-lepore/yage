@@ -1,4 +1,11 @@
-import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Component,
+  Scene,
+  Transform,
+  Vec2,
+  InspectorPlugin,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   SplitTextComponent,
@@ -302,6 +309,7 @@ class SplitTextScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

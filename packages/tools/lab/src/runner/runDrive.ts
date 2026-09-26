@@ -4,6 +4,7 @@ import {
   driveFramesUsed,
   driveWhileHolding,
   type Engine,
+  InspectorKey,
   type InspectorTimeLease,
   type Scene,
   ServiceKey,
@@ -134,7 +135,8 @@ export function createDriveContext(
   captures: DriveCapture[],
   opts: DriveContextOptions,
 ): ErasedDriveContext {
-  const { events, input: raw, pointer } = engine.inspector;
+  const inspector = engine.context.resolve(InspectorKey);
+  const { events, input: raw, pointer } = inspector;
   const { time } = opts;
   const pace = opts.pace ?? "immediate";
   const warnings = opts.warnings ?? [];
@@ -272,7 +274,7 @@ export function createDriveContext(
         {
           keyDown,
           keyUp,
-          heldKeys: () => engine.inspector.getInputState().keys,
+          heldKeys: () => inspector.getInputState().keys,
         },
         codes,
         fn,
@@ -373,12 +375,13 @@ export async function runDrive<T = void>(
     timedOut = thrown instanceof DriveBudgetExceededError;
   }
 
-  const inputState = engine.inspector.getInputState();
+  const inspector = engine.context.resolve(InspectorKey);
+  const inputState = inspector.getInputState();
   actionSource?.releaseAll();
   const state: DriveState = {
     keys: inputState.keys,
     actions: inputState.actions,
-    scenes: engine.inspector.getSceneStack(),
+    scenes: inspector.getSceneStack(),
   };
 
   const outcome: DriveOutcome = {
