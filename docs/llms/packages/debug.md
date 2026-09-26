@@ -4,7 +4,7 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Debug overlay and performance too
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { DebugPlugin } from "@yagejs/debug";
 
 engine.use(
@@ -27,7 +27,7 @@ engine.use(
 
 An engine built with `debug: true` publishes `window.__yage__` as `start()` begins, carrying `inspector`, `logger` and `ready`. `DebugPlugin` supplies the controls accessed through `inspector.time`.
 
-```ts
+```ts yage-context="browser"
 await window.__yage__.ready; // start() finished: plugins installed, loop running, onStart done
 ```
 
@@ -35,8 +35,8 @@ await window.__yage__.ready; // start() finished: plugins installed, loop runnin
 
 The host pushes the first scene after `await engine.start()`, so `ready` does not cover it. Wait for a scene separately. The clock is running at this point unless `DebugPlugin` was given `startFrozen`, so poll rather than step — `stepUntil` and `step` throw on a clock that is not frozen:
 
-```ts
-await window.__yage__.ready;
+```ts yage-context="browser,playwright"
+await page.evaluate(() => window.__yage__.ready);
 await page.waitForFunction(
   () => window.__yage__.inspector.getSceneStack().length > 0,
 );
@@ -44,7 +44,7 @@ await page.waitForFunction(
 
 Inspector frame stepping is synchronous by default:
 
-```ts
+```ts yage-context="browser"
 window.__yage__.inspector.time.freeze();
 window.__yage__.inspector.time.step(); // advance 1 frame at the configured dt
 window.__yage__.inspector.time.step(30); // advance 30 frames at the configured dt
@@ -60,7 +60,7 @@ window.__yage__.inspector.time.thaw();
 
 `time.step(N)` is fully synchronous. A `SceneManager` transition, or any other logic that resolves through a promise chain, queues its continuation as a microtask. A plain, synchronous `step()` call never drains that queue, so a script waiting on the transition sees stale state and looks stuck. `stepUntil`/`stepAsync` yield to a real macrotask after every frame instead, which lets pending microtasks run before the next frame steps:
 
-```ts
+```ts yage-context="inspector"
 // Advance until a condition holds, or throw after too many frames:
 const frames = await inspector.time.stepUntil(
   () => inspector.getSceneStack().some((s) => s.name === "level2"),
@@ -78,7 +78,7 @@ await inspector.time.stepAsync(10, { dtMs: 32 }); // custom per-frame dt
 
 Acquire a lease when a tool needs to control the clock across several calls:
 
-```ts
+```ts yage-context="inspector"
 const time = inspector.time.acquire(); // InspectorTimeLease
 try {
   time.freeze();
@@ -106,8 +106,8 @@ drive.
 
 `window.__yage__.inspector` exposes deterministic test controls in addition to the snapshot/query API:
 
-```ts
-inspector.setSeed(seed); // reseed every scene RNG
+```ts yage-context="inspector"
+inspector.setSeed(42); // reseed every scene RNG
 inspector.input.hold("ArrowRight", 30); // press, step N frames, release (sync)
 inspector.input.tap("Space", 1); // sync; steps through time.step()
 inspector.input.fireAction("jump", 1); // sync; one-frame pulse per frame
@@ -140,7 +140,7 @@ calls and for the `debug` namespace `DebugPlugin` installs.
 retained match without consuming it. Repeated waits can return the same entry.
 Clear the log before the action when the assertion needs a new occurrence:
 
-```ts
+```ts yage-context="inspector"
 await inspector.drive(async ({ events, input }) => {
   events.clearLog();
   await Promise.all([
@@ -215,9 +215,10 @@ canvas, so the renderer hit-tests and delivers them exactly as it does for a
 person clicking. Stacking order, a disabled button's pointer mode, clipping
 and the auto-consume marking all apply.
 
-```ts
+```ts yage-context="inspector" yage-group="pointer"
 const surface = inspector.snapshot().scenes[0]?.ui?.root;
 const button = surface?.children[0];
+if (!button) throw new Error("The first scene has no UI element.");
 const hit = inspector.pointer.click(button.id); // or click({ x, y })
 hit.path.some((node) => node.type === "UIButton"); // true
 ```
@@ -248,7 +249,7 @@ has already run when the call returns, because delivery is synchronous. Engine
 input state reflects the press at the next frame's drain, so step one frame
 before asserting on an action.
 
-```ts
+```ts yage-context="inspector" yage-group="pointer"
 inspector.pointer.click(button.id); // onClick has run
 inspector.time.step(1); // the action map has now seen the press
 ```
@@ -258,7 +259,7 @@ inspector.time.step(1); // the action map has now seen the press
 `capture` renders the current stage to a PNG, so a frozen clock gives the exact
 frame that was stepped to. It requires `RendererPlugin` and throws without it.
 
-```ts
+```ts yage-context="inspector"
 await inspector.capture.dataURL(); // "data:image/png;base64,..."
 await inspector.capture.pngBase64(); // the base64 payload alone
 await inspector.capture.png(); // Uint8Array of PNG bytes
@@ -277,16 +278,17 @@ that gets compared.
 
 `drive` runs a callback against the running game with the clock held still, hands it awaitable play verbs, and reports what happened as one object. It freezes the clock for the duration and returns it to the state it found it in, and releases every synthetic input afterwards, so no key stays held.
 
-```ts
+```ts yage-context="browser"
 const run = await window.__yage__.inspector.drive(async (ctx) => {
   const i = window.__yage__.inspector;
   ctx.input.keyDown("KeyD");
-  const frames = await ctx.until(() => i.getEntityPosition("player").x > 950, {
-    maxFrames: 240,
-  });
+  const frames = await ctx.until(
+    () => (i.getEntityPosition("player")?.x ?? 0) > 950,
+    { maxFrames: 240 },
+  );
   ctx.input.clearAll();
   await ctx.step(10);
-  return { frames, spent: ctx.framesUsed, x: i.getEntityPosition("player").x };
+  return { frames, spent: ctx.framesUsed, x: i.getEntityPosition("player")?.x };
 });
 // { ok: true, value: { frames, spent, x }, framesUsed, durationMs, captures, state }
 ```
@@ -304,6 +306,12 @@ Pass `opts.maxFrames` to bound the run: the budget is checked before each frame-
 `whileHolding` holds `codes` for the duration of `fn`, then restores what was held before — including when `fn` throws. A code already down on entry is left alone at both ends, so nested calls compose by lexical scope even when their code sets overlap, and a key a plain `input.keyDown` is holding survives too. It never calls `input.clearAll()`, which would drop the caller's keys along with its own. It resolves with whatever `fn` returned, so a hold can wrap a verb that reports something — `whileHolding(codes, () => until(pred))` gives back the frames it took.
 
 ```ts
+import type { InspectorDriveContext } from "@yagejs/core";
+
+declare const ctx: InspectorDriveContext; // the drive callback's argument
+declare function atExit(): boolean; // game-specific checks
+declare function gapAhead(): boolean;
+
 await ctx.input.whileHolding(["KeyD"], async () => {
   while (ctx.framesUsed < 900 && !atExit()) {
     if (gapAhead()) {
@@ -353,8 +361,11 @@ A component keeps bulk data out of its reflected state with a static list;
 lists merge down the class chain:
 
 ```ts
-class TilemapComponent extends VisualComponent {
-  static inspectExclude = ["data"]; // one id per tile per layer
+import { Component } from "@yagejs/core";
+
+class NavGrid extends Component {
+  static inspectExclude = ["cells"]; // one entry per grid cell
+  cells: number[] = [];
 }
 ```
 
@@ -366,15 +377,15 @@ state alongside its reflected fields, under `facets.render`
 the live display object, so it reflects what is actually painted. The facet only appears when
 `RendererPlugin` is active (it registers the contributor that produces the facet).
 
-```ts
+```ts yage-context="inspector" yage-group="facet"
 const scene = inspector.snapshot().scenes[0];
-const e = scene.entities.find((ent) => ent.id === "3");
+const e = scene?.entities.find((ent) => ent.id === "3");
 
 // Entity-level facet (first painted component the entity added):
-e.facets?.render; // { bounds: { x, y, width, height } | null, visible }
+e?.facets?.render; // { bounds: { x, y, width, height } | null, visible }
 
 // Per-component facet (read this for entities with several graphical components):
-e.components.find((c) => c.type === "SpriteComponent")?.facets?.render;
+e?.components.find((c) => c.type === "SpriteComponent")?.facets?.render;
 ```
 
 `bounds` are **world-space** pixels — the same coordinate space as
@@ -388,9 +399,12 @@ because the object is hidden. Read `visible` for the hidden/shown state.
 observable without touching Pixi internals. The component state reports the
 declared string, while the facet reports what is on screen:
 
-```ts
-const split = e.components.find((c) => c.type === "SplitTextComponent")?.facets
-  ?.render;
+```ts yage-context="inspector" yage-group="facet"
+import type { SplitTextRenderFacet } from "@yagejs/renderer";
+
+// `facets.render` is typed as the base facet; widen it to read the extras:
+const split = e?.components.find((c) => c.type === "SplitTextComponent")?.facets
+  ?.render as SplitTextRenderFacet | undefined;
 split?.glyphs; // [{ visible }, ...] in reading order
 split?.visibleText; // painted glyphs joined, e.g. "Hel"
 ```
@@ -418,7 +432,7 @@ by widening `RenderFacetSnapshot<Extra>` (as `SplitTextComponent` does with
 `PhysicsPlugin` publishes `components[].facets.collider` and supports a direct
 read through the existing Inspector contributor registry:
 
-```ts
+```ts yage-context="inspector,entity"
 import { ColliderComponent } from "@yagejs/physics";
 
 const facet = inspector.getComponentFacet(
@@ -450,7 +464,7 @@ Renderer-aware diagnostics live under the inspector extension namespace `debug`
 (only present while `DebugPlugin` is installed). Pass `DebugDiagnostics` as the
 type parameter so the returned methods are typed:
 
-```ts
+```ts yage-context="browser"
 import type { DebugDiagnostics } from "@yagejs/debug";
 
 const debug = window.__yage__.inspector.getExtension<DebugDiagnostics>("debug");
@@ -465,17 +479,32 @@ debug?.setHudVisible(false); // hide HUD text readouts (FPS, timings); world-spa
 
 Plugins can publish their own inspector helpers the same way:
 
-```ts
+```ts yage-context="browser"
 import { InspectorKey } from "@yagejs/core";
-import type { DebugDiagnostics } from "@yagejs/debug";
+import type { EngineContext, Plugin } from "@yagejs/core";
 
-const inspector = context.resolve(InspectorKey);
+interface Inventory {
+  snapshot(): string[];
+  grant(id: string): void;
+}
 
-inspector.addExtension("inventory", {
-  listItems: () => this.inventory.snapshot(),
-  grantItem: (id: string) => this.inventory.grant(id),
-});
+class InventoryPlugin implements Plugin {
+  readonly name = "inventory";
+  readonly version = "1.0.0";
 
+  constructor(private readonly inventory: Inventory) {}
+
+  install(context: EngineContext): void {
+    const inspector = context.resolve(InspectorKey);
+
+    inspector.addExtension("inventory", {
+      listItems: () => this.inventory.snapshot(),
+      grantItem: (id: string) => this.inventory.grant(id),
+    });
+  }
+}
+
+// From a test or the browser console:
 const inventory = window.__yage__.inspector.getExtension<{
   listItems(): string[];
   grantItem(id: string): void;
@@ -490,7 +519,7 @@ for LLM-assisted debugging and gameplay validation. The intended workflow is a
 
 Minimal template:
 
-```ts
+```ts yage-context="browser"
 import { test, expect } from "@playwright/test";
 
 test("can the player jump onto the ledge?", async ({ page }) => {
@@ -557,10 +586,13 @@ direction, knockback, steering output. No retained vector state: you register a
 callback, the overlay calls it each frame.
 
 ```ts
+import { Component } from "@yagejs/core";
 import { DebugRegistryKey } from "@yagejs/debug/api";
+import { SteeringAgent } from "@yagejs-addons/steering";
 
 class AgentVisual extends Component {
-  private stopArrow?: () => void;
+  private readonly agent = this.sibling(SteeringAgent);
+  private stopArrow: (() => void) | undefined;
 
   onAdd(): void {
     // tryResolve, not use(): use() throws when DebugPlugin isn't installed.
@@ -578,11 +610,19 @@ class AgentVisual extends Component {
 ```
 
 ```ts
-drawVector(
-  entity: Entity,
-  vector: () => Vec2Like | null | undefined,
-  options?: DebugVectorOptions,
-): () => void;                       // disposer, idempotent
+import type { Entity, Vec2Like } from "@yagejs/core";
+import type {
+  DebugRegistry as BaseDebugRegistry,
+  DebugVectorOptions,
+} from "@yagejs/debug/api";
+
+interface DebugRegistry extends BaseDebugRegistry {
+  drawVector(
+    entity: Entity,
+    vector: () => Vec2Like | null | undefined,
+    options?: DebugVectorOptions,
+  ): () => void; // disposer, idempotent
+}
 ```
 
 | Option      | Default          | Description                                                               |
@@ -621,27 +661,36 @@ drawVector(
 ## Custom Contributors
 
 ```ts
-interface DebugContributor {
+import type { Scene } from "@yagejs/core";
+import type {
+  DebugContributor as BaseDebugContributor,
+  HudDebugApi,
+  WorldDebugApi,
+} from "@yagejs/debug/api";
+
+interface DebugContributor extends BaseDebugContributor {
   readonly name: string;
-  readonly flags?: readonly string[];
+  readonly flags: readonly string[];
   drawWorld?(api: WorldDebugApi): void;
   drawHud?(api: HudDebugApi): void;
   dispose?(): void;
 }
 
-// WorldDebugApi
-api.acquireGraphics(); // DebugGraphics | undefined; topmost visible camera
-api.cameraZoom; // that camera's effective zoom
-const target = api.forScene(scene); // SceneWorldDebugApi | undefined
-target?.acquireGraphics(); // graphics transformed by this scene's primary camera
-target?.cameraZoom; // this scene's effective zoom
-api.isFlagEnabled("flag");
+function drawWorld(api: WorldDebugApi, scene: Scene) {
+  api.acquireGraphics(); // DebugGraphics | undefined; topmost visible camera
+  api.cameraZoom; // that camera's effective zoom
+  const target = api.forScene(scene); // SceneWorldDebugApi | undefined
+  target?.acquireGraphics(); // graphics transformed by this scene's primary camera
+  target?.cameraZoom; // this scene's effective zoom
+  api.isFlagEnabled("flag");
+}
 
-// HudDebugApi
-api.addLine("text"); // add HUD line
-api.isFlagEnabled("flag");
-api.screenWidth;
-api.screenHeight;
+function drawHud(api: HudDebugApi) {
+  api.addLine("text"); // add HUD line
+  api.isFlagEnabled("flag");
+  api.screenWidth;
+  api.screenHeight;
+}
 ```
 
 `SceneWorldDebugApi` exposes `acquireGraphics(): DebugGraphics | undefined`
@@ -654,16 +703,28 @@ and `cameraZoom` is `1`.
 
 Register:
 
-```ts
+```ts yage-context="scene-enter"
+import { DebugRegistryKey } from "@yagejs/debug/api";
+import type { DebugContributor } from "@yagejs/debug/api";
+
+class MyContributor implements DebugContributor {
+  readonly name = "my-debug";
+  readonly flags = ["show-paths"];
+}
+
+// In a Scene's onEnter():
 const registry = this.service(DebugRegistryKey);
 registry.register(new MyContributor());
 ```
 
 ## DebugRegistry
 
-```ts
+```ts yage-context="context"
+import { DebugRegistryKey } from "@yagejs/debug/api";
+
+const registry = context.resolve(DebugRegistryKey);
 registry.toggle(); // show/hide
-registry.enabled; // boolean
+registry.isEnabled(); // boolean
 registry.setFlag("contributor", "flag", true); // toggle specific flags
 ```
 
@@ -673,7 +734,7 @@ registry.setFlag("contributor", "flag", true); // toggle specific flags
 import { StatsStore } from "@yagejs/debug";
 
 const stats = new StatsStore();
-stats.push("updateTime", value); // add sample
+stats.push("updateTime", 16.7); // add sample
 stats.average("updateTime"); // rolling average
 stats.latest("updateTime"); // most recent
 ```
