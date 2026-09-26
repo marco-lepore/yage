@@ -183,6 +183,36 @@ test.describe("Examples", () => {
     expect(result.errors.callbackErrors).toEqual([]);
   });
 
+  test("loading-scene hands off to the game once its assets load", async ({
+    page,
+  }) => {
+    await page.goto("/loading-scene.html?test");
+    await page.waitForFunction(
+      () => window.__yage__?.inspector.getSceneStack().at(-1)?.name === "boot",
+      undefined,
+      { timeout: 10_000 },
+    );
+
+    // The fake loader waits on engine time, so the frozen clock holds the
+    // load until frames are stepped. stepUntil yields between frames, which
+    // lets the loader's promises settle.
+    const result = await page.evaluate(async () => {
+      const inspector = window.__yage__!.inspector;
+      const frames = await inspector.time.stepUntil(
+        () => {
+          const stack = inspector.getSceneStack();
+          return stack.length === 1 && stack[0]?.name === "game";
+        },
+        { maxFrames: 300 },
+      );
+      return { frames, errors: inspector.getErrors() };
+    });
+
+    // The slowest asset takes 0.85 s, then the fade out runs.
+    expect(result.frames).toBeGreaterThan(40);
+    expect(result.errors.callbackErrors).toEqual([]);
+  });
+
   test("abilities-addon replaces active loadouts cleanly", async ({ page }) => {
     const errors: string[] = [];
     page.on("console", (msg) => {

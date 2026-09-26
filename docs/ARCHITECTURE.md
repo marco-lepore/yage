@@ -549,12 +549,16 @@ export class Telemetry {
     return this.queue.length;
   }
 
-  /** Send every queued record. `sendBeacon` queues the request and returns at once. */
+  /**
+   * Send every queued record. `sendBeacon` returns at once, and returns
+   * `false` when the browser refuses the request; the records then stay
+   * queued for the next flush.
+   */
   flush(): void {
     if (this.queue.length === 0) return;
-    const body = JSON.stringify(this.queue);
-    this.queue = [];
-    navigator.sendBeacon(this.endpoint, body);
+    if (navigator.sendBeacon(this.endpoint, JSON.stringify(this.queue))) {
+      this.queue = [];
+    }
   }
 }
 ```
