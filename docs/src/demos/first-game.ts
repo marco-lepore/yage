@@ -5,7 +5,7 @@ import { DebugPlugin } from "@yagejs/debug";
 class Spin extends Component {
   private readonly transform = this.sibling(Transform);
   private speed: number;
-  constructor(speed = 0.002) {
+  constructor(speed = 2) {
     super();
     this.speed = speed;
   }

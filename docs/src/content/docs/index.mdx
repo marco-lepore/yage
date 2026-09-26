@@ -34,7 +34,7 @@ import GameEmbed from "../../components/GameEmbed.astro";
 
 <Tabs>
   <TabItem label="main.ts">
-```typescript
+```typescript yage-group="pong" yage-file="main.ts"
 import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin, CameraEntity } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
@@ -69,7 +69,7 @@ engine.scenes.push(new PongScene());
 ```
   </TabItem>
   <TabItem label="types.ts">
-```typescript
+```typescript yage-group="pong" yage-file="types.ts"
 import { defineEvent } from "@yagejs/core";
 
 export type Side = "left" | "right";
@@ -79,7 +79,7 @@ export const GoalEvent = defineEvent<{ side: Side }>("goal");
 ```
   </TabItem>
   <TabItem label="Ball.ts">
-```typescript
+```typescript yage-group="pong" yage-file="Ball.ts"
 import { Entity, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
@@ -117,7 +117,7 @@ export class Ball extends Entity {
 ```
   </TabItem>
   <TabItem label="Paddle.ts">
-```typescript
+```typescript yage-group="pong" yage-file="Paddle.ts"
 import { Entity, Component, Transform, Vec2, ProcessComponent, ProcessSlot } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
@@ -170,7 +170,7 @@ export class Paddle extends Entity {
 ```
   </TabItem>
   <TabItem label="GameArea.ts">
-```typescript
+```typescript yage-group="pong" yage-file="GameArea.ts"
 import { Entity, Transform, Vec2 } from "@yagejs/core";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 import { UISurface, Anchor } from "@yagejs/ui";

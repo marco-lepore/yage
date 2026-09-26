@@ -80,6 +80,13 @@ its helpers, and they nest under the file:
 
 ```ts
 // src/entities/slime.scenario.ts  →  entities › slime › { idle, chase }
+import type { Scene } from "@yagejs/core";
+import { defineScenario } from "@yagejs-tools/lab";
+
+function arena(scene: Scene) {
+  /* the floor and walls both scenarios need */
+}
+
 export const idle = defineScenario({
   setup(scene) {
     arena(scene); /* ... */
@@ -111,16 +118,26 @@ come from the run, so it advances an exact number of them rather than depending
 on wall-clock timing:
 
 ```ts
-async drive({ scene, input, step, expect }) {
-  const ball = scene.findByKey("ball-0");
-  if (!ball) throw new Error("the scenario spawned no ball-0");
-  const transform = ball.get(Transform);
-  const startY = transform.position.y;
+// src/entities/ball.scenario.ts, with a drive
+import { Transform } from "@yagejs/core";
+import { defineScenario } from "@yagejs-tools/lab";
 
-  await step(120);
+export default defineScenario({
+  setup(scene) {
+    /* as above */
+  },
 
-  expect(transform.position.y).toBeGreaterThan(startY);
-}
+  async drive({ scene, input, step, expect }) {
+    const ball = scene.findByKey("ball-0");
+    if (!ball) throw new Error("the scenario spawned no ball-0");
+    const transform = ball.get(Transform);
+    const startY = transform.position.y;
+
+    await step(120);
+
+    expect(transform.position.y).toBeGreaterThan(startY);
+  },
+});
 ```
 
 The panel grows a Run button for it, and `yage-lab test` runs every one:

@@ -18,7 +18,7 @@ The `recommended` template's production build is an installable, offline-capable
 - No service worker in `npm run dev`: installing, offline play, and updates only exist in the production build (`npm run preview` serves it locally). Production needs HTTPS.
 - In-game update prompt (not in the template; add on request) — `src/pwa.ts`, imported from `main.ts`. Importing `virtual:pwa-register` replaces the injected `registerSW.js`; `vite.config.ts` is unchanged:
 
-  ```ts
+  ```ts yage-check="syntax" yage-reason="vite-plugin-pwa is a dependency of the recommended template only, so the docs checker cannot resolve its virtual:pwa-register types"
   /// <reference types="vite-plugin-pwa/vanillajs" />
   import { registerSW } from "virtual:pwa-register";
 
@@ -89,11 +89,12 @@ await engine.start();
 
 ## Engine Setup
 
-```ts
+```ts yage-group="game" yage-file="main.ts"
 import { Engine } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 import { PhysicsPlugin } from "@yagejs/physics";
+import { GameScene } from "./scene.js";
 
 const engine = new Engine({ debug: true, fixedTimestep: 1 / 60 });
 engine.use(
@@ -114,12 +115,19 @@ engine.scenes.push(new GameScene());
 
 For real games, subclass `Scene`:
 
-```ts
-import { Scene, Transform, Vec2 } from "@yagejs/core";
+```ts yage-group="game" yage-file="scene.ts" yage-context="engine"
+import { Entity, Scene, Transform, Vec2 } from "@yagejs/core";
 import { SpriteComponent, CameraEntity } from "@yagejs/renderer";
 import { texture } from "@yagejs/renderer";
 
-class GameScene extends Scene {
+class Player extends Entity {
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new SpriteComponent({ texture: "hero.png" }));
+  }
+}
+
+export class GameScene extends Scene {
   readonly name = "game";
   readonly preload = [texture("hero.png"), texture("tileset.png")];
 
@@ -143,7 +151,11 @@ engine.scenes.push(new GameScene());
 
 An engine constructed with `debug: true` installs an introspection API on `window.__yage__` during `engine.start()`. Useful in the browser console while iterating, and for AI agents that want to verify scene state without reading the canvas:
 
-```ts
+```ts yage-context="browser"
+import { Engine } from "@yagejs/core";
+import { DebugPlugin } from "@yagejs/debug";
+import { InputPlugin } from "@yagejs/input";
+
 const engine = new Engine({ debug: true });
 engine.use(new DebugPlugin()); // inspector.time (freeze/step) needs DebugPlugin
 engine.use(new InputPlugin({ actions: {} })); // inspector.input needs InputPlugin
@@ -154,8 +166,9 @@ window.__yage__.inspector.snapshot(); // full engine state
 window.__yage__.inspector.getEntities(); // all entities in active scene
 window.__yage__.inspector.getEntity("player"); // first active entity with this name
 window.__yage__.inspector.getComponentData("player", "SpriteComponent");
-const id = window.__yage__.inspector.getEntities()[0].id; // entity id
-window.__yage__.inspector.getComponentData(id, "SpriteComponent"); // one specific entity
+const first = window.__yage__.inspector.getEntities()[0]; // undefined when empty
+if (first)
+  window.__yage__.inspector.getComponentData(first.id, "SpriteComponent"); // one specific entity, by id
 window.__yage__.inspector.getSceneStack(); // scenes + pause state
 window.__yage__.inspector.getErrors(); // failures recorded by ErrorBoundary
 window.__yage__.inspector.time.freeze(); // stop auto-advance
@@ -172,7 +185,7 @@ Snapshot and query calls work with `debug: true` alone. Frame stepping (`inspect
 
 `time.step(N)` is synchronous and never gives async work (a scene transition, a dialogue runner) a chance to resolve. When a step needs to cross one, use the async variants instead — they yield a real macrotask between frames so pending microtasks can drain:
 
-```ts
+```ts yage-context="browser"
 // Advance until a condition holds (throws after `maxFrames`, default 600):
 await window.__yage__.inspector.time.stepUntil(() =>
   window.__yage__.inspector.getSceneStack().some((s) => s.name === "level2"),
@@ -188,7 +201,7 @@ See `packages/debug.md` for `stepUntil`/`stepAsync` options, `snapshotScene(name
 log before an action when checking for a new occurrence. On a frozen clock,
 advance frames while the wait is pending:
 
-```ts
+```ts yage-context="browser"
 await window.__yage__.inspector.drive(async ({ events, input }) => {
   events.clearLog();
   await Promise.all([
@@ -214,7 +227,7 @@ Diagnostics that need optional plugins live under inspector extension
 namespaces. For example, `DebugPlugin` registers `debug` while installed.
 Pass the extension's interface as the type parameter so calls type-check:
 
-```ts
+```ts yage-context="browser"
 import type { DebugDiagnostics } from "@yagejs/debug";
 
 const debug = window.__yage__.inspector.getExtension<DebugDiagnostics>("debug");
@@ -224,7 +237,7 @@ debug?.getLayerTransform("game", "world");
 
 `getEntities()` returns an array of `EntitySnapshot` objects with `id`, `name`, `tags`, `components` (class-name strings), and `position`, so filtering by tag or component name is one line:
 
-```ts
+```ts yage-context="browser"
 const enemies = window.__yage__.inspector
   .getEntities()
   .filter((e) => e.tags.includes("enemy"));
@@ -236,8 +249,34 @@ For agent-driven debugging: write a throwaway Playwright spec, boot the game, fr
 
 `@yagejs/core` ships headless test utilities. `createTestEngine()` returns a started engine with no renderer/physics/input plugins; plugins must be registered before start, so a test that needs one builds the engine itself (`new Engine()` → `engine.use(...)` → `await engine.start()`). `advanceFrames()` ticks the game loop N times so assertions run against deterministic state:
 
-```ts
-import { createTestEngine, advanceFrames, Transform, Vec2 } from "@yagejs/core";
+```ts yage-context="vitest"
+import {
+  createTestEngine,
+  advanceFrames,
+  Component,
+  Entity,
+  Scene,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
+
+class Walk extends Component {
+  private readonly transform = this.sibling(Transform);
+  update(dt: number) {
+    this.transform.translate(100 * dt, 0); // dt is in seconds
+  }
+}
+
+class Player extends Entity {
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new Walk());
+  }
+}
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
 
 const engine = await createTestEngine();
 const scene = new GameScene();
