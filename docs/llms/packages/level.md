@@ -9,7 +9,7 @@ entity types to create, with what parameters, where, and under which parent.
 
 ## The four steps
 
-```ts
+```ts yage-check="syntax" yage-reason="Imports a level file as a Vite JSON module, and the snippet checker resolves no JSON modules."
 import raw from "./levels/forest.yage-level.json";
 import {
   buildLevelCatalog,
@@ -21,10 +21,10 @@ import {
 import levelProject from "./levelProject.js";
 
 const built = buildLevelCatalog(levelProject);
-if (!built.ok) throw new Error(built.errors[0].message);
+if (!built.ok) throw new Error(built.errors[0]?.message);
 
 const read = readLevel(raw); // strict structural parse
-if (!read.ok) throw new Error(read.errors[0].message);
+if (!read.ok) throw new Error(read.errors[0]?.message);
 
 const forest = prepareLevel(read.document, built.catalog); // semantic check + migrations
 ```
@@ -41,7 +41,7 @@ scene, and it is the one that throws.
 
 ## Declaring placeable entities
 
-```ts
+```ts yage-group="project" yage-file="Crate.ts"
 import { Entity, Transform, Vec2 } from "@yagejs/core";
 import {
   defineLevelAsset,
@@ -96,19 +96,39 @@ export class Crate extends Entity {
   renderer's `TextureSliceOptions`, so state the grid once and spread the same
   object into the frame source:
 
-  ```ts
+  ```ts yage-group="project" yage-file="Torch.ts"
+  import { Entity } from "@yagejs/core";
+  import {
+    defineLevelAsset,
+    defineLevelEntity,
+    defineParams,
+    param,
+    type ParamsOf,
+  } from "@yagejs/level";
+  import { AnimatedSpriteComponent, texture } from "@yagejs/renderer";
+
+  const textureAsset = defineLevelAsset({ kind: "texture", create: texture });
+
   const TORCH_FRAMES = { frameWidth: 48 };
 
   const TorchParams = defineParams({
     sprite: param.asset(textureAsset, "assets/torch.png", TORCH_FRAMES),
   });
 
-  setup(params: ParamsOf<typeof TorchParams>): void {
-    this.add(
-      new AnimatedSpriteComponent({
-        source: { sheet: params.sprite.path, ...TORCH_FRAMES },
-      }),
-    );
+  export class Torch extends Entity {
+    static readonly level = defineLevelEntity({
+      id: "game.torch",
+      version: 1,
+      params: TorchParams,
+    });
+
+    setup(params: ParamsOf<typeof TorchParams>): void {
+      this.add(
+        new AnimatedSpriteComponent({
+          source: { sheet: params.sprite.path, ...TORCH_FRAMES },
+        }),
+      );
+    }
   }
   ```
 
@@ -127,6 +147,9 @@ export class Crate extends Entity {
 ## Numbers, switches, names and choices
 
 ```ts
+import { Entity } from "@yagejs/core";
+import { defineParams, param, type ParamsOf } from "@yagejs/level";
+
 const SlimeParams = defineParams({
   speed: param.number(40, { min: 5, max: 200, step: 5 }),
   coins: param.integer(3, { min: 0 }),
@@ -136,33 +159,59 @@ const SlimeParams = defineParams({
   facing: param.select("left", ["left", "right"]),
 });
 
-setup(params: ParamsOf<typeof SlimeParams>): void {
-  // speed: number, coins: number, awake: boolean, title: string,
-  // notes: string | undefined, facing: "left" | "right"
+class Slime extends Entity {
+  setup(params: ParamsOf<typeof SlimeParams>): void {
+    // speed: number, coins: number, awake: boolean, title: string,
+    // notes: string | undefined, facing: "left" | "right"
+  }
 }
 ```
 
 ```ts
-param.number(defaultValue: number, options?: {
-  min?: number; max?: number; step?: number; optional?: boolean;
-}): ParamKind<number>
-param.integer(defaultValue: number, options?: {
-  min?: number; max?: number; optional?: boolean;
-}): ParamKind<number>
-param.boolean(defaultValue: boolean, options?: { optional?: boolean }): ParamKind<boolean>
-param.string(defaultValue: string, options?: {
-  multiline?: boolean; optional?: boolean;
-}): ParamKind<string>
-param.select<const O extends readonly string[]>(
-  defaultValue: O[number],
-  values: O,
-  options?: { optional?: boolean },
-): ParamKind<O[number]>
-param.select<const O extends Record<string, unknown>>(
-  defaultValue: keyof O & string,
-  values: O,
-  options?: { optional?: boolean },
-): ParamKind<keyof O & string>
+import { param as baseParam, type ParamKind } from "@yagejs/level";
+
+// param is a plain object; these are its members.
+type ParamObject = typeof baseParam;
+interface Param extends ParamObject {
+  number(
+    defaultValue: number,
+    options?: {
+      min?: number;
+      max?: number;
+      step?: number;
+      optional?: boolean;
+    },
+  ): ParamKind<number>;
+  integer(
+    defaultValue: number,
+    options?: {
+      min?: number;
+      max?: number;
+      optional?: boolean;
+    },
+  ): ParamKind<number>;
+  boolean(
+    defaultValue: boolean,
+    options?: { optional?: boolean },
+  ): ParamKind<boolean>;
+  string(
+    defaultValue: string,
+    options?: {
+      multiline?: boolean;
+      optional?: boolean;
+    },
+  ): ParamKind<string>;
+  select<const O extends readonly string[]>(
+    defaultValue: O[number],
+    values: O,
+    options?: { optional?: boolean },
+  ): ParamKind<O[number]>;
+  select<const O extends Record<string, unknown>>(
+    defaultValue: keyof O & string,
+    values: O,
+    options?: { optional?: boolean },
+  ): ParamKind<keyof O & string>;
+}
 ```
 
 - The authored JSON is the value itself: a number, `true` or `false`, a string,
@@ -191,6 +240,9 @@ param.select<const O extends Record<string, unknown>>(
 ## Pairs and places
 
 ```ts
+import { Entity } from "@yagejs/core";
+import { defineParams, param, type ParamsOf } from "@yagejs/level";
+
 const SlimeParams = defineParams({
   drift: param.vec2({ x: 0, y: -12 }),
   patrolEnd: param.point({ x: 120, y: 0 }, { relative: true }),
@@ -198,18 +250,34 @@ const SlimeParams = defineParams({
   home: param.point({ x: 0, y: 0 }, { optional: true }),
 });
 
-setup(params: ParamsOf<typeof SlimeParams>): void {
-  // patrolEnd: a world Vec2, wherever the level put this slime
-  // muzzle: a Vec2 offset from the slime's own origin
-  // home: Vec2 | undefined
+class Slime extends Entity {
+  setup(params: ParamsOf<typeof SlimeParams>): void {
+    // patrolEnd: a world Vec2, wherever the level put this slime
+    // muzzle: a Vec2 offset from the slime's own origin
+    // home: Vec2 | undefined
+  }
 }
 ```
 
 ```ts
-param.vec2(defaultValue: Vec2Like, options?: { optional?: boolean }): ParamKind<Vec2>
-param.point(defaultValue: Vec2Like, options?: {
-  relative?: boolean; space?: "world" | "local"; optional?: boolean;
-}): ParamKind<Vec2>
+import type { Vec2, Vec2Like } from "@yagejs/core";
+import { param as baseParam, type ParamKind } from "@yagejs/level";
+
+type ParamObject = typeof baseParam;
+interface Param extends ParamObject {
+  vec2(
+    defaultValue: Vec2Like,
+    options?: { optional?: boolean },
+  ): ParamKind<Vec2>;
+  point(
+    defaultValue: Vec2Like,
+    options?: {
+      relative?: boolean;
+      space?: "world" | "local";
+      optional?: boolean;
+    },
+  ): ParamKind<Vec2>;
+}
 ```
 
 - The authored JSON is `{ "x": 12, "y": -4 }`: an object with those two members
@@ -231,6 +299,14 @@ param.point(defaultValue: Vec2Like, options?: {
 ## Values with a shape
 
 ```ts
+import { Entity } from "@yagejs/core";
+import { defineParams, param, type ParamsOf } from "@yagejs/level";
+
+// Your game's own chest.
+declare class Chest {
+  constructor(item: string, count: number);
+}
+
 const WaveParams = defineParams({
   loot: param.object({
     item: param.string("coin"),
@@ -246,25 +322,54 @@ const WaveParams = defineParams({
   noise: param.json({ default: { seed: 1, octaves: 3 } }),
 });
 
-setup(params: ParamsOf<typeof WaveParams>): void {
-  // loot: { item: string; count: number }
-  this.chest = new Chest(params.loot.item, params.loot.count);
-  // spawns: readonly { type: "slime" | "bat"; delay: number }[]
-  for (const spawn of params.spawns) this.queue(spawn.type, spawn.delay);
-  // noise: JsonValue
+class Wave extends Entity {
+  private chest?: Chest;
+
+  setup(params: ParamsOf<typeof WaveParams>): void {
+    // loot: { item: string; count: number }
+    this.chest = new Chest(params.loot.item, params.loot.count);
+    // spawns: readonly { type: "slime" | "bat"; delay: number }[]
+    for (const spawn of params.spawns) this.queue(spawn.type, spawn.delay);
+    // noise: JsonValue
+  }
+
+  private queue(type: "slime" | "bat", delay: number): void {
+    // schedule one spawn
+  }
 }
 ```
 
 ```ts
-param.object<F extends ParamFields>(fields: F, options?: {
-  optional?: boolean;
-}): ParamKind<{ [K in keyof F]: RuntimeValueOf<F[K]> }>
-param.array<K extends ParamKind<unknown>>(item: K, options?: {
-  default?: readonly JsonValue[]; min?: number; max?: number; optional?: boolean;
-}): ParamKind<readonly RuntimeValueOf<K>[]>
-param.json(options?: {
-  default?: JsonValue; optional?: boolean;
-}): ParamKind<JsonValue>
+import {
+  param as baseParam,
+  type JsonValue,
+  type ParamFields,
+  type ParamKind,
+  type RuntimeValueOf,
+} from "@yagejs/level";
+
+type ParamObject = typeof baseParam;
+interface Param extends ParamObject {
+  object<F extends ParamFields>(
+    fields: F,
+    options?: {
+      optional?: boolean;
+    },
+  ): ParamKind<{ [K in keyof F]: RuntimeValueOf<F[K]> }>;
+  array<K extends ParamKind<unknown>>(
+    item: K,
+    options?: {
+      default?: readonly JsonValue[];
+      min?: number;
+      max?: number;
+      optional?: boolean;
+    },
+  ): ParamKind<readonly RuntimeValueOf<K>[]>;
+  json(options?: {
+    default?: JsonValue;
+    optional?: boolean;
+  }): ParamKind<JsonValue>;
+}
 ```
 
 - An `object`'s members are declared the way a schema's fields are, and each is
@@ -291,6 +396,14 @@ param.json(options?: {
 ## Values the game decodes
 
 ```ts
+import { Entity } from "@yagejs/core";
+import { defineParams, param, type ParamsOf } from "@yagejs/level";
+
+// Your game's own type.
+declare class Direction {
+  static fromName(name: string): Direction;
+}
+
 const SlimeParams = defineParams({
   facing: param.custom<Direction>({
     default: "left",
@@ -300,25 +413,45 @@ const SlimeParams = defineParams({
   tint: param.color("#ffcc88"),
 });
 
-setup(params: ParamsOf<typeof SlimeParams>): void {
-  // facing: Direction, tint: 0xffcc88
+class Slime extends Entity {
+  setup(params: ParamsOf<typeof SlimeParams>): void {
+    // facing: Direction, tint: 0xffcc88
+  }
 }
 ```
 
 ```ts
-param.custom<T>(options: {
-  default: JsonValue;
-  decode(value: JsonValue, context: ParamDecodeContext): T;
-  validate?(value: JsonValue): readonly string[];
-  optional?: boolean;
-  editor?:
-    | { kind: "string"; multiline?: boolean }
-    | { kind: "number" | "integer"; min?: number; max?: number; step?: number }
-    | { kind: "boolean" }
-    | { kind: "select"; options: readonly string[] }
-    | { kind: "json" };
-}): ParamKind<T>
-param.color(defaultValue: string, options?: { optional?: boolean }): ParamKind<number>
+import {
+  param as baseParam,
+  type JsonValue,
+  type ParamDecodeContext,
+  type ParamKind,
+} from "@yagejs/level";
+
+type ParamObject = typeof baseParam;
+interface Param extends ParamObject {
+  custom<T>(options: {
+    default: JsonValue;
+    decode(value: JsonValue, context: ParamDecodeContext): T;
+    validate?(value: JsonValue): readonly string[];
+    optional?: boolean;
+    editor?:
+      | { kind: "string"; multiline?: boolean }
+      | {
+          kind: "number" | "integer";
+          min?: number;
+          max?: number;
+          step?: number;
+        }
+      | { kind: "boolean" }
+      | { kind: "select"; options: readonly string[] }
+      | { kind: "json" };
+  }): ParamKind<T>;
+  color(
+    defaultValue: string,
+    options?: { optional?: boolean },
+  ): ParamKind<number>;
+}
 ```
 
 - `custom` is the kind whose runtime value is not its JSON: a class, a lookup,
@@ -353,8 +486,20 @@ param.color(defaultValue: string, options?: { optional?: boolean }): ParamKind<n
 ## Pointing at another placement
 
 ```ts
-import { param, defineParams, type ParamsOf } from "@yagejs/level";
-import type { EntityHandle } from "@yagejs/core";
+import {
+  param,
+  defineLevelEntity,
+  defineParams,
+  type ParamsOf,
+} from "@yagejs/level";
+import { Component, Entity, type EntityHandle } from "@yagejs/core";
+
+// Your game's own placeable types and component.
+declare class Door extends Entity {}
+declare class Chime extends Entity {}
+declare class SwitchMechanism extends Component {
+  constructor(door: EntityHandle<Door>);
+}
 
 const SwitchParams = defineParams({
   door: param.entityRef<Door>({ types: ["game.door"] }),
@@ -400,6 +545,16 @@ export class Switch extends Entity {
   `ParamsOf`:
 
   ```ts
+  import { Entity, type EntityHandle } from "@yagejs/core";
+  import {
+    defineLevelEntity,
+    defineParams,
+    param,
+    type ParamKind,
+    type ParamsOf,
+    type ParamsSchema,
+  } from "@yagejs/level";
+
   const WaypointParams: ParamsSchema<{
     wait: ParamKind<number>;
     next: ParamKind<EntityHandle<Waypoint> | undefined>;
@@ -410,6 +565,18 @@ export class Switch extends Entity {
       optional: true,
     }),
   });
+
+  export class Waypoint extends Entity {
+    static readonly level = defineLevelEntity({
+      id: "game.waypoint",
+      version: 1,
+      params: WaypointParams,
+    });
+
+    setup(params: ParamsOf<typeof WaypointParams>): void {
+      // params.next is EntityHandle<Waypoint> | undefined
+    }
+  }
   ```
 
 - The handle expires when the target entity is destroyed, which is
@@ -420,7 +587,7 @@ export class Switch extends Entity {
 
 ## The project
 
-```ts
+```ts yage-group="project" yage-file="levelProject.ts"
 import { defineLevelProject } from "@yagejs/level";
 import { Crate } from "./Crate.js";
 import { Torch } from "./Torch.js";
@@ -431,6 +598,8 @@ export default defineLevelProject({ entities: [Crate, Torch] });
 `buildLevelCatalog(project)` turns it into the catalog preparation needs:
 
 ```ts
+import type { CatalogError, LevelCatalog } from "@yagejs/level";
+
 type CatalogResult =
   | { ok: true; catalog: LevelCatalog }
   | { ok: false; errors: readonly CatalogError[] };
@@ -443,7 +612,17 @@ declaration's schema migrate placements authored against the other.
 ## Loading into a scene
 
 ```ts
+import { Scene } from "@yagejs/core";
+import {
+  instantiateLevel,
+  levelAssets,
+  type PreparedLevel,
+} from "@yagejs/level";
+
+declare const forest: PreparedLevel; // from the four steps above
+
 class ForestScene extends Scene {
+  readonly name = "forest";
   readonly preload = levelAssets(forest);
 
   onEnter(): void {
@@ -484,6 +663,11 @@ their namespaces differ.
 `LevelInstance`:
 
 ```ts
+import type { LevelInstance } from "@yagejs/level";
+
+declare const instance: LevelInstance; // what instantiateLevel returned
+declare const placementId: string;
+
 instance.id; // the document id
 instance.get(placementId); // Entity | undefined
 instance.entities; // readonly Entity[], parent before child
@@ -513,7 +697,14 @@ logs a dev warning and falls back to `"default"`.
 ## Validation without loading
 
 ```ts
-import { validateLevel } from "@yagejs/level";
+import {
+  validateLevel,
+  type LevelCatalog,
+  type LevelDocument,
+} from "@yagejs/level";
+
+declare const document: LevelDocument;
+declare const catalog: LevelCatalog;
 
 const problems = validateLevel(document, catalog); // readonly LevelDiagnostic[]
 ```
@@ -550,10 +741,18 @@ loading; there is no warning severity.
 
 ## Creating a placement in a tool
 
-```ts
-import { defaultParams } from "@yagejs/level";
+```ts yage-group="tool"
+import {
+  defaultParams,
+  type LevelCatalog,
+  type LevelPlacement,
+} from "@yagejs/level";
+
+declare const catalog: LevelCatalog;
+declare const x: number, y: number; // where the tool puts it
 
 const entry = catalog.get("game.crate");
+if (!entry) throw new Error('No entity type "game.crate" in the catalog.');
 const placement: LevelPlacement = {
   id: crypto.randomUUID(),
   type: entry.id,
@@ -578,7 +777,7 @@ declaration never share an object.
 `describeParams(schema)` returns the data an authoring tool needs to render the
 schema without receiving its validators, decoders, or asset factories:
 
-```ts
+```ts yage-group="tool"
 import { describeParams } from "@yagejs/level";
 
 const fields = entry.declaration.params
@@ -608,14 +807,20 @@ field carries `fields`, its members as descriptions with names of their own; an
 is named by its position. Switch on `kind` the same way wherever you stand:
 
 ```ts
-type ParamValueDescription = {
+import type {
+  JsonValue,
+  ParamKindName,
+  ParamValueDescription as BaseParamValueDescription,
+} from "@yagejs/level";
+
+interface ParamValueDescription extends BaseParamValueDescription {
   readonly kind: ParamKindName;
   readonly fields?: readonly ParamFieldDescription[]; // an object's members
   readonly item?: ParamValueDescription; // an array's element
   readonly defaultValue: JsonValue;
   // assetKind, frames, types, optional, min, max, step, multiline, options,
   // editor, relative — as below
-};
+}
 type ParamFieldDescription = ParamValueDescription & { readonly name: string };
 ```
 
@@ -681,6 +886,8 @@ version — what a tool writes when it creates a level file.
 Structural errors are returned, never thrown, and all of them are collected:
 
 ```ts
+import type { LevelDocument, StructuralError } from "@yagejs/level/document";
+
 type StructuralResult =
   | { ok: true; document: LevelDocument }
   | { ok: false; errors: readonly StructuralError[] }; // { path, message }

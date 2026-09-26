@@ -29,6 +29,7 @@ export type {
   ParamDecodeContext,
   ParamEditorKind,
   ParamFieldDescription,
+  ParamFields,
   ParamKind,
   ParamKindName,
   ParamsOf,
