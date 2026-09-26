@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>My YAGE Game</title>
     <style>
       html,
@@ -21,8 +24,16 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        box-sizing: border-box;
         width: 100vw;
+        /* Fallback for browsers without dvh. */
         height: 100vh;
+        /* The visible height: excludes the mobile browser's toolbars. */
+        height: 100dvh;
+        /* Keeps the game clear of the notch, rounded corners, and home
+           indicator. Each inset is 0 where the screen has none. */
+        padding: env(safe-area-inset-top) env(safe-area-inset-right)
+          env(safe-area-inset-bottom) env(safe-area-inset-left);
       }
       #game canvas {
         display: block;

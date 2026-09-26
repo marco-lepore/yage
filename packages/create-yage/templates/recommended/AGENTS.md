@@ -17,6 +17,12 @@ the purple slimes. Touching a hazard or a slime respawns the player at the
 start. The level is defined in `src/scenes/GameScene.ts`. Change the entity
 positions there, or spawn more entities.
 
+The Fullscreen button in the top-right corner is set up in
+`src/fullscreen.ts`. It is hidden where the browser cannot show the page
+fullscreen, such as on iPhone. See
+https://yage.dev/guides/rendering/responsive/#mobile-readiness for what the
+page does on phones.
+
 ## Project layout
 
 ```
@@ -37,6 +43,7 @@ positions there, or spawn more entities.
 │       └── slime_purple.png
 └── src/
     ├── main.ts                    # boot: Engine, plugins, initial scene
+    ├── fullscreen.ts              # the Fullscreen button in index.html
     ├── layers.ts                  # physics collision layers
     ├── traits.ts                  # shared entity traits
     ├── scenes/
