@@ -550,15 +550,17 @@ export class Telemetry {
   }
 
   /**
-   * Send every queued record. `sendBeacon` returns at once, and returns
-   * `false` when the browser refuses the request; the records then stay
-   * queued for the next flush.
+   * Send every queued record, and return whether the browser accepted them.
+   * `sendBeacon` returns at once, and returns `false` when the browser
+   * refuses the request; the records then stay queued.
    */
-  flush(): void {
-    if (this.queue.length === 0) return;
-    if (navigator.sendBeacon(this.endpoint, JSON.stringify(this.queue))) {
-      this.queue = [];
+  flush(): boolean {
+    if (this.queue.length === 0) return true;
+    if (!navigator.sendBeacon(this.endpoint, JSON.stringify(this.queue))) {
+      return false;
     }
+    this.queue = [];
+    return true;
   }
 }
 ```
@@ -660,21 +662,30 @@ import type { EngineContext } from "@yagejs/core";
 import type { Telemetry } from "./Telemetry";
 import { TelemetryKey } from "./types";
 
+/** Seconds to wait before retrying a batch the browser refused. */
+const RETRY_SECONDS = 5;
+
 export class TelemetryFlushSystem extends System {
   readonly phase = Phase.EndOfFrame;
   readonly priority = 0;
 
   private telemetry!: Telemetry;
+  private retryIn = 0;
 
   onRegister(context: EngineContext) {
     this.telemetry = context.resolve(TelemetryKey);
   }
 
-  update() {
-    // One request per full batch, after the frame's game code has run.
-    if (this.telemetry.pending >= this.telemetry.batchSize) {
-      this.telemetry.flush();
+  update(dt: number) {
+    if (this.retryIn > 0) {
+      this.retryIn -= dt;
+      return;
     }
+    // One request per full batch, after the frame's game code has run. A
+    // refused batch stays queued and is retried after RETRY_SECONDS, not on
+    // every frame.
+    if (this.telemetry.pending < this.telemetry.batchSize) return;
+    if (!this.telemetry.flush()) this.retryIn = RETRY_SECONDS;
   }
 }
 
