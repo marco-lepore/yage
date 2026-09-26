@@ -19,7 +19,6 @@ import {
 import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
 import {
   textStyle,
-  loadFonts,
   assets,
   allAssets,
   nineSlice,
@@ -359,7 +358,6 @@ async function main() {
   engine.use(new UIReactPlugin());
   await installDebugFromUrl(engine);
 
-  await loadFonts();
   await engine.start();
   await engine.scenes.push(new KitchenSinkScene());
 }

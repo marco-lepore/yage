@@ -21,7 +21,15 @@
  *           boundary softens without blurring the outer canvas edge.
  *   hud   — screen-space, corner cards tracking `visibleCanvasRect` corners.
  */
-import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Component,
+  Entity,
+  RandomKey,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   RendererKey,
@@ -300,8 +308,34 @@ class ReadoutUpdater extends Component {
 }
 
 // ---------------------------------------------------------------------------
-// Scene
+// Entities
 // ---------------------------------------------------------------------------
+/** A ball that bounces across the full `visibleCanvasRect`. */
+class BallEntity extends Entity {
+  setup(params: {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    radius: number;
+    color: number;
+  }): void {
+    const { x, y, vx, vy, radius, color } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
+      new GraphicsComponent({ layer: "balls" }).draw((g) => {
+        g.circle(0, 0, radius).fill({ color, alpha: 0.95 });
+        g.circle(0, 0, radius).stroke({
+          color: 0xffffff,
+          width: 1,
+          alpha: 0.5,
+        });
+      }),
+    );
+    this.add(new BouncingBall(vx, vy, radius));
+  }
+}
+
 const HUD_CARDS: Record<
   Corner,
   { fill: number; stroke: number; label: string; value: string }
@@ -322,6 +356,69 @@ const HUD_CARDS: Record<
   },
 };
 
+const CORNER_TO_ANCHOR: Record<Corner, Anchor> = {
+  topLeft: Anchor.TopLeft,
+  topRight: Anchor.TopRight,
+  bottomLeft: Anchor.BottomLeft,
+  bottomRight: Anchor.BottomRight,
+};
+
+/**
+ * A HUD card anchored to one canvas corner (in virtual coords). The card is a
+ * UISurface with `positioning: "transform"`: `HudAnchor` writes the
+ * canvas-corner position to the entity's Transform each frame, and the
+ * panel's `anchor` becomes a pivot on the panel itself, so a card anchored
+ * TopRight grows down and to the left from the corner. The outer panel is the
+ * colored frame; the inner panel is the dark backdrop, with a colored dot and
+ * two text rows laid out with Yoga flexbox.
+ */
+class HudCardEntity extends Entity {
+  setup(params: { corner: Corner }): void {
+    const { corner } = params;
+    const meta = HUD_CARDS[corner];
+    this.add(new Transform());
+    this.add(new HudAnchor(corner));
+
+    const panel = this.add(
+      new UISurface({
+        layer: "hud",
+        positioning: "transform",
+        anchor: CORNER_TO_ANCHOR[corner],
+        padding: 2,
+        background: { color: meta.stroke, alpha: 1, radius: 5 },
+      }),
+    );
+    const inner = panel.panel({
+      direction: "row",
+      gap: 10,
+      alignItems: "center",
+      padding: { top: 6, right: 14, bottom: 6, left: 12 },
+      background: { color: 0x111827, alpha: 0.9, radius: 3 },
+    });
+    inner.panel({
+      width: 10,
+      height: 10,
+      background: { color: meta.fill, radius: 5 },
+    });
+    const textCol = inner.panel({ direction: "column", gap: 2 });
+    textCol.text(meta.label, {
+      fontFamily: "ui-monospace, monospace",
+      fontSize: 10,
+      fill: 0x94a3b8,
+      letterSpacing: 1,
+    });
+    textCol.text(meta.value, {
+      fontFamily: "ui-monospace, monospace",
+      fontSize: 14,
+      fill: 0xf8fafc,
+      fontWeight: "bold",
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scene
+// ---------------------------------------------------------------------------
 class ResponsiveUIScene extends Scene {
   readonly name = "responsive-ui";
   readonly layers: readonly LayerDef[] = [
@@ -342,26 +439,17 @@ class ResponsiveUIScene extends Scene {
     // through the expand bars; initial spawn stays inside the virtual rect
     // to guarantee visibility on the first frame.
     const palette = [0xef4444, 0xf59e0b, 0x10b981, 0x3b82f6, 0xa855f7];
+    const rng = this.use(RandomKey);
     for (let i = 0; i < 10; i++) {
-      const radius = 12 + Math.random() * 10;
-      const x = radius + Math.random() * (VIRTUAL_WIDTH - 2 * radius);
-      const y = radius + Math.random() * (VIRTUAL_HEIGHT - 2 * radius);
-      const vx = (Math.random() - 0.5) * 200;
-      const vy = (Math.random() - 0.5) * 200;
-      const color = palette[i % palette.length]!;
-      const ball = this.spawn(`ball-${i}`);
-      ball.add(new Transform({ position: new Vec2(x, y) }));
-      ball.add(
-        new GraphicsComponent({ layer: "balls" }).draw((g) => {
-          g.circle(0, 0, radius).fill({ color, alpha: 0.95 });
-          g.circle(0, 0, radius).stroke({
-            color: 0xffffff,
-            width: 1,
-            alpha: 0.5,
-          });
-        }),
-      );
-      ball.add(new BouncingBall(vx, vy, radius));
+      const radius = rng.range(12, 22);
+      this.spawn(BallEntity, {
+        radius,
+        x: rng.range(radius, VIRTUAL_WIDTH - radius),
+        y: rng.range(radius, VIRTUAL_HEIGHT - radius),
+        vx: rng.range(-100, 100),
+        vy: rng.range(-100, 100),
+        color: palette[i % palette.length]!,
+      });
     }
 
     // Fog overlay covering `extendedVirtualRects` (the bars).
@@ -370,60 +458,9 @@ class ResponsiveUIScene extends Scene {
     fog.add(new GraphicsComponent({ layer: "fog" }));
     fog.add(new FogOverlay());
 
-    // HUD corners anchored to the canvas corners (in virtual coords). Each
-    // card is a UISurface with `positioning: "transform"` — `HudAnchor` writes
-    // the canvas-corner position to the entity's Transform each frame, and
-    // the panel's `anchor` reinterprets as a pivot on the panel itself, so
-    // a card anchored TopRight grows down-and-to-the-left from the corner.
-    // The wrapping panel acts as the colored frame (1:1 with the old stroke);
-    // the inner panel is the dark backdrop, with a colored dot + two text
-    // rows laid out via Yoga flexbox.
-    const CORNER_TO_ANCHOR: Record<Corner, Anchor> = {
-      topLeft: Anchor.TopLeft,
-      topRight: Anchor.TopRight,
-      bottomLeft: Anchor.BottomLeft,
-      bottomRight: Anchor.BottomRight,
-    };
+    // HUD cards in the four canvas corners.
     for (const corner of Object.keys(HUD_CARDS) as Corner[]) {
-      const meta = HUD_CARDS[corner];
-      const card = this.spawn(`hud-${corner}`);
-      card.add(new Transform());
-      card.add(new HudAnchor(corner));
-
-      const panel = card.add(
-        new UISurface({
-          layer: "hud",
-          positioning: "transform",
-          anchor: CORNER_TO_ANCHOR[corner],
-          padding: 2,
-          background: { color: meta.stroke, alpha: 1, radius: 5 },
-        }),
-      );
-      const inner = panel.panel({
-        direction: "row",
-        gap: 10,
-        alignItems: "center",
-        padding: { top: 6, right: 14, bottom: 6, left: 12 },
-        background: { color: 0x111827, alpha: 0.9, radius: 3 },
-      });
-      inner.panel({
-        width: 10,
-        height: 10,
-        background: { color: meta.fill, radius: 5 },
-      });
-      const textCol = inner.panel({ direction: "column", gap: 2 });
-      textCol.text(meta.label, {
-        fontFamily: "ui-monospace, monospace",
-        fontSize: 10,
-        fill: 0x94a3b8,
-        letterSpacing: 1,
-      });
-      textCol.text(meta.value, {
-        fontFamily: "ui-monospace, monospace",
-        fontSize: 14,
-        fill: 0xf8fafc,
-        fontWeight: "bold",
-      });
+      this.spawn(HudCardEntity, { corner });
     }
 
     // Live readout.
