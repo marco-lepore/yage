@@ -1,5 +1,14 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  createRecord,
+  Engine,
+  Entity,
+  Scene,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
+import type { ReactiveRecord } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   InputPlugin,
@@ -20,9 +29,10 @@ import {
   useEngine,
   useStore,
 } from "@yagejs/ui-react";
-import { createRecord } from "@yagejs/core";
-import type { ReactiveRecord } from "@yagejs/core";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -82,7 +92,7 @@ const GROUP_META: Record<string, GroupMeta> = {
 const PLAYER_SPEED = 120; // px/s
 
 // ---------------------------------------------------------------------------
-// Game component
+// Players
 // ---------------------------------------------------------------------------
 
 interface PlayerActions {
@@ -112,8 +122,34 @@ class PlayerController extends Component {
   }
 }
 
+/** A coloured square that one group of actions moves. */
+class PlayerEntity extends Entity {
+  setup(params: { x: number; color: number; actions: PlayerActions }): void {
+    this.add(new Transform({ position: new Vec2(params.x, 300) }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.roundRect(-15, -15, 30, 30, 4).fill({ color: params.color });
+      }),
+    );
+    this.add(new PlayerController(params.actions, PLAYER_SPEED));
+  }
+}
+
+/** A small dot in a player's colour above that player's starting square. It
+ *  stays where it was spawned. */
+class PlayerDotEntity extends Entity {
+  setup(params: { x: number; color: number }): void {
+    this.add(new Transform({ position: new Vec2(params.x, 275) }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 3).fill({ color: params.color });
+      }),
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Conflict store — shared between side panel and center modal
+// Pending conflict — shared between side panel and center modal
 // ---------------------------------------------------------------------------
 
 interface PendingConflict {
@@ -129,13 +165,15 @@ type ConflictState = {
   resolveVersion: number;
 };
 
-const conflictStore: ReactiveRecord<ConflictState> =
-  createRecord<ConflictState>({
+/** The pending conflict, as a reactive record both UI roots read. */
+class RebindConflict extends Component {
+  readonly state: ReactiveRecord<ConflictState> = createRecord<ConflictState>({
     default: () => ({
       conflict: null,
       resolveVersion: 0,
     }),
   });
+}
 
 // ---------------------------------------------------------------------------
 // React UI — Binding row
@@ -302,10 +340,14 @@ function GroupSection({
 // React UI — Conflict modal (rendered in a separate center-anchored UIRoot)
 // ---------------------------------------------------------------------------
 
-function ConflictModal() {
+function ConflictModal({
+  conflicts,
+}: {
+  conflicts: ReactiveRecord<ConflictState>;
+}) {
   const ctx = useEngine();
   const input = useMemo(() => ctx.resolve(InputManagerKey), [ctx]);
-  const conflict = useStore(conflictStore, (s) => s.get().conflict);
+  const conflict = useStore(conflicts, (s) => s.get().conflict);
 
   if (!conflict) return null;
 
@@ -359,9 +401,9 @@ function ConflictModal() {
                   slot: conflict.slot,
                   conflict: "replace",
                 });
-                conflictStore.set({
+                conflicts.set({
                   conflict: null,
-                  resolveVersion: conflictStore.get().resolveVersion + 1,
+                  resolveVersion: conflicts.get().resolveVersion + 1,
                 });
               }}
             >
@@ -372,7 +414,7 @@ function ConflictModal() {
               textStyle={{ fontSize: 11, fill: 0xcccccc }}
               bg={{ color: 0x334155, alpha: 1, radius: 4 }}
               hoverBg={{ color: 0x475569, alpha: 1, radius: 4 }}
-              onClick={() => conflictStore.set({ conflict: null })}
+              onClick={() => conflicts.set({ conflict: null })}
             >
               Cancel
             </Button>
@@ -387,7 +429,11 @@ function ConflictModal() {
 // React UI — Root panel
 // ---------------------------------------------------------------------------
 
-function RebindPanel() {
+function RebindPanel({
+  conflicts,
+}: {
+  conflicts: ReactiveRecord<ConflictState>;
+}) {
   const ctx = useEngine();
   const input = useMemo(() => ctx.resolve(InputManagerKey), [ctx]);
 
@@ -408,7 +454,7 @@ function RebindPanel() {
   useEffect(() => input.onActivePadChanged(setActivePad), [input]);
 
   // Re-render when a conflict is resolved via "Replace" in the modal.
-  const resolveVersion = useStore(conflictStore, (s) => s.get().resolveVersion);
+  const resolveVersion = useStore(conflicts, (s) => s.get().resolveVersion);
 
   // Force re-read of bindings from InputManager after mutations.
   void (version + resolveVersion);
@@ -449,18 +495,18 @@ function RebindPanel() {
       if (result.ok) {
         bump();
       } else if (result.conflict) {
-        conflictStore.set({
+        conflicts.set({
           conflict: {
             targetAction: action,
             key,
             conflictAction: result.conflict.action,
             slot,
           },
-          resolveVersion: conflictStore.get().resolveVersion,
+          resolveVersion: conflicts.get().resolveVersion,
         });
       }
     },
-    [input, bump],
+    [input, bump, conflicts],
   );
 
   const handleReset = useCallback(
@@ -539,6 +585,30 @@ function RebindPanel() {
 }
 
 // ---------------------------------------------------------------------------
+// Rebind UI — the side panel and the conflict modal share one pending conflict
+// ---------------------------------------------------------------------------
+
+/** Hosts the pending conflict and the two UI roots that read it, as child
+ *  entities: the side panel and the centred modal. */
+class RebindUIEntity extends Entity {
+  setup(): void {
+    const conflicts = this.add(new RebindConflict()).state;
+
+    // Mount side panel
+    const panelRoot = this.spawnChild("ui-panel").add(
+      new UIRoot({ anchor: Anchor.CenterRight, offset: { x: -16, y: 0 } }),
+    );
+    panelRoot.render(<RebindPanel conflicts={conflicts} />);
+
+    // Mount conflict modal (separate UIRoot, centered)
+    const modalRoot = this.spawnChild("ui-modal").add(
+      new UIRoot({ anchor: Anchor.Center }),
+    );
+    modalRoot.render(<ConflictModal conflicts={conflicts} />);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Scene
 // ---------------------------------------------------------------------------
 
@@ -547,42 +617,18 @@ class InputRemappingScene extends Scene {
 
   onEnter(): void {
     // Spawn players
-    for (const [, meta] of Object.entries(GROUP_META)) {
-      const startX = meta.color === 0x3b82f6 ? 200 : 350;
-      const entity = this.spawn("player");
-      entity.add(new Transform({ position: new Vec2(startX, 300) }));
-      entity.add(
-        new GraphicsComponent().draw((g) => {
-          g.roundRect(-15, -15, 30, 30, 4).fill({ color: meta.color });
-        }),
-      );
-      entity.add(new PlayerController(meta.actions, PLAYER_SPEED));
+    for (const meta of Object.values(GROUP_META)) {
+      const x = meta.color === 0x3b82f6 ? 200 : 350;
+      this.spawn(PlayerEntity, { x, color: meta.color, actions: meta.actions });
     }
 
     // Label each player
-    for (const [, meta] of Object.entries(GROUP_META)) {
-      const startX = meta.color === 0x3b82f6 ? 200 : 350;
-      const label = this.spawn("label");
-      label.add(new Transform({ position: new Vec2(startX, 275) }));
-      label.add(
-        new GraphicsComponent().draw((g) => {
-          // Small colored dot above the square
-          g.circle(0, 0, 3).fill({ color: meta.color });
-        }),
-      );
+    for (const meta of Object.values(GROUP_META)) {
+      const x = meta.color === 0x3b82f6 ? 200 : 350;
+      this.spawn(PlayerDotEntity, { x, color: meta.color });
     }
 
-    // Mount side panel
-    const panelEntity = this.spawn("ui-panel");
-    const panelRoot = panelEntity.add(
-      new UIRoot({ anchor: Anchor.CenterRight, offset: { x: -16, y: 0 } }),
-    );
-    panelRoot.render(<RebindPanel />);
-
-    // Mount conflict modal (separate UIRoot, centered)
-    const modalEntity = this.spawn("ui-modal");
-    const modalRoot = modalEntity.add(new UIRoot({ anchor: Anchor.Center }));
-    modalRoot.render(<ConflictModal />);
+    this.spawn(RebindUIEntity);
   }
 }
 
