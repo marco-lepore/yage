@@ -784,7 +784,7 @@ Game state (score, lives, inventory, a level clock) lives in a component on a ho
 - Not a field on the `Scene` subclass changed from `onEnter` closures: the rules end up in the scene, and readers have to cast `this.scene`.
 - Not a `ServiceKey` (`context.register`, `scene.registerScoped`): service keys are for plugin-owned infrastructure only (renderer, physics world, input manager).
 
-Module-level `createStore` / `createRecord` is sanctioned only for state that `@yagejs/save` persists (see "Saved state" below).
+Module-level `createStore` / `createRecord` is only for state that `@yagejs/save` persists (see "Saved state" below).
 
 ### Game state on a host entity
 

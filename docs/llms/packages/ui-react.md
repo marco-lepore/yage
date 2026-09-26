@@ -417,7 +417,7 @@ useStore(source, select); // selector receives the source itself, not a snapshot
 const count = useQuery([EnemyTag], (result) => result.size);
 
 // Scene selector (polled each frame, re-renders only when the result changes)
-const entityCount = useSceneSelector((scene) => scene.getEntities().length);
+const entityCount = useSceneSelector((scene) => scene.getEntities().size);
 
 // Game state hosted on an entity (see patterns.md "Game state on a host entity")
 const coins = useSceneSelector(

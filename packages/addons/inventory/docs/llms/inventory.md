@@ -548,7 +548,7 @@ diff), so a controller backed by a filtered view emits `InventoryChangedEvent`
 with empty `slots`. The view only subscribes to the model while at least one
 listener is attached, so pre-built, currently-inactive tab views cost nothing.
 
-## Save seam
+## Saving
 
 `snapshot()` / `restore()` round-trip the whole state as JSON. An inventory the
 game saves, or carries between scenes, is part of the game's explicit save

@@ -468,6 +468,9 @@ change, so keep static and simple dynamic labels on `UIText`.
 
 ## Buttons
 
+Buttons usually live in a scene's `onEnter` or in a component, where `this`
+can resolve engine services such as `SceneManagerKey`:
+
 ```typescript
 const btn = panel.button("Start Game", {
   width: 200,       // optional — omit to shrink-to-content

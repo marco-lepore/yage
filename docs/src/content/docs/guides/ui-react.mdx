@@ -782,7 +782,7 @@ re-renders only when the result changes:
 import { useSceneSelector } from "@yagejs/ui-react";
 
 function EntityCounter() {
-  const count = useSceneSelector((scene) => scene.getEntities().length);
+  const count = useSceneSelector((scene) => scene.getEntities().size);
   return <Text>{`Entities: ${count}`}</Text>;
 }
 ```

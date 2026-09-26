@@ -338,6 +338,8 @@ const cd = pc.slot({ duration: 1, onComplete: () => fire() });
 cd.start(); // activate
 cd.running; // boolean
 cd.ratio; // 0..1 progress
+// A slot with loop: true never completes, so onComplete never runs.
+// For a repeating callback, loop a sequence (see Sequence below).
 cd.restart(); // cancel + restart
 cd.cancel();
 ```

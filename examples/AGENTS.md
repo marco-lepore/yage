@@ -88,7 +88,8 @@ A small example can keep everything in `main.ts`, in the same order.
   repeats every few seconds is a looping sequence:
   `pc.run(new Sequence().wait(2).call(fn).loop().build())`. A slot with
   `loop: true` never completes, so its `onComplete` never runs. A scene-level
-  timer with no natural owner is a `TimerEntity`.
+  timer with no natural owner, such as a round clock, is a `TimerEntity` or
+  a process on a `makeSceneScopedQueue()` queue.
 - `dt` is in seconds. Durations are in seconds (`cam.shake(8, 0.3)`).
 
 ### Randomness
