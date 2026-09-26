@@ -33,6 +33,10 @@ import type { Plugin } from "./types.js";
 import { SceneHookRegistry, SceneHookRegistryKey } from "./SceneHooks.js";
 import type { SceneHooks } from "./SceneHooks.js";
 import { RandomKey } from "./Random.js";
+import {
+  SceneRandomSource,
+  SceneRandomSourceKey,
+} from "./SceneRandomSource.js";
 import { SceneTime, SceneTimeKey } from "./SceneTime.js";
 
 /** Engine configuration. */
@@ -64,6 +68,8 @@ export class Engine {
   readonly logger: Logger;
   /** The inspector (debug queries). */
   readonly inspector: Inspector;
+  /** Creates each scene's `RandomKey` RNG and owns the seed it starts from. */
+  readonly sceneRandom: SceneRandomSource;
 
   private readonly scheduler: SystemScheduler;
   private readonly errorBoundary: ErrorBoundary;
@@ -128,6 +134,7 @@ export class Engine {
     this.errorBoundary = new ErrorBoundary(this.logger);
     this.scenes = new SceneManager();
     this.scheduler = new SystemScheduler();
+    this.sceneRandom = new SceneRandomSource(this.scenes);
     this.inspector = new Inspector(this);
     this.assets = new AssetManager();
     this.sceneHooks = new SceneHookRegistry();
@@ -150,13 +157,14 @@ export class Engine {
     this.context.register(ErrorBoundaryKey, this.errorBoundary);
     this.context.register(GameLoopKey, this.loop);
     this.context.register(InspectorKey, this.inspector);
+    this.context.register(SceneRandomSourceKey, this.sceneRandom);
     this.context.register(SystemSchedulerKey, this.scheduler);
     this.context.register(AssetManagerKey, this.assets);
     this.context.register(SceneHookRegistryKey, this.sceneHooks);
 
     this.sceneHooks.register({
       beforeEnter: (scene) => {
-        scene._registerScoped(RandomKey, this.inspector.createSceneRandom());
+        scene._registerScoped(RandomKey, this.sceneRandom.createSceneRandom());
         scene._registerScoped(SceneTimeKey, new SceneTime(scene));
         this.inspector.attachSceneEventObserver(scene);
       },

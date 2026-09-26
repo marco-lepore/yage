@@ -21,7 +21,7 @@ engine.use(
 );
 ```
 
-`deterministicSeed` is opt-in. Leave it unset for normal debug builds; set it from test fixtures so each `Inspector.setSeed(...)` call has a known starting state.
+`deterministicSeed` is opt-in. `DebugPlugin` installs it as the default seed of `engine.sceneRandom`, so every scene RNG starts from it unless `setSeed` pinned another seed, and removes it on destroy. Leave it unset for normal debug builds; set it from test fixtures so a run starts from a known RNG state.
 
 ### The debug global
 
@@ -107,7 +107,7 @@ drive.
 `window.__yage__.inspector` exposes deterministic test controls in addition to the snapshot/query API:
 
 ```ts
-inspector.setSeed(seed); // reseed every scene RNG
+inspector.setSeed(seed); // reseed every scene RNG (calls engine.sceneRandom.setSeed)
 inspector.input.hold("ArrowRight", 30); // press, step N frames, release (sync)
 inspector.input.tap("Space", 1); // sync; steps through time.step()
 inspector.input.fireAction("jump", 1); // sync; one-frame pulse per frame
