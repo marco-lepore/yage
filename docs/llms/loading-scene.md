@@ -4,10 +4,14 @@
 
 ## Usage
 
-```ts
-import { LoadingScene } from "@yagejs/core";
+```ts yage-context="engine"
+import { LoadingScene, Scene } from "@yagejs/core";
 import { fade } from "@yagejs/renderer";
 import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
 
 class Boot extends LoadingScene {
   readonly target = new GameScene();
@@ -28,13 +32,16 @@ Loading does not start automatically — call `this.startLoading()` when you wan
 ## API
 
 ```ts
-abstract class LoadingScene extends Scene {
+import { LoadingScene as BaseLoadingScene } from "@yagejs/core";
+import type { Scene, SceneTransition } from "@yagejs/core";
+
+declare abstract class LoadingScene extends BaseLoadingScene {
   readonly name: string; // default "loading"
   abstract readonly target: Scene | (() => Scene);
   readonly minDuration: number; // default 0
   readonly transition?: SceneTransition;
   readonly autoContinue: boolean; // default true
-  readonly progress: number; // getter, 0 → 1
+  get progress(): number; // 0 → 1
 
   /**
    * Start asset loading. No-op while a load is in flight or after a
@@ -96,13 +103,22 @@ A constantly-animated visual (rotating spinner) does its own per-frame animation
 ## Press-any-key flow
 
 ```ts
+import { Component, LoadingScene, Scene } from "@yagejs/core";
+import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
+
+declare class PressAnyKeyPrompt extends Component {} // game-specific; calls scene.continue() on input
+
 class Boot extends LoadingScene {
   readonly target = new GameScene();
   readonly autoContinue = false; // gate the handoff
 
   override onEnter() {
     this.spawn(LoadingSceneProgressBar);
-    this.spawn(PressAnyKeyPrompt); // game-specific; calls scene.continue() on input
+    this.spawn("continue-prompt").add(new PressAnyKeyPrompt());
     this.startLoading();
   }
 }
@@ -118,7 +134,11 @@ class Boot extends LoadingScene {
 ## LoadingSceneProgressBar (`@yagejs/ui`)
 
 ```ts
-class LoadingSceneProgressBar extends Entity {
+import { LoadingSceneProgressBar as BaseLoadingSceneProgressBar } from "@yagejs/ui";
+import type { Anchor, BackgroundOptions } from "@yagejs/ui";
+
+// An Entity subclass.
+declare class LoadingSceneProgressBar extends BaseLoadingSceneProgressBar {
   setup(opts?: {
     width?: number; // default 400
     height?: number; // default 16

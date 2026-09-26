@@ -43,6 +43,10 @@ inlining entity logic. Extract entity classes until the scene is just a list
 of spawns and a few listeners.
 
 ```typescript
+import { Entity, Scene, defineEvent } from "@yagejs/core";
+import { texture } from "@yagejs/renderer";
+import { sound } from "@yagejs/audio";
+
 // Good — the scene is a spawn list
 class GameScene extends Scene {
   readonly name = "game";
@@ -57,6 +61,18 @@ class GameScene extends Scene {
     this.on(PlayerHit, () => respawnPlayer(this));
   }
 }
+
+// Asset handles and the event, declared with the scene:
+const playerTexture = texture("/assets/player.png");
+const jumpSfx = sound("/assets/jump.wav");
+const PlayerHit = defineEvent("game:player-hit");
+
+// Defined in entities/ and elsewhere in the game:
+declare class Player extends Entity { setup(params: { x: number; y: number }): void }
+declare class Platform extends Entity { setup(params: { x: number; y: number; width: number; height: number }): void }
+declare class Coin extends Entity { setup(params: { x: number; y: number }): void }
+declare class Hazard extends Entity { setup(params: { x: number; y: number; amplitude: number; period: number }): void }
+declare function respawnPlayer(scene: Scene): void;
 ```
 
 ### 2. Simple entity → single file; complex entity → folder
@@ -102,16 +118,29 @@ component crosses — it's used by both `Coin` (vertical bob) and `Hazard`
 (horizontal slide), so it lives in `components/Oscillate.ts`:
 
 ```typescript
+import { Component, Entity } from "@yagejs/core";
+
 // components/Oscillate.ts — shared between Coin and Hazard
 export class Oscillate extends Component {
+  constructor(readonly options: { axis: "x" | "y"; amplitude: number; period: number }) {
+    super();
+  }
   // ... sine-wave motion along an axis ...
 }
 
 // entities/Coin.ts
-this.add(new Oscillate({ axis: "y", amplitude: 4, period: 1.2 }));
+export class Coin extends Entity {
+  setup() {
+    this.add(new Oscillate({ axis: "y", amplitude: 4, period: 1.2 }));
+  }
+}
 
 // entities/Hazard.ts
-this.add(new Oscillate({ axis: "x", amplitude: 60, period: 2.2 }));
+export class Hazard extends Entity {
+  setup() {
+    this.add(new Oscillate({ axis: "x", amplitude: 60, period: 2.2 }));
+  }
+}
 ```
 
 If the starter had only `Coin` using `Oscillate`, the component would live at
@@ -123,7 +152,7 @@ folder).
 Engine creation, plugin registration, scene push. No game logic. If `main.ts`
 grows, the overflow belongs in a scene or a plugin.
 
-```typescript
+```typescript yage-group="layout" yage-file="main.ts"
 // main.ts — entire file
 import { Engine } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
@@ -157,12 +186,17 @@ Declare handles with `texture()` / `sound()` at module scope in the scene
 that uses them, and list them in `Scene.preload` — YAGE guarantees they're
 loaded before `onEnter` runs.
 
-```typescript
+```typescript yage-group="layout" yage-file="scenes/GameScene.ts"
 // scenes/GameScene.ts
+import { Scene } from "@yagejs/core";
+import { texture } from "@yagejs/renderer";
+import { sound } from "@yagejs/audio";
+
 export const playerTexture = texture("/assets/player.png");
 export const jumpSfx = sound("/assets/jump.wav");
 
 export class GameScene extends Scene {
+  readonly name = "game";
   readonly preload = [playerTexture, jumpSfx];
   // ...
 }

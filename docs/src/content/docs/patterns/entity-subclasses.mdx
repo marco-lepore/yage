@@ -9,16 +9,25 @@ naturally with TypeScript's type system.
 
 ## Basic Subclass
 
-```typescript
-import { Entity, Transform, Vec2 } from "@yagejs/core";
-import { SpriteComponent } from "@yagejs/renderer";
+```typescript yage-group="page" yage-context="scene"
+import { Component, Entity, ProcessComponent, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent, type TextureRef } from "@yagejs/renderer";
+
+class HealthComponent extends Component {
+  current: number;
+
+  constructor(options: { max: number }) {
+    super();
+    this.current = options.max;
+  }
+}
 
 interface PlayerParams {
   position: Vec2;
-  texture: Texture;
+  texture: TextureRef;
 }
 
-class Player extends Entity<PlayerParams> {
+class Player extends Entity {
   setup(params: PlayerParams) {
     this.add(new Transform({ position: params.position }));
     this.add(new SpriteComponent({ texture: params.texture }));
@@ -30,9 +39,13 @@ class Player extends Entity<PlayerParams> {
 
 Spawn it from a scene:
 
-```typescript
+```typescript yage-group="page" yage-context="scene"
+import { texture } from "@yagejs/renderer";
+
+const heroTexture = texture("assets/hero.png");
+
 const player = scene.spawn(Player, {
-  position: Vec2.create(100, 200),
+  position: new Vec2(100, 200),
   texture: heroTexture,
 });
 ```
@@ -63,7 +76,14 @@ children it already spawned. It is left there to be inspected. Use
 discards everything it reserved.
 
 ```typescript
-class Enemy extends Entity<EnemyParams> {
+import { Entity, Transform, type Vec2 } from "@yagejs/core";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
+
+interface EnemyParams {
+  position: Vec2;
+}
+
+class Enemy extends Entity {
   setup(params: EnemyParams) {
     // Safe — the entity is attached to the scene, so scene-dependent
     // components (physics body, collider) can be added here.
@@ -85,6 +105,8 @@ types it as the concrete parent class, which `this.parent` (typed
 `Entity | null`) does not:
 
 ```typescript
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+
 class Turret extends Entity {
   setup() {
     this.add(new Transform());
@@ -112,8 +134,15 @@ An entity subclass exposes only `this.scene` — there is no `use()`,
 `setup()` or any method, go through the scene:
 
 ```typescript
-const rng = this.scene.use(RandomKey);                        // scene scope, then engine; throws if missing
-const audio = this.scene.context.tryResolve(AudioManagerKey); // undefined if missing
+import { Entity, RandomKey } from "@yagejs/core";
+import { AudioManagerKey } from "@yagejs/audio";
+
+class Crate extends Entity {
+  setup() {
+    const rng = this.scene.use(RandomKey);                        // scene scope, then engine; throws if missing
+    const audio = this.scene.context.tryResolve(AudioManagerKey); // undefined if missing
+  }
+}
 ```
 
 `this.scene.use(key)` checks scene scope first and engine scope second, so
@@ -130,36 +159,47 @@ whether an entity has a trait without knowing its concrete class.
 
 ### Defining a Trait
 
-```typescript
+```typescript yage-group="page" yage-context="scene"
 import { defineTrait } from "@yagejs/core";
 
-const Interactable = defineTrait("Interactable");
-const Damageable = defineTrait("Damageable");
+const Interactable = defineTrait<{ interact(): void }>("Interactable");
+const Damageable = defineTrait<{ takeDamage(amount: number): void }>("Damageable");
 ```
+
+The type argument lists the members an entity with the trait must have.
 
 ### Applying Traits
 
 Use the `@trait()` decorator on entity subclasses:
 
-```typescript
+```typescript yage-group="page" yage-context="scene"
 import { trait } from "@yagejs/core";
 
+const chestTexture = texture("assets/chest.png");
+const openChestTexture = texture("assets/chest-open.png");
+
+interface ChestParams { position: Vec2 }
+interface NPCParams { position: Vec2 }
+
+declare function spawnLoot(position: Vec2): void;  // game code
+declare function openDialogue(npc: NPC): void;     // game code
+
 @trait(Interactable)
-class Chest extends Entity<ChestParams> {
+class Chest extends Entity {
   setup(params: ChestParams) {
     this.add(new Transform({ position: params.position }));
     this.add(new SpriteComponent({ texture: chestTexture }));
   }
 
   interact() {
-    this.get(SpriteComponent).texture = openChestTexture;
-    spawnLoot(this.transform.position);
+    this.get(SpriteComponent).setTexture(openChestTexture);
+    spawnLoot(this.get(Transform).position);
   }
 }
 
 @trait(Interactable)
 @trait(Damageable)
-class NPC extends Entity<NPCParams> {
+class NPC extends Entity {
   setup(params: NPCParams) {
     this.add(new Transform({ position: params.position }));
     this.add(new HealthComponent({ max: 50 }));
@@ -168,6 +208,10 @@ class NPC extends Entity<NPCParams> {
   interact() {
     openDialogue(this);
   }
+
+  takeDamage(amount: number) {
+    this.get(HealthComponent).current -= amount;
+  }
 }
 ```
 
@@ -175,9 +219,14 @@ class NPC extends Entity<NPCParams> {
 
 Use `entity.hasTrait()` as a type guard to discover capabilities at runtime:
 
-```typescript
-// Find all interactable entities near the player
-const nearby = scene.queryArea(playerPos, interactRadius);
+```typescript yage-group="page" yage-context="scene"
+import { PhysicsWorldKey } from "@yagejs/physics";
+
+const playerPos = player.get(Transform).position;
+const interactRadius = 48;
+
+// Find all interactable entities near the player (any entity with a collider)
+const nearby = scene.use(PhysicsWorldKey).queryRadius(playerPos, interactRadius);
 
 for (const entity of nearby) {
   if (entity.hasTrait(Interactable)) {
@@ -189,7 +238,7 @@ for (const entity of nearby) {
 Use `entityClassHasTrait()` when code must validate a class before it creates
 an instance. The check includes traits inherited from parent classes:
 
-```typescript
+```typescript yage-group="page" yage-context="scene"
 import { entityClassHasTrait } from "@yagejs/core";
 
 if (!entityClassHasTrait(Chest, Interactable)) {
@@ -208,15 +257,23 @@ They still work and you may encounter them in existing code, but entity
 subclasses are preferred for new code because they offer better type safety
 and a more natural class-based API.
 
-```typescript
+```typescript yage-context="scene"
 // Legacy approach — still functional, but prefer entity subclasses
-import { defineBlueprint } from "@yagejs/core";
+import { defineBlueprint, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent, texture } from "@yagejs/renderer";
+
+const coinTexture = texture("assets/coin.png");
+
+interface CoinParams {
+  position: Vec2;
+}
 
 const CoinBlueprint = defineBlueprint("Coin", (entity, params: CoinParams) => {
   entity.add(new Transform({ position: params.position }));
   entity.add(new SpriteComponent({ texture: coinTexture }));
 });
 
+const position = new Vec2(64, 32);
 const coin = scene.spawn(CoinBlueprint, { position });
 ```
 

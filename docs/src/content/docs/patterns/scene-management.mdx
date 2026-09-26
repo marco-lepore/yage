@@ -12,7 +12,12 @@ For the foundational API, see [Scenes](/concepts/scenes).
 
 The `SceneManager` maintains a stack of active scenes:
 
-```typescript
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
+
+class GameScene extends Scene { readonly name = "game"; }
+class MenuScene extends Scene { readonly name = "menu"; }
+
 engine.scenes.push(new GameScene());     // add on top
 engine.scenes.pop();                      // remove top scene
 engine.scenes.replace(new MenuScene());   // swap top scene
@@ -28,7 +33,10 @@ on the scene you push on top — see the pause-menu pattern below.
 
 The most common pattern is a pause overlay that freezes the game scene below:
 
-```typescript
+```typescript yage-context="engine" yage-group="pause"
+import { Scene } from "@yagejs/core";
+import { Anchor, UISurface } from "@yagejs/ui";
+
 class PauseScene extends Scene {
   readonly name = "pause-menu";
   override readonly pauseBelow = true;        // freeze scene below
@@ -56,8 +64,13 @@ class PauseScene extends Scene {
 
 Push the pause scene from the game scene:
 
-```typescript
+```typescript yage-context="engine" yage-group="pause"
+import { Component } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+
 class GameController extends Component {
+  private readonly input = this.service(InputManagerKey);
+
   update(): void {
     if (this.input.isJustPressed("pause")) {
       engine.scenes.push(new PauseScene());
@@ -78,7 +91,7 @@ class GameController extends Component {
 Each scene has a `timeScale` property that scales the delta time passed to
 `update()` and `fixedUpdate()`:
 
-```typescript
+```typescript yage-context="scene"
 scene.timeScale = 0.25;  // quarter speed (slow-mo)
 scene.timeScale = 1;     // normal speed
 scene.timeScale = 2;     // double speed
@@ -90,7 +103,9 @@ speed-up power-up, or a post-goal replay.
 Time scale affects the scene's physics, processes, and tweens — everything that
 reads `dt` from the game loop.
 
-```typescript
+```typescript yage-context="scene"
+declare const keys: ReadonlySet<string>; // keys held this frame
+
 // Toggle slow-mo
 if (keys.has("1")) scene.timeScale = 0.25;
 if (keys.has("2")) scene.timeScale = 1;
@@ -108,10 +123,13 @@ Every scene gets a `SceneTime` service, resolvable through the scene-scoped
 the service computes the resulting scale from all active requests — two
 overlapping effects can never corrupt each other's restore.
 
-```typescript
+```typescript yage-context="scene-enter"
 import { SceneTimeKey } from "@yagejs/core";
 
 const time = this.use(SceneTimeKey); // from a Component or Scene
+const player = this.spawn("player");
+const enemy = this.spawn("enemy");
+const feedbackHost = this.spawn("feedback");
 
 // Hitstop / freeze frame: stop the whole scene for 80ms of real time.
 time.freezeFor(0.08);
@@ -159,11 +177,26 @@ has to match a fixed-step simulation — how long since a hit landed, or a windo
 that gates a physics-driven mechanic:
 
 ```typescript
-// in fixedUpdate, when the window opens
-this.windowOpenedAt = time.fixedElapsed;
+import { Component, SceneTimeKey } from "@yagejs/core";
 
-// ...and later, also in fixedUpdate
-const stillOpen = time.fixedElapsed - this.windowOpenedAt < 0.25;
+class ParryWindow extends Component {
+  private readonly time = this.service(SceneTimeKey);
+  private windowOpenedAt = 0;
+  stillOpen = false;
+
+  // Call from fixedUpdate when the window opens.
+  open(): void {
+    this.windowOpenedAt = this.time.fixedElapsed;
+    this.stillOpen = true;
+  }
+
+  // ...and later, also in fixedUpdate
+  fixedUpdate(): void {
+    if (this.stillOpen) {
+      this.stillOpen = this.time.fixedElapsed - this.windowOpenedAt < 0.25;
+    }
+  }
+}
 ```
 
 For a duration you schedule rather than compare — a cooldown, an invincibility
@@ -216,11 +249,17 @@ shared world.
 
 Scale velocity writes by the ratio of the two rates to compensate:
 
-```typescript
+```typescript yage-context="component"
+import { SceneTimeKey, Vec2 } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+
+const rb = this.sibling(RigidBodyComponent);
+const dir = Vec2.RIGHT;
+const speed = 200;
 const time = this.use(SceneTimeKey);
 
 const world = time.effectiveScale;
-const factor = world > 0 ? time.effectiveScaleForUpdates(entity) / world : 1;
+const factor = world > 0 ? time.effectiveScaleForUpdates(this.entity) / world : 1;
 rb.setVelocity(dir.scale(speed * factor));
 ```
 
@@ -233,7 +272,7 @@ Individual entities carry a persistent `timeScale` multiplier that composes on
 top of the scene's. Use the `SceneTime` entity request methods above for
 temporary effects that need independent cleanup.
 
-```typescript
+```typescript yage-context="entity"
 entity.timeScale = 0;    // freeze this one entity (scene keeps running)
 entity.timeScale = 0.5;  // this entity runs at half the scene's speed
 entity.timeScale = 2;    // ...or double it
@@ -266,8 +305,22 @@ will stop receiving `update()` calls.
 
 To update HUD text when pausing, modify it directly from the pause scene:
 
-```typescript
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
+import { UISurface, type UIText } from "@yagejs/ui";
+
+class GameScene extends Scene {
+  readonly name = "game";
+  statusText!: UIText; // set in onEnter
+
+  onEnter(): void {
+    this.statusText = this.spawn("hud").add(new UISurface()).text("Running");
+  }
+}
+
 class PauseScene extends Scene {
+  readonly name = "pause-menu";
+
   onEnter(): void {
     const game = engine.scenes.all.find(s => s.name === "game") as GameScene;
     game.statusText.setText("PAUSED");
@@ -286,7 +339,11 @@ class PauseScene extends Scene {
 
 Use `replace` to swap the current scene for the next level:
 
-```typescript
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
+
+class Level2Scene extends Scene { readonly name = "level-2"; }
+
 // Transition to next level (old scene is destroyed)
 engine.scenes.replace(new Level2Scene());
 ```
@@ -295,7 +352,11 @@ engine.scenes.replace(new Level2Scene());
 
 Use `push` for overlays that should dismiss back to the previous scene:
 
-```typescript
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
+
+class InventoryScene extends Scene { readonly name = "inventory"; }
+
 // Show inventory overlay
 engine.scenes.push(new InventoryScene());
 
@@ -310,7 +371,11 @@ a manual pop loop — it routes through the same transition queue as the
 other scene mutations, so it's safe to call during a transition without
 racing against in-flight pushes/pops.
 
-```typescript
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
+
+class MainMenuScene extends Scene { readonly name = "main-menu"; }
+
 await engine.scenes.popAll();
 await engine.scenes.push(new MainMenuScene());
 ```
@@ -319,7 +384,11 @@ await engine.scenes.push(new MainMenuScene());
 
 Access other scenes on the stack via `engine.scenes.all`:
 
-```typescript
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
+
+class GameScene extends Scene { readonly name = "game"; }
+
 const gameScene = engine.scenes.all.find(
   (s) => s.name === "game"
 ) as GameScene | undefined;
@@ -330,20 +399,41 @@ if (gameScene) {
 ```
 
 For loose coupling, use the engine-level `EventBus` instead of direct
-references:
+references. The bus is keyed by event name, not by `defineEvent` tokens. Add
+your event's name and payload type to the `EngineEvents` interface:
 
 ```typescript
-import { EventBusKey, defineEvent } from "@yagejs/core";
+import { EventBusKey, Scene } from "@yagejs/core";
+import { UISurface, type UIText } from "@yagejs/ui";
 
-const GamePaused = defineEvent("game:paused");
+declare module "@yagejs/core" {
+  interface EngineEvents {
+    "game:paused": undefined;
+  }
+}
 
-// Emit from pause scene
-this.context.resolve(EventBusKey).emit(GamePaused);
+class PauseScene extends Scene {
+  readonly name = "pause-menu";
 
-// Listen from game scene
-this.context.resolve(EventBusKey).on(GamePaused, () => {
-  this.statusText.setText("PAUSED");
-});
+  onEnter(): void {
+    // Emit from pause scene
+    this.context.resolve(EventBusKey).emit("game:paused", undefined);
+  }
+}
+
+class GameScene extends Scene {
+  readonly name = "game";
+  statusText!: UIText; // set in onEnter
+
+  onEnter(): void {
+    this.statusText = this.spawn("hud").add(new UISurface()).text("Running");
+
+    // Listen from game scene
+    this.context.resolve(EventBusKey).on("game:paused", () => {
+      this.statusText.setText("PAUSED");
+    });
+  }
+}
 ```
 
 ## Pause on Tab Blur
@@ -351,7 +441,7 @@ this.context.resolve(EventBusKey).on(GamePaused, () => {
 `SceneManager` can automatically pause every active scene when the tab is
 hidden, and restore them on return. Opt in per engine instance:
 
-```typescript
+```typescript yage-context="engine"
 import { SceneManagerKey } from "@yagejs/core";
 
 const scenes = engine.context.resolve(SceneManagerKey);
