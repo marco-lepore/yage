@@ -466,10 +466,12 @@ different:
 
 ```typescript
 import { Scene } from "@yagejs/core";
+import type { SceneLightingOptions } from "@yagejs/lighting";
 
 class CaveScene extends Scene {
   readonly name = "cave";
-  readonly lighting = {
+  // Typed so "mix" stays a blend mode instead of widening to string.
+  readonly lighting: SceneLightingOptions = {
     bounce: { strength: 0.6, radius: 60, blend: "mix" },
   };
 }

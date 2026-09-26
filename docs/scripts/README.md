@@ -39,6 +39,13 @@ the group's virtual TypeScript files. Paths must be relative, end in `.ts` or
 the same check mode and contexts. The default virtual file is `index.ts`
 (`index.tsx` for TSX).
 
+Every fence sees the type augmentations of every package, as a game with all
+of them installed does. For example, a `Scene` subclass's `lighting` field is
+checked against `@yagejs/lighting`'s options even if the fence never imports
+that package. What a fence declares itself stays in that fence: a
+`declare global`, a `declare module` augmentation or a triple-slash reference
+reaches no other fence.
+
 `yage-context="scene,async"` selects explicit typed hosts and one optional
 syntax wrapper. Contexts never supply game entities, services, models or
 imports that the example omits.

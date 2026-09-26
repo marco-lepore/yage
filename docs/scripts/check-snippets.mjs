@@ -543,7 +543,13 @@ function buildVirtualSource(parts, path) {
 
 export function checkDocuments(
   documents,
-  { root = repoRoot, entries = declarationEntries(root) } = {},
+  {
+    root = repoRoot,
+    entries = declarationEntries(root),
+    // Groups per shared program. Larger batches build fewer programs but
+    // hold more files in memory at once.
+    batchSize = 200,
+  } = {},
 ) {
   const snippets = [];
   const errors = [];
@@ -720,34 +726,70 @@ export function checkDocuments(
     group.push(source);
     groups.set(source.group, group);
   }
+  // Every virtual file is a module, so groups cannot see each other's
+  // declarations and can share a program; one program per group made the
+  // full corpus take minutes. A group that can add globals (a global or
+  // module augmentation, or a triple-slash reference) still gets a program of
+  // its own, so nothing it declares reaches another fence. Every program
+  // loads every package's declarations, so each fence sees the type
+  // augmentations a game with those packages installed sees, whatever else
+  // shares its program.
+  const addsGlobals = (group) =>
+    group.some((source) =>
+      /\bdeclare\s+(?:global|module)\b|^\s*\/\/\/\s*<reference\s/m.test(
+        source.text,
+      ),
+    );
+  const batches = [];
+  let shared = [];
   for (const group of groups.values()) {
-    activeFiles = new Set(group.map((source) => source.path));
-    const program = ts.createProgram([...activeFiles], options, host);
+    if (addsGlobals(group)) batches.push([group]);
+    else {
+      shared.push(group);
+      if (shared.length === batchSize) {
+        batches.push(shared);
+        shared = [];
+      }
+    }
+  }
+  if (shared.length) batches.push(shared);
+  let oldProgram;
+  for (const batch of batches) {
+    activeFiles = new Set(batch.flat().map((source) => source.path));
+    const program = ts.createProgram(
+      [...activeFiles, ...Object.values(entries)],
+      options,
+      host,
+      oldProgram,
+    );
+    oldProgram = program;
     for (const diagnostic of program.getOptionsDiagnostics())
       record(diagnostic);
-    let dirty = false;
-    for (const source of group) {
-      const syntax = program.getSyntacticDiagnostics(
-        program.getSourceFile(source.path),
-      );
-      if (syntax.length) dirty = true;
-      syntax.forEach(record);
-    }
-    for (const source of group) {
-      if (dirty) {
-        for (const part of source.parts)
-          if (!part.diagnostics.length)
-            part.diagnostics.push({
-              code: "syntax-group",
-              line: part.line,
-              column: 1,
-              message:
-                "Type checking is blocked by a syntax error in this virtual group.",
-            });
-      } else if (source.parts[0].metadata.check !== "syntax") {
-        program
-          .getSemanticDiagnostics(program.getSourceFile(source.path))
-          .forEach(record);
+    for (const group of batch) {
+      let dirty = false;
+      for (const source of group) {
+        const syntax = program.getSyntacticDiagnostics(
+          program.getSourceFile(source.path),
+        );
+        if (syntax.length) dirty = true;
+        syntax.forEach(record);
+      }
+      for (const source of group) {
+        if (dirty) {
+          for (const part of source.parts)
+            if (!part.diagnostics.length)
+              part.diagnostics.push({
+                code: "syntax-group",
+                line: part.line,
+                column: 1,
+                message:
+                  "Type checking is blocked by a syntax error in this virtual group.",
+              });
+        } else if (source.parts[0].metadata.check !== "syntax") {
+          program
+            .getSemanticDiagnostics(program.getSourceFile(source.path))
+            .forEach(record);
+        }
       }
     }
   }

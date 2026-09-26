@@ -174,10 +174,12 @@ a lit street very little. It is off unless set, and it never changes what
 
 ```ts
 import { Scene } from "@yagejs/core";
+import type { SceneLightingOptions } from "@yagejs/lighting";
 
 class CaveScene extends Scene {
   readonly name = "cave";
-  readonly lighting = {
+  // Typed, or `blend` widens to string and fails against BounceBlend.
+  readonly lighting: SceneLightingOptions = {
     bounce: {
       strength: 0.8, // 0..1, how strongly the blurred copy shows
       radius: 90, // blur radius in screen pixels
@@ -411,9 +413,10 @@ world transform. A uniform positive scale resizes the shape; any other scale
 turns it into a scaled outline, matching how a physics collider follows entity
 scale. Store durable occluder settings in the game's explicit save root.
 
-An enabled occluder is opaque to `levelAt()`, to `levelGridInto()`, and to the
-built-in overlay renderer. Disabling the component or its entity lets light
-through again. Custom renderers read `LightingWorld.occluders`.
+An enabled occluder is opaque to `levelAt()`, to `levelGridInto()`, and to
+both built-in renderers, `overlayLighting()` and `shaderLighting()`. Disabling
+the component or its entity lets light through again. Custom renderers read
+`LightingWorld.occluders`.
 
 A wide lamp costs more to query than a point lamp, because every occluder in
 reach is projected onto the lamp rather than tested once for a hit: about

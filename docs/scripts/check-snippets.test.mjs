@@ -96,6 +96,29 @@ test("built YAGE declarations expose valid examples and deliberate violations", 
     ],
     ["global-isolation", fence("foreignGameValue;")],
     [
+      "augmentation-declaration",
+      fence(
+        'import "@yagejs/core";\ndeclare module "@yagejs/core" {\n  interface Scene {\n    snippetOnlyField: number;\n  }\n}',
+      ),
+    ],
+    [
+      "augmentation-isolation",
+      fence(
+        'import type { Scene } from "@yagejs/core";\ndeclare const scene: Scene;\nscene.snippetOnlyField;',
+      ),
+    ],
+    [
+      "reference-declaration",
+      fence('/// <reference types="vite/client" />\nimport.meta.env.DEV;'),
+    ],
+    ["reference-isolation", fence("import.meta.env.DEV;")],
+    [
+      "package-augmentation",
+      fence(
+        'import { Scene } from "@yagejs/core";\nclass Cave extends Scene {\n  readonly name = "cave";\n  readonly lighting = { bounce: { strength: 1, radius: 1, blend: "max" } };\n}',
+      ),
+    ],
+    [
       "group",
       fence(
         "export const value = 3;",
@@ -178,6 +201,8 @@ test("built YAGE declarations expose valid examples and deliberate violations", 
     "scene",
     "inline-import",
     "expectation-string",
+    "augmentation-declaration",
+    "reference-declaration",
     "group",
     "reordered",
     "browser",
@@ -207,6 +232,22 @@ test("built YAGE declarations expose valid examples and deliberate violations", 
     assert.ok(codes(name).includes("directive"), name);
   assert.deepEqual(codes("suppression-string"), [2322]);
   assert.ok(codes("global-isolation").includes(2304));
+  // Fences share programs, but one fence's augmentations and references
+  // never reach another; a package's own augmentations always apply.
+  assert.ok(codes("augmentation-isolation").includes(2339));
+  assert.ok(codes("reference-isolation").includes(2339));
+  assert.ok(codes("package-augmentation").includes(2416));
+  const isolated = checkDocuments(documents, { batchSize: 1 });
+  assert.deepEqual(
+    isolated.snippets.map(({ status, diagnostics }) => ({
+      status,
+      codes: diagnostics.map(({ code }) => code),
+    })),
+    report.snippets.map(({ status, diagnostics }) => ({
+      status,
+      codes: diagnostics.map(({ code }) => code),
+    })),
+  );
   assert.ok(codes("conflict").includes("directive"));
   assert.equal(named("reordered").length, 2);
   assert.ok(codes("check-conflict").includes("directive"));
