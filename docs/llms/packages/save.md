@@ -27,7 +27,8 @@ engine.use(new SavePlugin({ save }));
 
 Save consumes any `Serializable<T>`. The reactive factories live in `@yagejs/core`:
 
-```ts
+```ts yage-group="save" yage-file="persistence/stores.ts"
+// game/persistence/stores.ts
 import {
   createStore,
   createRecord,
@@ -37,14 +38,31 @@ import {
   createSet,
   createList,
 } from "@yagejs/core";
+import { save } from "./save.js";
 
 interface Potion {
   name: string;
   quality: number;
 }
+interface SettingsData {
+  audio: { music: number; sfx: number };
+  vsync: boolean;
+}
+export type RunData = {
+  chapter: number;
+  coins: number;
+  inventory: string[];
+  position: { x: number; y: number };
+};
+export const initialRun = (): RunData => ({
+  chapter: 1,
+  coins: 0,
+  inventory: [],
+  position: { x: 0, y: 0 },
+});
 
 // Compound — bundle leaves so they serialize/restore atomically.
-const game = createStore((s) => ({
+export const game = createStore((s) => ({
   inventory: s.map<string, number>(),
   recipes: s.set<string>(),
   gold: s.counter({ default: 0 }),
@@ -66,6 +84,7 @@ save.autoPersist("save-stores.run", game);
 export const settings = createRecord<SettingsData>({
   default: () => ({ audio: { music: 0.8, sfx: 1.0 }, vsync: true }),
 });
+export const saves = createRecord<RunData>({ default: initialRun });
 export const opened = createSet<string>();
 export const defeated = createMap<string, number>();
 ```
@@ -83,7 +102,20 @@ Shape APIs (every leaf also exposes `subscribe(fn)`, `serialize()`, `hydrate(raw
 
 ### Migrating N leaf factories to one compound
 
-```ts
+```ts yage-group="save" yage-file="migrate-to-compound.ts"
+import {
+  createCounter,
+  createRecord,
+  createSet,
+  createStore,
+} from "@yagejs/core";
+import { save } from "./persistence/save.js";
+
+interface RunData {
+  chapter: number;
+  coins: number;
+}
+
 // Before — three save documents, three autoPersist calls.
 const progression = createRecord<RunData>({
   default: () => ({ chapter: 1, coins: 0 }),
@@ -107,11 +139,17 @@ save.autoPersist("run", game);
 
 All methods take `(id, thing, opts?)`. `thing` is any `Serializable<T>`; the id and optional version live at the call site.
 
-```ts
+```ts yage-group="save" yage-file="api.ts"
+import { save } from "./persistence/save.js";
+import { game, settings, opened, defeated } from "./persistence/stores.js";
+
 // Unslotted single-document
 await save.persist("settings", settings);
 await save.restore("settings", settings);
-await Promise.all([save.restore("a", a), save.restore("b", b)]);
+await Promise.all([
+  save.restore("world.opened", opened),
+  save.restore("world.defeated", defeated),
+]);
 
 // Slotted with typed metadata
 interface RunMeta {
@@ -131,13 +169,27 @@ await save.deleteSlot("run", "manual-1");
 const stop = save.autoPersist("settings", settings);
 
 // Multi-profile via hierarchical slot names + prefix filter
+const profile = "alice"; // the active profile's name
 await save.saveSlot("run", `${profile}/manual-1`, game);
 await save.listSlots("run", { prefix: `${profile}/` });
 ```
 
 `version` is optional on every write/read (defaults to `1`). Migration runs on read when stored version < current:
 
-```ts
+```ts yage-group="save" yage-file="versioning.ts"
+import { createRecord } from "@yagejs/core";
+import { save } from "./persistence/save.js";
+
+interface V1 {
+  coins: number;
+}
+interface V2 {
+  coins: number;
+  chapter: number;
+}
+const migrateV1ToV2 = (old: V1): V2 => ({ ...old, chapter: 1 });
+const game = createRecord<V2>({ default: () => ({ coins: 0, chapter: 1 }) });
+
 await save.restore("run", game, {
   version: 2,
   migrate: (old, fromVersion) => migrateV1ToV2(old as V1),
@@ -154,8 +206,19 @@ Errors:
 
 ## Boot pattern
 
-```ts
+```ts yage-group="save" yage-file="persistence/save.ts"
+// game/persistence/save.ts
+import { createSave, localStorageAdapter } from "@yagejs/save";
+
+export const save = createSave({
+  adapter: localStorageAdapter({ namespace: "my-game" }),
+});
+```
+
+```ts yage-group="save" yage-file="main.ts"
 // game/main.ts
+import { Engine } from "@yagejs/core";
+import { SavePlugin } from "@yagejs/save";
 import { settings, saves, opened, defeated } from "./persistence/stores.js";
 import { save } from "./persistence/save.js";
 
@@ -175,22 +238,29 @@ await engine.start();
 
 ## Continue pattern
 
-```ts
+```ts yage-group="save" yage-file="continue.ts"
+import { save } from "./persistence/save.js";
+import { saves } from "./persistence/stores.js";
+
 const slots = await save.listSlots("saves");
-if (slots.length > 0) {
-  const latest = slots.sort((a, b) => b.savedAt - a.savedAt)[0];
+const latest = slots.sort((a, b) => b.savedAt - a.savedAt)[0];
+if (latest) {
   await save.loadSlot("saves", latest.name, saves);
 }
 ```
 
 ## Component access
 
-```ts
+```ts yage-group="save" yage-file="checkpoint.ts"
+import { Component, defineEvent } from "@yagejs/core";
 import { SaveServiceKey } from "@yagejs/save";
+import { saves } from "./persistence/stores.js";
+
+const Rested = defineEvent("rested");
 
 class CheckpointOnRest extends Component {
-  setup() {
-    this.entity.on(Rested, async () => {
+  onAdd() {
+    this.listen(this.entity, Rested, async () => {
       const save = this.use(SaveServiceKey);
       await save.saveSlot("saves", "auto", saves);
     });
@@ -203,12 +273,13 @@ class CheckpointOnRest extends Component {
 Stores accept a `Codec<T, TEncoded>` for non-JSON-native value types. `TEncoded` defaults to `T` for identity codecs and appears in `serialize()`/`hydrate()` and `RestoreOptions.migrate` so migrations get the right type. Built-ins live in `@yagejs/core`:
 
 ```ts
-import { jsonCodec, setCodec, mapCodec, dateCodec } from "@yagejs/core";
+import type { Codec } from "@yagejs/core";
 
-jsonCodec<T>(); // Codec<T, T>            — identity (default)
-setCodec<K>(); // Codec<Set<K>, K[]>
-mapCodec<K, V>(); // Codec<Map<K,V>, [K,V][]>
-dateCodec(); // Codec<Date, string>    — ISO string
+// Built-in codecs exported by @yagejs/core:
+declare function jsonCodec<T>(): Codec<T, T>; // identity (default)
+declare function setCodec<K>(): Codec<Set<K>, K[]>;
+declare function mapCodec<K, V>(): Codec<Map<K, V>, [K, V][]>;
+declare function dateCodec(): Codec<Date, string>; // ISO string
 ```
 
 `createSet`/`createMap`/`createCounter`/`createList` bundle codecs internally — you only specify a codec for `createRecord<T>` / `createValue<T>` (and the compound `s.record`/`s.value` leaves) when `T` contains exotic types. When a custom codec changes the encoded shape (e.g. `Date → string`), declare both generics: `createValue<Date, string>({ default: () => new Date(), codec: dateCodec() })`.
@@ -216,16 +287,23 @@ dateCodec(); // Codec<Date, string>    — ISO string
 ## Adapters
 
 ```ts
-import { localStorageAdapter, memoryAdapter } from "@yagejs/save";
+import type { SaveAdapter } from "@yagejs/save";
 
-localStorageAdapter({ namespace?: string })  // browser; namespaces every key
-memoryAdapter()                              // in-memory; tests + Node
+// Adapter factories exported by @yagejs/save:
+// Browser; namespaces every key.
+declare function localStorageAdapter(opts?: {
+  namespace?: string;
+}): SaveAdapter;
+// In-memory; tests + Node.
+declare function memoryAdapter(): SaveAdapter;
 ```
 
 `SaveAdapter` interface:
 
 ```ts
-interface SaveAdapter {
+import type { SaveAdapter as BaseSaveAdapter } from "@yagejs/save";
+
+interface SaveAdapter extends BaseSaveAdapter {
   read(key: string): Promise<string | null>;
   write(key: string, value: string): Promise<void>;
   delete(key: string): Promise<void>;
@@ -252,7 +330,11 @@ saves/m                    ← slot manifest (savedAt + metadata)
 
 `version` + `migrate` live on the read call (`restore` / `loadSlot` / `autoPersist`), not on the primitive. Per-leaf migration is not supported.
 
-```ts
+```ts yage-group="save" yage-file="migration.ts"
+import { createRecord, createStore } from "@yagejs/core";
+import { save } from "./persistence/save.js";
+import { initialRun, type RunData } from "./persistence/stores.js";
+
 // Single record:
 const saves = createRecord<RunData>({ default: () => initialRun() });
 await save.restore("saves", saves, {
@@ -285,6 +367,7 @@ A stored version newer than the read's `version` throws `StoreVersionTooNewError
 ## Test setup
 
 ```ts
+import { beforeEach } from "vitest";
 import { createSave, memoryAdapter } from "@yagejs/save";
 import { createRecord } from "@yagejs/core";
 

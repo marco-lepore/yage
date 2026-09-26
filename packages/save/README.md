@@ -15,7 +15,7 @@ Most save data is _intentional_ — settings, save slots, world facts,
 progression. Define typed stores at module scope, construct one `Save`
 instance, register it via the plugin.
 
-```ts
+```ts yage-group="readme"
 import { Engine, createStore, createRecord, createSet } from "@yagejs/core";
 import { createSave, SavePlugin, localStorageAdapter } from "@yagejs/save";
 
@@ -52,12 +52,15 @@ engine.use(new SavePlugin({ save }));
 
 In-game components resolve the registered Save through `SaveServiceKey`:
 
-```ts
+```ts yage-group="readme"
+import { Component, defineEvent } from "@yagejs/core";
 import { SaveServiceKey } from "@yagejs/save";
 
+const Rested = defineEvent("rested");
+
 class CheckpointOnRest extends Component {
-  setup() {
-    this.entity.on(Rested, async () => {
+  onAdd() {
+    this.listen(this.entity, Rested, async () => {
       const save = this.use(SaveServiceKey);
       await save.saveSlot("saves", "auto", game);
     });
@@ -67,15 +70,13 @@ class CheckpointOnRest extends Component {
 
 Save slots with typed metadata:
 
-```ts
+```ts yage-group="readme"
 interface RunMeta {
   location: string;
   playtime: number;
 }
 await save.saveSlot<unknown, RunMeta>("saves", "manual-1", game, {
-  metadata: {
-    /* … */
-  },
+  metadata: { location: "Forest Temple", playtime: 60 },
 });
 const slots = await save.listSlots<RunMeta>("saves");
 await save.loadSlot("saves", "manual-1", game);

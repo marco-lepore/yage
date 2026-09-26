@@ -29,9 +29,10 @@ implementing three contracts: `Reactive` (subscribe), `Serializable<T>`
 
 ### Compound `createStore` (primary)
 
-```typescript
+```typescript yage-group="save" yage-file="persistence/stores.ts"
 // game/persistence/stores.ts
 import { createStore } from "@yagejs/core";
+import { save } from "./save.js";
 
 export interface Potion { name: string; quality: number }
 
@@ -78,15 +79,34 @@ fine-grained subscriptions read individual leaves.
 When a single primitive doesn't belong inside a larger tree, use the leaf
 factories directly:
 
-```typescript
+```typescript yage-group="save" yage-file="persistence/stores.ts"
 import {
   createRecord, createValue, createCounter,
   createMap, createSet, createList,
 } from "@yagejs/core";
 
+export interface SettingsData {
+  audio: { music: number; sfx: number };
+  vsync: boolean;
+}
+
+export type RunData = {
+  chapter: number;
+  coins: number;
+  inventory: string[];
+  position: { x: number; y: number };
+};
+
+export const initialRun = (): RunData => ({
+  chapter: 1, coins: 0, inventory: [], position: { x: 0, y: 0 },
+});
+
 export const settings = createRecord<SettingsData>({
   default: () => ({ audio: { music: 0.8, sfx: 1.0 }, vsync: true }),
 });
+
+// The run in progress. The save slots below store copies of it.
+export const saves = createRecord<RunData>({ default: initialRun });
 
 export const opened    = createSet<string>();
 export const defeated  = createMap<string, number>();
@@ -113,6 +133,8 @@ gone from `serialize()` too. Deleting a key that isn't there changes nothing and
 notifies nobody.
 
 ```typescript
+import { createRecord } from "@yagejs/core";
+
 const flags = createRecord<Record<string, string | number | boolean>>({
   default: () => ({}),
 });
@@ -134,6 +156,8 @@ Inventories, registries, and similar collections often need "find or update the
 entry for key X". Pass `keyBy` so the list maintains a key→id index:
 
 ```typescript
+import { createList } from "@yagejs/core";
+
 const inventory = createList<{ itemId: string; quantity: number }>({
   keyBy: (slot) => slot.itemId,
 });
@@ -165,7 +189,12 @@ If your game grew a `createRecord` here, a `createCounter` there, and several
 `createSet`s — each with its own `autoPersist` call — the compound collapses
 them into one save target with atomic writes:
 
-```typescript
+```typescript yage-group="save" yage-file="migrate-to-compound.ts"
+import { createCounter, createRecord, createSet, createStore } from "@yagejs/core";
+import { save } from "./persistence/save.js";
+
+interface RunData { chapter: number; coins: number }
+
 // Before — three save documents, three autoPersist calls.
 const progression = createRecord<RunData>({ default: () => ({ chapter: 1, coins: 0 }) });
 const deaths      = createCounter();
@@ -188,7 +217,7 @@ save.autoPersist("run", game);
 Construct `Save` once in your entry point. The plugin only registers it under
 `SaveServiceKey` for in-game DI access — boot-time work uses `save` directly.
 
-```typescript
+```typescript yage-group="save" yage-file="persistence/save.ts"
 // game/persistence/save.ts
 import { createSave, localStorageAdapter } from "@yagejs/save";
 
@@ -197,7 +226,7 @@ export const save = createSave({
 });
 ```
 
-```typescript
+```typescript yage-group="save" yage-file="main.ts"
 // game/main.ts
 import { Engine } from "@yagejs/core";
 import { SavePlugin } from "@yagejs/save";
@@ -221,7 +250,10 @@ Settings change rarely and should write to disk on every change. `autoPersist`
 subscribes to the value and writes on every change, coalescing multiple
 synchronous `set` calls into one write per microtask.
 
-```typescript
+```typescript yage-group="save" yage-file="settings.ts"
+import { save } from "./persistence/save.js";
+import { settings } from "./persistence/stores.js";
+
 await save.restore("settings", settings);            // load on boot
 const stop = save.autoPersist("settings", settings);
 
@@ -240,7 +272,10 @@ Slots are named instances of a value. Use them for "save game" semantics.
 Each slot has optional metadata persisted alongside the value (timestamp,
 location, thumbnail, anything you want).
 
-```typescript
+```typescript yage-group="save" yage-file="slots.ts"
+import { save } from "./persistence/save.js";
+import { saves } from "./persistence/stores.js";
+
 interface RunMeta {
   location: string;
   playtime: number;
@@ -262,10 +297,13 @@ await save.deleteSlot("saves", "manual-1");
 
 ### Continue (load latest)
 
-```typescript
+```typescript yage-group="save" yage-file="continue.ts"
+import { save } from "./persistence/save.js";
+import { saves } from "./persistence/stores.js";
+
 const slots = await save.listSlots("saves");
-if (slots.length > 0) {
-  const latest = slots.sort((a, b) => b.savedAt - a.savedAt)[0];
+const latest = slots.sort((a, b) => b.savedAt - a.savedAt)[0];
+if (latest) {
   await save.loadSlot("saves", latest.name, saves);
 }
 ```
@@ -275,7 +313,11 @@ if (slots.length > 0) {
 If you have profiles (per-user save banks), use hierarchical slot names with
 the `prefix` filter:
 
-```typescript
+```typescript yage-group="save" yage-file="profiles.ts"
+import { save } from "./persistence/save.js";
+import { saves } from "./persistence/stores.js";
+
+const profile = "alice"; // the active profile's name
 await save.saveSlot("saves", `${profile}/manual-1`, saves);
 const profileSlots = await save.listSlots("saves", { prefix: `${profile}/` });
 ```
@@ -288,12 +330,16 @@ game code, which keeps the primitive simple.
 Components and scenes resolve the registered Save instance through
 `SaveServiceKey`:
 
-```typescript
+```typescript yage-group="save" yage-file="checkpoint.ts"
+import { Component, defineEvent } from "@yagejs/core";
 import { SaveServiceKey } from "@yagejs/save";
+import { saves } from "./persistence/stores.js";
+
+const Rested = defineEvent("rested");
 
 class CheckpointOnRest extends Component {
-  setup() {
-    this.entity.on(Rested, async () => {
+  onAdd() {
+    this.listen(this.entity, Rested, async () => {
       const save = this.use(SaveServiceKey);
       await save.saveSlot("saves", "auto", saves);
     });
@@ -308,7 +354,11 @@ class CheckpointOnRest extends Component {
 changes and pass `migrate` to transform older payloads. Per-leaf migration
 inside a compound is not supported — migrate the tree as a whole.
 
-```typescript
+```typescript yage-group="save" yage-file="migration.ts"
+import { createRecord, createStore } from "@yagejs/core";
+import { save } from "./persistence/save.js";
+import { initialRun, type RunData } from "./persistence/stores.js";
+
 // Single record — migrate the record value.
 const saves = createRecord<RunData>({ default: () => initialRun() });
 await save.restore("saves", saves, {
@@ -346,12 +396,13 @@ identity codecs, and surfaces in `serialize()`/`hydrate()` and
 `RestoreOptions.migrate` so migrations get the right type. Built-ins:
 
 ```typescript
-import { jsonCodec, setCodec, mapCodec, dateCodec } from "@yagejs/core";
+import type { Codec } from "@yagejs/core";
 
-jsonCodec<T>()    // Codec<T, T>             — identity (default)
-setCodec<K>()     // Codec<Set<K>, K[]>
-mapCodec<K, V>()  // Codec<Map<K,V>, [K,V][]>
-dateCodec()       // Codec<Date, string>     — ISO string
+// Built-in codecs exported by @yagejs/core:
+declare function jsonCodec<T>(): Codec<T, T>;                 // identity (default)
+declare function setCodec<K>(): Codec<Set<K>, K[]>;
+declare function mapCodec<K, V>(): Codec<Map<K, V>, [K, V][]>;
+declare function dateCodec(): Codec<Date, string>;            // ISO string
 ```
 
 `createSet`/`createMap`/`createCounter`/`createList` bundle the right codec —
@@ -364,10 +415,13 @@ types: `createValue<Date, string>({ default: () => new Date(), codec: dateCodec(
 ## Adapters
 
 ```typescript
-import { localStorageAdapter, memoryAdapter } from "@yagejs/save";
+import type { SaveAdapter } from "@yagejs/save";
 
-localStorageAdapter({ namespace?: string })  // browser
-memoryAdapter()                              // tests + Node
+// Adapter factories exported by @yagejs/save:
+// browser
+declare function localStorageAdapter(opts?: { namespace?: string }): SaveAdapter;
+// tests + Node
+declare function memoryAdapter(): SaveAdapter;
 ```
 
 The `SaveAdapter` interface is intentionally minimal — `read`, `write`,
@@ -379,6 +433,7 @@ cloud sync) plug in here.
 Construct fresh state per test, swap in `memoryAdapter`:
 
 ```typescript
+import { expect, it } from "vitest";
 import { createRecord } from "@yagejs/core";
 import { createSave, memoryAdapter } from "@yagejs/save";
 
