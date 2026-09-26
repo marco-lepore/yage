@@ -36,8 +36,24 @@ way:
 
 ```typescript
 import { describe, it, expect } from "vitest";
-import { createMockEntity } from "@yagejs/core";
-import { HealthComponent } from "../HealthComponent";
+import { Component, createMockEntity } from "@yagejs/core";
+
+class HealthComponent extends Component {
+  current: number;
+
+  constructor({ max }: { max: number }) {
+    super();
+    this.current = max;
+  }
+
+  get isDead(): boolean {
+    return this.current === 0;
+  }
+
+  takeDamage(amount: number): void {
+    this.current = Math.max(0, this.current - amount);
+  }
+}
 
 describe("HealthComponent", () => {
   it("clamps health to zero", () => {
@@ -62,16 +78,20 @@ engine calls it, and a test calls it directly. Systems read the active scene
 from the `SceneManager`, which a mock scene has no engine to provide. Register
 a stand-in that reports your scene as the active one:
 
-```typescript
+```typescript yage-group="system"
 import { describe, it, expect } from "vitest";
 import {
+  Component,
   createMockScene,
   Phase,
   System,
   SceneManagerKey,
   type SceneManager,
 } from "@yagejs/core";
-import { VelocityComponent } from "../VelocityComponent";
+
+class VelocityComponent extends Component {
+  y = 0;
+}
 
 class GravitySystem extends System {
   readonly phase = Phase.FixedUpdate;
@@ -120,7 +140,9 @@ without `onRegister` a system that defines the hook never runs its setup.
 In a game, a system reaches the engine through a plugin's `registerSystems`,
 and registration has to happen before `engine.start()`:
 
-```typescript
+```typescript yage-group="system"
+import { Engine } from "@yagejs/core";
+
 const engine = new Engine();
 engine.use({
   name: "gravity",
@@ -138,10 +160,38 @@ Construct your scene yourself and push it onto the engine's scene stack:
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createTestEngine, advanceFrames, Transform } from "@yagejs/core";
+import {
+  Component,
+  Entity,
+  Scene,
+  createTestEngine,
+  advanceFrames,
+  Transform,
+} from "@yagejs/core";
 import type { Engine } from "@yagejs/core";
-import { GameScene } from "../GameScene";
-import { Player } from "../Player";
+
+class MoveRight extends Component {
+  private readonly transform = this.sibling(Transform);
+
+  update(dt: number): void {
+    this.transform.translate(100 * dt, 0);
+  }
+}
+
+class Player extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(new MoveRight());
+  }
+}
+
+class GameScene extends Scene {
+  readonly name = "game";
+
+  onEnter(): void {
+    this.spawn(Player, { key: "player" });
+  }
+}
 
 describe("Player movement integration", () => {
   let engine: Engine;
@@ -204,9 +254,13 @@ import {
   advanceFrames,
   Process,
   ProcessComponent,
+  Scene,
 } from "@yagejs/core";
 import type { Engine } from "@yagejs/core";
-import { GameScene } from "../GameScene";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
 
 describe("Process timing", () => {
   let engine: Engine;
@@ -244,7 +298,7 @@ For the interpolation math alone, no engine is needed. `Process.delay` and the
 `Tween` factories return a `Process`, and `_update(dt)` advances it by `dt`
 seconds — the same call the engine makes each frame:
 
-```typescript
+```typescript yage-context="vitest"
 import { Tween, easeLinear } from "@yagejs/core";
 
 it("tweens alpha to zero", () => {
@@ -278,7 +332,9 @@ tests that build the same entities in the same order see the same IDs.
 
 Test that components handle error conditions gracefully:
 
-```typescript
+```typescript yage-context="vitest"
+import { createMockEntity } from "@yagejs/core";
+
 it("does not crash when destroying an already-destroyed entity", () => {
   const { entity } = createMockEntity();
   entity.destroy();
@@ -307,6 +363,9 @@ with `debug: true` and it attaches itself to `window.__yage__` during
 live running game.
 
 ```typescript
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+
 const engine = new Engine({ debug: true });
 engine.use(new RendererPlugin({ width: 800, height: 600 }));
 await engine.start();
@@ -315,7 +374,7 @@ await engine.start();
 Once the engine is running, query it from the browser console (or from any
 code that has access to `window`):
 
-```typescript
+```typescript yage-context="browser"
 // Full engine state — frame count, scene stack, entity counts, errors
 window.__yage__.inspector.snapshot();
 
@@ -336,10 +395,12 @@ const spriteState = window.__yage__.inspector.getComponentData(
 
 // Or address one specific entity by its id, when several share a name
 const lantern = all.filter((e) => e.name === "lantern")[2];
-const lightState = window.__yage__.inspector.getComponentData(
-  lantern.id,
-  "LightSource",
-);
+if (lantern) {
+  const lightState = window.__yage__.inspector.getComponentData(
+    lantern.id,
+    "LightSource",
+  );
+}
 ```
 
 ### API Reference
@@ -380,7 +441,7 @@ component carries a derived facet with world-space `bounds` and component-local
 also reports per-glyph visibility and the visible substring, so a typewriter
 reveal is verifiable from the public API instead of reaching into Pixi:
 
-```typescript
+```typescript yage-context="browser,vitest"
 import type { SplitTextRenderFacet } from "@yagejs/renderer";
 
 const scene = window.__yage__.inspector.snapshot().scenes[0];
@@ -404,7 +465,7 @@ for the full facet shape.
 automatic playback and manual stepping. Snapshot, event-log and logger frame
 numbers share that count. Compare with a baseline taken before the action:
 
-```typescript
+```typescript yage-context="inspector,vitest"
 await inspector.drive(async ({ step }) => {
   const before = inspector.time.getFrame();
   await step(3);
@@ -423,7 +484,7 @@ whole operation, so await each before issuing another.
 Clear the log before an action when testing a new occurrence, and advance
 frames while the wait is pending:
 
-```typescript
+```typescript yage-context="inspector,vitest"
 await inspector.drive(async ({ events, input }) => {
   events.clearLog();
   const [hit] = await Promise.all([

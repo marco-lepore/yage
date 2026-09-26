@@ -10,7 +10,7 @@ npm install @yagejs/particles
 
 ## Usage
 
-```ts
+```ts yage-group="usage" yage-context="entity"
 import { Engine } from "@yagejs/core";
 import {
   ParticlesPlugin,
@@ -24,7 +24,7 @@ engine.use(new ParticlesPlugin());
 
 Attach an emitter to an entity:
 
-```ts
+```ts yage-group="usage" yage-context="entity"
 entity.add(
   new ParticleEmitterComponent({
     ...ParticlePresets.fire(),

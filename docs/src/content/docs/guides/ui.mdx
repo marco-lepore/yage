@@ -11,7 +11,7 @@ For a React-based alternative, see [UI (React)](/guides/ui-react).
 
 ## UIPlugin Setup
 
-```typescript
+```typescript yage-context="engine"
 import { UIPlugin } from "@yagejs/ui";
 
 engine.use(new UIPlugin());
@@ -26,7 +26,8 @@ tree. Its `root` property is the tree's root `UIPanel` element — the builder
 methods below forward to it, and APIs that take a `UIElement` (like
 `attachTooltip`) accept `surface.root`.
 
-```typescript
+```typescript yage-context="scene-enter"
+import { Transform } from "@yagejs/core";
 import { UISurface, Anchor } from "@yagejs/ui";
 
 const ui = this.spawn("hud");
@@ -81,8 +82,11 @@ for there to be anything to scroll. So shrinking and wrapping are **opt-in**:
   `flexBasis: auto` (the content's natural width), so a long label still
   overflows and pushes the neighbours.
 
-```ts
+```ts yage-context="entity"
+import { UISurface } from "@yagejs/ui";
+
 // Fixed icon · growing + wrapping text column · fixed button — the common row.
+const row = entity.get(UISurface).panel({ direction: "row", width: 240 });
 row.panel({ width: 16, height: 16 });                    // fixed (flexShrink 0)
 const col = row.panel({ flex: 1, direction: "column" }); // fills & wraps
 col.text("a long label that wraps within the column");
@@ -129,14 +133,16 @@ The `Anchor` enum positions panels relative to the screen:
 ```typescript
 import { Anchor } from "@yagejs/ui";
 
-Anchor.TopLeft      Anchor.TopCenter      Anchor.TopRight
-Anchor.CenterLeft   Anchor.Center         Anchor.CenterRight
-Anchor.BottomLeft   Anchor.BottomCenter   Anchor.BottomRight
+Anchor.TopLeft;     Anchor.TopCenter;     Anchor.TopRight;
+Anchor.CenterLeft;  Anchor.Center;        Anchor.CenterRight;
+Anchor.BottomLeft;  Anchor.BottomCenter;  Anchor.BottomRight;
 ```
 
 Add an offset to fine-tune position:
 
 ```typescript
+import { Anchor, UISurface } from "@yagejs/ui";
+
 new UISurface({
   anchor: Anchor.TopRight,
   offset: { x: -16, y: 16 },
@@ -147,8 +153,9 @@ To move a mounted tree later, call `setOffset(x, y)` on the surface. It changes
 the same offset the `offset` option sets, so calling it every frame animates a
 panel sliding in or out. The `offset` getter reads the current value back.
 
-```typescript
+```typescript yage-context="entity"
 import { ProcessComponent, Tween, easeOutQuad } from "@yagejs/core";
+import { UISurface } from "@yagejs/ui";
 
 const menu = entity.get(UISurface);
 const pc = entity.add(new ProcessComponent());
@@ -208,7 +215,10 @@ This option is orthogonal to the layer's space:
 The common "nameplate above an enemy" pattern:
 
 ```typescript
-import { ScreenFollow } from "@yagejs/renderer";
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
+import { GraphicsComponent, ScreenFollow } from "@yagejs/renderer";
+import type { CameraEntity } from "@yagejs/renderer";
+import { Anchor, UISurface } from "@yagejs/ui";
 
 class Enemy extends Entity {
   setup(params: {
@@ -251,6 +261,22 @@ class EnemyNameplate extends Entity {
     panel.text(params.label, { fontSize: 11, fill: 0xffffff });
   }
 }
+
+// The health component and body the enemy adds above.
+class Health extends Component {
+  constructor(readonly options: { max: number }) {
+    super();
+  }
+}
+
+class EnemyBody extends Entity {
+  setup(params: { color: number }) {
+    this.add(new Transform());
+    this.add(new GraphicsComponent().draw((g) => {
+      g.circle(0, 0, 16).fill(params.color);
+    }));
+  }
+}
 ```
 
 The offset is in **screen pixels** — 40 world units above at zoom=1 and
@@ -269,13 +295,16 @@ axis to stay on-screen, and — because it re-anchors every frame against the
 trigger's live geometry — stays glued to world-space / camera-transformed
 triggers like the `ScreenFollow` namecard above.
 
-```ts
-import { attachTooltip, UIPanel, UIText } from "@yagejs/ui";
+```ts yage-context="entity"
+import { attachTooltip, UIPanel, UISurface, UIText } from "@yagejs/ui";
+
+// `entity` is an EnemyNameplate from the example above.
+const panel = entity.get(UISurface);
 
 // `anchor` is any UIElement — for an entity-mounted UISurface (here the
 // namecard) pass its root panel. It's read only for positioning;
 // attachTooltip never wires hover onto it.
-const tip = attachTooltip(panel.root, this.scene, {
+const tip = attachTooltip(panel.root, entity.scene, {
   placement: "top", // side, or side-align (e.g. "bottom-start"); default "top"
   offset: 8,        // px gap between trigger and bubble (default 6)
   maxWidth: 200,    // px; long content wraps + clamps to available space
@@ -333,7 +362,9 @@ this automatically through its normal render update.
 
 Add text to a panel with the builder API:
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
+import { UISurface } from "@yagejs/ui";
+
 const panel = entity.get(UISurface);
 
 const label = panel.text("Score: 0", {
@@ -361,7 +392,7 @@ string `"ellipsis"` appends. The default `"…"` is a single character (U+2026)
 that not every pixel font includes, so pass `"..."` for a font without it. A
 button passes `truncate` and `truncateWith` on to its label.
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 // The third argument carries the rest of the UIText props.
 panel.text(
   "Sword of the Northern Kings",
@@ -395,7 +426,7 @@ new UIText({ children: "HUD", resolution: window.devicePixelRatio });
 
 The `.text()` builder takes both props in its third argument:
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 panel.text("SCORE", { fontFamily: "PressStart", fontSize: 16 }, { bitmap: true });
 ```
 
@@ -464,7 +495,13 @@ change, so keep static and simple dynamic labels on `UIText`.
 
 ## Buttons
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
+import { Scene } from "@yagejs/core";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
+
 const btn = panel.button("Start Game", {
   width: 200,       // optional — omit to shrink-to-content
   height: 50,       // optional — omit to shrink-to-content
@@ -509,7 +546,7 @@ For a fixed-size button whose label might be longer than the box — especially
 with variable-length (i18n) strings — pass `truncate: "clip" | "ellipsis"` to
 keep the label on a single line so it can't spill past the frame:
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 panel.button("A label that is too long to fit", {
   width: 120,
   truncate: "ellipsis", // → "A label that is…"
@@ -529,7 +566,7 @@ stacks its children in a column and centres them on both axes, so an icon
 beside a label needs `direction: "row"`. `gap`, `padding`, `alignItems` and
 `justifyContent` work the same way they do on a panel:
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 import { UIImage } from "@yagejs/ui";
 
 const saveBtn = panel.button("Save", {
@@ -537,19 +574,19 @@ const saveBtn = panel.button("Save", {
   gap: 6,
   onClick: () => {},
 });
-saveBtn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
+saveBtn.addElement(new UIImage({ texture: "save-icon", width: 16, height: 16 }));
 ```
 
 ### Nine-Slice Buttons
 
 Use a texture background for scalable button artwork:
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 panel.button("Play", {
   width: 180,
   height: 48,
   background: {
-    texture: buttonTexture,
+    texture: "button-frame",
     mode: "nine-slice",
     nineSlice: { left: 12, top: 12, right: 12, bottom: 12 },
   },
@@ -577,7 +614,7 @@ import { UIImage, UIProgressBar, UICheckbox } from "@yagejs/ui";
 
 ### Images
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 const img = new UIImage({
   texture: "save-icon",
   width: 32,
@@ -597,7 +634,7 @@ Set one of `width` / `height` and the other follows the texture's aspect ratio,
 so a fixed-height card keeps the picture's proportions. Set both and the texture
 stretches to that box:
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 // 58 px tall, as wide as the picture needs.
 panel.addElement(new UIImage({ texture: "card-art", height: 58 }));
 
@@ -619,7 +656,9 @@ together: a 100 x 50 texture at `height: 50, maxWidth: 40` renders 40 x 20.
 
 ### Progress Bars
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
+import { UIProgressBar } from "@yagejs/ui";
+
 const bar = new UIProgressBar({
   width: 200,
   height: 20,
@@ -641,7 +680,9 @@ The bar clamps a value to 0–1, so `value` reads back `1` after
 
 ### Checkboxes
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
+import { UICheckbox } from "@yagejs/ui";
+
 const cb = new UICheckbox({
   label: "Fullscreen",
   checked: false,
@@ -675,8 +716,14 @@ direction goes to the nearest row that way, measured on the laid-out boxes, so
 the order a player moves through is the order on screen. Rows that are hidden
 or disabled are passed over.
 
-```typescript
+```typescript yage-group="menu" yage-context="entity,engine"
 import { Anchor, UISurface } from "@yagejs/ui";
+
+// Your game's own actions.
+declare function resume(): void;
+declare function openOptions(): void;
+declare function quit(): void;
+declare function playCursorCue(): void;
 
 const menu = entity.add(new UISurface({
   anchor: Anchor.Center,
@@ -707,6 +754,8 @@ The default names are `move-up`, `move-down`, `move-left`, `move-right`,
 differ in yours:
 
 ```typescript
+import { UISurface } from "@yagejs/ui";
+
 new UISurface({
   focus: { input: { confirm: ["interact", "attack"], cancel: "menu-back" } },
 });
@@ -723,7 +772,7 @@ Focus draws nothing until you ask for it. Nothing is the default because a
 menu's focused row is a look you design: most games put a marker beside it and
 move the marker from `onFocusChange`.
 
-```typescript
+```typescript yage-group="menu" yage-context="entity,engine"
 const line = menu.panel({ direction: "row", gap: 6, alignItems: "center" });
 const marker = line.text("", { fontSize: 12 }, { width: 10 });
 
@@ -742,7 +791,9 @@ For the package's own outline, ask for one with `focusStyle`: once on the
 plugin for every focused row, or on one element, overriding the plugin's field
 by field.
 
-```typescript
+```typescript yage-group="menu" yage-context="entity,engine"
+import { UIPlugin } from "@yagejs/ui";
+
 engine.use(new UIPlugin({ focusStyle: { color: 0x7dd3fc, width: 2 } }));
 
 menu.button("Quit", { width: 220, focusStyle: { width: 3 } });
@@ -780,7 +831,7 @@ mouse left off.
 
 `pointerFocus` on the scope decides which pointer input moves the focus:
 
-```typescript
+```typescript yage-group="menu" yage-context="entity,engine"
 new UISurface({ focus: { pointerFocus: "hover" } });
 
 menu.focusScope?.setOptions({ pointerFocus: "none" }); // applies at once
@@ -824,7 +875,9 @@ A row that changes a value rather than opening something takes `onAdjust`: left
 and right step the value and keep the focus, while up and down still move to
 the next row.
 
-```typescript
+```typescript yage-group="menu" yage-context="entity,engine"
+declare function upload(): void;
+
 let volume = 60;
 
 const row = menu.panel({
@@ -864,7 +917,11 @@ Focus entering a row inside a `UIScrollView` scrolls the list to it, keeping
 `scrollPadding` pixels clear of the edge (8 by default). Your code reads no
 viewport size and no offset:
 
-```typescript
+```typescript yage-group="menu" yage-context="entity,engine"
+// Your game's save slots and loader.
+declare const slots: { id: string; label: string; empty: boolean }[];
+declare function load(id: string): void;
+
 const list = menu.scrollView({ width: 220, height: 140, gap: 4 });
 
 slots.forEach((slot, index) => {
@@ -899,7 +956,9 @@ dialog's rows never appear in the menu's list, and the menu's rows never
 appear in the dialog's. Hide the dialog and the menu picks up on the row it
 had.
 
-```typescript
+```typescript yage-group="menu" yage-context="entity,engine"
+declare function deleteSave(): void;
+
 const confirmDelete = menu.panel({
   gap: 8,
   padding: 12,
@@ -923,7 +982,12 @@ For a panel that wants the keys while the world behind it stays clickable —
 an inventory beside a live battlefield, a HUD panel a player navigates with
 the d-pad — turn it off:
 
-```typescript
+```typescript yage-context="entity"
+import { UISurface } from "@yagejs/ui";
+
+declare function closeInventory(): void;
+
+const hud = entity.get(UISurface);
 const inventory = hud.panel({
   focus: { onCancel: () => closeInventory(), modal: false },
 });
@@ -959,7 +1023,10 @@ the dialogue and interaction addons, which poll `interact` as well. Separate
 them with [action groups](/guides/input/#action-groups), on the
 `InputManager` you resolved from the engine context:
 
-```typescript
+```typescript yage-context="context"
+import { InputManagerKey } from "@yagejs/input";
+
+const input = context.resolve(InputManagerKey);
 input.setActiveGroups(["menu"]);  // while the menu is up
 input.setActiveGroups(["gameplay", "movement"]);  // when it closes
 ```
@@ -970,7 +1037,11 @@ input.setActiveGroups(["gameplay", "movement"]);  // when it closes
 method works whether or not a device is attached, which is what a cutscene, a
 radial menu or a unit test uses:
 
-```typescript
+```typescript yage-group="menu" yage-context="entity,engine"
+import type { UIButton } from "@yagejs/ui";
+
+declare const firstSaveRow: UIButton; // the first row of the save list
+
 const scope = menu.focusScope;
 
 scope?.move("down");        // true when the press was used: a move, an adjust, an open list
@@ -1028,6 +1099,10 @@ field in another:
 
 ```typescript
 import { isCapturingInput } from "@yagejs/ui";
+import type { PixiInput, UIText } from "@yagejs/ui";
+
+declare const nameField: PixiInput;
+declare const movementHint: UIText;
 
 // Hide the movement prompt while the player is naming a save or picking a mode.
 movementHint.visible = !isCapturingInput(nameField);
@@ -1037,7 +1112,9 @@ movementHint.visible = !isCapturingInput(nameField);
 
 Build complex layouts with nested panels:
 
-```typescript
+```typescript yage-context="entity"
+import { UISurface } from "@yagejs/ui";
+
 const menu = entity.get(UISurface);
 
 // Header row
@@ -1058,7 +1135,9 @@ buttons.button("Cancel", { width: 100, height: 40, onClick: () => { /* ... */ } 
 
 Toggle panel visibility at runtime:
 
-```typescript
+```typescript yage-context="entity"
+import { UISurface } from "@yagejs/ui";
+
 const panel = entity.get(UISurface);
 panel.visible = false;  // hide
 panel.visible = true;   // show
@@ -1066,7 +1145,7 @@ panel.visible = true;   // show
 
 Child elements also support visibility:
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 label.visible = false;
 btn.visible = true;
 ```
@@ -1078,7 +1157,7 @@ shared `LayoutProps`. Use them to lift an element out of its parent's flex
 flow and pin it against the parent's content box — handy for overlays,
 badges, and HUD markers.
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 // Pin a notification badge to the top-right of its parent.
 const badge = panel.panel({
   position: "absolute",
@@ -1116,13 +1195,17 @@ Each is also a property on the element, so a tween can drive it. A card that
 grows about its centre while the pointer is on it, and draws over its
 neighbours while it does:
 
-```typescript
+```typescript yage-group="scale" yage-context="entity"
 import {
   ProcessComponent,
   Tween,
   easeOutBack,
   easeOutQuad,
 } from "@yagejs/core";
+import { UISurface } from "@yagejs/ui";
+
+const menu = entity.get(UISurface);
+const row = menu.panel({ direction: "row", gap: 12 });
 
 const pc = entity.get(ProcessComponent);
 const card = row.panel({
@@ -1147,7 +1230,7 @@ const card = row.panel({
 
 A dialog that springs open from nothing, about its centre:
 
-```typescript
+```typescript yage-group="scale" yage-context="entity"
 const dialog = menu.panel({
   padding: 12,
   transformOrigin: 0.5,
@@ -1185,15 +1268,17 @@ throws, naming the element and the prop.
 Backgrounds can be a solid color or a texture:
 
 ```typescript
+import type { BackgroundOptions } from "@yagejs/ui";
+
 // Solid color with rounded corners
-{ color: 0x222222, alpha: 0.9, radius: 8 }
+const solid: BackgroundOptions = { color: 0x222222, alpha: 0.9, radius: 8 };
 
 // Texture (nine-slice for scaling)
-{
+const framed: BackgroundOptions = {
   texture: "panel-frame",
   mode: "nine-slice",
   nineSlice: { left: 16, top: 16, right: 16, bottom: 16 },
-}
+};
 ```
 
 An element reads the options when you pass them. Changing a field on that
@@ -1201,7 +1286,9 @@ object afterwards does not change what is drawn. To change a background, pass
 a new object. It replaces the previous options whole: a field you leave out
 takes its default, not its previous value.
 
-```typescript
+```typescript yage-context="entity"
+import { UISurface } from "@yagejs/ui";
+
 const menu = entity.get(UISurface);
 const card = menu.panel({
   padding: 8,

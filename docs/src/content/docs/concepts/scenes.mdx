@@ -13,8 +13,14 @@ are pushed onto or popped from the scene stack.
 
 Extend the `Scene` base class:
 
-```typescript
-import { Scene, Transform, Vec2 } from "@yagejs/core";
+```typescript yage-group="gameplay" yage-context="engine"
+import { Component, Scene, Transform, Vec2 } from "@yagejs/core";
+
+class PlayerController extends Component {
+  update(dt: number): void {
+    // read input and move the player by dt
+  }
+}
 
 class GameplayScene extends Scene {
   readonly name = "gameplay";
@@ -67,11 +73,18 @@ per-frame logic:
 
 ```typescript
 import {
+  Component,
   Process,
   ProcessSystemKey,
   Scene,
   makeSceneScopedQueue,
 } from "@yagejs/core";
+
+class ParallaxDrift extends Component {
+  update(dt: number): void {
+    // shift the backdrop a few pixels by dt
+  }
+}
 
 class ArenaScene extends Scene {
   readonly name = "arena";
@@ -122,7 +135,11 @@ the transition ends.
 
 The engine exposes a stack-based scene manager:
 
-```typescript
+```typescript yage-group="gameplay" yage-context="engine"
+class GameOverScene extends Scene {
+  readonly name = "game-over";
+}
+
 // Push a new scene onto the stack
 engine.scenes.push(new GameplayScene());
 
@@ -169,7 +186,7 @@ unpaired. A dev-mode warning flags this case.
 
 Scenes provide helpers to find entities:
 
-```typescript
+```typescript yage-context="scene"
 // Find an entity by name (returns first match or undefined)
 const player = scene.findEntity("player");
 
@@ -184,7 +201,9 @@ const all = scene.getEntities();
 `tags`, `trait`, and a `filter` predicate — and an entity has to pass every
 one of them that the call supplies:
 
-```typescript
+```typescript yage-context="scene"
+import { Transform } from "@yagejs/core";
+
 const closeEnemies = scene.findEntities({
   tags: ["enemy"],
   filter: (e) => e.get(Transform).position.x < 400,
@@ -195,7 +214,11 @@ const closeEnemies = scene.findEntities({
 `TraitToken<T>`, the call returns `(Entity & T)[]`, so the trait's own members
 read off each result without a cast:
 
-```typescript
+```typescript yage-context="scene"
+import { defineTrait } from "@yagejs/core";
+
+const Openable = defineTrait<{ open(): void }>("Openable");
+
 for (const chest of scene.findEntities({ trait: Openable })) {
   chest.open(); // typed through the trait
 }
@@ -211,12 +234,16 @@ their type, so a call carrying one still returns `Entity[]`. See
 Scenes are always classes. Override `onEnter` to spawn entities, resolve
 services, and wire up the scene:
 
-```typescript
+```typescript yage-context="engine"
 import { Component, Scene, SceneManagerKey, Transform, Vec2 } from "@yagejs/core";
 import { SpriteComponent, texture } from "@yagejs/renderer";
 import { InputManagerKey } from "@yagejs/input";
 
 const LogoTex = texture("assets/logo.png");
+
+class GameplayScene extends Scene {
+  readonly name = "gameplay";
+}
 
 // Per-frame input polling lives in a Component, not in the Scene.
 class TitleController extends Component {
@@ -254,12 +281,18 @@ internal pending chain and runs after the current mutation finishes. The
 returned promise resolves once the deferred operation completes.
 
 ```typescript
+import { Scene, SceneManagerKey } from "@yagejs/core";
+
+class GameplayScene extends Scene {
+  readonly name = "gameplay";
+}
+
 class TitleScene extends Scene {
   readonly name = "title";
 
   onEnter() {
     // Skip the title screen if a saved game exists — fully safe inside onEnter.
-    if (saveSystem.hasAutosave()) {
+    if (localStorage.getItem("autosave") !== null) {
       this.context.resolve(SceneManagerKey).replace(new GameplayScene());
     }
   }

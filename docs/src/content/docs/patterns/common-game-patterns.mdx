@@ -10,20 +10,30 @@ This page covers practical patterns that come up in most games built with YAGE.
 Spawn entities dynamically using `scene.spawn`:
 
 ```typescript
-// Simple spawn
-const bullet = this.scene.spawn("bullet");
-bullet.add(new Transform({ position: firePos }));
-bullet.add(new SpriteComponent({ texture: bulletTex }));
-bullet.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
-bullet.add(new ColliderComponent({ shape: { type: "circle", radius: 4 } }));
-bullet.get(RigidBodyComponent).setVelocity(direction.scale(800));
+import { Component, Transform, type Vec2 } from "@yagejs/core";
+import { SpriteComponent, texture } from "@yagejs/renderer";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+
+const bulletTex = texture("assets/bullet.png");
+
+class Gun extends Component {
+  fire(firePos: Vec2, direction: Vec2): void {
+    // Simple spawn
+    const bullet = this.scene.spawn("bullet");
+    bullet.add(new Transform({ position: firePos }));
+    bullet.add(new SpriteComponent({ texture: bulletTex }));
+    bullet.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
+    bullet.add(new ColliderComponent({ shape: { type: "circle", radius: 4 } }));
+    bullet.get(RigidBodyComponent).setVelocity(direction.scale(800));
+  }
+}
 ```
 
 For reusable entity templates, prefer an `Entity` subclass with a
 `setup()` method — see the [Entity Subclasses](/patterns/entity-subclasses/)
 guide:
 
-```typescript
+```typescript yage-context="scene"
 import { Entity, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
@@ -33,7 +43,7 @@ interface CoinParams { x: number; y: number; }
 class Coin extends Entity {
   override setup({ x, y }: CoinParams): void {
     this.add(new Transform({ position: new Vec2(x, y) }));
-    this.add(new GraphicsComponent().draw(drawCoin));
+    this.add(new GraphicsComponent().draw((g) => g.circle(0, 0, 10).fill(0xffd700)));
     this.add(new RigidBodyComponent({ type: "static" }));
     this.add(new ColliderComponent({
       shape: { type: "circle", radius: 10 },
@@ -42,7 +52,7 @@ class Coin extends Entity {
   }
 }
 
-this.scene.spawn(Coin, { x: 200, y: 300 });
+scene.spawn(Coin, { x: 200, y: 300 });
 ```
 
 `defineBlueprint` is still available for parametric factories where a
@@ -54,7 +64,7 @@ ticks alongside the construction logic.
 
 Destroy entities when they're no longer needed:
 
-```typescript
+```typescript yage-context="entity"
 entity.destroy();
 ```
 
@@ -64,7 +74,7 @@ during `update()` or event handlers.
 Always check `isDestroyed` when iterating entities that might be destroyed
 mid-loop:
 
-```typescript
+```typescript yage-context="scene"
 for (const entity of scene.getEntities()) {
   if (entity.isDestroyed) continue;
   // process entity...
@@ -78,7 +88,12 @@ Components are automatically cleaned up when their entity is destroyed.
 
 Attach child entities for health bars, indicators, or attached effects:
 
-```typescript
+```typescript yage-context="scene" yage-group="children"
+import { Transform, Vec2 } from "@yagejs/core";
+import { GraphicsComponent, SpriteComponent, texture } from "@yagejs/renderer";
+
+const playerTex = texture("assets/player.png");
+
 const player = scene.spawn("player");
 player.add(new Transform({ position: new Vec2(100, 100) }));
 player.add(new SpriteComponent({ texture: playerTex }));
@@ -86,7 +101,7 @@ player.add(new SpriteComponent({ texture: playerTex }));
 // Health bar follows the player
 const healthBar = scene.spawn("health-bar");
 healthBar.add(new Transform({ position: new Vec2(0, -30) })); // offset above
-healthBar.add(new GraphicsComponent().draw(drawHealthBar));
+healthBar.add(new GraphicsComponent().draw((g) => g.rect(-20, -3, 40, 6).fill(0x44dd44)));
 
 player.addChild("healthBar", healthBar);
 ```
@@ -99,7 +114,11 @@ name until the end-of-frame flush. Swapping one child for another under the same
 name in a single tick therefore starts with `removeChild`, which detaches the
 child and frees the name straight away:
 
-```typescript
+```typescript yage-context="scene" yage-group="children"
+import { Entity } from "@yagejs/core";
+
+class Shotgun extends Entity {}
+
 const old = player.removeChild("weapon"); // the name is free from here on
 old.destroy();
 player.spawnChild("weapon", Shotgun);
@@ -111,8 +130,10 @@ Use `ProcessSlot` for cooldowns and timed abilities:
 
 ```typescript
 import { Component, ProcessComponent, ProcessSlot } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
 
 class ShootAbility extends Component {
+  private readonly input = this.service(InputManagerKey);
   private pc = this.sibling(ProcessComponent);
   private cooldown!: ProcessSlot;
 
@@ -128,6 +149,10 @@ class ShootAbility extends Component {
       this.cooldown.start(); // begin the cooldown; completed is false until it elapses
     }
   }
+
+  private fireBullet(): void {
+    // spawn the bullet...
+  }
 }
 ```
 
@@ -136,10 +161,22 @@ The slot exposes `completed` and `running`, so you can gate actions on it.
 For repeating effects, give the slot an `onComplete`, then `restart()` it:
 
 ```typescript
-const wave = this.pc.slot({ duration: 0.5, onComplete: () => this.spawnWave() });
-wave.start();
-// later, to run it again:
-wave.restart();
+import { Component, ProcessComponent } from "@yagejs/core";
+
+class WaveSpawner extends Component {
+  private pc = this.sibling(ProcessComponent);
+
+  onAdd(): void {
+    const wave = this.pc.slot({ duration: 0.5, onComplete: () => this.spawnWave() });
+    wave.start();
+    // later, to run it again:
+    wave.restart();
+  }
+
+  private spawnWave(): void {
+    // spawn the next wave...
+  }
+}
 ```
 
 ## Named states
@@ -147,7 +184,7 @@ wave.restart();
 `StateMachine` keeps a component's valid modes and transitions in one table.
 Use it when a string field would otherwise be assigned from several places.
 
-```typescript
+```typescript yage-group="guard"
 import { Component, defineStates } from "@yagejs/core";
 
 class GuardBrain extends Component {
@@ -168,6 +205,11 @@ class GuardBrain extends Component {
       this.mode.go("patrol");
     }
     this.mode.tick(dt);
+  }
+
+  private seesPlayer(): boolean {
+    // line-of-sight check...
+    return false;
   }
 }
 ```
@@ -195,6 +237,8 @@ A few states tend to be reachable from everywhere, such as `hit` and `die`.
 Mark those with `fromAny: true` instead of repeating them in every `to` list:
 
 ```typescript
+import { defineStates } from "@yagejs/core";
+
 defineStates({
   patrol: { to: ["windup"] },
   windup: { to: ["strike"], for: 0.2, next: "strike" },
@@ -213,6 +257,12 @@ rather than while the table is built, it can read a field the constructor
 assigns after the machine field is initialized:
 
 ```typescript
+import { Component, defineStates } from "@yagejs/core";
+
+interface EnemyTuning {
+  windup: number;
+}
+
 class EnemyBrain extends Component {
   private readonly tuning: EnemyTuning;
 
@@ -238,11 +288,29 @@ commits, leaving the machine where it was.
 When a callback can arrive after the machine has moved on, ask first:
 
 ```typescript
-this.anim.playOneShot("hit", {
-  onComplete: () => {
-    if (this.mode.canGo("patrol")) this.mode.go("patrol");
-  },
-});
+import { Component, defineStates } from "@yagejs/core";
+import { AnimationController } from "@yagejs/renderer";
+
+class Guard extends Component {
+  private readonly anim = this.sibling(AnimationController);
+  readonly mode = this.stateMachine(
+    defineStates({
+      patrol: {},
+      hit: { fromAny: true, to: ["patrol"] },
+      die: { fromAny: true },
+    }),
+    "patrol",
+  );
+
+  takeHit(): void {
+    this.mode.go("hit");
+    this.anim.playOneShot("hit", {
+      onComplete: () => {
+        if (this.mode.canGo("patrol")) this.mode.go("patrol");
+      },
+    });
+  }
+}
 ```
 
 `canGo()` reports whether `go()` would move the machine, and never throws.
@@ -254,7 +322,9 @@ Every machine reports three events, typed with its own state names: `changed`
 A presentation component can follow the machine without the table knowing
 anything about animation:
 
-```typescript
+```typescript yage-group="guard"
+import { AnimationController } from "@yagejs/renderer";
+
 class GuardView extends Component {
   private readonly anim = this.sibling(AnimationController);
   private readonly guard = this.sibling(GuardBrain);
@@ -274,7 +344,16 @@ To let any component or the scene listen without holding a reference to the
 machine, give it a name for its events:
 
 ```typescript
-readonly mode = this.stateMachine(states, "patrol", { events: "mode" });
+import { Component, defineStates } from "@yagejs/core";
+
+const states = defineStates({
+  patrol: { to: ["alert"] },
+  alert: { to: ["patrol"] },
+});
+
+class GuardBrain extends Component {
+  readonly mode = this.stateMachine(states, "patrol", { events: "mode" });
+}
 ```
 
 The tokens are then published on the entity as `mode:changed`, `mode:entered`
@@ -293,6 +372,8 @@ A state that covers a sequence declares its phases with `states`, and the phase
 entered with it as `start`:
 
 ```typescript
+import { defineStates } from "@yagejs/core";
+
 defineStates({
   idle: { to: ["shoot", "hit"] },
   shoot: {
@@ -338,7 +419,11 @@ priorities, holds, or timed step windows.
 
 A simple health component:
 
-```typescript
+```typescript yage-context="scene" yage-group="health"
+import { Component, defineEvent } from "@yagejs/core";
+
+const EntityDied = defineEvent("entity:died");
+
 class HealthComponent extends Component {
   hp: number;
   readonly maxHp: number;
@@ -368,16 +453,29 @@ class HealthComponent extends Component {
 
 Handle damage via collision events:
 
-```typescript
-collider.onCollision((ev) => {
-  if (ev.started) {
-    const health = this.entity.tryGet(HealthComponent);
-    const damage = ev.other.tryGet(DamageComponent);
-    if (health && damage) {
-      health.takeDamage(damage.amount);
-    }
+```typescript yage-context="scene" yage-group="health"
+import { ColliderComponent } from "@yagejs/physics";
+
+class DamageComponent extends Component {
+  constructor(readonly amount: number) {
+    super();
   }
-});
+}
+
+class Hurtbox extends Component {
+  onAdd(): void {
+    const collider = this.entity.get(ColliderComponent);
+    collider.onCollision((ev) => {
+      if (ev.started) {
+        const health = this.entity.tryGet(HealthComponent);
+        const damage = ev.other.tryGet(DamageComponent);
+        if (health && damage) {
+          health.takeDamage(damage.amount);
+        }
+      }
+    });
+  }
+}
 ```
 
 ## Scoring
@@ -385,10 +483,13 @@ collider.onCollision((ev) => {
 Use events to decouple scoring from game objects:
 
 ```typescript
+import { Scene, defineEvent } from "@yagejs/core";
+
 const CoinCollected = defineEvent("coin:collected");
 const EnemyDefeated = defineEvent<{ points: number }>("enemy:defeated");
 
 class GameScene extends Scene {
+  readonly name = "game";
   private score = 0;
 
   onEnter(): void {
@@ -411,6 +512,16 @@ orchestrates state changes.
 For platformers, use a short downward raycast to detect ground:
 
 ```typescript
+import { Component, Transform } from "@yagejs/core";
+import {
+  PhysicsWorldKey,
+  RigidBodyComponent,
+  type PhysicsWorld,
+} from "@yagejs/physics";
+
+const PLAYER_HALF_HEIGHT = 16;
+const COYOTE_TIME = 0.1; // seconds
+
 class PlayerController extends Component {
   private readonly rb = this.sibling(RigidBodyComponent);
   private readonly transform = this.sibling(Transform);
@@ -428,6 +539,7 @@ class PlayerController extends Component {
       this.transform.worldPosition,
       { x: 0, y: 1 },          // down
       PLAYER_HALF_HEIGHT + 2,   // just past the feet
+      { excludeEntity: this.entity }, // skip the player's own collider
     );
 
     if (hit) {
@@ -448,24 +560,29 @@ ledge, making platforming feel more forgiving.
 
 Find specific entities by name:
 
-```typescript
+```typescript yage-context="scene"
 const player = scene.findEntity("player");
 ```
 
 Query entities by component:
 
-```typescript
+```typescript yage-context="scene" yage-group="health"
 import { filterEntities } from "@yagejs/core";
 
+class EnemyTag extends Component {}
+
 const enemies = filterEntities(scene.getEntities(), {
-  has: [EnemyTag, HealthComponent],
+  filter: (entity) => entity.has(EnemyTag) && entity.has(HealthComponent),
 });
 ```
 
 Or use the `QueryCache` for efficient repeated queries from systems:
 
-```typescript
+```typescript yage-context="scene" yage-group="health"
+import { Phase, System, QueryCacheKey, type QueryResult } from "@yagejs/core";
+
 class DamageSystem extends System {
+  readonly phase = Phase.Update;
   private enemies!: QueryResult;
 
   onRegister(): void {
