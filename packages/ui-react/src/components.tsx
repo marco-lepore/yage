@@ -67,12 +67,21 @@ const UIElementHost = "ui-element" as unknown as UIElementHostComponent;
 // accepts `ReactNode`, not just a string), and shorthand aliases (`bg` for
 // `background`) expanded by the reconciler's shared alias table — see
 // `reconciler.ts`'s `SHORTHAND_ALIASES` — before the element ever sees them.
+//
+// Every optional JSX prop also accepts an explicit `undefined`, which the
+// reconciler forwards as "reset this prop to its default" (see `diffProps`),
+// so `bg={cond ? x : undefined}` type-checks under
+// `exactOptionalPropertyTypes`. Required props stay required, and the
+// imperative `@yagejs/ui` options are unchanged.
 // ---------------------------------------------------------------------------
 
-export interface PanelProps extends Omit<
-  UIElementPanelProps,
-  "focusBackground"
-> {
+type OptionalResetProps<T> = {
+  [K in keyof T]: Record<never, never> extends Pick<T, K>
+    ? T[K] | undefined
+    : T[K];
+};
+
+interface PanelOptions extends Omit<UIElementPanelProps, "focusBackground"> {
   /**
    * Shorthand for `background` — expanded by the reconciler's shared alias
    * table. If both `bg` and `background` are passed, `background` wins.
@@ -88,9 +97,11 @@ export interface PanelProps extends Omit<
   focusBg?: BackgroundOptions;
 }
 
-export type TextProps = UIElementTextProps;
+export type PanelProps = OptionalResetProps<PanelOptions>;
 
-export interface ButtonProps extends Omit<
+export type TextProps = OptionalResetProps<UIElementTextProps>;
+
+interface ButtonOptions extends Omit<
   UIElementButtonProps,
   "children" | "hoverBackground" | "pressBackground" | "focusBackground"
 > {
@@ -122,13 +133,15 @@ export interface ButtonProps extends Omit<
   children?: ReactNode;
 }
 
-export type ImageProps = UIElementImageProps;
+export type ButtonProps = OptionalResetProps<ButtonOptions>;
 
-export type NineSliceProps = UIElementNineSliceProps;
+export type ImageProps = OptionalResetProps<UIElementImageProps>;
 
-export type ProgressBarProps = UIElementProgressBarProps;
+export type NineSliceProps = OptionalResetProps<UIElementNineSliceProps>;
 
-export type CheckboxProps = UIElementCheckboxProps;
+export type ProgressBarProps = OptionalResetProps<UIElementProgressBarProps>;
+
+export type CheckboxProps = OptionalResetProps<UIElementCheckboxProps>;
 
 // ---------------------------------------------------------------------------
 // JSX Components — thin wrappers that emit custom reconciler element types
@@ -178,7 +191,7 @@ export function ZStack(
   return <Panel width="100%" height="100%" position="relative" {...props} />;
 }
 
-export interface TooltipProps {
+interface TooltipOptions {
   /**
    * Tooltip body. A `string` / `number` is auto-wrapped in a `<Text>`
    * styled with `textStyle`; pass `ReactNode`s for rich content (icon +
@@ -220,6 +233,8 @@ export interface TooltipProps {
   /** The trigger element(s) the tooltip describes. */
   children: ReactNode;
 }
+
+export type TooltipProps = OptionalResetProps<TooltipOptions>;
 
 /**
  * Hover-driven floating label, Mantine-style: one wrapper, body in a
@@ -326,7 +341,7 @@ export function UIText(props: TextProps): React.JSX.Element {
   );
 }
 
-export type SplitTextProps = UIElementSplitTextProps;
+export type SplitTextProps = OptionalResetProps<UIElementSplitTextProps>;
 
 /**
  * Text split into per-character / per-word / per-line display objects for
@@ -433,7 +448,8 @@ export function Checkbox(props: CheckboxProps): React.JSX.Element {
 // @pixi/ui wrapper components
 // ---------------------------------------------------------------------------
 
-export type PixiFancyButtonReactProps = UIElementPixiFancyButtonProps;
+export type PixiFancyButtonReactProps =
+  OptionalResetProps<UIElementPixiFancyButtonProps>;
 
 /** @pixi/ui FancyButton with Yoga layout. */
 export function PixiFancyButton(
@@ -442,14 +458,16 @@ export function PixiFancyButton(
   return <UIElementHost _ctor={PixiFancyButtonNode} {...props} />;
 }
 
-export type PixiCheckboxReactProps = UIElementPixiCheckboxProps;
+export type PixiCheckboxReactProps =
+  OptionalResetProps<UIElementPixiCheckboxProps>;
 
 /** @pixi/ui CheckBox with Yoga layout. */
 export function PixiCheckbox(props: PixiCheckboxReactProps): React.JSX.Element {
   return <UIElementHost _ctor={PixiCheckboxNode} {...props} />;
 }
 
-export type PixiProgressBarReactProps = UIElementPixiProgressBarProps;
+export type PixiProgressBarReactProps =
+  OptionalResetProps<UIElementPixiProgressBarProps>;
 
 /**
  * @pixi/ui ProgressBar with Yoga layout. `bg`/`fill` are the upstream
@@ -463,24 +481,26 @@ export function PixiProgressBar(
   return <UIElementHost _ctor={PixiProgressBarNode} {...props} />;
 }
 
-export type PixiSliderReactProps = UIElementPixiSliderProps;
+export type PixiSliderReactProps = OptionalResetProps<UIElementPixiSliderProps>;
 
 /** @pixi/ui Slider with Yoga layout. */
 export function PixiSlider(props: PixiSliderReactProps): React.JSX.Element {
   return <UIElementHost _ctor={PixiSliderNode} {...props} />;
 }
 
-export type PixiInputReactProps = UIElementPixiInputProps;
+export type PixiInputReactProps = OptionalResetProps<UIElementPixiInputProps>;
 
 /** @pixi/ui Input with Yoga layout. */
 export function PixiInput(props: PixiInputReactProps): React.JSX.Element {
   return <UIElementHost _ctor={PixiInputNode} {...props} />;
 }
 
-export interface ScrollViewReactProps extends UIElementScrollViewProps {
+interface ScrollViewOptions extends UIElementScrollViewProps {
   /** Shorthand for `background` (see {@link PanelProps.bg}). */
   bg?: BackgroundOptions;
 }
+
+export type ScrollViewReactProps = OptionalResetProps<ScrollViewOptions>;
 
 /**
  * A clipped, scrollable container. Children are normal Yoga elements stacked
@@ -501,14 +521,15 @@ export const ScrollView = forwardRef<
   );
 });
 
-export type PixiSelectReactProps = UIElementPixiSelectProps;
+export type PixiSelectReactProps = OptionalResetProps<UIElementPixiSelectProps>;
 
 /** @pixi/ui Select dropdown with Yoga layout. */
 export function PixiSelect(props: PixiSelectReactProps): React.JSX.Element {
   return <UIElementHost _ctor={PixiSelectNode} {...props} />;
 }
 
-export type PixiRadioGroupReactProps = UIElementPixiRadioGroupProps;
+export type PixiRadioGroupReactProps =
+  OptionalResetProps<UIElementPixiRadioGroupProps>;
 
 /** @pixi/ui RadioGroup with Yoga layout. */
 export function PixiRadioGroup(
