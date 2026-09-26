@@ -1,5 +1,76 @@
 # @yagejs/renderer
 
+## 0.12.0
+
+### Patch Changes
+
+- [#391](https://github.com/marco-lepore/yage/pull/391) [`1f45e38`](https://github.com/marco-lepore/yage/commit/1f45e38d108b17e37a807c209b5d84159b88867c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Include the required `order` field in the default-layer examples in the `LayerDef` documentation.
+
+- [#377](https://github.com/marco-lepore/yage/pull/377) [`a7fd74e`](https://github.com/marco-lepore/yage/commit/a7fd74e75347a7a1b56ab18fcfb55f2f5cf4da46) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `GraphicsComponent` takes a `pivot` option: the point of the drawing, in the drawing's own pixels, that sits on the entity position and that rotation and scale act about.
+
+  ```ts
+  // The circle's centre sits on the entity, so the barrel rolls in place.
+  entity.add(
+    new GraphicsComponent({ layer: "world", pivot: { x: 0, y: -24 } }).draw(
+      (g) => {
+        g.circle(0, -24, 24).fill(0x8b5a2b);
+      },
+    ),
+  );
+  ```
+
+  It is the Graphics counterpart of the `anchor` that Sprite, AnimatedSprite, Text and SplitText take, measured in pixels rather than as a fraction because a drawing has no texture size. Both numbers must be finite; a `NaN` throws naming the component and the coordinate. The default, `{ x: 0, y: 0 }`, is the origin the `draw` callback draws around.
+
+  The renderer and core documentation state which point a rotation acts about: the entity's own position, for the entity's own space and for every descendant, with `anchor` or `pivot` choosing which point of the art lands there.
+
+- [#365](https://github.com/marco-lepore/yage/pull/365) [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Deliver pointer events and report what the user-interface hit test found.
+
+  `dispatchPointerEvent(type, point, button?)` sends a press, a release or a
+  move at a virtual-space point through Pixi's own event system, so a
+  `@yagejs/ui` button runs its `onClick` and stacking order, a disabled button's
+  pointer mode and clipping all apply. The event goes to the canvas and bubbles,
+  so `@yagejs/input` receives it too and applies it at the next drain. A move
+  carries whichever buttons an earlier press left held. Throws when no frame has
+  been drawn yet: the event boundary hit-tests against the last object rendered
+  and drops every event until one exists.
+
+  `hitTestUIPath(x, y)` returns the hit container and its ancestors, innermost
+  first, plus whether the chain crosses a pointer-consume surface. A caller that
+  needs to name the element under a point — matching it against an Inspector
+  snapshot, for one — reads the chain; `hitTestUI(x, y)` keeps its boolean
+  answer for callers that only need the claim.
+
+  `hasRenderedFrame()` reports whether a frame has been drawn.
+
+- [#366](https://github.com/marco-lepore/yage/pull/366) [`851310c`](https://github.com/marco-lepore/yage/commit/851310c54e04f5cdb52819050ca0a50f36b8e4c3) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A `SplitTextComponent` given an empty string renders nothing instead of throwing. Pixi's split of an empty string produces no line containers, and the split then called `addChild` with no arguments, which threw a `TypeError` naming Pixi internals. Mounting with an empty label, and clearing a label and setting it again, both work now; the empty state leaves `chars`, `words` and `lines` empty.
+
+- [#374](https://github.com/marco-lepore/yage/pull/374) [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Three additions: a size for `createTexture`, texture handles in a sheet frame source, and a `speed` option on `AnimatedSpriteComponent`.
+
+  `createTexture(draw, { width, height })` bakes exactly that region of the drawing, measured from `(0, 0)`. Without a size the texture is the drawn bounds, so its top-left corner is the first pixel drawn and a four-cell strip of circles bakes narrower than the cells it is sliced into. A non-finite or zero dimension throws naming the dimension.
+
+  ```ts
+  const strip = renderer.createTexture(
+    (g) => {
+      for (let i = 0; i < 4; i++)
+        g.circle(i * 32 + 16, 16, 6 + i * 2).fill(0xffcc00);
+    },
+    { width: 128, height: 32 },
+  );
+  ```
+
+  `SheetFrameSource.sheet` takes a `TextureRef`: an asset key, or the handle `texture(path)` returns. That is the pair `SpriteComponent`'s `texture` accepts, so a preload declaration flows into a frame source without reaching for its `path`. A grid error names the handle's key. `AtlasFrameSource.atlas` stays a key, because an atlas resolves as a `Spritesheet` and not as a texture.
+
+  `AnimatedSpriteComponent` takes `speed` at construction, applied before the first `play()`, matching the `speed` accessor and `play({ speed })`. A non-finite value throws naming the component and the option.
+
+  The documentation for texture fills and runtime textures carries two facts that go with the size option: a baked texture's origin without a size, and the alpha a standalone `g.texture(...)` call draws at.
+
+- [#367](https://github.com/marco-lepore/yage/pull/367) [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Support editing tilemaps in Tiled with automatic preview refresh.
+
+  Return Pixi asset cleanup completion to the asset manager so a reload waits for texture, spritesheet and bitmap-font resources to be released.
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0c90d77`](https://github.com/marco-lepore/yage/commit/0c90d774bdbda47f5a95c92ab7aef11d7a19e7b9), [`6888d06`](https://github.com/marco-lepore/yage/commit/6888d06c6fdf2361f41c5521ebdda83dc833b6c4), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`5efe5f6`](https://github.com/marco-lepore/yage/commit/5efe5f6de138b71048e6f4752ed74647a9fc3e76), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210)]:
+  - @yagejs/core@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes

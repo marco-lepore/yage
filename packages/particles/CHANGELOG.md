@@ -1,5 +1,56 @@
 # @yagejs/particles
 
+## 0.12.0
+
+### Minor Changes
+
+- [#364](https://github.com/marco-lepore/yage/pull/364) [`6fa0712`](https://github.com/marco-lepore/yage/commit/6fa07120abe2bce190a707c2711a3e6c1b7d764a) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A particle emitter now copies the configuration it is constructed with.
+
+  Nested values used to be kept by reference — a `[min, max]` array, a `Lerped` pair, `gravity`, `spawnOffset` — and the emitter re-read them at every spawn. Changing one after construction therefore changed future particles. That was never a documented technique, it depended on the value's shape (`angle: [0.3, 0.3]` was shared while `angle: 0.3` was not), and it slipped past the checks that run once at construction, so a `NaN` written into a range array reached every particle's velocity unnoticed.
+
+  Each of those values is now copied, so changing the object you passed in does nothing. No type error surfaces this: a build that relied on it keeps compiling and stops following the object.
+
+  Runtime changes go through the surfaces that exist for them:
+
+  ```ts
+  emitter.configure({ angle: [aim - 0.2, aim + 0.2] }); // from now on
+  emitter.burst(2, x, y, { angle: [aim - 0.2, aim + 0.2] }); // this burst only
+  ```
+
+### Patch Changes
+
+- [#364](https://github.com/marco-lepore/yage/pull/364) [`e8c93f5`](https://github.com/marco-lepore/yage/commit/e8c93f57bef781765abe236ded02a136ba4739d7) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fade particles in and out with `alphaFadeIn` and `alphaFadeOut`.
+
+  Both are fractions of a particle's own lifetime, 0-1, and both default to 0. They multiply whatever `alpha` produces rather than replacing it, so a particle can fade in, hold the value `alpha` gives it, and fade out:
+
+  ```ts
+  { lifetime: [1, 2], alpha: 0.6, alphaFadeIn: 0.15, alphaFadeOut: 0.4 }
+  ```
+
+  `configure({ alphaFadeIn, alphaFadeOut })` changes both after construction. Both are read from the emitter every frame for every live particle, like `gravity` and `damping`, so a change reaches particles already in flight on the next frame. That is also why neither is a burst override.
+
+  Alpha had two points and no ramp, so an emitter spreading particles across an area popped each one in at full opacity. A fade-in spawns the particle at 0 instead.
+
+  Two things to know. A hand-rolled fade such as `alpha: { start: 0, end: 1 }` multiplies with `alphaFadeIn` rather than being replaced by it, so the particle fades in twice, once from each. Fractions that add up to more than 1 overlap and multiply in the middle, so alpha never reaches the value `alpha` asked for; that is legal, not an error. `scale` has no envelope, and the presets are unchanged.
+
+- [#364](https://github.com/marco-lepore/yage/pull/364) [`fb52b18`](https://github.com/marco-lepore/yage/commit/fb52b18a52d42178a81cc1c787d463bb395005d2) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Change a particle emitter after it is built, and vary a single burst.
+
+  `configure(options)` sets the emitter's configuration from now on: `lifetime`, `speed`, `angle`, `scale`, `alpha`, `rotation`, `rotationSpeed`, `tint`, `spawnOffset`, `radialSpeed`, `rate`, `gravity`, `damping` and `blendMode`. The spawn-time options — everything in that list up to `radialSpeed` — are resolved once per particle, so a particle already in flight keeps what it was spawned with and the next particle spawned uses the new value. `gravity` and `damping` are read from the emitter every frame for every live particle, so they reach particles already in flight on the next frame.
+
+  `burst` takes an optional overrides object as its last argument. Those values apply to the particles that burst spawns and to nothing else — not to the emitter's own configuration, and not to any particle already alive. An effect whose direction follows the action can now aim per burst instead of holding one emitter per direction:
+
+  ```ts
+  emitter.burst(2, fistX, fistY, { angle: [swing - 0.18, swing + 0.18] });
+  ```
+
+  Both surfaces check the whole merged configuration and throw on a bad value, the same way construction does; a rejected `configure` leaves every previous value in force. `maxParticles`, `layer`, `simulationSpace` and the texture source are fixed when the emitter is built, so naming one of them in either method's options is a type error. TypeScript does not report extra keys that come from a spread, so a spread can still pass one of them. Each method ignores any option outside its own type. `configure({ ...ParticlePresets.fire() })`, for example, applies everything in the preset except its `maxParticles` and `shape`. An option passed as `undefined` leaves that setting unchanged.
+
+  The `sparks` preset described itself as "directional" while it emits into a full circle with downward gravity. Its description now says what it does.
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0c90d77`](https://github.com/marco-lepore/yage/commit/0c90d774bdbda47f5a95c92ab7aef11d7a19e7b9), [`1f45e38`](https://github.com/marco-lepore/yage/commit/1f45e38d108b17e37a807c209b5d84159b88867c), [`6888d06`](https://github.com/marco-lepore/yage/commit/6888d06c6fdf2361f41c5521ebdda83dc833b6c4), [`a7fd74e`](https://github.com/marco-lepore/yage/commit/a7fd74e75347a7a1b56ab18fcfb55f2f5cf4da46), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`851310c`](https://github.com/marco-lepore/yage/commit/851310c54e04f5cdb52819050ca0a50f36b8e4c3), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`5efe5f6`](https://github.com/marco-lepore/yage/commit/5efe5f6de138b71048e6f4752ed74647a9fc3e76), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210)]:
+  - @yagejs/core@0.12.0
+  - @yagejs/renderer@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes

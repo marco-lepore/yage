@@ -1,5 +1,15 @@
 # @yagejs-addons/synth
 
+## 0.3.0
+
+### Patch Changes
+
+- [#391](https://github.com/marco-lepore/yage/pull/391) [`c156b12`](https://github.com/marco-lepore/yage/commit/c156b127ceaa5d0c3ee625f83f3bbe7ff49cc530) Thanks [@marco-lepore](https://github.com/marco-lepore)! - The `SynthJingleOverrides` documentation lists `duration` among the fields a jingle rejects, and points to `noteDuration` for note length.
+
+- Updated dependencies [[`e34a1bb`](https://github.com/marco-lepore/yage/commit/e34a1bbcd6b07aeb517145eb170135179ee28020), [`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0c90d77`](https://github.com/marco-lepore/yage/commit/0c90d774bdbda47f5a95c92ab7aef11d7a19e7b9), [`6888d06`](https://github.com/marco-lepore/yage/commit/6888d06c6fdf2361f41c5521ebdda83dc833b6c4), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`5efe5f6`](https://github.com/marco-lepore/yage/commit/5efe5f6de138b71048e6f4752ed74647a9fc3e76), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210)]:
+  - @yagejs/audio@0.12.0
+  - @yagejs/core@0.12.0
+
 ## 0.2.0
 
 ### Patch Changes

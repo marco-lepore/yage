@@ -1,5 +1,121 @@
 # @yagejs/ui
 
+## 0.12.0
+
+### Minor Changes
+
+- [#386](https://github.com/marco-lepore/yage/pull/386) [`6803d9f`](https://github.com/marco-lepore/yage/commit/6803d9f859cff52f4d32d17a422e006567b9582d) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A laid-out element can scale and rotate about a point of its own choosing, and be drawn over its siblings.
+  - Every element takes four new props, also get/set accessors on each element class: `transformOrigin` (the point to scale and rotate about, as fractions 0–1 of the element's computed size, default `0`), `scale` (a number or `{ x, y }`, default `1`), `rotation` (radians) and `zIndex` (draw and pointer order among siblings, default `0`).
+  - The props change how an element is drawn, never its layout box: siblings stay put, a container with `overflow: "hidden"` clips at its own edge, and a `UIScrollView` scrolls by the layout box.
+  - A custom element extends `UIElementBase` to take the four props, and a custom container places each child with `placeElement`.
+  - Focus movement and tooltips use the box an element is drawn in, so a scaled or rotated element is found where the player sees it. An element drawn with no area, scaled to 0 itself or inside a container scaled to 0, is skipped by focus movement, and its tooltip hides.
+  - Breaking: the `displayObject` of `UIImage` and of the `@pixi/ui` wrappers is a plain container around the picture or widget.
+  - Breaking: `UIImage.container` is renamed `sprite`.
+  - Breaking: a wrapper's `focusOutlineBox()` returns a box in the element's own space; `fromViewSpace()` maps a box measured on the widget view into it.
+  - Breaking: `PixiFancyButtonProps.scale` is removed; the element's `scale` covers it.
+
+### Patch Changes
+
+- [#366](https://github.com/marco-lepore/yage/pull/366) [`37a978e`](https://github.com/marco-lepore/yage/commit/37a978e20e1bb67b00b69844c57d25fecf36ffdb) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A panel that replaces one piece of nine-slice background art with another draws the new art with its own slice guides. The four `nineSlice` insets are applied every time the texture is applied, so the corners and the stretchable middle sit where the new art's insets put them. This release draws such a panel differently; where the two pieces of art declare the same insets, the drawing is identical.
+
+  The insets are read from the background options, not from the texture's own metadata, so pass `mode` and `nineSlice` again when you swap art. Options you leave out go back to their defaults: without `nineSlice` the insets are 0, and without `mode` the background becomes a stretched sprite.
+
+  The development-build warning for a nine-slice box with no room for its own middle row or column measures against the insets currently applied, so a box that had room for small insets warns when it is given art with larger ones.
+
+- [#361](https://github.com/marco-lepore/yage/pull/361) [`ca6271a`](https://github.com/marco-lepore/yage/commit/ca6271a7e3bbe4da16c0d4a9f7c28cd183ebfbd8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `PixiInput` applies a changed `placeholder` prop to the existing element. The
+  placeholder used to be fixed at construction: passing a new value to
+  `update()`, or re-rendering `<PixiInput placeholder={hint} />` with a
+  different `hint`, kept the first text. The change keeps keyboard focus and the
+  typed value, and the placeholder stays hidden while the field holds a value or
+  is being edited.
+
+- [#369](https://github.com/marco-lepore/yage/pull/369) [`edd86b4`](https://github.com/marco-lepore/yage/commit/edd86b496d55298ae9deced1a52bedfcbbb14bf5) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A `PixiSelect` keeps its row when `items` are replaced without a `selected` in
+  the same update, matching `PixiRadioGroup`: the row the player picked, or the
+  authored `selected` while they have picked none. Relabelling the rows leaves
+  the choice alone.
+
+  Wrappers whose text changes size (`PixiFancyButton`, `PixiCheckbox`,
+  `PixiInput`, `PixiSelect`, `PixiRadioGroup`) now mark their layout node for
+  re-measurement, so a longer string is given the room it needs instead of
+  keeping the previous allocation.
+
+  A `PixiSelect` takes the same space in a layout whether its dropdown is open or
+  closed. Opening hides the closed button and lifts the list onto the stage,
+  leaving the Select's own bounds empty, so a layout pass that ran while it was
+  open sized the surrounding panel as if the dropdown were not there.
+
+- [#366](https://github.com/marco-lepore/yage/pull/366) [`26ad39f`](https://github.com/marco-lepore/yage/commit/26ad39f22f2b1b483463005537de7e30974e17da) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A button's hover and press backgrounds are derived from the background it was given, instead of falling back to a flat grey. A colour is scaled to 1.25x for hover and 0.75x for press; a texture keeps its texture and scales its tint, so a textured button no longer flashes grey under the pointer. An explicit `hoverBackground` or `pressBackground` still wins, and a button with no background at all renders exactly as before.
+
+  `UIButtonProps` gains `direction`, `gap`, `padding`, `alignItems` and `justifyContent`, so an icon-plus-label button is `direction: "row"` rather than a nested panel. A button still stacks its children in a column and centres them on both axes by default, and `padding` replaces the default 12 px horizontal and 6 px vertical padding at any size.
+
+  `UIScrollView` gains the four builders a panel has — `text`, `button`, `panel` and `scrollView` — adding to its content.
+
+  `panel.text(content, style, opts)` takes a third argument carrying the rest of `UITextProps`, which puts `bitmap`, `resolution`, `truncate` and the layout props within reach of the builder. `UISurface.text` and the new `UIScrollView.text` take it too.
+
+  The package exports the `UITextBuilderProps`, `AlignItems` and `JustifyContent` types, so a caller can name that third argument and the two alignment props in its own signatures.
+
+  The package documentation now states a button's default background, its derived hover and press states, its default padding and the way to ask for no background at all.
+
+- [#376](https://github.com/marco-lepore/yage/pull/376) [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Keyboard and gamepad focus. A `UISurface` or `UIPanel` given `focus` becomes a focus scope: it moves focus among its visible, enabled, focusable descendants by their laid-out position, wraps at the ends, and scrolls a focused row into view. `focus: true` takes every default; `UIFocusScopeOptions` renames the actions it polls, turns wrapping off, sets what the pointer does to focus, sets the scroll padding, and carries one set of cue callbacks for the whole menu. The scope is reached afterwards through `surface.focusScope` or `panel.focusScope`, and a game with no action map of its own drives it with `move()`, `activate()`, `cancel()` and `focus()`. A surface's `focus` is its root panel's, so `surface.focusScope` and `surface.root.focusScope` are the one object and handing `root.update()` a `focus` option refreshes that scope. That option is the whole declaration, so a key it leaves out goes back to its default, while `scope.setOptions()` changes the keys it names and keeps the rest.
+
+  Hovered and focused are separate states, the way they are on a web page. Pressing a control focuses it; passing the pointer over one changes which control looks hovered and nothing else, so a player walking a list with the arrow keys keeps their row when the mouse drifts across it. `pointerFocus` on the scope picks between `"press"`, the default, `"hover"` for the console-style menu whose lit row follows the mouse, and `"none"` for a scope the pointer never moves the focus in. `"hover"` acts on a press as well, so a touch press with no hover before it still lands. Each scope answers for its own setting, and an element's hovered and pressed looks and the action a click runs are the same under all three.
+
+  Every element props interface gains `FocusProps`: `focusable`, `focusId`, `focusNeighbors`, `onFocusChange`, `onAdjust` and `focusStyle`. `UIButton`, `UICheckbox` and the six interactive `@pixi/ui` wrappers accept focus by default and everything else opts in. `focusNeighbors` overrides the position rule per direction by `focusId`, and `null` stops movement in that direction. `onAdjust` receives `-1` or `+1` on a left or right press while the element is focused and keeps focus there, which is what a volume row needs; up and down always move.
+
+  `UIButton` and `UICheckbox` expose `activate()`, which the pointer-release path also calls, so a disabled element blocks a click and a confirm press through one guard and one dispatch. A confirm press is a phase: the scope paints the focused element pressed for as long as the player holds the action and runs the action on the release, and a held confirm runs it once. Focus moving, the element being hidden, disabled or destroyed, or the scope losing input cancels the press and runs nothing — the rule a pointer already follows when a drag leaves a button before the release. `activate()` called from game code runs at once and paints no press. `UICheckbox` gains a `disabled` getter, a pressed look under the pointer and the keyboard alike, and the three hover callbacks every other primitive has.
+
+  Focus draws nothing until a game asks for it. `onFocusChange` fires `true` on arrival and `false` on departure, including when the scope stops reading input, and is how a game shows the focused row its own way — a marker beside it, a swapped sprite, a sound. An element that never draws an outline builds no `Graphics` for one.
+
+  `focusStyle` asks for the package's own outline, drawn just inside the element's box by every focusable element, from a `UIButton` to a `@pixi/ui` wrapper. `UIPluginOptions.focusStyle` sets the colour, thickness, corner radius and inset once for the whole UI, and `focusStyle` on an element overrides it field by field, or `null` drops the UI-wide outline for that element alone; the colour follows `defaultTextStyle.fill` when nothing names one, and the radius follows the element's own background radius. Hover and press keep their fills, so a row the pointer is on shows its hover tint with the outline on top. The outline is drawn inside the box and left out of measurement, so taking focus changes no size. `focusBackground` on a `UIButton` or a focusable `UIPanel` fills the focused row, painted only where a game asks for it.
+
+  `UIScrollView` gains `scrollIntoView(element, opts)`, which scrolls the least distance that brings an element inside the viewport, and the `viewportWidth` and `viewportHeight` getters that report the clipped viewport in pixels. A focused row below the fold is scrolled in by the scope itself, so a game reads neither size nor offset. The view also takes the three hover callbacks every other primitive has — `onHover`, `onPointerOver` and `onPointerOut` — which fire over the whole box, the gutter and the gaps between rows included.
+
+  The six interactive `@pixi/ui` wrappers take part as their widget allows: `PixiFancyButton` and `PixiCheckbox` activate, `PixiSlider` and `PixiRadioGroup` step their value on the axis they own and release focus at either end, `PixiSelect` steps its value while closed and opens its list on a confirm, and `PixiInput` starts editing. Where a style asks for an outline, a wrapper draws it around what the player sees. A widget layout resizes is framed over the union of its layout box and what it draws, so a part that escapes the box is framed with the rest. A composite that places its own parts — `PixiCheckbox`, `PixiRadioGroup`, `PixiSelect` — keeps its own size inside whatever box layout gives it and is framed around that size, so a widget in a stretched row leaves no outline hanging past its art. `PixiSlider` states its own box — the knob's whole travel — so the outline frames the track and the handle together and holds still as the value sweeps, and `PixiSelect` states the closed button's box, which the outline keeps while the list is open.
+
+  An element that answers the player on its own takes its scope's input, and the scope hands it every press it reads rather than navigating. A `PixiInput` holding the caret does so, so typing into it walks no menu: confirm commits, cancel restores the value the edit began with, and the scope taking its input back ends the edit keeping what was typed. Enter and Escape typed into the field itself are those same two ends, so a player who renames a save and presses Escape gets the old name back whether the key reached the field or the menu around it. A `PixiSelect` showing its list does so too — up and down move the row a confirm press commits and the list scrolls to follow, confirm commits that row and closes, cancel closes on the value the select already had, and left and right do nothing while the list shows — the row's own `onAdjust` included, because the open list holds every direction the scope reads. Focus leaving the select, or the menu losing the keys, closes the list. An element that takes the input while another row is focused takes focus with it, so a field clicked in a `pointerFocus: "none"` scope is the row the scope reports. `isCapturingInput(element)` reports that state to a game, which polls it to leave its own hotkeys alone while the player types or picks; `captureFocusInput` and `UIInputCaptureElement` are exported for an element of your own.
+
+  A callback a scope runs — a confirm press showing a dialog, a step swapping a label — is laid out in the frame it runs in, so the new content is first drawn in place.
+
+  Scopes nest without limit: a confirm dialog shown inside a menu takes the keys, and hiding it hands them back on the row the menu had. Hiding a surface, disabling its component or deactivating its entity all hand input back the same way.
+
+  The scope reading input owns the pointer as well as the keys. Everything drawn under it stops answering the pointer, so a confirm dialog cannot be clicked through: a menu row behind it reports no hover, takes no press and runs no click, and a press on the blocked area is claimed for the UI rather than reaching the game's action map. The scope's own subtree keeps every pointer behaviour it has, and a scope nested inside another blocks only what is outside itself. The pointer comes back when the scope stops reading input, is hidden, or is destroyed. `modal: false` turns it off, for a panel that wants the keys while the world behind it stays clickable. Two limits: a row already hovered when a scope takes the pointer keeps its hover look until the pointer next moves, and anything drawn above the scope's own container — a floating overlay, an open `PixiSelect` list, a surface added later — is above the block too and stays interactive.
+
+  `Inspector` snapshots carry each element's own interaction state. Every element reports whether it holds focus and whether it takes part in focus navigation, and one with more to report adds it: `UIButton` its hover, press and disabled flags, `UICheckbox` its press, checked and disabled flags, a `@pixi/ui` wrapper its disabled flag, and a `UIPanel` hosting a scope whether that scope is reading input. A test reads which row is focused out of a snapshot rather than comparing pixels.
+
+  `@yagejs/input` is an optional peer dependency. With it absent, or with `input: null`, a scope reads no device, warns once, and stays drivable by hand; pointer focus, the scroll follow and pointer ownership keep working, since such a scope still holds the keys.
+
+  A container hands each child a tree context through the internal `UIElement._attachToTree(context)` and `_detachFromTree()` hooks. One downward channel carries both the name a development warning prints and the scene's focus stack. An element written outside the package implements those two hooks to print its tree's name in a warning and to host a focus scope.
+
+- [#366](https://github.com/marco-lepore/yage/pull/366) [`52471e3`](https://github.com/marco-lepore/yage/commit/52471e3093691f8f039185785a53d819c0daed2a) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A nine-slice element or background laid out smaller than its own insets now warns, in development builds. It warns once per episode: an element that fits again is forgotten, so the next time it is laid out too small, or given art with larger insets, it warns once more. Below `leftWidth + rightWidth` the corners overlap and the middle column has no room; the same happens vertically. The art folds in on itself and the label inside lands on a carved lip, which reads as a positioning bug. Nothing is clamped, because clamping would silently move the element.
+
+  A `UIText` the layout engine sizes without measuring now wraps to its computed width, and one with `truncate` set now cuts to it. The engine calls a measure function only when an axis is left to measure, and that callback was the only place word wrap was switched on and the truncated string was built. Both axes pinned leaves nothing to measure, and so does a single pinned axis inside a plain panel, where the default stretch alignment fills the other one. Such a text rendered one unbroken line, and a truncating one spilled its whole source past the slot edge. Replacing the style or switching truncation off leaves the wrap in place. A truncating text laid out with no width at all renders nothing for `"clip"` and only the suffix for `"ellipsis"`.
+
+  `UITextProps` gains `truncateWith`, the string the `"ellipsis"` mode appends. It defaults to `"…"` (U+2026), which several pixel fonts lack; pass `"..."` for one of those. `UIButton` forwards it to its label beside `truncate`.
+
+  `UISurface.setOffset(x, y)` moves a mounted tree, with an `offset` getter to read it back — animating a sliding panel no longer means writing into an internal field. It throws when either coordinate is not finite, and so does the `offset` option, because a non-finite value would reach the tree's position on every layout pass. The surface keeps its own copy of the `offset` option, so moving the tree never writes into the object you passed.
+
+  `UIProgressBar.value` reads the fill fraction back, clamped as the bar stored it.
+
+  A `UISplitText` given an empty string renders nothing instead of throwing. Pixi's split of an empty string produces no line containers, and the split then called `addChild` with no arguments, which threw a `TypeError` naming Pixi internals and stopped the whole surface rendering. Clearing a label and setting it again now works; the empty state emits empty segments to `onSplit` listeners and measures zero.
+
+- [#366](https://github.com/marco-lepore/yage/pull/366) [`ad91188`](https://github.com/marco-lepore/yage/commit/ad91188702d2bacb03f507348881506dd7796d58) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Redraw a panel, button, progress bar or scroll view background only when its size or its options changed. Clip masks and the scroll view's thumb are gated the same way. A static UI tree previously rebuilt every rounded rectangle it contains on every frame, which was the package's largest per-frame allocation.
+
+  Background options are read when you pass them, not on every frame. Mutating the object you handed to `background` no longer reaches the screen; pass a new one to change the colour, the tint or the corner radius.
+
+  The development-mode overflow warning now names the entity that owns the tree, the child's position in its parent, its element class, and the text it renders: `UI layout [entity "Hud"]: child [#2](https://github.com/marco-lepore/yage/issues/2) (UIText "Score: 12500") overflows its container by 12.3px past the right edge.` An element built outside a `UISurface` prints the same message without the entity prefix.
+
+  The warning also tolerates two points of overflow instead of one and a half, which is the largest gap Yoga's own pixel-grid rounding can open between a measured text node and a shrink-to-fit parent at a fractional position. A shrink-to-fit panel holding one text child no longer warns about that child.
+
+- [#366](https://github.com/marco-lepore/yage/pull/366) [`869129b`](https://github.com/marco-lepore/yage/commit/869129b939fd32167a559e7adf275172c7e1baff) Thanks [@marco-lepore](https://github.com/marco-lepore)! - An update that repeats the values in force costs nothing, and a disabled button paints the background its own update supplies.
+  - A background is drawn again only when its options differ from the ones it was drawn from. An update repeating them returns before copying the options, so a React re-render of an unchanged tree allocates nothing and draws nothing.
+  - Text set to truncate with an ellipsis re-truncates only when the suffix changes. Repeating the suffix in force leaves the drawn text and the layout as they are.
+  - A disabled button shows the background from the same update that supplies it, both when that update disables the button and when it reaches a button already disabled.
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0c90d77`](https://github.com/marco-lepore/yage/commit/0c90d774bdbda47f5a95c92ab7aef11d7a19e7b9), [`1f45e38`](https://github.com/marco-lepore/yage/commit/1f45e38d108b17e37a807c209b5d84159b88867c), [`6888d06`](https://github.com/marco-lepore/yage/commit/6888d06c6fdf2361f41c5521ebdda83dc833b6c4), [`a7fd74e`](https://github.com/marco-lepore/yage/commit/a7fd74e75347a7a1b56ab18fcfb55f2f5cf4da46), [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`851310c`](https://github.com/marco-lepore/yage/commit/851310c54e04f5cdb52819050ca0a50f36b8e4c3), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`5efe5f6`](https://github.com/marco-lepore/yage/commit/5efe5f6de138b71048e6f4752ed74647a9fc3e76), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210)]:
+  - @yagejs/core@0.12.0
+  - @yagejs/renderer@0.12.0
+  - @yagejs/input@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes
