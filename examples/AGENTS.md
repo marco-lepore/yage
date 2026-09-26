@@ -84,8 +84,11 @@ A small example can keep everything in `main.ts`, in the same order.
   `ProcessComponent` slots: `pc.slot({ duration })`, then `restart()`,
   `running` and `cancel()`. Not a number counted down by hand in `update`, and
   not a boolean flag.
-- A one-off delay is `pc.run(Process.delay(seconds, fn))`. A scene-level timer
-  with no natural owner is a `TimerEntity`.
+- A one-off delay is `pc.run(Process.delay(seconds, fn))`. Something that
+  repeats every few seconds is a looping sequence:
+  `pc.run(new Sequence().wait(2).call(fn).loop().build())`. A slot with
+  `loop: true` never completes, so its `onComplete` never runs. A scene-level
+  timer with no natural owner is a `TimerEntity`.
 - `dt` is in seconds. Durations are in seconds (`cam.shake(8, 0.3)`).
 
 ### Randomness
