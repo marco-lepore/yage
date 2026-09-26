@@ -738,7 +738,7 @@ export type { TelemetryConfig, TelemetryRecord } from "./types";
 #### Step 5: Use It
 
 ```typescript yage-group="telemetry" yage-file="game.ts"
-import { Component, Engine, defineEvent } from "@yagejs/core";
+import { Component, Engine, Entity, Scene, defineEvent } from "@yagejs/core";
 // The package entry from Step 4. A game imports it by package name.
 import { TelemetryPlugin, TelemetryKey } from "./index";
 
@@ -758,6 +758,24 @@ class LevelReport extends Component {
     });
   }
 }
+
+/** Carries the level's reporting, so each level reports when it is spawned. */
+class LevelTracker extends Entity {
+  setup(): void {
+    this.add(new LevelReport());
+  }
+}
+
+class LevelScene extends Scene {
+  readonly name = "level-1";
+
+  onEnter(): void {
+    this.spawn(LevelTracker);
+  }
+}
+
+await engine.start();
+await engine.scenes.push(new LevelScene());
 ```
 
 #### Step 6: Add a System (Optional)
