@@ -56,12 +56,12 @@ class MultitouchVisualizer extends Component {
   private readonly graphics = this.sibling(GraphicsComponent);
   private readonly trails = new Map<number, PointerTrail>();
   private readonly ripples: Ripple[] = [];
+  /** Released touch and pen pointers: drawn once more, then dropped. */
+  private readonly released = new Set<number>();
   private elapsed = 0;
-  private disposers: Array<() => void> = [];
-  private pendingRemovals = new Set<ReturnType<typeof setTimeout>>();
 
   override onAdd(): void {
-    this.disposers.push(
+    this.addCleanup(
       this.input.onPointerDown((p) => {
         this.upsertTrail(p);
         this.ripples.push({
@@ -71,29 +71,18 @@ class MultitouchVisualizer extends Component {
         });
         if (this.ripples.length > 32) this.ripples.shift();
       }),
-      this.input.onPointerMove((p) => this.upsertTrail(p)),
+    );
+    this.addCleanup(this.input.onPointerMove((p) => this.upsertTrail(p)));
+    this.addCleanup(
       this.input.onPointerUp((p) => {
         const trail = this.trails.get(p.id);
         if (trail) trail.isDown = false;
-        // Touches vanish from getPointers() once they release; drop the trail
-        // shortly after so the user sees the release without a stale finger.
-        // (Mouse stays in getPointers naturally, so we keep its trail.)
-        if (p.type !== "mouse") {
-          const handle = setTimeout(() => {
-            this.pendingRemovals.delete(handle);
-            this.trails.delete(p.id);
-          }, 0);
-          this.pendingRemovals.add(handle);
-        }
+        // Touches vanish from getPointers() once they release. Draw the
+        // released trail for one more frame so the user sees the release,
+        // then drop it. The mouse stays in getPointers(), so its trail stays.
+        if (p.type !== "mouse") this.released.add(p.id);
       }),
     );
-  }
-
-  override onDestroy(): void {
-    for (const off of this.disposers) off();
-    this.disposers.length = 0;
-    for (const handle of this.pendingRemovals) clearTimeout(handle);
-    this.pendingRemovals.clear();
   }
 
   private upsertTrail(p: PointerInfo): void {
@@ -185,6 +174,9 @@ class MultitouchVisualizer extends Component {
           });
       }
     });
+
+    for (const id of this.released) this.trails.delete(id);
+    this.released.clear();
   }
 }
 

@@ -45,6 +45,7 @@ interface EnemySpec {
   cx: number;
   cy: number;
   radius: number;
+  /** Orbit speed in radians per second. */
   speed: number;
   phase: number;
 }
@@ -98,7 +99,7 @@ class Patrol extends Component {
     this.t = phase;
   }
   update(dt: number): void {
-    this.t += (dt / 1000) * this.speed;
+    this.t += dt * this.speed;
     this.entity
       .get(Transform)
       .setPosition(

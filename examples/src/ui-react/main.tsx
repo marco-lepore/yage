@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
-import { Engine, Scene, Vec2, Transform } from "@yagejs/core";
+import { Component, Engine, Scene, Vec2, Transform } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent, texture } from "@yagejs/renderer";
 import { UIPlugin } from "@yagejs/ui";
 import {
@@ -15,6 +15,7 @@ import {
   PixiProgressBar,
   Checkbox,
   Anchor,
+  useSceneSelector,
 } from "@yagejs/ui-react";
 import type { Placement } from "@yagejs/ui-react";
 import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
@@ -62,27 +63,34 @@ function StyledTooltip({
 }
 
 // ---------------------------------------------------------------------------
+// XP fill: advances with game time, so it stops while the scene is paused
+// ---------------------------------------------------------------------------
+const XP_PER_SECOND = 0.1;
+
+/** Fills XP from 0 to 1 over time, then starts again from empty. */
+class XpFill extends Component {
+  value = 0;
+
+  update(dt: number): void {
+    this.value += XP_PER_SECOND * dt;
+    if (this.value >= 1) this.value = 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // React UI components
 // ---------------------------------------------------------------------------
 
-function MainMenu() {
+function MainMenu({ xpFill }: { xpFill: XpFill }) {
   const [showSaves, setShowSaves] = useState(false);
   const [hp, setHp] = useState(0.8);
-  const [xp, setXp] = useState(0);
   const [sound, setSound] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Auto-fill XP over time
-  useEffect(() => {
-    const id = setInterval(() => {
-      setXp((prev) => {
-        const next = prev + 0.02;
-        return next >= 1 ? 0 : next;
-      });
-    }, 200);
-    return () => clearInterval(id);
-  }, []);
+  // Read every frame. The menu re-renders only when the rounded percentage
+  // changes.
+  const xpPercent = useSceneSelector(() => Math.round(xpFill.value * 100));
 
   return (
     <Panel
@@ -163,13 +171,13 @@ function MainMenu() {
           {/* XP bar (auto-fills) */}
           <Panel direction="column" gap={4} alignItems="center">
             <Text style={textStyle("body", { fill: 0x3b82f6 })}>
-              {`XP: ${Math.round(xp * 100)}%`}
+              {`XP: ${xpPercent}%`}
             </Text>
             <PixiProgressBar
               bg={S.sliderTrack}
               fill={S.sliderFillBlue}
               nineSliceSprite={nineSlice.track}
-              value={xp * 100}
+              value={xpPercent}
               width={200}
               height={12}
             />
@@ -303,8 +311,9 @@ class UIReactScene extends Scene {
 
     // Mount React UI
     const menuEntity = this.spawn("menu");
+    const xpFill = menuEntity.add(new XpFill());
     const root = menuEntity.add(new UIRoot({ anchor: Anchor.Center }));
-    root.render(<MainMenu />);
+    root.render(<MainMenu xpFill={xpFill} />);
   }
 }
 

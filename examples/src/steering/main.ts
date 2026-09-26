@@ -1,12 +1,12 @@
 import {
   Component,
   Engine,
+  Entity,
   MathUtils,
   Scene,
   Transform,
   Vec2,
 } from "@yagejs/core";
-import type { Entity } from "@yagejs/core";
 import { GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
 import {
   ColliderComponent,
@@ -70,16 +70,14 @@ class PlayerController extends Component {
 // ---------------------------------------------------------------------------
 // AgentVisual — the agent's body: a circle, dimmed while the agent is off.
 // The velocity arrow is debug output, so it goes to the debug overlay through
-// `drawVector` instead of being redrawn here. Takes the agent by reference:
-// components are keyed by exact class, so a sibling lookup on SteeringAgent
-// would miss a PhysicsSteeringAgent.
+// `drawVector` instead of being redrawn here. The sibling lookup on
+// SteeringAgent also finds a PhysicsSteeringAgent, its subclass.
 // ---------------------------------------------------------------------------
 class AgentVisual extends Component {
   private readonly gfx = this.sibling(GraphicsComponent);
-  private stopArrow: (() => void) | null = null;
+  private readonly agent = this.sibling(SteeringAgent);
 
   constructor(
-    private readonly agent: SteeringAgent,
     private readonly color: number,
     private readonly radius = 10,
   ) {
@@ -89,16 +87,13 @@ class AgentVisual extends Component {
   onAdd(): void {
     // Returning null while the agent is off leaves the arrow undrawn for
     // that frame — the provider decides, frame by frame.
-    this.stopArrow = this.use(DebugRegistryKey).drawVector(
-      this.entity,
-      () => (this.agent.enabled ? this.agent.velocity : null),
-      { scale: ARROW_SCALE, alpha: 0.85, minLength: 1 },
+    this.addCleanup(
+      this.use(DebugRegistryKey).drawVector(
+        this.entity,
+        () => (this.agent.enabled ? this.agent.velocity : null),
+        { scale: ARROW_SCALE, alpha: 0.85, minLength: 1 },
+      ),
     );
-  }
-
-  onDestroy(): void {
-    this.stopArrow?.();
-    this.stopArrow = null;
   }
 
   update(): void {
@@ -161,21 +156,21 @@ class ToggleController extends Component {
   }
 }
 
-function spawnAgent(
-  scene: Scene,
-  name: string,
-  position: Vec2,
-  color: number,
-  radius: number,
-  options: SteeringAgentOptions,
-): { entity: Entity; agent: SteeringAgent } {
-  const entity = scene.spawn(name);
-  entity.add(new Transform({ position }));
-  entity.add(new GraphicsComponent());
-  const agent = new SteeringAgent(options);
-  entity.add(agent);
-  entity.add(new AgentVisual(agent, color, radius));
-  return { entity, agent };
+/** A kinematic steering agent drawn as a coloured circle. */
+class AgentEntity extends Entity {
+  agent!: SteeringAgent;
+
+  setup(params: {
+    position: Vec2;
+    color: number;
+    radius: number;
+    steering: SteeringAgentOptions;
+  }): void {
+    this.add(new Transform({ position: params.position }));
+    this.add(new GraphicsComponent());
+    this.agent = this.add(new SteeringAgent(params.steering));
+    this.add(new AgentVisual(params.color, params.radius));
+  }
 }
 
 /** Rocks are real static colliders — avoidColliders discovers them by raycast. */
@@ -204,30 +199,39 @@ class SteeringScene extends Scene {
 
     // 1 — seek: a chaser closing straight in on the player.
     groups.push([
-      spawnAgent(this, "seeker", new Vec2(120, 120), 0xef4444, 10, {
-        maxSpeed: 140,
-        behaviors: [seek(playerPos)],
+      this.spawn(AgentEntity, {
+        position: new Vec2(120, 120),
+        color: 0xef4444,
+        radius: 10,
+        steering: { maxSpeed: 140, behaviors: [seek(playerPos)] },
       }).agent,
     ]);
 
     // 2 — flee, radius-gated: only runs when the player gets close.
     groups.push([
-      spawnAgent(this, "fleer", new Vec2(460, 480), 0xf97316, 10, {
-        maxSpeed: 130,
-        behaviors: [flee(playerPos, { radius: 170 })],
+      this.spawn(AgentEntity, {
+        position: new Vec2(460, 480),
+        color: 0xf97316,
+        radius: 10,
+        steering: {
+          maxSpeed: 130,
+          behaviors: [flee(playerPos, { radius: 170 })],
+        },
       }).agent,
     ]);
 
     // 3 — wander + contain: roams freely, steered back at the field edge.
     const wanderers: SteeringAgent[] = [];
-    for (const [name, pos] of [
-      ["wanderer-a", new Vec2(200, 150)],
-      ["wanderer-b", new Vec2(700, 150)],
-    ] as const) {
+    for (const position of [new Vec2(200, 150), new Vec2(700, 150)]) {
       wanderers.push(
-        spawnAgent(this, name, pos, 0x38bdf8, 8, {
-          maxSpeed: 70,
-          behaviors: [wander(), contain(FIELD, { weight: 2 })],
+        this.spawn(AgentEntity, {
+          position,
+          color: 0x38bdf8,
+          radius: 8,
+          steering: {
+            maxSpeed: 70,
+            behaviors: [wander(), contain(FIELD, { weight: 2 })],
+          },
         }).agent,
       );
     }
@@ -235,9 +239,14 @@ class SteeringScene extends Scene {
 
     // 4 — followPath, looped: a patrol walking its rectangle forever.
     groups.push([
-      spawnAgent(this, "patrol", PATROL[0]!, 0x2dd4bf, 9, {
-        maxSpeed: 120,
-        behaviors: [followPath(PATROL, { loop: true })],
+      this.spawn(AgentEntity, {
+        position: PATROL[0]!,
+        color: 0x2dd4bf,
+        radius: 9,
+        steering: {
+          maxSpeed: 120,
+          behaviors: [followPath(PATROL, { loop: true })],
+        },
       }).agent,
     ]);
 
@@ -251,12 +260,17 @@ class SteeringScene extends Scene {
     // the rock/crate colliders (no obstacle list), and near one the
     // avoidance steer overrides seek outright.
     groups.push([
-      spawnAgent(this, "avoider", new Vec2(120, 460), 0xfacc15, 9, {
-        maxSpeed: 110,
-        behaviors: [
-          seek(playerPos),
-          avoidColliders(world, { lookAhead: 90, priority: 1 }),
-        ],
+      this.spawn(AgentEntity, {
+        position: new Vec2(120, 460),
+        color: 0xfacc15,
+        radius: 9,
+        steering: {
+          maxSpeed: 110,
+          behaviors: [
+            seek(playerPos),
+            avoidColliders(world, { lookAhead: 90, priority: 1 }),
+          ],
+        },
       }).agent,
     ]);
 
@@ -291,18 +305,13 @@ class SteeringScene extends Scene {
         720 + Math.cos(angle) * 60,
         420 + Math.sin(angle) * 60,
       );
-      const { entity, agent } = spawnAgent(
-        this,
-        `boid-${i}`,
+      const boid = this.spawn(AgentEntity, {
         position,
-        0xc084fc,
-        6,
-        {
-          maxSpeed: 95,
-          behaviors: [],
-        },
-      );
-      boidRefs.push({ transform: entity.get(Transform), agent });
+        color: 0xc084fc,
+        radius: 6,
+        steering: { maxSpeed: 95, behaviors: [] },
+      });
+      boidRefs.push({ transform: boid.get(Transform), agent: boid.agent });
     }
 
     const rules: Record<"separation" | "alignment" | "cohesion", FlockRule> = {
@@ -410,7 +419,7 @@ class SteeringScene extends Scene {
       behaviors: [arrive(playerPos, { slowRadius: 160 })],
     });
     entity.add(agent);
-    entity.add(new AgentVisual(agent, 0x4ade80, 10));
+    entity.add(new AgentVisual(0x4ade80, 10));
     return agent;
   }
 }

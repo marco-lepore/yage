@@ -56,7 +56,10 @@ class Particle extends Entity {
   }
 }
 
+/** Shrinks and fades the particle over its lifetime, then destroys it. */
 class ParticleFader extends Component {
+  private readonly transform = this.sibling(Transform);
+  private readonly graphics = this.sibling(GraphicsComponent);
   private elapsed = 0;
   constructor(private readonly lifetime: number) {
     super();
@@ -69,18 +72,14 @@ class ParticleFader extends Component {
       return;
     }
     const fade = 1 - t;
-    const sprite = this.entity.get(GraphicsComponent);
-    sprite.draw((g) => {
-      g.clear();
-      g.circle(0, 0, 8 * fade).fill({ color: 0x38bdf8, alpha: fade });
-    });
+    this.transform.setScale(fade, fade);
+    this.graphics.alpha = fade;
   }
 }
 
 class ShootController extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly shotCounter: ShotCounter;
-  private disposers: Array<() => void> = [];
 
   constructor(shotCounter: ShotCounter) {
     super();
@@ -88,7 +87,7 @@ class ShootController extends Component {
   }
 
   override onAdd(): void {
-    this.disposers.push(
+    this.addCleanup(
       // Action listener: rising edge of `shoot` — fires once per pointerdown
       // that the consume system lets through. Clicks on UI panels with
       // `consumeInput: true` are auto-claimed at drain time, so this never
@@ -103,11 +102,6 @@ class ShootController extends Component {
         });
       }),
     );
-  }
-
-  override onDestroy(): void {
-    for (const off of this.disposers) off();
-    this.disposers.length = 0;
   }
 }
 
