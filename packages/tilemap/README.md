@@ -23,8 +23,21 @@ engine.use(new TilemapPlugin());
 Load and render a Tiled map:
 
 ```ts
-const map = await assets.load(tiledMap("level1.json"));
-entity.add(new TilemapComponent({ map }));
+import { Scene, Transform } from "@yagejs/core";
+import { TilemapComponent, tiledMap } from "@yagejs/tilemap";
+
+const Level1 = tiledMap("level1.json");
+
+class LevelScene extends Scene {
+  readonly name = "level";
+  readonly preload = [Level1]; // loads the map and its tileset images
+
+  onEnter() {
+    const map = this.spawn("map");
+    map.add(new Transform());
+    map.add(new TilemapComponent({ source: Level1 }));
+  }
+}
 ```
 
 > **Tileset format:** export tilesets as **JSON** (`.tsj` or `.json`).
