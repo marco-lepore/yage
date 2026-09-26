@@ -53,12 +53,35 @@ event: a _non-focused_ target entering or leaving range never changes the focus.
 ## 5-minute setup
 
 ```ts
-// Mark any entity as interactable.
-chest.add(new Interactable({ prompt: "Open", onInteract: () => chest.open() }));
+import {
+  Interactable,
+  Interactor,
+  InteractionFocusChangedEvent,
+} from "@yagejs-addons/interaction";
+import { Component, Entity, Transform } from "@yagejs/core";
+import { TextComponent } from "@yagejs/renderer";
+
+// Mark any entity as interactable. Both sides need a Transform.
+class Chest extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(
+      new Interactable({ prompt: "Open", onInteract: () => this.open() }),
+    );
+  }
+  open() {
+    // swap the sprite, drop the loot
+  }
+}
 
 // The player is the detector. Defaults: range 48px, action "interact",
 // nearest-in-range focus, self-driven off @yagejs/input if present.
-const interactor = player.add(new Interactor({ range: 70 }));
+class Player extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new Interactor({ range: 70 }));
+  }
+}
 
 // Headless addon — the game draws the prompt. Fires only on a focus change,
 // on the interactor's entity, and bubbles to the scene. A component on the HUD
@@ -78,7 +101,9 @@ class PromptLabel extends Component {
 ## `InteractableOptions`
 
 ```ts
-interface InteractableOptions {
+import type { InteractableOptions as BaseInteractableOptions } from "@yagejs-addons/interaction";
+
+interface InteractableOptions extends BaseInteractableOptions {
   onInteract: () => void;
   prompt?: string | (() => string); // undefined = focusable, no label
   radius?: number; // own reach bonus, default 0
@@ -100,7 +125,9 @@ round trip.
 ## `InteractorOptions`
 
 ```ts
-interface InteractorOptions {
+import type { InteractorOptions as BaseInteractorOptions } from "@yagejs-addons/interaction";
+
+interface InteractorOptions extends BaseInteractorOptions {
   range?: number; // world px, default 48
   action?: string | null; // default "interact"; null = no auto-input
   enabled?: boolean; // default true
@@ -152,9 +179,20 @@ when a target moves between updates.
   and reactivating resumes — a pooled or dormant interactor focuses nothing.
 
 ```ts
+import { Interactor } from "@yagejs-addons/interaction";
+import type { Entity } from "@yagejs/core";
+
 // Manual / headless drive — no @yagejs/input, or a test:
-const interactor = player.add(new Interactor({ range: 70, action: null }));
-if (input.isJustPressed("interact")) interactor.interact();
+function addInteractor(player: Entity) {
+  return player.add(new Interactor({ range: 70, action: null }));
+}
+// each frame, from your own input source:
+function onFrame(
+  interactor: Interactor,
+  input: { isJustPressed(action: string): boolean },
+) {
+  if (input.isJustPressed("interact")) interactor.interact();
+}
 ```
 
 ## Events (on the interactor's entity; bubble entity → scene)
@@ -179,18 +217,37 @@ An interactable's `onInteract` is a plain closure — connect dialogue, inventor
 or anything else from it directly:
 
 ```ts
-npc.add(
-  new Interactable({ prompt: "Talk", onInteract: () => dialogue.play(script) }),
-);
-coin.add(
-  new Interactable({
-    prompt: "Pick up",
-    onInteract: () => {
-      inventory.add("coin");
-      coin.destroy();
-    },
-  }),
-);
+import { Interactable } from "@yagejs-addons/interaction";
+import type {
+  DialogueController,
+  DialogueScript,
+} from "@yagejs-addons/dialogue";
+import type { Inventory } from "@yagejs-addons/inventory";
+import type { Entity } from "@yagejs/core";
+
+function connectAddons(
+  npc: Entity,
+  coin: Entity,
+  dialogue: DialogueController,
+  script: DialogueScript,
+  inventory: Inventory<"coin">,
+) {
+  npc.add(
+    new Interactable({
+      prompt: "Talk",
+      onInteract: () => dialogue.play(script),
+    }),
+  );
+  coin.add(
+    new Interactable({
+      prompt: "Pick up",
+      onInteract: () => {
+        inventory.add("coin");
+        coin.destroy();
+      },
+    }),
+  );
+}
 ```
 
 ## Multiple targets, selection UI, and highlighting
@@ -201,13 +258,27 @@ Drive it from `InteractionInRangeChangedEvent`, NOT the focus event: a
 lower-ranked target entering or leaving leaves the focus untouched.
 
 ```ts
+import {
+  InteractionInRangeChangedEvent,
+  type Interactable,
+  type Interactor,
+} from "@yagejs-addons/interaction";
+import type { Entity } from "@yagejs/core";
+
+interface Wheel {
+  show(targets: readonly Interactable[]): void;
+  hide(): void;
+}
+
 // Overlapping loot: show a wheel when 2+ are in range, interact the chosen one.
-player.on(InteractionInRangeChangedEvent, ({ inRange }) => {
-  if (inRange.length > 1)
-    wheel.show(inRange); // ranked; inRange[0] is the focus
-  else wheel.hide();
-});
-function confirm(chosen: Interactable) {
+function showWheel(player: Entity, wheel: Wheel) {
+  player.on(InteractionInRangeChangedEvent, ({ inRange }) => {
+    if (inRange.length > 1)
+      wheel.show(inRange); // ranked; inRange[0] is the focus
+    else wheel.hide();
+  });
+}
+function confirm(interactor: Interactor, chosen: Interactable) {
   interactor.interact(chosen); // must be in the current inRange
 }
 ```
@@ -217,15 +288,22 @@ interactable), enumerate by scene, independent of any interactor's range:
 
 ```ts
 import { interactablesIn, rankInteractables } from "@yagejs-addons/interaction";
+import type { Entity, Scene, Vec2Like } from "@yagejs/core";
 
-// interactablesIn drops destroyed hosts but keeps DISABLED ones — the game
-// decides whether an ungated target is still worth revealing.
-const live = interactablesIn(scene).filter((it) => it.isEnabled());
+function reveal(
+  scene: Scene,
+  playerPos: Vec2Like,
+  outline: (entity: Entity) => void,
+) {
+  // interactablesIn drops destroyed hosts but keeps DISABLED ones — the game
+  // decides whether an ungated target is still worth revealing.
+  const live = interactablesIn(scene).filter((it) => it.isEnabled());
 
-for (const it of live) outline(it.entity); // it.entity is the host to highlight
+  for (const it of live) outline(it.entity); // it.entity is the host to highlight
 
-// rankInteractables is geometry only, so filter the enabled gate first:
-const nearby = rankInteractables({ position: playerPos, range: 200 }, live);
+  // rankInteractables is geometry only, so filter the enabled gate first:
+  return rankInteractables({ position: playerPos, range: 200 }, live);
+}
 ```
 
 Each `Interactable` exposes read-only `position`, `radius`, `priority`,
@@ -235,21 +313,27 @@ or icon reads.
 ## Headless model (`selectInteractionFocus`, `rankInteractables`)
 
 ```ts
-function selectInteractionFocus<C extends InteractCandidate>(
+import type { Vec2Like } from "@yagejs/core";
+import type {
+  FocusQuery as BaseFocusQuery,
+  InteractCandidate as BaseInteractCandidate,
+} from "@yagejs-addons/interaction";
+
+declare function selectInteractionFocus<C extends InteractCandidate>(
   query: FocusQuery,
   candidates: Iterable<C>,
 ): C | null; // single winner, O(n), no sort and no array allocation
 
-function rankInteractables<C extends InteractCandidate>(
+declare function rankInteractables<C extends InteractCandidate>(
   query: FocusQuery,
   candidates: Iterable<C>,
 ): C[]; // full in-range set best-first; rankInteractables(...)[0] === selectInteractionFocus(...)
 
-interface FocusQuery {
+interface FocusQuery extends BaseFocusQuery {
   position: Vec2Like;
   range: number;
 }
-interface InteractCandidate {
+interface InteractCandidate extends BaseInteractCandidate {
   position: Vec2Like;
   radius: number;
   priority: number;

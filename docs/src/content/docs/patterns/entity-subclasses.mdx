@@ -13,8 +13,8 @@ own. Anything spawned more than once, or with behaviour, is a subclass.
 
 ## Basic Subclass
 
-```typescript
-import { Entity, ProcessComponent, Transform, Vec2 } from "@yagejs/core";
+```typescript yage-group="player" yage-context="scene"
+import { Component, Entity, ProcessComponent, Transform, Vec2 } from "@yagejs/core";
 import { SpriteComponent, type TextureHandle } from "@yagejs/renderer";
 
 interface PlayerParams {
@@ -30,11 +30,14 @@ class Player extends Entity {
     this.add(new Health(100)); // a component of your game
   }
 }
+
+// Defined elsewhere in your game:
+declare class Health extends Component { constructor(max: number) }
 ```
 
 Spawn it from a scene:
 
-```typescript
+```typescript yage-group="player" yage-context="scene"
 import { texture } from "@yagejs/renderer";
 
 const HeroTex = texture("assets/hero.png");
@@ -76,6 +79,9 @@ children it already spawned. It is left there to be inspected. Use
 discards everything it reserved.
 
 ```typescript
+import { Entity, Transform, type Vec2 } from "@yagejs/core";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
+
 class Enemy extends Entity {
   setup(params: { position: Vec2 }) {
     // Safe — the entity is attached to the scene, so scene-dependent
@@ -98,6 +104,8 @@ types it as the concrete parent class, which `this.parent` (typed
 `Entity | null`) does not:
 
 ```typescript
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+
 class Turret extends Entity {
   setup() {
     this.add(new Transform());
@@ -125,8 +133,15 @@ An entity subclass exposes only `this.scene` — there is no `use()`,
 `setup()` or any method, go through the scene:
 
 ```typescript
-const rng = this.scene.use(RandomKey);                        // scene scope, then engine; throws if missing
-const audio = this.scene.context.tryResolve(AudioManagerKey); // undefined if missing
+import { Entity, RandomKey } from "@yagejs/core";
+import { AudioManagerKey } from "@yagejs/audio";
+
+class Crate extends Entity {
+  setup() {
+    const rng = this.scene.use(RandomKey);                        // scene scope, then engine; throws if missing
+    const audio = this.scene.context.tryResolve(AudioManagerKey); // undefined if missing
+  }
+}
 ```
 
 `this.scene.use(key)` checks scene scope first and engine scope second, so
@@ -143,7 +158,7 @@ whether an entity has a trait without knowing its concrete class.
 
 ### Defining a Trait
 
-```typescript
+```typescript yage-group="traits"
 import { defineTrait } from "@yagejs/core";
 
 const Interactable = defineTrait<{ interact(): void }>("Interactable");
@@ -157,7 +172,7 @@ The type parameter lists the members an entity with the trait must have.
 Use the `@trait()` decorator on entity subclasses. The class must declare
 every member the trait lists, or it fails to compile:
 
-```typescript
+```typescript yage-group="traits"
 import { Component, Entity, Transform, Vec2, trait } from "@yagejs/core";
 import { SpriteComponent, texture } from "@yagejs/renderer";
 
@@ -208,6 +223,11 @@ class NPC extends Entity {
     this.get(Health).damage(amount);
   }
 }
+
+// Defined elsewhere in your game:
+declare class Loot extends Entity { setup(params: { position: Vec2 }): void }
+declare class Health extends Component { constructor(max: number); damage(amount: number): void }
+declare class Conversation extends Component { start(): void }
 ```
 
 Each trait method hands the call to a component of the entity, and the
@@ -219,8 +239,7 @@ Use `entity.hasTrait()` as a type guard to discover capabilities at runtime.
 This component, on the player, interacts with everything in reach when the
 `interact` action is pressed:
 
-```typescript
-import { Component, Transform } from "@yagejs/core";
+```typescript yage-group="traits"
 import { InputManagerKey } from "@yagejs/input";
 
 class Interactor extends Component {
@@ -248,7 +267,7 @@ class Interactor extends Component {
 Use `entityClassHasTrait()` when code must validate a class before it creates
 an instance. The check includes traits inherited from parent classes:
 
-```typescript
+```typescript yage-group="traits"
 import { entityClassHasTrait } from "@yagejs/core";
 
 if (!entityClassHasTrait(Chest, Interactable)) {
@@ -267,9 +286,12 @@ Blueprints (`defineBlueprint()`) are the older way to define entity factories.
 encounter them in existing code, but entity subclasses offer better type
 safety and a class-based API.
 
-```typescript
+```typescript yage-context="scene"
 // Deprecated: write an Entity subclass instead
-import { defineBlueprint } from "@yagejs/core";
+import { defineBlueprint, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent, texture } from "@yagejs/renderer";
+
+const CoinTex = texture("assets/coin.png");
 
 const CoinBlueprint = defineBlueprint("Coin", (entity, params: { position: Vec2 }) => {
   entity.add(new Transform({ position: params.position }));

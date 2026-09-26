@@ -107,7 +107,7 @@ To let players switch to a new version without closing the game, register
 the service worker from your own code and show a prompt when a new version
 is waiting. Add `src/pwa.ts`:
 
-```ts
+```ts yage-group="pwa" yage-file="pwa.ts" yage-check="syntax" yage-reason="vite-plugin-pwa is a dependency of the Recommended template only, so the docs checker cannot resolve its virtual:pwa-register types"
 /// <reference types="vite-plugin-pwa/vanillajs" />
 import { registerSW } from "virtual:pwa-register";
 
@@ -149,7 +149,9 @@ discards everything in memory, so call it where losing the current state is
 acceptable: on the title screen, in a pause menu, or right after a save. A
 game that saves between levels can apply the update without asking:
 
-```ts
+```ts yage-group="pwa" yage-file="main.ts" yage-context="engine"
+import { isUpdateReady, applyUpdate } from "./pwa";
+
 engine.events.on("scene:replaced", () => {
   if (isUpdateReady()) void applyUpdate();
 });

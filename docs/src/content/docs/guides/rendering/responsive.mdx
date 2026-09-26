@@ -9,6 +9,8 @@ needed. To pin the canvas at a fixed size, give the container fixed CSS
 dimensions; the canvas will track that constant size.
 
 ```typescript
+import { RendererPlugin } from "@yagejs/renderer";
+
 new RendererPlugin({
   width: 800,
   height: 600,
@@ -20,6 +22,10 @@ new RendererPlugin({
 Pass `fit` to override the mode or the observed element:
 
 ```typescript
+import { RendererPlugin } from "@yagejs/renderer";
+
+const host = document.getElementById("game")!;
+
 new RendererPlugin({
   width: 800, height: 600,
   container: host,
@@ -87,7 +93,13 @@ letting the page grow until it hangs.
 
 At runtime you can switch modes or observe a different element:
 
-```typescript
+```typescript yage-context="scene-enter"
+import { RendererKey } from "@yagejs/renderer";
+
+const renderer = this.use(RendererKey);
+const [cssX, cssY] = [120, 80]; // a point on the canvas, in CSS px
+const [x, y] = [400, 300]; // a point in virtual space
+
 renderer.setFit({ mode: "expand" });     // swap modes / target
 renderer.fit;                              // current { mode, target? }
 renderer.canvasSize;                       // { width, height } in CSS px
@@ -110,13 +122,19 @@ currently-visible sub-rect of virtual space (clamped to virtual bounds),
 so HUD code can track what the player actually sees while gameplay keeps
 operating in the full declared virtual space:
 
-```typescript
+```typescript yage-context="scene-enter"
+import { Transform } from "@yagejs/core";
+import { RendererKey } from "@yagejs/renderer";
+
+const renderer = this.use(RendererKey);
+const scoreLabel = this.spawn("score").add(new Transform());
+
 // Gameplay: always the full declared play area.
 const { width, height } = renderer.virtualSize;
 
 // HUD: follow the visible sub-rect so corner-anchored elements stay on-screen.
 const visible = renderer.visibleVirtualRect;
-scoreLabel.position.set(visible.x + 16, visible.y + 16);
+scoreLabel.setPosition(visible.x + 16, visible.y + 16);
 ```
 
 Under `letterbox` / `expand` / `stretch` `visibleVirtualRect` equals
@@ -139,7 +157,15 @@ around the virtual rect. Two getters describe that space:
   that sit outside virtual, in virtual-space pixels. Exactly the bars.
   Empty on aspect-matched hosts, under `cover`, and under `stretch`.
 
-```typescript
+```typescript yage-context="scene-enter"
+import { Transform } from "@yagejs/core";
+import { GraphicsComponent, RendererKey } from "@yagejs/renderer";
+
+const renderer = this.use(RendererKey);
+const bgGraphics = this.spawn("backdrop").add(new GraphicsComponent()).graphics;
+const fogGraphics = this.spawn("fog").add(new GraphicsComponent()).graphics;
+const hud = this.spawn("hud").add(new Transform());
+
 // Backdrop that fills the whole canvas, extending into bars under expand:
 const canvas = renderer.visibleCanvasRect;
 bgGraphics.rect(canvas.x, canvas.y, canvas.width, canvas.height)
@@ -153,7 +179,7 @@ for (const bar of renderer.extendedVirtualRects) {
 
 // HUD that follows the canvas corners (so cards live in the bars):
 const cornerTL = renderer.visibleCanvasRect;
-hud.position.set(cornerTL.x + 16, cornerTL.y + 16);
+hud.setPosition(cornerTL.x + 16, cornerTL.y + 16);
 ```
 
 `extendedVirtualRects` is populated under `letterbox` too, geometrically
@@ -165,9 +191,11 @@ To put a scoreboard or branding in letterbox bars, parent a container
 directly on the Pixi stage, above the fit transform, and position it in
 **canvas pixels**:
 
-```typescript
+```typescript yage-context="scene-enter"
 import { Container, Graphics } from "pixi.js";
+import { RendererKey } from "@yagejs/renderer";
 
+const renderer = this.use(RendererKey);
 const bars = new Container();
 renderer.application.stage.addChild(bars);
 
@@ -198,7 +226,12 @@ canvas in **CSS pixels** — useful for absolutely-positioned HTML overlays
 (menus, tooltips, inspector panels) that should track the virtual rect
 rather than the canvas:
 
-```typescript
+```typescript yage-context="scene-enter"
+import { RendererKey } from "@yagejs/renderer";
+
+const renderer = this.use(RendererKey);
+const menuEl = document.getElementById("menu")!;
+
 const r = renderer.virtualCanvasRect;
 menuEl.style.left = `${r.x}px`;
 menuEl.style.top = `${r.y}px`;
@@ -225,9 +258,11 @@ resolves that key during install — so pointer events target the canvas
 and coordinates route through `canvasToVirtual` with no config. Just
 make sure you register `RendererPlugin` before `InputPlugin`.
 
-```typescript
+```typescript yage-context="engine"
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
+
+const host = document.getElementById("game")!;
 
 engine.use(new RendererPlugin({ width: 800, height: 600, container: host }));
 engine.use(new InputPlugin({ actions: { /* ... */ } }));
@@ -241,7 +276,12 @@ iOS Safari. The target is the configured `container` when present
 (so DOM overlays alongside the canvas remain inside the fullscreen
 area), or the canvas itself otherwise.
 
-```typescript
+```typescript yage-context="engine"
+import { RendererPlugin } from "@yagejs/renderer";
+
+const host = document.getElementById("game")!;
+const button = document.getElementById("fullscreen")!;
+
 const renderer = new RendererPlugin({ width: 800, height: 600, container: host });
 engine.use(renderer);
 
@@ -264,8 +304,11 @@ event bus whenever the fullscreen state changes (entering, exiting,
 or the user pressing Esc). Subscribe via `EventBusKey` for HUD
 relayouts or to update a button label:
 
-```typescript
+```typescript yage-context="engine"
 import { EventBusKey } from "@yagejs/core";
+
+const fullscreenButton = document.getElementById("fullscreen")!;
+
 const bus = engine.context.resolve(EventBusKey);
 bus.on("screen:fullscreen", ({ active }) => {
   fullscreenButton.textContent = active ? "Exit fullscreen" : "Enter fullscreen";
@@ -287,8 +330,13 @@ the device orientation changes. Payload is
 DOM union (`"portrait-primary" | "portrait-secondary" |
 "landscape-primary" | "landscape-secondary"`).
 
-```typescript
+```typescript yage-context="engine"
 import { EventBusKey } from "@yagejs/core";
+
+const rotateOverlay = document.getElementById("rotate-device")!;
+const showRotateOverlay = () => (rotateOverlay.hidden = false);
+const hideRotateOverlay = () => (rotateOverlay.hidden = true);
+
 const bus = engine.context.resolve(EventBusKey);
 bus.on("screen:orientation", ({ type }) => {
   if (type.startsWith("portrait")) showRotateOverlay();
@@ -372,6 +420,7 @@ browser allows it:
   Check `document.fullscreenEnabled` before showing the button:
 
   ```typescript
+  const button = document.getElementById("fullscreen")!;
   const doc = document as Document & { webkitFullscreenEnabled?: boolean };
   button.hidden = !(
     doc.fullscreenEnabled === true || doc.webkitFullscreenEnabled === true

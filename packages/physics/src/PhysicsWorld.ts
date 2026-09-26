@@ -1309,7 +1309,8 @@ export class PhysicsWorld {
    * formed a contact, and needs no step first. `prediction` must be finite
    * and at least 0. `normal` points from the first collider toward the
    * second. Colliders whose shapes coincide exactly report an arbitrary
-   * direction.
+   * direction. Takes internal Rapier collider handles; game code calls
+   * `ColliderComponent.contactWith()` instead.
    */
   contactBetween(
     handle: number,
@@ -1394,7 +1395,8 @@ export class PhysicsWorld {
    * collider. Reports Rapier's intersection pairs, which exist only when
    * one side is a sensor. Reflects every live collider at its current pose,
    * running a zero-duration step first when colliders changed since the
-   * last step.
+   * last step. Takes an internal Rapier collider handle; game code calls
+   * `ColliderComponent.getOverlapping()` instead.
    */
   queryOverlapping(colliderHandle: number): Entity[] {
     const collider = this.getCollider(colliderHandle);

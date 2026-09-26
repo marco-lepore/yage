@@ -3,7 +3,7 @@
 Radial 2D lights, light-level queries, and interchangeable lighting renderers
 for [YAGE](https://yage.dev).
 
-```ts
+```ts yage-group="readme"
 import {
   Component,
   Engine,
@@ -58,7 +58,7 @@ picks one by name.
 
 Use the scene-scoped `LightingWorldKey` for gameplay queries:
 
-```ts
+```ts yage-group="readme"
 class LightSensor extends Component {
   private readonly lighting = this.service(LightingWorldKey);
 
@@ -69,8 +69,8 @@ class LightSensor extends Component {
 ```
 
 `levelAt()` adds the ambient level and every light contribution, then clamps
-the result to `0..1`. A `LightOccluder` blocks light in the query and in the
-built-in renderer alike, so a wall casts a shadow in the picture and in the
+the result to `0..1`. A `LightOccluder` blocks light in the query and in both
+built-in renderers alike, so a wall casts a shadow in the picture and in the
 answer. Occluder data is renderer-neutral and available to custom renderers.
 
 See [yage.dev/guides/lighting](https://yage.dev/guides/lighting) for setup,

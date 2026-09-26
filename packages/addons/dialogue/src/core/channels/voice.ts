@@ -79,9 +79,8 @@ export interface VoiceChannelOptions {
  *  - **liveness cap** — an optional budget force-releases the gate if a clip
  *    never reports its end, so the conversation can't soft-lock.
  *
- * On a mid-line save/restore the host re-presents the current line, so `present`
- * fires again here — it stops any active clip first, so a restore restarts the
- * line's clip cleanly (the restore-safety property).
+ * `present` stops any clip still playing before it starts the new line's clip,
+ * so a clip left ringing (`onSkip: "ring"`) never overlaps the next line.
  */
 export function createVoiceChannel(
   opts: VoiceChannelOptions,

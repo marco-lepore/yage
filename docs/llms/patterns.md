@@ -5,6 +5,11 @@
 ### Service and sibling resolution
 
 ```ts
+import { Component } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+import { RigidBodyComponent } from "@yagejs/physics";
+import type { CameraEntity } from "@yagejs/renderer";
+
 class PlayerController extends Component {
   // Lazy proxy -- safe at field-declaration time, resolves on first access
   private input = this.service(InputManagerKey);
@@ -21,7 +26,7 @@ class PlayerController extends Component {
     const dir = this.input.getVector("left", "right", "up", "down");
     const speed = 200 / (this.camera?.zoom ?? 1);
     this.rb.setVelocity(dir.scale(speed));
-    // For non-physics entities, use: this.entity.get(Transform).translate(dir.scale(200 * dt)); // dt is seconds
+    // For non-physics entities, use: this.entity.get(Transform).translate(dir.x * 200 * dt, dir.y * 200 * dt); // dt is seconds
   }
 }
 ```
@@ -29,7 +34,14 @@ class PlayerController extends Component {
 ### Event subscriptions with auto-cleanup
 
 ```ts
+import { Component, defineEvent } from "@yagejs/core";
+
+const HitEvent = defineEvent<{ damage: number }>("hit");
+const SpawnEvent = defineEvent("spawn");
+
 class DamageReceiver extends Component {
+  health = 100;
+
   onAdd() {
     // Auto-unsubscribes when component is removed/destroyed
     this.listen(this.entity, HitEvent, ({ damage }) => {
@@ -55,7 +67,9 @@ Use `StateMachine` when a component has named modes and only specific moves
 between them are valid. Keep condition checks beside the probes and inputs that
 produce them, then call `go()`.
 
-```ts
+```ts yage-group="enemy"
+import { Component, defineStates } from "@yagejs/core";
+
 class EnemyBrain extends Component {
   readonly mode = this.stateMachine(
     defineStates({
@@ -69,6 +83,10 @@ class EnemyBrain extends Component {
   fixedUpdate(dt: number) {
     if (this.mode.is("patrol") && this.canAttack()) this.mode.go("windup");
     this.mode.tick(dt);
+  }
+
+  private canAttack(): boolean {
+    return false; // range and line-of-sight probes go here
   }
 }
 ```
@@ -89,6 +107,12 @@ comes from tuning: it runs when the state is entered, so it can read a field the
 constructor assigns after the machine is built.
 
 ```ts
+import { Component, defineStates } from "@yagejs/core";
+
+interface EnemyTuning {
+  windup: number;
+}
+
 class EnemyBrain extends Component {
   private readonly tuning: EnemyTuning;
 
@@ -117,7 +141,9 @@ Keep the presentation layer out of the table by listening instead of calling
 into it from a hook. `machine.events` carries `changed`, `entered` and `exited`,
 typed with the machine's own state names:
 
-```ts
+```ts yage-group="enemy"
+import { AnimationController } from "@yagejs/renderer";
+
 class EnemyView extends Component {
   private readonly anim = this.sibling(AnimationController);
   private readonly enemy = this.sibling(EnemyBrain);
@@ -136,6 +162,8 @@ A state that holds a phase sequence declares `states` and the `start` phase.
 sequence never outlives the state that holds it:
 
 ```ts
+import { defineStates } from "@yagejs/core";
+
 defineStates({
   idle: { to: ["shoot", "hit"] },
   shoot: {
@@ -173,6 +201,7 @@ import {
   type EngineContext,
   type QueryResult,
 } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
 
 class DisplaySyncSystem extends System {
   readonly phase = Phase.Render; // which frame phase to run in
@@ -191,10 +220,7 @@ class DisplaySyncSystem extends System {
     for (const entity of this.bodies) {
       const transform = entity.get(Transform);
       const sprite = entity.get(SpriteComponent);
-      sprite.pixiSprite.position.set(
-        transform.position.x,
-        transform.position.y,
-      );
+      sprite.sprite.position.set(transform.position.x, transform.position.y);
     }
   }
 
@@ -221,8 +247,10 @@ class DisplaySyncSystem extends System {
 
 Register a query once, get a live result set that updates automatically as components are added/removed.
 
-```ts
-import { QueryCacheKey, Transform } from "@yagejs/core";
+```ts yage-context="component"
+import { Component, QueryCacheKey, Transform } from "@yagejs/core";
+
+class EnemyTag extends Component {}
 
 // In a System's onRegister:
 const cache = this.use(QueryCacheKey);
@@ -242,6 +270,15 @@ enemies.toArray(); // snapshot as array (allocates)
 A component that registers a query unregisters it on removal, or the query keeps receiving updates:
 
 ```ts
+import {
+  Component,
+  QueryCacheKey,
+  Transform,
+  type QueryResult,
+} from "@yagejs/core";
+
+class EnemyTag extends Component {}
+
 class EnemyRadar extends Component {
   private enemies!: QueryResult;
 
@@ -259,7 +296,16 @@ class EnemyRadar extends Component {
 
 `setup()` runs after the entity is added to the scene. Services and `onAdd` hooks work inside it. The constructor does not have scene access.
 
-```ts
+```ts yage-context="scene"
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+class EnemyAI extends Component {
+  constructor(readonly kind: string) {
+    super();
+  }
+}
+
 class Enemy extends Entity {
   setup({ type, pos }: { type: string; pos: Vec2 }) {
     this.add(new Transform({ position: pos }));
@@ -285,6 +331,9 @@ entities in a `scene.spawnBatch` and call `batch.addChild` before
 `batch.setup`.
 
 ```ts
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
 class Turret extends Entity {
   private barrel!: Entity;
 
@@ -306,7 +355,9 @@ class Turret extends Entity {
 
 ### Traits for polymorphic behavior
 
-```ts
+```ts yage-context="scene"
+import { Component, Entity, defineTrait, trait } from "@yagejs/core";
+
 const Damageable = defineTrait<{ takeDamage(n: number): void }>("Damageable");
 
 // The rule and its state live in a component.
@@ -352,6 +403,8 @@ Each trait method hands the call to a component of the entity; the component hol
 ### Cooldown slot
 
 ```ts
+import { Component, ProcessComponent, type ProcessSlot } from "@yagejs/core";
+
 class Weapon extends Component {
   private pc = this.sibling(ProcessComponent);
   private cooldown!: ProcessSlot;
@@ -368,34 +421,75 @@ class Weapon extends Component {
     this.cooldown.start();
     this.spawnBullet();
   }
+
+  private spawnBullet() {
+    // spawn the projectile...
+  }
 }
 ```
 
 ### Sequence for cutscenes
 
 ```ts
-const bossT = boss.get(Transform);
-const seq = new Sequence()
-  .call(() => ui.showDialogue("Watch out!"))
-  .wait(2)
-  .then(
-    Tween.vec2(
-      (v) => bossT.setPosition(v.x, v.y),
-      bossT.position,
-      new Vec2(bossT.position.x, 100),
-      0.8,
-      easeOutQuad,
-    ),
-  )
-  .call(() => ui.hideDialogue())
-  .then(Tween.custom((v) => (camera.zoom = v), 1, 1.5, 0.5));
+import {
+  Sequence,
+  Transform,
+  Tween,
+  Vec2,
+  easeOutQuad,
+  type Entity,
+  type ProcessComponent,
+} from "@yagejs/core";
+import type { CameraEntity } from "@yagejs/renderer";
 
-pc.run(seq.build());
+interface DialogueUI {
+  showDialogue(text: string): void;
+  hideDialogue(): void;
+}
+
+function playIntro(
+  boss: Entity,
+  camera: CameraEntity,
+  ui: DialogueUI,
+  pc: ProcessComponent,
+) {
+  const bossT = boss.get(Transform);
+  const seq = new Sequence()
+    .call(() => ui.showDialogue("Watch out!"))
+    .wait(2)
+    .then(
+      Tween.vec2(
+        (v) => bossT.setPosition(v.x, v.y),
+        bossT.position,
+        new Vec2(bossT.position.x, 100),
+        0.8,
+        easeOutQuad,
+      ),
+    )
+    .call(() => ui.hideDialogue())
+    .then(Tween.custom((v) => (camera.zoom = v), 1, 1.5, 0.5));
+
+  pc.run(seq.build());
+}
 ```
 
 ### Tween animation
 
-```ts
+```ts yage-context="entity"
+import {
+  ProcessComponent,
+  Transform,
+  Tween,
+  Vec2,
+  easeInOutQuad,
+  easeOutBounce,
+} from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+const pc = entity.get(ProcessComponent);
+const transform = entity.get(Transform);
+const sprite = entity.get(SpriteComponent);
+
 // Rotate over time. Tween.to only accepts a plain Record<string, number>
 // target, so a Transform (a class instance) uses Tween.custom with a setter.
 pc.run(
@@ -419,7 +513,10 @@ pc.run(
 
 ### Process.delay for one-shots
 
-```ts
+```ts yage-context="entity"
+import { Process, ProcessComponent } from "@yagejs/core";
+
+const pc = entity.get(ProcessComponent);
 pc.run(Process.delay(1, () => entity.destroy()));
 ```
 
@@ -458,7 +555,7 @@ describe("Gravity", () => {
     const gravity = new Gravity();
     entity.add(gravity);
 
-    gravity.fixedUpdate(16);
+    gravity.fixedUpdate(1 / 60);
 
     const pos = entity.get(Transform).position;
     expect(pos.y).toBeGreaterThan(0);
@@ -471,7 +568,7 @@ describe("Gravity", () => {
     gravity.enabled = false;
     entity.add(gravity);
 
-    gravity.fixedUpdate(16);
+    gravity.fixedUpdate(1 / 60);
 
     expect(entity.get(Transform).position.y).toBe(0);
   });
@@ -513,8 +610,8 @@ describe("CountSystem", () => {
 
   it("increments count each update", () => {
     const { sys } = setup();
-    sys.update(16);
-    sys.update(16);
+    sys.update();
+    sys.update();
     expect(sys.count).toBe(2);
   });
 });
@@ -613,8 +710,8 @@ describe("Sequence", () => {
       .call(() => order.push("b"))
       .build();
 
-    seq._update(16);
-    seq._update(16);
+    seq._update(1 / 60);
+    seq._update(1 / 60);
     expect(order).toEqual(["a", "b"]);
   });
 });
@@ -665,6 +762,9 @@ describe("FooPlugin", () => {
 ### Pause menu
 
 ```ts
+import { Component, Scene, SceneManagerKey } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+
 class PauseScene extends Scene {
   readonly name = "pause";
   override readonly pauseBelow = true; // freeze scene below
@@ -691,11 +791,11 @@ class PauseOnKey extends Component {
 
 Scene and Component code reaches the scene manager with `this.use(SceneManagerKey)` or `this.service(SceneManagerKey)`, never through a module-level `engine` variable. `engine.scenes` is for `main.ts`.
 
-To update the game scene's HUD on pause, override the game scene's `onPause()` / `onResume()` hooks and call a HUD component method in one line: `this.findByKey<HudEntity>(HUD_KEY)?.status.setPaused(true)`. The pause scene does not touch the game scene.
+To update the game scene's HUD on pause, override the game scene's `onPause()` / `onResume()` hooks and call a HUD component method in one line: `this.findByKey<Hud>(HUD_KEY)?.status.setPaused(true)`, where `Hud` is an entity that keeps its `StatusLine` component as `status`. The pause scene does not touch the game scene.
 
 ### Time scale
 
-```ts
+```ts yage-context="scene,entity"
 scene.timeScale = 0.25; // slow-mo (persistent option)
 scene.timeScale = 2; // fast-forward
 
@@ -716,17 +816,34 @@ An entity excluded from a slow-motion effect still has its body integrated at
 the slowed rate. Scale velocity writes by the ratio of the two rates:
 
 ```ts
-const world = time.effectiveScale;
-const factor = world > 0 ? time.effectiveScaleForUpdates(entity) / world : 1;
-rb.setVelocity(dir.scale(speed * factor));
+import type { Entity, SceneTime, Vec2 } from "@yagejs/core";
+import type { RigidBodyComponent } from "@yagejs/physics";
+
+function setScaledVelocity(
+  time: SceneTime,
+  entity: Entity,
+  rb: RigidBodyComponent,
+  dir: Vec2,
+  speed: number,
+) {
+  const world = time.effectiveScale;
+  const factor = world > 0 ? time.effectiveScaleForUpdates(entity) / world : 1;
+  rb.setVelocity(dir.scale(speed * factor));
+}
 ```
 
 The factor is `1` while the scene is frozen — nothing integrates then.
 
 ### Hitstop, slow motion, bullet time, freeze frames (SceneTime)
 
-```ts
-import { SceneTimeKey } from "@yagejs/core";
+```ts yage-context="entity,component"
+import { Entity, SceneTimeKey } from "@yagejs/core";
+
+class Enemy extends Entity {}
+
+const player = this.entity;
+const enemy = this.scene.spawn(Enemy);
+const feedbackHost = this.scene.spawn("feedback-host");
 
 // Per-scene service; arbitrates competing time effects so callers never
 // write scene.timeScale directly (two writers lose the restore value).
@@ -765,7 +882,9 @@ time.fixedElapsed; // simulation seconds on the fixed timestep — stamp/compare
 
 ### Cross-scene access
 
-```ts
+```ts yage-context="component"
+import { SceneManagerKey, defineEvent } from "@yagejs/core";
+
 const DifficultyChanged = defineEvent<{ level: number }>("settings:difficulty");
 
 // In a scene or component of the options scene on top:
@@ -789,6 +908,10 @@ Module-level `createStore` / `createRecord` is only for state that `@yagejs/save
 ### Game state on a host entity
 
 ```tsx
+import { Component, Entity, Scene, defineEvent } from "@yagejs/core";
+import { Anchor, UISurface, type UIText } from "@yagejs/ui";
+import { Text, useSceneSelector } from "@yagejs/ui-react";
+
 // constants.ts
 export const CoinCollected = defineEvent("coin:collected");
 export const PlayerDied = defineEvent("player:died");
@@ -844,6 +967,8 @@ export class HudEntity extends Entity {
 }
 
 // scene.ts — onEnter only spawns
+class PlayerEntity extends Entity {}
+
 class LevelScene extends Scene {
   readonly name = "level";
   onEnter(): void {
@@ -853,7 +978,12 @@ class LevelScene extends Scene {
 }
 
 // Any component in the scene reads it:
-const coins = this.scene.findByKey<HudEntity>(HUD_KEY)?.progress.coins ?? 0;
+class GoalGate extends Component {
+  get open(): boolean {
+    const coins = this.scene.findByKey<HudEntity>(HUD_KEY)?.progress.coins ?? 0;
+    return coins >= 10; // every coin collected
+  }
+}
 
 // React reads it (selector polled each frame, re-renders on change):
 function CoinCounter() {
@@ -873,7 +1003,8 @@ function CoinCounter() {
 ### Saved state (module-level store)
 
 ```ts
-import { createStore } from "@yagejs/core";
+import { Component, createStore } from "@yagejs/core";
+import { createSave, localStorageAdapter } from "@yagejs/save";
 import { useStore } from "@yagejs/ui-react";
 
 // Module scope is right for saved state: @yagejs/save restores it before
@@ -883,10 +1014,20 @@ export const records = createStore((s) => ({
   unlocked: s.set<string>(),
 }));
 
+const save = createSave({
+  adapter: localStorageAdapter({ namespace: "my-game" }),
+});
 save.autoPersist("records", records); // ids at the call site; see packages/save.md
 
 // A component writes when its rule says so:
-if (this._coins > records.bestCoins.value()) records.bestCoins.set(this._coins);
+class RunProgress extends Component {
+  private _coins = 0;
+
+  finishRun(): void {
+    if (this._coins > records.bestCoins.value())
+      records.bestCoins.set(this._coins);
+  }
+}
 
 // React reads (re-renders on change):
 const best = useStore(records.bestCoins);
@@ -898,7 +1039,12 @@ const best = useStore(records.bestCoins);
 
 An entity type is an `Entity` subclass with `setup(params)`; its rules go in components. `defineBlueprint` is deprecated (see "Blueprints (deprecated)" above). A named spawn (`scene.spawn("background")`) is only for a one-off entity with no behaviour of its own: a UI root, a background, a HUD host.
 
-```ts
+```ts yage-context="scene"
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
+
+class CoinPickup extends Component {} // emits CoinCollected when the player touches it
+
 class Coin extends Entity {
   setup({ x, y }: { x: number; y: number }) {
     this.add(new Transform({ position: new Vec2(x, y) }));
@@ -918,6 +1064,10 @@ scene.spawn(Coin, { x: 200, y: 300 });
 ### Health/damage
 
 ```ts
+import { Component, defineEvent } from "@yagejs/core";
+
+const EntityDied = defineEvent("entity:died");
+
 class HealthComponent extends Component {
   hp: number;
   constructor(public readonly maxHp: number) {
@@ -934,15 +1084,43 @@ class HealthComponent extends Component {
 ### Ground detection (raycast)
 
 ```ts
-// Sensors are skipped by default, so a trigger zone underfoot is not ground.
-const hit = world.raycast(position, Vec2.DOWN, halfHeight + 2);
+import {
+  Component,
+  ProcessComponent,
+  Transform,
+  Vec2,
+  type ProcessSlot,
+} from "@yagejs/core";
+import { PhysicsWorldKey } from "@yagejs/physics";
 
-// Coyote time is a ProcessSlot on the physics clock, not a number counted
-// down by hand. In onAdd:
-//   this.coyote = this.processes.slot({ duration: 0.1, clock: "fixed" });
-// In fixedUpdate: restart it on every grounded step; it closes by itself.
-if (hit) this.coyote.restart();
-const canJump = this.coyote.running;
+class PlayerController extends Component {
+  private readonly processes = this.sibling(ProcessComponent);
+  private coyote!: ProcessSlot;
+
+  onAdd() {
+    // Coyote time is a ProcessSlot on the physics clock, not a number counted
+    // down by hand.
+    this.coyote = this.processes.slot({ duration: 0.1, clock: "fixed" });
+  }
+
+  fixedUpdate() {
+    const world = this.use(PhysicsWorldKey);
+    const position = this.entity.get(Transform).worldPosition;
+    const halfHeight = 16;
+
+    // Sensors are skipped by default, so a trigger zone underfoot is not ground.
+    // excludeEntity skips the caster's own collider, which the ray starts inside.
+    const hit = world.raycast(position, Vec2.DOWN, halfHeight + 2, {
+      excludeEntity: this.entity,
+    });
+    // Restart on every grounded step; the slot closes by itself.
+    if (hit) this.coyote.restart();
+  }
+
+  get canJump(): boolean {
+    return this.coyote.running;
+  }
+}
 ```
 
 ## Common Gotchas
@@ -953,7 +1131,12 @@ const canJump = this.coyote.running;
 
 A destroyed child keeps its slot in its parent's child map until that same flush, so its name is still taken for the rest of the tick. `addChild` and `spawnChild` both throw on a name the parent already holds, so a replacement under the same name in the same tick fails. `parent.removeChild(name)` detaches the child and frees the name in the same tick, so call it before the replacement spawns. A pooled child is the exception: `destroy()` hands it back to its pool, which detaches it there and then, so its name is free straight away.
 
-```ts
+```ts yage-context="component"
+import { Entity } from "@yagejs/core";
+
+class NextView extends Entity {}
+const parent = this.entity;
+
 const old = parent.removeChild("view"); // name free from here on
 old.destroy();
 parent.spawnChild("view", NextView);

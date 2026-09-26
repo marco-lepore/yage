@@ -44,10 +44,11 @@ export interface LayerDef {
    * Unique layer name within a scene. `"default"` is special — every
    * scene's render tree auto-creates a layer called `"default"` at order 0,
    * and any sprite/text/graphics with no explicit `layer` renders there.
-   * Declaring `{ name: "default", sort, space, isRenderGroup }` configures
-   * that pre-created layer (e.g. `{ name: "default", sort: ySort }` to
-   * depth-sort the layer your entities are already on). The declared
-   * `order` is ignored — `"default"` is the order-0 layer by definition.
+   * Declaring `{ name: "default", order: 0, sort, space, isRenderGroup }`
+   * configures that pre-created layer (e.g. `{ name: "default", order: 0,
+   * sort: ySort }` to depth-sort the layer your entities are already on).
+   * `order` is required, but the value declared for `"default"` is ignored
+   * — `"default"` is the order-0 layer by definition.
    * Use any other name to add a separate custom layer.
    */
   name: string;

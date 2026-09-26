@@ -14,7 +14,8 @@ npm install @yagejs-addons/i18n
 Subpaths keep the root free of pixi and React: `.`, `./renderer`, `./ui`,
 `./ui-react`, `./inventory`.
 
-```ts
+```ts yage-context="engine,scene"
+import { Transform } from "@yagejs/core";
 import {
   createLocalization,
   LocalizationPlugin,
@@ -25,9 +26,12 @@ import { LocalizedTextComponent } from "@yagejs-addons/i18n/renderer";
 const localization = await createLocalization({
   locale: "en",
   fallbackLocale: "en",
-  catalogs,
+  catalogs: { en: { "hud.hp": "HP {hp}" }, it: { "hud.hp": "PV {hp}" } },
 });
 engine.use(new LocalizationPlugin(localization));
+
+const hud = scene.spawn("hud");
+hud.add(new Transform());
 hud.add(
   new LocalizedTextComponent({ message: msg("hud.hp", "HP {hp}", { hp: 55 }) }),
 );

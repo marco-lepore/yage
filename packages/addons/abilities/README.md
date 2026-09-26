@@ -31,7 +31,7 @@ bumpers — anything that receives a hit.
 
 ## Quick start
 
-```ts
+```ts yage-context="scene"
 import { Entity, ProcessComponent, Transform, trait } from "@yagejs/core";
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import {
@@ -90,7 +90,16 @@ phase graph. Phases carry the timeline steps; transitions are declared per
 phase in an `on:` map keyed by **intent** strings, with optional time-window
 guards. The caster surface is five verbs:
 
-```ts
+```ts yage-group="runtime" yage-context="entity"
+import { Abilities, staggerReaction } from "@yagejs-addons/abilities";
+
+const abilities = entity.get(Abilities);
+const STAGGER = staggerReaction({
+  direction: { x: -1, y: 0 },
+  knockback: 200,
+  stun: 0.3,
+});
+
 abilities.send("attack"); // the one way in — for players AND AI
 abilities.canSend("attack"); // dry-run: admitted without preempting?
 abilities.release("charge"); // completes a hold; true when it did
@@ -100,7 +109,10 @@ abilities.force(STAGGER); // reactions only — see below
 
 A simple ability looks exactly like a timeline:
 
-```ts
+```ts yage-group="runtime" yage-context="entity"
+import { invulnerable } from "@yagejs-addons/abilities";
+import type { AbilityDef } from "@yagejs-addons/abilities";
+
 const DASH: AbilityDef = {
   id: "dash",
   cooldown: 1.1,
@@ -113,7 +125,7 @@ A combo is one def with stage phases — `send("attack")` enters when idle and
 advances inside each stage's guard window; a window reaching past the stage's
 end keeps working for that excess time after the run completes (linger):
 
-```ts
+```ts yage-group="runtime" yage-context="entity"
 const ATTACK: AbilityDef = {
   id: "attack",
   cooldown: 0.3,
@@ -146,7 +158,9 @@ A charge is one def too — a `hold` phase completes on `release()` and flows
 into the payoff through `next`. Per-phase `priority` scopes armor to the
 phase that earns it:
 
-```ts
+```ts yage-group="runtime" yage-context="entity"
+import { anim, hitbox } from "@yagejs-addons/abilities";
+
 const CHARGE: AbilityDef = {
   id: "charge",
   cooldown: 0.2,
@@ -218,8 +232,24 @@ For an out-of-combat weapon or skill-loadout swap, replace the runner's whole
 definition set without replacing the `Abilities` component:
 
 ```ts
-abilities.replaceDefinitions(next.defs);
-driverComponent.replace(next.input);
+import type { Entity } from "@yagejs/core";
+import { Abilities } from "@yagejs-addons/abilities";
+import type { AbilityDef } from "@yagejs-addons/abilities";
+import { AbilityDriverComponent } from "@yagejs-addons/abilities/input";
+import type { AbilityDriverOptions } from "@yagejs-addons/abilities/input";
+
+interface Loadout {
+  defs: readonly AbilityDef[];
+  input: AbilityDriverOptions;
+}
+
+function equip(entity: Entity, next: Loadout): void {
+  const abilities = entity.get(Abilities);
+  const driverComponent = entity.get(AbilityDriverComponent);
+
+  abilities.replaceDefinitions(next.defs);
+  driverComponent.replace(next.input);
+}
 ```
 
 `replaceDefinitions()` recompiles and validates the complete prospective set
@@ -241,20 +271,26 @@ entity. It resolves `InputManagerKey`, updates its plain driver, and disposes
 listeners and buffers with the component:
 
 ```ts
+import { Entity } from "@yagejs/core";
 import { AbilityDriverComponent } from "@yagejs-addons/abilities/input";
 
-this.add(
-  new AbilityDriverComponent({
-    defaults: { holdAt: 0.5 },
-    bindings: {
-      attack: {
-        tap: { send: "attack", buffer: 0.5 },
-        hold: { send: "charge", fromNeutral: true },
-      },
-      dash: { press: { send: "dash", buffer: 0.3 } },
-    },
-  }),
-);
+class Player extends Entity {
+  setup(): void {
+    // Add Transform, ProcessComponent, and Abilities first.
+    this.add(
+      new AbilityDriverComponent({
+        defaults: { holdAt: 0.5 },
+        bindings: {
+          attack: {
+            tap: { send: "attack", buffer: 0.5 },
+            hold: { send: "charge", fromNeutral: true },
+          },
+          dash: { press: { send: "dash", buffer: 0.3 } },
+        },
+      }),
+    );
+  }
+}
 ```
 
 Use the plain `AbilityDriver(input, abilities, options)` when another object
@@ -278,6 +314,8 @@ payload capture, hold release, and interrupted-hold resumption.
 A charge that flows directly to its next phase needs no release config:
 
 ```ts
+import type { AbilityDef } from "@yagejs-addons/abilities";
+
 const CHARGE: AbilityDef = {
   id: "charge",
   phases: {
@@ -296,6 +334,8 @@ can handle it through `on:`; an `entry:` door can deliver it after an
 interruption:
 
 ```ts
+import type { AbilityDef } from "@yagejs-addons/abilities";
+
 const CHARGE: AbilityDef = {
   id: "charge",
   entry: { "attack-release": "kick" },
@@ -351,7 +391,14 @@ an admitted send. Neither hook needs to manage retries or release sequencing.
 Games that do not want the input adapter can call the runner directly. This is
 also the path for AI:
 
-```ts
+```ts yage-context="component"
+import { InputManagerKey } from "@yagejs/input";
+import { Abilities } from "@yagejs-addons/abilities";
+
+// Inside a component's update():
+const abilities = this.entity.get(Abilities);
+const input = this.use(InputManagerKey);
+
 if (abilities.canSend("attack") && input.consumeBufferedPress("attack", 0.12)) {
   abilities.send("attack");
 }

@@ -55,11 +55,11 @@ play verbs, and reports the run as one object. It restores the clock to the
 state it found and releases every synthetic input afterwards, so a run leaves
 no key held:
 
-```typescript
+```typescript yage-context="browser"
 const run = await window.__yage__.inspector.drive(async (ctx) => {
   const i = window.__yage__.inspector;
   ctx.input.keyDown("KeyD");
-  const frames = await ctx.until(() => i.getEntityPosition("player").x > 950, {
+  const frames = await ctx.until(() => (i.getEntityPosition("player")?.x ?? 0) > 950, {
     maxFrames: 240,
   });
   ctx.input.clearAll();
@@ -93,7 +93,19 @@ and reaches situations too long to script. The shape is a `while` loop
 with an `if` chain for priority, `continue` to restart it, and
 `input.whileHolding` for a key that stays down across everything inside:
 
-```typescript title="src/levels/gauntlet.scenario.ts"
+```typescript title="src/levels/gauntlet.scenario.ts" yage-group="gauntlet"
+import { Component, Scene } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+import { defineScenario } from "@yagejs-tools/lab";
+
+// This game's own scene, ground sensor and level queries.
+declare class GauntletScene extends Scene { readonly name = "gauntlet"; }
+declare class GroundProbe extends Component { readonly grounded: boolean; }
+declare function atExit(body: RigidBodyComponent): boolean;
+declare function gapAhead(body: RigidBodyComponent, distance: number): boolean;
+declare function overTarget(body: RigidBodyComponent): boolean;
+declare function enemyAhead(body: RigidBodyComponent, distance: number): boolean;
+
 export default defineScenario({
   scene: () => new GauntletScene(),
 
@@ -129,7 +141,7 @@ Four things make that loop work.
 **A maneuver is an ordinary async function.** It awaits its own frames, so it
 needs no state machine and no phase counter — the sequence reads top to bottom:
 
-```typescript
+```typescript yage-group="gauntlet"
 import type { DriveContext } from "@yagejs-tools/lab";
 
 async function diveAttack(
@@ -187,12 +199,14 @@ A run stopped by its budget unwinds the callback, so its return value is lost.
 Assign anything you want to see either way to a variable in the enclosing
 scope, which keeps its last value:
 
-```typescript
+```typescript yage-context="browser"
+declare function atExit(): boolean; // this game's own sensor
+
 const i = window.__yage__.inspector;
 let lastX = 0;
 const run = await i.drive(async (ctx) => {
   while (!atExit()) {
-    lastX = i.getEntityPosition("player").x;
+    lastX = i.getEntityPosition("player")?.x ?? lastX;
     await ctx.step(1);
   }
 }, { maxFrames: 600 });
@@ -206,7 +220,12 @@ gap crossed at 300px/s takes 3 seconds, which is 180 frames at 1/60 — so wait
 on the predicate and cap it a little above the derived number:
 
 ```typescript
-await ctx.until(() => body.positionX > 900, { maxFrames: 240 });
+import type { RigidBodyComponent } from "@yagejs/physics";
+import type { DriveContext } from "@yagejs-tools/lab";
+
+async function crossGap(ctx: DriveContext, body: RigidBodyComponent) {
+  await ctx.until(() => body.positionX > 900, { maxFrames: 240 });
+}
 ```
 
 The predicate decides when the run moves on; the cap only decides when to give
@@ -223,15 +242,16 @@ click. So the button's own `onClick` runs. Whatever would stop a person's click
 also stops a click from `inspector.pointer`: a panel drawn over the button
 receives the click, and a disabled button receives none.
 
-```typescript
+```typescript yage-context="browser"
 const i = window.__yage__.inspector;
 
 // "build-menu" has one surface, and its buttons sit directly under the root.
 const { ui } = i.snapshotScene("build-menu");
-const button = ui.root.children.find((node) => node.type === "UIButton");
+const button = ui?.root.children.find((node) => node.type === "UIButton");
+if (!button) throw new Error("build-menu has no button");
 
 const hit = i.pointer.click(button.id); // the button's onClick has run
-hit.path[0].type; // "UIText": the label, drawn on top of the button
+hit.path[0]?.type; // "UIText": the label, drawn on top of the button
 hit.path.some((node) => node.type === "UIButton"); // true
 ```
 
@@ -293,7 +313,9 @@ in the run's `captures` as `{ label, dataUrl }`, so one call returns both the
 numbers and the frames behind them. A frozen clock means the image is the exact
 frame you stepped to.
 
-```typescript
+```typescript yage-context="inspector"
+declare function doorOpen(): boolean; // this game's own check
+
 const run = await inspector.drive(async (ctx) => {
   await ctx.until(() => doorOpen(), { maxFrames: 240 });
   await ctx.capture("door-open");

@@ -58,7 +58,7 @@ The model lives in a component on the entity that carries it (here the
 player); `InventoryController` on the same entity presents it. Consequences
 live in that component, listening on its own entity.
 
-```ts
+```ts yage-group="setup"
 import { Component, Entity, Scene } from "@yagejs/core";
 import {
   defineItems,
@@ -70,6 +70,11 @@ import {
   createInventoryPanel,
   INVENTORY_LAYERS,
 } from "@yagejs-addons/inventory/presenters";
+
+// game code:
+declare class Health extends Component {
+  heal(amount: number): void;
+}
 
 const catalog = defineItems({
   potion: { name: "Potion", maxStack: 5, description: "Heals 25 HP." },
@@ -130,15 +135,21 @@ construct `inventoryControls(bundle, { actions })` yourself only to rename them.
 never goes through the UI. It reaches the model through the component that
 owns it (`findByKey`, a query, or the `spawn()` reference), panel open or not:
 
-```ts
+```ts yage-group="setup"
+declare function openDoor(): void; // game code
+
 // In any component (a pickup, a door), panel open or closed:
-const items = this.scene.findByKey("player")?.get(Backpack).items;
-if (!items) return;
-items.add("potion", 3); // pickup — full/partial/rejected result
-if (items.has("sword")) {
-  // gate check, UI closed
-  items.remove("sword", 1);
-  openDoor();
+class WorldObject extends Component {
+  interact(): void {
+    const items = this.scene.findByKey("player")?.get(Backpack).items;
+    if (!items) return;
+    items.add("potion", 3); // pickup — full/partial/rejected result
+    if (items.has("sword")) {
+      // gate check, UI closed
+      items.remove("sword", 1);
+      openDoor();
+    }
+  }
 }
 ```
 
@@ -178,7 +189,9 @@ const catalog = defineItems({
 const inv = new Inventory({ catalog }); // infers ids + typed data map
 inv.add("herb", 1, { data: { quality: 90 } }); // data checked against the item
 inv.count("herb", (d) => d.quality > 80); // `d` typed — no cast
+// yage-expect-error TS2339
 inv.find("herb", (d) => d.durability); // ✗ compile error: no such field
+// yage-expect-error TS2322
 inv.add("potion", 1, { data: { quality: 1 } }); // ✗ compile error: potion carries no data
 ```
 
@@ -192,6 +205,18 @@ code is unaffected. Metadata `data` (on the def) stays opaque; only the per-stac
 ## Inventory — options
 
 ```ts
+import {
+  Inventory,
+  type InventoryConstraint,
+  type ItemActionDef,
+  type ItemCatalog,
+} from "@yagejs-addons/inventory";
+
+declare const catalog: ItemCatalog; // from defineItems(...)
+declare const weightLimit: InventoryConstraint;
+declare const use: ItemActionDef;
+declare const drop: ItemActionDef;
+
 new Inventory({
   catalog, // required
   capacity: 15, // slot count; omit = unbounded (grows)
@@ -224,26 +249,80 @@ new Inventory({
 ## Operations (all emit model events)
 
 ```ts
-add(itemId, qty = 1, { data? }): AddResult        // { added, rejected, reason?, constraintId?, slots }
-remove(itemId, qty = 1, where?): RemoveResult     // { removed, stacks }; drains anon first, then data
-remove(ref): RemoveResult                         // removes exactly find()'s stack (stale ref = no-op)
-removeAt(slot, qty?): RemoveResult                // whole stack when qty omitted; result carries `stacks`
-setSlot(slot, stack | null)                       // raw escape hatch (validates id + quantity only)
-move(from, to): MoveResult                        // { ok, reason?, effect? }; player slot interaction
-split(from, qty, to?): SplitResult                // { ok, reason? }; to defaults to the first empty slot
-sort(comparator?, { consolidate? })               // compacts + consolidates + orders (see below)
-compact()                                          // close gaps, keep order
-clear()                                            // bulk reset (only `changed` fires)
-transfer(target, itemId, qty = 1, where?): TransferResult  // moves anon then data, payload intact
-transfer(target, ref): TransferResult              // moves exactly one located stack
-transferSlot(target, slot, qty?): TransferResult   // carries the data payload
-count(itemId, where?) / has(itemId, qty = 1, where?)   // where = (data, stack) => boolean; data stacks only
-find(itemId, where?) / findAll(itemId, where?)         // LocatedStack { slot, stack } — the ref remove/transfer take
-get(slot) / firstSlot(itemId) / stacks(): LocatedStack[]  // stacks() = every occupied slot as { slot, stack }, in slot order
-slots / capacity / used / isFull                   // readonly state
-snapshot(): InventorySnapshot                      // JSON-able whole state
-restore(snapshot): { dropped }                     // unknown ids/bad qty dropped; capacity-shrink overflow re-flows into free slots, drops only when full
-on(event, fn): () => void                          // model events (below)
+import { Inventory as BaseInventory } from "@yagejs-addons/inventory";
+import type {
+  AddResult,
+  InventoryEvents,
+  InventorySnapshot,
+  ItemStack,
+  ItemStackSnapshot,
+  LocatedStack,
+  MoveResult,
+  RemoveResult,
+  SplitResult,
+  StackComparator,
+  StackPredicate,
+  TransferResult,
+} from "@yagejs-addons/inventory";
+
+// Shown with string ids; a catalog-typed Inventory<TId, TData> narrows ids and `data` per item.
+declare class Inventory extends BaseInventory {
+  add(
+    itemId: string,
+    qty?: number,
+    opts?: { readonly data?: Readonly<Record<string, unknown>> },
+  ): AddResult; // qty default 1; { added, rejected, reason?, constraintId?, slots }
+  remove(itemId: string, qty?: number, where?: StackPredicate): RemoveResult; // qty default 1; { removed, stacks }; drains anon first, then data
+  remove(ref: LocatedStack): RemoveResult; // removes exactly find()'s stack (stale ref = no-op)
+  removeAt(slot: number, qty?: number): RemoveResult; // whole stack when qty omitted; result carries `stacks`
+  setSlot(slot: number, stack: ItemStack | null): void; // raw escape hatch (validates id + quantity only)
+  move(from: number, to: number): MoveResult; // { ok, reason?, effect? }; player slot interaction
+  split(from: number, qty: number, to?: number): SplitResult; // { ok, reason? }; to defaults to the first empty slot
+  sort(
+    comparator?: StackComparator,
+    opts?: { readonly consolidate?: boolean },
+  ): void; // compacts + consolidates + orders (see below)
+  compact(): void; // close gaps, keep order
+  clear(): void; // bulk reset (only `changed` fires)
+  transfer(
+    target: Inventory,
+    itemId: string,
+    qty?: number,
+    where?: StackPredicate,
+  ): TransferResult; // qty default 1; moves anon then data, payload intact
+  transfer(target: Inventory, ref: LocatedStack): TransferResult; // moves exactly one located stack
+  transferSlot(target: Inventory, slot: number, qty?: number): TransferResult; // carries the data payload
+  count<K extends string>(itemId: K, where?: StackPredicate<K>): number; // where = (data, stack) => boolean; data stacks only
+  has<K extends string>(itemId: K, where?: StackPredicate<K>): boolean;
+  has<K extends string>(
+    itemId: K,
+    qty: number,
+    where?: StackPredicate<K>,
+  ): boolean; // qty default 1
+  find<K extends string>(
+    itemId: K,
+    where?: StackPredicate<K>,
+  ): LocatedStack<K> | undefined; // LocatedStack { slot, stack } — the ref remove/transfer take
+  findAll<K extends string>(
+    itemId: K,
+    where?: StackPredicate<K>,
+  ): LocatedStack<K>[];
+  get(slot: number): ItemStack | null;
+  firstSlot(itemId: string): number | undefined;
+  stacks(): readonly LocatedStack[]; // every occupied slot as { slot, stack }, in slot order
+  get slots(): readonly (ItemStack | null)[]; // readonly state
+  readonly capacity: number | undefined;
+  get used(): number;
+  get isFull(): boolean;
+  snapshot(): InventorySnapshot; // JSON-able whole state
+  restore(snapshot: InventorySnapshot): {
+    readonly dropped: readonly ItemStackSnapshot[];
+  }; // unknown ids/bad qty dropped; capacity-shrink overflow re-flows into free slots, drops only when full
+  on<K extends keyof InventoryEvents>(
+    event: K,
+    fn: (payload: InventoryEvents[K]) => void,
+  ): () => void; // model events (below)
+}
 ```
 
 Failure conventions: interaction ops REPORT (a refused gesture is a normal
@@ -279,7 +358,15 @@ Slot capacity is structural; anything else (weight, currency caps) is an
 injected `InventoryConstraint`:
 
 ```ts
-interface InventoryConstraint<TId extends string = string> {
+import type {
+  InventoryConstraint as BaseInventoryConstraint,
+  InventoryReader,
+  ItemDef,
+} from "@yagejs-addons/inventory";
+
+interface InventoryConstraint<
+  TId extends string = string,
+> extends BaseInventoryConstraint<TId> {
   id?: string; // surfaced as `constraintId` on rejections
   maxAcceptable(def: ItemDef<TId>, inv: InventoryReader<TId>): number; // how many MORE may enter
 }
@@ -292,10 +379,15 @@ result).
 ## Item actions — rules in, consequences out
 
 ```ts
-interface ItemActionDef {
+import type {
+  ItemActionContext,
+  ItemActionDef as BaseItemActionDef,
+} from "@yagejs-addons/inventory";
+
+interface ItemActionDef extends BaseItemActionDef {
   id: string;
   label: string;
-  available?(ctx: { slot; stack; def; inventory }): boolean; // per-stack gate
+  available?(ctx: ItemActionContext): boolean; // per-stack gate; ctx = { slot, stack, def, inventory }
   consumes?: boolean; // model removes 1 AFTER the action event (don't also remove in the handler)
   closes?: boolean; // UI hint: close the panel after invoking
 }
@@ -333,6 +425,18 @@ end to end.
 ## InventoryController (the Component host)
 
 ```ts
+import type { Entity } from "@yagejs/core";
+import {
+  byCategory,
+  InventoryController,
+  type Inventory,
+  type InventoryBundle,
+} from "@yagejs-addons/inventory";
+
+declare const host: Entity;
+declare const bundle: InventoryBundle; // e.g. createInventoryPanel()
+declare const inventory: Inventory;
+
 host.add(
   new InventoryController({
     ...bundle, // slots (required) + chrome/detail/actionMenu (optional)
@@ -381,15 +485,31 @@ geometry options decide the layout. A "list" is `columns: 1` with `rowCell`; a
 text menu is `columns: 2`; the default is a 5-column `iconCell` grid.
 
 ```ts
-createInventoryPanel(theme?, {
-  cell: iconCell,               // or rowCell (text rows). Default iconCell.
-  columns: 5, visibleRows: 4,   // cells per row / scroll-window rows
-  cellWidth: 56, cellHeight: 56,// cell extents (per axis; need not be square)
-  gap: 6,                       // number (both axes) or { x, y }
-  wrap: false,                  // cursor wrap at edges
-  chrome: true, detail: true, actionMenu: true,   // subtract pieces for embedding
-  bounds: { x, y, width, height },                // pin the panel; missing knobs derive from it
-}): InventoryBundle
+import type { InventoryBundle, Rect } from "@yagejs-addons/inventory";
+import type {
+  CellPresenterFactory,
+  InventoryPanelOptions as BaseInventoryPanelOptions,
+  InventoryTheme,
+} from "@yagejs-addons/inventory/presenters";
+
+interface InventoryPanelOptions extends BaseInventoryPanelOptions {
+  cell?: CellPresenterFactory; // iconCell (default) or rowCell (text rows)
+  columns?: number; // cells per row (iconCell: 5)
+  visibleRows?: number; // scroll-window rows (iconCell: 4)
+  cellWidth?: number; // cell extents, per axis; need not be square (iconCell: 56)
+  cellHeight?: number; // (iconCell: 56)
+  gap?: number | { x: number; y: number }; // number (both axes) or { x, y } (iconCell: 6)
+  wrap?: boolean; // cursor wrap at edges; default false
+  chrome?: boolean; // default true; subtract pieces for embedding
+  detail?: boolean; // default true
+  actionMenu?: boolean; // default true
+  bounds?: Rect; // { x, y, width, height } pins the panel; missing knobs derive from it
+}
+
+declare function createInventoryPanel(
+  theme?: InventoryTheme, // default defaultInventoryTheme()
+  opts?: InventoryPanelOptions,
+): InventoryBundle;
 ```
 
 Cell geometry is NOT in the theme — it is per-instance layout. Each option's
@@ -439,6 +559,11 @@ labels. Omit the field (or a key) for the Graphics default. Textures are
 must remain plain data:
 
 ```ts
+import {
+  createInventoryPanel,
+  defaultInventoryTheme,
+} from "@yagejs-addons/inventory/presenters";
+
 createInventoryPanel({
   ...defaultInventoryTheme(),
   textured: {
@@ -478,6 +603,23 @@ const bundle = createInventoryPanel({
 Standalone vs embedded is configuration:
 
 ```ts
+import type { Entity } from "@yagejs/core";
+import { InventoryController, type Inventory } from "@yagejs-addons/inventory";
+import {
+  createInventoryPanel,
+  type InventoryTheme,
+} from "@yagejs-addons/inventory/presenters";
+
+declare const host: Entity;
+declare const inventory: Inventory;
+declare const theme: InventoryTheme;
+// The game's own menu system:
+declare const menu: {
+  focusTabs(): void;
+  onTabFocus(tab: string, fn: () => void): void;
+  onKey(key: string, fn: () => void): void;
+};
+
 const bundle = createInventoryPanel(theme, {
   chrome: false, // the host menu draws its own frame
   bounds: { x: 320, y: 96, width: 344, height: 300 }, // sit inside the host layout
@@ -520,6 +662,18 @@ tabbed menu showing one category at a time. Unlike a second `Inventory` with
 is the same mutation, because it's one shared model.
 
 ```ts
+import type { Entity } from "@yagejs/core";
+import {
+  filteredView,
+  InventoryController,
+  type Inventory,
+  type InventoryBundle,
+} from "@yagejs-addons/inventory";
+
+declare const host: Entity;
+declare const backpack: Inventory;
+declare const bundle: InventoryBundle;
+
 const usable = filteredView(
   backpack,
   (stack, def) => def.actions?.includes("use") ?? false,
@@ -557,6 +711,19 @@ next to the root. The component then holds it (`readonly items = playerItems;`)
 instead of creating its own:
 
 ```ts
+import type { Serializable } from "@yagejs/core";
+import { createSave, localStorageAdapter } from "@yagejs/save";
+import {
+  Inventory,
+  type InventorySnapshot,
+  type ItemActionDef,
+  type ItemCatalog,
+} from "@yagejs-addons/inventory";
+
+declare const catalog: ItemCatalog; // from defineItems(...)
+declare const actions: ItemActionDef[];
+const save = createSave({ adapter: localStorageAdapter() });
+
 export const playerItems = new Inventory({ catalog, capacity: 15, actions });
 
 const gameState: Serializable<{ inventory: InventorySnapshot }> = {

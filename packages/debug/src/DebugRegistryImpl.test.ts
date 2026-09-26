@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DebugRegistryImpl } from "./DebugRegistryImpl.js";
-import type { DebugContributor } from "./types.js";
+import type { DebugContributor, DebugRegistry } from "./types.js";
 
 function makeContributor(name: string, flags: string[] = []): DebugContributor {
   return { name, flags };
@@ -34,8 +34,8 @@ describe("DebugRegistryImpl", () => {
     expect(reg.isFlagEnabled("unknown", "flag")).toBe(true);
   });
 
-  it("toggles global enabled state", () => {
-    const reg = new DebugRegistryImpl();
+  it("toggles global enabled state through the public registry interface", () => {
+    const reg: DebugRegistry = new DebugRegistryImpl();
     expect(reg.isEnabled()).toBe(false);
     reg.toggle();
     expect(reg.isEnabled()).toBe(true);
@@ -53,8 +53,8 @@ describe("DebugRegistryImpl", () => {
     expect(reg.isFlagEnabled("test", "a")).toBe(true);
   });
 
-  it("sets flags explicitly", () => {
-    const reg = new DebugRegistryImpl();
+  it("sets flags through the public registry interface", () => {
+    const reg: DebugRegistry = new DebugRegistryImpl();
     reg.register(makeContributor("test", ["a"]));
     reg.setFlag("test", "a", false);
     expect(reg.isFlagEnabled("test", "a")).toBe(false);

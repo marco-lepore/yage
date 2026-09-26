@@ -338,7 +338,7 @@ window.__yage__.inspector.hasComponent("player", "RigidBodyComponent");
 
 // Scene stack
 window.__yage__.inspector.getSceneStack();
-// → [{ name: 'game', entityCount: 12, paused: false }]
+// → [{ id: 'scene-1', name: 'game', entityCount: 12, paused: false }]
 
 // Error state
 window.__yage__.inspector.getErrors();
@@ -347,7 +347,7 @@ window.__yage__.inspector.getErrors();
 
 ### In Playwright Tests
 
-```typescript
+```typescript yage-context="playwright,browser"
 const pos = await page.evaluate(() =>
   window.__yage__.inspector.getEntityPosition("ball"),
 );
@@ -428,7 +428,7 @@ const physics = logs.filter((e) => e.category === "physics");
 
 1. Create `packages/<plugin>/src/MyComponent.ts`:
 
-```typescript
+```typescript yage-group="component-system" yage-file="MyComponent.ts"
 import { Component } from "@yagejs/core";
 
 export class MyComponent extends Component {
@@ -456,7 +456,7 @@ export class MyComponent extends Component {
 
 1. Create `packages/<plugin>/src/MySystem.ts`:
 
-```typescript
+```typescript yage-group="component-system" yage-file="MySystem.ts"
 import { System, Phase, EngineContext, QueryResult } from "@yagejs/core";
 import { QueryCacheKey } from "@yagejs/core";
 import { MyComponent } from "./MyComponent";
@@ -520,7 +520,7 @@ is the reference example.
    `setupGameContainer`, `getContainer`). A single-file example looks like
    this:
 
-```typescript
+```typescript yage-group="example-boot" yage-file="my-example/main.ts"
 import {
   Component,
   Engine,
@@ -589,6 +589,20 @@ async function main(): Promise<void> {
 main().catch(console.error);
 ```
 
+The shared helpers in `examples/src/shared/bootstrap.ts` have these signatures:
+
+```typescript yage-group="example-boot" yage-file="shared/bootstrap.ts"
+import type { Engine } from "@yagejs/core";
+
+// Installs DebugPlugin when the page URL has ?debug.
+export declare function installDebugFromUrl(engine: Engine): Promise<void>;
+export declare function getContainer(): HTMLElement;
+export declare function setupGameContainer(
+  width: number,
+  height: number,
+): HTMLElement;
+```
+
 2. Create `examples/<name>.html` at the root. It links `/shared.css`, holds a
    `#game-container`, and loads the module — e.g.
    `<script type="module" src="/src/<name>/main.ts"></script>`. Copy an existing
@@ -620,6 +634,10 @@ main().catch(console.error);
 ```typescript
 import { AssetHandle } from "@yagejs/core";
 
+export interface MyAssetType {
+  // The value your loader resolves with
+}
+
 export function myAsset(path: string): AssetHandle<MyAssetType> {
   return new AssetHandle<MyAssetType>("myType", path);
 }
@@ -628,12 +646,23 @@ export function myAsset(path: string): AssetHandle<MyAssetType> {
 2. Register the loader in your plugin's `install()`:
 
 ```typescript
-install(context: EngineContext) {
-  const assets = context.resolve(AssetManagerKey);
-  assets.registerLoader('myType', {
-    load: async (path) => { /* load and return asset */ },
-    unload: (path, asset) => { /* cleanup */ },
-  });
+import { AssetManagerKey, type EngineContext, type Plugin } from "@yagejs/core";
+
+class MyAssetPlugin implements Plugin {
+  readonly name = "my-assets";
+  readonly version = "1.0.0";
+
+  install(context: EngineContext) {
+    const assets = context.resolve(AssetManagerKey);
+    assets.registerLoader("myType", {
+      load: async (path) => {
+        /* load and return asset */
+      },
+      unload: (path, asset) => {
+        /* cleanup */
+      },
+    });
+  }
 }
 ```
 
@@ -666,8 +695,15 @@ class MyEntity extends Entity {
 
 Traits declare capabilities that are enforced at compile time (via the `@trait()` decorator) and queryable at runtime via `hasTrait()`.
 
-```typescript
-import { Component, Entity, defineTrait, trait } from "@yagejs/core";
+```typescript yage-context="scene"
+import {
+  Component,
+  Entity,
+  Transform,
+  Vec2,
+  defineTrait,
+  trait,
+} from "@yagejs/core";
 
 const Interactable = defineTrait<{ interact(): void; priority: number }>(
   "Interactable",
@@ -742,8 +778,8 @@ and entity setup reconstructs runtime objects from the restored facts.
 
 Use one `Save` instance with an explicit state root:
 
-```typescript
-import { createStore, createRecord } from "@yagejs/core";
+```typescript yage-context="engine"
+import { Scene, createStore, createRecord } from "@yagejs/core";
 import {
   createSave,
   SavePlugin,
@@ -775,13 +811,19 @@ save.autoPersist("settings", settings);
 engine.use(new SavePlugin({ save }));
 
 // In game code:
-const save = this.service(SaveServiceKey);
-await save.saveSlot("game", "manual-1", game, {
-  metadata: {
-    /* ... */
-  },
-});
-await save.loadSlot("game", "manual-1", game);
+class GameScene extends Scene {
+  readonly name = "game";
+  private readonly save = this.service(SaveServiceKey);
+
+  async saveAndReload() {
+    await this.save.saveSlot("game", "manual-1", game, {
+      metadata: {
+        /* ... */
+      },
+    });
+    await this.save.loadSlot("game", "manual-1", game);
+  }
+}
 ```
 
 ### Rebuild runtime views after load
@@ -797,7 +839,7 @@ the same durable state model.
 Blueprints still work but entity subclasses are preferred for new code.
 
 ```typescript
-import { defineBlueprint, Transform } from "@yagejs/core";
+import { defineBlueprint, Transform, Vec2 } from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";
 
 export const MyBlueprint = defineBlueprint<{ x: number; y: number }>(
@@ -815,10 +857,16 @@ export const MyBlueprint = defineBlueprint<{ x: number; y: number }>(
 
 A scene is always a `Scene` subclass; there is no lighter form, even for a throwaway prototype. `onEnter` assembles the scene: it spawns entities, sets up the camera and starts music. It holds no game state and no rules, which live in components. Services are accessed via `this.service(Key)`, which returns a lazy proxy safe to assign as a field.
 
-```typescript
-import { Scene, Transform, Vec2 } from "@yagejs/core";
+```typescript yage-context="engine"
+import { Entity, Scene, Transform, Vec2 } from "@yagejs/core";
 import { CameraEntity } from "@yagejs/renderer";
 import { InputManagerKey } from "@yagejs/input";
+
+class PlayerEntity extends Entity {
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+  }
+}
 
 class GameScene extends Scene {
   readonly name = "game";
@@ -844,6 +892,7 @@ engine.scenes.push(new GameScene());
 > direct world access (raycasts, gravity) resolve once in `onAdd()`:
 >
 > ```typescript
+> import { Component } from "@yagejs/core";
 > import { PhysicsWorldKey } from "@yagejs/physics";
 > import type { PhysicsWorld } from "@yagejs/physics";
 >
@@ -860,11 +909,15 @@ engine.scenes.push(new GameScene());
 Create an `Engine`, register plugins with `engine.use()`, then start and push a scene:
 
 ```typescript
-import { Engine } from "@yagejs/core";
+import { Engine, Scene } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { InputPlugin } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
 
 const engine = new Engine({ debug: true });
 engine.use(new RendererPlugin({ width: 800, height: 600 }));

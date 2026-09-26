@@ -42,7 +42,12 @@ Bound action names must exist in the `InputPlugin` action map — the overlay
 drives existing actions, it does not define them (an unknown name warns and
 is skipped until it exists):
 
-```ts
+```ts yage-context="engine"
+import { Entity, Scene } from "@yagejs/core";
+import { InputPlugin } from "@yagejs/input";
+import { VirtualControls } from "@yagejs-addons/virtual-controls";
+import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
+
 engine.use(
   new InputPlugin({
     actions: {
@@ -115,7 +120,13 @@ host entity and add a fresh component.
 
 Change one configured button without rebuilding the overlay:
 
-```ts
+```ts yage-context="entity"
+import { VirtualControls } from "@yagejs-addons/virtual-controls";
+
+declare const gameOver: boolean;
+declare const canJump: boolean;
+
+const controls = entity.get(VirtualControls);
 controls.setButtonVisible("restart", gameOver);
 controls.setButtonEnabled("jump", canJump);
 ```
@@ -154,8 +165,10 @@ Mirroring (all idempotent, per pointer event):
   deflected past its deadzone wins; an idle plugged-in pad does NOT mask
   the virtual stick. First stick defaults `axes: "left"`, second `"right"`;
   pass `axes: false` to opt out.
-- Analog escape hatch: `controls.stick().value` (dead-zoned, -1..1, +y down)
-  and `.rawValue`. `value` and `getStick()` use the SAME response curve
+- Analog escape hatch: `controls.stick()?.value` (dead-zoned, -1..1, +y
+  down) and `.rawValue`. `stick(id?)` returns the first stick (or the one
+  with that id), and `undefined` when there is none. `value` and
+  `getStick()` use the SAME response curve
   (input's exported `applyRadialDeadzone`), but each applies its own
   deadzone number: the stick's `deadZone` option shapes `value` and the
   digital mirror; `getStick()` applies `InputConfig.deadzones.stick`, same
@@ -169,6 +182,9 @@ update after the action exists.
 ## Config surface
 
 ```ts
+import { VirtualControls } from "@yagejs-addons/virtual-controls";
+import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
+
 new VirtualControls({
   stick: {
     // or sticks: [ … ] for twin-stick
@@ -219,10 +235,13 @@ sizes, and out-of-range deadZone/threshold) throw at construction or at the
 `VirtualButtonPressEvent` / `VirtualButtonReleaseEvent` (`{ id, action }`) and
 `VirtualStickEngageEvent` / `VirtualStickReleaseEvent` (`{ id }`) — the hook
 for haptics, UI sounds, tutorials, or buttons with no `action`. Per-frame
-stick values are polled (`controls.stick().value`), not evented. Listen from a
-component, not from a closure in `onEnter`:
+stick values are polled (`controls.stick(id)?.value`), not evented. Listen
+from a component, not from a closure in `onEnter`:
 
 ```ts
+import { Component } from "@yagejs/core";
+import { VirtualButtonPressEvent } from "@yagejs-addons/virtual-controls";
+
 class ButtonHaptics extends Component {
   onAdd(): void {
     // Any VirtualControls in the scene; the event bubbles from its entity.
@@ -241,15 +260,23 @@ Implement two pixi-free contracts from the root entry and hit-testing/routing
 stays in the model (views only draw):
 
 ```ts
-interface ControlsPresenter {
+import type { Scene } from "@yagejs/core";
+import type {
+  ControlView as BaseControlView,
+  ControlsPresenter as BaseControlsPresenter,
+  VirtualButton,
+  VirtualStick,
+} from "@yagejs-addons/virtual-controls";
+
+interface ControlsPresenter extends BaseControlsPresenter {
   mount(scene: Scene): void;
   createStickView(stick: VirtualStick): ControlView; // poll stick.basePos/knobPos/active/layout
   createButtonView(button: VirtualButton): ControlView; // poll button.pressed/visible/enabled/layout/label
   dispose(): void;
 }
-interface ControlView {
-  update(dt): void;
-  setVisible(v): void;
+interface ControlView extends BaseControlView {
+  update(dt: number): void;
+  setVisible(v: boolean): void;
   dispose(): void;
 }
 ```
@@ -269,8 +296,8 @@ built-in theme knobs live on `ControlsTheme`
   rect each frame).
 - Set `touch-action: none` on the canvas container or the browser hijacks
   the second finger for scroll/zoom.
-- `getStick()` reads the virtual stick only while NO physical gamepad is
-  active — the pad wins by design.
+- A physical pad whose stick is deflected past its deadzone overrides the
+  virtual stick in `getStick()`. An idle plugged-in pad does not mask it.
 - Two `VirtualControls` instances both listen for pointers; the
   first-registered claims first. One instance per scene is the intended
   shape.

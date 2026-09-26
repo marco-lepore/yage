@@ -176,6 +176,8 @@ describe("PhysicsPlugin", () => {
         register,
         isEnabled: () => true,
         isFlagEnabled: () => true,
+        setFlag: vi.fn(),
+        toggle: vi.fn(),
         drawVector: () => () => {},
       });
       const plugin = new PhysicsPlugin();

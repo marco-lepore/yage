@@ -4,13 +4,13 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Yoga flexbox-based UI. Supports b
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { UIPlugin } from "@yagejs/ui";
 engine.use(new UIPlugin());
 
-// Optional: an app-wide default style for UI text (UIText, UISplitText, and
-// auto-wrapped Button/Checkbox labels). Layered over RendererConfig.defaultTextStyle;
-// per-text `style` still wins.
+// Or register it once with an app-wide default style for UI text (UIText,
+// UISplitText, and auto-wrapped Button/Checkbox labels). Layered over
+// RendererConfig.defaultTextStyle; per-text `style` still wins.
 engine.use(
   new UIPlugin({ defaultTextStyle: { fontFamily: "Inter", fill: 0xffffff } }),
 );
@@ -28,8 +28,15 @@ The positioning mode is independent of the target layer's `space`:
 - **Screen-space layer + `positioning: "transform"`** = billboard pattern. Pair with `ScreenFollow` from `@yagejs/renderer` which writes `cam.worldToScreen(target) + offset` to this entity's Transform each frame (offset is in screen pixels, applied post-projection). UI stays axis-aligned and constant-size under any camera zoom/rotation.
 - **World-space layer + `positioning: "transform"`** = genuinely diegetic UI. Transform holds a world coord; layer scales/rotates the UI like any other world object.
 
-```ts
+```ts yage-context="entity"
+import { Transform, Vec2 } from "@yagejs/core";
+import type { Entity } from "@yagejs/core";
+import { ScreenFollow } from "@yagejs/renderer";
+import type { CameraEntity } from "@yagejs/renderer";
 import { UISurface, Anchor } from "@yagejs/ui";
+
+declare const target: Entity; // what the nameplate follows
+declare const camera: CameraEntity;
 
 // Screen-space HUD (default)
 entity.add(
@@ -63,7 +70,9 @@ Anchor enum: `TopLeft`, `TopCenter`, `TopRight`, `CenterLeft`, `Center`, `Center
 
 ## Builder API
 
-```ts
+```ts yage-group="builder" yage-context="entity"
+import { UIButton, UIImage, UISurface } from "@yagejs/ui";
+
 const panel = entity.get(UISurface);
 
 // Text
@@ -101,7 +110,7 @@ panel.button("A very long label that won't fit", {
 // Button is a flex container, stacking its children in a column. Ask for a
 // row to put an icon beside the label.
 const iconBtn = panel.button("Buy", { direction: "row", gap: 6 });
-iconBtn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
+iconBtn.addElement(new UIImage({ texture: "icon", width: 16, height: 16 }));
 
 // A button's own defaults, all overridable:
 //   background        { color: 0x444444, alpha: 1, radius: 4 }
@@ -154,8 +163,8 @@ bar.update({ value: 0.4 });
 bar.value; // 0.4 — reads back the clamped fill fraction
 
 // Move the whole tree without touching the anchor: one setOffset per frame is
-// how a panel slides in. `surface.offset` reads it back.
-surface.setOffset(0, -120);
+// how a panel slides in. `panel.offset` reads it back.
+panel.setOffset(0, -120);
 ```
 
 ## Flex layout defaults
@@ -176,8 +185,11 @@ scroll). Shrinking and wrapping are therefore **opt-in**:
   siblings and its text wraps cleanly. **Prefer `flex: 1` over `flexGrow: 1`**:
   `flexGrow: 1` alone keeps `flexBasis: auto` (content width) and overflows.
 
-```ts
+```ts yage-context="entity"
+import { UISurface } from "@yagejs/ui";
+
 // Fixed icon, growing/wrapping text column, fixed button — the common row.
+const row = entity.get(UISurface).panel({ direction: "row", width: 240 });
 row.panel({ width: 16, height: 16 }); // fixed, flexShrink 0 (default)
 const col = row.panel({ flex: 1, direction: "column" }); // fills + wraps
 col.text("a long label that wraps within the column");
@@ -217,6 +229,8 @@ and a shrink-to-fit parent at a fractional position.
 ## UIImage sizing
 
 ```ts
+import { UIImage } from "@yagejs/ui";
+
 new UIImage({ texture: "card-art", height: 58 }); // width follows the picture
 new UIImage({ texture: "card-art", width: 120 }); // height follows the picture
 new UIImage({ texture: "banner", width: 180, height: 58 }); // stretched to the box
@@ -252,6 +266,8 @@ pinned axis inside a plain panel, where the default stretch alignment fills the
 other one. The layout pass applies the wrap or the truncation in those cases.
 
 ```ts
+import { UIText } from "@yagejs/ui";
+
 // `bitmap: true` bakes (or looks up) the atlas from `style.fontFamily`
 // at `style.fontSize` — the font is a normal style property.
 new UIText({
@@ -281,7 +297,7 @@ Use `installBitmapFont(...)` / `bitmapFont(...)` from `@yagejs/renderer` to obta
 
 UI sibling of `@yagejs/renderer`'s `SplitTextComponent` (wraps Pixi's experimental `SplitText` / `SplitBitmapText`). Lays the whole block out as one Yoga element and exposes `chars` / `words` / `lines` for animation. **No `truncate` / word-wrap** (pre-break with `\n`, or use `UIText` for paragraphs). It measures its natural size via Pixi text metrics, so the Yoga box doesn't jitter as you animate glyphs.
 
-```ts
+```ts yage-group="builder" yage-context="entity"
 import { UISplitText } from "@yagejs/ui";
 
 const title = new UISplitText({
@@ -304,22 +320,27 @@ API: `chars` / `words` / `lines` getters, `segments`, `setText`, `setStyle`, `re
 **React:** `<SplitText>` (props mirror `<Text>` minus `truncate`, plus the three anchors + `autoSplit`) and the `useSplitText()` hook. The hook returns a `[ref, controls]` tuple — `controls` has live `chars` / `words` / `lines` / `segments` getters, `resplit()`, and `run(process | process[])`. `run` enqueues on a scene-scoped process queue (pauses with the scene; cancelled on unmount and on re-split, so a tween never writes to a destroyed glyph) and returns `{ cancel() }` for that batch. Animate imperatively from any handler — pair `run` with `Tween.stagger(items, factory, stepSeconds)` to cascade a tween across the segments.
 
 ```tsx
-const [ref, split] = useSplitText();
-const reveal = () => {
-  split.chars.forEach((c) => (c.alpha = 0));
-  split.run(
-    Tween.stagger(
-      split.chars,
-      (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3),
-      0.05,
-    ),
+import { Tween } from "@yagejs/core";
+import { SplitText, useSplitText } from "@yagejs/ui-react";
+
+function Title({ label }: { label: string }) {
+  const [ref, split] = useSplitText();
+  const reveal = () => {
+    split.chars.forEach((c) => (c.alpha = 0));
+    split.run(
+      Tween.stagger(
+        split.chars,
+        (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3),
+        0.05,
+      ),
+    );
+  };
+  return (
+    <SplitText ref={ref} charAnchor={0.5} onPointerOver={reveal}>
+      {label}
+    </SplitText>
   );
-};
-return (
-  <SplitText ref={ref} charAnchor={0.5} onPointerDown={reveal}>
-    {label}
-  </SplitText>
-);
+}
 ```
 
 `SplitText` is experimental in Pixi and re-lays-out on every `text` / `style` change — prefer `UIText` for static / simple dynamic labels.
@@ -328,8 +349,8 @@ return (
 
 Drop-in progress bar for a `LoadingScene` (in `@yagejs/core`). Subscribes to `scene:loading:progress` internally and updates a `UIProgressBar`. Spawn inside a `LoadingScene` (throws otherwise). Full contract: `loading-scene.md`.
 
-```ts
-import { LoadingSceneProgressBar } from "@yagejs/ui";
+```ts yage-context="scene-enter"
+import { Anchor, LoadingSceneProgressBar } from "@yagejs/ui";
 
 this.spawn(LoadingSceneProgressBar, {
   width: 400, // default 400
@@ -347,7 +368,7 @@ Pass `backdrop` when the loading scene is transitioned into — without it the s
 
 ## Visibility
 
-```ts
+```ts yage-group="builder" yage-context="entity"
 panel.visible = false; // hide
 label.visible = true;
 ```
@@ -356,7 +377,7 @@ label.visible = true;
 
 Every element accepts `position`, `left`, `top`, `right`, `bottom` via `LayoutProps`:
 
-```ts
+```ts yage-group="builder" yage-context="entity"
 // Pin a badge to the top-right of its parent. The parent must be
 // `position: "relative"` (the default) so it acts as the containing block.
 const badge = panel.panel({
@@ -379,10 +400,14 @@ Every element accepts four props that change how it is drawn, never where
 layout puts it:
 
 ```ts
-transformOrigin?: number | { x: number; y: number }; // default 0 (top-left)
-scale?: number | { x: number; y: number }; // default 1
-rotation?: number; // radians, default 0
-zIndex?: number; // default 0
+import type { LayoutProps as BaseLayoutProps } from "@yagejs/ui";
+
+interface LayoutProps extends BaseLayoutProps {
+  transformOrigin?: number | { x: number; y: number }; // default 0 (top-left)
+  scale?: number | { x: number; y: number }; // default 1
+  rotation?: number; // radians, default 0
+  zIndex?: number; // default 0
+}
 ```
 
 `transformOrigin` is the point `scale` and `rotation` turn about, as fractions
@@ -391,7 +416,9 @@ middle of the bottom edge. Set it to `0.5` for a pop or a spin about the
 centre. The four are also get/set accessors on every element class, which is
 the form a tween drives:
 
-```ts
+```ts yage-group="builder" yage-context="entity"
+import { ProcessComponent, Tween } from "@yagejs/core";
+
 const pc = entity.get(ProcessComponent);
 const card = row.panel({
   width: 120,
@@ -453,7 +480,11 @@ helper (also exported) binds one listener pair and swaps callbacks in place on
 wrapper whose `@pixi/ui` view carries an enabled flag — takes no pointer
 events while disabled, so its callbacks do not fire.
 
-```ts
+```ts yage-group="builder" yage-context="entity"
+declare function setGlow(on: boolean): void;
+declare function showDetail(): void;
+declare function hideDetail(): void;
+
 new UIButton({ children: "Save", onHover: (h) => setGlow(h) });
 panel.panel({ onPointerOver: showDetail, onPointerOut: hideDetail });
 ```
@@ -470,8 +501,11 @@ visible, enabled, focusable elements, confirm paints the focused element
 pressed while the action is held and runs that element's own action on the
 release, and cancel calls `onCancel`.
 
-```ts
+```ts yage-group="focus" yage-context="entity"
 import { Anchor, UISurface } from "@yagejs/ui";
+
+declare function resume(): void;
+declare function quit(): void;
 
 const menu = entity.add(
   new UISurface({ anchor: Anchor.Center, gap: 8, focus: true }),
@@ -489,9 +523,18 @@ focusable by default; any other element joins with `focusable: true`.
 ### Scope options
 
 ```ts
-focus?: boolean | UIFocusScopeOptions; // `true` takes every default
+import type {
+  UIElement,
+  UIFocusInputOptions as BaseUIFocusInputOptions,
+  UIFocusScopeOptions as BaseUIFocusScopeOptions,
+  UIPanelProps as BaseUIPanelProps,
+} from "@yagejs/ui";
 
-interface UIFocusScopeOptions {
+interface UIPanelProps extends BaseUIPanelProps {
+  focus?: boolean | UIFocusScopeOptions; // `true` takes every default
+}
+
+interface UIFocusScopeOptions extends BaseUIFocusScopeOptions {
   wrap?: boolean; // default true — past the last element, back to the first
   autoFocus?: boolean; // default true — focus the first candidate on taking input
   input?: UIFocusInputOptions | null;
@@ -504,7 +547,7 @@ interface UIFocusScopeOptions {
   onCancel?: () => void;
 }
 
-interface UIFocusInputOptions {
+interface UIFocusInputOptions extends BaseUIFocusInputOptions {
   up?: string | readonly string[]; // default "move-up"
   down?: string | readonly string[]; // default "move-down"
   left?: string | readonly string[]; // default "move-left"
@@ -542,7 +585,13 @@ groups back when it closes.
 `PointerEventProps`:
 
 ```ts
-interface FocusProps {
+import type {
+  FocusNeighbors as BaseFocusNeighbors,
+  FocusProps as BaseFocusProps,
+  UIFocusStyle,
+} from "@yagejs/ui";
+
+interface FocusProps extends BaseFocusProps {
   focusable?: boolean;
   focusId?: string;
   focusNeighbors?: FocusNeighbors;
@@ -551,7 +600,7 @@ interface FocusProps {
   focusStyle?: UIFocusStyle | null; // null: draw no outline here
 }
 
-interface FocusNeighbors {
+interface FocusNeighbors extends BaseFocusNeighbors {
   up?: string | null;
   down?: string | null;
   left?: string | null;
@@ -582,7 +631,10 @@ interface FocusNeighbors {
   On a widget with its own stepper (`PixiSlider`, `PixiSelect`,
   `PixiRadioGroup`) the game's `onAdjust` wins on the horizontal axis.
 
-```ts
+```ts yage-group="focus" yage-context="entity"
+declare let volume: number;
+declare function setVolume(value: number): void;
+
 const row = menu.panel({
   direction: "row",
   gap: 12,
@@ -604,7 +656,7 @@ where the mouse left off.
 
 `pointerFocus` on the scope decides which pointer input moves focus:
 
-```ts
+```ts yage-group="focus" yage-context="entity"
 new UISurface({ focus: { pointerFocus: "hover" } });
 menu.focusScope?.setOptions({ pointerFocus: "hover" }); // applies at once
 ```
@@ -636,6 +688,11 @@ began on.
 ### Activation and the confirm press
 
 ```ts
+import { UIButton, UICheckbox } from "@yagejs/ui";
+
+const button = new UIButton({ children: "Save", onClick: () => {} });
+const checkbox = new UICheckbox({ label: "Fullscreen" });
+
 button.activate(); // runs onClick, leaving a press in progress alone
 checkbox.activate(); // toggles `checked`, redraws, then runs onChange
 button.focused; // boolean
@@ -689,7 +746,7 @@ held action, and a call holds nothing.
 Focus draws nothing until a game asks for it. Most games show the focused row
 from `onFocusChange` — a marker beside it, a swapped sprite, a sound:
 
-```ts
+```ts yage-group="focus" yage-context="entity"
 const line = menu.panel({ direction: "row", gap: 6, alignItems: "center" });
 const marker = line.text("", { fontSize: 12 }, { width: 10 });
 
@@ -711,12 +768,15 @@ Hover and press keep their fills, so a row the pointer is on that a confirm
 press would also hit shows its hover tint with the outline on top.
 
 ```ts
+import { UIButton, UIPlugin } from "@yagejs/ui";
+import type { UIFocusStyle as BaseUIFocusStyle } from "@yagejs/ui";
+
 new UIPlugin({ focusStyle: { color: 0x7dd3fc, width: 2 } }); // whole UI
 new UIButton({ children: "Save", focusStyle: { width: 3 } }); // one element
 new UIButton({ children: "Quit", focusStyle: null }); // this element draws none
 
 // The shape of both, on `UIPluginOptions.focusStyle` and on `FocusProps`:
-interface UIFocusStyle {
+interface UIFocusStyle extends BaseUIFocusStyle {
   color?: number; // default: defaultTextStyle.fill when it is a number, else white
   width?: number; // px, default 2
   radius?: number; // default: the element's own background radius, else 4
@@ -774,6 +834,11 @@ transparent until it is selected.
 ### Scroll views
 
 ```ts
+import type { UIElement, UIScrollView } from "@yagejs/ui";
+
+declare const list: UIScrollView;
+declare const element: UIElement; // inside `list`
+
 list.scrollIntoView(element, { align: "nearest", padding: 8 });
 list.viewportWidth; // clipped viewport size in px, 0 before the first layout
 list.viewportHeight;
@@ -820,9 +885,11 @@ The pointer comes back when the scope stops reading input, is hidden, or is
 destroyed. `modal: false` leaves the pointer alone, for a panel that wants the
 keys while the world behind it stays clickable:
 
-```ts
-menu.panel({ focus: { onCancel: close, modal: false } });
-scope?.setOptions({ modal: false }); // takes effect at once
+```ts yage-group="focus" yage-context="entity"
+declare function close(): void;
+
+const panel = menu.panel({ focus: { onCancel: close, modal: false } });
+panel.focusScope?.setOptions({ modal: false }); // takes effect at once
 ```
 
 Two things to expect. A row already hovered when the dialog appears keeps its
@@ -840,7 +907,11 @@ surface of its own, outside the clip.
 
 ### Driving a scope directly
 
-```ts
+```ts yage-group="focus" yage-context="entity"
+import type { UIElement } from "@yagejs/ui";
+
+declare const element: UIElement; // inside the scope
+
 const scope = menu.focusScope;
 scope?.move("down"); // true when the press was used: a move, an adjust, an open list
 scope?.focus(element); // false when hidden, disabled or not focusable
@@ -907,6 +978,10 @@ the input while another row is focused — a field clicked in a
 
 ```ts
 import { isCapturingInput } from "@yagejs/ui";
+import type { PixiInput, PixiSelect } from "@yagejs/ui";
+
+declare const nameField: PixiInput;
+declare const displaySelect: PixiSelect;
 
 isCapturingInput(nameField); // true while the field holds the caret
 isCapturingInput(displaySelect); // true while its list is open
@@ -947,9 +1022,13 @@ it lets go.
 
 ```ts
 import { captureFocusInput } from "@yagejs/ui";
-import type { UIInputCaptureElement } from "@yagejs/ui";
+import type {
+  FocusDirection,
+  UIElement,
+  UIInputCaptureElement as BaseUIInputCaptureElement,
+} from "@yagejs/ui";
 
-interface UIInputCaptureElement extends UIElement {
+interface UIInputCaptureElement extends UIElement, BaseUIInputCaptureElement {
   confirmCapture(): void; // stop, keeping what was typed or picked
   cancelCapture(): void; // stop, putting back the value held on taking the input
   releaseCapture(): void; // the scope is taking its input back
@@ -970,9 +1049,10 @@ is required** — this works in a pure imperative scene.
 
 ### attachTooltip (imperative, headless)
 
-```ts
-import { attachTooltip, UIPanel, UIText } from "@yagejs/ui";
+```ts yage-context="entity,scene"
+import { attachTooltip, UIPanel, UISurface, UIText } from "@yagejs/ui";
 
+const surface = entity.get(UISurface);
 const tip = attachTooltip(surface.root, scene, {
   // any UIElement
   content: () => {
@@ -1045,11 +1125,17 @@ this exact overlay.
 ## Background Options
 
 ```ts
+import type { BackgroundOptions } from "@yagejs/ui";
+
 // Solid color
-{ color: 0x222222, alpha: 0.9, radius: 8 }
+const solid: BackgroundOptions = { color: 0x222222, alpha: 0.9, radius: 8 };
 
 // Nine-slice texture
-{ texture: tex, mode: "nine-slice", nineSlice: { left: 12, top: 12, right: 12, bottom: 12 } }
+const framed: BackgroundOptions = {
+  texture: "panel-frame",
+  mode: "nine-slice",
+  nineSlice: { left: 12, top: 12, right: 12, bottom: 12 },
+};
 ```
 
 `UIImage`, `UINineSlice`, and texture backgrounds accept `TextureInput`: a

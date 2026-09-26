@@ -157,6 +157,11 @@ share:
 
 ```ts
 // src/entities/slime.scenario.ts  →  entities › slime › { idle, Chasing the player }
+import type { Entity, Scene } from "@yagejs/core";
+import { control, defineScenario } from "@yagejs-tools/lab";
+
+declare function spawnSlime(scene: Scene, hp: number): Entity; // the game's own
+
 const hp = { hp: control.int(30, { min: 1, max: 200 }) };
 
 function arena(scene: Scene) {
@@ -192,6 +197,8 @@ cannot be shown in declaration order.
 Plain data — a scenario file declaring controls imports no runtime engine code.
 
 ```ts
+import { control } from "@yagejs-tools/lab";
+
 control.number(0.6, { min: 0, max: 1, step: 0.05, label: "bounce" }); // slider, step defaults to 0.01
 control.int(3, { min: 1, max: 12 }); // whole numbers
 control.boolean(true, { label: "outline" }); // checkbox
@@ -217,6 +224,20 @@ For a field on a component the scenario cannot pass in at construction:
 
 ```ts
 // src/feel/pulse.scenario.ts  →  feel › pulse
+import { Component, Scene } from "@yagejs/core";
+import { control, defineScenario } from "@yagejs-tools/lab";
+
+// The game's own component and scene.
+class Pulse extends Component {
+  amplitude = 0.4;
+}
+class PulseScene extends Scene {
+  readonly name = "pulse";
+  onEnter() {
+    this.spawn("disc", { key: "disc" }).add(new Pulse());
+  }
+}
+
 export default defineScenario({
   scene: () => new PulseScene(),
   controls: { amplitude: control.number(0.4, { min: 0, max: 1, step: 0.05 }) },
@@ -235,16 +256,35 @@ wall-clock timing. The panel's Run button executes one. `yage-lab test` runs
 every one of them in a headless browser.
 
 ```ts
-async drive({ scene, controls, step, until, expect, input, events, capture }) {
-  const ball = scene.findByKey("ball-0");
-  if (!ball) throw new Error("the scenario spawned no ball-0");
-  const transform = ball.get(Transform);
-  const startY = transform.position.y;
+// src/entities/ball.scenario.ts, with a drive
+import { Transform } from "@yagejs/core";
+import { defineScenario } from "@yagejs-tools/lab";
 
-  await step(120);                                  // two seconds of gravity
+export default defineScenario({
+  setup(scene, c) {
+    /* as above */
+  },
 
-  expect(transform.position.y).toBeGreaterThan(startY);
-}
+  async drive({
+    scene,
+    controls,
+    step,
+    until,
+    expect,
+    input,
+    events,
+    capture,
+  }) {
+    const ball = scene.findByKey("ball-0");
+    if (!ball) throw new Error("the scenario spawned no ball-0");
+    const transform = ball.get(Transform);
+    const startY = transform.position.y;
+
+    await step(120); // two seconds of gravity
+
+    expect(transform.position.y).toBeGreaterThan(startY);
+  },
+});
 ```
 
 `DriveContext`:
@@ -259,6 +299,7 @@ async drive({ scene, controls, step, until, expect, input, events, capture }) {
 | `expect`     | `ExpectStatic`                                          | `@vitest/expect`, Jest-style.                                                                   |
 | `events`     | `Inspector["events"]`                                   | The engine's event log.                                                                         |
 | `input`      | `DriveInput`                                            | Synthetic input, below.                                                                         |
+| `pointer`    | `Inspector["pointer"]`                                  | Real pointer events at the canvas, which reach `@yagejs/ui` buttons and menus. Below.           |
 | `capture`    | `(label?) => Promise<string>`                           | Screenshots into the run's result, resolves with a PNG data URL.                                |
 
 **Every call that advances a frame is async and has to be awaited.**
@@ -269,8 +310,15 @@ reject during it. Use `step`, `until` and `input` from the context.
 `step` or `until` call:
 
 ```ts
-await step(90, { dtMs: 1000 / 90 });
-await until(() => probe.settled, { maxFrames: 180, dtMs: 1000 / 90 });
+import type { DriveContext } from "@yagejs-tools/lab";
+
+async function settleAt90Hz(
+  { step, until }: DriveContext,
+  probe: { readonly settled: boolean },
+) {
+  await step(90, { dtMs: 1000 / 90 });
+  await until(() => probe.settled, { maxFrames: 180, dtMs: 1000 / 90 });
+}
 ```
 
 **`events.waitFor` has to be started before the frames that satisfy it.** The
@@ -278,10 +326,14 @@ run is the only thing issuing frames, so awaiting it first parks the run with
 nothing left to advance it:
 
 ```ts
-await Promise.all([
-  events.waitFor("enemy:hit", { withinFrames: 60 }),
-  step(60),
-]);
+import type { DriveContext } from "@yagejs-tools/lab";
+
+async function expectHitWithin60({ events, step }: DriveContext) {
+  await Promise.all([
+    events.waitFor("enemy:hit", { withinFrames: 60 }),
+    step(60),
+  ]);
+}
 ```
 
 `waitFor` resolves with the earliest retained match without consuming it.
@@ -303,17 +355,35 @@ no `@yagejs/ui` element, so none of them clicks a button — see
 [Clicking the game's own menus](#clicking-the-games-own-menus) for `ctx.pointer`.
 
 ```ts
-input.keyDown(code); input.keyUp(code);          // sync
-input.mouseMove(x, y); input.mouseDown(button?); input.mouseUp(button?);
-input.pointerMove(x, y, opts?); input.pointerDown(button?, opts?); input.pointerUp(button?, opts?);
-input.gamepadButton(code, pressed); input.gamepadAxis(side, value);
-input.pressAction(name); input.releaseAction(name);  // sync, needs InputPlugin
-input.clearAll();                                     // releases everything
+import type {
+  InspectorGamepadAxisKey,
+  InspectorPointerOpts,
+} from "@yagejs/core";
+import type { DriveInput as BaseDriveInput } from "@yagejs-tools/lab";
 
-await input.tap(code, frames?);        // hold for 1 frame unless told otherwise
-await input.hold(code, frames);
-await input.fireAction(name, frames?); // needs InputPlugin
-await ctx.input.whileHolding(codes, fn); // holds codes for fn, then restores
+// ctx.input
+interface DriveInput extends BaseDriveInput {
+  // Synchronous: write input state and return.
+  keyDown(code: string): void;
+  keyUp(code: string): void;
+  mouseMove(x: number, y: number): void;
+  mouseDown(button?: 0 | 1 | 2): void;
+  mouseUp(button?: 0 | 1 | 2): void;
+  pointerMove(x: number, y: number, opts?: InspectorPointerOpts): void;
+  pointerDown(button?: 0 | 1 | 2, opts?: InspectorPointerOpts): void;
+  pointerUp(button?: 0 | 1 | 2, opts?: { id?: number }): void;
+  gamepadButton(code: string, pressed: boolean): void;
+  gamepadAxis(side: InspectorGamepadAxisKey, value: number): void;
+  pressAction(name: string): void; // needs InputPlugin
+  releaseAction(name: string): void; // needs InputPlugin
+  clearAll(): void; // releases everything
+
+  // Async: advance frames, so await them.
+  tap(code: string, frames?: number): Promise<void>; // 1 frame unless told otherwise
+  hold(code: string, frames: number): Promise<void>;
+  fireAction(name: string, frames?: number): Promise<void>; // needs InputPlugin
+  whileHolding<T>(codes: readonly string[], fn: () => Promise<T>): Promise<T>; // holds codes for fn, then restores
+}
 ```
 
 `whileHolding` holds `codes` for the duration of `fn`, then restores what was
@@ -325,16 +395,24 @@ something — `whileHolding(codes, () => until(pred))` gives back the frames it
 took:
 
 ```ts
-await ctx.input.whileHolding(["KeyD"], async () => {
-  while (ctx.framesUsed < 900 && !atExit()) {
-    if (gapAhead()) {
-      await ctx.input.whileHolding(["Space"], () => ctx.step(6));
-      continue;
+import type { DriveContext } from "@yagejs-tools/lab";
+
+async function runToExit(
+  ctx: DriveContext,
+  atExit: () => boolean,
+  gapAhead: () => boolean,
+) {
+  await ctx.input.whileHolding(["KeyD"], async () => {
+    while (ctx.framesUsed < 900 && !atExit()) {
+      if (gapAhead()) {
+        await ctx.input.whileHolding(["Space"], () => ctx.step(6));
+        continue;
+      }
+      await ctx.step(1);
     }
-    await ctx.step(1);
-  }
-});
-// "KeyD" releases here; the nested jump released "Space" on its own way out.
+  });
+  // "KeyD" releases here; the nested jump released "Space" on its own way out.
+}
 ```
 
 Read `framesUsed` off the context (`ctx.framesUsed`) rather than destructuring
@@ -345,11 +423,18 @@ Reading a one-frame edge such as `isJustPressed` means issuing the frames
 yourself:
 
 ```ts
-input.keyDown("Space");
-await step(1);
-expect(probe.jumpJustPressed).toBe(true);
-await step(1);
-expect(probe.jumpJustPressed).toBe(false);
+import type { DriveContext } from "@yagejs-tools/lab";
+
+async function checkJumpEdge(
+  { input, step, expect }: DriveContext,
+  probe: { readonly jumpJustPressed: boolean },
+) {
+  input.keyDown("Space");
+  await step(1);
+  expect(probe.jumpJustPressed).toBe(true);
+  await step(1);
+  expect(probe.jumpJustPressed).toBe(false);
+}
 ```
 
 ### Clicking the game's own menus
@@ -361,9 +446,23 @@ the canvas, so the renderer hit-tests and delivers them. Every call is
 synchronous — it dispatches and returns, spending no frame.
 
 ```ts
-pointer.click(target, opts?); pointer.down(target, opts?);   // sync
-pointer.up(target, opts?); pointer.move(target);             // sync
-pointer.hitTest(target);                     // resolve and report, no dispatch
+import type {
+  InspectorPointerButtonOpts as ButtonOpts,
+  InspectorPointerHit as Hit,
+  InspectorPointerTarget as Target,
+} from "@yagejs/core";
+import type { DriveContext } from "@yagejs-tools/lab";
+
+type BaseDrivePointer = DriveContext["pointer"];
+
+// ctx.pointer. Every verb is synchronous.
+interface DrivePointer extends BaseDrivePointer {
+  click(target: Target, opts?: ButtonOpts): Hit;
+  down(target: Target, opts?: ButtonOpts): Hit;
+  up(target: Target, opts?: ButtonOpts): Hit;
+  move(target: Target): Hit;
+  hitTest(target: Target): Hit; // resolve and report, no dispatch
+}
 ```
 
 `target` is a virtual-space point, or a `UINodeSnapshot.id` whose `bounds`
@@ -374,8 +473,12 @@ a `down` left held. Every call returns the hit: `path`, the chain of nodes it
 crossed innermost-first, plus the `point` used and `consumed`.
 
 ```ts
-const hit = pointer.click({ x: 70, y: 30 });
-expect(hit.path.some((node) => node.type === "UIButton")).toBe(true);
+import type { DriveContext } from "@yagejs-tools/lab";
+
+function clickPlay({ pointer, expect }: DriveContext) {
+  const hit = pointer.click({ x: 70, y: 30 });
+  expect(hit.path.some((node) => node.type === "UIButton")).toBe(true);
+}
 ```
 
 A button's label is a node of its own and sits on top of the button, so search
@@ -471,6 +574,8 @@ nesting a single child under itself.
 addressable by its file after being shown somewhere else:
 
 ```ts
+import { defineScenario } from "@yagejs-tools/lab";
+
 export const king = defineScenario({
   title: "Bosses / Act 1 / Slime King", // shown under Bosses › Act 1
   setup(scene) {
@@ -531,6 +636,7 @@ A scenario file imports the first only.
 carrying it serves the lab rather than the game:
 
 ```ts
+import { defineConfig } from "vite";
 import { yageLab } from "@yagejs-tools/lab/vite";
 
 export default defineConfig({
@@ -551,7 +657,18 @@ built, so a scenario whose `setup` throws still leaves something to diagnose it
 with. Useful from a browser console or an out-of-page driver:
 
 ```ts
-interface LabApi {
+import type { Engine, Scene } from "@yagejs/core";
+import type { ControlValue, DriveContext } from "@yagejs-tools/lab";
+import type {
+  DriveResult,
+  LabApi as BaseLabApi,
+  LabCaptureResult,
+  LabClock,
+  RegistryProblem,
+  ScenarioEntry,
+} from "@yagejs-tools/lab/runner";
+
+interface LabApi extends BaseLabApi {
   readonly engine: Engine;
   readonly scenarios: readonly ScenarioEntry[]; // { id, path, exportName, groups, label, title, hasDrive }
   readonly problems: readonly RegistryProblem[]; // modules that were skipped

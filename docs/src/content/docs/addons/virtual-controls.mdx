@@ -36,7 +36,9 @@ The overlay drives actions that already exist — define them in your
 `InputPlugin` action map first (an unknown name warns and is skipped until it
 exists, so a typo can't crash a gesture):
 
-```ts
+```ts yage-context="engine"
+import { InputPlugin } from "@yagejs/input";
+
 engine.use(
   new InputPlugin({
     actions: {
@@ -126,9 +128,15 @@ pointer is still the mouse.
 
 You stay in charge:
 
-```ts
-new VirtualControls({ visible: true, … });       // always (e.g. this demo page)
-new VirtualControls({ visible: settings.touch ?? "auto", … });
+```ts yage-group="controls" yage-context="entity"
+import { VirtualControls, prefersTouchControls } from "@yagejs-addons/virtual-controls";
+
+declare const settings: { touch?: boolean }; // your saved settings
+
+new VirtualControls({ visible: true, /* … */ });   // always (e.g. this demo page)
+new VirtualControls({ visible: settings.touch ?? "auto", /* … */ });
+
+const controls = entity.get(VirtualControls);    // the overlay on its host entity
 
 controls.setVisible(false);                      // runtime lever (settings toggle, cutscene)
 controls.setVisible("auto");                     // hand a settings choice straight through
@@ -154,7 +162,10 @@ applies it rather than reading the device again.
 
 Show or hide a configured button without rebuilding the overlay:
 
-```ts
+```ts yage-group="controls" yage-context="entity"
+declare const gameOver: boolean;
+declare const canJump: boolean;
+
 controls.setButtonVisible("restart", gameOver);
 controls.setButtonEnabled("jump", canJump);
 ```
@@ -198,8 +209,9 @@ The stick mirrors three ways at once:
   input system's own stick deadzone here, exactly as it does for physical
   pads — the stick's `deadZone` option shapes only the digital mirror and its
   `value`.
-- **Direct** — `controls.stick().value` is the dead-zoned vector,
-  `.rawValue` the unfiltered one.
+- **Direct** — `controls.stick()?.value` is the dead-zoned vector,
+  `.rawValue` the unfiltered one. `stick()` returns `undefined` when the
+  overlay has no stick, or none with the id you pass.
 
 ## Stick modes
 
@@ -252,13 +264,21 @@ The model owns hit-testing, routing, and layout; a presenter only draws. Two
 pixi-free interfaces from the root entry:
 
 ```ts
-interface ControlsPresenter {
+import type { Scene } from "@yagejs/core";
+import type {
+  ControlView as BaseControlView,
+  ControlsPresenter as BaseControlsPresenter,
+  VirtualButton,
+  VirtualStick,
+} from "@yagejs-addons/virtual-controls";
+
+interface ControlsPresenter extends BaseControlsPresenter {
   mount(scene: Scene): void;
   createStickView(stick: VirtualStick): ControlView;
   createButtonView(button: VirtualButton): ControlView;
   dispose(): void;
 }
-interface ControlView {
+interface ControlView extends BaseControlView {
   update(dt: number): void;   // poll stick state or button.pressed / visible / enabled / layout
   setVisible(visible: boolean): void;
   dispose(): void;

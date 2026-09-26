@@ -9,7 +9,7 @@ for custom debug views.
 
 ## DebugPlugin Setup
 
-```typescript
+```typescript yage-context="engine"
 import { DebugPlugin } from "@yagejs/debug";
 
 engine.use(new DebugPlugin({
@@ -32,6 +32,8 @@ runtime.
 | `maxHudLines` | `number` | `32` | Max HUD text lines |
 | `flags` | `Record<string, boolean>` | — | Initial flag overrides |
 | `eventLog` | `boolean` | `true` | Record bus, entity and scene events at startup |
+| `deterministicSeed` | `number` | — | Seed every scene's RNG with this value, for reproducible runs |
+| `startFrozen` | `boolean` | `false` | Freeze the Inspector clock before the first frame |
 
 ## Built-In Debug Views
 
@@ -55,10 +57,13 @@ entity and a callback that returns the vector; the overlay draws the arrow
 from the entity's world position for as long as the registration lives.
 
 ```typescript
+import { Component } from "@yagejs/core";
 import { DebugRegistryKey } from "@yagejs/debug/api";
+import { SteeringAgent } from "@yagejs-addons/steering";
 
 class AgentVisual extends Component {
-  private stopArrow?: () => void;
+  private readonly agent = this.sibling(SteeringAgent);
+  private stopArrow: (() => void) | undefined;
 
   onAdd(): void {
     // tryResolve rather than use(): a build that ships without DebugPlugin
@@ -134,7 +139,10 @@ the member is leased again or the pool is disposed.
 Arrows draw under the `vectors` contributor's `arrows` flag, so they can be
 switched off on their own while the rest of the overlay stays up:
 
-```typescript
+```typescript yage-context="context"
+import { DebugRegistryKey } from "@yagejs/debug/api";
+
+const registry = context.resolve(DebugRegistryKey);
 registry.setFlag("vectors", "arrows", false);
 ```
 
@@ -147,11 +155,11 @@ that happens.
 
 Implement `DebugContributor` to add your own debug visualizations:
 
-```typescript
+```typescript yage-group="walls" yage-file="walls.ts"
 import type { Scene } from "@yagejs/core";
 import type { DebugContributor, WorldDebugApi, HudDebugApi } from "@yagejs/debug/api";
 
-class WallDebugContributor implements DebugContributor {
+export class WallDebugContributor implements DebugContributor {
   readonly name = "walls";
   readonly flags = ["show-walls"] as const;
 
@@ -185,12 +193,19 @@ class WallDebugContributor implements DebugContributor {
 
 Register it in your scene:
 
-```typescript
+```typescript yage-group="walls"
+import { Scene } from "@yagejs/core";
 import { DebugRegistryKey } from "@yagejs/debug/api";
+import { WallDebugContributor } from "./walls.js";
 
-onEnter(): void {
-  const registry = this.service(DebugRegistryKey);
-  registry.register(new WallDebugContributor(this, this.wallShapes));
+class ArenaScene extends Scene {
+  readonly name = "arena";
+  private readonly wallShapes = [{ x: 0, y: 584, w: 800, h: 16 }];
+
+  onEnter(): void {
+    const registry = this.service(DebugRegistryKey);
+    registry.register(new WallDebugContributor(this, this.wallShapes));
+  }
 }
 ```
 
@@ -226,6 +241,8 @@ shares the same `maxGraphics` limit.
 Contributors can declare flags for toggling specific views:
 
 ```typescript
+import type { DebugContributor, WorldDebugApi } from "@yagejs/debug/api";
+
 class MyContributor implements DebugContributor {
   readonly name = "my-debug";
   readonly flags = ["show-paths", "show-hitboxes"] as const;
@@ -243,7 +260,10 @@ class MyContributor implements DebugContributor {
 
 Set flags programmatically:
 
-```typescript
+```typescript yage-context="context"
+import { DebugRegistryKey } from "@yagejs/debug/api";
+
+const registry = context.resolve(DebugRegistryKey);
 registry.setFlag("my-debug", "show-paths", true);
 ```
 
@@ -255,22 +275,34 @@ extensions when a plugin wants to expose imperative helpers to tests or the
 browser console.
 
 ```typescript
-import type { EngineContext } from "@yagejs/core";
+import type { EngineContext, Plugin } from "@yagejs/core";
 import { InspectorKey } from "@yagejs/core";
 
-install(context: EngineContext): void {
-  const inspector = context.resolve(InspectorKey);
+interface Inventory {
+  snapshot(): string[];
+  grant(id: string): void;
+}
 
-  inspector.addExtension("inventory", {
-    listItems: () => this.inventory.snapshot(),
-    grantItem: (id: string) => this.inventory.grant(id),
-  });
+class InventoryPlugin implements Plugin {
+  readonly name = "inventory";
+  readonly version = "1.0.0";
+
+  constructor(private readonly inventory: Inventory) {}
+
+  install(context: EngineContext): void {
+    const inspector = context.resolve(InspectorKey);
+
+    inspector.addExtension("inventory", {
+      listItems: () => this.inventory.snapshot(),
+      grantItem: (id: string) => this.inventory.grant(id),
+    });
+  }
 }
 ```
 
 Consume that extension from test code or the browser console:
 
-```typescript
+```typescript yage-context="browser"
 const inventory = window.__yage__.inspector.getExtension<{
   listItems(): string[];
   grantItem(id: string): void;
@@ -282,8 +314,10 @@ inventory?.listItems();
 
 `DebugPlugin` uses the same pattern for renderer-aware helpers:
 
-```typescript
-const debug = window.__yage__.inspector.getExtension("debug");
+```typescript yage-context="browser"
+import type { DebugDiagnostics } from "@yagejs/debug";
+
+const debug = window.__yage__.inspector.getExtension<DebugDiagnostics>("debug");
 debug?.getCameraStack?.();
 debug?.getLayerTransform?.("game", "world");
 debug?.setHudVisible?.(false);
@@ -305,6 +339,8 @@ import { StatsStore } from "@yagejs/debug";
 const stats = new StatsStore();
 
 // Push samples each frame
+const start = performance.now();
+// ...the work you are timing...
 stats.push("updateTime", performance.now() - start);
 
 // Read stats
@@ -318,7 +354,7 @@ stats.latest("updateTime");   // most recent sample
 frames, freeze through the Inspector and then advance from code or with the
 step key:
 
-```typescript
+```typescript yage-context="browser"
 window.__yage__.inspector.time.freeze();
 window.__yage__.inspector.time.step(1);
 window.__yage__.inspector.time.thaw();
@@ -345,7 +381,7 @@ sees stale state and looks stuck.
 macrotask after every frame, giving pending microtasks a chance to run before
 the next frame steps:
 
-```typescript
+```typescript yage-context="browser"
 // Advance frame-by-frame until a condition holds, checking before the first
 // frame and after each one. Throws if `maxFrames` (default 600, ~10s at
 // 60fps) is reached without the predicate becoming true.
@@ -368,7 +404,7 @@ sequence crosses a scene transition or an async runner; keep using
 
 Use a lease when a custom tool needs exclusive control across several calls:
 
-```typescript
+```typescript yage-context="inspector"
 const time = inspector.time.acquire();
 try {
   time.freeze();
@@ -398,7 +434,7 @@ supplies the controls accessed through `inspector.time`.
 `onStart` hooks done. It is what a script waits on after loading or reloading
 the page, instead of sleeping and hoping:
 
-```typescript
+```typescript yage-context="browser,playwright"
 await page.waitForFunction(() => window.__yage__ !== undefined);
 await page.evaluate(() => window.__yage__.ready);
 ```
@@ -412,7 +448,7 @@ not cover that. Wait for a scene separately, and poll for it rather than
 stepping — the clock is running at that point unless `DebugPlugin` was given
 `startFrozen`, and `step`/`stepUntil` throw on a clock that is not frozen:
 
-```typescript
+```typescript yage-context="browser,playwright"
 await page.waitForFunction(
   () => window.__yage__.inspector.getSceneStack().length > 0,
 );
@@ -422,11 +458,11 @@ await page.waitForFunction(
 clock, hands the callback awaitable play verbs, restores the clock to the
 state it was in and releases synthetic input afterwards:
 
-```typescript
+```typescript yage-context="browser"
 const run = await window.__yage__.inspector.drive(async ({ input, until, step }) => {
   const i = window.__yage__.inspector;
   input.keyDown("KeyD");
-  const frames = await until(() => i.getEntityPosition("player").x > 950, {
+  const frames = await until(() => (i.getEntityPosition("player")?.x ?? 0) > 950, {
     maxFrames: 240,
   });
   input.clearAll();
@@ -478,9 +514,10 @@ its own container, so the input verbs never press a button. `inspector.pointer`
 dispatches real pointer events at the renderer's canvas, and the renderer
 hit-tests each one as it does for a person's click.
 
-```typescript
+```typescript yage-context="browser"
 const i = window.__yage__.inspector;
-const button = i.snapshot().scenes[0].ui.root.children[0];
+const button = i.snapshot().scenes[0]?.ui?.root.children[0];
+if (!button) throw new Error("The first scene has no UI element.");
 
 const hit = i.pointer.click(button.id); // or click({ x, y })
 hit.path.some((node) => node.type === "UIButton"); // true
@@ -508,7 +545,7 @@ holds Right for 30 frames, fires the jump action, steps 45 frames, and asserts
 the player landed on a specific ledge entity. Run it. If it passes, delete it.
 If it fails, iterate.
 
-```typescript
+```typescript yage-context="browser"
 import { test, expect } from "@playwright/test";
 
 test("can the player jump onto the ledge?", async ({ page }) => {
@@ -563,7 +600,9 @@ component's own enumerable fields plus its public getters (`get isReady()`,
 `get health()`, and similar) straight off the instance. These snapshots are
 diagnostic readings of the live world, not save data.
 
-```typescript
+```typescript yage-context="browser"
+import { Component } from "@yagejs/core";
+
 class Cooldown extends Component {
   private _ready = false;
 
@@ -581,7 +620,9 @@ window.__yage__.inspector.getComponentData("turret", "Cooldown");
 const turrets = window.__yage__.inspector
   .getEntities()
   .filter((e) => e.name === "turret");
-window.__yage__.inspector.getComponentData(turrets[1].id, "Cooldown");
+for (const turret of turrets) {
+  window.__yage__.inspector.getComponentData(turret.id, "Cooldown");
+}
 ```
 
 Fields and getters starting with `_` are excluded, along with functions and
@@ -605,8 +646,11 @@ Lists merge down the class chain, so a subclass adds to its base class's
 exclusions:
 
 ```typescript
-class TilemapComponent extends VisualComponent {
-  static inspectExclude = ["data"]; // one id per tile per layer
+import { Component } from "@yagejs/core";
+
+class NavGrid extends Component {
+  static inspectExclude = ["cells"]; // one entry per grid cell
+  cells: number[] = [];
 }
 ```
 
@@ -621,9 +665,11 @@ When `RendererPlugin` is active it publishes a derived **render facet** for each
 graphical component on the snapshot, under `facets.render`, computed on demand
 from the live display object:
 
-```typescript
+```typescript yage-context="browser"
+import type { SplitTextRenderFacet } from "@yagejs/renderer";
+
 const scene = window.__yage__.inspector.snapshot().scenes[0];
-const label = scene.entities.find((e) =>
+const label = scene?.entities.find((e) =>
   e.components.some((c) => c.type === "SplitTextComponent"),
 );
 
@@ -672,7 +718,7 @@ With `PhysicsPlugin` installed, you can read collider footprints even before
 the component has a physics body. This is useful for tools that keep entities
 inactive while editing:
 
-```typescript
+```typescript yage-context="engine,entity"
 import { Transform } from "@yagejs/core";
 import { ColliderComponent } from "@yagejs/physics";
 
@@ -718,7 +764,7 @@ These are truths, not bugs to fix — keep them in mind when interpreting probe 
 `inspector.capture` renders the current stage, so a frozen clock gives back the
 exact frame you stepped to. It needs `RendererPlugin` and throws without it.
 
-```typescript
+```typescript yage-context="inspector"
 await inspector.capture.dataURL(); // "data:image/png;base64,..."
 await inspector.capture.pngBase64(); // the base64 payload alone
 await inspector.capture.png(); // Uint8Array of PNG bytes
@@ -731,7 +777,7 @@ measurements and the frames behind them.
 The HUD's FPS and timing readouts differ between runs. Hide it before taking an
 image you intend to compare:
 
-```typescript
+```typescript yage-context="inspector"
 import type { DebugDiagnostics } from "@yagejs/debug";
 
 inspector.getExtension<DebugDiagnostics>("debug")?.setHudVisible(false);
@@ -743,7 +789,7 @@ inspector.getExtension<DebugDiagnostics>("debug")?.setHudVisible(false);
 inspector-assigned id from `snapshot().scenes[].id` / `getSceneStack()[].id`,
 trying the name first:
 
-```typescript
+```typescript yage-context="browser"
 window.__yage__.inspector.snapshotScene("level2");
 ```
 
@@ -779,7 +825,7 @@ The event log records bus, entity and scene events for `events.getLog()` and
 at runtime when a probe doesn't read the log, to skip the per-event allocation
 entirely:
 
-```typescript
+```typescript yage-context="browser"
 window.__yage__.inspector.events.setEnabled(false);
 window.__yage__.inspector.events.isEnabled(); // false
 ```
@@ -788,7 +834,7 @@ window.__yage__.inspector.events.isEnabled(); // false
 retained match without consuming it. Repeated waits can return the same entry.
 Clear the log before an action when checking for a new occurrence:
 
-```typescript
+```typescript yage-context="inspector"
 await inspector.drive(async ({ events, input }) => {
   events.clearLog();
   await Promise.all([
@@ -856,22 +902,28 @@ it was emitted on.
 
 Access it as `engine.logger`, or through DI via `LoggerKey`:
 
-```typescript
-import { Logger, LogLevel, LoggerKey } from "@yagejs/core";
+```typescript yage-context="engine"
+import { Logger, LogLevel, LoggerKey, Phase, System } from "@yagejs/core";
+import type { EngineContext } from "@yagejs/core";
 
 // Direct access on the engine
 engine.logger.info("physics", "Shape spawned", { x: 100, y: 200 });
 
 // From inside a System or Component
 class SpawnSystem extends System {
+  readonly phase = Phase.Update;
   private logger!: Logger;
 
-  init(context: EngineContext) {
+  constructor(private readonly wave: { complete: boolean }) {
+    super();
+  }
+
+  onRegister(context: EngineContext) {
     this.logger = context.resolve(LoggerKey);
   }
 
   update(dt: number) {
-    if (wave.complete) {
+    if (this.wave.complete) {
       this.logger.warn("gameplay", "Wave ended with no kills");
     }
   }
@@ -924,7 +976,9 @@ entry is a `LogEntry` carrying `level`, `category`, `message`, optional
 `data`, a `timestamp`, and the `frame` number the game loop was on when the
 entry was emitted. You can pull recent entries at any time:
 
-```typescript
+```typescript yage-context="engine"
+import type { LogEntry } from "@yagejs/core";
+
 // Grab the last N entries (default: everything in the buffer)
 const recent: LogEntry[] = engine.logger.getRecent(20);
 
@@ -936,7 +990,10 @@ console.log(dump);
 A common pattern is to catch an error, dump the recent logs, and ship the
 result to a crash reporter:
 
-```typescript
+```typescript yage-context="engine"
+// Your crash reporter's upload call.
+declare function reportCrash(report: { error: unknown; recentLogs: string }): void;
+
 window.addEventListener("error", (ev) => {
   reportCrash({
     error: ev.error,
@@ -959,6 +1016,12 @@ in dev or production. Use it to ship logs somewhere else — an in-game debug
 panel, a remote telemetry service, or a file (in Electron/Tauri builds):
 
 ```typescript
+/// <reference types="vite/client" />
+import { Engine, LogLevel } from "@yagejs/core";
+
+// Your telemetry client.
+declare const telemetry: { send(event: string, data: object): void };
+
 const engine = new Engine({
   logger: {
     output: (entry) => {
@@ -997,22 +1060,33 @@ quietly disabled while everything else keeps going on stale assumptions — is
 worse than one that stopped with useful information:
 
 ```typescript
-// A door pad. The typo is real: `otherr`.
+import { Component } from "@yagejs/core";
+import type { Entity } from "@yagejs/core";
+import { ColliderComponent } from "@yagejs/physics";
+
+class KeyRing extends Component {
+  keys = 0;
+}
+declare const pad: Entity;
+declare function openDoor(): void;
+
+// A door pad. The bug: only the player has a KeyRing, so `get` throws
+// when a crate slides onto the pad.
 pad.get(ColliderComponent).onTrigger((e) => {
-  if (e.otherr.has(PlayerTag)) openDoor(); // throws on every touch
+  if (e.other.get(KeyRing).keys > 0) openDoor();
 });
 ```
 
 ```
-[yage] ERROR core  Collision handler threw on entity "DoorPad"
-  TypeError: Cannot read properties of undefined (reading 'has')
-Uncaught TypeError: Cannot read properties of undefined (reading 'has')
+[yage] ERROR core  Trigger handler threw on entity "DoorPad" in scene "level1"
+  Error: Entity "Crate" does not have component KeyRing.
+Uncaught Error: Entity "Crate" does not have component KeyRing.
 ```
 
 That console line follows the same dev-only default as any other `logger.error`
 call — see [LoggerConfig](#loggerconfig) above. The thrown error itself is not
 gated by that default, but it doesn't surface through a `try`/`catch` around
-`engine.start()` — a collision handler like the one above fires on a later
+`engine.start()` — a trigger handler like the one above fires on a later
 game-loop tick, well after `start()` has already returned. `GameLoop.tick()`
 is the one place that decides a failure is terminal: an error that escapes an
 entire frame unhandled stops the loop and rethrows out of `tick()`, so it
@@ -1036,11 +1110,11 @@ system.
 Every failure is also recorded, so a test or crash reporter can check for it
 without scraping console output:
 
-```typescript
+```typescript yage-context="engine"
 const errors = engine.inspector.getErrors();
 console.log(errors.callbackErrors);
-// [{ kind: "Collision handler", entity: "DoorPad",
-//    error: "Cannot read properties of undefined (reading 'has')" }]
+// [{ kind: "Trigger handler", entity: "DoorPad", scene: "level1",
+//    error: 'Entity "Crate" does not have component KeyRing.' }]
 ```
 
 `callbackErrors` is a bounded history — the 200 most recent failures. The

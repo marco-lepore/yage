@@ -20,8 +20,9 @@ subpath — there is nothing to draw.
 
 ## 5-minute setup
 
-```ts
+```ts yage-context="engine"
 import { AudioPlugin, AudioManagerKey } from "@yagejs/audio";
+import { Component } from "@yagejs/core";
 import {
   SynthPlugin,
   synthPresets,
@@ -40,9 +41,13 @@ engine.use(
 );
 
 // From a Component, Entity, or Scene:
-const audio = this.use(AudioManagerKey);
-audio.play("explosion");
-audio.playRandom(synthVariantAliases("shoot", 4)); // a slightly different shot each time
+class Cannon extends Component {
+  fire(): void {
+    const audio = this.use(AudioManagerKey);
+    audio.play("explosion");
+    audio.playRandom(synthVariantAliases("shoot", 4)); // a slightly different shot each time
+  }
+}
 ```
 
 Every alias is rendered once at install, before the browser's first-gesture
@@ -53,6 +58,8 @@ unlock. Playing is the normal `AudioManager` API — nothing new to learn.
 A preset returns plain data, so a different gun is a one-number edit:
 
 ```ts
+import { synthPresets } from "@yagejs-addons/synth";
+
 synthPresets.shoot({ frequency: 900, gain: 0.5 });
 ```
 

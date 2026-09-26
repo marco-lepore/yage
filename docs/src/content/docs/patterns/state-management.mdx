@@ -15,18 +15,21 @@ Spawn one entity to host the state, and give it a key. A component on that
 entity keeps the state in fields, listens for the events that change it, and
 exposes it through getters. This HUD counts the coins and lives of one run:
 
-```typescript
+```typescript yage-group="state" yage-file="constants.ts"
 // constants.ts
 import { defineEvent } from "@yagejs/core";
 
 export const CoinCollected = defineEvent("coin:collected");
 export const PlayerDied = defineEvent("player:died");
+export const GoalReached = defineEvent("goal:reached");
+
+export const TOTAL_COINS = 9;
 
 /** Spawn key of the HUD entity, for `scene.findByKey`. */
 export const HUD_KEY = "hud";
 ```
 
-```typescript
+```typescript yage-group="state" yage-file="hud.ts"
 // hud.ts
 import { Component, Entity } from "@yagejs/core";
 import { Anchor, UISurface, type UIText } from "@yagejs/ui";
@@ -87,8 +90,14 @@ export class HudEntity extends Entity {
 The scene's `onEnter` only spawns the host, with the key that other code looks
 it up by:
 
-```typescript
+```typescript yage-group="state" yage-file="scene.ts"
 // scene.ts
+import { Entity, Scene } from "@yagejs/core";
+import { HUD_KEY } from "./constants";
+import { HudEntity } from "./hud";
+
+class PlayerEntity extends Entity {}
+
 class LevelScene extends Scene {
   readonly name = "level";
 
@@ -102,7 +111,11 @@ class LevelScene extends Scene {
 
 Any component in the scene reads the state through the key:
 
-```typescript
+```typescript yage-group="state" yage-file="goal.ts"
+import { Component } from "@yagejs/core";
+import { HUD_KEY, TOTAL_COINS } from "./constants";
+import type { HudEntity } from "./hud";
+
 class GoalGate extends Component {
   get open(): boolean {
     const progress = this.scene.findByKey<HudEntity>(HUD_KEY)?.progress;
@@ -142,14 +155,22 @@ const PlayerDied = defineEvent("player:died");
 **Emit from the entity where it happens.** An entity event bubbles up to the
 scene:
 
-```typescript
-// In a coin's trigger handler
-collider.onTrigger((ev) => {
-  if (ev.entered) {
-    this.entity.emit(CoinCollected);
-    this.entity.destroy();
+```typescript yage-group="state" yage-file="coin.ts"
+import { Component } from "@yagejs/core";
+import { ColliderComponent } from "@yagejs/physics";
+import { CoinCollected } from "./constants";
+
+class CoinPickup extends Component {
+  onAdd(): void {
+    // In a coin's trigger handler
+    this.sibling(ColliderComponent).onTrigger((ev) => {
+      if (ev.entered) {
+        this.entity.emit(CoinCollected);
+        this.entity.destroy();
+      }
+    });
   }
-});
+}
 ```
 
 **Listen from the component that owns the state**, with `this.listenScene`,
@@ -160,9 +181,31 @@ The scene's `onEnter` may also connect an event to a component method in one
 line:
 
 ```typescript
-onEnter(): void {
-  const player = this.spawn(Player);
-  this.on(PlayerHit, () => player.get(Health).damage(1));
+import { Component, Entity, Scene, defineEvent } from "@yagejs/core";
+
+const PlayerHit = defineEvent("player:hit");
+
+class Health extends Component {
+  hp = 3;
+
+  damage(amount: number): void {
+    this.hp = Math.max(0, this.hp - amount);
+  }
+}
+
+class Player extends Entity {
+  setup(): void {
+    this.add(new Health());
+  }
+}
+
+class LevelScene extends Scene {
+  readonly name = "level";
+
+  onEnter(): void {
+    const player = this.spawn(Player);
+    this.on(PlayerHit, () => player.get(Health).damage(1));
+  }
 }
 ```
 
@@ -176,8 +219,10 @@ emits an event, and the component that keeps the score does the rest.
 A React tree reads entity-hosted state with `useSceneSelector`. The selector
 runs every frame, and the component re-renders only when the result changes:
 
-```tsx
+```tsx yage-group="state" yage-file="coin-counter.tsx"
 import { Text, useSceneSelector } from "@yagejs/ui-react";
+import { HUD_KEY } from "./constants";
+import type { HudEntity } from "./hud";
 
 function CoinCounter() {
   const coins = useSceneSelector(
@@ -198,7 +243,7 @@ with `createStore`, or with a leaf factory such as `createRecord`. This is the
 only game state that belongs at module scope, because the save layer restores
 it before the scene that reads it is entered.
 
-```typescript
+```typescript yage-group="state" yage-file="persistence/stores.ts"
 // persistence/stores.ts
 import { createStore } from "@yagejs/core";
 
@@ -210,19 +255,30 @@ export const records = createStore((s) => ({
 
 A component writes to the store when its rule says so:
 
-```typescript
-// In RunProgress.onAdd()
-this.listenScene(GoalReached, () => {
-  if (this._coins > records.bestCoins.value()) {
-    records.bestCoins.set(this._coins);
+```typescript yage-group="state" yage-file="best-coins.ts"
+import { Component } from "@yagejs/core";
+import { GoalReached } from "./constants";
+import { records } from "./persistence/stores";
+
+class RunProgress extends Component {
+  private _coins = 0;
+
+  onAdd(): void {
+    // ...the CoinCollected and PlayerDied listeners from hud.ts
+    this.listenScene(GoalReached, () => {
+      if (this._coins > records.bestCoins.value()) {
+        records.bestCoins.set(this._coins);
+      }
+    });
   }
-});
+}
 ```
 
 React reads a store with `useStore`, which re-renders on every change:
 
-```tsx
+```tsx yage-group="state" yage-file="best-coins.tsx"
 import { Text, useStore } from "@yagejs/ui-react";
+import { records } from "./persistence/stores";
 
 function BestCoins() {
   const best = useStore(records.bestCoins);

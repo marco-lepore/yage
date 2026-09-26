@@ -22,7 +22,7 @@ import { LightingPlugin } from "@yagejs/lighting";
 import { RendererPlugin } from "@yagejs/renderer";
 
 const engine = new Engine();
-engine.use(new RendererPlugin());
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
 engine.use(
   new LightingPlugin({
     ambient: {
@@ -41,7 +41,7 @@ no light reaches. Both `level` and light `intensity` use a range from `0` to
 
 A light follows the world position of the `Transform` on the same entity:
 
-```typescript
+```typescript yage-context="scene-enter" yage-group="torch"
 import { Transform, Vec2 } from "@yagejs/core";
 import { LightSource } from "@yagejs/lighting";
 
@@ -61,7 +61,7 @@ const light = torch.add(
 transform scale does not resize it. Change the light directly when its
 gameplay radius changes:
 
-```typescript
+```typescript yage-context="scene-enter" yage-group="torch"
 light.radius = 240;
 light.intensity = 0.7;
 light.color = 0x80aaff;
@@ -85,7 +85,10 @@ the scene is created.
 `radius` says how far a light reaches. `size` says how wide the lamp itself
 is, in world pixels, and it defaults to `0`:
 
-```typescript
+```typescript yage-context="scene-enter"
+import { Transform, Vec2 } from "@yagejs/core";
+import { LightSource } from "@yagejs/lighting";
+
 const lantern = this.spawn("lantern");
 lantern.add(new Transform({ position: new Vec2(420, 180) }));
 
@@ -115,7 +118,10 @@ borders](#draw-shadows-with-soft-borders).
 `cone` limits a light to one direction. The angle is the full spread in
 radians, and the entity's rotation aims it:
 
-```typescript
+```typescript yage-context="scene-enter"
+import { Transform, Vec2 } from "@yagejs/core";
+import { LightSource } from "@yagejs/lighting";
+
 const lamp = this.spawn("lamp");
 lamp.add(new Transform({ position: new Vec2(320, 180), rotation: 0 }));
 
@@ -139,7 +145,13 @@ direction.
 edge on a line to `1` for a beam that is brightest along its aim and fades all
 the way out:
 
-```typescript
+```typescript yage-context="scene-enter"
+import { Transform, Vec2 } from "@yagejs/core";
+import { LightSource } from "@yagejs/lighting";
+
+const lamp = this.spawn("lamp");
+lamp.add(new Transform({ position: new Vec2(320, 180) }));
+
 const lantern = lamp.add(
   new LightSource({
     radius: 260,
@@ -224,7 +236,9 @@ than with the size of the grid.
 
 Change the scene's ambient light at runtime:
 
-```typescript
+```typescript yage-context="component"
+import { LightingWorldKey } from "@yagejs/lighting";
+
 const lighting = this.service(LightingWorldKey);
 
 lighting.setAmbient(0.05);
@@ -245,7 +259,7 @@ as real coloured illumination does.
 Renderers are configured under names, and `defaultRenderer` picks the one a
 scene gets when it asks for nothing:
 
-```typescript
+```typescript yage-context="engine"
 import { LightingPlugin, overlayLighting } from "@yagejs/lighting";
 
 engine.use(
@@ -281,6 +295,8 @@ no camera, world coordinates map directly to the viewport.
 A scene names one of the configured renderers:
 
 ```typescript
+import { Scene } from "@yagejs/core";
+
 class CaveScene extends Scene {
   readonly name = "cave";
   readonly lighting = { renderer: "overlay" };
@@ -294,7 +310,9 @@ there, and the message lists the names that are.
 An entry can be `null`, which keeps `levelAt()` and draws nothing. That is
 what tests and headless gameplay want:
 
-```typescript
+```typescript yage-context="engine"
+import { LightingPlugin } from "@yagejs/lighting";
+
 engine.use(
   new LightingPlugin({
     renderers: { none: null },
@@ -315,7 +333,8 @@ is therefore crisp against the floor it stands on and blurred several metres
 behind it, a lamp wider than a post lights around the post, and a spotlight's
 edge fades over as much of its spread as `softness` says.
 
-```typescript
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
 import {
   LightingPlugin,
   overlayLighting,
@@ -367,6 +386,8 @@ shadow edges do not need a border is cheaper on `overlayLighting()`.
 `resolutionScale` and `fallback`:
 
 ```typescript
+import { overlayLighting, shaderLighting } from "@yagejs/lighting";
+
 shaderLighting({
   layer: "lighting",
   order: 900,
@@ -415,6 +436,8 @@ approximates that. It sits on the scene beside `renderer`, because how much
 light a room throws back is part of how that room looks:
 
 ```typescript
+import { Scene } from "@yagejs/core";
+
 class CaveScene extends Scene {
   readonly name = "cave";
   readonly lighting = {
@@ -442,15 +465,25 @@ different:
   little. Pick it to take the hard edge off the overlay renderer's shadows.
 
 ```typescript
-readonly lighting = {
-  bounce: { strength: 0.6, radius: 60, blend: "mix" },
-};
+import { Scene } from "@yagejs/core";
+import type { SceneLightingOptions } from "@yagejs/lighting";
+
+class CaveScene extends Scene {
+  readonly name = "cave";
+  // Typed so "mix" stays a blend mode instead of widening to string.
+  readonly lighting: SceneLightingOptions = {
+    bounce: { strength: 0.6, radius: 60, blend: "mix" },
+  };
+}
 ```
 
 Set `bounce` on the plugin for the value every scene starts from, and `null`
 on a scene that wants none of it:
 
-```typescript
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
+import { LightingPlugin } from "@yagejs/lighting";
+
 engine.use(
   new LightingPlugin({
     ambient: { level: 0.1 },
@@ -483,7 +516,10 @@ where the lights themselves were redrawn.
 A `LightOccluder` marks the area an entity blocks light through:
 
 ```typescript
+import type { Entity } from "@yagejs/core";
 import { LightOccluder } from "@yagejs/lighting";
+
+declare const wall: Entity, pillar: Entity, rock: Entity; // each has a Transform
 
 wall.add(
   new LightOccluder({
@@ -554,7 +590,8 @@ soft border.
 
 Add a factory to `renderers` when a game needs a different visual result:
 
-```typescript
+```typescript yage-context="engine"
+import { LightingPlugin } from "@yagejs/lighting";
 import type { LightingRendererFactory } from "@yagejs/lighting";
 
 const customLighting: LightingRendererFactory = ({
@@ -593,19 +630,37 @@ the built-in renderer finishes with, and a custom renderer gets the same
 multiply composite and the same bounced light for free:
 
 ```typescript
+import { Container } from "pixi.js";
 import { LightingComposite } from "@yagejs/lighting";
+import type { LightingRendererFactory } from "@yagejs/lighting";
+import { SceneRenderTreeKey } from "@yagejs/renderer";
 
-const composite = new LightingComposite(renderer, {
-  source: lightContainer, // the container this renderer draws into
-  parent: layer.container, // a screen-space render layer
-  width: renderer.virtualSize.width,
-  height: renderer.virtualSize.height,
-  resolutionScale: 0.5,
-  bounce,
-});
+const customLighting: LightingRendererFactory = ({ scene, renderer, bounce }) => {
+  const lightContainer = new Container();
+  const layer = scene
+    .use(SceneRenderTreeKey)
+    .ensureLayer({ name: "lighting", order: 900, space: "screen" });
 
-// In the renderer's destroy(), before the source container goes:
-composite.destroy();
+  const composite = new LightingComposite(renderer, {
+    source: lightContainer, // the container this renderer draws into
+    parent: layer.container, // a screen-space render layer
+    width: renderer.virtualSize.width,
+    height: renderer.virtualSize.height,
+    resolutionScale: 0.5,
+    bounce,
+  });
+
+  return {
+    render() {
+      // Draw into lightContainer; call composite.invalidate() when it changed.
+      composite.render();
+    },
+    destroy() {
+      composite.destroy(); // before the source container goes
+      lightContainer.destroy({ children: true });
+    },
+  };
+};
 ```
 
 Call `composite.invalidate()` whenever the drawn light changed and
@@ -620,10 +675,23 @@ reuse it:
 
 ```typescript
 import { Vec2Buffer } from "@yagejs/core";
+import type { LightingRendererFactory } from "@yagejs/lighting";
 
-const position = new Vec2Buffer(); // keep between render calls
-light.getPositionInto(position);
-occluder.getPositionInto(position);
+const customLighting: LightingRendererFactory = ({ world }) => {
+  const position = new Vec2Buffer(); // keep between render calls
+  return {
+    render() {
+      for (const light of world.sources) {
+        light.getPositionInto(position);
+        // Draw the light at position.x, position.y.
+      }
+      for (const occluder of world.occluders) {
+        occluder.getPositionInto(position);
+      }
+    },
+    destroy() {},
+  };
+};
 ```
 
 Each `getPositionInto` call overwrites and returns the same buffer without

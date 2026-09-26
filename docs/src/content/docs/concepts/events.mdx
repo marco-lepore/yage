@@ -16,14 +16,17 @@ Entity and scene events are addressed by an `EventToken`, not by a string.
 `defineEvent` creates one and pairs the event name with its payload type, so
 every `on` and `emit` site is checked against the same shape:
 
-```typescript
-import { defineEvent } from "@yagejs/core";
+```typescript yage-context="scene"
+import { Entity, defineEvent } from "@yagejs/core";
 
 // Define once in a shared module
 export const PlayerHitEvent = defineEvent<{ damage: number }>("player:hit");
 export const WaveStartEvent = defineEvent<{ waveNumber: number }>("wave:started");
 
+class Player extends Entity {}
+
 // Tokens address entity.on / entity.emit and scene.on / scene.emit
+const player = scene.spawn(Player);
 player.on(PlayerHitEvent, (data) => {
   console.log(data.damage);
 });
@@ -47,7 +50,7 @@ Entities have their own lightweight event emitter for local communication
 between components on the same entity:
 
 ```typescript
-import { defineEvent } from "@yagejs/core";
+import { Component, defineEvent } from "@yagejs/core";
 
 const DamagedEvent = defineEvent<{ amount: number }>("damaged");
 
@@ -66,6 +69,10 @@ class DamageFlash extends Component {
       this.flash(amount > 50 ? "red" : "white");
     });
   }
+
+  private flash(color: "red" | "white") {
+    // tint the entity's sprite with `color` for a few frames
+  }
 }
 ```
 
@@ -83,8 +90,8 @@ scene's entities. The handler takes an optional second argument: the source
 `Entity` for bubbled events, or `undefined` for scene-emitted ones. A single
 handler can tell the two cases apart:
 
-```typescript
-import { Component, defineEvent, type Entity } from "@yagejs/core";
+```typescript yage-context="scene"
+import { Component, Entity, defineEvent } from "@yagejs/core";
 
 const DamagedEvent = defineEvent<{ amount: number }>("damaged");
 
@@ -102,6 +109,9 @@ class DamageFeed extends Component {
     });
   }
 }
+
+class Enemy extends Entity {}
+const enemy = scene.spawn(Enemy);
 
 // Triggers the bubbled branch, with `entity = enemy`
 enemy.emit(DamagedEvent, { amount: 10 });
@@ -138,7 +148,7 @@ destroyed, scenes pushed and popped, the engine starting and stopping. Resolve
 it with `EventBusKey`. Every `bus.on()` call returns an unsubscribe function;
 call it to stop listening:
 
-```typescript
+```typescript yage-context="context"
 import { EventBusKey } from "@yagejs/core";
 
 const bus = context.resolve(EventBusKey);

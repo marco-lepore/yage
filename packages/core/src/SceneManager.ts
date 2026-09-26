@@ -306,7 +306,7 @@ export class SceneManager {
    * `LoadingScene` uses it for exactly that.
    *
    * ```ts
-   * await engine.scenes.preload(level2, (ratio) => bar.setFill(ratio));
+   * await engine.scenes.preload(level2, (ratio) => bar.update({ value: ratio }));
    * await engine.scenes.replace(level2);
    * ```
    *

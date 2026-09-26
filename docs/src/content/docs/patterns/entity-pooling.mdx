@@ -18,7 +18,7 @@ pooled and spawn-and-destroy — with live counters, so you can see what changes
 
 A pooled class looks like any other entity subclass, plus one required hook:
 
-```typescript
+```typescript yage-group="bullets" yage-context="component"
 import { Component, Entity, EntityPool, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
@@ -57,7 +57,7 @@ keeps it in a field. By then the scene's services are registered, including
 the physics world and the render tree, so the members' components can resolve
 them.
 
-```typescript
+```typescript yage-group="bullets" yage-context="component"
 class Gun extends Component {
   private bullets!: EntityPool<Bullet>;
 
@@ -73,7 +73,28 @@ constructor and `setup()`, not `onAcquire` — prewarming is not an acquisition.
 If the entity's `setup()` takes parameters, pass them as `setup` and the
 constructor demands them, the same way `scene.spawn` does:
 
-```typescript
+```typescript yage-group="sparks" yage-context="component"
+import { Entity, EntityPool, Transform } from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+
+class Spark extends Entity {
+  remainingLife = 1;
+
+  setup(params: { color: number }) {
+    this.add(new Transform());
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 2).fill({ color: params.color });
+      }),
+    );
+  }
+
+  onAcquire(x: number, y: number) {
+    this.get(Transform).setPosition(x, y);
+    this.remainingLife = 1;
+  }
+}
+
 new EntityPool(this.scene, Spark, { setup: { color: 0x38bdf8 }, prewarm: 16 });
 ```
 
@@ -81,7 +102,7 @@ new EntityPool(this.scene, Spark, { setup: { color: 0x38bdf8 }, prewarm: 16 });
 
 Inside `Gun`:
 
-```typescript
+```typescript yage-check="syntax" yage-reason="Statements from inside a method of the Gun component above. They reach that Gun's private bullets pool through this, and no checker context can make this a Gun."
 const bullet = this.bullets.acquire(muzzleX, muzzleY, aimDir, 1);
 // ...on impact or when it leaves the screen
 this.bullets.release(bullet);
@@ -103,7 +124,11 @@ By default the pool is elastic: it grows whenever every member is out, and
 Pass `maxSize` to bound the total number of members. A saturated `acquire`
 then returns `undefined`, and the return type says so:
 
-```typescript
+```typescript yage-group="bullets" yage-context="component"
+const x = 320;
+const y = 400;
+const dir = Vec2.UP;
+
 const bullets = new EntityPool(this.scene, Bullet, { maxSize: 64 });
 
 const bullet = bullets.acquire(x, y, dir, 1);
@@ -115,8 +140,12 @@ one: the lowest-priority member in flight is released and handed straight back,
 running `onRelease` and then `onAcquire` in the same call. The default victim
 is the member acquired longest ago; `reclaimPriority` picks another:
 
-```typescript
+```typescript yage-group="sparks" yage-context="component"
+const x = 320;
+const y = 240;
+
 const sparks = new EntityPool(this.scene, Spark, {
+  setup: { color: 0x38bdf8 },
   maxSize: 200,
   reclaimPriority: (spark) => spark.remainingLife,  // steal the faintest
 });
@@ -167,7 +196,9 @@ is a different enemy across the map.
 in. Read it back through `.current`:
 
 ```typescript
-import { Component, type EntityHandle } from "@yagejs/core";
+import { Component, Entity, Transform, type EntityHandle } from "@yagejs/core";
+
+class Enemy extends Entity {}
 
 class TurretAim extends Component {
   private target?: EntityHandle<Enemy>;
@@ -179,6 +210,12 @@ class TurretAim extends Component {
   update() {
     const enemy = this.target?.current;   // undefined once that enemy is gone
     if (enemy) this.aimAt(enemy);
+  }
+
+  private aimAt(enemy: Enemy) {
+    const transform = this.entity.get(Transform);
+    const toEnemy = enemy.get(Transform).position.sub(transform.position);
+    transform.setRotation(toEnemy.angle());
   }
 }
 ```
@@ -241,11 +278,24 @@ handler, an `update`, an event listener — so `destroy()` sends a pool member
 back to its pool instead of tearing it down:
 
 ```typescript
-// The player is hit. `event.other` is an Entity; it may or may not be pooled.
-onCollision((event) => {
-  this.takeDamage(10);
-  event.other.destroy();   // pooled -> released; not pooled -> destroyed
-});
+import { Component } from "@yagejs/core";
+import { ColliderComponent } from "@yagejs/physics";
+
+class PlayerHealth extends Component {
+  hp = 100;
+
+  onAdd() {
+    // The player is hit. `event.other` is an Entity; it may or may not be pooled.
+    this.sibling(ColliderComponent).onCollision((event) => {
+      this.takeDamage(10);
+      event.other.destroy();   // pooled -> released; not pooled -> destroyed
+    });
+  }
+
+  takeDamage(amount: number) {
+    this.hp -= amount;
+  }
+}
 ```
 
 The same game code therefore works whether or not the bullet came from a pool,

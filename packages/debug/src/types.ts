@@ -104,7 +104,11 @@ export interface DebugVectorOptions {
 export interface DebugRegistry {
   register(contributor: DebugContributor): void;
   isEnabled(): boolean;
+  /** Switch all debug drawing on or off. */
+  toggle(): void;
   isFlagEnabled(contributorName: string, flag: string): boolean;
+  /** Set whether a contributor's named view is drawn. */
+  setFlag(contributorName: string, flag: string, value: boolean): void;
   /**
    * Draw an arrow on `entity` for a vector that is read fresh every frame —
    * velocity, aim direction, knockback, steering output.

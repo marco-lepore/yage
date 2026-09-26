@@ -12,7 +12,7 @@ Bundles [Rapier 2D](https://rapier.rs/) - no separate install required. Rapier u
 
 ## Usage
 
-```ts
+```ts yage-context="entity" yage-group="usage"
 import { Engine } from "@yagejs/core";
 import {
   PhysicsPlugin,
@@ -26,7 +26,7 @@ engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
 
 Attach bodies and colliders to entities:
 
-```ts
+```ts yage-context="entity" yage-group="usage"
 entity.add(new RigidBodyComponent({ type: "dynamic" }));
 entity.add(
   new ColliderComponent({ shape: { type: "box", width: 40, height: 40 } }),
@@ -40,7 +40,7 @@ entity.add(
 - **ColliderComponent** - boxes, circles, polygons, sensors with trigger events
 - **Raycasts** - query the world for collisions along a ray
 - **Collision layers / masks** - filter collisions by group
-- **Joints** - distance, revolute, prismatic, fixed
+- **Joints** - spring, rope, fixed, revolute, prismatic
 
 ## Docs
 

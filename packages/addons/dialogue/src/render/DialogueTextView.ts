@@ -16,9 +16,11 @@ import { ensureDialogueLayer } from "./ensureLayer.js";
  * rolling it. We then reach into the per-glyph `chars` for everything rich:
  *   - reveal   → toggle `chars[i].visible` (no re-layout; split is done once)
  *   - colour   → `chars[i].tint` per run (independent per glyph)
- *   - bold/italic → reassign that glyph's `style` to a baked variant atlas
- *       (the chars SHARE one style object, so we assign a fresh one rather than
- *        mutate — mutating would restyle the whole line)
+ *   - bold/italic → on a bitmap font, skew the glyph (italic) and draw it
+ *       again one step over (bold) on the regular atlas; on canvas text,
+ *       reassign the glyph's `style` with the weight/style set (the chars
+ *       SHARE one style object, so we assign a fresh one rather than mutate —
+ *       mutating would restyle the whole line)
  *   - effects  → per-glyph `position`/`scale`/`tint` (wave now ripples per letter)
  *
  * Pixi nests the split `root → line → word → char`, so a glyph's position in the

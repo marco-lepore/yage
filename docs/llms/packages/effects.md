@@ -6,8 +6,16 @@ Depends on `@yagejs/core` (peer), `@yagejs/renderer` (peer), `pixi.js` (peer), `
 
 No plugin install — just import a preset and call it like a factory:
 
-```ts
+```ts yage-context="entity,scene-enter"
 import { hitFlash, bloom, crt, vignette } from "@yagejs/effects";
+import {
+  RendererKey,
+  SceneRenderTreeKey,
+  SpriteComponent,
+} from "@yagejs/renderer";
+
+const sprite = entity.get(SpriteComponent);
+const tree = this.use(SceneRenderTreeKey);
 
 sprite.fx.addEffect(hitFlash({ color: 0xffffff }));
 tree.get("world").fx.addEffect(bloom({ threshold: 0.8 }));
@@ -72,17 +80,23 @@ The public handle controls an effect's strength three ways. `setIntensity(value)
 
 ## Scope rationale
 
-Three presets work best at scene scope (or higher) rather than on a single component:
+Four presets work best at scene scope (or higher) rather than on a single component:
 
 - `godRay` — its alpha-aware fragment shader treats fully transparent host pixels as black, so on a per-component sprite the rays render against a black box. At scene scope, the layer rasterizes alpha=1 across the visible area, and the rays blend into the world as intended.
 - `bulgePinch` — distortion samples outside the host's bounding rect, so a sprite-scoped bulge clips at the sprite edges. Apply at scene/layer scope so the lens has room to bend pixels around its `radius`.
 - `shockwave` — the ring travels between `center` and the host's bounds and is naturally clipped there, so a component-scoped shockwave on a small sprite looks like a tiny "bump" rather than a ring. Scene scope makes `trigger(heroX, heroY)` line up with the entity's transform.
+- `implosion` — inward displacement samples beyond the output pixel. A small component host clips the warped image at its own bounds, while a layer or scene gives the distortion room around its center.
 
-The `examples/src/effects-showcase/controls.ts` demo sets up each of these at the recommended scope — copy that as the worked-out reference.
+The `examples/src/effects-showcase/controls.ts` demo sets up `godRay`, `bulgePinch`, and `shockwave` at scene scope — copy that as the worked-out reference.
 
 Scene scope and screen scope also post-process the UI. `@yagejs/ui` mounts its screen-space `"ui"` layer inside the scene's render tree, so `tree.fx.addEffect(...)` (scene scope) and a renderer-level effect (screen scope) both filter the HUD along with the world. Two ways to keep an effect off the HUD:
 
-```ts
+```ts yage-context="entity,scene-enter"
+import { colorGrade } from "@yagejs/effects";
+import { SceneRenderTreeKey, SpriteComponent } from "@yagejs/renderer";
+
+const tree = this.use(SceneRenderTreeKey);
+
 // 1. Name the layers it covers. One handle, one filter pass per listed
 //    layer — three layers cost three fullscreen passes per frame.
 const grade = tree.addLayerEffect(colorGrade({ preset: "night" }), [
@@ -93,7 +107,9 @@ const grade = tree.addLayerEffect(colorGrade({ preset: "night" }), [
 grade.fadeOut(1); // fans out to all three
 
 // 2. Lift one visual out of every layer- and scene-scope effect.
-this.add(new SpriteComponent({ texture: "cursor", renderAboveEffects: true }));
+entity.add(
+  new SpriteComponent({ texture: "cursor", renderAboveEffects: true }),
+);
 ```
 
 `renderAboveEffects` draws the visual after the scene's layers while its logical parent still drives position, alpha, visibility, and camera. It escapes layer and scene filters, `layer.setMask`, `tree.setMask`, and the `irisReveal` / `chessboard` transition masks — during those reveals the visual shows at once. A screen-scope effect still covers it. Hit testing follows the logical tree, so a UI element drawn under it still receives the pointer first. Toggle it at runtime with `sprite.renderAboveEffects = false`. On a `SortGroupComponent` the flag applies to the component's own render object; the group's container is not lifted. A layer declared with `isRenderGroup: true` is unsupported for lifted visuals (a Pixi restriction).
@@ -126,18 +142,59 @@ Pixel-valued options on older presets and `axisBlur` are in **input-texture pixe
 Six presets ship with built-in resolution-stability:
 
 - `bulgePinch` interprets its center and radius in host-local pixels.
-- `shockwave` accepts container-local coords for `trigger(x, y)` AND for every dimensional option, and converts each frame against the filter target's live `worldTransform`. **This is experimental** — don't depend on `shockwave`'s exact unit behavior across versions.
+- `shockwave` accepts container-local coords for `trigger(x, y)` AND for every dimensional option, and converts each frame against the filter target's live `worldTransform`.
 - `glitch` interprets band displacement and RGB offsets in host-local pixels.
 - `zoomBlur` interprets its center and radii in host-local pixels.
 - `implosion` interprets its center and radius in host-local pixels.
   `expandFromCenter: true` grows the affected radius outward as intensity rises.
 - `dissolve` interprets its noise scale in host-local pixels.
 
-If you need resolution-stable visual output today on the other presets, scale your option values by `renderer.canvasSize.width / renderer.virtualSize.width` at the call site.
+For resolution-stable output on the other presets, scale your option values by `renderer.canvasSize.width / renderer.virtualSize.width` at the call site.
 
 ## Per-preset handle extras
 
-```ts
+```ts yage-context="entity,scene-enter"
+import { Transform } from "@yagejs/core";
+import {
+  axisBlur,
+  bloom,
+  bulgePinch,
+  chromaticAberration,
+  colorGrade,
+  colorize,
+  crt,
+  dissolve,
+  dropShadow,
+  glitch,
+  glow,
+  godRay,
+  halftone,
+  hitFlash,
+  implosion,
+  motionBlur,
+  oldFilm,
+  outline,
+  pixelate,
+  shockwave,
+  vignette,
+  wave,
+  zoomBlur,
+} from "@yagejs/effects";
+import {
+  RendererKey,
+  SceneRenderTreeKey,
+  SpriteComponent,
+} from "@yagejs/renderer";
+
+const sprite = entity.get(SpriteComponent);
+const tree = this.use(SceneRenderTreeKey);
+const layer = tree.get("world");
+const renderer = this.use(RendererKey);
+const playerPosition = entity.get(Transform).position;
+const { x: heroX, y: heroY } = playerPosition;
+const [drainX, drainY] = [640, 200];
+const [nextX, nextY] = [heroX + 32, heroY];
+
 const flash = sprite.fx.addEffect(hitFlash({ color: 0xffffff }));
 flash.trigger(); // one-shot ramp up + down
 flash.setColor(0xff0000);
@@ -174,11 +231,11 @@ vig.setStrength(0.8);
 const grade = tree.fx.addEffect(colorGrade({ preset: "neutral" }));
 grade.setPreset("sepia");
 
-const ray = scene.fx.addEffect(godRay({ angle: 30, gain: 0.5 }));
+const ray = tree.fx.addEffect(godRay({ angle: 30, gain: 0.5 }));
 ray.setAngle(45); // tweak ray angle in degrees
 ray.setGain(0.8); // rebases full strength; preserves intensity ratio
 
-const sw = scene.fx.addEffect(shockwave({ speed: 600, amplitude: 40 }));
+const sw = tree.fx.addEffect(shockwave({ speed: 600, amplitude: 40 }));
 sw.trigger(heroX, heroY); // ALL pixel-valued inputs (center, amplitude,
 // wavelength, radius, speed) are in the filter
 // target's local space — virtual px for
@@ -191,7 +248,7 @@ sw.trigger(heroX, heroY); // ALL pixel-valued inputs (center, amplitude,
 // / travel speed at any size.
 // Re-trigger cancels any in-flight ramp.
 
-const vortex = scene.fx.addEffect(
+const vortex = tree.fx.addEffect(
   shockwave({ direction: "in", speed: 400, duration: 1.5 }),
 );
 vortex.trigger(drainX, drainY); // direction: "in" starts the ring
@@ -204,11 +261,11 @@ vortex.trigger(drainX, drainY); // direction: "in" starts the ring
 const mb = sprite.fx.addEffect(motionBlur({ velocity: { x: 30, y: 0 } }));
 mb.setVelocity(50, 12); // rebases full vector; preserves intensity ratio
 
-scene.fx.addEffect(oldFilm({ sepia: 0.4, noise: 0.4 }));
+tree.fx.addEffect(oldFilm({ sepia: 0.4, noise: 0.4 }));
 // noise self-animates; only the base
 // EffectHandle surface is exposed
 
-const bp = scene.fx.addEffect(
+const bp = tree.fx.addEffect(
   bulgePinch({ strength: 1, radius: 200, center: { x: 640, y: 360 } }),
 );
 bp.setStrength(-0.8); // flips bulge → pinch; intensity ratio preserved
@@ -271,20 +328,27 @@ Every preset's `fadeIn` / `fadeOut` tweens its primary intensity (column 4 in th
 
 If you need to drive a non-primary uniform (or any custom fade shape), schedule it via `handle.run(p)` — the process is bound to the effect's lifetime and auto-cancels on `.remove()`:
 
-```ts
+```ts yage-context="entity"
 import { Tween } from "@yagejs/core";
+import { bloom } from "@yagejs/effects";
+import { SpriteComponent } from "@yagejs/renderer";
 
+const sprite = entity.get(SpriteComponent);
 const h = sprite.fx.addEffect(bloom({ bloomScale: 1.5 }));
-h.run(Tween.custom((v) => h.someExtra(v), 1, 0, 0.5)); // pauses with scene, ends with effect
+h.run(Tween.custom((v) => h.setThreshold(v), 1, 0, 0.5)); // pauses with scene, ends with effect
 ```
 
 For work that should outlive a single effect (e.g. a global animator), schedule directly on the matching scope's queue and manage cancellation yourself:
 
-```ts
-import { ProcessComponent, ProcessSystemKey } from "@yagejs/core";
+```ts yage-context="entity"
+import { ProcessComponent, ProcessSystemKey, Tween } from "@yagejs/core";
 
-const pc = entity.tryGet(ProcessComponent) ?? entity.add(new ProcessComponent());
-pc.run(Tween.custom(...));   // entity-scoped, NOT bound to any one effect
+const pc =
+  entity.tryGet(ProcessComponent) ?? entity.add(new ProcessComponent());
+const pulse = (v: number) => {
+  // drive several effects from one value
+};
+pc.run(Tween.custom(pulse, 0, 1, 2)); // entity-scoped, NOT bound to any one effect
 ```
 
 ## Save state

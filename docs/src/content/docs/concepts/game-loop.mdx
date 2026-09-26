@@ -13,12 +13,12 @@ EarlyUpdate → FixedUpdate → Update → LateUpdate → Render → EndOfFrame
 
 | Phase | Purpose |
 |---|---|
-| **EarlyUpdate** | Input polling, network message ingestion. Runs once per frame before anything else. |
+| **EarlyUpdate** | Input polling. Runs once per frame before anything else. |
 | **FixedUpdate** | Physics stepping and deterministic gameplay. May run 0--5 times per frame at a constant timestep. |
 | **Update** | Physics interpolation, then general game logic. Component `update(dt)` calls happen here. Variable `dt`. |
-| **LateUpdate** | UI layout, constraint solving, anything that must run after game logic. Variable `dt`. |
-| **Render** | Display sync — sprite transforms are flushed to the GPU, particles are drawn. |
-| **EndOfFrame** | Deferred entity teardown (`onDestroy`, detach from scene), event queue flush. An entity's `isActive` already read `false` earlier, at the `destroy()` call itself. |
+| **LateUpdate** | UI layout, particle simulation, constraint solving, anything that must run after game logic. Variable `dt`. |
+| **Render** | Display sync: transforms are copied to the display objects, then lighting and the debug overlay draw. |
+| **EndOfFrame** | `InputClearSystem` clears this frame's input edges (`isJustPressed`, `isJustReleased`). Then deferred entity teardown runs: `onDestroy`, detach from scene, and the `entity:destroyed` event. An entity's `isActive` already read `false` earlier, at the `destroy()` call itself. |
 
 ## What Runs When
 
@@ -82,6 +82,8 @@ The `FixedUpdate` phase uses an accumulator to deliver a deterministic timestep
 regardless of frame rate:
 
 ```typescript
+import { Engine } from "@yagejs/core";
+
 const engine = new Engine({
   fixedTimestep: 1 / 60, // ~0.0167 s per tick (default)
   maxFixedStepsPerFrame: 5, // cap to prevent spiral of death
@@ -117,14 +119,25 @@ All phases except `FixedUpdate` receive the real elapsed time since the last
 frame as `dt` (in seconds). This value fluctuates with frame rate:
 
 ```typescript
-class CameraFollow extends Component {
+import { Component, Transform } from "@yagejs/core";
+import type { CameraComponent } from "@yagejs/renderer";
+
+class CameraChase extends Component {
+  constructor(private readonly camera: CameraComponent) {
+    super();
+  }
+
   update(dt: number) {
     // dt varies each frame — smooth but not deterministic
     const target = this.sibling(Transform).position;
-    this.camera.lerp(target, 5 * dt);
+    this.camera.position = this.camera.position.lerp(target, 5 * dt);
   }
 }
 ```
+
+The example only shows `dt` at work. For a real camera, spawn a
+`CameraEntity` with a `follow` target instead. See
+[Following a Target](/guides/rendering/camera/#following-a-target).
 
 For gameplay that must be deterministic (physics, game state), use
 `fixedUpdate(dt)` instead where `dt` is always the constant `fixedTimestep`

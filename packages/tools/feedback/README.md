@@ -39,6 +39,7 @@ export default defineConfig({ plugins: [yageFeedback()] });
 Install the runtime plugin after `RendererPlugin` and `DebugPlugin`:
 
 ```ts
+/// <reference types="vite/client" />
 import { Engine } from "@yagejs/core";
 import { FeedbackPlugin } from "@yagejs-tools/feedback";
 
@@ -172,9 +173,11 @@ stale lock.
 
 ## Plugin options
 
-```ts
+```ts yage-group="options" yage-context="engine"
+/// <reference types="vite/client" />
 import { FeedbackPlugin } from "@yagejs-tools/feedback";
 
+const debug = import.meta.env.DEV;
 engine.use(
   new FeedbackPlugin({
     enabled: debug, // Same flag passed to new Engine({ debug }).
@@ -191,7 +194,7 @@ those keys. Shortcuts ignore editable fields and open dialogs.
 
 Override keyboard bindings in the runtime plugin:
 
-```ts
+```ts yage-group="options" yage-context="engine"
 new FeedbackPlugin({
   enabled: debug,
   shortcuts: {

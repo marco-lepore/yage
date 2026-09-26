@@ -14,8 +14,9 @@ gameplay code reads ordinary actions (`isPressed`, `getVector`,
   `MouseLeft` actions or tap-to-move handlers underneath.
 - **Real action semantics** — the overlay owns its sustained action source, so
   press/release edges, hold durations, and charge mechanics behave like a
-  physical key without releasing another device's hold; the stick also feeds
-  `getStick("left")` when no physical gamepad is active.
+  physical key without releasing another device's hold. The stick also feeds
+  `getStick("left")`. A physical gamepad overrides it only while that pad's
+  stick is deflected past its deadzone.
 - **Customizable to fully custom** — placements, zones, stick modes
   (fixed / floating / follow), thresholds, a flat theme for the built-in
   Graphics presenter, or your own presenter behind a two-interface contract.
@@ -34,7 +35,7 @@ npm install @yagejs-addons/virtual-controls @yagejs/core @yagejs/input @yagejs/r
 The bound action names must exist in your `InputPlugin` action map — the
 overlay drives existing actions (unknown names warn and are skipped):
 
-```ts
+```ts yage-context="engine"
 import { Entity, Scene } from "@yagejs/core";
 import { InputPlugin } from "@yagejs/input";
 import { VirtualControls } from "@yagejs-addons/virtual-controls";

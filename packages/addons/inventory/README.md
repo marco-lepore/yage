@@ -30,7 +30,7 @@ The inventory belongs to the entity that carries it. A component on the player
 owns the model and applies what the items do; the `InventoryController` beside
 it draws the panel.
 
-```ts
+```ts yage-group="quick-start"
 import { Component, Entity, Scene } from "@yagejs/core";
 import {
   defineItems,
@@ -43,6 +43,11 @@ import {
   createInventoryPanel,
   INVENTORY_LAYERS,
 } from "@yagejs-addons/inventory/presenters";
+
+// Game code the example calls:
+declare class Health extends Component {
+  heal(amount: number): void;
+}
 
 const catalog = defineItems({
   potion: { name: "Potion", maxStack: 5, description: "Heals 20 HP." },
@@ -98,7 +103,12 @@ Game code reaches the model through the component, with the panel open or
 closed. A pickup or a door component finds the player with
 `this.scene.findByKey("player")`, a query, or the reference `spawn()` returned:
 
-```ts
+```ts yage-group="quick-start"
+declare const player: Entity; // from findByKey("player"), a query, or spawn()
+// Game code the example calls:
+declare function equip(): void;
+declare function openDoor(): void;
+
 const items = player.get(Backpack).items;
 items.add("potion", 3);
 if (items.has("sword")) equip();

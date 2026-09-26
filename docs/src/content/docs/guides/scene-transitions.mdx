@@ -9,8 +9,13 @@ crossfade, flash, or run any custom animation.
 
 ## Quick Start
 
-```typescript
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
 import { fade } from "@yagejs/renderer";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
 
 // Push with a fade to black
 await engine.scenes.push(new GameScene(), {
@@ -155,7 +160,10 @@ usually not what you want.
 Set `defaultTransition` on a scene class to use it automatically when no
 call-site transition is provided:
 
-```typescript
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
+import { fade, flash } from "@yagejs/renderer";
+
 class MenuScene extends Scene {
   readonly name = "menu";
   readonly defaultTransition = fade({ duration: 0.3 });
@@ -183,7 +191,7 @@ exits the old scene, then enters the new one without waiting for frames.
 
 ## Checking Transition State
 
-```typescript
+```typescript yage-context="engine,scene,component"
 // On the scene manager
 if (engine.scenes.isTransitioning) {
   // don't accept input during transitions
@@ -199,7 +207,7 @@ if (scene.isTransitioning) {
 
 The engine event bus emits events when transitions start and end:
 
-```typescript
+```typescript yage-context="engine"
 engine.events.on("scene:transition:started", ({ kind }) => {
   console.log(`Transition started: ${kind}`); // "push", "pop", or "replace"
 });
@@ -290,7 +298,19 @@ visible behind a dip-to-black.
 one used when it hands off to its target scene. It composes cleanly with a
 call-site transition passed to `push`/`replace`:
 
-```typescript
+```typescript yage-context="engine"
+import { LoadingScene, Scene } from "@yagejs/core";
+import { fade } from "@yagejs/renderer";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
+
+class Boot extends LoadingScene {
+  readonly target = () => new GameScene();
+  readonly transition = fade({ duration: 0.3 });
+}
+
 await engine.scenes.replace(new Boot(), {
   transition: fade({ duration: 0.4 }),   // mount Boot with this fade
 });

@@ -4,7 +4,8 @@ Animate the handoff between scenes during `push`, `pop`, and `replace`. Both sce
 
 ## Usage
 
-```ts
+```ts yage-context="engine"
+import { Scene } from "@yagejs/core";
 import {
   chessboard,
   crossFade,
@@ -14,6 +15,9 @@ import {
   irisReveal,
   slidePush,
 } from "@yagejs/renderer";
+
+declare const nextScene: Scene; // any scene instance
+declare const newScene: Scene;
 
 // Push with a fade
 await engine.scenes.push(nextScene, { transition: fade({ duration: 0.4 }) });
@@ -63,14 +67,21 @@ then enters the new one without waiting for frames.
 ## Contract
 
 ```ts
-interface SceneTransition {
+import type {
+  EngineContext,
+  Scene,
+  SceneTransition as BaseSceneTransition,
+  SceneTransitionContext as BaseSceneTransitionContext,
+} from "@yagejs/core";
+
+interface SceneTransition extends BaseSceneTransition {
   readonly duration: number; // Total wall-clock seconds
   begin?(ctx: SceneTransitionContext): void;
   tick(dt: number, ctx: SceneTransitionContext): void;
   end?(ctx: SceneTransitionContext): void;
 }
 
-interface SceneTransitionContext {
+interface SceneTransitionContext extends BaseSceneTransitionContext {
   readonly elapsed: number; // Wall-clock seconds since begin()
   readonly kind: "push" | "pop" | "replace";
   readonly engineContext: EngineContext;
@@ -133,7 +144,7 @@ scene-visibility and would conflict with each other if chained.
 
 ## Queueing
 
-Concurrent `push`/`pop`/`replace`/`popAll` calls queue via `_pendingChain`. Re-entrant calls from lifecycle hooks throw.
+Concurrent `push`/`pop`/`replace`/`popAll` calls queue and run in call order. A call from inside a scene lifecycle hook (`onEnter`, `onExit`, `onPause`, `onResume`) is queued too: it runs after the current operation finishes, and dev builds log a warning.
 
 `popAll()` is also queued — it waits for any in-flight transition and pending ops to finish before tearing the stack down. There is no mid-run cancellation.
 
@@ -144,7 +155,7 @@ Concurrent `push`/`pop`/`replace`/`popAll` calls queue via `_pendingChain`. Re-e
 
 ## Checking State
 
-```ts
+```ts yage-context="engine,scene"
 engine.scenes.isTransitioning; // true during any active transition
 scene.isTransitioning; // same, accessible from the scene
 ```
@@ -207,7 +218,19 @@ Notes:
 
 `LoadingScene` (core) carries its own `transition` — the one used for the handoff to its target. That transition composes with any call-site transition passed to `push`/`replace`:
 
-```ts
+```ts yage-context="engine"
+import { LoadingScene, Scene } from "@yagejs/core";
+import { fade } from "@yagejs/renderer";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
+
+class Boot extends LoadingScene {
+  readonly target = () => new GameScene();
+  readonly transition = fade({ duration: 0.3 });
+}
+
 await engine.scenes.replace(new Boot(), {
   transition: fade({ duration: 0.4 }), // mount Boot with this fade
 });

@@ -20,7 +20,7 @@ ids from each quest's own `objectives` map keys. No `<T>` argument is ever
 written — `QuestLog<TDefs>` infers both levels from the `defineQuests` return
 value.
 
-```ts
+```ts yage-group="herbs"
 import { defineQuests, QuestLog } from "@yagejs-addons/quests";
 
 const quests = defineQuests({
@@ -59,7 +59,7 @@ predicate), `objectiveIds(quest)`.
 
 ## QuestLog — the runtime model
 
-```ts
+```ts yage-group="herbs"
 const log = new QuestLog(quests); // TDefs inferred from `quests`, zero <T>
 ```
 
@@ -88,8 +88,9 @@ it; reactions to its events live in components, not in `onEnter` closures.
   and completes any non-terminal known quest regardless of prerequisites or
   progress.
 - `fail(quest): void` — `active` or `available` -> `failed`. No-op if already
-  terminal. Terminal in v1 (no re-open/retry) — a failed quest never reaches
-  `completed`, so any quest that `requires` it stays `locked` permanently.
+  terminal. `failed` is terminal (there is no re-open or retry) — a failed
+  quest never reaches `completed`, so any quest that `requires` it stays
+  `locked` permanently.
 
 Unknown **objective** id (unreachable through the typed API) throws. Unknown
 **quest** id behaves exactly like "not active" everywhere except `start`
@@ -124,13 +125,21 @@ never gate completion.
 progress, count, done }` · `objectiveCompleted { questId, objectiveId }` ·
 `questCompleted { questId }` · `questFailed { questId }` · `changed { questId
 }` (coarse re-render signal, fires once per mutating call, after the
-fine-grained event(s)).
+fine-grained event(s)). Payload ids are plain `string`: narrow with
+`quests.has(questId)` before passing one to `quests.get` or a typed `log` call.
 
 ### Save
 
 ```ts
-log.snapshot(): QuestSnapshot; // { quests: Record<questId, { phase, objectives }> } — plain JSON
-log.restore(snapshot): void;
+import { QuestLog as BaseQuestLog } from "@yagejs-addons/quests";
+import type { QuestDefInput, QuestSnapshot } from "@yagejs-addons/quests";
+
+declare class QuestLog<
+  TDefs extends Record<string, QuestDefInput>,
+> extends BaseQuestLog<TDefs> {
+  snapshot(): QuestSnapshot; // { quests: Record<questId, { phase, objectives }> } — plain JSON
+  restore(snapshot: QuestSnapshot): void;
+}
 ```
 
 Only started quests appear in a snapshot. `restore` drops quest ids the
@@ -149,12 +158,19 @@ call `restore` after loading it.
 
 ## QuestController (optional L2a)
 
-```ts
+```ts yage-group="herbs"
+import { Component, type Entity } from "@yagejs/core";
 import { QuestController, QuestCompletedEvent } from "@yagejs-addons/quests";
+
+declare const player: Entity;
 
 player.add(new QuestController({ log })); // TDefs inferred from `log`
 // in any component of the scene:
-this.listenScene(QuestCompletedEvent, ({ questId }) => {});
+class Achievements extends Component {
+  onAdd(): void {
+    this.listenScene(QuestCompletedEvent, ({ questId }) => {});
+  }
+}
 ```
 
 Mirrors the log's six model events onto the host entity as engine-bus events
@@ -175,9 +191,11 @@ Quests declares only `@yagejs/core`. The game subscribes to whatever events it
 likes and calls `advance`/`complete` directly — the silent-no-op-on-inactive
 contract means no active-state guard is needed in the adapter:
 
-```ts
-import { Component } from "@yagejs/core";
+```ts yage-group="herbs"
+import { defineEvent } from "@yagejs/core";
 import { InventoryItemAddedEvent } from "@yagejs-addons/inventory";
+
+const WolfDiedEvent = defineEvent("game:wolf-died"); // the game's own event
 
 // A component on the player (not an `entity.on` closure in onEnter):
 class QuestProgress extends Component {
@@ -199,6 +217,21 @@ For a current-inventory requirement, set `autoComplete: false` on the quest
 and synchronize absolute progress on both inventory additions and removals:
 
 ```ts
+import { defineQuests, QuestLog } from "@yagejs-addons/quests";
+import { defineItems, Inventory } from "@yagejs-addons/inventory";
+
+const quests = defineQuests({
+  bringWood: {
+    title: "Bring 10 wood",
+    autoComplete: false,
+    objectives: { wood: { count: 10 } },
+  },
+});
+const log = new QuestLog(quests);
+const inventory = new Inventory({
+  catalog: defineItems({ wood: { name: "Wood" } }),
+});
+
 const syncWood = () =>
   log.setProgress("bringWood", "wood", inventory.count("wood"));
 inventory.on("itemAdded", syncWood);
@@ -209,10 +242,11 @@ syncWood();
 if (log.canComplete("bringWood")) log.completeQuest("bringWood");
 ```
 
-## Deferred to v1.x
+## Not included
 
-Journal/tracker presenter (`./presenters`), published per-addon adapters
-(`./adapters`), auto-start/auto-offer chaining, quest abandon/reset/retry,
-timed objectives, hidden objectives, "any N of M" branching, prerequisite
-cycle detection, reward payloads, i18n resolver (text is addressable by
-`(questId, objectiveId)` already).
+The addon ships no journal or tracker presenter and no per-addon adapters;
+the game draws its own UI and connects other addons through events. It does
+not auto-start or auto-offer quests, abandon, reset or retry them, time or
+hide objectives, branch on "any N of M", detect prerequisite cycles, or pay
+rewards. There is no i18n resolver; quest and objective text is addressable
+by `(questId, objectiveId)` for the game to localize.

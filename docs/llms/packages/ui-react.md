@@ -4,7 +4,7 @@ Depends on `@yagejs/ui`, `react`. React reconciler over the UI system.
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { UIPlugin } from "@yagejs/ui";
 import { UIReactPlugin } from "@yagejs/ui-react";
 
@@ -16,15 +16,19 @@ engine.use(new UIReactPlugin());
 
 ## UIRoot
 
-```ts
-import { UIRoot } from "@yagejs/ui-react";
+```tsx yage-context="entity"
+import { UIRoot, Text } from "@yagejs/ui-react";
 import { Anchor } from "@yagejs/ui";
+
+function MyComponent() {
+  return <Text>Paused</Text>;
+}
 
 const root = new UIRoot({
   anchor: Anchor.Center,
   offset: { x: 0, y: 0 },
-  layer: "ui",                   // optional; defaults to auto-provisioned "ui" (screen-space)
-  positioning: "anchor",          // "anchor" (default) | "transform"
+  layer: "ui", // optional; defaults to auto-provisioned "ui" (screen-space)
+  positioning: "anchor", // "anchor" (default) | "transform"
 });
 entity.add(root);
 root.render(<MyComponent />);
@@ -51,6 +55,9 @@ import {
   ProgressBar,
   Checkbox,
 } from "@yagejs/ui-react";
+import { texture } from "@yagejs/renderer";
+
+const iconTex = texture("icons/save.png");
 
 <Panel
   direction="column"
@@ -91,7 +98,7 @@ PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlid
 
 Each JSX prop type extends its `@yagejs/ui` imperative counterpart (e.g. `ButtonProps` extends `UIButtonProps`). A prop the imperative class accepts is always a valid JSX prop too. `consumeInput` works on every element, including `Checkbox`, `ScrollView`, and the Pixi\* wrappers.
 
-**Prop removal resets to default.** Dropping a prop between renders resets it instead of leaving the old value: a cleared `background` removes the fill on `Panel` and `ScrollView` and returns `Button` to its default grey, an unbound handler stops firing, a removed layout value (`width`, `margin`, and the rest) goes back to its Yoga default. This applies to every element. Two JSX patterns both drop a prop this way: an explicit `undefined` (`bg={selected ? hl : undefined}`) and a conditional spread (`{...(open ? { onClick } : {})}`).
+**Prop removal resets to default.** Dropping a prop between renders resets it instead of leaving the old value: a cleared `background` removes the fill on `Panel` and `ScrollView` and returns `Button` to its default grey, an unbound handler stops firing, a removed layout value (`width`, `margin`, and the rest) goes back to its Yoga default. This applies to every element. Two JSX patterns both drop a prop this way: an explicit `undefined` (`bg={selected ? hl : undefined}`) and a conditional spread (`{...(open ? { onClick } : {})}`). Exception: the `Pixi*` wrappers read their views (`bg`, `fill`, `slider`, checkbox views), text styles and `PixiSlider`'s `showValue` only when the element is created; a later value, `undefined` included, does nothing. Give the element a new `key` to change one.
 
 **`bg` is shorthand for `background`** on `Panel`, `Button`, and `ScrollView`. `Button` also has `hoverBg` and `pressBg` for its hover/press backgrounds. Passing both `bg` and `background` on the same element resolves to `background` and fires a dev warning once per element type. `PixiProgressBar`, `PixiSlider`, and `PixiInput` have their own `bg` prop — a required `@pixi/ui` view-slot value, not this alias — and are unaffected.
 
@@ -103,6 +110,12 @@ Removing an element destroys it: a child removed from a container, or the whole 
 
 ```tsx
 import { ScrollView, Panel, Button, Text } from "@yagejs/ui-react";
+
+interface OrdersProps {
+  orders: Array<{ id: string; label: string }>;
+  fulfill: (id: string) => void;
+  endDay: () => void;
+}
 
 function OrdersPanel({ orders, fulfill, endDay }: OrdersProps) {
   return (
@@ -148,6 +161,8 @@ SwiftUI convention (`VStack` / `HStack` / `ZStack`). For column / row
 stacking use `<Panel direction="column" | "row">`.
 
 ```tsx
+import { Panel, Text, ZStack } from "@yagejs/ui-react";
+
 <ZStack>
   <Panel
     position="absolute"
@@ -158,7 +173,7 @@ stacking use `<Panel direction="column" | "row">`.
   <Panel position="absolute" top={16} right={16} padding={4}>
     <Text>Score: 42</Text>
   </Panel>
-</ZStack>
+</ZStack>;
 ```
 
 ### Absolute positioning
@@ -167,9 +182,11 @@ stacking use `<Panel direction="column" | "row">`.
 `right`, `bottom`:
 
 ```tsx
+import { Panel } from "@yagejs/ui-react";
+
 <Panel position="relative" width={400} height={300}>
   <Panel position="absolute" left={10} top={20} width={50} height={30} />
-</Panel>
+</Panel>;
 ```
 
 `position` defaults to `"relative"`. Set `"absolute"` to lift the element out
@@ -195,6 +212,9 @@ layout box; `ui.md` "Scale, rotation and draw order" has the rules for
 clipping, scrolling and draw order.
 
 ```tsx
+import { useState } from "react";
+import { Panel } from "@yagejs/ui-react";
+
 const [hovered, setHovered] = useState(false);
 
 <Panel
@@ -227,8 +247,19 @@ listeners). Three independent, combinable props:
   `false` on leave. Ideal for "show while hovered" toggles.
 
 ```tsx
-<Button onClick={save} onHover={setGlow}>Save</Button>
-<Panel onPointerOver={preview} onPointerOut={clearPreview}>…</Panel>
+import { Button, Panel } from "@yagejs/ui-react";
+
+declare function save(): void;
+declare function setGlow(hovering: boolean): void;
+declare function preview(): void;
+declare function clearPreview(): void;
+
+<Button onClick={save} onHover={setGlow}>
+  Save
+</Button>;
+<Panel onPointerOver={preview} onPointerOut={clearPreview}>
+  …
+</Panel>;
 ```
 
 Callbacks are suppressed on a component with a disabled state while that
@@ -245,6 +276,16 @@ component, and `focus` on `<Panel>` — whose keys include `wrap`, `autoFocus`,
 callbacks. Full behaviour: the focus section of `llms/packages/ui.md`.
 
 ```tsx
+import { useState } from "react";
+import { Button, Checkbox, Panel, Text } from "@yagejs/ui-react";
+
+declare function close(): void;
+declare function resume(): void;
+declare function upload(): void;
+
+const [volume, setVolume] = useState(60);
+const [music, setMusic] = useState(true);
+
 <Panel gap={8} focus={{ wrap: true, onCancel: close }}>
   <Button width={220} onClick={resume}>
     Resume
@@ -264,13 +305,18 @@ callbacks. Full behaviour: the focus section of `llms/packages/ui.md`.
   </Panel>
 
   <Checkbox label="Music" checked={music} onChange={setMusic} />
-</Panel>
+</Panel>;
 ```
 
 **Focus draws nothing until a game asks for it.** `onFocusChange` is where
 most games show it — a marker beside the row, a swapped sprite, a sound:
 
 ```tsx
+import { useState } from "react";
+import { Button, Panel, Text } from "@yagejs/ui-react";
+
+declare function resume(): void;
+
 const [focusedId, setFocusedId] = useState<string | null>(null);
 
 <Panel direction="row" gap={6}>
@@ -298,6 +344,10 @@ Omitted, a focused component keeps its resting background. A fill naming only
 a colour keeps the resting corner radius.
 
 ```tsx
+import { Panel, Text } from "@yagejs/ui-react";
+
+declare const slot: { label: string; playtime: string };
+
 <Panel
   direction="row"
   gap={6}
@@ -307,7 +357,7 @@ a colour keeps the resting corner radius.
 >
   <Text>{slot.label}</Text>
   <Text>{slot.playtime}</Text>
-</Panel>
+</Panel>;
 ```
 
 **The pointer and focus are separate.** Pressing a component focuses it;
@@ -337,7 +387,10 @@ spread, disposes the scope and hands input to the next shown one.
 `UIRoot` takes the same option, for a tree whose outermost element is not a
 single `<Panel>`:
 
-```ts
+```ts yage-context="entity"
+import { UIRoot } from "@yagejs/ui-react";
+import { Anchor } from "@yagejs/ui";
+
 const root = entity.add(new UIRoot({ anchor: Anchor.Center, focus: true }));
 root.focusScope; // UIFocusScope | null
 ```
@@ -356,13 +409,32 @@ camera-transformed triggers. Without a `<UIRoot>` overlay it falls back to
 an in-tree absolute bubble (no collision handling).
 
 ```tsx
-<Tooltip content="Save your game" placement="top" bg={{ color: 0x1f2430, radius: 6 }} padding={8}>
-  <Button onClick={save}>Save</Button>
-</Tooltip>
+import { Button, Image, Panel, Text, Tooltip } from "@yagejs/ui-react";
+import { texture } from "@yagejs/renderer";
 
-<Tooltip content={<Panel gap={2}><Text>+5 ATK</Text><Text>Rare</Text></Panel>} placement="right">
+declare function save(): void;
+const swordIcon = texture("items/iron-sword.png");
+
+<Tooltip
+  content="Save your game"
+  placement="top"
+  bg={{ color: 0x1f2430, radius: 6 }}
+  padding={8}
+>
+  <Button onClick={save}>Save</Button>
+</Tooltip>;
+
+<Tooltip
+  content={
+    <Panel gap={2}>
+      <Text>+5 ATK</Text>
+      <Text>Rare</Text>
+    </Panel>
+  }
+  placement="right"
+>
   <Image texture={swordIcon} />
-</Tooltip>
+</Tooltip>;
 ```
 
 Props: `content` (string/number → auto `<Text>`; nodes for rich content),
@@ -392,12 +464,42 @@ without React) and re-anchored each frame by `@yagejs/ui`'s
 
 ```ts
 import {
+  Component,
+  Entity,
+  SceneManagerKey,
+  createCounter,
+  createList,
+  createMap,
+  createRecord,
+  createSet,
+  createStore,
+  createValue,
+} from "@yagejs/core";
+import {
   useEngine,
   useScene,
   useStore,
   useQuery,
   useSceneSelector,
 } from "@yagejs/ui-react";
+
+const record = createRecord({ default: () => ({ hp: 100 }) });
+const counter = createCounter();
+const map = createMap<string, number>();
+const set = createSet<string>();
+const list = createList<string>();
+const value = createValue({ default: "idle" });
+const compound = createStore((s) => ({ gold: s.counter() }));
+class EnemyTag extends Component {}
+
+// Host entity from patterns.md "Game state on a host entity"
+declare const HUD_KEY: string; // its spawn key
+declare class RunProgress extends Component {
+  get coins(): number;
+}
+declare class HudEntity extends Entity {
+  progress: RunProgress;
+}
 
 // Engine/scene context. useEngine() returns the EngineContext, not the Engine.
 const scenes = useEngine().resolve(SceneManagerKey); // e.g. scenes.push(new PauseScene())
@@ -411,7 +513,7 @@ useStore(set); // ReactiveSet<K>         → K[]
 useStore(list); // ReactiveList<T>        → T[]
 useStore(value); // ReactiveValue<T>       → T
 useStore(compound); // ReactiveStore<L>       → encoded snapshot
-useStore(source, select); // selector receives the source itself, not a snapshot
+useStore(record, (src) => src.get().hp); // selector receives the source itself, not a snapshot
 
 // ECS query (polled each frame)
 const count = useQuery([EnemyTag], (result) => result.size);
@@ -430,6 +532,16 @@ const coins = useSceneSelector(
 `useQuery` registers its `QueryCache` query in an effect on mount and releases it when the component unmounts (`QueryCache.unregister`), so a query does not keep matching new entities after the component is gone. Passing an inline array literal as `filter` (`useQuery([EnemyTag], ...)`) is fine. Re-registration is keyed off the filter's contents, not its identity, so a new array with the same component classes on every render does not churn the registration. Before the effect commits (first paint, or the frame after `filter`'s contents change), reads fall back to `QueryCache.queryOnce`, a detached snapshot seeded with the same currently-matching entities the live query will pick up.
 
 ```ts
+import { createStore } from "@yagejs/core";
+import { useStore } from "@yagejs/ui-react";
+
+const game = createStore((s) => ({
+  inventory: s.map<string, number>(),
+  gold: s.counter(),
+  settings: s.record({ default: () => ({ lang: "en" }) }),
+  player: s.record({ default: () => ({ health: 100 }) }),
+}));
+
 const inv = useStore(game.inventory); // entries snapshot
 const gold = useStore(game.gold); // number
 const lang = useStore(game.settings, (s) => s.get().lang); // selector on leaf

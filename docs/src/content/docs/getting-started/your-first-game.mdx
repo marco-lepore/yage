@@ -67,7 +67,7 @@ engine.scenes.push(new HelloWorldScene());
 
 ### 1. Imports
 
-```typescript
+```typescript yage-group="walkthrough" yage-context="scene-enter"
 import { Component, Engine, Entity, Scene, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent, RendererPlugin, CameraEntity } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
@@ -86,7 +86,7 @@ import { DebugPlugin } from "@yagejs/debug";
 
 ### 2. A Custom Component — `Spin`
 
-```typescript
+```typescript yage-group="walkthrough" yage-context="scene-enter"
 class Spin extends Component {
   private readonly transform = this.sibling(Transform);
   private readonly speed: number;
@@ -109,7 +109,7 @@ have no `update()` method of their own.
 
 ### 3. An Entity Type — `Triangle`
 
-```typescript
+```typescript yage-group="walkthrough" yage-context="scene-enter"
 class Triangle extends Entity {
   setup(params: { position: Vec2 }): void {
     this.add(new Transform({ position: params.position }));
@@ -136,28 +136,9 @@ argument holds what the spawn call passes in, here the position.
 
 Every `Triangle` you spawn gets the same three components.
 
-### 4. Setting Up the Engine
+### 4. Setting Up the Scene
 
-```typescript
-const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({
-  width: 800,
-  height: 600,
-  backgroundColor: 0x0a0a0a,
-}));
-engine.use(new DebugPlugin());
-await engine.start();
-engine.scenes.push(new HelloWorldScene());
-```
-
-- **`new Engine({ debug: true })`** creates the engine with debug mode enabled.
-- **`engine.use()`** registers plugins — here the renderer and debug overlay.
-- **`engine.start()`** initialises all plugins and starts the game loop.
-- **`engine.scenes.push()`** pushes a scene onto the scene stack.
-
-### 5. Setting Up the Scene
-
-```typescript
+```typescript yage-group="walkthrough" yage-context="scene-enter"
 class HelloWorldScene extends Scene {
   readonly name = "hello-world";
 
@@ -180,9 +161,28 @@ By default the camera is at `(0, 0)` which puts world origin at the *centre*
 of the viewport — see [Camera → Coordinate Convention](/guides/rendering/camera/#coordinate-convention)
 in the Rendering guide for the full explanation.
 
+### 5. Setting Up the Engine
+
+```typescript yage-group="walkthrough" yage-context="scene-enter"
+const engine = new Engine({ debug: true });
+engine.use(new RendererPlugin({
+  width: 800,
+  height: 600,
+  backgroundColor: 0x0a0a0a,
+}));
+engine.use(new DebugPlugin());
+await engine.start();
+engine.scenes.push(new HelloWorldScene());
+```
+
+- **`new Engine({ debug: true })`** creates the engine with debug mode enabled.
+- **`engine.use()`** registers plugins — here the renderer and debug overlay.
+- **`engine.start()`** initialises all plugins and starts the game loop.
+- **`engine.scenes.push()`** pushes a scene onto the scene stack.
+
 ### 6. Spawning an Entity
 
-```typescript
+```typescript yage-group="walkthrough" yage-context="scene-enter"
 this.spawn(Triangle, { position: new Vec2(400, 300) });
 ```
 
@@ -196,7 +196,7 @@ An entity that exists once and has no behaviour of its own, such as a
 background, does not need a class. Pass `spawn()` a name instead, and add the
 components to the entity it returns:
 
-```typescript
+```typescript yage-group="walkthrough" yage-context="scene-enter"
 const background = this.spawn("background");
 background.add(new Transform());
 background.add(

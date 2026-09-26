@@ -48,7 +48,7 @@ fake one curve.
 
 Add a `ProcessComponent` to any entity to gain access to entity-level timing:
 
-```typescript
+```typescript yage-group="slots" yage-context="entity"
 import { ProcessComponent } from "@yagejs/core";
 
 entity.add(new ProcessComponent());
@@ -61,8 +61,12 @@ A **slot** is a reusable, restartable process handle. It is ideal for
 cooldowns, timers, and anything that needs to be checked or restarted
 repeatedly.
 
-```typescript
+```typescript yage-group="slots" yage-context="entity"
 const cooldown = pc.slot({ duration: 0.3 });
+
+function fire() {
+  // spawn a projectile
+}
 
 // In update():
 if (cooldown.completed) {
@@ -74,14 +78,14 @@ if (cooldown.completed) {
 `restart()` combines cancel + start in one call, which is useful when you want
 to reset a timer that may still be running:
 
-```typescript
+```typescript yage-group="slots" yage-context="entity"
 cooldown.restart();
 ```
 
 Both take one-off overrides that apply to that run only. The slot keeps the
 config it was created with for every later start:
 
-```typescript
+```typescript yage-group="slots" yage-context="entity"
 const dash = pc.slot({ duration: 0.4 });
 
 dash.start({ duration: 0.15 }); // this dash is short
@@ -94,7 +98,13 @@ use `restart(overrides)` to end the current run and start a new one.
 
 Slots can also run callbacks on completion:
 
-```typescript
+```typescript yage-group="slots" yage-context="entity"
+import { Component } from "@yagejs/core";
+
+class HealthComponent extends Component {
+  vulnerable = true;
+}
+
 const invincibility = pc.slot({
   duration: 2,
   onComplete: () => entity.get(HealthComponent).vulnerable = true,
@@ -104,7 +114,13 @@ const invincibility = pc.slot({
 A slot with `loop: true` never completes, so its `onComplete` never runs. To
 run something every few seconds, loop a sequence instead:
 
-```typescript
+```typescript yage-group="slots" yage-context="entity"
+import { Sequence } from "@yagejs/core";
+
+function spawnWave() {
+  // spawn the next wave of enemies
+}
+
 // Spawn a wave every 2 seconds, for as long as the entity lives
 pc.run(new Sequence().wait(2).call(() => spawnWave()).loop().build());
 ```
@@ -112,7 +128,7 @@ pc.run(new Sequence().wait(2).call(() => spawnWave()).loop().build());
 Cancelling a slot keeps it registered so it can start again. When its owner
 will never reuse it, remove the slot from the component:
 
-```typescript
+```typescript yage-group="slots" yage-context="entity"
 pc.removeSlot(invincibility);
 ```
 
@@ -124,11 +140,17 @@ already removed.
 
 For fire-and-forget delays or single-use timers, use `pc.run()`:
 
-```typescript
-import { Process } from "@yagejs/core";
+```typescript yage-context="entity"
+import { Process, ProcessComponent, Transform, type Vec2 } from "@yagejs/core";
+
+const pc = entity.get(ProcessComponent);
+
+function spawnExplosion(at: Vec2) {
+  // spawn the explosion effect at `at`
+}
 
 pc.run(Process.delay(0.5, () => {
-  spawnExplosion(entity.transform.position);
+  spawnExplosion(entity.get(Transform).position);
   entity.destroy();
 }));
 ```
@@ -137,7 +159,18 @@ pc.run(Process.delay(0.5, () => {
 process resolves when the run ends — completion, `cancel()`, or a reset for a
 re-run. That is how an `async` method waits for work it scheduled:
 
-```typescript
+```typescript yage-context="engine,entity"
+import { ProcessComponent, Scene, Tween } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+class GameOverScene extends Scene {
+  readonly name = "game-over";
+}
+
+const pc = entity.get(ProcessComponent);
+const overlay = entity.get(SpriteComponent);
+const scenes = engine.scenes;
+
 async function fadeOutAndLeave() {
   await pc
     .run(Tween.custom((v) => (overlay.alpha = v), 1, 0, 0.4))
@@ -165,7 +198,15 @@ by adding each frame's delta, so a duration built from whole steps — 0.25 s of
 1/60 s steps — sums a fraction short of its target; the window still closes on
 step 15 rather than running one step long:
 
-```typescript
+```typescript yage-context="entity"
+import { Process, ProcessComponent } from "@yagejs/core";
+
+const pc = entity.get(ProcessComponent);
+
+function endAttackWindow() {
+  // close the attack's hit window
+}
+
 // On the fixed clock at 60 Hz: fires on step 15.
 pc.run(Process.delay(0.25, () => endAttackWindow()), { clock: "fixed" });
 ```
@@ -185,7 +226,15 @@ Every process and slot on a `ProcessComponent` advances on one of two clocks:
 
 Pick the clock when you schedule the work:
 
-```typescript
+```typescript yage-context="entity"
+import { Process, ProcessComponent } from "@yagejs/core";
+
+const pc = entity.get(ProcessComponent);
+
+function endDash() {
+  // return the entity to normal movement
+}
+
 // A dash window that stays in step with physics:
 pc.run(Process.delay(0.25, () => endDash()), { clock: "fixed" });
 
@@ -222,8 +271,12 @@ An entity-scoped process queue carries the clock for everything it enqueues.
 It routes through the entity's `ProcessComponent` and cancels only what it put
 there:
 
-```typescript
+```typescript yage-context="entity"
 import { makeEntityScopedQueue, Process } from "@yagejs/core";
+
+function endDash() {
+  // return the entity to normal movement
+}
 
 const gameplay = makeEntityScopedQueue(entity, { clock: "fixed" });
 gameplay.run(Process.delay(0.25, () => endDash()));
@@ -252,6 +305,10 @@ import {
   makeSceneScopedQueue,
 } from "@yagejs/core";
 
+function spawnWave(wave: number) {
+  // spawn the enemies of this wave
+}
+
 class Arena extends Scene {
   readonly name = "arena";
 
@@ -276,8 +333,20 @@ so the snippet passes it as `Process.delay`'s third argument.
 Tweens smoothly interpolate a value over time. They run as processes, so they
 respect pause state and entity lifetime.
 
-```typescript
-import { Tween, Transform, easeOutQuad, easeInOutQuad } from "@yagejs/core";
+```typescript yage-context="entity"
+import {
+  ProcessComponent,
+  Tween,
+  Transform,
+  Vec2,
+  easeOutQuad,
+  easeInOutQuad,
+} from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+const pc = entity.get(ProcessComponent);
+const sprite = entity.get(SpriteComponent);
+const targetPos = new Vec2(400, 300);
 
 // Tween a component property with a setter (durations in seconds)
 pc.run(Tween.custom((v) => (sprite.alpha = v), 1, 0, 0.3, easeOutQuad));
@@ -328,8 +397,11 @@ and `easeOutElastic` about 0.37, `easeInOutElastic` about 0.12. That overshoot
 carries the interpolated value with it, so pair them with a target that
 tolerates the excursion. A scale pop is the classic fit:
 
-```typescript
-import { Tween, easeOutBack } from "@yagejs/core";
+```typescript yage-context="entity"
+import { ProcessComponent, Transform, Tween, easeOutBack } from "@yagejs/core";
+
+const pc = entity.get(ProcessComponent);
+const t = entity.get(Transform);
 
 pc.run(Tween.custom((v) => t.setScale(v, v), 0, 1, 0.35, easeOutBack));
 ```
@@ -345,8 +417,12 @@ Import any easing from `@yagejs/core`.
 Chain multiple steps into a linear or branching workflow using the sequence
 builder:
 
-```typescript
-import { Sequence } from "@yagejs/core";
+```typescript yage-context="entity"
+import { ProcessComponent, Sequence, Tween, easeOutQuad } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+const pc = entity.get(ProcessComponent);
+const sprite = entity.get(SpriteComponent);
 
 pc.run(
   new Sequence()
@@ -362,8 +438,23 @@ pc.run(
 
 Run multiple processes at the same time within a sequence:
 
-```typescript
+```typescript yage-context="entity"
+import {
+  ProcessComponent,
+  Sequence,
+  Transform,
+  Tween,
+  Vec2,
+  easeInQuad,
+  easeOutQuad,
+} from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+const pc = entity.get(ProcessComponent);
+const sprite = entity.get(SpriteComponent);
+const offscreen = new Vec2(-100, 300);
 const t = entity.get(Transform);
+
 pc.run(
   new Sequence()
     .parallel(
@@ -392,7 +483,17 @@ it, and it starts from its first step each time.
 
 ### Looping
 
-```typescript
+```typescript yage-context="entity"
+import { ProcessComponent, Sequence, Tween, easeInOutQuad } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+const pc = entity.get(ProcessComponent);
+const sprite = entity.get(SpriteComponent);
+
+function flash() {
+  // toggle the sprite's tint
+}
+
 // Loop forever
 pc.run(
   new Sequence()
@@ -418,12 +519,16 @@ For scene-level timing that doesn't belong to any game object, use
 `TimerEntity`. It comes with a `ProcessComponent` pre-attached so you don't
 need to create a custom entity:
 
-```typescript
-import { TimerEntity, Process } from "@yagejs/core";
+```typescript yage-context="engine,scene"
+import { TimerEntity, Process, Scene } from "@yagejs/core";
+
+class NextLevel extends Scene {
+  readonly name = "next-level";
+}
 
 const timer = scene.spawn(TimerEntity);
 timer.run(Process.delay(3, () => {
-  scene.switchTo(NextLevel);
+  engine.scenes.replace(new NextLevel());
 }));
 ```
 
@@ -435,8 +540,14 @@ to fetch the component manually.
 
 Tag processes so you can cancel groups of them later:
 
-```typescript
+```typescript yage-context="entity"
+import { ProcessComponent, Transform, Tween, easeOutQuad } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+const pc = entity.get(ProcessComponent);
+const sprite = entity.get(SpriteComponent);
 const t = entity.get(Transform);
+
 pc.run(Tween.custom((v) => (sprite.alpha = v), 1, 0, 0.3, easeOutQuad), { tags: ["vfx"] });
 pc.run(Tween.custom((v) => t.setScale(v, v), 1, 2, 0.3, easeOutQuad), { tags: ["vfx"] });
 
@@ -462,7 +573,7 @@ and runs any number of them concurrently. Each track is a list of `(time,
 value)` control points, and the animator interpolates between them on every
 tick of the track's clock, pushing the result to a setter function you supply.
 
-```typescript
+```typescript yage-context="scene"
 import {
   KeyframeAnimator,
   ProcessComponent,
@@ -511,7 +622,11 @@ that starts at 0.2 s holds that keyframe's value through the lead-in.
 
 You can declare several named animations and play them independently:
 
-```typescript
+```typescript yage-context="entity"
+import { KeyframeAnimator, Transform } from "@yagejs/core";
+
+const baseY = entity.get(Transform).position.y;
+
 const anim = entity.add(
   new KeyframeAnimator<"bob" | "pulse">({
     bob: {
@@ -570,7 +685,12 @@ property on a keyframe — useful for syncing sound or VFX to animation beats.
 When all you need is a sequence of time-aligned side-effects — cutscene
 beats, gameplay-rhythm cues, audio one-shots — leave `setter` off:
 
-```typescript
+```typescript yage-context="context"
+import { KeyframeAnimator } from "@yagejs/core";
+import { AudioManagerKey } from "@yagejs/audio";
+
+const audio = context.resolve(AudioManagerKey);
+
 new KeyframeAnimator({
   intro: {
     keyframes: [
@@ -587,7 +707,17 @@ When a timeline's events drive gameplay rather than presentation — spawning a
 hitbox, opening a parry window, applying damage — put that animation on the
 fixed clock:
 
-```typescript
+```typescript yage-context="entity"
+import { KeyframeAnimator, Transform } from "@yagejs/core";
+
+function spawnHitbox(attack: "jab" | "cross") {
+  // spawn the hitbox for `attack`
+}
+
+function endCombo() {
+  // return to idle
+}
+
 new KeyframeAnimator({
   combo: {
     clock: "fixed",
@@ -626,8 +756,16 @@ animator as above.
 Under the hood, `KeyframeAnimator` is built on two primitives you can use
 directly when you don't need the named-track machinery:
 
-```typescript
-import { createKeyframeTrack, interpolate } from "@yagejs/core";
+```typescript yage-context="entity"
+import {
+  ProcessComponent,
+  Transform,
+  createKeyframeTrack,
+  easeOutQuad,
+  interpolate,
+} from "@yagejs/core";
+
+const pc = entity.get(ProcessComponent);
 
 // A one-off keyframe track as a Process
 pc.run(
@@ -663,6 +801,9 @@ A short red-then-white pulse on hit. Tag it so a follow-up hit cancels the
 in-flight flash before starting a new one.
 
 ```typescript
+import { type Entity, ProcessComponent, Sequence } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
 const TINT_HIT = 0xff5050;
 const TINT_NORMAL = 0xffffff;
 
@@ -690,7 +831,9 @@ wise lerp on `0xRRGGBB`).
 Single keyframe track — scale Y squashes down, then bounces back. The
 "past the resting state" overshoot makes it feel responsive.
 
-```typescript
+```typescript yage-context="entity"
+import { KeyframeAnimator, Transform, easeOutQuad } from "@yagejs/core";
+
 const anim = entity.add(new KeyframeAnimator<"land">({
   land: {
     keyframes: [
@@ -714,6 +857,14 @@ Random offset for a fixed window, decaying to zero. Shake intensity drives
 both magnitude and the per-frame jitter.
 
 ```typescript
+import {
+  type Entity,
+  ProcessComponent,
+  Transform,
+  Tween,
+  easeOutQuad,
+} from "@yagejs/core";
+
 function shake(camera: Entity, magnitude = 8, duration = 0.25) {
   const t = camera.get(Transform);
   const base = t.position;
@@ -743,7 +894,7 @@ A few frames of frozen time on a heavy impact. The scene's `SceneTime`
 service freezes the entire scene — components, processes, tweens, particles,
 and physics — and restores it on a real-time timer:
 
-```typescript
+```typescript yage-context="component"
 import { SceneTimeKey } from "@yagejs/core";
 
 // From a Component:
@@ -760,6 +911,15 @@ The "wind-up" before a heavy attack. Sequence orchestrates the windup,
 hold, and execution.
 
 ```typescript
+import {
+  type Entity,
+  ProcessComponent,
+  Sequence,
+  Tween,
+  easeInOutQuad,
+} from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
 function telegraph(enemy: Entity, attack: () => void) {
   const sprite = enemy.get(SpriteComponent);
   const pc = enemy.get(ProcessComponent);
@@ -784,6 +944,16 @@ Two tweens — one for entry, one for exit. Tag so a fade-out cancels an
 in-flight fade-in cleanly.
 
 ```typescript
+import {
+  type Entity,
+  ProcessComponent,
+  Sequence,
+  Tween,
+  easeInQuad,
+  easeOutQuad,
+} from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
 function fadeIn(entity: Entity, duration = 0.2) {
   const sprite = entity.get(SpriteComponent);
   sprite.alpha = 0;
@@ -812,7 +982,11 @@ function fadeOut(entity: Entity, duration = 0.2, onDone?: () => void) {
 Lightweight idle motion for an NPC or pickup. `KeyframeAnimator` with
 `loop: true` is a one-liner.
 
-```typescript
+```typescript yage-context="entity"
+import { KeyframeAnimator, Transform, easeInOutQuad } from "@yagejs/core";
+
+const baseY = entity.get(Transform).position.y;
+
 const anim = entity.add(new KeyframeAnimator<"idle">({
   idle: {
     keyframes: [

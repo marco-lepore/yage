@@ -29,17 +29,18 @@ engine.use(
 
 Play sounds via the asset system or a `SoundComponent`:
 
-```ts
+```ts yage-context="entity"
+import { SoundComponent, sound } from "@yagejs/audio";
+
 const jumpSfx = sound("jump.mp3");
-entity.add(new SoundComponent({ source: jumpSfx, channel: "sfx" }));
+entity.add(new SoundComponent({ alias: jumpSfx.path, channel: "sfx" }));
 ```
 
 ## What's in the box
 
 - **AudioPlugin / AudioManager** - sound loading and playback
 - **SoundComponent** - attach sounds to entities with auto-cleanup
-- **Channels** - per-channel volume, mute, ducking
-- **Spatial options** - 2D positional audio via pan
+- **Channels** - per-channel volume, mute, pause, and stop
 
 ## Docs
 

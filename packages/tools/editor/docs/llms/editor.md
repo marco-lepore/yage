@@ -94,7 +94,7 @@ the calls are `@yagejs/level` public API. The entity modules load through the
 test runner rather than through the editor's server, in Node, with no browser,
 so one that touches `window` at import time fails:
 
-```ts
+```ts yage-check="syntax" yage-reason="Imports the project's own src/levelProject.ts, a module this page does not show."
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { buildLevelCatalog, validateLevel } from "@yagejs/level";
@@ -119,7 +119,7 @@ it.each(levels)("%s matches the catalog", (name) => {
 A project whose entities import `@yagejs/physics` also needs this config,
 because Vitest cannot otherwise resolve `@dimforge/rapier2d`:
 
-```ts
+```ts yage-check="syntax" yage-reason="Merges the project's own vite.config.ts, a module this page does not show."
 // vitest.config.ts
 import { defineConfig, mergeConfig } from "vitest/config";
 import viteConfig from "./vite.config.js";
@@ -202,6 +202,9 @@ The harness has the same shape the scenario lab uses, so one file can serve
 both tools:
 
 ```ts
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+
 export default {
   engine: () => new Engine({ debug: true }),
   plugins: ({ container }: { container: HTMLElement }) => [
@@ -219,7 +222,13 @@ machine that runs `yage-editor`.
 Include the map JSON, external tileset JSON and tileset images in `assets`:
 
 ```ts
-assets: ["public/maps/**/*.json", "public/tiles/**/*"],
+import { defineEditorConfig } from "@yagejs-tools/editor";
+
+export default defineEditorConfig({
+  modules: { project: "../src/levelProject.ts", harness: "./harness.ts" },
+  levels: ["src/levels/*.yage-level.json"],
+  assets: ["public/maps/**/*.json", "public/tiles/**/*"],
+});
 ```
 
 Saving a matching asset refreshes the preview automatically. Level edits,
@@ -231,9 +240,16 @@ JSON maps open directly. If your game loads a JSON export of a `.tmx` or `.tmj`
 source, declare which source to open in `editor/config.ts`:
 
 ```ts
-tiled: {
-  sources: { "maps/forest.json": "art/forest.tmx" },
-},
+import { defineEditorConfig } from "@yagejs-tools/editor";
+
+export default defineEditorConfig({
+  modules: { project: "../src/levelProject.ts", harness: "./harness.ts" },
+  levels: ["src/levels/*.yage-level.json"],
+  assets: ["public/maps/**/*.json", "public/tiles/**/*"],
+  tiled: {
+    sources: { "maps/forest.json": "art/forest.tmx" },
+  },
+});
 ```
 
 The key is the path the level stores. The source is relative to the Vite root
@@ -275,7 +291,17 @@ configurable.
 
 The file bar's first control is a `select` listing every level the `levels`
 globs matched, as project-relative paths in alphabetical order. Choosing one
-opens it. Beside it sit the unsaved badge, Save, Play, and Run.
+opens it. Beside it sit **New**, **Duplicate** and **Delete**, then the unsaved
+badge, Save, Play, and Run.
+
+**New** and **Duplicate** ask for a name, which becomes the level's id, and a
+path, which follows the name until it is typed over. New writes an empty level
+there. Duplicate writes a copy of the open level's file on disk, without its
+unsaved edits. Either one opens the level it wrote. The server refuses a path
+the `levels` globs do not cover and a path a file already holds. **Delete** asks
+first, then removes the open level's file with its draft and undo history, and
+opens the level that takes its place in the list. Undo does not bring the file
+back.
 
 The placeable types are whatever `defineLevelProject({ entities: [...] })`
 lists, plus the level contributions of the project's direct dependencies. See
@@ -370,6 +396,7 @@ The controls:
 | Ctrl/Cmd-D                                                             | Duplicates the selection in place, stepped aside onto the grid, and leaves the clipboard alone                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Undo / Redo, or Ctrl/Cmd-Z and Ctrl/Cmd-Shift-Z                        | Replays the level's history one entry at a time, up to 100 entries                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | File bar level picker                                                  | Opens the level chosen. It settles the open edits into the level being left, whose draft the server keeps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| File bar **New** / **Duplicate** / **Delete**                          | Writes an empty level, writes a copy of the open level's file, or removes the open level's file after asking. New and Duplicate open the level they wrote                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Save                                                                   | Writes the draft to disk                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Drag from empty space                                                  | Pans the view                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Space-drag or middle-drag, from anywhere                               | Pans the view without changing the selection; Space is the trackpad gesture                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -972,8 +999,8 @@ The edits are create, move, rotate, scale, delete, reparent, reorder, copy,
 paste, duplicate, rename, key, the typed transform, and the asset parameter.
 
 **Typing a value.** Every parameter kind that ships has a control: assets,
-references, numbers, whole numbers, switches, text, choices, pairs and points. The active
-flag, the parent, and extensions have no controls at all.
+references, numbers, whole numbers, switches, text, choices, pairs and points. The parent
+has no field; it moves through the hierarchy. Extensions have no controls at all.
 
 **What the asset picker can list.** The listing walks the Vite root, so a file
 under a `publicDir` outside the root is not offered, and neither is anything
@@ -996,9 +1023,10 @@ on one lands on nothing — the box handles are what the grid catches. There is
 no project-wide default step either: **Step** is remembered per level, in the
 browser, beside the camera.
 
-**Levels added while the editor runs.** The list is read once, when the page
-loads, so a level file created afterwards needs a reload before it can be
-picked. The editor cannot create, rename, duplicate, or delete a level file.
+**Levels added outside the editor.** The list is read when the page loads. New
+and Duplicate add the file they write, and Delete reads the list again from
+disk. A level file another tool writes after the page loads appears after a
+reload or the next Delete. The editor cannot rename a level file.
 
 **Anything that changes the file underneath it.** A level file edited outside
 the editor is not noticed, and a second editor tab on the same level does not

@@ -24,8 +24,12 @@ import { EngineContext, ServiceKey } from "@yagejs/core";
 Every service is identified by a `ServiceKey<T>`. The type parameter ensures
 that `resolve()` returns the correct type without casts:
 
-```typescript
+```typescript yage-group="mixer" yage-context="context"
 import { ServiceKey } from "@yagejs/core";
+
+class AudioMixer {
+  masterVolume = 1;
+}
 
 // Define a key with a descriptive label
 const AudioMixerKey = new ServiceKey<AudioMixer>("AudioMixer");
@@ -41,7 +45,9 @@ the key.
 
 ## Registering and Resolving
 
-```typescript
+```typescript yage-group="mixer" yage-context="context"
+import type { EngineContext } from "@yagejs/core";
+
 // In a plugin's install():
 function install(context: EngineContext) {
   const mixer = new AudioMixer();
@@ -52,7 +58,7 @@ function install(context: EngineContext) {
 const mixer = context.resolve(AudioMixerKey);
 
 // Try resolve (returns undefined if not registered)
-const mixer = context.tryResolve(AudioMixerKey);
+const maybeMixer = context.tryResolve(AudioMixerKey);
 
 // Check existence
 if (context.has(AudioMixerKey)) {
@@ -115,7 +121,8 @@ Systems receive the `EngineContext` in `onRegister`. Store references there or
 call `this.use(key)` during `update`:
 
 ```typescript
-import { System, Phase, EngineContext } from "@yagejs/core";
+import { System, Phase, GameLoopKey, LoggerKey } from "@yagejs/core";
+import type { EngineContext, Logger } from "@yagejs/core";
 
 class DebugOverlaySystem extends System {
   readonly phase = Phase.Render;
@@ -128,8 +135,8 @@ class DebugOverlaySystem extends System {
   }
 
   update(dt: number) {
-    const stats = this.use(GameLoopKey).stats;
-    this.logger.debug(`FPS: ${stats.fps}`);
+    const frame = this.use(GameLoopKey).frameCount;
+    this.logger.debug("overlay", `Frame ${frame}: ${Math.round(1 / dt)} FPS`);
   }
 }
 ```
@@ -139,7 +146,7 @@ class DebugOverlaySystem extends System {
 A plugin of your own registers a service when it wraps infrastructure the
 engine does not provide, such as a browser API:
 
-```typescript
+```typescript yage-group="haptics" yage-file="haptics.ts"
 import { ServiceKey, type Plugin, type EngineContext } from "@yagejs/core";
 
 /** Vibration on devices that support it. */
@@ -167,7 +174,12 @@ export function hapticsPlugin(): Plugin {
 Any component can then resolve it with `this.use(HapticsKey)` or
 `this.service(HapticsKey)`:
 
-```typescript
+```typescript yage-group="haptics" yage-file="hit-feedback.ts"
+import { Component, defineEvent } from "@yagejs/core";
+import { HapticsKey } from "./haptics.js";
+
+const PlayerHit = defineEvent("player:hit");
+
 class HitFeedback extends Component {
   private readonly haptics = this.service(HapticsKey);
 
@@ -190,6 +202,9 @@ keeps one instance per scene, as the physics world does, declares its key with
 
 ```typescript
 import { SceneHookRegistryKey, ServiceKey, type Plugin, type EngineContext } from "@yagejs/core";
+
+/** Walkable cells of one scene's level. */
+export class NavGrid {}
 
 export const NavGridKey = new ServiceKey<NavGrid>("navGrid", { scope: "scene" });
 
@@ -232,10 +247,12 @@ import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { crt } from "@yagejs/effects";
 
 class LevelScene extends Scene {
+  readonly name = "level";
+
   override onEnter() {
     // Resolves this scene's render tree — registered by RendererPlugin's
     // beforeEnter hook, which ran before onEnter.
-    this.use(SceneRenderTreeKey).fx.addEffect(crt({ scanlines: true }));
+    this.use(SceneRenderTreeKey).fx.addEffect(crt({ lineContrast: 0.4 }));
   }
 }
 ```

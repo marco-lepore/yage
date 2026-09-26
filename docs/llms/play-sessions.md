@@ -35,7 +35,7 @@ with the scenarios the project keeps makes both the lab's sidebar and a
 
 ## Wait for the game before driving it
 
-```ts
+```ts yage-context="browser,playwright"
 await page.waitForFunction(() => window.__yage__ !== undefined);
 await page.evaluate(() => window.__yage__.ready);
 await page.waitForFunction(
@@ -59,19 +59,19 @@ frozen.
 play verbs, and reports the run as one object. It restores the clock to the
 state it found and releases every synthetic input afterwards.
 
-```ts
+```ts yage-context="browser"
 const run = await window.__yage__.inspector.drive(
   async (ctx) => {
     const i = window.__yage__.inspector;
     ctx.input.keyDown("KeyD");
     const frames = await ctx.until(
-      () => i.getEntityPosition("player").x > 950,
+      () => (i.getEntityPosition("player")?.x ?? 0) > 950,
       {
         maxFrames: 240,
       },
     );
     ctx.input.clearAll();
-    return { frames, x: i.getEntityPosition("player").x };
+    return { frames, x: i.getEntityPosition("player")?.x };
   },
   { maxFrames: 900 },
 );
@@ -110,7 +110,9 @@ one drive.
 past it when a run spans several evaluated calls, or when you want the clock
 frozen while a person looks at the screen:
 
-```ts
+```ts yage-context="browser"
+declare function enemyDown(): boolean; // this game's own check
+
 const { time, input } = window.__yage__.inspector;
 
 time.freeze(); // nothing advances until thaw()
@@ -137,13 +139,15 @@ input state, and a UI primitive receives clicks as renderer events on its own
 container. `inspector.pointer` dispatches real pointer events at the canvas,
 which does reach one — a build menu, a pause screen, a confirm dialog.
 
-```ts
+```ts yage-context="browser"
 const inspector = window.__yage__.inspector;
 const { pointer } = inspector;
 const menu = inspector.snapshot().scenes[0]?.ui?.root;
+const first = menu?.children[0];
+if (!first) throw new Error("the first scene has no user interface");
 
 pointer.hitTest({ x: 160, y: 90 }); // what is under this point
-const hit = pointer.click(menu.children[0].id); // centre of that node's bounds
+const hit = pointer.click(first.id); // centre of that node's bounds
 hit.path.some((node) => node.type === "UIButton"); // did a button take it
 ```
 
@@ -169,9 +173,26 @@ script. The shape is a `while` loop with an `if` chain for priority, `continue` 
 restart it, and `input.whileHolding` for a key that stays down across the
 maneuvers inside:
 
-```ts
+```ts yage-group="gauntlet"
 // src/levels/gauntlet.scenario.ts
+import { Component, Scene } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
 import { defineScenario } from "@yagejs-tools/lab";
+
+// This game's own scene, ground sensor and level queries.
+declare class GauntletScene extends Scene {
+  readonly name = "gauntlet";
+}
+declare class GroundProbe extends Component {
+  readonly grounded: boolean;
+}
+declare function atExit(body: RigidBodyComponent): boolean;
+declare function gapAhead(body: RigidBodyComponent, distance: number): boolean;
+declare function overTarget(body: RigidBodyComponent): boolean;
+declare function enemyAhead(
+  body: RigidBodyComponent,
+  distance: number,
+): boolean;
 
 export default defineScenario({
   scene: () => new GauntletScene(),
@@ -207,7 +228,7 @@ export default defineScenario({
 needs no state machine and no per-frame phase counter, because the frames it
 spends are the ones it awaits:
 
-```ts
+```ts yage-group="gauntlet"
 import type { DriveContext } from "@yagejs-tools/lab";
 
 async function diveAttack(
@@ -265,13 +286,15 @@ rather than in the callback's return value. A budget that stops the run unwinds
 the callback, so the return value is lost while the variable keeps its last
 assignment:
 
-```ts
+```ts yage-context="browser"
+declare function atExit(): boolean; // this game's own sensor
+
 const i = window.__yage__.inspector;
 let lastX = 0;
 const run = await i.drive(
   async (ctx) => {
     while (!atExit()) {
-      lastX = i.getEntityPosition("player").x;
+      lastX = i.getEntityPosition("player")?.x ?? lastX;
       await ctx.step(1);
     }
   },
@@ -287,7 +310,12 @@ crossed at 300px/s takes 3 seconds, which is 180 frames at 1/60 — so wait on
 the predicate and cap it a little above the derived number:
 
 ```ts
-await ctx.until(() => body.positionX > 900, { maxFrames: 240 });
+import type { RigidBodyComponent } from "@yagejs/physics";
+import type { DriveContext } from "@yagejs-tools/lab";
+
+async function crossGap(ctx: DriveContext, body: RigidBodyComponent) {
+  await ctx.until(() => body.positionX > 900, { maxFrames: 240 });
+}
 ```
 
 The predicate decides when the run moves on; the cap only decides when to give
@@ -297,18 +325,19 @@ measurement worth returning.
 
 ## Reading the state back
 
-```ts
+```ts yage-context="inspector"
 inspector.getEntityPosition("player"); // { x, y } | undefined
 inspector.getComponentData("player", "Health"); // reflected fields and getters
 inspector.getSceneStack(); // scene snapshots, bottom to top
 inspector.getInputState(); // { keys, actions, mouse, pointers, gamepad }
 inspector.snapshotJSON(); // whole world, sorted, for diffing
 inspector.events.getLog(); // bus, entity and scene events
-await ctx.events.waitFor("enemy:hit", { withinFrames: 60 });
+await inspector.events.waitFor("enemy:hit", { withinFrames: 60 });
 
 // Same-named entities are told apart by id.
 const lanterns = inspector.getEntities().filter((e) => e.name === "lantern");
-inspector.getComponentData(lanterns[2].id, "Health");
+const third = lanterns[2];
+if (third) inspector.getComponentData(third.id, "Health");
 ```
 
 `getComponentData` reflects a component's enumerable fields and public
@@ -324,10 +353,12 @@ for, wherever it sits on the scene stack.
 `events.waitFor` has to be started before the frames that satisfy it, because
 the run is the only thing issuing frames:
 
-```ts
-const hit = ctx.events.waitFor("enemy:hit", { withinFrames: 60 });
-await ctx.step(60);
-await hit;
+```ts yage-context="inspector"
+await inspector.drive(async (ctx) => {
+  const hit = ctx.events.waitFor("enemy:hit", { withinFrames: 60 });
+  await ctx.step(60);
+  await hit;
+});
 ```
 
 ## Screenshots
@@ -337,7 +368,9 @@ in the run's `captures` as `{ label, dataUrl }`, so one call returns both the
 measurements and the frames behind them. A frozen clock means the image is the
 exact frame that was stepped to.
 
-```ts
+```ts yage-context="inspector"
+declare function doorOpen(): boolean; // this game's own check
+
 const run = await inspector.drive(async (ctx) => {
   await ctx.until(() => doorOpen(), { maxFrames: 240 });
   await ctx.capture("door-open");
@@ -355,9 +388,25 @@ Helpers defined in an evaluated snippet are gone after the next page load.
 Register them as an inspector extension instead, from a module the production
 build drops:
 
-```ts
+```ts yage-group="probe" yage-file="dev/probe.ts"
 // src/dev/probe.ts — imported only under a build flag the release drops.
-import { type Engine, InspectorKey } from "@yagejs/core";
+import {
+  Component,
+  type Engine,
+  type Entity,
+  InspectorKey,
+} from "@yagejs/core";
+
+// This game's own world model and components.
+declare class World {
+  rooms: { id: string; exits: string[] }[];
+}
+declare class Inventory extends Component {
+  grant(itemId: string): void;
+}
+declare class Movement extends Component {
+  runSpeed: number;
+}
 
 export function registerProbe(engine: Engine, world: World, player: Entity) {
   engine.context.resolve(InspectorKey).addExtension("probe", {
@@ -370,8 +419,14 @@ export function registerProbe(engine: Engine, world: World, player: Entity) {
 }
 ```
 
-```ts
+```ts yage-group="probe" yage-file="main.ts" yage-context="engine"
+/// <reference types="vite/client" />
 // src/main.ts — call it once the world exists.
+import type { Entity } from "@yagejs/core";
+
+declare const world: { rooms: { id: string; exits: string[] }[] }; // the game's world
+declare const player: Entity; // the game's player entity
+
 if (import.meta.env.DEV) {
   const { registerProbe } = await import("./dev/probe.js");
   registerProbe(engine, world, player);
@@ -380,7 +435,7 @@ if (import.meta.env.DEV) {
 
 Read it back from a drive or the console:
 
-```ts
+```ts yage-context="browser"
 const probe = window.__yage__.inspector.getExtension<{
   roomGraph(): { id: string; exits: string[] }[];
   grantKey(): void;
@@ -421,7 +476,7 @@ alternative — one call to press a key, another to step, another to read the
 result — pays a round trip per line and loses everything the previous call
 declared.
 
-```ts
+```ts yage-context="browser,playwright"
 const verdict = await page.evaluate(async () => {
   const i = window.__yage__.inspector;
   const probe = i.getExtension<{ setRunSpeed(v: number): void }>("probe")!;
@@ -430,9 +485,12 @@ const verdict = await page.evaluate(async () => {
     probe.setRunSpeed(speed);
     const run = await i.drive(async (ctx) => {
       ctx.input.keyDown("KeyD");
-      return await ctx.until(() => i.getEntityPosition("player").x > 900, {
-        maxFrames: 400,
-      });
+      return await ctx.until(
+        () => (i.getEntityPosition("player")?.x ?? 0) > 900,
+        {
+          maxFrames: 400,
+        },
+      );
     });
     results.push({ speed, ok: run.ok, frames: run.framesUsed });
   }
