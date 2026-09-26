@@ -4,7 +4,7 @@ Depends on `@yagejs/core`. Rapier2D physics with pixel-based API. All values in 
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { PhysicsPlugin } from "@yagejs/physics";
 
 engine.use(
@@ -39,7 +39,7 @@ Every `ColliderComponent` needs a sibling `RigidBodyComponent`, including a `sen
 
 ## RigidBodyComponent
 
-```ts
+```ts yage-context="entity"
 import { RigidBodyComponent } from "@yagejs/physics";
 
 entity.add(
@@ -92,7 +92,11 @@ Interpolation runs at the start of `Update`, so the `Transform` a component's `u
 
 For repeated reads, create `Vec2Buffer` instances from `@yagejs/core` once:
 
-```ts
+```ts yage-context="entity"
+import { Transform, Vec2Buffer } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+
+const rb = entity.get(RigidBodyComponent);
 const velocity = new Vec2Buffer();
 const simulated = new Vec2Buffer();
 const drawn = new Vec2Buffer();
@@ -120,11 +124,18 @@ An active static body does not follow `Transform` writes; `rb.setPosition` / `rb
 
 Physics runs at the scene's effective time scale, and an entity excluded from a slow-motion effect still has its velocity integrated at the slowed rate. Scale velocity writes by the ratio of the two rates:
 
-```ts
+```ts yage-context="component"
+import { SceneTimeKey, Vec2 } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+
+const rb = this.entity.get(RigidBodyComponent);
+const dir = new Vec2(1, 0);
+const speed = 200; // px/s
 const time = this.use(SceneTimeKey);
 
 const world = time.effectiveScale;
-const factor = world > 0 ? time.effectiveScaleForUpdates(entity) / world : 1;
+const factor =
+  world > 0 ? time.effectiveScaleForUpdates(this.entity) / world : 1;
 rb.setVelocity(dir.scale(speed * factor));
 ```
 
@@ -136,8 +147,12 @@ Write the `Transform` (`setPosition`, `translate`) in `fixedUpdate`; the body re
 
 ## ColliderComponent
 
-```ts
-import { ColliderComponent } from "@yagejs/physics";
+```ts yage-context="entity,scene" yage-group="collider"
+import { ColliderComponent, CollisionLayers } from "@yagejs/physics";
+
+const layers = new CollisionLayers();
+const LAYER_PLAYER = layers.define("player");
+const LAYER_WALL = layers.define("wall");
 
 entity.add(
   new ColliderComponent({
@@ -164,7 +179,7 @@ One component can attach several ordered shapes to the same body. Each part
 has its own shape, offset, and rotation. The other settings apply to every
 part, and Rapier sums their mass:
 
-```ts
+```ts yage-context="entity,scene" yage-group="collider"
 entity.add(
   new ColliderComponent({
     parts: [
@@ -237,7 +252,9 @@ A `sensor: true` collider fires only `onTrigger`; a solid collider fires only `o
 
 Events are collected after every physics step and delivered after that step, so a scene running above `timeScale` 1 receives every transition, in order, each with its own step's contact data. Handlers run with Transforms synced to the step that produced the contact, and a handler's `setVelocity` or `destroy` takes effect before the next step of the same tick.
 
-```ts
+```ts yage-context="entity,scene" yage-group="collider"
+const collider = entity.get(ColliderComponent);
+
 collider.onTrigger((ev) => {
   ev.other;
   ev.selfShapeIndex;
@@ -273,7 +290,9 @@ Score impacts with `contactImpulse` — velocity read inside the handler is meas
 
 Knockback example:
 
-```ts
+```ts yage-context="entity,scene" yage-group="collider"
+import { RigidBodyComponent } from "@yagejs/physics";
+
 collider.onCollision((ev) => {
   if (!ev.started || !ev.contactNormal) return;
   const knockback = ev.contactNormal.scale(-300); // push this entity away from `other`
@@ -285,7 +304,13 @@ Overlap queries report a pair when at least one of the two colliders is `sensor:
 
 Two colliders that both sit on static bodies never report each other, whatever their sensor flags: at least one of the two bodies has to be kinematic or dynamic. Sensor pairs do report on kinematic against kinematic, on static against kinematic, and on dynamic against dynamic. Give a trigger zone a kinematic body rather than a static one when the other side is static too.
 
-```ts
+```ts yage-context="entity,scene" yage-group="collider"
+import { Component } from "@yagejs/core";
+
+class Health extends Component {
+  hp = 100;
+}
+
 collider.getOverlapping(); // Entity[]
 collider.getOverlapping({ tags: ["enemy"] }); // filtered
 collider.getOverlappingComponents(Health); // Component[]
@@ -293,7 +318,18 @@ collider.getOverlappingComponents(Health); // Component[]
 
 Contact geometry for any pair, sensors included (trigger events carry none):
 
-```ts
+```ts yage-context="entity,scene" yage-group="collider"
+import type { Vec2 } from "@yagejs/core";
+import { PhysicsWorldKey } from "@yagejs/physics";
+
+declare const other: ColliderComponent; // another entity's collider
+declare const selfShapeIndex: number, otherShapeIndex: number;
+declare const prediction: number;
+declare const handle: number, otherHandle: number; // Rapier collider handles
+declare function spawnSparks(at: Vec2, facing: Vec2): void;
+
+const world = scene.use(PhysicsWorldKey);
+
 collider.contactWith(other, {
   selfShapeIndex, // measure one shape pair; pass the indices from the event
   otherShapeIndex, // that fired. Omitted: the closest pair among all parts
@@ -307,12 +343,14 @@ collider.onTrigger((ev) => {
   const c = collider.contactWith(ev.otherCollider, ev);
   if (c) spawnSparks(c.otherPoint, c.normal.scale(-1)); // on the other's surface, facing out
 });
-world.contactBetween(handle, otherHandle, prediction?); // same, by Rapier handle
+world.contactBetween(handle, otherHandle, prediction); // same, by Rapier handle; prediction optional
 ```
 
 Resizing:
 
-```ts
+```ts yage-context="entity,scene" yage-group="collider"
+const newHeadShape = { type: "circle", radius: 8 } as const;
+
 collider.setShape(
   { type: "box", width: 20, height: 20 },
   { offset: { x: 0, y: -10 } },
@@ -332,7 +370,10 @@ anything is stored. The component copies a supplied offset object.
 
 The body keeps its mass. A collider is a collision proxy, not a measure of matter, so a crouching character takes the same `applyImpulse` knockback as a standing one. Pass `{ recomputeMass: true }` when the shape change means genuinely more or less matter and mass should come back from density × the new shape.
 
-```ts
+```ts yage-context="entity,scene" yage-group="collider"
+const small = { type: "box", width: 16, height: 16 } as const;
+const big = { type: "box", width: 32, height: 32 } as const;
+
 collider.setShape(small); // same mass
 collider.setShape(big, { recomputeMass: true }); // heavier
 ```
@@ -342,7 +383,8 @@ For a feet-origin character, query only the headroom that standing will newly
 occupy. Querying the full standing collider also touches the floor and can
 report a false blocker.
 
-```ts
+```ts yage-context="entity,scene" yage-group="collider"
+const rb = entity.get(RigidBodyComponent);
 const STAND_WIDTH = 20;
 const CROUCH_HEIGHT = 20;
 const STAND_HEIGHT = 40;
@@ -381,7 +423,7 @@ width. Keep the target collider at its full width.
 
 Switching kinds:
 
-```ts
+```ts yage-context="entity,scene" yage-group="collider"
 collider.setSensor(true); // solid → sensor: falls through what it rested on
 collider.setSensor(false); // sensor → solid: pushed out to rest
 ```
@@ -390,7 +432,7 @@ collider.setSensor(false); // sensor → solid: pushed out to rest
 
 Material values can change without recreating the collider:
 
-```ts
+```ts yage-context="entity,scene" yage-group="collider"
 collider.setRestitution(0.8);
 collider.setFriction(0.1);
 ```
@@ -405,7 +447,12 @@ Removing just the collider (`entity.remove(ColliderComponent)`) frees the Rapier
 
 ## One-Way Platforms
 
-```ts
+```ts yage-context="entity,scene" yage-group="collider"
+import type { Entity } from "@yagejs/core";
+
+declare const platform: Entity; // has a Transform and a static RigidBodyComponent
+declare const riderCollider: ColliderComponent; // the player's collider
+
 platform.add(
   new ColliderComponent({
     shape: { type: "box", width: 96, height: 8 },
@@ -431,7 +478,7 @@ riderCollider.isDroppingThrough; // boolean, true while the window is open
 
 Decide per pair, per step, whether two colliders collide. `oneWay` is built on this; use it directly for rules `oneWay` can't express:
 
-```ts
+```ts yage-context="entity,scene" yage-group="collider"
 collider.setContactFilter((contact) => {
   contact.other; // Entity on the other side
   contact.otherCollider; // its ColliderComponent
@@ -481,13 +528,26 @@ returns `null` or an empty array with no error.
 
 ## PhysicsWorld
 
-```ts
-import { PhysicsWorldKey } from "@yagejs/physics";
+```ts yage-context="scene"
+import type { Entity, Vec2Like } from "@yagejs/core";
+import {
+  PhysicsWorldKey,
+  type ColliderShape,
+  type QuerySensorMode,
+} from "@yagejs/physics";
+
+// Arguments of the calls below
+declare const origin: Vec2Like, direction: Vec2Like, maxDistance: number;
+declare const shape: ColliderShape, position: Vec2Like, rotation: number;
+declare const center: Vec2Like, radius: number, excludeEntity: Entity;
+declare const filterGroups: number, sensors: QuerySensorMode, dt: number;
+declare const colliderHandle: number; // Rapier collider handle
 
 // Scene-scoped key: the physics plugin's `beforeEnter` hook registers
-// the active scene's `PhysicsWorld` on its scope. Use `PhysicsWorldManagerKey`
+// the active scene's `PhysicsWorld` on its scope; a component resolves the
+// same world with `this.use(PhysicsWorldKey)`. Use `PhysicsWorldManagerKey`
 // (engine-scope) only for cross-scene enumeration.
-const world = this.use(PhysicsWorldKey);
+const world = scene.use(PhysicsWorldKey);
 
 // Gravity
 world.setGravity(0, -980);
@@ -552,14 +612,20 @@ layers its own `mask` names (a collider with `mask: 0` matches no query and is
 never reported):
 
 ```ts
+import { CollisionLayers } from "@yagejs/physics";
+
+const layers = new CollisionLayers();
+const LAYER_PLAYER = layers.define("player");
+const LAYER_WALL = layers.define("wall");
+
 // walls whose own mask includes the player layer
-{
-  filterGroups: CollisionLayers.interactionGroups(LAYER_PLAYER, LAYER_WALL);
-}
+const playerWalls = {
+  filterGroups: CollisionLayers.interactionGroups(LAYER_PLAYER, LAYER_WALL),
+};
 // every wall, whichever layers its own mask names
-{
-  filterGroups: CollisionLayers.interactionGroups(0xffff, LAYER_WALL);
-}
+const allWalls = {
+  filterGroups: CollisionLayers.interactionGroups(0xffff, LAYER_WALL),
+};
 ```
 
 Omit `filterGroups` to skip the layer test; `sensors` and `excludeEntity` still
@@ -587,7 +653,18 @@ Use `castShape` to test a move before committing to it: carrying a rider on a mo
 `world.addJoint(bodyA, bodyB, config): JointHandle` connects two different
 rigid bodies already added to the same world. Both entities must be active.
 
-```ts
+```ts yage-context="scene" yage-group="joints"
+import { PhysicsWorldKey, type RigidBodyComponent } from "@yagejs/physics";
+
+// Bodies of active entities in this scene
+declare const playerBody: RigidBodyComponent, anchorBody: RigidBodyComponent;
+declare const companionBody: RigidBodyComponent;
+declare const wallBody: RigidBodyComponent, brickBody: RigidBodyComponent;
+declare const towerBody: RigidBodyComponent, sailBody: RigidBodyComponent;
+declare const bankBody: RigidBodyComponent, bridgeBody: RigidBodyComponent;
+declare const railBody: RigidBodyComponent, platformBody: RigidBodyComponent;
+
+const world = scene.use(PhysicsWorldKey);
 const rope = world.addJoint(playerBody, anchorBody, {
   type: "rope",
   length: 120, // maximum anchor distance, px
@@ -640,7 +717,7 @@ velocity-only motor needs `damping > 0` to move. Spring stiffness uses mass/s²
 and spring damping uses mass/s. Motor stiffness and damping are acceleration-based. Both are passed to the solver
 without conversion; retune after changing `pixelsPerMeter`.
 
-```ts
+```ts yage-context="scene" yage-group="joints"
 hub.setMotor({ velocity: -2, damping: 10 }); // replaces all motor settings
 weld.attached; // false after removal, body disable or destruction
 weld.remove(); // idempotent
@@ -652,7 +729,10 @@ it. For a pooled entity, create the joint in `onAcquire`.
 
 For impact-triggered destruction, remove a joint from a collision handler:
 
-```ts
+```ts yage-context="scene" yage-group="joints"
+import { ColliderComponent } from "@yagejs/physics";
+
+const brickCollider = brickBody.entity.get(ColliderComponent);
 brickCollider.onCollision((event) => {
   if (event.started && (event.contactImpulse ?? 0) > 100) weld.remove();
 });
