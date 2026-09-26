@@ -327,15 +327,19 @@ export class DebugPlugin implements Plugin {
       this.keyListener = null;
     }
 
-    const inspector = this.context.resolve(InspectorKey);
-    inspector.removeExtension("debug");
-    // Only detach our own clock — passing undefined would clear whatever
-    // controller is registered, which could belong to another plugin if
-    // onDestroy runs after a failed onStart.
-    if (this.clock) {
-      inspector.detachTimeController(this.clock);
+    // A tool that installed the Inspector itself may have removed it before
+    // the engine is destroyed; there is nothing of ours to detach then.
+    const inspector = this.context.tryResolve(InspectorKey);
+    if (inspector) {
+      inspector.removeExtension("debug");
+      // Only detach our own clock — passing undefined would clear whatever
+      // controller is registered, which could belong to another plugin if
+      // onDestroy runs after a failed onStart.
+      if (this.clock) {
+        inspector.detachTimeController(this.clock);
+      }
+      inspector.setEventLogEnabled(false);
     }
-    inspector.setEventLogEnabled(false);
     if (this.config.deterministicSeed !== undefined) {
       this.context.resolve(SceneRandomSourceKey).setDefaultSeed(undefined);
     }

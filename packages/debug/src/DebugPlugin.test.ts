@@ -403,6 +403,18 @@ describe("DebugPlugin", () => {
     expect(context.resolve(InspectorKey)).toBe(inspector);
   });
 
+  it("tears down when the game removed its Inspector before destroy", async () => {
+    const { context, scheduler } = createContext();
+    const plugin = new DebugPlugin();
+
+    plugin.install(context);
+    plugin.registerSystems(scheduler);
+    await plugin.onStart();
+    context.unregister(InspectorKey);
+
+    expect(() => plugin.onDestroy()).not.toThrow();
+  });
+
   it("installs a deterministic seed as the scene RNG default and clears it on destroy", async () => {
     const { context, scheduler, sceneRandom } = createContext();
     const plugin = new DebugPlugin({ deterministicSeed: 0x00c0ffee });

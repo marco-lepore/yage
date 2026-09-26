@@ -70,6 +70,27 @@ if (context.has(AudioMixerKey)) {
 Prefer it when the service is required. Use `context.tryResolve()` for optional
 services.
 
+A key can add a hint to that error. Pass `missingHint` to say what provides the
+service:
+
+```typescript yage-context="context"
+import { ServiceKey } from "@yagejs/core";
+
+interface Haptics {
+  pulse(seconds: number): void;
+}
+
+const HapticsKey = new ServiceKey<Haptics>("haptics", {
+  missingHint: "Install hapticsPlugin().",
+});
+
+// Throws: Service "haptics" is not registered. Install hapticsPlugin().
+context.resolve(HapticsKey);
+```
+
+`InspectorKey` uses it: resolving the Inspector when no plugin installed one
+throws an error that names `DebugPlugin` and `InspectorPlugin`.
+
 ## Well-Known Keys
 
 YAGE's core and official plugins register these services:

@@ -22,6 +22,7 @@ listed above each block.
 ```
 src/
 ├── main.ts               # Engine boot, plugins, scene push
+├── vite-env.d.ts         # Vite's types for import.meta.env
 ├── scenes/
 │   └── MainScene.ts      # spawns the entities; edit this to build your game
 └── entities/
@@ -129,8 +130,8 @@ Follow these rules for every entity, component, and scene you add.
 - **Randomness comes from the scene.** `this.use(RandomKey)` returns the
   scene's `RandomService`, with `float()`, `range(min, max)`,
   `int(min, max)`, `pick(array)`, and `shuffle(array)`. Do not use
-  `Math.random`. `window.__yage__.inspector.setSeed(1)` seeds every scene's
-  generator, so a test run is reproducible.
+  `Math.random`. Under `npm run dev`, `window.__yage__.inspector.setSeed(1)`
+  seeds every scene's generator, so a test run is reproducible.
 - Resolve engine services with `this.service(Key)` or `this.use(Key)` inside
   components, never through a module-level `engine` variable.
 

@@ -114,8 +114,11 @@ completed.
 6. Clear the event bus
 ```
 
-An Inspector is removed in step 5, by the `onDestroy` of the plugin that
-installed it.
+An Inspector that `DebugPlugin` or `InspectorPlugin` installed is removed in
+step 5, by that plugin's `onDestroy`. A tool that installs one with
+`installInspector(context)` removes it with the function that call returns,
+after `engine.destroy()` (the editor preview), or keeps it for the life of the
+page (the lab).
 
 The stages are independent. If one stage throws, the remaining stages still
 run. `engine.destroy()` rethrows the first error after teardown finishes.
@@ -357,12 +360,13 @@ class MinimapPlugin implements Plugin {
 
 Use `context.tryResolve()` for optional dependencies and `context.resolve()` for required ones. A dependency that is optional at runtime must not appear in `dependencies`, or `engine.start()` rejects when it is absent.
 
-Without a declared dependency, install order among plugins follows registration
-order, so a service another plugin registers may not exist yet during
-`install`. Resolve it in `onStart`, which runs after every plugin's `install`.
-`RendererPlugin` and `PhysicsPlugin` register their Inspector facets this way,
-because `DebugPlugin`, which installs the Inspector, installs after the
-renderer.
+Install order is not registration order. Plugins that declare no dependencies
+install first, in registration order; a plugin with dependencies installs after
+all of them. Without a declared dependency, a service another plugin registers
+may not exist yet during `install`. Resolve it in `onStart`, which runs after
+every plugin's `install`. `RendererPlugin` and `PhysicsPlugin` register their
+Inspector facets this way, because `DebugPlugin`, which installs the Inspector,
+depends on the renderer and so installs after both.
 
 An optional integration does not always need a service at all.
 `@yagejs/tilemap/physics` exports `toPhysicsColliders()`, a plain function that

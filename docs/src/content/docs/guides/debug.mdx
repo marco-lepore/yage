@@ -287,7 +287,7 @@ window.__yage__.inspector.snapshot(); // debug: true publishes it here too
 ```
 
 The engine does not create an Inspector by itself, so a production build that
-installs neither plugin ships none of its code. `debug: true` publishes
+installs neither plugin runs without one. `debug: true` publishes
 `window.__yage__`; if no Inspector is installed, the engine warns once in a
 development build. Installing both plugins is harmless: whichever installs
 first creates the Inspector, and the other uses it.
@@ -618,7 +618,10 @@ test("can the player jump onto the ledge?", async ({ page }) => {
 `inspector.setSeed(seed)` calls `engine.sceneRandom.setSeed(seed)`. Game code
 that pins a seed as part of play, such as a daily-challenge run, calls
 `engine.sceneRandom.setSeed(seed)` itself. Either call throws when the seed is
-`NaN` or infinite.
+`NaN` or infinite. `engine.sceneRandom.clearSeed()` ends the pinned run: scenes
+already on the stack keep their current sequence, and a scene that enters later
+starts from `deterministicSeed` when `DebugPlugin` set one, or from a fresh
+seed.
 
 The two spec styles serve very different purposes:
 

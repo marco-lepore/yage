@@ -82,6 +82,8 @@ interface Plugin extends BasePlugin {
 
 `install` registers services into `EngineContext`. `registerSystems` adds systems to the scheduler. `onStart` fires after all plugins are installed and the loop is running.
 
+Install order is not registration order: plugins with no `dependencies` install first, in registration order, and a plugin with dependencies installs after all of them. A plugin that uses another plugin's service without depending on it resolves that service in `onStart`.
+
 ## Component Lifecycle
 
 ```ts

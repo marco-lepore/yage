@@ -27,6 +27,11 @@ contract when a value import would add an optional runtime dependency. Keep a
 comment beside the repeated declaration that names the package that owns the
 key.
 
+`new ServiceKey<T>(id, { scope?, missingHint? })`. `missingHint` is appended to
+the error `resolve` / `use` throws when the key resolves nowhere; name what
+provides the service (`"Install HapticsPlugin."`). `InspectorKey`'s hint names
+`DebugPlugin` and `InspectorPlugin`.
+
 ### Entity
 
 ```ts
@@ -950,6 +955,7 @@ import type { RandomService } from "@yagejs/core";
 
 declare class SceneRandomSource extends BaseSceneRandomSource {
   setSeed(seed: number): void; // reseed every scene on the stack and every later one
+  clearSeed(): void; // undo setSeed for scenes that enter later
   createSceneRandom(): RandomService; // the engine calls this as each scene enters
 }
 ```
@@ -957,6 +963,8 @@ declare class SceneRandomSource extends BaseSceneRandomSource {
 A scene RNG starts from the `setSeed` seed when one is set, else from
 `DebugPlugin`'s `deterministicSeed`, else from a fresh random seed. `setSeed`
 converts the seed with `normalizeSeed` and throws on `NaN` or `Infinity`.
+`clearSeed()` leaves scenes on the stack running their current sequence; a
+scene that enters later starts from `deterministicSeed` or a fresh seed again.
 `inspector.setSeed(seed)` calls `engine.sceneRandom.setSeed(seed)`.
 
 `globalRandom` is a process-wide `RandomService` for boot-time or cross-scene

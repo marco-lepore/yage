@@ -24,7 +24,7 @@ engine.use(
 
 `DebugPlugin` installs the Inspector (`InspectorKey`) when the game has not installed one, and removes the one it installed on destroy. An Inspector the game installed through `InspectorPlugin` is reused and left in place. The overlay's clock, step key and event log all run through it.
 
-`deterministicSeed` is opt-in. It becomes the default seed of `engine.sceneRandom`, so every scene RNG starts from it as the scene enters and a test run rolls the same numbers without calling `inspector.setSeed(...)`. A `setSeed` call overrides it for current and later scenes. `globalRandom` is not affected. Leave it unset for normal debug builds so randomness behaves as in production.
+`deterministicSeed` is opt-in. It becomes the default seed of `engine.sceneRandom`, so every scene RNG starts from it as the scene enters and a test run rolls the same numbers without calling `inspector.setSeed(...)`. A `setSeed` call overrides it for current and later scenes until `engine.sceneRandom.clearSeed()`. `globalRandom` is not affected. Leave it unset for normal debug builds so randomness behaves as in production.
 
 ### The debug global
 

@@ -48,6 +48,15 @@ export class SceneRandomSource {
   }
 
   /**
+   * Undo {@link setSeed}. Scenes on the stack keep their current sequence.
+   * Scenes that enter later start from the default seed when a test harness
+   * installed one, otherwise from a fresh seed.
+   */
+  clearSeed(): void {
+    this.seedOverride = undefined;
+  }
+
+  /**
    * @internal `DebugPlugin` installs its `deterministicSeed` through this
    * hook and clears it with `undefined`. A seed set with {@link setSeed}
    * takes precedence.

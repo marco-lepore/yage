@@ -698,6 +698,19 @@ describe("Scene service resolution", () => {
     );
   });
 
+  it("use() appends the key's missingHint for an unregistered scene-scoped key", () => {
+    const { ctx } = createContext();
+    const scene = new ResolverScene();
+    scene._setContext(ctx);
+    const HintedKey = new ServiceKey<FakeService>("test.hinted", {
+      scope: "scene",
+      missingHint: "Install HintedPlugin.",
+    });
+    expect(() => scene.use(HintedKey)).toThrow(
+      /installed\. Install HintedPlugin\.$/,
+    );
+  });
+
   it("use() warns when a scene-scoped key falls back to engine scope", () => {
     const { ctx } = createContext();
     const warn = vi.fn();

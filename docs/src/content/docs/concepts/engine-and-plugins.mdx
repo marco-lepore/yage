@@ -231,9 +231,13 @@ If a dependency is missing the engine throws at startup with a clear message
 listing the unresolved names. Circular dependencies are also detected and
 reported.
 
-Plugins with no dependency between them install in the order they were
-registered. A plugin that uses a service another plugin provides, without
-depending on it, resolves that service in `onStart` rather than `install`: by
-then every plugin has installed. `RendererPlugin` publishes its render facet to
-the Inspector this way, since `DebugPlugin` installs the Inspector after the
-renderer.
+Install order is not registration order. Plugins that declare no
+dependencies install first, in the order they were registered. A plugin with
+dependencies installs after all of them, even when you registered it first. So
+`DebugPlugin`, which depends on the renderer, installs after `InputPlugin` and
+`PhysicsPlugin` wherever you register it.
+
+A plugin that uses a service another plugin provides, without depending on it,
+resolves that service in `onStart` rather than `install`: by then every plugin
+has installed. `RendererPlugin` publishes its render facet to the Inspector this
+way, since the Inspector usually comes from `DebugPlugin`.

@@ -108,6 +108,20 @@ describe("SceneRandomSource", () => {
     expect(source.createSceneRandom().getSeed()).toBe(2);
   });
 
+  it("clearSeed falls back to the default seed, then to a fresh seed", () => {
+    vi.spyOn(Date, "now").mockReturnValue(5);
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const source = new SceneRandomSource(new SceneManager());
+    source.setDefaultSeed(3);
+    source.setSeed(8);
+
+    source.clearSeed();
+    expect(source.createSceneRandom().getSeed()).toBe(3);
+
+    source.setDefaultSeed(undefined);
+    expect(source.createSceneRandom().getSeed()).toBe(5);
+  });
+
   describe("on an engine", () => {
     it("is the engine's sceneRandom and is registered under its key", () => {
       const engine = new Engine();
@@ -152,6 +166,33 @@ describe("SceneRandomSource", () => {
       engine.sceneRandom.setSeed(5);
       engine.sceneRandom.setDefaultSeed(6);
       expect(sceneRandom(scene).getSeed()).toBe(5);
+      engine.destroy();
+    });
+
+    it("clearSeed leaves the sequence of a scene on the stack running", async () => {
+      const { engine, scene } = await startWithScene();
+      engine.sceneRandom.setSeed(21);
+      const rng = sceneRandom(scene);
+      const expected = createRandomService(21);
+      expect(rng.float()).toBe(expected.float());
+
+      engine.sceneRandom.clearSeed();
+
+      expect(rng.getSeed()).toBe(21);
+      expect(sequence(rng)).toEqual(sequence(expected));
+      engine.destroy();
+    });
+
+    it("clearSeed lets the default seed reach a scene pushed later", async () => {
+      const { engine } = await startWithScene();
+      engine.sceneRandom.setDefaultSeed(6);
+      engine.sceneRandom.setSeed(7);
+
+      engine.sceneRandom.clearSeed();
+      const next = new TestScene();
+      await engine.scenes.push(next);
+
+      expect(sceneRandom(next).getSeed()).toBe(6);
       engine.destroy();
     });
 

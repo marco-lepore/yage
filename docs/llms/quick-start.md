@@ -175,7 +175,7 @@ engine.scenes.push(new GameScene());
 
 ### Inspector (runtime queries)
 
-The Inspector is an introspection API for the browser console while iterating, and for AI agents that want to verify scene state without reading the canvas. The engine does not create one: `DebugPlugin` installs it, or `InspectorPlugin` from `@yagejs/core` without the debug overlay. `debug: true` publishes it as `window.__yage__.inspector` during `engine.start()`. A production build that installs neither plugin ships no Inspector code.
+The Inspector is an introspection API for the browser console while iterating, and for AI agents that want to verify scene state without reading the canvas. The engine does not create one: `DebugPlugin` installs it, or `InspectorPlugin` from `@yagejs/core` without the debug overlay. `debug: true` publishes it as `window.__yage__.inspector` during `engine.start()`. A production build that installs neither plugin runs without an Inspector.
 
 ```ts yage-context="browser"
 import { Engine } from "@yagejs/core";
