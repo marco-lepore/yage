@@ -94,7 +94,7 @@ the calls are `@yagejs/level` public API. The entity modules load through the
 test runner rather than through the editor's server, in Node, with no browser,
 so one that touches `window` at import time fails:
 
-```ts
+```ts yage-check="syntax" yage-reason="Imports the project's own src/levelProject.ts, a module this page does not show."
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { buildLevelCatalog, validateLevel } from "@yagejs/level";
@@ -119,7 +119,7 @@ it.each(levels)("%s matches the catalog", (name) => {
 A project whose entities import `@yagejs/physics` also needs this config,
 because Vitest cannot otherwise resolve `@dimforge/rapier2d`:
 
-```ts
+```ts yage-check="syntax" yage-reason="Merges the project's own vite.config.ts, a module this page does not show."
 // vitest.config.ts
 import { defineConfig, mergeConfig } from "vitest/config";
 import viteConfig from "./vite.config.js";
@@ -202,6 +202,9 @@ The harness has the same shape the scenario lab uses, so one file can serve
 both tools:
 
 ```ts
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+
 export default {
   engine: () => new Engine({ debug: true }),
   plugins: ({ container }: { container: HTMLElement }) => [
@@ -219,7 +222,13 @@ machine that runs `yage-editor`.
 Include the map JSON, external tileset JSON and tileset images in `assets`:
 
 ```ts
-assets: ["public/maps/**/*.json", "public/tiles/**/*"],
+import { defineEditorConfig } from "@yagejs-tools/editor";
+
+export default defineEditorConfig({
+  modules: { project: "../src/levelProject.ts", harness: "./harness.ts" },
+  levels: ["src/levels/*.yage-level.json"],
+  assets: ["public/maps/**/*.json", "public/tiles/**/*"],
+});
 ```
 
 Saving a matching asset refreshes the preview automatically. Level edits,
@@ -231,9 +240,16 @@ JSON maps open directly. If your game loads a JSON export of a `.tmx` or `.tmj`
 source, declare which source to open in `editor/config.ts`:
 
 ```ts
-tiled: {
-  sources: { "maps/forest.json": "art/forest.tmx" },
-},
+import { defineEditorConfig } from "@yagejs-tools/editor";
+
+export default defineEditorConfig({
+  modules: { project: "../src/levelProject.ts", harness: "./harness.ts" },
+  levels: ["src/levels/*.yage-level.json"],
+  assets: ["public/maps/**/*.json", "public/tiles/**/*"],
+  tiled: {
+    sources: { "maps/forest.json": "art/forest.tmx" },
+  },
+});
 ```
 
 The key is the path the level stores. The source is relative to the Vite root

@@ -65,7 +65,7 @@ dependencies you already have.
    This is the same declaration a game uses to load the file — see
    [Levels](/guides/levels/) for the full shape:
 
-   ```typescript title="src/levelProject.ts"
+   ```typescript title="src/levelProject.ts" yage-group="project" yage-file="levelProject.ts" yage-check="syntax" yage-reason="Lists the reader's own Crate class from ./Crate.js, a module this page does not show; the Levels guide declares it."
    import { defineLevelProject } from "@yagejs/level";
    import { Crate } from "./Crate.js";
 
@@ -1206,7 +1206,7 @@ else.
 
 One thing that will not work: importing the level instead of fetching it.
 
-```typescript
+```typescript yage-check="syntax" yage-reason="Imports a level file as a Vite JSON module, and the snippet checker resolves no JSON modules."
 // Inlined when Vite builds the page, so it will not follow the editor.
 import level from "./forest.yage-level.json";
 ```
@@ -1229,7 +1229,13 @@ machine that runs `yage-editor`.
 Include the map JSON, external tileset JSON and tileset images in `assets`:
 
 ```ts
-assets: ["public/maps/**/*.json", "public/tiles/**/*"],
+import { defineEditorConfig } from "@yagejs-tools/editor";
+
+export default defineEditorConfig({
+  modules: { project: "../src/levelProject.ts", harness: "./harness.ts" },
+  levels: ["src/levels/*.yage-level.json"],
+  assets: ["public/maps/**/*.json", "public/tiles/**/*"],
+});
 ```
 
 Saving a matching asset refreshes the preview automatically. Level edits,
@@ -1241,9 +1247,16 @@ JSON maps open directly. If your game loads a JSON export of a `.tmx` or `.tmj`
 source, declare which source to open in `editor/config.ts`:
 
 ```ts
-tiled: {
-  sources: { "maps/forest.json": "art/forest.tmx" },
-},
+import { defineEditorConfig } from "@yagejs-tools/editor";
+
+export default defineEditorConfig({
+  modules: { project: "../src/levelProject.ts", harness: "./harness.ts" },
+  levels: ["src/levels/*.yage-level.json"],
+  assets: ["public/maps/**/*.json", "public/tiles/**/*"],
+  tiled: {
+    sources: { "maps/forest.json": "art/forest.tmx" },
+  },
+});
 ```
 
 The key is the path the level stores. The source is relative to the Vite root
@@ -1323,7 +1336,8 @@ the catalog once, and expect no diagnostics per file. Your entity modules load
 through your test runner rather than through the editor's server, in Node, with
 no browser, so one that touches `window` at import time fails:
 
-```typescript title="src/levels.test.ts"
+```typescript title="src/levels.test.ts" yage-group="project" yage-file="levels.test.ts"
+/// <reference types="node" />
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { buildLevelCatalog, validateLevel } from "@yagejs/level";
@@ -1348,7 +1362,7 @@ it.each(levels)("%s matches the catalog", (name) => {
 A project whose entities import `@yagejs/physics` also needs this config,
 because Vitest cannot otherwise resolve `@dimforge/rapier2d`:
 
-```typescript title="vitest.config.ts"
+```typescript title="vitest.config.ts" yage-check="syntax" yage-reason="Merges the project's own vite.config.ts, a module this page does not show."
 import { defineConfig, mergeConfig } from "vitest/config";
 import viteConfig from "./vite.config.js";
 
