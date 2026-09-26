@@ -84,8 +84,13 @@ Spinner line id such as `"line:abc"` is used as is.
 
 ## Renderer text
 
-```ts
+```ts yage-context="scene"
+import { Transform } from "@yagejs/core";
+import { msg } from "@yagejs-addons/i18n";
 import { LocalizedTextComponent } from "@yagejs-addons/i18n/renderer";
+
+const hud = scene.spawn("hud");
+hud.add(new Transform());
 
 const label = hud.add(
   new LocalizedTextComponent({
@@ -107,9 +112,15 @@ options of their base class with `message` in place of `text`.
 a string. Every localized element under it, however deeply nested, updates on
 a locale change:
 
-```ts
+```ts yage-group="menu" yage-context="entity"
+import { Anchor } from "@yagejs/ui";
+import { LocalizationKey, msg } from "@yagejs-addons/i18n";
 import { LocalizedUISurface } from "@yagejs-addons/i18n/ui";
 
+declare function start(): void; // your game's start action
+declare function next(): string; // the next locale tag to show, e.g. "it"
+
+const localization = entity.scene.use(LocalizationKey);
 const menu = entity.add(new LocalizedUISurface({ anchor: Anchor.Center, padding: 12 }));
 menu.text(msg("menu.title", "Observatory"), { fontSize: 24 });
 menu.button(msg("menu.start", "Start"), { onClick: start });
@@ -127,7 +138,7 @@ localized class and add it with `menu.addElement(element)`, or
 `menu.addElement(element, panel)` to nest it. The surface resolves it for the
 current locale as it goes in.
 
-```ts
+```ts yage-group="menu" yage-context="entity"
 import {
   LocalizedPixiRadioGroup,
   UILocalizedCheckbox,
@@ -174,7 +185,12 @@ locale change.
 ## React UI
 
 ```tsx
+import { Button, Panel } from "@yagejs/ui-react";
+import { msg } from "@yagejs-addons/i18n";
 import { Trans, useLocalization, LocalizedPixiSelect } from "@yagejs-addons/i18n/ui-react";
+
+declare function nextLanguage(): void;
+declare function pick(index: number): void;
 
 function Settings() {
   const { t, locale } = useLocalization();
@@ -185,6 +201,8 @@ function Settings() {
         {t(msg("settings.language", "Language: {locale}", { locale }))}
       </Button>
       <LocalizedPixiSelect
+        closedBG="select-closed"
+        openBG="select-open"
         items={[msg("difficulty.easy", "Easy"), msg("difficulty.hard", "Hard")]}
         onSelect={pick}
       />
@@ -202,8 +220,14 @@ The dialogue addon needs no import from this one. Its text fields accept the
 message shape `msg` returns, and `DialogueController` finds the installed
 service by itself:
 
-```ts
+```ts yage-context="scene"
+import { defineScript, DialogueController } from "@yagejs-addons/dialogue";
+import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+import { msg } from "@yagejs-addons/i18n";
+
 const SCRIPT = defineScript({
+  id: "mira",
+  start: "intro",
   speakers: { mira: { name: msg("speaker.mira", "Mira") } },
   nodes: {
     intro: {
@@ -219,6 +243,7 @@ const SCRIPT = defineScript({
     },
   },
 });
+const npc = scene.spawn("npc");
 npc.add(new DialogueController({ ...createBoxDialogue() }));
 ```
 
@@ -232,10 +257,13 @@ this addon (see the dialogue page).
 Item and action definitions keep plain strings. The string is the fallback
 and the id picks the catalog key:
 
-```ts
+```ts yage-context="entity"
+import { defineItems, Inventory, InventoryController } from "@yagejs-addons/inventory";
+import { createInventoryPanel } from "@yagejs-addons/inventory/presenters";
 import { localizeInventoryPanel } from "@yagejs-addons/i18n/inventory";
 
 const ITEMS = defineItems({ potion: { name: "Potion", description: "Restores health." } });
+const inventory = new Inventory({ catalog: ITEMS });
 
 const bundle = localizeInventoryPanel(createInventoryPanel(), {
   item: (id) => `item.${id}.name`,
@@ -256,9 +284,14 @@ through any localized text class.
 The plugin updates any component that implements `relocalize`:
 
 ```ts
-import type { MessageResolver, Relocalizable } from "@yagejs-addons/i18n";
+import { Component } from "@yagejs/core";
+import { TextComponent } from "@yagejs/renderer";
+import { msg, type MessageResolver, type Relocalizable } from "@yagejs-addons/i18n";
 
 class ScoreLabel extends Component implements Relocalizable {
+  score = 0;
+  private readonly label = this.sibling(TextComponent);
+
   relocalize(resolve: MessageResolver): void {
     this.label.setText(resolve(msg("hud.score", "Score {n}", { n: this.score })));
   }

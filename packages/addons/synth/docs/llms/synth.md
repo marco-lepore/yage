@@ -16,8 +16,9 @@ Peers: `@yagejs/core` and `@yagejs/audio`, both required.
 
 ## Zero-config
 
-```ts
+```ts yage-context="engine"
 import { AudioPlugin, AudioManagerKey } from "@yagejs/audio";
+import { Component } from "@yagejs/core";
 import {
   SynthPlugin,
   synthPresets,
@@ -36,9 +37,13 @@ engine.use(
 );
 
 // From a Component, Entity, or Scene:
-const audio = this.use(AudioManagerKey);
-audio.play("explosion", { channel: "sfx", volume: 0.8 });
-audio.playRandom(synthVariantAliases("shoot", 4));
+class Cannon extends Component {
+  fire(): void {
+    const audio = this.use(AudioManagerKey);
+    audio.play("explosion", { channel: "sfx", volume: 0.8 });
+    audio.playRandom(synthVariantAliases("shoot", 4));
+  }
+}
 ```
 
 `SynthPlugin` renders every entry at install and calls `registerSound(alias,
@@ -49,7 +54,12 @@ first-gesture unlock. The plugin declares `dependencies: ["audio"]` — install
 ## `SynthPatch` (L1, one voice)
 
 ```ts
-interface SynthPatch {
+import type {
+  SynthFilter as BaseSynthFilter,
+  SynthPatch as BaseSynthPatch,
+} from "@yagejs-addons/synth";
+
+interface SynthPatch extends BaseSynthPatch {
   wave?: "sine" | "square" | "sawtooth" | "triangle" | "noise"; // default "sine"
   frequency?: number; // Hz, default 440; ignored by "noise"
   glideTo?: number; // Hz at the end; exponential glide. Default: no glide
@@ -63,7 +73,7 @@ interface SynthPatch {
   seed?: number; // noise seed, default 1
   seamless?: boolean; // loop-clean render, default false
 }
-interface SynthFilter {
+interface SynthFilter extends BaseSynthFilter {
   type: "lowpass" | "highpass" | "bandpass";
   frequency: number; // cutoff (centre, for bandpass) in Hz at the start
   sweepTo?: number; // cutoff at the end; exponential sweep
@@ -80,7 +90,9 @@ clamped to [-1, 1].
 An array of patches is one sound; each voice carries its own `delay`:
 
 ```ts
-const shotgun = [
+import type { SynthPatch } from "@yagejs-addons/synth";
+
+const shotgun: SynthPatch[] = [
   {
     wave: "sawtooth",
     frequency: 300,
@@ -101,7 +113,12 @@ const shotgun = [
 A jingle bakes a note sequence into one buffer:
 
 ```ts
-interface SynthJingle {
+import type {
+  SynthJingle as BaseSynthJingle,
+  SynthVoice,
+} from "@yagejs-addons/synth";
+
+interface SynthJingle extends BaseSynthJingle {
   notes: readonly (
     | number
     | { frequency: number; duration?: number; volume?: number }
@@ -111,7 +128,7 @@ interface SynthJingle {
   voice?: SynthVoice; // a SynthPatch without frequency/glideTo/duration/delay/seamless
 }
 
-const levelUp = {
+const levelUp: SynthJingle = {
   notes: [523, 659, 784, 1046],
   noteDuration: 0.18,
   noteSpacing: 0.12, // < noteDuration, so notes ring into each other
@@ -127,11 +144,25 @@ API here takes any of the three.
 ## Rendering (headless)
 
 ```ts
-renderSynthPatch(patch: SynthPatch, sampleRate?: number): Float32Array
-renderSynthJingle(jingle: SynthJingle, sampleRate?: number): Float32Array
-renderSynthSound(sound: SynthSound, sampleRate?: number): Float32Array
-synthBuffer(sound: SynthSound, sampleRate?: number): AudioBuffer
-SYNTH_SAMPLE_RATE = 44100
+import type { SynthJingle, SynthPatch, SynthSound } from "@yagejs-addons/synth";
+
+declare function renderSynthPatch(
+  patch: SynthPatch,
+  sampleRate?: number,
+): Float32Array;
+declare function renderSynthJingle(
+  jingle: SynthJingle,
+  sampleRate?: number,
+): Float32Array;
+declare function renderSynthSound(
+  sound: SynthSound,
+  sampleRate?: number,
+): Float32Array;
+declare function synthBuffer(
+  sound: SynthSound,
+  sampleRate?: number,
+): AudioBuffer;
+declare const SYNTH_SAMPLE_RATE = 44100;
 ```
 
 Rendering is pure math — no WebAudio, no `Math.random`. The same sound and
@@ -142,6 +173,8 @@ sample rate always produce the same samples, so a test can assert on the array
 
 ```ts
 import { registerSound, unregisterSound } from "@yagejs/audio";
+import { synthBuffer, synthPresets } from "@yagejs-addons/synth";
+
 registerSound("boss-hit", synthBuffer(synthPresets.hit({ frequency: 180 })));
 ```
 
@@ -152,6 +185,8 @@ follows the preset's shape, so a field a preset cannot honour is a compile
 error instead of a silent no-op:
 
 ```ts
+import { synthPresets } from "@yagejs-addons/synth";
+
 // One-voice and layered presets — SynthPatchOverrides (Partial<SynthPatch> & { gain? }).
 // Patch fields land on the lead voice, keeping a stack's layers in relation.
 synthPresets.shoot({ frequency: 900 }); // higher-pitched gun
@@ -182,15 +217,22 @@ reveal, stop it when the line completes. Same `phraseSeed` = same phrase (the
 voice's own `seed` still means its noise seed); give each character its own
 `frequency`/`phraseSeed`:
 
-```ts
-new SynthPlugin({
-  sounds: {
-    "voice/guard": synthPresets.dialogueBeeps({
-      frequency: 220,
-      phraseSeed: 4,
-    }),
-  },
-});
+```ts yage-context="engine"
+import type { AudioManager } from "@yagejs/audio";
+import { SynthPlugin, synthPresets } from "@yagejs-addons/synth";
+
+declare const audio: AudioManager; // this.use(AudioManagerKey)
+
+engine.use(
+  new SynthPlugin({
+    sounds: {
+      "voice/guard": synthPresets.dialogueBeeps({
+        frequency: 220,
+        phraseSeed: 4,
+      }),
+    },
+  }),
+);
 const talking = audio.play("voice/guard", { loop: true, channel: "voice" });
 audio.stop(talking); // when the line finishes revealing
 ```
@@ -199,11 +241,26 @@ audio.stop(talking); // when the line finishes revealing
 
 A baked buffer sounds identical every play. Two ways to break that up:
 
-```ts
+```ts yage-context="engine"
+import { registerSound, type AudioManager } from "@yagejs/audio";
+import {
+  SynthPlugin,
+  synthBuffer,
+  synthPresets,
+  synthVariantAliases,
+  synthVariants,
+} from "@yagejs-addons/synth";
+
+declare const audio: AudioManager; // this.use(AudioManagerKey)
+
 // 1. Several takes, spread in pitch, picked at random per play.
-new SynthPlugin({
-  sounds: { shoot: { sound: synthPresets.shoot(), variants: 4, detune: 0.08 } },
-});
+engine.use(
+  new SynthPlugin({
+    sounds: {
+      shoot: { sound: synthPresets.shoot(), variants: 4, detune: 0.08 },
+    },
+  }),
+);
 audio.playRandom(synthVariantAliases("shoot", 4));
 
 // 2. Jitter the playback rate at the call site (variants register only the
@@ -225,10 +282,17 @@ seed each.
 the buffer loops without a click. The result is up to 50 ms shorter than
 `duration`.
 
-```ts
-new SynthPlugin({
-  sounds: { ambience: synthPresets.roomTone({ duration: 6 }) },
-});
+```ts yage-context="engine"
+import type { AudioManager } from "@yagejs/audio";
+import { SynthPlugin, synthPresets } from "@yagejs-addons/synth";
+
+declare const audio: AudioManager; // this.use(AudioManagerKey)
+
+engine.use(
+  new SynthPlugin({
+    sounds: { ambience: synthPresets.roomTone({ duration: 6 }) },
+  }),
+);
 audio.play("ambience", { loop: true, channel: "music" });
 ```
 
