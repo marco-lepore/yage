@@ -340,6 +340,26 @@ describe("Save — autoPersist", () => {
     expect(b.gold.value()).toBe(42);
     expect(b.flags.has("opened-chest")).toBe(true);
   });
+
+  it("loading an older slot into a live store resets the leaves it lacks", async () => {
+    const save = createSave({ adapter: memoryAdapter() });
+    // The slot was saved before the `quests` leaf existed.
+    const older = createStore((s) => ({ embers: s.counter() }));
+    older.embers.set(3);
+    await save.saveSlot("run", "slot-2", older);
+
+    // The current session has progress in both leaves.
+    const run = createStore((s) => ({
+      embers: s.counter(),
+      quests: s.set<string>(),
+    }));
+    run.embers.set(40);
+    run.quests.add("find-the-key");
+
+    await save.loadSlot("run", "slot-2", run);
+    expect(run.embers.value()).toBe(3);
+    expect(run.quests.size()).toBe(0);
+  });
 });
 
 describe("Save — migration on load", () => {

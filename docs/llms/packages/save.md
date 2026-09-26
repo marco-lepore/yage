@@ -250,7 +250,12 @@ saves/m                    ← slot manifest (savedAt + metadata)
 
 ## Migration
 
-`version` + `migrate` live on the read call (`restore` / `loadSlot` / `autoPersist`), not on the primitive. Per-leaf migration is not supported.
+`version` + `migrate` live on the read call (`restore` / `loadSlot`), not on the primitive. Per-leaf migration is not supported.
+
+Loading replaces the whole value, even when the store holds progress from the running session:
+
+- A compound leaf missing from the stored payload resets to its default. Adding a leaf needs no version bump.
+- A record's stored object replaces the record's value, and defaults are not merged in. A field added to the record's type is missing after loading an older save: bump `version` and add the field in `migrate`.
 
 ```ts
 // Single record:

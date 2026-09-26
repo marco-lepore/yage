@@ -1227,6 +1227,8 @@ game.inventory.set("moonleaf", 3);
 
 Factories take no id and no version — they return fresh, pure data instances. Ids and version envelopes live at the save call site (`@yagejs/save`). `useStore(compound)` works and returns the encoded snapshot, though reading individual leaves keeps subscription granularity per-leaf.
 
+`hydrate(raw)` replaces the whole value. On a compound, a leaf whose key is missing from `raw` resets to its default, so a save written before the leaf existed loads with that leaf at its default. If any leaf fails to decode, `hydrate` throws and every leaf keeps its previous value.
+
 Codecs for non-JSON-native types: `jsonCodec()`, `setCodec<K>()`, `mapCodec<K,V>()`, `dateCodec()`. Set/Map/Counter/List bundle codecs internally; you only specify a codec on `createRecord<T>` / `createValue<T>` (or the matching `s.record`/`s.value` leaves) for exotic types.
 
 See `@yagejs/save` docs for the IO layer that consumes any `Serializable<T>`.

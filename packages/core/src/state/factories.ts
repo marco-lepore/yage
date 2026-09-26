@@ -847,11 +847,14 @@ export function createStore<L extends StoreLeaves>(
       );
     }
     const dict = raw as Record<string, unknown>;
+    // Hydrate replaces the whole store, like every leaf's hydrate. A leaf whose
+    // key is absent from `dict` (a save written before the leaf was added)
+    // resets to its default; keeping its current value would carry state from
+    // the running session into the loaded one.
+    //
     // Best-effort atomic hydrate: snapshot every leaf upfront, attempt each
-    // decode; on the first failure, roll back only the leaves we actually
-    // wrote to. Leaves whose key was absent from `dict` (partial payload, or a
-    // newer version that added leaves) were never touched and don't need a
-    // restore — re-hydrating them would just fire spurious change events.
+    // decode; on the first failure, roll back the leaves already hydrated or
+    // reset.
     const snapshots = internalLeaves.map(({ leaf }) => leaf.serialize());
     const written: number[] = [];
     try {
@@ -860,8 +863,10 @@ export function createStore<L extends StoreLeaves>(
         if (entry === undefined) continue;
         if (Object.prototype.hasOwnProperty.call(dict, entry.key)) {
           entry.leaf.hydrate(dict[entry.key]);
-          written.push(i);
+        } else {
+          entry.leaf.reset();
         }
+        written.push(i);
       }
     } catch (err) {
       for (const i of written) {

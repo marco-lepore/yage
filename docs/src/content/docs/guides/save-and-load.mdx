@@ -303,10 +303,18 @@ class CheckpointOnRest extends Component {
 
 ## Migration & versioning
 
-`version` + `migrate` live on the read call (`restore` / `loadSlot` /
-`autoPersist`), not on the primitive. Bump `version` when the encoded shape
-changes and pass `migrate` to transform older payloads. Per-leaf migration
-inside a compound is not supported — migrate the tree as a whole.
+`version` + `migrate` live on the read call (`restore` / `loadSlot`), not on
+the primitive. Bump `version` when the encoded shape changes and pass
+`migrate` to transform older payloads. Per-leaf migration inside a compound is
+not supported — migrate the tree as a whole.
+
+Loading replaces the whole value, even when the store already holds progress
+from the current session. Adding a leaf to a compound needs no version bump: a
+save written before the leaf existed loads with that leaf at its default. A
+record works differently. Its stored object replaces the record's value, and
+defaults are not merged in, so a field added to the record's type is missing
+after loading an older save. Bump `version` and add the field in `migrate`, as
+the first example below does.
 
 ```typescript
 // Single record — migrate the record value.

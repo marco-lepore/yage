@@ -929,6 +929,47 @@ describe("createStore (compound)", () => {
     expect(a.flags.values().sort()).toEqual(["opened"]);
   });
 
+  it("hydrate resets a leaf the payload leaves out", () => {
+    // A payload written before the `quests` leaf existed.
+    const older = createStore((s) => ({ gold: s.counter() }));
+    older.gold.set(7);
+
+    const run = createStore((s) => ({
+      gold: s.counter(),
+      quests: s.set<string>(),
+      day: s.value<number>({ default: 1 }),
+    }));
+    run.gold.set(99);
+    run.quests.add("find-the-key");
+    run.day.set(12);
+
+    run.hydrate(older.serialize() as never);
+
+    expect(run.gold.value()).toBe(7);
+    expect(run.quests.size()).toBe(0);
+    expect(run.day.get()).toBe(1);
+  });
+
+  it("a failed hydrate also rolls back the leaves it reset", () => {
+    const a = createStore((s) => ({
+      quests: s.set<string>(),
+      gold: s.counter(),
+      flags: s.set<string>(),
+    }));
+    a.quests.add("find-the-key");
+    a.gold.set(50);
+    a.flags.add("opened");
+
+    // `quests` is absent (reset), `gold` hydrates, `flags` fails to decode.
+    expect(() =>
+      a.hydrate({ gold: 99, flags: "not-an-array" } as never),
+    ).toThrow();
+
+    expect(a.quests.values()).toEqual(["find-the-key"]);
+    expect(a.gold.value()).toBe(50);
+    expect(a.flags.values()).toEqual(["opened"]);
+  });
+
   it("carries the 'store' STATE_KIND brand", () => {
     expect(makeGame()[STATE_KIND]).toBe("store");
   });

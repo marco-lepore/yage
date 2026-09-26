@@ -105,7 +105,7 @@ export interface CreateSaveOptions {
   adapter: SaveAdapter;
 }
 
-/** Options for a versioned read (`restore`, `loadSlot`, `autoPersist`). */
+/** Options for a versioned read (`restore`, `loadSlot`). */
 export interface RestoreOptions<T> {
   /** Current schema version. Defaults to 1. */
   version?: number;
@@ -289,8 +289,8 @@ export class Save {
   }
 
   /**
-   * Restore an unslotted document. No-op when the document doesn't exist —
-   * the value keeps its current (default) state.
+   * Restore an unslotted document. No-op when the document doesn't exist:
+   * the value is left as it is.
    */
   async restore<T>(
     id: string,
