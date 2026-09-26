@@ -1,7 +1,15 @@
-import { Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Entity,
+  ProcessComponent,
+  RandomKey,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
+import type { ProcessSlot } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import { Health, HealthDied } from "@yagejs-addons/abilities";
-import { ARENA_MARGIN, HEIGHT, WIDTH } from "./constants.js";
+import { ARENA_MARGIN, HEIGHT, PLAYER_KEY, WIDTH } from "./constants.js";
 import { statsOf } from "./stats.js";
 import {
   EnemyEntity,
@@ -22,30 +30,46 @@ import {
 // ---------------------------------------------------------------------------
 
 export const TARGET_ENEMIES = 3;
+/** Minimum seconds between two enemy respawns. */
 export const ENEMY_RESPAWN_DELAY = 2.5;
+/** Seconds before the first stat gem can drop. */
+export const FIRST_PICKUP_DELAY = 2;
 export const KILLS_PER_LEVEL = 3;
 
+/** Needs a `ProcessComponent` on its entity; `GameDirectorEntity` adds
+ *  both. */
 export class GameDirector extends Component {
-  private respawnTimer = ENEMY_RESPAWN_DELAY;
-  private pickupTimer = 2;
+  private readonly pc = this.sibling(ProcessComponent);
+  private readonly random = this.service(RandomKey);
+  /** Running while the next enemy respawn has to wait. */
+  private respawnCooldown!: ProcessSlot;
+  /** Running while the next stat gem has to wait. */
+  private pickupCooldown!: ProcessSlot;
 
   onAdd(): void {
+    this.respawnCooldown = this.pc
+      .slot({ duration: ENEMY_RESPAWN_DELAY })
+      .start();
+    this.pickupCooldown = this.pc
+      .slot({ duration: PICKUP_SPAWN_INTERVAL })
+      .start({ duration: FIRST_PICKUP_DELAY });
     this.listenScene(HealthDied, (_data, entity) => {
       if (entity?.tags.has("enemy")) this.onEnemyKilled();
     });
   }
 
-  update(dt: number): void {
-    this.respawnTimer -= dt;
-    if (this.respawnTimer <= 0 && this.livingEnemies() < TARGET_ENEMIES) {
+  update(): void {
+    if (
+      !this.respawnCooldown.running &&
+      this.livingEnemies() < TARGET_ENEMIES
+    ) {
       this.spawnEnemy();
-      this.respawnTimer = ENEMY_RESPAWN_DELAY;
+      this.respawnCooldown.restart();
     }
 
-    this.pickupTimer -= dt;
-    if (this.pickupTimer <= 0 && this.pickupCount() < MAX_PICKUPS) {
+    if (!this.pickupCooldown.running && this.pickupCount() < MAX_PICKUPS) {
       this.spawnPickup();
-      this.pickupTimer = PICKUP_SPAWN_INTERVAL;
+      this.pickupCooldown.restart();
     }
 
     this.collectPickups();
@@ -54,7 +78,7 @@ export class GameDirector extends Component {
   /** A kill feeds the level-up loop: past the per-level threshold, the player
    *  gains atk/def/maxHp (maxHp pushed into `Health`). */
   private onEnemyKilled(): void {
-    const player = this.scene.findEntity("PlayerEntity");
+    const player = this.scene.findByKey(PLAYER_KEY);
     const stats = player && statsOf(player);
     if (!player || !stats) return;
     stats.kills++;
@@ -85,8 +109,7 @@ export class GameDirector extends Component {
   }
 
   private spawnPickup(): void {
-    const spec = PICKUP_SPECS[Math.floor(Math.random() * PICKUP_SPECS.length)];
-    if (!spec) return;
+    const spec = this.random.pick(PICKUP_SPECS);
     const gem = this.scene.spawn("pickup");
     gem.add(new Transform({ position: this.randomArenaPoint(60) }));
     gem.add(
@@ -100,7 +123,7 @@ export class GameDirector extends Component {
   }
 
   private collectPickups(): void {
-    const player = this.scene.findEntity("PlayerEntity");
+    const player = this.scene.findByKey(PLAYER_KEY);
     const stats = player && statsOf(player);
     const playerPos = player?.tryGet(Transform)?.worldPosition;
     if (
@@ -125,15 +148,23 @@ export class GameDirector extends Component {
   private randomArenaPoint(minPlayerDist: number): Vec2 {
     const pad = ARENA_MARGIN + 40;
     const playerPos = this.scene
-      .findEntity("PlayerEntity")
+      .findByKey(PLAYER_KEY)
       ?.tryGet(Transform)?.worldPosition;
     for (let i = 0; i < 8; i++) {
       const p = new Vec2(
-        pad + Math.random() * (WIDTH - 2 * pad),
-        pad + Math.random() * (HEIGHT - 2 * pad),
+        this.random.range(pad, WIDTH - pad),
+        this.random.range(pad, HEIGHT - pad),
       );
       if (!playerPos || p.sub(playerPos).length() >= minPlayerDist) return p;
     }
     return new Vec2(WIDTH / 2, ARENA_MARGIN + 60);
+  }
+}
+
+/** Hosts the scene's `GameDirector`. */
+export class GameDirectorEntity extends Entity {
+  setup(): void {
+    this.add(new ProcessComponent());
+    this.add(new GameDirector());
   }
 }
