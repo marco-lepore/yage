@@ -411,7 +411,7 @@ export class EnemyAI extends Component {
     this.token.clear(entity);
     playBoxerAnim(entity, "death", { oneShot: true });
     this.rb.setType("static");
-    this.gfx.graphics.clear(); // no HP bar on a corpse
+    this.gfx.draw((g) => g.clear()); // no HP bar on a corpse
     this.pc
       .slot({ duration: CORPSE_LINGER, onComplete: () => entity.destroy() })
       .start();
@@ -488,6 +488,22 @@ export const MAX_PICKUPS = 3;
 export class Pickup extends Component {
   constructor(readonly spec: PickupSpec) {
     super();
+  }
+}
+
+/** A stat gem on the arena floor, in the colour of the stat it grants. */
+export class PickupEntity extends Entity {
+  setup(params: { spec: PickupSpec; position: Vec2Like }): void {
+    const { spec, position } = params;
+    this.add(new Transform({ position: new Vec2(position.x, position.y) }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.roundRect(-9, -9, 18, 18, 4)
+          .fill({ color: spec.color })
+          .stroke({ color: 0xffffff, width: 1.5, alpha: 0.7 });
+      }),
+    );
+    this.add(new Pickup(spec));
   }
 }
 

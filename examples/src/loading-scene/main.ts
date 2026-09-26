@@ -159,7 +159,7 @@ class PressAnyKeyLogic extends Component {
   }
 
   private showPromptLabel(): void {
-    const labelEntity = this.scene.spawn("press-any-key-label");
+    const labelEntity = this.entity.spawnChild("press-any-key-label");
     const panel = labelEntity.add(
       new UISurface({
         anchor: Anchor.BottomCenter,

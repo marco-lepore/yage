@@ -255,7 +255,8 @@ export class SlowMotionDemo extends FeelDemo {
             text: "GREEN: 0.12× → FREEZE",
             style: { fill: 0x86efac },
             duration: 0.9,
-            // Starts on the lower rail.
+            // Starts on the lower rail, 19 px below the demo's centre. The
+            // default offset would start it 16 px above the centre.
             offset: { x: 0, y: 19 },
             travel: { x: 0, y: -26 },
           }),

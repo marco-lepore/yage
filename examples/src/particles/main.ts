@@ -177,8 +177,8 @@ class DemoSelector extends Component {
 
   onAdd(): void {
     // Only the "texture" demo needs this — every other demo uses a built-in
-    // shape and loads nothing. The selector outlives every emitter it
-    // spawns, so it releases the texture.
+    // shape and loads nothing. The selector owns the texture and releases it
+    // with itself; emitters never destroy it.
     const texture = this.use(RendererKey).createTexture((g) => {
       g.circle(0, 0, 8).fill({ color: 0xffffff });
     });

@@ -120,6 +120,34 @@ class HudUpdater extends Component {
   }
 }
 
+/** Fires a burst at every click the UI lets through, and counts it. */
+class PlayerEntity extends Entity {
+  setup(params: { shots: ShotCounter }): void {
+    this.add(new Transform());
+    this.add(new ShootController(params.shots));
+  }
+}
+
+/** The bottom-centre readout of shots fired and UI clicks. */
+class HudEntity extends Entity {
+  setup(params: { shots: ShotCounter; clicks: UIClickCounter }): void {
+    const panel = this.add(
+      new UISurface({
+        anchor: Anchor.BottomCenter,
+        offset: { x: 0, y: -20 },
+        padding: 10,
+        background: { color: 0x000000, alpha: 0.6, radius: 6 },
+      }),
+    );
+    const text = panel.text("shots fired: 0    ui clicks: 0", {
+      fontFamily: "ui-monospace, Menlo, monospace",
+      fontSize: 16,
+      fill: 0xe2e8f0,
+    });
+    this.add(new HudUpdater(text, params.shots, params.clicks));
+  }
+}
+
 class DemoScene extends Scene {
   readonly name = "ui-consume";
 
@@ -149,25 +177,10 @@ class DemoScene extends Scene {
     );
 
     // -- Shoot controller (listens to `shoot` action) --
-    const player = this.spawn("player");
-    player.add(new Transform());
-    player.add(new ShootController(shots));
+    this.spawn(PlayerEntity, { shots });
 
     // -- HUD --
-    const hudPanel = this.spawn("hud").add(
-      new UISurface({
-        anchor: Anchor.BottomCenter,
-        offset: { x: 0, y: -20 },
-        padding: 10,
-        background: { color: 0x000000, alpha: 0.6, radius: 6 },
-      }),
-    );
-    const hudText = hudPanel.text("shots fired: 0    ui clicks: 0", {
-      fontFamily: "ui-monospace, Menlo, monospace",
-      fontSize: 16,
-      fill: 0xe2e8f0,
-    });
-    this.spawn("hud-updater").add(new HudUpdater(hudText, shots, clicks));
+    this.spawn(HudEntity, { shots, clicks });
 
     // -- Consume panel (top-left, default `consumeInput: true`) --
     const consumePanel = this.spawn("ui-consume").add(

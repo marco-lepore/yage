@@ -136,7 +136,9 @@ class GrappleController extends Component {
       }),
     );
 
-    const hud = this.scene.spawn("grapple-hud");
+    // A child of the grapple entity, which sits at the origin, so the
+    // position is in screen pixels.
+    const hud = this.entity.spawnChild("grapple-hud");
     hud.add(new Transform({ position: new Vec2(16, 12) }));
     this.modeText = hud.add(
       new TextComponent({

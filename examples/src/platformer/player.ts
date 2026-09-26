@@ -233,9 +233,10 @@ class PlayerController extends Component {
   }
 
   private redrawPlayer(airborne: boolean): void {
-    const g = this.graphics.graphics;
-    g.clear();
-    drawPlayerGraphics(g, airborne);
+    this.graphics.draw((g) => {
+      g.clear();
+      drawPlayerGraphics(g, airborne);
+    });
   }
 }
 

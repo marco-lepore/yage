@@ -119,6 +119,23 @@ class LandmarkEntity extends Entity {
   }
 }
 
+/** The arrow the camera follows. WASD moves it; Space shakes the camera and
+ *  Q / E / R zoom. */
+class PlayerEntity extends Entity {
+  setup(params: { camera: CameraEntity }): void {
+    this.add(new Transform({ position: new Vec2(1000, 1000) }));
+    this.add(
+      new GraphicsComponent({ layer: "player" }).draw((g) => {
+        // Arrow-shaped player
+        g.poly([0, -18, 12, 14, 0, 8, -12, 14]).fill({ color: 0x00ffaa });
+        // Small dot at center
+        g.circle(0, 0, 3).fill({ color: 0xffffff });
+      }),
+    );
+    this.add(new PlayerController(params.camera));
+  }
+}
+
 /** A translucent rectangle standing in for a building. */
 class BuildingEntity extends Entity {
   setup(params: {
@@ -161,17 +178,7 @@ class CameraScene extends Scene {
     this.spawnLandmarks();
 
     // Player
-    const player = this.spawn("player");
-    player.add(new Transform({ position: new Vec2(1000, 1000) }));
-    player.add(
-      new GraphicsComponent({ layer: "player" }).draw((g) => {
-        // Arrow-shaped player
-        g.poly([0, -18, 12, 14, 0, 8, -12, 14]).fill({ color: 0x00ffaa });
-        // Small dot at center
-        g.circle(0, 0, 3).fill({ color: 0xffffff });
-      }),
-    );
-    player.add(new PlayerController(cam));
+    this.spawn(PlayerEntity, { camera: cam });
   }
 
   private drawGrid(): void {

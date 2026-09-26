@@ -27,9 +27,9 @@
  *
  * The quest log, the inventory and the three bindings live in the `Journal`
  * component on a keyed host entity. A `QuestController` on the same entity
- * mirrors the log onto the engine bus, which proves the bus-mirror path: the
- * HUD redraws on `QuestChangedEvent` and toasts on `QuestCompletedEvent`,
- * both heard at the scene.
+ * re-emits the log's changes as entity events on that entity, and they bubble
+ * to the scene: the HUD redraws on `QuestChangedEvent` and toasts on
+ * `QuestCompletedEvent`, both heard at the scene.
  *
  * Controls: WASD/arrows walk · E interact/talk/defeat.
  */
@@ -238,9 +238,9 @@ class Journal extends Component {
   }
 }
 
-/** Hosts the journal, plus the `QuestController` that mirrors its log onto
- *  the engine bus as `QuestCompletedEvent`, `QuestChangedEvent` and the
- *  rest. Spawned with `JOURNAL_KEY`. */
+/** Hosts the journal, plus the `QuestController` that emits its log's
+ *  changes on this entity as `QuestCompletedEvent`, `QuestChangedEvent` and
+ *  the rest; they bubble to the scene. Spawned with `JOURNAL_KEY`. */
 class JournalEntity extends Entity {
   journal!: Journal;
 
@@ -506,7 +506,7 @@ class QuestHud extends Component {
     });
     this.listenScene(QuestChangedEvent, () => this.redraw());
     this.listenScene(QuestCompletedEvent, ({ questId }) => {
-      // Bus payloads carry `string` ids (event tokens can't be generic);
+      // Event payloads carry `string` ids (event tokens can't be generic);
       // `tryGet` reads the title without narrowing back to the literal union.
       this._toast = `Quest complete: ${QUESTS.tryGet(questId)?.title ?? questId}`;
       this.toastLife.restart();

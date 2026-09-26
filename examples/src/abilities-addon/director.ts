@@ -7,7 +7,6 @@ import {
   Vec2,
 } from "@yagejs/core";
 import type { ProcessSlot } from "@yagejs/core";
-import { GraphicsComponent } from "@yagejs/renderer";
 import { Health, HealthDied } from "@yagejs-addons/abilities";
 import { ARENA_MARGIN, HEIGHT, PLAYER_KEY, WIDTH } from "./constants.js";
 import { statsOf } from "./stats.js";
@@ -18,6 +17,7 @@ import {
   PICKUP_SPAWN_INTERVAL,
   PICKUP_SPECS,
   Pickup,
+  PickupEntity,
   grantStat,
 } from "./enemies.js";
 
@@ -110,16 +110,10 @@ export class GameDirector extends Component {
 
   private spawnPickup(): void {
     const spec = this.random.pick(PICKUP_SPECS);
-    const gem = this.scene.spawn("pickup");
-    gem.add(new Transform({ position: this.randomArenaPoint(60) }));
-    gem.add(
-      new GraphicsComponent().draw((g) => {
-        g.roundRect(-9, -9, 18, 18, 4)
-          .fill({ color: spec.color })
-          .stroke({ color: 0xffffff, width: 1.5, alpha: 0.7 });
-      }),
-    );
-    gem.add(new Pickup(spec));
+    this.scene.spawn(PickupEntity, {
+      spec,
+      position: this.randomArenaPoint(60),
+    });
   }
 
   private collectPickups(): void {

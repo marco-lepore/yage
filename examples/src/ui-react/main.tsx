@@ -1,6 +1,13 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Component, Engine, Scene, Vec2, Transform } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  Entity,
+  Scene,
+  Vec2,
+  Transform,
+} from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent, texture } from "@yagejs/renderer";
 import { UIPlugin } from "@yagejs/ui";
 import {
@@ -292,6 +299,20 @@ function MainMenu({ xpFill }: { xpFill: XpFill }) {
 }
 
 // ---------------------------------------------------------------------------
+// Entities
+// ---------------------------------------------------------------------------
+
+/** The React main menu, centred on screen, and the XP it shows. */
+class MainMenuEntity extends Entity {
+  setup(): void {
+    const xpFill = this.add(new XpFill());
+    this.add(new UIRoot({ anchor: Anchor.Center })).render(
+      <MainMenu xpFill={xpFill} />,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Scene
 // ---------------------------------------------------------------------------
 class UIReactScene extends Scene {
@@ -310,10 +331,7 @@ class UIReactScene extends Scene {
     );
 
     // Mount React UI
-    const menuEntity = this.spawn("menu");
-    const xpFill = menuEntity.add(new XpFill());
-    const root = menuEntity.add(new UIRoot({ anchor: Anchor.Center }));
-    root.render(<MainMenu xpFill={xpFill} />);
+    this.spawn(MainMenuEntity);
   }
 }
 

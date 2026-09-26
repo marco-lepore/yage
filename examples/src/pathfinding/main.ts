@@ -136,9 +136,9 @@ class GameController extends Component {
   }
 
   private drawPath(path: Path | null): void {
-    this.graphics.graphics.clear();
-    if (!path) return;
     this.graphics.draw((g) => {
+      g.clear();
+      if (!path) return;
       const [first, ...rest] = path.waypoints;
       if (!first) return;
       g.moveTo(first.x, first.y);
@@ -151,8 +151,9 @@ class GameController extends Component {
 }
 
 // ---------------------------------------------------------------------------
-// PathfindingProbe — Inspector-readable state for e2e tests:
-// `inspector.getComponentData("controller", "PathfindingProbe")`
+// PathfindingProbe — the last path's length and cost, and whether the agent
+// is still walking it. Tests can read it with
+// `inspector.getComponentData("PathControllerEntity", "PathfindingProbe")`.
 // ---------------------------------------------------------------------------
 class PathfindingProbe extends Component {
   private readonly controller = this.sibling(GameController);
@@ -174,6 +175,17 @@ class PathfindingProbe extends Component {
   /** Whether the agent is still walking the path. */
   get moving(): boolean {
     return this.agent.moving;
+  }
+}
+
+/** Turns clicks into paths for the agent and draws the last path found. */
+class PathControllerEntity extends Entity {
+  setup(params: { grid: GridGraph; agent: AgentEntity }): void {
+    const { grid, agent } = params;
+    this.add(new Transform());
+    this.add(new GraphicsComponent());
+    this.add(new GameController(grid, agent));
+    this.add(new PathfindingProbe(agent.get(AgentController)));
   }
 }
 
@@ -215,11 +227,7 @@ class PathfindingScene extends Scene {
       camera: cam,
     });
 
-    const controller = this.spawn("controller");
-    controller.add(new Transform());
-    controller.add(new GraphicsComponent());
-    controller.add(new GameController(grid, agent));
-    controller.add(new PathfindingProbe(agent.get(AgentController)));
+    this.spawn(PathControllerEntity, { grid, agent });
   }
 }
 

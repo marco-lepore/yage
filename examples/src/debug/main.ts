@@ -116,6 +116,15 @@ class ShapeEntity extends Entity {
   }
 }
 
+/** Drops the falling shapes: one every 0.5 s and five more on Space. */
+class SpawnerEntity extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(new ProcessComponent());
+    this.add(new ShapeSpawner());
+  }
+}
+
 /** A static wall around the arena. */
 class WallEntity extends Entity {
   setup(params: {
@@ -151,10 +160,7 @@ class DebugDemoScene extends Scene {
 
   onEnter(): void {
     // Spawner entity
-    const ctrl = this.spawn("spawner");
-    ctrl.add(new Transform());
-    ctrl.add(new ProcessComponent());
-    ctrl.add(new ShapeSpawner());
+    this.spawn(SpawnerEntity);
 
     // Walls (static — gray debug outlines)
     const walls = [

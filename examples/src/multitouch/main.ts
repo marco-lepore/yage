@@ -1,6 +1,7 @@
 import {
   Component,
   Engine,
+  Entity,
   EventBusKey,
   Scene,
   Transform,
@@ -233,21 +234,27 @@ class PointerHud extends Component {
   }
 }
 
-class MultitouchScene extends Scene {
-  readonly name = "multitouch";
+// ---------------------------------------------------------------------------
+// Entities
+// ---------------------------------------------------------------------------
 
-  onEnter(): void {
-    // Visualizer — owns the canvas-sized GraphicsComponent at origin so the
-    // disks / trails / ripples are positioned in raw screen space.
-    const viz = this.spawn("visualizer");
-    viz.add(new Transform({ position: new Vec2(0, 0) }));
-    viz.add(new GraphicsComponent());
-    viz.add(new MultitouchVisualizer());
+/** The disks, trails and ripples under every pointer. The graphics sit at the
+ *  origin, so they are drawn in raw screen space. */
+class PointerVisualizerEntity extends Entity {
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(0, 0) }));
+    this.add(new GraphicsComponent());
+    this.add(new MultitouchVisualizer());
+  }
+}
 
-    // HUD header text
-    const headerEntity = this.spawn("hud-header");
-    headerEntity.add(new Transform({ position: new Vec2(20, 20) }));
-    const headerText = headerEntity.add(
+/** The header line and the per-pointer list at the top left. The HUD entity
+ *  has no Transform, so its children's positions are in screen pixels. */
+class PointerHudEntity extends Entity {
+  setup(): void {
+    const header = this.spawnChild("hud-header");
+    header.add(new Transform({ position: new Vec2(20, 20) }));
+    const headerText = header.add(
       new TextComponent({
         text: "",
         style: {
@@ -258,10 +265,9 @@ class MultitouchScene extends Scene {
       }),
     );
 
-    // Per-pointer list
-    const listEntity = this.spawn("hud-list");
-    listEntity.add(new Transform({ position: new Vec2(20, 50) }));
-    const listText = listEntity.add(
+    const list = this.spawnChild("hud-list");
+    list.add(new Transform({ position: new Vec2(20, 50) }));
+    const listText = list.add(
       new TextComponent({
         text: "—",
         style: {
@@ -273,7 +279,19 @@ class MultitouchScene extends Scene {
       }),
     );
 
-    headerEntity.add(new PointerHud(headerText, listText));
+    this.add(new PointerHud(headerText, listText));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scene
+// ---------------------------------------------------------------------------
+class MultitouchScene extends Scene {
+  readonly name = "multitouch";
+
+  onEnter(): void {
+    this.spawn(PointerVisualizerEntity);
+    this.spawn(PointerHudEntity);
 
     // Footer hint
     const footer = this.spawn("footer");

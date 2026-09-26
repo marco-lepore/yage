@@ -153,21 +153,26 @@ class GridRedraw extends Component {
     const yStart = Math.floor(v.y / step) * step;
     const yEnd = Math.ceil((v.y + v.height) / step) * step;
 
-    const g = this.graphics.graphics;
-    g.clear();
-    for (let x = xStart; x <= xEnd; x += step) {
-      g.moveTo(x, yStart).lineTo(x, yEnd).stroke({ color: 0x1f2937, width: 1 });
-    }
-    for (let y = yStart; y <= yEnd; y += step) {
-      g.moveTo(xStart, y).lineTo(xEnd, y).stroke({ color: 0x1f2937, width: 1 });
-    }
-    // Center crosshair.
-    g.moveTo(VIRTUAL_WIDTH / 2 - 20, VIRTUAL_HEIGHT / 2)
-      .lineTo(VIRTUAL_WIDTH / 2 + 20, VIRTUAL_HEIGHT / 2)
-      .stroke({ color: 0x64748b, width: 2 });
-    g.moveTo(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2 - 20)
-      .lineTo(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2 + 20)
-      .stroke({ color: 0x64748b, width: 2 });
+    this.graphics.draw((g) => {
+      g.clear();
+      for (let x = xStart; x <= xEnd; x += step) {
+        g.moveTo(x, yStart)
+          .lineTo(x, yEnd)
+          .stroke({ color: 0x1f2937, width: 1 });
+      }
+      for (let y = yStart; y <= yEnd; y += step) {
+        g.moveTo(xStart, y)
+          .lineTo(xEnd, y)
+          .stroke({ color: 0x1f2937, width: 1 });
+      }
+      // Center crosshair.
+      g.moveTo(VIRTUAL_WIDTH / 2 - 20, VIRTUAL_HEIGHT / 2)
+        .lineTo(VIRTUAL_WIDTH / 2 + 20, VIRTUAL_HEIGHT / 2)
+        .stroke({ color: 0x64748b, width: 2 });
+      g.moveTo(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2 - 20)
+        .lineTo(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2 + 20)
+        .stroke({ color: 0x64748b, width: 2 });
+    });
   }
 }
 
@@ -220,57 +225,58 @@ class FogOverlay extends Component {
     if (key === this.lastKey) return;
     this.lastKey = key;
 
-    const g = this.graphics.graphics;
-    g.clear();
+    this.graphics.draw((g) => {
+      g.clear();
 
-    for (const r of rects) {
-      // Each extended strip is flush to exactly one edge of the virtual rect
-      // (letterbox/expand scales on one axis only, so top+bottom OR left+right
-      // pairs, never corner-mixed).
-      const EPS = 0.5;
-      const atTop = r.y + r.height <= EPS;
-      const atBottom = r.y >= VIRTUAL_HEIGHT - EPS;
-      const atLeft = r.x + r.width <= EPS;
-      const atRight = r.x >= VIRTUAL_WIDTH - EPS;
+      for (const r of rects) {
+        // Each extended strip is flush to exactly one edge of the virtual rect
+        // (letterbox/expand scales on one axis only, so top+bottom OR left+right
+        // pairs, never corner-mixed).
+        const EPS = 0.5;
+        const atTop = r.y + r.height <= EPS;
+        const atBottom = r.y >= VIRTUAL_HEIGHT - EPS;
+        const atLeft = r.x + r.width <= EPS;
+        const atRight = r.x >= VIRTUAL_WIDTH - EPS;
 
-      const axisSize = atTop || atBottom ? r.height : r.width;
-      const gradW = Math.min(FOG_GRADIENT_WIDTH, axisSize);
-      const bulk = axisSize - gradW;
+        const axisSize = atTop || atBottom ? r.height : r.width;
+        const gradW = Math.min(FOG_GRADIENT_WIDTH, axisSize);
+        const bulk = axisSize - gradW;
 
-      if (atTop) {
-        if (bulk > 0) {
-          g.rect(r.x, r.y, r.width, bulk).fill({
-            color: 0x000000,
-            alpha: FOG_ALPHA,
-          });
-        }
-        g.rect(r.x, r.y + bulk, r.width, gradW).fill(this.gradTopInner);
-      } else if (atBottom) {
-        g.rect(r.x, r.y, r.width, gradW).fill(this.gradBottomInner);
-        if (bulk > 0) {
-          g.rect(r.x, r.y + gradW, r.width, bulk).fill({
-            color: 0x000000,
-            alpha: FOG_ALPHA,
-          });
-        }
-      } else if (atLeft) {
-        if (bulk > 0) {
-          g.rect(r.x, r.y, bulk, r.height).fill({
-            color: 0x000000,
-            alpha: FOG_ALPHA,
-          });
-        }
-        g.rect(r.x + bulk, r.y, gradW, r.height).fill(this.gradLeftInner);
-      } else if (atRight) {
-        g.rect(r.x, r.y, gradW, r.height).fill(this.gradRightInner);
-        if (bulk > 0) {
-          g.rect(r.x + gradW, r.y, bulk, r.height).fill({
-            color: 0x000000,
-            alpha: FOG_ALPHA,
-          });
+        if (atTop) {
+          if (bulk > 0) {
+            g.rect(r.x, r.y, r.width, bulk).fill({
+              color: 0x000000,
+              alpha: FOG_ALPHA,
+            });
+          }
+          g.rect(r.x, r.y + bulk, r.width, gradW).fill(this.gradTopInner);
+        } else if (atBottom) {
+          g.rect(r.x, r.y, r.width, gradW).fill(this.gradBottomInner);
+          if (bulk > 0) {
+            g.rect(r.x, r.y + gradW, r.width, bulk).fill({
+              color: 0x000000,
+              alpha: FOG_ALPHA,
+            });
+          }
+        } else if (atLeft) {
+          if (bulk > 0) {
+            g.rect(r.x, r.y, bulk, r.height).fill({
+              color: 0x000000,
+              alpha: FOG_ALPHA,
+            });
+          }
+          g.rect(r.x + bulk, r.y, gradW, r.height).fill(this.gradLeftInner);
+        } else if (atRight) {
+          g.rect(r.x, r.y, gradW, r.height).fill(this.gradRightInner);
+          if (bulk > 0) {
+            g.rect(r.x + gradW, r.y, bulk, r.height).fill({
+              color: 0x000000,
+              alpha: FOG_ALPHA,
+            });
+          }
         }
       }
-    }
+    });
   }
 
   onDestroy(): void {
@@ -310,6 +316,32 @@ class ReadoutUpdater extends Component {
 // ---------------------------------------------------------------------------
 // Entities
 // ---------------------------------------------------------------------------
+/** The background grid, redrawn to reach the canvas edges on every resize. */
+class GridEntity extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(new GraphicsComponent({ layer: "grid" }));
+    this.add(new GridRedraw());
+  }
+}
+
+/** The fog over `extendedVirtualRects`, the bars outside the play area. */
+class FogEntity extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(new GraphicsComponent({ layer: "fog" }));
+    this.add(new FogOverlay());
+  }
+}
+
+/** Writes the current fit state into the page's readout line. */
+class ReadoutEntity extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(new ReadoutUpdater());
+  }
+}
+
 /** A ball that bounces across the full `visibleCanvasRect`. */
 class BallEntity extends Entity {
   setup(params: {
@@ -430,10 +462,7 @@ class ResponsiveUIScene extends Scene {
 
   onEnter(): void {
     // Grid — drawn dynamically so it reaches the canvas edges on every resize.
-    const grid = this.spawn("grid");
-    grid.add(new Transform());
-    grid.add(new GraphicsComponent({ layer: "grid" }));
-    grid.add(new GridRedraw());
+    this.spawn(GridEntity);
 
     // Balls — bouncing across the full `visibleCanvasRect`, so they roam
     // through the expand bars; initial spawn stays inside the virtual rect
@@ -453,10 +482,7 @@ class ResponsiveUIScene extends Scene {
     }
 
     // Fog overlay covering `extendedVirtualRects` (the bars).
-    const fog = this.spawn("fog");
-    fog.add(new Transform());
-    fog.add(new GraphicsComponent({ layer: "fog" }));
-    fog.add(new FogOverlay());
+    this.spawn(FogEntity);
 
     // HUD cards in the four canvas corners.
     for (const corner of Object.keys(HUD_CARDS) as Corner[]) {
@@ -464,9 +490,7 @@ class ResponsiveUIScene extends Scene {
     }
 
     // Live readout.
-    const info = this.spawn("readout");
-    info.add(new Transform());
-    info.add(new ReadoutUpdater());
+    this.spawn(ReadoutEntity);
   }
 }
 
