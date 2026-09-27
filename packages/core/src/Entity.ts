@@ -52,11 +52,6 @@ function classChain(cls: ComponentClass): readonly ComponentClass[] {
   return chain;
 }
 
-/** A class's own `static defaultName`; one it inherits does not count. */
-function ownDefaultName(Class: typeof Entity): string | undefined {
-  return Object.hasOwn(Class, "defaultName") ? Class.defaultName : undefined;
-}
-
 /** Reset the entity ID counter. Exposed for testing only. */
 export function _resetEntityIdCounter(): void {
   nextEntityId = 1;
@@ -133,20 +128,6 @@ export class Entity {
    */
   declare readonly fixedUpdate?: never;
 
-  /**
-   * The `name` an entity of this exact class gets when it is spawned without
-   * one. Without it, the default is the class name, which a minified build
-   * shortens unless the build keeps names. A subclass that does not declare
-   * its own uses its class name.
-   *
-   * ```ts
-   * class Crate extends Entity {
-   *   static defaultName = "Crate";
-   * }
-   * ```
-   */
-  declare static defaultName?: string;
-
   private components = new Map<ComponentClass, Component>();
   /**
    * Ancestor index: every class in a component's prototype chain maps to the
@@ -177,8 +158,7 @@ export class Entity {
 
   constructor(name?: string, tags?: Iterable<string>) {
     this.id = nextEntityId++;
-    this.name =
-      name ?? ownDefaultName(new.target) ?? new.target.name ?? "Entity";
+    this.name = name ?? new.target.name ?? "Entity";
     this.tags = new Set(tags);
   }
 

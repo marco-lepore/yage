@@ -45,8 +45,7 @@ import type {
 } from "@yagejs/core";
 
 declare class Entity extends BaseEntity {
-  static defaultName?: string; // name when spawned without one; not inherited
-  readonly name: string; // spawn's name, else defaultName, else the class name
+  readonly name: string;
   readonly key?: string; // stable identity (opt-in)
   get scene(): Scene; // throws if detached
   get tryScene(): Scene | null; // null if detached

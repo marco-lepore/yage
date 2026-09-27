@@ -554,5 +554,5 @@ minutes.
   queries; `inspector.time.*` throws without `DebugPlugin` installed, and
   `inspector.input.*` throws without `InputPlugin`.
 - **A development tool.** Production builds should leave out `DebugPlugin` and
-  `InspectorPlugin`, which keeps the Inspector's code out of the bundle, and
-  construct `Engine` without `debug: true` to avoid exposing `window.__yage__`.
+  `InspectorPlugin`, so the game runs without an Inspector, and construct
+  `Engine` without `debug: true` to avoid exposing `window.__yage__`.

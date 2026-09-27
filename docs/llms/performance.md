@@ -32,12 +32,11 @@ layer. See the effects doc for scope options.
 ## Debug tooling cost
 
 The engine creates no Inspector. `DebugPlugin` installs one, and so does
-`InspectorPlugin`; an installed Inspector adds about 25 KB of minified code and
-per-frame bookkeeping (event recording while the event log is on, `waitFor`
-deadline checks). `debug: true` only publishes `window.__yage__`. Keep the
-tooling while developing. Leave `DebugPlugin` and `InspectorPlugin` out of
-production builds and profiling runs, so the bundle and a measurement reflect
-the game and not the tooling.
+`InspectorPlugin`; an installed Inspector adds per-frame bookkeeping (event
+recording while the event log is on, `waitFor` deadline checks). `debug: true`
+only publishes `window.__yage__`. Keep the tooling while developing. Leave
+`DebugPlugin` and `InspectorPlugin` out of production builds and profiling runs,
+so a measurement reflects the game and not the tooling.
 
 ## Pooling
 

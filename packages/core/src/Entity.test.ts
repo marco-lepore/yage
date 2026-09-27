@@ -63,22 +63,6 @@ describe("Entity", () => {
       expect(new Entity().name).toBe("Entity");
     });
 
-    it("defaults name to the class's own static defaultName", () => {
-      class Minified extends Entity {
-        static defaultName = "Crate";
-      }
-      expect(new Minified().name).toBe("Crate");
-      expect(new Minified("named").name).toBe("named");
-    });
-
-    it("does not pass a defaultName down to a subclass", () => {
-      class Base extends Entity {
-        static defaultName = "Base";
-      }
-      class Arrow extends Base {}
-      expect(new Arrow().name).toBe("Arrow");
-    });
-
     it("supports tags", () => {
       const e = new Entity("e", ["enemy", "damageable"]);
       expect(e.tags.has("enemy")).toBe(true);

@@ -5,7 +5,7 @@ import { MainScene } from "./scenes/MainScene";
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
   // Puts the inspector on window.__yage__ for the browser console under
-  // `npm run dev`; `npm run build` leaves it out of the bundle.
+  // `npm run dev`; a production build does not install it.
   // DebugPlugin (below) installs one as well; keeping both is harmless.
   if (import.meta.env.DEV) {
     engine.use(new InspectorPlugin());

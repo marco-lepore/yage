@@ -316,9 +316,7 @@ is demonstrated, to avoid sprawl.
 - **Copy tooling from `packages/particles/`.** `tsconfig.json` extends
   `../../../tsconfig.base.json`; the nested addon path needs the extra `../`.
   `tsup.config.ts` builds ESM and CJS with type declarations, sourcemaps,
-  and an `es2022` target. It does not set `keepNames`: that option makes
-  bundlers keep every class, used or not. An entity class whose default name
-  code looks up declares `static defaultName`. `vitest.config.ts` keeps the oxc
+  `keepNames`, and an `es2022` target. `vitest.config.ts` keeps the oxc
   legacy-decorator flag for YAGE decorators such as `@trait`. Add
   `@vitest/coverage-v8` as a devDependency.
 

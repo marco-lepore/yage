@@ -287,7 +287,7 @@ window.__yage__.inspector.snapshot(); // debug: true publishes it here too
 ```
 
 The engine does not create an Inspector by itself, so a production build that
-installs neither plugin ships none of its code. `debug: true` publishes
+installs neither plugin runs without one. `debug: true` publishes
 `window.__yage__`; if no Inspector is installed, the engine warns once in a
 development build. Installing both plugins is harmless: whichever installs
 first creates the Inspector, and the other uses it.

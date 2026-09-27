@@ -8,5 +8,6 @@ export default defineConfig({
   dts: !isWatch,
   clean: !isWatch,
   sourcemap: true,
+  keepNames: true,
   target: "es2022",
 });
