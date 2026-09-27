@@ -7,6 +7,7 @@ import {
   Transform,
   Vec2,
   type ProcessSlot,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   GraphicsComponent,
@@ -305,6 +306,7 @@ class ControlsDemoScene extends Scene {
 
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

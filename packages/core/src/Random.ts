@@ -17,10 +17,10 @@ export interface RandomService {
 }
 
 /**
- * Internal extension that exposes mid-stream reseeding. The Inspector uses
- * this to enforce deterministic E2E mode without leaking the foot-gun
- * (game code calling `setSeed` would corrupt other consumers' sequences in
- * the same scene).
+ * Internal extension that exposes mid-stream reseeding. `SceneRandomSource`
+ * uses this to reseed every scene at once without leaking the foot-gun
+ * (game code calling `setSeed` on one scene's RNG would corrupt other
+ * consumers' sequences in the same scene).
  *
  * @internal
  */
@@ -107,6 +107,6 @@ export function createRandomService(
 
 /**
  * Explicitly non-deterministic global RNG for boot-time or cross-scene code.
- * Inspector seed control never touches this instance.
+ * Scene seed control (`SceneRandomSource`) never touches this instance.
  */
 export const globalRandom = createRandomService();

@@ -1,4 +1,4 @@
-import type { Engine } from "@yagejs/core";
+import { InspectorKey, type Engine } from "@yagejs/core";
 import { RendererKey, type RendererPlugin } from "@yagejs/renderer";
 
 export type CaptureView = "content" | "camera";
@@ -90,7 +90,7 @@ export async function captureLab(
   if (view === "content") {
     const warning = contentWarning(engine);
     return {
-      dataUrl: await engine.inspector.capture.dataURL(),
+      dataUrl: await engine.context.resolve(InspectorKey).capture.dataURL(),
       warnings: warning === undefined ? [] : [warning],
     };
   }

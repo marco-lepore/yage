@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { Engine } from "./Engine.js";
-import { GameLoopKey } from "./EngineContext.js";
+import {
+  ErrorBoundaryKey,
+  GameLoopKey,
+  SystemSchedulerKey,
+} from "./EngineContext.js";
 
 describe("Engine startup", () => {
   it("ignores external ticker callbacks that fire before startup completes", async () => {
@@ -33,9 +37,14 @@ describe("Engine startup", () => {
       await startPromise;
 
       expect(engine.loop.frameCount).toBe(0);
-      expect(engine.inspector.getErrors().callbackErrors).toEqual([]);
       expect(
-        engine.inspector.getSystems().every((system) => system.enabled),
+        engine.context.resolve(ErrorBoundaryKey).getCallbackErrors(),
+      ).toEqual([]);
+      expect(
+        engine.context
+          .resolve(SystemSchedulerKey)
+          .getAllSystems()
+          .every((system) => system.enabled),
       ).toBe(true);
     } finally {
       engine.destroy();

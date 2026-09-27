@@ -12,7 +12,7 @@
  * spec exercises the whole rules-in/consequences-out loop.
  */
 
-import { Engine, Scene, Vec2 } from "@yagejs/core";
+import { Engine, Scene, Vec2, InspectorKey } from "@yagejs/core";
 import { RendererPlugin, CameraEntity } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
@@ -217,5 +217,5 @@ engine.use(
 engine.use(new InputPlugin({ actions: { interact: ["Enter"] } }));
 engine.use(new DebugPlugin());
 await engine.start();
-engine.inspector.time.freeze();
+engine.context.resolve(InspectorKey).time.freeze();
 await engine.scenes.push(new InventoryScene());

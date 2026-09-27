@@ -13,7 +13,7 @@ test can read where a button sits on screen, and a scaled or rotated element
 reports the area it covers.
 
 ```ts
-const root = engine.inspector.snapshot().scenes[0]?.ui?.root;
+const root = window.__yage__.inspector.snapshot().scenes[0]?.ui?.root;
 root?.children[0]?.bounds; // { x: 200, y: 150, width: 60, height: 30 }
 ```
 

@@ -12,7 +12,7 @@
  * `controls.ts` lists every effect and the scope it attaches at.
  */
 
-import { Engine } from "@yagejs/core";
+import { Engine, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { UIPlugin } from "@yagejs/ui";
 import {
@@ -24,6 +24,7 @@ import { ShowcaseScene } from "./scene.js";
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   const container = setupGameContainer(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
   engine.use(

@@ -22,15 +22,19 @@ engine.use(
 );
 ```
 
-`deterministicSeed` is opt-in. It seeds every scene RNG as the scene enters, so a test run rolls the same numbers without calling `inspector.setSeed(...)`. A `setSeed` call overrides it for current and later scenes. `globalRandom` is not affected. Leave it unset for normal debug builds so randomness behaves as in production.
+`DebugPlugin` installs the Inspector (`InspectorKey`) when the game has not installed one, and removes the one it installed on destroy. An Inspector the game installed through `InspectorPlugin` is reused and left in place. The overlay's clock, step key and event log all run through it.
+
+`deterministicSeed` is opt-in. It becomes the default seed of `engine.sceneRandom`, so every scene RNG starts from it as the scene enters and a test run rolls the same numbers without calling `inspector.setSeed(...)`. A `setSeed` call overrides it for current and later scenes until `engine.sceneRandom.clearSeed()`. `globalRandom` is not affected. Leave it unset for normal debug builds so randomness behaves as in production.
 
 ### The debug global
 
-An engine built with `debug: true` publishes `window.__yage__` as `start()` begins, carrying `inspector`, `logger` and `ready`. `DebugPlugin` supplies the controls accessed through `inspector.time`.
+An engine built with `debug: true` publishes `window.__yage__` as `start()` begins, carrying `logger`, `ready` and, once `DebugPlugin` has installed it, `inspector`. `DebugPlugin` also supplies the controls accessed through `inspector.time`.
 
 ```ts yage-context="browser"
 await window.__yage__.ready; // start() finished: plugins installed, loop running, onStart done
 ```
+
+`inspector` appears when `DebugPlugin` installs it, partway through `start()` and after the global is published. Read it after `ready`; a predicate that can run earlier reads `window.__yage__?.inspector?.…`, because `window.__yage__.inspector.x` throws while it is still undefined.
 
 `ready` is what an out-of-page driver waits on after a page load or reload. The global appears before startup work, so its presence alone does not mean the engine got anywhere; a boot failure rejects `ready` with the error that stopped it, instead of leaving a poller to time out.
 
@@ -108,7 +112,7 @@ drive.
 `window.__yage__.inspector` exposes deterministic test controls in addition to the snapshot/query API:
 
 ```ts yage-context="inspector"
-inspector.setSeed(42); // reseed every scene RNG
+inspector.setSeed(42); // reseed every scene RNG (calls engine.sceneRandom.setSeed)
 inspector.input.hold("ArrowRight", 30); // press, step N frames, release (sync)
 inspector.input.tap("Space", 1); // sync; steps through time.step()
 inspector.input.fireAction("jump", 1); // sync; one-frame pulse per frame
@@ -456,8 +460,9 @@ and reflect current config. They do not report live collision contacts.
 Component, namespace: K): InspectorFacets[K] | undefined` invokes only that
 namespace's contributor. It does not reflect fields or build a scene snapshot.
 Missing contributor, null/undefined result or a thrown inspection returns
-`undefined`, matching snapshot omission. PhysicsPlugin removes its contributor
-on teardown; no DebugPlugin is required.
+`undefined`, matching snapshot omission. PhysicsPlugin registers its
+contributor in `onStart` and removes it on teardown. An installed Inspector is
+required (`InspectorPlugin` is enough); DebugPlugin is not.
 
 ### Inspector extension namespaces
 
@@ -478,7 +483,9 @@ debug?.setHudVisible(false); // hide HUD text readouts (FPS, timings); world-spa
 // captures to keep wall-clock text out of screenshots.
 ```
 
-Plugins can publish their own inspector helpers the same way:
+Plugins can publish their own inspector helpers the same way. Do it in
+`onStart`: the Inspector is installed by a plugin, and every `install` has run
+by then. Use `tryResolve` so the plugin still works in a build without one:
 
 ```ts yage-context="browser"
 import { InspectorKey } from "@yagejs/core";
@@ -492,13 +499,18 @@ interface Inventory {
 class InventoryPlugin implements Plugin {
   readonly name = "inventory";
   readonly version = "1.0.0";
+  private context!: EngineContext;
 
   constructor(private readonly inventory: Inventory) {}
 
   install(context: EngineContext): void {
-    const inspector = context.resolve(InspectorKey);
+    this.context = context;
+  }
 
-    inspector.addExtension("inventory", {
+  onStart(): void {
+    // In onStart: DebugPlugin or InspectorPlugin installs the Inspector, and
+    // every install has run by now. tryResolve: a build without either has none.
+    this.context.tryResolve(InspectorKey)?.addExtension("inventory", {
       listItems: () => this.inventory.snapshot(),
       grantItem: (id: string) => this.inventory.grant(id),
     });

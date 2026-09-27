@@ -396,7 +396,7 @@ async function withoutSnapping(page: Page): Promise<void> {
  */
 async function placementsIn(page: Page): Promise<PlacementFact[]> {
   return page.evaluate(() => {
-    const facts = window.__yage__?.inspector.getExtension<{
+    const facts = window.__yage__?.inspector?.getExtension<{
       placements(): PlacementFact[];
     }>("levelFixture");
     return facts ? facts.placements() : [];
@@ -412,7 +412,7 @@ async function placementsIn(page: Page): Promise<PlacementFact[]> {
  */
 async function switchesIn(page: Page): Promise<SwitchFact[]> {
   return page.evaluate(() => {
-    const facts = window.__yage__?.inspector.getExtension<{
+    const facts = window.__yage__?.inspector?.getExtension<{
       switches(): SwitchFact[];
     }>("levelFixture");
     return facts ? facts.switches() : [];
@@ -531,7 +531,7 @@ async function editorCamera(
   page: Page,
 ): Promise<{ position: Point; zoom: number }> {
   const camera = await page.evaluate(
-    () => window.__yage__?.inspector.snapshot().camera,
+    () => window.__yage__?.inspector?.snapshot().camera,
   );
   expect(camera).toMatchObject({ rotation: 0 });
   if (!camera) throw new Error("the preview has no camera");
@@ -624,7 +624,7 @@ function fixed(value: number): string {
  */
 async function slimesIn(page: Page): Promise<SlimeFact[]> {
   return page.evaluate(() => {
-    const facts = window.__yage__?.inspector.getExtension<{
+    const facts = window.__yage__?.inspector?.getExtension<{
       slimes(): SlimeFact[];
     }>("levelFixture");
     return facts ? facts.slimes() : [];

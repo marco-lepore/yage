@@ -1,5 +1,6 @@
 import { Engine } from "./Engine.js";
 import type { EngineConfig } from "./Engine.js";
+import type { Plugin } from "./types.js";
 import { Scene } from "./Scene.js";
 import { Entity, _resetEntityIdCounter } from "./Entity.js";
 import {
@@ -24,10 +25,18 @@ class _TestScene extends Scene {
   }
 }
 
-/** Create a fully wired Engine for integration tests. */
-export async function createTestEngine(config?: EngineConfig): Promise<Engine> {
+/**
+ * Create a fully wired Engine for integration tests. `plugins` are installed
+ * before the engine starts; pass `new InspectorPlugin()` for a test that
+ * reads the Inspector.
+ */
+export async function createTestEngine(
+  config?: EngineConfig,
+  plugins: readonly Plugin[] = [],
+): Promise<Engine> {
   _resetEntityIdCounter();
   const engine = new Engine(config);
+  for (const plugin of plugins) engine.use(plugin);
   await engine.start();
   return engine;
 }

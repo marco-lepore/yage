@@ -1,4 +1,4 @@
-import { Engine, Scene } from "@yagejs/core";
+import { Engine, Scene, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 import {
@@ -376,6 +376,7 @@ class FocusScene extends Scene {
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   engine.use(
     new RendererPlugin({
       width: WIDTH,

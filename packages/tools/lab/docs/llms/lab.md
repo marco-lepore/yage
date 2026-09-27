@@ -657,7 +657,7 @@ built, so a scenario whose `setup` throws still leaves something to diagnose it
 with. Useful from a browser console or an out-of-page driver:
 
 ```ts
-import type { Engine, Scene } from "@yagejs/core";
+import type { Engine, Inspector, Scene } from "@yagejs/core";
 import type { ControlValue, DriveContext } from "@yagejs-tools/lab";
 import type {
   DriveResult,
@@ -670,6 +670,7 @@ import type {
 
 interface LabApi extends BaseLabApi {
   readonly engine: Engine;
+  readonly inspector: Inspector; // installed by the lab before the engine starts
   readonly scenarios: readonly ScenarioEntry[]; // { id, path, exportName, groups, label, title, hasDrive }
   readonly problems: readonly RegistryProblem[]; // modules that were skipped
   readonly clock: LabClock; // play/pause/step/speed

@@ -1,4 +1,4 @@
-import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { Engine, Scene, Transform, Vec2, InspectorKey } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, setupContainer } from "./shared.js";
@@ -63,7 +63,7 @@ engine.use(
 );
 engine.use(new DebugPlugin());
 await engine.start();
-engine.inspector.time.freeze();
+engine.context.resolve(InspectorKey).time.freeze();
 await engine.scenes.push(new BaseScene());
 
 (

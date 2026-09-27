@@ -29,6 +29,7 @@ import {
   RandomKey,
   Transform,
   Vec2,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -499,6 +500,7 @@ class ResponsiveUIScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

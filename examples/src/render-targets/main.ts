@@ -21,6 +21,7 @@ import {
   Scene,
   Transform,
   Vec2,
+  InspectorPlugin,
 } from "@yagejs/core";
 import type { ProcessSlot } from "@yagejs/core";
 import {
@@ -399,6 +400,7 @@ class RenderTargetScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   engine.use(
     new RendererPlugin({
       width: WIDTH,

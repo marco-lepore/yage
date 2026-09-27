@@ -169,6 +169,7 @@ import {
   EventBusKey,
   ErrorBoundary,
   ErrorBoundaryKey,
+  InspectorKey,
   Logger,
   LogLevel,
   SceneHookRegistry,
@@ -177,6 +178,7 @@ import {
 } from "@yagejs/core";
 import type { EngineEvents, SceneTransition } from "@yagejs/core";
 import { RendererPlugin } from "./RendererPlugin.js";
+import { RenderFacetContributor } from "./RenderFacetContributor.js";
 import { RendererKey } from "./types.js";
 import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
 import type { RendererConfig } from "./types.js";
@@ -290,6 +292,34 @@ describe("RendererPlugin", () => {
 
       const renderSystems = scheduler.getSystems("render" as never);
       expect(renderSystems).toHaveLength(1);
+    });
+  });
+
+  describe("onStart", () => {
+    it("registers the render facet with an Inspector installed after the renderer, and removes it on destroy", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      // Registered after install, the order a game gets when DebugPlugin
+      // (which installs the Inspector) comes after the renderer.
+      const unregister = vi.fn();
+      const registerFacetContributor = vi.fn(() => unregister);
+      context.register(InspectorKey, { registerFacetContributor } as never);
+
+      plugin.onStart();
+      expect(registerFacetContributor).toHaveBeenCalledWith(
+        expect.any(RenderFacetContributor),
+      );
+      plugin.onDestroy();
+      expect(unregister).toHaveBeenCalledOnce();
+    });
+
+    it("starts without an Inspector", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      expect(() => plugin.onStart()).not.toThrow();
+      plugin.onDestroy();
     });
   });
 

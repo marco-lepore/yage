@@ -1,4 +1,4 @@
-import { Engine, Component, Scene } from "@yagejs/core";
+import { Engine, Component, Scene, InspectorKey } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 import { DebugPlugin } from "@yagejs/debug";
@@ -51,5 +51,5 @@ engine.use(
 engine.use(new UIPlugin());
 engine.use(new DebugPlugin());
 await engine.start();
-engine.inspector.time.freeze();
+engine.context.resolve(InspectorKey).time.freeze();
 await engine.scenes.push(new UIButtonScene());

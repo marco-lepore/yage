@@ -20,6 +20,10 @@ export {
   normalizeSeed,
 } from "./Random.js";
 export type { RandomService } from "./Random.js";
+export {
+  SceneRandomSource,
+  SceneRandomSourceKey,
+} from "./SceneRandomSource.js";
 
 export { EventBus } from "./EventBus.js";
 export type { EventMap, EngineEvents } from "./EventBus.js";
@@ -110,6 +114,7 @@ export { GameLoop } from "./GameLoop.js";
 export type { GameLoopCallbacks, GameLoopConfig } from "./GameLoop.js";
 
 export { Inspector } from "./Inspector.js";
+export { InspectorPlugin, installInspector } from "./InspectorPlugin.js";
 export type {
   EntitySnapshot,
   SceneSnapshot,

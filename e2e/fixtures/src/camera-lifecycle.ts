@@ -9,7 +9,7 @@
  *   3. Pushing a second scene with its own camera doesn't disturb the
  *      lower scene's layer transforms.
  */
-import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { Engine, Scene, Transform, Vec2, InspectorKey } from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
@@ -90,7 +90,7 @@ engine.use(
 engine.use(new UIPlugin());
 engine.use(new DebugPlugin());
 await engine.start();
-engine.inspector.time.freeze();
+engine.context.resolve(InspectorKey).time.freeze();
 
 const baseScene = new BaseScene();
 await engine.scenes.push(baseScene);

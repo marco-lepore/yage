@@ -20,7 +20,7 @@ const engine = new Engine({
 
 | Option | Default | Purpose |
 |---|---|---|
-| `debug` | `false` | Enable verbose logging and dev tools |
+| `debug` | `false` | Publish `window.__yage__` for the browser console and test drivers. Its `inspector` comes from `DebugPlugin` or `InspectorPlugin` — see [The Inspector](/guides/debug/#the-inspector) |
 | `fixedTimestep` | `1 / 60` | Seconds per fixed-update tick |
 | `maxFixedStepsPerFrame` | `5` | Cap on fixed-update iterations per frame |
 
@@ -230,3 +230,14 @@ const uiPlugin: Plugin = {
 If a dependency is missing the engine throws at startup with a clear message
 listing the unresolved names. Circular dependencies are also detected and
 reported.
+
+Install order is not registration order. Plugins that declare no
+dependencies install first, in the order they were registered. A plugin with
+dependencies installs after all of them, even when you registered it first. So
+`DebugPlugin`, which depends on the renderer, installs after `InputPlugin` and
+`PhysicsPlugin` wherever you register it.
+
+A plugin that uses a service another plugin provides, without depending on it,
+resolves that service in `onStart` rather than `install`: by then every plugin
+has installed. `RendererPlugin` publishes its render facet to the Inspector this
+way, since the Inspector usually comes from `DebugPlugin`.

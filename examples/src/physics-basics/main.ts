@@ -13,6 +13,7 @@ import {
   Scene,
   Transform,
   Vec2,
+  InspectorPlugin,
 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
@@ -325,6 +326,7 @@ class PhysicsBasicsScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

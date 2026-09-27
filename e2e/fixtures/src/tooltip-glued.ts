@@ -9,7 +9,14 @@
  * trigger across samples (the overlay re-anchors it every frame against the
  * camera-transformed trigger — with no `<UIRoot>` / React present).
  */
-import { Engine, Scene, Transform, Vec2, Component } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Transform,
+  Vec2,
+  Component,
+  InspectorKey,
+} from "@yagejs/core";
 import { RendererPlugin, CameraEntity, ScreenFollow } from "@yagejs/renderer";
 import {
   UIPlugin,
@@ -153,5 +160,5 @@ engine.use(
 engine.use(new UIPlugin());
 engine.use(new DebugPlugin());
 await engine.start();
-engine.inspector.time.freeze();
+engine.context.resolve(InspectorKey).time.freeze();
 await engine.scenes.push(new TooltipScene());

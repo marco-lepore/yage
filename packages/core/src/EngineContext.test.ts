@@ -37,6 +37,23 @@ describe("EngineContext", () => {
     );
   });
 
+  it("appends the key's missingHint to the resolve error", () => {
+    const ctx = new EngineContext();
+    const key = new ServiceKey<string>("missing", {
+      missingHint: "Install MissingPlugin.",
+    });
+    expect(() => ctx.resolve(key)).toThrow(
+      'Service "missing" is not registered. Install MissingPlugin.',
+    );
+  });
+
+  it("names the plugins that install the Inspector when it is missing", () => {
+    const ctx = new EngineContext();
+    expect(() => ctx.resolve(InspectorKey)).toThrow(
+      /Install DebugPlugin \(@yagejs\/debug\) or InspectorPlugin \(@yagejs\/core\)\. .*onStart/,
+    );
+  });
+
   it("tryResolve returns undefined for unregistered key", () => {
     const ctx = new EngineContext();
     const key = new ServiceKey<string>("missing");

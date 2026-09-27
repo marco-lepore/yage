@@ -11,6 +11,7 @@ import {
   defineEvent,
   easeInOutQuad,
   type ProcessSlot,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -439,6 +440,7 @@ class AudioScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

@@ -22,6 +22,11 @@ export interface ServiceKeyOptions {
    * Default: `"engine"`.
    */
   scope?: ServiceScope;
+  /**
+   * Appended to the error thrown when the key resolves nowhere. Name what
+   * provides the service, e.g. the plugin to install.
+   */
+  missingHint?: string;
 }
 
 /**
@@ -34,6 +39,8 @@ export interface ServiceKeyOptions {
 export class ServiceKey<T> {
   /** Declared scope (engine or scene). Defaults to `"engine"`. */
   readonly scope: ServiceScope;
+  /** Appended to the error thrown when the key resolves nowhere. */
+  readonly missingHint: string | undefined;
 
   constructor(
     /** String identifier used for registration and resolution. */
@@ -41,10 +48,19 @@ export class ServiceKey<T> {
     options?: ServiceKeyOptions,
   ) {
     this.scope = options?.scope ?? "engine";
+    this.missingHint = options?.missingHint;
   }
 
   /** Phantom field to preserve the generic type. */
   declare readonly _type: T;
+}
+
+/**
+ * @internal The key's `missingHint` as a sentence to append to a
+ * "not registered" error, or an empty string.
+ */
+export function formatMissingHint(key: ServiceKey<unknown>): string {
+  return key.missingHint === undefined ? "" : ` ${key.missingHint}`;
 }
 
 /** Dependency injection container for engine services. */
@@ -62,7 +78,9 @@ export class EngineContext {
   /** Resolve a service. Throws if not registered. */
   resolve<T>(key: ServiceKey<T>): T {
     if (!this.services.has(key.id)) {
-      throw new Error(`Service "${key.id}" is not registered.`);
+      throw new Error(
+        `Service "${key.id}" is not registered.${formatMissingHint(key)}`,
+      );
     }
     return this.services.get(key.id) as T;
   }
@@ -101,7 +119,11 @@ export const SceneManagerKey = new ServiceKey<SceneManager>("sceneManager");
 export const LoggerKey = new ServiceKey<Logger>("logger");
 
 /** Key for the Inspector instance. */
-export const InspectorKey = new ServiceKey<Inspector>("inspector");
+export const InspectorKey = new ServiceKey<Inspector>("inspector", {
+  missingHint:
+    "Install DebugPlugin (@yagejs/debug) or InspectorPlugin (@yagejs/core). " +
+    "A plugin that does not depend on either resolves the Inspector in onStart.",
+});
 
 /** Key for the QueryCache instance. */
 export const QueryCacheKey = new ServiceKey<QueryCache>("queryCache");

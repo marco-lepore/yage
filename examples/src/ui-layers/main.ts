@@ -6,6 +6,7 @@ import {
   Component,
   Entity,
   RandomKey,
+  InspectorPlugin,
 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
@@ -207,6 +208,7 @@ class UILayersScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

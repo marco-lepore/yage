@@ -154,7 +154,7 @@ test.describe("Examples", () => {
     await page.goto("/platformer.html?test");
     await page.waitForFunction(
       () =>
-        window.__yage__?.inspector.getSceneStack().at(-1)?.name ===
+        window.__yage__?.inspector?.getSceneStack().at(-1)?.name ===
         "platformer",
       undefined,
       { timeout: 10_000 },
@@ -188,7 +188,7 @@ test.describe("Examples", () => {
   }) => {
     await page.goto("/loading-scene.html?test");
     await page.waitForFunction(
-      () => window.__yage__?.inspector.getSceneStack().at(-1)?.name === "boot",
+      () => window.__yage__?.inspector?.getSceneStack().at(-1)?.name === "boot",
       undefined,
       { timeout: 10_000 },
     );
@@ -308,7 +308,7 @@ test.describe("Examples", () => {
     await page.goto("/abilities-addon.html?test");
     await page.waitForFunction(
       () =>
-        window.__yage__?.inspector.getSceneStack().at(-1)?.name ===
+        window.__yage__?.inspector?.getSceneStack().at(-1)?.name ===
         "abilities-addon-demo",
       undefined,
       { timeout: 10_000 },

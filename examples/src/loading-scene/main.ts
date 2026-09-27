@@ -9,6 +9,7 @@ import {
   Scene,
   Transform,
   Vec2,
+  InspectorPlugin,
 } from "@yagejs/core";
 import type { AssetLoader, ProcessSystem } from "@yagejs/core";
 import { fade, GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
@@ -178,6 +179,7 @@ class PressAnyKeyLogic extends Component {
 // Boot the engine.
 // ---------------------------------------------------------------------------
 const engine = new Engine({ debug: true });
+engine.use(new InspectorPlugin());
 engine.use(
   new RendererPlugin({
     width: WIDTH,

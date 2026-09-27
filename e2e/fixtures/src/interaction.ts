@@ -9,7 +9,14 @@
  * addon's own auto-input wiring, not just the headless model.
  */
 
-import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  Scene,
+  Transform,
+  Vec2,
+  InspectorKey,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   CameraEntity,
@@ -153,5 +160,5 @@ engine.use(
 );
 engine.use(new DebugPlugin());
 await engine.start();
-engine.inspector.time.freeze();
+engine.context.resolve(InspectorKey).time.freeze();
 await engine.scenes.push(new InteractionScene());

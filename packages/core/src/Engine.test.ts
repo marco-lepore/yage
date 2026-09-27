@@ -10,6 +10,8 @@ import { defineEvent } from "./EventToken.js";
 import { Process } from "./Process.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { EntityPool } from "./EntityPool.js";
+import { InspectorPlugin } from "./InspectorPlugin.js";
+import { LogLevel } from "./Logger.js";
 import {
   EngineKey,
   EventBusKey,
@@ -75,7 +77,7 @@ describe("Engine", () => {
       expect(engine.loop).toBeDefined();
       expect(engine.logger).toBeDefined();
       expect(engine.scenes).toBeDefined();
-      expect(engine.inspector).toBeDefined();
+      expect(engine.sceneRandom).toBeDefined();
     });
 
     it("registers well-known services in context", async () => {
@@ -87,7 +89,13 @@ describe("Engine", () => {
       expect(engine.context.resolve(GameLoopKey)).toBe(engine.loop);
       expect(engine.context.has(QueryCacheKey)).toBe(true);
       expect(engine.context.has(ErrorBoundaryKey)).toBe(true);
-      expect(engine.context.has(InspectorKey)).toBe(true);
+    });
+
+    it("installs no Inspector unless a plugin does", async () => {
+      const engine = new Engine({ debug: true });
+      await engine.start();
+      expect(engine.context.has(InspectorKey)).toBe(false);
+      engine.destroy();
     });
   });
 
@@ -303,7 +311,8 @@ describe("Engine", () => {
         onStart,
       });
       await engine.start();
-      const systemCount = engine.inspector.getSystems().length;
+      const scheduler = engine.context.resolve(SystemSchedulerKey);
+      const systemCount = scheduler.getAllSystems().length;
       engine.loop.tick(16);
       expect(system.updates).toBe(1);
       engine.destroy();
@@ -312,7 +321,7 @@ describe("Engine", () => {
 
       expect(install).toHaveBeenCalledOnce();
       expect(onStart).toHaveBeenCalledOnce();
-      expect(engine.inspector.getSystems()).toHaveLength(systemCount);
+      expect(scheduler.getAllSystems()).toHaveLength(systemCount);
       expect(engine.loop.isRunning).toBe(false);
       // A stopped loop ignores tick(), so the system stays at its pre-destroy count.
       engine.loop.tick(16);
@@ -625,16 +634,61 @@ describe("Engine", () => {
   describe("debug mode", () => {
     it("exposes __yage__ on globalThis when debug is true", async () => {
       const engine = new Engine({ debug: true });
+      engine.use(new InspectorPlugin());
       await engine.start();
       const yageGlobal = (globalThis as Record<string, unknown>)["__yage__"] as
         | Record<string, unknown>
         | undefined;
       expect(yageGlobal).toBeDefined();
       if (yageGlobal) {
-        expect(yageGlobal["inspector"]).toBe(engine.inspector);
+        expect(yageGlobal["inspector"]).toBe(
+          engine.context.resolve(InspectorKey),
+        );
         expect(yageGlobal["logger"]).toBe(engine.logger);
       }
       engine.destroy();
+    });
+
+    it("publishes __yage__ without an inspector and warns once when none is installed", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const engine = new Engine({ debug: true });
+        await engine.start();
+        const yageGlobal = (globalThis as Record<string, unknown>)[
+          "__yage__"
+        ] as Record<string, unknown>;
+        expect(yageGlobal["inspector"]).toBeUndefined();
+        expect(yageGlobal["logger"]).toBe(engine.logger);
+        const warnings = warn.mock.calls.filter((call) =>
+          String(call[0]).includes("without an inspector"),
+        );
+        expect(warnings).toHaveLength(1);
+        engine.destroy();
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("does not warn about a missing inspector when one is installed or debug is off", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const withInspector = new Engine({ debug: true });
+        withInspector.use(new InspectorPlugin());
+        await withInspector.start();
+        withInspector.destroy();
+
+        const withoutDebug = new Engine();
+        await withoutDebug.start();
+        withoutDebug.destroy();
+
+        expect(
+          warn.mock.calls.some((call) =>
+            String(call[0]).includes("without an inspector"),
+          ),
+        ).toBe(false);
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it("removes __yage__ from globalThis on destroy when debug is true", async () => {
@@ -995,16 +1049,135 @@ describe("Engine", () => {
     });
   });
 
+  describe("scene hooks", () => {
+    it("registerSceneHooks runs the hooks for each scene until unregistered", async () => {
+      const engine = new Engine();
+      await engine.start();
+      const entered: string[] = [];
+      const unregister = engine.registerSceneHooks({
+        beforeEnter: (scene) => {
+          entered.push(scene.name);
+        },
+      });
+
+      await engine.scenes.push(new TestScene());
+      unregister();
+      await engine.scenes.push(new TestScene());
+
+      expect(entered).toEqual(["test"]);
+      engine.destroy();
+    });
+  });
+
+  describe("frame-end observers", () => {
+    class LateEndOfFrameSystem extends System {
+      readonly phase = Phase.EndOfFrame;
+      readonly priority = 100_000;
+      constructor(private readonly log: string[]) {
+        super();
+      }
+      update() {
+        this.log.push("end-of-frame system");
+      }
+    }
+
+    it("run after end-of-frame systems and the destroy flush, with the frame number", async () => {
+      const log: string[] = [];
+      const engine = new Engine();
+      engine.use({
+        name: "late",
+        version: "1.0.0",
+        registerSystems: (scheduler) =>
+          scheduler.add(new LateEndOfFrameSystem(log)),
+      });
+      await engine.start();
+      const scene = new TestScene();
+      await engine.scenes.push(scene);
+      const doomed = scene.spawn("doomed");
+      doomed.destroy();
+
+      const frames: number[] = [];
+      engine._observeFrameEnd((frame) => {
+        log.push("observer");
+        frames.push(frame);
+        expect(doomed.isDestroyed).toBe(true);
+        expect([...scene.getEntities()]).not.toContain(doomed);
+      });
+
+      engine.loop.tick(16);
+      expect(log).toEqual(["end-of-frame system", "observer"]);
+      expect(frames).toEqual([engine.loop.frameCount]);
+      engine.destroy();
+    });
+
+    it("run in registration order, and each disposer removes its own registration once", async () => {
+      const engine = new Engine();
+      await engine.start();
+      const calls: string[] = [];
+      const shared = () => calls.push("shared");
+      const stopFirst = engine._observeFrameEnd(shared);
+      engine._observeFrameEnd(() => calls.push("second"));
+      engine._observeFrameEnd(shared);
+
+      engine.loop.tick(16);
+      expect(calls).toEqual(["shared", "second", "shared"]);
+
+      calls.length = 0;
+      stopFirst();
+      stopFirst();
+      engine.loop.tick(16);
+      expect(calls).toEqual(["second", "shared"]);
+      engine.destroy();
+    });
+
+    it("finish the pass as the list stood when the frame ended", async () => {
+      const engine = new Engine();
+      await engine.start();
+      const calls: string[] = [];
+      let stopSecond: () => void = () => {};
+      engine._observeFrameEnd(() => {
+        calls.push("first");
+        stopSecond();
+      });
+      stopSecond = engine._observeFrameEnd(() => calls.push("second"));
+
+      engine.loop.tick(16);
+      engine.loop.tick(16);
+      expect(calls).toEqual(["first", "second", "first"]);
+      engine.destroy();
+    });
+
+    it("attribute a throwing observer and stop the loop", async () => {
+      const engine = new Engine({ logger: { level: LogLevel.None } });
+      await engine.start();
+      engine._observeFrameEnd(() => {
+        throw new Error("observer broke");
+      });
+
+      expect(() => engine.loop.tick(16)).toThrow("observer broke");
+      expect(engine.loop.isRunning).toBe(false);
+      const errors = engine.context
+        .resolve(ErrorBoundaryKey)
+        .getCallbackErrors();
+      expect(errors.at(-1)).toMatchObject({
+        kind: "Frame-end observer",
+        error: "observer broke",
+      });
+      engine.destroy();
+    });
+  });
+
   describe("inspector integration", () => {
     it("snapshot returns correct state", async () => {
       const engine = new Engine();
+      engine.use(new InspectorPlugin());
       await engine.start();
       const scene = new TestScene();
       await engine.scenes.push(scene);
       scene.spawn("a");
       scene.spawn("b");
 
-      const snap = engine.inspector.snapshot();
+      const snap = engine.context.resolve(InspectorKey).snapshot();
       expect(snap.entityCount).toBe(2);
       expect(snap.sceneStack).toHaveLength(1);
       engine.destroy();

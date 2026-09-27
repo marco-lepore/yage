@@ -7,6 +7,7 @@ import {
   Transform,
   Vec2,
   easeOutCubic,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -304,6 +305,7 @@ class SplitTextScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

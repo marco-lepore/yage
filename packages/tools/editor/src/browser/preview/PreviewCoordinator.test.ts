@@ -1,5 +1,5 @@
 import type { ColliderFacetSnapshot } from "@yagejs/physics";
-import { Inspector } from "@yagejs/core";
+import { Inspector, InspectorKey } from "@yagejs/core";
 import {
   Component,
   Transform,
@@ -396,7 +396,10 @@ function createParts(
       },
     },
     context: {
-      resolve: () => assets,
+      // The coordinator installs an Inspector unless one is registered; this
+      // stub always has the one built below.
+      has: (key: unknown) => key === InspectorKey,
+      resolve: (key: unknown) => (key === InspectorKey ? inspector : assets),
       // Keyed rather than "whatever the case passed": the coordinator resolves
       // two services now, and a stub that answers every key with the same
       // object hands one of them the other one.
@@ -411,7 +414,6 @@ function createParts(
     namespace: "collider",
     inspectComponent: (component) => colliderFacets.get(component),
   });
-  Object.assign(engine, { inspector });
   const store = new EditorStore({
     api: new EditorApiClient({
       token: "t",

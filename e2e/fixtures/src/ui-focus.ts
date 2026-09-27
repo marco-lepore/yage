@@ -1,4 +1,4 @@
-import { Component, Engine, Scene } from "@yagejs/core";
+import { Component, Engine, Scene, InspectorKey } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { Anchor, UICheckbox, UIPlugin, UISurface } from "@yagejs/ui";
@@ -284,5 +284,5 @@ await engine.start();
 // Injected pad state stays applied: real polling reconciles every gamepad code
 // against the pads the browser reports, and a test machine reports none.
 engine.context.resolve(InputManagerKey).setPollingEnabled(false);
-engine.inspector.time.freeze();
+engine.context.resolve(InspectorKey).time.freeze();
 await engine.scenes.push(new FocusScene());

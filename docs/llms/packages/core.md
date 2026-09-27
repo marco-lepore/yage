@@ -27,6 +27,11 @@ contract when a value import would add an optional runtime dependency. Keep a
 comment beside the repeated declaration that names the package that owns the
 key.
 
+`new ServiceKey<T>(id, { scope?, missingHint? })`. `missingHint` is appended to
+the error `resolve` / `use` throws when the key resolves nowhere; name what
+provides the service (`"Install HapticsPlugin."`). `InspectorKey`'s hint names
+`DebugPlugin` and `InspectorPlugin`.
+
 ### Entity
 
 ```ts
@@ -922,8 +927,8 @@ flows into the constructor unchanged, no `as` cast or widening helper needed.
 
 Seeded per-scene RNG. `RandomKey` is a scene-scoped `ServiceKey<RandomService>`;
 resolve it in a Component with `this.use(RandomKey)`. It stays deterministic
-under `inspector.setSeed(seed)` and replays; `Math.random()` does not, so using
-it breaks replay determinism.
+under a pinned seed and replays; `Math.random()` does not, so using it breaks
+replay determinism.
 
 ```ts yage-context="component"
 import { RandomKey } from "@yagejs/core";
@@ -941,8 +946,29 @@ rng.shuffle(array); // shuffle in place, returns the same array
 rng.getSeed(); // current seed
 ```
 
+`engine.sceneRandom` is the engine's `SceneRandomSource` (DI:
+`SceneRandomSourceKey`). It creates each scene's RNG and owns the seed:
+
+```ts
+import { SceneRandomSource as BaseSceneRandomSource } from "@yagejs/core";
+import type { RandomService } from "@yagejs/core";
+
+declare class SceneRandomSource extends BaseSceneRandomSource {
+  setSeed(seed: number): void; // reseed every scene on the stack and every later one
+  clearSeed(): void; // undo setSeed for scenes that enter later
+  createSceneRandom(): RandomService; // the engine calls this as each scene enters
+}
+```
+
+A scene RNG starts from the `setSeed` seed when one is set, else from
+`DebugPlugin`'s `deterministicSeed`, else from a fresh random seed. `setSeed`
+converts the seed with `normalizeSeed` and throws on `NaN` or `Infinity`.
+`clearSeed()` leaves scenes on the stack running their current sequence; a
+scene that enters later starts from `deterministicSeed` or a fresh seed again.
+`inspector.setSeed(seed)` calls `engine.sceneRandom.setSeed(seed)`.
+
 `globalRandom` is a process-wide `RandomService` for boot-time or cross-scene
-code that runs outside any scene. `inspector.setSeed` does not reseed it, so keep
+code that runs outside any scene. `setSeed` does not reseed it, so keep
 replay-critical rolls on the scene RNG (`RandomKey`).
 
 ### Preloading a Scene Ahead of Time
@@ -1180,19 +1206,39 @@ const { turret, target } = scene.spawnBatch((batch) => {
 
 ### Testing
 
-| Export                            | Purpose                                                                             |
-| --------------------------------- | ----------------------------------------------------------------------------------- |
-| `createTestEngine(config?)`       | Fully assembled Engine for integration tests                                        |
-| `createMockScene(name?)`          | Lightweight scene with EngineContext for unit tests                                 |
-| `createMockEntity(name?)`         | Entity spawned in a mock scene                                                      |
-| `advanceFrames(engine, n, dtMs?)` | Advance game loop by N frames (`dtMs` is the per-frame ms delta; default `1000/60`) |
+| Export                                | Purpose                                                                             |
+| ------------------------------------- | ----------------------------------------------------------------------------------- |
+| `createTestEngine(config?, plugins?)` | Started Engine for integration tests; `plugins` install before it starts            |
+| `createMockScene(name?)`              | Lightweight scene with EngineContext for unit tests                                 |
+| `createMockEntity(name?)`             | Entity spawned in a mock scene                                                      |
+| `advanceFrames(engine, n, dtMs?)`     | Advance game loop by N frames (`dtMs` is the per-frame ms delta; default `1000/60`) |
 
 See also the `Testing & Debugging` section in the Quick Start for a runnable example and the Inspector API for runtime introspection.
 
 ### Inspector time and snapshots
 
-`engine.inspector` reads runtime state; `debug: true` also publishes it as
+The engine creates no Inspector. `DebugPlugin` installs one, and
+`InspectorPlugin` installs one without the debug overlay. Reach it with
+`engine.context.resolve(InspectorKey)`; `debug: true` also publishes it as
 `window.__yage__.inspector`. Time mutation requires `DebugPlugin`.
+
+```ts
+import { InspectorPlugin as BaseInspectorPlugin } from "@yagejs/core";
+import type { EngineContext } from "@yagejs/core";
+
+declare class InspectorPlugin extends BaseInspectorPlugin {
+  readonly name: "inspector";
+}
+declare function installInspector(context: EngineContext): () => void; // returns the remover
+```
+
+`installInspector` reuses an Inspector that is already installed and then
+returns a remover that does nothing, so `DebugPlugin` and `InspectorPlugin`
+together give one Inspector, removed by whichever created it. A tool that
+needs the Inspector before `start()` calls `installInspector(engine.context)`
+right after constructing the engine. Plugins that register facet contributors
+do it in `onStart`, when every plugin's `install` has run. With `debug: true`
+and no Inspector installed, `start()` warns once in dev builds.
 
 ```ts
 import type {
@@ -1307,7 +1353,7 @@ console.log(engine.logger.formatRecentLogs(20));
 
 ### Well-known DI Keys
 
-`EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`
+`EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey` (only once `DebugPlugin` or `InspectorPlugin` installs an Inspector), `SceneRandomSourceKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`
 
 ## LoadingScene
 
@@ -1589,7 +1635,7 @@ before `UIRootLayoutSystem` because `ui-react` depends on `ui`).
 - `Update`: `PhysicsInterpolationSystem (-100, physics)` → `ProcessSystem (500, core)` → `ComponentUpdateSystem (1000, core)`
 - `LateUpdate`: `ParticleSystem (0, particles)` → `UILayoutSystem (200, ui)` → `UIRootLayoutSystem (200, ui-react)` → `FloatingOverlaySystem (201, ui)` → `UIFocusSystem (202, ui)` → `UIFocusRelayoutSystem (203, ui)`
 - `Render`: `DisplaySystem (0, renderer)` → `LightingSystem (100, lighting)` → `DebugRenderSystem (9999, debug)`
-- `EndOfFrame`: `InputClearSystem (9000, input)` → _destroy-queue flush_
+- `EndOfFrame`: `InputClearSystem (9000, input)` → _destroy-queue flush_ → _frame-end observers: an installed Inspector expires `waitFor` deadlines here, so events from the flush still count on their deadline frame_
 
 The level editor's preview scene adds three systems of its own to that
 order, none of which a game sees:
@@ -1648,8 +1694,9 @@ and rethrows.
   `reportLifecycleError()`), not rethrown — the hook call has already
   returned by the time the rejection settles, so there's no caller stack
   left to rethrow into.
-- Every failure is recorded in `ErrorBoundary.getCallbackErrors()` and
-  surfaced as `Inspector.getErrors().callbackErrors` — a bounded history (the
+- Every failure is recorded in `ErrorBoundary.getCallbackErrors()`, which
+  needs no Inspector, and with one installed is also read as
+  `Inspector.getErrors().callbackErrors` — a bounded history (the
   200 most recent) with each entry's kind and owning entity/scene/event where
   known. The same `Error` object propagating through nested wraps (a
   collision handler's throw reaching the surrounding `wrapSystem`) is

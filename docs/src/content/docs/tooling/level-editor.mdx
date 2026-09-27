@@ -181,6 +181,12 @@ export default {
 Keep it in step with the game's own boot. A preview built from a different set
 of plugins draws a level your game will not.
 
+The editor installs an Inspector in the preview itself, which is what reads a
+placement's drawn and collider bounds for its selection box, so the harness does
+not need `DebugPlugin` for that. **Play** runs the harness as written: add
+`InspectorPlugin` or `DebugPlugin` to reach `window.__yage__.inspector` while
+playing.
+
 ## What you get
 
 The viewport is your engine, drawing the level. Every placement is created for

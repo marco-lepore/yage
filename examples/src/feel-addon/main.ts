@@ -10,7 +10,7 @@
  * - `scenes.ts` — the four page scenes and page navigation.
  * - `main.ts` — engine and plugins.
  */
-import { Engine } from "@yagejs/core";
+import { Engine, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 import {
@@ -22,6 +22,7 @@ import { createShowcaseScene } from "./scenes.js";
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   engine.use(
     new RendererPlugin({
       width: WIDTH,

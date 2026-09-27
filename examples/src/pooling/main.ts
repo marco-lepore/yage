@@ -3,7 +3,7 @@
  * through an `EntityPool` or by spawning and destroying one entity per shot,
  * with live counters on a screen-space layer so the difference is visible.
  */
-import { Engine } from "@yagejs/core";
+import { Engine, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { InputPlugin } from "@yagejs/input";
@@ -15,6 +15,7 @@ import { PoolingScene, WIDTH, HEIGHT } from "./scene.js";
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   const container = setupGameContainer(WIDTH, HEIGHT);
 
   engine.use(

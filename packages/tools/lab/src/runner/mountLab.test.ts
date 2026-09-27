@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { Engine } from "@yagejs/core";
+import { Engine, InspectorKey, installInspector } from "@yagejs/core";
 import type {
   CallbackErrorRecord,
   Plugin,
@@ -36,6 +36,8 @@ function stubEngine() {
   const sceneHooks = new Set<SceneHooks>();
 
   const clockEngine = new Engine();
+  installInspector(clockEngine.context);
+  const clockInspector = clockEngine.context.resolve(InspectorKey);
   clockEngine.loop.setCallbacks({
     earlyUpdate() {},
     fixedUpdate() {},
@@ -46,7 +48,7 @@ function stubEngine() {
   });
   clockEngine.loop.attachTicker(() => () => {});
   clockEngine.loop.start();
-  clockEngine.inspector.attachTimeController({
+  clockInspector.attachTimeController({
     get isFrozen() {
       return state.frozen;
     },
@@ -65,7 +67,7 @@ function stubEngine() {
       state.frame = clockEngine.loop.frameCount;
     },
   });
-  const time = clockEngine.inspector.time;
+  const time = clockInspector.time;
   const acquire = time.acquire;
   time.acquire = () => {
     const lease = acquire();
@@ -140,6 +142,13 @@ function stubEngine() {
     // No plugin ever registers anything, so a camera-view capture's
     // `RendererKey` lookup always misses — the stub has no renderer to give it.
     context: {
+      // The stub already carries an Inspector, so the lab's own install finds
+      // it and leaves it in place.
+      has: (key: { id: string }) => key.id === "inspector",
+      resolve: (key: { id: string }) => {
+        if (key.id === "inspector") return engine.inspector;
+        throw new Error(`stub engine: "${key.id}" is not registered.`);
+      },
       tryResolve: () => undefined,
     },
   };

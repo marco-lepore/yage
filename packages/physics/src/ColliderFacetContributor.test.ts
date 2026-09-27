@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { Engine, Transform } from "@yagejs/core";
+import {
+  Engine,
+  InspectorKey,
+  Transform,
+  installInspector,
+} from "@yagejs/core";
 import { ColliderComponent } from "./ColliderComponent.js";
 import { ColliderFacetContributor } from "./ColliderFacetContributor.js";
 import { PhysicsPlugin } from "./PhysicsPlugin.js";
@@ -164,25 +169,36 @@ describe("ColliderFacetContributor", () => {
     expect(before.outlines[0]?.vertices[0]).toEqual({ x: -5, y: -10 });
   });
 
-  it("registers through PhysicsPlugin and unregisters on plugin teardown", () => {
+  it("registers through PhysicsPlugin at start and unregisters on plugin teardown", () => {
     const engine = new Engine();
     const plugin = new PhysicsPlugin();
     const component = new ColliderComponent({
       shape: { type: "circle", radius: 10 },
     });
-    expect(
-      engine.inspector.getComponentFacet(component, "collider"),
-    ).toBeUndefined();
+    // The plugin installs before the Inspector exists, the order a game gets
+    // when DebugPlugin (which installs the Inspector) is registered after it.
     plugin.install(engine.context);
+    const removeInspector = installInspector(engine.context);
+    const inspector = engine.context.resolve(InspectorKey);
+    expect(inspector.getComponentFacet(component, "collider")).toBeUndefined();
+
+    plugin.onStart();
     expect(
-      engine.inspector.getComponentFacet(component, "collider")?.outlines,
+      inspector.getComponentFacet(component, "collider")?.outlines,
     ).toHaveLength(1);
     expect(
-      engine.inspector.getComponentFacet(new Transform(), "collider"),
+      inspector.getComponentFacet(new Transform(), "collider"),
     ).toBeUndefined();
     plugin.onDestroy();
-    expect(
-      engine.inspector.getComponentFacet(component, "collider"),
-    ).toBeUndefined();
+    expect(inspector.getComponentFacet(component, "collider")).toBeUndefined();
+    removeInspector();
+  });
+
+  it("starts without an Inspector", () => {
+    const engine = new Engine();
+    const plugin = new PhysicsPlugin();
+    plugin.install(engine.context);
+    expect(() => plugin.onStart()).not.toThrow();
+    plugin.onDestroy();
   });
 });

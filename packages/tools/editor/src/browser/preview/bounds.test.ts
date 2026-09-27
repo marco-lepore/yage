@@ -64,7 +64,14 @@ vi.mock("pixi.js", () => ({
   },
 }));
 
-import { Transform, Vec2, Component, Engine, type Entity } from "@yagejs/core";
+import {
+  Transform,
+  Vec2,
+  Component,
+  Engine,
+  Inspector,
+  type Entity,
+} from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";
 import {
   FRAME_MARGIN,
@@ -80,7 +87,7 @@ class Footprint extends Component {
     super();
   }
 }
-const inspector = new Engine().inspector;
+const inspector = new Inspector(new Engine());
 inspector.registerFacetContributor({
   namespace: "collider",
   inspectComponent: (component) =>

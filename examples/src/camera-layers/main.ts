@@ -16,6 +16,7 @@ import {
   Component,
   Transform,
   Vec2,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -308,6 +309,7 @@ class PauseControllerEntity extends Entity {
 // ---------------------------------------------------------------------------
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   engine.use(
     new RendererPlugin({
       width: WIDTH,

@@ -7,6 +7,7 @@ import {
   Scene,
   Vec2,
   Transform,
+  InspectorPlugin,
 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent, texture } from "@yagejs/renderer";
 import { UIPlugin } from "@yagejs/ui";
@@ -340,6 +341,7 @@ class UIReactScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

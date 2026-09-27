@@ -5,7 +5,14 @@
  * 2. SceneRenderTreeKey resolves and declared layers are accessible.
  * 3. The scene is on the stack with the expected name and entities.
  */
-import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Component,
+  Scene,
+  Transform,
+  Vec2,
+  InspectorKey,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
@@ -108,7 +115,7 @@ async function main() {
   engine.use(new DebugPlugin());
 
   await engine.start();
-  engine.inspector.time.freeze();
+  engine.context.resolve(InspectorKey).time.freeze();
   await engine.scenes.push(new SceneA());
 }
 

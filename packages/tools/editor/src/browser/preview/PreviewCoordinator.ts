@@ -1,9 +1,12 @@
 import {
   AssetManagerKey,
+  InspectorKey,
+  installInspector,
   Transform,
   Vec2,
   type Engine,
   type Entity,
+  type Inspector,
   type Plugin,
 } from "@yagejs/core";
 import {
@@ -154,6 +157,12 @@ export class PreviewCoordinator {
   private readonly store: EditorStore;
   private readonly queue = new RebuildQueue();
   private engine: Engine | undefined;
+  /**
+   * The preview's Inspector, which reads the collider and render facets the
+   * selection boxes are drawn from.
+   */
+  private inspector: Inspector | undefined;
+  private removeInspector: (() => void) | undefined;
   private scene: EditPreviewScene | undefined;
   private lease: PreviewAssetLease | undefined;
   private instance: LevelInstance | undefined;
@@ -217,6 +226,11 @@ export class PreviewCoordinator {
   /** Boot the project's engine with the editor's own render pass added. */
   async start(harness: EditorHarness): Promise<void> {
     const engine = harness.engine();
+    // Installed before the harness's plugins, so the renderer and physics
+    // register their facets with it whether or not the project uses
+    // DebugPlugin. A DebugPlugin in the harness reuses this one.
+    this.removeInspector = installInspector(engine.context);
+    const inspector = engine.context.resolve(InspectorKey);
     for (const plugin of harness.plugins({ container: this.host })) {
       engine.use(plugin);
     }
@@ -248,6 +262,7 @@ export class PreviewCoordinator {
     const scene = new EditPreviewScene();
     await engine.scenes.push(scene);
     this.engine = engine;
+    this.inspector = inspector;
     this.scene = scene;
     this.overlay = this.mountLayer(
       engine,
@@ -519,10 +534,7 @@ export class PreviewCoordinator {
       if (!placement) continue;
       if (among && !among.has(placement.id)) continue;
       if (hidden.has(placement.id)) continue;
-      const geometry = worldGeometryOf(
-        placement.entity,
-        this.engine?.inspector,
-      );
+      const geometry = worldGeometryOf(placement.entity, this.inspector);
       if (
         !geometry.outlines.some((outline) =>
           outlineContains(
@@ -614,7 +626,7 @@ export class PreviewCoordinator {
     for (const placement of this.placements) {
       const id = this.idOf(placement.entity);
       if (id === undefined || hidden.has(id)) continue;
-      const bounds = worldBoundsOf(placement.entity, this.engine?.inspector);
+      const bounds = worldBoundsOf(placement.entity, this.inspector);
       const inside = bounds
         ? bounds.minX >= area.minX &&
           bounds.minY >= area.minY &&
@@ -636,8 +648,11 @@ export class PreviewCoordinator {
     this.links = [];
     this.pointFieldsByType = new Map();
     this.engine?.destroy();
+    this.removeInspector?.();
+    this.removeInspector = undefined;
     await this.lease?.releaseAll();
     this.engine = undefined;
+    this.inspector = undefined;
     this.scene = undefined;
     this.held = undefined;
     this.overlay = undefined;
@@ -912,7 +927,7 @@ export class PreviewCoordinator {
       .map((placement) => ({
         id: placement.id,
         origin: originOf(placement.entity),
-        marks: marksOf(placement.entity, this.engine?.inspector),
+        marks: marksOf(placement.entity, this.inspector),
       }));
     const gizmo = state.pick ? undefined : shownAsOverlay(this.gizmoOf(state));
     return this.markLayout.place(
@@ -932,10 +947,7 @@ export class PreviewCoordinator {
     const dimmed = this.dimmed();
     return this.placements.flatMap((placement) => {
       if (hidden.has(placement.id)) return [];
-      const geometry = worldGeometryOf(
-        placement.entity,
-        this.engine?.inspector,
-      );
+      const geometry = worldGeometryOf(placement.entity, this.inspector);
       return geometry.kind === "collider"
         ? geometry.outlines.map((outline) => ({
             ...outline,
@@ -1075,7 +1087,7 @@ export class PreviewCoordinator {
       if (id === skip) continue;
       const entity = this.byPlacementId.get(id);
       if (!entity) continue;
-      const bounds = worldBoundsOf(entity, this.engine?.inspector);
+      const bounds = worldBoundsOf(entity, this.inspector);
       if (bounds && hasArea(bounds)) boxes.push(bounds);
       else points.push(originOf(entity));
     }
@@ -1100,8 +1112,7 @@ export class PreviewCoordinator {
       measured.set(
         id,
         entity
-          ? (worldBoundsOf(entity, this.engine?.inspector) ??
-              pointBounds(entity))
+          ? (worldBoundsOf(entity, this.inspector) ?? pointBounds(entity))
           : undefined,
       );
     }
@@ -1339,9 +1350,9 @@ export class PreviewCoordinator {
     // box is a shape of its own, drawn over markers that stay.
     const alone = ids.length === 1;
     const covering = alone
-      ? orientedBoxOf(active.entity, this.engine?.inspector)
+      ? orientedBoxOf(active.entity, this.inspector)
       : coveringBox(
-          entities.map((entity) => boxAround(entity, this.engine?.inspector)),
+          entities.map((entity) => boxAround(entity, this.inspector)),
           0,
         );
     // Where the handles sit if nothing holds them: the point the placements
@@ -1447,8 +1458,7 @@ export class PreviewCoordinator {
     state: EditorState,
     active: { readonly id: string; readonly entity: Entity },
   ): UnscaledSides {
-    const local =
-      localBoxOf(active.entity, this.engine?.inspector) ?? SUBSTITUTE_BOX;
+    const local = localBoxOf(active.entity, this.inspector) ?? SUBSTITUTE_BOX;
     const world = active.entity.get(Transform).worldScale;
     const parent = parentWorld(
       state.document,
@@ -1508,9 +1518,7 @@ export class PreviewCoordinator {
     const each: WorldBounds[] = [];
     for (const id of ids) {
       const entity = this.byPlacementId.get(id);
-      const bounds = entity
-        ? worldBoundsOf(entity, this.engine?.inspector)
-        : undefined;
+      const bounds = entity ? worldBoundsOf(entity, this.inspector) : undefined;
       if (bounds) each.push(bounds);
     }
     return unionBounds(each);

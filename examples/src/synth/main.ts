@@ -16,6 +16,7 @@ import {
   Scene,
   Transform,
   Vec2,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   GraphicsComponent,
@@ -297,6 +298,7 @@ function describe(pad: Pad): string {
 // ---------------------------------------------------------------------------
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   engine.use(
     new RendererPlugin({
       width: WIDTH,

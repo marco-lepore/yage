@@ -151,6 +151,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    */
   fx!: EffectsHost;
   private _unregisterFacetContributor: (() => void) | null = null;
+  private _context: EngineContext | null = null;
   private _unregisterFullscreenListener: (() => void) | null = null;
   private _unregisterOrientationListener: (() => void) | null = null;
   private _unregisterSceneVisibility: (() => void) | null = null;
@@ -380,21 +381,27 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       },
     });
 
-    // 12. Publish the render facet (rendered geometry + visibility) into the
-    //     Inspector through `registerFacetContributor`, so `@yagejs/core`
-    //     stays agnostic of any rendering concept. The Engine always
-    //     registers the Inspector, so the contributor can register during
-    //     install.
-    const inspector = context.tryResolve(InspectorKey);
+    // 12. Keep the context for onStart, which publishes the render facet.
+    this._context = context;
+  }
+
+  registerSystems(scheduler: SystemScheduler): void {
+    scheduler.add(new DisplaySystem());
+  }
+
+  onStart(): void {
+    // Publish the render facet (rendered geometry + visibility) into the
+    // Inspector through `registerFacetContributor`, so `@yagejs/core` stays
+    // agnostic of any rendering concept. In onStart rather than install: the
+    // Inspector is installed by a plugin (DebugPlugin or InspectorPlugin),
+    // and every install has run by now whatever order the plugins were
+    // registered in.
+    const inspector = this._context?.tryResolve(InspectorKey);
     if (inspector) {
       this._unregisterFacetContributor = inspector.registerFacetContributor(
         new RenderFacetContributor(),
       );
     }
-  }
-
-  registerSystems(scheduler: SystemScheduler): void {
-    scheduler.add(new DisplaySystem());
   }
 
   onDestroy(): void {
@@ -404,6 +411,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     // instead of throwing on access.
     this._unregisterFacetContributor?.();
     this._unregisterFacetContributor = null;
+    this._context = null;
     this._unregisterFullscreenListener?.();
     this._unregisterFullscreenListener = null;
     this._unregisterOrientationListener?.();

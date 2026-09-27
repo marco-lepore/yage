@@ -24,6 +24,7 @@ import {
   Scene,
   Transform,
   Vec2,
+  InspectorPlugin,
 } from "@yagejs/core";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { RendererPlugin, TextComponent, type LayerDef } from "@yagejs/renderer";
@@ -203,6 +204,7 @@ async function main(): Promise<void> {
     catalogs: TAVERN.catalogs,
   });
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   engine.use(new LocalizationPlugin(localization));
   engine.use(
     new RendererPlugin({

@@ -1,4 +1,11 @@
-import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Component,
+  Scene,
+  Transform,
+  Vec2,
+  InspectorKey,
+} from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
@@ -86,5 +93,5 @@ engine.use(
 engine.use(new PhysicsPlugin());
 engine.use(new DebugPlugin());
 await engine.start();
-engine.inspector.time.freeze();
+engine.context.resolve(InspectorKey).time.freeze();
 await engine.scenes.push(new PhysicsBounceScene());

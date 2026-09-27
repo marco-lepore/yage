@@ -6,6 +6,7 @@ import {
   Transform,
   Vec2,
   createRandomService,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   LightOccluder,
@@ -355,6 +356,7 @@ class LightingScene extends Scene {
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
   engine.use(
     new RendererPlugin({
       width: WIDTH,

@@ -20,6 +20,7 @@ import {
   SceneManagerKey,
   LoggerKey,
   ErrorBoundaryKey,
+  formatMissingHint,
 } from "./EngineContext.js";
 import type { ErrorBoundary } from "./ErrorBoundary.js";
 import type { ComponentClass } from "./types.js";
@@ -397,7 +398,8 @@ export abstract class Scene {
         `Scene-scoped service "${key.id}" is not registered for scene "${this.name}". ` +
           `Scene-scoped services are provided by a plugin's beforeEnter hook ` +
           `(e.g. RendererPlugin registers SceneRenderTreeKey). Resolve it from ` +
-          `onEnter() or later, and make sure the providing plugin is installed.`,
+          `onEnter() or later, and make sure the providing plugin is installed.` +
+          formatMissingHint(key),
       );
     }
 

@@ -1,4 +1,4 @@
-import { Engine } from "@yagejs/core";
+import { Engine, InspectorKey, installInspector } from "@yagejs/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CLOCK_SPEEDS,
@@ -19,6 +19,8 @@ function fakeTime() {
     freezeThrows: null as Error | null,
   };
   const engine = new Engine();
+  installInspector(engine.context);
+  const inspector = engine.context.resolve(InspectorKey);
   engine.loop.setCallbacks({
     earlyUpdate() {},
     fixedUpdate() {},
@@ -29,7 +31,7 @@ function fakeTime() {
   });
   engine.loop.attachTicker(() => () => {});
   engine.loop.start();
-  engine.inspector.attachTimeController({
+  inspector.attachTimeController({
     get isFrozen() {
       return state.frozen;
     },
@@ -50,7 +52,7 @@ function fakeTime() {
       state.frame = engine.loop.frameCount;
     },
   });
-  const time = engine.inspector.time;
+  const time = inspector.time;
   const acquire = time.acquire;
   time.acquire = () => {
     const lease = acquire();

@@ -87,9 +87,13 @@ function stubEngine(opts: RendererStubOptions = {}) {
       },
     },
   };
+  const inspector = { capture: { dataURL: contentDataUrl } };
   const engine = {
-    inspector: { capture: { dataURL: contentDataUrl } },
     context: {
+      resolve: (key: ServiceKey<unknown>) => {
+        if (key.id === "inspector") return inspector;
+        throw new Error(`stub engine: "${key.id}" is not registered.`);
+      },
       tryResolve: (key: ServiceKey<unknown>) =>
         key.id === "renderer" ? renderer : undefined,
     },

@@ -3,8 +3,10 @@ import {
   EventBusKey,
   GameLoopKey,
   InspectorKey,
+  installInspector,
   SceneManagerKey,
   SceneHookRegistryKey,
+  SceneRandomSourceKey,
 } from "@yagejs/core";
 import type {
   EngineContext,
@@ -147,18 +149,29 @@ export class DebugPlugin implements Plugin {
   private provider: SceneRenderTreeProvider | null = null;
   private eventUnsubs: Array<() => void> = [];
   private clock: DebugClock | null = null;
+  private uninstallInspector: (() => void) | undefined;
 
   constructor(config?: DebugConfig) {
+    const seed = config?.deterministicSeed;
+    if (seed !== undefined && !Number.isFinite(seed)) {
+      throw new Error(
+        `DebugPlugin: deterministicSeed must be finite, got ${seed}.`,
+      );
+    }
     this.config = config ?? {};
   }
 
   install(context: EngineContext): void {
     this.context = context;
+    // The overlay's clock, step key and event log all run through the
+    // Inspector, so the plugin installs one when the game has not. An
+    // Inspector the game installed itself is reused and left to its owner.
+    this.uninstallInspector = installInspector(context);
     this.renderer = context.resolve(RendererKey);
     if (this.config.deterministicSeed !== undefined) {
       context
-        .resolve(InspectorKey)
-        .setDefaultSceneSeed(this.config.deterministicSeed);
+        .resolve(SceneRandomSourceKey)
+        .setDefaultSeed(this.config.deterministicSeed);
     }
     if (this.config.startFrozen) {
       // Stop Pixi's ticker before `loop.start()` runs, so no frames tick
@@ -314,17 +327,21 @@ export class DebugPlugin implements Plugin {
       this.keyListener = null;
     }
 
-    const inspector = this.context.resolve(InspectorKey);
-    inspector.removeExtension("debug");
-    // Only detach our own clock — passing undefined would clear whatever
-    // controller is registered, which could belong to another plugin if
-    // onDestroy runs after a failed onStart.
-    if (this.clock) {
-      inspector.detachTimeController(this.clock);
+    // A tool that installed the Inspector itself may have removed it before
+    // the engine is destroyed; there is nothing of ours to detach then.
+    const inspector = this.context.tryResolve(InspectorKey);
+    if (inspector) {
+      inspector.removeExtension("debug");
+      // Only detach our own clock — passing undefined would clear whatever
+      // controller is registered, which could belong to another plugin if
+      // onDestroy runs after a failed onStart.
+      if (this.clock) {
+        inspector.detachTimeController(this.clock);
+      }
+      inspector.setEventLogEnabled(false);
     }
-    inspector.setEventLogEnabled(false);
     if (this.config.deterministicSeed !== undefined) {
-      inspector.setDefaultSceneSeed(undefined);
+      this.context.resolve(SceneRandomSourceKey).setDefaultSeed(undefined);
     }
     this.clock = null;
 
@@ -336,6 +353,9 @@ export class DebugPlugin implements Plugin {
 
     this.tearDownDebugInfra();
     this.teardownDebugScene();
+
+    this.uninstallInspector?.();
+    this.uninstallInspector = undefined;
   }
 
   private async materializeDebugScene(): Promise<void> {

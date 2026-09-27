@@ -101,7 +101,7 @@
  * `/presenters`.
  */
 
-import { Engine } from "@yagejs/core";
+import { Engine, InspectorPlugin } from "@yagejs/core";
 import {
   RendererKey,
   RendererPlugin,
@@ -124,6 +124,7 @@ import "./styles.css";
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

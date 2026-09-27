@@ -18,6 +18,7 @@ import {
   Transform,
   Vec2,
   trait,
+  InspectorKey,
 } from "@yagejs/core";
 import { GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
 import {
@@ -398,7 +399,7 @@ async function main(): Promise<void> {
   engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 0 } }));
   engine.use(new DebugPlugin());
   await engine.start();
-  engine.inspector.time.freeze();
+  engine.context.resolve(InspectorKey).time.freeze();
 
   const scene = new AbilitiesFixtureScene();
   await engine.scenes.push(scene);

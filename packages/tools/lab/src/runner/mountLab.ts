@@ -4,6 +4,9 @@ import {
   type CallbackErrorRecord,
   DEFAULT_DRIVE_MAX_FRAMES,
   type Engine,
+  type Inspector,
+  InspectorKey,
+  installInspector,
   type Scene,
 } from "@yagejs/core";
 import { DebugPlugin } from "@yagejs/debug";
@@ -77,6 +80,11 @@ export interface MountOptions {
 
 export interface LabApi {
   readonly engine: Engine;
+  /**
+   * The engine's Inspector. The lab installs it before the engine starts, so
+   * it is there as soon as the API is published.
+   */
+  readonly inspector: Inspector;
   readonly scenarios: readonly ScenarioEntry[];
   /** Modules that were skipped, with the reason. */
   readonly problems: readonly RegistryProblem[];
@@ -225,6 +233,12 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
   });
 
   const engine = harness.engine();
+  // The panel reads the Inspector before the engine starts (its clock, the
+  // error list, the event log), so the lab installs one now rather than
+  // waiting for DebugPlugin's install, which reuses it. The lab lasts as long
+  // as the page, so the Inspector is never removed.
+  installInspector(engine.context);
+  const inspector = engine.context.resolve(InspectorKey);
   const plugins = harness.plugins({ container: panel.container });
   // The clock is the panel's main control and `Inspector.time` throws without
   // DebugPlugin, so a harness that leaves it out still gets one.
@@ -262,7 +276,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
   /** A run or an ad-hoc drive owns the clock and the scene until it finishes. */
   let driving = false;
 
-  const clock = new LabClock(engine.inspector.time, {
+  const clock = new LabClock(inspector.time, {
     onError: (error: unknown) => {
       console.error("[yage-lab]", error);
       refresh();
@@ -295,7 +309,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
         driveError,
         stopped ? LOOP_STOPPED_ERROR : null,
       ].filter((error) => error !== null),
-      engine.inspector.getErrors().callbackErrors,
+      inspector.getErrors().callbackErrors,
       errorMark,
     );
     if (sameErrors(errors, shown)) return;
@@ -362,7 +376,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
    */
   async function rebuild(): Promise<void> {
     if (!entry) return;
-    const recorded = engine.inspector.getErrors().callbackErrors;
+    const recorded = inspector.getErrors().callbackErrors;
     errorMark = recorded[recorded.length - 1] ?? null;
     // Cleared here rather than in `settle`, so a rebuild reached through
     // `LabApi` clears them too. `settle` still records a rebuild that fails.
@@ -382,7 +396,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     if (previous) {
       const unregister = engine.registerSceneHooks({
         afterExit: (exited) => {
-          if (exited === previous) engine.inspector.events.clearLog();
+          if (exited === previous) inspector.events.clearLog();
         },
       });
       try {
@@ -391,7 +405,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
         unregister();
       }
     } else {
-      engine.inspector.events.clearLog();
+      inspector.events.clearLog();
       await engine.scenes.push(next, { transition: null });
     }
     scene = next;
@@ -643,6 +657,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
 
   const api: LabApi = {
     engine,
+    inspector,
     scenarios: registry.scenarios,
     problems: registry.problems,
     clock,

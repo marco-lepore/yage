@@ -9,6 +9,7 @@ import {
   RandomKey,
   createKeyframeTrack,
   easeInOutQuad,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -241,6 +242,7 @@ class CameraScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

@@ -82,6 +82,8 @@ interface Plugin extends BasePlugin {
 
 `install` registers services into `EngineContext`. `registerSystems` adds systems to the scheduler. `onStart` fires after all plugins are installed and the loop is running.
 
+Install order is not registration order: plugins with no `dependencies` install first, in registration order, and a plugin with dependencies installs after all of them. A plugin that uses another plugin's service without depending on it resolves that service in `onStart`.
+
 ## Component Lifecycle
 
 ```ts
@@ -341,7 +343,7 @@ const svc = context.resolve(MyServiceKey); // throws if missing
 const svc2 = context.tryResolve(MyServiceKey); // undefined if missing
 ```
 
-Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`, `SceneTimeKey` (per-scene, registered by the engine itself).
+Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `SceneRandomSourceKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`, `SceneTimeKey` (per-scene, registered by the engine itself). `InspectorKey` is registered only when `DebugPlugin` or `InspectorPlugin` installs an Inspector.
 
 Plugin keys: `RendererKey`, `RendererAdapterKey` (cross-package pointer-input contract defined in core; registered by `RendererPlugin` or a foreign renderer, consumed by `InputPlugin`), `SceneRenderTreeKey`, `InputManagerKey`, `PhysicsWorldKey`, `PhysicsWorldManagerKey`, `AudioManagerKey`, `SaveServiceKey`.
 
@@ -487,8 +489,9 @@ load.
 `ErrorBoundary` wraps every system, component, and developer-callback call —
 a collision handler, an event listener, a component's own `update()`, a scene
 lifecycle hook. A throw is attributed to the culprit, logged through
-`Logger`, recorded (readable via `engine.inspector.getErrors().callbackErrors`),
-and rethrown. Nothing is disabled, unsubscribed, or muted.
+`Logger`, recorded on the `ErrorBoundary`, and rethrown. Nothing is disabled,
+unsubscribed, or muted. The record needs no Inspector, so a shipped game can
+read it for a crash report.
 
 `GameLoop.tick()` is the one place that decides a failure is terminal: an
 error that escapes an entire frame unhandled stops the loop and rethrows, so
@@ -503,7 +506,14 @@ mounted cleanly. A rejected async hook is reported only, not rethrown, since
 the call has already returned by the time the rejection settles.
 
 ```ts yage-context="engine"
+import { ErrorBoundaryKey } from "@yagejs/core";
+
 // Every recorded failure:
-const { callbackErrors } = engine.inspector.getErrors();
+const callbackErrors = engine.context
+  .resolve(ErrorBoundaryKey)
+  .getCallbackErrors();
 // [{ kind: "Collision handler", entity: "DoorPad", error: "..." }]
 ```
+
+With an Inspector installed, `inspector.getErrors().callbackErrors` returns the
+same list.

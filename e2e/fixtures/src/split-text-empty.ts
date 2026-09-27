@@ -1,4 +1,4 @@
-import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { Engine, Scene, Transform, Vec2, InspectorKey } from "@yagejs/core";
 import { RendererPlugin, SplitTextComponent } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 import { UIPlugin, UISplitText, UISurface } from "@yagejs/ui";
@@ -64,5 +64,5 @@ engine.use(
 engine.use(new DebugPlugin());
 engine.use(new UIPlugin());
 await engine.start();
-engine.inspector.time.freeze();
+engine.context.resolve(InspectorKey).time.freeze();
 await engine.scenes.push(new EmptySplitScene());

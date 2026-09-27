@@ -6,6 +6,7 @@ import {
   Transform,
   Vec2,
   defineEvent,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -332,6 +333,7 @@ class ParticlesScene extends Scene {
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   engine.use(
     new RendererPlugin({

@@ -104,11 +104,9 @@ function stubLab(opts: StubOptions) {
             warnings: opts.captureWarnings ?? [],
           });
     },
-    engine: {
-      inspector: {
-        time: { getFrame: () => (current === undefined ? 0 : 42) },
-        getErrors: () => ({ callbackErrors: current?.errors ?? [] }),
-      },
+    inspector: {
+      time: { getFrame: () => (current === undefined ? 0 : 42) },
+      getErrors: () => ({ callbackErrors: current?.errors ?? [] }),
     },
   };
 

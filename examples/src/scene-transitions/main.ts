@@ -14,6 +14,7 @@ import {
   type RandomService,
   type SceneTransition,
   type SceneTransitionContext,
+  InspectorPlugin,
 } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -211,6 +212,7 @@ class LoadThenShow extends LoadingScene {
 
 // ----- Boot ----------------------------------------------------------------
 const engine = new Engine({ debug: true });
+engine.use(new InspectorPlugin());
 engine.use(
   new RendererPlugin({
     width: WIDTH,

@@ -47,9 +47,6 @@ export class PhysicsPlugin implements Plugin {
     this.context = context;
     this.manager = new PhysicsWorldManager(this.config);
     context.register(PhysicsWorldManagerKey, this.manager);
-    this.unregisterFacet = context
-      .tryResolve(InspectorKey)
-      ?.registerFacetContributor(new ColliderFacetContributor());
 
     const hookRegistry = context.resolve(SceneHookRegistryKey);
     this.unregisterHooks = hookRegistry.register({
@@ -69,6 +66,12 @@ export class PhysicsPlugin implements Plugin {
   }
 
   onStart(): void {
+    // In onStart rather than install: the Inspector is installed by a plugin
+    // (DebugPlugin or InspectorPlugin), and every install has run by now
+    // whatever order the plugins were registered in.
+    this.unregisterFacet = this.context
+      .tryResolve(InspectorKey)
+      ?.registerFacetContributor(new ColliderFacetContributor());
     const registry = this.context.tryResolve(DebugRegistryKey);
     registry?.register(new PhysicsDebugContributor(this.manager));
   }

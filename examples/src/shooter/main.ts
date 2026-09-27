@@ -12,7 +12,7 @@
  * - `scene.ts` — the `Scene` subclass; `onEnter` only spawns.
  * - `main.ts` — engine, plugins and the fullscreen button.
  */
-import { Engine, EventBusKey } from "@yagejs/core";
+import { Engine, EventBusKey, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { AudioPlugin } from "@yagejs/audio";
@@ -31,6 +31,7 @@ import "./styles.css";
 // ---------------------------------------------------------------------------
 async function main() {
   const engine = new Engine({ debug: true });
+  engine.use(new InspectorPlugin());
 
   // Mount the fullscreen button inside the same container the renderer will
   // fullscreen, so it stays visible alongside the canvas in fullscreen mode.
