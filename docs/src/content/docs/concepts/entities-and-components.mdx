@@ -35,6 +35,24 @@ it against the `setup()` parameter. The entity's name, which the debug tools
 and `scene.findEntity` use, is its class name. See
 [Entity Subclasses](/patterns/entity-subclasses/) for more on `setup()`.
 
+A minified production build shortens class names unless it keeps them (see
+[Installation](/getting-started/installation/)). When code finds an entity by
+its default name, give the class a name that survives minification:
+
+```typescript yage-context="scene"
+import { Entity } from "@yagejs/core";
+
+class Crate extends Entity {
+  static defaultName = "Crate";
+}
+
+scene.spawn(Crate);
+scene.findEntity("Crate"); // found in a minified build too
+```
+
+A subclass that does not declare its own `defaultName` is named after its own
+class.
+
 An entity that is spawned once and has no behaviour of its own, such as a
 background or a UI root, does not need a class. Spawn it by name and add its
 components to the entity that `spawn()` returns:

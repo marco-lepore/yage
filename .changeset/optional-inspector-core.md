@@ -2,7 +2,7 @@
 "@yagejs/core": minor
 ---
 
-The engine no longer creates an Inspector. `DebugPlugin` or the new `InspectorPlugin` installs one, so a production build that installs neither runs without it.
+The engine no longer creates an Inspector. `DebugPlugin` or the new `InspectorPlugin` installs one, so a production build that installs neither ships none of its code.
 
 - Breaking: `engine.inspector` is removed. `DebugPlugin` installs the Inspector, and the new `InspectorPlugin` installs it without the debug overlay. Reach it with `engine.context.resolve(InspectorKey)`; `debug: true` still publishes it as `window.__yage__.inspector`.
 - `installInspector(context)` is the installer both plugins use. It reuses an Inspector that is already installed and returns a remover that only removes an Inspector it created, so using `DebugPlugin` and `InspectorPlugin` together gives one Inspector.

@@ -98,6 +98,7 @@ export interface CameraEntityParams {
  * ```
  */
 export class CameraEntity extends Entity {
+  static defaultName = "CameraEntity";
   private cam!: CameraComponent;
 
   setup(params: CameraEntityParams = {}): void {

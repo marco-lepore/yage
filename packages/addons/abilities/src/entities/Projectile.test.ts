@@ -234,6 +234,13 @@ const solid: FakeTriggerEvent["otherCollider"] = { config: { sensor: false } };
 const sensor: FakeTriggerEvent["otherCollider"] = { config: { sensor: true } };
 
 describe("Projectile", () => {
+  it("keeps its default name, and a subclass is named after its own class", () => {
+    class Arrow extends Projectile {}
+    expect(Object.hasOwn(Projectile, "defaultName")).toBe(true);
+    expect(new Projectile().name).toBe("Projectile");
+    expect(new Arrow().name).toBe("Arrow");
+  });
+
   it("spawns a dynamic zero-gravity body with velocity dir*speed and a sensor collider", () => {
     const { scene } = createMockScene();
     const { projectile } = spawnProjectile(scene, {

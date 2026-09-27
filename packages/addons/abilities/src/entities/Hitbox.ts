@@ -42,6 +42,7 @@ export interface HitboxConfig {
  * timer of its own.
  */
 export class Hitbox extends Entity {
+  static defaultName = "Hitbox";
   private delivery!: HitDelivery;
   private from!: Vec2;
   private collider!: ColliderComponent;

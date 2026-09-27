@@ -7,4 +7,12 @@ export default defineConfig({
       legacy: true,
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Preserve readable class and function names in diagnostics.
+        keepNames: true,
+      },
+    },
+  },
 });

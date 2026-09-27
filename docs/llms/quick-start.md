@@ -56,6 +56,8 @@ npm install @yagejs/core @yagejs/renderer
 
 The packages must go through a bundler that supports TypeScript and ESM. Vite is recommended. Loading them in a browser without a bundler is not supported.
 
+A minified build shortens class names, the engine's included: error labels (`System q`), Inspector types and lookups by class name, and the default name of an entity spawned without one. Keep them with `build: { rollupOptions: { output: { keepNames: true } } }` in `vite.config.ts`; both `create-yage` templates set it. An entity class can pin its default name with `static defaultName = "Crate"` (not inherited by subclasses). The dev server does not minify.
+
 Add more packages as needed:
 
 ```bash
@@ -166,7 +168,7 @@ export class GameScene extends Scene {
 engine.scenes.push(new GameScene());
 ```
 
-- `this.spawn(Class, params)` types `params` from `setup()`. The entity's debug name is its class name.
+- `this.spawn(Class, params)` types `params` from `setup()`. The entity's debug name is its class name, or the class's own `static defaultName`.
 - `Entity` and `Scene` declare `update` / `fixedUpdate` as `never`; a subclass that defines either fails to compile. Per-frame logic is a component's `update(dt)` / `fixedUpdate(dt)`.
 - A named spawn (`const bg = this.spawn("background"); bg.add(...)`) is only for a one-off entity: spawned once, with no behaviour of its own (background, UI root, HUD host). Anything spawned more than once, or with behaviour, is an `Entity` subclass.
 - Game state (score, lives) lives in a component on a host entity; see `core-concepts.md` → Game State. Not a module-level `let`, a `Scene` field, or a `ServiceKey`.
@@ -175,7 +177,7 @@ engine.scenes.push(new GameScene());
 
 ### Inspector (runtime queries)
 
-The Inspector is an introspection API for the browser console while iterating, and for AI agents that want to verify scene state without reading the canvas. The engine does not create one: `DebugPlugin` installs it, or `InspectorPlugin` from `@yagejs/core` without the debug overlay. `debug: true` publishes it as `window.__yage__.inspector` during `engine.start()`. A production build that installs neither plugin runs without an Inspector.
+The Inspector is an introspection API for the browser console while iterating, and for AI agents that want to verify scene state without reading the canvas. The engine does not create one: `DebugPlugin` installs it, or `InspectorPlugin` from `@yagejs/core` without the debug overlay. `debug: true` publishes it as `window.__yage__.inspector` during `engine.start()`. A production build that installs neither plugin ships no Inspector code.
 
 ```ts yage-context="browser"
 import { Engine } from "@yagejs/core";

@@ -306,9 +306,21 @@ browser.
 
 ### Why `output.keepNames: true`
 
-Vite 8 ships with the oxc **minifier**, which can shorten class and function
-names. Set `keepNames: true` when you want production error reports and
-Inspector output to retain the original names.
+Vite 8 minifies production builds with the oxc **minifier**, which shortens
+class and function names. YAGE's packages do not keep names themselves, so
+without this option a production build shows short names for the engine's
+classes as well as yours:
+
+- An error report names the failing system or component by its short name,
+  such as `System q`.
+- Inspector output lists short component and system types, and a lookup by
+  class name, such as `getComponentData("player", "RigidBodyComponent")`, finds
+  nothing.
+- An entity spawned without a name is named after its class, so it gets the
+  short name. A class can set a name that survives minification with
+  `static defaultName`.
+
+The dev server does not minify, so names stay readable there either way.
 
 ## Verifying the Install
 

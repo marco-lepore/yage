@@ -54,6 +54,8 @@ export interface LoadingSceneProgressBarOptions {
  * write your own component that subscribes to the same event.
  */
 export class LoadingSceneProgressBar extends Entity {
+  static defaultName = "LoadingSceneProgressBar";
+
   setup(opts: LoadingSceneProgressBarOptions = {}): void {
     const scene = this.scene;
     if (!(scene instanceof LoadingScene)) {

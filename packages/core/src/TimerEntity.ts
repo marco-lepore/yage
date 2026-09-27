@@ -15,6 +15,7 @@ import type { Process, ProcessClock } from "./Process.js";
  * ```
  */
 export class TimerEntity extends Entity {
+  static defaultName = "TimerEntity";
   private pc!: ProcessComponent;
 
   setup() {

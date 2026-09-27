@@ -45,6 +45,7 @@ export interface ProjectileConfig {
  */
 @trait(AbilitySpawned)
 export class Projectile extends Entity {
+  static defaultName = "Projectile";
   abilitySpawnContext: AbilitySpawnContext<ProjectileConfig> | undefined;
 
   override setup(context: AbilitySpawnContext<ProjectileConfig>): void {
