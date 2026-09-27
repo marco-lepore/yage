@@ -101,20 +101,11 @@ class DriveBudgetExceededError extends Error {
 }
 
 // Duplicate service keys locally to avoid runtime deps on optional packages.
-// Marked pure so a bundle that never installs an Inspector drops them too.
-// Owned by @yagejs/input.
-const InputManagerRuntimeKey = /* @__PURE__ */ new ServiceKey<InputManagerLike>(
-  "inputManager",
+const InputManagerRuntimeKey = new ServiceKey<InputManagerLike>("inputManager");
+const PhysicsWorldManagerRuntimeKey = new ServiceKey<PhysicsWorldManagerLike>(
+  "physicsWorldManager",
 );
-// Owned by @yagejs/physics.
-const PhysicsWorldManagerRuntimeKey =
-  /* @__PURE__ */ new ServiceKey<PhysicsWorldManagerLike>(
-    "physicsWorldManager",
-  );
-// Owned by @yagejs/renderer.
-const RendererRuntimeKey = /* @__PURE__ */ new ServiceKey<RendererLike>(
-  "renderer",
-);
+const RendererRuntimeKey = new ServiceKey<RendererLike>("renderer");
 
 /**
  * Mirrors `GamepadAxisKey` from `@yagejs/input` as a local union so the
