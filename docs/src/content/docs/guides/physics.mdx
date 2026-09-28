@@ -841,8 +841,8 @@ into the initial overlap. If the move requires a clear destination, also check
 that position with `queryShape`. The option affects only the cast; body
 collisions still apply normally.
 
-Use this to test a move before committing to it. Here a fast-falling player
-lands exactly on the floor it will reach this frame:
+Use this to test whether a fast-falling player has a floor along its path
+this frame:
 
 ```typescript
 import { Component, Transform } from "@yagejs/core";
