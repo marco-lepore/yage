@@ -182,19 +182,41 @@ if (added.length)
 if (removed.length)
   out.push(`**Removed:** ${removed.map((s) => `\`${s}\``).join(", ")}\n`);
 
-// A side with no snapshots means its capture failed (build or Playwright
-// error), not that nothing changed: never report that as an all-clear.
-const emptySides = [
-  [baseSlugs, `\`${baseLabel}\` (base)`],
-  [targetSlugs, `\`${targetLabel}\` (target)`],
-]
-  .filter(([slugs]) => slugs.size === 0)
-  .map(([, name]) => name);
+// A side whose capture failed (build or Playwright error) may have written
+// no snapshots or only some of them. Either way the comparison is incomplete,
+// so never report it as an all-clear. The workflow passes each capture step's
+// outcome in BASE_CAPTURE_OUTCOME / TARGET_CAPTURE_OUTCOME.
+const sides = [
+  {
+    name: `\`${baseLabel}\` (base)`,
+    slugs: baseSlugs,
+    outcome: process.env["BASE_CAPTURE_OUTCOME"],
+  },
+  {
+    name: `\`${targetLabel}\` (target)`,
+    slugs: targetSlugs,
+    outcome: process.env["TARGET_CAPTURE_OUTCOME"],
+  },
+];
+const emptySides = sides.filter((s) => s.slugs.size === 0).map((s) => s.name);
+const partialSides = sides
+  .filter((s) => s.slugs.size > 0 && s.outcome === "failure")
+  .map((s) => s.name);
 
-if (emptySides.length > 0) {
+if (emptySides.length > 0 || partialSides.length > 0) {
+  if (emptySides.length > 0)
+    out.push(
+      `⚠️ **No snapshots captured for ${emptySides.join(" and ")}.**`,
+      "",
+    );
+  if (partialSides.length > 0)
+    out.push(
+      `⚠️ **The capture for ${partialSides.join(" and ")} failed partway; ` +
+        `some examples may be missing or incomplete.**`,
+      "",
+    );
   out.push(
-    `⚠️ **No snapshots captured for ${emptySides.join(" and ")}.** ` +
-      `The capture failed, so the counts above are not a real comparison. ` +
+    `The counts above are not a full comparison. ` +
       `See the capture step in the job log.`,
   );
 } else if (changed.length === 0 && visualOnly.length === 0) {

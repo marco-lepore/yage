@@ -75,6 +75,8 @@ jobs:
           BASE_REF: ${{ inputs.base }}
           TARGET_REF: ${{ github.ref_name }}
           IMAGE_DIFF_DIR: ${{ runner.temp }}/imagediff
+          BASE_CAPTURE_OUTCOME: ${{ steps.capture-base.outcome }}
+          TARGET_CAPTURE_OUTCOME: ${{ steps.capture-target.outcome }}
         run: |
           # Run on the target ref's tooling (checked out above).
           node e2e/scripts/diff-snapshots.mjs \
