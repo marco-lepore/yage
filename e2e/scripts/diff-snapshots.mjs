@@ -182,7 +182,22 @@ if (added.length)
 if (removed.length)
   out.push(`**Removed:** ${removed.map((s) => `\`${s}\``).join(", ")}\n`);
 
-if (changed.length === 0 && visualOnly.length === 0) {
+// A side with no snapshots means its capture failed (build or Playwright
+// error), not that nothing changed: never report that as an all-clear.
+const emptySides = [
+  [baseSlugs, `\`${baseLabel}\` (base)`],
+  [targetSlugs, `\`${targetLabel}\` (target)`],
+]
+  .filter(([slugs]) => slugs.size === 0)
+  .map(([, name]) => name);
+
+if (emptySides.length > 0) {
+  out.push(
+    `⚠️ **No snapshots captured for ${emptySides.join(" and ")}.** ` +
+      `The capture failed, so the counts above are not a real comparison. ` +
+      `See the capture step in the job log.`,
+  );
+} else if (changed.length === 0 && visualOnly.length === 0) {
   out.push(
     added.length || removed.length ? "" : "No behavioral differences. ✅",
   );
