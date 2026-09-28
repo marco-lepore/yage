@@ -74,6 +74,7 @@ export class PhysicsDebugContributor implements DebugContributor {
           }
           case ShapeType.Cuboid: {
             const he = collider.halfExtents();
+            if (!he) break;
             const hw = he.x * ppm;
             const hh = he.y * ppm;
             g.rect(-hw, -hh, hw * 2, hh * 2).stroke(strokeStyle);
@@ -83,6 +84,7 @@ export class PhysicsDebugContributor implements DebugContributor {
             // halfExtents() is the inner box; the border radius is added back
             // on every side to recover the outer footprint.
             const he = collider.halfExtents();
+            if (!he) break;
             const radius = collider.roundRadius() * ppm;
             const hw = he.x * ppm + radius;
             const hh = he.y * ppm + radius;

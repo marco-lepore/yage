@@ -246,7 +246,10 @@ export class RigidBodyComponent extends Component {
     );
   }
 
-  /** Set linear velocity in pixels/s. */
+  /**
+   * Set linear velocity in pixels/s. Rapier caps speed at 400 m/s,
+   * `400 × pixelsPerMeter` px/s.
+   */
   setVelocity(velocity: Vec2Like): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
@@ -349,7 +352,10 @@ export class RigidBodyComponent extends Component {
     body.addTorque(torque, true);
   }
 
-  /** Set angular velocity in radians/s (Rapier's native unit, not scaled by `pixelsPerMeter`). */
+  /**
+   * Set angular velocity in radians/s (Rapier's native unit, not scaled by
+   * `pixelsPerMeter`). Rapier caps rotation at 45° per physics step.
+   */
   setAngularVelocity(v: number): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;

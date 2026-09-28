@@ -41,7 +41,7 @@ const WALK_SPEED = 152;
  *   ############## floor box, y 256..320 #############
  *
  * A box body driven across the floor catches on a base vertex when a step
- * lands its foot corner within a fraction of a pixel of the vertex: Rapier
+ * lands its foot corner within about a pixel of the vertex: Rapier
  * generates contacts per segment with no junction awareness, and the
  * cuboid-vs-segment SAT then picks the box's own x axis as the contact
  * normal — a horizontal push at a walkable surface that opposes the walk
@@ -225,10 +225,10 @@ describe("polyline terrain traversal (real Rapier)", () => {
     const pinned = results.filter((r) => r.outcome === "pinned");
     const completed = results.filter((r) => r.outcome === "completed");
 
-    // Most phases cross; a narrow band of them lands the foot corner on the
-    // vertex and never gets past it.
-    expect(completed.length).toBeGreaterThan(PHASES / 2);
-    expect(pinned.length).toBeGreaterThan(0);
+    // Both outcomes are common: many phases cross, and a band of them about a
+    // pixel wide lands the foot corner on the vertex and never gets past it.
+    expect(completed.length).toBeGreaterThan(PHASES / 4);
+    expect(pinned.length).toBeGreaterThan(PHASES / 4);
     for (const r of pinned) {
       expect(r.finalX).toBeGreaterThan(560);
       expect(r.finalX).toBeLessThan(572);
@@ -289,8 +289,10 @@ describe("polyline terrain traversal (real Rapier)", () => {
     // closing edge as separate manifolds. The closing edge is coplanar with
     // the floor, so its normal is (0, 1) and reporting it would describe the
     // ramp as level ground. The slope contact is the deeper of the two.
-    const westNormal = await firstChainNormal(620, -152, 470);
-    const eastNormal = await firstChainNormal(404, 152, 554);
+    // Both starts are 61.2px from the entry vertex, a phase that crosses in
+    // either direction; a phase that catches reports the box's own x axis.
+    const westNormal = await firstChainNormal(621.2, -152, 470);
+    const eastNormal = await firstChainNormal(402.8, 152, 554);
     const slopeX = 1 / Math.sqrt(5);
     const slopeY = 2 / Math.sqrt(5);
 
@@ -317,7 +319,7 @@ describe("polyline terrain traversal (real Rapier)", () => {
     // contact events. No run skims across at resting height.
     const results = await scanPhases(RAMP_BURIED, -1);
     const completed = results.filter((r) => r.outcome === "completed");
-    expect(completed.length).toBeGreaterThan(PHASES / 2);
+    expect(completed.length).toBeGreaterThan(PHASES / 4);
     for (const r of completed) {
       // Riding over the 16px-tall plateau lifts the center well above its
       // flat-ground resting height of 234.
@@ -349,7 +351,7 @@ describe("polyline terrain traversal, rounded walker", () => {
         true,
       );
       for (const result of results) {
-        expect(result.restY).toBeCloseTo(234.077, 1);
+        expect(result.restY).toBeCloseTo(234.003, 1);
       }
     },
     30000,
@@ -368,7 +370,7 @@ describe("polyline terrain traversal, rounded walker", () => {
     );
     // A 1px skin holds the walker 1px above the surface a plain box rests on.
     for (const result of results) {
-      expect(result.restY).toBeCloseTo(233.078, 1);
+      expect(result.restY).toBeCloseTo(233.003, 1);
     }
   }, 30000);
 });

@@ -26,6 +26,7 @@ import type { PhysicsWorld } from "./PhysicsWorld.js";
 import {
   createPhysicsTestContext,
   spawnEntityInScene,
+  cuboidHalfExtents,
 } from "./test-helpers.js";
 import type { PhysicsTestContext } from "./test-helpers.js";
 import type { BodyType, ColliderConfig } from "./types.js";
@@ -157,13 +158,13 @@ describe("body and collider handles (real Rapier)", () => {
     const freshCollider = () =>
       physicsWorld.getCollider(fresh.collider._colliderHandle)!;
     const freshBody = () => physicsWorld.getBody(fresh.rb._bodyHandle)!;
-    expect(freshCollider().halfExtents().x).toBeCloseTo(0.4);
+    expect(cuboidHalfExtents(freshCollider()).x).toBeCloseTo(0.4);
 
     staleCollider.setShape({ type: "box", width: 10, height: 10 });
     staleCollider.setSensor(true);
     stale.entity.remove(ColliderComponent);
 
-    expect(freshCollider().halfExtents().x).toBeCloseTo(0.4);
+    expect(cuboidHalfExtents(freshCollider()).x).toBeCloseTo(0.4);
     expect(freshCollider().isSensor()).toBe(false);
     expect(freshBody().numColliders()).toBe(1);
     expect(physicsWorld.colliderMap.has(fresh.collider._colliderHandle)).toBe(

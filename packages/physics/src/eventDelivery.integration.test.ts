@@ -236,7 +236,8 @@ describe("setSensor on a live collider (real Rapier)", () => {
     const ground = spawnGround(scene, 0, 300, { oneWay: {} });
     const box = spawnBox(scene, "box", 0, 280);
     box.collider.setContactFilter(() => true);
-    stepBatched(physicsWorld, 60, 1);
+    // Rapier puts a resting body to sleep after 0.5 s; flip it before then.
+    stepBatched(physicsWorld, 20, 1);
     const groundEvents = recordCollisions(ground.collider);
     const boxTriggers = recordTriggers(box.collider);
     const oldHandle = box.collider._colliderHandle;

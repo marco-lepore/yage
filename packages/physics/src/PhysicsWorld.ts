@@ -520,6 +520,7 @@ export class PhysicsWorld {
     this.world.narrowPhase.contactPair(
       handle1,
       handle2,
+      this.world.bodies,
       (manifold, flipped) => {
         const n = manifold.normal();
         const nx = flipped ? -n.x : n.x;
@@ -535,7 +536,9 @@ export class PhysicsWorld {
           if (hasGeometry && solverContactDist >= bestSolverContactDist) {
             continue;
           }
+          // Null only for an index past `numSolverContacts()`.
           const p = manifold.solverContactPoint(i);
+          if (!p) continue;
           hasGeometry = true;
           bestNormalX = nx;
           bestNormalY = ny;
