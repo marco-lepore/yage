@@ -11,4 +11,5 @@ A body switched off while it touches something no longer stops another body in m
 - Changed: a resting body falls asleep after 0.5 s instead of 2 s.
 - Changed: speed is capped at 400 m/s (`400 × pixelsPerMeter` px/s, 20,000 at the default 50) and rotation at 45° per physics step, about 47 rad/s at 60 steps per second.
 - Changed: a plain box driven across `polyline` terrain catches on the junctions between segments more often. A box with `borderRadius` still crosses cleanly.
-- Changed: the `contacts` list in the Inspector's physics snapshot no longer includes pairs of two static colliders, which never collide.
+- Changed: a body that walks slowly off a ledge starts to fall a little later. At 60 px/s it falls two physics steps later than before, 2 px further out. At 150 px/s and faster it falls on the same step.
+- Changed: the `contacts` list in the Inspector's physics snapshot no longer includes pairs of two static colliders, which never collide. The list holds pairs that are close, not only touching ones, and a fast body now counts as close from farther away. The pooling example's sparks are listed from about 15 px apart instead of about 5.
