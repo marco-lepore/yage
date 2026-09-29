@@ -31,7 +31,7 @@ entity.add(new RigidBodyComponent({
   gravityScale: 0,          // ignore gravity (0 = zero-g, 1 = normal); finite
   linearDamping: 5,         // velocity drag; finite and >= 0
   angularDamping: 1,        // rotation drag; finite and >= 0
-  ccd: true,                // continuous collision detection for fast objects
+  ccd: true,                // also stop against moving bodies at high speed
   lockTranslationX: false,  // lock horizontal movement
   syncRotation: true,       // sync physics rotation back to Transform
 }));
@@ -549,6 +549,11 @@ a `Vec2`. Both coordinates come from one Rapier read. Read again to refresh
 the buffer; its values do not follow later changes to the body. Without a
 live body, the method writes `(0, 0)`.
 
+Rapier limits how fast a body can move. Linear speed stops at 400 meters per
+second, which is `400 × pixelsPerMeter` px/s: 20,000 px/s at the default 50.
+Rotation stops at 45° per physics step, about 47 rad/s at the default 60 steps
+per second. A faster velocity is clamped at the next step.
+
 :::note
 `applyImpulse` values are affected by mass and the pixels-per-meter conversion.
 For predictable movement, prefer `setVelocity`.
@@ -836,8 +841,8 @@ into the initial overlap. If the move requires a clear destination, also check
 that position with `queryShape`. The option affects only the cast; body
 collisions still apply normally.
 
-Use this to test a move before committing to it. A fast-falling player can land
-on the floor it would otherwise pass through in one frame:
+Use this to test whether a fast-falling player has a floor along its path
+this frame:
 
 ```typescript
 import { Component, Transform } from "@yagejs/core";
@@ -1122,10 +1127,10 @@ for animation state.
 
 Two practical notes:
 
-- A very fast body can cross a thin platform entirely between two physics
-  steps and is never detected. That is ordinary tunneling — give the body
-  `ccd: true` (see Continuous Collision Detection below). The CCD sweep
-  respects one-way behavior, including drop-through.
+- A fast body cannot cross a static platform between two physics steps: it
+  is swept against static colliders every step. A kinematic platform is
+  swept only for a body with `ccd: true` (see Continuous Collision Detection
+  below). The sweep respects one-way behavior, including drop-through.
 - `oneWay` is part of the collider config. It has no effect on `sensor: true`
   colliders, since sensors never produce solid contacts.
 
@@ -1181,7 +1186,13 @@ Clear a filter with `setContactFilter(null)`.
 
 ## Continuous Collision Detection
 
-Enable CCD on fast-moving bodies to prevent tunneling through thin colliders:
+A fast dynamic body is swept along its path against static colliders every
+step, so it stops at a thin wall or floor instead of passing through it
+between two steps.
+
+Kinematic and dynamic bodies are not swept by default. Enable CCD on a fast
+body that has to stop against them, such as a bullet that must hit a moving
+platform or another body:
 
 ```typescript yage-context="entity"
 import { RigidBodyComponent } from "@yagejs/physics";

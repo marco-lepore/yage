@@ -293,9 +293,12 @@ const { mocks } = vi.hoisted(() => {
       this._pairs.set(key, entries);
     }
 
+    // Rapier passes the body set so solver contacts, stored per body, can be
+    // read back in world space; the mock's manifolds are already world-space.
     contactPair(
       h1: number,
       h2: number,
+      _bodies: unknown,
       f: (manifold: MockManifold, flipped: boolean) => void,
     ) {
       for (const entry of this._pairs.get(`${h1}:${h2}`) ?? []) {

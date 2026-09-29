@@ -49,12 +49,16 @@ entity.add(
     gravityScale: 0, // 0 = no gravity; finite (negative floats the body up)
     linearDamping: 5, // finite and >= 0
     angularDamping: 1, // finite and >= 0
-    ccd: true, // continuous collision detection
+    ccd: true, // also sweep against kinematic and dynamic bodies
     lockTranslationX: false,
     syncRotation: true, // sync rotation to Transform (default true)
   }),
 );
 ```
+
+A fast dynamic body is always swept against static colliders, so it stops at a thin wall or floor instead of passing through it between steps. `ccd: true` extends the sweep to kinematic and dynamic colliders: use it for bullets and fast projectiles that must hit moving platforms or other bodies. It costs a little per body.
+
+Rapier caps linear speed at 400 m/s (`400 × pixelsPerMeter` px/s, 20,000 at the default 50) and rotation at 45° per physics step (about 47 rad/s at 60 steps/s). A faster velocity is clamped at the next step.
 
 Methods:
 
@@ -469,7 +473,7 @@ riderCollider.isDroppingThrough; // boolean, true while the window is open
 - A body lands on the face `direction` points at, passes through from every other side, and a body already inside the platform keeps passing until clear — it is never snapped to the surface.
 - `dropThrough(seconds)` is per body: other bodies on the same platform stay supported. Seconds of simulated time (respects pause/timeScale). Wakes a sleeping body. Callable before `entity.add()`.
 - `direction` is in the platform body's local frame and rotates with the body.
-- A body that travels more than the platform-plus-body thickness in one step can cross the platform undetected; give it `ccd: true`. Rapier's CCD sweep honors one-way filtering, including drop-through.
+- A fast body is swept against static platforms every step, so it cannot cross one undetected. Against a kinematic platform, a body that travels more than the platform-plus-body thickness in one step crosses it unless it has `ccd: true`. The sweep honors one-way filtering, including drop-through.
 - `oneWay` is part of collider construction. It has no effect on `sensor: true` colliders (dev warning).
 
 ## Contact Filters

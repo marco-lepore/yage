@@ -20,6 +20,7 @@ import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import {
   createPhysicsTestContext,
   spawnEntityInScene,
+  cuboidHalfExtents,
 } from "./test-helpers.js";
 
 function addCollider(
@@ -147,10 +148,10 @@ describe("setShape offset (real Rapier)", () => {
 
     expect(rawPart(physicsWorld, collider, 0).shape).toBe(firstShape);
     expect(localPixels(physicsWorld, collider, 0)).toEqual(firstTranslation);
-    expect(rawPart(physicsWorld, collider, 1).halfExtents().x).toBeCloseTo(
+    expect(cuboidHalfExtents(rawPart(physicsWorld, collider, 1)).x).toBeCloseTo(
       0.12,
     );
-    expect(rawPart(physicsWorld, collider, 1).halfExtents().y).toBeCloseTo(
+    expect(cuboidHalfExtents(rawPart(physicsWorld, collider, 1)).y).toBeCloseTo(
       0.08,
     );
     expectLocalPixels(physicsWorld, collider, { x: 25, y: -6 }, 1);
@@ -174,8 +175,12 @@ describe("setShape offset (real Rapier)", () => {
       { offset: { x: 4, y: -5 } },
     );
 
-    expect(rawPart(physicsWorld, uniform).halfExtents().x).toBeCloseTo(0.28);
-    expect(rawPart(physicsWorld, uniform).halfExtents().y).toBeCloseTo(0.16);
+    expect(cuboidHalfExtents(rawPart(physicsWorld, uniform)).x).toBeCloseTo(
+      0.28,
+    );
+    expect(cuboidHalfExtents(rawPart(physicsWorld, uniform)).y).toBeCloseTo(
+      0.16,
+    );
     expectLocalPixels(physicsWorld, uniform, { x: 8, y: -10 });
 
     const mirrored = addCollider(
@@ -244,7 +249,7 @@ describe("setShape offset (real Rapier)", () => {
 
     const raw = rawPart(physicsWorld, collider);
     expect(raw.isEnabled()).toBe(false);
-    expect(raw.halfExtents().y).toBeCloseTo(0.2);
+    expect(cuboidHalfExtents(raw).y).toBeCloseTo(0.2);
     expectLocalPixels(physicsWorld, collider, { x: 2, y: -10 });
     entity.setActive(true);
     expect(raw.isEnabled()).toBe(true);
@@ -362,7 +367,7 @@ describe("setShape offset (real Rapier)", () => {
 
     transform.setScale(2, 2);
     expect(() => collider._syncScale()).not.toThrow();
-    expect(raw.halfExtents().x).toBeCloseTo(0.4);
+    expect(cuboidHalfExtents(raw).x).toBeCloseTo(0.4);
     expectLocalPixels(physicsWorld, collider, { x: 2, y: 0 });
   });
 });

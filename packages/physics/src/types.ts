@@ -60,7 +60,10 @@ export interface RigidBodyConfig {
   fixedRotation?: boolean;
   /** Gravity multiplier for this body; finite (negative floats the body up). */
   gravityScale?: number;
-  /** Enable continuous collision detection. */
+  /**
+   * Also sweep this body against kinematic and dynamic colliders, so it stops
+   * at them at high speed. Fast bodies are always swept against static ones.
+   */
   ccd?: boolean;
   /** If true, disable translation on the X axis. */
   lockTranslationX?: boolean;

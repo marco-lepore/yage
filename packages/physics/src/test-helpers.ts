@@ -21,6 +21,7 @@ import {
   _resetEntityIdCounter,
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
+import type RAPIER from "@dimforge/rapier2d";
 import { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 import { PhysicsWorldKey, PhysicsWorldManagerKey } from "./types.js";
@@ -123,4 +124,14 @@ export async function createTestScene(
 
 export function spawnEntityInScene(scene: Scene, name = "entity"): Entity {
   return scene.spawn(name);
+}
+
+/**
+ * A cuboid collider's half-extents in meters. Rapier returns `null` for any
+ * other shape, which in a test means the collider was built wrong.
+ */
+export function cuboidHalfExtents(collider: RAPIER.Collider): RAPIER.Vector {
+  const halfExtents = collider.halfExtents();
+  if (!halfExtents) throw new Error("Expected a cuboid collider.");
+  return halfExtents;
 }

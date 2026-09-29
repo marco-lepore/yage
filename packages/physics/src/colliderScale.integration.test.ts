@@ -18,6 +18,7 @@ import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import {
   createPhysicsTestContext,
   spawnEntityInScene,
+  cuboidHalfExtents,
 } from "./test-helpers.js";
 
 const DT = 1 / 60;
@@ -52,8 +53,12 @@ describe("collider Transform scale (real Rapier)", () => {
     const { collider } = spawnScaledBox(scene, 3);
     const raw = physicsWorld.getCollider(collider._colliderHandle)!;
 
-    expect(raw.halfExtents().x * physicsWorld.pixelsPerMeter).toBeCloseTo(30);
-    expect(raw.halfExtents().y * physicsWorld.pixelsPerMeter).toBeCloseTo(30);
+    expect(cuboidHalfExtents(raw).x * physicsWorld.pixelsPerMeter).toBeCloseTo(
+      30,
+    );
+    expect(cuboidHalfExtents(raw).y * physicsWorld.pixelsPerMeter).toBeCloseTo(
+      30,
+    );
   });
 
   it("applies a live scale at the next PhysicsSystem step", async () => {
@@ -66,7 +71,9 @@ describe("collider Transform scale (real Rapier)", () => {
     system.update(DT);
 
     const raw = physicsWorld.getCollider(collider._colliderHandle)!;
-    expect(raw.halfExtents().x * physicsWorld.pixelsPerMeter).toBeCloseTo(20);
+    expect(cuboidHalfExtents(raw).x * physicsWorld.pixelsPerMeter).toBeCloseTo(
+      20,
+    );
   });
 
   it("uses composed parent scale at creation", async () => {
@@ -83,11 +90,15 @@ describe("collider Transform scale (real Rapier)", () => {
     );
 
     const raw = physicsWorld.getCollider(collider._colliderHandle)!;
-    expect(raw.halfExtents().x * physicsWorld.pixelsPerMeter).toBeCloseTo(60);
+    expect(cuboidHalfExtents(raw).x * physicsWorld.pixelsPerMeter).toBeCloseTo(
+      60,
+    );
 
     parent.get(Transform).setScale(4, 4);
     collider._syncScale();
-    expect(raw.halfExtents().x * physicsWorld.pixelsPerMeter).toBeCloseTo(120);
+    expect(cuboidHalfExtents(raw).x * physicsWorld.pixelsPerMeter).toBeCloseTo(
+      120,
+    );
   });
 
   it("scales compound offsets with their signed axes", async () => {
@@ -150,12 +161,12 @@ describe("collider Transform scale (real Rapier)", () => {
     const { scene, physicsWorld } = await createPhysicsTestContext();
     const { transform, collider } = spawnScaledBox(scene, 2);
     const raw = physicsWorld.getCollider(collider._colliderHandle)!;
-    const before = raw.halfExtents().x;
+    const before = cuboidHalfExtents(raw).x;
 
     expect(() => transform.setScale(Number.NaN, 2)).toThrow(
       "Transform.setScale: x must be finite, got NaN.",
     );
-    expect(raw.halfExtents().x).toBe(before);
+    expect(cuboidHalfExtents(raw).x).toBe(before);
   });
 
   it("keeps setShape mass unless recomputation is requested", async () => {
