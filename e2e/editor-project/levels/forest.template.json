@@ -15,7 +15,7 @@
         "rotation": 0,
         "scale": { "x": 1, "y": 1 }
       },
-      "params": { "sprite": "assets/player_idle.png" },
+      "params": { "sprite": "assets/scout/idle.png" },
       "extensions": {}
     },
     {
@@ -30,7 +30,7 @@
         "rotation": 0,
         "scale": { "x": 1, "y": 1 }
       },
-      "params": { "sprite": "assets/skeleton_idle.png" },
+      "params": { "sprite": "assets/scrapbot/idle.png" },
       "extensions": {}
     },
     {
@@ -44,7 +44,7 @@
         "rotation": 0,
         "scale": { "x": 1, "y": 1 }
       },
-      "params": { "sprite": "assets/player_jump.png" },
+      "params": { "sprite": "assets/scout/jump.png" },
       "extensions": {}
     }
   ],

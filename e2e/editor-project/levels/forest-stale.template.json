@@ -15,7 +15,7 @@
         "rotation": 0,
         "scale": { "x": 1, "y": 1 }
       },
-      "params": { "sprite": "assets/skeleton_idle.png", "shadow": true },
+      "params": { "sprite": "assets/scrapbot/idle.png", "shadow": true },
       "extensions": {}
     },
     {

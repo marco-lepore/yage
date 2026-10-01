@@ -175,7 +175,7 @@ as `texture("/assets/player-idle.png")` resolves to
 `public/assets/player-idle.png`. The starter includes:
 
 - `public/assets/player-idle.png`, `public/assets/player-walk.png`, and
-  `public/assets/player-jump.png` by Zegley
+  `public/assets/player-jump.png`, made for YAGE (CC0)
 - `public/assets/coin.png`, `public/assets/slime_purple.png`,
   `public/assets/jump.wav`, and `public/assets/hurt.wav` from the Brackeys
   Platformer Bundle

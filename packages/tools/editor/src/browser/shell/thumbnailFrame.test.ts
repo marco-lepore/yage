@@ -8,8 +8,8 @@ import {
 
 describe("atlasPathFor", () => {
   it("names the atlas beside the texture", () => {
-    expect(atlasPathFor("assets/player_idle.png")).toBe(
-      "assets/player_idle.json",
+    expect(atlasPathFor("assets/scout/idle.png")).toBe(
+      "assets/scout/idle.json",
     );
   });
 

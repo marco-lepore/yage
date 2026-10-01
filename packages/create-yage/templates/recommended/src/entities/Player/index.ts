@@ -40,7 +40,9 @@ export class Player extends Entity {
     const sprite = new AnimatedSpriteComponent({
       source: idleSource,
       layer: "player",
-      anchor: { x: 0.5, y: 0.5 },
+      // The strips draw the body 28 px tall with the feet on row 40, so row
+      // 26 is the body's center. The collider below is centered there.
+      anchor: { x: 0.5, y: 26 / PLAYER_FRAME_SIZE },
     });
     this.add(sprite);
 
@@ -68,7 +70,8 @@ export class Player extends Entity {
     );
     this.add(
       new ColliderComponent({
-        shape: { type: "box", width: 22, height: 32 },
+        // Sized to the drawn body.
+        shape: { type: "box", width: 14, height: 28 },
         friction: 0,
         layers: LAYER_PLAYER,
         mask: LAYER_PLATFORM | LAYER_COIN | LAYER_HAZARD,

@@ -32,7 +32,8 @@ export class PlayerController extends Component {
 
   private static readonly MOVE_SPEED = 240;
   private static readonly JUMP_VELOCITY = 520;
-  private static readonly GROUND_RAY_DISTANCE = 22;
+  /** Half the collider's 28 px height, plus 6 px below the feet. */
+  private static readonly GROUND_RAY_DISTANCE = 20;
 
   onAdd(): void {
     this.physicsWorld = this.use(PhysicsWorldKey);

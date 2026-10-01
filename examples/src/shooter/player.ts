@@ -12,6 +12,7 @@ import {
   AnimatedSpriteComponent,
   AnimationController,
   type CameraEntity,
+  type VisualTransformModifierHandle,
 } from "@yagejs/renderer";
 import {
   RigidBodyComponent,
@@ -34,6 +35,7 @@ import {
   BulletHit,
   AllEnemiesDefeated,
   FRAME_SIZE,
+  SPRITE_SCALE,
   PlayerIdleTex,
   PlayerWalkTex,
   PlayerJumpTex,
@@ -50,6 +52,19 @@ import {
 // PlayerController
 // ---------------------------------------------------------------------------
 type PlayerAnim = "idle" | "walk" | "jump" | "land" | "shoot" | "hurt";
+
+/** The player's collider, sized to the drawn body in sheet pixels. The
+ *  Transform's scale enlarges it together with the drawing. */
+const BODY_W = 14;
+const BODY_H = 28;
+/** The sheets put the bottom of the feet 40 px below the frame's top edge. */
+const FEET_Y = 40;
+/** The gauntlet's muzzle in the shoot sheet, relative to the body's center,
+ *  in sheet pixels. */
+const MUZZLE = new Vec2(12, -3);
+/** A bullet's size in world pixels. */
+const BULLET_W = 8;
+const BULLET_H = 4;
 
 class PlayerController extends Component {
   private readonly input = this.service(InputManagerKey);
@@ -83,13 +98,17 @@ class PlayerController extends Component {
   private stun!: ProcessSlot;
   private flash!: ProcessSlot;
   private squash!: ProcessSlot;
+  /** The sprite's squash and stretch. It changes only the drawing, so the
+   *  collider keeps its size. */
+  private squashScale!: VisualTransformModifierHandle;
 
   private static readonly SPEED = 220;
-  private static readonly JUMP_VELOCITY = 505;
+  private static readonly JUMP_VELOCITY = 580;
   private static readonly COYOTE_SECONDS = 0.1;
   private static readonly JUMP_BUFFER_SECONDS = 0.12;
-  private static readonly GROUND_RAY_DIST = 22;
-  private static readonly WALL_RAY_DIST = 16;
+  // Ray lengths are in world pixels: half the scaled body, plus a margin.
+  private static readonly GROUND_RAY_DIST = (BODY_H / 2) * SPRITE_SCALE + 4;
+  private static readonly WALL_RAY_DIST = (BODY_W / 2) * SPRITE_SCALE + 4;
   private static readonly SHOOT_COOLDOWN_SECONDS = 0.2;
   private static readonly STUN_SECONDS = 0.3;
   private static readonly KNOCKBACK_X = 200;
@@ -120,9 +139,11 @@ class PlayerController extends Component {
         this.sprite.tint = 0xffffff;
       },
     });
+    this.squashScale = this.sprite.modifiers.addTransform();
+    this.addCleanup(() => this.squashScale.remove());
     this.squash = this.pc.slot({
       cleanup: () => {
-        this.transform.setScale(1, 1);
+        this.setSquash(1, 1);
       },
     });
 
@@ -286,15 +307,25 @@ class PlayerController extends Component {
   }
 
   private startSquash(scaleX: number, scaleY: number): void {
-    this.transform.setScale(scaleX, scaleY);
+    this.setSquash(scaleX, scaleY);
     this.squash.restart({
       duration: 0.12,
       update: (_dt, elapsed) => {
         const t = Math.max(0, 1 - elapsed / 0.12);
         const sx = 1 + (scaleX - 1) * t;
         const sy = 1 + (scaleY - 1) * t;
-        this.transform.setScale(sx, sy);
+        this.setSquash(sx, sy);
       },
+    });
+  }
+
+  /** The sprite scales about the body's center. The offset moves the drawn
+   *  feet back onto the collider's bottom edge. */
+  private setSquash(scaleX: number, scaleY: number): void {
+    this.squashScale.setScale({ x: scaleX, y: scaleY });
+    this.squashScale.setPosition({
+      x: 0,
+      y: (1 - scaleY) * (BODY_H / 2) * SPRITE_SCALE,
     });
   }
 
@@ -337,7 +368,12 @@ class PlayerController extends Component {
     const scene = this.scene;
     const pos = this.transform.position;
     const dir = this.facingRight ? 1 : -1;
-    scene.spawn(BulletEntity, { x: pos.x + dir * 18, y: pos.y - 6, dir });
+    // The bullet starts with its back edge on the muzzle.
+    scene.spawn(BulletEntity, {
+      x: pos.x + dir * (MUZZLE.x * SPRITE_SCALE + BULLET_W / 2),
+      y: pos.y + MUZZLE.y * SPRITE_SCALE,
+      dir,
+    });
   }
 }
 
@@ -347,12 +383,18 @@ class PlayerController extends Component {
 export class PlayerEntity extends Entity {
   setup(params: { camera: CameraEntity }): void {
     this.tags.add("player");
-    this.add(new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }));
+    this.add(
+      new Transform({
+        position: new Vec2(SPAWN.x, SPAWN.y),
+        scale: { x: SPRITE_SCALE, y: SPRITE_SCALE },
+      }),
+    );
     const idleSource = { sheet: PlayerIdleTex, frameWidth: FRAME_SIZE };
     this.add(
       new AnimatedSpriteComponent({
         source: idleSource,
-        anchor: { x: 0.5, y: 0.5 - 3 / FRAME_SIZE },
+        // The collider's center: half a body above the feet.
+        anchor: { x: 0.5, y: (FEET_Y - BODY_H / 2) / FRAME_SIZE },
         layer: "player",
       }),
     );
@@ -394,7 +436,7 @@ export class PlayerEntity extends Entity {
     );
     this.add(
       new ColliderComponent({
-        shape: { type: "box", width: 24, height: 36 },
+        shape: { type: "box", width: BODY_W, height: BODY_H },
         friction: 0,
         layers: LAYER_PLAYER,
         mask: LAYER_PLATFORM | LAYER_ENEMY,
@@ -412,7 +454,9 @@ class BulletEntity extends Entity {
     this.add(new Transform({ position: new Vec2(x, y) }));
     this.add(
       new GraphicsComponent({ layer: "bullets" }).draw((g) => {
-        g.rect(-4, -2, 8, 4).fill({ color: 0x38bdf8 });
+        g.rect(-BULLET_W / 2, -BULLET_H / 2, BULLET_W, BULLET_H).fill({
+          color: 0x38bdf8,
+        });
       }),
     );
     this.add(
@@ -425,7 +469,7 @@ class BulletEntity extends Entity {
     );
 
     const collider = new ColliderComponent({
-      shape: { type: "box", width: 8, height: 4 },
+      shape: { type: "box", width: BULLET_W, height: BULLET_H },
       friction: 0,
       layers: LAYER_BULLET,
       mask: LAYER_PLATFORM | LAYER_ENEMY,

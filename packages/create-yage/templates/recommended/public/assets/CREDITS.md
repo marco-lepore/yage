@@ -9,7 +9,7 @@ visible out of the box. Replace them with your own.
 - `player-walk.png` — 8-frame walk strip (384×48)
 - `player-jump.png` — 3-frame jump strip (144×48)
 
-By [Zegley](https://zegley.itch.io/2d-platformermetroidvania-asset-pack).
+The scout from the YAGE examples. Made for YAGE. CC0.
 
 ## Coin, slime, and sound effects
 
