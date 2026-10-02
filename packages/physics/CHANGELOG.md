@@ -1,5 +1,34 @@
 # @yagejs/physics
 
+## 0.12.0
+
+### Patch Changes
+
+- [#363](https://github.com/marco-lepore/yage/pull/363) [`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Show authored collider footprints in the level editor.
+  - Publish typed authored collider outlines through the Inspector contributor registry, including for detached and inactive colliders. Share geometry with collider scaling and preserve the straight sides of rounded boxes and capsules.
+
+- [#394](https://github.com/marco-lepore/yage/pull/394) [`ab3e32c`](https://github.com/marco-lepore/yage/commit/ab3e32cac2605e1b2d5b492eb41598ee75ec7aec) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A body switched off while it touches something no longer stops another body in mid-air. `@yagejs/physics` now depends on `@dimforge/rapier2d` 0.20.
+  - Fixed: destroying an entity whose body touched a wall or the ground no longer freezes another moving body. `destroy()` switches the body off at once and removes it at the end of the frame. Rapier 0.19 kept the switched-off body's contacts until then and applied them to another awake body, usually the newest one, whenever a physics step ran in between: the zero-duration step a spatial query runs, or the second fixed step of a slow frame. That body lost its speed toward the contact, so in the shooter example a bullet stopped in mid-air when the bullet before it hit a wall.
+  - Fixed: a pooled or deactivated entity (`setActive(false)`), or a disabled `RigidBodyComponent`, no longer does the same at every step while it is dormant. Earlier releases were affected too.
+  - Fixed: a collider switched off while its body is awake, with `collider.enabled = false` or a zero `Transform` scale, stops colliding. It kept blocking other bodies. A moving kinematic platform deactivated under a rider now drops the rider.
+  - Changed: a fast body is swept against static colliders at every step, so it stops at a thin wall or floor without `ccd: true`, and a body landing at speed stops at the surface instead of sinking into it for a few frames. `ccd: true` extends the sweep to kinematic and dynamic bodies.
+  - Changed: a resting body falls asleep after 0.5 s instead of 2 s.
+  - Changed: speed is capped at 400 m/s (`400 × pixelsPerMeter` px/s, 20,000 at the default 50) and rotation at 45° per physics step, about 47 rad/s at 60 steps per second.
+  - Changed: a plain box driven across `polyline` terrain catches on the junctions between segments more often. A box with `borderRadius` still crosses cleanly.
+  - Changed: a body that walks slowly off a ledge starts to fall a little later. At 60 px/s it falls two physics steps later than before, 2 px further out. At 150 px/s and faster it falls on the same step.
+  - Changed: the `contacts` list in the Inspector's physics snapshot no longer includes pairs of two static colliders, which never collide. The list holds pairs that are close, not only touching ones, and a fast body now counts as close from farther away. The pooling example's sparks are listed from about 15 px apart instead of about 5.
+
+- [#354](https://github.com/marco-lepore/yage/pull/354) [`1a9a685`](https://github.com/marco-lepore/yage/commit/1a9a685d3dc47f8045847d9b36b2a34f06002a45) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add fixed, revolute, and prismatic joints for welded structures, hinges, and sliding platforms.
+
+  Configure collisions between connected bodies, angular or linear limits, and motors that can be updated through `setMotor`.
+
+- [#392](https://github.com/marco-lepore/yage/pull/392) [`ce75bb9`](https://github.com/marco-lepore/yage/commit/ce75bb9f245266f5f382232c25b9e77b66c25b0a) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `PhysicsPlugin` registers its collider facet with the Inspector in `onStart` instead of `install`, so it finds an Inspector installed by a plugin registered after it, such as `DebugPlugin`.
+
+- [#391](https://github.com/marco-lepore/yage/pull/391) [`f4a1214`](https://github.com/marco-lepore/yage/commit/f4a1214aa4541ac0b826ba6838066e2a214397a4) Thanks [@marco-lepore](https://github.com/marco-lepore)! - The `PhysicsWorld.queryOverlapping` and `PhysicsWorld.contactBetween` documentation says both take internal collider handles, and points game code to `ColliderComponent.getOverlapping()` and `ColliderComponent.contactWith()`.
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0c90d77`](https://github.com/marco-lepore/yage/commit/0c90d774bdbda47f5a95c92ab7aef11d7a19e7b9), [`6888d06`](https://github.com/marco-lepore/yage/commit/6888d06c6fdf2361f41c5521ebdda83dc833b6c4), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642), [`ce75bb9`](https://github.com/marco-lepore/yage/commit/ce75bb9f245266f5f382232c25b9e77b66c25b0a), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`847ce80`](https://github.com/marco-lepore/yage/commit/847ce80baad0ed2a18569db9f28f185c61ab7c35), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`5efe5f6`](https://github.com/marco-lepore/yage/commit/5efe5f6de138b71048e6f4752ed74647a9fc3e76), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210)]:
+  - @yagejs/core@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes
