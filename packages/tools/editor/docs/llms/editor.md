@@ -1,7 +1,9 @@
 # @yagejs-tools/editor
 
 Development-only. A browser level editor for `*.yage-level.json` files: open a
-level, build it up, and save it back. The game loads the same file through
+level, build it up, and save it back. Sequence mode edits
+`*.yage-sequence-workspace.json` with the same catalog and manipulation tools;
+see `tools/sequence-editor.md`. The game loads the same file through
 `@yagejs/level`, which is the package a game depends on — never this one.
 
 ```bash
@@ -292,11 +294,11 @@ first finding and leaves with the last, capped at a fifth of the window, and
 its header collapses the list while keeping the count. Both take their height
 from the viewport rather than covering it, so nothing the viewport draws ends
 up behind a panel and a finding arriving never resizes the hierarchy or the
-inspector. Panels are not resizable and none of these positions is
-configurable.
+inspector. The sequence timeline has a resizable horizontal divider. The other panel
+positions are fixed.
 
-The file bar's first control is a `select` listing every level the `levels`
-globs matched, as project-relative paths in alphabetical order. Choosing one
+The file bar starts with Level and Sequence mode controls, followed by a
+`select` listing every file the `levels` and `sequences` globs matched, as project-relative paths in alphabetical order. Choosing one
 opens it. Beside it sit **New**, **Duplicate** and **Delete**, then the unsaved
 badge, Save, Play, and Run.
 

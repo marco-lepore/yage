@@ -1,4 +1,6 @@
-import type { LevelDocument } from "@yagejs/level/document";
+import { sampledDocument } from "./sequence.js";
+import type { EditorDocument } from "../../shared/document/index.js";
+
 import {
   CommandPreconditionError,
   reduceCommand,
@@ -50,7 +52,7 @@ import {
  * It is never sent anywhere: a save promotes a revision the server already
  * holds, and this document has none.
  */
-export const EMPTY_LEVEL_DOCUMENT: LevelDocument = {
+export const EMPTY_LEVEL_DOCUMENT: EditorDocument = {
   format: "yage-level",
   version: 1,
   id: "",
@@ -172,7 +174,7 @@ export class EditorStore {
     if (action.type === "level-opened") {
       const stored = this.readStoredView(action.snapshot.path);
       this.viewChosen = stored !== undefined;
-      next = { ...next, view: stored ?? openingView(next.viewport) };
+      next = { ...next, view: stored ?? documentOpeningView(next) };
     }
     // The pane is measured after the shell mounts, so the first level can open
     // before there is anything to derive an opening zoom from. Only the first
@@ -184,7 +186,7 @@ export class EditorStore {
       !this.viewChosen &&
       this.state.viewport === undefined
     ) {
-      next = { ...next, view: openingView(action.viewport) };
+      next = { ...next, view: documentOpeningView(next) };
     }
     this.state = next;
     if (isViewAction(action)) {
@@ -555,6 +557,11 @@ function dropDiagnostic(
 /** The placements an edit was about, so a message can name what was lost. */
 function placementIdsOf(command: DocumentCommand): readonly string[] {
   switch (command.kind) {
+    case "transaction":
+      return command.commands.flatMap(placementIdsOf);
+    case "set-sequence":
+      return Object.values(command.after.bindings);
+
     case "set-poses":
       return command.poses.map((pose) => pose.id);
     case "add-placements":
@@ -570,9 +577,9 @@ function placementIdsOf(command: DocumentCommand): readonly string[] {
 
 /** The pending commands replayed on a committed document, in order. */
 function project(
-  document: LevelDocument,
+  document: EditorDocument,
   pending: readonly PendingCommand[],
-): { document: LevelDocument; kept: readonly PendingCommand[] } {
+): { document: EditorDocument; kept: readonly PendingCommand[] } {
   let next = document;
   const kept: PendingCommand[] = [];
   for (const entry of pending) {
@@ -654,7 +661,7 @@ function fileStateOf(snapshot: DraftSnapshot): EditorFileState {
  */
 function retainIds(
   named: ReadonlySet<string>,
-  document: LevelDocument,
+  document: EditorDocument,
 ): ReadonlySet<string> {
   const ids = new Set(document.entities.map((placement) => placement.id));
   const kept = [...named].filter((id) => ids.has(id));
@@ -664,7 +671,7 @@ function retainIds(
 /** A pick follows the document: a holder it no longer has stops waiting. */
 function retainPick(
   pick: ReferencePick | undefined,
-  document: LevelDocument,
+  document: EditorDocument,
 ): ReferencePick | undefined {
   if (!pick) return undefined;
   return document.entities.some((one) => one.id === pick.placementId)
@@ -711,6 +718,7 @@ function projectDiagnostics(
 function withoutLevel(state: EditorState): EditorState {
   return {
     ...state,
+    sequence: undefined,
     file: undefined,
     committed: { document: EMPTY_LEVEL_DOCUMENT, draftRevision: 0 },
     pending: [],
@@ -730,6 +738,10 @@ function withoutLevel(state: EditorState): EditorState {
 
 function reduce(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
+    case "sequence-view":
+      return state.sequence === undefined
+        ? state
+        : { ...state, sequence: { ...state.sequence, ...action.patch } };
     case "assets-changed":
       return { ...state, assetRevision: state.assetRevision + 1 };
     case "level-opened": {
@@ -742,6 +754,19 @@ function reduce(state: EditorState, action: EditorAction): EditorState {
           draftRevision: snapshot.draftRevision,
         },
         document: snapshot.document,
+        sequence:
+          snapshot.document.format === "yage-sequence-workspace"
+            ? {
+                frame: 0,
+                playing: false,
+                loop: false,
+                speed: 1,
+                width: snapshot.document.sequence.frame.width,
+                height: snapshot.document.sequence.frame.height,
+                fit: "stretch",
+                events: [],
+              }
+            : undefined,
         history: snapshot.history,
       };
     }
@@ -1026,7 +1051,19 @@ export function posesOf(
   ids: readonly string[],
 ): readonly PoseEdit[] {
   const wanted = new Set(ids);
-  return state.document.entities
-    .filter((placement) => wanted.has(placement.id))
+  return sampledDocument(state)
+    .entities.filter((placement) => wanted.has(placement.id))
     .map((placement) => ({ id: placement.id, transform: placement.transform }));
+}
+
+/** Sequence rectangles use a top-left origin; levels keep the camera origin. */
+function documentOpeningView(state: EditorState): EditorViewState {
+  const frame = state.sequence;
+  if (!frame) return openingView(state.viewport);
+  return {
+    ...openingView(
+      state.viewport ? { ...state.viewport, design: frame } : undefined,
+    ),
+    center: { x: frame.width / 2, y: frame.height / 2 },
+  };
 }

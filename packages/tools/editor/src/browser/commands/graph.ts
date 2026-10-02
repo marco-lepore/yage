@@ -1,4 +1,5 @@
-import type { LevelDocument, LevelPlacement } from "@yagejs/level/document";
+import type { EditorDocument } from "../../shared/document/index.js";
+import type { LevelPlacement } from "@yagejs/level/document";
 
 /**
  * The questions the editor asks about how placements are related.
@@ -25,7 +26,7 @@ import type { LevelDocument, LevelPlacement } from "@yagejs/level/document";
  * a fresh one per dragged placement, on every render of a drag.
  */
 export function placementById(
-  document: LevelDocument,
+  document: EditorDocument,
 ): ReadonlyMap<string, LevelPlacement> {
   const held = indexes.get(document);
   if (held) return held;
@@ -37,13 +38,13 @@ export function placementById(
 }
 
 const indexes = new WeakMap<
-  LevelDocument,
+  EditorDocument,
   ReadonlyMap<string, LevelPlacement>
 >();
 
 /** Whether `id` is `candidate` or anywhere above it in the parent chain. */
 export function isAncestorOrSelf(
-  document: LevelDocument,
+  document: EditorDocument,
   id: string,
   candidate: string | undefined,
 ): boolean {
@@ -99,7 +100,7 @@ export function withDescendants(
  * the child, and cloning both would produce the child twice.
  */
 export function selectionRoots(
-  document: LevelDocument,
+  document: EditorDocument,
   ids: Iterable<string>,
 ): readonly string[] {
   const named = new Set(ids);
@@ -125,7 +126,7 @@ export function selectionRoots(
  * `undefined`.
  */
 export function sharedParent(
-  document: LevelDocument,
+  document: EditorDocument,
   ids: Iterable<string>,
 ): string | null | undefined {
   const byId = placementById(document);
@@ -152,7 +153,7 @@ export function sharedParent(
  * each named placement rather than down from every root.
  */
 export function rootsWithout(
-  document: LevelDocument,
+  document: EditorDocument,
   ids: Iterable<string>,
 ): readonly string[] {
   const byId = placementById(document);
@@ -212,7 +213,7 @@ export interface PlacementNode {
  * tree rather than growing a second set of roots nobody asked for.
  */
 export function placementTree(
-  document: LevelDocument,
+  document: EditorDocument,
 ): readonly PlacementNode[] {
   const childrenOf = new Map<string, LevelPlacement[]>();
   const roots: LevelPlacement[] = [];
@@ -239,7 +240,7 @@ export function placementTree(
  * answers it, for the viewport and the hierarchy alike.
  */
 export function hiddenClosure(
-  document: LevelDocument,
+  document: EditorDocument,
   hidden: ReadonlySet<string>,
 ): ReadonlySet<string> {
   if (hidden.size === 0) return hidden;

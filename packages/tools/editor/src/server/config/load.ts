@@ -65,7 +65,7 @@ export async function loadEditorConfig(
     ...(config.tiled === undefined ? {} : { tiled: config.tiled }),
     projectId: readProjectId(options.cwd, root),
     modules: resolveModules(config.modules, configDir, root, configFile),
-    levels: config.levels.map((entry) =>
+    levels: [...config.levels, ...(config.sequences ?? [])].map((entry) =>
       resolveLevelGlob(entry, configDir, root, configFile),
     ),
     assets: config.assets.map((glob) =>
@@ -139,6 +139,10 @@ function asEditorConfig(
     modules: { project, harness },
     ...(tiled === undefined ? {} : { tiled }),
     levels: asLevelList(value["levels"], configFile),
+    sequences:
+      value["sequences"] === undefined
+        ? []
+        : asLevelList(value["sequences"], configFile),
     assets:
       value["assets"] === undefined
         ? []

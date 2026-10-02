@@ -1,0 +1,379 @@
+{
+  "format": "yage-sequence-workspace",
+  "version": 1,
+  "id": "entrance",
+  "metadata": {},
+  "extensions": {},
+  "entities": [
+    {
+      "id": "aster",
+      "type": "example.sequence-actor",
+      "typeVersion": 1,
+      "name": "Aster",
+      "active": true,
+      "transform": {
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "rotation": 0,
+        "scale": {
+          "x": 1,
+          "y": 1
+        }
+      },
+      "params": {
+        "name": "Aster",
+        "color": "#8be9cd",
+        "width": 48,
+        "height": 68,
+        "placeholder": false
+      },
+      "extensions": {}
+    },
+    {
+      "id": "ember",
+      "type": "example.sequence-actor",
+      "typeVersion": 1,
+      "name": "Ember",
+      "active": true,
+      "transform": {
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "rotation": 0,
+        "scale": {
+          "x": 1,
+          "y": 1
+        }
+      },
+      "params": {
+        "name": "Ember",
+        "color": "#ffcc6e",
+        "width": 72,
+        "height": 48,
+        "placeholder": false
+      },
+      "extensions": {}
+    }
+  ],
+  "sequence": {
+    "format": "yage-sequence",
+    "version": 1,
+    "name": "Two actors \u00b7 an entrance and a greeting",
+    "fps": 30,
+    "duration": 120,
+    "frame": {
+      "width": 640,
+      "height": 360
+    },
+    "targets": {
+      "actorA": {
+        "properties": {
+          "position": {
+            "kind": "position"
+          },
+          "rotation": {
+            "kind": "number"
+          },
+          "opacity": {
+            "kind": "number"
+          },
+          "tint": {
+            "kind": "color"
+          },
+          "visible": {
+            "kind": "boolean"
+          },
+          "scale": {
+            "kind": "vector"
+          }
+        },
+        "events": {
+          "gesture": {
+            "name": {
+              "kind": "enum",
+              "values": ["hello", "ready"]
+            }
+          }
+        }
+      },
+      "actorB": {
+        "properties": {
+          "position": {
+            "kind": "position"
+          },
+          "rotation": {
+            "kind": "number"
+          },
+          "opacity": {
+            "kind": "number"
+          },
+          "tint": {
+            "kind": "color"
+          },
+          "visible": {
+            "kind": "boolean"
+          },
+          "scale": {
+            "kind": "vector"
+          }
+        },
+        "events": {
+          "gesture": {
+            "name": {
+              "kind": "enum",
+              "values": ["hello", "ready"]
+            }
+          }
+        }
+      }
+    },
+    "tracks": [
+      {
+        "id": "a-position",
+        "target": "actorA",
+        "property": "position",
+        "keys": [
+          {
+            "id": "a-position-0",
+            "frame": 0,
+            "value": {
+              "x": -30,
+              "y": 270
+            },
+            "curve": "easeOutQuad"
+          },
+          {
+            "id": "a-position-1",
+            "frame": 45,
+            "value": {
+              "x": 220,
+              "y": 270
+            },
+            "curve": "hold"
+          },
+          {
+            "id": "a-position-2",
+            "frame": 60,
+            "value": {
+              "x": 220,
+              "y": 270
+            },
+            "curve": {
+              "bezier": [0.42, 0, 0.58, 1]
+            }
+          },
+          {
+            "id": "a-position-3",
+            "frame": 90,
+            "value": {
+              "x": 320,
+              "y": 170
+            },
+            "curve": "linear"
+          },
+          {
+            "id": "a-position-4",
+            "frame": 120,
+            "value": {
+              "x": 400,
+              "y": 270
+            },
+            "curve": "linear"
+          }
+        ],
+        "position": {
+          "mode": "proportional"
+        }
+      },
+      {
+        "id": "b-position",
+        "target": "actorB",
+        "property": "position",
+        "keys": [
+          {
+            "id": "b-position-0",
+            "frame": 0,
+            "value": {
+              "x": 60,
+              "y": -40
+            },
+            "curve": "easeInOutCubic"
+          },
+          {
+            "id": "b-position-1",
+            "frame": 45,
+            "value": {
+              "x": -100,
+              "y": -40
+            },
+            "curve": "linear"
+          },
+          {
+            "id": "b-position-2",
+            "frame": 75,
+            "value": {
+              "x": -140,
+              "y": -150
+            },
+            "curve": "easeOutBack"
+          },
+          {
+            "id": "b-position-3",
+            "frame": 120,
+            "value": {
+              "x": -100,
+              "y": -40
+            },
+            "curve": "linear"
+          }
+        ],
+        "position": {
+          "mode": "anchored",
+          "anchor": {
+            "x": 1,
+            "y": 1
+          }
+        }
+      },
+      {
+        "id": "a-opacity",
+        "target": "actorA",
+        "property": "opacity",
+        "keys": [
+          {
+            "id": "a-opacity-0",
+            "frame": 0,
+            "value": 0,
+            "curve": "linear"
+          },
+          {
+            "id": "a-opacity-1",
+            "frame": 30,
+            "value": 1,
+            "curve": "linear"
+          }
+        ]
+      },
+      {
+        "id": "b-opacity",
+        "target": "actorB",
+        "property": "opacity",
+        "keys": [
+          {
+            "id": "b-opacity-0",
+            "frame": 0,
+            "value": 0.25,
+            "curve": "easeInQuad"
+          },
+          {
+            "id": "b-opacity-1",
+            "frame": 45,
+            "value": 1,
+            "curve": "linear"
+          }
+        ]
+      },
+      {
+        "id": "a-rotation",
+        "target": "actorA",
+        "property": "rotation",
+        "keys": [
+          {
+            "id": "a-rotation-0",
+            "frame": 0,
+            "value": 0,
+            "curve": "hold"
+          },
+          {
+            "id": "a-rotation-1",
+            "frame": 60,
+            "value": 0,
+            "curve": "easeInOutCubic"
+          },
+          {
+            "id": "a-rotation-2",
+            "frame": 90,
+            "value": 0.5,
+            "curve": "linear"
+          },
+          {
+            "id": "a-rotation-3",
+            "frame": 120,
+            "value": 0,
+            "curve": "linear"
+          }
+        ]
+      },
+      {
+        "id": "b-tint",
+        "target": "actorB",
+        "property": "tint",
+        "keys": [
+          {
+            "id": "b-tint-0",
+            "frame": 0,
+            "value": 16764014,
+            "curve": "linear"
+          },
+          {
+            "id": "b-tint-1",
+            "frame": 75,
+            "value": 16738740,
+            "curve": "linear"
+          },
+          {
+            "id": "b-tint-2",
+            "frame": 120,
+            "value": 16764014,
+            "curve": "linear"
+          }
+        ]
+      }
+    ],
+    "events": [
+      {
+        "id": "greet-a",
+        "frame": 45,
+        "target": "actorA",
+        "event": "gesture",
+        "payload": {
+          "name": "hello"
+        }
+      },
+      {
+        "id": "greet-b",
+        "frame": 75,
+        "target": "actorB",
+        "event": "gesture",
+        "payload": {
+          "name": "hello"
+        }
+      },
+      {
+        "id": "ready-a",
+        "frame": 120,
+        "target": "actorA",
+        "event": "gesture",
+        "payload": {
+          "name": "ready"
+        }
+      },
+      {
+        "id": "ready-b",
+        "frame": 120,
+        "target": "actorB",
+        "event": "gesture",
+        "payload": {
+          "name": "ready"
+        }
+      }
+    ]
+  },
+  "bindings": {
+    "actorA": "aster",
+    "actorB": "ember"
+  }
+}

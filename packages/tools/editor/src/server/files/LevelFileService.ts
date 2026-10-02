@@ -1,3 +1,10 @@
+import {
+  formatEditorDocument as formatLevel,
+  readEditorDocument as readLevel,
+  emptySequenceWorkspace,
+} from "../../shared/document/index.js";
+import type { EditorStructuralResult } from "../../shared/document/index.js";
+import type { EditorDocument } from "../../shared/document/index.js";
 import { createHash } from "node:crypto";
 import {
   link,
@@ -12,12 +19,8 @@ import {
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import picomatch from "picomatch";
-import {
-  emptyLevelDocument,
-  formatLevel,
-  readLevel,
-} from "@yagejs/level/document";
-import type { LevelDocument, StructuralResult } from "@yagejs/level/document";
+import { emptyLevelDocument } from "@yagejs/level/document";
+
 import type {
   AssetListing,
   LevelSummary,
@@ -28,7 +31,7 @@ export type ReadLevelResult =
   | {
       readonly ok: true;
       readonly text: string;
-      readonly structural: StructuralResult;
+      readonly structural: EditorStructuralResult;
       readonly diskRevision: string;
     }
   | {
@@ -65,7 +68,7 @@ export type CreateLevelFailure =
 export type CreateLevelResult =
   | {
       readonly ok: true;
-      readonly document: LevelDocument;
+      readonly document: EditorDocument;
       readonly diskRevision: string;
     }
   | { readonly ok: false; readonly reason: CreateLevelFailure };
@@ -102,7 +105,7 @@ export interface LevelFileService {
    * It is where a dialog offers to put a new file. The path it ends up asking
    * for is still matched against the globs like any other.
    */
-  levelDirectories(): readonly string[];
+  levelDirectories(kind?: "level" | "sequence"): readonly string[];
   /**
    * Write a level holding nothing at a path no file holds yet.
    *
@@ -150,7 +153,7 @@ export interface LevelFileService {
   readLevel(path: string): Promise<ReadLevelResult>;
   writeLevel(
     path: string,
-    document: LevelDocument,
+    document: EditorDocument,
     expectedDiskRevision: string,
   ): Promise<WriteLevelResult>;
   /**
@@ -158,7 +161,7 @@ export interface LevelFileService {
    * compares; a disk revision hashes the bytes a file actually holds, which
    * differ when someone wrote the file by hand.
    */
-  hashCanonical(document: LevelDocument): string;
+  hashCanonical(document: EditorDocument): string;
 }
 
 export interface LevelFileServiceOptions {
@@ -337,11 +340,15 @@ export async function createLevelFileService(
   // `extra/{a,b}/*.yage-level.json` names `extra`, where every create is
   // refused. Only a directory a level file in it would be matched in is
   // offered.
-  const directories = [
-    ...new Set(options.levels.map((level) => staticDirectory(level.glob))),
-  ].filter((directory) =>
-    matches(directory === "" ? PROBE_LEVEL : `${directory}/${PROBE_LEVEL}`),
-  );
+  const directories = (kind: "level" | "sequence") => {
+    const probe =
+      kind === "level" ? PROBE_LEVEL : "sequence.yage-sequence-workspace.json";
+    return [
+      ...new Set(options.levels.map((level) => staticDirectory(level.glob))),
+    ].filter((directory) =>
+      matches(directory === "" ? probe : `${directory}/${probe}`),
+    );
+  };
 
   /**
    * Write a document to a path no file holds yet.
@@ -358,7 +365,7 @@ export async function createLevelFileService(
    */
   async function createFile(
     absolute: string,
-    document: LevelDocument,
+    document: EditorDocument,
   ): Promise<CreateLevelResult> {
     const canonical = formatLevel(document);
     const temporary = temporaryPath(absolute);
@@ -399,14 +406,19 @@ export async function createLevelFileService(
       return layerSets.find((entry) => entry.matches(path))?.layerSet;
     },
 
-    levelDirectories() {
-      return directories;
+    levelDirectories(kind = "level") {
+      return directories(kind);
     },
 
     async createLevel(path, levelId) {
       const resolved = await resolveProjectPath(rules, path);
       if (!resolved.ok) return { ok: false, reason: "not-configured" };
-      return await createFile(resolved.absolute, emptyLevelDocument(levelId));
+      return await createFile(
+        resolved.absolute,
+        path.endsWith(".yage-sequence-workspace.json")
+          ? emptySequenceWorkspace(levelId)
+          : emptyLevelDocument(levelId),
+      );
     },
 
     async duplicateLevel(sourcePath, path, levelId) {

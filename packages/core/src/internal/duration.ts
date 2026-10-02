@@ -14,8 +14,8 @@ const DURATION_TOLERANCE = 1e-9;
 
 /**
  * Whether `elapsed` has reached `duration`, within the float tolerance.
- * `duration` must be > 0.
- * @internal
+ * `duration` must be finite and > 0; elapsed must be finite.
+ * Read-only query: results for other inputs are undefined.
  */
 export function durationReached(elapsed: number, duration: number): boolean {
   return elapsed >= duration - duration * DURATION_TOLERANCE;

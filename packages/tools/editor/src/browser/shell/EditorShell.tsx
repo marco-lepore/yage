@@ -1,3 +1,5 @@
+import { SequencePanel } from "./SequencePanel.js";
+import { SequenceActorInspector } from "./SequenceActorInspector.js";
 import type { TiledAssetActions } from "./TiledAssetButton.js";
 import { useEffect, useState } from "react";
 import type { AssetListing } from "../../shared/protocol/index.js";
@@ -94,6 +96,7 @@ export interface EditorShellProps {
    * The New dialog offers these, and puts the level in the first one.
    */
   readonly levelDirectories: readonly string[];
+  readonly sequenceDirectories?: readonly string[];
   /**
    * The layers the open level may put a placement on, read on each render.
    * Empty when the project declared none for it, which is when the inspector
@@ -131,6 +134,10 @@ export interface EditorShellProps {
  */
 export function EditorShell(props: EditorShellProps): React.JSX.Element {
   const store = props.store;
+  const sequenceMode = useEditorSlice(
+    store,
+    (state) => state.document.format === "yage-sequence-workspace",
+  );
   // One slice per thing the file bar and the toolbar draw, rather than the
   // whole state. Each is a primitive or a field the reducer replaces only
   // when it changes, so a
@@ -338,6 +345,34 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
       <style>{EDITOR_CSS}</style>
 
       <div className="ye-bar">
+        <Button
+          pressed={!sequenceMode}
+          onClick={() => {
+            const path = store
+              .getState()
+              .levels.find(
+                (l) => !l.path.endsWith(".yage-sequence-workspace.json"),
+              )?.path;
+            if (path) void props.files.openLevel(path);
+            else setLevelRequest({ kind: "new" });
+          }}
+        >
+          Level
+        </Button>
+        <Button
+          pressed={sequenceMode}
+          onClick={() => {
+            const path = store
+              .getState()
+              .levels.find((l) =>
+                l.path.endsWith(".yage-sequence-workspace.json"),
+              )?.path;
+            if (path) void props.files.openLevel(path);
+            else setLevelRequest({ kind: "new", documentKind: "sequence" });
+          }}
+        >
+          Sequence
+        </Button>
         <Select
           label="Level"
           testId="level-picker"
@@ -360,7 +395,10 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
             testId="new-level"
             title="Create a level with nothing in it, and open it"
             onClick={() => {
-              setLevelRequest({ kind: "new" });
+              setLevelRequest({
+                kind: "new",
+                ...(sequenceMode ? { documentKind: "sequence" as const } : {}),
+              });
             }}
           >
             New
@@ -405,17 +443,19 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
           >
             Save
           </Button>
-          <Button
-            testId="play-level"
-            disabled={filePath === undefined}
-            title="Run this level as it stands, in the editor's own page"
-            onClick={() => {
-              void props.files.play();
-            }}
-          >
-            Play
-          </Button>
-          {props.files.runnable ? (
+          {!sequenceMode ? (
+            <Button
+              testId="play-level"
+              disabled={filePath === undefined}
+              title="Run this level as it stands, in the editor's own page"
+              onClick={() => {
+                void props.files.play();
+              }}
+            >
+              Play
+            </Button>
+          ) : null}
+          {props.files.runnable && !sequenceMode ? (
             <Button
               className="ye-button ye-button--primary"
               testId="run-level"
@@ -561,7 +601,14 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
 
           <Actors
             store={store}
-            placeables={props.placeables}
+            placeables={() =>
+              props
+                .placeables()
+                .filter(
+                  (p) =>
+                    sequenceMode || p.typeId !== "yage.sequence-placeholder",
+                )
+            }
             assetPaths={assetPaths}
             onPlace={(typeId) => {
               props.commands.createPlacement(typeId);
@@ -572,6 +619,13 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
         </div>
 
         <aside className="ye-body__right">
+          {sequenceMode ? (
+            <SequenceActorInspector
+              store={store}
+              commands={props.commands}
+              placeables={props.placeables}
+            />
+          ) : null}
           <Inspector
             store={store}
             editable={editable}
@@ -611,6 +665,10 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
         </aside>
       </div>
 
+      {sequenceMode ? (
+        <SequencePanel store={store} commands={props.commands} />
+      ) : null}
+
       <DeleteConfirm store={store} commands={props.commands} />
 
       {levelRequest === undefined ? null : levelRequest.kind === "delete" ? (
@@ -632,7 +690,14 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
           // on the copy's name rather than on what was typed for the other.
           key={levelRequest.kind === "duplicate" ? levelRequest.source : "new"}
           request={levelRequest}
-          directories={props.levelDirectories}
+          directories={
+            (levelRequest.kind === "new" &&
+              levelRequest.documentKind === "sequence") ||
+            (levelRequest.kind === "duplicate" &&
+              levelRequest.source.endsWith(".yage-sequence-workspace.json"))
+              ? (props.sequenceDirectories ?? [])
+              : props.levelDirectories
+          }
           levels={levels}
           dirty={dirty && filePath === duplicatedSource(levelRequest)}
           reason={awaiting === undefined ? undefined : fileProblem}

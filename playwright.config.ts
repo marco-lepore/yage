@@ -11,10 +11,20 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [
+    {
+      name: "sequence",
+      testMatch: "**/sequence-editor.spec.ts",
+      fullyParallel: false,
+      use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5202" },
+    },
     // Hand-written deterministic fixtures (e2e/fixtures), served on :5200.
     {
       name: "fixtures",
-      testIgnore: ["**/examples.spec.ts", "**/level-editor.spec.ts"],
+      testIgnore: [
+        "**/examples.spec.ts",
+        "**/level-editor.spec.ts",
+        "**/sequence-editor.spec.ts",
+      ],
       use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5200" },
     },
     // The shipped examples (examples/*.html), served on :5199 and driven
@@ -34,6 +44,14 @@ export default defineConfig({
     },
   ],
   webServer: [
+    {
+      command:
+        "node ../packages/tools/editor/dist/cli.js --config editor.sequence.config.ts --port 5202 --no-open",
+      cwd: `${__dirname}/examples`,
+      url: "http://127.0.0.1:5202/",
+      reuseExistingServer: false,
+      env: { YAGE_E2E: "1" },
+    },
     {
       command: "npm run dev -- --host 127.0.0.1 --port 5200 --strictPort",
       cwd: `${__dirname}/e2e`,

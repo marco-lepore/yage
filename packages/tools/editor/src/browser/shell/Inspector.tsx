@@ -324,7 +324,9 @@ function PlacementInspector(props: PlacementProps): React.JSX.Element {
       ) : null}
 
       <DrawOrderSection {...props} />
-      <GameSection {...props} />
+      {props.state.document.format === "yage-level" ? (
+        <GameSection {...props} />
+      ) : null}
     </div>
   );
 }

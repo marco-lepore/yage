@@ -176,6 +176,7 @@ export default defineConfig({
           label: "Addons",
           items: [
             { label: "Overview", slug: "addons" },
+            { label: "Sequences", slug: "addons/sequence" },
             { label: "Dialogue", slug: "addons/dialogue" },
             { label: "Virtual Controls", slug: "addons/virtual-controls" },
             { label: "Inventory", slug: "addons/inventory" },
@@ -192,6 +193,7 @@ export default defineConfig({
           label: "Tooling",
           items: [
             { label: "Scenario Lab", slug: "tooling/scenario-lab" },
+            { label: "Sequence Mode", slug: "tooling/sequence-editor" },
             { label: "Level Editor", slug: "tooling/level-editor" },
             { label: "Runtime Feedback", slug: "tooling/feedback" },
             { label: "Local Engine Checkout", slug: "tooling/local-engine" },

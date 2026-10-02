@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import { previewLevel } from "../../shared/document/index.js";
 import type * as LevelApi from "@yagejs/level";
 import type { LevelCatalog } from "@yagejs/level";
 import {
@@ -139,9 +141,23 @@ async function collect(
   // No contribution is loaded: the packages a project gets placeable types
   // from are discovered by the editor's Vite plugin, which serves the editor
   // page. A successful assembly therefore has nothing to report.
+  const builtinPath = fileURLToPath(
+    new URL(
+      import.meta.url.endsWith(".ts")
+        ? "../../entities/SequencePlaceholder.ts"
+        : "./sequenceEntities.js",
+      import.meta.url,
+    ),
+  );
+  const builtin = await server.ssrLoadModule(builtinPath);
   const assembled = assembleProject({
     project: await importProject(server, projectModule),
-    contributions: [],
+    contributions: [
+      {
+        packageName: "@yagejs-tools/editor",
+        entities: [builtin["SequencePlaceholder"]],
+      },
+    ],
   });
   if (!assembled.ok) {
     return {
@@ -231,7 +247,7 @@ async function checkFile(
     }));
   }
   return api
-    .validateLevel(result.structural.document, catalog)
+    .validateLevel(previewLevel(result.structural.document), catalog)
     .map((diagnostic) => ({
       subject: diagnostic.placementId,
       path: diagnostic.path.join(".") || ABSENT,

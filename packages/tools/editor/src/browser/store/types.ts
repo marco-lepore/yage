@@ -1,8 +1,9 @@
 import type {
-  LevelDocument,
-  LevelPlacement,
-  LevelTransform,
-} from "@yagejs/level/document";
+  SequenceDocument,
+  SequenceMarker,
+} from "@yagejs-addons/sequence/document";
+import type { EditorDocument } from "../../shared/document/index.js";
+import type { LevelPlacement, LevelTransform } from "@yagejs/level/document";
 import type {
   DocumentCommand,
   PreviewImpact,
@@ -376,7 +377,20 @@ export interface ReferencePick {
   readonly types: readonly string[];
 }
 
+export interface SequenceView {
+  readonly frame: number;
+  readonly playing: boolean;
+  readonly loop: boolean;
+  readonly speed: number;
+  readonly width: number;
+  readonly height: number;
+  readonly fit: "stretch" | "contain";
+  readonly events: readonly SequenceMarker[];
+  readonly draft?: SequenceDocument | undefined;
+  readonly draftBase?: SequenceDocument | undefined;
+}
 export interface EditorState {
+  readonly sequence?: SequenceView | undefined;
   /** Changes to configured asset files, independent of level revisions. */
   readonly assetRevision: number;
   /**
@@ -391,12 +405,12 @@ export interface EditorState {
   readonly file?: EditorFileState | undefined;
   /** The last document the server accepted, and the revision it accepted it at. */
   readonly committed: {
-    readonly document: LevelDocument;
+    readonly document: EditorDocument;
     readonly draftRevision: number;
   };
   readonly pending: readonly PendingCommand[];
   /** The committed document with every pending command replayed on top. */
-  readonly document: LevelDocument;
+  readonly document: EditorDocument;
   readonly selection: ReadonlySet<string>;
   /**
    * The placements put out of the way while the developer works on what was
@@ -495,6 +509,7 @@ export interface ViewportSizes {
  * projection cannot drift from the draft the server holds.
  */
 export type EditorAction =
+  | { readonly type: "sequence-view"; readonly patch: Partial<SequenceView> }
   | { readonly type: "assets-changed" }
   /** A level was opened, or its draft was re-read whole. */
   | { readonly type: "level-opened"; readonly snapshot: DraftSnapshot }

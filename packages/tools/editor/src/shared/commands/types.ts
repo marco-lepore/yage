@@ -1,6 +1,7 @@
+import type { SequenceDocument } from "@yagejs-addons/sequence/document";
+import type { EditorDocument } from "../document/index.js";
 import type {
   JsonValue,
-  LevelDocument,
   LevelPlacement,
   LevelTransform,
 } from "@yagejs/level/document";
@@ -74,7 +75,22 @@ export interface PlacementMove {
  * removal restores several placements, and a drag of a multi-selection is one
  * undo step however many placements it reparents.
  */
+export interface SequenceEditState {
+  readonly sequence: SequenceDocument;
+  readonly bindings: Readonly<Record<string, string>>;
+}
 export type DocumentCommand =
+  | {
+      readonly kind: "transaction";
+      readonly commandId: string;
+      readonly commands: readonly DocumentCommand[];
+    }
+  | {
+      readonly kind: "set-sequence";
+      readonly commandId: string;
+      readonly before: SequenceEditState;
+      readonly after: SequenceEditState;
+    }
   | {
       readonly kind: "set-poses";
       readonly commandId: string;
@@ -108,7 +124,7 @@ export type DocumentCommand =
 export type PreviewImpact = "document-only" | "pose" | "rebuild";
 
 export interface ReduceResult {
-  readonly document: LevelDocument;
+  readonly document: EditorDocument;
   /**
    * The command that turns {@link document} back into the one this reduction
    * applied to. Built from that document, so it restores the exact prior

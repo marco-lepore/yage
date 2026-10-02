@@ -315,7 +315,7 @@ export default tseslint.config(
                 "The engine draws inside the viewport canvas; components never touch it.",
             },
             {
-              group: ["@yagejs/level", "@yagejs/level/*"],
+              regex: "^@yagejs/level(?:$|/(?!document$))",
               allowTypeImports: true,
               message:
                 "Components name level types; the coordinators do the level work.",
@@ -385,6 +385,12 @@ export default tseslint.config(
         "error",
         {
           patterns: [
+            {
+              regex: "^@yagejs-addons/sequence(?:$|/(?!document$))",
+              allowTypeImports: true,
+              message:
+                "Use the pure sequence/document entry outside the browser.",
+            },
             NO_RENDER,
             NO_BROWSER,
             {
@@ -430,6 +436,12 @@ export default tseslint.config(
             },
           ],
           patterns: [
+            {
+              regex: "^@yagejs-addons/sequence(?:$|/(?!document$))",
+              allowTypeImports: true,
+              message:
+                "Use the pure sequence/document entry outside the browser.",
+            },
             NO_RENDER,
             NO_BROWSER,
             {
@@ -444,7 +456,7 @@ export default tseslint.config(
     },
   },
 
-  // F. Shared code: only types from @yagejs/level, nothing else external.
+  // F. Shared code: pure document codecs and types, no engine runtime.
   {
     files: [`${EDITOR}/src/shared/**/*.ts`, `${EDITOR}/src/shared/**/*.tsx`],
     rules: {
@@ -452,6 +464,12 @@ export default tseslint.config(
         "error",
         {
           patterns: [
+            {
+              regex: "^@yagejs-addons/sequence(?:$|/(?!document$))",
+              allowTypeImports: true,
+              message:
+                "Use the pure sequence/document entry outside the browser.",
+            },
             {
               group: [
                 "**/browser",
@@ -468,12 +486,12 @@ export default tseslint.config(
                 "Shared code runs on both sides; no platform or framework imports.",
             },
             {
-              group: ["@yagejs/*", "!@yagejs/level"],
+              group: ["@yagejs/*", "!@yagejs/level", "!@yagejs/level/document"],
               message:
                 "Shared code may depend only on @yagejs/level, and only on its types.",
             },
             {
-              group: ["@yagejs/level", "@yagejs/level/*"],
+              regex: "^@yagejs/level(?:$|/(?!document$))",
               allowTypeImports: true,
               message:
                 "Type-only imports from @yagejs/level; the reducer must not evaluate engine code.",

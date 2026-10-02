@@ -1,7 +1,22 @@
+import { parseSequence } from "@yagejs-addons/sequence/document";
+import {
+  sequenceChange,
+  sequenceIntent,
+  cloneSequenceActors,
+  newSequenceTrack,
+  remapSequenceTrack,
+} from "./sequence.js";
+import { reduceSequenceCommand } from "../../shared/sequence/commands.js";
+import type { SequenceCommand } from "../../shared/sequence/commands.js";
+import type { DocumentCommand } from "../../shared/commands/index.js";
+import { sampledDocument } from "../store/sequence.js";
+import type {
+  EditorDocument,
+  SequenceWorkspaceDocument,
+} from "../../shared/document/index.js";
 import { defaultParams, type LevelCatalog } from "@yagejs/level";
 import type {
   JsonValue,
-  LevelDocument,
   LevelPlacement,
   LevelTransform,
 } from "@yagejs/level/document";
@@ -181,6 +196,239 @@ export class CommandController {
     this.newId = options.newId ?? (() => crypto.randomUUID());
   }
 
+  private submit(command: DocumentCommand): void {
+    this.store.submit(sequenceIntent(this.store.getState(), command));
+  }
+  bindSequenceActor(slot: string, placement: string): void {
+    this.settleTimeline();
+    const doc = this.store.getState().document;
+    if (doc.format !== "yage-sequence-workspace" || !this.store.writable)
+      return;
+    if (
+      !doc.sequence.targets[slot] ||
+      !doc.entities.some((p) => p.id === placement)
+    )
+      throw new Error("Choose an existing actor slot and preview placement");
+    if (
+      Object.entries(doc.bindings).some(
+        ([s, p]) => s !== slot && p === placement,
+      )
+    )
+      throw new Error("That preview already belongs to another actor");
+    this.store.submit(
+      sequenceChange(doc, doc.sequence, { ...doc.bindings, [slot]: placement }),
+    );
+  }
+  renameSequenceActor(slot: string, name: string): void {
+    this.settleTimeline();
+    const doc = this.store.getState().document;
+    if (
+      doc.format !== "yage-sequence-workspace" ||
+      !this.store.writable ||
+      name === slot
+    )
+      return;
+    if (!name.trim() || Object.hasOwn(doc.sequence.targets, name))
+      throw new Error("Choose a unique nonempty actor slot");
+    const sequence = {
+      ...doc.sequence,
+      targets: Object.fromEntries(
+        Object.entries(doc.sequence.targets).map(([id, c]) => [
+          id === slot ? name : id,
+          c,
+        ]),
+      ),
+      tracks: doc.sequence.tracks.map((t) =>
+        t.target === slot ? { ...t, target: name } : t,
+      ),
+      events: doc.sequence.events.map((e) =>
+        e.target === slot ? { ...e, target: name } : e,
+      ),
+    };
+    const bindings = Object.fromEntries(
+      Object.entries(doc.bindings).map(([id, p]) => [
+        id === slot ? name : id,
+        p,
+      ]),
+    );
+    this.store.submit(sequenceChange(doc, sequence, bindings));
+  }
+  changePreviewType(id: string, type: string): void {
+    const placement = this.store
+      .getState()
+      .document.entities.find((p) => p.id === id);
+    const entry = this.catalog()?.get(type);
+    if (!placement || !entry || !this.store.writable) return;
+    this.store.submit({
+      kind: "set-values",
+      commandId: this.newId(),
+      edits: [
+        {
+          placementId: id,
+          path: ["type"],
+          expected: placement.type,
+          value: type,
+        },
+        {
+          placementId: id,
+          path: ["typeVersion"],
+          expected: placement.typeVersion,
+          value: entry.declaration.version,
+        },
+        {
+          placementId: id,
+          path: ["params"],
+          expected: placement.params,
+          value: entry.declaration.params
+            ? defaultParams(entry.declaration.params)
+            : {},
+        },
+      ],
+    });
+  }
+  /** Export only an accepted sequence after the edit barrier settles. */
+  async exportSequence(): Promise<SequenceWorkspaceDocument> {
+    const path = this.store.getState().file?.path;
+    await this.settleEdits();
+    const state = this.store.getState();
+    if (
+      state.file?.path !== path ||
+      state.committed.document.format !== "yage-sequence-workspace"
+    )
+      throw new Error("The workspace changed. Retry export.");
+    if (
+      !this.store.writable ||
+      state.pending.length ||
+      state.gesture ||
+      state.poseDraft ||
+      state.paramDrag ||
+      state.sequence?.draft
+    )
+      throw new Error("An edit is still pending. Finish it and retry export.");
+    return state.committed.document;
+  }
+  /** Import runtime data without replacing the project's preview entity setup. */
+  async importSequence(read: () => Promise<string>): Promise<void> {
+    const path = this.store.getState().file?.path;
+    await this.settleEdits();
+    const base = this.store.getState();
+    if (
+      base.file?.path !== path ||
+      base.document.format !== "yage-sequence-workspace" ||
+      !this.store.writable
+    )
+      throw new Error("Open a writable sequence workspace before importing");
+    const text = await read();
+    const current = this.store.getState();
+    if (
+      current.file?.path !== path ||
+      current.document !== base.document ||
+      current.gesture ||
+      current.poseDraft ||
+      current.paramDrag ||
+      current.sequence?.draft ||
+      !this.store.writable
+    )
+      throw new Error(
+        "The workspace changed while reading the file. Import it again.",
+      );
+    const input: unknown = JSON.parse(text);
+    const clip = parseSequence(
+      typeof input === "object" &&
+        input !== null &&
+        "format" in input &&
+        input.format === "yage-sequence-workspace" &&
+        "sequence" in input
+        ? input.sequence
+        : input,
+    );
+    this.editSequence({ kind: "replace", document: clip });
+  }
+  setSequencePositionMode(
+    track: string,
+    mode: "proportional" | "anchored",
+  ): void {
+    this.editSequence({
+      kind: "set-track",
+      track: remapSequenceTrack(
+        this.store.getState(),
+        track,
+        mode === "proportional"
+          ? { mode }
+          : { mode, anchor: { x: 0.5, y: 0.5 } },
+      ),
+    });
+  }
+  addSequenceTrack(target: string, property: string): void {
+    this.editSequence({
+      kind: "set-track",
+      track: newSequenceTrack(this.store.getState(), target, property),
+    });
+  }
+  editSequence(command: SequenceCommand): void {
+    this.settleTimeline();
+    this.settleGesture();
+    this.settlePoseDraft();
+    const doc = this.store.getState().document;
+    if (doc.format !== "yage-sequence-workspace" || !this.store.writable)
+      return;
+    this.store.dispatch({ type: "sequence-view", patch: { playing: false } });
+    const next = reduceSequenceCommand(doc.sequence, command);
+    if (
+      equalJson(
+        next as unknown as JsonValue,
+        doc.sequence as unknown as JsonValue,
+      )
+    )
+      return;
+    const bindings = Object.fromEntries(
+      Object.entries(doc.bindings).filter(([slot]) =>
+        Object.hasOwn(next.targets, slot),
+      ),
+    );
+    this.store.submit(sequenceChange(doc, next, bindings));
+    const frame = this.store.getState().sequence?.frame ?? 0;
+    if (frame > next.duration) this.seekSequence(next.duration);
+  }
+  seekSequence(frame: number): void {
+    const doc = this.store.getState().document;
+    if (doc.format !== "yage-sequence-workspace" || !Number.isFinite(frame))
+      return;
+    this.settleGesture();
+    this.settlePoseDraft();
+    this.store.dispatch({
+      type: "sequence-view",
+      patch: {
+        frame: Math.max(0, Math.min(doc.sequence.duration, frame)),
+        playing: false,
+      },
+    });
+  }
+  private settleTimeline(): void {
+    const state = this.store.getState(),
+      doc = state.document,
+      draft = state.sequence?.draft;
+    if (doc.format !== "yage-sequence-workspace" || !draft) return;
+    this.store.dispatch({
+      type: "sequence-view",
+      patch: { draft: undefined, draftBase: undefined },
+    });
+    if (
+      equalJson(
+        draft as unknown as JsonValue,
+        doc.sequence as unknown as JsonValue,
+      )
+    )
+      return;
+    if (this.store.writable)
+      this.store.submit(
+        sequenceChange(
+          { ...doc, sequence: state.sequence?.draftBase ?? doc.sequence },
+          draft,
+        ),
+      );
+  }
+
   /**
    * Put a new placement of `typeId` in the middle of the view, and select it.
    *
@@ -193,7 +441,8 @@ export class CommandController {
    * Defaults are resolved now, once. A later change to a declaration's default
    * therefore cannot change a level that already exists.
    */
-  createPlacement(typeId: string): void {
+  createPlacement(typeId: string, existingSlot?: string): void {
+    this.settleTimeline();
     if (!this.store.writable) return;
     const entry = this.catalog()?.get(typeId);
     if (!entry) return;
@@ -216,13 +465,27 @@ export class CommandController {
     };
     // At the end of the document, which is the top of the draw order for two
     // placements on one layer — the newest thing placed is the one on top.
-    this.store.submit({
+    const doc = this.store.getState().document;
+    const command: DocumentCommand = {
       kind: "add-placements",
       commandId: this.newId(),
-      inserts: [
-        { placement, index: this.store.getState().document.entities.length },
-      ],
-    });
+      inserts: [{ placement, index: doc.entities.length }],
+    };
+    if (existingSlot && doc.format === "yage-sequence-workspace") {
+      if (!Object.hasOwn(doc.sequence.targets, existingSlot))
+        throw new Error(`Unknown actor slot ${existingSlot}`);
+      this.store.submit({
+        kind: "transaction",
+        commandId: this.newId(),
+        commands: [
+          command,
+          sequenceChange(doc, doc.sequence, {
+            ...doc.bindings,
+            [existingSlot]: placement.id,
+          }),
+        ],
+      });
+    } else this.submit(command);
     this.store.dispatch({
       type: "selection-changed",
       ids: [placement.id],
@@ -238,7 +501,7 @@ export class CommandController {
    * writes are locked.
    */
   copyPlacements(ids: readonly string[]): void {
-    const document = this.store.getState().document;
+    const document = sampledDocument(this.store.getState());
     const roots = new Set(selectionRoots(document, ids));
     const copying = withDescendants(document.entities, [...roots]);
     if (copying.length === 0) return;
@@ -271,7 +534,7 @@ export class CommandController {
     if (!this.store.writable) return;
     const clipboard = this.store.getState().clipboard;
     if (clipboard.length === 0) return;
-    const document = this.store.getState().document;
+    const document = sampledDocument(this.store.getState());
     const source = { ...document, entities: clipboard };
     const roots = selectionRoots(
       source,
@@ -301,7 +564,7 @@ export class CommandController {
    */
   duplicatePlacements(ids: readonly string[]): void {
     if (!this.store.writable) return;
-    const document = this.store.getState().document;
+    const document = sampledDocument(this.store.getState());
     // Narrowed here to pick the point the cascade probes from. The clone does
     // its own narrowing, so this is about where the copies land rather than
     // about which of them are made.
@@ -328,11 +591,23 @@ export class CommandController {
       referenceFields: (typeId) => this.referenceFields(typeId),
     });
     if (inserts.length === 0) return;
-    this.store.submit({
-      kind: "add-placements",
+    const command = {
+      kind: "add-placements" as const,
       commandId: this.newId(),
       inserts,
-    });
+    };
+    this.store.submit(
+      request.mode === "duplicate"
+        ? cloneSequenceActors(
+            this.store.getState(),
+            command,
+            withDescendants(
+              request.source.entities,
+              selectionRoots(request.source, request.ids),
+            ),
+          )
+        : sequenceIntent(this.store.getState(), command),
+    );
     this.store.dispatch({
       type: "selection-changed",
       // The roots only. Selecting a copied subtree whole would put the gizmo
@@ -415,7 +690,7 @@ export class CommandController {
   }
 
   private submitRemoval(ids: readonly string[]): void {
-    this.store.submit({
+    this.submit({
       kind: "remove-placements",
       commandId: this.newId(),
       ids,
@@ -555,7 +830,7 @@ export class CommandController {
    */
   orderPlacements(ids: readonly string[], direction: OrderDirection): void {
     if (!this.store.writable) return;
-    const document = this.store.getState().document;
+    const document = sampledDocument(this.store.getState());
     const roots = selectionRoots(document, ids);
     if (roots.length === 0) return;
     const moving = new Set(roots);
@@ -610,7 +885,7 @@ export class CommandController {
     moves: (boxes: ReadonlyMap<string, WorldBounds>) => ArrangeMoves,
   ): void {
     if (!this.store.writable) return;
-    const document = this.store.getState().document;
+    const document = sampledDocument(this.store.getState());
     const roots = selectionRoots(document, ids);
     const first = roots[0];
     const shared = sharedParent(document, roots);
@@ -640,7 +915,7 @@ export class CommandController {
       });
     }
     if (poses.length === 0) return;
-    this.store.submit({
+    this.submit({
       kind: "set-poses",
       commandId: this.newId(),
       poses,
@@ -663,6 +938,7 @@ export class CommandController {
   ): void {
     // The number a field was stepping is this command now, so it must not
     // settle again behind it.
+    this.store.dispatch({ type: "sequence-view", patch: { playing: false } });
     const drafted = this.store.takePoseDraft() !== undefined;
     if (!this.store.writable) return;
     const poses = this.posesWith(ids, component, value);
@@ -673,7 +949,7 @@ export class CommandController {
         this.preview.applyPoseDraft(posesOf(this.store.getState(), ids));
       return;
     }
-    this.store.submit({
+    this.submit({
       kind: "set-poses",
       commandId: this.newId(),
       poses,
@@ -695,6 +971,7 @@ export class CommandController {
     value: number,
   ): void {
     if (!this.store.writable) return;
+    this.store.dispatch({ type: "sequence-view", patch: { playing: false } });
     // Every placement is drawn at the number, including one already on it: the
     // draft is what the preview shows until the box commits, and one left out
     // of it would be repainted by nothing.
@@ -773,7 +1050,7 @@ export class CommandController {
    */
   private submitValues(edits: readonly ValueEdit[]): void {
     if (edits.length === 0) return;
-    this.store.submit({
+    this.submit({
       kind: "set-values",
       commandId: this.newId(),
       edits,
@@ -878,7 +1155,7 @@ export class CommandController {
    */
   movePlacements(ids: readonly string[], drop: HierarchyDrop): void {
     if (!this.store.writable) return;
-    const document = this.store.getState().document;
+    const document = sampledDocument(this.store.getState());
     const roots = selectionRoots(document, ids);
     if (roots.length === 0) return;
 
@@ -927,7 +1204,7 @@ export class CommandController {
     );
     if (!changed) return;
 
-    this.store.submit({
+    this.submit({
       kind: "move-placements",
       commandId: this.newId(),
       moves,
@@ -958,7 +1235,9 @@ export class CommandController {
     // command and nothing said, and both pointers would then feed one gesture
     // whose origin belongs to the second.
     if (this.store.getState().gesture) return;
-    const document = this.store.getState().document;
+    this.settleTimeline();
+    this.store.dispatch({ type: "sequence-view", patch: { playing: false } });
+    const document = sampledDocument(this.store.getState());
     // The outermost of what was asked for. A selected child of a selected
     // parent already travels with its parent, and moving it as well would
     // apply the change to it twice.
@@ -1076,7 +1355,7 @@ export class CommandController {
     const placement = this.placement(id);
     if (!placement) return;
     const handle = pointHandles(
-      state.document,
+      sampledDocument(state),
       placement,
       pointFields(this.catalog(), placement.type).filter(
         (one) => one.name === field,
@@ -1150,6 +1429,7 @@ export class CommandController {
    * not contain. It is a no-op when none exists, so calling it is never wrong.
    */
   async settleEdits(): Promise<void> {
+    this.settleTimeline();
     this.settleGesture();
     this.settlePoseDraft();
     this.settleParamDrag();
@@ -1171,7 +1451,7 @@ export class CommandController {
         return base !== undefined && !samePose(base, pose.transform);
       });
       if (moved.length > 0 && this.store.writable) {
-        this.store.submit({
+        this.submit({
           kind: "set-poses",
           commandId: this.newId(),
           poses: moved,
@@ -1202,7 +1482,7 @@ export class CommandController {
     const poses = this.posesWith(draft.ids, draft.component, draft.value);
     if (poses.length === 0) return;
     if (this.store.writable) {
-      this.store.submit({
+      this.submit({
         kind: "set-poses",
         commandId: this.newId(),
         poses,
@@ -1214,9 +1494,9 @@ export class CommandController {
   }
 
   private placement(id: string): LevelPlacement | undefined {
-    return this.store
-      .getState()
-      .document.entities.find((placement) => placement.id === id);
+    return sampledDocument(this.store.getState()).entities.find(
+      (placement) => placement.id === id,
+    );
   }
 
   /** The declared defaults for a type, or undefined when it is not catalogued. */
@@ -1286,7 +1566,7 @@ function valueEdit(
  * paste has no parent left to compose one from.
  */
 function detached(
-  document: LevelDocument,
+  document: EditorDocument,
   placement: LevelPlacement,
 ): LevelPlacement {
   if (placement.parent === undefined) return structuredClone(placement);
@@ -1303,7 +1583,7 @@ function detached(
 
 /** Where a placement is drawn, which is what a paste or a duplicate offsets from. */
 function worldPositionOf(
-  document: LevelDocument,
+  document: EditorDocument,
   id: string | undefined,
 ): EditorPoint | undefined {
   if (id === undefined) return undefined;
@@ -1390,7 +1670,7 @@ function orderDrop(
  * children in document order.
  */
 function destinationOf(
-  document: LevelDocument,
+  document: EditorDocument,
   moving: ReadonlySet<string>,
   drop: HierarchyDrop,
 ): { parent: string | undefined; index: number } | undefined {
