@@ -227,7 +227,7 @@ export { Tween } from "./Tween.js";
 export { interpolate } from "./interpolate.js";
 export type { Interpolatable } from "./interpolate.js";
 
-export { createKeyframeTrack } from "./KeyframeTrack.js";
+export { createKeyframeTrack, sampleKeyframes } from "./KeyframeTrack.js";
 export type { Keyframe, KeyframeTrackOptions } from "./KeyframeTrack.js";
 
 export { KeyframeAnimator } from "./KeyframeAnimator.js";
@@ -325,3 +325,5 @@ export type {
   EncodedForLeaf,
   EncodedStore,
 } from "./state/index.js";
+
+export { durationReached } from "./internal/duration.js";

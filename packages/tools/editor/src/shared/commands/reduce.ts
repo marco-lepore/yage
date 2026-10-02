@@ -1,6 +1,7 @@
+import { readEditorDocument } from "../document/index.js";
+import type { EditorDocument } from "../document/index.js";
 import type {
   JsonValue,
-  LevelDocument,
   LevelPlacement,
   LevelTransform,
 } from "@yagejs/level/document";
@@ -34,11 +35,69 @@ import {
  * Preconditions are structural only. Whether `type` names an entity that exists
  * is a catalog question, and the server has no catalog.
  */
+export function reduceCommand<D extends EditorDocument>(
+  document: D,
+  command: DocumentCommand,
+): ReduceResult & { readonly document: D };
 export function reduceCommand(
-  document: LevelDocument,
+  document: EditorDocument,
   command: DocumentCommand,
 ): ReduceResult {
   switch (command.kind) {
+    case "transaction": {
+      let next = document;
+      const inverses: DocumentCommand[] = [];
+      const affected = new Set<string>();
+      let impact: PreviewImpact = "document-only";
+      for (const child of command.commands) {
+        if (child.kind === "transaction")
+          reject(command, "Nested transactions are not supported");
+        const result = reduceCommand(next, child);
+        next = result.document;
+        inverses.unshift(result.inverse);
+        for (const id of result.affected) affected.add(id);
+        if (
+          result.impact === "rebuild" ||
+          (result.impact === "pose" && impact !== "rebuild")
+        )
+          impact = result.impact;
+      }
+      return {
+        document: next,
+        inverse: {
+          kind: "transaction",
+          commandId: command.commandId,
+          commands: inverses,
+        },
+        affected: [...affected],
+        impact,
+      };
+    }
+    case "set-sequence": {
+      if (document.format !== "yage-sequence-workspace")
+        reject(command, "This document is not a sequence workspace");
+      const current = {
+        sequence: document.sequence,
+        bindings: document.bindings,
+      };
+      if (
+        !equalJson(
+          current as unknown as JsonValue,
+          command.before as unknown as JsonValue,
+        )
+      )
+        reject(command, "Sequence changed while editing");
+      const checked = readEditorDocument({ ...document, ...command.after });
+      if (!checked.ok)
+        reject(command, checked.errors.map((e) => e.message).join("; "));
+      return {
+        document: checked.document,
+        inverse: { ...command, before: command.after, after: current },
+        affected: document.entities.map((e) => e.id),
+        impact: "pose",
+      };
+    }
+
     case "set-poses":
       return setPoses(document, command);
     case "add-placements":
@@ -53,7 +112,7 @@ export function reduceCommand(
 }
 
 function setPoses(
-  document: LevelDocument,
+  document: EditorDocument,
   command: Extract<DocumentCommand, { kind: "set-poses" }>,
 ): ReduceResult {
   const poses = new Map<string, PoseEdit>();
@@ -95,7 +154,7 @@ function setPoses(
 }
 
 function addPlacements(
-  document: LevelDocument,
+  document: EditorDocument,
   command: Extract<DocumentCommand, { kind: "add-placements" }>,
 ): ReduceResult {
   const existing = byId(document.entities);
@@ -156,7 +215,7 @@ function addPlacements(
 }
 
 function removePlacements(
-  document: LevelDocument,
+  document: EditorDocument,
   command: Extract<DocumentCommand, { kind: "remove-placements" }>,
 ): ReduceResult {
   const removed = new Set<string>();
@@ -207,7 +266,7 @@ function removePlacements(
 }
 
 function setValues(
-  document: LevelDocument,
+  document: EditorDocument,
   command: Extract<DocumentCommand, { kind: "set-values" }>,
 ): ReduceResult {
   checkValuePaths(command);
@@ -327,7 +386,7 @@ function checkSceneKeys(
 }
 
 function movePlacements(
-  document: LevelDocument,
+  document: EditorDocument,
   command: Extract<DocumentCommand, { kind: "move-placements" }>,
 ): ReduceResult {
   const placements = byId(document.entities);
@@ -395,7 +454,7 @@ function movePlacements(
 
 /** The placement is where the command says it is, as it says it is. */
 function checkMoveSource(
-  document: LevelDocument,
+  document: EditorDocument,
   command: Extract<DocumentCommand, { kind: "move-placements" }>,
   move: PlacementMove,
 ): void {

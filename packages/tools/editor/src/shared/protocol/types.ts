@@ -1,4 +1,5 @@
-import type { LevelDocument } from "@yagejs/level/document";
+import type { EditorDocument } from "../document/index.js";
+
 import type { DocumentCommand } from "../commands/index.js";
 
 /**
@@ -43,6 +44,7 @@ export interface BootstrapResponse {
    * from it, the path a create asks for is matched against the globs.
    */
   readonly levelDirectories: readonly string[];
+  readonly sequenceDirectories?: readonly string[];
 }
 
 /**
@@ -73,7 +75,7 @@ export interface DraftSnapshot {
    * matches.
    */
   readonly layerSet?: number;
-  readonly document: LevelDocument;
+  readonly document: EditorDocument;
   /** Ordering for commands. Advances whenever the document changes. */
   readonly draftRevision: number;
   /** Hash of the exact bytes on disk, which a save compares against. */

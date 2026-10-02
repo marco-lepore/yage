@@ -1,3 +1,4 @@
+import { previewLevel } from "../../shared/document/index.js";
 import { levelAssets, prepareLevel } from "@yagejs/level";
 import type { Engine } from "@yagejs/core";
 import type { LayerDef } from "@yagejs/renderer";
@@ -73,7 +74,10 @@ export async function mountPlay(
     );
   }
 
-  const prepared = prepareLevel(outcome.snapshot.document, built.catalog);
+  const prepared = prepareLevel(
+    previewLevel(outcome.snapshot.document),
+    built.catalog,
+  );
   if (prepared.diagnostics.length > 0) {
     // Unlike the editor's preview, which draws what it can and reports the
     // rest, this page has nothing to show for a level that will not load. A

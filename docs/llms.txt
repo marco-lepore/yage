@@ -45,6 +45,7 @@
 Installable, opinionated gameplay patterns (`@yagejs-addons` scope), independently versioned. Each addon's doc is sourced from its co-located `packages/addons/<name>/docs/llms/`.
 
 - [Addons Overview](llms/addons.md): Scope, versioning, peer dependencies, and how an addon layers on the engine
+- [sequence](llms/addons/sequence.md): Keyframes, event markers, replaceable targets and rectangle mapping
 - [dialogue](llms/addons/dialogue.md): Branching runner, typewriter box & bubbles, markup, themeable presenters
 - [inventory](llms/addons/inventory.md): Slot inventory — stacking, item actions, sorting, one slot view with swappable cell presets
 - [abilities](llms/addons/abilities.md): Phase-based abilities, input intent mapping, and a concrete hit contract
@@ -60,6 +61,7 @@ Installable, opinionated gameplay patterns (`@yagejs-addons` scope), independent
 
 Development tools for building YAGE games (`@yagejs-tools` scope, independently versioned). Each tool's doc is sourced from its co-located `packages/tools/<name>/docs/llms/`.
 
+- [sequence-editor](llms/tools/sequence-editor.md): Sequence mode, entity previews, keyframes, project saves and runtime binding
 - [editor](llms/tools/editor.md): Level editor — open a `*.yage-level.json` file, build it up in a real engine, and save it back
 - [lab](llms/tools/lab.md): Scenario browser — mount a scene or entity in a real engine, tune it with controls, and run every scenario headless
 - [feedback](llms/tools/feedback.md): Runtime feedback — freeze the game, comment on entities or areas, and read captures with screenshots and inspector snapshots from a CLI
