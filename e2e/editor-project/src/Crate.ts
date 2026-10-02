@@ -11,7 +11,7 @@ import { SpriteComponent, texture } from "@yagejs/renderer";
 const textureAsset = defineLevelAsset({ kind: "texture", create: texture });
 
 const CrateParams = defineParams({
-  sprite: param.asset(textureAsset, "assets/player_idle.png"),
+  sprite: param.asset(textureAsset, "assets/scout/idle.png"),
 });
 
 /** The placeable type most cases measure: one whole picture, drawn centred. */

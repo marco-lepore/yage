@@ -137,44 +137,46 @@ export class ShooterScene extends Scene {
   private spawnEnemies(camera: CameraEntity): void {
     this.spawn(EnemyEntity, {
       x: 350,
-      y: 680,
+      y: 670,
       patrolLeft: 200,
       patrolRight: 450,
       camera,
     }); // ground left
     this.spawn(EnemyEntity, {
       x: 600,
-      y: 680,
+      y: 670,
       patrolLeft: 450,
       patrolRight: 750,
       camera,
     }); // ground mid
     this.spawn(EnemyEntity, {
       x: 950,
-      y: 680,
+      y: 670,
       patrolLeft: 800,
       patrolRight: 1100,
       camera,
     }); // ground right
+    // A robot on a platform turns before its body passes an edge: its range
+    // is the platform's span, narrowed by half a robot's width at each end.
     this.spawn(EnemyEntity, {
       x: 550,
       y: 470,
-      patrolLeft: 500,
-      patrolRight: 600,
+      patrolLeft: 514,
+      patrolRight: 586,
       camera,
     }); // on mid-left platform
     this.spawn(EnemyEntity, {
       x: 850,
       y: 530,
-      patrolLeft: 770,
-      patrolRight: 940,
+      patrolLeft: 744,
+      patrolRight: 856,
       camera,
     }); // on mid-right platform
     this.spawn(EnemyEntity, {
-      x: 1050,
+      x: 1000,
       y: 450,
-      patrolLeft: 940,
-      patrolRight: 1150,
+      patrolLeft: 954,
+      patrolRight: 1046,
       camera,
     }); // on upper-right platform
   }

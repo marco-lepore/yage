@@ -68,12 +68,12 @@ const AUTHORED: Record<string, Point> = {
 };
 /** What the template authors each of them with. */
 const SPRITES: Record<string, string> = {
-  [ROOT]: "assets/player_idle.png",
-  [CHILD]: "assets/skeleton_idle.png",
-  [LATER]: "assets/player_jump.png",
+  [ROOT]: "assets/scout/idle.png",
+  [CHILD]: "assets/scrapbot/idle.png",
+  [LATER]: "assets/scout/jump.png",
 };
 /** The asset the gate's parameter edit puts on the child. */
-const EDITED_SPRITE = "assets/player_walk.png";
+const EDITED_SPRITE = "assets/scout/walk.png";
 /**
  * The asset the picker offers and this path chooses. It lives under the Vite
  * root, which is what the listing walks — the fixture's other textures sit in
@@ -903,7 +903,7 @@ test.describe("level editor", () => {
     // The other level, and only it: nothing from the one that was left is
     // still drawn.
     await expectPlacements(page, [
-      factLine(MEADOW, MEADOW_POSITION, { sprite: "assets/player_idle.png" }),
+      factLine(MEADOW, MEADOW_POSITION, { sprite: "assets/scout/idle.png" }),
     ]);
     await expect(page.getByTestId("dirty-marker")).toBeHidden();
 
@@ -951,7 +951,7 @@ test.describe("level editor", () => {
     const picker = page.getByTestId("level-picker");
     await picker.selectOption(secondLevel);
     await expectPlacements(page, [
-      factLine(MEADOW, MEADOW_POSITION, { sprite: "assets/player_idle.png" }),
+      factLine(MEADOW, MEADOW_POSITION, { sprite: "assets/scout/idle.png" }),
     ]);
 
     // An Actors click creates at the middle of the view, and the middle of an
@@ -1074,7 +1074,7 @@ test.describe("level editor", () => {
     await openActors(page);
 
     const crate = page.getByTestId("thumb-game.crate");
-    await expect(crate).toHaveAttribute("src", "assets/player_idle.png");
+    await expect(crate).toHaveAttribute("src", "assets/scout/idle.png");
     await expect
       .poll(async () =>
         crate.evaluate((image: HTMLImageElement) => image.naturalWidth),
@@ -1092,7 +1092,7 @@ test.describe("level editor", () => {
     await openActors(page);
 
     const torch = page.getByTestId("thumb-game.torch");
-    await expect(torch).toHaveAttribute("src", "assets/player_walk.png");
+    await expect(torch).toHaveAttribute("src", "assets/scout/walk.png");
     await expect
       .poll(async () =>
         torch.evaluate((image: HTMLImageElement) => image.naturalWidth),
@@ -2719,11 +2719,11 @@ test.describe("level editor", () => {
     });
     expect(placementOf(repaired, STALE).typeVersion).toBe(1);
     expect(placementOf(repaired, STALE).params).toEqual({
-      sprite: "assets/player_idle.png",
+      sprite: "assets/scout/idle.png",
     });
     // Repaired, it loads: the preview draws it where it was authored.
     await expectPlacements(page, [
-      factLine(STALE, { x: 0, y: -80 }, { sprite: "assets/player_idle.png" }),
+      factLine(STALE, { x: 0, y: -80 }, { sprite: "assets/scout/idle.png" }),
     ]);
     await expect(page.getByTestId("reset-placement")).toBeHidden();
 
@@ -2735,7 +2735,7 @@ test.describe("level editor", () => {
     });
     expect(placementOf(back, STALE).typeVersion).toBe(2);
     expect(placementOf(back, STALE).params).toEqual({
-      sprite: "assets/skeleton_idle.png",
+      sprite: "assets/scrapbot/idle.png",
       shadow: true,
     });
     await expectPlacements(page, []);

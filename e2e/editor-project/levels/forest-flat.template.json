@@ -15,7 +15,7 @@
         "rotation": 0,
         "scale": { "x": 0, "y": 0 }
       },
-      "params": { "sprite": "assets/player_idle.png" },
+      "params": { "sprite": "assets/scout/idle.png" },
       "extensions": {}
     }
   ],

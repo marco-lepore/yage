@@ -1,6 +1,6 @@
 /**
  * 2D shooter example — platformer movement, buffered jumps, bullet firing,
- * and patrolling skeleton enemies with a state machine. The HUD (enemy
+ * and patrolling robot enemies with a state machine. The HUD (enemy
  * counter + win banner) renders in-canvas on a screen-space layer; only the
  * fullscreen toggle stays in the DOM.
  *
@@ -51,7 +51,7 @@ async function main() {
     container: gameContainer,
   });
   engine.use(renderer);
-  engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
+  engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 1200 } }));
   engine.use(new AudioPlugin());
   engine.use(
     new InputPlugin({

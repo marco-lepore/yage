@@ -11,7 +11,7 @@ export const HEIGHT = 600;
 export const WORLD_W = 1200;
 export const WORLD_H = 800;
 export const TOTAL_ENEMIES = 6;
-export const SPAWN = new Vec2(100, 680);
+export const SPAWN = new Vec2(100, 670);
 
 /** Screen-space render layer for the in-canvas HUD (counter + win banner). */
 export const HUD_LAYER = "hud";
@@ -57,17 +57,21 @@ export const BgMusic = sound("/assets/bgm.mp3");
 // ---------------------------------------------------------------------------
 /** Width and height of one frame in the player's sprite sheets. */
 export const FRAME_SIZE = 48;
+/** The scale on every character's Transform. The sheets show this much
+ *  bigger, and the colliders, sized in sheet pixels, grow with them. Raycast
+ *  lengths and other distances in the world multiply by it. */
+export const SPRITE_SCALE = 2;
 
-export const PlayerIdleTex = texture("/assets/player_idle.png");
-export const PlayerWalkTex = texture("/assets/player_walk.png");
-export const PlayerJumpTex = texture("/assets/player_jump.png");
-export const PlayerLandTex = texture("/assets/player_land.png");
-export const PlayerShootTex = texture("/assets/player_shoot.png");
-export const PlayerHurtTex = texture("/assets/player_hurt.png");
+export const PlayerIdleTex = texture("/assets/scout/idle.png");
+export const PlayerWalkTex = texture("/assets/scout/walk.png");
+export const PlayerJumpTex = texture("/assets/scout/jump.png");
+export const PlayerLandTex = texture("/assets/scout/land.png");
+export const PlayerShootTex = texture("/assets/scout/shoot.png");
+export const PlayerHurtTex = texture("/assets/scout/hurt.png");
 
-export const EnemyIdleTex = texture("/assets/skeleton_idle.png");
-export const EnemyWalkTex = texture("/assets/skeleton_walk.png");
-export const EnemyReactTex = texture("/assets/skeleton_react.png");
-export const EnemyAttackTex = texture("/assets/skeleton_attack.png");
-export const EnemyHitTex = texture("/assets/skeleton_hit.png");
-export const EnemyDieTex = texture("/assets/skeleton_die.png");
+export const EnemyIdleTex = texture("/assets/scrapbot/idle.png");
+export const EnemyWalkTex = texture("/assets/scrapbot/walk.png");
+export const EnemyReactTex = texture("/assets/scrapbot/react.png");
+export const EnemyAttackTex = texture("/assets/scrapbot/attack.png");
+export const EnemyHitTex = texture("/assets/scrapbot/hit.png");
+export const EnemyDieTex = texture("/assets/scrapbot/die.png");

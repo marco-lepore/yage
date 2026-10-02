@@ -17,7 +17,7 @@ const textureAsset = defineLevelAsset({ kind: "texture", create: texture });
 const TORCH_FRAMES = { frameWidth: 48 };
 
 const TorchParams = defineParams({
-  sprite: param.asset(textureAsset, "assets/player_walk.png", TORCH_FRAMES),
+  sprite: param.asset(textureAsset, "assets/scout/walk.png", TORCH_FRAMES),
 });
 
 /** A placeable type whose art is a sprite sheet rather than one picture. */

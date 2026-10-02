@@ -13,6 +13,7 @@ import {
   AnimatedSpriteComponent,
   AnimationController,
   type CameraEntity,
+  type TextureHandle,
   type VisualTransformModifierHandle,
 } from "@yagejs/renderer";
 import {
@@ -38,6 +39,7 @@ import {
   EnemyDieTex,
   HurtSfx,
   ExplosionSfx,
+  SPRITE_SCALE,
 } from "./constants.js";
 
 // ---------------------------------------------------------------------------
@@ -46,10 +48,25 @@ import {
 type EnemyState = "patrol" | "react" | "attack" | "cooldown" | "hit" | "die";
 type EnemyAnim = "idle" | "walk" | "react" | "attack" | "hit" | "die";
 
-/** Absolute pixel X of the skeleton's body center (consistent across sheets). */
-const ENEMY_BODY_CENTER_X = 8;
-/** Half the collider height — distance from entity center to feet. */
-const ENEMY_HALF_H = 16; // collider is 32px tall
+/** Every enemy sheet uses the same frame, so one anchor fits every animation. */
+const ENEMY_FRAME_W = 48;
+const ENEMY_FRAME_H = 40;
+/** Pixel column of the body's center in every frame. */
+const ENEMY_BODY_CENTER_X = 20;
+/** Half the collider's size in sheet pixels. The feet sit on the frame's
+ *  last row. */
+const ENEMY_HALF_W = 7;
+const ENEMY_HALF_H = 12;
+const ENEMY_ANCHOR = {
+  x: ENEMY_BODY_CENTER_X / ENEMY_FRAME_W,
+  y: 1 - ENEMY_HALF_H / ENEMY_FRAME_H,
+};
+
+const enemySheet = (sheet: TextureHandle) => ({
+  sheet,
+  frameWidth: ENEMY_FRAME_W,
+  frameHeight: ENEMY_FRAME_H,
+});
 
 class EnemyController extends Component {
   private physicsWorld!: PhysicsWorld;
@@ -79,6 +96,9 @@ class EnemyController extends Component {
   private static readonly SLASH_FRAME_START = 4;
   private static readonly SLASH_FRAME_END = 9;
   private static readonly COOLDOWN_DURATION = 0.5;
+  /** Turn or stop this far from a wall, in world pixels from the body's
+   *  center. */
+  private static readonly WALL_RAY_DIST = ENEMY_HALF_W * SPRITE_SCALE + 7;
 
   private readonly brain = this.stateMachine(
     defineStates<EnemyState>({
@@ -178,9 +198,14 @@ class EnemyController extends Component {
           LAYER_ENEMY,
           LAYER_PLATFORM,
         );
-        const wallHit = this.physicsWorld.raycast(pos, wallDir, 18, {
-          filterGroups,
-        });
+        const wallHit = this.physicsWorld.raycast(
+          pos,
+          wallDir,
+          EnemyController.WALL_RAY_DIST,
+          {
+            filterGroups,
+          },
+        );
         if (wallHit) this.patrolDir *= -1;
 
         this.rb.setVelocityX(this.patrolDir * EnemyController.SPEED);
@@ -223,9 +248,14 @@ class EnemyController extends Component {
             LAYER_ENEMY,
             LAYER_PLATFORM,
           );
-          const wallHit = this.physicsWorld.raycast(pos, wallDir, 18, {
-            filterGroups,
-          });
+          const wallHit = this.physicsWorld.raycast(
+            pos,
+            wallDir,
+            EnemyController.WALL_RAY_DIST,
+            {
+              filterGroups,
+            },
+          );
           if (wallHit) {
             this.rb.setVelocityX(0);
           } else {
@@ -305,10 +335,13 @@ class EnemyController extends Component {
     this.brain.go("die");
     this.audio.play(ExplosionSfx, { channel: "sfx" });
 
-    // Stop blocking bullets and hurting the player
+    // Stop blocking bullets and hurting the player. A sensor does not rest
+    // on the floor either, so the body turns static to keep the corpse where
+    // it fell while the death animation plays.
     this.entity.tags.delete("enemy");
     this.entity.tags.add("dead");
     this.collider.setSensor(true);
+    this.rb.setType("static");
 
     this.pc.cancel(); // cancel all feedback processes; the shake resets
 
@@ -340,59 +373,32 @@ export class EnemyEntity extends Entity {
   }): void {
     const { x, y, patrolLeft, patrolRight, camera } = params;
     this.tags.add("enemy");
-    this.add(new Transform({ position: new Vec2(x, y) }));
-    const idleSource = {
-      sheet: EnemyIdleTex,
-      frameWidth: 24,
-      frameHeight: 32,
-    };
     this.add(
-      new AnimatedSpriteComponent({ source: idleSource, layer: "world" }),
+      new Transform({
+        position: new Vec2(x, y),
+        scale: { x: SPRITE_SCALE, y: SPRITE_SCALE },
+      }),
+    );
+    const idleSource = enemySheet(EnemyIdleTex);
+    this.add(
+      new AnimatedSpriteComponent({
+        source: idleSource,
+        anchor: ENEMY_ANCHOR,
+        layer: "world",
+      }),
     );
     this.add(
       new AnimationController<EnemyAnim>({
-        idle: {
-          source: idleSource,
-          speed: 0.15,
-          anchor: { x: ENEMY_BODY_CENTER_X / 24, y: 1 - ENEMY_HALF_H / 32 },
-        },
-        walk: {
-          source: { sheet: EnemyWalkTex, frameWidth: 22, frameHeight: 33 },
-          speed: 0.15,
-          anchor: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 33 },
-        },
-        react: {
-          source: {
-            sheet: EnemyReactTex,
-            frameWidth: 22,
-            frameHeight: 32,
-          },
-          speed: 0.2,
-          loop: false,
-          anchor: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 32 },
-        },
+        idle: { source: idleSource, speed: 0.15 },
+        walk: { source: enemySheet(EnemyWalkTex), speed: 0.15 },
+        react: { source: enemySheet(EnemyReactTex), speed: 0.2, loop: false },
         attack: {
-          source: {
-            sheet: EnemyAttackTex,
-            frameWidth: 43,
-            frameHeight: 37,
-          },
+          source: enemySheet(EnemyAttackTex),
           speed: 0.3,
           loop: false,
-          anchor: { x: ENEMY_BODY_CENTER_X / 43, y: 1 - ENEMY_HALF_H / 37 },
         },
-        hit: {
-          source: { sheet: EnemyHitTex, frameWidth: 30, frameHeight: 32 },
-          speed: 0.25,
-          loop: false,
-          anchor: { x: ENEMY_BODY_CENTER_X / 30, y: 1 - ENEMY_HALF_H / 32 },
-        },
-        die: {
-          source: { sheet: EnemyDieTex, frameWidth: 33, frameHeight: 32 },
-          speed: 0.2,
-          loop: false,
-          anchor: { x: ENEMY_BODY_CENTER_X / 33, y: 1 - ENEMY_HALF_H / 32 },
-        },
+        hit: { source: enemySheet(EnemyHitTex), speed: 0.25, loop: false },
+        die: { source: enemySheet(EnemyDieTex), speed: 0.2, loop: false },
       }),
     );
     this.add(
@@ -403,7 +409,11 @@ export class EnemyEntity extends Entity {
     );
     this.add(
       new ColliderComponent({
-        shape: { type: "box", width: 22, height: 32 },
+        shape: {
+          type: "box",
+          width: ENEMY_HALF_W * 2,
+          height: ENEMY_HALF_H * 2,
+        },
         friction: 0,
         layers: LAYER_ENEMY,
         mask: LAYER_PLATFORM | LAYER_PLAYER | LAYER_BULLET,

@@ -290,10 +290,10 @@ export function cameraOf(entity: Entity): CameraEntity {
 }
 
 // ---------------------------------------------------------------------------
-// SFX — three CC0 wavs (see `examples/public/assets/CREDITS.md`) doing the
+// SFX — three wavs from `examples/public/assets/` doing the
 // job of five cues: a hit thock (`hurt.wav`) on every landed/blocked hit, the
 // same clip pitched up as a bright "ring" on a successful parry (no bespoke
-// parry asset exists in the pack), a muted thud (`land.wav`) reused for a
+// parry sound exists in the assets), a muted thud (`land.wav`) reused for a
 // blocked hit's duller impact, and `explosion.wav` for a death beat.
 // ---------------------------------------------------------------------------
 
