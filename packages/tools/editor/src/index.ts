@@ -44,6 +44,8 @@ export interface EditorConfig {
    * `default` layer — what a level could say before layers were authorable.
    */
   readonly levels: readonly (string | EditorLevelGlob)[];
+  /** Independent sequence workspace files, with optional preview layers. */
+  readonly sequences?: readonly (string | EditorLevelGlob)[];
   /**
    * Globs for the files the asset picker offers and the preview watches for
    * external edits, matched against where

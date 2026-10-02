@@ -1,3 +1,10 @@
+import { ErrorBoundaryKey } from "@yagejs/core";
+import { VisualComponent } from "@yagejs/renderer";
+import { sequenceSamples } from "../store/sequence.js";
+import { SequencePreview } from "./SequencePreview.js";
+import { sampledDocument } from "../store/sequence.js";
+import { previewLevel } from "../../shared/document/index.js";
+import type { EditorDocument } from "../../shared/document/index.js";
 import {
   AssetManagerKey,
   InspectorKey,
@@ -19,7 +26,7 @@ import {
   type LevelInstance,
   type PreparedLevel,
 } from "@yagejs/level";
-import type { LevelDocument, LevelPlacement } from "@yagejs/level/document";
+import type { LevelPlacement } from "@yagejs/level/document";
 import { Graphics } from "pixi.js";
 import { RendererKey, SceneRenderTreeProviderKey } from "@yagejs/renderer";
 import type { LayerDef, RendererPlugin } from "@yagejs/renderer";
@@ -126,7 +133,7 @@ export function asHarness(value: unknown): EditorHarness | undefined {
 export interface PreviewRequest {
   /** Release retained assets before rebuilding after an external file edit. */
   readonly reloadAssets?: boolean;
-  readonly document: LevelDocument;
+  readonly document: EditorDocument;
   readonly catalog: LevelCatalog;
   /**
    * The layers the open level is authored against. Provisioned before the
@@ -217,6 +224,11 @@ export class PreviewCoordinator {
    */
   private canvas: CanvasSize | undefined;
   private resize: ResizeObserver | undefined;
+  private sequencePlayback: SequencePreview | undefined;
+  private readonly appearance = new WeakMap<
+    VisualComponent,
+    { alpha: number; visible: boolean; tint: VisualComponent["tint"] }
+  >();
 
   constructor(options: PreviewCoordinatorOptions) {
     this.host = options.host;
@@ -226,6 +238,10 @@ export class PreviewCoordinator {
   /** Boot the project's engine with the editor's own render pass added. */
   async start(harness: EditorHarness): Promise<void> {
     const engine = harness.engine();
+    this.sequencePlayback = new SequencePreview(
+      this.store,
+      engine.context.resolve(ErrorBoundaryKey),
+    );
     // Installed before the harness's plugins, so the renderer and physics
     // register their facets with it whether or not the project uses
     // DebugPlugin. A DebugPlugin in the harness reuses this one.
@@ -243,6 +259,7 @@ export class PreviewCoordinator {
         () => {
           this.draw();
         },
+        (dt) => this.sequencePlayback?.advance(dt),
       ),
     );
     await engine.start();
@@ -683,7 +700,10 @@ export class PreviewCoordinator {
         (type) => [type, pointFields(request.catalog, type)],
       ),
     );
-    const prepared = prepareLevel(request.document, request.catalog);
+    const prepared = prepareLevel(
+      previewLevel(request.document),
+      request.catalog,
+    );
 
     // Everything the new level needs is loaded before the old level's entities
     // are torn down: a texture both documents use must never drop to zero
@@ -708,6 +728,7 @@ export class PreviewCoordinator {
       this.adoptPlacements(projection.built, request.document);
       if (followsStore)
         this.applyPoseDraft(posesOf(state, [...this.byPlacementId.keys()]));
+      this.applySequenceSample();
     }
     this.publish(prepared.diagnostics, projection, revision);
 
@@ -743,7 +764,44 @@ export class PreviewCoordinator {
     );
   }
 
+  applySequenceSample(): void {
+    const state = this.store.getState(),
+      doc = state.document;
+    if (doc.format !== "yage-sequence-workspace") return;
+    const samples = sequenceSamples(state);
+    for (const placement of this.placements) {
+      for (const visual of placement.entity.getAll()) {
+        if (!(visual instanceof VisualComponent)) continue;
+        let base = this.appearance.get(visual);
+        if (!base) {
+          base = {
+            alpha: visual.alpha,
+            visible: visual.visible,
+            tint: visual.tint,
+          };
+          this.appearance.set(visual, base);
+        }
+        visual.alpha = base.alpha;
+        visual.visible = base.visible;
+        visual.tint = base.tint;
+        for (const sample of samples) {
+          if (doc.bindings[sample.target] !== placement.id) continue;
+          const kind =
+            doc.sequence.targets[sample.target]?.properties[sample.property]
+              ?.kind;
+          if (sample.property === "opacity" && kind === "number")
+            visual.alpha = Math.max(0, Math.min(1, sample.value as number));
+          else if (sample.property === "visible" && kind === "boolean")
+            visual.visible = sample.value as boolean;
+          else if (sample.property === "tint" && kind === "color")
+            visual.tint = sample.value as number;
+        }
+      }
+    }
+  }
+
   private retirePlacements(): void {
+    this.sequencePlayback?.stop();
     this.instance?.dispose();
     this.instance = undefined;
     this.placements = [];
@@ -753,7 +811,7 @@ export class PreviewCoordinator {
 
   private adoptPlacements(
     instance: LevelInstance,
-    document: LevelDocument,
+    document: EditorDocument,
   ): void {
     const placements: DormantPlacement[] = [];
     const byId = new Map<string, Entity>();
@@ -1012,11 +1070,13 @@ export class PreviewCoordinator {
     if (state.pick || state.selection.size !== 1) return [];
     const [id] = state.selection;
     if (id === undefined) return [];
-    const placement = state.document.entities.find((one) => one.id === id);
+    const placement = sampledDocument(state).entities.find(
+      (one) => one.id === id,
+    );
     if (!placement) return [];
     const drag = state.paramDrag;
     return pointHandles(
-      state.document,
+      sampledDocument(state),
       dragged(state, placement, drag),
       this.pointFieldsByType.get(placement.type) ?? [],
     ).map((handle) => ({
@@ -1181,7 +1241,8 @@ export class PreviewCoordinator {
       // The design size, not what is on screen: the rectangle says what the
       // project renders, and `visibleVirtualRect` would say how wide the
       // developer left the viewport panel.
-      viewport: renderer.virtualSize,
+      viewport: state.sequence ?? renderer.virtualSize,
+      ...(state.sequence ? { origin: { x: 0, y: 0 } } : {}),
       perScreenPixel: this.perScreenPixel(state),
       step: state.view.step,
     };
@@ -1461,7 +1522,7 @@ export class PreviewCoordinator {
     const local = localBoxOf(active.entity, this.inspector) ?? SUBSTITUTE_BOX;
     const world = active.entity.get(Transform).worldScale;
     const parent = parentWorld(
-      state.document,
+      sampledDocument(state),
       state.document.entities.find((one) => one.id === active.id)?.parent,
     ).scale;
     // Which local side is drawn at the box's higher coordinate flips with the

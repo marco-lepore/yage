@@ -1,0 +1,339 @@
+{
+  "format": "yage-sequence-workspace",
+  "version": 1,
+  "id": "Curtain call",
+  "entities": [
+    {
+      "id": "73d12e8c-1ade-4738-8687-18cba30d64dc",
+      "type": "example.sequence-actor",
+      "typeVersion": 1,
+      "transform": {
+        "position": {
+          "x": 480,
+          "y": 320
+        },
+        "rotation": 0,
+        "scale": {
+          "x": 1,
+          "y": 1
+        }
+      },
+      "params": {
+        "color": "#8be9cd",
+        "height": 68,
+        "name": "Aster",
+        "placeholder": false,
+        "width": 48
+      }
+    },
+    {
+      "id": "ca4da3c6-3ff2-4437-8e6e-80aad80dd6bb",
+      "type": "example.sequence-actor",
+      "typeVersion": 1,
+      "transform": {
+        "position": {
+          "x": 480,
+          "y": 320
+        },
+        "rotation": 0,
+        "scale": {
+          "x": 1,
+          "y": 1
+        }
+      },
+      "params": {
+        "color": "#ffcc6e",
+        "height": 48,
+        "name": "Ember",
+        "placeholder": false,
+        "width": 72
+      }
+    }
+  ],
+  "sequence": {
+    "duration": 180,
+    "events": [
+      {
+        "event": "gesture",
+        "frame": 45,
+        "id": "9925bf23-354f-40c8-9bbe-e4e3dc6f9bb5",
+        "payload": {
+          "name": "hello"
+        },
+        "target": "actorA"
+      },
+      {
+        "event": "gesture",
+        "frame": 90,
+        "id": "be995784-c066-437d-af0d-11691419668a",
+        "payload": {
+          "name": "ready"
+        },
+        "target": "actorB"
+      }
+    ],
+    "format": "yage-sequence",
+    "fps": 60,
+    "frame": {
+      "height": 540,
+      "width": 960
+    },
+    "name": "Curtain call",
+    "targets": {
+      "actorA": {
+        "events": {
+          "gesture": {
+            "name": {
+              "kind": "enum",
+              "values": ["hello", "ready"]
+            }
+          }
+        },
+        "properties": {
+          "opacity": {
+            "kind": "number"
+          },
+          "position": {
+            "kind": "position"
+          },
+          "rotation": {
+            "kind": "number"
+          },
+          "scale": {
+            "kind": "vector"
+          },
+          "visible": {
+            "kind": "boolean"
+          }
+        }
+      },
+      "actorB": {
+        "events": {
+          "gesture": {
+            "name": {
+              "kind": "enum",
+              "values": ["hello", "ready"]
+            }
+          }
+        },
+        "properties": {
+          "opacity": {
+            "kind": "number"
+          },
+          "position": {
+            "kind": "position"
+          },
+          "rotation": {
+            "kind": "number"
+          },
+          "scale": {
+            "kind": "vector"
+          },
+          "visible": {
+            "kind": "boolean"
+          }
+        }
+      }
+    },
+    "tracks": [
+      {
+        "id": "077c8827-dcf5-4ea3-875d-eb1441e422f8",
+        "keys": [
+          {
+            "curve": "easeInOutCubic",
+            "frame": 0,
+            "id": "bc031e09-c2d4-4502-951b-b140fc4e1f9f",
+            "value": {
+              "x": 160,
+              "y": 270
+            }
+          },
+          {
+            "curve": "linear",
+            "frame": 90,
+            "id": "3531e02d-30a2-4274-89f4-8160625decd9",
+            "value": {
+              "x": 640,
+              "y": 270
+            }
+          }
+        ],
+        "position": {
+          "mode": "proportional"
+        },
+        "property": "position",
+        "target": "actorA"
+      },
+      {
+        "id": "a0c34e31-6d93-4cf2-a875-05ddd7e86a37",
+        "keys": [
+          {
+            "curve": "linear",
+            "frame": 0,
+            "id": "7361398b-e0cb-425f-b7c6-b3723c7dbd63",
+            "value": 0
+          },
+          {
+            "curve": "linear",
+            "frame": 90,
+            "id": "2a0356e7-7f48-4835-b168-01dbd2ecede2",
+            "value": 0.7853981633974483
+          }
+        ],
+        "property": "rotation",
+        "target": "actorA"
+      },
+      {
+        "id": "3a7f3b94-d5c2-4ef3-a49b-dd02383818d5",
+        "keys": [
+          {
+            "curve": "linear",
+            "frame": 0,
+            "id": "9522a567-1126-4d6e-98a2-4bc24a7837a0",
+            "value": {
+              "x": 1,
+              "y": 1
+            }
+          }
+        ],
+        "property": "scale",
+        "target": "actorA"
+      },
+      {
+        "id": "6824b55d-971a-4d9f-821c-b67b47ebc7da",
+        "keys": [
+          {
+            "curve": "linear",
+            "frame": 0,
+            "id": "323cb3ce-3244-484c-9a7b-22c14d942b6a",
+            "value": 1
+          }
+        ],
+        "property": "opacity",
+        "target": "actorA"
+      },
+      {
+        "id": "c73b9535-b9eb-42be-a7c1-4871e5b3129f",
+        "keys": [
+          {
+            "curve": "hold",
+            "frame": 0,
+            "id": "524d547c-7eb6-4c10-bcf3-1f825baf7f81",
+            "value": true
+          }
+        ],
+        "property": "visible",
+        "target": "actorA"
+      },
+      {
+        "id": "4d399c22-b7cb-46f8-afa5-eb1056c28094",
+        "keys": [
+          {
+            "curve": {
+              "bezier": [0.25, 0.1, 0.25, 1]
+            },
+            "frame": 0,
+            "id": "cf1ed567-58b1-4bd0-93c9-9e3e735794a4",
+            "value": {
+              "x": 280,
+              "y": 0
+            }
+          },
+          {
+            "curve": "linear",
+            "frame": 90,
+            "id": "44a78610-2776-4978-bb68-c1c30a0ef928",
+            "value": {
+              "x": -120,
+              "y": 0
+            }
+          }
+        ],
+        "position": {
+          "anchor": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "mode": "anchored"
+        },
+        "property": "position",
+        "target": "actorB"
+      },
+      {
+        "id": "c19ff475-f7c1-4b30-82f2-6c233295d9c1",
+        "keys": [
+          {
+            "curve": "linear",
+            "frame": 0,
+            "id": "05aa013a-0289-41fd-9c4b-54dd8831c157",
+            "value": 0
+          },
+          {
+            "curve": "linear",
+            "frame": 90,
+            "id": "230cb8c4-07d3-47d7-947b-93bbdbb085cc",
+            "value": -0.5235987755982988
+          }
+        ],
+        "property": "rotation",
+        "target": "actorB"
+      },
+      {
+        "id": "ac8df330-85a3-43f1-9335-24d2fb4c69d4",
+        "keys": [
+          {
+            "curve": "linear",
+            "frame": 0,
+            "id": "d3dc5731-0546-414f-a5d9-f78da2b98eb1",
+            "value": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          {
+            "curve": "linear",
+            "frame": 90,
+            "id": "bb7d124d-e03c-48c5-b9fe-d8e116672d7d",
+            "value": {
+              "x": 1.4,
+              "y": 1.4
+            }
+          }
+        ],
+        "property": "scale",
+        "target": "actorB"
+      },
+      {
+        "id": "cb259b36-57b6-47d2-b7a9-d6a322097d28",
+        "keys": [
+          {
+            "curve": "linear",
+            "frame": 0,
+            "id": "a4a7d159-cf7c-43ab-a7dc-90eaa2c4ffa7",
+            "value": 1
+          }
+        ],
+        "property": "opacity",
+        "target": "actorB"
+      },
+      {
+        "id": "9a6da566-b9e8-45f5-ab7e-24bdaf3cb013",
+        "keys": [
+          {
+            "curve": "hold",
+            "frame": 0,
+            "id": "5c7dbb20-09dc-44aa-b824-deb3ea2c21eb",
+            "value": true
+          }
+        ],
+        "property": "visible",
+        "target": "actorB"
+      }
+    ],
+    "version": 1
+  },
+  "bindings": {
+    "actorA": "73d12e8c-1ade-4738-8687-18cba30d64dc",
+    "actorB": "ca4da3c6-3ff2-4437-8e6e-80aad80dd6bb"
+  }
+}

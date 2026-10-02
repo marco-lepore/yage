@@ -2,7 +2,9 @@
 
 Level editor for [YAGE](https://yage.dev) games. Place entities in a real
 running engine, drag them in the viewport, and save the result as a versioned
-level file that the game loads through `@yagejs/level`.
+level file that the game loads through `@yagejs/level`. Sequence mode uses the
+same entity catalog and transform tools with a keyframe timeline. Runtime clips
+play through `@yagejs-addons/sequence`.
 
 `@yagejs-tools` scope, independently versioned — an engine release never forces
 a bump here, and vice versa.

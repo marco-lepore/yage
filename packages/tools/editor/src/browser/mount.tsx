@@ -1,3 +1,4 @@
+import { SequencePlaceholder } from "../entities/SequencePlaceholder.js";
 import type { ViteHotContext } from "vite/types/hot.js";
 import { ASSETS_CHANGED_EVENT } from "../shared/protocol/index.js";
 import { createRoot, type Root } from "react-dom/client";
@@ -106,6 +107,7 @@ export async function mountEditor(
       listAssets={() => api.listAssets()}
       tiled={tiled}
       levelDirectories={bootstrap.levelDirectories}
+      sequenceDirectories={bootstrap.sequenceDirectories ?? []}
       layerChoices={() => layers.choicesFor(store.getState().file?.layerSet)}
       layerSorts={(layer) =>
         layers.sorted(store.getState().file?.layerSet, layer)
@@ -127,7 +129,10 @@ export async function mountEditor(
 
   const built = project.initialize({
     project: options.project,
-    contributions: options.contributions,
+    contributions: [
+      ...options.contributions,
+      { packageName: "@yagejs-tools/editor", entities: [SequencePlaceholder] },
+    ],
   });
   // One source, one report: both problems replace the `catalog` diagnostics,
   // so they are collected and published together rather than one hiding the

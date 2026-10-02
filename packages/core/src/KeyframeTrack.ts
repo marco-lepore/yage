@@ -144,30 +144,35 @@ export function createKeyframeTrack<T extends Interpolatable>(
         }
       }
 
-      // Find the current segment (linear scan — tracks are small)
-      let segIdx = 0;
-      for (let i = 0; i < keyframes.length - 1; i++) {
-        if (internalElapsed >= keyframes[i]!.time) {
-          segIdx = i;
-        }
-      }
-
-      const kfA = keyframes[segIdx]!;
-      const kfB = keyframes[segIdx + 1]!;
-      const segDuration = kfB.time - kfA.time;
-      // `inverseLerp` clamps at both ends, so a track whose first keyframe
-      // sits past time 0 holds that keyframe's value through the lead-in
-      // rather than extrapolating backwards from it.
-      const segT =
-        segDuration > 0
-          ? MathUtils.inverseLerp(kfA.time, kfB.time, internalElapsed)
-          : 1;
-      const segEasing = kfA.easing ?? defaultEasing;
-
-      setter?.(interpolate(kfA.data, kfB.data, segT, segEasing));
+      setter?.(sampleKeyframes(keyframes, internalElapsed, defaultEasing));
     },
   };
   if (onComplete) processOpts.onComplete = onComplete;
 
   return new Process(processOpts);
+}
+
+/**
+ * Read a track at a time without advancing a Process or dispatching events.
+ * Keys must be nonempty, finite and sorted. Values hold outside the key range.
+ * The result is undefined for a non-finite query time.
+ */
+export function sampleKeyframes<T extends Interpolatable>(
+  keyframes: readonly Keyframe<T>[],
+  time: number,
+  defaultEasing: EasingFunction = easeLinear,
+): T {
+  if (keyframes.length === 0) {
+    throw new Error("sampleKeyframes: at least one keyframe is required.");
+  }
+  const last = keyframes[keyframes.length - 1]!;
+  if (time >= last.time || keyframes.length === 1) return last.data;
+  let index = 0;
+  for (let i = 0; i < keyframes.length - 1; i++) {
+    if (time >= keyframes[i]!.time) index = i;
+  }
+  const a = keyframes[index]!;
+  const b = keyframes[index + 1]!;
+  const t = b.time > a.time ? MathUtils.inverseLerp(a.time, b.time, time) : 1;
+  return interpolate(a.data, b.data, t, a.easing ?? defaultEasing);
 }

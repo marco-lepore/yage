@@ -43,6 +43,7 @@ const EXPLICIT = {
   "guides/debug": "/llms/packages/debug.md",
   "guides/play-sessions": "/llms/play-sessions.md",
   "tooling/scenario-lab": "/llms/tools/lab.md",
+  "tooling/sequence-editor": "/llms/tools/sequence-editor.md",
   "tooling/level-editor": "/llms/tools/editor.md",
   "tooling/feedback": "/llms/tools/feedback.md",
   "tooling/local-engine": "/llms/local-engine.md",
@@ -86,6 +87,8 @@ export function resolveLlmDoc(id) {
  * co-located with their package and copied in by `copy-llms.mjs`.
  */
 export function llmDocSource(servedPath) {
+  if (servedPath === "/llms/tools/sequence-editor.md")
+    return "packages/tools/editor/docs/llms/sequence-editor.md";
   const rel = servedPath.replace(/^\/llms\//, "");
   const [group, file] = rel.split("/");
   if (file && GROUPS.includes(group)) {

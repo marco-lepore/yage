@@ -56,6 +56,7 @@ export const ADDONS = [
   "inventory",
   "quests",
   "steering",
+  "sequence",
   "synth",
   "virtual-controls",
 ] as const;
@@ -82,6 +83,16 @@ export interface Example {
 
 /** Every example, grouped by section in display order. */
 export const EXAMPLES: readonly Example[] = [
+  {
+    slug: "sequence",
+    title: "Sequence studio",
+    summary:
+      "Author two actors with proportional and anchored movement, easing, opacity and timed events.",
+    section: "gameplay",
+    packages: [],
+    addons: ["sequence"],
+    guide: "/addons/sequence/",
+  },
   // Start here
   {
     slug: "hello-world",
