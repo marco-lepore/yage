@@ -1,5 +1,9 @@
 # @yagejs-addons/character-controller
 
+Runnable example: [movement playground](https://examples.yage.dev/character-controller.html).
+Source: `examples/src/character-controller/`. Demonstrates default and custom
+tuning, dash admission policy, air-charge refill, and one-way drop-through.
+
 ## Entries
 
 - `.`: `MotionIntent`, `MotionIntentHandle`, `DurableIntentHandle`, `MotionAxis`,
