@@ -30,6 +30,8 @@ class ConsumeProbe extends Component {
   fireHeldThisFrame = false;
   /** Total `pointerdown` events (any pointer, regardless of consumed status). */
   pointerDowns = 0;
+  buttonClicks = 0;
+  unconsumedPresses = 0;
   /** Frame-counted `WheelUp` rising edges. */
   wheelUps = 0;
   /** Frame-counted `WheelDown` rising edges. */
@@ -63,6 +65,7 @@ class ConsumeProbe extends Component {
 
   override update(): void {
     this.fireHeldThisFrame = this.input.isPressed("fire");
+    this.unconsumedPresses += this.input.getPointerPresses().length;
   }
 }
 
@@ -73,7 +76,7 @@ class ConsumeScene extends Scene {
     // Probe entity reads action / wheel state each frame.
     const probeEntity = this.spawn("probe");
     probeEntity.add(new Transform());
-    probeEntity.add(new ConsumeProbe());
+    const probe = probeEntity.add(new ConsumeProbe());
 
     // Default-consume UI panel covering the top-left quadrant.
     // Default `consumeInput: true` — clicks here MUST NOT fire `fire`.
@@ -93,7 +96,7 @@ class ConsumeScene extends Scene {
 
     // Escape-hatch panel in the top-right. `consumeInput: false` makes the
     // panel transparent to the action map — clicks here SHOULD fire `fire`.
-    this.spawn("ui-passthrough").add(
+    const passthrough = this.spawn("ui-passthrough").add(
       new UISurface({
         anchor: Anchor.TopRight,
         offset: { x: 0, y: 0 },
@@ -103,6 +106,39 @@ class ConsumeScene extends Scene {
         consumeInput: false,
       }),
     );
+    const wrapper = passthrough.panel({ width: 100, height: 60 });
+    wrapper.button("UI", {
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: 40,
+      height: 20,
+      padding: 0,
+      textStyle: { fontSize: 12 },
+      consumeInput: true,
+      onClick: () => {
+        probe.buttonClicks += 1;
+      },
+    });
+    const menu = this.spawn("ui-overrides").add(
+      new UISurface({
+        anchor: Anchor.BottomLeft,
+        width: 100,
+        height: 60,
+      }),
+    );
+    const transparent = menu.panel({
+      width: 100,
+      height: 60,
+      consumeInput: false,
+    });
+    transparent.button("Both", {
+      width: 100,
+      height: 30,
+      onClick: () => {
+        probe.buttonClicks += 1;
+      },
+    });
   }
 }
 

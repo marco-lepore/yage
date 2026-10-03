@@ -1,40 +1,37 @@
 /**
- * Cross-package WeakSet for marking display containers (Pixi `Container`s in
- * the canonical setup) as "swallow pointer input." The `@yagejs/input`
- * package's drain step consults this set via the renderer's optional
- * `hitTestUI(x, y)` — when the topmost interactive container under a
- * `pointerdown` is parented to a marked container, the pointer is auto-claimed
- * (`consumePointer`-equivalent), so the press never propagates to gameplay
- * action-map edges like `MouseLeft`.
- *
- * Lives in `@yagejs/core` so the renderer (read side) and the UI / sprite
- * components (write side) can both reach it without circular imports.
- *
- * Untyped on `Container` to keep `@yagejs/core` free of any Pixi dependency.
- * Callers pass their `Pixi.Container` instances directly; `WeakSet` accepts
- * any object reference.
+ * A display object's pointer-consumption setting. `"inherit"` identifies UI
+ * that uses the nearest ancestor's explicit setting, defaulting to true when
+ * no ancestor specifies one. Unregistered display objects have no UI default.
  */
+export type PointerConsumePolicy = boolean | "inherit";
 
-const registry = new WeakSet<object>();
+const registry = new WeakMap<object, PointerConsumePolicy>();
 
 /**
- * Mark a display container as a UI-input surface. Idempotent. Call from a
- * component's `onAdd` (or equivalent) after the underlying Pixi container is
- * created.
+ * Set a display object's pointer-consumption policy. The renderer resolves
+ * the nearest explicit boolean on the hit path. This does not change hit
+ * testing or pointer callbacks; custom containers must configure those too.
  */
-export function markPointerConsumeContainer(container: object): void {
-  registry.add(container);
+export function markPointerConsumeContainer(
+  container: object,
+  policy: PointerConsumePolicy = true,
+): void {
+  registry.set(container, policy);
 }
 
-/**
- * Remove the mark. Call from a component's `onDestroy` for symmetry, or to
- * implement an opt-out (`consumeInput: false`) escape hatch on UI primitives.
- */
+/** Remove this display object's policy, including its UI default. */
 export function unmarkPointerConsumeContainer(container: object): void {
   registry.delete(container);
 }
 
-/** Whether a container has been marked as a UI-input surface. */
+/** Read this display object's own policy without resolving its ancestors. */
+export function getPointerConsumePolicy(
+  container: object,
+): PointerConsumePolicy | undefined {
+  return registry.get(container);
+}
+
+/** Whether this display object explicitly consumes input. */
 export function isPointerConsumeContainer(container: object): boolean {
-  return registry.has(container);
+  return registry.get(container) === true;
 }

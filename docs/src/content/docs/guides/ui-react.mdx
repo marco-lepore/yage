@@ -62,6 +62,43 @@ root.offset; // { x: 0, y: -120 }
 Both values must be finite. A `NaN` or an infinity throws and names the
 argument.
 
+### Letting HUD input reach gameplay
+
+Set `consumeInput: false` on the root of a HUD that should leave the world
+clickable. Every child inherits unless it supplies its own value. Set
+`consumeInput` on a button that should handle its click without also triggering
+a gameplay action:
+
+```tsx yage-context="entity"
+import { UIRoot, ZStack, Panel, Text, Button } from "@yagejs/ui-react";
+
+declare function pause(): void;
+const root = entity.add(new UIRoot({ consumeInput: false }));
+root.render(
+  <ZStack width={800} height={600}>
+    <Panel><Text>Score: 42</Text></Panel>
+    <Button consumeInput onClick={pause}>Pause</Button>
+  </ZStack>,
+);
+```
+
+A press on the score or empty layout space reaches gameplay. The pause button
+and its label consume their presses. Wheel input follows the same rule.
+
+The nearest explicit `true` or `false` wins, so a `false` child can also pass
+input through a consuming parent. Removing the prop restores inheritance.
+`UIRoot` defaults to `true`, as does a standalone UI element with no explicit
+ancestor setting. The rule also applies to the imperative `UISurface` API.
+
+Both settings preserve the element's pointer callbacks. They control gameplay
+input, not whether another UI widget beneath the element receives a click.
+Inheritance follows the display hierarchy: content moved into a floating
+overlay needs its own setting. `PixiSelect` applies its explicit setting to the open list
+as well. Without one, the detached list uses the standalone UI default.
+Tooltip bubbles set `false` for their content.
+A modal focus scope's blocker still consumes input outside the scope; use
+`focus={{ modal: false }}` when that surrounding area must remain clickable.
+
 ### Entity-anchored React UI
 
 For UI that tracks a specific game entity (nameplates, health bars,
@@ -541,6 +578,10 @@ stays interactive — a `<Tooltip>` bubble, a `PixiSelect` list, a surface added
 after the menu's. A `<ScrollView>`, or any other container that clips what it
 draws, clips the block too: a `focus` panel inside one covers that view's own
 rows and leaves every point outside the view clickable.
+
+The blocker does not change `consumeInput` inside the panel. In a transparent
+HUD, use `<Panel focus consumeInput>` to keep presses on the dialog's controls
+out of gameplay too. Children can still override that value.
 
 For a tree whose outermost element is not a single `<Panel>`, put the option on
 the root instead:

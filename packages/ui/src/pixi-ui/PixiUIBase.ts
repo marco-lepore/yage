@@ -3,6 +3,7 @@ import type { DisplayContainer } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
 import type {
+  ConsumeInputProps,
   FocusDirection,
   FocusProps,
   LayoutProps,
@@ -11,6 +12,11 @@ import type {
 import { UIElementBase } from "../UIElementBase.js";
 import { createYogaNode, applyLayoutProps } from "../yoga-helpers.js";
 import { runUICallback } from "../error-boundary.js";
+import { applyConsumeInput } from "../consume-input.js";
+import {
+  markPointerConsumeContainer,
+  unmarkPointerConsumeContainer,
+} from "@yagejs/core";
 import { PointerEvents } from "../pointer-events.js";
 import { FocusOutline } from "../internal/focus-outline.js";
 import type { UIFocusOutlineBox } from "../types.js";
@@ -64,12 +70,24 @@ export abstract class PixiUIBase<
     this.yogaNode.setDisplay(v ? Display.Flex : Display.None);
   }
 
-  constructor(view: T, props: LayoutProps & PointerEventProps & FocusProps) {
+  constructor(
+    view: T,
+    props: LayoutProps & PointerEventProps & FocusProps & ConsumeInputProps,
+  ) {
     super();
     this.view = view;
-    // Passive; the pointer handlers below stay on the view the pointer hits.
+    // Interactive widgets own hit testing, including their disabled state.
     this.displayObject = new Container();
     this.displayObject.addChild(view);
+    if (this.interactive) {
+      markPointerConsumeContainer(
+        this.displayObject,
+        props.consumeInput ?? "inherit",
+      );
+    } else {
+      // Display-only widgets still need a hit target for their consume setting.
+      applyConsumeInput(this.displayObject, props.consumeInput);
+    }
     this.yogaNode = createYogaNode();
 
     this.yogaNode.setMeasureFunc((w, wMode, h, hMode) => {
@@ -359,6 +377,12 @@ export abstract class PixiUIBase<
   /** Apply layout props, visible, and store prevProps. Call at end of subclass update(). */
   protected updateBase(props: Record<string, unknown>): void {
     if (this.disabled) this._dropPress();
+    if ("consumeInput" in props) {
+      markPointerConsumeContainer(
+        this.displayObject,
+        (props as ConsumeInputProps).consumeInput ?? "inherit",
+      );
+    }
     applyLayoutProps(this.yogaNode, props as LayoutProps);
     this.applyTransformProps(props as LayoutProps);
     if ("visible" in props)
@@ -389,6 +413,7 @@ export abstract class PixiUIBase<
     this.bridgedCallbacks.clear();
     this.yogaNode.free();
     this.view.destroy();
+    unmarkPointerConsumeContainer(this.displayObject);
     this.displayObject.destroy();
   }
 

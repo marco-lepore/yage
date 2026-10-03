@@ -8,9 +8,16 @@ import {
   Graphics,
   Rectangle,
 } from "pixi.js";
-import { isPointerConsumeContainer } from "@yagejs/core";
+import {
+  getPointerConsumePolicy,
+  isPointerConsumeContainer,
+} from "@yagejs/core";
 import type { DisplayContainer } from "@yagejs/renderer";
-import { clearConsumeInput, createPointerBlocker } from "./consume-input.js";
+import {
+  applyConsumeInput,
+  clearConsumeInput,
+  createPointerBlocker,
+} from "./consume-input.js";
 
 // Pixi puts the pointer members on `Container` when a renderer is built. These
 // tests run its hit test with no renderer, so they install the mixin
@@ -131,6 +138,26 @@ describe("a pointer blocker under a dialog", () => {
     return heard;
   }
 
+  it("keeps the modal backdrop's policy separate from its controls", () => {
+    const { root, dialog, dialogRow, blocker } = buildTree();
+    applyConsumeInput(root, false);
+    applyConsumeInput(dialog, undefined);
+    applyConsumeInput(dialogRow, undefined);
+
+    expect(hitAt(root, 10, 10)).toBe(blocker);
+    expect(getPointerConsumePolicy(blocker)).toBe(true);
+    expect(hitAt(root, 210, 210)).toBe(dialogRow);
+    expect(getPointerConsumePolicy(dialogRow)).toBe("inherit");
+    expect(getPointerConsumePolicy(dialog)).toBe("inherit");
+    expect(getPointerConsumePolicy(root)).toBe(false);
+
+    applyConsumeInput(dialog, true);
+    expect(hitAt(root, 210, 210)).toBe(dialogRow);
+    expect(getPointerConsumePolicy(dialog)).toBe(true);
+    expect(hitAt(root, 10, 10)).toBe(blocker);
+    root.destroy({ children: true });
+  });
+
   it("swallows every point but the dialog's own rows, while the dialog shows", () => {
     const { root, behind, dialog, dialogRow, blocker } = buildTree();
 
@@ -214,5 +241,40 @@ describe("a pointer blocker under a dialog", () => {
 
     expect(hitAt(root, 10, 10)).toBe(blocker);
     expect(hitAt(root, 210, 210)).toBe(dialogRow);
+  });
+});
+
+describe("inherited input consumption", () => {
+  it("does not give an omitted child setting its own consuming override", () => {
+    const root = new Container();
+    const wrapper = new Container();
+    root.addChild(wrapper);
+    applyConsumeInput(root, false);
+    applyConsumeInput(wrapper, undefined);
+    expect(isPointerConsumeContainer(wrapper)).toBe(false);
+    expect(getPointerConsumePolicy(wrapper)).toBe("inherit");
+    expect(getPointerConsumePolicy(root)).toBe(false);
+  });
+
+  it("keeps inherited UI hittable and preserves callbacks on a transparent element", () => {
+    const root = new Container();
+    const element = new Container();
+    element.hitArea = new Rectangle(0, 0, 30, 30);
+    root.addChild(element);
+    applyConsumeInput(element, undefined);
+    expect(hitAt(root, 10, 10)).toBe(element);
+    applyConsumeInput(element, false);
+    const heard: string[] = [];
+    element.on("pointerdown", () => heard.push("down"));
+    const boundary = new EventBoundary(root);
+    boundary.mapEvent(pointerEvent(boundary, "pointerdown", 10, 10));
+    expect(heard).toEqual(["down"]);
+  });
+
+  it("does not re-enable a disabled element when its policy changes", () => {
+    const element = new Container();
+    element.eventMode = "none";
+    applyConsumeInput(element, true);
+    expect(element.eventMode).toBe("none");
   });
 });

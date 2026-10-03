@@ -194,14 +194,35 @@ of the flex flow. `left` / `top` / `right` / `bottom` are offsets against the
 nearest relative ancestor: a number is px, a `"<n>%"` string resolves
 against the containing block (so `top="100%"` is flush below it).
 
-`Panel` accepts `consumeInput?: boolean` (default `true`). The UI
-auto-consume fallback claims pointer events that land on the panel, so they
-don't leak through to gameplay actions. Set `false` for a decorative /
-pass-through container (e.g. a full-screen overlay) that should let clicks
-reach elements beneath it. It does not block the panel's own
-hover/click callbacks (those still fire), and a `<Tooltip>` trigger placed
-under such a panel still works. The `<Tooltip>` overlay and its bubbles use
-`consumeInput={false}` so they never block input to the UI behind them.
+`consumeInput?: boolean` applies to every element. Omitted values inherit the
+nearest explicit ancestor value. `UIRoot` defaults to `true`; a standalone
+UI element with no explicit ancestor also defaults to `true`. `false` passes
+pointer presses and wheel input to gameplay. `true` consumes them. A nearer
+explicit value overrides either setting, including `false` inside `true`.
+Removing a JSX prop restores inheritance.
+
+```tsx yage-context="entity"
+import { UIRoot, ZStack, Button } from "@yagejs/ui-react";
+
+declare function pause(): void;
+const root = entity.add(new UIRoot({ consumeInput: false }));
+root.render(
+  <ZStack>
+    <Button consumeInput onClick={pause}>
+      Pause
+    </Button>
+  </ZStack>,
+);
+```
+
+The layout wrappers pass input to gameplay; the button and its label consume
+it. Pointer callbacks still fire with either setting. This does not pass
+clicks to underlying UI widgets. Inheritance follows the display hierarchy:
+content portaled into a floating overlay needs its own setting. `PixiSelect`
+applies its explicit `consumeInput` to its open list too; an omitted setting
+on the detached list uses the standalone UI default. Tooltip
+bubbles set `false`; their descendants inherit it. Modal focus blockers
+consume the area outside their scope even inside a transparent root.
 
 ### Scale, rotation and draw order
 
@@ -371,6 +392,10 @@ dialog cannot be clicked through. A `<ScrollView>`, or any other container
 that clips what it draws, clips the block too: a `focus` panel inside one
 covers that view's own rows and leaves every point outside the view clickable.
 `focus={{ modal: false }}` turns it off.
+
+The blocker does not change `consumeInput` inside the panel. In a transparent
+HUD, use `<Panel focus consumeInput>` to keep presses on the dialog's controls
+out of gameplay too. Children can still override that value.
 
 Holding confirm on the focused component paints it pressed and runs its action
 on the release; letting go after moving the focus away runs nothing.

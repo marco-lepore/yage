@@ -54,7 +54,10 @@ export class UISurface extends Component {
     super();
     // `focus` goes to the root panel with the rest of the options, so
     // `surface.focusScope` and `root.focusScope` are one scope.
-    this.root = new UIPanel(opts ?? {});
+    this.root = new UIPanel({
+      ...opts,
+      consumeInput: opts?.consumeInput ?? true,
+    });
     this._userVisible = opts?.visible ?? true;
     this._anchor = opts?.anchor;
     // Copied so `setOffset` writes this surface's own object, never the one

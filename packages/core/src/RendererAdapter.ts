@@ -2,8 +2,7 @@ import { ServiceKey } from "./EngineContext.js";
 
 /**
  * What a hit test found under a point: the topmost interactive container and
- * its ancestors, innermost first, plus whether the chain crosses a surface
- * marked via `markPointerConsumeContainer`.
+ * its ancestors, innermost first, plus the resolved consumption policy.
  *
  * The containers are renderer-owned objects, opaque to the consumer. Compare
  * them by identity against display objects read elsewhere — an Inspector
@@ -41,8 +40,10 @@ export interface RendererAdapter {
   canvasToVirtual?(x: number, y: number): { x: number; y: number };
   /**
    * Hit-test at virtual-space coordinates and return `true` when the topmost
-   * interactive container under `(x, y)` is parented (directly or through any
-   * ancestor) to a container marked via {@link markPointerConsumeContainer}.
+   * interactive container under `(x, y)` resolves to a consuming policy
+   * registered via {@link markPointerConsumeContainer}.
+   * The nearest explicit boolean wins. Inheriting UI with no explicit ancestor
+   * consumes by default; an unregistered path does not.
    * Optional — when absent, the input plugin's UI auto-consume fallback is a
    * no-op.
    *

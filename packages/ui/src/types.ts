@@ -254,19 +254,11 @@ export interface UIContainerElement extends UIElement {
 // ---------------------------------------------------------------------------
 
 /**
- * Per-component opt-out for the UI auto-consume pointer fallback.
- *
- * Every UI primitive (UIButton, UICheckbox, UIPanel, UIImage, UINineSlice,
- * UIProgressBar, UIText) marks its underlying Pixi container so that
- * `pointerdown` events landing on it (or any descendant) are auto-claimed by
- * `@yagejs/input` via the renderer's hit-test fallback — preventing taps on
- * UI from also firing gameplay actions like `MouseLeft`.
- *
- * Set `consumeInput: false` on a specific element to make it transparent to
- * the action map: pointer events still fire its own handlers (e.g. an
- * `onClick` callback) but also propagate to gameplay actions. Useful for
- * cosmetic overlays (decorative HUD borders, full-screen filters) that should
- * not block clicks on the world behind them.
+ * Pointer and wheel consumption for gameplay input. Omitted values inherit
+ * the nearest explicit ancestor setting; UI roots and standalone elements
+ * default to true. Set false for a transparent subtree, then true on controls
+ * that must consume input. A nearer explicit false also overrides true.
+ * Pointer callbacks still fire. This does not pass clicks to underlying UI.
  */
 export interface ConsumeInputProps {
   consumeInput?: boolean;

@@ -54,11 +54,10 @@ export interface UIRootOptions {
   anchor?: Anchor;
   offset?: { x: number; y: number };
   /**
-   * Whether the root container marks itself as a UI auto-consume surface.
-   * Default `true`: pointer events landing inside the React tree are claimed
-   * by `@yagejs/input` so they don't leak through to gameplay actions. Pass
-   * `false` for a transparent overlay (decorative full-screen filters,
-   * cursor-following ornament, etc.) that should let clicks pass through.
+   * Default pointer and wheel consumption for the React tree. Defaults to
+   * true. Descendants inherit unless they set their own consumeInput value.
+   * Use false for a HUD that passes input to gameplay, with explicit true
+   * on its controls. Pointer callbacks still fire either way.
    */
   consumeInput?: boolean;
   /**
@@ -120,9 +119,7 @@ export class UIRoot extends Component {
   constructor(opts?: UIRootOptions) {
     super();
     this._container = new Container();
-    if (opts?.consumeInput !== false) {
-      markPointerConsumeContainer(this._container);
-    }
+    markPointerConsumeContainer(this._container, opts?.consumeInput ?? true);
     this._anchor = opts?.anchor;
     // Copied so `setOffset` writes this root's own object, never the one the
     // caller passed in.
