@@ -142,7 +142,7 @@ export class MoveAdmission extends Component {
 
   /** Whether a jump in the air is admitted. Charges come back on landing. */
   get canAirJump(): boolean {
-    if (this.controller.blocked) return false;
+    if (this.controller.grounded || this.controller.blocked) return false;
     return this.airJumpsLeft > 0 && this.permits("airJump");
   }
 

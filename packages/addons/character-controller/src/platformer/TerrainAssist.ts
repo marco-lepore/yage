@@ -179,6 +179,7 @@ export class TerrainAssist extends Component {
     return this.world.castShape(shape, origin, direction, distance, {
       filterGroups,
       excludeEntity: this.entity,
+      solidFor: this.collider,
       stopAtPenetration: false,
     });
   }

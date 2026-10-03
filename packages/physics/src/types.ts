@@ -307,6 +307,8 @@ export type ColliderConfig = ColliderSharedConfig &
  * All values are from the start of the physics step being computed, before
  * this step's movement is applied — for a body that crossed a surface
  * mid-step, they tell you which side it came from.
+ * A `castShape` with `solidFor` instead supplies current poses and velocities
+ * with `dt: 0`, regardless of the cast origin or direction.
  *
  * The same object instance is reused for every filter call; read what you
  * need inside the filter and do not hold a reference to it.
@@ -320,7 +322,7 @@ export interface ContactCandidate {
   readonly selfShapeIndex: number;
   /** Index of the other participating shape in its collider component. */
   readonly otherShapeIndex: number;
-  /** Duration of the physics step being computed, in seconds. */
+  /** Duration of the physics step in seconds; 0 for a `solidFor` shape cast. */
   readonly dt: number;
   /** Own collider's world X position in pixels. */
   readonly selfX: number;
@@ -354,6 +356,8 @@ export interface ContactCandidate {
  * entities, bodies, or colliders from inside it. When both colliders in a
  * pair have filters, both run for every candidate pair and the pair is
  * solid only if both return `true`.
+ * Also runs for `castShape` queries that specify `solidFor`, with `dt: 0`.
+ * Do not run physics queries from inside a filter.
  */
 export type ContactFilter = (contact: ContactCandidate) => boolean;
 

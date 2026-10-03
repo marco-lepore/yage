@@ -165,6 +165,7 @@ export class PlatformerInput
   private _down = false;
   private moves: PlatformerMoves | undefined;
   private binding: InputBinding | null;
+  private resetSubscription: (() => void) | undefined;
 
   constructor(binding?: InputBinding | null) {
     super();
@@ -217,6 +218,11 @@ export class PlatformerInput
     if (!binding) return;
     const input = this.context.resolve(INPUT_KEY);
     this.invoke("bind", () => binding.bind(input, this));
+    this.resetSubscription = input.onReset(() => {
+      this._direction = 0;
+      this._down = false;
+      this.moves?.resetInput();
+    });
     this.invoke("actionNames", () => {
       const missing =
         binding.actionNames?.().filter((name) => !input.hasAction(name)) ?? [];
@@ -238,6 +244,8 @@ export class PlatformerInput
 
   onDisable(): void {
     if (this.binding) this.invoke("dispose", () => this.binding?.dispose());
+    this.resetSubscription?.();
+    this.resetSubscription = undefined;
     this._direction = 0;
     this._down = false;
     this.moves?.cancel();

@@ -80,15 +80,20 @@ export class PlatformerMoves extends Component {
     this.heldJump = held;
   }
 
+  /** Discard buffered presses and release jump input without stopping active moves. */
+  resetInput(): void {
+    this.jumpBuffer = this.dashBuffer = -1;
+    this.heldJump = false;
+  }
+
   /** Withdraw this producer's moves; other producers retain their claims. */
   cancel(): void {
     for (const handle of this.holds) handle.cancel();
     for (const handle of this.commands) handle.cancel();
     this.holds = [];
     this.commands = [];
-    this.jumpBuffer = this.dashBuffer = -1;
+    this.resetInput();
     this.holdLeft = this.dashLeft = this.wallLeft = 0;
-    this.heldJump = false;
   }
 
   onDisable(): void {

@@ -106,6 +106,8 @@ horizontal input is in [-1, 1].
 `moves.jump()` and `moves.dash()` buffer requests. `moves.setJumpHeld(boolean)`
 controls short hops. `moves.cancel()` withdraws this producer's pending commands
 and held moves. `moves.dashing`, `wallJumping`, `dashReady` are readable.
+`moves.resetInput()` discards buffered jump/dash presses and releases jump input;
+active moves and cooldowns continue.
 Standard move priority is 10; low-level `PlatformerMoves` accepts `priority`.
 
 ## Move eligibility and air charges
@@ -140,6 +142,7 @@ ground contact or an explicit charge write.
 `moves.dashReady` includes enablement, solver ownership, cooldown, mechanical
 admission, and the game policy. Policy-denied presses remain buffered until
 their normal expiry. Jump selection still tries ground, wall, then air.
+Air jumps require being airborne, even when a policy denies ground jumps.
 
 Pass `admissionPolicies` to `createPlatformer` or `installPlatformer` alongside
 its `admission` tuning. Direct construction uses `new MoveAdmission({
@@ -161,6 +164,11 @@ for visible buttons and a stick, and a `PlatformerInputBinding` without a
 viewport callback to disable the built-in zones. Both read the same action map.
 Without a renderer, the default binding has no pointer zones; a custom binding
 can supply viewport coordinates.
+
+With a device binding, `InputManager.clearAll()` also clears movement intent
+and buffered move presses, including presses polled during a zero-time step.
+An already-started dash and its cooldown continue. Scripted input (`input: null`)
+is independent of device resets; use `moves.resetInput()` to clear its presses.
 
 A custom `InputBinding` implements `bind(input, target)`, `poll()`, `dispose()`
 and optional `actionNames()`. It replaces all default devices. Bindings belong
@@ -247,6 +255,9 @@ For one-way platforms, include them in solid and exclude them from volume and
 wall. Sensors are excluded by physics queries. Keep the character out of query
 groups used by ledge and crush geometry. Use the existing ColliderComponent
 `dropThrough` API for game-owned drop-through behavior.
+Ground and terrain casts honor both colliders' contact filters, including
+one-way/drop-through rules. Rejected surfaces do not count as landings or
+restore air charges.
 
 MovingSurface({ from, to, speed }) moves a kinematic platform between two world
 points. Spawn moving surfaces before riders; planned velocity must be current
