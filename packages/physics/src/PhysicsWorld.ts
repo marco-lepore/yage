@@ -23,7 +23,10 @@ import type {
 import type { ColliderComponent } from "./ColliderComponent.js";
 import type { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { MutableContactCandidate } from "./ContactCandidate.js";
-import type { PreStepColliderState } from "./ContactCandidate.js";
+import type {
+  ColliderStepPose,
+  PreStepColliderState,
+} from "./ContactCandidate.js";
 import {
   assertColliderShape,
   assertFiniteNumber,
@@ -140,6 +143,8 @@ export class PhysicsWorld {
   >();
   private readonly _warnedAsymmetricPairs = new Set<string>();
   private _elapsed = 0;
+  /** Number of completed positive-duration steps, including unfiltered ones. */
+  private _completedSteps = 0;
   /**
    * True when a collider was created, re-shaped, enabled, disabled or
    * teleported since the last step. Rapier's query index is rebuilt only by
@@ -222,6 +227,21 @@ export class PhysicsWorld {
       this._capturePreStepState();
     }
     this.world.step(this.eventQueue, useHooks ? this._hooks : undefined);
+    if (dt > 0) {
+      this._completedSteps++;
+      if (useHooks) {
+        for (const [handle, state] of this._preStepStates) {
+          state.previous.x = state.x;
+          state.previous.y = state.y;
+          state.previous.rotation = state.rotation;
+          // Elapsed time still names the start of this step. An intentional
+          // drop cannot become a landing when its window expires afterward.
+          state.previous.droppingThrough =
+            this._colliderComponents.get(handle)?.isDroppingThrough ?? false;
+          state.previousStep = this._completedSteps;
+        }
+      }
+    }
     this._queriesStale = false;
     // Advanced after the step: to a contact filter running inside it,
     // `elapsed` is the time at the start of the step — matching the
@@ -242,6 +262,9 @@ export class PhysicsWorld {
    * Entries are allocated with the collider and mutated in place here.
    */
   private _capturePreStepState(): void {
+    // Teleports and local-offset changes otherwise reach collider world
+    // poses only inside the step, after this snapshot would have read them.
+    this.world.propagateModifiedBodyPositionsToColliders();
     for (const [handle, state] of this._preStepStates) {
       const collider = this.getCollider(handle);
       if (!collider) continue;
@@ -261,6 +284,16 @@ export class PhysicsWorld {
         state.vy = 0;
       }
     }
+  }
+
+  /** @internal Last advancing step's start pose, unless invalidated since. */
+  _previousColliderPose(
+    handle: number,
+  ): Readonly<ColliderStepPose> | undefined {
+    const state = this._preStepStates.get(handle);
+    return state?.previousStep === this._completedSteps
+      ? state.previous
+      : undefined;
   }
 
   /**
@@ -328,6 +361,9 @@ export class PhysicsWorld {
         : RAPIER.ActiveHooks.NONE,
     );
     if (enabled) {
+      if (!this._contactFiltered.has(handle)) {
+        this._colliderComponents.get(handle)?._oneWayLanded?.clear();
+      }
       this._contactFiltered.add(handle);
     } else {
       this._contactFiltered.delete(handle);
@@ -784,6 +820,8 @@ export class PhysicsWorld {
       rotation: 0,
       vx: 0,
       vy: 0,
+      previous: { x: 0, y: 0, rotation: 0, droppingThrough: false },
+      previousStep: -1,
     });
     this.colliderMap.set(collider.handle, entity);
     this._colliderComponents.set(collider.handle, component);
@@ -1001,15 +1039,24 @@ export class PhysicsWorld {
   }
 
   /**
-   * @internal Drop any landed-rider state naming this collider. Rapier
+   * @internal Forget this collider's arrival pose and landed-rider pairs.
+   * Teleports and shape changes must not count as simulated arrival. Rapier
    * reuses collider handles, so a handle leaving the simulation (removed
    * or disabled) must not stay remembered as "landed" on a one-way
    * platform — the next collider with the same handle would inherit it.
    */
   _forgetColliderContacts(handle: number): void {
-    for (const component of new Set(this._colliderComponents.values())) {
+    const state = this._preStepStates.get(handle);
+    if (state) state.previousStep = -1;
+    // Only filtered colliders can use remembered landings. Unfiltered
+    // colliders discard that state if a filter is installed again.
+    let visited: Set<ColliderComponent> | undefined;
+    for (const filteredHandle of this._contactFiltered) {
+      const component = this._colliderComponents.get(filteredHandle);
+      if (!component || visited?.has(component)) continue;
       const landed = component._oneWayLanded;
-      if (!landed) continue;
+      if (!landed?.size) continue;
+      (visited ??= new Set()).add(component);
       for (const pair of landed) {
         const [self, other] = pair.split(":").map(Number);
         if (self === handle || other === handle) landed.delete(pair);
@@ -1050,6 +1097,7 @@ export class PhysicsWorld {
     // The capsule axis:"x" turn is part of the shape, so a swap can change
     // the rotation a collider needs even when config.rotation did not move.
     collider.setRotationWrtParent(colliderRotation(part));
+    this._forgetColliderContacts(handle);
 
     if (options?.recomputeMass) {
       // The density carries the rounded-box factor for the shape being
@@ -1090,9 +1138,17 @@ export class PhysicsWorld {
   /**
    * @internal Note that a live collider moved without a step (a teleport,
    * or a re-enable), so the next query rebuilds Rapier's index first.
+   * A repositioned body also loses its arrival history and landed pairs.
    */
-  _markQueriesStale(): void {
+  _markQueriesStale(bodyHandle?: number): void {
     this._queriesStale = true;
+    if (bodyHandle !== undefined) {
+      const body = this.getBody(bodyHandle);
+      if (!body) return;
+      for (let i = 0; i < body.numColliders(); i++) {
+        this._forgetColliderContacts(body.collider(i).handle);
+      }
+    }
   }
 
   /**

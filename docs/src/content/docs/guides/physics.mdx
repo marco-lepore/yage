@@ -1092,6 +1092,11 @@ through. A body that is already inside the platform is let out rather than
 snapped to the surface, so turning on the behavior mid-overlap never launches
 anything.
 
+Changing a body's velocity just before contact is detected does not prevent
+it from landing after approaching from above. Teleporting, resizing, or
+re-enabling a collider inside the platform does not count as landing; the
+configured `margin` still applies.
+
 The direction is in the platform body's local frame, so a rotated platform
 carries its solid face with it. Any non-zero vector with finite components
 works; a zero vector throws when the collider is constructed. `margin` is how
@@ -1125,7 +1130,7 @@ falling until it is clear and lands on the next solid face it reaches from
 above. `isDroppingThrough` reports whether the window is open, which is handy
 for animation state.
 
-Two practical notes:
+Practical notes:
 
 - A fast body cannot cross a static platform between two physics steps: it
   is swept against static colliders every step. A kinematic platform is
@@ -1133,6 +1138,9 @@ Two practical notes:
   below). The sweep respects one-way behavior, including drop-through.
 - `oneWay` is part of the collider config. It has no effect on `sensor: true`
   colliders, since sensors never produce solid contacts.
+- World queries (`raycast`, `castShape`, `queryShape`, and `queryRadius`)
+  test geometry. They do not apply `oneWay`, `dropThrough`, or contact
+  filters, so a query hit alone does not mean a platform supports the rider.
 
 ## Contact Filters
 
@@ -1157,8 +1165,10 @@ The filter runs inside the physics step, before any contact exists, so there
 is no contact normal or contact point to read. Instead the `contact` object
 carries both sides' positions, rotations, and velocities as plain numbers,
 plus the other side's `Entity` and `ColliderComponent`. All values are from
-the start of the step — for a body that crossed a surface mid-step, they tell
-you which side it came from.
+the start of the current step. A pair can already overlap when first detected
+after movement in an earlier step. If game code has since changed velocity,
+that velocity cannot reliably tell you which side the body came from. Use
+the built-in `oneWay` behavior for platforms.
 
 A few rules to keep filters healthy:
 
@@ -1167,7 +1177,7 @@ A few rules to keep filters healthy:
   colliders from inside it.
 - While any collider in the world has a filter (a `oneWay` platform counts),
   every step reads every collider's pose and velocity before stepping. That
-  costs about 0.8 ms per step with 2000 colliders in the world.
+  cost grows with the number of colliders in the world.
 - The `contact` object is reused across calls. Read what you need and return;
   don't store it.
 - When both colliders in a pair have filters, both run for every candidate

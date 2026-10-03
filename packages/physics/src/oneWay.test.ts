@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createOneWayFilter } from "./oneWay.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
+import type { ColliderPose } from "./ContactCandidate.js";
 import type {
   ColliderConfig,
   ColliderPartConfig,
@@ -10,8 +11,8 @@ import type {
 
 /**
  * Pure geometry tests for the one-way rule: the filter only reads
- * `self.config`, the candidate's scalars, and the other collider's config
- * and drop-through flag, so both sides can be plain objects.
+ * collider configs, recorded poses, candidate scalars, and the drop-through
+ * flag, so both sides can be plain objects.
  */
 
 function fakeSelf(
@@ -19,11 +20,19 @@ function fakeSelf(
   landed?: Set<string>,
   effectivePart?: ColliderPartConfig,
   scale: { x: number; y: number } = { x: 1, y: 1 },
+  previous: ColliderPose & { droppingThrough?: boolean } = {
+    x: 0,
+    y: 0,
+    rotation: 0,
+  },
 ): ColliderComponent {
   return {
     config,
     _oneWayLanded: landed ?? new Set<string>(),
     _colliderHandles: [3],
+    _previousPose() {
+      return previous;
+    },
     _effectivePart(index: number) {
       if (effectivePart) return effectivePart;
       return "parts" in config ? config.parts[index]! : config;
@@ -50,6 +59,7 @@ interface CandidateInit {
   dt?: number;
   otherShape?: ColliderShape;
   otherDropping?: boolean;
+  otherPrevious?: ColliderPose & { droppingThrough?: boolean };
 }
 
 function fakeCandidate(init: CandidateInit): ContactCandidate {
@@ -62,6 +72,9 @@ function fakeCandidate(init: CandidateInit): ContactCandidate {
       config: otherConfig,
       isDroppingThrough: init.otherDropping ?? false,
       _colliderHandles: [7],
+      _previousPose() {
+        return init.otherPrevious;
+      },
       _effectivePart() {
         return otherConfig;
       },
@@ -121,22 +134,94 @@ describe("createOneWayFilter", () => {
   it("catches a fast approacher that crossed the face since last step", () => {
     const filter = createOneWayFilter(fakeSelf(PLATFORM));
     // 5px past the resting depth, but it was above the face 1/60s ago.
-    const falling = fakeCandidate({ otherY: -10, otherVelocityY: 2000 });
+    const falling = fakeCandidate({
+      otherY: -10,
+      otherVelocityY: 40,
+      otherPrevious: { x: 0, y: -20, rotation: 0 },
+    });
     expect(filter(falling)).toBe(true);
-    // Same overlap moving upward: it came from below, so it passes.
-    const rising = fakeCandidate({ otherY: -10, otherVelocityY: -2000 });
+    // Same overlap and velocity, but arriving from below remains passable.
+    const rising = fakeCandidate({
+      otherY: -10,
+      otherVelocityY: 40,
+      otherPrevious: { x: 0, y: 0, rotation: 0 },
+    });
     expect(filter(rising)).toBe(false);
   });
 
-  it("uses relative velocity, not the rider's alone", () => {
+  it("excludes a rider's previous drop-through but not its platform's", () => {
+    const filter = createOneWayFilter(
+      fakeSelf(PLATFORM, undefined, undefined, undefined, {
+        x: 0,
+        y: 0,
+        rotation: 0,
+        droppingThrough: true,
+      }),
+    );
+    const arrival = { x: 0, y: -20, rotation: 0 };
+    expect(filter(fakeCandidate({ otherY: -10, otherPrevious: arrival }))).toBe(
+      true,
+    );
+    expect(
+      filter(
+        fakeCandidate({
+          otherY: -10,
+          otherPrevious: { ...arrival, droppingThrough: true },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("compares both colliders' previous positions", () => {
     const filter = createOneWayFilter(fakeSelf(PLATFORM));
-    // Both sides moving down together: no approach, no extension back.
+    // Both sides moved down 100 px together, retaining their overlap.
     const together = fakeCandidate({
-      otherY: -10,
+      selfY: 100,
+      otherY: 90,
+      otherPrevious: { x: 0, y: -10, rotation: 0 },
       otherVelocityY: 2000,
       selfVelocityY: 2000,
     });
     expect(filter(together)).toBe(false);
+  });
+
+  it("does not invent an arrival from a high velocity without history", () => {
+    const filter = createOneWayFilter(fakeSelf(PLATFORM));
+    expect(filter(fakeCandidate({ otherY: 0, otherVelocityY: 2000 }))).toBe(
+      false,
+    );
+  });
+
+  it("uses the platform's previous rotation for a rotated arrival", () => {
+    const filter = createOneWayFilter(
+      fakeSelf(PLATFORM, undefined, undefined, undefined, {
+        x: 0,
+        y: 0,
+        rotation: Math.PI / 2,
+      }),
+    );
+    expect(
+      filter(
+        fakeCandidate({
+          otherX: 10,
+          otherY: 0,
+          otherPrevious: { x: 20, y: 0, rotation: 0 },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("uses the rider's previous rotation for its previous support extent", () => {
+    const filter = createOneWayFilter(fakeSelf(PLATFORM));
+    expect(
+      filter(
+        fakeCandidate({
+          otherY: -10,
+          otherShape: { type: "box", width: 4, height: 40 },
+          otherPrevious: { x: 0, y: -10, rotation: Math.PI / 2 },
+        }),
+      ),
+    ).toBe(true);
   });
 
   it("stays solid for a landed rider regardless of the position rule", () => {
