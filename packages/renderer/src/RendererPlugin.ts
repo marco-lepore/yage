@@ -3,7 +3,7 @@ import {
   EventBusKey,
   GameLoopKey,
   InspectorKey,
-  isPointerConsumeContainer,
+  getPointerConsumePolicy,
   makeGlobalScopedQueue,
   ProcessSystemKey,
   RendererAdapterKey,
@@ -525,9 +525,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
 
   /**
    * Hit-test at virtual-space `(x, y)` and return `true` when the topmost
-   * interactive Pixi container has any ancestor (including itself) marked via
-   * `markPointerConsumeContainer`. Used by `@yagejs/input`'s drain step to
-   * auto-claim presses landing on UI surfaces.
+   * interactive Pixi container resolves to a consuming policy. The nearest
+   * explicit boolean wins; UI without an explicit ancestor defaults to true.
+   * The input drain uses this to claim presses landing on UI surfaces.
    *
    * Scope: this only sees surfaces marked via `markPointerConsumeContainer` —
    * `@yagejs/ui` primitives (`UIPanel`, `UIButton`, …) plus any visual
@@ -553,7 +553,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   /**
    * The hit test behind {@link hitTestUI}, reporting what it found: the
    * topmost interactive container and its ancestors, innermost first, plus
-   * whether any of them is a pointer-consume surface. `null` when nothing
+   * their resolved consumption policy. `null` when nothing
    * interactive sits under `(x, y)`.
    *
    * Callers that address a container — matching it against an Inspector
@@ -578,14 +578,19 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     const hit = boundary.hitTest(canvas.x, canvas.y) as DisplayContainer | null;
     if (!hit) return null;
     const path: DisplayContainer[] = [];
-    let consumed = false;
+    let consumed: boolean | undefined;
+    let hasUI = false;
     let node: DisplayContainer | null = hit;
     while (node) {
       path.push(node);
-      if (isPointerConsumeContainer(node)) consumed = true;
+      const policy = getPointerConsumePolicy(node);
+      if (policy !== undefined) hasUI = true;
+      if (consumed === undefined && typeof policy === "boolean") {
+        consumed = policy;
+      }
       node = node.parent ?? null;
     }
-    return { path, consumed };
+    return { path, consumed: consumed ?? hasUI };
   }
 
   /**

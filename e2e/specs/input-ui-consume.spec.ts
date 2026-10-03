@@ -11,6 +11,8 @@ interface ConsumeProbeData {
   fireUps: number;
   fireHeldThisFrame: boolean;
   pointerDowns: number;
+  buttonClicks: number;
+  unconsumedPresses: number;
   wheelUps: number;
   wheelDowns: number;
 }
@@ -89,13 +91,60 @@ test.describe("Input UI auto-consume fixture", () => {
     await stepFrames(page, 1);
 
     // The top-right panel was created with `consumeInput: false`. Hit-testing
-    // walks past it and the action edge fires through.
+    // resolves through the nested wrapper and the action edge fires through.
     await page.locator("canvas").click({ position: { x: 270, y: 30 } });
     await stepFrames(page, 1);
 
     const data = await probe(page);
     expect(data?.pointerDowns).toBe(1);
     expect(data?.fireDowns).toBe(1);
+    expect(data?.unconsumedPresses).toBe(1);
+  });
+
+  test("an explicit button consumes inside a transparent subtree, including its label", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/input-ui-consume.html");
+    await waitForClock(page);
+    await stepFrames(page, 1);
+    await page.locator("canvas").click({ position: { x: 240, y: 10 } });
+    await stepFrames(page, 1);
+    const data = await probe(page);
+    expect(data?.buttonClicks).toBe(1);
+    expect(data?.fireDowns).toBe(0);
+    expect(data?.unconsumedPresses).toBe(0);
+  });
+
+  test("a nearer false overrides a consuming root and preserves button callbacks", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/input-ui-consume.html");
+    await waitForClock(page);
+    await stepFrames(page, 1);
+    await page.locator("canvas").click({ position: { x: 50, y: 135 } });
+    await stepFrames(page, 1);
+    const data = await probe(page);
+    expect(data?.buttonClicks).toBe(1);
+    expect(data?.fireDowns).toBe(1);
+    expect(data?.unconsumedPresses).toBe(1);
+  });
+
+  test("wheel consumption follows the same inherited setting", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/input-ui-consume.html");
+    await waitForClock(page);
+    await stepFrames(page, 1);
+    const box = await page.locator("canvas").boundingBox();
+    if (!box) throw new Error("canvas has no bounding box");
+    await page.mouse.move(box.x + 270, box.y + 30);
+    await page.mouse.wheel(0, 120);
+    await stepFrames(page, 1);
+    expect((await probe(page))?.wheelDowns).toBe(1);
+    await page.mouse.move(box.x + 240, box.y + 10);
+    await page.mouse.wheel(0, 120);
+    await stepFrames(page, 1);
+    expect((await probe(page))?.wheelDowns).toBe(1);
   });
 
   test("drag-through-up — pointerdown on UI then up off UI suppresses both edges", async ({

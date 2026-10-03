@@ -500,11 +500,11 @@ For device-orientation events (rotate-to-portrait detection, etc.), see
 A Pixi UI button can handle its own click without also firing the gameplay
 action bound to `MouseLeft`.
 
-Every primitive in `@yagejs/ui` (and `UIRoot` in `@yagejs/ui-react`) marks
-itself as a consume surface. When a pointer-down or wheel event lands on a
-marked container, `@yagejs/input` suppresses its gameplay action edges while
-the UI element still handles the event. A pointer claim lasts for that press
-cycle.
+UI elements inherit `consumeInput` from the nearest ancestor that specifies
+it. `UISurface` and `UIRoot` default to `true`, as does a standalone UI element
+with no explicit ancestor setting. A pointer-down or wheel event on consuming
+UI suppresses gameplay action edges while the UI element still handles the
+event. A pointer claim lasts for that press cycle.
 
 ```tsx
 import { Button, Panel } from "@yagejs/ui-react";
@@ -540,8 +540,23 @@ import { Image, Panel } from "@yagejs/ui-react";
 </Panel>
 ```
 
-The element still renders normally — it just becomes transparent to the
-action map.
+Descendants inherit `false`, including layout containers, labels and buttons.
+Set `consumeInput={true}` on any control that must consume input. The nearest
+explicit value wins, so `false` also overrides a consuming parent. Removing
+the prop restores inheritance. The same rule applies to imperative UI:
+
+```ts
+import { UISurface } from "@yagejs/ui";
+
+declare function pause(): void;
+const hud = new UISurface({ consumeInput: false });
+hud.panel().button("Pause", { consumeInput: true, onClick: pause });
+```
+
+The element still renders and runs its pointer callbacks. Consumption controls
+gameplay input; it does not forward clicks to UI widgets behind the element.
+Floating content inherits from its display parent, so give a floating overlay
+its own setting. Modal focus blockers still consume the blocked area.
 
 ### Custom Pixi containers
 
@@ -556,6 +571,7 @@ import {
 import { Container } from "pixi.js";
 
 const inventory = new Container();
+inventory.eventMode = "static";
 markPointerConsumeContainer(inventory);
 // ... attach to scene tree, attach handlers as usual
 
@@ -563,8 +579,19 @@ markPointerConsumeContainer(inventory);
 unmarkPointerConsumeContainer(inventory);
 ```
 
-`markPointerConsumeContainer` also sets `eventMode = "static"` — required
-for Pixi's hit-test to find the container.
+`markPointerConsumeContainer(container, policy)` accepts `true` (the default),
+`false`, or `"inherit"`. The nearest explicit boolean on the hit path wins.
+`"inherit"` supplies the standalone UI default of `true` when no ancestor has
+an explicit setting. Unregistered paths do not consume.
+
+`getPointerConsumePolicy(container)` reads the container's own setting, or
+`undefined` when unregistered. `isPointerConsumeContainer(container)` answers
+whether it explicitly specifies `true`. `unmarkPointerConsumeContainer` removes
+the setting. These functions and the `PointerConsumePolicy` type are exported
+from `@yagejs/core`.
+
+Registration does not change hit testing. Configure `eventMode`, bounds or a
+hit area, and pointer handlers on a custom container as needed.
 
 ### Imperative consume from a handler
 

@@ -265,7 +265,9 @@ export {
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
   isPointerConsumeContainer,
+  getPointerConsumePolicy,
 } from "./ui-consume-registry.js";
+export type { PointerConsumePolicy } from "./ui-consume-registry.js";
 
 export {
   createTestEngine,
