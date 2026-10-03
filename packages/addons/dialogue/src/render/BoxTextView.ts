@@ -8,6 +8,7 @@
  * anchor the same way.
  */
 
+import type { Scene } from "@yagejs/core";
 import type { PresentedLine } from "../core/session.js";
 import type { BoxLayout } from "./BoxLayout.js";
 import {
@@ -16,11 +17,25 @@ import {
 } from "./DialogueTextView.js";
 
 export class BoxTextView extends DialogueTextView {
+  private unsubscribeLayout: (() => void) | undefined;
   constructor(
     cfg: Omit<DialogueTextConfig, "box">,
     private readonly layout: BoxLayout,
   ) {
     super({ ...cfg, box: { x: 0, y: 0, width: 0 } });
+  }
+
+  override mount(scene: Scene): void {
+    this.layout.mount(scene);
+    super.mount(scene);
+    this.unsubscribeLayout?.();
+    this.unsubscribeLayout = this.layout.onChange(() => this.fitRegion());
+  }
+
+  override dispose(): void {
+    this.unsubscribeLayout?.();
+    this.unsubscribeLayout = undefined;
+    super.dispose();
   }
 
   override present(line: PresentedLine): void {

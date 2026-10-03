@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ErrorBoundary, Logger } from "@yagejs/core";
 
 import { DialogueSession } from "./session.js";
 import { MemoryVariableStorage, cells, compose } from "./vars.js";
@@ -93,6 +94,7 @@ class StubText implements TextChannel {
 }
 
 class StubChoices implements ChoiceChannel {
+  update = vi.fn<(dt: number) => void>();
   presented: {
     choices: readonly PresentedChoice[];
     context: ChoiceContext | undefined;
@@ -2889,5 +2891,43 @@ describe("DialogueSession — a wait's blocking flag", () => {
     expect(wait).toHaveBeenCalledTimes(1);
     expect(h.text.lastText).toBe("two");
     release?.();
+  });
+});
+
+describe("choice presentation clock", () => {
+  it("attributes a throwing choice update and stops the update sequence", () => {
+    const boundary = new ErrorBoundary(new Logger());
+    const { session, choices, chrome } = makeHarness({
+      errorBoundary: boundary,
+    });
+    choices.update.mockImplementation(() => {
+      throw new Error("choice animation failed");
+    });
+    const chromeUpdate = vi.spyOn(chrome, "update");
+    expect(() => session.update(0.1)).toThrow("choice animation failed");
+    expect(boundary.getCallbackErrors()).toMatchObject([
+      { kind: "dialogue choices.update", error: "choice animation failed" },
+    ]);
+    expect(chromeUpdate).not.toHaveBeenCalled();
+  });
+  it("rejects invalid time before dispatching any choice update", () => {
+    const { session, choices } = makeHarness();
+    for (const dt of [NaN, Infinity, -1]) {
+      expect(() => session.update(dt)).toThrow(
+        /dt must be finite and nonnegative/,
+      );
+    }
+    expect(choices.update).not.toHaveBeenCalled();
+  });
+  it("ticks choices and freezes them with conversation pause", () => {
+    const { session, choices } = makeHarness();
+    session.update(0.25);
+    expect(choices.update).toHaveBeenLastCalledWith(0.25);
+    session.setPaused(true);
+    session.update(0.5);
+    expect(choices.update).toHaveBeenCalledTimes(1);
+    session.setPaused(false);
+    session.update(0.1);
+    expect(choices.update).toHaveBeenLastCalledWith(0.1);
   });
 });

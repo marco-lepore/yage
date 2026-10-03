@@ -7,6 +7,9 @@ export function ensureDialogueLayer(
   order: number,
   space: "screen" | "world" = "screen",
 ): void {
+  if (!Number.isFinite(order)) {
+    throw new Error(`ensureDialogueLayer: order must be finite, got ${order}`);
+  }
   scene.context
     .tryResolve(SceneRenderTreeProviderKey)
     ?.getTree(scene)

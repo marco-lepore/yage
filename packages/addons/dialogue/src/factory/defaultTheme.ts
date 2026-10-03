@@ -25,7 +25,7 @@ export function defaultDialogueTheme(): DialogueTheme {
   return {
     // Viewport-relative: a full-width bottom bar resolved against the renderer's
     // design size at mount, so this works at any resolution with no override.
-    box: { marginX: 32, marginY: 24, height: 160 },
+    box: { marginX: 32, marginY: 24, minHeight: 0 },
     padding: 16,
 
     frameColor: 0x1a1a2e,

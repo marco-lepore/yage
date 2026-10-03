@@ -46,15 +46,19 @@ export interface ChoiceListConfig extends FontConfig {
   readonly softMaxChoices?: number | undefined;
   /** Selection highlight bar. */
   readonly layerFrame: string;
+  /** Requested screen-layer order. Default 1100. */
+  readonly layerFrameOrder?: number | undefined;
   /** Choice labels (drawn above the frame layer). */
   readonly layerText: string;
+  /** Requested screen-layer order. Default 1110. */
+  readonly layerTextOrder?: number | undefined;
 }
 
 interface ChoiceRow {
   readonly entity: Entity;
   readonly comp: TextComponent;
   readonly disabled: boolean;
-  readonly rect: ChoiceRowRect;
+  rect: ChoiceRowRect;
 }
 
 /** Default soft cap on the option count before {@link ChoiceListPresenter} logs
@@ -67,6 +71,7 @@ export const DEFAULT_SOFT_MAX_CHOICES = 8;
 const ROW_TEXT_INDENT = 6;
 
 export class ChoiceListPresenter implements ChoicePresenter {
+  update(): void {}
   private scene?: Scene | undefined;
   private highlightBar?: { entity: Entity; gfx: GraphicsComponent } | undefined;
   private rows: ChoiceRow[] = [];
@@ -75,6 +80,9 @@ export class ChoiceListPresenter implements ChoicePresenter {
   /** Master visibility gate — hides the list WITHOUT clearing it, so a
    *  hide/show round-trip keeps the rows + selection. */
   private hidden = false;
+
+  private unsubscribeLayout: (() => void) | undefined;
+  private layingOut = false;
 
   onChoiceChosen?: (position: number) => void;
 
@@ -89,8 +97,19 @@ export class ChoiceListPresenter implements ChoicePresenter {
   }
 
   mount(scene: Scene): void {
-    ensureDialogueLayer(scene, this.cfg.layerFrame, 1100);
-    ensureDialogueLayer(scene, this.cfg.layerText, 1110);
+    this.layout.mount(scene);
+    this.unsubscribeLayout?.();
+    this.unsubscribeLayout = this.layout.onChange(() => this.reflowRows());
+    ensureDialogueLayer(
+      scene,
+      this.cfg.layerFrame,
+      this.cfg.layerFrameOrder ?? 1100,
+    );
+    ensureDialogueLayer(
+      scene,
+      this.cfg.layerText,
+      this.cfg.layerTextOrder ?? 1110,
+    );
     this.scene = scene;
     const hl = scene.spawn("dlg-highlight");
     hl.add(new Transform()).setPosition(0, 0);
@@ -196,9 +215,35 @@ export class ChoiceListPresenter implements ChoicePresenter {
   }
 
   dispose(): void {
+    this.unsubscribeLayout?.();
+    this.unsubscribeLayout = undefined;
     this.clear();
     this.highlightBar?.entity.destroy();
     this.highlightBar = undefined;
+  }
+
+  private reflowRows(): void {
+    if (this.layingOut || this.rows.length === 0) return;
+    this.layingOut = true;
+    try {
+      const wrapWidth = this.layout.contentWidth() - ROW_TEXT_INDENT - 2;
+      const gap = this.cfg.choiceGap ?? DEFAULT_CHOICE_GAP;
+      for (const row of this.rows)
+        row.comp.mergeStyle({ wordWrapWidth: wrapWidth });
+      const rects = this.layout.layoutChoicePanel(
+        this.rows.map((row) => Math.ceil(row.comp.text.height) + gap),
+      );
+      for (let i = 0; i < this.rows.length; i++) {
+        const row = this.rows[i]!;
+        row.rect = rects[i]!;
+        row.entity
+          .get(Transform)
+          .setPosition(row.rect.x + ROW_TEXT_INDENT, row.rect.y);
+      }
+      this.drawHighlight();
+    } finally {
+      this.layingOut = false;
+    }
   }
 
   private highlightAt(position: number): void {

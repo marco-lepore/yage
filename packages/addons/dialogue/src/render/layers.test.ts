@@ -6,6 +6,8 @@ import {
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
 } from "@yagejs/renderer";
+import type { BoxLayout } from "./BoxLayout.js";
+import { createMixedDialogue } from "../factory/createMixedDialogue.js";
 import { createBoxDialogue } from "../factory/createBoxDialogue.js";
 import { createBubbleDialogue } from "../factory/createBubbleDialogue.js";
 import { defaultDialogueTheme } from "../factory/defaultTheme.js";
@@ -28,8 +30,13 @@ describe("dialogue presenter layers", () => {
       layerText: "my-text",
     };
     const box = createBoxDialogue(theme, {
-      avatar: (layout) =>
-        new InBoxAvatarPresenter(layout, { layer: "my-avatar", width: 96 }),
+      avatar: (layout) => {
+        layout.setViewport(800, 600);
+        return new InBoxAvatarPresenter(layout, {
+          layer: "my-avatar",
+          width: 96,
+        });
+      },
     });
     const bubble = createBubbleDialogue(theme, {
       worldLayer: "speech",
@@ -84,5 +91,69 @@ describe("dialogue presenter layers", () => {
     scene._flushDestroyQueue();
     expect(scene.findEntities()).toHaveLength(0);
     provider.destroyAll();
+  });
+});
+
+describe("configured dialogue layer orders", () => {
+  it("passes theme orders through box and mixed bundles and respects an intentional host layer", () => {
+    for (const mixed of [false, true]) {
+      const { scene, context } = createMockScene();
+      const provider = new SceneRenderTreeProviderImpl(
+        new GraphicsComponent().graphics,
+      );
+      const tree = provider.createForScene(scene);
+      context.register(SceneRenderTreeProviderKey, provider);
+      scene._registerScoped(SceneRenderTreeKey, tree);
+      tree.ensureLayer({ name: "portrait", order: 1095, space: "screen" });
+      const ensureLayer = vi.spyOn(tree, "ensureLayer");
+      const theme = {
+        ...defaultDialogueTheme(),
+        layerFrameOrder: 1120,
+        layerTextOrder: 1130,
+      };
+      const bind = (layout: BoxLayout) => {
+        layout.setViewport(800, 450);
+        return new InBoxAvatarPresenter(layout, {
+          layer: "portrait",
+          layerOrder: 1095,
+          width: 80,
+        });
+      };
+      const bundle = mixed
+        ? createMixedDialogue(theme, {
+            worldLayer: "world",
+            avatar: { box: bind },
+          })
+        : createBoxDialogue(theme, { avatar: bind });
+      bundle.chrome.mount(scene);
+      bundle.choices.mount(scene);
+      bundle.text.mount(scene);
+      bundle.avatar?.mount(scene);
+      const requested = ensureLayer.mock.calls.map(([def]) => def);
+      expect(
+        requested
+          .filter((d) => d.name === theme.layerFrame)
+          .every((d) => d.order === 1120),
+      ).toBe(true);
+      expect(requested.filter((d) => d.name === theme.layerText)).toHaveLength(
+        3,
+      );
+      expect(
+        requested
+          .filter((d) => d.name === theme.layerText)
+          .every((d) => d.order === 1130),
+      ).toBe(true);
+      expect(requested).toContainEqual({
+        name: "portrait",
+        order: 1095,
+        space: "screen",
+      });
+      bundle.chrome.dispose();
+      bundle.choices.dispose();
+      bundle.text.dispose();
+      bundle.avatar?.dispose();
+      scene._flushDestroyQueue();
+      provider.destroyAll();
+    }
   });
 });

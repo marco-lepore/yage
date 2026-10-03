@@ -28,6 +28,7 @@ class NoopText implements TextChannel {
   setBeatListener(): void {}
 }
 class NoopChoices implements ChoiceChannel {
+  update(): void {}
   present(): void {}
   highlight(): void {}
   setVisible(): void {}

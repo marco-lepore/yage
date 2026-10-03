@@ -43,7 +43,11 @@ files.
 1. **Optionally declare layer order on your scene.** Built-in presenters create
    missing layers on mount, even when used independently. Screen-space frame,
    avatar, and text layers use orders 1100, 1105, and 1110, including custom
-   theme names. The exported array lets you declare or adjust those orders.
+   theme names by default. Set the theme's `layerFrameOrder` and `layerTextOrder`
+   to request other orders. Standalone chrome and choice configs accept the
+   same fields; screen text and avatar configs accept `layerOrder`. A portrait
+   can request 1095 to appear behind a frame at 1100. The exported array lets
+   you declare those layers on the scene too.
 
    ```ts
    import { Scene } from "@yagejs/core";
@@ -1117,7 +1121,7 @@ hide the UI for a cutscene and forget to show it again, it stays hidden.
 | Lever | What it does |
 | ----- | ------------ |
 | `setHidden(bool)` | **Visual only.** Hides/shows the whole UI without ending or freezing the conversation. State-preserving — hide mid-typewriter and show again to resume the exact line and cursor. A composite chrome restores its *active* variant on show (a bubble line comes back as a bubble, not an empty box frame). |
-| `setPaused(bool)` | **Freezes time and input.** The reveal, auto-advance clock, caret blink, and avatar animation all halt, and input is inert — with no state lost (an in-flight blocking command keeps running and completes normally). It does **not** block host-driven `handle.setVar` / storage writes: a paused conversation can still be driven programmatically. |
+| `setPaused(bool)` | **Freezes time and input.** The reveal, auto-advance clock, caret blink, choice animation, and avatar animation all halt, and input is inert — with no state lost (an in-flight blocking command keeps running and completes normally). It does **not** block host-driven `handle.setVar` / storage writes: a paused conversation can still be driven programmatically. |
 | `setInputEnabled(bool)` | **Input focus.** The conversation keeps updating (an ambient one stays alive and animating) but stops consuming device input. This is how you hand input focus between conversations. |
 
 Compose them: a **cutscene takeover** is hidden + paused; a **pause menu** is
@@ -1195,9 +1199,8 @@ Each coordinate model has a **layout owner** the presenters share, so they can
 never drift. `BubbleLayout` measures the bubble size + resolves the speaker
 anchor (including the missing-actor fallback) **once** per line for the bubble
 chrome, text, and choices. `BoxLayout` owns the box frame rect and text region:
-per-line position (`meta.position`), the unified panel growth (a choice grows the
-frame, nameplate, prompt, and rows as one), and an inset registry that an in-box
-avatar uses to reflow the body text and choice rows around a reserved column.
+per-line position (`meta.position`), frame height fitted to say lines and
+choices, and avatar columns that reflow the body text and choice labels.
 
 `createMixedDialogue` composes box + bubble behind `CompositeChrome` /
 `CompositeTextPresenter` / `CompositeChoicePresenter` / `CompositeAvatarPresenter`.
@@ -1225,12 +1228,62 @@ A `DialogueActor` component on a world entity self-registers under a speaker id
 (via `actorRegistryFor(scene)`) so a speech bubble can find and follow the
 speaker's head anchor.
 
-Disabling the actor, or deactivating its entity, removes it from that registry.
+`PortraitPresenter` reads `avatar.flipX` from speaker data. It mirrors the
+artwork horizontally without changing its left/right placement, and keeps the
+orientation across expression changes:
+
+```ts
+import type { SpeakerDef } from "@yagejs-addons/dialogue";
+const hero: SpeakerDef = {
+  name: "Hero",
+  avatar: { kind: "portrait", ref: "hero", side: "left", flipX: true },
+};
+```
+
+For `InBoxAvatarPresenter`, set `meta.flipX: true` on the line. Omitting it on
+the next line restores the original orientation.
+
+Disabling a `DialogueActor`, or deactivating its entity, removes it from the
+speaker registry.
 The requested expression and speaking state remain intact, while actor
 callbacks and world-figure animation sleep. They resume when the actor becomes
 effective again.
 
 ### Writing a custom presenter
+
+A custom box presenter shares a `BoxLayout` with the text and choices. Bind it
+to the renderer's viewport with `layout.mount(scene)` in your presenter's mount.
+The built-in box presenters do this automatically. Without a renderer, set the
+viewport before reading any geometry:
+
+```ts
+import { BoxLayout, defaultDialogueTheme } from "@yagejs-addons/dialogue/presenters";
+const theme = defaultDialogueTheme();
+const layout = new BoxLayout({ ...theme, choiceGap: theme.choiceGap ?? 6 });
+layout.setViewport(800, 450);
+const frame = layout.frameRect();
+```
+
+Reading geometry before binding throws. `setViewport` and `setInset` reflow the
+current content. Use `onChange` to redraw custom chrome when geometry changes.
+The built-in text view preserves reveal progress and pending pauses when it
+rewraps; the choice presenter moves labels, highlights and click targets together.
+Use finite, nonnegative geometry values, and leave positive content width after
+margins, padding and avatar insets.
+Use `setInset(key, { side, width, height })` to reserve a portrait column and its
+minimum content height. `height` is optional; the built-in in-box avatar supplies
+it from the scaled portrait and its optional background.
+
+Built-in box chrome calls `setCaretHeight(height)` to reserve space below the
+text and portraits for its continue indicator. Custom chrome can use the same
+method; layouts without a registered caret reserve no footer. The footer is
+included before reveal begins and is omitted for choices. `textRegion()` includes
+the remaining content height. In-box portraits center in that area, below the
+nameplate and above the footer.
+
+Choice presenters implement `update(dt)` in seconds. Use that method to animate
+a selection or an entrance; a static presenter can leave it empty. Conversation
+pause freezes this clock, including choices inside a mixed box/bubble bundle.
 
 A custom presenter implements the channel contract; the Session drives it in a
 guaranteed order — `chrome.present(line)` runs **before** `text.present(line)`,
@@ -1373,7 +1426,8 @@ channels. A few rules govern a registered channel:
   `ctx.setVar` and reads it back through the host-held `handle.getVars()` — never
   through the session. The only value it hands back is `isRevealComplete()` (below).
 - **A throwing channel can't break the conversation** — each call is wrapped and
-  routed to the session's `onError`. The trusted built-ins stay unwrapped.
+  routed to the session's `onError`. Built-in choice updates report throwing
+  callbacks through the engine error boundary and rethrow.
 - A channel that needs the scene also implements `Mountable` (`mount(scene)` /
   `dispose()`, exported from the package root). The controller mounts it on add and
   disposes it on destroy. A pure observer (voice, a shop) skips `Mountable`.
@@ -1565,7 +1619,7 @@ const theme = { ...defaultDialogueTheme(), textColor: 0xffe0c0, charsPerSec: 60 
 createBoxDialogue(theme);
 ```
 
-The `box` is **viewport-relative** — `{ marginX, marginY, height }` (virtual px),
+The `box` is **viewport-relative** — `{ marginX, marginY, minHeight }` (virtual px),
 not absolute coordinates. The box presenters read the renderer's design size at
 mount and resolve a full-width bottom bar (`width = viewport.width − 2·marginX`,
 anchored `marginY` from the bottom edge), so the **default works at any
@@ -1664,18 +1718,22 @@ Hero: A message from on high. #position:top
 Hero: Good to see you. #portrait:hero_smug #side:right
 ```
 
-### Choice overflow
+### Box height and choice overflow
 
-The box presenters grow as **one panel**: the frame expands to fit the choice
-rows (plus the prompt and nameplate), labels word-wrap, and the chrome,
-nameplate, and rows move together (for the default bottom position the bottom
-edge stays pinned and the top rises). Row placement, the selection highlight, and
-pointer hit-testing all come from the layout owner's one geometry pass, so even a
-long, wrapped, partly-disabled list stays selectable exactly where it's drawn.
-The grow is capped at the screen; a menu taller than that spills off the top
-non-overlapping rather than piling rows. A menu longer than the presenter's soft
-cap (`softMaxChoices`, default 8) logs an advisory through the engine logger — it
-still renders, but a shorter menu (or a sub-menu) usually reads better.
+The box fits the complete wrapped line before the typewriter starts, so the
+frame stays stable while text appears. `box.minHeight` sets a minimum (default
+0): use a larger value for a panel that keeps its height across short lines.
+The nameplate band takes space only when the line has a nonempty speaker name;
+`nameSize: 0` reserves no band or gap.
+
+Choices start at the content area's top, below the name and prompt when present.
+Labels wrap, and the frame grows to hold them. For the default bottom position,
+the bottom edge stays at the viewport margin while the top moves upward.
+
+Frame height is capped at the viewport minus vertical margins. There is no
+scrolling or pagination: content taller than that continues below the frame.
+Split long passages into lines and large menus into smaller menus. More than
+`softMaxChoices` options (default 8) produces an advisory through the engine logger.
 
 ## Experimental: radial choices
 
