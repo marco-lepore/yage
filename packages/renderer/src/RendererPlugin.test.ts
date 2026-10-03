@@ -175,6 +175,7 @@ import {
   SceneHookRegistry,
   SceneHookRegistryKey,
   markPointerConsumeContainer,
+  unmarkPointerConsumeContainer,
 } from "@yagejs/core";
 import type { EngineEvents, SceneTransition } from "@yagejs/core";
 import { RendererPlugin } from "./RendererPlugin.js";
@@ -1183,6 +1184,60 @@ describe("RendererPlugin", () => {
 
       expect(plugin.hitTestUIPath(10, 20)?.consumed).toBe(true);
       expect(plugin.hitTestUI(10, 20)).toBe(true);
+    });
+
+    it.each([
+      { policies: ["inherit", "inherit", false], expected: false },
+      { policies: ["inherit", true, false], expected: true },
+      { policies: ["inherit", false, true], expected: false },
+      { policies: [false, true, true], expected: false },
+      { policies: [true, false, true], expected: true },
+      { policies: ["inherit", "inherit", "inherit"], expected: true },
+    ] as const)(
+      "resolves the nearest explicit setting: $policies",
+      async ({ policies, expected }) => {
+        const plugin = await installed();
+        const nodes = chain(3);
+        policies.forEach((policy, index) =>
+          markPointerConsumeContainer(nodes[index]!, policy),
+        );
+        attachBoundary(plugin, nodes[0]!);
+        expect(plugin.hitTestUIPath(10, 20)).toEqual({
+          path: nodes,
+          consumed: expected,
+        });
+      },
+    );
+
+    it("reads ancestor changes and clearing an override on the next hit", async () => {
+      const plugin = await installed();
+      const nodes = chain(3);
+      markPointerConsumeContainer(nodes[0]!, "inherit");
+      markPointerConsumeContainer(nodes[1]!, true);
+      markPointerConsumeContainer(nodes[2]!, false);
+      attachBoundary(plugin, nodes[0]!);
+      expect(plugin.hitTestUI(10, 20)).toBe(true);
+      unmarkPointerConsumeContainer(nodes[1]!);
+      expect(plugin.hitTestUI(10, 20)).toBe(false);
+      markPointerConsumeContainer(nodes[2]!, true);
+      expect(plugin.hitTestUI(10, 20)).toBe(true);
+    });
+
+    it("resolves an inheriting element against its current parent after reparenting", async () => {
+      const plugin = await installed();
+      const nodes = chain(2);
+      const otherParent = {};
+      markPointerConsumeContainer(nodes[0]!, "inherit");
+      markPointerConsumeContainer(nodes[1]!, false);
+      markPointerConsumeContainer(otherParent, true);
+      attachBoundary(plugin, nodes[0]!);
+      expect(plugin.hitTestUI(10, 20)).toBe(false);
+      nodes[0]!.parent = otherParent;
+      expect(plugin.hitTestUI(10, 20)).toBe(true);
+      nodes[0]!.parent = null;
+      expect(plugin.hitTestUI(10, 20)).toBe(true);
+      unmarkPointerConsumeContainer(nodes[0]!);
+      expect(plugin.hitTestUI(10, 20)).toBe(false);
     });
 
     it("reports no hit when nothing interactive is under the point", async () => {

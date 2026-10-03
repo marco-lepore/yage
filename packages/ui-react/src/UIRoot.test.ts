@@ -13,6 +13,7 @@ vi.mock(
   async () => (await import("../../ui/src/test-pixi.js")).pixiMock,
 );
 
+import { getPointerConsumePolicy } from "@yagejs/core";
 import Yoga from "yoga-layout";
 import { createElement, Fragment } from "react";
 import { UIFocusStack, UIPanel, setYoga } from "@yagejs/ui";
@@ -74,6 +75,44 @@ function overflowWarnings(warn: ReturnType<typeof vi.spyOn>): string[] {
     .map((c) => String(c[0]))
     .filter((m) => m.includes("overflows its container"));
 }
+
+describe("UIRoot consumption", () => {
+  it.each([true, false])(
+    "sets the tree default to %s without overriding omitted children",
+    (consumeInput) => {
+      const { root, layer } = mountUIRoot("hud", { consumeInput });
+      root.render(
+        createElement(
+          Panel,
+          { width: 100, height: 100 },
+          createElement(Button, { consumeInput: true, children: "Pause" }),
+        ),
+      );
+      const outer = outerContainer(layer);
+      const panel = getRootInstances(outer as never)![0]! as UIPanel;
+      expect(getPointerConsumePolicy(outer)).toBe(consumeInput);
+      expect(getPointerConsumePolicy(panel.displayObject)).toBe("inherit");
+      expect(getPointerConsumePolicy(panel.children[0]!.displayObject)).toBe(
+        true,
+      );
+      root.render(
+        createElement(
+          Panel,
+          { width: 100, height: 100 },
+          createElement(Button, { children: "Pause" }),
+        ),
+      );
+      expect(getPointerConsumePolicy(panel.children[0]!.displayObject)).toBe(
+        "inherit",
+      );
+    },
+  );
+
+  it("uses true when the root setting is omitted", () => {
+    const { layer } = mountUIRoot("menu");
+    expect(getPointerConsumePolicy(outerContainer(layer))).toBe(true);
+  });
+});
 
 describe("UIRoot offset", () => {
   it("rejects a non-finite offset option", () => {

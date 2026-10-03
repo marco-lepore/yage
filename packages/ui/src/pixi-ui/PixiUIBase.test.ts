@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("pixi.js", async () => (await import("./test-pixi-ui.js")).pixiMock);
 vi.mock("@pixi/ui", async () => (await import("./test-pixi-ui.js")).pixiUIMock);
 
+import { getPointerConsumePolicy } from "@yagejs/core";
 import Yoga, { Direction, Display } from "yoga-layout";
 import { setYoga } from "../yoga-helpers.js";
 import { setUIFocusStyle } from "../internal/focus-outline.js";
@@ -83,6 +84,37 @@ function allWrappers(): PixiUIBase<MockContainer>[] {
 }
 
 describe("PixiUI wrappers", () => {
+  it("applies consumption overrides and prop removal across all wrappers", () => {
+    for (const wrapper of allWrappers()) {
+      expect(getPointerConsumePolicy(wrapper.displayObject)).toBe("inherit");
+      wrapper.update({ consumeInput: false });
+      expect(getPointerConsumePolicy(wrapper.displayObject)).toBe(false);
+      wrapper.update({ consumeInput: true });
+      expect(getPointerConsumePolicy(wrapper.displayObject)).toBe(true);
+      wrapper.update({ consumeInput: undefined });
+      expect(getPointerConsumePolicy(wrapper.displayObject)).toBe("inherit");
+      wrapper.destroy();
+      expect(getPointerConsumePolicy(wrapper.displayObject)).toBeUndefined();
+    }
+  });
+
+  it("keeps the select's explicit policy on its portaled list", () => {
+    const select = new PixiSelect({
+      closedBG: view(),
+      openBG: view(),
+      items: ["A", "B"],
+      consumeInput: false,
+    });
+    const dropdown = (viewOf(select) as { dropdown: MockContainer }).dropdown;
+    expect(getPointerConsumePolicy(dropdown)).toBe(false);
+    select.update({ consumeInput: true });
+    expect(getPointerConsumePolicy(dropdown)).toBe(true);
+    select.update({ consumeInput: undefined });
+    expect(getPointerConsumePolicy(dropdown)).toBe("inherit");
+    select.destroy();
+    expect(getPointerConsumePolicy(dropdown)).toBeUndefined();
+  });
+
   it("destroy is idempotent for every wrapper", () => {
     for (const wrapper of allWrappers()) {
       const free = vi.spyOn(wrapper.yogaNode, "free");
