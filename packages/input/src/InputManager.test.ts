@@ -19,6 +19,48 @@ describe("InputManager", () => {
     });
   });
 
+  it("notifies reset listeners after clearing state and supports disposal", () => {
+    input.fireKeyDown("Space");
+    input.firePointerDown();
+    const reset = vi.fn(() => {
+      expect(input.isPressed("jump")).toBe(false);
+      expect(input.getPointers()).toEqual([]);
+      expect(input.getPointerPresses()).toEqual([]);
+    });
+    const dispose = input.onReset(reset);
+    expect(reset).not.toHaveBeenCalled();
+    input.clearAll();
+    expect(reset).toHaveBeenCalledTimes(1);
+    dispose();
+    dispose();
+    input.clearAll();
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("attributes a throwing reset listener and stops later listeners", () => {
+    const boundary = new ErrorBoundary(new Logger({ level: LogLevel.Debug }));
+    input._setErrorBoundary(boundary);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const reset = vi.fn(() => {
+      throw new Error("reset failed");
+    });
+    const later = vi.fn();
+    input.onReset(reset);
+    input.onReset(later);
+    expect(() => input.clearAll()).toThrow("reset failed");
+    expect(later).not.toHaveBeenCalled();
+    expect(boundary.getCallbackErrors()).toContainEqual(
+      expect.objectContaining({
+        kind: "Input reset listener",
+        event: "clearAll",
+        error: "reset failed",
+      }),
+    );
+    expect(() => input.clearAll()).toThrow("reset failed");
+    expect(reset).toHaveBeenCalledTimes(2);
+    log.mockRestore();
+  });
+
   // -- isPressed --
 
   it("isPressed returns true when any mapped key is held", () => {

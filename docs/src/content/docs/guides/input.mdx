@@ -780,6 +780,23 @@ by their source until it releases them.
 
 ## Listener APIs
 
+If your component tracks gestures or pending input, subscribe to `onReset` to
+discard that state when the game calls `clearAll()`:
+
+```typescript yage-context="context"
+import { InputManagerKey } from "@yagejs/input";
+
+declare function discardPendingGestures(): void;
+const input = context.resolve(InputManagerKey);
+const disposeReset = input.onReset(discardPendingGestures);
+```
+
+The callback runs after input state has been cleared. Subscription does not
+call it immediately; use the returned disposer when the component is disabled.
+This notification belongs to `clearAll()`, not individual releases or window
+blur. A throwing reset callback is reported through the error boundary and
+stops later reset listeners.
+
 Disposer-returning hooks for keys, actions, and wheel input. Use these
 instead of raw DOM listeners — they participate in the action map, group
 enable/disable, and `consumePointer` gating.

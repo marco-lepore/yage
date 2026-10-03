@@ -1,0 +1,261 @@
+---
+title: Character Controller
+description: Platformer movement with ready-to-use defaults and replaceable input, moves, and movement policies.
+---
+
+The character-controller addon gives a physics body responsive platformer
+movement: running, buffered jumps, short hops, air jumps, dashes, wall jumps,
+crouching, and slides. Terrain assistance handles slopes and small steps.
+Moving platforms carry the character, including into a jump.
+
+## Install and create a player
+
+```sh
+npm install @yagejs-addons/character-controller @yagejs/core @yagejs/physics @yagejs/input
+```
+
+Install physics and input before entering your scene:
+
+```ts yage-context=engine
+import { PhysicsPlugin } from "@yagejs/physics";
+import { InputPlugin } from "@yagejs/input";
+import { platformerControls } from "@yagejs-addons/character-controller/input";
+
+engine.use(new PhysicsPlugin());
+engine.use(new InputPlugin({ actions: platformerControls() }));
+```
+
+Add a Transform and create the controller in your entity's setup. The helper
+creates the body, collider, probes, input, and standard moves.
+
+```ts
+import { Entity, Transform } from "@yagejs/core";
+import { createPlatformer } from "@yagejs-addons/character-controller/platformer";
+
+class Player extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    createPlatformer(this);
+  }
+}
+```
+
+Spawn `Player` in a `Scene` with solid physics colliders. Add your sprite or
+animation on a visual child. The character's origin is at its feet. Keep its
+Transform upright with world scale 1; flip or scale the visual child.
+
+The default body is 16 pixels wide and 44 pixels tall. It has fixed rotation,
+continuous collision detection, zero friction, and controller-owned gravity.
+No rendering package is required by the addon.
+
+## Adjust movement
+
+Override only the numbers your game needs. The defaults suit a world with
+16-pixel tiles. All distances use pixels and all durations use seconds.
+
+```ts yage-context=entity
+import { createPlatformer } from "@yagejs-addons/character-controller/platformer";
+
+const character = createPlatformer(entity, {
+  tuning: { runSpeed: 220, jumpSpeed: 460, airJumps: 0 },
+  dash: false,
+});
+```
+
+The entity must have a Transform and no existing physics body. Tuning is copied
+at construction. Invalid numbers throw before the helper adds components.
+
+| Behavior | Default |
+| --- | --- |
+| Run speed | 190 px/s |
+| Ground / air acceleration | 1700 / 1500 px/s² |
+| Jump / air-jump speed | 434 / 360 px/s |
+| Air jumps / air dashes | 1 / 1 |
+| Coyote time / press buffer | 0.1 / 0.12 seconds |
+| Short-hop release window | 0.2 seconds |
+| Dash speed / duration / cooldown | 520 px/s / 0.27 / 0.6 seconds |
+| Slide speed / crouched height | 450 px/s / 30 pixels |
+| Maximum slope / small step | 45 degrees / 6 pixels |
+
+`defaultPlatformerTuning()` returns every default as a plain object. The
+[complete tuning reference](/llms/addons/character-controller.md) lists each
+field. Set `dash`, `wallJump`, or `slide` to false to disable that standard move.
+
+A ground jump remains available briefly after walking off a ledge. A press
+just before landing waits for contact. Releasing jump early makes a short hop;
+holding through the release window preserves the remaining rise. A wall jump
+requires holding toward the wall. A slide starts when crouching from a run,
+and crouching under a low ceiling keeps the body low until there is room to stand.
+
+## Control move eligibility and restore charges
+
+Use `admissionPolicies.canStartMove` for stamina requirements, move unlocks,
+or temporary restrictions. The policy receives the move name and a snapshot
+of contact, stance, and remaining air charges. Return false to block a move.
+
+```ts yage-context=entity
+import {
+  createPlatformer,
+  PlatformerDashedEvent,
+} from "@yagejs-addons/character-controller/platformer";
+
+let stamina = 20;
+const character = createPlatformer(entity, {
+  admissionPolicies: {
+    canStartMove: (move) => move !== "dash" || stamina >= 10,
+  },
+});
+entity.on(PlatformerDashedEvent, () => { stamina -= 10; });
+
+// A pickup restores one air dash without changing the remaining air jumps.
+character.admission.setAirCharges({ dashes: 1 });
+```
+
+Move names are `groundJump`, `airJump`, `wallJump`, `dash`, and `slide`.
+The policy adds game requirements to the normal contact, headroom, charge,
+and cooldown checks. It is also used by readiness queries and may run more
+than once per step. Keep it pure and synchronous; apply consequences through
+move events. A denied press remains buffered until its usual expiry.
+
+Read `character.admission.airCharges` for `{ jumps, dashes }`. Set either count
+with `setAirCharges`, or call `refillAirCharges()` to restore both tuning
+defaults. Counts must be nonnegative safe integers and may exceed those
+defaults. These methods do not reset dash cooldown or start a move.
+
+Landing normally restores the tuning defaults. Override
+`admissionPolicies.landingCharges` to choose the counts after ground contact:
+
+```ts yage-context=entity
+import { createPlatformer } from "@yagejs-addons/character-controller/platformer";
+
+const character = createPlatformer(entity, {
+  admissionPolicies: {
+    landingCharges: ({ airCharges }) => airCharges,
+  },
+});
+character.admission.setAirCharges({ jumps: 2, dashes: 1 });
+```
+
+This policy preserves remaining charges on landing, so the game can restore
+them only through pickups or other effects. It runs once per ground-contact
+transition, including the first contact after spawning. New characters have
+zero air charges until ground contact or an explicit charge write.
+`refillAirCharges()` always uses the tuning defaults, regardless of this policy.
+
+Both callbacks receive a detached `MoveAdmissionState` with `grounded`,
+`crouched`, `blocked`, remembered `wallSide`, and `airCharges`. Invalid results
+throw before admission changes charges. Thrown callback errors are attributed
+through the engine's error boundary. The same policies are available on
+`installPlatformer` and directly constructed `MoveAdmission` components.
+
+## Choose input
+
+The default action map uses A/D or arrows to move, S/down to crouch,
+Space/W/up to jump, and Shift to dash. Gamepads use the left stick or D-pad,
+A to jump, and B to dash.
+
+With a renderer adapter, mouse and touch also work through screen zones:
+hold the left quarter to move left, the next quarter to move right, and the
+right half to jump. Each press retains its role until release or an input reset. UI-consumed
+presses are ignored. These zones are invisible; use
+[Virtual Controls](/addons/virtual-controls/) for a visible stick and buttons.
+Supply `new PlatformerInputBinding()` as `input` to use action polling without
+these zones. The virtual controls can then drive the same action names.
+
+Pass `input: null` for AI or scripted movement. No InputPlugin is needed:
+
+```ts yage-context=entity
+import { createPlatformer } from "@yagejs-addons/character-controller/platformer";
+
+const character = createPlatformer(entity, { input: null });
+character.input.setDirection(1);
+character.input.setJumpHeld(true);
+character.input.jump();
+```
+
+Release with `setJumpHeld(false)`. Use `setDown(true)` to crouch and `dash()`
+to request a dash. A custom `InputBinding` replaces the default entirely;
+its `bind`, `poll`, and `dispose` methods connect to the same control methods.
+Bindings are disposed on disable and bound again on enable.
+
+## Add animation and game effects
+
+Read `character.controller.grounded`, `facing`, `clinging`, and `blocked`,
+`character.stance.crouched`, and `character.moves.dashing` for animation.
+`character.motion.ownVelocityX` describes running relative to a moving platform;
+`velocityX` and `velocityY` describe movement through the world.
+
+Listen on the character entity for `PlatformerJumpedEvent`,
+`PlatformerDashedEvent`, `PlatformerSlidEvent`, and `PlatformerLandedEvent`.
+Jump events report `kind`: ground, air, or wall. Dash events report direction.
+The game decides which sounds, particles, or combat effects follow.
+
+## Replace movement rules
+
+`createPlatformer` returns each component, so custom game logic can read the
+probes and submit motion without going through input. All movement producers
+share one `MotionReconciler`; it resolves each axis by priority and writes the
+body once. Use a priority above 10 for a knockback that overrides standard moves.
+
+```ts yage-context=entity
+import { MotionReconciler, PlatformerMoves } from "@yagejs-addons/character-controller/platformer";
+
+entity.get(PlatformerMoves).cancel();
+entity.get(MotionReconciler).submitOnce({
+  source: "knockback", axis: "x", target: -300,
+  acceleration: Infinity, priority: 100,
+});
+```
+
+One-time requests wait through a freeze and compete on the next advancing
+step. Continuous requests last one step. Durable requests remain until their
+handle ends or cancels them. Equal winning priorities throw. Overriding an axis
+does not cancel another producer's timer; call `moves.cancel()` when the game
+interrupts its standard moves.
+
+For a custom assembly, use `installPlatformer` with an existing feet-origin
+body and collider. Call `startController({ demand, limit, fall })` after
+adding input or AI providers, add your movement producers, then call `finish()`.
+`demand` supplies direction and crouch intent. `limit` can reduce speed and
+`fall` can suspend descent. Their fields may be getters for live game policy.
+Each component is also independently constructible. Pass a `resolveMotion`
+function to replace the headless arbitration model while retaining the physics
+integration and request lifetimes.
+
+## Terrain and moving platforms
+
+The `collision` option supplies physics query groups for ground (`solid`),
+headroom and terrain clearance (`volume`), and walls (`wall`). All default to
+all groups. When using one-way platforms, include those platforms only in
+`solid`; their underside must not block standing or count as a wall.
+
+`MovingSurface({ from, to, speed })` moves an upright kinematic platform between
+two world points. Spawn moving platforms before characters so their next
+velocity is available to the character. Upward platform velocity contributes
+to jump height; downward platform velocity does not reduce a jump.
+Setting a platform's entity time scale to zero stops the platform and its
+published carry velocity, so an unfrozen rider is not carried by a frozen surface.
+
+Set `crush: true` to receive `PlatformerCrushedEvent` when a translating box
+pushes the character into a fixed opposing face. The event names the surface,
+obstruction, and push direction. The game decides damage or recovery.
+Rotating supports, angled crush wedges, and two moving crush blockers are
+unsupported.
+
+`LedgeProbe` exposes ledge geometry and climb clearance for custom moves.
+The default helper steps over short lips; catch, hang, and climb sequences
+belong to your game's movement producer. Drop-through behavior can use the
+existing `ColliderComponent.dropThrough` API.
+
+Controller timers and pending motion are transient. Recreate the character
+when restoring a saved spawn position; the addon does not register save state.
+
+## Package entries
+
+- `@yagejs-addons/character-controller` contains engine-independent motion
+  arbitration and request lifetimes.
+- `/platformer` contains the platformer controller and physics components.
+- `/input` contains input bindings and the action-map preset.
+
+Controller-specific types stay in their subpath. The root motion model has
+no assumptions about platformer gravity, stance, or terrain.
