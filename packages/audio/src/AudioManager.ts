@@ -58,6 +58,7 @@ export class AudioManager {
   private readonly _random: RandomService;
   private readonly _fadeQueue: ScopedProcessQueue | undefined;
   private readonly _channels = new Map<string, ChannelState>();
+  private _masterVolume: number;
 
   private _autoMuteOnBlur: boolean;
   private readonly _unlockListeners: Array<() => void> = [];
@@ -77,6 +78,10 @@ export class AudioManager {
     this._sound = sound;
     this._random = random ?? globalRandom;
     this._fadeQueue = fadeQueue;
+
+    const masterVolume = config?.masterVolume ?? 1;
+    assertVolume("AudioManager.masterVolume", masterVolume);
+    this._masterVolume = masterVolume;
 
     const channelDefs = config?.channels ?? DEFAULT_CHANNELS;
     for (const [name, cfg] of Object.entries(channelDefs)) {
@@ -232,6 +237,26 @@ export class AudioManager {
     }
   }
 
+  /** Volume multiplier for all playback owned by this manager. Default: 1. */
+  get masterVolume(): number {
+    return this._masterVolume;
+  }
+
+  set masterVolume(volume: number) {
+    assertVolume("AudioManager.masterVolume", volume);
+    this._masterVolume = volume;
+    for (const channel of this._channels.values()) {
+      for (const handle of channel.handles) {
+        handle._refreshVolume();
+      }
+    }
+  }
+
+  /** Fresh snapshot of configured and created channels, in creation order. */
+  getChannelNames(): readonly string[] {
+    return [...this._channels.keys()];
+  }
+
   setChannelVolume(channel: string, volume: number): void {
     assertVolume("AudioManager.setChannelVolume", volume);
     const state = this._ensureChannel(channel);
@@ -241,8 +266,9 @@ export class AudioManager {
     }
   }
 
+  /** Unknown channels have volume 1; reading does not create them. */
   getChannelVolume(channel: string): number {
-    return this._ensureChannel(channel).volume;
+    return this._channels.get(channel)?.volume ?? 1;
   }
 
   muteChannel(channel: string): void {
@@ -454,7 +480,7 @@ export class AudioManager {
     assertVolume("AudioManager.play", instanceVolume);
     const channel = this._ensureChannel(channelName);
     const result = this._sound.play(alias, {
-      volume: channel.volume * instanceVolume,
+      volume: this._masterVolume * channel.volume * instanceVolume,
       loop: options?.loop ?? false,
       speed: options?.speed ?? 1,
     });
@@ -469,7 +495,7 @@ export class AudioManager {
       channelName,
       instanceVolume,
       (volume) => {
-        result.volume = channel.volume * volume;
+        result.volume = this._masterVolume * channel.volume * volume;
       },
       this._fadeQueue,
     );
