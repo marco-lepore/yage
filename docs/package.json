@@ -32,6 +32,7 @@
     "@yagejs-addons/interaction": "^0.3.0",
     "@yagejs-addons/inventory": "^0.3.0",
     "@yagejs-addons/quests": "^0.3.0",
+    "@yagejs-addons/stats": "^0.0.0",
     "@yagejs-addons/steering": "^0.4.0",
     "@yagejs-addons/synth": "^0.2.0",
     "@yagejs-addons/virtual-controls": "^0.3.0",
