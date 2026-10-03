@@ -15,6 +15,8 @@ export const AudioManagerKey = new ServiceKey<AudioManager>("audioManager");
 export type SoundRef = string | AssetHandle<Sound>;
 
 export interface AudioConfig {
+  /** Master volume multiplier. Must be finite and from 0 to 1. Default: 1. */
+  masterVolume?: number;
   channels?: Record<string, ChannelConfig>;
   /** Pause audio when the window loses focus or the tab is hidden. Default: `true`. */
   autoMuteOnBlur?: boolean;

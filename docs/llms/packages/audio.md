@@ -14,6 +14,7 @@ import { AudioPlugin } from "@yagejs/audio";
 
 engine.use(
   new AudioPlugin({
+    masterVolume: 1, // default: 1, finite 0–1
     channels: {
       sfx: { volume: 1 },
       music: { volume: 0.7 },
@@ -99,7 +100,10 @@ audio.stop(handle);
 audio.stopChannel("sfx");
 audio.stopAll();
 
-// Channel volume
+// Master and channel volume
+audio.masterVolume = 0.5;
+audio.masterVolume; // get/set, default: 1
+audio.getChannelNames(); // readonly string[], fresh snapshot in creation order
 audio.setChannelVolume("music", 0.5);
 audio.getChannelVolume("music");
 
@@ -152,8 +156,22 @@ declare class AudioManager extends BaseAudioManager {
 }
 ```
 
-`SoundHandle.volume` is a value from 0 to 1 before channel volume is applied.
-Changing a channel keeps each handle's volume and any active fade. A second
+`AudioConfig.masterVolume?: number` sets the initial master volume (default 1).
+`AudioManager.masterVolume` accepts finite values from 0 to 1 and throws before
+changing state for invalid inputs. Playback volume is `masterVolume × channel
+volume × SoundHandle.volume`. Master volume affects this manager's playing and
+future sounds, including channels created later. It preserves channel and
+sound volumes, active fades, and mute/pause state. It does not control external
+audio contexts or playback outside this manager.
+
+`getChannelNames(): readonly string[]` returns a fresh snapshot of configured
+and subsequently created channels in creation order, including silent channels.
+Playing a sound or setting a channel's volume, mute or pause state creates an
+unknown channel. `getChannelVolume(name)` returns 1 for an unknown channel
+without creating it.
+
+`SoundHandle.volume` is a value from 0 to 1 before master and channel volumes
+are applied. Changing either keeps each handle's volume and any active fade. A second
 `fadeTo` on the same handle cancels and replaces its current fade. The returned
 `Process` can be cancelled or awaited with `toPromise()`.
 

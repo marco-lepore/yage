@@ -140,7 +140,7 @@ export class SoundHandle {
     return this._instance.paused;
   }
 
-  /** Reapply the logical volume after the channel volume changes. @internal */
+  /** Reapply logical volume after master or channel volume changes. @internal */
   _refreshVolume(): void {
     this._applyVolume(this._volume);
   }
