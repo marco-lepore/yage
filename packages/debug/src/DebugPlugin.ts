@@ -279,7 +279,7 @@ export class DebugPlugin implements Plugin {
     // while `gameLoop.fixedTimestep` is in seconds — convert for the default
     // per-step delta.
     this.clock = new DebugClock(
-      createPixiTickerHost(app, gameLoop.fixedTimestep * 1000),
+      createPixiTickerHost(app, gameLoop.fixedTimestep * 1000, this.renderer),
     );
     inspector.attachTimeController(this.clock);
     inspector.setEventLogEnabled(this.config.eventLog ?? true);
@@ -491,6 +491,7 @@ export class DebugPlugin implements Plugin {
 function createPixiTickerHost(
   app: Application,
   fixedTimestep: number,
+  renderer: RendererPlugin,
 ): DebugClockHost {
   let syntheticTime = 0;
   let savedMinFPS: number | null = null;
@@ -519,6 +520,15 @@ function createPixiTickerHost(
       // doesn't see `realNow - 0` as a giant first-frame delta. No
       // need to set it manually here.
       app.start();
+    },
+    renderFrame(): void {
+      renderer.render();
+    },
+    get drawingEnabled(): boolean {
+      return renderer.drawingEnabled;
+    },
+    set drawingEnabled(enabled: boolean) {
+      renderer.drawingEnabled = enabled;
     },
     advance(dtMs: number): void {
       syntheticTime += dtMs;

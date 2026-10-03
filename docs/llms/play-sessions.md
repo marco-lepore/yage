@@ -88,8 +88,8 @@ if (!run.ok) throw new Error(run.error);
 run.value.frames;
 ```
 
-The context carries `step(frames?, { dtMs? })`, `until(predicate, { maxFrames?,
-dtMs? })`, `input`, `events`, `capture(label?)` and a live `framesUsed`. Read
+The context carries `step(frames?, { dtMs?, render? })`, `until(predicate, { maxFrames?,
+dtMs?, render? })`, `input`, `events`, `capture(label?)` and a live `framesUsed`. Read
 `framesUsed` off the context — it is a getter, and a destructured copy stays at
 the value it had when the run started.
 
@@ -262,8 +262,9 @@ frames it took.
 **Bound the loop with `ctx.framesUsed`, not a loop counter.** One iteration
 that runs a maneuver can spend 60 frames, so `for (let f = 0; f < 900; f++)`
 bounds iterations rather than game time. `framesUsed` counts every frame the
-run issued, including frames spent inside a nested maneuver and frames a
-callback took by calling `inspector.time.step()` itself.
+run issued, including frames spent inside a nested maneuver. Use the context's
+step verbs during a drive; direct `inspector.time` mutations are blocked while
+the drive owns the clock.
 
 **The sensors are game code.** `gapAhead`, `enemyAhead`, `overTarget` and
 `atExit` are raycasts and queries written next to the game they read, and
@@ -361,6 +362,88 @@ await inspector.drive(async (ctx) => {
   await hit;
 });
 ```
+
+## Stepping without drawing every frame
+
+Use `render: "last"` when a script needs the final image of a batch. Simulation,
+input, layout, camera transforms and ticker-driven animation still advance on
+every frame. Canvas drawing and requested render-target draws wait until the
+batch completes.
+
+```ts yage-context="browser"
+const i = window.__yage__.inspector;
+i.time.freeze();
+await i.time.stepAsync(200, { render: "last" });
+const image = await i.capture.dataURL();
+```
+
+`time.stepAsync`, `time.stepUntil`, `ctx.step` and `ctx.until` accept
+`render: "all" | "last" | "none"` alongside their existing options:
+
+- `all` draws every frame. Omitting `render` keeps the renderer's current
+  drawing setting, which defaults to enabled.
+- `last` draws once after successful completion, without spending another
+  simulation frame. A zero-frame call draws nothing. A thrown callback or a
+  predicate timeout does not force a final draw.
+- `none` skips drawing until an explicit render or capture.
+
+Set the policy on `inspector.drive` for a bot that makes many one-frame steps:
+
+```ts yage-context="inspector"
+const run = await inspector.drive(
+  async ({ step, capture }) => {
+    for (let frame = 0; frame < 200; frame++) await step(1);
+    await capture("after-run");
+  },
+  { render: "none" },
+);
+```
+
+A drive's `last` policy draws once when the whole callback succeeds, rather
+than once per `step(1)`. The policy remains active while the drive releases
+held input. Its final draw follows successful input cleanup; a release callback
+that throws prevents that draw. A step's explicit `render` option overrides the drive
+policy for that call. An explicit capture always draws the current stage and
+flushes requested render targets, including lighting, without advancing time.
+The drawing setting used before stepping is restored even when a step fails.
+
+Keep the stage visible: hiding it also hides UI focus scopes. Pointer targeting
+stays current during suppressed frames. Pointer dispatch still requires one
+initial drawn frame; call `time.step(1)` before starting a no-draw run on a
+page that boots frozen.
+
+### Renderer control and custom passes
+
+`RendererPlugin.drawingEnabled` controls automatic canvas and YAGE render-target
+drawing outside an Inspector drive too. It defaults to `true`.
+
+```ts yage-context="engine"
+import { RendererKey } from "@yagejs/renderer";
+
+const renderer = engine.context.resolve(RendererKey);
+renderer.drawingEnabled = false;
+renderer.render(); // draw current state once, without advancing time
+const canvas = renderer.captureCanvas(); // capture once; drawingEnabled stays false
+```
+
+`render()` and `captureCanvas()` flush deferred target requests before the
+stage. `captureCanvas()` returns an HTML canvas. Setting `drawingEnabled` back
+to `true` resumes automatic drawing.
+
+Targets created through `renderer.createRenderTarget()` follow this policy.
+Keep calling `render()` or `renderIfNeeded()` when the target needs drawing;
+a suppressed request stays pending and `renderIfNeeded()` returns `false`.
+Deferred targets draw in creation order. Create a source target before any
+target that samples its texture. Pass `dependsOn: [sourceTarget]` when creating
+the dependent target so it waits while its input remains pending, including
+when the source is hidden. Request both draws even when the first
+request is deferred. Merely creating or invalidating a target does not request
+a draw. Destroying a target cancels its deferred request.
+
+Direct Pixi drawing calls bypass the policy. Use YAGE render targets for
+custom recurring passes so captures can flush them. Texture baking, such as
+`createTexture()`, remains immediate. Draw callbacks run only when drawing;
+keep gameplay updates in components or systems.
 
 ## Screenshots
 

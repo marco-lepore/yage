@@ -1579,6 +1579,49 @@ describe("Inspector", () => {
       expect(controller.isFrozen).toBe(false);
     });
 
+    it.each([
+      ["none", false],
+      ["last", false],
+      ["none", true],
+      ["last", true],
+    ] as const)(
+      "keeps %s drawing policy through input cleanup (throws: %s)",
+      async (render, throws) => {
+        const { inspector, engine, ctx } = setup();
+        const log: string[] = [];
+        const controller = Object.assign(driveController(engine.loop, log), {
+          drawingEnabled: true,
+          renderFrame: vi.fn(() => log.push("draw")),
+        });
+        inspector.attachTimeController(controller);
+        const input = fakeInput(log);
+        const clear = input.clearAll;
+        input.clearAll = () => {
+          expect(controller.drawingEnabled).toBe(false);
+          clear();
+          if (throws) throw new Error("release failed");
+        };
+        ctx.register(InputManagerRuntimeKey, input);
+        const run = inspector.drive(
+          async ({ input, step }) => {
+            input.keyDown("KeyD");
+            await step();
+          },
+          { render },
+        );
+        if (throws) await expect(run).rejects.toThrow("release failed");
+        else await expect(run).resolves.toMatchObject({ ok: true });
+        expect(controller.renderFrame).toHaveBeenCalledTimes(
+          render === "last" && !throws ? 1 : 0,
+        );
+        if (render === "last" && !throws)
+          expect(log.indexOf("draw")).toBeGreaterThan(log.indexOf("clearAll"));
+        expect(controller.drawingEnabled).toBe(true);
+        expect(controller.isFrozen).toBe(false);
+        expect(inspector.time.isOwned()).toBe(false);
+      },
+    );
+
     it("hands the pointer verbs to the callback unchanged", async () => {
       const { inspector, engine } = setup();
       const controller = driveController(engine.loop, []);

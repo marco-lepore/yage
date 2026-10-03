@@ -30,6 +30,8 @@ export interface RenderTargetOptions {
   clearColor?: ColorValue;
   /** Label on the underlying texture, shown in the Pixi devtools. */
   label?: string;
+  /** Targets sampled by this pass. Drawing waits until these targets are clean. */
+  dependsOn?: readonly RenderTargetHandle[];
 }
 
 /**
@@ -74,8 +76,9 @@ export interface RenderTargetHandle {
 
   /**
    * Draw the source into the buffer now and clear the pending flag.
-   * Does nothing while the source is hidden (`visible === false`); the
-   * request stays pending so the buffer catches up once it is shown.
+   * Defers while the source is hidden, an input target is pending, or drawing is disabled.
+   * The request stays pending until an allowed draw or explicit stage capture.
+   * Deferred targets flush in creation order; create inputs before consumers.
    */
   render(): void;
 
@@ -100,10 +103,17 @@ export interface RenderTargetHandle {
   destroy(): void;
 }
 
+/** @internal Drawing policy supplied by the owning renderer. */
+export interface RenderTargetDrawing {
+  readonly stage: DisplayContainer;
+  isEnabled(): boolean;
+}
+
 class RenderTargetImpl implements RenderTargetHandle {
   readonly source: DisplayContainer;
   private readonly _renderer: Renderer;
   private readonly _texture: RenderTexture;
+  private readonly _dependencies: readonly RenderTargetHandle[];
   /**
    * Pre-converted to RGBA. Pixi only normalises a *truthy* `clearColor`, so a
    * numeric `0x000000` would reach the backend as a bare number where an array
@@ -116,20 +126,27 @@ class RenderTargetImpl implements RenderTargetHandle {
    * buffer to whatever the renderer happened to be at construction time.
    */
   private _resolutionScale: number;
-  private _needsRender = true;
+  private _state: "clean" | "dirty" | "deferred" = "dirty";
   private _destroyed = false;
 
   constructor(
     renderer: Renderer,
     source: DisplayContainer,
     options: RenderTargetOptions,
+    private readonly drawing?: RenderTargetDrawing,
   ) {
+    if (source === drawing?.stage) {
+      throw new Error(
+        "createRenderTarget: source must not be the application stage.",
+      );
+    }
     const scale = options.resolutionScale ?? 1;
     assertPositive(options.width, "width");
     assertPositive(options.height, "height");
     assertPositive(scale, "resolutionScale");
 
     this._renderer = renderer;
+    this._dependencies = [...(options.dependsOn ?? [])];
     this.source = source;
     this._resolutionScale = scale;
     this._clearColor =
@@ -147,6 +164,17 @@ class RenderTargetImpl implements RenderTargetHandle {
       dynamic: true,
       ...(options.label !== undefined ? { label: options.label } : undefined),
     });
+    if (drawing) renderer.runners.prerender.add(this);
+  }
+
+  /** Pixi's existing pre-render dispatch flushes targets in creation order. */
+  prerender(options: { container: DisplayContainer }): void {
+    if (
+      options.container === this.drawing?.stage &&
+      this._state === "deferred"
+    ) {
+      this.draw(true);
+    }
   }
 
   get texture(): TextureResource {
@@ -170,14 +198,18 @@ class RenderTargetImpl implements RenderTargetHandle {
   }
 
   get needsRender(): boolean {
-    return this._needsRender;
+    return this._state !== "clean";
   }
 
   invalidate(): void {
-    this._needsRender = true;
+    if (this._state === "clean") this._state = "dirty";
   }
 
   render(): void {
+    this.draw(false);
+  }
+
+  private draw(force: boolean): void {
     this._assertLive("render");
     // Pixi tears out the transform fields on destroy, so drawing a destroyed
     // source throws from deep inside its own update with nothing naming the
@@ -192,8 +224,12 @@ class RenderTargetImpl implements RenderTargetHandle {
     // silently stale. Leave the request pending so it catches up once the
     // source is shown again — including a forced render on a clean target,
     // which would otherwise be dropped with nothing left to replay it.
-    if (!this.source.visible) {
-      this._needsRender = true;
+    if (
+      !this.source.visible ||
+      this._dependencies.some((target) => target.needsRender) ||
+      (!force && this.drawing?.isEnabled() === false)
+    ) {
+      this._state = "deferred";
       return;
     }
     this._renderer.render({
@@ -204,13 +240,13 @@ class RenderTargetImpl implements RenderTargetHandle {
         ? { clearColor: this._clearColor }
         : undefined),
     });
-    this._needsRender = false;
+    this._state = "clean";
   }
 
   renderIfNeeded(): boolean {
-    if (!this._needsRender) return false;
+    if (!this.needsRender) return false;
     this.render();
-    return !this._needsRender;
+    return !this.needsRender;
   }
 
   resize(width: number, height: number, resolutionScale?: number): void {
@@ -229,12 +265,13 @@ class RenderTargetImpl implements RenderTargetHandle {
       height,
       this._renderer.resolution * this._resolutionScale,
     );
-    this._needsRender = true;
+    if (this._state === "clean") this._state = "dirty";
   }
 
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+    if (this.drawing) this._renderer.runners.prerender.remove(this);
     this._texture.destroy(true);
   }
 
@@ -268,6 +305,7 @@ export function createRenderTarget(
   renderer: Renderer,
   source: DisplayContainer,
   options: RenderTargetOptions,
+  drawing?: RenderTargetDrawing,
 ): RenderTargetHandle {
-  return new RenderTargetImpl(renderer, source, options);
+  return new RenderTargetImpl(renderer, source, options, drawing);
 }

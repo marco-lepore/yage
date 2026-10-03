@@ -211,14 +211,7 @@ interface PhysicsWorldLike {
 }
 
 interface RendererLike {
-  application: {
-    stage: unknown;
-    renderer: {
-      extract: {
-        canvas(stage: unknown): HTMLCanvasElement;
-      };
-    };
-  };
+  captureCanvas(): HTMLCanvasElement;
 }
 
 interface CameraComponentLike {
@@ -552,7 +545,22 @@ export interface InspectorTimeController {
   thaw(): void;
   /** `dtMs` overrides the configured per-frame delta for this call only. */
   stepFrames(count: number, dtMs?: number): void;
+  /** The renderer's drawing setting. Omit for a controller without drawing. */
+  drawingEnabled?: boolean;
+  /** Draw current state without stepping. Omit for a controller without drawing. */
+  renderFrame?(): void;
   setDelta(ms: number): void;
+}
+
+/** Drawing during a batch or drive. `last` draws once after successful completion. */
+export type InspectorRenderMode = "all" | "last" | "none";
+
+/** Options shared by asynchronous Inspector steps and drive steps. */
+export interface InspectorStepOptions {
+  /** Simulated milliseconds per frame. Defaults to the clock's configured delta. */
+  dtMs?: number;
+  /** Omit to keep the renderer setting. `none` leaves drawing to an explicit capture or render. */
+  render?: InspectorRenderMode;
 }
 
 /** Queries and controls for the engine clock. */
@@ -566,9 +574,9 @@ export interface InspectorTimeControl {
   isAdvancing(withinMs?: number): boolean;
   stepUntil(
     predicate: () => boolean,
-    opts?: { maxFrames?: number; dtMs?: number },
+    opts?: InspectorDriveUntilOptions,
   ): Promise<number>;
-  stepAsync(frames?: number, opts?: { dtMs?: number }): Promise<void>;
+  stepAsync(frames?: number, opts?: InspectorStepOptions): Promise<void>;
 }
 
 /** Exclusive clock control. Queries remain available after release. */
@@ -581,11 +589,8 @@ export interface InspectorTime extends InspectorTimeControl {
   isOwned(): boolean;
 }
 
-/** Per-frame delta override for one `step` or `until` call. */
-export interface InspectorDriveStepOptions {
-  /** Simulated milliseconds per frame for this call. Defaults to the clock's. */
-  dtMs?: number;
-}
+/** Delta and drawing overrides for one `step` or `until` call. */
+export type InspectorDriveStepOptions = InspectorStepOptions;
 
 export interface InspectorDriveUntilOptions extends InspectorDriveStepOptions {
   /** Frames to try before giving up. Defaults to 600, i.e. 10s at 60fps. */
@@ -656,6 +661,8 @@ export interface InspectorDriveContext {
 
 /** Options for {@link Inspector.drive}. */
 export interface InspectorDriveOptions {
+  /** Applies across the callback; a step's explicit option overrides it. Omit to keep the renderer setting. */
+  render?: InspectorRenderMode;
   /**
    * Frames the whole run may spend before it ends with `ok: false` and
    * `timedOut: true`. Defaults to 10,000. Pass `Infinity` to disable the
@@ -859,10 +866,11 @@ export class Inspector {
        */
       stepUntil: async (
         predicate: () => boolean,
-        opts?: { maxFrames?: number; dtMs?: number },
+        opts?: InspectorDriveUntilOptions,
       ): Promise<number> => {
         this.assertTimeAccess(owner);
         if (!owner) return runAsync((time) => time.stepUntil(predicate, opts));
+        assertRenderMode(opts?.render);
         if (predicate()) return 0;
         const maxFrames = opts?.maxFrames ?? 600;
         this.assertNonNegativeInteger(
@@ -873,15 +881,21 @@ export class Inspector {
           this.assertPositiveDelta(opts.dtMs, "Inspector.time.stepUntil(dtMs)");
         }
         const controller = this.requireTimeController();
-        for (let frame = 1; frame <= maxFrames; frame++) {
-          this.assertTimeAccess(owner);
-          controller.stepFrames(1, opts?.dtMs);
-          await yieldMacrotask();
-          if (predicate()) return frame;
-        }
-        throw new Error(
-          `Inspector.time.stepUntil(): predicate still false after ${maxFrames} frames.`,
-        );
+        return this.withDrawing(controller, opts?.render, async () => {
+          for (let frame = 1; frame <= maxFrames; frame++) {
+            this.assertTimeAccess(owner);
+            controller.stepFrames(1, opts?.dtMs);
+            await yieldMacrotask();
+            if (predicate()) {
+              this.assertTimeAccess(owner);
+              if (opts?.render === "last") controller.renderFrame?.();
+              return frame;
+            }
+          }
+          throw new Error(
+            `Inspector.time.stepUntil(): predicate still false after ${maxFrames} frames.`,
+          );
+        });
       },
       /**
        * Advance a fixed number of frames, yielding a real macrotask between each
@@ -890,7 +904,7 @@ export class Inspector {
        */
       stepAsync: async (
         frames = 1,
-        opts?: { dtMs?: number },
+        opts?: InspectorStepOptions,
       ): Promise<void> => {
         this.assertTimeAccess(owner);
         if (!owner) return runAsync((time) => time.stepAsync(frames, opts));
@@ -901,15 +915,35 @@ export class Inspector {
         if (opts?.dtMs !== undefined) {
           this.assertPositiveDelta(opts.dtMs, "Inspector.time.stepAsync(dtMs)");
         }
+        assertRenderMode(opts?.render);
         const controller = this.requireTimeController();
-        for (let i = 0; i < frames; i++) {
+        return this.withDrawing(controller, opts?.render, async () => {
+          for (let i = 0; i < frames; i++) {
+            this.assertTimeAccess(owner);
+            controller.stepFrames(1, opts?.dtMs);
+            await yieldMacrotask();
+          }
           this.assertTimeAccess(owner);
-          controller.stepFrames(1, opts?.dtMs);
-          await yieldMacrotask();
-        }
+          if (frames > 0 && opts?.render === "last") controller.renderFrame?.();
+        });
       },
     };
     return control;
+  }
+
+  private async withDrawing<T>(
+    controller: InspectorTimeController,
+    render: InspectorRenderMode | undefined,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const enabled = controller.drawingEnabled;
+    if (render === undefined || enabled === undefined) return work();
+    controller.drawingEnabled = render === "all";
+    try {
+      return await work();
+    } finally {
+      controller.drawingEnabled = enabled;
+    }
   }
 
   readonly input = {
@@ -1149,9 +1183,7 @@ export class Inspector {
           "Inspector.capture requires RendererPlugin to be active.",
         );
       }
-      const canvas = renderer.application.renderer.extract.canvas(
-        renderer.application.stage,
-      );
+      const canvas = renderer.captureCanvas();
       return canvas.toDataURL("image/png");
     },
     pngBase64: async (): Promise<string> => {
@@ -1196,6 +1228,7 @@ export class Inspector {
     if (opts?.maxFrames !== undefined) {
       assertDriveMaxFrames(opts.maxFrames, "Inspector.drive()");
     }
+    assertRenderMode(opts?.render);
     return this.executeDrive(this.time.acquire(), fn, opts);
   }
 
@@ -1224,32 +1257,49 @@ export class Inspector {
     let state!: DriveState;
 
     try {
-      if (!wasFrozen) controller.freeze();
-      value = await fn(
-        this.createDriveContext(controller, captures, startFrame, checkBudget),
+      await this.withDrawing(
+        this.requireTimeController(),
+        opts?.render,
+        async () => {
+          try {
+            if (!wasFrozen) controller.freeze();
+            value = await fn(
+              this.createDriveContext(
+                controller,
+                captures,
+                startFrame,
+                checkBudget,
+              ),
+            );
+          } catch (thrown) {
+            error = thrown instanceof Error ? thrown.message : String(thrown);
+            timedOut = thrown instanceof DriveBudgetExceededError;
+          } finally {
+            // Snapshot held input before releasing it. Release callbacks run under
+            // the drive's drawing policy too, so their target requests stay pending.
+            state = this.captureDriveState();
+            this.engine.context.tryResolve(InputManagerRuntimeKey)?.clearAll();
+          }
+          if (
+            error === undefined &&
+            opts?.render === "last" &&
+            this.time.getFrame() > startFrame
+          ) {
+            try {
+              this.requireTimeController().renderFrame?.();
+            } catch (thrown) {
+              error = thrown instanceof Error ? thrown.message : String(thrown);
+            }
+          }
+        },
       );
-    } catch (thrown) {
-      error = thrown instanceof Error ? thrown.message : String(thrown);
-      timedOut = thrown instanceof DriveBudgetExceededError;
     } finally {
+      // Drawing is restored before thawing or releasing ownership, including
+      // when an input-release callback throws during cleanup.
       try {
-        // Read before cleanup below releases everything it describes — a
-        // key the callback left held must show up here, not report empty.
-        state = this.captureDriveState();
-        // A key left down would carry into whatever plays next. Released
-        // while still frozen, so the game never sees a held key advance.
-        // Resolved leniently: no InputPlugin means nothing to release.
-        this.engine.context.tryResolve(InputManagerRuntimeKey)?.clearAll();
+        if (!wasFrozen) controller.thaw();
       } finally {
-        // Releasing a key notifies the game's own listeners, and one that
-        // throws reaches here through the error boundary. Restoring the clock
-        // from an inner `finally` keeps that throw from leaving the page
-        // frozen with nothing advancing.
-        try {
-          if (!wasFrozen) controller.thaw();
-        } finally {
-          controller.release();
-        }
+        controller.release();
       }
     }
 
@@ -2665,4 +2715,17 @@ function decodeBase64(base64: string): Uint8Array {
   throw new Error(
     "Inspector.capture.png() is not supported in this environment.",
   );
+}
+
+function assertRenderMode(render: InspectorRenderMode | undefined): void {
+  if (
+    render !== undefined &&
+    render !== "all" &&
+    render !== "last" &&
+    render !== "none"
+  ) {
+    throw new Error(
+      `Inspector: render must be all, last, or none, got ${String(render)}.`,
+    );
+  }
 }

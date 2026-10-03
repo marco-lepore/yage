@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Container } from "pixi.js";
+import { Container, WebGLRenderer } from "pixi.js";
 import type { Renderer } from "pixi.js";
 import { createRenderTarget } from "./RenderTarget.js";
 import type { RenderTargetOptions } from "./RenderTarget.js";
@@ -278,5 +278,105 @@ describe("createRenderTarget", () => {
     expect(() => target.texture).toThrow("RenderTargetHandle.texture");
     expect(() => target.render()).toThrow("RenderTargetHandle.render");
     expect(() => target.resize(10, 10)).toThrow("RenderTargetHandle.resize");
+  });
+});
+
+describe("deferred target drawing", () => {
+  it("keeps dependent draws pending while their input is hidden", () => {
+    const { renderer, calls } = fakeRenderer();
+    const prerender = new WebGLRenderer().runners.prerender;
+    Object.assign(renderer, { runners: { prerender } });
+    const stage = new Container();
+    const drawing = { stage, isEnabled: () => true };
+    const source = new Container();
+    const input = createRenderTarget(
+      renderer,
+      source,
+      { width: 10, height: 10 },
+      drawing,
+    );
+    const output = createRenderTarget(
+      renderer,
+      new Container(),
+      {
+        width: 10,
+        height: 10,
+        dependsOn: [input],
+      },
+      drawing,
+    );
+    input.render();
+    output.render();
+    calls.length = 0;
+    source.visible = false;
+    input.invalidate();
+    expect(input.renderIfNeeded()).toBe(false);
+    output.render();
+    prerender.emit({ container: stage });
+    expect(calls).toHaveLength(0);
+    expect(output.needsRender).toBe(true);
+    source.visible = true;
+    prerender.emit({ container: stage });
+    expect(calls.map((call) => call.target)).toEqual([
+      input.texture,
+      output.texture,
+    ]);
+    expect(input.needsRender).toBe(false);
+    expect(output.renderIfNeeded()).toBe(false);
+    output.destroy();
+    input.destroy();
+  });
+
+  it("flushes only requested targets, in order, before drawing the stage", () => {
+    const { renderer, calls } = fakeRenderer();
+    const prerender = new WebGLRenderer().runners.prerender;
+    Object.assign(renderer, { runners: { prerender } });
+    const stage = new Container();
+    let enabled = false;
+    const drawing = { stage, isEnabled: () => enabled };
+    const source = new Container();
+    const first = createRenderTarget(
+      renderer,
+      source,
+      { width: 10, height: 10 },
+      drawing,
+    );
+    const second = createRenderTarget(
+      renderer,
+      new Container(),
+      { width: 10, height: 10 },
+      drawing,
+    );
+    const unrequested = createRenderTarget(
+      renderer,
+      new Container(),
+      { width: 10, height: 10 },
+      drawing,
+    );
+    expect(first.renderIfNeeded()).toBe(false);
+    second.render();
+    expect(calls).toHaveLength(0);
+    prerender.emit({ container: source });
+    expect(calls).toHaveLength(0);
+    prerender.emit({ container: stage });
+    expect(calls.map((call) => call.target)).toEqual([
+      first.texture,
+      second.texture,
+    ]);
+    expect(first.needsRender).toBe(false);
+    expect(unrequested.needsRender).toBe(true);
+    first.invalidate();
+    prerender.emit({ container: stage });
+    expect(calls).toHaveLength(2);
+    enabled = true;
+    expect(first.renderIfNeeded()).toBe(true);
+    enabled = false;
+    first.render();
+    first.destroy();
+    prerender.emit({ container: stage });
+    expect(calls).toHaveLength(3);
+    second.destroy();
+    unrequested.destroy();
+    expect(prerender.items).toHaveLength(0);
   });
 });
