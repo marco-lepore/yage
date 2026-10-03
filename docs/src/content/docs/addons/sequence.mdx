@@ -116,7 +116,9 @@ discards its remaining time. `seek(frame)` changes the pose silently.
 Playback options include positive `speed`, `loop`, `finish` and `cancel`.
 Finish and cancel retain values by default; choose `"restore"` to return tracked
 properties to their captured starting values. Cancel can restore a completed
-play too. A player rejects a second play while playing or paused.
+play too. A restoration callback can call `cancel("retain")` to stop the
+remaining writes, or `pause()` to stop them and leave the player paused.
+A player rejects a second play while playing or paused.
 
 Gameplay must yield animated properties during playback. Separate players do
 not blend or arbitrate competing writes. Entity helpers reject expired targets.

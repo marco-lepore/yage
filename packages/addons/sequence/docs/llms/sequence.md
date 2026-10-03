@@ -115,7 +115,9 @@ value before writing. Speed is positive finite, default 1. Policies are
 `advance(dtSeconds)`, `pause()`, `resume()`, `seek(frame)`, `cancel(policy?)`;
 read `frame` and `state` (`idle`, `playing`, `paused`, `completed`, `cancelled`).
 An active/paused player rejects a second play. Cancel can restore a completed
-play; cancelling an idle/already-cancelled instance has no effect. Seeking a
+play; cancelling an idle/already-cancelled instance has no effect outside binding
+callbacks. During restoration, cancel stops further writes even if already
+cancelled; pause stops further writes and leaves the player paused. Seeking a
 completed/cancelled instance makes it paused. Seek does not dispatch events.
 
 Events fire at play's frame zero, then at every crossed marker. All properties

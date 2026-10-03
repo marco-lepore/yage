@@ -223,3 +223,67 @@ it.each(["pause", "seek", "cancel-restore", "seek-cancel"] as const)(
     }
   },
 );
+
+it.each(["cancel", "finish"] as const)(
+  "stops %s restoration when a saved-value setter requests a stop",
+  (trigger) => {
+    const p = player();
+    const log: string[] = [];
+    const target = {
+      properties: {
+        x: sequenceProperty(
+          { kind: "number" },
+          () => 17,
+          (value) => {
+            log.push(`x:${value}`);
+            if (value === 17) {
+              if (trigger === "cancel") p.cancel("retain");
+              else p.pause();
+            }
+          },
+        ),
+        y: sequenceProperty(
+          { kind: "number" },
+          () => 18,
+          (value) => {
+            log.push(`y:${value}`);
+          },
+        ),
+      },
+      events: { cue: { payload: {}, dispatch() {} } },
+    };
+    p.play(clip(false), { targets: { actor: target }, finish: "restore" });
+    log.length = 0;
+    if (trigger === "cancel") p.cancel("restore");
+    else p.advance(10);
+    expect(log).toEqual(
+      trigger === "cancel" ? ["x:17"] : ["x:10", "y:10", "x:17"],
+    );
+    expect(p.state).toBe(trigger === "cancel" ? "cancelled" : "paused");
+  },
+);
+
+it("clears active callback tracking after restoration throws", () => {
+  const p = player();
+  const target = {
+    properties: {
+      x: sequenceProperty(
+        { kind: "number" },
+        () => 17,
+        (value) => {
+          if (value === 17) throw new Error("restore failed");
+        },
+      ),
+      y: sequenceProperty(
+        { kind: "number" },
+        () => 18,
+        () => {},
+      ),
+    },
+    events: { cue: { payload: {}, dispatch() {} } },
+  };
+  p.play(clip(false), { targets: { actor: target } });
+  expect(() => p.cancel("restore")).toThrow("restore failed");
+  p.pause();
+  expect(p.state).toBe("cancelled");
+});
