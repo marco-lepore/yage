@@ -16,6 +16,7 @@ import {
   advanceFrames,
 } from "@yagejs/core";
 import type { Engine } from "@yagejs/core";
+import { InputManagerKey, InputManager } from "@yagejs/input";
 import {
   ColliderComponent,
   PhysicsPlugin,
@@ -43,6 +44,7 @@ class Floor extends Entity {
     width = 1000,
     height = 20,
     kinematic = false,
+    oneWay = false,
   } = {}): void {
     this.add(new Transform({ position: new Vec2(x, y) }));
     this.add(
@@ -52,12 +54,20 @@ class Floor extends Entity {
       new ColliderComponent({
         shape: { type: "box", width, height },
         friction: 0,
+        ...(oneWay ? { oneWay: {} } : {}),
       }),
     );
   }
 }
-import { PlatformerController } from "./PlatformerController.js";
-import { PlatformerInput } from "./input.js";
+import {
+  PlatformerController,
+  PlatformerLandedEvent,
+} from "./PlatformerController.js";
+import {
+  PlatformerInput,
+  PlatformerInputBinding,
+  platformerControls,
+} from "./input.js";
 import {
   PlatformerMoves,
   PlatformerJumpedEvent,
@@ -68,8 +78,14 @@ import { Stance } from "./Stance.js";
 
 let engine: Engine | undefined;
 afterEach(() => engine?.destroy());
-async function setup(options: CreatePlatformerOptions = {}) {
+async function setup(options: CreatePlatformerOptions = {}, devices = false) {
   engine = await createTestEngine({}, [new PhysicsPlugin()]);
+  const manager = devices ? new InputManager() : undefined;
+  if (manager) {
+    manager.setActionMap(platformerControls());
+    manager._setErrorBoundary(engine.context.resolve(ErrorBoundaryKey));
+    engine.context.register(InputManagerKey, manager);
+  }
   const scene = new TestScene();
   await engine.scenes.push(scene);
   const floor = scene.spawn(Floor, {});
@@ -78,7 +94,10 @@ async function setup(options: CreatePlatformerOptions = {}) {
   const input = entity.get(PlatformerInput);
   const controller = entity.get(PlatformerController);
   const tick = (frames = 1) => {
-    if (engine) advanceFrames(engine, frames);
+    for (let i = 0; i < frames; i++) {
+      if (engine) advanceFrames(engine, 1);
+      manager?._clearFrameState();
+    }
   };
   tick(60);
   return { scene, floor, entity, body, input, controller, tick };
@@ -654,4 +673,128 @@ it("rejects invalid landing charges before changing admission state", async () =
     }),
   );
   log.mockRestore();
+});
+
+it("does not substitute an air jump for a denied ground jump", async () => {
+  const { entity, floor, input, tick } = await setup({
+    admissionPolicies: { canStartMove: (move) => move !== "groundJump" },
+  });
+  const admission = entity.get(MoveAdmission);
+  const jumped = vi.fn();
+  entity.on(PlatformerJumpedEvent, jumped);
+  input.jump();
+  tick();
+  expect(jumped).not.toHaveBeenCalled();
+  expect(admission.canAirJump).toBe(false);
+  expect(admission.airCharges.jumps).toBe(1);
+  tick(10);
+  floor.destroy();
+  tick(2);
+  input.jump();
+  tick();
+  expect(jumped).toHaveBeenCalledWith({ kind: "air" });
+  expect(admission.airCharges.jumps).toBe(0);
+});
+
+it.each(["keyboard", "pointer"])(
+  "discards %s move presses buffered during a freeze on reset",
+  async (device) => {
+    const { entity, scene, input, tick } = await setup(
+      {
+        input: new PlatformerInputBinding(undefined, () => ({
+          x: 0,
+          width: 800,
+        })),
+      },
+      true,
+    );
+    const manager = entity.scene.context.resolve(InputManagerKey);
+    const jumped = vi.fn();
+    const dashed = vi.fn();
+    entity.on(PlatformerJumpedEvent, jumped);
+    entity.on(PlatformerDashedEvent, dashed);
+    scene.timeScale = 0;
+    if (device === "keyboard") {
+      manager.fireKeyDown("Space");
+    } else {
+      manager.firePointerMove(700, 20, { id: 2, type: "touch" });
+      manager.firePointerDown(0, { id: 2, type: "touch" });
+    }
+    manager.fireKeyDown("ShiftLeft");
+    manager.fireKeyDown("KeyD");
+    tick();
+    expect(input.direction).toBe(1);
+    manager.clearAll();
+    expect(input.direction).toBe(0);
+    scene.timeScale = 1;
+    tick(10);
+    expect(jumped).not.toHaveBeenCalled();
+    expect(dashed).not.toHaveBeenCalled();
+    manager.fireKeyDown("Space");
+    tick();
+    expect(jumped).toHaveBeenCalledTimes(1);
+  },
+);
+
+it("keeps a started dash and its cooldown through an input reset", async () => {
+  const { entity, tick } = await setup(
+    { input: new PlatformerInputBinding() },
+    true,
+  );
+  const manager = entity.scene.context.resolve(InputManagerKey);
+  const moves = entity.get(PlatformerMoves);
+  manager.fireKeyDown("ShiftLeft");
+  tick();
+  manager.clearAll();
+  tick();
+  expect(moves.dashing).toBe(true);
+  expect(moves.dashReady).toBe(false);
+});
+
+it.each([true, false])(
+  "ignores one-way drop-through support with terrain=%s",
+  async (terrain) => {
+    const { entity, scene, floor, body, controller, tick } = await setup({
+      terrain,
+    });
+    floor.destroy();
+    scene.spawn(Floor, { oneWay: true });
+    tick(5);
+    expect(controller.grounded).toBe(true);
+    const admission = entity.get(MoveAdmission);
+    const landed = vi.fn();
+    entity.on(PlatformerLandedEvent, landed);
+    admission.setAirCharges({ jumps: 0, dashes: 0 });
+    entity.get(ColliderComponent).dropThrough(0.5);
+    tick();
+    expect(controller.grounded).toBe(false);
+    for (let frame = 0; frame < 25; frame++) {
+      tick();
+      expect(controller.grounded).toBe(false);
+      expect(admission.airCharges).toEqual({ jumps: 0, dashes: 0 });
+    }
+    expect(landed).not.toHaveBeenCalled();
+    expect(body.positionY).toBeGreaterThan(120);
+    scene.spawn(Floor, { y: 450, oneWay: true });
+    tick(60);
+    expect(controller.grounded).toBe(true);
+    expect(admission.airCharges).toEqual({ jumps: 1, dashes: 1 });
+    expect(landed).toHaveBeenCalledTimes(1);
+  },
+);
+
+it("does not land on a contact-filtered platform while descending past its top", async () => {
+  const { entity, floor, body, controller, tick } = await setup();
+  const admission = entity.get(MoveAdmission);
+  admission.setAirCharges({ jumps: 0, dashes: 0 });
+  floor.get(ColliderComponent).setContactFilter(() => false);
+  body.setPosition(0, 88);
+  body.setVelocity({ x: 0, y: 30 });
+  const landed = vi.fn();
+  entity.on(PlatformerLandedEvent, landed);
+  tick(20);
+  expect(controller.grounded).toBe(false);
+  expect(admission.airCharges).toEqual({ jumps: 0, dashes: 0 });
+  expect(landed).not.toHaveBeenCalled();
+  expect(body.positionY).toBeGreaterThan(120);
 });

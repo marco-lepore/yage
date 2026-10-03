@@ -20,12 +20,80 @@ import { Transform, Vec2 } from "@yagejs/core";
 import type { Scene } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { ColliderComponent } from "./ColliderComponent.js";
+import type { ContactCandidate } from "./types.js";
 import {
   createPhysicsTestContext,
   spawnEntityInScene,
 } from "./test-helpers.js";
 
 const DT = 1 / 60;
+
+describe("shape casts with contact filters (real Rapier)", () => {
+  it("skips rejected surfaces, checks both filters, and reads current poses", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    const sourceFilter = vi.fn(() => true);
+    const source = spawnFilteredBox(scene, "source", sourceFilter);
+    const rejected = spawnFilteredBox(scene, "rejected", () => false);
+    rejected.entity.get(RigidBodyComponent).setPosition(0, 50);
+    const accepted = spawnFilteredBox(scene, "accepted", () => true);
+    accepted.entity.get(RigidBodyComponent).setPosition(0, 100);
+    physicsWorld.step(DT);
+    source.entity.get(RigidBodyComponent).setPosition(0, 5);
+    source.entity.get(RigidBodyComponent).setVelocityY(30);
+    const rejectedFilter = vi.fn((contact: ContactCandidate) => {
+      expect(contact.dt).toBe(0);
+      expect(contact.otherY).toBeCloseTo(5);
+      expect(contact.otherVelocityY).toBeCloseTo(30);
+      return false;
+    });
+    rejected.setContactFilter(rejectedFilter);
+    const shape = { type: "box", width: 10, height: 10 } as const;
+    const cast = (filtered: boolean) =>
+      physicsWorld.castShape(shape, { x: 0, y: 25 }, { x: 0, y: 1 }, 150, {
+        ...(filtered ? { solidFor: source } : {}),
+      });
+
+    expect(cast(false)?.entity).toBe(rejected.entity);
+    expect(rejectedFilter).not.toHaveBeenCalled();
+    expect(cast(true)?.entity).toBe(accepted.entity);
+    expect(rejectedFilter).toHaveBeenCalled();
+    expect(sourceFilter).toHaveBeenCalled();
+    // The source veto also rejects surfaces that permit the pair.
+    sourceFilter.mockReturnValue(false);
+    rejectedFilter.mockClear();
+    expect(cast(true)).toBeNull();
+    expect(rejectedFilter).toHaveBeenCalled();
+    // Starting inside the source never reports the source itself.
+    sourceFilter.mockReturnValue(true);
+    expect(
+      physicsWorld.castShape(shape, { x: 0, y: 5 }, { x: 0, y: 1 }, 150, {
+        solidFor: source,
+      })?.entity,
+    ).toBe(accepted.entity);
+  });
+
+  it("rejects an unattached or foreign source collider", async () => {
+    const { physicsWorld } = await createPhysicsTestContext();
+    const other = await createPhysicsTestContext();
+    const unattached = new ColliderComponent({
+      shape: { type: "box", width: 10, height: 10 },
+    });
+    const foreign = spawnFilteredBox(other.scene, "foreign", () => true);
+    for (const source of [unattached, foreign]) {
+      expect(() =>
+        physicsWorld.castShape(
+          { type: "box", width: 10, height: 10 },
+          { x: 0, y: 0 },
+          { x: 0, y: 1 },
+          100,
+          { solidFor: source },
+        ),
+      ).toThrow("solidFor must have live colliders in this world");
+    }
+  });
+});
 
 function spawnFilteredBox(
   scene: Scene,

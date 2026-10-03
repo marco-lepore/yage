@@ -841,6 +841,32 @@ into the initial overlap. If the move requires a clear destination, also check
 that position with `queryShape`. The option affects only the cast; body
 collisions still apply normally.
 
+To find a surface that can support a particular character, pass its
+`ColliderComponent` as `solidFor`. The cast skips surfaces rejected by either
+collider's contact filter, including one-way and drop-through rules, and
+excludes the character's own entity:
+
+```typescript yage-context="component"
+import { ColliderComponent, PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
+
+const world = this.use(PhysicsWorldKey);
+const body = this.entity.get(RigidBodyComponent);
+const collider = this.entity.get(ColliderComponent);
+const support = world.castShape(
+  { type: "box", width: 20, height: 2 },
+  body.position,
+  { x: 0, y: 1 },
+  6,
+  { solidFor: collider },
+);
+```
+
+Filters receive the colliders' current positions and velocities with `dt: 0`.
+The cast's origin and direction do not replace those values. A compound source
+permits a hit if any of its parts permits the pair. The source must have live
+colliders in this world. Layer and sensor options still apply separately.
+Without `solidFor`, a cast ignores contact filters.
+
 Use this to test whether a fast-falling player has a floor along its path
 this frame:
 
@@ -1159,6 +1185,9 @@ carries both sides' positions, rotations, and velocities as plain numbers,
 plus the other side's `Entity` and `ColliderComponent`. All values are from
 the start of the step — for a body that crossed a surface mid-step, they tell
 you which side it came from.
+
+A `castShape` query with `solidFor` also runs contact filters, using current
+poses and velocities with `dt: 0`. Do not run physics queries inside a filter.
 
 A few rules to keep filters healthy:
 

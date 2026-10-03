@@ -29,7 +29,7 @@ export class GroundProbe extends Component {
   private readonly tuning: GroundProbeTuning;
   private world!: PhysicsWorld;
   private body!: RigidBodyComponent;
-  private collider?: ColliderComponent;
+  private collider!: ColliderComponent;
   private _grounded = false;
   private _normal = { x: 0, y: -1 };
   private _distance = Infinity;
@@ -76,7 +76,7 @@ export class GroundProbe extends Component {
   onAdd(): void {
     this.world = this.use(PhysicsWorldKey);
     this.body = this.entity.get(RigidBodyComponent);
-    if (this.assisted) this.collider = this.entity.get(ColliderComponent);
+    this.collider = this.entity.get(ColliderComponent);
   }
 
   get grounded(): boolean {
@@ -95,8 +95,8 @@ export class GroundProbe extends Component {
   fixedUpdate(): void {
     // Assisted bodies query the live stance shape so ramp crests remain support.
     // Unassisted bodies retain the foot strip; both origins are simulation poses.
-    const shape = this.collider?.config.shape;
-    const offset = this.collider?.config.offset;
+    const shape = this.assisted ? this.collider.config.shape : undefined;
+    const offset = this.collider.config.offset;
     let hit = this.world.castShape(
       shape ?? {
         type: "box",
@@ -114,7 +114,11 @@ export class GroundProbe extends Component {
           },
       DOWN,
       Math.max(this.tuning.distance, this.tuning.snapDistance ?? 0),
-      { filterGroups: this.tuning.filterGroups, excludeEntity: this.entity },
+      {
+        filterGroups: this.tuning.filterGroups,
+        excludeEntity: this.entity,
+        solidFor: this.collider,
+      },
     );
     // A steep face can be closer to the full body than its floor contact.
     // Only contacts near the feet support the body. Full-body overlap with a
@@ -133,7 +137,11 @@ export class GroundProbe extends Component {
         },
         DOWN,
         this.tuning.distance,
-        { filterGroups: this.tuning.filterGroups, excludeEntity: this.entity },
+        {
+          filterGroups: this.tuning.filterGroups,
+          excludeEntity: this.entity,
+          solidFor: this.collider,
+        },
       );
     const walkable = hit !== null && this.isWalkable(hit.normal);
     this._support =

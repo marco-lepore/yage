@@ -116,6 +116,8 @@ The policy adds game requirements to the normal contact, headroom, charge,
 and cooldown checks. It is also used by readiness queries and may run more
 than once per step. Keep it pure and synchronous; apply consequences through
 move events. A denied press remains buffered until its usual expiry.
+Air jumps require being airborne, so denying a ground jump cannot spend an
+air-jump charge while standing.
 
 Read `character.admission.airCharges` for `{ jumps, dashes }`. Set either count
 with `setAirCharges`, or call `refillAirCharges()` to restore both tuning
@@ -178,6 +180,12 @@ to request a dash. A custom `InputBinding` replaces the default entirely;
 its `bind`, `poll`, and `dispose` methods connect to the same control methods.
 Bindings are disposed on disable and bound again on enable.
 
+For device bindings, `InputManager.clearAll()` clears movement intent and
+buffered jump/dash presses, including presses buffered while time is frozen.
+An active dash and its cooldown continue. For scripted input, call
+`character.moves.resetInput()` to discard buffered presses and release jump
+input without interrupting active moves.
+
 ## Add animation and game effects
 
 Read `character.controller.grounded`, `facing`, `clinging`, and `blocked`,
@@ -228,6 +236,9 @@ The `collision` option supplies physics query groups for ground (`solid`),
 headroom and terrain clearance (`volume`), and walls (`wall`). All default to
 all groups. When using one-way platforms, include those platforms only in
 `solid`; their underside must not block standing or count as a wall.
+Ground and terrain casts follow both colliders' contact filters, including
+one-way and drop-through rules. Passing through a platform does not count as
+a landing or restore air charges.
 
 `MovingSurface({ from, to, speed })` moves an upright kinematic platform between
 two world points. Spawn moving platforms before characters so their next

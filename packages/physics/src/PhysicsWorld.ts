@@ -275,14 +275,19 @@ export class PhysicsWorld {
   private _filterContactPair(
     collider1: number,
     collider2: number,
+    dt = this.world.timestep,
   ): RAPIER.SolverFlags | null {
-    const solid1 = this._filterSide(collider1, collider2);
-    const solid2 = this._filterSide(collider2, collider1);
+    const solid1 = this._filterSide(collider1, collider2, dt);
+    const solid2 = this._filterSide(collider2, collider1, dt);
     return solid1 && solid2 ? RAPIER.SolverFlags.COMPUTE_IMPULSE : null;
   }
 
   /** Evaluate one collider's filter against the other side of the pair. */
-  private _filterSide(selfHandle: number, otherHandle: number): boolean {
+  private _filterSide(
+    selfHandle: number,
+    otherHandle: number,
+    dt: number,
+  ): boolean {
     const selfComponent = this._colliderComponents.get(selfHandle);
     if (!selfComponent?._contactFilter) return true;
 
@@ -310,7 +315,7 @@ export class PhysicsWorld {
       otherComponent,
       selfShapeIndex,
       otherShapeIndex,
-      this.world.timestep,
+      dt,
     );
     return selfComponent._evaluateContactFilter(this._candidate);
   }
@@ -1216,6 +1221,13 @@ export class PhysicsWorld {
    * collider of that entity — pass the mover when the sweep starts inside its
    * own collider. Sensors are skipped unless `sensors` says otherwise.
    *
+   * `solidFor` excludes that collider's entity and applies both sides' contact
+   * filters, including one-way/drop-through rules. Filters read current body
+   * poses and velocities with `dt: 0`, not the cast origin or swept poses.
+   * A compound source permits a hit if any part permits the pair. The source
+   * must have live colliders in this world. Layer and sensor options still apply.
+   * Without `solidFor`, contact filters do not affect the cast.
+   *
    * Reports every live collider at its current pose, running a
    * zero-duration step first when colliders changed since the last step.
    */
@@ -1228,17 +1240,31 @@ export class PhysicsWorld {
       rotation?: number;
       /** Stop at an initial overlap (default true). False allows escape. */
       stopAtPenetration?: boolean;
+      /** Apply both sides' contact filters at current poses (dt 0); exclude this entity. */
+      solidFor?: ColliderComponent;
       filterGroups?: number;
       excludeEntity?: Entity;
       sensors?: QuerySensorMode;
     },
   ): RaycastHit | null {
+    const solidFor = options?.solidFor;
+    if (
+      solidFor &&
+      (solidFor._colliderHandles.length === 0 ||
+        solidFor._colliderHandles.some(
+          (handle) => this._colliderComponents.get(handle) !== solidFor,
+        ))
+    )
+      throw new Error(
+        "PhysicsWorld.castShape: solidFor must have live colliders in this world",
+      );
     const length = Math.hypot(direction.x, direction.y);
     if (length === 0) {
       throw new Error("castShape direction must be a non-zero vector");
     }
     assertColliderShape("PhysicsWorld.castShape", shape);
     this._refreshQueries();
+    if (solidFor && this._contactFiltered.size > 0) this._capturePreStepState();
 
     const desc = this.buildColliderDesc(shape);
     // buildColliderDesc leaves the capsule axis:"x" 90° turn to the caller.
@@ -1260,8 +1286,22 @@ export class PhysicsWorld {
       options?.filterGroups,
       undefined,
       undefined,
-      exclude
-        ? (collider) => this.colliderMap.get(collider.handle) !== exclude
+      exclude || solidFor
+        ? (collider) => {
+            const entity = this.colliderMap.get(collider.handle);
+            if (
+              (exclude && entity === exclude) ||
+              (solidFor && entity === solidFor.entity)
+            )
+              return false;
+            return (
+              !solidFor ||
+              solidFor._colliderHandles.some(
+                (handle) =>
+                  this._filterContactPair(handle, collider.handle, 0) !== null,
+              )
+            );
+          }
         : undefined,
     );
 
