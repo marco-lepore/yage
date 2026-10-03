@@ -1,5 +1,5 @@
+import type { EditorDocument } from "../../shared/document/index.js";
 import type {
-  LevelDocument,
   LevelPlacement,
   LevelPoint,
   LevelTransform,
@@ -20,11 +20,11 @@ import {
 /** What to copy, where to put it, and how to name what comes out. */
 export interface CloneRequest {
   /** The document the placements are read from. */
-  readonly source: LevelDocument;
+  readonly source: EditorDocument;
   /** The placements to copy. Anything under one of them comes too. */
   readonly ids: readonly string[];
   /** The document the copies are going into, which may be the source. */
-  readonly destination: LevelDocument;
+  readonly destination: EditorDocument;
   /**
    * `duplicate` copies within one level and may keep a parent outside the
    * copied set. `paste` is going somewhere else and never does.
@@ -173,7 +173,7 @@ function transformFor(
 
 /** Where the copies go: after the last of their sources, or at the end. */
 function insertionIndex(
-  destination: LevelDocument,
+  destination: EditorDocument,
   sources: readonly string[],
 ): number {
   const named = new Set(sources);
@@ -191,7 +191,7 @@ function insertionIndex(
  * copy has to step clear of every key already in use — the authored ones and
  * the ids the placements without a key derive.
  */
-function takenKeys(document: LevelDocument): Set<string> {
+function takenKeys(document: EditorDocument): Set<string> {
   return new Set(document.entities.map(derivedSceneKey));
 }
 

@@ -8,6 +8,7 @@ export interface GuideView {
   readonly world: WorldBounds;
   /** The harness renderer's design size, which the viewport box draws at. */
   readonly viewport: { readonly width: number; readonly height: number };
+  readonly origin?: { readonly x: number; readonly y: number };
   /** World units per screen pixel, the same number the gizmo is sized in. */
   readonly perScreenPixel: number;
   /**
@@ -134,8 +135,18 @@ export function drawGuides(target: OverlayTarget, view: GuideView): void {
   const halfWidth = view.viewport.width / 2;
   const halfHeight = view.viewport.height / 2;
   target
-    .rect(-halfWidth, -halfHeight, view.viewport.width, view.viewport.height)
+    .rect(
+      view.origin?.x ?? -halfWidth,
+      view.origin?.y ?? -halfHeight,
+      view.viewport.width,
+      view.viewport.height,
+    )
     .stroke({ color: CASING_COLOR, width: axis * 2, alpha: 0.4 })
-    .rect(-halfWidth, -halfHeight, view.viewport.width, view.viewport.height)
+    .rect(
+      view.origin?.x ?? -halfWidth,
+      view.origin?.y ?? -halfHeight,
+      view.viewport.width,
+      view.viewport.height,
+    )
     .stroke({ color: VIEWPORT_COLOR, width: axis });
 }

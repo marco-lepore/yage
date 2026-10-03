@@ -1195,4 +1195,26 @@ export const EDITOR_CSS = `
   font-family: var(--font-code);
   font-size: var(--text-xs);
 }
+
+.yage-editor .ye-sequence { flex: 0 0 auto; min-height: 150px; max-height: 65vh; display:flex; flex-direction:column; background:var(--panel-bg); border-top:1px solid var(--border); }
+.yage-editor .ye-sequence__divider { height:6px; flex:none; cursor:row-resize; background:var(--border); touch-action:none; }
+.yage-editor .ye-sequence__divider:hover { background:var(--accent); }
+.yage-editor .ye-sequence__content { display:grid; grid-template-columns:minmax(0,1fr) 260px; flex:1; min-height:0; }
+.yage-editor .ye-sequence__tracks,.yage-editor .ye-sequence__inspector { overflow:auto; min-height:0; }
+.yage-editor .ye-sequence__inspector,.yage-editor .ye-sequence-actor { padding:12px; border-left:1px solid var(--border); }
+.yage-editor .ye-sequence__row { box-sizing:border-box; display:grid; grid-template-columns:180px minmax(100px,1fr); min-height:28px; border-bottom:1px solid var(--border); padding-right:14px; }
+.yage-editor .ye-sequence__label { text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.yage-editor .ye-sequence__lane { position:relative; min-height:27px; touch-action:none; }
+.yage-editor .ye-sequence__lane small { position:absolute; transform:translateX(-50%); pointer-events:none; }
+.yage-editor .ye-sequence__key { position:absolute; top:2px; transform:translateX(-50%); background:transparent; color:var(--text-muted); border:0; cursor:ew-resize; padding:0 3px; touch-action:none; }
+.yage-editor .ye-sequence__key.selected { color:var(--accent); outline:1px solid var(--accent); }
+.yage-editor .ye-sequence__cursor { position:absolute; top:0; bottom:0; width:1px; background:var(--warning); pointer-events:none; }
+.yage-editor .ye-sequence__ghost { position:absolute; color:var(--danger); pointer-events:none; }
+.yage-editor .ye-sequence input[type=number] { width:70px; }
+.yage-editor .ye-sequence label,.yage-editor .ye-sequence-actor label { display:block; margin:4px 0; }
+.yage-editor .ye-sequence textarea,.yage-editor .ye-sequence-actor textarea { width:100%; min-height:48px; font-family:var(--font-code); }
+.yage-editor .ye-sequence button,.yage-editor .ye-sequence input,.yage-editor .ye-sequence select,.yage-editor .ye-sequence textarea,.yage-editor .ye-sequence-actor button,.yage-editor .ye-sequence-actor input,.yage-editor .ye-sequence-actor select,.yage-editor .ye-sequence-actor textarea { color:var(--text); background:var(--surface); border:1px solid var(--control-border); border-radius:var(--radius-sm); }
+.yage-editor .ye-sequence__fields { border:1px solid var(--border); margin:8px 0; padding:8px; min-width:0; }
+.yage-editor .ye-sequence__contract-row { display:flex; justify-content:space-between; gap:8px; margin:4px 0; }
+.yage-editor .ye-sequence__settings { position:absolute; bottom:40px; right:20px; z-index:20; background:var(--panel-bg); padding:12px; border:1px solid var(--control-border); max-height:60vh; overflow:auto; }
 `;

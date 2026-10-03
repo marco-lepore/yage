@@ -1,3 +1,4 @@
+import type { EditorDocument } from "../../shared/document/index.js";
 import type { LevelCatalog } from "@yagejs/level";
 import type { LayerDef } from "@yagejs/renderer";
 import type { PoseEdit } from "../../shared/commands/index.js";
@@ -12,7 +13,7 @@ import {
   pointFields,
   withDescendants,
 } from "../commands/index.js";
-import type { LevelDocument } from "@yagejs/level";
+
 import type { PreviewRequest } from "./PreviewCoordinator.js";
 
 /** What connecting a preview to the store needs from it. */
@@ -20,6 +21,7 @@ export interface PreviewTarget {
   requestRebuild(request: PreviewRequest): void;
   applyPoseDraft(poses: readonly PoseEdit[]): void;
   applyView(view: EditorViewState): void;
+  applySequenceSample?(): void;
 }
 
 /**
@@ -71,6 +73,19 @@ export function connectPreview(
       viewed = state.view;
       preview.applyView(state.view);
     }
+    if (state.sequence) {
+      preview.applySequenceSample?.();
+      if (action.type === "sequence-view") {
+        if (!state.gesture && !state.poseDraft)
+          preview.applyPoseDraft(
+            posesOf(
+              state,
+              state.document.entities.map((p) => p.id),
+            ),
+          );
+        if (!refreshPending || state.sequence.draft) return;
+      }
+    }
     const catalog = catalogOf();
     if (!catalog) return;
     const rebuild = (reloadAssets = false): void => {
@@ -86,7 +101,8 @@ export function connectPreview(
       refreshPending &&
       !state.gesture &&
       !state.poseDraft &&
-      !state.paramDrag
+      !state.paramDrag &&
+      !state.sequence?.draft
     ) {
       refreshPending = false;
       rebuild(true);
@@ -170,7 +186,7 @@ export function connectPreview(
  * catalog does not say which points convert, so every point counts.
  */
 function setUpFromPose(
-  document: LevelDocument,
+  document: EditorDocument,
   catalog: LevelCatalog,
   moved: readonly string[],
 ): boolean {

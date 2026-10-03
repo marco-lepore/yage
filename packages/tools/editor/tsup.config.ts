@@ -4,7 +4,11 @@ const isWatch = process.argv.includes("--watch");
 
 export default defineConfig([
   {
-    entry: ["src/index.ts", "src/browser.ts"],
+    entry: {
+      index: "src/index.ts",
+      browser: "src/browser.ts",
+      sequenceEntities: "src/entities/SequencePlaceholder.ts",
+    },
     format: ["esm"],
     dts: !isWatch,
     clean: !isWatch,

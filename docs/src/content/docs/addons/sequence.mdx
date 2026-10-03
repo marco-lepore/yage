@@ -1,0 +1,148 @@
+---
+title: Sequences
+description: Animate replaceable actors with keyframes, rectangle mapping and event markers
+---
+
+A sequence animates several objects together. Author positions, rotation,
+opacity and timed events once, then supply the actors when playback starts.
+The same document can drive simple placeholders while editing and real game
+entities during play.
+
+Try the [two-actor playback example](https://examples.yage.dev/sequence.html).
+Aster follows positions in an authored rectangle. Ember uses offsets from its
+bottom-right corner. In sequence mode, resize the preview frame to see the
+difference while both actors keep their size.
+
+## Play a document
+
+Install `@yagejs-addons/sequence` alongside `@yagejs/core`. Install
+`@yagejs/renderer` when using the visual helper. Save a workspace in
+[sequence mode](/tooling/sequence-editor/), then pass its `sequence` field to
+`SequenceClip`. A standalone runtime clip is passed directly.
+
+```ts
+import { Component, Entity } from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+import {
+  SequenceClip, SequenceComponent, transformSequenceTarget,
+  combineSequenceTargets,
+} from "@yagejs-addons/sequence";
+import { visualSequenceTarget } from "@yagejs-addons/sequence/renderer";
+
+class Entrance extends Component {
+  private readonly sequence = this.sibling(SequenceComponent);
+
+  play(document: unknown, actor: Entity): void {
+    this.sequence.player.play(new SequenceClip(document), {
+      targets: {
+        actor: combineSequenceTargets(
+          transformSequenceTarget(actor),
+          visualSequenceTarget(actor.get(GraphicsComponent)),
+        ),
+      },
+      frame: { x: 20, y: 20, width: 800, height: 450 },
+    });
+  }
+}
+```
+
+Add `SequenceComponent` and `Entrance` to a host entity in your scene. The actor
+must have a `Transform` and `GraphicsComponent`. The document's target name in
+this example is `actor`. Supply every property and event in its contract.
+
+`SequenceComponent` advances playback with scene time. For another host, create
+`SequencePlayer` with the engine's `ErrorBoundary` and call `advance(seconds)`
+yourself. Do not advance a component-owned player twice.
+
+## Map positions into a rectangle
+
+The document specifies its authored width and height in pixels. Position tracks
+choose how their points map into the destination rectangle:
+
+| Mode | Result |
+| --- | --- |
+| Proportional | Points scale with the rectangle. `stretch` uses each axis independently; `contain` preserves the authored aspect ratio and centers it. |
+| Anchor plus offset | A normalized anchor selects a point in the destination frame. Key values add fixed pixel offsets to that point. |
+
+For a bottom-right anchor, `{x: -40, y: -20}` stays 40 pixels from the right and
+20 pixels from the bottom at any frame size. Proportional points preserve their
+relative position instead. Neither mode changes entity scale.
+
+The transform helper places the entity origin by default. Its optional second
+argument shifts the placement point by a fixed world-pixel offset. That offset
+does not rotate or scale with the entity. Positions may lie outside the frame;
+the host controls clipping. A player captures the destination rectangle when it
+starts, so changing a frame requires a new play.
+
+To convert a dragged preview position back into an authored key value, use
+`clip.unmapPosition(trackId, point, options)`. Supply the same destination frame
+and fit as sampling. This preserves the track's proportional or anchored mode.
+
+## Curves and properties
+
+Tracks start with an explicit frame-zero key and hold their final value through
+the end. The curve on a key controls the segment leaving that key. Choose
+linear, hold, quadratic ease-in/out, cubic ease-in-out, back overshoot, or cubic
+Bézier easing. Bézier easing changes progress along a straight segment; it does
+not create a curved spatial path.
+
+Custom contracts support numbers, vectors, positions, RGB colors, booleans and
+enums. Booleans and enums switch at their key times and require hold curves.
+The transform helper provides world position, local rotation in radians and
+local scale. When several bound entities share a hierarchy, the helper applies
+ancestor transforms before child world positions, independent of track order.
+Restoration uses the same ordering. The visual helper provides opacity, visibility and tint.
+
+Use `sequenceProperty(definition, get, set)` for your own object accessors.
+Use `combineSequenceTargets` to combine disjoint capabilities. Duplicate names
+throw. Extra capabilities are allowed, but all declared capabilities are
+required. `validateSequenceTargets(clip, targets)` checks this without mutating
+objects.
+
+## Events and playback controls
+
+An event declares its payload fields in the target contract. Bind its name to
+`{payload, dispatch}`; the callback can emit a normal entity event to game logic.
+The player applies the exact marker pose before dispatching. Markers at the
+same frame follow document order, including when one update crosses several
+markers. Start markers run at play and each loop; end markers run before the
+next loop starts.
+
+Call `pause()` and `resume()` for a dialogue or other interruption. Calling
+pause, cancel or seek from a binding callback stops the current operation immediately and
+discards its remaining time. `seek(frame)` changes the pose silently.
+`clip.sample(frame, options)` returns values without touching objects or events.
+
+Playback options include positive `speed`, `loop`, `finish` and `cancel`.
+Finish and cancel retain values by default; choose `"restore"` to return tracked
+properties to their captured starting values. Cancel can restore a completed
+play too. A restoration callback can call `cancel()` with either policy to stop
+the remaining writes without restarting restoration, or `pause()` to stop them
+and leave the player paused.
+A player rejects a second play while playing or paused.
+
+Gameplay must yield animated properties during playback. Separate players do
+not blend or arbitrate competing writes. Entity helpers reject expired targets.
+Custom targets can supply `isAlive()` as an object or class method; the player
+calls it on the original target before writing each pose.
+A throwing binding callback is reported through the engine's error boundary and
+stops the current operation; earlier effects are not rolled back. Component
+teardown retains values to avoid writes into other entities being destroyed.
+Playback has no save/resume snapshot; save the asset ID and your game's progress
+explicitly.
+
+To validate clip JSON in a Node tool without loading engine code, import
+`parseSequence` and document types from `@yagejs-addons/sequence/document`.
+
+## Sample a core keyframe track
+
+For a standalone curve, core's `sampleKeyframes(keys, time, defaultEasing?)`
+returns a value without dispatching key events. Keys must be nonempty and sorted
+by time; one key is constant, and values outside the range hold at the endpoints.
+The default easing is linear. Use the same unit for key times and sample time.
+This query assumes valid finite inputs; sequence documents validate their data.
+
+Core also exposes `durationReached(elapsed, duration)`, which uses the engine's
+relative tolerance of one part in a billion. Use it when accumulated time should
+reach a positive endpoint despite floating-point rounding. Inputs must be finite
+and duration positive; results for other inputs are undefined.

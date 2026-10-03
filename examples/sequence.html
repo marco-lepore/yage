@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Sequence playback</title>
+    <link rel="stylesheet" href="/shared.css" />
+    <style>
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        padding: 0;
+        margin: 0;
+        background: #080f1d;
+      }
+      .page-header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex: none;
+        height: 42px;
+        padding: 0 12px;
+        border-bottom: 1px solid #33415a;
+      }
+      .page-header h1 {
+        font-size: 14px;
+        margin: 0;
+        flex: 1;
+      }
+      .page-header a {
+        font-size: 12px;
+        color: #9bcdbf;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      #sequence-controls {
+        flex: 1;
+        min-height: 0;
+        min-width: 0;
+      }
+      #game-container {
+        margin: 0;
+      }
+      body:not(.runtime) > #game-container {
+        position: absolute;
+        visibility: hidden;
+      }
+      body.runtime #game-container {
+        flex: 1;
+        min-height: 0;
+        max-width: none !important;
+        aspect-ratio: auto !important;
+      }
+      body.runtime #sequence-controls {
+        flex: none;
+        padding: 12px;
+      }
+      html[data-embedded] body > #sequence-controls {
+        flex: 1;
+        overflow: hidden;
+      }
+      html[data-embedded] body > .page-header {
+        flex: none;
+      }
+    </style>
+  </head>
+  <body class="runtime">
+    <header class="page-header">
+      <a href="/#sequence">← Examples</a>
+      <h1>Sequence playback</h1>
+      <a href="https://yage.dev/tooling/sequence-editor/"
+        >Sequence authoring guide ↗</a
+      >
+    </header>
+    <div id="game-container"></div>
+    <div id="sequence-controls"></div>
+    <script type="module" src="/src/sequence/main.ts"></script>
+  </body>
+</html>

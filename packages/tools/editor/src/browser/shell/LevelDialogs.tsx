@@ -8,7 +8,7 @@ const LEVEL_SUFFIX = ".yage-level.json";
 /** What the file bar has opened, and what the dialog does when it is answered. */
 export type LevelRequest =
   /** Write a level holding nothing. */
-  | { readonly kind: "new" }
+  | { readonly kind: "new"; readonly documentKind?: "sequence" }
   /** Copy this level under a new name. */
   | { readonly kind: "duplicate"; readonly source: string }
   /** Remove this level, once the question below it is answered. */
@@ -26,6 +26,8 @@ export function levelPathFor(directory: string, name: string): string {
 /** The part of a level's path a name is read back out of. */
 function nameOf(path: string): string {
   const file = path.slice(path.lastIndexOf("/") + 1);
+  if (file.endsWith(".yage-sequence-workspace.json"))
+    return file.slice(0, -".yage-sequence-workspace.json".length);
   return file.endsWith(LEVEL_SUFFIX)
     ? file.slice(0, -LEVEL_SUFFIX.length)
     : file;
@@ -74,7 +76,18 @@ export function NewLevelDialog(props: NewLevelDialogProps): React.JSX.Element {
   // directory decide it, so a developer who types only a name never sees a
   // path that stopped following.
   const [typed, setTyped] = useState<string | undefined>();
-  const path = typed ?? levelPathFor(directory, name.trim());
+  const sequence =
+    props.request.kind === "new"
+      ? props.request.documentKind === "sequence"
+      : props.request.source.endsWith(".yage-sequence-workspace.json");
+  const path =
+    typed ??
+    (sequence
+      ? levelPathFor(directory, name.trim()).replace(
+          LEVEL_SUFFIX,
+          ".yage-sequence-workspace.json",
+        )
+      : levelPathFor(directory, name.trim()));
   const taken = props.levels.some((level) => level.path === path);
   const ready = name.trim() !== "" && path !== "" && !taken;
   const submit = (): void => {
@@ -91,7 +104,13 @@ export function NewLevelDialog(props: NewLevelDialogProps): React.JSX.Element {
     <div
       className="ye-confirm ye-confirm--ask"
       role="dialog"
-      aria-label={duplicating === undefined ? "New level" : "Duplicate level"}
+      aria-label={
+        duplicating === undefined
+          ? sequence
+            ? "New sequence"
+            : "New level"
+          : "Duplicate level"
+      }
       data-testid="level-dialog"
       // Escape leaves the dialog from anywhere inside it, the folder chooser
       // included.
@@ -103,7 +122,9 @@ export function NewLevelDialog(props: NewLevelDialogProps): React.JSX.Element {
     >
       <p>
         {duplicating === undefined
-          ? "A new level, with nothing in it."
+          ? sequence
+            ? "A new sequence with configurable preview actors."
+            : "A new level, with nothing in it."
           : `A copy of ${duplicating}.`}
       </p>
       {duplicating !== undefined && props.dirty ? (

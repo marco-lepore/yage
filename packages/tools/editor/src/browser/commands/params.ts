@@ -1,3 +1,4 @@
+import type { EditorDocument } from "../../shared/document/index.js";
 import {
   describeParams,
   type LevelCatalog,
@@ -6,7 +7,6 @@ import {
 import type {
   JsonObject,
   JsonValue,
-  LevelDocument,
   LevelPlacement,
   LevelPoint,
 } from "@yagejs/level/document";
@@ -117,7 +117,7 @@ export interface PointHandle {
  * a press on it moves cannot disagree.
  */
 export function pointHandles(
-  document: LevelDocument,
+  document: EditorDocument,
   placement: LevelPlacement,
   fields: readonly PointField[],
 ): readonly PointHandle[] {

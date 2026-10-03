@@ -29,6 +29,24 @@ export function isDocumentCommand(value: unknown): value is DocumentCommand {
   if (!isObject(value)) return false;
   if (!isNonEmptyString(value["commandId"])) return false;
   switch (value["kind"]) {
+    case "transaction":
+      return (
+        hasOnlyKeys(value, ["kind", "commandId", "commands"]) &&
+        Array.isArray(value.commands) &&
+        value.commands.every(
+          (child: unknown) =>
+            isObject(child) &&
+            child.kind !== "transaction" &&
+            isDocumentCommand(child),
+        )
+      );
+    case "set-sequence":
+      return (
+        hasOnlyKeys(value, ["kind", "commandId", "before", "after"]) &&
+        isSequenceState(value.before) &&
+        isSequenceState(value.after)
+      );
+
     case "set-poses": {
       if (!hasOnlyKeys(value, ["kind", "commandId", "poses"])) return false;
       const poses: unknown = value["poses"];
@@ -173,4 +191,14 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function isSequenceState(value: unknown): boolean {
+  return (
+    isObject(value) &&
+    hasOnlyKeys(value, ["sequence", "bindings"]) &&
+    isJsonValue(value.sequence) &&
+    isObject(value.bindings) &&
+    Object.values(value.bindings).every(isNonEmptyString)
+  );
 }

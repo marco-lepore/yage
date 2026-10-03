@@ -1,3 +1,26 @@
+import { sampledDocument } from "../store/sequence.js";
+import {
+  parentFrame,
+  parentWorld,
+  toWorld,
+  toLocal,
+  placementWorld,
+  WORLD_ORIGIN,
+  rotate,
+} from "../../shared/document/pose.js";
+export {
+  parentFrame,
+  parentWorld,
+  toWorld,
+  toLocal,
+  placementWorld,
+  pointToWorld,
+  WORLD_ORIGIN,
+  rotate,
+} from "../../shared/document/pose.js";
+import type { ParentFrame } from "../../shared/document/pose.js";
+export type { ParentFrame } from "../../shared/document/pose.js";
+import type { EditorDocument } from "../../shared/document/index.js";
 import type { PoseEdit } from "../../shared/commands/index.js";
 import {
   snappedAngle,
@@ -16,161 +39,9 @@ import { placementById } from "./graph.js";
 import type {
   JsonObject,
   JsonValue,
-  LevelDocument,
-  LevelPlacement,
   LevelPoint,
   LevelTransform,
 } from "@yagejs/level/document";
-
-/** The composed world rotation and scale of a placement's parent chain. */
-export interface ParentFrame {
-  readonly rotation: number;
-  readonly scale: LevelPoint;
-}
-
-const IDENTITY: ParentFrame = { rotation: 0, scale: { x: 1, y: 1 } };
-
-/** The transform a placement with no parent is relative to. */
-export const WORLD_ORIGIN: LevelTransform = {
-  position: { x: 0, y: 0 },
-  rotation: 0,
-  scale: { x: 1, y: 1 },
-};
-
-/**
- * What the engine's `Transform` composes onto a child, derived from the
- * document instead of from live entities: rotations add and scales multiply
- * up the parent chain (`packages/core/src/Transform.ts:167`). The editor has
- * to compute it the same way, or a dragged child lands somewhere other than
- * where the pointer left it.
- */
-export function parentFrame(
-  document: LevelDocument,
-  placementId: string,
-): ParentFrame {
-  const parentId = placementById(document).get(placementId)?.parent;
-  const world = parentWorld(document, parentId);
-  return world.rotation === 0 && world.scale.x === 1 && world.scale.y === 1
-    ? IDENTITY
-    : { rotation: world.rotation, scale: world.scale };
-}
-
-/**
- * The world transform of the placement a child would be relative to: the
- * composed chain above `parentId`, or the origin when there is no parent.
- *
- * A parent the document does not hold, or a chain that loops, is treated as
- * the point the walk stopped at; the document layer refuses both, so neither
- * reaches a document the store holds.
- */
-export function parentWorld(
-  document: LevelDocument,
-  parentId: string | undefined,
-): LevelTransform {
-  const byId = placementById(document);
-  // Root first, so each level composes onto the world above it.
-  const chain: LevelTransform[] = [];
-  const seen = new Set<string>();
-  let current = parentId;
-  while (current !== undefined && !seen.has(current)) {
-    seen.add(current);
-    const parent = byId.get(current);
-    if (!parent) break;
-    chain.unshift(parent.transform);
-    current = parent.parent;
-  }
-  let world = WORLD_ORIGIN;
-  for (const local of chain) world = toWorld(local, world);
-  return world;
-}
-
-/**
- * A local transform expressed in world space, given the world transform of
- * what it is relative to. Mirrors `Transform._recompute`: scale the local
- * position by the parent's world scale, rotate it by the parent's world
- * rotation, add the parent's world position; rotations add; scales multiply.
- */
-export function toWorld(
-  local: LevelTransform,
-  parent: LevelTransform,
-): LevelTransform {
-  const scaled = {
-    x: local.position.x * parent.scale.x,
-    y: local.position.y * parent.scale.y,
-  };
-  const rotated = rotate(scaled, parent.rotation);
-  return {
-    position: {
-      x: parent.position.x + rotated.x,
-      y: parent.position.y + rotated.y,
-    },
-    rotation: parent.rotation + local.rotation,
-    scale: {
-      x: parent.scale.x * local.scale.x,
-      y: parent.scale.y * local.scale.y,
-    },
-  };
-}
-
-/**
- * A world transform expressed relative to a parent's world transform — the
- * inverse of {@link toWorld}, and what `Transform`'s world setters do.
- *
- * A parent scaled to zero on an axis flattens everything under it onto its own
- * origin, so no world position or scale on that axis names one local value:
- * every local value produces the same world one. `keep` is the transform whose
- * components the answer takes there — the pose the caller already had, so a
- * placement under a flattened parent keeps the numbers it was authored with
- * instead of gaining an infinity the file cannot hold.
- */
-export function toLocal(
-  world: LevelTransform,
-  parent: LevelTransform,
-  keep: LevelTransform,
-): LevelTransform {
-  const offset = {
-    x: world.position.x - parent.position.x,
-    y: world.position.y - parent.position.y,
-  };
-  const rotated = rotate(offset, -parent.rotation);
-  return {
-    position: {
-      x: parent.scale.x === 0 ? keep.position.x : rotated.x / parent.scale.x,
-      y: parent.scale.y === 0 ? keep.position.y : rotated.y / parent.scale.y,
-    },
-    rotation: world.rotation - parent.rotation,
-    scale: {
-      x: parent.scale.x === 0 ? keep.scale.x : world.scale.x / parent.scale.x,
-      y: parent.scale.y === 0 ? keep.scale.y : world.scale.y / parent.scale.y,
-    },
-  };
-}
-
-/** A placement's own world transform, composed from the document. */
-export function placementWorld(
-  document: LevelDocument,
-  placement: LevelPlacement,
-): LevelTransform {
-  return toWorld(placement.transform, parentWorld(document, placement.parent));
-}
-
-/**
- * A point in a frame's own space, expressed in world space — {@link toWorld}
- * for a bare point, which has no rotation or scale of its own to compose.
- */
-export function pointToWorld(
-  local: LevelPoint,
-  frame: LevelTransform,
-): LevelPoint {
-  const rotated = rotate(
-    { x: local.x * frame.scale.x, y: local.y * frame.scale.y },
-    frame.rotation,
-  );
-  return {
-    x: frame.position.x + rotated.x,
-    y: frame.position.y + rotated.y,
-  };
-}
 
 /**
  * A world-space drag distance expressed in the placement's own local space,
@@ -401,15 +272,6 @@ export function translated(
   };
 }
 
-function rotate(point: LevelPoint, radians: number): LevelPoint {
-  const cos = Math.cos(radians);
-  const sin = Math.sin(radians);
-  return {
-    x: point.x * cos - point.y * sin,
-    y: point.x * sin + point.y * cos,
-  };
-}
-
 /** Which side of a placement's box a handle holds on each axis. */
 export interface BoxGrip {
   /** -1 for the side at lower `x`, 1 for the higher, 0 to leave the axis. */
@@ -509,7 +371,7 @@ export function gesturePoses(
   state: EditorState,
   gesture: EditGesture,
 ): readonly PoseEdit[] {
-  const document = state.document;
+  const document = sampledDocument(state);
   // Read at each move, like the modifiers: the toolbar switch and the
   // suspend key both take effect part-way through a drag.
   const lattice = latticeFor(state, gesture);
@@ -540,7 +402,7 @@ export function gesturePoses(
  * send a command, take an undo entry, and write a rounding into the file.
  */
 function posed(
-  document: LevelDocument,
+  document: EditorDocument,
   id: string,
   base: LevelTransform,
   gesture: Omit<EditGesture, "ids" | "base">,
@@ -602,7 +464,7 @@ function latticeFor(
  * moves is inside anything else it moves.
  */
 function about(
-  document: LevelDocument,
+  document: EditorDocument,
   id: string,
   base: LevelTransform,
   change: (world: LevelTransform) => LevelTransform,
@@ -894,7 +756,7 @@ export function draggedValue(state: EditorState, drag: ParamDrag): JsonValue {
  * the world point, which is the rule a dragged placement follows.
  */
 function draggedPoint(state: EditorState, drag: ParamDrag): JsonValue {
-  const document = state.document;
+  const document = sampledDocument(state);
   const placement = placementById(document).get(drag.id);
   const frame = placement ? placementWorld(document, placement) : WORLD_ORIGIN;
   const raw = {
