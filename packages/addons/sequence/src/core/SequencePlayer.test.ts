@@ -265,19 +265,23 @@ it.each(["cancel", "finish"] as const)(
 
 it("clears active callback tracking after restoration throws", () => {
   const p = player();
+  let fail = true;
+  let y = 18;
   const target = {
     properties: {
       x: sequenceProperty(
         { kind: "number" },
         () => 17,
         (value) => {
-          if (value === 17) throw new Error("restore failed");
+          if (value === 17 && fail) throw new Error("restore failed");
         },
       ),
       y: sequenceProperty(
         { kind: "number" },
         () => 18,
-        () => {},
+        (value) => {
+          y = value;
+        },
       ),
     },
     events: { cue: { payload: {}, dispatch() {} } },
@@ -286,4 +290,106 @@ it("clears active callback tracking after restoration throws", () => {
   expect(() => p.cancel("restore")).toThrow("restore failed");
   p.pause();
   expect(p.state).toBe("cancelled");
+  fail = false;
+  p.seek(3);
+  expect(y).toBe(3);
+  p.cancel("restore");
+  expect(y).toBe(18);
+});
+
+it.each(["explicit", "default", "after-pause"] as const)(
+  "does not restart finish restoration for %s cancellation",
+  (mode) => {
+    const p = player();
+    const log: string[] = [];
+    const target = {
+      properties: {
+        x: sequenceProperty(
+          { kind: "number" },
+          () => 17,
+          (value) => {
+            log.push(`x:${value}`);
+            if (value !== 17) return;
+            if (mode === "after-pause") p.pause();
+            if (mode === "default") p.cancel();
+            else p.cancel("restore");
+          },
+        ),
+        y: sequenceProperty(
+          { kind: "number" },
+          () => 18,
+          (value) => {
+            log.push(`y:${value}`);
+          },
+        ),
+      },
+      events: { cue: { payload: {}, dispatch() {} } },
+    };
+    p.play(clip(false), {
+      targets: { actor: target },
+      finish: "restore",
+      cancel: "restore",
+    });
+    log.length = 0;
+    p.advance(10);
+    expect(log).toEqual(["x:10", "y:10", "x:17"]);
+    expect(p.state).toBe("cancelled");
+  },
+);
+
+it("allows restoration of replacement playback inside an old restore callback", () => {
+  const p = player();
+  const log: string[] = [];
+  const replacement = {
+    properties: {
+      x: sequenceProperty(
+        { kind: "number" },
+        () => 27,
+        (v) => log.push(`new-x:${v}`),
+      ),
+      y: sequenceProperty(
+        { kind: "number" },
+        () => 28,
+        (v) => log.push(`new-y:${v}`),
+      ),
+    },
+    events: { cue: { payload: {}, dispatch() {} } },
+  };
+  const target = {
+    properties: {
+      x: sequenceProperty(
+        { kind: "number" },
+        () => 17,
+        (v) => {
+          log.push(`old-x:${v}`);
+          if (v !== 17) return;
+          p.play(clip(false), { targets: { actor: replacement } });
+          p.cancel("restore");
+        },
+      ),
+      y: sequenceProperty(
+        { kind: "number" },
+        () => 18,
+        (v) => log.push(`old-y:${v}`),
+      ),
+    },
+    events: { cue: { payload: {}, dispatch() {} } },
+  };
+  p.play(clip(false), { targets: { actor: target }, finish: "restore" });
+  log.length = 0;
+  p.advance(10);
+  expect(log).toEqual([
+    "old-x:10",
+    "old-y:10",
+    "old-x:17",
+    "new-x:0",
+    "new-y:0",
+    "new-x:27",
+    "new-y:28",
+  ]);
+  expect(p.state).toBe("cancelled");
+  log.length = 0;
+  p.seek(4);
+  p.cancel("restore");
+  expect(log).toEqual(["new-x:4", "new-y:4", "new-x:27", "new-y:28"]);
 });

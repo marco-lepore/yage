@@ -106,6 +106,7 @@ export class SequencePlayer {
   private clip: SequenceClip | undefined;
   private options: SequencePlayOptions | undefined;
   private captured: Captured[] = [];
+  private restoring: readonly Captured[] | undefined;
   private markers: readonly SequenceMarker[] = [];
   private cursor = 0;
   private revision = 0;
@@ -340,12 +341,20 @@ export class SequencePlayer {
     }
     this.playbackState = "cancelled";
     this.revision++;
-    if (policy === "restore") this.restore();
+    if (policy === "restore" && this.restoring !== this.captured)
+      this.restore();
   }
   private restore(): void {
     const revision = this.revision;
-    if (!this.checkTargets(this.options!.targets, revision)) return;
-    this.writeValues(this.captured, "restore", revision);
+    const previous = this.restoring;
+    // Captured values identify the playback, including across nested callbacks.
+    this.restoring = this.captured;
+    try {
+      if (!this.checkTargets(this.options!.targets, revision)) return;
+      this.writeValues(this.captured, "restore", revision);
+    } finally {
+      this.restoring = previous;
+    }
   }
 }
 export type SequencePropertyValue<D extends SequenceProperty> =
