@@ -16,6 +16,8 @@ import {
 
 export interface PortraitPresenterConfig {
   readonly layer: string;
+  /** Requested screen-layer order. Default 1105. */
+  readonly layerOrder?: number | undefined;
   /** Centre X for a left-side portrait (screen px). */
   readonly leftX: number;
   /** Centre X for a right-side portrait (screen px). */
@@ -46,7 +48,7 @@ export class PortraitPresenter implements AvatarPresenter {
   constructor(private readonly cfg: PortraitPresenterConfig) {}
 
   mount(scene: Scene): void {
-    ensureDialogueLayer(scene, this.cfg.layer, 1105);
+    ensureDialogueLayer(scene, this.cfg.layer, this.cfg.layerOrder ?? 1105);
     this.scene = scene;
   }
 
@@ -59,6 +61,10 @@ export class PortraitPresenter implements AvatarPresenter {
     }
     this.current = av;
     this.ensureSprite(av.ref);
+    this.transform?.setScale(
+      av.flipX ? -this.cfg.scale : this.cfg.scale,
+      this.cfg.scale,
+    );
     this.baseX = av.side === "right" ? this.cfg.rightX : this.cfg.leftX;
     this.baseY = this.cfg.y;
     this.transform?.setPosition(this.baseX, this.baseY);

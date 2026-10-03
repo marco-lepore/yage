@@ -63,6 +63,7 @@ interface Row {
 }
 
 export class BubbleChoicePresenter implements ChoicePresenter {
+  update(): void {}
   readonly pointerSpace = "world" as const;
 
   private scene?: Scene | undefined;

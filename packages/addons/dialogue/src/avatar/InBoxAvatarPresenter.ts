@@ -39,6 +39,8 @@ export interface InBoxAvatarConfig {
   /** Render layer (screen-space) — e.g. `DIALOGUE_LAYER_AVATAR`, which sits
    *  between the frame and the text so the portrait tucks behind the box edge. */
   readonly layer: string;
+  /** Requested screen-layer order. Default 1105. */
+  readonly layerOrder?: number | undefined;
   /** Width (px) of the reserved avatar column; the body text reflows past it. */
   readonly width: number;
   /** Gap (px) between the avatar column and the reflowed text. Default 8. */
@@ -54,7 +56,7 @@ export interface InBoxAvatarConfig {
     readonly radius?: number;
   };
   /** Vertical alignment in the box: `top` (level with the body text) or
-   *  `center` (default — centred in the frame, so it sinks in a grown choice box). */
+   *  `center` (default — centred below the nameplate and above the caret footer). */
   readonly align?: "top" | "center";
 }
 
@@ -95,7 +97,8 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
   }
 
   mount(scene: Scene): void {
-    ensureDialogueLayer(scene, this.cfg.layer, 1105);
+    this.layout.mount(scene);
+    ensureDialogueLayer(scene, this.cfg.layer, this.cfg.layerOrder ?? 1105);
     this.scene = scene;
   }
 
@@ -125,12 +128,22 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
     this.side = meta?.["side"] === "right" ? "right" : "left";
     if (visible && portrait !== undefined) {
       this.ensureSprite(portrait);
+      const scale = this.cfg.scale ?? 1;
+      this.transform?.setScale(
+        meta?.["flipX"] === true ? -scale : scale,
+        scale,
+      );
       this.applyTexture(portrait);
       this.shown = true;
       // Reserve the column (+ gap) so the body text reflows past the portrait.
       this.layout.setInset(this.insetKey, {
         side: this.side,
         width: this.cfg.width + (this.cfg.gap ?? 8),
+        height: Math.max(
+          this.cfg.background ? this.cfg.width : 0,
+          (this.sprite?.sprite.texture.height ?? this.cfg.width) *
+            Math.abs(scale),
+        ),
       });
     } else {
       this.shown = false;
@@ -177,13 +190,19 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
         ? frame.x + pad + half
         : frame.x + frame.width - pad - half;
     // top: align the portrait's top with the body text top (below the nameplate);
-    // center: centre it in the frame (default).
+    // center: centre it in the content area, clear of the nameplate and caret.
+    const region = this.layout.textRegion();
     const y =
       this.cfg.align === "top"
-        ? this.layout.textRegion().y + half
-        : frame.y + frame.height / 2;
+        ? region.y +
+          (this.sprite!.sprite.texture.height * Math.abs(this.cfg.scale ?? 1)) /
+            2
+        : region.y + region.height / 2;
     this.transform.setPosition(x, y);
-    this.bgTransform?.setPosition(x, y);
+    this.bgTransform?.setPosition(
+      x,
+      this.cfg.align === "top" ? region.y + half : y,
+    );
   }
 
   private applyVisibility(): void {

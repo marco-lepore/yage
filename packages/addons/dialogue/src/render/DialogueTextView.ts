@@ -68,6 +68,8 @@ export interface DialogueTextConfig extends FontConfig {
   readonly charsPerSec: number;
   /** Render layer name (screen-space). */
   readonly layer: string;
+  /** Requested screen-layer order. Default 1110. */
+  readonly layerOrder?: number | undefined;
   /** Resting text region (screen px). Bubbles override per line via `setBox`. */
   readonly box?: {
     readonly x: number;
@@ -170,14 +172,31 @@ export class DialogueTextView implements TextPresenter {
   }
 
   protected ensureLayer(scene: Scene): void {
-    ensureDialogueLayer(scene, this.cfg.layer, 1110);
+    ensureDialogueLayer(scene, this.cfg.layer, this.cfg.layerOrder ?? 1110);
   }
 
   /** Top-left of the text region, in screen px, plus the wrap width. */
   setBox(x: number, y: number, width: number): void {
+    for (const [name, value] of Object.entries({ x, y, width })) {
+      if (!Number.isFinite(value) || (name === "width" && value < 0)) {
+        throw new Error(
+          `DialogueTextView.setBox: ${name} must be finite${name === "width" ? " and nonnegative" : ""}, got ${value}`,
+        );
+      }
+    }
+    const rewrap = this.wrapWidth !== width;
     this.boxX = x;
     this.boxY = y;
     this.wrapWidth = width;
+    if (rewrap && this.parsed) {
+      this.line?.entity.destroy();
+      this.line = undefined;
+      this.shownCount = -1;
+      if (this.parsed.length > 0) this.buildLine(this.parsed);
+      this.applyReveal();
+      this.reposition();
+      this.applyHidden();
+    }
   }
 
   /**
@@ -187,6 +206,7 @@ export class DialogueTextView implements TextPresenter {
    */
   setOrigin(provider: (() => { x: number; y: number }) | undefined): void {
     this.originProvider = provider;
+    this.reposition();
   }
 
   /** TextChannel entry point: render + reveal a fully-resolved line. */

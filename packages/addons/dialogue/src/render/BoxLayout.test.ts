@@ -11,7 +11,7 @@ import type { PresentedLine } from "../core/session.js";
  * renderer; prompt-less lines so nothing measures text.
  */
 const CFG: BoxLayoutConfig = {
-  box: { marginX: 32, marginY: 24, height: 160 },
+  box: { marginX: 32, marginY: 24, minHeight: 160 },
   padding: 16,
   nameSize: 16,
   textSize: 18,
@@ -19,7 +19,7 @@ const CFG: BoxLayoutConfig = {
   choiceGap: 6,
   fontFamily: "sans-serif",
 };
-const BODY_OFFSET = CFG.nameSize + 4; // nameplate band + gap (TEXT_GAP)
+const BODY_OFFSET = 0; // Speakerless lines have no nameplate band.
 
 const line = (over: Partial<PresentedLine> = {}): PresentedLine => ({
   text: { runs: [], tokens: [], length: 0 },
@@ -63,7 +63,7 @@ describe("BoxLayout — per-line position", () => {
     owner.layoutLine(line());
     const bottomFrame = owner.frameRect();
     const bottomText = owner.textRegion();
-    expect(bottomText.y).toBe(bottomFrame.y + 16 + BODY_OFFSET); // below the band
+    expect(bottomText.y).toBe(bottomFrame.y + 16 + BODY_OFFSET); // top padding
 
     owner.layoutLine(line({ meta: { position: "top" } }));
     const topFrame = owner.frameRect();
@@ -150,8 +150,8 @@ describe("BoxLayout — unified panel grow", () => {
     const rects = owner.layoutChoicePanel(rowHeights);
     const f = owner.frameRect();
 
-    // content = padding(16) + band(20) + rows(200) + padding(16) = 252 > base 160
-    expect(f.height).toBe(252);
+    // content = padding(16) + rows(200) + padding(16) = 232 > base 160
+    expect(f.height).toBe(232);
     expect(f.y + f.height).toBe(600 - 24); // bottom edge pinned (bottom-anchored)
 
     // Nameplate + caret follow the grown frame (one panel).
@@ -160,7 +160,7 @@ describe("BoxLayout — unified panel grow", () => {
       f.y + f.height - 16 - 5 - 1,
     );
 
-    // Rows sit inside, contiguous, below the band, last pinned to the inner bottom.
+    // Rows start at the top padding and fill the content height.
     expect(rects[0]!.y).toBe(f.y + 16 + BODY_OFFSET);
     for (let i = 0; i < rects.length - 1; i++) {
       expect(rects[i]!.y + rects[i]!.height).toBe(rects[i + 1]!.y);

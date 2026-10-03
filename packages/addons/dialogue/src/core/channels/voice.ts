@@ -36,7 +36,7 @@ export interface VoiceChannelOptions {
    *
    *   play: (id, onEnded) => {
    *     const sound = audio.play(id, { onEnd: onEnded });
-   *     return { stop: () => sound.stop(), pause: () => sound.pause(), resume: () => sound.resume() };
+   *     return { stop: () => sound.stop(), pause: () => { sound.paused = true; }, resume: () => { sound.paused = false; } };
    *   }
    */
   play(id: string, onEnded: () => void): VoiceHandle;
