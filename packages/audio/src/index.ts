@@ -21,6 +21,7 @@ export type {
   SoundComponentOptions,
   SoundRef,
   SoundRequestHandle,
+  SoundRequestReleaseOptions,
 } from "./types.js";
 
 // Asset factories

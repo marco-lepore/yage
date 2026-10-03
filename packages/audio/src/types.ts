@@ -54,12 +54,17 @@ export interface AudioCrossfadeOptions extends AudioPlayOptions {
   easing?: EasingFunction;
 }
 
+export interface SoundRequestReleaseOptions {
+  /** Seconds to fade the last owner's sound to silence. Finite and non-negative. Default: 0. */
+  fadeOut?: number;
+}
+
 /** One ownership request for playback shared by alias and channel. */
 export interface SoundRequestHandle {
-  /** True while this request still owns the shared playback. */
+  /** True while this request owns playback or its final fade is still playing. */
   readonly active: boolean;
-  /** Release only this request. Idempotent. */
-  release(): void;
+  /** Release only this request. Idempotent. A fade affects only the last owner. */
+  release(options?: SoundRequestReleaseOptions): void;
 }
 
 export interface SoundComponentOptions {

@@ -82,7 +82,7 @@ const request = audio.requestOnce(CoinSfx, opts); // one releasable request for 
 audio.playRandom([CoinSfx, "assets/step.wav"], opts); // random pick
 
 request.active; // boolean
-request.release(); // release only this request
+request.release({ fadeOut: 0.02 }); // fade only if this is the final owner
 
 // SoundHandle
 handle.playing; // boolean
@@ -181,6 +181,18 @@ only when no requests or `playOnce` owner remain. Natural completion makes all
 request handles inactive and calls `onEnd` for each request that was still
 active. A released request receives no callback. Stopping the shared
 `SoundHandle`, its channel, or all audio makes every request inactive.
+
+`request.release({ fadeOut: seconds })` accepts `SoundRequestReleaseOptions`.
+`fadeOut` must be finite and non-negative; omitting it or passing zero stops
+immediately when the final owner releases. A positive fade requires an installed
+`AudioPlugin`. Other requests and `playOnce` owners keep the recording playing
+at its current volume. Only the final request's fade applies.
+
+The final request remains `active` through its fade, then becomes inactive when
+the sound stops or ends. A released request receives no `onEnd` callback,
+including if the recording ends during its fade. A new `requestOnce` or
+`playOnce` call during the fade starts a fresh recording. Channel controls still
+apply to both recordings.
 
 ## Runtime sounds
 

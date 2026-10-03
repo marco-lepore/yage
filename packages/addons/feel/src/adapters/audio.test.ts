@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMockEntity } from "@yagejs/core";
+import { createMockEntity, RandomKey, createRandomService } from "@yagejs/core";
 import {
   AudioManagerKey,
   type AudioManager,
@@ -12,13 +12,141 @@ import { feelSound, type FeelSoundOptions } from "./audio.js";
 vi.mock("@yagejs/audio", () => ({ AudioManagerKey: {} }));
 
 describe("feelSound", () => {
+  it.each(["release", "stop", "destroy", "disable"] as const)(
+    "lets a sound finish after %s when its lifetime is sound",
+    (action) => {
+      const { entity, scene } = createMockEntity();
+      const sound = createSoundHandle();
+      const onEnd = vi.fn();
+      const play = vi.fn(() => sound.handle);
+      scene._registerScoped(AudioManagerKey, {
+        play,
+      } as unknown as AudioManager);
+      const feel = entity.add(
+        new Feel({
+          confirm: feelSound({ alias: "confirm", lifetime: "sound", onEnd }),
+        }),
+      );
+      const playback = feel.play("confirm")!;
+      if (action === "destroy") entity.destroy();
+      else if (action === "disable") feel.enabled = false;
+      else playback[action]();
+      expect(sound.stop).not.toHaveBeenCalled();
+      if (action === "release") expect(playback.active).toBe(true);
+      else expect(playback.active).toBe(false);
+      sound.end();
+      const options = (
+        play.mock.calls[0] as unknown as [string, { onEnd(): void }]
+      )[1];
+      options.onEnd();
+      feel.update(0);
+      expect(onEnd).toHaveBeenCalledOnce();
+      expect(playback.active).toBe(false);
+    },
+  );
+
+  it("retains a shared request with sound lifetime after owner destruction", () => {
+    const { entity, scene } = createMockEntity();
+    const request = createSoundRequest();
+    scene._registerScoped(AudioManagerKey, {
+      requestOnce: () => request.handle,
+    } as unknown as AudioManager);
+    entity
+      .add(
+        new Feel({
+          confirm: feelSound({
+            alias: "confirm",
+            once: true,
+            lifetime: "sound",
+          }),
+        }),
+      )
+      .play("confirm");
+    entity.destroy();
+    expect(request.release).not.toHaveBeenCalled();
+    expect(request.handle.active).toBe(true);
+  });
+
+  it("fades on release only once and waits for the tail", () => {
+    const { entity, scene } = createMockEntity();
+    const sound = createSoundHandle();
+    const fadeTo = vi.fn();
+    scene._registerScoped(AudioManagerKey, {
+      play: () => Object.assign(sound.handle, { fadeTo }),
+    } as unknown as AudioManager);
+    const feel = entity.add(
+      new Feel({ reel: feelSound({ alias: "reel", fadeOut: 0.02 }) }),
+    );
+    const playback = feel.play("reel")!;
+    playback.release();
+    expect(playback.active).toBe(true);
+    playback.stop();
+    expect(playback.active).toBe(false);
+    expect(fadeTo).toHaveBeenCalledExactlyOnceWith(0, {
+      duration: 0.02,
+      stopOnComplete: true,
+    });
+    expect(sound.stop).not.toHaveBeenCalled();
+  });
+
+  it("passes the fade to shared request ownership", () => {
+    const { entity, scene } = createMockEntity();
+    const request = createSoundRequest();
+    scene._registerScoped(AudioManagerKey, {
+      requestOnce: () => request.handle,
+    } as unknown as AudioManager);
+    const feel = entity.add(
+      new Feel({
+        reel: feelSound({ alias: "reel", once: true, fadeOut: 0.02 }),
+      }),
+    );
+    feel.play("reel")!.release();
+    expect(request.release).toHaveBeenCalledWith({ fadeOut: 0.02 });
+  });
+
+  it("chooses aliases from the scene generator for every play", () => {
+    const { entity, scene } = createMockEntity();
+    const seed = 851;
+    scene._registerScoped(RandomKey, createRandomService(seed));
+    const expected = createRandomService(seed);
+    const aliases = ["hurt-1", "hurt-2", "hurt-3"] as const;
+    const requestOnce = vi.fn(() => createSoundRequest().handle);
+    scene._registerScoped(AudioManagerKey, {
+      requestOnce,
+    } as unknown as AudioManager);
+    const feel = entity.add(
+      new Feel({ hurt: feelSound({ alias: aliases, once: true }) }),
+    );
+    for (let i = 0; i < 8; i++) {
+      feel.play("hurt");
+      expect(requestOnce).toHaveBeenLastCalledWith(
+        expected.pick(aliases),
+        expect.any(Object),
+      );
+    }
+  });
+
+  it("rejects an empty alias list", () => {
+    expect(() => feelSound({ alias: [] })).toThrow(/alias/);
+  });
+
+  it.each([-1, NaN, Infinity])("rejects fadeOut %s", (fadeOut) => {
+    expect(() => feelSound({ alias: "reel", fadeOut })).toThrow(/fadeOut/);
+  });
+
+  it("rejects a fade for a sound that must finish naturally", () => {
+    expect(() =>
+      feelSound({ alias: "confirm", lifetime: "sound", fadeOut: 0.02 }),
+    ).toThrow(/lifetime/);
+  });
+
   it("rejects looping audio because a zero-duration cue cannot own its lifetime", () => {
     const options: FeelSoundOptions & { loop: boolean } = {
       alias: "ambience",
       loop: true,
     };
 
-    expect(() => feelSound(options)).toThrow(/looping audio/);
+    expect(() => feelSound(options)).toThrow(/feelLoop/);
   });
 
   it("accepts an explicit false loop value from shared audio options", () => {
