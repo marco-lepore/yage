@@ -25,6 +25,13 @@ interface ProbeData {
   nameY: number;
   textX: number;
   avatarPresent: boolean;
+  frameHeight: number;
+  caretOverlapsText: boolean;
+  caretVisible: boolean;
+  frameY: number;
+  bodyOffset: number;
+  firstChoiceY: number;
+  firstChoiceHit: number;
 }
 
 /** The controller methods the fixture exposes on `window.__dialogue__`. */
@@ -34,6 +41,7 @@ interface HostHandle {
   moveSelection(delta: number): void;
   setAutoAdvance(seconds: number | null): void;
   setHidden(hidden: boolean): void;
+  setPaused(paused: boolean): void;
   play(script: unknown): void;
 }
 
@@ -402,4 +410,137 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     expect(withAvatar.avatarPresent).toBe(true);
     expect(withAvatar.textX).toBeGreaterThan(noAvatar.textX);
   });
+});
+
+test("box fits the full line before reveal and drops the empty name band", async ({
+  page,
+}) => {
+  await gotoFixture(page, "/dialogue-addon.html");
+  await waitForClock(page);
+  await page.evaluate(() => {
+    (window as unknown as { __dialogue__: HostHandle }).__dialogue__.play({
+      id: "fit",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "say",
+              text: "A long paragraph wraps across the box. ".repeat(12),
+            },
+            { kind: "say", text: "Short." },
+          ],
+        },
+      },
+    });
+  });
+  await stepFrames(page, 1);
+  const initial = (await probe(page))!;
+  expect(initial.bodyOffset).toBe(16);
+  await stepFrames(page, 12);
+  expect((await probe(page))!.frameHeight).toBe(initial.frameHeight);
+  await advanceUntilLine(page, "Short.");
+  await stepFrames(page, 1);
+  const short = (await probe(page))!;
+  expect(short.frameHeight).toBeLessThan(initial.frameHeight);
+  expect(short.bodyOffset).toBe(16);
+});
+
+test("live viewport and inset changes move choice labels and hit targets together", async ({
+  page,
+}) => {
+  await gotoFixture(page, "/dialogue-addon.html");
+  await waitForClock(page);
+  await advanceUntilChoosing(page);
+  const before = (await probe(page))!;
+  expect(before.firstChoiceHit).toBe(0);
+  await page.evaluate(() => {
+    const layout = (
+      window as unknown as {
+        __dialogueLayout__: {
+          setViewport(w: number, h: number): void;
+          setInset(key: string, inset: { side: "left"; width: number }): void;
+        };
+      }
+    ).__dialogueLayout__;
+    layout.setViewport(500, 450);
+    layout.setInset("test-portrait", { side: "left", width: 100 });
+  });
+  await stepFrames(page, 1);
+  const after = (await probe(page))!;
+  expect(after.firstChoiceY).not.toBe(before.firstChoiceY);
+  expect(after.firstChoiceY).toBeGreaterThan(after.frameY);
+  expect(after.firstChoiceHit).toBe(0);
+  expect(after.textX).toBe(before.textX + 100);
+});
+
+test("paused body text follows height-only viewport and avatar changes", async ({
+  page,
+}) => {
+  await gotoFixture(page, "/dialogue-addon.html");
+  await waitForClock(page);
+  await stepFrames(page, 2);
+  const before = (await probe(page))!;
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      __dialogue__: HostHandle;
+      __dialogueLayout__: {
+        setViewport(w: number, h: number): void;
+      };
+    };
+    w.__dialogue__.setPaused(true);
+    w.__dialogueLayout__.setViewport(800, 450);
+  });
+  await stepFrames(page, 1);
+  expect((await probe(page))!.bodyOffset).toBe(before.bodyOffset);
+  await page.evaluate(() => {
+    (
+      window as unknown as {
+        __dialogueLayout__: {
+          setInset(
+            key: string,
+            inset: { side: "left"; width: number; height: number },
+          ): void;
+        };
+      }
+    ).__dialogueLayout__.setInset("tall-portrait", {
+      side: "left",
+      width: 0,
+      height: 250,
+    });
+  });
+  await stepFrames(page, 1);
+  const after = (await probe(page))!;
+  expect(after.bodyOffset).toBe(before.bodyOffset);
+  expect(after.tickCount).toBe(before.tickCount);
+});
+
+test("compact box keeps the continue caret clear of a full final line", async ({
+  page,
+}) => {
+  await gotoFixture(page, "/dialogue-addon.html");
+  await waitForClock(page);
+  await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d")!;
+    ctx.font = "18px sans-serif";
+    const word = "l";
+    const width = (
+      window as unknown as { __dialogueLayout__: { contentWidth(): number } }
+    ).__dialogueLayout__.contentWidth();
+    const length = Math.floor(width / ctx.measureText(word).width);
+    (window as unknown as { __dialogue__: HostHandle }).__dialogue__.play({
+      id: "caret",
+      start: "a",
+      nodes: {
+        a: { id: "a", steps: [{ kind: "say", text: word.repeat(length) }] },
+      },
+    });
+  });
+  await advance(page);
+  await stepFrames(page, 1);
+  const p = (await probe(page))!;
+  expect(p.caretVisible).toBe(true);
+  expect(p.caretOverlapsText).toBe(false);
 });

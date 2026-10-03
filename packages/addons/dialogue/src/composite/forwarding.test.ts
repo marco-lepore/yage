@@ -126,6 +126,10 @@ class RecText implements TextPresenter {
 }
 
 class RecChoice implements ChoicePresenter {
+  elapsed = 0;
+  update(dt: number): void {
+    this.elapsed += dt;
+  }
   visibles: boolean[] = [];
   presents = 0;
   clears = 0;
@@ -472,5 +476,21 @@ describe("composite matrix — text reveal seam", () => {
       { kind: "tick", index: 0 },
       { kind: "marker", marker, viaSkip: false },
     ]);
+  });
+});
+
+describe("composite choice clock", () => {
+  it("updates only the active choice presenter and stops after clear", () => {
+    const box = new RecChoice();
+    const bubble = new RecChoice();
+    const c = new CompositeChoicePresenter(box, bubble);
+    c.present([], { view: "box" });
+    c.update(0.2);
+    c.present([], { view: "bubble", speaker: { id: "npc" } });
+    c.update(0.3);
+    c.clear();
+    c.update(1);
+    expect(box.elapsed).toBe(0.2);
+    expect(bubble.elapsed).toBe(0.3);
   });
 });

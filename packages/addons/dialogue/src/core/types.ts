@@ -441,6 +441,8 @@ export interface AvatarRef {
   readonly expressions?: Record<string, string>;
   /** Side the portrait sits on. Default "left". */
   readonly side?: "left" | "right";
+  /** Mirror portrait artwork horizontally. Default false; independent of side. */
+  readonly flipX?: boolean;
 }
 
 /**

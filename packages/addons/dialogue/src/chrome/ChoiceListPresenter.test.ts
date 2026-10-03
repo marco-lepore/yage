@@ -10,14 +10,14 @@ import { stackChoiceRows } from "../render/BoxLayout.js";
  */
 const BOX = { x: 32, y: 360, width: 736, height: 160 };
 const PADDING = 16;
-const BOTTOM = BOX.y + BOX.height - PADDING; // 504
+const TOP = BOX.y + PADDING;
 
 describe("stackChoiceRows", () => {
-  it("anchors the last row at the box bottom and grows upward", () => {
+  it("anchors the first row at the content top", () => {
     const rects = stackChoiceRows([22, 22, 22], BOX, PADDING);
     const last = rects[rects.length - 1]!;
-    expect(last.y + last.height).toBe(BOTTOM);
-    // Rows are ordered top→bottom by index and grow upward from the anchor.
+    expect(last.y + last.height).toBe(TOP + 66);
+    // Rows follow content order.
     expect(rects[0]!.y).toBeLessThan(rects[1]!.y);
     expect(rects[1]!.y).toBeLessThan(rects[2]!.y);
   });
@@ -47,7 +47,7 @@ describe("stackChoiceRows", () => {
     const rects = stackChoiceRows(new Array(9).fill(22), BOX, PADDING);
     expect(rects).toHaveLength(9);
     expect(rects.every((r) => r.y >= 0)).toBe(true); // all on screen
-    expect(rects[8]!.y + rects[8]!.height).toBe(BOTTOM); // bottom-anchored
+    expect(rects[0]!.y).toBe(TOP);
     // No two rows overlap.
     for (let i = 0; i < rects.length - 1; i++) {
       expect(rects[i]!.y + rects[i]!.height).toBeLessThanOrEqual(
@@ -56,16 +56,16 @@ describe("stackChoiceRows", () => {
     }
   });
 
-  it("a list taller than the screen stays bottom-anchored and non-overlapping (spills off the top)", () => {
+  it("a list taller than the screen stays top-aligned and non-overlapping", () => {
     const tightBox = { x: 0, y: 0, width: 400, height: 100 };
     const rects = stackChoiceRows(new Array(10).fill(22), tightBox, 10);
-    // The bottom row stays pinned to the box bottom.
-    expect(rects[9]!.y + rects[9]!.height).toBe(tightBox.height - 10);
+    // The first row starts at the padded top.
+    expect(rects[0]!.y).toBe(10);
     // Rows stay contiguous (never pile up) even when they overflow.
     for (let i = 0; i < rects.length - 1; i++) {
       expect(rects[i]!.y + rects[i]!.height).toBe(rects[i + 1]!.y);
     }
-    // The excess spills off the top rather than overlapping at y = 0.
-    expect(rects[0]!.y).toBeLessThan(0);
+    // Oversized lists continue below the frame.
+    expect(rects[9]!.y + rects[9]!.height).toBeGreaterThan(tightBox.height);
   });
 });

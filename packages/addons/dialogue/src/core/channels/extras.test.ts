@@ -45,6 +45,7 @@ class StubText implements TextChannel {
 /** A no-op choice channel — these tests never enter a choice except the one
  *  that checks `present` is NOT fanned out for choice prompts. */
 class StubChoices implements ChoiceChannel {
+  update(): void {}
   present(): void {}
   highlight(): void {}
   setVisible(): void {}

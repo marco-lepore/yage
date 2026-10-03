@@ -11,7 +11,7 @@ import type { PresentedLine } from "../core/session.js";
  * the reflow seam works without addon internals.
  */
 const CFG: BoxLayoutConfig = {
-  box: { marginX: 32, marginY: 24, height: 160 },
+  box: { marginX: 32, marginY: 24, minHeight: 160 },
   padding: 16,
   nameSize: 16,
   textSize: 18,

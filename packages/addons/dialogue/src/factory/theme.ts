@@ -35,9 +35,8 @@ export interface BoxBounds {
   /** Vertical margin from the anchored screen edge — the bottom by default, the
    *  top for `meta.position: top` (the centred position ignores it). */
   readonly marginY: number;
-  /** Box height (virtual px) — sized to hold the body text, not the screen, so
-   *  it holds the same number of lines at any resolution. */
-  readonly height: number;
+  /** Minimum frame height in virtual pixels. Content can grow it up to the viewport. */
+  readonly minHeight: number;
 }
 
 /** Continue-caret styling. The caret is the blinking "press to advance"
@@ -115,8 +114,12 @@ export interface DialogueTheme {
   // --- Render layers (screen-space) ---
   /** Layer for the frame + selection highlight + continue caret. */
   readonly layerFrame: string;
+  /** Requested screen-layer order. Default 1100. */
+  readonly layerFrameOrder?: number | undefined;
   /** Layer for all text (name, body, choice labels). */
   readonly layerText: string;
+  /** Requested screen-layer order. Default 1110. */
+  readonly layerTextOrder?: number | undefined;
 
   // --- Behaviour ---
   /** Hold-to-fast-forward multiplier. Default 4 (applied by the session). */

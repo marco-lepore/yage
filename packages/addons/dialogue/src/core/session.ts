@@ -17,7 +17,7 @@
  * knowing about either.
  */
 
-import type { RandomService } from "@yagejs/core";
+import type { ErrorBoundary, RandomService } from "@yagejs/core";
 
 import { loadScript } from "./formats/canonical.js";
 import type { DialogueExtraChannel } from "./channels/types.js";
@@ -175,6 +175,8 @@ export interface ChoiceContext {
  *  come back through `onChoiceChosen(position)`. `context` carries the choice's
  *  view/speaker/prompt so a composite presenter can route (box vs bubble). */
 export interface ChoiceChannel {
+  /** Advance presentation in seconds. Conversation pause freezes this clock. */
+  update(dt: number): void;
   present(choices: readonly PresentedChoice[], context?: ChoiceContext): void;
   highlight(position: number): void;
   /** Show or hide the choice list without clearing it — state-preserving,
@@ -278,6 +280,8 @@ export interface DialogueChannels {
 }
 
 export interface DialogueSessionOptions {
+  /** Engine callback attribution, supplied by DialogueController. */
+  readonly errorBoundary?: ErrorBoundary | undefined;
   readonly i18n?: I18nAdapter | undefined;
   /** Hold-to-fast-forward multiplier. Default 4. */
   readonly skipMultiplier?: number | undefined;
@@ -803,12 +807,25 @@ export class DialogueSession {
   }
 
   update(dt: number): void {
+    if (!Number.isFinite(dt) || dt < 0) {
+      throw new Error(
+        `DialogueSession.update: dt must be finite and nonnegative, got ${dt}`,
+      );
+    }
     // Pause freezes everything dt-driven for free: bail before any channel
     // update so the typewriter, caret blink, avatar anim, and the auto-advance
     // clock all halt — and crucially WITHOUT touching lineBlocked/advancing/
     // autoTimer, so state resumes intact.
     if (this.paused) return;
     this.channels.text.update(dt);
+    const updateChoices = (): void => this.channels.choices.update(dt);
+    if (this.opts.errorBoundary) {
+      this.opts.errorBoundary.wrapCallback(updateChoices, {
+        kind: "dialogue choices.update",
+      });
+    } else {
+      updateChoices();
+    }
     this.channels.chrome?.update(dt);
     this.channels.avatar?.update(dt);
     for (const ch of this.extras) {

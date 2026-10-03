@@ -1,43 +1,19 @@
-/**
- * BoxLayout — the single per-line geometry owner for the bottom-box coordinate
- * model (the box half of the "layout owner"). One instance is shared by the box
- * chrome, the box text view, the box choice list, and an in-box avatar
- * presenter, so the **frame, nameplate, prompt, and choice rows move and grow as
- * ONE coherent panel** instead of each presenter holding its own copy.
- *
- * It owns three things the presenters would otherwise compute independently:
- *
- *  - **Per-line position** — `meta.position` (`top|center|bottom`) places the
- *    frame within the design viewport (the renderer's `virtualSize`, bound at
- *    mount via {@link setViewport}); the frame AND the text region move together.
- *    The box is a full-width bottom bar resolved from viewport-relative margins,
- *    so the default presenter works at any resolution with no override.
- *  - **Unified panel grow** — for a choice, the frame grows to fit the nameplate
- *    + prompt + rows; the row rects are stacked inside it (see
- *    `stackChoiceRows`). Growing is bottom-anchored at "bottom", so the frame top
- *    rises and the chrome/nameplate/prompt follow.
- *  - **Inset registry** — a presenter reserves a left/right column; the text
- *    region subtracts it so the body text reflows around it (the reference
- *    in-box avatar registers one).
- *
- * Presenters call {@link onChange} to re-place when the committed frame changes
- * (a choice grows the frame after the chrome/text already presented).
- */
-
-import { measureWrappedText } from "@yagejs/renderer";
+import { ErrorBoundaryKey, type ErrorBoundary, type Scene } from "@yagejs/core";
+import { measureWrappedText, RendererKey } from "@yagejs/renderer";
 import type { BoxBounds } from "../factory/theme.js";
 import type { PresentedLine } from "../core/session.js";
 
-/** RPG-Maker-style vertical placement of the box within the field. */
 export type BoxPosition = "top" | "center" | "bottom";
 
-/** A reserved column the body text reflows around (the avatar-reflow seam). */
+/** A column reserved for an avatar beside the text. */
 export interface TextInset {
   readonly side: "left" | "right";
   readonly width: number;
+  /** Minimum content height needed by this inset, in virtual pixels. */
+  readonly height?: number;
 }
 
-/** A laid-out rectangle (screen px). */
+/** A rectangle in virtual screen pixels. */
 export interface Rect {
   readonly x: number;
   readonly y: number;
@@ -45,91 +21,87 @@ export interface Rect {
   readonly height: number;
 }
 
-/** A choice row's screen rect — shared by placement, highlight, and hit-test. */
-export interface ChoiceRowRect {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
+/** Shared geometry for a choice label, highlight, and pointer target. */
+export type ChoiceRowRect = Rect;
 
 export interface BoxLayoutConfig {
-  /** Viewport-relative box bounds (margins + height); the frame is resolved
-   *  against the design viewport set by {@link BoxLayout.setViewport} at mount. */
   readonly box: BoxBounds;
   readonly padding: number;
-  /** Nameplate band height (theme.nameSize) — body text starts below it. */
+  /** Nameplate height. Zero reserves no nameplate space. */
   readonly nameSize: number;
-  /** Body text metrics — for measuring an optional choice prompt's height. */
   readonly textSize: number;
   readonly lineHeight: number;
-  /** Vertical gap between choice rows (for the grown panel). */
   readonly choiceGap: number;
   readonly fontFamily?: string | undefined;
   readonly bitmapFont?: string | undefined;
 }
 
-/** Gap (px) between the nameplate band and the body text — matches the box text
- *  region the box dialogue used before the owner existed. */
 const TEXT_GAP = 4;
 
-/**
- * Stack choice-row slots bottom-up inside `box`, growing **upward** from the
- * bottom edge. `rowHeights` are full slot heights (wrapped text height + gap).
- * Rows are always contiguous and non-overlapping. Inside a frame the owner grew
- * to fit, the topmost row lands right below the prompt; in a too-tall menu the
- * excess spills off the top (the soft-cap advisory flags that). The single
- * source of row geometry: placement, highlight, and hit-test all consume it.
- */
+/** Stack full row slots from the padded top of a content rectangle. */
 export function stackChoiceRows(
   rowHeights: readonly number[],
   box: Rect,
   padding: number,
 ): ChoiceRowRect[] {
-  const x = box.x + padding;
-  const width = box.width - 2 * padding;
-  const rects: ChoiceRowRect[] = [];
-  let bottom = box.y + box.height - padding;
-  for (let i = rowHeights.length - 1; i >= 0; i--) {
-    const h = rowHeights[i] ?? 0;
-    bottom -= h;
-    rects[i] = { x, y: bottom, width, height: h };
-  }
-  return rects;
+  let y = box.y + padding;
+  return rowHeights.map((height) => {
+    finiteNonnegative("stackChoiceRows", "row height", height);
+    const row = {
+      x: box.x + padding,
+      y,
+      width: box.width - 2 * padding,
+      height,
+    };
+    y += height;
+    return row;
+  });
 }
 
+/** Shared frame and content geometry for box chrome, text, choices and avatars.
+ * Bind a viewport with mount(scene) or setViewport before reading geometry. */
 export class BoxLayout {
-  /** Design viewport (the renderer's `virtualSize`) the box is placed within —
-   *  bound at mount via {@link setViewport}. Defaults to a sane size so headless
-   *  use (no renderer) and pre-mount calls still produce a valid frame. */
-  private viewW = 800;
-  private viewH = 600;
+  private viewport: { width: number; height: number } | undefined;
+  private frame: Rect | undefined;
   private readonly insets = new Map<string, TextInset>();
   private readonly listeners: Array<() => void> = [];
-  /** The committed frame — moved by `meta.position`, grown for a choice. */
-  private frame: Rect;
-  /** The line currently laid out (for the choice panel's prompt + nameplate). */
   private line: PresentedLine | undefined;
+  private rowHeights: readonly number[] | undefined;
+  private caretHeight = 0;
+  private boundary: ErrorBoundary | undefined;
 
   constructor(private readonly cfg: BoxLayoutConfig) {
-    this.frame = this.frameAt("bottom", cfg.box.height);
+    for (const [name, value] of Object.entries({
+      marginX: cfg.box.marginX,
+      marginY: cfg.box.marginY,
+      minHeight: cfg.box.minHeight,
+      padding: cfg.padding,
+      nameSize: cfg.nameSize,
+      textSize: cfg.textSize,
+      lineHeight: cfg.lineHeight,
+      choiceGap: cfg.choiceGap,
+    }))
+      finiteNonnegative("BoxLayout", name, value);
   }
 
-  /**
-   * Bind the design viewport (the renderer's `virtualSize`), read at mount, so
-   * the box is a full-width bottom bar at any resolution and `meta.position`
-   * places the frame against the true screen. Recomputes the resting frame.
-   */
+  /** Bind the renderer's design viewport. Repeated mounts at the same size retain content. */
+  mount(scene: Scene): void {
+    this.boundary = scene.context.tryResolve(ErrorBoundaryKey);
+    const renderer = scene.context.tryResolve(RendererKey);
+    if (renderer)
+      this.setViewport(renderer.virtualSize.width, renderer.virtualSize.height);
+    else this.requireViewport();
+  }
+
+  /** Standalone/headless viewport binding; reflows the current content. */
   setViewport(width: number, height: number): void {
-    this.viewW = width;
-    this.viewH = height;
-    this.commit(this.frameAt(positionOf(this.line), this.cfg.box.height));
+    this.validateViewport(width, height);
+    if (this.viewport?.width === width && this.viewport.height === height)
+      return;
+    this.viewport = { width, height };
+    this.reflow(true);
   }
 
-  /** Register a callback fired when the committed frame changes (a choice grows
-   *  it, or an inset reflows the text) — the chrome redraws, the text re-places.
-   *  Returns an unsubscribe; presenters call it in `dispose()` so a disposed
-   *  presenter can't be re-placed against a retained layout. */
   onChange(listener: () => void): () => void {
     this.listeners.push(listener);
     return () => {
@@ -138,177 +110,252 @@ export class BoxLayout {
     };
   }
 
-  /** The frame rect for the current line (read by the chrome to draw + place). */
   frameRect(): Rect {
-    return this.frame;
+    this.requireViewport();
+    return this.frame!;
   }
 
-  /** Inner content width — choice rows wrap to this. Frame minus padding minus
-   *  any registered insets, so choices reflow around an in-box avatar the same
-   *  way the body text does. */
   contentWidth(): number {
     return (
-      this.viewW -
-      2 * this.cfg.box.marginX -
-      2 * this.cfg.padding -
+      this.requireViewport().width -
+      2 * (this.cfg.box.marginX + this.cfg.padding) -
       this.insetWidth("left") -
       this.insetWidth("right")
     );
   }
 
-  /** Inner padding between the frame and its contents — an in-box presenter
-   *  aligns its column to this so it sits inside the border, like the text. */
   padding(): number {
     return this.cfg.padding;
   }
 
-  /** Lay out a say/prompt line: place the base-height frame at its
-   *  `meta.position`. Commits the frame (firing {@link onChange} if it moved). */
+  /** Reserve a continue-indicator footer for say lines before reveal begins. */
+  setCaretHeight(height: number): void {
+    finiteNonnegative("BoxLayout.setCaretHeight", "height", height);
+    if (this.caretHeight === height) return;
+    this.caretHeight = height;
+    if (this.viewport) this.reflow(true);
+  }
+
+  /** Fit the complete say line or choice prompt before reveal starts. */
   layoutLine(line: PresentedLine | undefined): Rect {
+    this.requireViewport();
+    const offset = this.bodyOffset();
+    const footer = this.footerHeight();
     this.line = line;
-    this.commit(this.frameAt(positionOf(line), this.cfg.box.height));
-    return this.frame;
+    this.rowHeights = undefined;
+    this.reflow(offset !== this.bodyOffset() || footer !== this.footerHeight());
+    return this.frameRect();
   }
 
-  /**
-   * Grow the frame to fit a choice: nameplate band + optional prompt + the
-   * rows, capped at the field. Commits the grown frame (firing {@link onChange}
-   * so the chrome/nameplate/prompt follow) and returns the row rects stacked
-   * inside it.
-   */
+  /** Fit the prompt and measured rows. Oversized content remains unscrolled. */
   layoutChoicePanel(rowHeights: readonly number[]): ChoiceRowRect[] {
-    const promptH = this.promptHeight();
-    const headH = promptH > 0 ? promptH + this.cfg.choiceGap : 0;
-    const rows = rowHeights.reduce((a, h) => a + h, 0);
-    const content =
-      this.cfg.padding + this.bodyOffset() + headH + rows + this.cfg.padding;
-    const maxH = this.viewH - 2 * this.cfg.box.marginY; // cap at the screen (minus margins)
-    const height = Math.min(Math.max(this.cfg.box.height, content), maxH);
-    this.commit(this.frameAt(positionOf(this.line), height));
-    // Stack the rows inside the inset-narrowed region, so they reflow around an
-    // in-box avatar exactly like the prompt + body text above them.
-    const insetL = this.insetWidth("left");
-    const insetR = this.insetWidth("right");
-    const inner: Rect = {
-      x: this.frame.x + insetL,
-      y: this.frame.y,
-      width: this.frame.width - insetL - insetR,
-      height: this.frame.height,
-    };
-    return stackChoiceRows(rowHeights, inner, this.cfg.padding);
-  }
-
-  /** Body-text region inside the current frame: below the nameplate band, inset
-   *  by padding, minus any registered insets (so text reflows around an avatar).
-   *  For a choice, this is the prompt region above the rows. */
-  textRegion(): { x: number; y: number; width: number } {
-    let x = this.frame.x + this.cfg.padding;
-    let width = this.frame.width - 2 * this.cfg.padding;
-    for (const inset of this.insets.values()) {
-      width -= inset.width;
-      if (inset.side === "left") x += inset.width;
+    this.requireViewport();
+    let total = 0;
+    for (const height of rowHeights) {
+      finiteNonnegative("BoxLayout.layoutChoicePanel", "row height", height);
+      total += height;
     }
-    return { x, y: this.frame.y + this.cfg.padding + this.bodyOffset(), width };
+    finiteNonnegative("BoxLayout.layoutChoicePanel", "total row height", total);
+    const footer = this.footerHeight();
+    this.rowHeights = [...rowHeights];
+    this.reflow(footer !== this.footerHeight());
+    const frame = this.frameRect();
+    const head = this.bodyOffset() + this.choicePromptHeight();
+    return stackChoiceRows(
+      rowHeights,
+      {
+        x: frame.x + this.insetWidth("left"),
+        y: frame.y + head,
+        width: frame.width - this.insetWidth("left") - this.insetWidth("right"),
+        height: frame.height - head,
+      },
+      this.cfg.padding,
+    );
   }
 
-  /** Top-left of the nameplate inside the current frame. */
+  textRegion(): Rect {
+    const frame = this.frameRect();
+    return {
+      x: frame.x + this.cfg.padding + this.insetWidth("left"),
+      y: frame.y + this.cfg.padding + this.bodyOffset(),
+      width: this.contentWidth(),
+      height: Math.max(
+        0,
+        frame.height -
+          2 * this.cfg.padding -
+          this.bodyOffset() -
+          this.footerHeight(),
+      ),
+    };
+  }
+
   nameplatePos(): { x: number; y: number } {
-    return {
-      x: this.frame.x + this.cfg.padding,
-      y: this.frame.y + this.cfg.padding - 1,
-    };
+    const frame = this.frameRect();
+    return { x: frame.x + this.cfg.padding, y: frame.y + this.cfg.padding - 1 };
   }
 
-  /** Bottom-right continue-caret position inside the current frame. */
   caretPos(size: { width: number; height: number }): { x: number; y: number } {
+    const frame = this.frameRect();
     return {
-      x: this.frame.x + this.frame.width - this.cfg.padding - size.width,
-      y: this.frame.y + this.frame.height - this.cfg.padding - size.height - 1,
+      x: frame.x + frame.width - this.cfg.padding - size.width,
+      y: frame.y + frame.height - this.cfg.padding - size.height - 1,
     };
   }
 
-  /**
-   * Reserve (or clear with `undefined`) a left/right column the body text
-   * reflows around — the avatar-reflow seam. The reference in-box avatar
-   * presenter registers one keyed by its own id. Fires {@link onChange} so a
-   * text view already showing this line reflows.
-   */
+  /** Reserve or release an avatar column, then reflow the active content. */
   setInset(key: string, inset: TextInset | undefined): void {
+    if (inset) {
+      finiteNonnegative("BoxLayout.setInset", "width", inset.width);
+      finiteNonnegative("BoxLayout.setInset", "height", inset.height ?? 0);
+    }
     const prev = this.insets.get(key);
-    if (inset) this.insets.set(key, inset);
+    if (
+      prev?.side === inset?.side &&
+      prev?.width === inset?.width &&
+      prev?.height === inset?.height
+    )
+      return;
+    if (this.viewport) {
+      const width =
+        this.contentWidth() + (prev?.width ?? 0) - (inset?.width ?? 0);
+      if (!Number.isFinite(width) || width <= 0)
+        throw new Error(
+          `BoxLayout.setInset: content width must be positive and finite, got ${width}`,
+        );
+    }
+    if (inset) this.insets.set(key, { ...inset });
     else this.insets.delete(key);
-    if (!sameInset(prev, inset)) this.notify();
+    if (this.viewport) this.reflow(true);
   }
 
-  /** The reserved width on a side (0 if none) — an avatar presenter reads it to
-   *  place itself in the column it reserved. */
   insetWidth(side: "left" | "right"): number {
-    let w = 0;
+    let width = 0;
     for (const inset of this.insets.values())
-      if (inset.side === side) w += inset.width;
-    return w;
+      if (inset.side === side) width += inset.width;
+    return width;
   }
 
-  /** Distance from the frame top to the body text (nameplate band + gap). */
   private bodyOffset(): number {
-    return this.cfg.nameSize + TEXT_GAP;
+    return this.cfg.nameSize > 0 && this.line?.speaker?.name
+      ? this.cfg.nameSize + TEXT_GAP
+      : 0;
   }
 
-  /** Measure the current choice line's prompt (0 when there is none). */
-  private promptHeight(): number {
+  private textHeight(): number {
     const text = this.line?.text;
-    if (!text || text.length === 0) return 0;
-    const plain = text.runs.map((r) => r.text).join("");
+    if (!text?.length) return 0;
     const font = this.cfg.bitmapFont ?? this.cfg.fontFamily;
-    const measured = measureWrappedText(plain, {
-      fontSize: this.cfg.textSize,
-      lineHeight: this.cfg.lineHeight,
-      wordWrapWidth: this.textRegion().width,
-      ...(font !== undefined ? { fontFamily: font } : {}),
-      ...(this.cfg.bitmapFont !== undefined ? { bitmap: true } : {}),
-    });
+    const measured = measureWrappedText(
+      text.runs.map((run) => run.text).join(""),
+      {
+        fontSize: this.cfg.textSize,
+        lineHeight: this.cfg.lineHeight,
+        wordWrapWidth: this.contentWidth(),
+        ...(font !== undefined ? { fontFamily: font } : {}),
+        ...(this.cfg.bitmapFont !== undefined ? { bitmap: true } : {}),
+      },
+    );
+    finiteNonnegative("BoxLayout", "measured text height", measured.height);
     return measured.height;
   }
 
-  /** Place a full-width frame of `height` at `position` within the design
-   *  viewport: `bottom` anchors `marginY` from the bottom edge, `top` mirrors it
-   *  to the top, `center` centres. The width is the viewport minus side margins. */
-  private frameAt(position: BoxPosition, height: number): Rect {
-    const { marginX, marginY } = this.cfg.box;
-    let y: number;
-    if (position === "top") y = marginY;
-    else if (position === "center") y = (this.viewH - height) / 2;
-    else y = this.viewH - marginY - height; // bottom (resting)
-    return { x: marginX, y, width: this.viewW - 2 * marginX, height };
+  private choicePromptHeight(): number {
+    const height = this.textHeight();
+    return height > 0 ? height + this.cfg.choiceGap : 0;
   }
 
-  private commit(frame: Rect): void {
-    if (sameRect(this.frame, frame)) return;
+  private footerHeight(): number {
+    return this.line && !this.rowHeights && this.caretHeight > 0
+      ? this.caretHeight + TEXT_GAP + 1
+      : 0;
+  }
+
+  private reflow(force = false): void {
+    const viewport = this.requireViewport();
+    const text = this.rowHeights
+      ? this.choicePromptHeight()
+      : this.textHeight();
+    const rows = this.rowHeights?.reduce((sum, h) => sum + h, 0) ?? 0;
+    let insetHeight = 0;
+    for (const inset of this.insets.values())
+      insetHeight = Math.max(insetHeight, inset.height ?? 0);
+    const content =
+      2 * this.cfg.padding +
+      this.bodyOffset() +
+      Math.max(text + rows, insetHeight) +
+      this.footerHeight();
+    finiteNonnegative("BoxLayout", "content height", content);
+    const height = Math.min(
+      Math.max(this.cfg.box.minHeight, content),
+      viewport.height - 2 * this.cfg.box.marginY,
+    );
+    const pos = positionOf(this.line);
+    const frame = {
+      x: this.cfg.box.marginX,
+      y:
+        pos === "top"
+          ? this.cfg.box.marginY
+          : pos === "center"
+            ? (viewport.height - height) / 2
+            : viewport.height - this.cfg.box.marginY - height,
+      width: viewport.width - 2 * this.cfg.box.marginX,
+      height,
+    };
+    const prev = this.frame;
     this.frame = frame;
-    this.notify();
+    if (
+      !force &&
+      prev &&
+      prev.x === frame.x &&
+      prev.y === frame.y &&
+      prev.width === frame.width &&
+      prev.height === frame.height
+    )
+      return;
+    for (const listener of this.listeners) {
+      if (this.boundary)
+        this.boundary.wrapCallback(listener, { kind: "BoxLayout.onChange" });
+      else listener();
+    }
   }
 
-  private notify(): void {
-    for (const fn of this.listeners) fn();
+  private requireViewport(): { width: number; height: number } {
+    if (!this.viewport)
+      throw new Error(
+        "BoxLayout: bind a viewport with mount(scene) or setViewport(width, height) before reading geometry",
+      );
+    return this.viewport;
+  }
+
+  private validateViewport(width: number, height: number): void {
+    const contentWidth =
+      width -
+      2 * (this.cfg.box.marginX + this.cfg.padding) -
+      this.insetWidth("left") -
+      this.insetWidth("right");
+    if (
+      !Number.isFinite(width) ||
+      !Number.isFinite(contentWidth) ||
+      contentWidth <= 0
+    )
+      throw new Error(
+        `BoxLayout.setViewport: width must be finite and leave positive content width, got ${width}`,
+      );
+    if (!Number.isFinite(height) || height <= 2 * this.cfg.box.marginY)
+      throw new Error(
+        `BoxLayout.setViewport: height must be finite and exceed vertical margins, got ${height}`,
+      );
   }
 }
 
-/** A line's `meta.position`, defaulting to `bottom` (the resting box). */
 function positionOf(line: PresentedLine | undefined): BoxPosition {
-  const p = line?.meta?.["position"];
-  return p === "top" || p === "center" ? p : "bottom";
+  const position = line?.meta?.["position"];
+  return position === "top" || position === "center" ? position : "bottom";
 }
 
-function sameRect(a: Rect, b: Rect): boolean {
-  return (
-    a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
-  );
-}
-
-function sameInset(
-  a: TextInset | undefined,
-  b: TextInset | undefined,
-): boolean {
-  if (a === undefined || b === undefined) return a === b;
-  return a.side === b.side && a.width === b.width;
+function finiteNonnegative(context: string, name: string, value: number): void {
+  if (!Number.isFinite(value) || value < 0)
+    throw new Error(
+      `${context}: ${name} must be finite and nonnegative, got ${value}`,
+    );
 }

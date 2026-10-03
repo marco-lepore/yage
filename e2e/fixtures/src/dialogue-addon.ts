@@ -24,6 +24,7 @@ import {
   RendererPlugin,
   CameraEntity,
   GraphicsComponent,
+  SplitTextComponent,
 } from "@yagejs/renderer";
 import { Assets, Texture } from "pixi.js";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
@@ -45,6 +46,8 @@ import {
   InBoxAvatarPresenter,
   DIALOGUE_LAYERS,
   DIALOGUE_LAYER_AVATAR,
+  type BoxLayout,
+  type ChoicePresenter,
 } from "@yagejs-addons/dialogue/presenters";
 import { injectStyles, setupContainer } from "./shared.js";
 
@@ -302,6 +305,55 @@ class Guide extends Component {
  * without calling any controller method.
  */
 class DialogueProbe extends Component {
+  constructor(
+    private readonly layout: BoxLayout,
+    private readonly choices: ChoicePresenter,
+  ) {
+    super();
+  }
+
+  get frameHeight(): number {
+    return this.layout.frameRect().height;
+  }
+  get frameY(): number {
+    return this.layout.frameRect().y;
+  }
+  get bodyOffset(): number {
+    return this.entityY("dlg-line") - this.frameY;
+  }
+  get caretVisible(): boolean {
+    return this.frameVisible("dlg-indicator");
+  }
+  get caretOverlapsText(): boolean {
+    const caret = this.scene
+      .findEntity("dlg-indicator")
+      ?.tryGet(GraphicsComponent)?.graphics;
+    const text = this.scene.findEntity("dlg-line")?.tryGet(SplitTextComponent);
+    if (!caret?.visible || !text) return false;
+    const c = caret.getBounds();
+    return text.chars.some((char) => {
+      const b = char.getBounds();
+      return (
+        char.visible &&
+        b.x < c.x + c.width &&
+        b.x + b.width > c.x &&
+        b.y < c.y + c.height &&
+        b.y + b.height > c.y
+      );
+    });
+  }
+  get firstChoiceY(): number {
+    return this.entityY("dlg-choice");
+  }
+  get firstChoiceHit(): number {
+    return (
+      this.choices.choiceAtPoint?.(
+        this.entityX("dlg-choice") + 1,
+        this.firstChoiceY + 1,
+      ) ?? -1
+    );
+  }
+
   lastLine = "";
   lineCount = 0;
   lastChoice = "";
@@ -456,21 +508,28 @@ class DialogueScene extends Scene {
             parchment: { frame: { texture: makeFrameTexture(), insets } },
           },
         };
+    let sharedLayout: BoxLayout | undefined;
     const bundle = createMixedDialogue(theme, {
       worldLayer: "bubble-world",
       // A line-driven, reflowing in-box avatar wired to the box's layout owner —
       // inert unless a line carries meta.portrait.
       avatar: {
-        box: (layout) =>
-          new InBoxAvatarPresenter(layout, {
+        box: (layout) => {
+          sharedLayout = layout;
+          return new InBoxAvatarPresenter(layout, {
             layer: DIALOGUE_LAYER_AVATAR,
             width: 80,
-          }),
+          });
+        },
       },
     });
 
     const host: Entity = this.spawn("dialogue-host");
-    const probe = host.add(new DialogueProbe());
+    if (!sharedLayout) throw new Error("Box layout was not provided");
+    const probe = host.add(new DialogueProbe(sharedLayout, bundle.choices));
+    (
+      window as unknown as { __dialogueLayout__: BoxLayout }
+    ).__dialogueLayout__ = sharedLayout;
     // onRevealTick is a controller callback (NOT an entity event — it fires per
     // grapheme); the marker is an entity event the probe listens for below.
     const controller = host.add(
