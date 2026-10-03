@@ -528,14 +528,47 @@ also scales the issued request duration. A positive-duration time node advances
 its sequence only after its retained `TimeEffectHandle` becomes inactive, even
 when its owner receives zero or scaled update time.
 
-`feelSound` plays a preloaded alias, with optional speed randomization. The
-sound handle belongs to the cue until the sound ends naturally. A sound is a
-zero-time sequence step, so the next sequence child starts immediately, but
-the overall playback remains active while the sound plays. Graceful release or
-cancellation stops a sound that is still playing. `onEnd` runs only after
-natural audio completion. When `once: true` shares a sound between Feel
-playbacks, each playback owns one `AudioManager.requestOnce` request. Releasing
-one cue does not stop another request or a `playOnce` owner.
+`feelSound` plays a preloaded alias or picks one recording from a non-empty
+alias list. The selection uses the scene's seeded random source on each sound
+start. A sound is a zero-time sequence step: the next child starts immediately,
+while the overall cue stays active until the recording ends.
+
+Choose whether the recording should finish after its owner disappears:
+
+```ts
+import { feelLoop } from "@yagejs-addons/feel";
+import { feelSound } from "@yagejs-addons/feel/audio";
+
+const confirm = feelSound({ alias: "confirm", lifetime: "sound" });
+const hurt = feelSound({ alias: ["hurt-1", "hurt-2", "hurt-3"] });
+const reel = feelLoop(feelSound({ alias: "reel", fadeOut: 0.02 }), 0.15);
+```
+
+The default `lifetime: "cue"` stops the sound on release, cancellation, disable,
+or destruction. Use `lifetime: "sound"` for menu confirmations, gunshots, and
+other sounds that should finish through those events or a scene change. Audio
+channel stops and asset unloading can still interrupt them. `onEnd` runs only
+on natural audio completion. Cue lifetime suppresses the callback once release
+or cancellation begins, including when the recording ends during its fade.
+With sound lifetime, the callback may run after its Feel owner is gone.
+
+For cue-owned sounds, `fadeOut` sets a fade to silence in seconds. It must be
+finite and non-negative; the default `0` stops immediately. A positive fade
+cannot be combined with sound lifetime. Graceful release waits for the audio
+fade to finish. Cancellation ends the cue immediately while the audio tail
+continues. Fades use the engine-global frame clock and follow
+`ProcessSystem.timeScale`, so they continue across scene changes and individual
+scene pauses. They are not sample-accurate audio ramps.
+
+With `once: true`, cues share a recording by the selected alias and channel.
+Releasing one cue cannot stop or fade a recording another cue still owns.
+Only the last request's fade duration applies. A new request made during that
+fade starts a fresh recording.
+
+`feelLoop(feelSound(...), gap)` repeats sounds on cue update frames with a
+positive gap between their starts. Copies can overlap if the gap is shorter
+than the recording. Use `SoundComponent` when you need continuous audio
+looping.
 
 `feelParticleBurst` bursts an existing emitter. `feelParticleEmit` owns a
 temporary emission request. Set `duration: "held"` to emit until graceful

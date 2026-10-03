@@ -119,6 +119,18 @@ When the sound ends on its own, every active request becomes inactive and its
 the shared `SoundHandle`, its channel, or all audio clears every request without
 calling `onEnd`.
 
+`request.release({ fadeOut: seconds })` accepts `SoundRequestReleaseOptions`.
+`fadeOut` must be finite and non-negative; omitting it or passing zero stops
+immediately when the final owner releases. A positive fade requires an installed
+`AudioPlugin`. Other requests and `playOnce` owners keep the recording playing
+at its current volume. Only the final request's fade applies.
+
+The final request remains `active` through its fade, then becomes inactive when
+the sound stops or ends. A released request receives no `onEnd` callback,
+including if the recording ends during its fade. A new `requestOnce` or
+`playOnce` call during the fade starts a fresh recording. Channel controls still
+apply to both recordings.
+
 ## Sound Handles
 
 `play` returns a `SoundHandle` for controlling playback:
