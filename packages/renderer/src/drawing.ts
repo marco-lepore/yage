@@ -7,10 +7,12 @@ export function synchronizeInteraction(stage: DisplayContainer): void {
   const prepare = (container: DisplayContainer): void => {
     if (container.sortableChildren) container.sortChildren();
     if (container.renderGroup) {
-      // Pixi's transform pass also updates existing render batches unless the
-      // group needs rebuilding. Leave that work for the next real draw, which
-      // validates changed graphics, textures and text before rebuilding them.
-      container.renderGroup.structureDidChange = true;
+      // Pending view changes need validation before Pixi updates render batches.
+      // Defer those groups to the next draw; transform-only changes can update
+      // existing batches without rebuilding them.
+      if (container.renderGroup.childrenRenderablesToUpdate.index > 0) {
+        container.renderGroup.structureDidChange = true;
+      }
       container.renderGroup.invalidateMatrices();
     }
     for (const child of container.children) prepare(child);

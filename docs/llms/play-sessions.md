@@ -58,7 +58,10 @@ frozen.
 
 `inspector.drive(fn, opts?)` freezes the clock, hands the callback awaitable
 play verbs, and reports the run as one object. It restores the clock to the
-state it found and releases every synthetic input afterwards.
+state it found after releasing synthetic input. If an input-release callback
+throws during cleanup, the drive rejects and cleanup stops: the clock stays
+frozen and its lease remains held. Fix the callback and restart the game before
+running another drive.
 
 ```ts yage-context="browser"
 const run = await window.__yage__.inspector.drive(

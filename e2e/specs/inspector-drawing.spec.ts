@@ -3,6 +3,7 @@ import { gotoFixture } from "./helpers.js";
 
 interface DrawingProbe {
   redrawGraphic(): void;
+  moveGraphic(): void;
   graphicPixel(): number[];
   requestHiddenLight(): void;
   showLight(): void;
@@ -11,6 +12,7 @@ interface DrawingProbe {
   move(x: number): void;
   replace(): Promise<void>;
   read(): {
+    graphicNeedsRebuild: boolean;
     canvasDraws: number;
     lightDraws: number;
     bounceDraws: number;
@@ -122,6 +124,32 @@ test("batch and drive stepping skip draws but retain interaction and fresh light
     canvasDraws: 1,
     lightDraws: 1,
     bounceDraws: 1,
+  });
+});
+
+test("keeps unchanged and moved graphics batches during suppressed frames", async ({
+  page,
+}) => {
+  await gotoFixture(page, "/inspector-drawing.html");
+  await page.waitForFunction(() =>
+    window.__yage__?.inspector?.getExtension("drawing-test"),
+  );
+  const result = await page.evaluate(async () => {
+    const inspector = window.__yage__!.inspector;
+    const probe = inspector.getExtension<DrawingProbe>("drawing-test")!;
+    const before = probe.read().graphicNeedsRebuild;
+    await inspector.time.stepAsync(2, { render: "none" });
+    const unchanged = probe.read().graphicNeedsRebuild;
+    probe.moveGraphic();
+    await inspector.time.stepAsync(2, { render: "none" });
+    const moved = probe.read().graphicNeedsRebuild;
+    return { before, unchanged, moved, pixel: probe.graphicPixel() };
+  });
+  expect(result).toEqual({
+    before: false,
+    unchanged: false,
+    moved: false,
+    pixel: [255, 0, 0, 255],
   });
 });
 

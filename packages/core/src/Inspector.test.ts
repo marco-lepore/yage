@@ -1617,8 +1617,8 @@ describe("Inspector", () => {
         if (render === "last" && !throws)
           expect(log.indexOf("draw")).toBeGreaterThan(log.indexOf("clearAll"));
         expect(controller.drawingEnabled).toBe(true);
-        expect(controller.isFrozen).toBe(false);
-        expect(inspector.time.isOwned()).toBe(false);
+        expect(controller.isFrozen).toBe(throws);
+        expect(inspector.time.isOwned()).toBe(throws);
       },
     );
 
@@ -1718,7 +1718,7 @@ describe("Inspector", () => {
       );
     });
 
-    it("keeps the clock restored when releasing input throws", async () => {
+    it("stops cleanup with the clock frozen and owned when releasing input throws", async () => {
       const { inspector, engine, ctx } = setup();
       const log: string[] = [];
       const controller = driveController(engine.loop, log);
@@ -1738,8 +1738,10 @@ describe("Inspector", () => {
         }),
       ).rejects.toThrow("key-up listener failed");
 
-      expect(controller.isFrozen).toBe(false);
-      expect(log).toEqual(["freeze", "down:KeyD", "clearAll", "thaw"]);
+      expect(controller.isFrozen).toBe(true);
+      expect(inspector.time.isOwned()).toBe(true);
+      expect(log).toEqual(["freeze", "down:KeyD", "clearAll"]);
+      expect(() => inspector.drive(() => undefined)).toThrow("already owned");
     });
 
     it("refuses a second drive while one is in flight", async () => {

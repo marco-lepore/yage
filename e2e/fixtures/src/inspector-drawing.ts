@@ -130,6 +130,7 @@ pixi.render = (options) => {
 };
 inspector.addExtension("drawing-test", {
   redrawGraphic: () => scene.probe.redrawGraphic(),
+  moveGraphic: () => scene.probe.graphic.position.set(150, 100),
   graphicPixel: () =>
     Array.from(
       renderer.captureCanvas().getContext("2d")!.getImageData(160, 110, 1, 1)
@@ -153,6 +154,8 @@ inspector.addExtension("drawing-test", {
     await engine.scenes.replace(scene);
   },
   read: () => ({
+    graphicNeedsRebuild:
+      scene.probe.graphicsParent.renderGroup!.structureDidChange,
     canvasDraws,
     lightDraws,
     bounceDraws,

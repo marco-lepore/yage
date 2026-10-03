@@ -1201,7 +1201,8 @@ export class Inspector {
    * Run `fn` against the running game with the clock held still and every
    * frame-advancing verb awaitable, then report what happened. The clock is
    * frozen for the duration and returned to the state it was in, and every
-   * synthetic input is released afterwards, so a drive leaves no key held.
+   * synthetic input is released afterwards. If a release hook throws, cleanup
+   * stops with the clock frozen and its lease held, and the drive rejects.
    *
    * Nothing thrown by `fn` escapes: a throw is the result's `error`. Missing
    * `DebugPlugin` throws from the call itself, before anything runs.
@@ -1256,52 +1257,45 @@ export class Inspector {
     let value!: T;
     let state!: DriveState;
 
-    try {
-      await this.withDrawing(
-        this.requireTimeController(),
-        opts?.render,
-        async () => {
+    await this.withDrawing(
+      this.requireTimeController(),
+      opts?.render,
+      async () => {
+        try {
+          if (!wasFrozen) controller.freeze();
+          value = await fn(
+            this.createDriveContext(
+              controller,
+              captures,
+              startFrame,
+              checkBudget,
+            ),
+          );
+        } catch (thrown) {
+          error = thrown instanceof Error ? thrown.message : String(thrown);
+          timedOut = thrown instanceof DriveBudgetExceededError;
+        } finally {
+          // Snapshot held input before releasing it. Release callbacks run under
+          // the drive's drawing policy too, so their target requests stay pending.
+          state = this.captureDriveState();
+          this.engine.context.tryResolve(InputManagerRuntimeKey)?.clearAll();
+        }
+        if (
+          error === undefined &&
+          opts?.render === "last" &&
+          this.time.getFrame() > startFrame
+        ) {
           try {
-            if (!wasFrozen) controller.freeze();
-            value = await fn(
-              this.createDriveContext(
-                controller,
-                captures,
-                startFrame,
-                checkBudget,
-              ),
-            );
+            this.requireTimeController().renderFrame?.();
           } catch (thrown) {
             error = thrown instanceof Error ? thrown.message : String(thrown);
-            timedOut = thrown instanceof DriveBudgetExceededError;
-          } finally {
-            // Snapshot held input before releasing it. Release callbacks run under
-            // the drive's drawing policy too, so their target requests stay pending.
-            state = this.captureDriveState();
-            this.engine.context.tryResolve(InputManagerRuntimeKey)?.clearAll();
           }
-          if (
-            error === undefined &&
-            opts?.render === "last" &&
-            this.time.getFrame() > startFrame
-          ) {
-            try {
-              this.requireTimeController().renderFrame?.();
-            } catch (thrown) {
-              error = thrown instanceof Error ? thrown.message : String(thrown);
-            }
-          }
-        },
-      );
-    } finally {
-      // Drawing is restored before thawing or releasing ownership, including
-      // when an input-release callback throws during cleanup.
-      try {
-        if (!wasFrozen) controller.thaw();
-      } finally {
-        controller.release();
-      }
-    }
+        }
+      },
+    );
+    // A failing input-release hook ends cleanup with the clock still owned.
+    if (!wasFrozen) controller.thaw();
+    controller.release();
 
     const outcome: InspectorDriveOutcome = {
       framesUsed: this.time.getFrame() - startFrame,
