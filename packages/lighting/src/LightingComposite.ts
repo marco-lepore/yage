@@ -105,6 +105,7 @@ export class LightingComposite {
         resolutionScale,
         clearColor: 0x000000,
         label: `${label}:bounce`,
+        dependsOn: [this.buffer],
       });
     }
 
@@ -118,6 +119,7 @@ export class LightingComposite {
   /** Mark the light buffer stale, so the next {@link render} redraws it. */
   invalidate(): void {
     this.buffer.invalidate();
+    this.bounced?.invalidate();
   }
 
   /**
@@ -125,9 +127,10 @@ export class LightingComposite {
    * so a caller can skip further work on an unchanged buffer.
    */
   render(): boolean {
-    if (!this.buffer.renderIfNeeded()) return false;
-    this.bounced?.render();
-    return true;
+    const pending = this.buffer.needsRender;
+    const drawn = this.buffer.renderIfNeeded();
+    if (pending) this.bounced?.render();
+    return drawn;
   }
 
   /** Follow a viewport resize. The light buffer is stale afterwards. */

@@ -98,6 +98,7 @@ const { mocks } = vi.hoisted(() => {
         options,
       })),
     };
+    render = vi.fn();
     initialized = false;
     destroyCalled = false;
 
@@ -107,6 +108,7 @@ const { mocks } = vi.hoisted(() => {
     }
 
     destroy(): void {
+      this.ticker.remove(this.render);
       this.destroyCalled = true;
     }
   }
@@ -135,6 +137,7 @@ vi.mock("pixi.js", () => {
     }
   }
   return {
+    UPDATE_PRIORITY: { LOW: -25 },
     Application: mocks.MockApplication,
     Container: mocks.MockContainer,
     Graphics: MockGraphics,
@@ -260,7 +263,7 @@ describe("RendererPlugin", () => {
       const app = plugin.application as unknown as InstanceType<
         typeof mocks.MockApplication
       >;
-      expect(app.ticker.callbacks).toHaveLength(1);
+      expect(app.ticker.callbacks).toHaveLength(2);
     });
 
     it("appends canvas to container when specified", async () => {
@@ -351,7 +354,7 @@ describe("RendererPlugin", () => {
       const app = plugin.application as unknown as InstanceType<
         typeof mocks.MockApplication
       >;
-      expect(app.ticker.callbacks).toHaveLength(1);
+      expect(app.ticker.callbacks).toHaveLength(2);
 
       plugin.onDestroy?.();
       expect(app.ticker.callbacks).toHaveLength(0);

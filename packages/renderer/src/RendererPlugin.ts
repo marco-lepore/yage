@@ -29,9 +29,11 @@ import {
   Graphics,
   Rectangle,
   TextureStyle,
+  UPDATE_PRIORITY,
 } from "pixi.js";
 import type { BitmapFont, Spritesheet, SCALE_MODE } from "pixi.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
+import { synchronizeInteraction } from "./drawing.js";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { RenderFacetContributor } from "./RenderFacetContributor.js";
 import { FitController } from "./Fit.js";
@@ -95,6 +97,8 @@ export interface CreateTextureOptions {
 /** RendererPlugin wraps PixiJS v8 behind the YAGE plugin interface. */
 export class RendererPlugin implements Plugin, RendererAdapter {
   readonly name = "renderer";
+  /** Whether automatic canvas and render-target drawing is enabled. */
+  drawingEnabled = true;
   readonly version = "4.0.0";
 
   // `_app`, `_provider`, `_fitController` use definite-assignment (`!`)
@@ -215,6 +219,13 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       ...(this._config.canvas ? { canvas: this._config.canvas } : undefined),
     });
     this._installed.app = true;
+    const draw = this._app.render;
+    this._app.ticker.remove(draw, this._app);
+    this._app.render = () => {
+      if (this.drawingEnabled) draw.call(this._app);
+      else synchronizeInteraction(this._app.stage);
+    };
+    this._app.ticker.add(this._app.render, this._app, UPDATE_PRIORITY.LOW);
 
     // 2b. Tell the browser to scale the canvas backing store with
     //     nearest-neighbor when it's CSS-scaled past 1:1 (e.g. on a HiDPI
@@ -782,7 +793,34 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     source: DisplayContainer,
     options: RenderTargetOptions,
   ): RenderTargetHandle {
-    return createRenderTarget(this._app.renderer, source, options);
+    return createRenderTarget(this._app.renderer, source, options, {
+      stage: this._app.stage,
+      isEnabled: () => this.drawingEnabled,
+    });
+  }
+
+  /** Draw the current stage and pending targets without advancing time. */
+  render(): void {
+    const enabled = this.drawingEnabled;
+    this.drawingEnabled = true;
+    try {
+      this._app.render();
+    } finally {
+      this.drawingEnabled = enabled;
+    }
+  }
+
+  /** Capture the current stage and pending targets without advancing time. */
+  captureCanvas(): HTMLCanvasElement {
+    const enabled = this.drawingEnabled;
+    this.drawingEnabled = true;
+    try {
+      return this._app.renderer.extract.canvas(
+        this._app.stage,
+      ) as HTMLCanvasElement;
+    } finally {
+      this.drawingEnabled = enabled;
+    }
   }
 
   // ─── Fullscreen ──────────────────────────────────────────────────

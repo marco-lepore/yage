@@ -29,6 +29,7 @@ vi.mock("pixi.js", async (importOriginal) => {
 });
 
 interface FakeTarget {
+  needsRender: boolean;
   texture: Texture;
   source: DisplayContainer;
   options: RenderTargetOptions;
@@ -53,12 +54,21 @@ function createHarness(): Harness {
     createRenderTarget: vi.fn(
       (source: DisplayContainer, options: RenderTargetOptions) => {
         const target: FakeTarget = {
+          needsRender: true,
           texture: Texture.EMPTY,
           source,
           options,
-          invalidate: vi.fn(),
-          render: vi.fn(),
-          renderIfNeeded: vi.fn(() => true),
+          invalidate: vi.fn(() => {
+            target.needsRender = true;
+          }),
+          render: vi.fn(() => {
+            target.needsRender = false;
+          }),
+          renderIfNeeded: vi.fn(() => {
+            const pending = target.needsRender;
+            target.needsRender = false;
+            return pending;
+          }),
           resize: vi.fn(),
           destroy: vi.fn(),
         };
@@ -140,6 +150,7 @@ describe("LightingComposite", () => {
       resolutionScale: 0.5,
       clearColor: 0x000000,
       label: "lighting:cave:bounce",
+      dependsOn: [buffer],
     });
     const [sharp, blurred] = (bounced?.source.children ?? []) as Sprite[];
     expect(sharp?.texture).toBe(buffer?.texture);

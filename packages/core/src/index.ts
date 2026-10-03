@@ -134,6 +134,8 @@ export type {
   PointerSnapshot,
   EngineSnapshot,
   InspectorTimeController,
+  InspectorRenderMode,
+  InspectorStepOptions,
   InspectorTimeControl,
   InspectorTimeLease,
   InspectorTime,
