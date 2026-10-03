@@ -387,6 +387,13 @@ Any object implementing `CameraLike` (has `screenToWorld(x, y)`) works with `set
 
 ## Listener APIs
 
+`input.onReset(callback: () => void): () => void` subscribes to completed
+`clearAll()` resets. It returns a disposer and does not replay on subscription.
+Use it to discard custom gesture tracking and pending input after a hard reset.
+State is already cleared when callbacks run. A throwing callback is attributed
+through ErrorBoundary, rethrown, and stops later reset listeners.
+Individual releases, frame clearing, and window blur do not emit this signal.
+
 Disposer-returning hooks for keys, actions, wheel, and (already covered above) pointers. Use these instead of raw DOM listeners — they participate in the action map, group enable/disable, and `consumePointer` gating.
 
 ```ts yage-context="context"

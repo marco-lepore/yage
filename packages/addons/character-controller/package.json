@@ -1,0 +1,90 @@
+{
+  "name": "@yagejs-addons/character-controller",
+  "version": "0.0.0",
+  "description": "Customizable character controllers for YAGE: dynamic platformer movement, terrain assistance and motion arbitration",
+  "keywords": [
+    "yage",
+    "yage-addon",
+    "character-controller",
+    "platformer",
+    "movement"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/addons/character-controller"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./platformer": {
+      "import": {
+        "types": "./dist/platformer.d.ts",
+        "default": "./dist/platformer.js"
+      },
+      "require": {
+        "types": "./dist/platformer.d.cts",
+        "default": "./dist/platformer.cjs"
+      }
+    },
+    "./input": {
+      "import": {
+        "types": "./dist/input.d.ts",
+        "default": "./dist/input.js"
+      },
+      "require": {
+        "types": "./dist/input.d.cts",
+        "default": "./dist/input.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@yagejs/core": ">=0.11.0 <0.12.0",
+    "@yagejs/physics": ">=0.11.0 <0.12.0",
+    "@yagejs/input": ">=0.11.0 <0.12.0"
+  },
+  "peerDependenciesMeta": {
+    "@yagejs/physics": {
+      "optional": true
+    },
+    "@yagejs/input": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
+    "@yagejs/core": ">=0.11.0",
+    "@yagejs/physics": ">=0.11.0",
+    "@yagejs/input": ">=0.11.0",
+    "@dimforge/rapier2d-compat": "^0.20.0"
+  }
+}
