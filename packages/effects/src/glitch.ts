@@ -1,3 +1,4 @@
+import { targetScale } from "./filterTarget.js";
 import { defineEffect } from "@yagejs/renderer";
 import type { Effect } from "@yagejs/renderer";
 import { GlitchFilter } from "pixi-filters";
@@ -162,9 +163,7 @@ class YageGlitchFilter extends GlitchFilter {
     output: RenderSurface,
     clearMode: boolean,
   ): void {
-    const transform = this.yageTarget?.worldTransform;
-    const scaleX = transform ? Math.hypot(transform.a, transform.b) : 1;
-    const scaleY = transform ? Math.hypot(transform.c, transform.d) : 1;
+    const { scaleX, scaleY } = targetScale(this.yageTarget);
     this.applyIntensity(scaleX, scaleY);
     super.apply(filterManager, input, output, clearMode);
   }

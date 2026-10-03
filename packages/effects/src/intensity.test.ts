@@ -1,3 +1,6 @@
+vi.mock("./glowPrograms.js", () => ({
+  glowPrograms: () => ({ glProgram: {}, gpuProgram: {} }),
+}));
 import { describe, it, expect, vi } from "vitest";
 
 // pixi-filters constructors require a WebGL context. Mock just enough so the
@@ -294,6 +297,7 @@ vi.mock("pixi.js", async () => {
 });
 
 import type { Process, ScopedProcessQueue } from "@yagejs/core";
+import { Container } from "pixi.js";
 import { EffectsHost } from "@yagejs/renderer";
 import { bloom } from "./bloom.js";
 import { chromaticAberration } from "./chromaticAberration.js";
@@ -399,7 +403,7 @@ describe("intensity model", () => {
 
   describe("preserve-ratio setters", () => {
     it("typed preset handles expose clamped base intensity and preset setters", () => {
-      const target = { filters: null };
+      const target = new Container();
       const queue: ScopedProcessQueue = {
         run: (process: Process) => process,
         cancelAll: () => {},

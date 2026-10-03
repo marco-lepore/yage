@@ -34,7 +34,13 @@ const { mocks } = vi.hoisted(() => {
     sortableChildren = false;
     zIndex = 0;
     label = "";
-    filters: unknown = null;
+    _filterEffect = { filters: null as unknown };
+    get filters(): unknown {
+      return this._filterEffect.filters;
+    }
+    set filters(value: unknown) {
+      this._filterEffect.filters = value;
+    }
 
     addChild(child: MockContainer): MockContainer {
       this.children.push(child);

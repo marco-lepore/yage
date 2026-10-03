@@ -1,3 +1,4 @@
+import { targetScale, toFilterRegion } from "./filterTarget.js";
 import { Process } from "@yagejs/core";
 import { defineEffect } from "@yagejs/renderer";
 import type { Effect } from "@yagejs/renderer";
@@ -93,36 +94,14 @@ class YageShockwaveFilter extends ShockwaveFilter {
   ): void {
     const target = this.yageTarget;
     if (target) {
-      const wt = target.worldTransform;
-      // Local axis magnitudes — robust under rotation (hypot collapses to
-      // |a| / |d| in the axis-aligned case the fit transform actually uses).
-      const scaleX = Math.hypot(wt.a, wt.b);
-      const scaleY = Math.hypot(wt.c, wt.d);
-      const sizeScale = (scaleX + scaleY) * 0.5;
-
-      // Center: project local point → world via worldTransform, then
-      // world → input-texture coords by subtracting the rasterized region's
-      // world origin. That origin lives on `filterManager._activeFilterData.bounds.minX/minY`
-      // — it's NOT on `input.frame.x/y`, which Pixi's TexturePool always
-      // resets to 0 on allocation. Using `wt.tx/ty` instead fails on
-      // component-scope sprites whose bbox starts at `position - anchor*size`,
-      // and using `0` (the apparent `frame.x`) fails the moment the fit
-      // transform produces letterbox bars (offsetX != 0). The internal
-      // `_activeFilterData.bounds` is the only frame that's always correct
-      // — accept the underscore-prefixed access; it's stable in v8.
-      const worldX =
-        wt.a * this.centerLocal.x + wt.c * this.centerLocal.y + wt.tx;
-      const worldY =
-        wt.b * this.centerLocal.x + wt.d * this.centerLocal.y + wt.ty;
-      const bounds = (
-        filterManager as unknown as {
-          _activeFilterData?: { bounds?: { minX: number; minY: number } };
-        }
-      )._activeFilterData?.bounds;
-      const minX = bounds?.minX ?? 0;
-      const minY = bounds?.minY ?? 0;
-      this._centerOut.x = worldX - minX;
-      this._centerOut.y = worldY - minY;
+      const { scaleX, sizeScale } = targetScale(target);
+      toFilterRegion(
+        target,
+        filterManager,
+        this.centerLocal.x,
+        this.centerLocal.y,
+        this._centerOut,
+      );
       this.center = this._centerOut;
 
       // Dimensional uniforms: scale local units to input-tex pixels every

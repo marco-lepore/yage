@@ -8,7 +8,13 @@ const { MockContainer, MockRenderLayer } = vi.hoisted(() => {
     rotation = 0;
     visible = true;
     alpha = 1;
-    filters: unknown = null;
+    _filterEffect = { filters: null as unknown };
+    get filters(): unknown {
+      return this._filterEffect.filters;
+    }
+    set filters(value: unknown) {
+      this._filterEffect.filters = value;
+    }
     parent: MockContainer | null = null;
     sortableChildren = false;
     isRenderGroup = false;

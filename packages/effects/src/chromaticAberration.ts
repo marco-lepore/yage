@@ -1,3 +1,5 @@
+import { localFilter, scaled } from "./localFilter.js";
+import { validateFinite } from "./validate.js";
 import { defineEffect } from "@yagejs/renderer";
 import type { Effect } from "@yagejs/renderer";
 import { RGBSplitFilter } from "pixi-filters";
@@ -6,7 +8,7 @@ import type { ChromaticAberrationHandle } from "./handles.js";
 /** Options for the {@link chromaticAberration} preset. */
 export interface ChromaticAberrationOptions {
   /**
-   * Channel separation in pixels. The red channel offsets `-separation` on
+   * Channel separation in host-local pixels. The red channel offsets `-separation` on
    * X, blue offsets `+separation` on X. Drives `getIntensity`. Default: 4.
    */
   separation?: number;
@@ -24,33 +26,43 @@ export const chromaticAberration = defineEffect<
 >({
   name: "yage:chromaticAberration",
   factory: (options) => {
-    let baseSeparation = options.separation ?? 4;
+    let separation = validateFinite(
+      "chromaticAberration",
+      "separation",
+      options.separation ?? 4,
+    );
+    let intensity = 1;
     const filter = new RGBSplitFilter({
-      red: { x: -baseSeparation, y: 0 },
+      red: { x: -separation, y: 0 },
       green: { x: 0, y: 0 },
-      blue: { x: baseSeparation, y: 0 },
+      blue: { x: separation, y: 0 },
     });
-    const apply = (sep: number): void => {
-      filter.red = { x: -sep, y: 0 };
-      filter.blue = { x: sep, y: 0 };
-    };
+    const local = localFilter(
+      filter,
+      ({ scaleX }) => {
+        const value = scaled(separation * intensity, scaleX);
+        filter.red = { x: -value, y: 0 };
+        filter.blue = { x: value, y: 0 };
+      },
+      ({ scaleX }) => Math.abs(scaled(separation * intensity, scaleX)) + 1,
+    );
     const effect: Effect<ChromaticAberrationHandle> = {
       filter,
-      getIntensity: () => {
-        const r = filter.red as { x: number };
-        return -r.x / Math.max(baseSeparation, 1e-6);
+      onAttach: local.onAttach,
+      onDetach: local.onDetach,
+      getIntensity: () => intensity,
+      setIntensity: (value) => {
+        intensity = validateFinite("chromaticAberration", "intensity", value);
+        local.update();
       },
-      setIntensity: (v) => apply(baseSeparation * v),
       buildExtras: () => ({
-        // Mirror sibling presets (bloom.setBloomScale, outline.setThickness,
-        // glow.setOuterStrength): rebase to the new full value AND preserve
-        // the current intensity ratio so a fade or pulse in flight keeps
-        // animating against the new ceiling.
         setSeparation: (value: number) => {
-          const r = filter.red as { x: number };
-          const ratio = -r.x / Math.max(baseSeparation, 1e-6);
-          baseSeparation = value;
-          apply(value * ratio);
+          separation = validateFinite(
+            "chromaticAberration",
+            "separation",
+            value,
+          );
+          local.update();
         },
       }),
     };
