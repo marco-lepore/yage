@@ -56,8 +56,8 @@
     "@yagejs/renderer": ">=0.11.0 <0.12.0"
   },
   "devDependencies": {
-    "@yagejs/core": ">=0.11.0 <0.12.0",
-    "@yagejs/renderer": ">=0.11.0 <0.12.0",
+    "@yagejs/core": ">=0.11.0",
+    "@yagejs/renderer": ">=0.11.0",
     "@vitest/coverage-v8": "^4.0.18"
   },
   "peerDependenciesMeta": {

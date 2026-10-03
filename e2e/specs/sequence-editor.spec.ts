@@ -451,3 +451,49 @@ test("the sequence authored from a blank workspace loads into the game", async (
   expect([a!.width, a!.height, a!.scaleX]).toEqual([48, 68, 1]);
   expect([b!.width, b!.height, b!.scaleX]).toEqual([72, 48, 1.4]);
 });
+
+test("coincident event flags can each be selected and dragged", async ({
+  page,
+}) => {
+  await boot(page);
+  const a = page.getByRole("button", {
+    name: "actorA gesture event frame 120",
+    exact: true,
+  });
+  const b = page.getByRole("button", {
+    name: "actorB gesture event frame 120",
+    exact: true,
+  });
+  await a.scrollIntoViewIfNeeded();
+  const ab = (await a.boundingBox())!;
+  const bb = (await b.boundingBox())!;
+  expect(Math.abs(ab.y - bb.y)).toBeGreaterThanOrEqual(ab.height);
+  for (const actor of ["actorA", "actorB"]) {
+    const marker = page.getByRole("button", {
+      name: `${actor} gesture event frame 120`,
+      exact: true,
+    });
+    await marker.scrollIntoViewIfNeeded();
+    const box = (await marker.boundingBox())!;
+    const ruler = (await page.getByTestId("sequence-ruler").boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      box.x + box.width / 2 - ruler.width / 12,
+      box.y + box.height / 2,
+      { steps: 5 },
+    );
+    await expect(page.getByLabel("Event frame", { exact: true })).toHaveValue(
+      "110",
+    );
+    await page.mouse.up();
+    await expect(
+      page.getByRole("button", {
+        name: `${actor} gesture event frame 110`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await undo(page);
+    await expect(marker).toBeVisible();
+  }
+});

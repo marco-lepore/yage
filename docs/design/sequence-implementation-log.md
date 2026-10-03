@@ -290,3 +290,25 @@ The user requested fixes for the three additional review findings and a PR.
   whitespace checks passed. Existing lint/build and peer-range warnings remain.
 - Rules S07, S09 and S16 and both documentation surfaces describe the verified
   behavior. The corrections keep the existing public APIs and document format.
+
+## PR 397 review repairs — 2026-10-04
+
+- Reproduced cancellation and completion restoration continuing after stop
+  requests. Active binding callbacks now remain interruptible in terminal
+  playback states; unwinding a throwing callback clears only its depth counter.
+  Regression tests cover both stop requests and exception cleanup.
+- Reproduced the two entrance markers at frame 120 covering each other. Flags
+  now occupy separate rows when their hit areas overlap at the current zoom.
+  The layout changes with timeline width; document times and ordering stay
+  unchanged. A browser regression selects, drags and undoes each coincident flag.
+- Opened core and renderer development ranges to `>=0.11.0`, retained capped
+  peer ranges, and regenerated the lockfile without unrelated dependency changes.
+- Affected package build, typecheck, lint and test checks passed: 16 tasks,
+  41 addon tests and 1,805 editor tests. All 13 sequence browser tests passed.
+  An initial existing key-drag test failed during the concurrent docs build;
+  its isolated rerun and the complete suite rerun passed without code changes.
+- Both documentation surfaces describe restoration interruption and marker rows.
+  The docs build passed 30 tasks and generated 952 pages. Formatting and
+  whitespace checks passed. Existing lint and build warnings remain.
+- A fresh independent correction review found no remaining defect. It passed
+  five additional callback probes and confirmed marker layout and peer ranges.

@@ -6,6 +6,7 @@ import {
   SequenceValueField,
   SequenceBezier,
 } from "./SequenceFields.js";
+import { EVENT_FLAG_SIZE, sequenceEventRows } from "./sequenceEventRows.js";
 import { SequenceEvents } from "./SequenceEvents.js";
 import { Button, TextField } from "./controls.js";
 import { useEffect, useRef, useState } from "react";
@@ -63,6 +64,14 @@ export function SequencePanel({
   const drag = useRef<Drag | undefined>(undefined),
     scrubbing = useRef(false);
   const lane = useRef<HTMLDivElement>(null);
+  const [laneWidth, setLaneWidth] = useState(0);
+  useEffect(() => {
+    const element = lane.current;
+    if (!element) return;
+    const resize = new ResizeObserver(() => setLaneWidth(element.clientWidth));
+    resize.observe(element);
+    return () => resize.disconnect();
+  }, [document.format]);
   const cancel = () => {
     drag.current = undefined;
     scrubbing.current = false;
@@ -90,6 +99,7 @@ export function SequencePanel({
   }, [store]);
   if (document.format !== "yage-sequence-workspace" || !view) return null;
   const clip = view.draft ?? document.sequence;
+  const eventRows = sequenceEventRows(clip.events, clip.duration, laneWidth);
   const selectedIds = selection.filter((id) =>
     clip.tracks.some((t) => t.keys.some((k) => k.id === id)),
   );
@@ -682,13 +692,21 @@ export function SequencePanel({
           ))}
           <div className="ye-sequence__row" style={{ width: `${zoom * 100}%` }}>
             <span>Events</span>
-            <div className="ye-sequence__lane">
+            <div
+              className="ye-sequence__lane"
+              style={{ height: eventRows.count * EVENT_FLAG_SIZE }}
+            >
               {clip.events.map((marker) => (
                 <button
                   key={marker.id}
                   style={{
                     position: "absolute",
                     left: `${(marker.frame / clip.duration) * 100}%`,
+                    top: eventRows.rows.get(marker.id)! * EVENT_FLAG_SIZE,
+                    width: EVENT_FLAG_SIZE,
+                    height: EVENT_FLAG_SIZE,
+                    padding: 0,
+                    transform: "translateX(-50%)",
                   }}
                   title={`${marker.target}.${marker.event} @ ${marker.frame}`}
                   aria-label={`${marker.target} ${marker.event} event frame ${marker.frame}`}
@@ -729,6 +747,8 @@ export function SequencePanel({
                         className="ye-sequence__ghost"
                         style={{
                           left: `${((e.frame + ghost.delta) / clip.duration) * 100}%`,
+                          top:
+                            (eventRows.rows.get(e.id) ?? 0) * EVENT_FLAG_SIZE,
                         }}
                       >
                         ◇

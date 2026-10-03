@@ -110,6 +110,7 @@ export class SequencePlayer {
   private cursor = 0;
   private revision = 0;
   private advancing = false;
+  private bindingDepth = 0;
   private position = 0;
   private playbackState: SequencePlaybackState = "idle";
   get frame(): number {
@@ -123,8 +124,13 @@ export class SequencePlayer {
     let result: T | undefined;
     this.boundary.wrapCallback(
       () => {
-        result = fn();
-        return result;
+        this.bindingDepth++;
+        try {
+          result = fn();
+          return result;
+        } finally {
+          this.bindingDepth--;
+        }
       },
       { kind: "Sequence binding", event: label },
     );
@@ -299,8 +305,8 @@ export class SequencePlayer {
     }
   }
   pause(): void {
-    if (this.state === "playing") {
-      this.playbackState = "paused";
+    if (this.state === "playing" || this.bindingDepth > 0) {
+      if (this.clip) this.playbackState = "paused";
       this.revision++;
     }
   }
@@ -327,7 +333,11 @@ export class SequencePlayer {
   ): void {
     if (policy !== "retain" && policy !== "restore")
       throw new Error("SequencePlayer.cancel: unknown policy");
-    if (this.state === "idle" || this.state === "cancelled") return;
+    if (this.state === "idle" || this.state === "cancelled") {
+      // Terminal playback can still be dispatching restoration callbacks.
+      if (this.bindingDepth > 0) this.revision++;
+      return;
+    }
     this.playbackState = "cancelled";
     this.revision++;
     if (policy === "restore") this.restore();

@@ -90,7 +90,8 @@ the current preview pose; boolean and enum tracks start with hold interpolation.
 Choose a declared **Event type**, then **Add event at cursor**. Select a marker
 to edit its frame, actor, event and typed payload. Drag flags to retime events
 with live frame feedback and one undo step. Events may share a frame; their
-document order determines dispatch order.
+document order determines dispatch order. Overlapping flags appear on separate
+rows so each can be selected and dragged.
 **Play** records crossed markers in **Event log**. The editor keeps preview
 entities dormant and does not dispatch markers to game handlers. Pause/resume
 keeps the log; **Clear event log** clears it.
