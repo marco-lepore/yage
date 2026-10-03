@@ -77,6 +77,8 @@ export const motionBlur = defineEffect<MotionBlurHandle, MotionBlurOptions>({
         const x = scaled(baseVx * intensity, scaleX);
         const y = scaled(baseVy * intensity, scaleY);
         if (x === 0 && y === 0) return 0;
+        // Both shaders divide offset by velocity length before applying it
+        // along the velocity, so its reach is a distance, not a multiplier.
         return (
           Math.max(Math.abs(x), Math.abs(y)) * 0.5 +
           Math.abs(scaled(offset, sizeScale)) +

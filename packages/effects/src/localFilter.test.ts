@@ -131,6 +131,26 @@ describe("host-local filter units", () => {
     expect(m.filter.padding).toBe(0);
   });
 
+  it.each([1, -1])("pads motion sample offset %s as a distance", (offset) => {
+    const effect = motionBlur({ velocity: { x: 30, y: 0 }, offset })();
+    const { filter, render, transform } = attach(effect, 1, 1);
+    // The upstream shader contract makes offset a distance on both backends.
+    const normalization = /-uOffset\s*\/\s*length\(uVelocity\)/;
+    expect(filter.glProgram?.fragment).toMatch(normalization);
+    expect(filter.gpuProgram?.fragment?.source).toMatch(normalization);
+    // Half the velocity (15), at most one pixel of shift, plus interpolation.
+    expect(filter.padding).toBe(17);
+    transform.a = transform.d = 2;
+    expect(filter.padding).toBe(33); // Allocation precedes apply().
+    render();
+    expect((filter as MotionBlurFilter).offset).toBe(offset * 2);
+    expect((filter as MotionBlurFilter).velocityX).toBe(60);
+    effect.setIntensity(0.5);
+    expect(filter.padding).toBe(18);
+    effect.setIntensity(0);
+    expect(filter.padding).toBe(0);
+  });
+
   it("covers wide Gaussian kernels and preserves explicit edge repetition", () => {
     const effect = axisBlur({ strength: 8, quality: 1, kernelSize: 15 })();
     const { filter, render } = attach(effect);
