@@ -40,7 +40,16 @@ export class SoundHandle {
   }
 
   stop(): void {
+    if (!this._playing) return;
     this._instance.stop();
+    if (this._playing) {
+      // Pixi's WebAudio backend emits no stop while paused. Both backends
+      // are event emitters; their stop event also releases native ownership.
+      const instance = this._instance as IMediaInstance & {
+        emit(event: "stop"): boolean;
+      };
+      instance.emit("stop");
+    }
   }
 
   set volume(v: number) {

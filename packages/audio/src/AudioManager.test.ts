@@ -287,6 +287,106 @@ describe("AudioManager", () => {
   });
 
   describe("requestOnce()", () => {
+    it("fades only the last request and keeps it active through its tail", () => {
+      const queue = new TestFadeQueue();
+      const audio = new AudioManager(mockSound, undefined, undefined, queue);
+      const first = audio.requestOnce("reel");
+      const onEnd = vi.fn();
+      const last = audio.requestOnce("reel", { onEnd });
+      const instance = mockSound._instances.get("reel")!;
+      first.release({ fadeOut: 0.2 });
+      expect(first.active).toBe(false);
+      expect(queue.processes.size).toBe(0);
+      last.release({ fadeOut: 0.2 });
+      last.release({ fadeOut: 0.2 });
+      expect(last.active).toBe(true);
+      expect(queue.processes.size).toBe(1);
+      queue.advance(0.1);
+      expect(instance.volume).toBeCloseTo(0.5);
+      queue.advance(0.1);
+      expect(instance.stop).toHaveBeenCalledOnce();
+      expect(last.active).toBe(false);
+      expect(onEnd).not.toHaveBeenCalled();
+    });
+
+    it("completes a fade even when the paused backend stop emits no event", () => {
+      const queue = new TestFadeQueue();
+      const audio = new AudioManager(mockSound, undefined, undefined, queue);
+      const request = audio.requestOnce("reel");
+      const instance = mockSound._instances.get("reel")!;
+      const backendStop = vi.mocked(instance.stop);
+      backendStop.mockImplementation(() => {});
+      Object.assign(instance, {
+        emit: (event: string) => instance._emit(event),
+      });
+      audio.pauseChannel("sfx");
+      request.release({ fadeOut: 0.2 });
+      queue.advance(0.2);
+      expect(request.active).toBe(false);
+      audio.resumeChannel("sfx");
+      expect(instance.paused).toBe(true);
+      audio.stopAll();
+      expect(backendStop).toHaveBeenCalledOnce();
+    });
+
+    it("starts a fresh shared recording while an old request fades", () => {
+      const queue = new TestFadeQueue();
+      const audio = new AudioManager(mockSound, undefined, undefined, queue);
+      const old = audio.requestOnce("reel");
+      old.release({ fadeOut: 0.2 });
+      const fresh = audio.requestOnce("reel");
+      const freshInstance = mockSound._instances.get("reel")!;
+      queue.advance(0.2);
+      const joined = audio.requestOnce("reel");
+      expect(mockSound.play).toHaveBeenCalledTimes(2);
+      expect(old.active).toBe(false);
+      expect(fresh.active).toBe(true);
+      expect(joined.active).toBe(true);
+      expect(freshInstance.stop).not.toHaveBeenCalled();
+    });
+
+    it("does not fade a playOnce owner's recording", () => {
+      const queue = new TestFadeQueue();
+      const audio = new AudioManager(mockSound, undefined, undefined, queue);
+      const owner = audio.playOnce("reel");
+      const request = audio.requestOnce("reel");
+      request.release({ fadeOut: 0.2 });
+      expect(request.active).toBe(false);
+      expect(owner.playing).toBe(true);
+      expect(queue.processes.size).toBe(0);
+    });
+
+    it("suppresses released callbacks when the recording ends during its fade", () => {
+      const queue = new TestFadeQueue();
+      const audio = new AudioManager(mockSound, undefined, undefined, queue);
+      const onEnd = vi.fn();
+      const request = audio.requestOnce("reel", { onEnd });
+      request.release({ fadeOut: 0.2 });
+      mockSound._instances.get("reel")!._emit("end");
+      queue.advance(0.2);
+      expect(request.active).toBe(false);
+      expect(onEnd).not.toHaveBeenCalled();
+      expect(mockSound._instances.get("reel")!.stop).not.toHaveBeenCalled();
+    });
+
+    it.each([-1, NaN, Infinity])(
+      "rejects fadeOut %s before releasing ownership",
+      (fadeOut) => {
+        const request = manager.requestOnce("reel");
+        expect(() => request.release({ fadeOut })).toThrow(/fadeOut/);
+        expect(request.active).toBe(true);
+        expect(mockSound._instances.get("reel")!.stop).not.toHaveBeenCalled();
+      },
+    );
+
+    it("rejects unavailable fades before releasing the last owner", () => {
+      const request = manager.requestOnce("reel");
+      expect(() => request.release({ fadeOut: 0.2 })).toThrow(/AudioPlugin/);
+      expect(request.active).toBe(true);
+      request.release();
+      expect(request.active).toBe(false);
+    });
+
     it("throws naming the alias when nothing is registered under it", () => {
       (mockSound.exists as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
