@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Character Controller</title>
+    <link rel="stylesheet" href="/shared.css" />
+  </head>
+  <body>
+    <a class="back-link" href="/#character-controller">&larr; All Examples</a>
+    <h1>Character Controller</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span><kbd>A/D</kbd> or <kbd>←/→</kbd> move</span>
+      <span
+        ><kbd>Space</kbd> jump / air jump · release early for a short hop</span
+      >
+      <span><kbd>Shift</kbd> dash</span>
+      <span
+        ><kbd>S/↓</kbd> crouch · press while running to slide under the
+        tunnel</span
+      >
+      <span><kbd>E</kbd> drop through one-way platforms</span>
+      <span
+        ><kbd>1</kbd> default tuning · <kbd>2</kbd> nimble tuning
+        (respawns)</span
+      >
+      <span
+        ><kbd>F</kbd> allow / block dashes · <kbd>C</kbd> refill air
+        charges</span
+      >
+      <span><kbd>R</kbd> respawn</span>
+      <span
+        >Gamepad: stick / D-pad moves, A jumps, B dashes. Mouse / touch: left
+        two quarters move, right half jumps.</span
+      >
+    </div>
+    <script type="module" src="/src/character-controller/main.ts"></script>
+  </body>
+</html>
