@@ -312,3 +312,19 @@ The user requested fixes for the three additional review findings and a PR.
   whitespace checks passed. Existing lint and build warnings remain.
 - A fresh independent correction review found no remaining defect. It passed
   five additional callback probes and confirmed marker layout and peer ranges.
+
+## Cancellation during restoration — 2026-10-04
+
+- Confirmed the remaining PR 397 finding: cancellation with restore from a
+  finish-restoration setter repeated that setter. Pausing before cancellation
+  could recurse indefinitely. Three regression cases failed before the fix.
+- Active restoration now identifies the playback by its captured values.
+  Cancellation stops that restoration without restarting it. A replacement
+  playback started inside an old callback can still restore its own values.
+  The guard unwinds without dispatching callbacks, including after a throw.
+- All 45 addon tests, build, typecheck and lint passed (seven tasks). Tests cover
+  explicit/default cancellation, pause then cancel, nested replacement playback
+  and restoration after a callback failure. Formatting and whitespace checks
+  passed. Both documentation surfaces explain the cancellation behavior.
+- Independent correction review passed with six additional probes and no
+  required corrections. The docs build passed 30 tasks and generated 952 pages.
