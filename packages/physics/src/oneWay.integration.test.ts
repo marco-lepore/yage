@@ -21,6 +21,7 @@ import { Transform, Vec2, ErrorBoundaryKey } from "@yagejs/core";
 import type { Entity, Scene } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { ColliderComponent } from "./ColliderComponent.js";
+import { PhysicsSystem } from "./PhysicsSystem.js";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import {
   createPhysicsTestContext,
@@ -41,7 +42,7 @@ function spawnBody(
   name: string,
   x: number,
   y: number,
-  type: "dynamic" | "static",
+  type: "dynamic" | "static" | "kinematic",
   collider: ColliderConfig,
   ccd = false,
 ): Spawned {
@@ -84,6 +85,199 @@ function step(world: PhysicsWorld, frames: number): void {
 }
 
 describe("one-way platform (real Rapier)", () => {
+  it.each([false, true])(
+    "lands after a controller replaces arrival velocity (query refresh: %s)",
+    async (refreshQueries) => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext({
+        gravity: { x: 0, y: 0 },
+      });
+      spawnBody(scene, "platform", 0, 300, "kinematic", {
+        shape: { type: "box", width: 200, height: 16 },
+        oneWay: {},
+      });
+      const rider = spawnRider(scene, "rider", 0, 278);
+      const system = new PhysicsSystem();
+      system._setContext(context);
+      rider.rb.setVelocity({ x: 0, y: 600 });
+      system.update(DT);
+      // Feet entered the top at 292 by 6 px before the pair is tested.
+      expect(bodyY(physicsWorld, rider)).toBeCloseTo(288, 2);
+      rider.rb.setVelocity({ x: 0, y: 40 });
+      if (refreshQueries) {
+        spawnPlatform(scene, 500, 300);
+        physicsWorld.queryRadius({ x: 0, y: 300 }, 50);
+        physicsWorld.step(0);
+      }
+      for (let i = 0; i < 90; i++) {
+        system.update(DT);
+        rider.rb.setVelocity({ x: 0, y: 40 });
+      }
+      expect(bodyY(physicsWorld, rider)).toBeCloseTo(282, 0);
+    },
+  );
+
+  it("retains arrival when the last and next steps have different durations", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    spawnBody(scene, "platform", 0, 300, "kinematic", {
+      shape: { type: "box", width: 200, height: 16 },
+      oneWay: {},
+    });
+    const rider = spawnRider(scene, "rider", 0, 278);
+    rider.rb.setVelocity({ x: 0, y: 300 });
+    physicsWorld.step(1 / 30);
+    physicsWorld.processCollisionEvents();
+    expect(bodyY(physicsWorld, rider)).toBeCloseTo(288, 2);
+    rider.rb.setVelocity({ x: 0, y: 0 });
+    for (let i = 0; i < 180; i++) {
+      physicsWorld.step(1 / 120);
+      physicsWorld.processCollisionEvents();
+    }
+    expect(bodyY(physicsWorld, rider)).toBeCloseTo(282, 0);
+  });
+
+  it("catches a platform that moved up into a rider and then stopped", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    const platform = spawnBody(scene, "platform", 0, 310, "kinematic", {
+      shape: { type: "box", width: 200, height: 16 },
+      oneWay: {},
+    });
+    const rider = spawnRider(scene, "rider", 0, 288);
+    const body = physicsWorld.getBody(platform.rb._bodyHandle);
+    if (!body) throw new Error("platform body missing");
+    body.setNextKinematicTranslation({ x: 0, y: physicsWorld.toMeters(300) });
+    step(physicsWorld, 1);
+    expect(bodyY(physicsWorld, rider)).toBeCloseTo(288, 2);
+    platform.rb.setVelocity({ x: 0, y: 0 });
+    for (let i = 0; i < 90; i++) {
+      step(physicsWorld, 1);
+      rider.rb.setVelocity({ x: 0, y: 0 });
+    }
+    expect(bodyY(physicsWorld, rider)).toBeCloseTo(282, 0);
+  });
+
+  it("uses scaled compound-part positions for a fast arrival", async () => {
+    const { scene, physicsWorld, context } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    const platform = spawnBody(scene, "platform", 0, 250, "kinematic", {
+      parts: [
+        {
+          shape: { type: "box", width: 20, height: 16 },
+          offset: { x: 200, y: 0 },
+        },
+        {
+          shape: { type: "box", width: 100, height: 8 },
+          offset: { x: 0, y: 25 },
+        },
+      ],
+      oneWay: {},
+    });
+    platform.entity.get(Transform).setScale(2, 2);
+    const rider = spawnBody(scene, "rider", 0, 298, "dynamic", {
+      parts: [
+        {
+          shape: { type: "box", width: 20, height: 20 },
+          offset: { x: 0, y: -20 },
+        },
+      ],
+    });
+    const system = new PhysicsSystem();
+    system._setContext(context);
+    rider.rb.setVelocity({ x: 0, y: 600 });
+    system.update(DT);
+    expect(bodyY(physicsWorld, rider)).toBeCloseTo(308, 2);
+    for (let i = 0; i < 90; i++) {
+      rider.rb.setVelocity({ x: 0, y: 40 });
+      system.update(DT);
+    }
+    expect(bodyY(physicsWorld, rider)).toBeCloseTo(302, 0);
+  });
+
+  it("does not catch a jump that reverses before clearing the platform", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    spawnBody(scene, "platform", 0, 300, "kinematic", {
+      shape: { type: "box", width: 200, height: 16 },
+      oneWay: {},
+    });
+    const rider = spawnRider(scene, "rider", 0, 310);
+    rider.rb.setVelocity({ x: 0, y: -600 });
+    step(physicsWorld, 2);
+    expect(bodyY(physicsWorld, rider)).toBeCloseTo(290, 2);
+    rider.rb.setVelocity({ x: 0, y: 600 });
+    step(physicsWorld, 5);
+    expect(bodyY(physicsWorld, rider)).toBeGreaterThan(330);
+  });
+
+  it.each(["teleport", "reshape", "reactivate"] as const)(
+    "does not use a previous landing after %s inside the platform",
+    async (change) => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      spawnPlatform(scene, 0, 300);
+      const rider = spawnRider(scene, "rider", 0, 100);
+      step(physicsWorld, 150);
+      expect(bodyY(physicsWorld, rider)).toBeCloseTo(280, 0);
+      if (change === "teleport") {
+        rider.rb.setPosition(0, 300);
+      } else if (change === "reshape") {
+        rider.collider.setShape({ type: "box", width: 20, height: 60 });
+      } else {
+        rider.entity.setActive(false);
+        step(physicsWorld, 2);
+        rider.entity.get(Transform).setPosition(0, 300);
+        rider.entity.setActive(true);
+      }
+      rider.rb.setVelocity({ x: 0, y: 40 });
+      physicsWorld.queryRadius({ x: 0, y: 300 }, 50);
+      step(physicsWorld, 60);
+      expect(bodyY(physicsWorld, rider)).toBeGreaterThan(340);
+    },
+  );
+
+  it("forgets unfiltered contacts before restoring one-way filtering", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext();
+    const platform = spawnPlatform(scene, 0, 300);
+    const filter = platform.collider._contactFilter;
+    if (!filter) throw new Error("one-way filter missing");
+    platform.collider.setContactFilter(null);
+    const rider = spawnRider(scene, "rider", 0, 100);
+    step(physicsWorld, 150);
+    expect(bodyY(physicsWorld, rider)).toBeCloseTo(280, 0);
+
+    // Ordinary solid contacts do not establish one-way arrival. The rider
+    // moved inside while the platform was absent from the filter registry.
+    rider.rb.setPosition(0, 300);
+    platform.collider.setContactFilter(filter);
+    step(physicsWorld, 60);
+    expect(bodyY(physicsWorld, rider)).toBeGreaterThan(340);
+  });
+
+  it("does not turn an expired drop-through into an arrival after velocity changes", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    spawnBody(scene, "platform", 0, 300, "kinematic", {
+      shape: { type: "box", width: 200, height: 16 },
+      oneWay: {},
+    });
+    const rider = spawnRider(scene, "rider", 0, 282);
+    step(physicsWorld, 2);
+    rider.collider.dropThrough(DT);
+    rider.rb.setVelocity({ x: 0, y: 600 });
+    step(physicsWorld, 1);
+    expect(bodyY(physicsWorld, rider)).toBeCloseTo(292, 1);
+    expect(rider.collider.isDroppingThrough).toBe(false);
+
+    rider.rb.setVelocity({ x: 0, y: 40 });
+    step(physicsWorld, 90);
+    expect(bodyY(physicsWorld, rider)).toBeGreaterThan(340);
+  });
+
   it("lands a body falling onto the solid side", async () => {
     const { scene, physicsWorld } = await createPhysicsTestContext();
     spawnPlatform(scene, 0, 300);

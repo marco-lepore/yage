@@ -471,10 +471,12 @@ riderCollider.isDroppingThrough; // boolean, true while the window is open
 ```
 
 - A body lands on the face `direction` points at, passes through from every other side, and a body already inside the platform keeps passing until clear — it is never snapped to the surface.
+- Landing uses the bodies' actual movement, so changing velocity before contact is detected does not lose an arrival from above. Teleporting, resizing, or re-enabling a collider inside the platform does not count as landing; the configured `margin` still applies.
 - `dropThrough(seconds)` is per body: other bodies on the same platform stay supported. Seconds of simulated time (respects pause/timeScale). Wakes a sleeping body. Callable before `entity.add()`.
 - `direction` is in the platform body's local frame and rotates with the body.
 - A fast body is swept against static platforms every step, so it cannot cross one undetected. Against a kinematic platform, a body that travels more than the platform-plus-body thickness in one step crosses it unless it has `ccd: true`. The sweep honors one-way filtering, including drop-through.
 - `oneWay` is part of collider construction. It has no effect on `sensor: true` colliders (dev warning).
+- `raycast`, `castShape`, `queryShape`, and `queryRadius` test geometry; they do not apply `oneWay`, `dropThrough`, or contact filters. A query hit alone does not mean a platform supports the rider.
 
 ## Contact Filters
 
@@ -499,8 +501,8 @@ collider.setContactFilter(null); // remove
 ```
 
 - Runs inside the physics step for every candidate pair involving the collider, every step. Keep it cheap; don't create or destroy entities, bodies, or colliders from inside it. The `contact` object is reused across calls — read, don't store.
-- While any collider in the world has a filter (a `oneWay` platform counts), every step reads every collider's pose and velocity before stepping: about 0.8 ms per step at 2000 colliders.
-- No contact normal or point exists yet. Positions/velocities are from the start of the step, so a body that crossed a surface mid-step still shows which side it came from.
+- While any collider in the world has a filter (a `oneWay` platform counts), every step reads every collider's pose and velocity before stepping.
+- No contact normal or point exists yet. Positions/velocities are from the start of the current step. A pair first detected after an earlier step crossed a surface can already overlap; current velocity cannot reliably reconstruct its arrival if game code changed that velocity.
 - When both colliders in a pair have filters, both run for every candidate pair; the pair is solid only if both return `true`.
 - A filter that throws is reported (`Inspector.getErrors().callbackErrors`) once per installed filter and the pair stays solid.
 - `setContactFilter` replaces the built-in filter a `oneWay` config installed. Register custom filters during normal component setup whenever the scene is constructed.
