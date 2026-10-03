@@ -59,7 +59,7 @@ All `duration` options and `fadeIn`/`fadeOut` arguments are in seconds (`hitFlas
 
 Color-grade presets: `"neutral"` (identity), `"sepia"`, `"grayscale"`, `"negative"`, `"night"`, `"warm"` (orange tint + brightness boost), `"cool"` (blue tint).
 
-`motionBlur.kernelSize` must be odd and ≥ 5. Invalid values are coerced up to the nearest valid kernel and a one-shot `console.warn` fires naming the requested + final value. `bulgePinch.strength` is signed: negative pinches, positive bulges. A fade scales the magnitude while preserving the sign, so a pinch fades flat → pinch, not flat → bulge → pinch. `bulgePinch.center` and `bulgePinch.radius` are in the effect host's local pixels; omit `center` to sit in the middle of the filtered region. `zoomBlur.strength` is also signed: positive values streak outward and negative values pull inward. `axisBlur` is symmetric around each source pixel; use `motionBlur` for a directional trailing smear.
+`motionBlur.kernelSize` must be finite, odd and ≥ 5. Finite invalid values are coerced up to the nearest valid kernel and a one-shot `console.warn` fires naming the requested + final value. `bulgePinch.strength` is signed: negative pinches, positive bulges. A fade scales the magnitude while preserving the sign, so a pinch fades flat → pinch, not flat → bulge → pinch. `bulgePinch.center` and `bulgePinch.radius` are in the effect host's local pixels; omit `center` to sit in the middle of the filtered region. `zoomBlur.strength` is also signed: positive values streak outward and negative values pull inward. `axisBlur` is symmetric around each source pixel; use `motionBlur` for a directional trailing smear.
 
 `zoomBlur.expandFromCenter` grows a finite `radius` outward with intensity. A
 negative, unlimited radius cannot expand. `implosion.expandFromCenter` applies
@@ -75,6 +75,12 @@ its source, so these throw instead of clamping. Range-bound inputs:
 `glitch.slices` and `glitch.sampleSize` integers ≥ 1, `axisBlur.quality` an
 integer ≥ 1, `dissolve.edgeWidth` 0.001–0.5, `dissolve.noiseScale` ≥ 1,
 `dissolve.softness` 0.001–0.25, `bulgePinch.radius` ≥ 0.
+
+`bloom.blur`, `dropShadow.blur`, and `outline.thickness` must be non-negative;
+`glow.distance` must be at least 1 and `glow.quality` must be between 0 and 1.
+Bloom and shadow quality must be integers at least 1. The dimensional options
+and setters of these presets, `chromaticAberration`, and `motionBlur` reject
+non-finite numbers.
 
 The public handle controls an effect's strength three ways. `setIntensity(value)` sets the primary intensity immediately and clamps the value to 0–1. `fadeIn(seconds)` and `fadeOut(seconds)` tween that same value and return a `Process`. The per-preset `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`, `godRay.setGain`, `motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`, `colorize.setStrength`) rebase that ceiling while preserving the current intensity ratio. For example, `bloom.setIntensity(0.5)` displays half of the configured bloom scale, while `bloom.setBloomScale(2)` changes what full strength means. For a custom timed animation, pass a tween to `run`; the process is scoped to the effect and stops on `.remove()`.
 
@@ -131,25 +137,55 @@ Two consequences for choosing a scope:
   no `filterArea` either — so it helps only as far as the content it adds
   reaches. The reliable answer is a layer that fills the viewport.
 - **A layer that fills the viewport** gets a frame close to the visible area,
-  which is what a full-screen look needs. The frame still resizes with the
-  camera and the letterbox bars, so an option measured in input-texture pixels
-  changes meaning as it does — see the unit reference below.
+  which is what a full-screen look needs. Its frame includes child effect
+  padding. See the unit reference below for sizes that follow the host scale.
 
-## Unit reference (and a known limitation)
+## Units and padding
 
-Pixel-valued options on older presets and `axisBlur` are in **input-texture pixels** — i.e. the rasterized region's pixel size, post fit + camera transforms. With responsive `fit`, that means a `bloom.blur: 8` is 8/900 = 0.89% of canvas width on a desktop-native viewport but 8/382 = 2.10% on a mobile-sized one. Effects visibly "scale up" on smaller canvases. This is a known cross-package issue, not specific to any one preset.
+Most blur and halo sizes use **host-local pixels**. They follow the effect host's
+scale, including camera zoom and responsive fit, on every render. Do not multiply
+these options by the canvas-to-virtual-size ratio yourself.
 
-Six presets ship with built-in resolution-stability:
+| Preset                    | Options in host-local pixels                                      |
+| ------------------------- | ----------------------------------------------------------------- |
+| `bloom`                   | `blur`                                                            |
+| `outline`                 | `thickness`                                                       |
+| `dropShadow`              | `offset`, `blur`                                                  |
+| `glow`                    | `distance`                                                        |
+| `chromaticAberration`     | `separation`                                                      |
+| `motionBlur`              | `velocity`, `offset`                                              |
+| `axisBlur`                | `strength`, `perpendicularStrength`                               |
+| `bulgePinch`, `implosion` | `center`, `radius`                                                |
+| `zoomBlur`                | `center`, `innerRadius`, `radius`                                 |
+| `shockwave`               | trigger coordinates, `speed`, `amplitude`, `wavelength`, `radius` |
+| `glitch`                  | `offset`, `red`, `green`, `blue`                                  |
+| `dissolve`                | `noiseScale`                                                      |
 
-- `bulgePinch` interprets its center and radius in host-local pixels.
-- `shockwave` accepts container-local coords for `trigger(x, y)` AND for every dimensional option, and converts each frame against the filter target's live `worldTransform`.
-- `glitch` interprets band displacement and RGB offsets in host-local pixels.
-- `zoomBlur` interprets its center and radii in host-local pixels.
-- `implosion` interprets its center and radius in host-local pixels.
-  `expandFromCenter: true` grows the affected radius outward as intensity rises.
-- `dissolve` interprets its noise scale in host-local pixels.
+Scalar lengths use the mean of the host's two axis scales when those scales
+differ. Axis blur strengths, channel separation, and vector components instead
+use the corresponding axis scale magnitude. Vector
+screen directions do not rotate with the host. Shockwave speed is measured in
+local pixels per second and uses the host’s x-axis scale. `motionBlur.kernelSize` and
+quality options count samples or passes; they are not lengths.
 
-For resolution-stable output on the other presets, scale your option values by `renderer.canvasSize.width / renderer.virtualSize.width` at the call site.
+`pixelate.size`, `crt.lineWidth`, `halftone.size`, and `wave.amplitude` /
+`wave.wavelength` remain in post-transform logical pixels. Renderer resolution
+controls raster density separately from these units.
+
+The seven blur and halo presets at the top of the table reserve padding from
+their current sampling reach. Padding updates with scale and intensity before
+the filter's input is allocated. A parent effect also includes its children's
+effect padding, so a scene or layer filter does not crop a sprite's halo at the
+sprite's original bounds. Consecutive filters add their padding.
+
+Filter input buffers include these margins. Ordinary `getBounds()` queries
+and local layout bounds continue to measure content.
+Larger blur radii and more blur passes can require larger intermediate textures.
+Explicit masks, `filterArea`, viewport clipping, and render-target size limits
+still constrain output. `axisBlur({ repeatEdgePixels: true })` deliberately
+keeps edge pixels and does not expand its input. With `rawFilter`, set the
+underlying filter's `padding` to cover its shader's sampling reach; parent
+effects preserve that declared margin.
 
 ## Per-preset handle extras
 

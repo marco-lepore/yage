@@ -1,18 +1,19 @@
+import { gaussianPadding, localFilter, scaled } from "./localFilter.js";
 import { defineEffect } from "@yagejs/renderer";
 import type { Effect } from "@yagejs/renderer";
 import { BlurFilter } from "pixi.js";
 import type { AxisBlurHandle } from "./handles.js";
-import { validateFinite, validateInteger } from "./validate.js";
+import { validateFinite, validateInteger, validateOneOf } from "./validate.js";
 
 export type BlurAxis = "horizontal" | "vertical";
 
 /** Options for the {@link axisBlur} preset. */
 export interface AxisBlurOptions {
-  /** Main-axis blur strength in input-texture pixels. Default: 12. */
+  /** Main-axis blur strength in host-local pixels. Default: 12. */
   strength?: number;
   /** Blur direction. Default: `"horizontal"`. */
   axis?: BlurAxis;
-  /** Blur strength across the other axis. Default: 0. */
+  /** Blur strength across the other axis, in host-local pixels. Default: 0. */
   perpendicularStrength?: number;
   /** Number of blur passes. Default: 2. */
   quality?: number;
@@ -38,7 +39,10 @@ export const axisBlur = defineEffect<AxisBlurHandle, AxisBlurOptions>({
   name: "yage:axisBlur",
   factory: (options) => {
     let intensity = 1;
-    let axis = options.axis ?? "horizontal";
+    let axis = validateOneOf("axisBlur", "axis", options.axis ?? "horizontal", [
+      "horizontal",
+      "vertical",
+    ]);
     let strength = validateFinite(
       "axisBlur",
       "strength",
@@ -49,22 +53,51 @@ export const axisBlur = defineEffect<AxisBlurHandle, AxisBlurOptions>({
       "perpendicularStrength",
       options.perpendicularStrength ?? 0,
     );
+    const quality = validateInteger(
+      "axisBlur",
+      "quality",
+      options.quality ?? 2,
+      1,
+    );
+    const kernelSize = options.kernelSize ?? 5;
+    if (![5, 7, 9, 11, 13, 15].includes(kernelSize))
+      throw new Error(`axisBlur: invalid kernelSize, got ${kernelSize}.`);
     const initial = strengths(axis, strength, perpendicular, intensity);
     const filter = new BlurFilter({
       strengthX: initial.x,
       strengthY: initial.y,
-      quality: validateInteger("axisBlur", "quality", options.quality ?? 2, 1),
-      kernelSize: options.kernelSize ?? 5,
+      quality,
+      kernelSize,
     });
     filter.repeatEdgePixels = options.repeatEdgePixels ?? false;
 
-    const apply = (): void => {
-      const value = strengths(axis, strength, perpendicular, intensity);
-      filter.strengthX = value.x;
-      filter.strengthY = value.y;
-    };
+    const local = localFilter(
+      filter,
+      ({ scaleX, scaleY }) => {
+        const value = strengths(axis, strength, perpendicular, intensity);
+        const x = scaled(value.x, scaleX);
+        const y = scaled(value.y, scaleY);
+        filter.strengthX = x;
+        filter.strengthY = y;
+      },
+      ({ scaleX, scaleY }) => {
+        if (filter.repeatEdgePixels) return 0;
+        const value = strengths(axis, strength, perpendicular, intensity);
+        return gaussianPadding(
+          Math.max(
+            Math.abs(scaled(value.x, scaleX)),
+            Math.abs(scaled(value.y, scaleY)),
+          ),
+          quality,
+          kernelSize,
+        );
+      },
+    );
+    const apply = local.update;
     const effect: Effect<AxisBlurHandle> = {
       filter,
+      onAttach: local.onAttach,
+      onDetach: local.onDetach,
       getIntensity: () => intensity,
       setIntensity: (value) => {
         intensity = validateFinite("axisBlur", "intensity", value);
@@ -84,7 +117,10 @@ export const axisBlur = defineEffect<AxisBlurHandle, AxisBlurOptions>({
           apply();
         },
         setAxis: (value: BlurAxis) => {
-          axis = value;
+          axis = validateOneOf("axisBlur", "axis", value, [
+            "horizontal",
+            "vertical",
+          ]);
           apply();
         },
       }),

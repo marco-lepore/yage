@@ -1,3 +1,6 @@
+import { glowPrograms } from "./glowPrograms.js";
+import { localFilter, scaled } from "./localFilter.js";
+import { validateFinite, validateMinimum, validateRange } from "./validate.js";
 import { defineEffect } from "@yagejs/renderer";
 import type { Effect } from "@yagejs/renderer";
 import { GlowFilter } from "pixi-filters";
@@ -7,7 +10,7 @@ import type { GlowHandle } from "./handles.js";
 export interface GlowOptions {
   /** Glow color (0xRRGGBB). Default: 0xffffff. */
   color?: number;
-  /** Glow distance in pixels. Default: 10. */
+  /** Glow distance in host-local pixels. Default: 10. */
   distance?: number;
   /** Outer-edge glow strength. Default: 4. */
   outerStrength?: number;
@@ -35,20 +38,48 @@ export interface GlowOptions {
 export const glow = defineEffect<GlowHandle, GlowOptions>({
   name: "yage:glow",
   factory: (options) => {
-    let baseOuter = options.outerStrength ?? 4;
-    let baseInner = options.innerStrength ?? 0;
-    const distance = options.distance ?? 10;
+    let baseOuter = validateFinite(
+      "glow",
+      "outerStrength",
+      options.outerStrength ?? 4,
+    );
+    let baseInner = validateFinite(
+      "glow",
+      "innerStrength",
+      options.innerStrength ?? 0,
+    );
+    const distance = validateMinimum(
+      "glow",
+      "distance",
+      options.distance ?? 10,
+      1,
+    );
+    const quality = validateRange(
+      "glow",
+      "quality",
+      options.quality ?? 0.1,
+      0,
+      1,
+    );
     const filter = new GlowFilter({
       color: options.color ?? 0xffffff,
       distance,
       outerStrength: baseOuter,
       innerStrength: baseInner,
       alpha: options.alpha ?? 1,
-      quality: options.quality ?? 0.1,
+      quality,
       knockout: options.knockout ?? false,
     });
-    // GlowFilter's outer halo extends `distance` pixels past the source.
-    filter.padding = distance + 4;
+    const programs = glowPrograms(distance, quality);
+    filter.glProgram = programs.glProgram;
+    filter.gpuProgram = programs.gpuProgram;
+    const local = localFilter(
+      filter,
+      ({ sizeScale }) => {
+        filter.distance = scaled(distance, sizeScale);
+      },
+      ({ sizeScale }) => scaled(distance, sizeScale) + 1,
+    );
     // Read intensity off whichever knob is configured non-zero. We keep the
     // two scales in lockstep through setIntensity, so any non-zero base is a
     // valid normalizer; preferring outer is just convention (the more common
@@ -60,20 +91,23 @@ export const glow = defineEffect<GlowHandle, GlowOptions>({
     };
     const effect: Effect<GlowHandle> = {
       filter,
+      onAttach: local.onAttach,
+      onDetach: local.onDetach,
       getIntensity: readIntensity,
       setIntensity: (v) => {
+        validateFinite("glow", "intensity", v);
         filter.outerStrength = baseOuter * v;
         filter.innerStrength = baseInner * v;
       },
       buildExtras: () => ({
         setOuterStrength: (value: number) => {
           const ratio = baseOuter > 0 ? filter.outerStrength / baseOuter : 1;
-          baseOuter = value;
+          baseOuter = validateFinite("glow", "outerStrength", value);
           filter.outerStrength = value * ratio;
         },
         setInnerStrength: (value: number) => {
           const ratio = baseInner > 0 ? filter.innerStrength / baseInner : 1;
-          baseInner = value;
+          baseInner = validateFinite("glow", "innerStrength", value);
           filter.innerStrength = value * ratio;
         },
         setColor: (color: number) => {

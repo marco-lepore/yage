@@ -1,3 +1,4 @@
+import { attachFilterBounds } from "./filterBounds.js";
 import { Tween } from "@yagejs/core";
 import type { Process, ScopedProcessQueue } from "@yagejs/core";
 import type { DisplayContainer as Container, Filter } from "../public-types.js";
@@ -40,6 +41,7 @@ export class EffectStack {
   private readonly ownedFilters = new Set<Filter>();
   private readonly effectProcesses = new Map<Effect, Set<Process>>();
   private destroyed = false;
+  private detachBounds: (() => void) | undefined;
 
   constructor(
     private readonly displayObject: Container,
@@ -189,6 +191,8 @@ export class EffectStack {
     this.ownedFilters.clear();
     this.displayObject.filters = external.length === 0 ? null : external;
 
+    this.detachBounds?.();
+    this.detachBounds = undefined;
     this.queue.cancelAll();
   }
 
@@ -227,5 +231,11 @@ export class EffectStack {
 
     const next = [...external, ...desired];
     this.displayObject.filters = next.length === 0 ? null : next;
+    if (this.entries.size > 0) {
+      this.detachBounds ??= attachFilterBounds(this.displayObject);
+    } else {
+      this.detachBounds?.();
+      this.detachBounds = undefined;
+    }
   }
 }
