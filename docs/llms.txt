@@ -48,6 +48,7 @@ Installable, opinionated gameplay patterns (`@yagejs-addons` scope), independent
 - [dialogue](llms/addons/dialogue.md): Branching runner, typewriter box & bubbles, markup, themeable presenters
 - [inventory](llms/addons/inventory.md): Slot inventory — stacking, item actions, sorting, one slot view with swappable cell presets
 - [abilities](llms/addons/abilities.md): Phase-based abilities, input intent mapping, and a concrete hit contract
+- [stats](llms/addons/stats.md): Numeric stats, source-owned modifiers, timed effects, stacking rules, derived values, and damage formulas
 - [feel](llms/addons/feel.md): Game feel — squash, flash, shake, hit-stop, sound, and particles composed into one named trigger
 - [i18n](llms/addons/i18n.md): Localization — `msg` descriptors, an i18next-backed service, and localized text for renderer, UI, React, dialogue, and inventory
 - [interaction](llms/addons/interaction.md): Proximity interaction — walk up, see a prompt, press E; headless

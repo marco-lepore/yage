@@ -1,0 +1,384 @@
+---
+title: Stats
+description: Numeric stats, equipment modifiers, timed effects, and game-authored damage formulas
+---
+
+Stats combines equipment, temporary effects, and derived values into the numbers
+your game reads. You choose the stat names and what those numbers mean. The addon
+handles modifier order, ownership, stacking, duration, and formula dependencies.
+
+## Install and read stats
+
+```bash
+npm install @yagejs-addons/stats @yagejs/core
+```
+
+```ts
+import { Stats } from "@yagejs-addons/stats";
+
+const stats = new Stats({
+  attack: { base: 100 },
+  speed: { base: 200, min: 0, max: 420 },
+});
+stats.setSource("weapon", [
+  { stat: "attack", operation: "flat", value: 20 },
+]);
+console.log(stats.get("attack")); // 120
+```
+
+`get` reads one effective value. `values()` returns a detached record of every
+value. Use `setBase` or `setBases` to change base values, such as after leveling up.
+The addon does not apply damage, move entities, clamp current HP to maximum HP,
+or trigger death. Those consequences belong to your game.
+
+## Equipment and modifier order
+
+A source names the owner of a collection of modifiers. Call `setSource` when
+that owner's equipment or configuration changes. The call replaces all of the
+owner's existing modifiers. `removeSource` removes them together.
+
+```ts
+import { Stats } from "@yagejs-addons/stats";
+
+const stats = new Stats({ attack: { base: 100 } });
+function equipWeapon(baseAttack: number, attackPercent: number, flatTrait: number) {
+  stats.setSource("weapon", [
+    { stat: "attack", operation: "baseAdd", value: baseAttack },
+    { stat: "attack", operation: "basePercent", value: attackPercent },
+    { stat: "attack", operation: "flat", value: flatTrait },
+  ]);
+}
+equipWeapon(50, 0.2, 20);
+console.log(stats.getBase("attack")); // 150
+console.log(stats.get("attack")); // 150 × 1.2 + 20 = 200
+equipWeapon(40, 0.5, 10);
+console.log(stats.get("attack")); // 220
+stats.removeSource("weapon");
+console.log(stats.get("attack")); // 100
+```
+
+Modifiers are copied when submitted. Changing an equipment object later does not
+change the store until you call `setSource` again.
+
+Replacing a source also cancels any temporary or suppressed effects owned by that
+source. Give equipment stats and temporary effects separate names when their
+lifetimes differ:
+
+```ts
+import { Stats } from "@yagejs-addons/stats";
+
+const stats = new Stats({ attack: { base: 100 } });
+stats.setSource("weapon:stats", [{ stat: "attack", operation: "baseAdd", value: 50 }]);
+stats.addEffect({
+  source: "weapon:proc", duration: 5,
+  modifiers: [{ stat: "attack", operation: "percent", value: 0.2 }],
+});
+// Updating equipment leaves the triggered effect running.
+stats.setSource("weapon:stats", [{ stat: "attack", operation: "baseAdd", value: 60 }]);
+// This game's unequip rule removes both equipment stats and its triggered effects.
+stats.removeSource("weapon:stats");
+stats.removeSource("weapon:proc");
+```
+
+Use `baseAdd` when equipment's regular stats belong to the base. Use `flat` for
+traits added after base percentages. Both contributions are owned by the source,
+so unequipping removes them together. `setBase` changes the stored character stat
+without changing equipment contributions.
+
+The default arithmetic is:
+
+```text
+base = unmodifiedBase + sum(baseAdd)
+value = (base + base × sum(basePercent) + sum(flat))
+  × (1 + sum(percent))
+  × product(multiply)
+```
+
+| Operation | Example | Meaning |
+| --- | --- | --- |
+| `baseAdd` | `50` | Add 50 to the base before base percentages |
+| `flat` | `20` | Add 20 after base percentages |
+| `basePercent` | `0.2` | Add 20% of the base, including baseAdd |
+| `percent` | `0.2` | Add 20% to the shared percentage multiplier |
+| `multiply` | `1.2` | Multiply by 1.2 independently |
+| `override` | `150` | Replace the arithmetic result with 150 |
+
+Two `percent` modifiers of `0.2` give ×1.4. Two `multiply` modifiers of `1.2`
+give ×1.44. Base percentages include `baseAdd` contributions and exclude `flat` bonuses.
+
+Overrides use the highest `priority`, defaulting to zero. Ties use the newest
+collection, then the last override within that collection. A stat's optional
+`round` rule (`floor`, `ceil`, or `round`) runs before its `min` and `max` bounds.
+These rules also apply to an override.
+
+`getBase` returns the base including `baseAdd`, before other modifiers or bounds.
+`stats.explain("attack")` reports the `unmodifiedBase`, total `baseAdd`, composed
+`base`, contributing modifiers, other operation totals, and final value. `stats.snapshot().sources` shows each modifier
+collection's owner. Inputs must be finite numbers; invalid writes throw before
+changing state.
+
+## Temporary effects
+
+An effect owns a collection of modifiers and optionally a duration. Its handle
+lets you cancel early or refresh its remaining time.
+
+```ts
+import { Stats } from "@yagejs-addons/stats";
+
+const stats = new Stats({ speed: { base: 200 } });
+const haste = stats.addEffect({
+  source: "potion",
+  duration: 5,
+  modifiers: [{ stat: "speed", operation: "multiply", value: 1.5 }],
+});
+stats.advance(2);
+console.log(haste?.remaining); // 3 seconds
+haste?.refresh(5);
+haste?.cancel();
+```
+
+Without a duration, an effect lasts until removed. Durations must be positive,
+finite seconds. Cancellation is safe to repeat. Refreshing a removed or expired
+effect throws. `removeSource("potion")` removes every effect with that owner.
+
+### Stacking rules
+
+Ungrouped effects all contribute. Name a configured group to share a stacking
+rule across effects, even when they come from different owners.
+
+```ts
+import { Stats } from "@yagejs-addons/stats";
+
+const stats = new Stats({ attack: { base: 100 } }, {
+  groups: {
+    fury: { mode: "stack", limit: 3, overflow: "oldest" },
+    aura: { mode: "highest" },
+    stance: { mode: "latest" },
+  },
+});
+stats.addEffect({
+  group: "aura", rank: 2, duration: 8,
+  modifiers: [{ stat: "attack", operation: "basePercent", value: 0.3 }],
+});
+```
+
+- **Stack:** each effect contributes and has its own timer. At a configured
+  limit, `overflow: "oldest"` removes the oldest effect. The default,
+  `"reject"`, returns `null` from `addEffect` without adding the new effect.
+- **Highest:** only the effect with the highest explicit rank contributes.
+  The newest wins ties. Rank selects the whole effect, including all its stats.
+- **Latest:** only the newest effect contributes.
+
+Suppressed effects keep counting down. A weaker effect can become effective again
+when the winner expires, provided its own duration has not ended. A handle's
+`active` means the effect is still present; `contributing` means its modifiers
+currently apply. Refresh changes the timer without changing recency or rank.
+
+### Choose whose time advances effects
+
+```ts yage-context="entity"
+import { Stats, StatsComponent } from "@yagejs-addons/stats";
+
+const model = new Stats({ speed: { base: 200 } });
+entity.add(new StatsComponent({ model }));
+```
+
+`StatsComponent` advances the model on the fixed clock by default. Pass
+`clock: "frame"` for rendered-frame updates. Both clocks follow scene and entity
+time scaling, including freezes and slow motion. Paused scenes and disabled or
+inactive components do not advance durations. Their modifiers remain present.
+
+Give each model one clock owner. When using StatsComponent, do not also call
+`advance` yourself. For a custom clock, use the headless model and pass that
+clock's delta to `advance`. The component exposes its model directly and accepts
+a custom implementation of the public `StatsModel` contract.
+
+`StatsChangedEvent` is a void entity event emitted while the component is enabled.
+Read the model in the listener to update a HUD or apply game-specific consequences.
+The model also offers `onChange(listener)`, which returns an unsubscribe function.
+Changes to inputs and effect expiry notify listeners; timer countdown alone does
+not. A notification may leave effective values unchanged.
+
+## Derived stats
+
+Declare dependencies so unknown names and cycles fail when the store is created.
+A string dependency reads the other stat's effective value.
+
+```ts
+import { Stats } from "@yagejs-addons/stats";
+
+type Stat = "strength" | "attack";
+const stats = new Stats<Stat>({
+  strength: { base: 10 },
+  attack: {
+    derived: {
+      dependencies: ["strength"],
+      evaluate: (get) => get("strength") * 2,
+    },
+  },
+});
+stats.setSource("ring", [{ stat: "strength", operation: "flat", value: 5 }]);
+console.log(stats.get("attack")); // 30
+```
+
+A derived result supplies the stat's unmodified base. `baseAdd` contributions
+are added before base percentages, just as for a stored base. `getBase` includes
+those contributions; `explain("attack").unmodifiedBase` shows the formula result. Derived
+stats reject `setBase` calls.
+
+For an aura or conversion that scales from base attack, declare the base value
+explicitly. The base includes equipment's `baseAdd` contributions and excludes
+percentage bonuses, flat bonuses, overrides, rounding, and bounds.
+
+```ts
+import { Stats } from "@yagejs-addons/stats";
+
+const stats = new Stats<"attack" | "aura">({
+  attack: { base: 100 },
+  aura: {
+    derived: {
+      dependencies: [{ stat: "attack", value: "base" }],
+      evaluate: (get) => get("attack", "base") * 2,
+    },
+  },
+});
+stats.setSource("weapon", [
+  { stat: "attack", operation: "baseAdd", value: 50 },
+  { stat: "attack", operation: "basePercent", value: 1 },
+]);
+console.log(stats.get("attack")); // 300
+console.log(stats.getBase("attack")); // 150
+console.log(stats.get("aura")); // 300
+```
+
+To read both values, include both `"attack"` and
+`{ stat: "attack", value: "base" }` in `dependencies`. Read them with
+`get("attack")` and `get("attack", "base")`. Declaring one value does not
+permit reading the other. Both reads share the same evaluation and cycle checks.
+A base read does not evaluate the stat's effective-value arithmetic.
+
+Formula callbacks must be synchronous and pure. Read dependencies through the
+provided `get`; an undeclared read throws. Do not read or mutate the same store
+through a captured reference. Shared dependencies run once per evaluation.
+Separate reads evaluate afresh, so changed game configuration cannot leave a
+cached formula result behind. Use `values()` to read several stats together.
+
+Changing external configuration captured by a formula does not emit `onChange`
+or `StatsChangedEvent`. A HUD that updates only on events will not see that change
+until another model operation notifies it. Keep changing numeric inputs in the
+model when consumers need notifications:
+
+```ts
+import { Stats } from "@yagejs-addons/stats";
+
+const stats = new Stats<"attack" | "auraRatio" | "aura">({
+  attack: { base: 100 },
+  auraRatio: { base: 2 },
+  aura: { derived: {
+    dependencies: [{ stat: "attack", value: "base" }, "auraRatio"],
+    evaluate: (get) => get("attack", "base") * get("auraRatio"),
+  } },
+});
+stats.onChange(() => console.log(stats.get("aura")));
+stats.setBase("auraRatio", 3); // Notifies the listener, which reads 300.
+```
+
+## Damage formulas
+
+`FormulaGraph` uses the same dependency rules for calculations involving several
+actors, hit conditions, and intermediate results. You supply the rules as named
+functions. The graph provides evaluation and an inspectable breakdown.
+
+This example combines attack and HP scaling, a flat bonus, damage bonuses, a
+critical-hit multiplier, and target mitigation. The numbers and rules are
+illustrative game code.
+
+```ts
+import { FormulaGraph, Stats } from "@yagejs-addons/stats";
+
+type Step = "scaling" | "bonus" | "critical" | "mitigation" | "damage";
+interface Hit {
+  attacker: { attack: number; maxHp: number; bonus: number; critDamage: number };
+  target: { defenseFactor: number; resistance: number };
+  attackRatio: number;
+  hpRatio: number;
+  flat: number;
+  critical: boolean;
+  reactionFactor: number;
+}
+const formula = new FormulaGraph<Step, Hit>({
+  scaling: {
+    dependencies: [],
+    evaluate: (_, hit) =>
+      hit.attacker.attack * hit.attackRatio + hit.attacker.maxHp * hit.hpRatio + hit.flat,
+  },
+  bonus: { dependencies: [], evaluate: (_, hit) => 1 + hit.attacker.bonus },
+  critical: {
+    dependencies: [],
+    evaluate: (_, hit) => hit.critical ? 1 + hit.attacker.critDamage : 1,
+  },
+  mitigation: {
+    dependencies: [],
+    evaluate: (_, hit) => hit.target.defenseFactor * (1 - hit.target.resistance),
+  },
+  damage: {
+    dependencies: ["scaling", "bonus", "critical", "mitigation"],
+    evaluate: (get, hit) => get("scaling") * get("bonus") * get("critical") *
+      get("mitigation") * hit.reactionFactor,
+  },
+});
+const actor = new Stats({
+  attack: { base: 1000 }, maxHp: { base: 10000 },
+  bonus: { base: 0.5 }, critDamage: { base: 1 },
+});
+const result = formula.values({
+  attacker: actor.values(),
+  target: { defenseFactor: 0.5, resistance: 0.1 },
+  attackRatio: 2, hpRatio: 0.1, flat: 0,
+  critical: true, reactionFactor: 1.5,
+});
+console.log(result.damage); // 6075
+console.log(result.scaling); // 3000
+```
+
+Call `evaluate("damage", hit)` for one output or `values(hit)` for all named
+steps. Add game-specific nodes for elemental reactions, resistance curves,
+defense reduction, conditional bonuses, or stat conversions. Nodes may use any
+pure arithmetic, not just the stat modifier operations.
+
+Capture `actor.values()` when an ability fires to preserve those stats for later
+hits. Read it again at impact time for live stats. Your game also decides when
+to roll critical hits and which hit tags select bonuses. With the abilities
+addon, call the formula in a hit builder or a game-authored hit stage, then pass
+the result to the normal hit delivery path.
+
+Formula and change-listener exceptions are recorded and rethrown through an
+`ErrorBoundary`. StatsComponent uses the engine's boundary while enabled.
+Standalone models expose their boundary as `errorBoundary`; pass the engine's
+boundary to a separate FormulaGraph if its errors should appear in the Inspector.
+A throwing listener stops the remaining notifications. The triggering mutation
+remains applied.
+
+## Save and restore
+
+```ts
+import { Stats } from "@yagejs-addons/stats";
+
+const stats = new Stats({ attack: { base: 100 } });
+const saved = stats.snapshot();
+const restored = new Stats({ attack: { base: 100 } });
+restored.restore(saved);
+```
+
+A snapshot includes stored bases and every active or suppressed modifier
+collection, including ownership, stacking group, rank, order, and remaining time.
+Stored bases exclude `baseAdd` contributions, which are saved with their sources.
+Restoring reconstructs their combined value without adding contributions twice.
+Put that snapshot in your game's explicit save root.
+
+Recreate stat definitions and stacking policies from code before restoring. They
+are not part of the snapshot. Restore checks the entire snapshot before replacing
+state. It preserves subscriptions and emits one change notification. Old effect
+handles become inactive; use `effect(savedId)` to reacquire a saved effect. Saves
+must match the current stat and group definitions, so migrate renamed or removed
+stats in your game's save migration.

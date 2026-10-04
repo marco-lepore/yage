@@ -179,6 +179,7 @@ export default defineConfig({
             { label: "Virtual Controls", slug: "addons/virtual-controls" },
             { label: "Inventory", slug: "addons/inventory" },
             { label: "Abilities", slug: "addons/abilities" },
+            { label: "Stats", slug: "addons/stats" },
             { label: "Steering", slug: "addons/steering" },
             { label: "Synth", slug: "addons/synth" },
             { label: "Feel", slug: "addons/feel" },
