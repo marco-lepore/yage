@@ -280,8 +280,10 @@ is still a name the script declared. A hand-written storage over game state
 should drop or delete on `null` the same way.
 
 `{gold}` (and any condition on `gold`) resolves **when the line is presented**, so
-an earlier command's effect shows up on a later line. Already-shown lines never
-re-render, and a choice menu's conditions don't live-refresh while it's open.
+an earlier command's effect shows up on a later line. Variable writes do not
+refresh text already on screen. A locale change re-resolves ordinary variable
+tokens but keeps computed text values. A choice menu's conditions do not
+live-refresh while it is open.
 
 ### Conditions and `set` are expressions
 
@@ -352,6 +354,14 @@ A function you install with the same name replaces the built-in, and a variable
 may share a built-in's name. The random ones draw from the scene's seeded random
 service, so a run with a fixed seed makes the same picks.
 
+`controller.preview(nodeId)` returns plain text along the node's path until a
+choice, a `select`, or the end. It uses a snapshot of the current variables and
+runs no commands. Each preview uses a separate random generator starting at the
+scene's seed, so it cannot consume gameplay randomness. Random text and branches
+in a preview are illustrative; they may differ from later playback. Custom
+functions must be side-effect-free, as during playback. Variables omitted from
+`storage.entries()` remain readable in expressions through `storage.get()`.
+
 #### Computed text
 
 A line can show a value computed when it appears. Put a `{name}` token in the text
@@ -366,6 +376,10 @@ const line: SayStep = { kind: "say", text: "That leaves {left} gold.", expressio
 `say` steps, choice prompts, and choice options (text and `disabledReason`) take
 `expressions`. A token without an entry reads the variable of that name. The text
 keeps only the token, so a translation writes `{left}` too.
+
+Computed values stay fixed while that line or choice is on screen, including
+when its language changes. A choice label and its disabled reason share the
+same values. Revisiting a step evaluates its expressions again.
 
 #### Author the whole script in YAML
 
@@ -497,14 +511,15 @@ lowercase and matched by their full shape, so ordinary prose that happens to sta
 The script is checked in two stages, both throwing hard errors so typos die early
 rather than silently mis-branching:
 
-- **Load-time** (`defineScript` / `loadScript` / `loadYaml`, environment-free):
+- **Load-time** (`loadScript` / `loadYaml`, environment-free):
   collects the names read/written, functions called, and command types fired, and
   type-checks what's statically knowable — a numeric or arithmetic operator (in the
   atomic form *or* inside a parsed expression) with a wrong-type literal operand or
   a declared-non-number variable operand, and a literal `set` value against the
   target's declared type. Throws `DialogueScriptError`. Undeclared *references*
   aren't rejected here — the storage/functions may supply them, which is only known
-  at play time.
+  at play time. `defineScript` only captures types; `play()` loads and validates
+  its result before starting the conversation.
 - **Play-time** (when you call `play`): every read name must be provided (a
   declared default or a value in the storage), every called function installed,
   every command type handled, no `set` target that's a function, no

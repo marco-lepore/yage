@@ -127,9 +127,11 @@ menu.button(msg("menu.start", "Start"), { onClick: start });
 menu.button(msg("menu.language", "Language"), { onClick: () => localization.setLocale(next()) });
 ```
 
-To add a localized label inside a nested panel, pass the panel as the third
-argument: `menu.text(message, style, panel)`. `localizedTooltip(anchor, scene,
-message)` builds a tooltip bubble that follows the locale.
+`menu.text(message, style, opts)` accepts the same text options as `UISurface`,
+including width, wrapping, and truncation. To nest the label, pass the panel as
+the fourth argument: `menu.text(message, style, opts, panel)`.
+`localizedTooltip(anchor, scene, message)` builds a tooltip bubble that follows
+the locale.
 
 ### Every widget that shows text
 
@@ -241,10 +243,18 @@ const SCRIPT = defineScript({
         },
       ],
     },
+    forest: {
+      id: "forest",
+      steps: [
+        { kind: "say", speaker: "mira", text: msg("mira.forest.path", "Follow the path north.") },
+        { kind: "end" },
+      ],
+    },
   },
 });
 const npc = scene.spawn("npc");
-npc.add(new DialogueController({ ...createBoxDialogue() }));
+const dialogue = npc.add(new DialogueController({ ...createBoxDialogue() }));
+dialogue.play(SCRIPT);
 ```
 
 A locale change mid-line keeps the typewriter where it is and swaps the text
