@@ -1,5 +1,25 @@
 # @yagejs/debug
 
+## 0.12.0
+
+### Minor Changes
+
+- [#403](https://github.com/marco-lepore/yage/pull/403) [`1520781`](https://github.com/marco-lepore/yage/commit/15207819383c8f9ea7ea299bf46aba07a0ee1a53) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Control drawing during automated play.
+
+  Pass Inspector drawing choices through the manual clock while continuing ticker-driven simulation and animation. Draw the final state without spending an extra frame.
+
+### Patch Changes
+
+- [#391](https://github.com/marco-lepore/yage/pull/391) [`ff80b80`](https://github.com/marco-lepore/yage/commit/ff80b80347c097092555ad0a6099bc14b62a7640) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Expose `toggle()` and `setFlag()` on the public `DebugRegistry` interface, so code that resolves `DebugRegistryKey` can switch debug drawing and individual contributor flags without a cast.
+
+- [#392](https://github.com/marco-lepore/yage/pull/392) [`ce75bb9`](https://github.com/marco-lepore/yage/commit/ce75bb9f245266f5f382232c25b9e77b66c25b0a) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `DebugPlugin` installs the Inspector when the game has not installed one, and removes it on destroy. An Inspector the game installed with `InspectorPlugin` is reused and left in place.
+
+- [#392](https://github.com/marco-lepore/yage/pull/392) [`847ce80`](https://github.com/marco-lepore/yage/commit/847ce80baad0ed2a18569db9f28f185c61ab7c35) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `DebugPlugin` installs `deterministicSeed` on `engine.sceneRandom` instead of on the Inspector. A `NaN` or infinite `deterministicSeed` now throws from the `DebugPlugin` constructor, naming the value. It used to seed every scene with `0`.
+
+- Updated dependencies [[`a1d07ae`](https://github.com/marco-lepore/yage/commit/a1d07ae42d858cf8e94f4bb8414096bdd4a09c16), [`0c90d77`](https://github.com/marco-lepore/yage/commit/0c90d774bdbda47f5a95c92ab7aef11d7a19e7b9), [`1f45e38`](https://github.com/marco-lepore/yage/commit/1f45e38d108b17e37a807c209b5d84159b88867c), [`6888d06`](https://github.com/marco-lepore/yage/commit/6888d06c6fdf2361f41c5521ebdda83dc833b6c4), [`a7fd74e`](https://github.com/marco-lepore/yage/commit/a7fd74e75347a7a1b56ab18fcfb55f2f5cf4da46), [`1520781`](https://github.com/marco-lepore/yage/commit/15207819383c8f9ea7ea299bf46aba07a0ee1a53), [`1520781`](https://github.com/marco-lepore/yage/commit/15207819383c8f9ea7ea299bf46aba07a0ee1a53), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`0f9d0bc`](https://github.com/marco-lepore/yage/commit/0f9d0bce27dd933d562fa6c9c66696b647574e69), [`8e2ea03`](https://github.com/marco-lepore/yage/commit/8e2ea031ab3dd93c2ae09177eb833e8ccd9a2681), [`908622a`](https://github.com/marco-lepore/yage/commit/908622adcf1a401251539e9edd081ad7ffc7e642), [`082897e`](https://github.com/marco-lepore/yage/commit/082897ef31a1e663dea482c77848101cbc0c5af1), [`ce75bb9`](https://github.com/marco-lepore/yage/commit/ce75bb9f245266f5f382232c25b9e77b66c25b0a), [`ce75bb9`](https://github.com/marco-lepore/yage/commit/ce75bb9f245266f5f382232c25b9e77b66c25b0a), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`851310c`](https://github.com/marco-lepore/yage/commit/851310c54e04f5cdb52819050ca0a50f36b8e4c3), [`ba12b2f`](https://github.com/marco-lepore/yage/commit/ba12b2f0f851c2472abed23878b9598e57024d5f), [`847ce80`](https://github.com/marco-lepore/yage/commit/847ce80baad0ed2a18569db9f28f185c61ab7c35), [`3bab027`](https://github.com/marco-lepore/yage/commit/3bab0271c916cd65f7e7dbe17388f7f7cedf20ff), [`5efe5f6`](https://github.com/marco-lepore/yage/commit/5efe5f6de138b71048e6f4752ed74647a9fc3e76), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`d6b8138`](https://github.com/marco-lepore/yage/commit/d6b813836696a1b8afd8f6cdf7ae1ddaf83f94e8), [`7ac9d9d`](https://github.com/marco-lepore/yage/commit/7ac9d9d0fd806e5ebd552b92ef9df7eb9b897210), [`7aba1d9`](https://github.com/marco-lepore/yage/commit/7aba1d91bef7d4172a18cb8e88092cbebab3d09b), [`7aba1d9`](https://github.com/marco-lepore/yage/commit/7aba1d91bef7d4172a18cb8e88092cbebab3d09b)]:
+  - @yagejs/core@0.12.0
+  - @yagejs/renderer@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes

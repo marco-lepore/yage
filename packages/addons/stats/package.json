@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/stats",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Stats, source-owned modifiers, timed effects, and dependency-checked formulas for YAGE",
   "keywords": [
     "yage",
@@ -50,10 +50,10 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@yagejs/core": ">=0.11.0 <0.12.0"
+    "@yagejs/core": ">=0.12.0 <0.13.0"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
-    "@yagejs/core": ">=0.11.0"
+    "@yagejs/core": ">=0.12.0"
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "@yagejs/e2e",
   "private": true,
-  "version": "0.0.12",
+  "version": "0.0.13",
   "type": "module",
   "scripts": {
     "dev": "vite --config fixtures/vite.config.ts",
@@ -18,21 +18,21 @@
     "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
-    "@yagejs-tools/editor": "^0.1.0",
-    "@yagejs-addons/abilities": "^0.4.0",
-    "@yagejs-addons/steering": "^0.4.0",
-    "@yagejs-addons/dialogue": "^0.6.0",
-    "@yagejs-addons/inventory": "^0.3.0",
-    "@yagejs-addons/interaction": "^0.3.0",
-    "@yagejs/core": "^0.11.0",
-    "@yagejs/debug": "^0.11.0",
-    "@yagejs/input": "^0.11.0",
-    "@yagejs/level": "^0.11.0",
-    "@yagejs/lighting": "^0.11.0",
-    "@yagejs/pathfinding": "^0.11.0",
-    "@yagejs/physics": "^0.11.0",
-    "@yagejs/renderer": "^0.11.0",
-    "@yagejs/save": "^0.11.0",
-    "@yagejs/ui": "^0.11.0"
+    "@yagejs-tools/editor": "^0.2.0",
+    "@yagejs-addons/abilities": "^0.5.0",
+    "@yagejs-addons/steering": "^0.5.0",
+    "@yagejs-addons/dialogue": "^0.7.0",
+    "@yagejs-addons/inventory": "^0.4.0",
+    "@yagejs-addons/interaction": "^0.4.0",
+    "@yagejs/core": "^0.12.0",
+    "@yagejs/debug": "^0.12.0",
+    "@yagejs/input": "^0.12.0",
+    "@yagejs/level": "^0.12.0",
+    "@yagejs/lighting": "^0.12.0",
+    "@yagejs/pathfinding": "^0.12.0",
+    "@yagejs/physics": "^0.12.0",
+    "@yagejs/renderer": "^0.12.0",
+    "@yagejs/save": "^0.12.0",
+    "@yagejs/ui": "^0.12.0"
   }
 }
