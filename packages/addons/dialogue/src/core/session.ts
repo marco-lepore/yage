@@ -1093,13 +1093,21 @@ export class DialogueSession {
     const script = this.script;
     const storage = this.storage;
     if (!script || !storage) return [];
-    // Every preview reads one variable snapshot and owns its random sequence.
+    // Enumerable values are snapshotted; opaque names retain direct reads.
+    // The preview owns its random sequence.
     const view = materialize(storage);
-    const scope = createScope(
+    const snapshotScope = createScope(
       new MemoryVariableStorage(view),
       this.functions,
       createRandomService((this.opts.random ?? globalRandom).getSeed()),
     );
+    const scope: EvalScope = {
+      ...snapshotScope,
+      get: (name) =>
+        Object.hasOwn(view, name)
+          ? snapshotScope.get(name)
+          : (storage.get(name) ?? null),
+    };
     const out: PreviewedLine[] = [];
     // Detours followed with a local stack, the way the runner would.
     const returns: { node: string; i: number }[] = [];

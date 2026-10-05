@@ -1257,6 +1257,77 @@ describe("DialogueSession — fast-forward & skip", () => {
 });
 
 describe("DialogueSession — preview (side-effect-free lookahead)", () => {
+  it("preserves direct reads for variables omitted from storage entries", async () => {
+    const values = new MemoryVariableStorage({
+      go: true,
+      target: "destination",
+      amount: 41,
+      shown: "snapshot",
+      blank: null,
+    });
+    const get = vi.fn((name: string) => values.get(name));
+    const h = makeHarness({
+      storage: {
+        get,
+        has: (name) => values.has(name),
+        set: (name, value) => values.set(name, value),
+        entries: () =>
+          [
+            ["shown", "snapshot"],
+            ["blank", null],
+          ] as const,
+      },
+    });
+    h.session.play({
+      id: "opaque-preview",
+      start: "start",
+      nodes: {
+        start: {
+          id: "start",
+          steps: [
+            { kind: "say", text: "Ready" },
+            {
+              kind: "command",
+              commands: [],
+              condition: "go and blank == null",
+              target: "branch",
+            },
+            { kind: "say", text: "Wrong path" },
+          ],
+        },
+        branch: {
+          id: "branch",
+          steps: [{ kind: "goto", target: parseExpr("target") }],
+        },
+        destination: {
+          id: "destination",
+          steps: [
+            {
+              kind: "say",
+              text: "{shown}: {value}",
+              expressions: { value: "amount + 1" },
+            },
+          ],
+        },
+      },
+    });
+    get.mockClear();
+    expect(h.session.preview("start").map((line) => line.text)).toEqual([
+      "Ready",
+      "snapshot: 42",
+    ]);
+    expect(get).toHaveBeenCalledWith("go");
+    expect(get).toHaveBeenCalledWith("target");
+    expect(get).toHaveBeenCalledWith("amount");
+    expect(get).not.toHaveBeenCalledWith("shown");
+    expect(get).not.toHaveBeenCalledWith("blank");
+    h.text.finishReveal();
+    await flush();
+    h.session.advance();
+    await flush();
+    expect(h.text.lastText).toBe("snapshot: 42");
+  });
+
   it("returns linear lines, following goto, stopping at a choice", () => {
     const h = makeHarness();
     const script: DialogueScript = {

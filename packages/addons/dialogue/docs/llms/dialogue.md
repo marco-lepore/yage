@@ -694,7 +694,8 @@ are the game's policy (no global singleton).
 preview uses a separate random generator starting at the session source's seed
 (`globalRandom` for a headless session with no `random` option). It consumes no
 live randomness; previewed random text and branches may differ from playback.
-Installed functions must remain side-effect-free.
+Installed functions must remain side-effect-free. For names omitted from
+`storage.entries()`, expressions fall back to direct `storage.get()` reads.
 
 ### Lifecycle levers (host owns focus/pause/visibility)
 

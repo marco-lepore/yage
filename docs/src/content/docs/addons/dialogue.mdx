@@ -359,7 +359,8 @@ choice, a `select`, or the end. It uses a snapshot of the current variables and
 runs no commands. Each preview uses a separate random generator starting at the
 scene's seed, so it cannot consume gameplay randomness. Random text and branches
 in a preview are illustrative; they may differ from later playback. Custom
-functions must be side-effect-free, as during playback.
+functions must be side-effect-free, as during playback. Variables omitted from
+`storage.entries()` remain readable in expressions through `storage.get()`.
 
 #### Computed text
 
