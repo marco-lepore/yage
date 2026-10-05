@@ -4,7 +4,7 @@
  * sequences a conversation: resolve i18n + markup, drive the typewriter, gate on
  * reveal-completion, run the auto-advance clock, and book-keep choice selection.
  *
- * It is engine-agnostic (zero `@yagejs` imports): the channels are semantic
+ * It runs without a renderer or scene: the channels are semantic
  * interfaces — `present(line)`, `highlight(i)`, `setSpeaking(bool)` — with no
  * pixels, no input, and no world entities. A YAGE host (`DialogueController`)
  * supplies concrete channels, an `InputBinding`, and pumps `update(dt)`; a
@@ -17,7 +17,12 @@
  * knowing about either.
  */
 
-import type { ErrorBoundary, RandomService } from "@yagejs/core";
+import {
+  createRandomService,
+  globalRandom,
+  type ErrorBoundary,
+  type RandomService,
+} from "@yagejs/core";
 
 import { loadScript } from "./formats/canonical.js";
 import type { DialogueExtraChannel } from "./channels/types.js";
@@ -41,6 +46,7 @@ import {
 import type { VarsOf } from "./defineScript.js";
 import type {
   ChoiceStep,
+  ChoiceOption,
   CommandContext,
   CommandHandler,
   CommandTiming,
@@ -379,6 +385,11 @@ export class DialogueSession {
   private functions: Readonly<Record<string, DialogueFunction>> = {};
   /** Eval scope over the resolved storage + functions, for text expressions. */
   private scope: EvalScope | undefined;
+  /** Computed tokens stay fixed for the current line or choice presentation. */
+  private readonly expressionValues = new Map<
+    SayStep | ChoiceStep | ChoiceOption,
+    VarMap
+  >();
   private commands: Readonly<Record<string, CommandHandler>> = {};
   private fallbackCommand: CommandHandler | undefined;
 
@@ -777,6 +788,7 @@ export class DialogueSession {
    *  {@link stop} also abandons the runner + timing latches. */
   private goIdle(mode: "idle" | "ended"): void {
     this.mode = mode;
+    this.expressionValues.clear();
     this.saying = undefined;
     this.currentSpeaker = undefined;
     this.choosingStep = undefined;
@@ -936,21 +948,26 @@ export class DialogueSession {
     return stripMarkup(text, { locale: this.i18n.locale });
   }
 
-  /** Resolve `text` for display: the read view plus the text's own computed
-   *  `{name}` tokens ({@link TextExpressions}), evaluated now. */
+  /** Translate using the computed tokens captured for this presentation. */
   private resolveText(
     text: DialogueText,
-    expressions: TextExpressions | undefined,
+    source: SayStep | ChoiceStep | ChoiceOption,
     view: VarMap,
   ): string {
-    return this.i18n.resolve(text, this.textValues(expressions, view));
+    if (!source.expressions) return this.i18n.resolve(text, view);
+    let values = this.expressionValues.get(source);
+    if (!values) {
+      values = this.textValues(source.expressions, {});
+      this.expressionValues.set(source, values);
+    }
+    return this.i18n.resolve(text, { ...view, ...values });
   }
 
   private textValues(
     expressions: TextExpressions | undefined,
     view: VarMap,
+    scope = this.scope,
   ): VarMap {
-    const scope = this.scope;
     if (!expressions || !scope) return view;
     const values: VarMap = { ...view };
     for (const [name, expr] of Object.entries(expressions)) {
@@ -1067,17 +1084,22 @@ export class DialogueSession {
    * path — following `goto`, `detour`, and conditional `command` jumps (and
    * computed targets) using the *current*
    * variable snapshot — stopping at the first choice or the end. Runs no
-   * commands and mutates nothing. For a "skip with a summary" affordance.
+   * commands and consumes no live randomness. Each preview starts a separate
+   * generator at the session source's seed, so random outcomes are illustrative,
+   * not a prediction of playback. Installed functions must be side-effect-free.
+   * For a "skip with a summary" affordance.
    */
   preview(nodeId: string, limit = 64): PreviewedLine[] {
     const script = this.script;
     const storage = this.storage;
     if (!script || !storage) return [];
-    // Interpolation reads a materialized snapshot; conditions evaluate through a
-    // scope (per-name reads + functions). Both off the current storage, for this
-    // side-effect-free lookahead.
+    // Every preview reads one variable snapshot and owns its random sequence.
     const view = materialize(storage);
-    const scope = createScope(storage, this.functions, this.opts.random);
+    const scope = createScope(
+      new MemoryVariableStorage(view),
+      this.functions,
+      createRandomService((this.opts.random ?? globalRandom).getSeed()),
+    );
     const out: PreviewedLine[] = [];
     // Detours followed with a local stack, the way the runner would.
     const returns: { node: string; i: number }[] = [];
@@ -1101,7 +1123,12 @@ export class DialogueSession {
           : undefined;
         out.push({
           speaker: name,
-          text: this.plain(this.resolveText(step.text, step.expressions, view)),
+          text: this.plain(
+            this.i18n.resolve(
+              step.text,
+              this.textValues(step.expressions, view, scope),
+            ),
+          ),
         });
         i++;
       } else if (step.kind === "detour") {
@@ -1199,11 +1226,7 @@ export class DialogueSession {
     this.opts.onSelectionChanged?.({
       index: chosen.index,
       text: this.plain(
-        this.resolveText(
-          chosen.option.text,
-          chosen.option.expressions,
-          this.readView(),
-        ),
+        this.resolveText(chosen.option.text, chosen.option, this.readView()),
       ),
     });
   }
@@ -1245,7 +1268,7 @@ export class DialogueSession {
     this.confirming = true;
     const text = this.resolveText(
       chosen.option.text,
-      chosen.option.expressions,
+      chosen.option,
       this.readView(),
     );
     this.opts.onChoiceMade?.({ index: chosen.index, text });
@@ -1277,6 +1300,7 @@ export class DialogueSession {
   // ── runner handlers ─────────────────────────────────────────────────────
 
   private handleSay(step: SayStep, speaker: LoadedSpeaker | undefined): void {
+    this.expressionValues.clear();
     this.mode = "saying";
     this.saying = step;
     this.autoTimer = undefined;
@@ -1333,6 +1357,7 @@ export class DialogueSession {
     choices: readonly ResolvedChoice[],
     speaker: LoadedSpeaker | undefined,
   ): void {
+    this.expressionValues.clear();
     this.mode = "choosing";
     this.resolved = choices;
     // Start on the first ENABLED row. The runner skips a step with zero
@@ -1409,7 +1434,8 @@ export class DialogueSession {
    * re-present it in place. A line keeps its reveal progress (through the
    * text channel's `replaceVisible`); a choice menu keeps its
    * highlighted row. No line, command, reveal, or choice event fires, and
-   * the cursor does not move. A no-op outside a line or choice.
+   * the cursor does not move. Computed text tokens retain their presented
+   * values. A no-op outside a line or choice.
    */
   retranslate(): void {
     // Before the view: `readView` materializes storage, and a getter a game
@@ -1460,7 +1486,7 @@ export class DialogueSession {
     speaker: LoadedSpeaker | undefined,
     view: VarMap,
   ): { line: PresentedLine; plain: string; name: string | undefined } {
-    const resolved = this.resolveText(step.text, step.expressions, view);
+    const resolved = this.resolveText(step.text, step, view);
     return {
       line: {
         speaker: this.speakerView(speaker, view),
@@ -1484,7 +1510,7 @@ export class DialogueSession {
     return {
       speaker: this.speakerView(speaker, view),
       text: step.text
-        ? this.markup(this.resolveText(step.text, step.expressions, view))
+        ? this.markup(this.resolveText(step.text, step, view))
         : EMPTY_PARSED,
       speed: 1,
       view: step.view,
@@ -1498,19 +1524,13 @@ export class DialogueSession {
     view: VarMap,
   ): PresentedChoice[] {
     return choices.map((c) => ({
-      label: this.plain(
-        this.resolveText(c.option.text, c.option.expressions, view),
-      ),
+      label: this.plain(this.resolveText(c.option.text, c.option, view)),
       meta: c.option.meta,
       disabled: c.disabled,
       disabledReason:
         c.disabled && c.option.disabledReason !== undefined
           ? this.plain(
-              this.resolveText(
-                c.option.disabledReason,
-                c.option.expressions,
-                view,
-              ),
+              this.resolveText(c.option.disabledReason, c.option, view),
             )
           : undefined,
     }));

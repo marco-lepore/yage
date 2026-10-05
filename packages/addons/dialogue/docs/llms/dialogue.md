@@ -189,7 +189,10 @@ Step kinds: `say` | `choice` | `command` | `goto` | `select` | `detour` |
 **Computed text tokens** — `expressions` maps a `{name}` token to an expression
 (string, parsed like a condition, or an `Expr`) evaluated each time the text shows;
 a token without an entry reads the variable. The text keeps only the token, so a
-translation carries `{left}` too:
+translation carries `{left}` too. Computed values stay fixed for the current
+line or choice, including retranslation, selection, and confirmation. An
+option's label and disabled reason share those values. Revisiting a step
+evaluates its expressions again:
 
 ```ts
 import type { SayStep } from "@yagejs-addons/dialogue";
@@ -263,8 +266,9 @@ ReactiveMap<string, VarValue>)` — `VariableStorage` over a `@yagejs/core`
 
 Conditions, `{token}` interpolation, and choice gates read the storage at
 **line-present time** (an earlier command's effect shows on a later line);
-already-shown lines never re-render, and a choice menu's conditions don't
-live-refresh while open.
+variable writes do not refresh text already on screen. A locale change
+re-resolves ordinary variable tokens but keeps computed text values. Choice
+conditions do not live-refresh while open.
 
 ### Expression IR (conditions + `set` values)
 
@@ -460,13 +464,14 @@ end
 
 ### Validation (two hard-error stages)
 
-- **Load-time** (`loadScript` / `defineScript`, environment-free): collects the
+- **Load-time** (`loadScript`, environment-free): collects the
   names read/written, functions called, command types fired; type-checks what's
   statically knowable (a numeric/arithmetic op — atomic OR inside an expression
   tree — with a wrong-type literal operand or a declared-non-number var operand; a
   literal `set` value vs the target's declared type). Throws `DialogueScriptError`.
   Undeclared _references_ are NOT rejected here — the storage/functions may provide
-  them.
+  them. `defineScript` only captures types; `play()` loads and validates its
+  result before starting the conversation.
 - **Play-time** (`validatePlay`, on `play()`): every read name must be provided
   (declared default or `storage.has`), every called function installed, every
   command type handled (`commands`/`fallbackCommand`), no `set` target that's a
@@ -683,6 +688,13 @@ component was removed), `isActive()`, `stop()`, `skip()`,
 lifecycle levers below. It is multi-instance friendly — several ambient
 conversations can run at once; "which is interactive" and "does the world pause"
 are the game's policy (no global singleton).
+
+`preview(nodeId)` returns plain text along the node's path until a choice,
+`select`, or the end. It uses a variable snapshot and runs no commands. Each
+preview uses a separate random generator starting at the session source's seed
+(`globalRandom` for a headless session with no `random` option). It consumes no
+live randomness; previewed random text and branches may differ from playback.
+Installed functions must remain side-effect-free.
 
 ### Lifecycle levers (host owns focus/pause/visibility)
 

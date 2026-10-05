@@ -6,6 +6,7 @@ import {
   type UIElement,
   type UIPanel,
   type UIText,
+  type UITextBuilderProps,
 } from "@yagejs/ui";
 import { localizationFor, type Relocalizable } from "../core/Localization.js";
 import {
@@ -29,24 +30,28 @@ import { UILocalizedText } from "./UILocalizedText.js";
 export class LocalizedUISurface extends UISurface implements Relocalizable {
   private _resolve: MessageResolver = formatFallback;
 
-  /** Add a text element. A `Message` makes a {@link UILocalizedText}. */
+  /** Add text with the base surface's options; pass a fourth argument to nest. */
   override text(
     content: Message,
     style?: Partial<TextStyle>,
+    opts?: UITextBuilderProps,
     parent?: UIPanel,
   ): UILocalizedText;
   override text(
     content: string,
     style?: Partial<TextStyle>,
+    opts?: UITextBuilderProps,
     parent?: UIPanel,
   ): UIText;
   override text(
     content: string | Message,
     style?: Partial<TextStyle>,
+    opts?: UITextBuilderProps,
     parent: UIPanel = this.root,
   ): UIText {
-    if (!isMessage(content)) return parent.text(content, style);
+    if (!isMessage(content)) return parent.text(content, style, opts);
     const element = new UILocalizedText({
+      ...opts,
       message: content,
       resolve: this._resolve,
       ...(style ? { style } : {}),
