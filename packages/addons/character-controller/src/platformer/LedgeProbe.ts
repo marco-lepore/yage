@@ -145,7 +145,11 @@ export class LedgeProbe extends Component {
       filterGroups: this.params.volume,
       excludeEntity: exclude,
     };
-    if (this.world.queryShape(shape, destination, options).length > 0)
+    if (
+      this.world
+        .queryShape(shape, destination, options)
+        .some((entity) => entity !== this.entity)
+    )
       return false;
     const dx = to.x - from.x,
       dy = to.y - from.y;
@@ -157,7 +161,7 @@ export class LedgeProbe extends Component {
         { x: from.x + offset.x, y: from.y + offset.y },
         { x: dx / length, y: dy / length },
         length,
-        { ...options, stopAtPenetration: false },
+        { ...options, solidFor: this.collider, stopAtPenetration: false },
       )
     );
   }

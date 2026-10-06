@@ -2,7 +2,16 @@ import { CollisionLayers } from "@yagejs/physics";
 
 export const WIDTH = 960;
 export const HEIGHT = 600;
-export const SPAWN = { x: 70, y: 530 };
+export const WORLD_WIDTH = 4400;
+export const STATIONS = [
+  { name: "JUMPS + ONE-WAY", x: 70 },
+  { name: "SLIDE", x: 650 },
+  { name: "STEPS", x: 1250 },
+  { name: "ALTERNATING SLOPES", x: 1850 },
+  { name: "MOVING SUPPORT", x: 2920 },
+  { name: "LEDGE HELPER", x: 3470 },
+  { name: "WALL JUMP", x: 4070 },
+] as const;
 const layers = new CollisionLayers();
 export const PLAYER = layers.define("player");
 export const SOLID = layers.define("solid");

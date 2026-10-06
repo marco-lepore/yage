@@ -107,10 +107,25 @@ export class TerrainAssist extends Component {
     if (
       down &&
       this.walkable(down.normal) &&
-      down.distance > 0.05 &&
       down.point.y >= this.body.positionY - 0.5
     ) {
-      return { velocity: seated, offset: { x: 0, y: down.distance } };
+      // Flat tops and ramp crests need a small clearance so CCD does not
+      // catch an adjoining vertical face. Downward press would consume that gap.
+      if (Math.abs(down.normal.x) < 0.001) {
+        const correction = down.distance - 0.5;
+        if (
+          correction >= 0 ||
+          !this.cast(origin, { x: 0, y: -1 }, -correction, this.params.volume)
+        )
+          return {
+            velocity: { x: velocity.x, y: 0 },
+            ...(Math.abs(correction) > 0.01
+              ? { offset: { x: 0, y: correction } }
+              : {}),
+          };
+      }
+      if (down.distance > 0.05)
+        return { velocity: seated, offset: { x: 0, y: down.distance } };
     }
     return { velocity: seated };
   }
@@ -129,10 +144,12 @@ export class TerrainAssist extends Component {
     if (tuning.ledgeStepHeight <= 0 || tuning.ledgeMinWidth <= 0) return;
     const direction = { x: Math.sign(dx), y: 0 };
     const obstruction = this.cast(origin, direction, Math.abs(dx), volume);
+    // A touching ramp corner may report the slope normal even when CCD
+    // blocks its adjoining face. The clearance sequence also handles that lip.
     if (
       !obstruction ||
-      this.walkable(obstruction.normal) ||
-      Math.abs(obstruction.normal.x) < 0.5
+      (this.walkable(obstruction.normal) && obstruction.distance > 0.05) ||
+      Math.abs(obstruction.normal.x) < 0.05
     )
       return;
     // A dynamic body may rest slightly inside support. This geometric margin
@@ -148,7 +165,7 @@ export class TerrainAssist extends Component {
     const landing = this.cast(ahead, { x: 0, y: 1 }, height, volume);
     if (!landing || !this.walkable(landing.normal)) return;
     const lift = height - landing.distance;
-    if (lift <= 0.05 || lift > height) return;
+    if (lift < -0.05 || lift > height) return;
     const destination = { x: raised.x, y: raised.y + landing.distance };
     // A forward landing probe may reach past a narrow obstruction. Validate the
     // actual destination too, rather than assuming its support has the same height.
@@ -161,7 +178,8 @@ export class TerrainAssist extends Component {
       )
     )
       return;
-    return { x: 0, y: -lift };
+    // Leave clearance above the riser so CCD does not keep catching its face.
+    return { x: 0, y: -Math.min(height, lift + 0.5) };
   }
 
   private walkable(normal: Vec2Like): boolean {

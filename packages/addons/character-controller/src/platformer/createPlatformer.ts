@@ -99,7 +99,10 @@ export function createPlatformer(
       friction: 0,
       restitution: 0,
       ...(options.collisionGroups !== undefined
-        ? { collisionGroups: options.collisionGroups }
+        ? {
+            layers: options.collisionGroups >>> 16,
+            mask: options.collisionGroups & 0xffff,
+          }
         : {}),
     }),
   );

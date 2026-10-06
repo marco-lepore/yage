@@ -3,6 +3,10 @@
 Runnable example: [movement playground](https://examples.yage.dev/character-controller.html).
 Source: `examples/src/character-controller/`. Demonstrates default and custom
 tuning, dash admission policy, air-charge refill, and one-way drop-through.
+The camera follows a scrolling course with repeated steps and alternating ramps.
+`[` / `]` visit stations; `R` restarts the selected station. Hold `G` and jump
+toward a ledge to climb. The example's `LedgeClimb` component supplies the move;
+`LedgeProbe` supplies geometry and clearance.
 
 ## Entries
 
@@ -78,6 +82,8 @@ Options: `tuning?: Partial<PlatformerConfig>`, `input?: InputBinding | null`,
 (false), `dash?: boolean`, `wallJump?: boolean`, `slide?: boolean` (all true),
 `limit?: SpeedLimitView`, `fall?: FallHoldView`, `resolveMotion?: MotionResolver`,
 `admissionPolicies?: MoveAdmissionPolicies`.
+`collisionGroups` is the character collider's packed membership/filter from
+`CollisionLayers.interactionGroups(membership, filter)`.
 
 ## Tuning and standard moves
 
@@ -257,11 +263,12 @@ No event applies damage, audio, particles or animation.
 Ground/volume/wall are packed physics interaction groups, default all groups.
 For one-way platforms, include them in solid and exclude them from volume and
 wall. Sensors are excluded by physics queries. Keep the character out of query
-groups used by ledge and crush geometry. Use the existing ColliderComponent
+groups used by crush geometry. Ledge clearance always excludes its own character. Use the existing ColliderComponent
 `dropThrough` API for game-owned drop-through behavior.
 Ground and terrain casts honor both colliders' contact filters, including
 one-way/drop-through rules. Rejected surfaces do not count as landings or
-restore air charges.
+restore air charges. Terrain assistance can leave a small clearance above a
+surface; use `controller.grounded` and `PlatformerLandedEvent` for ground contact.
 
 MovingSurface({ from, to, speed }) moves a kinematic platform between two world
 points. Spawn moving surfaces before riders; planned velocity must be current

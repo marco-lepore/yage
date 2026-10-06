@@ -9,9 +9,12 @@ crouching, and slides. Terrain assistance handles slopes and small steps.
 Moving platforms carry the character, including into a jump.
 
 Try the [movement playground](https://examples.yage.dev/character-controller.html)
-for jumps, dashes, wall jumps, crouching, slopes, one-way ledges, and moving
-platforms. Press **1** or **2** to compare default and nimble tuning, **F** to
-toggle dash eligibility, and **C** to refill air charges.
+for jumps, dashes, crouching, repeated steps, alternating slopes, moving
+platforms, and wall jumps. The camera follows the player through separate
+stations. Use **[** and **]** to visit a station, and **R** to restart there.
+Press **1** or **2** to compare default and nimble tuning, **F** to toggle dash
+eligibility, and **C** to refill air charges. At the ledge station, hold **G**
+and jump toward an edge to try a climb built with `LedgeProbe` and custom motion.
 
 ## Install and create a player
 
@@ -237,13 +240,18 @@ integration and request lifetimes.
 
 ## Terrain and moving platforms
 
+`collisionGroups` sets the character collider’s membership and filter, packed
+with `CollisionLayers.interactionGroups(membership, filter)`.
+
 The `collision` option supplies physics query groups for ground (`solid`),
 headroom and terrain clearance (`volume`), and walls (`wall`). All default to
 all groups. When using one-way platforms, include those platforms only in
 `solid`; their underside must not block standing or count as a wall.
 Ground and terrain casts follow both colliders' contact filters, including
 one-way and drop-through rules. Passing through a platform does not count as
-a landing or restore air charges.
+a landing or restore air charges. Terrain assistance can leave a small clearance
+above a surface. Use `controller.grounded` and `PlatformerLandedEvent` for ground
+contact in game logic.
 
 `MovingSurface({ from, to, speed })` moves an upright kinematic platform between
 two world points. Spawn moving platforms before characters so their next

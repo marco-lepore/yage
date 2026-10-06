@@ -32,6 +32,9 @@ async function main(): Promise<void> {
         refill: ["KeyC"],
         reset: ["KeyR"],
         drop: ["KeyE"],
+        ledge: ["KeyG"],
+        next: ["BracketRight"],
+        previous: ["BracketLeft"],
       },
       preventDefaultKeys: [
         "Space",
