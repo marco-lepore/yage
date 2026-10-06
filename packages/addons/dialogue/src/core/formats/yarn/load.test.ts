@@ -92,6 +92,7 @@ function harness(opts: RunOptions = {}): Harness {
     setBeatListener() {},
   };
   const choices: ChoiceChannel = {
+    update() {},
     present(rows) {
       h.rows = rows;
       h.transcript.push(

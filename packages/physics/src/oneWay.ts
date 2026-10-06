@@ -55,19 +55,17 @@ function supportExtent(shape: ColliderShape, ux: number, uy: number): number {
  * through from the passable side, and a body already inside the platform is
  * let out instead of being snapped to the surface.
  *
- * A body is judged by where it was one step before the pair is tested: the
- * narrow phase sees start-of-step poses, so an approaching body shows up
- * already past the face by up to one step of travel, and its position is
- * extended back along the approach velocity to decide which side it came
- * from. Once a contact has started, the platform's `_oneWayLanded` set
+ * A delayed contact can first appear after the body has crossed the face.
+ * The last advancing step's collider poses preserve which side it came
+ * from, even if game code has since changed either body's velocity.
+ * Once a contact has started, the platform's `_oneWayLanded` set
  * keeps the pair solid for as long as the contact lasts — the position rule
  * alone would hand the rider back to gravity while the solver is still
  * pushing a deep first impact out.
  *
  * "Above" is measured along the configured direction, rotated with the
- * platform's body. Everything is read live from the two configs and the
- * candidate, so `setShape`, config edits, and `dropThrough` need no
- * recomputation hooks here.
+ * platform's body. Teleports, shape changes and re-enabling invalidate the
+ * recorded poses, so discontinuous movement cannot count as arrival.
  */
 export function createOneWayFilter(self: ColliderComponent): ContactFilter {
   return (contact: ContactCandidate): boolean => {
@@ -88,57 +86,65 @@ export function createOneWayFilter(self: ColliderComponent): ContactFilter {
       return true;
     }
 
-    const selfPart = self._effectivePart(contact.selfShapeIndex);
-    const otherPart = contact.otherCollider._effectivePart(
-      contact.otherShapeIndex,
+    return (
+      isOnSolidSide(self, contact, false) || isOnSolidSide(self, contact, true)
     );
-
-    const direction = self._scaleDirection({
-      x: oneWay.direction?.x ?? DEFAULT_DIRECTION_X,
-      y: oneWay.direction?.y ?? DEFAULT_DIRECTION_Y,
-    });
-    const dirX = direction.x;
-    const dirY = direction.y;
-    const len = Math.hypot(dirX, dirY);
-
-    // The solid-face normal, taken from the body's local frame to world.
-    const relRotation = colliderRotation(selfPart);
-    const bodyRotation = contact.selfRotation - relRotation;
-    const cosB = Math.cos(bodyRotation);
-    const sinB = Math.sin(bodyRotation);
-    const nx = (dirX * cosB - dirY * sinB) / len;
-    const ny = (dirX * sinB + dirY * cosB) / len;
-
-    // Separation of the collider origins along the normal. Rapier detects
-    // pairs at start-of-step poses, so a falling body is first tested up to
-    // one step's travel past the face; extending its position one step back
-    // along the approach velocity recovers which side it came from.
-    const relN =
-      (contact.otherX - contact.selfX) * nx +
-      (contact.otherY - contact.selfY) * ny;
-    const relVN =
-      (contact.otherVelocityX - contact.selfVelocityX) * nx +
-      (contact.otherVelocityY - contact.selfVelocityY) * ny;
-    const effectiveRelN = relN + Math.max(0, -relVN) * contact.dt;
-
-    // Both support extents along the normal, each in its collider's frame.
-    const cosS = Math.cos(contact.selfRotation);
-    const sinS = Math.sin(contact.selfRotation);
-    const selfExtent = supportExtent(
-      selfPart.shape,
-      nx * cosS + ny * sinS,
-      -nx * sinS + ny * cosS,
-    );
-    const otherRotation = contact.otherRotation;
-    const cosO = Math.cos(otherRotation);
-    const sinO = Math.sin(otherRotation);
-    const otherExtent = supportExtent(
-      otherPart.shape,
-      -nx * cosO - ny * sinO,
-      nx * sinO - ny * cosO,
-    );
-
-    const margin = oneWay.margin ?? DEFAULT_MARGIN;
-    return effectiveRelN >= selfExtent + otherExtent - margin;
   };
+}
+
+/** Test current geometry, or the geometry before the last advancing step. */
+function isOnSolidSide(
+  self: ColliderComponent,
+  contact: ContactCandidate,
+  previous: boolean,
+): boolean {
+  const selfPose = previous
+    ? self._previousPose(contact.selfShapeIndex)
+    : undefined;
+  const otherPose = previous
+    ? contact.otherCollider._previousPose(contact.otherShapeIndex)
+    : undefined;
+  if (previous && (!selfPose || !otherPose)) return false;
+  if (otherPose?.droppingThrough) return false;
+
+  const selfRotation = selfPose?.rotation ?? contact.selfRotation;
+  const otherRotation = otherPose?.rotation ?? contact.otherRotation;
+  const selfPart = self._effectivePart(contact.selfShapeIndex);
+  const otherPart = contact.otherCollider._effectivePart(
+    contact.otherShapeIndex,
+  );
+  const oneWay = self.config.oneWay;
+  const direction = self._scaleDirection({
+    x: oneWay?.direction?.x ?? DEFAULT_DIRECTION_X,
+    y: oneWay?.direction?.y ?? DEFAULT_DIRECTION_Y,
+  });
+  const len = Math.hypot(direction.x, direction.y);
+
+  // The solid-face direction is body-local; each part has its own rotation.
+  const bodyRotation = selfRotation - colliderRotation(selfPart);
+  const cosB = Math.cos(bodyRotation);
+  const sinB = Math.sin(bodyRotation);
+  const nx = (direction.x * cosB - direction.y * sinB) / len;
+  const ny = (direction.x * sinB + direction.y * cosB) / len;
+  const relN =
+    ((otherPose?.x ?? contact.otherX) - (selfPose?.x ?? contact.selfX)) * nx +
+    ((otherPose?.y ?? contact.otherY) - (selfPose?.y ?? contact.selfY)) * ny;
+
+  // Both support extents along the normal, each in its collider's frame.
+  const cosS = Math.cos(selfRotation);
+  const sinS = Math.sin(selfRotation);
+  const selfExtent = supportExtent(
+    selfPart.shape,
+    nx * cosS + ny * sinS,
+    -nx * sinS + ny * cosS,
+  );
+  const cosO = Math.cos(otherRotation);
+  const sinO = Math.sin(otherRotation);
+  const otherExtent = supportExtent(
+    otherPart.shape,
+    -nx * cosO - ny * sinO,
+    nx * sinO - ny * cosO,
+  );
+
+  return relN >= selfExtent + otherExtent - (oneWay?.margin ?? DEFAULT_MARGIN);
 }

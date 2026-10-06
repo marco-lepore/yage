@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createRandomService, ErrorBoundary, Logger } from "@yagejs/core";
 
 import { DialogueSession } from "./session.js";
 import { MemoryVariableStorage, cells, compose } from "./vars.js";
@@ -21,7 +22,8 @@ import type {
   SpeakerDef,
 } from "./types.js";
 import type { RevealBeat } from "./LineReveal.js";
-import type { I18nAdapter } from "./i18n.js";
+import { interpolateDialogueText, type I18nAdapter } from "./i18n.js";
+import { parseExpr } from "./expr-parse.js";
 
 /**
  * A controllable text channel. Reveal does NOT advance on its own — a test
@@ -93,6 +95,7 @@ class StubText implements TextChannel {
 }
 
 class StubChoices implements ChoiceChannel {
+  update = vi.fn<(dt: number) => void>();
   presented: {
     choices: readonly PresentedChoice[];
     context: ChoiceContext | undefined;
@@ -1254,6 +1257,77 @@ describe("DialogueSession — fast-forward & skip", () => {
 });
 
 describe("DialogueSession — preview (side-effect-free lookahead)", () => {
+  it("preserves direct reads for variables omitted from storage entries", async () => {
+    const values = new MemoryVariableStorage({
+      go: true,
+      target: "destination",
+      amount: 41,
+      shown: "snapshot",
+      blank: null,
+    });
+    const get = vi.fn((name: string) => values.get(name));
+    const h = makeHarness({
+      storage: {
+        get,
+        has: (name) => values.has(name),
+        set: (name, value) => values.set(name, value),
+        entries: () =>
+          [
+            ["shown", "snapshot"],
+            ["blank", null],
+          ] as const,
+      },
+    });
+    h.session.play({
+      id: "opaque-preview",
+      start: "start",
+      nodes: {
+        start: {
+          id: "start",
+          steps: [
+            { kind: "say", text: "Ready" },
+            {
+              kind: "command",
+              commands: [],
+              condition: "go and blank == null",
+              target: "branch",
+            },
+            { kind: "say", text: "Wrong path" },
+          ],
+        },
+        branch: {
+          id: "branch",
+          steps: [{ kind: "goto", target: parseExpr("target") }],
+        },
+        destination: {
+          id: "destination",
+          steps: [
+            {
+              kind: "say",
+              text: "{shown}: {value}",
+              expressions: { value: "amount + 1" },
+            },
+          ],
+        },
+      },
+    });
+    get.mockClear();
+    expect(h.session.preview("start").map((line) => line.text)).toEqual([
+      "Ready",
+      "snapshot: 42",
+    ]);
+    expect(get).toHaveBeenCalledWith("go");
+    expect(get).toHaveBeenCalledWith("target");
+    expect(get).toHaveBeenCalledWith("amount");
+    expect(get).not.toHaveBeenCalledWith("shown");
+    expect(get).not.toHaveBeenCalledWith("blank");
+    h.text.finishReveal();
+    await flush();
+    h.session.advance();
+    await flush();
+    expect(h.text.lastText).toBe("snapshot: 42");
+  });
+
   it("returns linear lines, following goto, stopping at a choice", () => {
     const h = makeHarness();
     const script: DialogueScript = {
@@ -2889,5 +2963,241 @@ describe("DialogueSession — a wait's blocking flag", () => {
     expect(wait).toHaveBeenCalledTimes(1);
     expect(h.text.lastText).toBe("two");
     release?.();
+  });
+});
+
+describe("choice presentation clock", () => {
+  it("attributes a throwing choice update and stops the update sequence", () => {
+    const boundary = new ErrorBoundary(new Logger());
+    const { session, choices, chrome } = makeHarness({
+      errorBoundary: boundary,
+    });
+    choices.update.mockImplementation(() => {
+      throw new Error("choice animation failed");
+    });
+    const chromeUpdate = vi.spyOn(chrome, "update");
+    expect(() => session.update(0.1)).toThrow("choice animation failed");
+    expect(boundary.getCallbackErrors()).toMatchObject([
+      { kind: "dialogue choices.update", error: "choice animation failed" },
+    ]);
+    expect(chromeUpdate).not.toHaveBeenCalled();
+  });
+  it("rejects invalid time before dispatching any choice update", () => {
+    const { session, choices } = makeHarness();
+    for (const dt of [NaN, Infinity, -1]) {
+      expect(() => session.update(dt)).toThrow(
+        /dt must be finite and nonnegative/,
+      );
+    }
+    expect(choices.update).not.toHaveBeenCalled();
+  });
+  it("ticks choices and freezes them with conversation pause", () => {
+    const { session, choices } = makeHarness();
+    session.update(0.25);
+    expect(choices.update).toHaveBeenLastCalledWith(0.25);
+    session.setPaused(true);
+    session.update(0.5);
+    expect(choices.update).toHaveBeenCalledTimes(1);
+    session.setPaused(false);
+    session.update(0.1);
+    expect(choices.update).toHaveBeenLastCalledWith(0.1);
+  });
+});
+
+describe("DialogueSession — stable computed text", () => {
+  function translated() {
+    let locale = "en";
+    const i18n: I18nAdapter = {
+      get locale() {
+        return locale;
+      },
+      resolve(text, values) {
+        const raw = typeof text === "string" ? text : text.fallback;
+        return `${locale}:${interpolateDialogueText(raw, values ?? {})}`;
+      },
+    };
+    return {
+      i18n,
+      switchLocale: () => {
+        locale = "it";
+      },
+    };
+  }
+
+  it("keeps a line's computed values when translated and rerolls on a new visit", async () => {
+    const random = createRandomService(42);
+    const control = createRandomService(42);
+    const a = translated();
+    const h = makeHarness({ random, i18n: a.i18n });
+    const script: DialogueScript = {
+      id: "roll",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "Roll {n}", expressions: { n: "random()" } },
+            { kind: "goto", target: "a" },
+          ],
+        },
+      },
+    };
+    const first = control.float();
+    h.session.play(script);
+    expect(h.text.lastText).toBe(`en:Roll ${first}`);
+    a.switchLocale();
+    h.session.retranslate();
+    h.session.retranslate();
+    expect(
+      h.text.replaced
+        .at(-1)
+        ?.text.runs.map((r) => r.text)
+        .join(""),
+    ).toBe(`it:Roll ${first}`);
+    h.text.finishReveal();
+    await flush();
+    h.session.advance();
+    await flush();
+    expect(h.text.lastText).toBe(`it:Roll ${control.float()}`);
+    h.session.stop();
+    h.session.play(script);
+    expect(h.text.lastText).toBe(`it:Roll ${control.float()}`);
+    expect(random.float()).toBe(control.float());
+  });
+
+  it("reuses choice tokens in reasons, translations, selection and confirmation", () => {
+    const random = createRandomService(42);
+    const control = createRandomService(42);
+    const a = translated();
+    const onSelectionChanged = vi.fn();
+    const onChoiceMade = vi.fn();
+    const h = makeHarness({
+      random,
+      i18n: a.i18n,
+      onSelectionChanged,
+      onChoiceMade,
+    });
+    h.session.play({
+      id: "choices",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "choice",
+              text: "Prompt {n}",
+              expressions: { n: "random()" },
+              options: [
+                { text: "First {n}", expressions: { n: "random()" } },
+                { text: "Second {n}", expressions: { n: "random()" } },
+                {
+                  text: "Locked {n}",
+                  disabledReason: "Need {n}",
+                  expressions: { n: "random()" },
+                  condition: { kind: "literal", value: false },
+                  presentation: "disabled",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const prompt = control.float(),
+      first = control.float(),
+      second = control.float(),
+      locked = control.float();
+    expect(h.text.lastText).toBe(`en:Prompt ${prompt}`);
+    expect(h.choices.lastLabels).toEqual([
+      `en:First ${first}`,
+      `en:Second ${second}`,
+      `en:Locked ${locked}`,
+    ]);
+    expect(h.choices.presented.at(-1)?.choices[2]?.disabledReason).toBe(
+      `en:Need ${locked}`,
+    );
+    a.switchLocale();
+    h.session.retranslate();
+    expect(h.choices.lastLabels).toEqual([
+      `it:First ${first}`,
+      `it:Second ${second}`,
+      `it:Locked ${locked}`,
+    ]);
+    expect(
+      h.text.replaced
+        .at(-1)
+        ?.text.runs.map((r) => r.text)
+        .join(""),
+    ).toBe(`it:Prompt ${prompt}`);
+    h.session.moveSelection(1);
+    expect(onSelectionChanged).toHaveBeenLastCalledWith({
+      index: 1,
+      text: `it:Second ${second}`,
+    });
+    h.session.confirm();
+    expect(onChoiceMade).toHaveBeenLastCalledWith({
+      index: 1,
+      text: `it:Second ${second}`,
+    });
+    expect(random.float()).toBe(control.float());
+  });
+
+  it("previews random text and branches without consuming the live random source", () => {
+    const random = createRandomService(42);
+    const control = createRandomService(42);
+    const h = makeHarness({ random });
+    h.session.play({
+      id: "preview-random",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "Roll {n}", expressions: { n: "random()" } },
+            {
+              kind: "command",
+              commands: [],
+              condition: "random() >= 0",
+              target: "b",
+            },
+          ],
+        },
+        b: {
+          id: "b",
+          steps: [
+            { kind: "detour", target: parseExpr("'c' + string(dice(1))") },
+          ],
+        },
+        c1: {
+          id: "c1",
+          steps: [
+            {
+              kind: "say",
+              text: "{n}",
+              expressions: {
+                n: "random_range(1, 6) + random_range_float(0, 1)",
+              },
+            },
+            { kind: "goto", target: parseExpr("'d' + string(dice(1))") },
+          ],
+        },
+        d1: { id: "d1", steps: [{ kind: "say", text: "done" }] },
+      },
+    });
+    control.float(); // The line presented by play().
+    const preview = h.session.preview("a");
+    expect(preview).toHaveLength(3);
+    expect(preview.at(-1)?.text).toBe("done");
+    expect(h.session.preview("a")).toEqual(preview);
+    expect(random.float()).toBe(control.float());
+    h.session.retranslate();
+    expect(
+      h.text.replaced
+        .at(-1)
+        ?.text.runs.map((r) => r.text)
+        .join(""),
+    ).toBe(h.text.lastText);
+    expect(random.float()).toBe(control.float());
   });
 });

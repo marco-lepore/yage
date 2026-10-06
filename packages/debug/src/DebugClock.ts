@@ -1,8 +1,10 @@
 /** Controller infrastructure used by DebugPlugin. Use Inspector.time to drive games. */
 export interface IDebugClock {
   readonly isFrozen: boolean;
+  drawingEnabled: boolean;
   step(dtMs?: number): void;
   stepFrames(count: number, dtMs?: number): void;
+  renderFrame(): void;
   freeze(): void;
   thaw(): void;
   setDelta(ms: number): void;
@@ -17,8 +19,12 @@ export interface IDebugClock {
  */
 export interface DebugClockHost {
   readonly fixedTimestep: number;
+  /** The renderer setting, when the host can draw. */
+  drawingEnabled?: boolean;
   /** Advance one synthetic frame of `dtMs`. Fires every ticker subscriber. */
   advance(dtMs: number): void;
+  /** Draw without advancing time. Omit for hosts without drawing. */
+  renderFrame?(): void;
   /** Stop auto-advance. Capture state needed to make `advance` deterministic. */
   freeze(): void;
   /** Resume auto-advance. Restore captured state so the next rAF is sane. */
@@ -41,6 +47,15 @@ export class DebugClock implements IDebugClock {
 
   get isFrozen(): boolean {
     return this._isFrozen;
+  }
+
+  get drawingEnabled(): boolean {
+    return this.host.drawingEnabled ?? true;
+  }
+
+  set drawingEnabled(enabled: boolean) {
+    if (this.host.drawingEnabled !== undefined)
+      this.host.drawingEnabled = enabled;
   }
 
   thaw(): void {
@@ -71,6 +86,10 @@ export class DebugClock implements IDebugClock {
       throw new Error("DebugClock.step(dtMs) requires a positive number.");
     }
     this.host.advance(dt);
+  }
+
+  renderFrame(): void {
+    this.host.renderFrame?.();
   }
 
   stepFrames(count: number, dtMs?: number): void {

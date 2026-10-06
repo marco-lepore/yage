@@ -183,6 +183,7 @@ export default defineConfig({
               label: "Character Controller",
               slug: "addons/character-controller",
             },
+            { label: "Stats", slug: "addons/stats" },
             { label: "Steering", slug: "addons/steering" },
             { label: "Synth", slug: "addons/synth" },
             { label: "Feel", slug: "addons/feel" },

@@ -23,7 +23,6 @@ import { Transform, type Entity, type Scene } from "@yagejs/core";
 import {
   createNineSlice,
   GraphicsComponent,
-  RendererKey,
   TextComponent,
   type NineSliceSprite,
 } from "@yagejs/renderer";
@@ -56,8 +55,12 @@ export interface DialogueChromeConfig extends FontConfig {
   readonly frameStyles?: Readonly<Record<string, NineSliceFrame>> | undefined;
   /** Frame + continue indicator. */
   readonly layerFrame: string;
+  /** Requested screen-layer order. Default 1100. */
+  readonly layerFrameOrder?: number | undefined;
   /** Name plate (drawn above the frame layer). */
   readonly layerText: string;
+  /** Requested screen-layer order. Default 1110. */
+  readonly layerTextOrder?: number | undefined;
 }
 
 /** Which frame the active line draws: the Graphics rect, a named nine-slice, or
@@ -132,20 +135,20 @@ export class DialogueChrome implements ChromePresenter {
   }
 
   mount(scene: Scene): void {
-    ensureDialogueLayer(scene, this.cfg.layerFrame, 1100);
-    ensureDialogueLayer(scene, this.cfg.layerText, 1110);
+    ensureDialogueLayer(
+      scene,
+      this.cfg.layerFrame,
+      this.cfg.layerFrameOrder ?? 1100,
+    );
+    ensureDialogueLayer(
+      scene,
+      this.cfg.layerText,
+      this.cfg.layerTextOrder ?? 1110,
+    );
     const cfg = this.cfg;
 
-    // Bind the design viewport so the box is a full-width bottom bar at any
-    // resolution and meta.position places against the true screen. Resolved here
-    // (the chrome owns the frame); a custom box chrome should do the same. Falls
-    // back to the layout's default size if no renderer is present (headless).
-    const renderer = scene.context.tryResolve(RendererKey);
-    if (renderer)
-      this.layout.setViewport(
-        renderer.virtualSize.width,
-        renderer.virtualSize.height,
-      );
+    this.layout.mount(scene);
+    this.layout.setCaretHeight((cfg.caret?.size ?? DEFAULT_CARET_SIZE).height);
 
     // Frame: the drawn Graphics rounded rect (the default look). Drawn per line
     // in applyGeometry — the rect moves with `meta.position` and grows for a

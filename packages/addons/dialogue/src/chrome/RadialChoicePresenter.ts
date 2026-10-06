@@ -30,7 +30,11 @@ export interface RadialChoiceConfig extends FontConfig {
   /** Choice label size (px) — matches the theme's `choiceSize`. */
   readonly choiceSize: number;
   readonly layerFrame: string;
+  /** Requested screen-layer order. Default 1100. */
+  readonly layerFrameOrder?: number | undefined;
   readonly layerText: string;
+  /** Requested screen-layer order. Default 1110. */
+  readonly layerTextOrder?: number | undefined;
 }
 
 interface Spoke {
@@ -43,6 +47,7 @@ interface Spoke {
 
 /** @experimental Unpolished radial choice wheel; see file header. */
 export class RadialChoicePresenter implements ChoicePresenter {
+  update(): void {}
   private scene?: Scene | undefined;
   private hub?: { entity: Entity; gfx: GraphicsComponent } | undefined;
   private spokes: Spoke[] = [];
@@ -55,8 +60,16 @@ export class RadialChoicePresenter implements ChoicePresenter {
   constructor(private readonly cfg: RadialChoiceConfig) {}
 
   mount(scene: Scene): void {
-    ensureDialogueLayer(scene, this.cfg.layerFrame, 1100);
-    ensureDialogueLayer(scene, this.cfg.layerText, 1110);
+    ensureDialogueLayer(
+      scene,
+      this.cfg.layerFrame,
+      this.cfg.layerFrameOrder ?? 1100,
+    );
+    ensureDialogueLayer(
+      scene,
+      this.cfg.layerText,
+      this.cfg.layerTextOrder ?? 1110,
+    );
     this.scene = scene;
     const hub = scene.spawn("dlg-radial-hub");
     hub.add(new Transform()).setPosition(0, 0);

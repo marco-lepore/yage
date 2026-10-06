@@ -1,3 +1,4 @@
+import { targetScale } from "./filterTarget.js";
 import { defineEffect } from "@yagejs/renderer";
 import type { ColorValue, Effect } from "@yagejs/renderer";
 import { Color, Filter, GlProgram, GpuProgram } from "pixi.js";
@@ -329,9 +330,7 @@ class DissolveFilter extends Filter {
   }
 
   private updateNoiseScale(): void {
-    const transform = this.yageTarget?.worldTransform;
-    const scaleX = transform ? Math.hypot(transform.a, transform.b) : 1;
-    const scaleY = transform ? Math.hypot(transform.c, transform.d) : 1;
+    const { scaleX, scaleY } = targetScale(this.yageTarget);
     this.uniforms().uNoiseScale =
       this.noiseScaleLocal * (scaleX + scaleY) * 0.5;
   }

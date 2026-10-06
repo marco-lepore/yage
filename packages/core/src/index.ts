@@ -134,6 +134,8 @@ export type {
   PointerSnapshot,
   EngineSnapshot,
   InspectorTimeController,
+  InspectorRenderMode,
+  InspectorStepOptions,
   InspectorTimeControl,
   InspectorTimeLease,
   InspectorTime,
@@ -265,7 +267,9 @@ export {
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
   isPointerConsumeContainer,
+  getPointerConsumePolicy,
 } from "./ui-consume-registry.js";
+export type { PointerConsumePolicy } from "./ui-consume-registry.js";
 
 export {
   createTestEngine,

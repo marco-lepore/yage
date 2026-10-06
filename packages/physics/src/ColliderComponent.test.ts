@@ -232,6 +232,7 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockWorld {
+    propagateModifiedBodyPositionsToColliders() {}
     gravity = { x: 0, y: 0 };
     timestep = 0;
     _bodies = new Map<number, MockRigidBody>();

@@ -219,21 +219,17 @@ class DemoScene extends Scene {
         consumeInput: false,
       }),
     );
-    // Children inherit the *default* `consumeInput: true`. To make the
-    // entire passthrough panel truly transparent, opt each child out too —
-    // a single panel-level prop doesn't cascade down the children list.
+    // Labels inherit the panel's transparent setting.
     passthroughPanel.addElement(
       new UIText({
         children: "Passthrough panel",
         style: { fontSize: 14, fill: 0xc084fc },
-        consumeInput: false,
       }),
     );
     passthroughPanel.addElement(
       new UIText({
         children: "clicks here also fire shots",
         style: { fontSize: 11, fill: 0xa78bfa },
-        consumeInput: false,
       }),
     );
   }

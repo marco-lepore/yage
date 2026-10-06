@@ -76,6 +76,7 @@ class StubText implements TextPresenter {
 }
 
 class StubChoices implements ChoicePresenter {
+  update(): void {}
   visible = false;
   onChoiceChosen?: (position: number) => void;
   /** Assignable per test — a presenter without it degrades the pointer side. */

@@ -1,3 +1,4 @@
+import { targetScale, toFilterRegion } from "./filterTarget.js";
 import { defineEffect } from "@yagejs/renderer";
 import type { Effect } from "@yagejs/renderer";
 import { Filter, GlProgram, GpuProgram } from "pixi.js";
@@ -174,7 +175,7 @@ class ImplosionFilter extends Filter {
   baseSwirl: number;
   expandFromCenter: boolean;
   yageTarget: Container | undefined;
-  private readonly centerOut = new Float32Array(2);
+  private readonly centerOut = { x: 0, y: 0 };
 
   constructor(options: ImplosionOptions) {
     const radius = validateMinimum(
@@ -268,29 +269,18 @@ class ImplosionFilter extends Filter {
   ): void {
     const target = this.yageTarget;
     const transform = target?.worldTransform;
-    const scaleX = transform ? Math.hypot(transform.a, transform.b) : 1;
-    const scaleY = transform ? Math.hypot(transform.c, transform.d) : 1;
+    const { sizeScale } = targetScale(target);
     const center = this.centerLocal;
     if (target && transform && center) {
-      const worldX =
-        transform.a * center.x + transform.c * center.y + transform.tx;
-      const worldY =
-        transform.b * center.x + transform.d * center.y + transform.ty;
-      const bounds = (
-        filterManager as unknown as {
-          _activeFilterData?: { bounds?: { minX: number; minY: number } };
-        }
-      )._activeFilterData?.bounds;
-      this.centerOut[0] = worldX - (bounds?.minX ?? 0);
-      this.centerOut[1] = worldY - (bounds?.minY ?? 0);
+      toFilterRegion(target, filterManager, center.x, center.y, this.centerOut);
     } else {
-      this.centerOut[0] = input.frame.width * 0.5;
-      this.centerOut[1] = input.frame.height * 0.5;
+      this.centerOut.x = input.frame.width * 0.5;
+      this.centerOut.y = input.frame.height * 0.5;
     }
     const uniforms = this.uniforms();
-    uniforms.uCenter[0] = this.centerOut[0] ?? 0;
-    uniforms.uCenter[1] = this.centerOut[1] ?? 0;
-    uniforms.uRadius = this.radiusLocal * (scaleX + scaleY) * 0.5;
+    uniforms.uCenter[0] = this.centerOut.x;
+    uniforms.uCenter[1] = this.centerOut.y;
+    uniforms.uRadius = this.radiusLocal * sizeScale;
     this.applyIntensity();
     super.apply(filterManager, input, output, clearMode);
   }

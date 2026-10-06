@@ -372,7 +372,9 @@ import type { FeelNode, FeelRange } from "@yagejs-addons/feel";
 import type { FeelSoundOptions as BaseFeelSoundOptions } from "@yagejs-addons/feel/audio";
 
 interface FeelSoundOptions extends BaseFeelSoundOptions {
-  alias: string;
+  alias: string | readonly string[];
+  lifetime?: "cue" | "sound"; // default "cue"
+  fadeOut?: number; // finite seconds >= 0; default 0, requires cue lifetime
   channel?: string;
   volume?: number;
   speed?: FeelRange;
@@ -383,12 +385,32 @@ interface FeelSoundOptions extends BaseFeelSoundOptions {
 declare function feelSound(opts: FeelSoundOptions): FeelNode;
 ```
 
-The cue owns the returned sound handle. The sound keeps the overall playback
-active until it ends naturally, but remains a zero-time sequence step. Release
-or cancellation stops a sound that is still playing. `onEnd` runs only after
-natural audio completion. With `once: true`, each cue owns one
-`AudioManager.requestOnce` request. Releasing the cue does not stop another
-request or a `playOnce` owner.
+A sound remains a zero-time sequence step. Later sequence children start
+immediately, but the overall cue stays active while its recording plays.
+`lifetime: "cue"` (default) stops the recording on release, cancellation,
+disable, or destruction. `lifetime: "sound"` lets the started recording finish
+through those events, including scene changes. Channel stops and asset unloading
+can still interrupt it. Cue lifetime suppresses `onEnd` after release or
+cancellation begins, including a natural end during the fade. With sound
+lifetime, `onEnd` runs on natural completion even after the cue's owner is gone.
+
+`fadeOut` fades cue-owned audio to silence and stops it on release or
+cancellation. Zero stops immediately. A positive value cannot be combined with
+`lifetime: "sound"`. Graceful release waits for the fade; cancellation ends the
+cue immediately while audio finishes fading. Fades use the engine-global frame
+clock, follow `ProcessSystem.timeScale`, and continue through scene pause and
+replacement. They are not sample-accurate audio ramps.
+
+An alias list must be non-empty. Each sound start picks one alias from the
+scene's seeded random source, including each loop iteration. `once: true`
+shares by the selected alias and channel using `AudioManager.requestOnce`.
+Releasing one cue does not stop or fade another request or a `playOnce` owner.
+Only the final request's `fadeOut` applies. A new request during that fade starts
+a fresh recording.
+
+Use `feelLoop(feelSound(...), gap)` with a positive gap for repeated cue sounds.
+Copies start on cue update frames; the gap is the start interval, not a wait for
+the audio to end. Use `SoundComponent` for continuous audio looping.
 
 ## `/particles`
 

@@ -61,7 +61,13 @@ export class MockContainer {
   label = "";
   destroyed = false;
   eventMode = "passive";
-  filters: unknown = null;
+  _filterEffect = { filters: null as unknown };
+  get filters(): unknown {
+    return this._filterEffect.filters;
+  }
+  set filters(value: unknown) {
+    this._filterEffect.filters = value;
+  }
   mask: MockContainer | null = null;
   maskInverse = false;
 

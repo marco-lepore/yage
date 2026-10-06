@@ -251,3 +251,26 @@ describe("DialogueTextView — replaceVisible", () => {
     expect(completed).toBe(0);
   });
 });
+
+describe("DialogueTextView — resize during a reveal pause", () => {
+  it("rewraps without skipping the pending pause or replaying beats", () => {
+    const view = new DialogueTextView(CFG);
+    const beats: number[] = [];
+    let completed = 0;
+    view.setBeatListener((beat) => {
+      if (beat.kind === "tick") beats.push(beat.index);
+    });
+    view.setRevealListener(() => completed++);
+    view.setBox(0, 0, 200);
+    view.show(parseMarkup("a[pause=1/]b"));
+    view.update(1);
+    view.setBox(0, 0, 100);
+    view.update(0.5);
+    expect(beats).toEqual([0]);
+    expect(completed).toBe(0);
+    view.update(0.5);
+    view.update(1);
+    expect(beats).toEqual([0, 1]);
+    expect(completed).toBe(1);
+  });
+});

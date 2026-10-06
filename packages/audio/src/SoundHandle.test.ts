@@ -1,3 +1,6 @@
+import { EventEmitter } from "node:events";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IMediaInstance } from "@pixi/sound";
 
@@ -74,6 +77,37 @@ describe("SoundHandle", () => {
   it("stop() delegates to instance.stop()", () => {
     handle.stop();
     expect(instance.stop).toHaveBeenCalled();
+  });
+
+  it("stops a paused real WebAudio instance and emits completion once", async () => {
+    // Import the backend without initializing the browser-only sound singleton.
+    const entry = createRequire(import.meta.url).resolve("@pixi/sound");
+    const backendUrl = new URL(
+      "./webaudio/WebAudioInstance.mjs",
+      pathToFileURL(entry),
+    );
+    const { WebAudioInstance } = (await import(backendUrl.href)) as {
+      WebAudioInstance: new (media: unknown) => IMediaInstance;
+    };
+    const events = new EventEmitter();
+    const backend = new WebAudioInstance({
+      context: { events, paused: false },
+      parent: { paused: false },
+    });
+    backend.volume = 1;
+    backend.paused = true;
+    // Pixi Sound registers this cleanup before the handle's listeners.
+    backend.once("stop", () => backend.destroy());
+    const stopped = vi.fn();
+    backend.once("stop", stopped);
+    const paused = new SoundHandle(backend);
+    paused.stop();
+    paused.stop();
+    expect(paused.playing).toBe(false);
+    expect(stopped).toHaveBeenCalledOnce();
+    expect(events.listenerCount("refreshPaused")).toBe(0);
+    expect(events.listenerCount("refresh")).toBe(0);
+    expect(() => events.emit("refreshPaused")).not.toThrow();
   });
 
   it("volume setter delegates to instance", () => {

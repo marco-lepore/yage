@@ -15,6 +15,8 @@ export const AudioManagerKey = new ServiceKey<AudioManager>("audioManager");
 export type SoundRef = string | AssetHandle<Sound>;
 
 export interface AudioConfig {
+  /** Master volume multiplier. Must be finite and from 0 to 1. Default: 1. */
+  masterVolume?: number;
   channels?: Record<string, ChannelConfig>;
   /** Pause audio when the window loses focus or the tab is hidden. Default: `true`. */
   autoMuteOnBlur?: boolean;
@@ -54,12 +56,17 @@ export interface AudioCrossfadeOptions extends AudioPlayOptions {
   easing?: EasingFunction;
 }
 
+export interface SoundRequestReleaseOptions {
+  /** Seconds to fade the last owner's sound to silence. Finite and non-negative. Default: 0. */
+  fadeOut?: number;
+}
+
 /** One ownership request for playback shared by alias and channel. */
 export interface SoundRequestHandle {
-  /** True while this request still owns the shared playback. */
+  /** True while this request owns playback or its final fade is still playing. */
   readonly active: boolean;
-  /** Release only this request. Idempotent. */
-  release(): void;
+  /** Release only this request. Idempotent. A fade affects only the last owner. */
+  release(options?: SoundRequestReleaseOptions): void;
 }
 
 export interface SoundComponentOptions {

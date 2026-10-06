@@ -2,23 +2,34 @@ import type { Entity } from "@yagejs/core";
 import type { ColliderComponent } from "./ColliderComponent.js";
 import type { ContactCandidate } from "./types.js";
 
-/**
- * @internal Per-collider state captured just before a step that will run
- * contact filters. Rapier's JS wrappers cannot be read while the step is in
- * progress (the WASM world is mutably borrowed, and any wrapper call throws
- * an aliasing error), so filters read from this snapshot instead. One entry
- * per collider, allocated at collider creation and mutated in place each
- * step — never allocated on the step path.
- */
-export interface PreStepColliderState {
+/** @internal Collider world pose, independent of its body's velocity. */
+export interface ColliderPose {
   /** Collider world position in pixels. */
   x: number;
   y: number;
   /** Collider world rotation in radians. */
   rotation: number;
+}
+
+/** @internal Pose and pass-through state at the start of a simulated step. */
+export interface ColliderStepPose extends ColliderPose {
+  droppingThrough: boolean;
+}
+
+/**
+ * @internal Per-collider state captured before a filtered step. Rapier's
+ * wrappers cannot be read during the step because its WASM world is mutably
+ * borrowed. Filters read this snapshot instead. Each collider's entry and
+ * previous pose are allocated at creation and mutated in place each step.
+ */
+export interface PreStepColliderState extends ColliderPose {
   /** Parent body linear velocity in pixels/s. */
   vx: number;
   vy: number;
+  /** Start pose of the last advancing step; zero-duration refreshes keep it. */
+  previous: ColliderStepPose;
+  /** Completed step that owns `previous`, or -1 after a discontinuity. */
+  previousStep: number;
 }
 
 /**

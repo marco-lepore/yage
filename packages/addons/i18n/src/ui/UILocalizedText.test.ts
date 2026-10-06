@@ -128,7 +128,7 @@ vi.mock("pixi.js", () => ({
 }));
 
 import Yoga from "yoga-layout";
-import { setYoga, UIPanel } from "@yagejs/ui";
+import { setYoga, UIPanel, type UISurface } from "@yagejs/ui";
 import { msg } from "../core/message.js";
 import { UILocalizedText } from "./UILocalizedText.js";
 import { UILocalizedButton } from "./UILocalizedButton.js";
@@ -166,6 +166,32 @@ describe("UILocalizedText", () => {
 });
 
 describe("LocalizedUISurface", () => {
+  it("accepts base text options for both strings and localized messages", () => {
+    const localized = new LocalizedUISurface();
+    const surface: UISurface = localized;
+    const plain = surface.text("Plain", undefined, {
+      width: 100,
+      visible: false,
+      truncate: "ellipsis",
+    });
+    const panel = localized.panel();
+    const label = localized.text(
+      msg("title", "Title"),
+      undefined,
+      { width: 120, visible: false, truncate: "ellipsis" },
+      panel,
+    );
+    expect(plain.visible).toBe(false);
+    expect(label.visible).toBe(false);
+    expect(plain.yogaNode.getWidth().value).toBe(100);
+    expect(label.yogaNode.getWidth().value).toBe(120);
+    expect(panel.children).toContain(label);
+    localized.relocalize((m) => `it:${m.key}`);
+    expect(shown(label)).toBe("it:title");
+    expect(label.visible).toBe(false);
+    expect(label.yogaNode.getWidth().value).toBe(120);
+  });
+
   it("builds localized text and button labels, in nested panels too, and relocalizes the whole tree", () => {
     const surface = new LocalizedUISurface();
     const title = surface.text(msg("title", "Title"), { fontSize: 20 });
@@ -174,7 +200,12 @@ describe("LocalizedUISurface", () => {
       textStyle: { fontSize: 12 },
     });
     const nested = surface.panel();
-    const inner = surface.text(msg("inner", "Inner"), undefined, nested);
+    const inner = surface.text(
+      msg("inner", "Inner"),
+      undefined,
+      undefined,
+      nested,
+    );
 
     expect(title).toBeInstanceOf(UILocalizedText);
     expect(shown(title)).toBe("Title");

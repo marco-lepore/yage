@@ -15,6 +15,7 @@ import type {
   Vec2Like,
 } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
+import type { ColliderStepPose } from "./ContactCandidate.js";
 import { createOneWayFilter } from "./oneWay.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsWorldKey } from "./types.js";
@@ -148,6 +149,14 @@ export class ColliderComponent extends Component {
     return this._effectiveParts[index] as ColliderPartConfig;
   }
 
+  /** @internal This part's start pose before its last simulated movement. */
+  _previousPose(index: number): Readonly<ColliderStepPose> | undefined {
+    const handle = this._colliderHandles[index];
+    return handle === undefined
+      ? undefined
+      : this.physicsWorld._previousColliderPose(handle);
+  }
+
   /** @internal Forget one handle after PhysicsWorld removes its body. */
   _detachColliderHandle(handle: number): void {
     const index = this._colliderHandles.indexOf(handle);
@@ -246,6 +255,7 @@ export class ColliderComponent extends Component {
       const collider = this.physicsWorld.getCollider(handle);
       if (!collider) continue;
       collider.setEnabled(true);
+      this.physicsWorld._forgetColliderContacts(handle);
     }
     // Rapier's mass re-sum skips a disabled collider, so a re-sum run while
     // this one was disabled (`setSensor`, `setShape` with `recomputeMass`)

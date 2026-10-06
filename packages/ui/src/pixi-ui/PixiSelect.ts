@@ -1,3 +1,8 @@
+import {
+  markPointerConsumeContainer,
+  unmarkPointerConsumeContainer,
+} from "@yagejs/core";
+import type { DisplayContainer } from "@yagejs/renderer";
 import type { FancyButton } from "@pixi/ui";
 import { Select } from "@pixi/ui";
 import { Container, Matrix } from "pixi.js";
@@ -39,6 +44,11 @@ function topAncestor(node: Container): Container {
  * Select as it moves, scales or turns.
  */
 class PortalSelect extends Select {
+  /** The list has its own consume setting because it can leave the widget. */
+  get dropdown(): DisplayContainer {
+    return this.view;
+  }
+
   /** Notified after every open/close with the resulting open state. */
   onOpenChange: ((open: boolean) => void) | undefined;
   private _portalHost: Container | null = null;
@@ -257,6 +267,7 @@ export class PixiSelect
       items: selectItems(props),
     } as ConstructorParameters<typeof Select>[0]);
     super(view, props);
+    markPointerConsumeContainer(view.dropdown, props.consumeInput ?? "inherit");
 
     // Lift the open dropdown above sibling UI; drop it back on close. Every
     // path that opens or closes the list runs through here, so the list, the
@@ -402,6 +413,12 @@ export class PixiSelect
       this.invalidateSize();
     }
 
+    if ("consumeInput" in p) {
+      markPointerConsumeContainer(
+        this.view.dropdown,
+        p.consumeInput ?? "inherit",
+      );
+    }
     this.updateBase(props);
   }
 
@@ -411,6 +428,7 @@ export class PixiSelect
     // Put the dropdown back inside the Select first, so `view.destroy()` tears
     // it down instead of leaking a container reparented to the stage.
     this.view.restoreDropdown();
+    unmarkPointerConsumeContainer(this.view.dropdown);
     super.destroy();
   }
 

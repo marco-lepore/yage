@@ -66,6 +66,7 @@ class StubText implements TextChannel {
 }
 
 class StubChoices implements ChoiceChannel {
+  update(): void {}
   visibles: boolean[] = [];
   presents = 0;
   onChoiceChosen?: (position: number) => void;

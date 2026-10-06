@@ -1,3 +1,9 @@
+import { kawasePadding, localFilter } from "./localFilter.js";
+import {
+  validateFinite,
+  validateInteger,
+  validateMinimum,
+} from "./validate.js";
 import { defineEffect } from "@yagejs/renderer";
 import type { Effect } from "@yagejs/renderer";
 import { AdvancedBloomFilter } from "pixi-filters";
@@ -11,7 +17,7 @@ export interface BloomOptions {
   bloomScale?: number;
   /** Overall brightness boost. Default: 1. */
   brightness?: number;
-  /** Blur strength. Default: 8. */
+  /** Blur strength in host-local pixels. Default: 8. */
   blur?: number;
   /** Blur quality. Default: 4. */
   quality?: number;
@@ -28,29 +34,47 @@ export interface BloomOptions {
 export const bloom = defineEffect<BloomHandle, BloomOptions>({
   name: "yage:bloom",
   factory: (options) => {
-    let baseBloomScale = options.bloomScale ?? 1;
-    const baseBlur = options.blur ?? 8;
+    let baseBloomScale = validateFinite(
+      "bloom",
+      "bloomScale",
+      options.bloomScale ?? 1,
+    );
+    const blur = validateMinimum("bloom", "blur", options.blur ?? 8, 0);
+    const quality = validateInteger(
+      "bloom",
+      "quality",
+      options.quality ?? 4,
+      1,
+    );
     const filter = new AdvancedBloomFilter({
       threshold: options.threshold ?? 0.5,
       bloomScale: baseBloomScale,
       brightness: options.brightness ?? 1,
-      blur: baseBlur,
-      quality: options.quality ?? 4,
+      blur,
+      quality,
     });
-    // Bloom blur extends past the source bounds — pad so the halo isn't
-    // clipped at the display object's bounding box.
-    filter.padding = baseBlur * 2 + 8;
+    const local = localFilter(
+      filter,
+      ({ sizeScale }) => {
+        filter.pixelSize = sizeScale;
+      },
+      ({ sizeScale }) => kawasePadding(blur, quality, sizeScale),
+    );
     const effect: Effect<BloomHandle> = {
       filter,
+      onAttach: local.onAttach,
+      onDetach: local.onDetach,
       getIntensity: () => filter.bloomScale / Math.max(baseBloomScale, 1e-6),
       setIntensity: (v) => {
-        filter.bloomScale = baseBloomScale * v;
+        filter.bloomScale =
+          validateFinite("bloom", "intensity", v) * baseBloomScale;
       },
       buildExtras: () => ({
         setThreshold: (value: number) => {
-          filter.threshold = value;
+          filter.threshold = validateFinite("bloom", "threshold", value);
         },
         setBloomScale: (value: number) => {
+          validateFinite("bloom", "bloomScale", value);
           const ratio = filter.bloomScale / Math.max(baseBloomScale, 1e-6);
           baseBloomScale = value;
           filter.bloomScale = value * ratio;

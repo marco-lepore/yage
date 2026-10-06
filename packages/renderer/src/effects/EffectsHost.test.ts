@@ -4,7 +4,13 @@ const { mocks } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
     parent: MockContainer | null = null;
-    filters: unknown = null;
+    _filterEffect = { filters: null as unknown };
+    get filters(): unknown {
+      return this._filterEffect.filters;
+    }
+    set filters(value: unknown) {
+      this._filterEffect.filters = value;
+    }
     addChild(c: MockContainer): MockContainer {
       this.children.push(c);
       c.parent = this;

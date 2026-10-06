@@ -540,41 +540,65 @@ overlayEl.addEventListener("pointerdown", (e) => {
 
 ## UI auto-consume
 
-Every primitive in `@yagejs/ui` (and `UIRoot` in `@yagejs/ui-react`) marks its underlying Pixi `Container` as a consume surface via a shared `WeakSet` in `@yagejs/core`. The renderer's optional `RendererAdapter.hitTestUI(x, y)` walks `EventBoundary.hitTest`'s parent chain looking for a marked ancestor. `@yagejs/input` checks it for pointer-down and wheel events. Clicks and scrolling on marked UI do not fire gameplay action edges.
-
-`hitTestUI` only sees surfaces marked via `markPointerConsumeContainer` — `@yagejs/ui` primitives plus `Sprite` / `AnimatedSprite` components configured with `interactive: { consumeOnInteraction: true }` (a plain sprite is not a consume surface). Raw-Pixi UI drawn directly with `GraphicsComponent` / `TextComponent` (e.g. the `@yagejs-addons/dialogue` box) never marks its containers, so `hitTestUI` never detects it. Dialogue-aware callers should gate on `DialogueController.isActive()` / `isChoosing()` instead.
-
-Per-component escape hatch via `consumeInput?: boolean` (default `true`):
+UI pointer presses and wheel input are consumed before gameplay action edges
+when the hit element resolves to `consumeInput: true`. Every UI element
+inherits the nearest explicit ancestor setting. `UISurface` and `UIRoot`
+default to `true`; standalone UI elements with no explicit ancestor do too.
+A nearer explicit `false` overrides a consuming parent, and a nearer explicit
+`true` consumes inside a transparent subtree. Removing a prop restores
+inheritance. Pointer callbacks still run. Clicks are not forwarded to UI
+widgets behind the hit element.
 
 ```tsx
-import { UIPanel } from "@yagejs/ui";
-import { Panel } from "@yagejs/ui-react";
+import { Button, Panel } from "@yagejs/ui-react";
+import { UISurface } from "@yagejs/ui";
 
-// React
+declare function pause(): void;
 <Panel consumeInput={false}>
-  {/* This panel is transparent to the action map; clicks pass through. */}
+  <Panel>
+    <Button consumeInput onClick={pause}>
+      Pause
+    </Button>
+  </Panel>
 </Panel>;
 
-// Imperative
-new UIPanel({ consumeInput: false /* … */ });
+const hud = new UISurface({ consumeInput: false });
+hud.panel().button("Pause", { consumeInput: true, onClick: pause });
 ```
 
-For custom Pixi containers that should also auto-consume, mark them yourself:
+The renderer's `hitTestUI(x, y)` resolves consumption along the hit display
+path. Ordinary game sprites are unregistered and do not consume. A visual with
+`interactive: { consumeOnInteraction: true }` explicitly consumes. Raw custom
+UI must register a policy or claim input in its handlers.
+
+Custom display containers use the core registry:
 
 ```ts
 import {
   markPointerConsumeContainer,
+  getPointerConsumePolicy,
+  isPointerConsumeContainer,
   unmarkPointerConsumeContainer,
 } from "@yagejs/core";
+import type { PointerConsumePolicy } from "@yagejs/core";
 import { Container } from "pixi.js";
 
 const container = new Container();
-markPointerConsumeContainer(container); // also forces eventMode="static"
-// later
-unmarkPointerConsumeContainer(container);
+container.eventMode = "static";
+const policy: PointerConsumePolicy = "inherit"; // true | false | "inherit"
+markPointerConsumeContainer(container, policy);
+getPointerConsumePolicy(container); // own policy, or undefined if unregistered
+isPointerConsumeContainer(container); // true only for an explicit true policy
+markPointerConsumeContainer(container); // explicit true when policy is omitted
+unmarkPointerConsumeContainer(container); // remove the policy, including UI fallback
 ```
 
-Marking forces `eventMode = "static"` — required for Pixi's hit-test to report the container as the hit. Without that, `passive`-mode containers are skipped and the parent walk never sees the mark.
+`"inherit"` supplies the standalone UI default of `true` if no explicit
+ancestor is found. An entirely unregistered path does not consume. Registration
+does not change hit testing: configure `eventMode`, bounds or a hit area, and
+pointer handlers on custom containers as needed. Reparenting takes effect on
+the next hit test. Floating content inherits from its display parent, not its
+React owner. Modal focus blockers explicitly consume the blocked area.
 
 ## SpriteComponent opt-in
 

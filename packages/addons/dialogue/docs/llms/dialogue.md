@@ -54,7 +54,9 @@ import { loadYarn } from "@yagejs-addons/dialogue/yarn";
 per-glyph effects. No bundled files. Built-in presenters create their layers
 before drawing, including when mounted independently. Screen-space frame,
 avatar, and text layers use orders 1100, 1105, and 1110, including custom theme
-names. A bubble's configured `worldLayer` is created in world space at order 0
+names by default. Set theme `layerFrameOrder` / `layerTextOrder` or a screen
+presenter's matching fields to request different orders. Text and avatar
+presenters use `layerOrder` (defaults 1110 and 1105 respectively). A bubble's configured `worldLayer` is created in world space at order 0
 when absent. Existing host layers keep their order; differing requested orders
 warn once per scene tree, name, and requested order in development.
 
@@ -187,7 +189,10 @@ Step kinds: `say` | `choice` | `command` | `goto` | `select` | `detour` |
 **Computed text tokens** — `expressions` maps a `{name}` token to an expression
 (string, parsed like a condition, or an `Expr`) evaluated each time the text shows;
 a token without an entry reads the variable. The text keeps only the token, so a
-translation carries `{left}` too:
+translation carries `{left}` too. Computed values stay fixed for the current
+line or choice, including retranslation, selection, and confirmation. An
+option's label and disabled reason share those values. Revisiting a step
+evaluates its expressions again:
 
 ```ts
 import type { SayStep } from "@yagejs-addons/dialogue";
@@ -261,8 +266,9 @@ ReactiveMap<string, VarValue>)` — `VariableStorage` over a `@yagejs/core`
 
 Conditions, `{token}` interpolation, and choice gates read the storage at
 **line-present time** (an earlier command's effect shows on a later line);
-already-shown lines never re-render, and a choice menu's conditions don't
-live-refresh while open.
+variable writes do not refresh text already on screen. A locale change
+re-resolves ordinary variable tokens but keeps computed text values. Choice
+conditions do not live-refresh while open.
 
 ### Expression IR (conditions + `set` values)
 
@@ -458,13 +464,14 @@ end
 
 ### Validation (two hard-error stages)
 
-- **Load-time** (`loadScript` / `defineScript`, environment-free): collects the
+- **Load-time** (`loadScript`, environment-free): collects the
   names read/written, functions called, command types fired; type-checks what's
   statically knowable (a numeric/arithmetic op — atomic OR inside an expression
   tree — with a wrong-type literal operand or a declared-non-number var operand; a
   literal `set` value vs the target's declared type). Throws `DialogueScriptError`.
   Undeclared _references_ are NOT rejected here — the storage/functions may provide
-  them.
+  them. `defineScript` only captures types; `play()` loads and validates its
+  result before starting the conversation.
 - **Play-time** (`validatePlay`, on `play()`): every read name must be provided
   (declared default or `storage.has`), every called function installed, every
   command type handled (`commands`/`fallbackCommand`), no `set` target that's a
@@ -682,6 +689,14 @@ lifecycle levers below. It is multi-instance friendly — several ambient
 conversations can run at once; "which is interactive" and "does the world pause"
 are the game's policy (no global singleton).
 
+`preview(nodeId)` returns plain text along the node's path until a choice,
+`select`, or the end. It uses a variable snapshot and runs no commands. Each
+preview uses a separate random generator starting at the session source's seed
+(`globalRandom` for a headless session with no `random` option). It consumes no
+live randomness; previewed random text and branches may differ from playback.
+Installed functions must remain side-effect-free. For names omitted from
+`storage.entries()`, expressions fall back to direct `storage.get()` reads.
+
 ### Lifecycle levers (host owns focus/pause/visibility)
 
 Three **orthogonal** levers; compose them (cutscene = hidden + paused; pause menu
@@ -693,7 +708,7 @@ survive `stop()`/`play()`, so a forgotten unhide/unpause stays in effect.
   resume the exact line + caret). A composite chrome restores its **active**
   variant on show (bubble line → bubble, not an empty box).
 - `setPaused(bool)` — **freezes time + input**. `update()` no-ops (reveal,
-  auto-advance clock, caret blink, avatar anim all halt) and the input-agnostic
+  auto-advance clock, caret blink, choice animation, avatar anim all halt) and the input-agnostic
   API no-ops; no state is lost (no generation bump; an in-flight blocking command
   keeps running and lands normally). Does **not** block host-driven
   `handle.setVar` / `ctx.setVar` / storage writes — only player-facing time/input
@@ -913,6 +928,21 @@ Defaults: `DialogueChrome`, `ChoiceListPresenter`, `BoxTextView` (box);
 `NullAvatarPresenter`; `DialogueActor` (component on a world entity, self-registers
 by speaker id) + `actorRegistryFor(scene)`.
 
+`PortraitPresenter` reads `avatar.flipX` from speaker data. It mirrors the
+artwork horizontally without changing its left/right placement, and keeps the
+orientation across expression changes:
+
+```ts
+import type { SpeakerDef } from "@yagejs-addons/dialogue";
+const hero: SpeakerDef = {
+  name: "Hero",
+  avatar: { kind: "portrait", ref: "hero", side: "left", flipX: true },
+};
+```
+
+For `InBoxAvatarPresenter`, set `meta.flipX: true` on the line. Omitting it on
+the next line restores the original orientation.
+
 A disabled `DialogueActor`, or one on an inactive entity, unregisters until it
 becomes effective again. Its expression and speaking state remain requested,
 but actor callbacks and world-figure animation sleep while dormant.
@@ -921,9 +951,10 @@ but actor callbacks and world-figure animation sleep while dormant.
   `BubbleLayout` is the single source of bubble sizing + speaker anchor (incl. the
   missing-actor fallback) + origin — measured **once** per line and shared by the
   bubble chrome/text/choices (no drift). `BoxLayout` owns the box frame rect +
-  text region: per-line `meta.position`, the unified panel grow (a choice grows
-  the frame/nameplate/prompt/rows as one), and an **inset registry** the in-box
-  avatar reflows the text — and the choice rows — around.
+  text region: per-line `meta.position`, content fitting for say lines and choices,
+  and avatar insets that reflow the body and choice labels. Built-in box
+  presenters call `layout.mount(scene)` to bind the renderer viewport. Standalone
+  callers use `setViewport(width, height)`; geometry reads before binding throw.
 - **Routing** (mixed bundles): the four composites (chrome/text/choices/avatar)
   share one `route: (line) => "box" | "bubble"`. Default = narrator → box; explicit `view`
   wins for a real speaker; else a registered `DialogueActor` → bubble, otherwise
@@ -939,6 +970,40 @@ grapheme cursor onto glyph visibility (`chars[i].visible`), and applies per-run
 colour/bold/italic and per-glyph effects.
 
 ## Writing a custom presenter
+
+Every choice channel implements `update(dt: number): void` (seconds), including
+an empty method for static presenters. The session freezes this clock while
+paused; mixed presenters forward it to the active choice presenter.
+
+Custom box presenters share one `BoxLayout`. Call `layout.mount(scene)` in the
+presenter's mount, or set the viewport explicitly before reading geometry:
+
+```ts
+import {
+  BoxLayout,
+  defaultDialogueTheme,
+} from "@yagejs-addons/dialogue/presenters";
+const theme = defaultDialogueTheme();
+const layout = new BoxLayout({ ...theme, choiceGap: theme.choiceGap ?? 6 });
+layout.setViewport(800, 450);
+const frame = layout.frameRect();
+```
+
+`setViewport` and `setInset` reflow current content and notify `onChange`
+subscribers. Built-in text rewraps without resetting reveal progress or pauses;
+choice labels, highlights and pointer targets move together. Geometry inputs
+must be finite and nonnegative; viewport margins and insets must leave positive
+content width.
+Use `setInset(key, { side, width, height })` to reserve a portrait column and its
+minimum content height. `height` is optional; the built-in in-box avatar supplies
+it from the scaled portrait and its optional background.
+
+Built-in box chrome calls `setCaretHeight(height)` to reserve space below the
+text and portraits for its continue indicator. Custom chrome can use the same
+method; layouts without a registered caret reserve no footer. The footer is
+included before reveal begins and is omitted for choices. `textRegion()` includes
+the remaining content height. In-box portraits center in that area, below the
+nameplate and above the footer.
 
 A presenter implements the channel contract; the Session drives it. The
 **call order** per line is guaranteed: `chrome.present(line)` **before**
@@ -1109,7 +1174,8 @@ off(); // unregister + dispose
   `handle.getVars()` — never the session. The ONLY value it hands the session is
   `isRevealComplete()`.
 - Each fanned-out hook is wrapped → a throwing channel routes to the session
-  `onError`, never breaking the conversation (the trio stays trusted/unwrapped).
+  `onError`, never breaking the conversation. Built-in choice updates report
+  through the engine error boundary and rethrow.
 
 ### Auto-advance gate (arm-on-text, count-on-aggregate)
 
@@ -1379,7 +1445,7 @@ The `input` option has three modes:
 ## Theming
 
 `DialogueTheme` is one flat data object: `box` (**viewport-relative**
-`{ marginX, marginY, height }` — a full-width bottom bar resolved against the
+`{ marginX, marginY, minHeight }` — a full-width bottom bar resolved against the
 renderer's design size at mount, so the default works at ANY resolution with no
 override; `meta.position` reuses the margins), `padding`, frame colours
 (`frameColor/frameAlpha/borderColor/cornerRadius`), `nameColor/Size`,
@@ -1387,6 +1453,7 @@ override; `meta.position` reuses the margins), `padding`, frame colours
 `textSize/lineHeight/textColor/charsPerSec`, choice colours, `choiceGap?`,
 `tailLean?` (bubble tail tip), fonts (`bitmapFont/fontFamily/resolution` — the
 shared `FontConfig` triplet every presenter config extends), `layerFrame/layerText`,
+`layerFrameOrder?/layerTextOrder?`,
 `skipMultiplier?`, `textured?`. `defaultDialogueTheme()` returns a fresh zero-asset
 instance — spread to tweak: `{ ...defaultDialogueTheme(), textColor: 0xff0000 }`.
 Presenter-config field names match theme field names exactly (theme `frameColor`
@@ -1453,14 +1520,15 @@ Hero: An ornate proclamation. #chrome:parchment
 The cave swallows your words. #chrome:none
 ```
 
-**Choice overflow + unified panel**: the box **frame grows** to fit the choice
-rows (+ prompt + nameplate) as one panel (labels word-wrap; multi-line rows
-allowed). For `position:bottom` the bottom edge is pinned and the top rises; the
-grow is capped at the screen, and a menu taller than that spills off the top
-non-overlapping. Row placement, the highlight, and pointer hit-testing all derive
-from the layout owner's one geometry pass, so a long list can't escape its
-hit-targets. A list longer than `softMaxChoices` (default 8) logs a soft-cap
-advisory but still renders.
+**Box sizing and choice overflow:** `box.minHeight` is the minimum frame
+height (default 0). The frame fits the complete wrapped say line or choice
+prompt and rows before reveal begins. It stays stable while characters appear.
+A nameplate band is reserved only for a nonempty speaker name and `nameSize > 0`.
+Choices start at the content top, below the name and prompt when present.
+The frame is capped at the viewport minus vertical margins. There is no
+scrolling or pagination: oversized content continues below the frame. Split
+long content into lines or smaller menus. `softMaxChoices` (default 8) logs an
+advisory when the option count is exceeded.
 
 ## Experimental radial choice presenter
 

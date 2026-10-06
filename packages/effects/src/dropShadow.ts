@@ -1,3 +1,10 @@
+import { kawasePadding, localFilter, scaled } from "./localFilter.js";
+import {
+  validateFinite,
+  validateInteger,
+  validateMinimum,
+  validatePoint,
+} from "./validate.js";
 import { defineEffect } from "@yagejs/renderer";
 import type { Effect } from "@yagejs/renderer";
 import { DropShadowFilter } from "pixi-filters";
@@ -5,13 +12,13 @@ import type { DropShadowHandle } from "./handles.js";
 
 /** Options for the {@link dropShadow} preset. */
 export interface DropShadowOptions {
-  /** Shadow offset relative to the original. Default: { x: 4, y: 4 }. */
+  /** Shadow offset in host-local pixels. Default: { x: 4, y: 4 }. */
   offset?: { x: number; y: number };
   /** Shadow color (0xRRGGBB). Default: 0x000000. */
   color?: number;
   /** Shadow alpha 0..1. Drives `getIntensity`. Default: 0.5. */
   alpha?: number;
-  /** Shadow blur strength. Default: 4. */
+  /** Shadow blur strength in host-local pixels. Default: 4. */
   blur?: number;
   /** Blur quality. Default: 3. */
   quality?: number;
@@ -26,39 +33,61 @@ export interface DropShadowOptions {
 export const dropShadow = defineEffect<DropShadowHandle, DropShadowOptions>({
   name: "yage:dropShadow",
   factory: (options) => {
-    let baseAlpha = options.alpha ?? 0.5;
-    const baseOffset = options.offset ?? { x: 4, y: 4 };
-    const baseBlur = options.blur ?? 4;
+    let baseAlpha = validateFinite("dropShadow", "alpha", options.alpha ?? 0.5);
+    let offset = {
+      ...validatePoint(
+        "dropShadow",
+        "offset",
+        options.offset ?? { x: 4, y: 4 },
+      ),
+    };
+    const blur = validateMinimum("dropShadow", "blur", options.blur ?? 4, 0);
+    const quality = validateInteger(
+      "dropShadow",
+      "quality",
+      options.quality ?? 3,
+      1,
+    );
     const filter = new DropShadowFilter({
-      offset: baseOffset,
+      offset: { ...offset },
       color: options.color ?? 0x000000,
       alpha: baseAlpha,
-      blur: baseBlur,
-      quality: options.quality ?? 3,
+      blur,
+      quality,
       shadowOnly: options.shadowOnly ?? false,
     });
-    // The shadow extends beyond the source's bounds by offset + blur radius;
-    // pad accordingly so the trailing edge isn't clipped.
-    const padFor = (offX: number, offY: number, blur: number): number =>
-      Math.max(Math.abs(offX), Math.abs(offY)) + blur * 2 + 4;
-    filter.padding = padFor(baseOffset.x, baseOffset.y, baseBlur);
+    const local = localFilter(
+      filter,
+      ({ scaleX, scaleY, sizeScale }) => {
+        const x = scaled(offset.x, scaleX);
+        const y = scaled(offset.y, scaleY);
+        filter.offset = { x, y };
+        filter.pixelSize = sizeScale;
+      },
+      ({ scaleX, scaleY, sizeScale }) =>
+        Math.max(
+          Math.abs(scaled(offset.x, scaleX)),
+          Math.abs(scaled(offset.y, scaleY)),
+        ) + kawasePadding(blur, quality, sizeScale),
+    );
     const effect: Effect<DropShadowHandle> = {
       filter,
+      onAttach: local.onAttach,
+      onDetach: local.onDetach,
       getIntensity: () => filter.alpha / Math.max(baseAlpha, 1e-6),
       setIntensity: (v) => {
-        filter.alpha = baseAlpha * v;
+        filter.alpha = validateFinite("dropShadow", "intensity", v) * baseAlpha;
       },
       buildExtras: () => ({
         setOffset: (x: number, y: number) => {
-          filter.offset = { x, y };
-          filter.padding = padFor(x, y, baseBlur);
+          offset = validatePoint("dropShadow", "offset", { x, y });
+          local.update();
         },
         setColor: (color: number) => {
           filter.color = color;
         },
         setAlpha: (value: number) => {
-          // Preserve the current intensity ratio so a fade in flight keeps
-          // animating against the new ceiling.
+          validateFinite("dropShadow", "alpha", value);
           const ratio = filter.alpha / Math.max(baseAlpha, 1e-6);
           baseAlpha = value;
           filter.alpha = value * ratio;

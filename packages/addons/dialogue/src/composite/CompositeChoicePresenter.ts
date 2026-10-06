@@ -16,6 +16,9 @@ import {
 } from "./route.js";
 
 export class CompositeChoicePresenter implements ChoicePresenter {
+  update(dt: number): void {
+    this.active?.update(dt);
+  }
   private active?: ChoicePresenter | undefined;
   /** Master visibility gate from the Session's setVisible. */
   private visible = false;

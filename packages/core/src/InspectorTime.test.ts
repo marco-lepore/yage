@@ -257,3 +257,92 @@ describe("Inspector clock and event completion", () => {
     },
   );
 });
+
+describe("Inspector drawing policy", () => {
+  async function drawingSetup() {
+    const result = await setup();
+    const frames: boolean[] = [];
+    const continuations: boolean[] = [];
+    const renderFrame = vi.fn();
+    const advance = result.controller.stepFrames.bind(result.controller);
+    const drawingController = {
+      ...result.controller,
+      drawingEnabled: true,
+      renderFrame,
+      stepFrames(count: number, dtMs?: number) {
+        frames.push(this.drawingEnabled);
+        queueMicrotask(() => continuations.push(this.drawingEnabled));
+        advance(count, dtMs);
+      },
+    };
+    result.inspector.attachTimeController(drawingController);
+    return { ...result, frames, continuations, renderFrame, drawingController };
+  }
+
+  it("draws once after an async batch and does not spend an extra frame", async () => {
+    const { inspector, frames, continuations, renderFrame, drawingController } =
+      await drawingSetup();
+    await inspector.time.stepAsync(3, { render: "last", dtMs: 20 });
+    expect(frames).toEqual([false, false, false]);
+    expect(continuations).toEqual([false, false, false]);
+    expect(drawingController.drawingEnabled).toBe(true);
+    expect(inspector.time.getFrame()).toBe(3);
+    expect(renderFrame).toHaveBeenCalledOnce();
+    await inspector.time.stepAsync(0, { render: "last" });
+    expect(renderFrame).toHaveBeenCalledOnce();
+  });
+
+  it("draws at a satisfied predicate but not at a timeout or zero-frame result", async () => {
+    const { inspector, renderFrame } = await drawingSetup();
+    await inspector.time.stepUntil(() => inspector.time.getFrame() === 2, {
+      render: "last",
+    });
+    expect(renderFrame).toHaveBeenCalledOnce();
+    await inspector.time.stepUntil(() => true, { render: "last" });
+    await expect(
+      inspector.time.stepUntil(() => false, { maxFrames: 1, render: "last" }),
+    ).rejects.toThrow("predicate");
+    expect(renderFrame).toHaveBeenCalledOnce();
+  });
+
+  it("applies a drive policy across one-frame steps and permits an explicit override", async () => {
+    const { inspector, frames, renderFrame } = await drawingSetup();
+    const result = await inspector.drive(
+      async ({ step }) => {
+        await step();
+        await step();
+        await step(1, { render: "all" });
+      },
+      { render: "last" },
+    );
+    expect(result).toMatchObject({ ok: true, framesUsed: 3 });
+    expect(frames).toEqual([false, false, true]);
+    expect(renderFrame).toHaveBeenCalledOnce();
+    await inspector.time.stepAsync();
+    expect(frames.at(-1)).toBe(true);
+  });
+
+  it("does not draw after a failed drive or leave the clock owned", async () => {
+    const { inspector, renderFrame } = await drawingSetup();
+    const result = await inspector.drive(
+      async ({ step }) => {
+        await step();
+        throw new Error("stop");
+      },
+      { render: "last" },
+    );
+    expect(result).toMatchObject({ ok: false, error: "stop" });
+    expect(renderFrame).not.toHaveBeenCalled();
+    expect(inspector.time.isOwned()).toBe(false);
+  });
+
+  it("rejects an invalid policy without stepping", async () => {
+    const { inspector, frames } = await drawingSetup();
+    await expect(
+      // @ts-expect-error runtime callers can pass invalid policies
+      inspector.time.stepAsync(1, { render: "sometimes" }),
+    ).rejects.toThrow("render");
+    expect(frames).toEqual([]);
+    expect(inspector.time.isOwned()).toBe(false);
+  });
+});

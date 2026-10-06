@@ -1242,6 +1242,8 @@ and no Inspector installed, `start()` warns once in dev builds.
 
 ```ts
 import type {
+  InspectorDriveUntilOptions,
+  InspectorStepOptions,
   InspectorTime as BaseInspectorTime,
   InspectorTimeControl as BaseInspectorTimeControl,
   InspectorTimeLease as BaseInspectorTimeLease,
@@ -1255,10 +1257,10 @@ interface InspectorTimeControl extends BaseInspectorTimeControl {
   isFrozen(): boolean;
   getFrame(): number;
   isAdvancing(withinMs?: number): boolean;
-  stepAsync(frames?: number, opts?: { dtMs?: number }): Promise<void>;
+  stepAsync(frames?: number, opts?: InspectorStepOptions): Promise<void>;
   stepUntil(
     predicate: () => boolean,
-    opts?: { maxFrames?: number; dtMs?: number },
+    opts?: InspectorDriveUntilOptions,
   ): Promise<number>;
 }
 interface InspectorTimeLease
@@ -1277,6 +1279,14 @@ per frame. Stepping requires a frozen clock. `stepAsync` and `stepUntil` yield
 between frames; their `dtMs` override applies to that call only. `stepUntil`
 checks before stepping and after each frame, returns the frames used, and
 rejects after `maxFrames` (default 600) when still unmatched.
+
+`InspectorStepOptions` accepts `dtMs` and `render: "all" | "last" | "none"`.
+Use `"last"` to draw once after a successful batch or `"none"` to skip drawing.
+Simulation, layout and pointer hit testing still update. Omitting `render`
+keeps the renderer's current drawing setting. `inspector.drive(fn, { render })`
+applies the same policy across the whole drive; a step's explicit policy
+overrides it for that call. Captures draw current state without advancing time.
+See [play sessions](../play-sessions.md#stepping-without-drawing-every-frame).
 
 `acquire()` requires an attached controller and throws if already owned. Use
 the returned lease for every mutation until `release()`. Raw time mutators

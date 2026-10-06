@@ -228,6 +228,7 @@ export class DialogueController<
       },
       {
         i18n,
+        errorBoundary: boundary,
         // The scene's seeded generator: `select` steps and the random
         // built-ins repeat under a fixed seed.
         random: this.use(RandomKey),

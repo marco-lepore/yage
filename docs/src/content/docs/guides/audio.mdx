@@ -13,6 +13,7 @@ entity-bound audio, and a `sound()` asset factory for preloading.
 import { AudioPlugin } from "@yagejs/audio";
 
 engine.use(new AudioPlugin({
+  masterVolume: 1, // default: 1
   channels: {
     sfx:   { volume: 1.0 },
     music: { volume: 0.7 },
@@ -119,6 +120,18 @@ When the sound ends on its own, every active request becomes inactive and its
 the shared `SoundHandle`, its channel, or all audio clears every request without
 calling `onEnd`.
 
+`request.release({ fadeOut: seconds })` accepts `SoundRequestReleaseOptions`.
+`fadeOut` must be finite and non-negative; omitting it or passing zero stops
+immediately when the final owner releases. A positive fade requires an installed
+`AudioPlugin`. Other requests and `playOnce` owners keep the recording playing
+at its current volume. Only the final request's fade applies.
+
+The final request remains `active` through its fade, then becomes inactive when
+the sound stops or ends. A released request receives no `onEnd` callback,
+including if the recording ends during its fade. A new `requestOnce` or
+`playOnce` call during the fade starts a fresh recording. Channel controls still
+apply to both recordings.
+
 ## Sound Handles
 
 `play` returns a `SoundHandle` for controlling playback:
@@ -184,8 +197,8 @@ when `volume` is absent. The outgoing sound fades to zero and stops. The method
 returns the incoming `SoundHandle` immediately. If `channel` is absent, the
 incoming sound uses the outgoing handle's channel.
 
-`SoundHandle.volume` is the per-sound volume before the channel multiplier.
-Changing the channel volume preserves the handle volume and the current point
+`SoundHandle.volume` is the per-sound volume before master and channel multipliers.
+Changing either preserves the handle volume and the current point
 in an active fade.
 
 Fades use the engine-global frame clock. They continue across scene changes
@@ -196,6 +209,33 @@ and do not pause with an individual scene. They follow the global
 
 Channels group sounds for independent volume control. The default channels are
 `"sfx"` and `"music"`, but you can define any channels in the config.
+
+Use `masterVolume` for an overall Sound setting while keeping independent music
+and sound-effect levels:
+
+```typescript yage-group="audio" yage-context="scene-enter"
+audio.masterVolume = 0.5;
+audio.setChannelVolume("music", 0.7);
+audio.getChannelNames(); // ["sfx", "music"]
+```
+
+Playback volume is master volume × channel volume × sound volume. For example,
+master volume 0.5, channel volume 0.7 and sound volume 0.8 produce volume 0.28.
+Changing master volume immediately affects playing sounds and applies to future
+sounds, including channels created later. Channel and sound volumes, ongoing
+fades, and mute/pause state keep their own values.
+
+Master volume defaults to 1. Set its initial value with `AudioConfig.masterVolume`
+or read and write `audio.masterVolume` at runtime. Values must be finite numbers
+from 0 to 1; invalid values throw before changing state. Master volume controls
+playback through this manager, including registered runtime sounds. It does not
+control external audio contexts or sounds played outside the manager.
+
+`getChannelNames()` returns a fresh, read-only array of configured and
+subsequently created channel names in creation order. Silent channels remain in
+the list. Playback and channel volume, mute and pause controls create unknown
+channels automatically. Reading `getChannelVolume(name)` for an unknown channel
+returns 1 without creating it.
 
 ```typescript yage-group="audio" yage-context="scene-enter"
 // Volume control

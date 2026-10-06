@@ -12,11 +12,13 @@ import type {
   AudioPlayOptions,
   SoundRef,
   SoundRequestHandle,
+  SoundRequestReleaseOptions,
 } from "./types.js";
 import { assertFadeDuration, assertVolume } from "./internal/validation.js";
 
 interface SoundRequestState {
   active: boolean;
+  released: boolean;
   readonly onEnd: (() => void) | undefined;
 }
 
@@ -58,6 +60,7 @@ export class AudioManager {
   private readonly _random: RandomService;
   private readonly _fadeQueue: ScopedProcessQueue | undefined;
   private readonly _channels = new Map<string, ChannelState>();
+  private _masterVolume: number;
 
   private _autoMuteOnBlur: boolean;
   private readonly _unlockListeners: Array<() => void> = [];
@@ -77,6 +80,10 @@ export class AudioManager {
     this._sound = sound;
     this._random = random ?? globalRandom;
     this._fadeQueue = fadeQueue;
+
+    const masterVolume = config?.masterVolume ?? 1;
+    assertVolume("AudioManager.masterVolume", masterVolume);
+    this._masterVolume = masterVolume;
 
     const channelDefs = config?.channels ?? DEFAULT_CHANNELS;
     for (const [name, cfg] of Object.entries(channelDefs)) {
@@ -182,6 +189,7 @@ export class AudioManager {
       channel?.shared.get(alias) ?? this._startSharedPlayback(ref, options);
     const request: SoundRequestState = {
       active: true,
+      released: false,
       onEnd: options?.onEnd,
     };
     playback.requests.add(request);
@@ -189,7 +197,7 @@ export class AudioManager {
       get active(): boolean {
         return request.active;
       },
-      release: () => this._releaseRequest(playback, request),
+      release: (options) => this._releaseRequest(playback, request, options),
     };
   }
 
@@ -232,6 +240,26 @@ export class AudioManager {
     }
   }
 
+  /** Volume multiplier for all playback owned by this manager. Default: 1. */
+  get masterVolume(): number {
+    return this._masterVolume;
+  }
+
+  set masterVolume(volume: number) {
+    assertVolume("AudioManager.masterVolume", volume);
+    this._masterVolume = volume;
+    for (const channel of this._channels.values()) {
+      for (const handle of channel.handles) {
+        handle._refreshVolume();
+      }
+    }
+  }
+
+  /** Fresh snapshot of configured and created channels, in creation order. */
+  getChannelNames(): readonly string[] {
+    return [...this._channels.keys()];
+  }
+
   setChannelVolume(channel: string, volume: number): void {
     assertVolume("AudioManager.setChannelVolume", volume);
     const state = this._ensureChannel(channel);
@@ -241,8 +269,9 @@ export class AudioManager {
     }
   }
 
+  /** Unknown channels have volume 1; reading does not create them. */
   getChannelVolume(channel: string): number {
-    return this._ensureChannel(channel).volume;
+    return this._channels.get(channel)?.volume ?? 1;
   }
 
   muteChannel(channel: string): void {
@@ -454,7 +483,7 @@ export class AudioManager {
     assertVolume("AudioManager.play", instanceVolume);
     const channel = this._ensureChannel(channelName);
     const result = this._sound.play(alias, {
-      volume: channel.volume * instanceVolume,
+      volume: this._masterVolume * channel.volume * instanceVolume,
       loop: options?.loop ?? false,
       speed: options?.speed ?? 1,
     });
@@ -469,7 +498,7 @@ export class AudioManager {
       channelName,
       instanceVolume,
       (volume) => {
-        result.volume = channel.volume * volume;
+        result.volume = this._masterVolume * channel.volume * volume;
       },
       this._fadeQueue,
     );
@@ -535,8 +564,31 @@ export class AudioManager {
   private _releaseRequest(
     playback: SharedPlaybackState,
     request: SoundRequestState,
+    options?: SoundRequestReleaseOptions,
   ): void {
-    if (!request.active) return;
+    const fadeOut = options?.fadeOut ?? 0;
+    if (!Number.isFinite(fadeOut) || fadeOut < 0) {
+      throw new Error(
+        `SoundRequestHandle.release: fadeOut must be a finite number >= 0 in seconds, got ${fadeOut}.`,
+      );
+    }
+    if (!request.active || request.released) return;
+    const lastOwner = playback.requests.size === 1 && !playback.playOnceOwned;
+    if (lastOwner && fadeOut > 0) {
+      if (!this._fadeQueue) {
+        throw new Error(
+          "SoundRequestHandle.release: fades require an installed AudioPlugin.",
+        );
+      }
+      playback.handle.fadeTo(0, { duration: fadeOut, stopOnComplete: true });
+      request.released = true;
+      // A new owner starts at full volume while this recording finishes fading.
+      this._channels
+        .get(playback.handle.channel)
+        ?.shared.delete(playback.alias);
+      return;
+    }
+    request.released = true;
     request.active = false;
     playback.requests.delete(request);
     if (playback.requests.size === 0 && !playback.playOnceOwned) {
@@ -561,7 +613,9 @@ export class AudioManager {
     playback.playOnceOnEnd = undefined;
     for (const request of playback.requests) {
       request.active = false;
-      if (endedNaturally && request.onEnd) callbacks.push(request.onEnd);
+      if (endedNaturally && !request.released && request.onEnd) {
+        callbacks.push(request.onEnd);
+      }
     }
     playback.requests.clear();
 

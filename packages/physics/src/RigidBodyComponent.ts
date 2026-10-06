@@ -162,6 +162,7 @@ export class RigidBodyComponent extends Component {
     body.resetForces(false);
     body.resetTorques(false);
     body.setEnabled(false);
+    this.physicsWorld._markQueriesStale(this._bodyHandle);
   }
 
   /**
@@ -186,7 +187,6 @@ export class RigidBodyComponent extends Component {
         },
         true,
       );
-      this.physicsWorld._markQueriesStale();
       this._kinematicTargetPositionX = target.x;
       this._kinematicTargetPositionY = target.y;
       this._lastWrittenPositionX = target.x;
@@ -195,7 +195,6 @@ export class RigidBodyComponent extends Component {
     if (this._hasPendingTargetRotation()) {
       const target = this.transform.worldRotation;
       body.setRotation(target, true);
-      this.physicsWorld._markQueriesStale();
       this._kinematicTargetRotation = target;
       this._lastWrittenRotation = target;
     }
@@ -211,6 +210,7 @@ export class RigidBodyComponent extends Component {
     this._currPositionY = pos.y;
     this._prevRotation = body.rotation();
     this._currRotation = body.rotation();
+    this.physicsWorld._markQueriesStale(this._bodyHandle);
   }
 
   onDestroy(): void {
@@ -596,7 +596,7 @@ export class RigidBodyComponent extends Component {
       },
       true,
     );
-    this.physicsWorld._markQueriesStale();
+    this.physicsWorld._markQueriesStale(this._bodyHandle);
     const pos = this.positionScratch.set(x, y);
     this._prevPositionX = pos.x;
     this._prevPositionY = pos.y;
@@ -625,7 +625,7 @@ export class RigidBodyComponent extends Component {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
     body.setRotation(radians, true);
-    this.physicsWorld._markQueriesStale();
+    this.physicsWorld._markQueriesStale(this._bodyHandle);
     this._prevRotation = radians;
     this._currRotation = radians;
     if (this._type === "static" && this.syncRotation) {
