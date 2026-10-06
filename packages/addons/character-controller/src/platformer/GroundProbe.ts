@@ -136,7 +136,7 @@ export class GroundProbe extends Component {
           y: this.body.positionY - PROBE_THICKNESS / 2,
         },
         DOWN,
-        this.tuning.distance,
+        Math.max(this.tuning.distance, this.tuning.snapDistance ?? 0),
         {
           filterGroups: this.tuning.filterGroups,
           excludeEntity: this.entity,

@@ -45,6 +45,8 @@ class Floor extends Entity {
     height = 20,
     kinematic = false,
     oneWay = false,
+    layers = 0xffff,
+    mask = 0xffff,
   } = {}): void {
     this.add(new Transform({ position: new Vec2(x, y) }));
     this.add(
@@ -53,6 +55,8 @@ class Floor extends Entity {
     this.add(
       new ColliderComponent({
         shape: { type: "box", width, height },
+        layers,
+        mask,
         friction: 0,
         ...(oneWay ? { oneWay: {} } : {}),
       }),
@@ -74,6 +78,7 @@ import {
   PlatformerDashedEvent,
 } from "./PlatformerMoves.js";
 import { MotionReconciler } from "./MotionReconciler.js";
+import { LedgeProbe } from "./LedgeProbe.js";
 import { Stance } from "./Stance.js";
 
 let engine: Engine | undefined;
@@ -798,3 +803,142 @@ it("does not land on a contact-filtered platform while descending past its top",
   expect(landed).not.toHaveBeenCalled();
   expect(body.positionY).toBeGreaterThan(120);
 });
+
+it("walks over consecutive six-pixel steps in both directions", async () => {
+  const { scene, floor, body, input, tick } = await setup();
+  floor.destroy();
+  scene.spawn(Floor, { x: 1500, y: 570, width: 1000, height: 60 });
+  body.setPosition(1250, 540);
+  for (let step = 0; step < 10; step++) {
+    const height = 6 * (step < 5 ? step + 1 : 10 - step);
+    scene.spawn(Floor, {
+      x: 1360 + step * 40,
+      y: 540 - height / 2,
+      width: 40,
+      height,
+    });
+  }
+  tick(10);
+  input.setDirection(1);
+  tick(190);
+  expect(body.positionX).toBeGreaterThan(1750);
+  input.setDirection(-1);
+  tick(200);
+  expect(body.positionX).toBeLessThan(1330);
+});
+
+it.each([190, 260])(
+  "crosses alternating ramp crests and valleys at speed %s in both directions",
+  async (runSpeed) => {
+    const { scene, floor, body, input, tick } = await setup({
+      tuning: { runSpeed },
+    });
+    floor.destroy();
+    scene.spawn(Floor, { x: 2400, y: 570, width: 1600, height: 60 });
+    body.setPosition(1850, 540);
+    const heights = [0, 70, 15, 100, 25, 80, 0];
+    for (let n = 0; n < heights.length - 1; n++) {
+      const ramp = scene.spawn("ramp");
+      ramp.add(new Transform({ position: new Vec2(1960 + n * 140, 540) }));
+      ramp.add(new RigidBodyComponent({ type: "static" }));
+      ramp.add(
+        new ColliderComponent({
+          shape: {
+            type: "polygon",
+            vertices: [
+              { x: 0, y: -(heights[n] ?? 0) },
+              { x: 140, y: -(heights[n + 1] ?? 0) },
+              { x: 140, y: 20 },
+              { x: 0, y: 20 },
+            ],
+          },
+          friction: 0,
+        }),
+      );
+    }
+    tick(10);
+    input.setDirection(1);
+    tick(Math.ceil((360 * 190) / runSpeed));
+    expect(body.positionX).toBeGreaterThan(2800);
+    input.setDirection(-1);
+    tick(Math.ceil((390 * 190) / runSpeed));
+    expect(body.positionX).toBeLessThan(1960);
+  },
+);
+
+it("keeps the actor out of ledge clearance queries when excluding the support", async () => {
+  const { scene, floor, body, entity } = await setup();
+  floor.destroy();
+  scene.spawn(Floor, { x: 3700, y: 475, width: 160, height: 130 });
+  body.setPosition(3612.002, 442.5);
+  body.setVelocity({ x: 0, y: 0 });
+  const probe = entity.add(
+    new LedgeProbe({
+      tuning: {
+        bodyWidth: 16,
+        ledgeHandHeight: 32,
+        ledgeGrabReach: 10,
+        ledgeGrabTolerance: 12,
+      },
+      grab: 0xffffffff,
+      volume: 0xffffffff,
+    }),
+  );
+  const contact = probe.find(1);
+  expect(contact).toBeDefined();
+  if (!contact) throw new Error("Expected a reachable ledge");
+  const from = body.position;
+  const target = probe.points(contact).hang;
+  const length = Math.hypot(target.x - from.x, target.y - from.y);
+  const fraction = Math.min(1, 3 / length);
+  const to = {
+    x: from.x + (target.x - from.x) * fraction,
+    y: from.y + (target.y - from.y) * fraction,
+  };
+  expect(probe.clearStep(from, to, contact, 1 / 60)).toBe(true);
+  scene.spawn(Floor, { x: to.x, y: to.y - 22, width: 4, height: 4 });
+  expect(probe.clearStep(from, to, contact, 1 / 60)).toBe(false);
+});
+
+it("applies packed collision membership and filters to the character body", async () => {
+  const groups = (1 << 16) | 2;
+  const { scene, body, input, tick } = await setup({
+    collisionGroups: groups,
+    collision: { solid: groups, volume: groups, wall: groups },
+  });
+  scene.spawn(Floor, {
+    x: 80,
+    y: 50,
+    width: 20,
+    height: 80,
+    layers: 4,
+    mask: 1,
+  });
+  scene.spawn(Floor, {
+    x: 140,
+    y: 50,
+    width: 20,
+    height: 80,
+    layers: 2,
+    mask: 1,
+  });
+  input.setDirection(1);
+  tick(80);
+  expect(body.positionX).toBeGreaterThan(100);
+  expect(body.positionX).toBeLessThan(124);
+});
+
+it.each(["tall riser", "low ceiling"])(
+  "keeps step assistance bounded by %s",
+  async (obstruction) => {
+    const { scene, body, input, tick } = await setup();
+    const height = obstruction === "tall riser" ? 8 : 6;
+    scene.spawn(Floor, { x: 80, y: 90 - height / 2, width: 80, height });
+    if (obstruction === "low ceiling")
+      scene.spawn(Floor, { x: 80, y: 36, width: 100, height: 20 });
+    input.setDirection(1);
+    tick(70);
+    expect(body.positionX).toBeLessThan(33);
+    expect(body.positionY).toBeGreaterThan(89);
+  },
+);

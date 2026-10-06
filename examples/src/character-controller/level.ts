@@ -44,20 +44,30 @@ export class Platform extends Entity {
   }
 }
 
+/** A solid ramp between two surface heights, with a shared floor baseline. */
 export class Ramp extends Entity {
-  setup(): void {
-    this.add(new Transform({ position: new Vec2(390, 540) }));
+  setup({
+    x,
+    width,
+    left,
+    right,
+  }: {
+    x: number;
+    width: number;
+    left: number;
+    right: number;
+  }): void {
+    this.add(new Transform({ position: new Vec2(x, 540) }));
+    const vertices = [
+      { x: 0, y: -left },
+      { x: width, y: -right },
+      { x: width, y: 20 },
+      { x: 0, y: 20 },
+    ];
     this.add(new RigidBodyComponent({ type: "static" }));
     this.add(
       new ColliderComponent({
-        shape: {
-          type: "polygon",
-          vertices: [
-            { x: 0, y: 0 },
-            { x: 130, y: -60 },
-            { x: 130, y: 0 },
-          ],
-        },
+        shape: { type: "polygon", vertices },
         layers: SOLID,
         mask: PLAYER,
         friction: 0,
@@ -65,9 +75,11 @@ export class Ramp extends Entity {
     );
     this.add(
       new GraphicsComponent().draw((g) => {
-        g.poly([0, 0, 130, -60, 130, 0]).fill({ color: COLORS.solid });
-        g.moveTo(0, 0)
-          .lineTo(130, -60)
+        g.poly(vertices.flatMap(({ x, y }) => [x, y])).fill({
+          color: COLORS.solid,
+        });
+        g.moveTo(0, -left)
+          .lineTo(width, -right)
           .stroke({ color: COLORS.edge, width: 3 });
       }),
     );

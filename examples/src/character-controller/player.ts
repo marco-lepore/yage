@@ -2,9 +2,12 @@ import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import {
   createPlatformer,
+  LedgeProbe,
   type PlatformerCharacter,
 } from "@yagejs-addons/character-controller/platformer";
-import { COLORS, GROUND_GROUPS, SOLID_GROUPS, SPAWN } from "./constants.js";
+import { LedgeClimb } from "./ledge.js";
+import type { Vec2Like } from "@yagejs/core";
+import { COLORS, GROUND_GROUPS, SOLID_GROUPS } from "./constants.js";
 
 /** The visual follows the stance; the physics transform stays upright. */
 class PlayerVisual extends Component {
@@ -30,14 +33,17 @@ class PlayerVisual extends Component {
 
 export class Player extends Entity {
   character!: PlatformerCharacter;
+  ledge!: LedgeClimb;
   setup({
     nimble,
     canDash,
+    position,
   }: {
     nimble: boolean;
     canDash: () => boolean;
+    position: Vec2Like;
   }): void {
-    this.add(new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }));
+    this.add(new Transform({ position: new Vec2(position.x, position.y) }));
     this.character = createPlatformer(this, {
       // Omitting tuning uses every shipped movement default.
       ...(nimble
@@ -57,9 +63,23 @@ export class Player extends Entity {
         wall: SOLID_GROUPS,
       },
       admissionPolicies: {
-        canStartMove: (move) => move !== "dash" || canDash(),
+        canStartMove: (move) =>
+          !this.ledge?.active && (move !== "dash" || canDash()),
       },
     });
+    const probe = this.add(
+      new LedgeProbe({
+        tuning: {
+          bodyWidth: 16,
+          ledgeHandHeight: 32,
+          ledgeGrabReach: 10,
+          ledgeGrabTolerance: 12,
+        },
+        grab: SOLID_GROUPS,
+        volume: SOLID_GROUPS,
+      }),
+    );
+    this.ledge = this.add(new LedgeClimb(this.character, probe));
     const child = this.spawnChild("visual");
     child.add(new Transform());
     const visual = child.add(new GraphicsComponent({ layer: "player" }));
