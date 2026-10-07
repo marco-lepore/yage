@@ -388,6 +388,61 @@ export declare class Bullet extends Entity {
   );
 });
 
+test("fixture imports keep their group root across equivalent filename spellings", (context) => {
+  const fixturesRoot = mkdtempSync(join(tmpdir(), "yage-snippet-paths-"));
+  context.after(() => rmSync(fixturesRoot, { recursive: true, force: true }));
+  mkdirSync(join(fixturesRoot, "game"));
+  writeFileSync(join(fixturesRoot, "game/value.ts"), "export const value = 5;");
+  const cases = [
+    ["config.ts", "./value.js"],
+    ["./config.ts", "./value.js"],
+    ["./nested/config.ts", "../value.js"],
+    ["nested/./config.ts", "../value.js"],
+    ["nested//config.ts", "../value.js"],
+  ];
+  const documents = cases.map(([filename, importPath], index) => ({
+    file: `path-${index}.md`,
+    text:
+      fence(
+        `import { value } from "${importPath}";\nexport const damage: number = value;`,
+        `yage-group="shot" yage-file="${filename}" yage-fixture="game"`,
+      ) +
+      "\n" +
+      fence(
+        `import { damage } from "./${filename.replace(/\.ts$/, ".js")}";\nconst result: number = damage;`,
+        'yage-group="shot" yage-file="main.ts"',
+      ) +
+      "\n" +
+      fence(
+        'import { value } from "./value.js";',
+        'yage-group="other" yage-file="main.ts"',
+      ),
+  }));
+  documents.push({
+    file: "collision.md",
+    text: fence(
+      "export const value = 1;",
+      'yage-group="shot" yage-file="./value.ts" yage-fixture="game"',
+    ),
+  });
+  const report = checkDocuments(documents, { fixturesRoot });
+  assert.deepEqual(report.errors, []);
+  for (const snippet of report.snippets) {
+    if (snippet.file === "collision.md") {
+      assert.ok(
+        snippet.diagnostics.some(
+          ({ code, message }) =>
+            code === "directive" && message.includes("conflicts"),
+        ),
+      );
+    } else if (snippet.group === "other") {
+      assert.ok(snippet.diagnostics.some(({ code }) => code === 2307));
+    } else {
+      assert.equal(snippet.status, "checked", JSON.stringify(snippet));
+    }
+  }
+});
+
 test("built React props allow optional resets without loosening required or nested props", () => {
   const cases = [
     [

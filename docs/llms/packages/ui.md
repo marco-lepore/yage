@@ -636,7 +636,17 @@ interface FocusNeighbors extends BaseFocusNeighbors {
   `PixiRadioGroup`) the game's `onAdjust` wins on the horizontal axis.
 
 ```ts yage-group="focus" yage-context="entity"
-let volume = 60;
+import { Component } from "@yagejs/core";
+
+class VolumeSettings extends Component {
+  volume = 60;
+
+  adjust(direction: -1 | 1) {
+    this.volume = Math.max(0, Math.min(100, this.volume + direction * 5));
+  }
+}
+
+const settings = entity.add(new VolumeSettings());
 
 const row = menu.panel({
   direction: "row",
@@ -645,11 +655,11 @@ const row = menu.panel({
   focusId: "volume",
   focusNeighbors: { down: "saves-first" },
   onAdjust: (d) => {
-    volume = Math.max(0, Math.min(100, volume + d * 5));
-    readout.setText(`Volume ${volume}`);
+    settings.adjust(d);
+    readout.setText(`Volume ${settings.volume}`);
   },
 });
-const readout = row.text(`Volume ${volume}`);
+const readout = row.text(`Volume ${settings.volume}`);
 ```
 
 ### The pointer and focus

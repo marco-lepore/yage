@@ -588,14 +588,15 @@ export function checkDocuments(
     const filename =
       snippet.metadata.file ??
       (snippet.language === "tsx" ? "index.tsx" : "index.ts");
-    const path = join(
+    const groupRoot = join(
       root,
       ".doc-snippets",
       String(pageIndex),
       `${snippet.metadata.group ? "group" : "isolated"}-${snippet.group}`,
-      filename,
     );
-    const parts = files.get(path) ?? [];
+    const path = join(groupRoot, filename);
+    const source = files.get(path) ?? { parts: [], groupRoot };
+    const { parts } = source;
     if (
       parts.length &&
       (parts[0].metadata.check !== snippet.metadata.check ||
@@ -609,11 +610,14 @@ export function checkDocuments(
       });
     } else {
       parts.push(snippet);
-      files.set(path, parts);
+      files.set(path, source);
     }
   });
   const virtual = new Map(
-    [...files].map(([path, parts]) => [path, buildVirtualSource(parts, path)]),
+    [...files].map(([path, { parts, groupRoot }]) => [
+      path,
+      { ...buildVirtualSource(parts, path), groupRoot },
+    ]),
   );
   // Fixture modules use the same group-local virtual files as authored fences.
   // No fallback resolver can make an undeclared game import silently succeed.
@@ -622,12 +626,14 @@ export function checkDocuments(
     const selected = source.parts.filter((part) => part.metadata.fixture);
     if (!selected.length) continue;
     const group = fixtureGroups.get(source.group) ?? [];
-    group.push(...selected.map((part) => ({ part, path: source.path })));
+    group.push(
+      ...selected.map((part) => ({ part, groupRoot: source.groupRoot })),
+    );
     fixtureGroups.set(source.group, group);
   }
   for (const [group, selected] of fixtureGroups) {
     const names = new Set(selected.map(({ part }) => part.metadata.fixture));
-    const { part, path } = selected[0];
+    const { part, groupRoot } = selected[0];
     const fail = (message) =>
       part.diagnostics.push({
         code: "directive",
@@ -651,9 +657,6 @@ export function checkDocuments(
       );
       continue;
     }
-    const groupRoot = part.metadata.file
-      ? path.slice(0, -part.metadata.file.length)
-      : dirname(path);
     for (const file of fixtureFiles) {
       const target = join(groupRoot, relative(directory, file));
       if (virtual.has(target)) {

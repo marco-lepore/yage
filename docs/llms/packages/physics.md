@@ -728,6 +728,7 @@ const weld = world.addJoint(wallBody, brickBody, {
 });
 const hub = world.addJoint(towerBody, sailBody, {
   type: "revolute",
+  collide: false, // the tower and sail overlap at the hub
   motor: { velocity: 2, damping: 10 }, // rad/s
 });
 const bridge = world.addJoint(bankBody, bridgeBody, {

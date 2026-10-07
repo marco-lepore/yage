@@ -444,7 +444,7 @@ class TapToMove extends Component {
     for (const press of input.getPointerPresses({ button: 0 })) {
       this.entity
         .get(Transform)
-        .setPosition(press.worldPos.x, press.worldPos.y);
+        .setWorldPosition(press.worldPos.x, press.worldPos.y);
     }
   }
 }
@@ -495,7 +495,8 @@ To fire once per press, register a listener in `onAdd()`. Pass the scene’s
 camera to `player.add(new ClickWeapon(camera))`; it converts each event’s
 position to world coordinates, including touches from a second finger.
 `addCleanup` removes the listener when the component is removed or its entity
-is destroyed.
+is destroyed. The callback checks `effectiveEnabled` so a disabled component
+or inactive player cannot fire.
 
 ```typescript yage-fixture="input"
 import { Component, Transform } from "@yagejs/core";
@@ -513,7 +514,7 @@ class ClickWeapon extends Component {
     const input = this.use(InputManagerKey);
     this.addCleanup(
       input.onPointerDown((p) => {
-        if (p.button === 0)
+        if (this.effectiveEnabled && p.button === 0)
           this.shootAt(this.camera.screenToWorld(p.screenPos.x, p.screenPos.y));
       }),
     );

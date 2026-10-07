@@ -881,12 +881,21 @@ disabled check the pointer path runs.
 
 A row that changes a value rather than opening something takes `onAdjust`: left
 and right step the value and keep the focus, while up and down still move to
-the next row.
+the next row. The component holds the volume setting; the row displays it.
 
 ```typescript yage-group="menu" yage-context="entity,engine"
+import { Component } from "@yagejs/core";
 import { upload } from "./menu-actions.js";
 
-let volume = 60;
+class VolumeSettings extends Component {
+  volume = 60;
+
+  adjust(direction: -1 | 1) {
+    this.volume = Math.max(0, Math.min(100, this.volume + direction * 5));
+  }
+}
+
+const settings = entity.add(new VolumeSettings());
 
 const row = menu.panel({
   direction: "row",
@@ -898,11 +907,11 @@ const row = menu.panel({
   focusId: "volume",
   focusNeighbors: { down: "saves-first" },
   onAdjust: (direction) => {
-    volume = Math.max(0, Math.min(100, volume + direction * 5));
-    readout.setText(`Volume ${volume}`);
+    settings.adjust(direction);
+    readout.setText(`Volume ${settings.volume}`);
   },
 });
-const readout = row.text(`Volume ${volume}`);
+const readout = row.text(`Volume ${settings.volume}`);
 
 menu.button("Upload save", {
   width: 220,

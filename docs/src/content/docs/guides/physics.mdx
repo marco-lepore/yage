@@ -1356,6 +1356,7 @@ const sailBody = scene
 
 const hub = world.addJoint(towerBody, sailBody, {
   type: "revolute",
+  collide: false, // the tower and sail overlap at the hub
   motor: { velocity: 2, damping: 10 }, // radians per second
 });
 hub.setMotor({ velocity: -2, damping: 10 });
