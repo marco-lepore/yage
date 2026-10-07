@@ -34,6 +34,7 @@ import {
   assertPositiveNumber,
 } from "./validate.js";
 import { colliderPairKey, colliderPart } from "./colliderParts.js";
+import { castShape } from "./shapeCast.js";
 
 const DEFAULT_PIXELS_PER_METER = 50;
 const DEFAULT_GRAVITY_X = 0;
@@ -1330,7 +1331,8 @@ export class PhysicsWorld {
 
     // With a unit direction as the sweep velocity, Rapier's time of impact is
     // the distance travelled in meters.
-    const hit = this.world.castShape(
+    const hit = castShape(
+      this.world,
       { x: this.toMeters(origin.x), y: this.toMeters(origin.y) },
       (options?.rotation ?? 0) + axisRotation,
       { x: direction.x / length, y: direction.y / length },

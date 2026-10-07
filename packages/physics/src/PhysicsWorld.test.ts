@@ -1946,7 +1946,7 @@ describe("PhysicsWorld", () => {
         400,
       );
 
-      expect(captured).toHaveLength(1);
+      expect(captured).toHaveLength(2);
       const [pos, , vel, , targetDistance, maxToi] = captured[0]!;
       expect(pos).toEqual({ x: 4, y: 2 }); // 200px, 100px at 50px/m
       expect(vel).toEqual({ x: 0, y: 1 });
@@ -1980,6 +1980,10 @@ describe("PhysicsWorld", () => {
         true,
         true,
         true,
+        true,
+        true,
+        true,
+        false,
         false,
       ]);
     });
@@ -1993,7 +1997,7 @@ describe("PhysicsWorld", () => {
       const long = pw.castShape(shape, new Vec2(0, 0), new Vec2(300, 400), 400);
 
       expect(captured[0]![2]).toEqual({ x: 0.6, y: 0.8 });
-      expect(captured[1]![2]).toEqual({ x: 0.6, y: 0.8 });
+      expect(captured[2]![2]).toEqual({ x: 0.6, y: 0.8 });
       expect(short?.distance).toBeCloseTo(180);
       expect(long?.distance).toBeCloseTo(180);
     });
@@ -2444,7 +2448,7 @@ describe("PhysicsWorld", () => {
       pw.queryRadius(origin, 5, { sensors: "only" });
 
       expect(rayFlags).toEqual([8, undefined, 16]);
-      expect(castFlags).toEqual([8, undefined, 16]);
+      expect(castFlags).toEqual([8, 8, undefined, undefined, 16, 16]);
       expect(shapeFlags).toEqual([8, undefined, 16]);
     });
 
