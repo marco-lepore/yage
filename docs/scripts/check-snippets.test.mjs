@@ -276,6 +276,118 @@ test("Markdown and MDX AST extraction includes quoted and nested fences", () => 
   assert.equal(extractSnippets(mdx, "nested.mdx").length, 1);
 });
 
+test("illustrative imports are explicit, typed, group-local and cannot replace visible files", (context) => {
+  const fixturesRoot = mkdtempSync(join(tmpdir(), "yage-snippet-fixtures-"));
+  context.after(() => rmSync(fixturesRoot, { recursive: true, force: true }));
+  mkdirSync(join(fixturesRoot, "game"));
+  writeFileSync(
+    join(fixturesRoot, "game/Bullet.ts"),
+    `
+import { Entity } from "@yagejs/core";
+export declare class Bullet extends Entity {
+  setup(params: { damage: number }): void;
+}`,
+  );
+  mkdirSync(join(fixturesRoot, "invalid"));
+  writeFileSync(
+    join(fixturesRoot, "invalid/Broken.ts"),
+    'import type { MissingType } from "@yagejs/core";\nexport declare const broken: MissingType;',
+  );
+  mkdirSync(join(fixturesRoot, "declaration"));
+  writeFileSync(
+    join(fixturesRoot, "declaration/Broken.d.ts"),
+    "export declare const broken: MissingType;",
+  );
+  const code =
+    'import { Bullet } from "./Bullet.js";\nscene.spawn(Bullet, { damage: 5 });';
+  const report = checkDocuments(
+    [
+      {
+        file: "valid.md",
+        text: fence(code, 'yage-fixture="game" yage-context="scene"'),
+      },
+      {
+        file: "wrong.md",
+        text: fence(
+          code.replace("damage: 5", 'damage: "five"'),
+          'yage-fixture="game" yage-context="scene"',
+        ),
+      },
+      { file: "isolated.md", text: fence(code, 'yage-context="scene"') },
+      {
+        file: "missing.md",
+        text: fence(code, 'yage-fixture="missing" yage-context="scene"'),
+      },
+      {
+        file: "group.md",
+        text:
+          fence(
+            "export const damage = 5;",
+            'yage-group="shot" yage-file="config.ts" yage-fixture="game"',
+          ) +
+          "\n" +
+          fence(
+            'import { damage } from "../config.js";\nimport { Bullet } from "../Bullet.js";\nscene.spawn(Bullet, { damage });',
+            'yage-group="shot" yage-file="weapon/main.ts" yage-context="scene"',
+          ),
+      },
+      {
+        file: "collision.md",
+        text: fence(
+          "export const Bullet = 1;",
+          'yage-group="shot" yage-file="Bullet.ts" yage-fixture="game"',
+        ),
+      },
+      {
+        file: "invalid.md",
+        text: fence("const value = 1;", 'yage-fixture="invalid"'),
+      },
+      {
+        file: "declaration.md",
+        text: fence("const value = 1;", 'yage-fixture="declaration"'),
+      },
+      {
+        file: "conflict.md",
+        text:
+          fence("const a = 1;", 'yage-group="shot" yage-fixture="game"') +
+          "\n" +
+          fence("const b = 1;", 'yage-group="shot" yage-fixture="invalid"'),
+      },
+    ],
+    { fixturesRoot },
+  );
+  const snippets = (file) =>
+    report.snippets.filter((snippet) => snippet.file === file);
+  assert.equal(snippets("valid.md")[0].status, "checked");
+  assert.ok(
+    snippets("group.md").every((snippet) => snippet.status === "checked"),
+  );
+  assert.ok(
+    snippets("wrong.md")[0].diagnostics.some(({ code }) => code === 2769),
+  );
+  assert.ok(
+    snippets("isolated.md")[0].diagnostics.some(({ code }) => code === 2307),
+  );
+  for (const file of [
+    "missing.md",
+    "collision.md",
+    "conflict.md",
+    "declaration.md",
+  ])
+    assert.ok(
+      snippets(file).some((snippet) =>
+        snippet.diagnostics.some(({ code }) => code === "directive"),
+      ),
+      file,
+    );
+  assert.ok(
+    report.errors.some(
+      ({ file, code, line }) =>
+        file.endsWith("invalid/Broken.ts") && code === 2305 && line === 1,
+    ),
+  );
+});
+
 test("built React props allow optional resets without loosening required or nested props", () => {
   const cases = [
     [
@@ -347,6 +459,8 @@ test("checker metadata rejects malformed values, escaping files, unknown names a
     'yage-group="unterminated',
     'title="Using yage-context metadata" yage-context',
     'yage-group="example"suffix',
+    'yage-fixture="../outside"',
+    'yage-fixture="/outside"',
   ])
     assert.throws(() => parseMetadata(value), value);
   assert.deepEqual(parseMetadata(null).contexts, []);

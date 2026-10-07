@@ -28,18 +28,18 @@ The positioning mode is independent of the target layer's `space`:
 - **Screen-space layer + `positioning: "transform"`** = billboard pattern. Pair with `ScreenFollow` from `@yagejs/renderer` which writes `cam.worldToScreen(target) + offset` to this entity's Transform each frame (offset is in screen pixels, applied post-projection). UI stays axis-aligned and constant-size under any camera zoom/rotation.
 - **World-space layer + `positioning: "transform"`** = genuinely diegetic UI. Transform holds a world coord; layer scales/rotates the UI like any other world object.
 
-```ts yage-context="entity"
+```ts yage-context="scene"
 import { Transform, Vec2 } from "@yagejs/core";
-import type { Entity } from "@yagejs/core";
-import { ScreenFollow } from "@yagejs/renderer";
-import type { CameraEntity } from "@yagejs/renderer";
+import { CameraEntity, ScreenFollow } from "@yagejs/renderer";
 import { UISurface, Anchor } from "@yagejs/ui";
 
-declare const target: Entity; // what the nameplate follows
-declare const camera: CameraEntity;
+const camera = scene.spawn(CameraEntity, {});
+const target = scene.spawn("target");
+target.add(new Transform({ position: new Vec2(400, 300) }));
+const hud = scene.spawn("hud");
 
 // Screen-space HUD (default)
-entity.add(
+hud.add(
   new UISurface({
     anchor: Anchor.TopLeft,
     offset: { x: 16, y: 16 },
@@ -55,10 +55,11 @@ entity.add(
   }),
 );
 
-// Billboard nameplate (paired with ScreenFollow elsewhere)
-entity.add(new Transform());
-entity.add(new ScreenFollow({ target, camera, offset: new Vec2(0, -40) }));
-entity.add(
+// Billboard nameplate on a separate entity
+const nameplate = scene.spawn("nameplate");
+nameplate.add(new Transform());
+nameplate.add(new ScreenFollow({ target, camera, offset: new Vec2(0, -40) }));
+nameplate.add(
   new UISurface({
     positioning: "transform",
     anchor: Anchor.BottomCenter, // pivot on the panel
@@ -152,7 +153,8 @@ const list = panel.scrollView({
   // auto-reserved so cards never sit under the thumb (list.scrollbarGutter).
   scrollbar: { thickness: 6, color: 0x8899aa },
 });
-list.addElement(new UIButton({ children: "Order #1", height: 36 }));
+const orderRow = new UIButton({ children: "Order #1", height: 36 });
+list.addElement(orderRow);
 list.scrollTo(0); // also: scrollBy(dy), .scrollOffset, .maxScroll
 
 // Other elements (UIImage, UIProgressBar, UICheckbox) — instantiate directly:
@@ -419,7 +421,7 @@ the form a tween drives:
 ```ts yage-group="builder" yage-context="entity"
 import { ProcessComponent, Tween } from "@yagejs/core";
 
-const pc = entity.get(ProcessComponent);
+const pc = entity.add(new ProcessComponent());
 const card = row.panel({
   width: 120,
   height: 160,
@@ -480,12 +482,13 @@ helper (also exported) binds one listener pair and swaps callbacks in place on
 wrapper whose `@pixi/ui` view carries an enabled flag — takes no pointer
 events while disabled, so its callbacks do not fire.
 
-```ts yage-group="builder" yage-context="entity"
-declare function setGlow(on: boolean): void;
-declare function showDetail(): void;
-declare function hideDetail(): void;
+The callbacks below are game-owned presentation actions: `setGlow` accepts a
+boolean; `showDetail` and `hideDetail` take no arguments.
 
-new UIButton({ children: "Save", onHover: (h) => setGlow(h) });
+```ts yage-group="builder" yage-context="entity" yage-fixture="ui"
+import { setGlow, showDetail, hideDetail } from "./menu-actions.js";
+
+panel.button("Save", { onHover: (h) => setGlow(h) });
 panel.panel({ onPointerOver: showDetail, onPointerOut: hideDetail });
 ```
 
@@ -501,16 +504,17 @@ visible, enabled, focusable elements, confirm paints the focused element
 pressed while the action is held and runs that element's own action on the
 release, and cancel calls `onCancel`.
 
-```ts yage-group="focus" yage-context="entity"
+The imported `resume()` and `quit()` are the game’s menu actions.
+
+```ts yage-group="focus" yage-context="entity" yage-fixture="ui"
 import { Anchor, UISurface } from "@yagejs/ui";
 
-declare function resume(): void;
-declare function quit(): void;
+import { resume, quit } from "./menu-actions.js";
 
 const menu = entity.add(
   new UISurface({ anchor: Anchor.Center, gap: 8, focus: true }),
 );
-menu.button("Resume", { width: 220, onClick: resume });
+const resumeButton = menu.button("Resume", { width: 220, onClick: resume });
 menu.button("Quit", { width: 220, onClick: quit });
 
 menu.focusScope; // UIFocusScope | null; panel.focusScope on a nested scope
@@ -632,8 +636,7 @@ interface FocusNeighbors extends BaseFocusNeighbors {
   `PixiRadioGroup`) the game's `onAdjust` wins on the horizontal axis.
 
 ```ts yage-group="focus" yage-context="entity"
-declare let volume: number;
-declare function setVolume(value: number): void;
+let volume = 60;
 
 const row = menu.panel({
   direction: "row",
@@ -641,8 +644,12 @@ const row = menu.panel({
   focusable: true,
   focusId: "volume",
   focusNeighbors: { down: "saves-first" },
-  onAdjust: (d) => setVolume(volume + d * 5),
+  onAdjust: (d) => {
+    volume = Math.max(0, Math.min(100, volume + d * 5));
+    readout.setText(`Volume ${volume}`);
+  },
 });
+const readout = row.text(`Volume ${volume}`);
 ```
 
 ### The pointer and focus
@@ -833,14 +840,10 @@ transparent until it is selected.
 
 ### Scroll views
 
-```ts
-import type { UIElement, UIScrollView } from "@yagejs/ui";
-
-declare const list: UIScrollView;
-declare const element: UIElement; // inside `list`
-
-list.scrollIntoView(element, { align: "nearest", padding: 8 });
-list.viewportWidth; // clipped viewport size in px, 0 before the first layout
+```typescript yage-group="builder" yage-context="entity"
+// The list and row created in Builder API, after the first layout pass.
+list.scrollIntoView(orderRow, { align: "nearest", padding: 8 });
+list.viewportWidth; // clipped viewport size in pixels
 list.viewportHeight;
 ```
 
@@ -886,9 +889,14 @@ destroyed. `modal: false` leaves the pointer alone, for a panel that wants the
 keys while the world behind it stays clickable:
 
 ```ts yage-group="focus" yage-context="entity"
-declare function close(): void;
-
-const panel = menu.panel({ focus: { onCancel: close, modal: false } });
+const panel = menu.panel({
+  focus: {
+    onCancel: () => {
+      panel.visible = false;
+    },
+    modal: false,
+  },
+});
 panel.focusScope?.setOptions({ modal: false }); // takes effect at once
 ```
 
@@ -908,13 +916,9 @@ surface of its own, outside the clip.
 ### Driving a scope directly
 
 ```ts yage-group="focus" yage-context="entity"
-import type { UIElement } from "@yagejs/ui";
-
-declare const element: UIElement; // inside the scope
-
 const scope = menu.focusScope;
 scope?.move("down"); // true when the press was used: a move, an adjust, an open list
-scope?.focus(element); // false when hidden, disabled or not focusable
+scope?.focus(resumeButton); // false when hidden, disabled or not focusable
 scope?.focus(null); // clear
 scope?.activate();
 scope?.cancel();
@@ -976,13 +980,23 @@ passed on, so a press can never walk the menu behind it. An element that takes
 the input while another row is focused — a field clicked in a
 `pointerFocus: "none"` scope — takes focus with it.
 
-```ts
-import { isCapturingInput } from "@yagejs/ui";
-import type { PixiInput, PixiSelect } from "@yagejs/ui";
+```typescript yage-group="focus" yage-context="entity"
+import { Graphics } from "pixi.js";
+import { isCapturingInput, PixiInput, PixiSelect } from "@yagejs/ui";
 
-declare const nameField: PixiInput;
-declare const displaySelect: PixiSelect;
+const nameField = new PixiInput({
+  bg: new Graphics().rect(0, 0, 220, 40).fill(0x222230),
+  placeholder: "Save name",
+});
+const displaySelect = new PixiSelect({
+  closedBG: new Graphics().rect(0, 0, 220, 40).fill(0x222230),
+  openBG: new Graphics().rect(0, 0, 220, 40).fill(0x222230),
+  items: ["Windowed", "Fullscreen"],
+});
+menu.addElement(nameField);
+menu.addElement(displaySelect);
 
+// Poll during update(), after the player has begun editing or opened the list.
 isCapturingInput(nameField); // true while the field holds the caret
 isCapturingInput(displaySelect); // true while its list is open
 ```

@@ -33,7 +33,14 @@ const contexts = new Set([
   "playwright",
   "vitest",
 ]);
-const keys = new Set(["group", "file", "context", "check", "reason"]);
+const keys = new Set([
+  "group",
+  "file",
+  "context",
+  "check",
+  "reason",
+  "fixture",
+]);
 
 function walk(directory, accept) {
   if (!existsSync(directory)) return [];
@@ -212,6 +219,10 @@ export function parseMetadata(meta = "") {
   if (result.group && !/^[a-zA-Z0-9_-]+$/.test(result.group))
     throw new Error(
       "yage-group must contain only letters, digits, '_' or '-'.",
+    );
+  if (result.fixture && !/^[a-zA-Z0-9_-]+$/.test(result.fixture))
+    throw new Error(
+      "yage-fixture must contain only letters, digits, '_' or '-'.",
     );
   result.contexts = result.context ? result.context.split(",") : [];
   if (new Set(result.contexts).size !== result.contexts.length)
@@ -546,6 +557,7 @@ export function checkDocuments(
   {
     root = repoRoot,
     entries = declarationEntries(root),
+    fixturesRoot = join(root, "docs/scripts/snippet-fixtures"),
     // Groups per shared program. Larger batches build fewer programs but
     // hold more files in memory at once.
     batchSize = 200,
@@ -603,6 +615,70 @@ export function checkDocuments(
   const virtual = new Map(
     [...files].map(([path, parts]) => [path, buildVirtualSource(parts, path)]),
   );
+  // Fixture modules use the same group-local virtual files as authored fences.
+  // No fallback resolver can make an undeclared game import silently succeed.
+  const fixtureGroups = new Map();
+  for (const source of virtual.values()) {
+    const selected = source.parts.filter((part) => part.metadata.fixture);
+    if (!selected.length) continue;
+    const group = fixtureGroups.get(source.group) ?? [];
+    group.push(...selected.map((part) => ({ part, path: source.path })));
+    fixtureGroups.set(source.group, group);
+  }
+  for (const [group, selected] of fixtureGroups) {
+    const names = new Set(selected.map(({ part }) => part.metadata.fixture));
+    const { part, path } = selected[0];
+    const fail = (message) =>
+      part.diagnostics.push({
+        code: "directive",
+        line: part.line,
+        column: 1,
+        message,
+      });
+    if (names.size !== 1) {
+      fail("One virtual group cannot select different fixtures.");
+      continue;
+    }
+    const directory = join(fixturesRoot, part.metadata.fixture);
+    const fixtureFiles = walk(directory, (file) => file.endsWith(".ts"));
+    if (!fixtureFiles.length) {
+      fail(`Missing or empty snippet fixture: ${part.metadata.fixture}`);
+      continue;
+    }
+    if (fixtureFiles.some((file) => file.endsWith(".d.ts"))) {
+      fail(
+        "Snippet fixtures must use .ts files so their contracts are type-checked.",
+      );
+      continue;
+    }
+    const groupRoot = part.metadata.file
+      ? path.slice(0, -part.metadata.file.length)
+      : dirname(path);
+    for (const file of fixtureFiles) {
+      const target = join(groupRoot, relative(directory, file));
+      if (virtual.has(target)) {
+        fail(
+          `Fixture conflicts with an authored virtual file: ${relative(directory, file)}`,
+        );
+        continue;
+      }
+      // Declaration contracts live in .ts modules so skipLibCheck cannot hide
+      // invalid public API types in a fixture.
+      const fixture = {
+        file: relative(root, file),
+        line: 0,
+        code: readFileSync(file, "utf8"),
+        language: "ts",
+        metadata: { contexts: [], check: "type" },
+        diagnostics: [],
+        expected: [],
+      };
+      const source = buildVirtualSource([fixture], target);
+      source.group = group;
+      source.fixture = fixture;
+      virtual.set(target, source);
+    }
+  }
   const options = {
     target: ts.ScriptTarget.ESNext,
     module: ts.ModuleKind.ESNext,
@@ -810,6 +886,14 @@ export function checkDocuments(
           ? "negative"
           : "checked";
   }
+  for (const source of virtual.values())
+    if (source.fixture)
+      errors.push(
+        ...source.fixture.diagnostics.map((diagnostic) => ({
+          file: source.fixture.file,
+          ...diagnostic,
+        })),
+      );
   const counts = {
     files: documents.length,
     packageEntries: Object.keys(entries).length,

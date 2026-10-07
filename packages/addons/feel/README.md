@@ -10,34 +10,53 @@ callbacks, shockwaves, camera modifiers, glitch, blur, implosion, dissolve,
 practical recipes, and a custom effect. Press `N` or `P` to move between scenes
 with a slide transition.
 
+This example draws a square and plays a hit cue when the scene opens. `Feel`
+is a component: the engine calls its `update(dt)` while its entity is active.
+No separate Feel plugin or manual update loop is needed.
+
 ```ts
-import type { Entity } from "@yagejs/core";
-import { SpriteComponent, type CameraEntity } from "@yagejs/renderer";
+import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  CameraEntity,
+  GraphicsComponent,
+  RendererPlugin,
+} from "@yagejs/renderer";
 import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";
 import {
   feelCameraShake,
   feelHitFlash,
-  feelScalePunch,
   feelSquash,
 } from "@yagejs-addons/feel/renderer";
 
-// Your game's objects:
-declare const enemy: Entity;
-declare const camera: CameraEntity;
-const enemySprite = enemy.get(SpriteComponent);
+class HitScene extends Scene {
+  readonly name = "hit";
+  onEnter() {
+    const camera = this.spawn(CameraEntity, { position: new Vec2(400, 300) });
+    const enemy = this.spawn("enemy");
+    enemy.add(new Transform({ position: new Vec2(400, 300) }));
+    const visual = enemy.add(
+      new GraphicsComponent().draw((g) => {
+        g.rect(-20, -20, 40, 40).fill({ color: 0x44aaee });
+      }),
+    );
+    const feel = enemy.add(
+      new Feel({
+        hit: feelParallel(
+          feelSquash({ target: visual, amount: 0.2 }),
+          feelHitStop({ duration: 0.05 }),
+          feelCameraShake({ camera, intensity: 5 }),
+          feelHitFlash(visual.fx, { color: 0xffffff }),
+        ),
+      }),
+    );
+    feel.play("hit");
+  }
+}
 
-enemy.add(
-  new Feel({
-    hit: feelParallel(
-      feelSquash({ target: enemySprite, amount: 0.2 }),
-      feelHitStop({ duration: 0.05 }),
-      feelCameraShake({ camera, intensity: 5 }),
-      feelHitFlash(enemySprite.fx, { color: 0xffffff }),
-    ),
-  }),
-);
-
-enemy.get(Feel).play("hit");
+const engine = new Engine();
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
+await engine.start();
+await engine.scenes.push(new HitScene());
 ```
 
 ## Install
@@ -53,6 +72,22 @@ npm install @yagejs/particles
 
 The root entry imports only `@yagejs/core`. Renderer, audio, particles, and
 recipes have separate entry points.
+
+The later examples show cue definitions during entity setup. For sprite cues,
+preload the texture in the scene and add the sprite before building its cues:
+
+```ts yage-context="entity"
+import { Transform } from "@yagejs/core";
+import { SpriteComponent, texture } from "@yagejs/renderer";
+
+const EnemyTexture = texture("assets/enemy.png"); // include in Scene.preload
+entity.add(new Transform());
+const sprite = entity.add(new SpriteComponent({ texture: EnemyTexture }));
+```
+
+A node alone does not play. Put it in the entity’s `new Feel({ cue })` and call
+`play("cue")`, as in the opening example. Treat the later snippets as alternative
+cue configurations; an entity has one `Feel` component.
 
 ## Compose cues
 
@@ -166,8 +201,8 @@ The entity's `Transform`, rigid body, collider, and depth-sort position remain
 unchanged. Overlapping effects own separate modifiers and remove only their
 own values.
 
-```ts
-import type { SpriteComponent } from "@yagejs/renderer";
+```ts yage-context="entity"
+import { SpriteComponent } from "@yagejs/renderer";
 import { feelParallel } from "@yagejs-addons/feel";
 import {
   feelPositionSpring,
@@ -175,7 +210,7 @@ import {
   feelScaleSpring,
 } from "@yagejs-addons/feel/renderer";
 
-declare const enemySprite: SpriteComponent;
+const enemySprite = entity.get(SpriteComponent);
 
 const springHit = feelParallel(
   feelPositionSpring({ target: enemySprite, offset: { x: -12, y: 0 } }),
@@ -188,13 +223,15 @@ Spring cues begin at the requested visual displacement and oscillate back to
 the live base value. `duration` sets the settling time, `oscillations` sets the
 number of rebounds, and `decay` controls how quickly the rebounds weaken.
 
-```ts
+Declare a `world` layer on the scene before obtaining it below.
+
+```ts yage-context="scene"
 import { easeOutQuad } from "@yagejs/core";
 import { bloom } from "@yagejs/effects";
-import type { RenderLayer } from "@yagejs/renderer";
+import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { feelEffect } from "@yagejs-addons/feel/renderer";
 
-declare const worldLayer: RenderLayer; // the scene's "world" layer
+const worldLayer = scene.use(SceneRenderTreeKey).get("world");
 
 const bloomPulse = feelEffect(worldLayer.fx, bloom({ bloomScale: 1.5 }), {
   duration: 0.25,
@@ -221,8 +258,13 @@ Recipes are ready-made compositions under `@yagejs-addons/feel/recipes`. Each
 recipe returns a normal `FeelNode` for the existing `Feel` component. The
 separate import distinguishes recipes from basic `feelX` nodes.
 
-```ts yage-context="entity"
-import type { SpriteComponent } from "@yagejs/renderer";
+During entity setup, mount these cues beside the sprite. `CombatState` is
+your game’s component with `lastDamage` and `lastHitWasCritical` fields. Update
+those fields before calling `feel.play("hurt")`; call `play("dash")` or
+`play("die")` for the other cues.
+
+```ts yage-context="entity" yage-fixture="feel"
+import { SpriteComponent } from "@yagejs/renderer";
 import { Feel } from "@yagejs-addons/feel";
 import {
   damageImpact,
@@ -230,20 +272,22 @@ import {
   enemyDeath,
 } from "@yagejs-addons/feel/recipes";
 
-declare const enemySprite: SpriteComponent;
-declare const playerSprite: SpriteComponent;
-let lastDamage = 0; // set by the game's combat code
+import { CombatState } from "./CombatState.js";
+
+const damage = entity.get(CombatState);
+
+const sprite = entity.get(SpriteComponent);
 
 const feel = entity.add(
   new Feel({
-    hurt: damageImpact({ target: enemySprite, value: () => lastDamage }),
+    hurt: damageImpact({ target: sprite, value: () => damage.lastDamage }),
     dash: dashBurst({
-      target: playerSprite,
+      target: sprite,
       direction: { x: 1, y: 0 },
       peakAt: 0.45,
     }),
     die: enemyDeath({
-      target: enemySprite,
+      target: sprite,
       onComplete: ({ entity }) => entity.destroy(),
     }),
   }),
@@ -274,8 +318,8 @@ text, damage numbers, and impact rings spawn independent world-space visuals,
 so retriggers can overlap without sharing state. Feel-owned filter pulses are
 omitted from save snapshots.
 
-```ts
-import type { SpriteComponent } from "@yagejs/renderer";
+```ts yage-context="entity" yage-fixture="feel"
+import { SpriteComponent } from "@yagejs/renderer";
 import { feelParallel } from "@yagejs-addons/feel";
 import {
   feelDamageNumber,
@@ -284,10 +328,11 @@ import {
   feelOutline,
 } from "@yagejs-addons/feel/renderer";
 
-declare const enemySprite: SpriteComponent;
-// Set by the game's combat code:
-let lastDamage = 0;
-let lastHitWasCritical = false;
+import { CombatState } from "./CombatState.js";
+
+const enemySprite = entity.get(SpriteComponent);
+
+const damage = entity.get(CombatState);
 
 const criticalHit = feelParallel(
   feelOutline({
@@ -298,8 +343,8 @@ const criticalHit = feelParallel(
   }),
   feelGlow({ target: enemySprite, color: 0xff8800, duration: 0.3 }),
   feelDamageNumber({
-    value: () => lastDamage,
-    critical: () => lastHitWasCritical,
+    value: () => damage.lastDamage,
+    critical: () => damage.lastHitWasCritical,
     prefix: "-",
     layer: "effects",
   }),
@@ -315,9 +360,12 @@ samples a live world position and draws a fading line through recent samples.
 rendered pose. All three effects own temporary entities and leave gameplay
 transforms unchanged.
 
-```ts
-import { Transform, type Entity, type Vec2Like } from "@yagejs/core";
-import type { SpriteComponent } from "@yagejs/renderer";
+The direction callback reads `Movement.velocity` each time the cue starts.
+`Movement` is your game’s movement component on the same entity.
+
+```ts yage-context="entity" yage-fixture="feel"
+import { Transform } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
 import { feelParallel } from "@yagejs-addons/feel";
 import {
   feelAfterimage,
@@ -325,12 +373,15 @@ import {
   feelMotionTrail,
 } from "@yagejs-addons/feel/renderer";
 
-declare const player: Entity;
-declare const playerSprite: SpriteComponent;
-declare const velocity: Vec2Like; // the player's current velocity
+import { Movement } from "./Movement.js";
+
+const player = entity;
+const movement = player.get(Movement);
+
+const playerSprite = player.get(SpriteComponent);
 
 const dash = feelParallel(
-  feelFlightLines({ direction: () => velocity, duration: 0.25 }),
+  feelFlightLines({ direction: () => movement.velocity, duration: 0.25 }),
   feelMotionTrail({
     position: () => player.get(Transform).worldPosition,
     duration: "held",
@@ -367,8 +418,12 @@ instead when a game displays very large numbers of callouts every frame.
 
 ## Audio and particles
 
-```ts
-import type { ParticleEmitterComponent } from "@yagejs/particles";
+Install `AudioPlugin`
+and `ParticlesPlugin`, add `sound("assets/impact.wav")` from `@yagejs/audio` to the scene’s `preload`, and mount each emitter on
+its own entity with a `Transform`.
+
+```ts yage-context="scene"
+import { ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
 import { feelParallel } from "@yagejs-addons/feel";
 import { feelSound } from "@yagejs-addons/feel/audio";
 import {
@@ -376,11 +431,21 @@ import {
   feelParticleEmit,
 } from "@yagejs-addons/feel/particles";
 
-declare const sparks: ParticleEmitterComponent;
-declare const smoke: ParticleEmitterComponent;
+import { Transform } from "@yagejs/core";
+
+const sparkEntity = scene.spawn("sparks");
+sparkEntity.add(new Transform());
+const sparks = sparkEntity.add(
+  new ParticleEmitterComponent(ParticlePresets.sparks()),
+);
+const smokeEntity = scene.spawn("smoke");
+smokeEntity.add(new Transform());
+const smoke = smokeEntity.add(
+  new ParticleEmitterComponent(ParticlePresets.smoke()),
+);
 
 const impact = feelParallel(
-  feelSound({ alias: "impact", speed: [0.95, 1.05] }),
+  feelSound({ alias: "assets/impact.wav", speed: [0.95, 1.05] }),
   feelParticleBurst({ emitter: sparks, count: [8, 12] }),
   feelParticleEmit({ emitter: smoke, duration: 0.2 }),
 );

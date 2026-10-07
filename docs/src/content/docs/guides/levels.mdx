@@ -20,6 +20,12 @@ npm install @yagejs/level
 
 An entity class becomes placeable by declaring itself:
 
+Later imports from `./gameplay.js` stand for your game’s components and types.
+Their constructors accept the parameter values shown at each call: for example,
+`SlimeBrain(speed, facing)` and `Patrol(end: Vec2)`. `Direction.fromName()`
+returns your game’s direction value. These imports do not replace the level
+declarations or loading steps.
+
 ```typescript yage-group="project" yage-file="Crate.ts"
 import { Entity, Transform } from "@yagejs/core";
 import {
@@ -129,19 +135,15 @@ other declaration problem, so a bad number lists rather than throws.
 A slime has a speed, a chest has a number of coins, a door is locked or it is
 not. Each is a parameter whose authored value is the value itself:
 
-```typescript title="src/Slime.ts"
-import { Component, Entity } from "@yagejs/core";
+```typescript title="src/Slime.ts" yage-fixture="levels"
+import { SlimeBrain } from "./gameplay.js";
+import { Entity } from "@yagejs/core";
 import {
   defineLevelEntity,
   defineParams,
   param,
   type ParamsOf,
 } from "@yagejs/level";
-
-// Your game's own component.
-declare class SlimeBrain extends Component {
-  constructor(speed: number, facing: "left" | "right");
-}
 
 const SlimeParams = defineParams({
   speed: param.number(40, { min: 5, max: 200, step: 5 }),
@@ -184,14 +186,10 @@ changes what a level may hold, so a typed value between two steps is accepted.
 
 Any of them can be `optional`, which makes "nothing at all" a value:
 
-```typescript
-import { Component, Entity } from "@yagejs/core";
+```typescript yage-fixture="levels"
+import { PatientBrain } from "./gameplay.js";
+import { Entity } from "@yagejs/core";
 import { defineParams, param, type ParamsOf } from "@yagejs/level";
-
-// Your game's own component.
-declare class SlimeBrain extends Component {
-  constructor(patience: number);
-}
 
 const SlimeParams = defineParams({
   patience: param.number(3, { optional: true }),
@@ -200,7 +198,7 @@ const SlimeParams = defineParams({
 class Slime extends Entity {
   setup(params: ParamsOf<typeof SlimeParams>): void {
     // params.patience is number | undefined
-    this.add(new SlimeBrain(params.patience ?? Number.POSITIVE_INFINITY));
+    this.add(new PatientBrain(params.patience ?? Number.POSITIVE_INFINITY));
   }
 }
 ```
@@ -216,17 +214,15 @@ That is how a level names one of several things your code can do: the level
 file stores the name, and the same object turns the name back into the
 function.
 
-```typescript title="src/Door.ts" yage-group="door" yage-file="Door.ts"
-import { Component, Entity } from "@yagejs/core";
+```typescript title="src/Door.ts" yage-group="door" yage-file="Door.ts" yage-fixture="levels"
+import { Alarm } from "./gameplay.js";
+import { Entity } from "@yagejs/core";
 import {
   defineLevelEntity,
   defineParams,
   param,
   type ParamsOf,
 } from "@yagejs/level";
-
-// Your game's own component.
-declare class Alarm extends Component {}
 
 const ON_OPEN = {
   nothing: () => {},
@@ -303,14 +299,10 @@ That is where the value is *stored*. What `setup()` receives is a world point
 either way, because the level converts through where the placement ends up in
 the world, the instance transform composed with every parent above it:
 
-```typescript yage-group="points"
-import { Component, Entity, Transform, type Vec2 } from "@yagejs/core";
+```typescript yage-group="points" yage-fixture="levels"
+import { Patrol } from "./gameplay.js";
+import { Entity, Transform } from "@yagejs/core";
 import type { ParamsOf } from "@yagejs/level";
-
-// Your game's own component.
-declare class Patrol extends Component {
-  constructor(end: Vec2);
-}
 
 class Slime extends Entity {
   setup(params: ParamsOf<typeof SlimeParams>): void {
@@ -366,22 +358,15 @@ relative one asked for as `"world"` arrives as a position.
 A wave has a list of spawns. A spawn has a type and a delay. `param.object`
 declares a value with members, and `param.array` a list of them:
 
-```ts
-import { Component, Entity } from "@yagejs/core";
+```ts yage-fixture="levels"
+import { Chest, Spawner } from "./gameplay.js";
+import { Entity } from "@yagejs/core";
 import {
   defineLevelEntity,
   defineParams,
   param,
   type ParamsOf,
 } from "@yagejs/level";
-
-// Your game's own components.
-declare class Chest extends Component {
-  constructor(item: string, count: number);
-}
-declare class Spawner extends Component {
-  queue(type: "slime" | "bat", delay: number): void;
-}
 
 const WaveParams = defineParams({
   loot: param.object({
@@ -454,22 +439,15 @@ is a `Direction` object; a tint is a number the renderer takes and a name a
 person reads. `param.custom` names both halves: the JSON the level stores, and
 the function that turns it into what `setup()` receives.
 
-```ts
-import { Component, Entity } from "@yagejs/core";
+```ts yage-fixture="levels"
+import { Direction, Walk } from "./gameplay.js";
+import { Entity } from "@yagejs/core";
 import {
   defineLevelEntity,
   defineParams,
   param,
   type ParamsOf,
 } from "@yagejs/level";
-
-// Your game's own type and component.
-declare class Direction {
-  static fromName(name: string): Direction;
-}
-declare class Walk extends Component {
-  constructor(facing: Direction);
-}
 
 const SlimeParams = defineParams({
   facing: param.custom<Direction>({
@@ -545,8 +523,10 @@ A switch that opens a door, a spawner that feeds an arena, a camera that
 follows the player: each needs a slot the level author fills in with another
 placement. `param.entityRef` is that slot.
 
-```typescript title="src/Switch.ts" yage-group="door" yage-file="Switch.ts"
-import { Component, Entity, type EntityHandle } from "@yagejs/core";
+```typescript title="src/Switch.ts" yage-group="door" yage-file="Switch.ts" yage-fixture="levels"
+import { Chime, SwitchMechanism } from "./gameplay.js";
+import { Entity } from "@yagejs/core";
+import type { EntityHandle } from "@yagejs/core";
 import {
   defineLevelEntity,
   defineParams,
@@ -554,12 +534,6 @@ import {
   type ParamsOf,
 } from "@yagejs/level";
 import { Door } from "./Door.js";
-
-// Your game's own placeable type and component.
-declare class Chime extends Entity {}
-declare class SwitchMechanism extends Component {
-  constructor(door: EntityHandle<Door>);
-}
 
 const SwitchParams = defineParams({
   door: param.entityRef<Door>({ types: ["game.door"] }),
@@ -671,7 +645,7 @@ export default defineLevelProject({ entities: [Crate, Torch] });
 
 ## Load one into a scene
 
-```typescript yage-group="project" yage-file="ForestScene.ts" yage-check="syntax" yage-reason="Imports a level file as a Vite JSON module, and the snippet checker resolves no JSON modules."
+```typescript yage-group="project" yage-file="ForestScene.ts" yage-fixture="levels"
 import { Scene } from "@yagejs/core";
 import {
   buildLevelCatalog,
@@ -689,7 +663,9 @@ if (!built.ok) throw new Error(built.errors[0]?.message);
 const read = readLevel(raw);
 if (!read.ok) throw new Error(read.errors[0]?.message);
 
-const forest = prepareLevel(read.document, built.catalog);
+export const catalog = built.catalog;
+export const levelDocument = read.document;
+export const forest = prepareLevel(levelDocument, catalog);
 
 export class ForestScene extends Scene {
   readonly name = "forest";
@@ -744,12 +720,14 @@ its authored parent.
 
 ## Placing the same level twice
 
-```typescript yage-group="twice" yage-context="scene"
-import { instantiateLevel, type PreparedLevel } from "@yagejs/level";
+Reuse `forest` prepared above. In a scene with the same `preload`, instantiate
+it under two different namespaces:
 
-declare const room: PreparedLevel; // prepared once, like `forest` above
+```typescript yage-group="project" yage-file="instances.ts" yage-context="scene"
+import { instantiateLevel } from "@yagejs/level";
+import { forest as room } from "./ForestScene.js";
 
-instantiateLevel(scene, room, { namespace: "room-west" });
+const level = instantiateLevel(scene, room, { namespace: "room-west" });
 instantiateLevel(scene, room, {
   namespace: "room-east",
   transform: { position: { x: 1920, y: 0 } },
@@ -763,9 +741,7 @@ moving the entities.
 
 The returned `LevelInstance` is how you reach what was loaded:
 
-```typescript yage-group="twice" yage-context="scene"
-const level = instantiateLevel(scene, room, { namespace: "room-west" });
-
+```typescript yage-group="project" yage-file="instances.ts" yage-context="scene"
 const boss = level.get("01J8Z...");
 level.entities; // parent before child
 level.dispose(); // destroys this instance's entities and nothing else
@@ -812,17 +788,11 @@ const read = readLevel(await response.json());
 
 ## Checking a level without loading it
 
-```typescript
-import {
-  validateLevel,
-  type LevelCatalog,
-  type LevelDocument,
-} from "@yagejs/level";
+```typescript yage-group="project" yage-file="validate.ts"
+import { validateLevel } from "@yagejs/level";
+import { levelDocument, catalog } from "./ForestScene.js";
 
-declare const document: LevelDocument;
-declare const catalog: LevelCatalog;
-
-const problems = validateLevel(document, catalog);
+const problems = validateLevel(levelDocument, catalog);
 ```
 
 This is `prepareLevel` asked for its diagnostics alone: unknown types,
@@ -851,10 +821,10 @@ If you are building something that authors levels — the
 [level editor](/tooling/level-editor/) is one — `defaultParams` gives you the
 parameter object a new placement starts with:
 
-```typescript yage-group="tool"
-import { defaultParams, type LevelCatalog } from "@yagejs/level";
+```typescript yage-group="project" yage-file="tool.ts"
+import { defaultParams } from "@yagejs/level";
 
-declare const catalog: LevelCatalog;
+import { catalog } from "./ForestScene.js";
 
 const entry = catalog.get("game.crate");
 if (!entry) throw new Error('No entity type "game.crate" in the catalog.');
@@ -869,7 +839,7 @@ was authored with, so changing a default afterwards leaves it alone.
 
 An authoring tool can also ask which controls the schema needs:
 
-```typescript yage-group="tool"
+```typescript yage-group="project" yage-file="tool.ts"
 import { describeParams } from "@yagejs/level";
 
 const fields = entry.declaration.params

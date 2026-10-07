@@ -723,25 +723,26 @@ direction goes to the nearest row that way, measured on the laid-out boxes, so
 the order a player moves through is the order on screen. Rows that are hidden
 or disabled are passed over.
 
-```typescript yage-group="menu" yage-context="entity,engine"
+`menu-actions.js` represents your game’s menu actions. The imported functions
+take no arguments; YAGE calls them when the player activates a row or moves focus.
+
+```typescript yage-group="menu" yage-context="entity,engine" yage-fixture="ui"
 import { Anchor, UISurface } from "@yagejs/ui";
 
-// Your game's own actions.
-declare function resume(): void;
-declare function openOptions(): void;
-declare function quit(): void;
-declare function playCursorCue(): void;
+import { resume, openOptions, quit, playCursorCue } from "./menu-actions.js";
 
-const menu = entity.add(new UISurface({
-  anchor: Anchor.Center,
-  gap: 8,
-  padding: 16,
-  background: { color: 0x101018, alpha: 0.9, radius: 8 },
-  focus: {
-    onCancel: () => resume(),
-    onFocusMove: () => playCursorCue(),
-  },
-}));
+const menu = entity.add(
+  new UISurface({
+    anchor: Anchor.Center,
+    gap: 8,
+    padding: 16,
+    background: { color: 0x101018, alpha: 0.9, radius: 8 },
+    focus: {
+      onCancel: () => resume(),
+      onFocusMove: () => playCursorCue(),
+    },
+  }),
+);
 
 menu.button("Resume", { width: 220, onClick: () => resume() });
 menu.button("Options", { width: 220, onClick: () => openOptions() });
@@ -883,7 +884,7 @@ and right step the value and keep the focus, while up and down still move to
 the next row.
 
 ```typescript yage-group="menu" yage-context="entity,engine"
-declare function upload(): void;
+import { upload } from "./menu-actions.js";
 
 let volume = 60;
 
@@ -922,17 +923,20 @@ altogether.
 
 Focus entering a row inside a `UIScrollView` scrolls the list to it, keeping
 `scrollPadding` pixels clear of the edge (8 by default). Your code reads no
-viewport size and no offset:
+viewport size and no offset. The game’s `load(id)` loads the chosen save slot:
 
 ```typescript yage-group="menu" yage-context="entity,engine"
-// Your game's save slots and loader.
-declare const slots: { id: string; label: string; empty: boolean }[];
-declare function load(id: string): void;
+import { load } from "./menu-actions.js";
+
+const slots = [
+  { id: "slot-1", label: "Forest", empty: false },
+  { id: "slot-2", label: "Empty", empty: true },
+];
 
 const list = menu.scrollView({ width: 220, height: 140, gap: 4 });
 
-slots.forEach((slot, index) => {
-  list.button(slot.label, {
+const saveRows = slots.map((slot, index) => {
+  return list.button(slot.label, {
     width: "100%",
     disabled: slot.empty,
     ...(index === 0 ? { focusId: "saves-first" } : {}),
@@ -964,7 +968,7 @@ appear in the dialog's. Hide the dialog and the menu picks up on the row it
 had.
 
 ```typescript yage-group="menu" yage-context="entity,engine"
-declare function deleteSave(): void;
+import { deleteSave } from "./menu-actions.js";
 
 const confirmDelete = menu.panel({
   gap: 8,
@@ -975,7 +979,9 @@ const confirmDelete = menu.panel({
 });
 confirmDelete.text("Delete this save?");
 confirmDelete.button("Delete", { onClick: () => deleteSave() });
-confirmDelete.button("Keep", { onClick: () => (confirmDelete.visible = false) });
+confirmDelete.button("Keep", {
+  onClick: () => (confirmDelete.visible = false),
+});
 ```
 
 The dialog cannot be clicked through. While it holds the keys, everything
@@ -992,11 +998,14 @@ the d-pad — turn it off:
 ```typescript yage-context="entity"
 import { UISurface } from "@yagejs/ui";
 
-declare function closeInventory(): void;
-
 const hud = entity.get(UISurface);
 const inventory = hud.panel({
-  focus: { onCancel: () => closeInventory(), modal: false },
+  focus: {
+    onCancel: () => {
+      inventory.visible = false;
+    },
+    modal: false,
+  },
 });
 
 inventory.focusScope?.setOptions({ modal: false }); // and back at runtime
@@ -1045,19 +1054,17 @@ method works whether or not a device is attached, which is what a cutscene, a
 radial menu or a unit test uses:
 
 ```typescript yage-group="menu" yage-context="entity,engine"
-import type { UIButton } from "@yagejs/ui";
-
-declare const firstSaveRow: UIButton; // the first row of the save list
+const firstSaveRow = saveRows[0];
 
 const scope = menu.focusScope;
 
-scope?.move("down");        // true when the press was used: a move, an adjust, an open list
-scope?.focus(firstSaveRow); // false when that row is hidden or disabled
+scope?.move("down"); // true when the press was used: a move, an adjust, an open list
+if (firstSaveRow) scope?.focus(firstSaveRow); // false when hidden or disabled
 scope?.activate();
 scope?.cancel();
 
-scope?.focused;   // the element the scope remembers, or null
-scope?.hasInput;  // whether this scope is the one reading input
+scope?.focused; // the element the scope remembers, or null
+scope?.hasInput; // whether this scope is the one reading input
 ```
 
 Pass `focus: { input: null }` for a scope that reads no device at all and waits
@@ -1102,17 +1109,33 @@ reports is always the one the keys go to.
 
 `isCapturingInput(element)` answers whether that element is holding the keys.
 It answers per element, so a field edited in one surface says nothing about a
-field in another:
+field in another. Add this component to an entity after its `UISurface`
+with `focus: true`:
 
 ```typescript
-import { isCapturingInput } from "@yagejs/ui";
-import type { PixiInput, UIText } from "@yagejs/ui";
+import { Component } from "@yagejs/core";
+import { Graphics } from "pixi.js";
+import { isCapturingInput, PixiInput, UISurface } from "@yagejs/ui";
+import type { UIText } from "@yagejs/ui";
 
-declare const nameField: PixiInput;
-declare const movementHint: UIText;
+class NameEntry extends Component {
+  private nameField!: PixiInput;
+  private movementHint!: UIText;
 
-// Hide the movement prompt while the player is naming a save or picking a mode.
-movementHint.visible = !isCapturingInput(nameField);
+  onAdd() {
+    const menu = this.entity.get(UISurface);
+    this.nameField = new PixiInput({
+      bg: new Graphics().rect(0, 0, 220, 40).fill(0x222230),
+      placeholder: "Save name",
+    });
+    menu.addElement(this.nameField);
+    this.movementHint = menu.text("Arrow keys: move");
+  }
+
+  update() {
+    this.movementHint.visible = !isCapturingInput(this.nameField);
+  }
+}
 ```
 
 ## Nested Panels
@@ -1214,7 +1237,7 @@ import { UISurface } from "@yagejs/ui";
 const menu = entity.get(UISurface);
 const row = menu.panel({ direction: "row", gap: 12 });
 
-const pc = entity.get(ProcessComponent);
+const pc = entity.add(new ProcessComponent());
 const card = row.panel({
   width: 120,
   height: 160,

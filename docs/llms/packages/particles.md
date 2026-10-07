@@ -11,13 +11,20 @@ engine.use(new ParticlesPlugin());
 
 ## ParticleEmitterComponent
 
-```ts yage-context="entity"
+Install `RendererPlugin` before `ParticlesPlugin`. In the owning scene, preload
+`particleTex` with `readonly preload = [particleTex]` and declare an `effects`
+render layer. In `onEnter()`, spawn the emitter entity and add a `Transform`
+before adding the emitter below. `ParticlesPlugin` advances the particles;
+destroying the entity cleans them up. Call `emit()` for continuous emission or
+`burst(count)` for a single burst.
+
+```ts yage-context="entity" yage-group="emitter"
 import { ParticleEmitterComponent } from "@yagejs/particles";
 import { texture } from "@yagejs/renderer";
 
 const particleTex = texture("assets/particle.png");
 
-entity.add(
+const emitter = entity.add(
   new ParticleEmitterComponent({
     texture: particleTex, // TextureInput — a texture, handle, or asset key
     // shape: "softCircle",     // built-in shape, no asset needed
@@ -110,11 +117,10 @@ writes an RGBA buffer directly, so it needs no DOM or renderer. A 1×1 `pixel` i
 
 Control:
 
-```ts yage-context="entity"
-import { ParticleEmitterComponent } from "@yagejs/particles";
-
-declare const x: number, y: number, aim: number; // world position, angle in radians
-const emitter = entity.get(ParticleEmitterComponent);
+```ts yage-context="entity" yage-group="emitter"
+const x = 400,
+  y = 300,
+  aim = Math.PI / 4; // world pixels and radians
 
 emitter.emit(); // start continuous
 emitter.stop(); // stop only emission started by emit()
@@ -162,13 +168,11 @@ configuration nor any particle already alive. `gravity`, `damping`,
 `alphaFadeIn` and `alphaFadeOut` are `configure` only, because a burst cannot
 own a value the update reads from the emitter itself.
 
-```ts
-import type { ParticleEmitterComponent } from "@yagejs/particles";
-
-declare const emitter: ParticleEmitterComponent;
-declare const fistX: number, fistY: number, swing: number; // swing angle in radians
-
-// A melee trail that follows the swing, while earlier particles hold theirs.
+```typescript yage-context="entity" yage-group="emitter"
+// Continue with the mounted emitter above; positions are world pixels.
+const fistX = 400,
+  fistY = 300,
+  swing = Math.PI / 4;
 emitter.burst(2, fistX, fistY, { angle: [swing - 0.18, swing + 0.18] });
 ```
 

@@ -102,6 +102,21 @@ A new human docs page must be mapped to its Markdown counterpart in `docs/script
 
 Every TypeScript fence in the docs, package READMEs, addon and tool LLM references and these AGENTS files is type-checked against the built package declarations by `npx turbo typecheck`. Each fence is an isolated module that writes its own imports; the `yage-context`, `yage-group` and `yage-expect-error` annotations for hosts, multi-fence examples and deliberate errors are described in `docs/scripts/README.md`.
 
+Examples must show how the API being taught becomes usable. Show required
+construction, mounting, service resolution, and lifecycle or clock ownership.
+Do not replace that setup with `declare`, an illustrative import of an already
+configured object, or a function whose parameters only satisfy the checker.
+Keep gameplay behavior in the relevant entity or component method. Show only
+the relevant methods once boot and scene setup have been established.
+
+For unrelated game-owned types, use illustrative local imports such as
+`import { Bullet } from "./Bullet.js"` and explain their required contract next
+to the example. `yage-fixture` supplies typed modules for those imports during
+checking; it does not implement the game code. Reuse earlier visible setup
+with `yage-group` / `yage-file` instead of repeating it. Keep `declare` in
+signature-only API references. The checker must support readable examples,
+not dictate the game's structure.
+
 Rebuild both after changes:
 
 ```bash

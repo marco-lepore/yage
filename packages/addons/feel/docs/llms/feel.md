@@ -3,21 +3,53 @@
 Named, composable game-feel cues. Root entry uses `@yagejs/core` only.
 Optional entries: `/renderer`, `/audio`, `/particles`, `/recipes`.
 
-```ts yage-context="entity"
-import { SpriteComponent } from "@yagejs/renderer";
-import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";
-import { feelSquash } from "@yagejs-addons/feel/renderer";
+`Feel.update(dt)` runs through the engine’s component lifecycle. Mount it on a
+spawned entity and call `play()` after mounting; constructing a node alone
+does not run it. A minimal scene with no image or sound assets:
 
-const sprite = entity.get(SpriteComponent);
-const feel = entity.add(
-  new Feel({
-    hit: feelParallel(
-      feelSquash({ target: sprite, amount: 0.2 }),
-      feelHitStop({ duration: 0.05 }),
-    ),
-  }),
-);
-feel.play("hit");
+```ts
+import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  CameraEntity,
+  GraphicsComponent,
+  RendererPlugin,
+} from "@yagejs/renderer";
+import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";
+import {
+  feelCameraShake,
+  feelHitFlash,
+  feelSquash,
+} from "@yagejs-addons/feel/renderer";
+
+class HitScene extends Scene {
+  readonly name = "hit";
+  onEnter() {
+    const camera = this.spawn(CameraEntity, { position: new Vec2(400, 300) });
+    const enemy = this.spawn("enemy");
+    enemy.add(new Transform({ position: new Vec2(400, 300) }));
+    const visual = enemy.add(
+      new GraphicsComponent().draw((g) => {
+        g.rect(-20, -20, 40, 40).fill({ color: 0x44aaee });
+      }),
+    );
+    const feel = enemy.add(
+      new Feel({
+        hit: feelParallel(
+          feelSquash({ target: visual, amount: 0.2 }),
+          feelHitStop({ duration: 0.05 }),
+          feelCameraShake({ camera, intensity: 5 }),
+          feelHitFlash(visual.fx, { color: 0xffffff }),
+        ),
+      }),
+    );
+    feel.play("hit");
+  }
+}
+
+const engine = new Engine();
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
+await engine.start();
+await engine.scenes.push(new HitScene());
 ```
 
 ## Cue types

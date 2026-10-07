@@ -169,7 +169,8 @@ Same idiom YAGE uses everywhere: per-entity logic lives in a Component.
 
 Sometimes the loading scene should not hand off automatically — you want
 a splash that sits until the player presses a key. Set `autoContinue =
-false` and call `continue()` when ready:
+false` and call `continue()` when ready. Install `InputPlugin` with a
+`continue` action bound to the desired key:
 
 ```typescript
 import { Component, EventBusKey, LoadingScene, Scene } from "@yagejs/core";

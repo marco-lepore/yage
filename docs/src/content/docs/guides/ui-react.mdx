@@ -67,17 +67,21 @@ argument.
 Set `consumeInput: false` on the root of a HUD that should leave the world
 clickable. Every child inherits unless it supplies its own value. Set
 `consumeInput` on a button that should handle its click without also triggering
-a gameplay action:
+a gameplay action. The imported `pause()` opens your game’s pause menu:
 
-```tsx yage-context="entity"
+```tsx yage-context="entity" yage-fixture="ui"
+import { pause } from "./menu-actions.js";
 import { UIRoot, ZStack, Panel, Text, Button } from "@yagejs/ui-react";
 
-declare function pause(): void;
 const root = entity.add(new UIRoot({ consumeInput: false }));
 root.render(
   <ZStack width={800} height={600}>
-    <Panel><Text>Score: 42</Text></Panel>
-    <Button consumeInput onClick={pause}>Pause</Button>
+    <Panel>
+      <Text>Score: 42</Text>
+    </Panel>
+    <Button consumeInput onClick={pause}>
+      Pause
+    </Button>
   </ZStack>,
 );
 ```
@@ -153,6 +157,11 @@ for genuinely diegetic UI, and when to pick which).
 
 ## JSX Components
 
+The short JSX examples below belong in a React component rendered by a
+mounted `UIRoot`, as above. Imports from `menu-actions.js` stand for your
+game’s callbacks: they take no arguments except `load(id)`, which takes a
+save-slot id. Preload any textures used by those components in the scene.
+
 React components mirror the imperative `@yagejs/ui` API:
 
 ```tsx
@@ -203,17 +212,17 @@ labeled-button case (it's auto-wrapped in a centered `<Text>` styled with
 its children out in a column, so an icon beside a label needs
 `direction="row"`:
 
-```tsx
+```tsx yage-fixture="ui"
+import { save } from "./menu-actions.js";
 import { texture } from "@yagejs/renderer";
 import { Button, Image, Text } from "@yagejs/ui-react";
 
 const saveIcon = texture("icons/save.png");
-declare function save(): void;
 
 <Button direction="row" onClick={() => save()}>
   <Image texture={saveIcon} width={16} height={16} />
   <Text style={{ fontSize: 14, fill: 0xffffff }}>Save</Text>
-</Button>
+</Button>;
 ```
 
 `<Text>` is the counterpart: it takes a single **string** child. Pre-join
@@ -252,15 +261,19 @@ resets it to its default instead of leaving the previous value in place:
 ```tsx
 import { Panel } from "@yagejs/ui-react";
 
-declare const selected: boolean;
-const highlightBg = { color: 0x3355aa };
+function SelectionDemo({ selected }: { selected: boolean }) {
+  const highlightBg = { color: 0x3355aa };
 
-{/* Clears the background on the render where `selected` is false, rather
-    than keeping the last highlight color. */}
-<Panel bg={selected ? highlightBg : undefined} />
+  // Both forms clear the background when selected becomes false.
+  return (
+    <>
+      <Panel bg={selected ? highlightBg : undefined} />
 
-{/* Same reset applies when the key disappears from a spread. */}
-<Panel {...(selected ? { bg: highlightBg } : {})} />
+      {/* Same reset applies when the key disappears from a spread. */}
+      <Panel {...(selected ? { bg: highlightBg } : {})} />
+    </>
+  );
+}
 ```
 
 This holds for every prop on every component — a removed `onClick` unbinds
@@ -293,14 +306,22 @@ Every component accepts the shared layout props `position`, `left`, `top`,
 ```tsx
 import { Panel, ProgressBar, Text } from "@yagejs/ui-react";
 
-declare const progress: number; // 0–1
-
-<Panel position="relative" width={400} height={300}>
-  <ProgressBar width={400} height={300} value={progress} />
-  <Panel position="absolute" top={8} right={8} padding={4} bg={{ color: 0x000000, alpha: 0.6 }}>
-    <Text style={{ fontSize: 12 }}>{`${Math.round(progress * 100)}%`}</Text>
-  </Panel>
-</Panel>
+function ProgressOverlay({ progress }: { progress: number }) {
+  return (
+    <Panel position="relative" width={400} height={300}>
+      <ProgressBar width={400} height={300} value={progress} />
+      <Panel
+        position="absolute"
+        top={8}
+        right={8}
+        padding={4}
+        bg={{ color: 0x000000, alpha: 0.6 }}
+      >
+        <Text style={{ fontSize: 12 }}>{`${Math.round(progress * 100)}%`}</Text>
+      </Panel>
+    </Panel>
+  );
+}
 ```
 
 ### `<ZStack>` — Z-axis overlay primitive
@@ -312,20 +333,31 @@ badge markers. The name follows the SwiftUI convention (`VStack` /
 `HStack` for flow layout, `ZStack` for depth); for column / row stacking
 in YAGE use `<Panel direction="column" | "row">`.
 
-```tsx
+```tsx yage-fixture="ui"
+import { onConfirm, onCancel } from "./menu-actions.js";
 import { Button, Panel, Text, ZStack } from "@yagejs/ui-react";
-
-declare function onConfirm(): void;
-declare function onCancel(): void;
 
 <ZStack>
   {/* Dimmed backdrop fills the stack */}
-  <Panel position="absolute" left={0} top={0} width="100%" height="100%"
-         bg={{ color: 0x000000, alpha: 0.6 }} />
+  <Panel
+    position="absolute"
+    left={0}
+    top={0}
+    width="100%"
+    height="100%"
+    bg={{ color: 0x000000, alpha: 0.6 }}
+  />
 
   {/* Centered modal */}
-  <Panel position="absolute" left={0} top={0} width="100%" height="100%"
-         alignItems="center" justifyContent="center">
+  <Panel
+    position="absolute"
+    left={0}
+    top={0}
+    width="100%"
+    height="100%"
+    alignItems="center"
+    justifyContent="center"
+  >
     <Panel padding={24} gap={12} bg={{ color: 0x222222, radius: 8 }}>
       <Text style={{ fontSize: 20 }}>Are you sure?</Text>
       <Panel direction="row" gap={8}>
@@ -334,7 +366,7 @@ declare function onCancel(): void;
       </Panel>
     </Panel>
   </Panel>
-</ZStack>
+</ZStack>;
 ```
 
 ### Scale, rotation and draw order
@@ -502,20 +534,24 @@ input goes to the next scope that is shown.
 **Focus draws nothing until you ask for it.** Most games show the focused row
 from `onFocusChange` — a marker beside it, a swapped sprite, a sound:
 
-```tsx
+```tsx yage-fixture="ui"
+import { onResume } from "./menu-actions.js";
+
 import { useState } from "react";
+
 import { Button, Panel, Text } from "@yagejs/ui-react";
 
-declare function onResume(): void;
-
-const [focused, setFocused] = useState(false);
-
-<Panel direction="row" gap={6} alignItems="center">
-  <Text width={10}>{focused ? ">" : ""}</Text>
-  <Button flex={1} onFocusChange={setFocused} onClick={onResume}>
-    Continue
-  </Button>
-</Panel>;
+function ResumeButton() {
+  const [focused, setFocused] = useState(false);
+  return (
+    <Panel direction="row" gap={6} alignItems="center">
+      <Text width={10}>{focused ? ">" : ""}</Text>
+      <Button flex={1} onFocusChange={setFocused} onClick={onResume}>
+        Continue
+      </Button>
+    </Panel>
+  );
+}
 ```
 
 `focusStyle` asks for the package's own outline, drawn just inside the
@@ -533,22 +569,19 @@ which is the menu row that appears only when the player reaches it. Omit it and
 a focused component keeps its resting background. A fill naming only a colour
 keeps the resting corner radius.
 
-```tsx
+```tsx yage-fixture="ui"
+import { onLoad } from "./menu-actions.js";
 import { Button } from "@yagejs/ui-react";
-
-declare function onLoad(): void;
 
 <Button width={220} focusBg={{ color: 0x2c4a6f }} onClick={onLoad}>
   Load game
-</Button>
+</Button>;
 ```
 
 ```tsx
-import { useState } from "react";
 import { Panel, Text } from "@yagejs/ui-react";
 
-declare const slot: { label: string; playtime: string };
-const [rowFocused, setRowFocused] = useState(false);
+const slot = { label: "Forest", playtime: "00:42" };
 
 <Panel
   direction="row"
@@ -556,11 +589,10 @@ const [rowFocused, setRowFocused] = useState(false);
   padding={4}
   focusable
   focusBg={{ color: 0x2c4a6f, radius: 4 }}
-  onFocusChange={setRowFocused}
 >
   <Text>{slot.label}</Text>
   <Text>{slot.playtime}</Text>
-</Panel>
+</Panel>;
 ```
 
 **What the mouse does.** Pressing a component focuses it; passing the pointer
@@ -586,13 +618,15 @@ out of gameplay too. Children can still override that value.
 For a tree whose outermost element is not a single `<Panel>`, put the option on
 the root instead:
 
-```tsx yage-group="pause-menu" yage-context="entity"
+```tsx yage-group="pause-menu" yage-context="entity" yage-fixture="ui"
+import { resume, load } from "./menu-actions.js";
 import { UIRoot } from "@yagejs/ui-react";
 import { Anchor } from "@yagejs/ui";
 
-declare const slots: SaveSlot[];
-declare function resume(): void;
-declare function load(id: string): void;
+const slots: SaveSlot[] = [
+  { id: "slot-1", label: "Forest", empty: false },
+  { id: "slot-2", label: "Empty", empty: true },
+];
 
 const root = entity.add(new UIRoot({ anchor: Anchor.Center, focus: true }));
 root.render(<PauseMenu slots={slots} onResume={resume} onLoad={load} />);
@@ -608,10 +642,9 @@ with the body in a `content` prop — rather than compound
 trigger/content subcomponents. It is **headless**: no default visuals —
 pass `bg` / `padding` / `textStyle` to style it.
 
-```tsx
+```tsx yage-fixture="ui"
+import { save } from "./menu-actions.js";
 import { Button, Tooltip } from "@yagejs/ui-react";
-
-declare function save(): void;
 
 <Tooltip
   content="Save your game"
@@ -620,7 +653,7 @@ declare function save(): void;
   padding={8}
 >
   <Button onClick={save}>Save</Button>
-</Tooltip>
+</Tooltip>;
 ```
 
 `content` also takes arbitrary nodes for rich tooltips (item cards, stat

@@ -234,29 +234,36 @@ nothing rather than reaching whatever collider Rapier creates next.
 bitmasks.
 
 ```typescript yage-context="entity,scene" yage-group="layers"
-import type { Entity } from "@yagejs/core";
+import { Transform } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
 import { ColliderComponent, CollisionLayers } from "@yagejs/physics";
 
 const layers = new CollisionLayers();
 const LAYER_PLAYER = layers.define("player");
-const LAYER_WALL   = layers.define("wall");
-const LAYER_COIN   = layers.define("coin");
+const LAYER_WALL = layers.define("wall");
+const LAYER_COIN = layers.define("coin");
 
 // Player collides with walls and coins
-entity.add(new ColliderComponent({
-  shape: { type: "circle", radius: 16 },
-  layers: LAYER_PLAYER,
-  mask: LAYER_WALL | LAYER_COIN,
-}));
+entity.add(
+  new ColliderComponent({
+    shape: { type: "circle", radius: 16 },
+    layers: LAYER_PLAYER,
+    mask: LAYER_WALL | LAYER_COIN,
+  }),
+);
 
 // Coin only collides with player
-declare const coinEntity: Entity; // has a Transform and a RigidBodyComponent
-coinEntity.add(new ColliderComponent({
-  shape: { type: "circle", radius: 10 },
-  sensor: true,
-  layers: LAYER_COIN,
-  mask: LAYER_PLAYER,
-}));
+const coinEntity = scene.spawn("coin");
+coinEntity.add(new Transform());
+coinEntity.add(new RigidBodyComponent({ type: "kinematic" }));
+coinEntity.add(
+  new ColliderComponent({
+    shape: { type: "circle", radius: 10 },
+    sensor: true,
+    layers: LAYER_COIN,
+    mask: LAYER_PLAYER,
+  }),
+);
 ```
 
 An object on layer A with mask B will only interact with objects on layer B that
@@ -269,7 +276,6 @@ pair as a collider, packed into one `filterGroups` number.
 `CollisionLayers.interactionGroups(membership, filter)` builds it:
 
 ```typescript yage-context="entity,scene" yage-group="layers"
-import { Transform } from "@yagejs/core";
 import { PhysicsWorldKey } from "@yagejs/physics";
 
 const world = scene.use(PhysicsWorldKey);
@@ -341,12 +347,12 @@ collider.onTrigger((event) => {
 A collider can change kind while it is live. `setSensor(true)` turns a solid
 collider into a sensor, `setSensor(false)` turns it back:
 
-```typescript
-import type { Entity } from "@yagejs/core";
+Inside the enemy’s death handler, change its mounted collider:
+
+```typescript yage-context="component"
 import { ColliderComponent } from "@yagejs/physics";
 
-declare const enemy: Entity;
-enemy.get(ColliderComponent).setSensor(true); // dead: stop blocking bullets
+this.entity.get(ColliderComponent).setSensor(true);
 ```
 
 The collider is recreated with the new flag. Every pair it is in ends with a
@@ -417,18 +423,24 @@ collider.onCollision((event) => {
 Use `contactImpulse` to score impacts — for example, deal damage when the
 impulse passes a threshold:
 
-```typescript yage-context="entity" yage-group="collider"
-declare function dealDamage(amount: number): void;
+```ts
+import { Component } from "@yagejs/core";
+import { ColliderComponent } from "@yagejs/physics";
 
-collider.onCollision((event) => {
-  if (
-    event.started &&
-    event.contactImpulse !== undefined &&
-    event.contactImpulse > 100
-  ) {
-    dealDamage(10);
+// Add after the entity's solid ColliderComponent.
+class ImpactHealth extends Component {
+  hp = 100;
+  onAdd() {
+    const collider = this.entity.get(ColliderComponent);
+    this.addCleanup(
+      collider.onCollision((event) => {
+        if (event.started && (event.contactImpulse ?? 0) > 100) {
+          this.hp = Math.max(0, this.hp - 10);
+        }
+      }),
+    );
   }
-});
+}
 ```
 
 Reading the body's velocity inside the handler does not work for this: it
@@ -475,16 +487,32 @@ Trigger events carry no contact data, because a sensor overlap has no solver
 contact. `contactWith` measures the geometry of any pair at its current pose,
 sensors included:
 
-```typescript yage-context="entity" yage-group="sensor"
-import type { Vec2 } from "@yagejs/core";
+```typescript yage-fixture="physics"
+import { Component } from "@yagejs/core";
+import { ColliderComponent } from "@yagejs/physics";
+import { Sparks } from "./Sparks.js";
 
-declare function spawnSparks(at: Vec2, facing: Vec2): void;
-
-collider.onTrigger((ev) => {
-  const contact = collider.contactWith(ev.otherCollider, ev);
-  if (contact) spawnSparks(contact.otherPoint, contact.normal.scale(-1));
-});
+class ContactSparks extends Component {
+  onAdd() {
+    const collider = this.entity.get(ColliderComponent);
+    this.addCleanup(
+      collider.onTrigger((event) => {
+        if (!event.entered) return;
+        const contact = collider.contactWith(event.otherCollider, event);
+        if (contact) {
+          this.scene.spawn(Sparks, {
+            position: contact.otherPoint,
+            direction: contact.normal.scale(-1),
+          });
+        }
+      }),
+    );
+  }
+}
 ```
+
+`Sparks` is your game’s particle entity; its `setup()` accepts a world
+`position` and a `direction`. Add `ContactSparks` after the sensor collider.
 
 The result has `point` on this collider's surface, `otherPoint` on the
 other's, a unit `normal` from this collider toward the other, and a
@@ -681,17 +709,15 @@ A position or rotation written to the `Transform` while the entity is
 again. This works for static, dynamic, and kinematic bodies, including writes
 during dormant setup of a prewarmed pool member:
 
-```typescript
-import { Transform, type Entity } from "@yagejs/core";
+The following reuses an entity with a `Transform` and a `RigidBodyComponent`:
 
-declare const bullet: Entity; // has a Transform and a RigidBodyComponent
-const x = 400;
-const y = 300;
+```typescript yage-context="entity"
+import { Transform } from "@yagejs/core";
 
-bullet.setActive(false);
-// ...later, before putting it back in play
-bullet.get(Transform).setPosition(x, y);
-bullet.setActive(true);   // the body is at (x, y), not where it slept
+entity.setActive(false);
+// Later, before putting this entity back in play:
+entity.get(Transform).setPosition(400, 300);
+entity.setActive(true); // the body is now at (400, 300)
 ```
 
 Position and rotation are checked independently. An unchanged value keeps the
@@ -1075,15 +1101,19 @@ sensor colliders, so a pickup's trigger zone overhead does not.
 A `oneWay` collider is solid from one side and passable from every other: the
 player lands on the platform from above, and jumps up through it from below.
 
-```typescript
-import type { Entity } from "@yagejs/core";
-import { ColliderComponent } from "@yagejs/physics";
+```typescript yage-context="scene"
+import { Transform, Vec2 } from "@yagejs/core";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 
-declare const platform: Entity; // has a Transform and a static RigidBodyComponent
-platform.add(new ColliderComponent({
-  shape: { type: "box", width: 96, height: 8 },
-  oneWay: {},
-}));
+const platform = scene.spawn("one-way-platform");
+platform.add(new Transform({ position: new Vec2(400, 300) }));
+platform.add(new RigidBodyComponent({ type: "static" }));
+platform.add(
+  new ColliderComponent({
+    shape: { type: "box", width: 96, height: 8 },
+    oneWay: {},
+  }),
+);
 ```
 
 With no options, the solid face points up (`{ x: 0, y: -1 }`). Bodies falling
@@ -1115,12 +1145,14 @@ const oneWay: OneWayConfig = {
 For the down-jump — the player presses down and falls through the platform they
 are standing on — give the rider's collider a drop-through window:
 
-```typescript
-import type { Entity } from "@yagejs/core";
+Call from the player’s down-jump handler while it stands on a one-way
+platform. The player must have a mounted `ColliderComponent`.
+
+```typescript yage-context="component"
 import { ColliderComponent } from "@yagejs/physics";
 
-declare const player: Entity; // standing on a one-way platform
-player.get(ColliderComponent).dropThrough(0.2);  // seconds of simulated time
+// Inside the player's down-jump handler:
+this.entity.get(ColliderComponent).dropThrough(0.2); // simulation seconds
 ```
 
 The window is per body: every one-way platform lets this body pass while it is
@@ -1149,16 +1181,15 @@ filter, which decides for each candidate pair of colliders, every physics
 step, whether that pair is solid. Return `true` to collide normally, `false`
 to let the two bodies pass through each other for that step:
 
-```typescript
-import type { Entity } from "@yagejs/core";
+Call during wall setup after adding its body and collider.
+
+```typescript yage-context="entity"
 import { ColliderComponent } from "@yagejs/physics";
 
-declare const wall: Entity;
-
-// A wall that only blocks entities tagged "enemy".
-wall.get(ColliderComponent).setContactFilter((contact) =>
-  contact.other.tags.has("enemy"),
-);
+// During wall setup, after mounting the body and collider:
+entity
+  .get(ColliderComponent)
+  .setContactFilter((contact) => contact.other.tags.has("enemy"));
 ```
 
 The filter runs inside the physics step, before any contact exists, so there
@@ -1241,16 +1272,32 @@ A rope limits the distance between its attachment points. A spring pulls those
 points toward a rest length:
 
 ```typescript yage-context="scene" yage-group="joints"
-import { InputManagerKey } from "@yagejs/input";
-import { PhysicsWorldKey, type RigidBodyComponent } from "@yagejs/physics";
+import { PhysicsWorldKey } from "@yagejs/physics";
 
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+
+class JointBox extends Entity {
+  setup(params: { type: "static" | "dynamic"; x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(params.x, params.y) }));
+    this.add(new RigidBodyComponent({ type: params.type }));
+    this.add(
+      new ColliderComponent({ shape: { type: "box", width: 20, height: 20 } }),
+    );
+  }
+}
 // Bodies of active entities in this scene.
-declare const playerBody: RigidBodyComponent;
-declare const anchorBody: RigidBodyComponent;
-declare const companionBody: RigidBodyComponent;
+const playerBody = scene
+  .spawn(JointBox, { type: "dynamic", x: 0, y: 120 })
+  .get(RigidBodyComponent);
+const anchorBody = scene
+  .spawn(JointBox, { type: "static", x: 0, y: 0 })
+  .get(RigidBodyComponent);
+const companionBody = scene
+  .spawn(JointBox, { type: "dynamic", x: 80, y: 120 })
+  .get(RigidBodyComponent);
 
 const world = scene.use(PhysicsWorldKey);
-const input = scene.use(InputManagerKey);
 const tether = world.addJoint(playerBody, anchorBody, {
   type: "rope",
   length: 140,
@@ -1262,7 +1309,7 @@ world.addJoint(playerBody, companionBody, {
   damping: 4,
 });
 
-if (input.isJustPressed("release")) tether.remove();
+// In the player’s release action handler: tether.remove();
 ```
 
 Every joint accepts `anchorA` and `anchorB`: attachment points in each body's
@@ -1277,8 +1324,12 @@ angle. Set the anchors to the intended attachment point so the solver does
 not need to pull separated anchors together:
 
 ```typescript yage-context="scene" yage-group="joints"
-declare const wallBody: RigidBodyComponent;
-declare const brickBody: RigidBodyComponent;
+const wallBody = scene
+  .spawn(JointBox, { type: "static", x: 200, y: 0 })
+  .get(RigidBodyComponent);
+const brickBody = scene
+  .spawn(JointBox, { type: "dynamic", x: 200, y: 20 })
+  .get(RigidBodyComponent);
 
 const weld = world.addJoint(wallBody, brickBody, {
   type: "fixed",
@@ -1296,8 +1347,12 @@ the other. The rotating body needs `fixedRotation: false` (the default).
 A motor can drive a windmill sail around a static tower:
 
 ```typescript yage-context="scene" yage-group="joints"
-declare const towerBody: RigidBodyComponent; // static
-declare const sailBody: RigidBodyComponent;  // dynamic, fixedRotation: false
+const towerBody = scene
+  .spawn(JointBox, { type: "static", x: 300, y: 0 })
+  .get(RigidBodyComponent);
+const sailBody = scene
+  .spawn(JointBox, { type: "dynamic", x: 300, y: 0 })
+  .get(RigidBodyComponent);
 
 const hub = world.addJoint(towerBody, sailBody, {
   type: "revolute",
@@ -1310,8 +1365,12 @@ Use limits for a drawbridge. The limits measure body B's angle relative to
 body A, in radians:
 
 ```typescript yage-context="scene" yage-group="joints"
-declare const bankBody: RigidBodyComponent;
-declare const bridgeBody: RigidBodyComponent;
+const bankBody = scene
+  .spawn(JointBox, { type: "static", x: 400, y: 0 })
+  .get(RigidBodyComponent);
+const bridgeBody = scene
+  .spawn(JointBox, { type: "dynamic", x: 460, y: 0 })
+  .get(RigidBodyComponent);
 
 const bridge = world.addJoint(bankBody, bridgeBody, {
   type: "revolute",
@@ -1327,8 +1386,12 @@ same angle. Its `axis` is local to body A and is normalized automatically.
 Limits and motor position use pixels of anchor separation along that axis:
 
 ```typescript yage-context="scene" yage-group="joints"
-declare const railBody: RigidBodyComponent;
-declare const platformBody: RigidBodyComponent;
+const railBody = scene
+  .spawn(JointBox, { type: "static", x: 600, y: 0 })
+  .get(RigidBodyComponent);
+const platformBody = scene
+  .spawn(JointBox, { type: "dynamic", x: 600, y: 120 })
+  .get(RigidBodyComponent);
 
 const elevator = world.addJoint(railBody, platformBody, {
   type: "prismatic",
@@ -1358,8 +1421,6 @@ Remove a joint from a collision handler when an impact exceeds the game's
 threshold:
 
 ```typescript yage-context="scene" yage-group="joints"
-import { ColliderComponent } from "@yagejs/physics";
-
 const brickCollider = brickBody.entity.get(ColliderComponent);
 brickCollider.onCollision((event) => {
   if (event.started && (event.contactImpulse ?? 0) > 100) {
