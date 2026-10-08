@@ -9,6 +9,7 @@ export type PlatformerMove =
   | "groundJump"
   | "airJump"
   | "wallJump"
+  | "dropThrough"
   | "dash"
   | "slide";
 
@@ -20,6 +21,7 @@ export interface AirMoveCharges {
 /** A detached snapshot; policy code cannot mutate admission through it. */
 export interface MoveAdmissionState {
   readonly grounded: boolean;
+  readonly onOneWay: boolean;
   readonly crouched: boolean;
   readonly blocked: boolean;
   readonly wallSide: -1 | 0 | 1;
@@ -138,6 +140,36 @@ export class MoveAdmission extends Component {
         this.airborneFor <= this.tuning.coyoteTime) &&
       this.permits("groundJump")
     );
+  }
+
+  /** Dropping needs one-way support, but does not need standing headroom. */
+  get canDropThrough(): boolean {
+    return (
+      !this.groundJumpSpent &&
+      this.controller.onOneWay &&
+      this.permits("dropThrough")
+    );
+  }
+
+  /** Consume ground/coyote eligibility without counting a jump or starting physics drop-through. */
+  spendDropThrough(): void {
+    if (!this.canDropThrough)
+      throw new Error(
+        "MoveAdmission.spendDropThrough: no drop-through available",
+      );
+    this.groundJumpSpent = true;
+  }
+
+  /**
+   * Record one departure authorized by a game-owned ledge hold. The caller
+   * checks eligibility and calls once per departure. Increments jumpsTaken
+   * and consumes ground/coyote and current wall-jump eligibility. No contact
+   * or policy checks, motion, or events; air charges are unchanged.
+   */
+  recordLedgeJump(): void {
+    this.groundJumpSpent = true;
+    this.wallJumpSpent = true;
+    this._jumpsTaken += 1;
   }
 
   /** Whether a jump in the air is admitted. Charges come back on landing. */
@@ -263,6 +295,7 @@ export class MoveAdmission extends Component {
   private state(): MoveAdmissionState {
     return {
       grounded: this.controller.grounded,
+      onOneWay: this.controller.onOneWay,
       crouched: this.stance.crouched,
       blocked: this.controller.blocked,
       wallSide: this._wallJumpSide,

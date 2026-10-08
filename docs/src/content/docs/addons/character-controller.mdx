@@ -119,7 +119,7 @@ entity.on(PlatformerDashedEvent, () => { stamina -= 10; });
 character.admission.setAirCharges({ dashes: 1 });
 ```
 
-Move names are `groundJump`, `airJump`, `wallJump`, `dash`, and `slide`.
+Move names are `groundJump`, `airJump`, `wallJump`, `dash`, `slide`, and `dropThrough`.
 The policy adds game requirements to the normal contact, headroom, charge,
 and cooldown checks. It is also used by readiness queries and may run more
 than once per step. Keep it pure and synchronous; apply consequences through
@@ -152,7 +152,7 @@ transition, including the first contact after spawning. New characters have
 zero air charges until ground contact or an explicit charge write.
 `refillAirCharges()` always uses the tuning defaults, regardless of this policy.
 
-Both callbacks receive a detached `MoveAdmissionState` with `grounded`,
+Both callbacks receive a detached `MoveAdmissionState` with `grounded`, `onOneWay`,
 `crouched`, `blocked`, remembered `wallSide`, and `airCharges`. Invalid results
 throw before admission changes charges. Thrown callback errors are attributed
 through the engine's error boundary. The same policies are available on
@@ -237,6 +237,51 @@ adding input or AI providers, add your movement producers, then call `finish()`.
 Each component is also independently constructible. Pass a `resolveMotion`
 function to replace the headless arbitration model while retaining the physics
 integration and request lifetimes.
+
+### Drop through platforms
+
+A custom move producer can use `admission.canDropThrough` to check for one-way
+ground contact and an unspent ground jump. The `dropThrough` admission policy
+can add game restrictions. Dropping remains available under a low ceiling and
+does not require permission to ground-jump.
+
+Handle your drop binding before forwarding an ordinary jump press:
+
+```ts yage-context=entity
+import { ColliderComponent } from "@yagejs/physics";
+import { MoveAdmission, PlatformerMoves } from "@yagejs-addons/character-controller/platformer";
+
+const admission = entity.get(MoveAdmission);
+if (admission.canDropThrough) {
+  admission.spendDropThrough();
+  entity.get(PlatformerMoves).cancel();
+  entity.get(ColliderComponent).dropThrough(0.3);
+}
+```
+
+`spendDropThrough()` consumes the ground/coyote jump until the next landing.
+It leaves air charges and `jumpsTaken` unchanged, and throws if the drop is
+unavailable. The game chooses the input, duration, any downward motion, and
+which moves a drop interrupts. The standard runner does not select drops.
+
+Read `ground.supportOneWay` for the sampled support's `oneWay` configuration,
+or `controller.onOneWay` when the character must also be grounded. These report
+authored configuration; a replacement contact filter may change whether that
+platform actually permits dropping.
+
+### Jump away from a held ledge
+
+When your ledge traversal accepts a jump away, call
+`admission.recordLedgeJump()` once and submit the departure motion through
+`MotionReconciler`. This increments `jumpsTaken` and consumes ground/coyote and
+current wall-jump eligibility without spending an air charge. New wall contact
+restores wall-jump eligibility; landing restores ground-jump eligibility.
+
+The method records an already-authorized move: it does not check wall contact,
+headroom, or admission policies. Your traversal owns those checks and prevents
+duplicate departures. Each call counts a jump; it emits no event and starts no
+motion. This lets a held ledge authorize a jump even when ordinary wall jumping
+is unavailable.
 
 ## Terrain and moving platforms
 

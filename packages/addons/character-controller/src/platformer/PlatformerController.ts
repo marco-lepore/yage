@@ -75,6 +75,11 @@ export class PlatformerController extends Component {
     return this._mode === "grounded";
   }
 
+  /** Grounded on a support configured as a one-way platform. */
+  get onOneWay(): boolean {
+    return this.grounded && this.ground.supportOneWay;
+  }
+
   get direction(): number {
     return this._direction;
   }
