@@ -58,7 +58,7 @@ The model lives in a component on the entity that carries it (here the
 player); `InventoryController` on the same entity presents it. Consequences
 live in that component, listening on its own entity.
 
-```ts yage-group="setup"
+```ts yage-group="setup" yage-context="scene"
 import { Component, Entity, Scene } from "@yagejs/core";
 import {
   defineItems,
@@ -71,24 +71,29 @@ import {
   INVENTORY_LAYERS,
 } from "@yagejs-addons/inventory/presenters";
 
-// game code:
-declare class Health extends Component {
-  heal(amount: number): void;
+// Minimal game-owned health:
+class Health extends Component {
+  hp = 50;
+  heal(amount: number): void {
+    this.hp = Math.min(100, this.hp + amount);
+  }
 }
 
 const catalog = defineItems({
-  potion: { name: "Potion", maxStack: 5, description: "Heals 25 HP." },
-  sword: { name: "Iron Sword" },
+  potion: {
+    name: "Potion",
+    maxStack: 5,
+    description: "Heals 25 HP.",
+    actions: ["use"],
+  },
+  sword: { name: "Iron Sword", actions: [] },
 });
 
 class Backpack extends Component {
   readonly items = new Inventory({
     catalog,
     capacity: 15,
-    actions: [
-      { id: "use", label: "Use", consumes: true },
-      { id: "drop", label: "Drop" },
-    ],
+    actions: [{ id: "use", label: "Use", consumes: true }],
   });
   private readonly health = this.sibling(Health); // game's own component
 
@@ -102,7 +107,9 @@ class Backpack extends Component {
 
 class Player extends Entity {
   setup(): void {
+    this.add(new Health());
     const bag = this.add(new Backpack());
+    bag.items.add("potion", 3);
     // theme defaults to defaultInventoryTheme()
     this.add(
       new InventoryController({
@@ -122,6 +129,34 @@ class MyScene extends Scene {
 }
 ```
 
+Start the engine with the renderer and input plugins. These bindings cover
+every default panel action. Press I to open the panel.
+
+```ts yage-group="setup" yage-context="scene"
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { InputPlugin } from "@yagejs/input";
+
+const engine = new Engine();
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
+engine.use(
+  new InputPlugin({
+    actions: {
+      inventory: ["KeyI"],
+      cancel: ["Escape"],
+      interact: ["Enter"],
+      sort: ["KeyR"],
+      "move-up": ["ArrowUp"],
+      "move-down": ["ArrowDown"],
+      "move-left": ["ArrowLeft"],
+      "move-right": ["ArrowRight"],
+    },
+  }),
+);
+await engine.start();
+await engine.scenes.push(new MyScene());
+```
+
 The default input (when `input` is omitted) is the FULL set — keyboard/gamepad
 polling `move-up/-down/-left/-right`, `interact` (confirm), `cancel`, `sort`,
 and `inventory` (toggle — the ONE action polled while closed), PLUS
@@ -135,11 +170,10 @@ construct `inventoryControls(bundle, { actions })` yourself only to rename them.
 never goes through the UI. It reaches the model through the component that
 owns it (`findByKey`, a query, or the `spawn()` reference), panel open or not:
 
-```ts yage-group="setup"
-declare function openDoor(): void; // game code
-
+```ts yage-group="setup" yage-context="scene"
 // In any component (a pickup, a door), panel open or closed:
 class WorldObject extends Component {
+  open = false;
   interact(): void {
     const items = this.scene.findByKey("player")?.get(Backpack).items;
     if (!items) return;
@@ -147,7 +181,7 @@ class WorldObject extends Component {
     if (items.has("sword")) {
       // gate check, UI closed
       items.remove("sword", 1);
-      openDoor();
+      this.open = true;
     }
   }
 }
@@ -206,25 +240,29 @@ code is unaffected. Metadata `data` (on the def) stays opaque; only the per-stac
 
 ```ts
 import {
+  defineItems,
   Inventory,
   type InventoryConstraint,
-  type ItemActionDef,
-  type ItemCatalog,
 } from "@yagejs-addons/inventory";
 
-declare const catalog: ItemCatalog; // from defineItems(...)
-declare const weightLimit: InventoryConstraint;
-declare const use: ItemActionDef;
-declare const drop: ItemActionDef;
-
-new Inventory({
-  catalog, // required
-  capacity: 15, // slot count; omit = unbounded (grows)
-  autoCompact: true, // close gaps on REMOVALS (list-style); default false
-  defaultMaxStack: 1, // per-stack default when a def has no maxStack
-  accepts: (def) => def.category === "key", // section filter → rejected "filtered"
-  constraints: [weightLimit], // InventoryConstraint[] (see below)
-  actions: [use, drop], // ItemActionDef[] (see below)
+const catalog = defineItems({ goldKey: { name: "Gold Key", category: "key" } });
+// A section may hold at most three items in total, regardless of slot count.
+const totalLimit: InventoryConstraint = {
+  id: "total-items",
+  maxAcceptable: (_def, inv) =>
+    Math.max(
+      0,
+      3 - inv.slots.reduce((sum, stack) => sum + (stack?.quantity ?? 0), 0),
+    ),
+};
+const keys = new Inventory({
+  catalog,
+  capacity: 15,
+  autoCompact: true,
+  defaultMaxStack: 1,
+  accepts: (def) => def.category === "key",
+  constraints: [totalLimit],
+  actions: [{ id: "examine", label: "Examine" }],
 });
 ```
 
@@ -424,32 +462,29 @@ end to end.
 
 ## InventoryController (the Component host)
 
-```ts
-import type { Entity } from "@yagejs/core";
-import {
-  byCategory,
-  InventoryController,
-  type Inventory,
-  type InventoryBundle,
-} from "@yagejs-addons/inventory";
+During scene setup, obtain the player’s inventory through `Backpack` and
+replace its controller with the options below. Keep it on the player so
+`InventoryActionEvent` still reaches `Backpack`. The renderer and input plugins
+are installed as shown above.
 
-declare const host: Entity;
-declare const bundle: InventoryBundle; // e.g. createInventoryPanel()
-declare const inventory: Inventory;
+```typescript yage-group="setup" yage-context="scene"
+import { byCategory } from "@yagejs-addons/inventory";
 
-host.add(
+const player = scene.findByKey("player");
+if (!player) throw new Error("Spawn the player before the menu");
+const inventory = player.get(Backpack).items;
+player.remove(InventoryController);
+const ctrl = player.add(
   new InventoryController({
-    ...bundle, // slots (required) + chrome/detail/actionMenu (optional)
+    ...createInventoryPanel(),
     inventory,
     title: "Backpack",
-    closeOnCancel: true, // default; false = embedded (host owns the escape route)
-    sortComparator: byCategory, // default byCatalogOrder
-    // omit `input` = full default (keyboard/gamepad + pointer, hit-testing
-    // wired to THIS bundle); null = NO device input (host drives); or pass
-    // inventoryControls(bundle, { actions }) to rename the action names.
+    closeOnCancel: true,
+    sortComparator: byCategory,
+    // Omit input for the default binding; null lets the host menu drive it.
     openOnAdd: false,
-    onConfirm: (e) => {}, // browse-level confirm (picker flows)
-    onCancel: () => {}, // browse-level cancel (embedded host returns to its menu)
+    onConfirm: (e) => console.log("Selected:", e),
+    onCancel: () => console.log("Cancelled"),
   }),
 );
 ```
@@ -602,41 +637,32 @@ const bundle = createInventoryPanel({
 
 Standalone vs embedded is configuration:
 
-```ts
-import type { Entity } from "@yagejs/core";
-import { InventoryController, type Inventory } from "@yagejs-addons/inventory";
-import {
-  createInventoryPanel,
-  type InventoryTheme,
-} from "@yagejs-addons/inventory/presenters";
+`focusTabs` is your game’s action for returning focus to the tab bar.
+Keep `embedded` in your menu. Call `embedded.open()` when the items
+tab gains focus, `embedded.move("down")` from its down handler, and `embedded.confirm()`
+from its confirm handler. The host entity owns controller teardown. The player’s original controller
+stays attached so it continues to deliver model events to `Backpack`, even
+when its panel is closed.
 
-declare const host: Entity;
-declare const inventory: Inventory;
-declare const theme: InventoryTheme;
-// The game's own menu system:
-declare const menu: {
-  focusTabs(): void;
-  onTabFocus(tab: string, fn: () => void): void;
-  onKey(key: string, fn: () => void): void;
-};
+```typescript yage-group="setup" yage-context="scene" yage-fixture="inventory"
+import { focusTabs } from "./menu.js";
 
-const bundle = createInventoryPanel(theme, {
-  chrome: false, // the host menu draws its own frame
-  bounds: { x: 320, y: 96, width: 344, height: 300 }, // sit inside the host layout
-});
-const ctrl = host.add(
+const menuPlayer = scene.findByKey("player");
+if (!menuPlayer) throw new Error("Spawn the player before the menu");
+const menuItems = menuPlayer.get(Backpack).items;
+const menuHost = scene.spawn("embedded-inventory");
+const embedded = menuHost.add(
   new InventoryController({
-    ...bundle,
-    inventory,
-    input: null, // the host menu owns the devices
-    closeOnCancel: false, // Esc returns to the host's tab bar
-    onCancel: () => menu.focusTabs(),
+    ...createInventoryPanel(undefined, {
+      chrome: false,
+      bounds: { x: 320, y: 96, width: 344, height: 300 },
+    }),
+    inventory: menuItems,
+    input: null,
+    closeOnCancel: false,
+    onCancel: focusTabs,
   }),
 );
-// The host's focus handling drives the panel:
-menu.onTabFocus("items", () => ctrl.open());
-menu.onKey("down", () => ctrl.move("down"));
-menu.onKey("confirm", () => ctrl.confirm());
 ```
 
 Custom UI entirely? Implement the channel contracts (`SlotsPresenter` is the
@@ -661,27 +687,27 @@ tabbed menu showing one category at a time. Unlike a second `Inventory` with
 `accepts`, it's not a separate container: an add or a `use` on either surface
 is the same mutation, because it's one shared model.
 
-```ts
-import type { Entity } from "@yagejs/core";
-import {
-  filteredView,
-  InventoryController,
-  type Inventory,
-  type InventoryBundle,
-} from "@yagejs-addons/inventory";
+This reuses the player’s `Backpack` from the setup above and mounts a separate
+hotbar entity in the same scene.
 
-declare const host: Entity;
-declare const backpack: Inventory;
-declare const bundle: InventoryBundle;
+```typescript yage-group="setup" yage-context="scene"
+import { filteredView } from "@yagejs-addons/inventory";
 
 const usable = filteredView(
-  backpack,
-  (stack, def) => def.actions?.includes("use") ?? false,
+  menuItems,
+  (_stack, def) => def.actions?.includes("use") ?? false,
 );
-host.add(new InventoryController({ ...bundle, inventory: usable })); // or ctrl.setSource(usable)
-usable.invokeAction("use", 0); // presented index 0 -> whatever model slot it maps to
-usable.modelSlot(0); // the escape hatch back to the real slot
-usable.source; // the underlying Inventory
+const hotbar = scene.spawn("hotbar");
+const hotbarController = hotbar.add(
+  new InventoryController({
+    ...createInventoryPanel(undefined, { columns: 8, visibleRows: 1 }),
+    inventory: usable,
+    input: null,
+  }),
+);
+// Open it from the game's hotbar handler: hotbarController.open();
+usable.modelSlot(0); // corresponding backpack slot
+usable.source; // the same inventory, not a copy
 ```
 
 Both `Inventory` and `filteredView`'s return value implement `InventorySource`
@@ -717,11 +743,14 @@ import {
   Inventory,
   type InventorySnapshot,
   type ItemActionDef,
-  type ItemCatalog,
+  defineItems,
 } from "@yagejs-addons/inventory";
 
-declare const catalog: ItemCatalog; // from defineItems(...)
-declare const actions: ItemActionDef[];
+const catalog = defineItems({
+  potion: { name: "Potion", maxStack: 5 },
+  sword: { name: "Iron Sword", actions: [] },
+});
+const actions: ItemActionDef[] = [{ id: "use", label: "Use", consumes: true }];
 const save = createSave({ adapter: localStorageAdapter() });
 
 export const playerItems = new Inventory({ catalog, capacity: 15, actions });

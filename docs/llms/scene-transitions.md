@@ -4,7 +4,11 @@ Animate the handoff between scenes during `push`, `pop`, and `replace`. Both sce
 
 ## Usage
 
-```ts yage-context="engine"
+`GameScene` and `ResultsScene` below are your game’s `Scene` subclasses. Each
+transition example creates a destination instance; choose the operation your
+flow needs.
+
+```ts yage-context="engine" yage-fixture="scenes"
 import { Scene } from "@yagejs/core";
 import {
   chessboard,
@@ -16,11 +20,12 @@ import {
   slidePush,
 } from "@yagejs/renderer";
 
-declare const nextScene: Scene; // any scene instance
-declare const newScene: Scene;
+import { GameScene, ResultsScene } from "./game-scenes.js";
 
 // Push with a fade
-await engine.scenes.push(nextScene, { transition: fade({ duration: 0.4 }) });
+await engine.scenes.push(new GameScene(), {
+  transition: fade({ duration: 0.4 }),
+});
 
 // Pop with a flash
 await engine.scenes.pop({
@@ -28,20 +33,22 @@ await engine.scenes.pop({
 });
 
 // Replace with a cross-dissolve
-await engine.scenes.replace(newScene, {
+await engine.scenes.replace(new ResultsScene(), {
   transition: crossFade({ duration: 0.5 }),
 });
 
 // Iris-out → swap → iris-in (Zelda-style)
-await engine.scenes.replace(nextScene, { transition: iris({ duration: 0.7 }) });
+await engine.scenes.replace(new GameScene(), {
+  transition: iris({ duration: 0.7 }),
+});
 
 // Checkerboard wipe with a custom grid
-await engine.scenes.push(nextScene, {
+await engine.scenes.push(new GameScene(), {
   transition: chessboard({ rows: 4, cols: 6 }),
 });
 
 // Both scenes slide together (incoming pushes the previous one off)
-await engine.scenes.push(nextScene, {
+await engine.scenes.push(new GameScene(), {
   transition: slidePush({ direction: "left" }),
 });
 

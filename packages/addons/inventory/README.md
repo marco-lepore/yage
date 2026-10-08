@@ -44,14 +44,16 @@ import {
   INVENTORY_LAYERS,
 } from "@yagejs-addons/inventory/presenters";
 
-// Game code the example calls:
-declare class Health extends Component {
-  heal(amount: number): void;
+class Health extends Component {
+  hp = 50;
+  heal(amount: number): void {
+    this.hp = Math.min(100, this.hp + amount);
+  }
 }
 
 const catalog = defineItems({
   potion: { name: "Potion", maxStack: 5, description: "Heals 20 HP." },
-  sword: { name: "Iron Sword" },
+  sword: { name: "Iron Sword", actions: [] },
   key: { name: "Gold Key", instance: instanceData<{ opens: string }>() },
 });
 
@@ -60,10 +62,7 @@ class Backpack extends Component {
   readonly items = new Inventory({
     catalog,
     capacity: 15,
-    actions: [
-      { id: "use", label: "Use", consumes: true },
-      { id: "drop", label: "Drop" },
-    ],
+    actions: [{ id: "use", label: "Use", consumes: true }],
   });
   private readonly health = this.sibling(Health); // the player's own component
 
@@ -77,8 +76,9 @@ class Backpack extends Component {
 
 class Player extends Entity {
   setup(): void {
-    // ...the player's Transform, sprite, Health, and controller
+    this.add(new Health());
     const bag = this.add(new Backpack());
+    bag.items.add("potion", 3);
     // Default input = keyboard/gamepad + mouse/touch, already wired.
     this.add(
       new InventoryController({
@@ -99,27 +99,49 @@ class TownScene extends Scene {
 }
 ```
 
+Start the engine with the renderer and input plugins. These bindings cover
+every default panel action. Press I to open the panel.
+
+```ts yage-group="quick-start"
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { InputPlugin } from "@yagejs/input";
+
+const engine = new Engine();
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
+engine.use(
+  new InputPlugin({
+    actions: {
+      inventory: ["KeyI"],
+      cancel: ["Escape"],
+      interact: ["Enter"],
+      sort: ["KeyR"],
+      "move-up": ["ArrowUp"],
+      "move-down": ["ArrowDown"],
+      "move-left": ["ArrowLeft"],
+      "move-right": ["ArrowRight"],
+    },
+  }),
+);
+await engine.start();
+await engine.scenes.push(new TownScene());
+```
+
 Game code reaches the model through the component, with the panel open or
 closed. A pickup or a door component finds the player with
 `this.scene.findByKey("player")`, a query, or the reference `spawn()` returned:
 
-```ts yage-group="quick-start"
-declare const player: Entity; // from findByKey("player"), a query, or spawn()
-// Game code the example calls:
-declare function equip(): void;
-declare function openDoor(): void;
+```typescript yage-group="quick-start"
+class BossDoor extends Component {
+  open = false;
 
-const items = player.get(Backpack).items;
-items.add("potion", 3);
-if (items.has("sword")) equip();
-
-// Per-instance items (durability, rolled stats) carry a `data` payload.
-// Query or grab them by a data predicate, then act on the exact stack:
-items.add("key", 1, { data: { opens: "boss-lair" } });
-const bossKey = items.find("key", (d) => d.opens === "boss-lair");
-if (bossKey) {
-  items.remove(bossKey); // returns { removed, stacks } — the payload comes back
-  openDoor();
+  interact(player: Player): void {
+    const items = player.get(Backpack).items;
+    const bossKey = items.find("key", (d) => d.opens === "boss-lair");
+    if (!bossKey) return;
+    items.remove(bossKey);
+    this.open = true;
+  }
 }
 ```
 

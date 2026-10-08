@@ -218,10 +218,7 @@ voice's own `seed` still means its noise seed); give each character its own
 `frequency`/`phraseSeed`:
 
 ```ts yage-context="engine"
-import type { AudioManager } from "@yagejs/audio";
 import { SynthPlugin, synthPresets } from "@yagejs-addons/synth";
-
-declare const audio: AudioManager; // this.use(AudioManagerKey)
 
 engine.use(
   new SynthPlugin({
@@ -233,6 +230,15 @@ engine.use(
     },
   }),
 );
+```
+
+After initialization, play the configured sound from a component method:
+
+```ts yage-context="component"
+import { AudioManagerKey } from "@yagejs/audio";
+
+const audio = this.use(AudioManagerKey);
+
 const talking = audio.play("voice/guard", { loop: true, channel: "voice" });
 audio.stop(talking); // when the line finishes revealing
 ```
@@ -242,8 +248,6 @@ audio.stop(talking); // when the line finishes revealing
 A baked buffer sounds identical every play. Two ways to break that up:
 
 ```ts yage-context="engine"
-import { registerSound, type AudioManager } from "@yagejs/audio";
-import type { RandomService } from "@yagejs/core";
 import {
   SynthPlugin,
   synthBuffer,
@@ -251,9 +255,6 @@ import {
   synthVariantAliases,
   synthVariants,
 } from "@yagejs-addons/synth";
-
-declare const audio: AudioManager; // this.use(AudioManagerKey)
-declare const random: RandomService; // this.use(RandomKey)
 
 // 1. Several takes, spread in pitch, picked at random per play.
 engine.use(
@@ -263,12 +264,29 @@ engine.use(
     },
   }),
 );
+```
+
+After initialization, play the configured sound from a component method:
+
+```ts yage-context="component"
+import { AudioManagerKey } from "@yagejs/audio";
+import { synthVariantAliases } from "@yagejs-addons/synth";
+import { RandomKey } from "@yagejs/core";
+
+const audio = this.use(AudioManagerKey);
+const random = this.use(RandomKey);
+
 audio.playRandom(synthVariantAliases("shoot", 4));
 
 // 2. Jitter the playback rate at the call site with the scene's generator
 //    (RandomKey, not Math.random). Variants register only the suffixed
 //    aliases, so play one of those.
 audio.play("shoot.1", { speed: random.range(0.95, 1.05) });
+```
+
+```ts
+import { registerSound } from "@yagejs/audio";
+import { synthBuffer, synthPresets, synthVariants } from "@yagejs-addons/synth";
 
 // Building the takes yourself — register each one:
 const takes = synthVariants("shoot", synthPresets.shoot(), 4, 0.08);
@@ -286,16 +304,22 @@ the buffer loops without a click. The result is up to 50 ms shorter than
 `duration`.
 
 ```ts yage-context="engine"
-import type { AudioManager } from "@yagejs/audio";
 import { SynthPlugin, synthPresets } from "@yagejs-addons/synth";
-
-declare const audio: AudioManager; // this.use(AudioManagerKey)
 
 engine.use(
   new SynthPlugin({
     sounds: { ambience: synthPresets.roomTone({ duration: 6 }) },
   }),
 );
+```
+
+After initialization, play the configured sound from a component method:
+
+```ts yage-context="component"
+import { AudioManagerKey } from "@yagejs/audio";
+
+const audio = this.use(AudioManagerKey);
+
 audio.play("ambience", { loop: true, channel: "music" });
 ```
 
