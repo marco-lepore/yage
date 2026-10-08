@@ -80,6 +80,7 @@ import {
 import { MotionReconciler } from "./MotionReconciler.js";
 import { LedgeProbe } from "./LedgeProbe.js";
 import { Stance } from "./Stance.js";
+import { GroundProbe } from "./GroundProbe.js";
 
 let engine: Engine | undefined;
 afterEach(() => engine?.destroy());
@@ -767,12 +768,23 @@ it.each([true, false])(
     tick(5);
     expect(controller.grounded).toBe(true);
     const admission = entity.get(MoveAdmission);
+    const ground = entity.get(GroundProbe);
+    expect(ground.supportOneWay).toBe(true);
+    expect(controller.onOneWay).toBe(true);
+    expect(admission.canDropThrough).toBe(true);
     const landed = vi.fn();
     entity.on(PlatformerLandedEvent, landed);
     admission.setAirCharges({ jumps: 0, dashes: 0 });
+    admission.spendDropThrough();
+    expect(admission.canDropThrough).toBe(false);
+    expect(admission.canGroundJump).toBe(false);
+    expect(admission.jumpsTaken).toBe(0);
     entity.get(ColliderComponent).dropThrough(0.5);
     tick();
     expect(controller.grounded).toBe(false);
+    expect(ground.supportOneWay).toBe(false);
+    expect(controller.onOneWay).toBe(false);
+    expect(admission.canGroundJump).toBe(false);
     for (let frame = 0; frame < 25; frame++) {
       tick();
       expect(controller.grounded).toBe(false);
@@ -783,10 +795,112 @@ it.each([true, false])(
     scene.spawn(Floor, { y: 450, oneWay: true });
     tick(60);
     expect(controller.grounded).toBe(true);
+    expect(admission.canDropThrough).toBe(true);
     expect(admission.airCharges).toEqual({ jumps: 1, dashes: 1 });
     expect(landed).toHaveBeenCalledTimes(1);
   },
 );
+
+it("rejects drops on solid ground and during one-way coyote time", async () => {
+  const { entity, floor, scene, controller, tick } = await setup();
+  const admission = entity.get(MoveAdmission);
+  expect(controller.onOneWay).toBe(false);
+  expect(entity.get(GroundProbe).supportOneWay).toBe(false);
+  expect(admission.canDropThrough).toBe(false);
+  expect(() => admission.spendDropThrough()).toThrow(/no drop-through/);
+  expect(admission.canGroundJump).toBe(true);
+  floor.destroy();
+  const platform = scene.spawn(Floor, { oneWay: true });
+  tick(5);
+  expect(admission.canDropThrough).toBe(true);
+  platform.destroy();
+  tick();
+  expect(admission.canGroundJump).toBe(true);
+  expect(admission.canDropThrough).toBe(false);
+  expect(() => admission.spendDropThrough()).toThrow(/no drop-through/);
+  expect(admission.canGroundJump).toBe(true);
+});
+
+it("admits a drop under a low ceiling independently of ground-jump policy", async () => {
+  let allowDrop = false;
+  const policy = vi.fn(
+    (move: PlatformerMove) => move === "dropThrough" && allowDrop,
+  );
+  const { entity, scene, floor, input, controller, tick } = await setup({
+    admissionPolicies: { canStartMove: policy },
+  });
+  floor.destroy();
+  scene.spawn(Floor, { oneWay: true });
+  input.setDown(true);
+  tick(5);
+  scene.spawn(Floor, { y: 43, height: 20 });
+  input.setDown(false);
+  tick(5);
+  const admission = entity.get(MoveAdmission);
+  expect(controller.blocked).toBe(true);
+  expect(controller.onOneWay).toBe(true);
+  expect(admission.canGroundJump).toBe(false);
+  expect(admission.canDropThrough).toBe(false);
+  expect(() => admission.spendDropThrough()).toThrow(/no drop-through/);
+  allowDrop = true;
+  expect(admission.canDropThrough).toBe(true);
+  expect(policy).toHaveBeenLastCalledWith(
+    "dropThrough",
+    expect.objectContaining({
+      grounded: true,
+      onOneWay: true,
+      blocked: true,
+    }),
+  );
+  const charges = admission.airCharges;
+  admission.spendDropThrough();
+  expect(admission.airCharges).toEqual(charges);
+  expect(admission.jumpsTaken).toBe(0);
+  expect(() => admission.spendDropThrough()).toThrow(/no drop-through/);
+});
+
+it("records game-owned ledge departure without wall contact or air charges", async () => {
+  const { entity, floor, tick } = await setup({
+    admissionPolicies: { canStartMove: (move) => move !== "wallJump" },
+  });
+  const admission = entity.get(MoveAdmission);
+  floor.destroy();
+  tick();
+  admission.setAirCharges({ jumps: 0, dashes: 0 });
+  expect(admission.canGroundJump).toBe(true);
+  expect(admission.wallJumpSide).toBe(0);
+  expect(admission.canWallJump).toBe(false);
+  const jumped = vi.fn();
+  entity.on(PlatformerJumpedEvent, jumped);
+  admission.recordLedgeJump();
+  expect(admission.jumpsTaken).toBe(1);
+  expect(admission.canGroundJump).toBe(false);
+  expect(admission.airCharges).toEqual({ jumps: 0, dashes: 0 });
+  expect(jumped).not.toHaveBeenCalled();
+});
+
+it("consumes wall eligibility on ledge departure until new wall contact", async () => {
+  const { entity, scene, body, input, tick } = await setup();
+  scene.spawn(Floor, { x: 30, y: -20, width: 20, height: 200 });
+  body.setPosition(12, -10);
+  body.setVelocity({ x: 0, y: 100 });
+  input.setDirection(1);
+  tick(2);
+  const admission = entity.get(MoveAdmission);
+  expect(admission.canWallJump).toBe(true);
+  const charges = admission.airCharges;
+  admission.recordLedgeJump();
+  tick();
+  expect(admission.canWallJump).toBe(false);
+  expect(admission.airCharges).toEqual(charges);
+  body.setPosition(-20, -10);
+  tick();
+  expect(admission.canWallJump).toBe(false);
+  body.setPosition(12, -10);
+  tick();
+  expect(admission.canWallJump).toBe(true);
+  expect(admission.jumpsTaken).toBe(1);
+});
 
 it("does not land on a contact-filtered platform while descending past its top", async () => {
   const { entity, floor, body, controller, tick } = await setup();

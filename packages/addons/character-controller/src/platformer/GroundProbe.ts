@@ -35,10 +35,15 @@ export class GroundProbe extends Component {
   private _distance = Infinity;
 
   private _support: RigidBodyComponent | undefined;
+  private _supportOneWay = false;
   private _surface: MovingSurface | undefined;
 
   get support(): RigidBodyComponent | undefined {
     return this._support;
+  }
+  /** Whether the sampled walkable support has a oneWay collider config. */
+  get supportOneWay(): boolean {
+    return this._supportOneWay;
   }
   get supportVelocity(): Readonly<{ x: number; y: number }> {
     return this._surface?.velocity ?? this.actualSupportVelocity;
@@ -146,6 +151,10 @@ export class GroundProbe extends Component {
     const walkable = hit !== null && this.isWalkable(hit.normal);
     this._support =
       walkable && hit ? hit.entity.tryGet(RigidBodyComponent) : undefined;
+    this._supportOneWay =
+      walkable && hit
+        ? hit.entity.tryGet(ColliderComponent)?.config.oneWay !== undefined
+        : false;
     this._surface =
       walkable && hit ? hit.entity.tryGet(MovingSurface) : undefined;
     this._distance = walkable && hit ? hit.distance : Infinity;

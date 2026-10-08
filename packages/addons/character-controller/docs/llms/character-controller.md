@@ -125,8 +125,8 @@ Standard move priority is 10; low-level `PlatformerMoves` accepts `priority`.
 `MoveAdmissionPolicies` has two optional pure, synchronous callbacks:
 
 - `canStartMove(move: PlatformerMove, state: MoveAdmissionState): boolean`:
-  additional eligibility for `groundJump`, `airJump`, `wallJump`, `dash`, or
-  `slide`. Omit to allow every mechanically available move. It cannot bypass
+  additional eligibility for `groundJump`, `airJump`, `wallJump`, `dash`,
+  `slide`, or `dropThrough`. Omit to allow every mechanically available move. It cannot bypass
   contact, headroom, charge, or cooldown checks. Readiness queries also use it;
   it can run more than once per step. Do not spend stamina here; use move events.
 - `landingCharges(state: MoveAdmissionState): AirMoveCharges`: counts after
@@ -135,7 +135,7 @@ Standard move priority is 10; low-level `PlatformerMoves` accepts `priority`.
   transition, not every grounded step. Returning `state.airCharges` keeps the
   remaining charges. Returning zeros disables automatic air-move refills.
 
-`MoveAdmissionState` is a detached snapshot with `grounded`, `crouched`,
+`MoveAdmissionState` is a detached snapshot with `grounded`, `onOneWay`, `crouched`,
 `blocked`, remembered `wallSide` (-1/0/1), and `airCharges: { jumps, dashes }`.
 Callback errors and invalid return values are attributed and rethrown before
 admission spends or replaces charges. All counts must be nonnegative safe
@@ -158,6 +158,37 @@ Pass `admissionPolicies` to `createPlatformer` or `installPlatformer` alongside
 its `admission` tuning. Direct construction uses `new MoveAdmission({
 controller, stance, motion, tuning, policies })`. Custom slide producers call
 `admission.spendSlide()` after admission to start the slide rest timer.
+
+### Custom drop-through and ledge jumps
+
+`ground.supportOneWay: boolean` reports whether the sampled walkable support
+has `ColliderComponent.config.oneWay`. `controller.onOneWay: boolean` also
+requires classified ground contact. These describe authored configuration;
+replacing a platform's contact filter can change whether it permits dropping.
+
+`admission.canDropThrough: boolean` requires one-way ground contact, unspent
+ground-jump eligibility, and `canStartMove("dropThrough", state)`. It does not
+require standing headroom or permission for `groundJump`.
+`admission.spendDropThrough(): void` checks eligibility, then consumes the
+ground/coyote jump until landing without changing `jumpsTaken` or air charges.
+An unavailable drop throws before changing state.
+
+In a custom move producer, handle the drop input before forwarding ordinary
+jump input. After admission, call the character collider's `dropThrough(seconds)`
+and submit any desired downward motion through `MotionReconciler`. The game
+owns the binding, duration, interruption rules, and events; the standard runner
+does not select drop-through automatically. When interrupting standard moves,
+call `moves.cancel()` to clear their active motion and buffered presses.
+
+`admission.recordLedgeJump(): void` records a departure already authorized by
+the game's ledge hold. It increments `jumpsTaken`, consumes ground/coyote and
+current wall-jump eligibility, and leaves air charges unchanged. It deliberately
+performs no contact, headroom, or `canStartMove` checks: ledge hold eligibility
+belongs to the custom traversal. Call exactly once per accepted departure;
+repeated calls each count a jump. It submits no motion and emits no event.
+Use this instead of `spendWallJump()` when a held ledge authorizes departure
+without ordinary wall-jump eligibility. New wall contact restores wall-jump
+eligibility; landing restores ground-jump eligibility.
 
 ## Input
 
