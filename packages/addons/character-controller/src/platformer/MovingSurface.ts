@@ -1,6 +1,6 @@
 import { finite } from "../core/validate.js";
 import { CrushProbe } from "./CrushProbe.js";
-import { Component, Transform, type Vec2Like } from "@yagejs/core";
+import { Component, GameLoopKey, Transform, type Vec2Like } from "@yagejs/core";
 import {
   ColliderComponent,
   PhysicsWorldKey,
@@ -70,8 +70,11 @@ export class MovingSurface extends Component {
     const fraction = Math.min(this.travel, 2 * length - this.travel) / length;
     const x = from.x + (to.x - from.x) * fraction;
     const y = from.y + (to.y - from.y) * fraction;
-    const vx = (x - this.body.positionX) / dt;
-    const vy = (y - this.body.positionY) / dt;
+    // Kinematic targets are consumed over one physics step, independent of
+    // the entity's component clock.
+    const physicsDt = this.use(GameLoopKey).fixedTimestep;
+    const vx = (x - this.body.positionX) / physicsDt;
+    const vy = (y - this.body.positionY) / physicsDt;
     finite("MovingSurface.fixedUpdate", "velocity.x", vx);
     finite("MovingSurface.fixedUpdate", "velocity.y", vy);
     this.nextVelocity.x = vx;

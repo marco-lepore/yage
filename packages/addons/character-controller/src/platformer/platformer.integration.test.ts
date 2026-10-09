@@ -19,6 +19,7 @@ import type { Engine } from "@yagejs/core";
 import { InputManagerKey, InputManager } from "@yagejs/input";
 import {
   ColliderComponent,
+  CollisionLayers,
   PhysicsPlugin,
   RigidBodyComponent,
 } from "@yagejs/physics";
@@ -80,6 +81,9 @@ import {
 import { MotionReconciler } from "./MotionReconciler.js";
 import { LedgeProbe } from "./LedgeProbe.js";
 import { Stance } from "./Stance.js";
+import { installPlatformer } from "./installPlatformer.js";
+import { defaultPlatformerTuning } from "./defaults.js";
+import { Component, SceneTimeKey } from "@yagejs/core";
 import { GroundProbe } from "./GroundProbe.js";
 
 let engine: Engine | undefined;
@@ -1056,3 +1060,151 @@ it.each(["tall riser", "low ceiling"])(
     expect(body.positionY).toBeGreaterThan(89);
   },
 );
+
+it.each([0.5, 2])(
+  "carries riders at the platform's physics speed with entity timeScale %s",
+  async (scale) => {
+    const { floor, body, tick } = await setup();
+    const platformBody = floor.get(RigidBodyComponent);
+    platformBody.setType("kinematic");
+    const surface = floor.add(
+      new MovingSurface({
+        from: { x: 0, y: 100 },
+        to: { x: 1000, y: 100 },
+        speed: 60,
+      }),
+    );
+    floor.timeScale = scale;
+    tick(30);
+    expect(surface.velocity.x).toBeCloseTo(60 * scale, 1);
+    expect(body.velocityX).toBeCloseTo(60 * scale, 1);
+    expect(Math.abs(body.positionX - platformBody.positionX)).toBeLessThan(3);
+  },
+);
+
+it("publishes carry speed under an entity-scoped slow request", async () => {
+  const { floor, body, tick } = await setup();
+  floor.get(RigidBodyComponent).setType("kinematic");
+  const surface = floor.add(
+    new MovingSurface({
+      from: { x: 0, y: 100 },
+      to: { x: 1000, y: 100 },
+      speed: 60,
+    }),
+  );
+  floor.scene.use(SceneTimeKey).scaleEntityBy(floor, 0.5);
+  tick(30);
+  expect(surface.velocity.x).toBeCloseTo(30, 1);
+  expect(body.velocityX).toBeCloseTo(30, 1);
+});
+
+it.each([
+  "mask",
+  "surfaceFilter",
+  "actorFilter",
+  "obstructionFilter",
+  "actorObstructionFilter",
+  "sensor",
+])("does not report a crush through a rejected %s", async (reason) => {
+  const { scene, entity, tick } = await setup({ crush: true });
+  const wall = scene.spawn(Floor, { x: 24, y: 65, width: 20, height: 80 });
+  const platform = scene.spawn(Floor, {
+    x: -50,
+    y: 65,
+    width: 20,
+    height: 80,
+    kinematic: true,
+    mask: reason === "mask" ? 0 : 0xffff,
+  });
+  platform.add(
+    new MovingSurface({
+      from: { x: -50, y: 65 },
+      to: { x: 50, y: 65 },
+      speed: 40,
+    }),
+  );
+  if (reason === "surfaceFilter")
+    platform.get(ColliderComponent).setContactFilter(() => false);
+  if (reason === "actorFilter")
+    entity.get(ColliderComponent).setContactFilter((c) => c.other !== platform);
+  if (reason === "obstructionFilter")
+    wall.get(ColliderComponent).setContactFilter(() => false);
+  if (reason === "actorObstructionFilter")
+    entity.get(ColliderComponent).setContactFilter((c) => c.other !== wall);
+  if (reason === "sensor") platform.get(ColliderComponent).setSensor(true);
+  const crushed = vi.fn();
+  entity.on(PlatformerCrushedEvent, crushed);
+  tick(120);
+  expect(crushed).not.toHaveBeenCalled();
+});
+
+it.each([false, true])(
+  "accepts high-bit packed groups with unsigned=%s",
+  async (unsigned) => {
+    const signed = CollisionLayers.interactionGroups(0x8000, 0xffff);
+    const groups = unsigned ? signed >>> 0 : signed;
+    const { controller, input, body, tick } = await setup({
+      collisionGroups: groups,
+      collision: { solid: groups, volume: groups, wall: groups },
+      crush: true,
+    });
+    expect(controller.grounded).toBe(true);
+    input.jump();
+    tick();
+    expect(body.velocityY).toBeLessThan(0);
+  },
+);
+
+it.each(["airJumps", "airDashes"] as const)(
+  "rejects invalid %s before staged installation mutates the entity",
+  async (key) => {
+    const { scene } = await setup();
+    const actor = scene.spawn("custom-actor");
+    actor.add(new Transform());
+    actor.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
+    actor.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 16, height: 44 },
+        offset: { x: 0, y: -22 },
+      }),
+    );
+    const before = [...actor.getAll(Component)];
+    for (const value of [0.5, -1, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() =>
+        installPlatformer(actor, {
+          tuning: defaultPlatformerTuning(),
+          collision: { solid: -1, volume: -1, wall: -1 },
+          admission: { ...defaultPlatformerTuning(), [key]: value },
+        }),
+      ).toThrow(key);
+      expect(actor.getAll(Component)).toEqual(before);
+    }
+    const installed = installPlatformer(actor, {
+      tuning: defaultPlatformerTuning(),
+      collision: { solid: -1, volume: -1, wall: -1 },
+      admission: defaultPlatformerTuning(),
+    });
+    installed.startController({ demand: { direction: 0, down: false } });
+    installed.finish();
+  },
+);
+
+it("keeps a rider grounded on an entity-slowed rising platform", async () => {
+  const { floor, body, controller, tick } = await setup();
+  const platformBody = floor.get(RigidBodyComponent);
+  platformBody.setType("kinematic");
+  const surface = floor.add(
+    new MovingSurface({
+      from: { x: 0, y: 100 },
+      to: { x: 0, y: -1000 },
+      speed: 60,
+    }),
+  );
+  floor.timeScale = 0.5;
+  tick(30);
+  expect(surface.velocity.y).toBeCloseTo(-30, 1);
+  expect(controller.grounded).toBe(true);
+  expect(Math.abs(body.positionY - platformBody.positionY + 10)).toBeLessThan(
+    1,
+  );
+});

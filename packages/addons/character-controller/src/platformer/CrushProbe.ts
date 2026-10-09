@@ -1,4 +1,4 @@
-import { finite } from "../core/validate.js";
+import { finite, interactionGroup } from "../core/validate.js";
 import {
   Component,
   defineEvent,
@@ -29,7 +29,7 @@ export class CrushProbe extends Component {
 
   constructor(private readonly filterGroups: number) {
     super();
-    finite("CrushProbe", "filterGroups", filterGroups, 0);
+    interactionGroup("CrushProbe", "filterGroups", filterGroups);
   }
   onAdd(): void {
     this.world = this.use(PhysicsWorldKey);
@@ -59,6 +59,7 @@ export class CrushProbe extends Component {
     for (const { surface, delta } of pending) {
       const contact = surface.contactWith(this.collider, {
         prediction: Math.hypot(delta.x, delta.y) + CONTACT_SLOP,
+        solidOnly: true,
       });
       if (!contact) continue;
       const n = contact.normal;
@@ -77,6 +78,7 @@ export class CrushProbe extends Component {
       const tangentLength = Math.hypot(tangent.x, tangent.y);
       const options = {
         filterGroups: this.filterGroups,
+        solidFor: this.collider,
         excludeEntity: surface.entity,
         stopAtPenetration: false,
       };

@@ -1,5 +1,5 @@
 import type { MotionResolver } from "../core/MotionIntent.js";
-import { tuningNumbers } from "../core/validate.js";
+import { count, interactionGroup, tuningNumbers } from "../core/validate.js";
 import { Component, type Entity } from "@yagejs/core";
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import { GroundProbe } from "./GroundProbe.js";
@@ -70,9 +70,21 @@ export class PlatformerInstallation {
     private readonly setup: PlatformerSetup,
   ) {
     tuningNumbers("installPlatformer", setup.tuning);
-    tuningNumbers("installPlatformer collision", setup.collision);
-    if (setup.admission)
+    for (const [name, value] of Object.entries(setup.collision))
+      interactionGroup("installPlatformer collision", name, value);
+    if (setup.admission) {
       tuningNumbers("installPlatformer admission", setup.admission);
+      count(
+        "installPlatformer admission",
+        "airJumps",
+        setup.admission.airJumps,
+      );
+      count(
+        "installPlatformer admission",
+        "airDashes",
+        setup.admission.airDashes,
+      );
+    }
     const body = entity.get(RigidBodyComponent);
     const collider = entity.get(ColliderComponent);
     const shape = collider.config.shape;

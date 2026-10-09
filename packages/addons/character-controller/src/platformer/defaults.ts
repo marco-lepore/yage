@@ -1,6 +1,6 @@
 import type { MoveAdmissionTuning } from "./MoveAdmission.js";
 import type { PlatformerSetup } from "./installPlatformer.js";
-import { tuningNumbers } from "../core/validate.js";
+import { count, tuningNumbers } from "../core/validate.js";
 
 export interface PlatformerMoveTuning {
   readonly jumpSpeed: number;
@@ -93,11 +93,7 @@ export function defaultPlatformerTuning(
     throw new Error(
       `defaultPlatformerTuning: maxSlopeAngle must be < 90, got ${t.maxSlopeAngle}`,
     );
-  for (const key of ["airJumps", "airDashes"] as const) {
-    if (!Number.isSafeInteger(t[key]))
-      throw new Error(
-        `defaultPlatformerTuning: ${key} must be an integer, got ${t[key]}`,
-      );
-  }
+  count("defaultPlatformerTuning", "airJumps", t.airJumps);
+  count("defaultPlatformerTuning", "airDashes", t.airDashes);
   return Object.freeze(t);
 }

@@ -496,6 +496,12 @@ closest pair among all its parts. `prediction` (pixels, default 0) also
 reports pairs separated by up to that distance; further apart, or when either
 component has no live collider, the result is `undefined`.
 
+Pass `contactWith(other, { solidOnly: true })` when pass-through surfaces must
+not count as contact. It excludes sensors and pairs rejected by either
+collider's collision mask or contact filter. Filters use current positions and
+velocities with `dt: 0`. For compound colliders, the result is the closest
+permitted part pair. Without this option, the query measures geometry only.
+
 ## Velocity and Forces
 
 Prefer `setVelocity` for direct control. Use `applyImpulse` or `applyForce`
@@ -1164,9 +1170,9 @@ Practical notes:
   below). The sweep respects one-way behavior, including drop-through.
 - `oneWay` is part of the collider config. It has no effect on `sensor: true`
   colliders, since sensors never produce solid contacts.
-- World queries (`raycast`, `castShape`, `queryShape`, and `queryRadius`)
-  test geometry. They do not apply `oneWay`, `dropThrough`, or contact
-  filters, so a query hit alone does not mean a platform supports the rider.
+- World queries test geometry by default. Use `castShape` with `solidFor`
+  to apply one-way, drop-through, and contact filters. A geometric hit alone
+  does not mean a platform supports the rider.
 
 ## Contact Filters
 
@@ -1196,7 +1202,8 @@ after movement in an earlier step. If game code has since changed velocity,
 that velocity cannot reliably tell you which side the body came from. Use
 the built-in `oneWay` behavior for platforms.
 
-A `castShape` query with `solidFor` also runs contact filters, using current
+A `castShape` query with `solidFor` or a `contactWith` query with `solidOnly: true`
+also runs contact filters, using current
 poses and velocities with `dt: 0`. Do not run physics queries inside a filter.
 
 A few rules to keep filters healthy:

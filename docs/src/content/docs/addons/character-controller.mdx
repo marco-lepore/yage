@@ -286,7 +286,8 @@ is unavailable.
 ## Terrain and moving platforms
 
 `collisionGroups` sets the character collider’s membership and filter, packed
-with `CollisionLayers.interactionGroups(membership, filter)`.
+with `CollisionLayers.interactionGroups(membership, filter)`. Packed group options
+accept either signed or unsigned 32-bit integers.
 
 The `collision` option supplies physics query groups for ground (`solid`),
 headroom and terrain clearance (`volume`), and walls (`wall`). All default to
@@ -302,12 +303,15 @@ contact in game logic.
 two world points. Spawn moving platforms before characters so their next
 velocity is available to the character. Upward platform velocity contributes
 to jump height; downward platform velocity does not reduce a jump.
-Setting a platform's entity time scale to zero stops the platform and its
+Slowing or speeding up a platform's entity changes its path speed and rider
+carry speed together. Setting its entity time scale to zero stops the platform and its
 published carry velocity, so an unfrozen rider is not carried by a frozen surface.
 
 Set `crush: true` to receive `PlatformerCrushedEvent` when a translating box
 pushes the character into a fixed opposing face. The event names the surface,
-obstruction, and push direction. The game decides damage or recovery.
+obstruction, and push direction. Pushes respect collision groups and contact
+filters, and obstruction casts also respect the character's contact filters.
+The game decides damage or recovery.
 Rotating supports, angled crush wedges, and two moving crush blockers are
 unsupported.
 

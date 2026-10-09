@@ -334,6 +334,7 @@ collider.contactWith(other, {
   selfShapeIndex, // measure one shape pair; pass the indices from the event
   otherShapeIndex, // that fired. Omitted: the closest pair among all parts
   prediction, // px, default 0: touching or overlapping only
+  solidOnly: false, // true checks groups and contact filters, and excludes sensors
 }); // ColliderContact | undefined (further apart than prediction, or no live collider)
 // { point, otherPoint, normal, distance }: world px; point on this collider's
 // surface, otherPoint on the other's; normal unit, from this collider toward
@@ -344,6 +345,11 @@ collider.onTrigger((ev) => {
   if (c) spawnSparks(c.otherPoint, c.normal.scale(-1)); // on the other's surface, facing out
 });
 ```
+
+`contactWith(other, { solidOnly: true })` excludes sensors and pairs rejected
+by either collider's collision mask or contact filter. Filters receive current
+poses and velocities with `dt: 0`; compound queries return the closest permitted
+part pair. Omit the option for an unfiltered geometric measurement.
 
 Resizing:
 
@@ -476,7 +482,7 @@ riderCollider.isDroppingThrough; // boolean, true while the window is open
 - `direction` is in the platform body's local frame and rotates with the body.
 - A fast body is swept against static platforms every step, so it cannot cross one undetected. Against a kinematic platform, a body that travels more than the platform-plus-body thickness in one step crosses it unless it has `ccd: true`. The sweep honors one-way filtering, including drop-through.
 - `oneWay` is part of collider construction. It has no effect on `sensor: true` colliders (dev warning).
-- `raycast`, `castShape`, `queryShape`, and `queryRadius` test geometry; they do not apply `oneWay`, `dropThrough`, or contact filters. A query hit alone does not mean a platform supports the rider.
+- World queries test geometry by default. Use `castShape` with `solidFor` to apply one-way, drop-through, and contact filters. A geometric hit alone does not mean a platform supports the rider.
 
 ## Contact Filters
 
@@ -508,7 +514,7 @@ collider.setContactFilter(null); // remove
 - `setContactFilter` replaces the built-in filter a `oneWay` config installed. Register custom filters during normal component setup whenever the scene is constructed.
 - Contact pairs only — sensor/trigger pairs are unaffected.
 
-`castShape` with `solidFor` also runs these filters. Its candidates use current
+`castShape` with `solidFor` and `contactWith` with `solidOnly: true` also run these filters. Its candidates use current
 poses and velocities with `dt: 0`. Do not run physics queries inside a filter.
 
 ## CollisionLayers

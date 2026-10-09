@@ -1,4 +1,4 @@
-import { tuningNumbers } from "../core/validate.js";
+import { interactionGroup, tuningNumbers } from "../core/validate.js";
 import { Component } from "@yagejs/core";
 import {
   PhysicsWorldKey,
@@ -34,7 +34,9 @@ export class WallProbe extends Component {
 
   constructor(params: { tuning: WallProbeTuning }) {
     super();
-    tuningNumbers("WallProbe", params.tuning);
+    const { filterGroups, ...numbers } = params.tuning;
+    tuningNumbers("WallProbe", numbers);
+    interactionGroup("WallProbe", "filterGroups", filterGroups);
     this.tuning = Object.freeze({ ...params.tuning });
   }
 

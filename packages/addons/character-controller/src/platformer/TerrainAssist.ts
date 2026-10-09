@@ -1,4 +1,4 @@
-import { tuningNumbers } from "../core/validate.js";
+import { interactionGroup, tuningNumbers } from "../core/validate.js";
 import { Component, type Vec2Like } from "@yagejs/core";
 import {
   ColliderComponent,
@@ -38,6 +38,8 @@ export class TerrainAssist extends Component {
   ) {
     super();
     tuningNumbers("TerrainAssist", params.tuning);
+    interactionGroup("TerrainAssist", "solid", params.solid);
+    interactionGroup("TerrainAssist", "volume", params.volume);
     this.params = { ...params, tuning: Object.freeze({ ...params.tuning }) };
   }
 

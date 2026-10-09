@@ -1,6 +1,6 @@
 import type { MotionResolver } from "../core/MotionIntent.js";
 import type { InputManager } from "@yagejs/input";
-import { finite } from "../core/validate.js";
+import { interactionGroup } from "../core/validate.js";
 import { ServiceKey, Transform } from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import {
@@ -66,11 +66,7 @@ export function createPlatformer(
     collisionGroups: options.collisionGroups,
   })) {
     if (group === undefined) continue;
-    finite("createPlatformer", name, group, 0);
-    if (!Number.isInteger(group) || group > 0xffffffff)
-      throw new Error(
-        `createPlatformer: ${name} must be an unsigned 32-bit group, got ${group}`,
-      );
+    interactionGroup("createPlatformer", name, group);
   }
   if (!entity.scene._resolveScoped(PhysicsWorldKey))
     throw new Error(
