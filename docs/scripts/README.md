@@ -39,6 +39,46 @@ the group's virtual TypeScript files. Paths must be relative, end in `.ts` or
 the same check mode and contexts. The default virtual file is `index.ts`
 (`index.tsx` for TSX).
 
+## Readable examples and illustrative imports
+
+Show the setup the reader needs for the feature being taught: construct and
+mount components, resolve services, and identify which lifecycle or clock
+advances them. Once that setup is visible, reuse it through a group. Short
+examples do not need another engine, scene, or asset declaration each time.
+Gameplay methods belong in their entity or component. Do not introduce a
+parameterized helper just to give the checker typed variables.
+
+Unrelated game-owned types can use illustrative local imports. For example:
+
+````text
+```ts yage-fixture="input"
+import { Bullet } from "./Bullet.js";
+```
+````
+
+Explain beside the example that `Bullet` is the game's entity type and what
+its `setup()` accepts. The `input` fixture supplies that contract from
+`docs/scripts/snippet-fixtures/input/Bullet.ts`. Fixture files are external
+TypeScript modules containing imports and exported declarations, such as
+`export declare class Bullet extends Entity { ... }`. They have no runtime
+implementation. Use `.ts`, not `.d.ts`, so their types are checked even with
+`skipLibCheck` enabled for installed packages.
+
+`yage-fixture` selects one directory by name (letters, digits, `_`, or `-`).
+Its files become virtual files at the root of that fence's group, using the
+same relative import resolution as `yage-file`. Any fence in the group can
+select the fixture; different selections in one group fail. A missing fixture,
+an invalid contract, or a collision with a visible virtual file also fails.
+Fixture declarations do not reach other groups or pages. Their diagnostics
+name the fixture source file.
+
+Fixtures verify calls against the stated game contract, not the implementation
+of the game. They must not hide the feature's required YAGE setup. An imported
+game entity is appropriate; an imported, already-mounted player for the API
+being explained is not. Signature-only references may still use `declare`.
+
+## Typed contexts
+
 Every fence sees the type augmentations of every package, as a game with all
 of them installed does. For example, a `Scene` subclass's `lighting` field is
 checked against `@yagejs/lighting`'s options even if the fence never imports

@@ -102,15 +102,43 @@ A constantly-animated visual (rotating spinner) does its own per-frame animation
 
 ## Press-any-key flow
 
+Install `InputPlugin` with a `continue` action bound to the desired key. The
+prompt is added before loading starts so it receives `scene:loading:done`.
+
 ```ts
-import { Component, LoadingScene, Scene } from "@yagejs/core";
+import { Component, EventBusKey, LoadingScene, Scene } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
 import { LoadingSceneProgressBar } from "@yagejs/ui";
 
 class GameScene extends Scene {
   readonly name = "game";
 }
 
-declare class PressAnyKeyPrompt extends Component {} // game-specific; calls scene.continue() on input
+class PressAnyKeyPrompt extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private ready = false;
+  private unsub?: () => void;
+
+  override onAdd() {
+    const bus = this.scene.context.resolve(EventBusKey);
+    this.unsub = bus.on("scene:loading:done", (ev) => {
+      if (ev.scene !== this.scene) return;
+      this.ready = true;
+      // optionally spawn a "Press space" UI label
+    });
+  }
+
+  override onDestroy() {
+    this.unsub?.();
+  }
+
+  update() {
+    if (!this.ready) return;
+    if (this.input.isJustPressed("continue")) {
+      (this.scene as LoadingScene).continue();
+    }
+  }
+}
 
 class Boot extends LoadingScene {
   readonly target = new GameScene();

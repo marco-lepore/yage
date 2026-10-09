@@ -9,7 +9,7 @@ entity types to create, with what parameters, where, and under which parent.
 
 ## The four steps
 
-```ts yage-check="syntax" yage-reason="Imports a level file as a Vite JSON module, and the snippet checker resolves no JSON modules."
+```ts yage-fixture="levels" yage-group="project" yage-file="levelData.ts"
 import raw from "./levels/forest.yage-level.json";
 import {
   buildLevelCatalog,
@@ -26,7 +26,9 @@ if (!built.ok) throw new Error(built.errors[0]?.message);
 const read = readLevel(raw); // strict structural parse
 if (!read.ok) throw new Error(read.errors[0]?.message);
 
-const forest = prepareLevel(read.document, built.catalog); // semantic check + migrations
+export const catalog = built.catalog;
+export const levelDocument = read.document;
+export const forest = prepareLevel(levelDocument, catalog); // semantic check + migrations
 ```
 
 1. `readLevel(source)` — structural parse. `source` is the file's text or JSON
@@ -40,6 +42,10 @@ Steps 1–3 are pure and run once, outside the scene. Only step 4 touches a
 scene, and it is the one that throws.
 
 ## Declaring placeable entities
+
+Imports from `./gameplay.js` below represent game-owned types: `Chest(item, count)`,
+`Direction.fromName(name)`, and the door, chime, and switch behavior. The level
+declarations, catalog, preparation, and scene mounting remain in the examples.
 
 ```ts yage-group="project" yage-file="Crate.ts"
 import { Entity, Transform, Vec2 } from "@yagejs/core";
@@ -298,14 +304,10 @@ interface Param extends ParamObject {
 
 ## Values with a shape
 
-```ts
+```ts yage-fixture="levels"
+import { Chest, Spawner } from "./gameplay.js";
 import { Entity } from "@yagejs/core";
 import { defineParams, param, type ParamsOf } from "@yagejs/level";
-
-// Your game's own chest.
-declare class Chest {
-  constructor(item: string, count: number);
-}
 
 const WaveParams = defineParams({
   loot: param.object({
@@ -323,18 +325,13 @@ const WaveParams = defineParams({
 });
 
 class Wave extends Entity {
-  private chest?: Chest;
-
   setup(params: ParamsOf<typeof WaveParams>): void {
     // loot: { item: string; count: number }
-    this.chest = new Chest(params.loot.item, params.loot.count);
+    this.add(new Chest(params.loot.item, params.loot.count));
     // spawns: readonly { type: "slime" | "bat"; delay: number }[]
-    for (const spawn of params.spawns) this.queue(spawn.type, spawn.delay);
+    const spawner = this.add(new Spawner());
+    for (const spawn of params.spawns) spawner.queue(spawn.type, spawn.delay);
     // noise: JsonValue
-  }
-
-  private queue(type: "slime" | "bat", delay: number): void {
-    // schedule one spawn
   }
 }
 ```
@@ -395,14 +392,10 @@ interface Param extends ParamObject {
 
 ## Values the game decodes
 
-```ts
+```ts yage-fixture="levels"
+import { Direction } from "./gameplay.js";
 import { Entity } from "@yagejs/core";
 import { defineParams, param, type ParamsOf } from "@yagejs/level";
-
-// Your game's own type.
-declare class Direction {
-  static fromName(name: string): Direction;
-}
 
 const SlimeParams = defineParams({
   facing: param.custom<Direction>({
@@ -485,21 +478,16 @@ interface Param extends ParamObject {
 
 ## Pointing at another placement
 
-```ts
+```ts yage-fixture="levels"
+import { Door, Chime, SwitchMechanism } from "./gameplay.js";
 import {
   param,
   defineLevelEntity,
   defineParams,
   type ParamsOf,
 } from "@yagejs/level";
-import { Component, Entity, type EntityHandle } from "@yagejs/core";
-
-// Your game's own placeable types and component.
-declare class Door extends Entity {}
-declare class Chime extends Entity {}
-declare class SwitchMechanism extends Component {
-  constructor(door: EntityHandle<Door>);
-}
+import { Entity } from "@yagejs/core";
+import type { EntityHandle } from "@yagejs/core";
 
 const SwitchParams = defineParams({
   door: param.entityRef<Door>({ types: ["game.door"] }),
@@ -611,15 +599,11 @@ declaration's schema migrate placements authored against the other.
 
 ## Loading into a scene
 
-```ts
+```ts yage-group="project" yage-file="ForestScene.ts"
 import { Scene } from "@yagejs/core";
-import {
-  instantiateLevel,
-  levelAssets,
-  type PreparedLevel,
-} from "@yagejs/level";
+import { instantiateLevel, levelAssets } from "@yagejs/level";
 
-declare const forest: PreparedLevel; // from the four steps above
+import { forest } from "./levelData.js";
 
 class ForestScene extends Scene {
   readonly name = "forest";
@@ -662,17 +646,20 @@ their namespaces differ.
 
 `LevelInstance`:
 
-```ts
-import type { LevelInstance } from "@yagejs/level";
+```typescript yage-group="project" yage-file="instance.ts" yage-context="scene"
+import { instantiateLevel } from "@yagejs/level";
+import { forest } from "./levelData.js";
 
-declare const instance: LevelInstance; // what instantiateLevel returned
-declare const placementId: string;
-
-instance.id; // the document id
-instance.get(placementId); // Entity | undefined
-instance.entities; // readonly Entity[], parent before child
-instance.activate(); // after activation: "deferred"; throws if already activated
-instance.dispose(); // destroys this instance's entities and nothing else
+// Inside onEnter(), after the scene preloads levelAssets(forest):
+const instance = instantiateLevel(scene, forest, {
+  namespace: "room",
+  activation: "deferred",
+});
+instance.id; // document id
+instance.get("boss"); // placement id -> Entity | undefined
+instance.entities; // parent before child
+instance.activate(); // after deferred construction
+instance.dispose(); // destroys only this instance's entities
 instance.isDisposed;
 ```
 
@@ -696,17 +683,11 @@ logs a dev warning and falls back to `"default"`.
 
 ## Validation without loading
 
-```ts
-import {
-  validateLevel,
-  type LevelCatalog,
-  type LevelDocument,
-} from "@yagejs/level";
+```typescript yage-group="project" yage-file="validate.ts"
+import { validateLevel } from "@yagejs/level";
+import { levelDocument, catalog } from "./levelData.js";
 
-declare const document: LevelDocument;
-declare const catalog: LevelCatalog;
-
-const problems = validateLevel(document, catalog); // readonly LevelDiagnostic[]
+const problems = validateLevel(levelDocument, catalog);
 ```
 
 Every problem only a catalog can find: an unknown type, parameters that do not
@@ -741,15 +722,12 @@ loading; there is no warning severity.
 
 ## Creating a placement in a tool
 
-```ts yage-group="tool"
-import {
-  defaultParams,
-  type LevelCatalog,
-  type LevelPlacement,
-} from "@yagejs/level";
+```ts yage-group="project" yage-file="tool.ts"
+import { defaultParams, type LevelPlacement } from "@yagejs/level";
 
-declare const catalog: LevelCatalog;
-declare const x: number, y: number; // where the tool puts it
+import { catalog } from "./levelData.js";
+const x = 400,
+  y = 300; // placement coordinates in pixels
 
 const entry = catalog.get("game.crate");
 if (!entry) throw new Error('No entity type "game.crate" in the catalog.');
@@ -777,7 +755,7 @@ declaration never share an object.
 `describeParams(schema)` returns the data an authoring tool needs to render the
 schema without receiving its validators, decoders, or asset factories:
 
-```ts yage-group="tool"
+```ts yage-group="project" yage-file="tool.ts"
 import { describeParams } from "@yagejs/level";
 
 const fields = entry.declaration.params

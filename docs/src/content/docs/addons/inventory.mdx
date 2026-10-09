@@ -62,12 +62,19 @@ the item's initial, so a working inventory needs no art at all.
 2. **Define the catalog.** Item ids are the map keys and flow through the
    types — `items.add("potino")` is a compile error.
 
-   ```ts yage-group="quick-start"
+   ```ts yage-group="quick-start" yage-context="scene"
    import { defineItems } from "@yagejs-addons/inventory";
 
    const catalog = defineItems({
-     potion: { name: "Potion", maxStack: 5, description: "Heals 25 HP.", category: "consumable" },
-     sword: { name: "Iron Sword", category: "gear" },
+     potion: {
+       name: "Potion",
+       maxStack: 5,
+       description: "Heals 25 HP.",
+       category: "consumable",
+       actions: ["use", "drop"],
+     },
+     sword: { name: "Iron Sword", category: "gear", actions: ["drop"] },
+     goldKey: { name: "Gold Key", actions: ["drop"] },
    });
    ```
 
@@ -76,17 +83,12 @@ the item's initial, so a working inventory needs no art at all.
    *when* "Use" happens; what it *means* is yours. The component listens for
    `InventoryActionEvent` on its own entity.
 
-   ```ts yage-group="quick-start"
-   import { Component, Entity, Transform, type Vec2 } from "@yagejs/core";
+   ```ts yage-group="quick-start" yage-fixture="inventory" yage-context="scene"
+   import { Component, Entity, Transform } from "@yagejs/core";
    import { Inventory, InventoryActionEvent } from "@yagejs-addons/inventory";
 
-   // Your own component and entity type:
-   declare class Health extends Component {
-     heal(amount: number): void;
-   }
-   declare class Pickup extends Entity {
-     setup(params: { itemId: string; position: Vec2 }): void;
-   }
+   import { Health } from "./Health.js";
+   import { Pickup } from "./Pickup.js";
 
    /** The player's items, and what using or dropping one does. */
    class Backpack extends Component {
@@ -95,7 +97,7 @@ the item's initial, so a working inventory needs no art at all.
        capacity: 15, // slots; omit for an unbounded inventory
        actions: [
          { id: "use", label: "Use", consumes: true },
-         { id: "drop", label: "Drop" },
+         { id: "drop", label: "Drop", consumes: true },
        ],
      });
      private readonly transform = this.sibling(Transform);
@@ -106,29 +108,40 @@ the item's initial, so a working inventory needs no art at all.
          if (e.actionId === "use" && e.itemId === "potion") this.health.heal(25);
          if (e.actionId === "drop") {
            // Pickup is your own entity type for an item lying on the ground.
-           this.scene.spawn(Pickup, { itemId: e.itemId, position: this.transform.position });
+           this.scene.spawn(Pickup, {
+             itemId: e.itemId,
+             position: this.transform.worldPosition,
+           });
          }
        });
      }
    }
    ```
 
+   `Health` is your game’s component with `heal(amount)`. `Pickup` is your
+   dropped-item entity; its `setup()` accepts `itemId` and a world `position`.
+
 4. **Add the panel beside it.** Spread a factory bundle into
    `InventoryController`. The default input binding (keyboard/gamepad **and**
    mouse/touch, pointer hit-testing included) wires itself to the bundle's
    presenters. The scene only spawns the player.
 
-   ```ts yage-group="quick-start"
+   ```ts yage-group="quick-start" yage-context="scene"
    import { Scene } from "@yagejs/core";
    import { InventoryController } from "@yagejs-addons/inventory";
    import { createInventoryPanel } from "@yagejs-addons/inventory/presenters";
 
    class Player extends Entity {
      setup(): void {
-       // ...the player's Transform, sprite, Health, and controller
+       this.add(new Transform());
+       this.add(new Health());
        const bag = this.add(new Backpack());
+       bag.items.add("potion", 3);
        this.add(
-         new InventoryController({ ...createInventoryPanel(), inventory: bag.items }),
+         new InventoryController({
+           ...createInventoryPanel(),
+           inventory: bag.items,
+         }),
        );
      }
    }
@@ -143,6 +156,34 @@ the item's initial, so a working inventory needs no art at all.
    ```
 
 </Steps>
+
+Start the engine with the renderer and input plugins. These bindings cover
+every default panel action. Press I to open the panel.
+
+```ts yage-group="quick-start" yage-context="scene"
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { InputPlugin } from "@yagejs/input";
+
+const engine = new Engine();
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
+engine.use(
+  new InputPlugin({
+    actions: {
+      inventory: ["KeyI"],
+      cancel: ["Escape"],
+      interact: ["Enter"],
+      sort: ["KeyR"],
+      "move-up": ["ArrowUp"],
+      "move-down": ["ArrowDown"],
+      "move-left": ["ArrowLeft"],
+      "move-right": ["ArrowRight"],
+    },
+  }),
+);
+await engine.start();
+await engine.scenes.push(new MyScene());
+```
 
 Press the `inventory` action (bind a key to it in your `InputPlugin` map) or
 call `toggle()` on the `InventoryController` — the panel opens with cursor
@@ -194,19 +235,16 @@ model. A component reaches it through the entity that carries it:
 query, or the reference `spawn()` returned. The classic locked-door interaction
 never touches the UI:
 
-```ts
-import type { Inventory } from "@yagejs-addons/inventory";
+```typescript yage-group="quick-start" yage-context="scene"
+class LockedDoor extends Component {
+  open = false;
 
-declare const keyItems: Inventory; // a "Key Items" section, see below
-declare const door: { open(): void };
-declare const hud: { toast(message: string): void };
-
-// On interacting with the door:
-if (keyItems.has("goldKey")) {
-  keyItems.remove("goldKey", 1);
-  door.open();
-} else {
-  hud.toast("Locked. It wants a gold key.");
+  interact(player: Entity): void {
+    const items = player.get(Backpack).items;
+    if (!items.has("goldKey")) return;
+    items.remove("goldKey", 1);
+    this.open = true;
+  }
 }
 ```
 
@@ -214,13 +252,15 @@ Pickups are the same — and **partial acceptance is a normal result**, not
 an error:
 
 ```ts
-import type { Inventory } from "@yagejs-addons/inventory";
+import { defineItems, Inventory } from "@yagejs-addons/inventory";
 
-declare const inventory: Inventory;
-declare const pickup: { quantity: number }; // the arrows lying on the floor
-
-const res = inventory.add("arrows", 20); // { added, rejected, reason?, slots }
-if (res.added > 0) pickup.quantity -= res.added; // what didn't fit stays on the floor
+const inventory = new Inventory({
+  catalog: defineItems({ arrows: { name: "Arrows", maxStack: 10 } }),
+  capacity: 1,
+});
+const pickup = { quantity: 20 };
+const res = inventory.add("arrows", pickup.quantity);
+pickup.quantity -= res.added; // 10 fit; 10 stay on the floor
 ```
 
 The controller mirrors every model event onto the entity bus (open **or**
@@ -261,7 +301,12 @@ To act on a **specific** instance, select it by a data predicate
 `(data, stack) => boolean`, or grab a handle:
 
 ```ts
-import { defineItems, instanceData, Inventory, type ItemStack } from "@yagejs-addons/inventory";
+import {
+  defineItems,
+  instanceData,
+  Inventory,
+  type ItemStack,
+} from "@yagejs-addons/inventory";
 
 // Each item declares its stack-data shape (see "Typed per-stack data" below):
 const inventory = new Inventory({
@@ -271,8 +316,10 @@ const inventory = new Inventory({
   }),
 });
 
-declare function openDoor(): void;
-declare function dropOnGround(stacks: readonly ItemStack[]): void;
+inventory.add("key", 1, { data: { opens: "boss-lair" } });
+inventory.add("herb", 1, { data: { quality: 30 } });
+let doorOpen = false;
+const dropped: ItemStack[] = [];
 
 // Query by data condition:
 inventory.count("herb", (d) => d.quality > 80); // how many good herbs
@@ -282,13 +329,13 @@ inventory.has("key", (d) => d.opens === "boss-lair"); // do I hold THE key
 const bossKey = inventory.find("key", (d) => d.opens === "boss-lair");
 if (bossKey) {
   inventory.remove(bossKey); // takes exactly that stack, returns its data
-  openDoor();
+  doorOpen = true;
 }
 
 // findAll + predicate remove for bulk instance work:
 for (const ref of inventory.findAll("herb", (d) => d.quality < 50)) {
   const { stacks } = inventory.remove(ref);
-  dropOnGround(stacks); // payload intact
+  dropped.push(...stacks); // keep the payload for the game’s pickup entities
 }
 ```
 
@@ -349,16 +396,17 @@ itself as success. `move` also reports what happened on success, in
 same way (`"empty"` for an empty slot, `"no-action"` when the action isn't
 currently offered).
 
-```ts
-import type { Inventory } from "@yagejs-addons/inventory";
+```typescript
+import { defineItems, Inventory } from "@yagejs-addons/inventory";
 
-declare const inventory: Inventory;
-declare function showToast(message?: string): void;
-declare function playMergeSound(): void;
-
-const result = inventory.move(0, 3);
-if (!result.ok) showToast(result.reason); // "empty" | "same-slot" | "out-of-range"
-else if (result.effect === "merged") playMergeSound();
+const inventory = new Inventory({
+  catalog: defineItems({ potion: { name: "Potion", maxStack: 5 } }),
+  capacity: 3,
+});
+inventory.add("potion", 7); // slots 0 and 1 hold 5 and 2
+const result = inventory.move(1, 2);
+if (!result.ok) console.log("Move refused:", result.reason);
+else console.log(result.effect); // "moved"
 ```
 
 `sort()` is the Sort-button behavior games expect: it compacts, **consolidates**
@@ -533,23 +581,21 @@ Beyond the theme dials, three **render-delegate presets** on the factory
 options own the drawing while the view keeps placement and hit-testing — so a
 restyle can never desync its hit-targets from what it draws:
 
-```ts
+`myMenuSkin` and `myHints` are your game’s `MenuSkinFactory` and `HintsFactory`
+implementations. Spread the resulting bundle into the controller shown above.
+
+```typescript yage-fixture="inventory"
 import {
   createInventoryPanel,
   defaultInventoryTheme,
   rowCell,
-  type HintsFactory,
-  type MenuSkinFactory,
 } from "@yagejs-addons/inventory/presenters";
+import { myMenuSkin, myHints } from "./inventory-style.js";
 
-declare const myMenuSkin: MenuSkinFactory; // your own (theme) => MenuSkinPresenter
-declare const myHints: HintsFactory; // your own (theme) => HintsPresenter
-
-const theme = defaultInventoryTheme();
-const bundle = createInventoryPanel(theme, {
-  cell: rowCell,        // a cell's look (iconCell / rowCell built-in)
-  menuSkin: myMenuSkin, // the action-menu frame, rows, and highlight bar
-  hints: myHints,       // the scroll affordance (default ▲/▼ triangles)
+const bundle = createInventoryPanel(defaultInventoryTheme(), {
+  cell: rowCell,
+  menuSkin: myMenuSkin,
+  hints: myHints,
 });
 ```
 
@@ -567,38 +613,32 @@ The default configuration is a self-sufficient panel: it centers itself, draws
 its own chrome, toggles on the `inventory` action, and Esc closes it. Living
 inside an existing menu uses the same API — you just turn features off:
 
-```ts
-import type { Entity } from "@yagejs/core";
-import { InventoryController, type Inventory } from "@yagejs-addons/inventory";
-import { createInventoryPanel, defaultInventoryTheme } from "@yagejs-addons/inventory/presenters";
+`focusTabs` is your game’s action for returning focus to the tab bar.
+Keep `embedded` in your menu. Call `embedded.open()` when the items
+tab gains focus, `embedded.move("down")` from its down handler, and `embedded.confirm()`
+from its confirm handler. The host entity owns controller teardown. The player’s original controller
+stays attached so it continues to deliver model events to `Backpack`, even
+when its panel is closed.
 
-declare const host: Entity;
-declare const inventory: Inventory;
-// The game's own menu system:
-declare const menu: {
-  focusTabs(): void;
-  onTabFocus(tab: string, fn: () => void): void;
-  onKey(key: string, fn: () => void): void;
-};
+```typescript yage-group="quick-start" yage-context="scene" yage-fixture="inventory"
+import { focusTabs } from "./menu.js";
 
-const theme = defaultInventoryTheme();
-const bundle = createInventoryPanel(theme, {
-  chrome: false,                                        // the host menu draws the frame
-  bounds: { x: 320, y: 96, width: 344, height: 300 },   // sit inside the host's layout
-});
-const ctrl = host.add(new InventoryController({
-  ...bundle,
-  inventory,
-  input: null,             // no device binding — the host menu owns input
-  closeOnCancel: false,    // cancel returns to the host, not "close the panel"
-  onCancel: () => menu.focusTabs(),
-}));
-
-// The host drives the panel through the same controller methods the default
-// bindings call:
-menu.onTabFocus("items", () => ctrl.open());
-menu.onKey("down", () => ctrl.move("down"));
-menu.onKey("confirm", () => ctrl.confirm());
+const menuPlayer = scene.findByKey("player");
+if (!menuPlayer) throw new Error("Spawn the player before the menu");
+const menuItems = menuPlayer.get(Backpack).items;
+const menuHost = scene.spawn("embedded-inventory");
+const embedded = menuHost.add(
+  new InventoryController({
+    ...createInventoryPanel(undefined, {
+      chrome: false,
+      bounds: { x: 320, y: 96, width: 344, height: 300 },
+    }),
+    inventory: menuItems,
+    input: null,
+    closeOnCancel: false,
+    onCancel: focusTabs,
+  }),
+);
 ```
 
 Disabling `InventoryController`, or deactivating its entity, hides the panel,
@@ -626,17 +666,16 @@ Sections (Items / Key Items / Materials) are separate `Inventory` instances —
 each with its own capacity, filter, and actions. Present them with separate
 controllers, or reuse one panel and swap the model per tab:
 
-```ts
-import type { Inventory, InventoryController } from "@yagejs-addons/inventory";
-
-declare const ctrl: InventoryController;
-declare const keyItems: Inventory;
-declare const backpack: Inventory;
-declare const tabBar: { onSelect(fn: (tab: string) => void): void }; // the game's tab UI
-
-tabBar.onSelect((tab) => {
-  ctrl.setSource(tab === "key" ? keyItems : backpack, { title: tab === "key" ? "Key Items" : "Backpack" });
+```typescript yage-group="quick-start" yage-context="scene"
+const keyItems = new Inventory({
+  catalog,
+  accepts: (def) => def.id === "goldKey",
 });
+
+// In the Key Items tab handler:
+embedded.setSource(keyItems, { title: "Key Items" });
+// In the Backpack tab handler:
+embedded.setSource(menuItems, { title: "Backpack" });
 ```
 
 For chest/transfer screens, show two controllers side by side (position via
@@ -651,24 +690,27 @@ between it and the main bag by an explicit transfer. Sometimes the goal is
 different: show a SUBSET of the SAME bag, so using an item in either surface
 is one mutation. `filteredView` builds that subset:
 
-```ts
-import type { Entity } from "@yagejs/core";
-import { filteredView, InventoryController, type Inventory } from "@yagejs-addons/inventory";
-import { createInventoryPanel, defaultInventoryTheme } from "@yagejs-addons/inventory/presenters";
+This reuses the player’s `Backpack` from the setup above and mounts a separate
+hotbar entity in the same scene.
 
-declare const host: Entity;
-declare const backpack: Inventory;
-const hotbarBundle = createInventoryPanel(defaultInventoryTheme(), { columns: 8, visibleRows: 1 });
+```typescript yage-group="quick-start" yage-context="scene"
+import { filteredView } from "@yagejs-addons/inventory";
 
-const usable = filteredView(backpack, (stack, def) => def.actions?.includes("use") ?? false);
-
-// Present it exactly like an Inventory — pass it to `inventory`, or swap it
-// into an existing panel with setSource:
-host.add(new InventoryController({ ...hotbarBundle, inventory: usable }));
-
-usable.invokeAction("use", 0);   // presented index 0, remapped to the real slot underneath
-usable.modelSlot(0);             // the real backpack slot, if you need it directly
-usable.source;                  // the underlying Inventory
+const usable = filteredView(
+  menuItems,
+  (_stack, def) => def.actions?.includes("use") ?? false,
+);
+const hotbar = scene.spawn("hotbar");
+const hotbarController = hotbar.add(
+  new InventoryController({
+    ...createInventoryPanel(undefined, { columns: 8, visibleRows: 1 }),
+    inventory: usable,
+    input: null,
+  }),
+);
+// Open it from the game's hotbar handler: hotbarController.open();
+usable.modelSlot(0); // corresponding backpack slot
+usable.source; // the same inventory, not a copy
 ```
 
 The view is hole-free and compacted: only matching stacks appear, packed from
@@ -702,14 +744,17 @@ import {
   Inventory,
   type InventorySnapshot,
   type ItemActionDef,
-  type ItemCatalog,
+  defineItems,
 } from "@yagejs-addons/inventory";
 
 const save = createSave({ adapter: localStorageAdapter() });
 
-// The same catalog and actions as in the quick start.
-declare const catalog: ItemCatalog;
-declare const actions: ItemActionDef[];
+// A saveable inventory declares its catalog and actions at construction.
+const catalog = defineItems({
+  potion: { name: "Potion", maxStack: 5 },
+  sword: { name: "Iron Sword", actions: [] },
+});
+const actions: ItemActionDef[] = [{ id: "use", label: "Use", consumes: true }];
 export const playerItems = new Inventory({ catalog, capacity: 15, actions });
 
 export const gameState: Serializable<{ inventory: InventorySnapshot }> = {

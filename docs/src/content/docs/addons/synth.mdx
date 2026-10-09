@@ -106,14 +106,26 @@ gust swells baked inside the loop. `dialogueBeeps` is speech chatter for
 text reveals — short blips around a base pitch with syllable-like rests:
 
 ```ts yage-context="engine"
-import type { AudioManager } from "@yagejs/audio";
 import { SynthPlugin, synthPresets } from "@yagejs-addons/synth";
 
-declare const audio: AudioManager; // this.use(AudioManagerKey), as above
+engine.use(
+  new SynthPlugin({
+    sounds: {
+      "voice/guard": synthPresets.dialogueBeeps({
+        frequency: 220,
+        phraseSeed: 4,
+      }),
+    },
+  }),
+);
+```
 
-engine.use(new SynthPlugin({
-  sounds: { "voice/guard": synthPresets.dialogueBeeps({ frequency: 220, phraseSeed: 4 }) },
-}));
+After initialization, play the configured sound from a component method:
+
+```ts yage-context="component"
+import { AudioManagerKey } from "@yagejs/audio";
+
+const audio = this.use(AudioManagerKey);
 
 const talking = audio.play("voice/guard", { loop: true, channel: "voice" });
 audio.stop(talking); // when the line finishes revealing
@@ -217,17 +229,32 @@ A rendered buffer sounds identical every time it plays. Two ways to break that
 up:
 
 ```ts yage-context="engine"
-import type { AudioManager } from "@yagejs/audio";
-import type { RandomService } from "@yagejs/core";
-import { SynthPlugin, synthPresets, synthVariantAliases } from "@yagejs-addons/synth";
-
-declare const audio: AudioManager; // this.use(AudioManagerKey)
-declare const random: RandomService; // this.use(RandomKey)
+import {
+  SynthPlugin,
+  synthPresets,
+  synthVariantAliases,
+} from "@yagejs-addons/synth";
 
 // Several takes, picked at random per play.
-engine.use(new SynthPlugin({
-  sounds: { shoot: { sound: synthPresets.shoot(), variants: 4, detune: 0.08 } },
-}));
+engine.use(
+  new SynthPlugin({
+    sounds: {
+      shoot: { sound: synthPresets.shoot(), variants: 4, detune: 0.08 },
+    },
+  }),
+);
+```
+
+After initialization, play the configured sound from a component method:
+
+```ts yage-context="component"
+import { AudioManagerKey } from "@yagejs/audio";
+import { synthVariantAliases } from "@yagejs-addons/synth";
+import { RandomKey } from "@yagejs/core";
+
+const audio = this.use(AudioManagerKey);
+const random = this.use(RandomKey);
+
 audio.playRandom(synthVariantAliases("shoot", 4));
 
 // Or jitter the playback rate at the call site, with the scene's random
@@ -246,12 +273,21 @@ the buffer comes out slightly shorter than `duration` — don't schedule
 anything against the exact requested length:
 
 ```ts yage-context="engine"
-import type { AudioManager } from "@yagejs/audio";
 import { SynthPlugin, synthPresets } from "@yagejs-addons/synth";
 
-declare const audio: AudioManager; // this.use(AudioManagerKey)
+engine.use(
+  new SynthPlugin({
+    sounds: { ambience: synthPresets.roomTone({ duration: 6 }) },
+  }),
+);
+```
 
-engine.use(new SynthPlugin({ sounds: { ambience: synthPresets.roomTone({ duration: 6 }) } }));
+After initialization, play the configured sound from a component method:
+
+```ts yage-context="component"
+import { AudioManagerKey } from "@yagejs/audio";
+
+const audio = this.use(AudioManagerKey);
 
 audio.play("ambience", { loop: true, channel: "music" });
 ```

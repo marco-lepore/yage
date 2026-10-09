@@ -1,0 +1,16 @@
+export declare function resume(): void;
+export declare function openOptions(): void;
+export declare function quit(): void;
+export declare function playCursorCue(): void;
+export declare function upload(): void;
+export declare function load(id: string): void;
+export declare function deleteSave(): void;
+export declare function setGlow(on: boolean): void;
+export declare function showDetail(): void;
+export declare function hideDetail(): void;
+export declare function pause(): void;
+export declare function save(): void;
+export declare function onConfirm(): void;
+export declare function onCancel(): void;
+export declare function onResume(): void;
+export declare function onLoad(): void;

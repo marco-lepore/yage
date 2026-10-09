@@ -31,22 +31,30 @@ The smallest emitter needs only a lifetime — with no texture, particles are
 white squares you can color with `tint`. The default shape is a single pixel,
 so set `scale` to the size you want:
 
-```typescript yage-context="entity"
+```typescript yage-context="scene"
+import { Transform } from "@yagejs/core";
 import { ParticleEmitterComponent } from "@yagejs/particles";
 
-const sparkle = entity.add(new ParticleEmitterComponent({
-  lifetime: [0.3, 0.6],
-  speed: [60, 120],
-  angle: [0, Math.PI * 2],
-  scale: [2, 4],
-  tint: 0xffdd55,
-}));
+// Inside Scene.onEnter(), after installing RendererPlugin and ParticlesPlugin.
+const entity = scene.spawn("sparkle");
+entity.add(new Transform());
+const sparkle = entity.add(
+  new ParticleEmitterComponent({
+    lifetime: [0.3, 0.6],
+    speed: [60, 120],
+    angle: [0, Math.PI * 2],
+    scale: [2, 4],
+    tint: 0xffdd55,
+  }),
+);
 
 sparkle.burst(20);
 ```
 
 For an image asset, pass `texture` — a texture, a texture handle, or an
-asset key string:
+asset key string. Preload `Particle` through the scene’s `readonly preload =
+[Particle]` and declare an `effects` render layer. In `onEnter()`, add the
+emitter to an entity with a `Transform`, as above:
 
 ```typescript yage-group="emitter" yage-context="entity"
 import { texture } from "@yagejs/renderer";
@@ -283,21 +291,16 @@ end of life.
 
 `configure` changes an emitter from now on. Overrides passed to `burst` change
 only the particles of that one burst, and leave the emitter's configuration and
-every live particle as they were.
+every live particle as they were. The following uses the emitter created above.
 
-```typescript
-import type { ParticleEmitterComponent } from "@yagejs/particles";
+```typescript yage-group="emitter" yage-context="entity"
+emitter.configure({ rate: 40, tint: 0x3399ff });
 
-declare const torch: ParticleEmitterComponent;
-declare const sparks: ParticleEmitterComponent;
-
-// From now on the torch emits more particles, tinted blue.
-torch.configure({ rate: 40, tint: 0x3399ff });
-
-// Each hit sends its sparks along the swing, without changing the emitter.
-function onHit(hitX: number, hitY: number, swing: number) {
-  sparks.burst(8, hitX, hitY, { angle: [swing - 0.2, swing + 0.2] });
-}
+// A burst can override the direction without reconfiguring the emitter.
+const hitX = 400,
+  hitY = 300,
+  swing = Math.PI / 4;
+emitter.burst(8, hitX, hitY, { angle: [swing - 0.2, swing + 0.2] });
 ```
 
 When a `configure` change takes effect depends on the option:

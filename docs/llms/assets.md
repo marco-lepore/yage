@@ -51,19 +51,30 @@ class GameScene extends Scene {
 `scenes.preload(scene, onProgress?)` loads a scene's manifest before you push
 it, so the push enters straight away:
 
-```ts yage-context="engine"
-import { Scene } from "@yagejs/core";
-import type { UIProgressBar } from "@yagejs/ui";
+Add `LevelTravel` after a `UISurface` on the current HUD entity, with
+`RendererPlugin` and `UIPlugin` installed. Call `loadNextLevel()` from a button
+handler; the current scene stays visible while its bar fills.
+
+```typescript
+import { Component, Scene, SceneManagerKey } from "@yagejs/core";
+import { texture } from "@yagejs/renderer";
+import { UIProgressBar, UISurface } from "@yagejs/ui";
 
 class Level2 extends Scene {
   readonly name = "level2";
+  readonly preload = [texture("assets/level2.png")];
 }
 
-declare const bar: UIProgressBar;
-const level2 = new Level2();
-
-await engine.scenes.preload(level2, (ratio) => bar.update({ value: ratio }));
-await engine.scenes.replace(level2);
+class LevelTravel extends Component {
+  async loadNextLevel() {
+    const bar = new UIProgressBar({ width: 240, height: 16, value: 0 });
+    this.entity.get(UISurface).addElement(bar);
+    const scenes = this.use(SceneManagerKey);
+    const level2 = new Level2();
+    await scenes.preload(level2, (ratio) => bar.update({ value: ratio }));
+    await scenes.replace(level2);
+  }
+}
 ```
 
 The push consumes that load instead of loading again, so the manifest is
@@ -227,13 +238,14 @@ const HeroTex = texture(asset("assets/hero.png"));
 
 ## Custom Loaders
 
-```ts yage-context="context"
+`level-format.js` is your game’s parser module. It exports `parseLevel`, which
+accepts an `ArrayBuffer` and returns your `Level` data type.
+
+```ts yage-context="context" yage-fixture="assets"
 import { AssetManagerKey, AssetHandle } from "@yagejs/core";
 
-interface Level {
-  /* your level data */
-}
-declare function parseLevel(data: ArrayBuffer): Level; // your format's parser
+import { parseLevel } from "./level-format.js";
+import type { Level } from "./level-format.js";
 
 context.resolve(AssetManagerKey).registerLoader("levelfmt", {
   async load(path: string): Promise<Level> {

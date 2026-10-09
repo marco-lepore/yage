@@ -322,28 +322,30 @@ collider.getOverlappingComponents(Health); // Component[]
 
 Contact geometry for any pair, sensors included (trigger events carry none):
 
-```ts yage-context="entity,scene" yage-group="collider"
-import type { Vec2 } from "@yagejs/core";
+```typescript yage-fixture="physics"
+import { Component } from "@yagejs/core";
+import { ColliderComponent } from "@yagejs/physics";
+import { Sparks } from "./Sparks.js";
 
-declare const other: ColliderComponent; // another entity's collider
-declare const selfShapeIndex: number, otherShapeIndex: number;
-declare const prediction: number;
-declare function spawnSparks(at: Vec2, facing: Vec2): void;
-
-collider.contactWith(other, {
-  selfShapeIndex, // measure one shape pair; pass the indices from the event
-  otherShapeIndex, // that fired. Omitted: the closest pair among all parts
-  prediction, // px, default 0: touching or overlapping only
-  solidOnly: false, // true checks groups and contact filters, and excludes sensors
-}); // ColliderContact | undefined (further apart than prediction, or no live collider)
-// { point, otherPoint, normal, distance }: world px; point on this collider's
-// surface, otherPoint on the other's; normal unit, from this collider toward
-// the other (the shortest way out when overlapping); distance negative by the
-// penetration depth when overlapping. A geometric query on current poses, no step needed.
-collider.onTrigger((ev) => {
-  const c = collider.contactWith(ev.otherCollider, ev);
-  if (c) spawnSparks(c.otherPoint, c.normal.scale(-1)); // on the other's surface, facing out
-});
+// Sparks is a game entity accepting { position: Vec2, direction: Vec2 }.
+// Mount ContactSparks after the sensor collider.
+class ContactSparks extends Component {
+  onAdd() {
+    const collider = this.entity.get(ColliderComponent);
+    this.addCleanup(
+      collider.onTrigger((event) => {
+        if (!event.entered) return;
+        const contact = collider.contactWith(event.otherCollider, event);
+        if (contact) {
+          this.scene.spawn(Sparks, {
+            position: contact.otherPoint,
+            direction: contact.normal.scale(-1),
+          });
+        }
+      }),
+    );
+  }
+}
 ```
 
 `contactWith(other, { solidOnly: true })` excludes sensors and pairs rejected
@@ -455,25 +457,27 @@ Removing just the collider (`entity.remove(ColliderComponent)`) frees the Rapier
 
 ## One-Way Platforms
 
-```ts yage-context="entity,scene" yage-group="collider"
-import type { Entity } from "@yagejs/core";
+```typescript yage-context="scene"
+import { Transform, Vec2 } from "@yagejs/core";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 
-declare const platform: Entity; // has a Transform and a static RigidBodyComponent
-declare const riderCollider: ColliderComponent; // the player's collider
-
+const platform = scene.spawn("one-way-platform");
+platform.add(new Transform({ position: new Vec2(400, 300) }));
+platform.add(new RigidBodyComponent({ type: "static" }));
 platform.add(
   new ColliderComponent({
     shape: { type: "box", width: 96, height: 8 },
-    oneWay: {}, // solid from above, passable from below
-    // oneWay: {
-    //   direction: { x: 0, y: -1 },          // solid-face direction, body-local; default up; non-zero, both finite
-    //   margin: 4,                           // px of overlap that still lands; default 4; finite
-    // }
+    oneWay: {},
   }),
 );
+```
 
-riderCollider.dropThrough(0.2); // this body falls through one-way platforms for 0.2s
-riderCollider.isDroppingThrough; // boolean, true while the window is open
+In the player's down-and-jump handler, request a drop on its own body:
+
+```ts yage-context="component"
+import { ColliderComponent } from "@yagejs/physics";
+
+this.entity.get(ColliderComponent).dropThrough(0.25);
 ```
 
 - A body lands on the face `direction` points at, passes through from every other side, and a body already inside the platform keeps passing until clear — it is never snapped to the surface.
@@ -541,35 +545,40 @@ returns `null` or an empty array with no error.
 
 ## PhysicsWorld
 
-```ts yage-context="scene"
-import type { Entity, Vec2Like } from "@yagejs/core";
+Call from a movement component with its scene and entity after physics setup.
+These queries share concrete pixel coordinates and skip the mover’s collider.
+
+```typescript yage-context="component"
+import type { Entity, Scene } from "@yagejs/core";
 import {
   PhysicsWorldKey,
   type ColliderShape,
   type QuerySensorMode,
 } from "@yagejs/physics";
 
-// Arguments of the calls below
-declare const origin: Vec2Like, direction: Vec2Like, maxDistance: number;
-declare const shape: ColliderShape, position: Vec2Like, rotation: number;
-declare const center: Vec2Like, radius: number, excludeEntity: Entity;
-declare const filterGroups: number, sensors: QuerySensorMode, dt: number;
+const origin = { x: 100, y: 100 },
+  direction = { x: 0, y: 1 };
+const maxDistance = 80;
+const shape: ColliderShape = { type: "box", width: 20, height: 20 };
+const position = origin,
+  center = origin,
+  rotation = 0,
+  radius = 40;
+const sensors: QuerySensorMode = "exclude";
 
 // Scene-scoped key: the physics plugin's `beforeEnter` hook registers
 // the active scene's `PhysicsWorld` on its scope; a component resolves the
 // same world with `this.use(PhysicsWorldKey)`. Use `PhysicsWorldManagerKey`
 // (engine-scope) only for cross-scene enumeration.
-const world = scene.use(PhysicsWorldKey);
+const world = this.use(PhysicsWorldKey);
 
 // Gravity
 world.setGravity(0, -980);
 
 // Raycast direction can be any non-zero vector (normalized internally,
 // e.g. target.sub(origin) works). A zero-length direction throws.
-// filterGroups is a packed membership+filter pair, not a layer bitmask.
-// Build it with CollisionLayers.interactionGroups; a raw layer bit matches nothing.
+// Omit filterGroups to query every collision layer.
 const hit = world.raycast(origin, direction, maxDistance, {
-  filterGroups,
   sensors,
 });
 // hit: { entity, point: Vec2, normal: Vec2, distance } | null
@@ -577,24 +586,18 @@ const hit = world.raycast(origin, direction, maxDistance, {
 // Overlap queries — what a shape touches where it already stands
 world.queryShape(shape, position, {
   rotation,
-  filterGroups,
-  excludeEntity,
+  excludeEntity: this.entity,
   sensors,
 }); // Entity[]
-world.queryRadius(center, radius, { filterGroups, excludeEntity, sensors }); // Entity[]
+world.queryRadius(center, radius, { excludeEntity: this.entity, sensors }); // Entity[]
 // What an existing collider overlaps: collider.getOverlapping() (see ColliderComponent).
 
 // sensors: "exclude" (default) reports solid colliders only, "include" reports
 // both, "only" reports sensors. On raycast, castShape, queryShape, queryRadius.
 world.raycast(origin, direction, maxDistance, { sensors: "include" });
 
-// Advance the simulation directly (a scene's PhysicsSystem does this for you).
-// dt must be finite and >= 0; 0 rebuilds the query index without moving
-// anything. Each step queues its collision events. Code that calls step
-// directly must also call processCollisionEvents() to deliver them, or the
-// queued pairs build up.
-world.step(dt);
-world.processCollisionEvents();
+// PhysicsPlugin advances this scene's world and delivers collision events.
+// Do not also call world.step() from game update code.
 
 // Shape cast — sweep a shape along a direction and report the first hit.
 // Same result shape as raycast: `distance` is how far the shape travelled,
@@ -603,8 +606,7 @@ world.processCollisionEvents();
 // Direction is normalized internally; a zero-length direction throws.
 const swept = world.castShape(shape, origin, direction, maxDistance, {
   rotation,
-  filterGroups,
-  excludeEntity, // pass the mover when the sweep starts inside its own collider
+  excludeEntity: this.entity, // pass the mover when the sweep starts inside its own collider
   sensors,
   stopAtPenetration: true, // false allows movement out of an initial overlap
 });
@@ -676,15 +678,54 @@ Use `castShape` to test a move before committing to it: carrying a rider on a mo
 rigid bodies already added to the same world. Both entities must be active.
 
 ```ts yage-context="scene" yage-group="joints"
-import { PhysicsWorldKey, type RigidBodyComponent } from "@yagejs/physics";
+import { PhysicsWorldKey } from "@yagejs/physics";
 
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+
+class JointBox extends Entity {
+  setup(params: { type: "static" | "dynamic"; x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(params.x, params.y) }));
+    this.add(new RigidBodyComponent({ type: params.type }));
+    this.add(
+      new ColliderComponent({ shape: { type: "box", width: 20, height: 20 } }),
+    );
+  }
+}
 // Bodies of active entities in this scene
-declare const playerBody: RigidBodyComponent, anchorBody: RigidBodyComponent;
-declare const companionBody: RigidBodyComponent;
-declare const wallBody: RigidBodyComponent, brickBody: RigidBodyComponent;
-declare const towerBody: RigidBodyComponent, sailBody: RigidBodyComponent;
-declare const bankBody: RigidBodyComponent, bridgeBody: RigidBodyComponent;
-declare const railBody: RigidBodyComponent, platformBody: RigidBodyComponent;
+const playerBody = scene
+  .spawn(JointBox, { type: "dynamic", x: 0, y: 120 })
+  .get(RigidBodyComponent);
+const anchorBody = scene
+  .spawn(JointBox, { type: "static", x: 0, y: 0 })
+  .get(RigidBodyComponent);
+const companionBody = scene
+  .spawn(JointBox, { type: "dynamic", x: 80, y: 120 })
+  .get(RigidBodyComponent);
+const wallBody = scene
+  .spawn(JointBox, { type: "static", x: 200, y: 0 })
+  .get(RigidBodyComponent);
+const brickBody = scene
+  .spawn(JointBox, { type: "dynamic", x: 200, y: 20 })
+  .get(RigidBodyComponent);
+const towerBody = scene
+  .spawn(JointBox, { type: "static", x: 300, y: 0 })
+  .get(RigidBodyComponent);
+const sailBody = scene
+  .spawn(JointBox, { type: "dynamic", x: 300, y: 0 })
+  .get(RigidBodyComponent);
+const bankBody = scene
+  .spawn(JointBox, { type: "static", x: 400, y: 0 })
+  .get(RigidBodyComponent);
+const bridgeBody = scene
+  .spawn(JointBox, { type: "dynamic", x: 460, y: 0 })
+  .get(RigidBodyComponent);
+const railBody = scene
+  .spawn(JointBox, { type: "static", x: 600, y: 0 })
+  .get(RigidBodyComponent);
+const platformBody = scene
+  .spawn(JointBox, { type: "dynamic", x: 600, y: 120 })
+  .get(RigidBodyComponent);
 
 const world = scene.use(PhysicsWorldKey);
 const rope = world.addJoint(playerBody, anchorBody, {
@@ -703,6 +744,7 @@ const weld = world.addJoint(wallBody, brickBody, {
 });
 const hub = world.addJoint(towerBody, sailBody, {
   type: "revolute",
+  collide: false, // the tower and sail overlap at the hub
   motor: { velocity: 2, damping: 10 }, // rad/s
 });
 const bridge = world.addJoint(bankBody, bridgeBody, {
@@ -752,8 +794,6 @@ it. For a pooled entity, create the joint in `onAcquire`.
 For impact-triggered destruction, remove a joint from a collision handler:
 
 ```ts yage-context="scene" yage-group="joints"
-import { ColliderComponent } from "@yagejs/physics";
-
 const brickCollider = brickBody.entity.get(ColliderComponent);
 brickCollider.onCollision((event) => {
   if (event.started && (event.contactImpulse ?? 0) > 100) weld.remove();
