@@ -370,7 +370,8 @@ export class ColliderComponent extends Component {
    * (pixels, default 0: touching or overlapping only) or either component
    * has no live collider. A geometric query on the shapes, so it answers for
    * sensors, which never get contact data on their events, and for a pair
-   * that never collided.
+   * that never collided. Set `solidOnly: true` to exclude sensors and pairs
+   * rejected by collision groups or either contact filter (current poses, dt 0).
    *
    * With `selfShapeIndex` / `otherShapeIndex` it measures that one shape
    * pair; pass the indices from a `TriggerEvent` or `CollisionEvent` to
@@ -391,6 +392,8 @@ export class ColliderComponent extends Component {
       selfShapeIndex?: number;
       otherShapeIndex?: number;
       prediction?: number;
+      /** Require a solid pair: exclude sensors and apply collision groups and both contact filters at current poses (dt 0). */
+      solidOnly?: boolean;
     },
   ): ColliderContact | undefined {
     const context = "ColliderComponent.contactWith";
@@ -427,6 +430,7 @@ export class ColliderComponent extends Component {
           handle,
           otherHandle,
           options?.prediction,
+          options?.solidOnly,
         );
         if (contact && (!closest || contact.distance < closest.distance)) {
           closest = contact;

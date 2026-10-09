@@ -49,6 +49,7 @@ export type PackageId = (typeof PACKAGES)[number];
 /** Addon packages, published as `@yagejs-addons/<id>`. */
 export const ADDONS = [
   "abilities",
+  "character-controller",
   "dialogue",
   "feel",
   "i18n",
@@ -453,6 +454,16 @@ export const EXAMPLES: readonly Example[] = [
   },
 
   // Gameplay addons
+  {
+    slug: "character-controller",
+    title: "Character Controller",
+    summary:
+      "A platformer playground with jumps, dashes, slopes, moving platforms, and switchable movement tuning.",
+    section: "gameplay",
+    packages: ["physics", "input"],
+    addons: ["character-controller"],
+    guide: "/addons/character-controller/",
+  },
   {
     slug: "dialogue-addon",
     title: "Dialogue Addon",

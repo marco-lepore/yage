@@ -348,6 +348,11 @@ class ContactSparks extends Component {
 }
 ```
 
+`contactWith(other, { solidOnly: true })` excludes sensors and pairs rejected
+by either collider's collision mask or contact filter. Filters receive current
+poses and velocities with `dt: 0`; compound queries return the closest permitted
+part pair. Omit the option for an unfiltered geometric measurement.
+
 Resizing:
 
 ```ts yage-context="entity,scene" yage-group="collider"
@@ -481,7 +486,7 @@ this.entity.get(ColliderComponent).dropThrough(0.25);
 - `direction` is in the platform body's local frame and rotates with the body.
 - A fast body is swept against static platforms every step, so it cannot cross one undetected. Against a kinematic platform, a body that travels more than the platform-plus-body thickness in one step crosses it unless it has `ccd: true`. The sweep honors one-way filtering, including drop-through.
 - `oneWay` is part of collider construction. It has no effect on `sensor: true` colliders (dev warning).
-- `raycast`, `castShape`, `queryShape`, and `queryRadius` test geometry; they do not apply `oneWay`, `dropThrough`, or contact filters. A query hit alone does not mean a platform supports the rider.
+- World queries test geometry by default. Use `castShape` with `solidFor` to apply one-way, drop-through, and contact filters. A geometric hit alone does not mean a platform supports the rider.
 
 ## Contact Filters
 
@@ -512,6 +517,9 @@ collider.setContactFilter(null); // remove
 - A filter that throws is reported (`Inspector.getErrors().callbackErrors`) once per installed filter and the pair stays solid.
 - `setContactFilter` replaces the built-in filter a `oneWay` config installed. Register custom filters during normal component setup whenever the scene is constructed.
 - Contact pairs only — sensor/trigger pairs are unaffected.
+
+`castShape` with `solidFor` and `contactWith` with `solidOnly: true` also run these filters. Its candidates use current
+poses and velocities with `dt: 0`. Do not run physics queries inside a filter.
 
 ## CollisionLayers
 
@@ -610,6 +618,14 @@ The cast still reports obstacles farther along the route and movement deeper
 into the initial overlap. For a move that requires a clear destination, also
 check that position with `queryShape`. The option affects only the cast, not
 body collisions.
+
+`castShape` accepts `solidFor?: ColliderComponent` to skip hits rejected by
+either side's contact filter, including one-way and drop-through rules. It
+also excludes the source entity. Filters see current collider poses and body
+velocities with `dt: 0`, not the cast origin or swept poses. A compound source
+permits a hit if any source part permits the pair. The source must have live
+colliders in the queried world or the call throws. `filterGroups` and `sensors`
+remain separate options. Without `solidFor`, casts ignore contact filters.
 
 `filterGroups` runs the same two-way test as collider-vs-collider filtering: a
 collider is reported only when the query's membership bit is in that collider's

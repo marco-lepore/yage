@@ -34,6 +34,7 @@ import {
   assertPositiveNumber,
 } from "./validate.js";
 import { colliderPairKey, colliderPart } from "./colliderParts.js";
+import { castShape } from "./shapeCast.js";
 
 const DEFAULT_PIXELS_PER_METER = 50;
 const DEFAULT_GRAVITY_X = 0;
@@ -265,24 +266,29 @@ export class PhysicsWorld {
     // Teleports and local-offset changes otherwise reach collider world
     // poses only inside the step, after this snapshot would have read them.
     this.world.propagateModifiedBodyPositionsToColliders();
-    for (const [handle, state] of this._preStepStates) {
-      const collider = this.getCollider(handle);
-      if (!collider) continue;
-      const t = collider.translation();
-      state.x = this.toPixels(t.x);
-      state.y = this.toPixels(t.y);
-      state.rotation = collider.rotation();
-      const bodyHandle = this._colliderBody.get(handle);
-      const body =
-        bodyHandle !== undefined ? this.getBody(bodyHandle) : undefined;
-      if (body) {
-        const v = body.linvel();
-        state.vx = this.toPixels(v.x);
-        state.vy = this.toPixels(v.y);
-      } else {
-        state.vx = 0;
-        state.vy = 0;
-      }
+    for (const handle of this._preStepStates.keys())
+      this._captureColliderState(handle);
+  }
+
+  /** Refresh one entry without changing its previous-step pose. */
+  private _captureColliderState(handle: number): void {
+    const state = this._preStepStates.get(handle);
+    const collider = this.getCollider(handle);
+    if (!state || !collider) return;
+    const t = collider.translation();
+    state.x = this.toPixels(t.x);
+    state.y = this.toPixels(t.y);
+    state.rotation = collider.rotation();
+    const bodyHandle = this._colliderBody.get(handle);
+    const body =
+      bodyHandle !== undefined ? this.getBody(bodyHandle) : undefined;
+    if (body) {
+      const v = body.linvel();
+      state.vx = this.toPixels(v.x);
+      state.vy = this.toPixels(v.y);
+    } else {
+      state.vx = 0;
+      state.vy = 0;
     }
   }
 
@@ -308,14 +314,19 @@ export class PhysicsWorld {
   private _filterContactPair(
     collider1: number,
     collider2: number,
+    dt = this.world.timestep,
   ): RAPIER.SolverFlags | null {
-    const solid1 = this._filterSide(collider1, collider2);
-    const solid2 = this._filterSide(collider2, collider1);
+    const solid1 = this._filterSide(collider1, collider2, dt);
+    const solid2 = this._filterSide(collider2, collider1, dt);
     return solid1 && solid2 ? RAPIER.SolverFlags.COMPUTE_IMPULSE : null;
   }
 
   /** Evaluate one collider's filter against the other side of the pair. */
-  private _filterSide(selfHandle: number, otherHandle: number): boolean {
+  private _filterSide(
+    selfHandle: number,
+    otherHandle: number,
+    dt: number,
+  ): boolean {
     const selfComponent = this._colliderComponents.get(selfHandle);
     if (!selfComponent?._contactFilter) return true;
 
@@ -343,7 +354,7 @@ export class PhysicsWorld {
       otherComponent,
       selfShapeIndex,
       otherShapeIndex,
-      this.world.timestep,
+      dt,
     );
     return selfComponent._evaluateContactFilter(this._candidate);
   }
@@ -1272,6 +1283,13 @@ export class PhysicsWorld {
    * collider of that entity — pass the mover when the sweep starts inside its
    * own collider. Sensors are skipped unless `sensors` says otherwise.
    *
+   * `solidFor` excludes that collider's entity and applies both sides' contact
+   * filters, including one-way/drop-through rules. Filters read current body
+   * poses and velocities with `dt: 0`, not the cast origin or swept poses.
+   * A compound source permits a hit if any part permits the pair. The source
+   * must have live colliders in this world. Layer and sensor options still apply.
+   * Without `solidFor`, contact filters do not affect the cast.
+   *
    * Reports every live collider at its current pose, running a
    * zero-duration step first when colliders changed since the last step.
    */
@@ -1284,17 +1302,38 @@ export class PhysicsWorld {
       rotation?: number;
       /** Stop at an initial overlap (default true). False allows escape. */
       stopAtPenetration?: boolean;
+      /** Apply both sides' contact filters at current poses (dt 0); exclude this entity. */
+      solidFor?: ColliderComponent;
       filterGroups?: number;
       excludeEntity?: Entity;
       sensors?: QuerySensorMode;
     },
   ): RaycastHit | null {
+    const solidFor = options?.solidFor;
+    if (
+      solidFor &&
+      (solidFor._colliderHandles.length === 0 ||
+        solidFor._colliderHandles.some(
+          (handle) => this._colliderComponents.get(handle) !== solidFor,
+        ))
+    )
+      throw new Error(
+        "PhysicsWorld.castShape: solidFor must have live colliders in this world",
+      );
     const length = Math.hypot(direction.x, direction.y);
     if (length === 0) {
       throw new Error("castShape direction must be a non-zero vector");
     }
     assertColliderShape("PhysicsWorld.castShape", shape);
     this._refreshQueries();
+    const captured = new Set<number>();
+    const capture = (handle: number) => {
+      if (captured.has(handle)) return;
+      this._captureColliderState(handle);
+      captured.add(handle);
+    };
+    if (solidFor && this._contactFiltered.size > 0)
+      this.world.propagateModifiedBodyPositionsToColliders();
 
     const desc = this.buildColliderDesc(shape);
     // buildColliderDesc leaves the capsule axis:"x" 90° turn to the caller.
@@ -1304,7 +1343,8 @@ export class PhysicsWorld {
 
     // With a unit direction as the sweep velocity, Rapier's time of impact is
     // the distance travelled in meters.
-    const hit = this.world.castShape(
+    const hit = castShape(
+      this.world,
       { x: this.toMeters(origin.x), y: this.toMeters(origin.y) },
       (options?.rotation ?? 0) + axisRotation,
       { x: direction.x / length, y: direction.y / length },
@@ -1316,8 +1356,30 @@ export class PhysicsWorld {
       options?.filterGroups,
       undefined,
       undefined,
-      exclude
-        ? (collider) => this.colliderMap.get(collider.handle) !== exclude
+      exclude || solidFor
+        ? (collider) => {
+            const entity = this.colliderMap.get(collider.handle);
+            if (
+              (exclude && entity === exclude) ||
+              (solidFor && entity === solidFor.entity)
+            )
+              return false;
+            return (
+              !solidFor ||
+              solidFor._colliderHandles.some((handle) => {
+                if (
+                  !this._contactFiltered.has(handle) &&
+                  !this._contactFiltered.has(collider.handle)
+                )
+                  return true;
+                capture(handle);
+                capture(collider.handle);
+                return (
+                  this._filterContactPair(handle, collider.handle, 0) !== null
+                );
+              })
+            );
+          }
         : undefined,
     );
 
@@ -1369,12 +1431,14 @@ export class PhysicsWorld {
    * and at least 0. `normal` points from the first collider toward the
    * second. Colliders whose shapes coincide exactly report an arbitrary
    * direction. Takes internal Rapier collider handles; game code calls
-   * `ColliderComponent.contactWith()` instead.
+   * `ColliderComponent.contactWith()` instead. With `solidOnly`, sensors and
+   * pairs rejected by collision groups or contact filters are excluded.
    */
   contactBetween(
     handle: number,
     otherHandle: number,
     prediction = 0,
+    solidOnly = false,
   ): ColliderContact | undefined {
     assertFiniteNumber(
       "PhysicsWorld.contactBetween",
@@ -1385,6 +1449,26 @@ export class PhysicsWorld {
     const collider = this.getCollider(handle);
     const other = this.getCollider(otherHandle);
     if (!collider || !other) return undefined;
+    if (solidOnly) {
+      if (collider.isSensor() || other.isSensor()) return undefined;
+      const groups = collider.collisionGroups();
+      const otherGroups = other.collisionGroups();
+      if (
+        ((groups >>> 16) & otherGroups) === 0 ||
+        ((otherGroups >>> 16) & groups) === 0
+      )
+        return undefined;
+      this.world.propagateModifiedBodyPositionsToColliders();
+      if (
+        this._contactFiltered.has(handle) ||
+        this._contactFiltered.has(otherHandle)
+      ) {
+        this._captureColliderState(handle);
+        this._captureColliderState(otherHandle);
+        if (this._filterContactPair(handle, otherHandle, 0) === null)
+          return undefined;
+      }
+    }
     const contact = collider.contactCollider(other, this.toMeters(prediction));
     if (!contact) return undefined;
     return {

@@ -26,6 +26,7 @@
   "dependencies": {
     "@yagejs-tools/lab": "^0.3.0",
     "@yagejs-addons/abilities": "^0.5.0",
+    "@yagejs-addons/character-controller": "^0.0.0",
     "@yagejs-addons/steering": "^0.5.0",
     "@yagejs-addons/synth": "^0.3.0",
     "@yagejs-addons/dialogue": "^0.7.0",
