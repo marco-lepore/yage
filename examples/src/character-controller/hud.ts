@@ -90,8 +90,14 @@ export class Playground extends Component {
     const character = this.player.character;
     if (this.input.isJustPressed("refill"))
       character.admission.refillAirCharges();
-    if (this.input.isJustPressed("drop") && this.grounded)
+    if (
+      this.input.isJustPressed("drop") &&
+      character.admission.canDropThrough
+    ) {
+      character.admission.spendDropThrough();
+      character.moves.cancel();
       character.collider.dropThrough(0.3);
+    }
     this.settings.setText(
       `${this.nimble ? "2  NIMBLE  ·  run 260 / jump 480 / 2 air jumps" : "1  DEFAULT  ·  run 190 / jump 434 / 1 air jump"}    |    Dash policy: ${this.dashAllowed ? "allowed" : "blocked"}`,
     );

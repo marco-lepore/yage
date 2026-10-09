@@ -1,4 +1,4 @@
-import { tuningNumbers } from "../core/validate.js";
+import { interactionGroup, tuningNumbers } from "../core/validate.js";
 import { Component } from "@yagejs/core";
 import {
   ColliderComponent,
@@ -29,7 +29,9 @@ export class Stance extends Component {
 
   constructor(params: { tuning: StanceTuning }) {
     super();
-    tuningNumbers("Stance", params.tuning);
+    const { filterGroups, ...numbers } = params.tuning;
+    tuningNumbers("Stance", numbers);
+    interactionGroup("Stance", "filterGroups", filterGroups);
     this.tuning = Object.freeze({ ...params.tuning });
   }
 

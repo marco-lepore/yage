@@ -1,4 +1,4 @@
-import { tuningNumbers } from "../core/validate.js";
+import { interactionGroup, tuningNumbers } from "../core/validate.js";
 import { Component, type Vec2Like } from "@yagejs/core";
 import {
   ColliderComponent,
@@ -70,7 +70,9 @@ export class GroundProbe extends Component {
 
   constructor(params: { tuning: GroundProbeTuning }) {
     super();
-    tuningNumbers("GroundProbe", params.tuning);
+    const { filterGroups, ...numbers } = params.tuning;
+    tuningNumbers("GroundProbe", numbers);
+    interactionGroup("GroundProbe", "filterGroups", filterGroups);
     this.tuning = Object.freeze({ ...params.tuning });
     if (this.tuning.width <= 0 || (this.tuning.maxSlopeAngle ?? 45) >= 90)
       throw new Error(

@@ -84,6 +84,7 @@ Options: `tuning?: Partial<PlatformerConfig>`, `input?: InputBinding | null`,
 `admissionPolicies?: MoveAdmissionPolicies`.
 `collisionGroups` is the character collider's packed membership/filter from
 `CollisionLayers.interactionGroups(membership, filter)`.
+Packed group fields accept signed or unsigned 32-bit integers.
 
 ## Tuning and standard moves
 
@@ -304,8 +305,11 @@ surface; use `controller.grounded` and `PlatformerLandedEvent` for ground contac
 MovingSurface({ from, to, speed }) moves a kinematic platform between two world
 points. Spawn moving surfaces before riders; planned velocity must be current
 when riders sample support. Translating, upright surfaces are supported.
-Freezing a surface with zero entity time scale stops its published carry velocity.
-CrushProbe reports a translating box blocked by a fixed opposing face. Rotating
+Entity time scaling changes path speed; published carry velocity matches the
+physics step. Freezing a surface stops its published carry velocity.
+CrushProbe reports a translating box blocked by a fixed opposing face.
+Pushes honor collision groups and contact filters; obstruction casts also honor
+the character's contact filters. Rotating
 supports, angled crush wedges and two moving crush blockers are unsupported.
 
 LedgeProbe exposes `find(side)`, `points(contact, dt?)`, `clear(from, to)` and

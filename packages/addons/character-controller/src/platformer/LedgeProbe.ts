@@ -1,4 +1,4 @@
-import { tuningNumbers } from "../core/validate.js";
+import { interactionGroup, tuningNumbers } from "../core/validate.js";
 import { Component, type Entity, type Vec2Like } from "@yagejs/core";
 import {
   ColliderComponent,
@@ -38,6 +38,8 @@ export class LedgeProbe extends Component {
   ) {
     super();
     tuningNumbers("LedgeProbe", params.tuning);
+    interactionGroup("LedgeProbe", "grab", params.grab);
+    interactionGroup("LedgeProbe", "volume", params.volume);
     this.params = { ...params, tuning: Object.freeze({ ...params.tuning }) };
   }
 

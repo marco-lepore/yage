@@ -11,3 +11,5 @@ Add configurable character controllers with a complete dynamic platformer setup.
 - Apply character collision groups, retain clearance across repeated steps and ramp crests, and exclude the character from its own ledge clearance queries.
 - Expose shared motion arbitration, terrain assistance, contact and ledge probes, moving platforms, and crush events for custom movement and game effects.
 - Separate the engine-independent motion model, platformer components, and input adapters into package entries so other controller types can share motion rules.
+- Accept signed and unsigned packed collision groups, and reject invalid charge counts before staged installation adds components.
+- Match moving-platform carry velocity to the physics step under entity time scaling, and exclude pass-through pushes and obstructions from crush detection.

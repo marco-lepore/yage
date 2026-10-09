@@ -266,24 +266,29 @@ export class PhysicsWorld {
     // Teleports and local-offset changes otherwise reach collider world
     // poses only inside the step, after this snapshot would have read them.
     this.world.propagateModifiedBodyPositionsToColliders();
-    for (const [handle, state] of this._preStepStates) {
-      const collider = this.getCollider(handle);
-      if (!collider) continue;
-      const t = collider.translation();
-      state.x = this.toPixels(t.x);
-      state.y = this.toPixels(t.y);
-      state.rotation = collider.rotation();
-      const bodyHandle = this._colliderBody.get(handle);
-      const body =
-        bodyHandle !== undefined ? this.getBody(bodyHandle) : undefined;
-      if (body) {
-        const v = body.linvel();
-        state.vx = this.toPixels(v.x);
-        state.vy = this.toPixels(v.y);
-      } else {
-        state.vx = 0;
-        state.vy = 0;
-      }
+    for (const handle of this._preStepStates.keys())
+      this._captureColliderState(handle);
+  }
+
+  /** Refresh one entry without changing its previous-step pose. */
+  private _captureColliderState(handle: number): void {
+    const state = this._preStepStates.get(handle);
+    const collider = this.getCollider(handle);
+    if (!state || !collider) return;
+    const t = collider.translation();
+    state.x = this.toPixels(t.x);
+    state.y = this.toPixels(t.y);
+    state.rotation = collider.rotation();
+    const bodyHandle = this._colliderBody.get(handle);
+    const body =
+      bodyHandle !== undefined ? this.getBody(bodyHandle) : undefined;
+    if (body) {
+      const v = body.linvel();
+      state.vx = this.toPixels(v.x);
+      state.vy = this.toPixels(v.y);
+    } else {
+      state.vx = 0;
+      state.vy = 0;
     }
   }
 
@@ -1321,7 +1326,14 @@ export class PhysicsWorld {
     }
     assertColliderShape("PhysicsWorld.castShape", shape);
     this._refreshQueries();
-    if (solidFor && this._contactFiltered.size > 0) this._capturePreStepState();
+    const captured = new Set<number>();
+    const capture = (handle: number) => {
+      if (captured.has(handle)) return;
+      this._captureColliderState(handle);
+      captured.add(handle);
+    };
+    if (solidFor && this._contactFiltered.size > 0)
+      this.world.propagateModifiedBodyPositionsToColliders();
 
     const desc = this.buildColliderDesc(shape);
     // buildColliderDesc leaves the capsule axis:"x" 90° turn to the caller.
@@ -1354,10 +1366,18 @@ export class PhysicsWorld {
               return false;
             return (
               !solidFor ||
-              solidFor._colliderHandles.some(
-                (handle) =>
-                  this._filterContactPair(handle, collider.handle, 0) !== null,
-              )
+              solidFor._colliderHandles.some((handle) => {
+                if (
+                  !this._contactFiltered.has(handle) &&
+                  !this._contactFiltered.has(collider.handle)
+                )
+                  return true;
+                capture(handle);
+                capture(collider.handle);
+                return (
+                  this._filterContactPair(handle, collider.handle, 0) !== null
+                );
+              })
             );
           }
         : undefined,
@@ -1411,12 +1431,14 @@ export class PhysicsWorld {
    * and at least 0. `normal` points from the first collider toward the
    * second. Colliders whose shapes coincide exactly report an arbitrary
    * direction. Takes internal Rapier collider handles; game code calls
-   * `ColliderComponent.contactWith()` instead.
+   * `ColliderComponent.contactWith()` instead. With `solidOnly`, sensors and
+   * pairs rejected by collision groups or contact filters are excluded.
    */
   contactBetween(
     handle: number,
     otherHandle: number,
     prediction = 0,
+    solidOnly = false,
   ): ColliderContact | undefined {
     assertFiniteNumber(
       "PhysicsWorld.contactBetween",
@@ -1427,6 +1449,26 @@ export class PhysicsWorld {
     const collider = this.getCollider(handle);
     const other = this.getCollider(otherHandle);
     if (!collider || !other) return undefined;
+    if (solidOnly) {
+      if (collider.isSensor() || other.isSensor()) return undefined;
+      const groups = collider.collisionGroups();
+      const otherGroups = other.collisionGroups();
+      if (
+        ((groups >>> 16) & otherGroups) === 0 ||
+        ((otherGroups >>> 16) & groups) === 0
+      )
+        return undefined;
+      this.world.propagateModifiedBodyPositionsToColliders();
+      if (
+        this._contactFiltered.has(handle) ||
+        this._contactFiltered.has(otherHandle)
+      ) {
+        this._captureColliderState(handle);
+        this._captureColliderState(otherHandle);
+        if (this._filterContactPair(handle, otherHandle, 0) === null)
+          return undefined;
+      }
+    }
     const contact = collider.contactCollider(other, this.toMeters(prediction));
     if (!contact) return undefined;
     return {

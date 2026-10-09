@@ -1,4 +1,4 @@
-import { finite, tuningNumbers } from "../core/validate.js";
+import { count, finite, tuningNumbers } from "../core/validate.js";
 import { Component, ErrorBoundaryKey } from "@yagejs/core";
 
 import type { MotionReconciler } from "./MotionReconciler.js";
@@ -88,13 +88,8 @@ export class MoveAdmission extends Component {
     tuningNumbers("MoveAdmission", params.tuning);
     this.tuning = Object.freeze({ ...params.tuning });
     this.policies = { ...params.policies };
-    if (
-      !Number.isSafeInteger(this.tuning.airJumps) ||
-      !Number.isSafeInteger(this.tuning.airDashes)
-    )
-      throw new Error(
-        "MoveAdmission: airJumps and airDashes must be safe integers",
-      );
+    count("MoveAdmission", "airJumps", this.tuning.airJumps);
+    count("MoveAdmission", "airDashes", this.tuning.airDashes);
   }
 
   get airCharges(): AirMoveCharges {
