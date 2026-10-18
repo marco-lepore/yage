@@ -241,3 +241,20 @@ export type { RectMaskOptions } from "./masks/rectMask.js";
 export { spriteMask } from "./masks/spriteMask.js";
 export { graphicsMask } from "./masks/graphicsMask.js";
 export { syncCameraTransform } from "./cameraTransform.js";
+
+export { dataTexture } from "./dataTexture.js";
+export { litMaterial, unlitMaterial } from "./materials.js";
+export type {
+  SpriteMaps,
+  SpriteMaterial,
+  LitMaterial,
+  UnlitMaterial,
+  LitMaterialOptions,
+  UnlitMaterialOptions,
+} from "./materials.js";
+export type {
+  DataTextureHandle,
+  DataTextureResource,
+  TextureSourceResource,
+  ShaderUniforms,
+} from "./public-types.js";

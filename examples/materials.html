@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Sprite materials</title>
+    <link rel="stylesheet" href="/shared.css" />
+  </head>
+  <body>
+    <a class="back-link" href="/#materials">&larr; All Examples</a>
+    <h1>Sprite materials</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span
+        >A moving light reveals the difference between flat, normal-mapped, and
+        polished surfaces.</span
+      >
+      <span
+        >The lower row shows unlit color, emission with bloom, overlapping
+        alpha, and animated companion maps. Emission stays visible as the lamp
+        moves away.</span
+      >
+      <span
+        >Each orb uses the same color image. Normal and specular PNGs load
+        through <code>dataTexture</code>; emission loads through
+        <code>texture</code>.</span
+      >
+    </div>
+    <script type="module" src="/src/materials/main.ts"></script>
+  </body>
+</html>

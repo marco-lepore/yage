@@ -1,7 +1,7 @@
 import { Component } from "@yagejs/core";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
-import type { Texture } from "pixi.js";
-import { resolveFrames } from "./spritesheet.js";
+import type { ResolvedSpriteSource } from "./materials/ResolvedSpriteSource.js";
+import { resolveSpriteSource } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
 import { routeAnimationSpeedChange } from "./internal/animationSpeedGroup.js";
 import { runAttributed } from "./internal/attribution.js";
@@ -45,7 +45,7 @@ export interface AnimationTimingOptions {
 
 // Internal: AnimationDef with frames resolved from its source.
 interface ResolvedAnimDef {
-  frames: Texture[];
+  source: ResolvedSpriteSource;
   speed: number;
   loop?: boolean;
   anchor?: { x: number; y: number };
@@ -99,7 +99,7 @@ export class AnimationController<T extends string = string> extends Component {
     for (const name of Object.keys(animations) as T[]) {
       const def = animations[name];
       resolved[name] = {
-        frames: resolveFrames(def.source),
+        source: resolveSpriteSource(def.source),
         speed: def.speed,
         ...(def.loop != null && { loop: def.loop }),
         ...(def.anchor && { anchor: def.anchor }),
@@ -216,6 +216,7 @@ export class AnimationController<T extends string = string> extends Component {
   /** Clear lock and force-switch to the given animation. */
   forcePlay(name: T): void {
     const def = this._def(name, "forcePlay");
+    this._sprite._assertSource(def.source);
     const cancelled = this._onCancel;
     this._clearLock();
     this._apply(name, def);
@@ -274,7 +275,7 @@ export class AnimationController<T extends string = string> extends Component {
     const def = this._anims[name];
     const effectiveSpeed = def.speed * controllerSpeed * shotSpeed;
     const duration =
-      ((def.frames.length - startFrame) * (1 / 60)) / effectiveSpeed;
+      ((def.source.frames.length - startFrame) * (1 / 60)) / effectiveSpeed;
     if (
       !Number.isFinite(effectiveSpeed) ||
       effectiveSpeed <= 0 ||
@@ -307,6 +308,8 @@ export class AnimationController<T extends string = string> extends Component {
   /** A live one-shot ends with the component, so its `onCancel` still runs. */
   onDestroy(): void {
     this.unlock();
+    for (const def of Object.values<ResolvedAnimDef>(this._anims))
+      def.source.release();
   }
 
   /** Tick the one-shot lock timer. */
@@ -343,13 +346,18 @@ export class AnimationController<T extends string = string> extends Component {
     return this._anims[name];
   }
 
+  /** @internal Validate source compatibility before a layered transition. */
+  _assertSource(name: T): void {
+    this._sprite._assertSource(this._def(name, "play").source);
+  }
+
   private _validateTiming(
     def: ResolvedAnimDef,
     startFrame: number,
     speed: number,
     method: string,
   ): void {
-    const last = def.frames.length - 1;
+    const last = def.source.frames.length - 1;
     if (!Number.isInteger(startFrame)) {
       throw new Error(
         `AnimationController.${method}: startFrame must be an integer, got ${startFrame}.`,
@@ -372,10 +380,11 @@ export class AnimationController<T extends string = string> extends Component {
     def: ResolvedAnimDef,
     options?: { startFrame: number; speed: number },
   ): void {
+    this._sprite._assertSource(def.source);
     this._current = name;
     this._shotSpeed = options?.speed ?? 1;
     const sprite = this._sprite.animatedSprite;
-    sprite.textures = def.frames;
+    this._sprite._installSource(def.source);
     if (def.anchor) {
       sprite.anchor.set(def.anchor.x, def.anchor.y);
     }

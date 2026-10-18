@@ -1,3 +1,4 @@
+import { dataTextureKey } from "./dataTexture.js";
 import { AssetHandle } from "@yagejs/core";
 import {
   Assets,
@@ -749,7 +750,12 @@ function bakeBitmapFont(params: BakeBitmapFontParams): BakedFontMetrics {
  */
 export function resolveTextureInput(input: TextureInput): TextureResource {
   if (input instanceof AssetHandle || typeof input === "string") {
-    const key = typeof input === "string" ? input : input.path;
+    const key =
+      typeof input === "string"
+        ? input
+        : input.type === "data-texture"
+          ? dataTextureKey(input.path)
+          : input.path;
     const resolved = Texture.from(key) as TextureResource | undefined;
     if (!resolved) {
       throw new Error(

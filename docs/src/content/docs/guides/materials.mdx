@@ -1,0 +1,223 @@
+---
+title: "Sprite materials"
+description: "Light sprites with normal maps, specular highlights, and emission"
+---
+
+Sprite materials let a moving light reveal painted surface detail. A normal map
+changes the direction each pixel faces, a specular map controls highlights, and
+an emission map adds color that remains visible in darkness.
+
+[Run the materials example](https://examples.yage.dev/materials.html) to compare
+flat, mapped, polished, emissive, and transparent sprites.
+
+## Make a lit sprite
+
+Install `@yagejs/renderer` and `@yagejs/lighting`. Select `surfaceLighting()`
+and give the sprite a `litMaterial()`. Preload the color image and every
+companion image through the scene's existing asset list:
+
+```typescript yage-group="materials"
+import { Engine, Entity, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  RendererPlugin, SpriteComponent, dataTexture, litMaterial, texture,
+} from "@yagejs/renderer";
+import { LightSource, LightingPlugin, surfaceLighting } from "@yagejs/lighting";
+
+const images = {
+  color: texture("/assets/orb.png"),
+  normal: dataTexture("/assets/orb.normal.png"),
+  specular: dataTexture("/assets/orb.specular.png"),
+  emission: texture("/assets/orb.emission.png"),
+};
+const polished = litMaterial({
+  specularStrength: 0.5,
+  shininess: 48,
+  emissionIntensity: 0.6,
+});
+
+class Orb extends Entity {
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(320, 180) }));
+    this.add(new SpriteComponent({
+      texture: images.color,
+      maps: {
+        normal: images.normal,
+        specular: images.specular,
+        emission: images.emission,
+      },
+      material: polished,
+      anchor: { x: 0.5, y: 0.5 },
+    }));
+  }
+}
+class Lamp extends Entity {
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(260, 140) }));
+    this.add(new LightSource({ radius: 240, height: 64, color: 0xffdda0 }));
+  }
+}
+class MaterialScene extends Scene {
+  readonly name = "materials";
+  readonly preload = Object.values(images);
+  onEnter(): void {
+    this.spawn(Orb);
+    this.spawn(Lamp);
+  }
+}
+async function main(): Promise<void> {
+  const engine = new Engine();
+  engine.use(new RendererPlugin({ width: 640, height: 360, container: document.body }));
+  engine.use(new LightingPlugin({
+    ambient: { level: 0.15 },
+    renderers: { surface: surfaceLighting() },
+    defaultRenderer: "surface",
+  }));
+  await engine.start();
+  await engine.scenes.push(new MaterialScene());
+}
+void main();
+```
+
+The four paths above are game-owned images with the same dimensions and layout.
+No normal map is required: a lit sprite without one faces straight toward the
+viewer. Sprites without an explicit material keep their ordinary unlit appearance.
+Graphics, text, UI, tilemaps, and particles also keep their ordinary appearance.
+
+`surfaceLighting()` uses the existing ambient light, radial lights, spotlight
+cones, and occluders. It requires WebGL2 or WebGPU and rejects `bounce` settings.
+The default lighting backend remains the overlay. Explicit materials or companion
+maps in an overlay or shader-compositor scene throw an error asking for
+`surfaceLighting()`. A lit material also requires a world-space render layer.
+
+## Prepare companion images
+
+Every companion is a full image page with the color page's pixel dimensions and
+resolution. The color frame's UVs select the same region in every map. This
+supports individual images, grid sheets, and single-page atlases, including
+trimmed and rotated frames. Export all pages using the same packing layout.
+Mapped animations spanning multiple pages are rejected.
+
+| Map | Import | Pixel meaning | Fallback |
+| --- | --- | --- | --- |
+| `normal` | `dataTexture(...)` | RGB encodes XYZ from −1 to 1 | Flat, toward the viewer |
+| `specular` | `dataTexture(...)` | Red channel multiplies highlight strength | Uniform strength |
+| `emission` | `texture(...)` | RGB multiplies emission color and intensity | Uniform emission color |
+
+`dataTexture` accepts lossless PNG and preserves numeric channels without color
+conversion or alpha premultiplication. Map alpha does not control sprite opacity.
+For emission, export an opaque image with black where nothing should emit.
+Ordinary color-image decoding can discard RGB under zero alpha.
+
+Normal maps default to `normalY: "up"`, the OpenGL green-channel convention.
+Use `"down"` for maps authored with the opposite convention. Rotation, mirroring,
+and nonuniform scale follow the sprite's actual visual transform. Camera movement
+changes the view without turning the surface toward a different world light.
+
+`dataTexture(path, { scaleMode: "nearest" })` selects pixel-art sampling.
+Omitting the option follows the renderer's default, including `pixelArtPreset`.
+Define one handle per role and file and reuse it. Color and data imports of the
+same URL are independent resources. Scene preload owns their lifetime; destroying
+a sprite does not unload an image shared by another sprite or scene.
+
+## Tune the surface
+
+`litMaterial(options)` and `unlitMaterial(options)` return immutable definitions.
+Share a definition between sprites, then call `sprite.setMaterial(...)` to replace
+one sprite's settings. The `material` getter returns its current definition.
+
+| Setting | Default | Range or meaning |
+| --- | --- | --- |
+| `normalStrength` | `1` | `0..4`; zero produces a flat normal |
+| `normalY` | `"up"` | `"up"` or `"down"` |
+| `specularStrength` | `0` | `0..1`; enables the highlight |
+| `specularColor` | White | Renderer color value |
+| `shininess` | `32` | `1..256`; larger means a narrower highlight |
+| `emissionIntensity` | `0` | `0..1`; enables self-lit color |
+| `emissionColor` | White | Renderer color value |
+
+All numeric settings must be finite. The unlit factory accepts the two emission
+settings. An unlit sprite uses its base color directly and needs no lighting plugin.
+A specular or emission map alone does not enable that contribution: set its
+material strength too.
+
+`LightSource.height` is a positive number of pixels above the sprite plane,
+defaulting to `64`. It must fit a positive GPU float. Raising it changes diffuse
+and specular direction. It does not change radius falloff, shadow geometry,
+transform position, or `LightingWorld.levelAt()`.
+
+Specular lighting uses Blinn–Phong highlights with a fixed viewing direction.
+It does not simulate metallic reflection or an environment image. Emission does
+not illuminate nearby objects or affect light-level queries. Add a `LightSource`
+to an emitting entity when nearby objects should receive light.
+
+## Animate and replace sources
+
+Animated maps belong to the animation's `source`. The color frame drives every
+map; there is no separate playback clock. This entity can be spawned from a scene
+that preloads `sheet` and `normals`, using the same engine setup above:
+
+```typescript
+import { Entity, Scene, Transform } from "@yagejs/core";
+import {
+  AnimatedSpriteComponent, AnimationController, dataTexture, litMaterial, texture,
+} from "@yagejs/renderer";
+
+const sheet = texture("/assets/hero.png");
+const normals = dataTexture("/assets/hero.normal.png");
+class Hero extends Entity {
+  setup(): void {
+    const source = { sheet, frameWidth: 32, count: 4, maps: { normal: normals } };
+    this.add(new Transform());
+    this.add(new AnimatedSpriteComponent({ source, material: litMaterial() }));
+    this.add(new AnimationController({ walk: { source, speed: 0.15 } }));
+  }
+}
+class WalkScene extends Scene {
+  readonly name = "walk";
+  readonly preload = [sheet, normals];
+  onEnter(): void { this.spawn(Hero); }
+}
+```
+
+Use `setTexture(color, maps?)` for a static sprite or `setSource(source)` for an
+animated sprite. Each call replaces the entire map set; omitting maps clears them.
+The material and ordinary visual settings remain. `setSource` stops at frame zero
+and clears the completion callback while retaining frame listeners, speed, and
+loop settings. Use controller transitions when an `AnimationController` owns playback.
+
+For an atlas, use `{ atlas: "/assets/hero.json", animation: "walk", maps: ... }`
+and preload the JSON with `spritesheet(...)` alongside the companion handles.
+Invalid dimensions, roles, or pages throw before the current source changes.
+Raw writes to a Pixi sprite's texture that cross image pages are rejected when
+maps are attached; use the component's source methods instead.
+
+## Transparency and effects
+
+Keep using `alpha`, `tint`, `blendMode`, sorting, masks, and `.fx`. Each sprite is
+shaded before it blends with the sprites behind it. Alpha fades diffuse light,
+specular highlights, and emission together. Texture alpha defines coverage;
+normal/specular map alpha has no effect. Materials do not add an opacity setting.
+
+Attach the existing `bloom(...)` effect from `@yagejs/effects` when bright pixels
+should spread into a glow. Bloom receives the finished shaded image, so bright
+non-emissive pixels can bloom too. Emission alone has no halo. Colors clamp to the
+ordinary `0..1` range; this renderer does not provide HDR, glass transmission,
+refraction, or colored transparent shadows. Occluders remain opaque geometry.
+
+Adjacent sprites can share a draw when their material settings, image pages,
+lighting provider, and blend mode match. Their tint, alpha, animation frame, and
+transform can differ. Sorting order is preserved; masks, filters, and intervening
+visuals keep separate draws.
+
+Pixel cost grows with overlapping lights, occluders in each light's reach, and
+transparent overdraw. Point lights (`size: 0`) have cheaper shadow calculations
+than finite lamps with soft shadows. Keep light radii and shadow-casting geometry
+limited to the area that needs them, and measure the actual scene on its target
+device. See the [recorded benchmark](https://github.com/marco-lepore/yage/blob/main/e2e/materials-benchmark.md)
+for the test scene and measurement method. Unchanged map and light data avoids
+repeat uploads.
+
+The Inspector's existing render facet includes the material settings, companion
+paths, source page label, sampled frame rectangle and packing rotation, and
+lighting provider for sprites using materials. Animated sprites also report
+their current frame index.

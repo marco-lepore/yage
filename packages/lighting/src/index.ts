@@ -44,3 +44,5 @@ export type {
   LightOccluderShape,
   SceneLightingOptions,
 } from "./types.js";
+
+export { surfaceLighting } from "./SurfaceLightingRenderer.js";

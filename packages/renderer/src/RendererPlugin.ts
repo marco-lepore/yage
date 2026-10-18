@@ -62,6 +62,8 @@ import {
   SceneRenderTreeProviderKey,
 } from "./SceneRenderTree.js";
 import { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
+import { loadDataTexture, unloadDataTexture } from "./dataTexture.js";
+import { installMaterialPipe } from "./materials/MaterialPipe.js";
 import { loadTexture, loadWebFont, unloadWebFont } from "./assets.js";
 import { assertPositiveNumber } from "./internal/validate.js";
 
@@ -204,6 +206,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     }
 
     // 2. Create & init PixiJS Application
+    installMaterialPipe();
     this._app = new PixiApplication();
     const resolution =
       this._config.resolution ??
@@ -355,6 +358,10 @@ export class RendererPlugin implements Plugin, RendererAdapter {
 
     // 11. Register asset loaders (if AssetManager is available)
     const am = context.tryResolve(AssetManagerKey);
+    am?.registerLoader("data-texture", {
+      load: loadDataTexture,
+      unload: unloadDataTexture,
+    });
     am?.registerLoader("texture", {
       load: (path: string, data?: unknown) => loadTexture(path, data),
       unload: (path: string) => {

@@ -1,3 +1,4 @@
+import { SpriteLightingKey } from "@yagejs/renderer/api";
 import type { ErrorBoundary, Scene } from "@yagejs/core";
 import type { RendererPlugin } from "@yagejs/renderer";
 import { LightingWorld } from "./LightingWorld.js";
@@ -59,6 +60,8 @@ export class LightingWorldManager {
           `Lighting renderer factory returned no renderer for scene "${scene.name}".`,
         );
       }
+      if (!scene.tryResolveScoped(SpriteLightingKey))
+        scene.registerScoped(SpriteLightingKey, { kind: "composite" });
       world._attachRenderer(backend);
     }
 

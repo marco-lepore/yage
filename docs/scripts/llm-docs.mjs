@@ -25,6 +25,7 @@ const EXPLICIT = {
   "getting-started/installation": "/llms/quick-start.md",
   "getting-started/your-first-game": "/llms/quick-start.md",
   "guides/rendering": "/llms/packages/renderer.md",
+  "guides/materials": "/llms/materials.md",
   "guides/lighting": "/llms/packages/lighting.md",
   "guides/input": "/llms/packages/input.md",
   "guides/processes-and-tweens": "/llms/core-concepts.md",

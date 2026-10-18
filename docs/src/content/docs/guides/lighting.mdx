@@ -8,6 +8,9 @@ gameplay code a continuous `0..1` light level. Walls and other occluders block
 light in both, so a stealth game or a maze-of-light game can use one set of
 light sources for its visuals and its rules.
 
+For normal maps, specular highlights, and emission, use
+[sprite materials](/guides/materials/) with `surfaceLighting()`.
+
 ## Install and enable lighting
 
 ```bash
@@ -79,6 +82,13 @@ Disabling the light or its entity removes it from rendering and queries until
 it becomes active again. If light settings are durable game state, include
 their plain values in the game's explicit save root and rebuild the light when
 the scene is created.
+
+### Set surface light height
+
+With `surfaceLighting()`, `height` places the light above the sprite plane in
+pixels. It defaults to `64` and must fit a positive, finite GPU float. Set
+`light.height` to change diffuse and specular direction. Height does not change
+light-level queries, radius falloff, or shadow geometry. The compositors ignore it.
 
 ### Give the lamp a size
 
@@ -247,8 +257,10 @@ lighting.setAmbient(0.2, 0x8090b8);
 
 ## Configure the built-in renderer
 
-`@yagejs/lighting` ships two renderers. This section covers `overlayLighting()`,
-the default; `shaderLighting()` has its own section below.
+`@yagejs/lighting` provides `overlayLighting()`, `shaderLighting()`, and
+`surfaceLighting()`. This section covers the default overlay. The shader
+compositor is described below; surface lighting is covered in
+[sprite materials](/guides/materials/).
 
 The default renderer draws ambient colour and radial lights into an offscreen
 buffer, then multiplies it over the scene. A light is drawn only where no
@@ -326,7 +338,7 @@ visual backend.
 
 ## Draw shadows with soft borders
 
-`shaderLighting()` is the second built-in renderer. It draws each light as one
+`shaderLighting()` draws each light as one
 quad and works out, for every pixel that quad covers, how much of the lamp the
 occluders leave visible there — the same sum `levelAt()` does. A crate's shadow
 is therefore crisp against the floor it stands on and blurred several metres
@@ -401,7 +413,9 @@ grid `levelAt()` is asked about. The overlay starts at `0.5`. Lower it to cut
 fill cost, at the price of a coarser shadow border.
 
 :::note[The picture equals the query]
-Whichever renderer draws a scene, `levelAt()` is the truth. The shader renderer
+`levelAt()` measures light reaching a point. Surface materials also respond to
+normal direction, specular settings, and emission, so their pixel brightness is
+not the scalar query. The shader compositor
 draws what it answers, up to two sources of rounding: it divides a lamp into
 128 slots and rounds each hidden stretch out to whole slots at both ends, which
 is 2/128 of that light's contribution for each separate stretch hidden from a
@@ -428,6 +442,9 @@ The renderer ships a WebGL shader and a WebGPU shader. Both draw the same
 picture from the same uniforms and the same occluder data.
 
 ## Let light bounce off surfaces
+
+Bounce works with the overlay and shader compositors. `surfaceLighting()` requires
+`bounce: null` when the plugin has a bounce default.
 
 Real light does not stop at a shadow's edge: a lit floor throws some of it
 back, so the dark side of a crate is dim rather than black. `bounce` combines
@@ -626,8 +643,9 @@ the query applies, or the drawn light and the queried light disagree.
 
 The `bounce` the factory receives is what this scene resolved to: its own
 setting, or the plugin's, or `null`. Hand it to `LightingComposite`, the step
-the built-in renderer finishes with, and a custom renderer gets the same
-multiply composite and the same bounced light for free:
+`overlayLighting()` and `shaderLighting()` finish with, to give a custom renderer
+the same multiply composite and bounced light. `surfaceLighting()` does not use
+this composite:
 
 ```typescript
 import { Container } from "pixi.js";

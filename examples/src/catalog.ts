@@ -177,6 +177,15 @@ export const EXAMPLES: readonly Example[] = [
     guide: "/guides/rendering/effects/",
   },
   {
+    slug: "materials",
+    title: "Sprite materials",
+    summary:
+      "Normal maps, specular highlights, emission, and transparent animated sprites under a moving light.",
+    section: "effects",
+    packages: ["lighting", "effects"],
+    guide: "/guides/materials/",
+  },
+  {
     slug: "lighting",
     title: "Lighting",
     summary:

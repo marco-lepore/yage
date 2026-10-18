@@ -225,5 +225,6 @@ export class LayeredAnimationController<
         );
       }
     }
+    for (const controller of this._controllers) controller._assertSource(name);
   }
 }

@@ -35,6 +35,13 @@ everywhere except inside that border.
 
 `shaderLighting()` draws those borders. See "Shader renderer" below.
 
+## Surface renderer
+
+`surfaceLighting()` shades sprites with `litMaterial()` individually, with normal
+maps, specular highlights, and emission. Select it in the existing `renderers`
+map. See [Sprite materials](../materials.md) for complete setup, source rules,
+transparency, and limits. Requires WebGL2/WebGPU; bounce must be null.
+
 ## Renderers by name
 
 `renderers` maps a name to a `LightingRendererFactory`, and a scene picks one
@@ -83,7 +90,7 @@ required.
 
 ## Shader renderer
 
-`shaderLighting(options)` is the second built-in renderer. It draws one quad
+`shaderLighting(options)` draws one quad
 per light whose fragment shader runs the same projection `levelAt()` runs, so a
 shadow's border widens with the distance from the blocker, a lamp wider than
 its blocker lights around it, and a cone's `softness` fades its edge.
@@ -166,6 +173,8 @@ picture from the same uniforms and the same edge texture.
 
 ## Bounced light
 
+`surfaceLighting()` rejects bounce; use `bounce: null` for that scene.
+
 `bounce` combines the finished light buffer with a blurred, low-resolution
 copy of itself, so light creeps past shadow edges and around corners. It is a scene
 setting, beside `renderer`, because it is a look: a cave wants a lot of it and
@@ -238,6 +247,7 @@ torch.add(new Transform({ position: new Vec2(320, 180) }));
 const light = torch.add(
   new LightSource({
     radius: 180, // required; world pixels, above 0
+    height: 64, // positive GPU-representable pixels; surface direction only
     intensity: 0.9, // 0..1; default 1
     color: 0xffb060, // default 0xffffff
     size: 24, // lamp diameter in world pixels; default 0
@@ -252,7 +262,8 @@ const light = torch.add(
 ```
 
 The centre follows `Transform.worldPosition`, including parent transforms.
-Transform scale does not change `radius`. Set `light.radius`,
+Transform scale does not change `radius` or `height`. Height affects surface
+diffuse/specular direction only, not queries or shadow geometry. Set `light.radius`,
 `light.intensity`, `light.color`, `light.size`, `light.coneAngle`,
 `light.coneSoftness`, or `light.castShadows` to update a live light. Disabling the component or its
 entity removes it until it becomes active again.
@@ -414,7 +425,7 @@ turns it into a scaled outline, matching how a physics collider follows entity
 scale. Store durable occluder settings in the game's explicit save root.
 
 An enabled occluder is opaque to `levelAt()`, to `levelGridInto()`, and to
-both built-in renderers, `overlayLighting()` and `shaderLighting()`. Disabling
+all built-in lighting renderers. Disabling
 the component or its entity lets light through again. Custom renderers read
 `LightingWorld.occluders`.
 
@@ -478,7 +489,7 @@ engine.use(
 YAGE creates one backend per entered scene. Renderer callbacks are attributed
 through the engine error boundary and still rethrow.
 
-`LightingComposite` is the last step every built-in renderer uses, and a custom
+`LightingComposite` is the last step the overlay and shader compositors use, and a custom
 renderer that draws its light into a container can reuse it. It owns the
 offscreen buffer, multiplies it over the scene, and applies the `bounce` the
 factory was handed, which is the scene's own setting, or the plugin's, or

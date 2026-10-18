@@ -1,3 +1,6 @@
+import type { SpriteMaps } from "./materials.js";
+import { resolveMaps } from "./materials/resolveMaps.js";
+import { ResolvedSpriteSource } from "./materials/ResolvedSpriteSource.js";
 import { Texture, Rectangle, Assets } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import type { TextureRef, TextureSliceOptions } from "./public-types.js";
@@ -193,6 +196,8 @@ export function sliceSheet(
  * {@link TextureSliceOptions}.
  */
 export interface SheetFrameSource extends TextureSliceOptions {
+  /** Aligned full-page companion images, sampled by the same frame UVs. */
+  maps?: SpriteMaps;
   /**
    * The sheet to slice: an asset key, or the texture handle a `texture(...)`
    * declaration returns. Both resolve from the cache a `SpriteComponent`
@@ -203,6 +208,8 @@ export interface SheetFrameSource extends TextureSliceOptions {
 
 /** A named animation within a JSON atlas spritesheet. */
 export interface AtlasFrameSource {
+  /** Aligned companion images for a single-page animation. */
+  maps?: SpriteMaps;
   atlas: string;
   animation: string;
 }
@@ -223,6 +230,11 @@ export function isAtlasSource(s: FrameSource): s is AtlasFrameSource {
  * Assets must already be loaded (via scene preload) — this is synchronous.
  */
 export function resolveFrames(source: FrameSource): Texture[] {
+  return resolveSpriteSource(source).frames;
+}
+
+/** @internal One source owns frame layout and every companion image. */
+export function resolveSpriteSource(source: FrameSource): ResolvedSpriteSource {
   if (isSheetSource(source)) {
     const { sheet, ...options } = source;
     // Resolve through the shared guard so an unloaded / unregistered sheet
@@ -232,7 +244,8 @@ export function resolveFrames(source: FrameSource): Texture[] {
       fn: "resolveFrames",
       sheet: typeof sheet === "string" ? sheet : sheet.path,
     });
-    return buildFrames(base, layout);
+    const maps = resolveMaps([base], source.maps);
+    return new ResolvedSpriteSource(buildFrames(base, layout), maps, true);
   }
   const spritesheet = Assets.get<Spritesheet>(source.atlas);
   if (!spritesheet) {
@@ -251,5 +264,9 @@ export function resolveFrames(source: FrameSource): Texture[] {
       `resolveFrames: animation "${source.animation}" in atlas "${source.atlas}" has no frames.`,
     );
   }
-  return textures;
+  return new ResolvedSpriteSource(
+    textures,
+    resolveMaps(textures, source.maps),
+    false,
+  );
 }

@@ -1,0 +1,36 @@
+{
+  "frames": {
+    "trimmed": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 16,
+        "h": 24
+      },
+      "rotated": true,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 8,
+        "y": 4,
+        "w": 16,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 32,
+        "h": 32
+      }
+    }
+  },
+  "animations": {
+    "idle": ["trimmed"]
+  },
+  "meta": {
+    "image": "gray.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 32,
+      "h": 32
+    },
+    "scale": "1"
+  }
+}

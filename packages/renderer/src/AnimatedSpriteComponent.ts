@@ -1,14 +1,14 @@
+import { MaterialVisualComponent } from "./materials/MaterialVisualComponent.js";
+import type { ResolvedSpriteSource } from "./materials/ResolvedSpriteSource.js";
+import type { SpriteMaterial } from "./materials.js";
 import type { Vec2Like } from "@yagejs/core";
 import { AnimatedSprite, Ticker } from "pixi.js";
 import type { DisplayAnimatedSprite } from "./public-types.js";
-import { resolveFrames } from "./spritesheet.js";
+import { resolveSpriteSource } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
 import { runAttributed } from "./internal/attribution.js";
 import { assertFiniteNumber } from "./internal/validate.js";
-import {
-  VisualComponent,
-  type VisualComponentOptions,
-} from "./VisualComponent.js";
+import { type VisualComponentOptions } from "./VisualComponent.js";
 
 let animationTicker: Ticker | undefined;
 
@@ -16,6 +16,8 @@ let animationTicker: Ticker | undefined;
 export interface AnimatedSpriteComponentOptions extends VisualComponentOptions {
   /** Frame source (sheet grid or atlas animation). */
   source: FrameSource;
+  /** Reusable surface settings; companion maps belong to source. */
+  material?: SpriteMaterial;
   /**
    * Default sprite anchor (0,0 = top-left, 0.5,0.5 = center, 1,1 = bottom-right).
    * Per-{@link AnimationController} `AnimationDef.anchor` overrides this when set.
@@ -32,17 +34,17 @@ export interface AnimatedSpriteComponentOptions extends VisualComponentOptions {
 }
 
 /** Component that displays a PixiJS AnimatedSprite. */
-export class AnimatedSpriteComponent extends VisualComponent {
+export class AnimatedSpriteComponent extends MaterialVisualComponent {
+  private source: ResolvedSpriteSource;
   readonly animatedSprite: DisplayAnimatedSprite;
 
   private readonly _frameListeners: ((frame: number) => void)[] = [];
 
   constructor(options: AnimatedSpriteComponentOptions) {
     super(options.layer);
-    this.animatedSprite = new AnimatedSprite(
-      resolveFrames(options.source),
-      false,
-    );
+    this.source = resolveSpriteSource(options.source);
+    this.animatedSprite = new AnimatedSprite(this.source.frames, false);
+    this.initializeMaterial(this.source.maps, options.material);
 
     if (options.anchor) {
       this.animatedSprite.anchor.set(options.anchor.x, options.anchor.y);
@@ -61,6 +63,57 @@ export class AnimatedSpriteComponent extends VisualComponent {
   /** The underlying Pixi display object. */
   get renderObject(): DisplayAnimatedSprite {
     return this.animatedSprite;
+  }
+
+  /** Replace frames and maps together, stop at frame zero, and clear completion. */
+  setSource(source: FrameSource): void {
+    if (this.surface.scene) {
+      const maps = source.maps;
+      const active =
+        this.surface.active ||
+        !!(maps?.normal || maps?.specular || maps?.emission);
+      this.surface.assertCompatible(
+        this.surface.scene,
+        this.layerName,
+        this.material,
+        active,
+      );
+    }
+    const resolved = resolveSpriteSource(source);
+    this._installSource(resolved);
+    resolved.release();
+  }
+
+  /** @internal Check a controller transition before changing playback state. */
+  _assertSource(source: ResolvedSpriteSource): void {
+    if (this.surface.scene)
+      this.surface.assertCompatible(
+        this.surface.scene,
+        this.layerName,
+        this.material,
+        this.surface.active || source.maps.page !== undefined,
+      );
+  }
+
+  /** @internal Controllers use the same installation path with their retained source. */
+  _installSource(source: ResolvedSpriteSource): void {
+    this.surface.setMaps(source.maps, this.layerName);
+    source.retain();
+    const previous = this.source;
+    this.source = source;
+    delete this.animatedSprite.onComplete;
+    this.animatedSprite.textures = source.frames;
+    previous.release();
+  }
+
+  override onDestroy(): void {
+    super.onDestroy();
+    this.source.release();
+  }
+
+  override inspectRender() {
+    const facet = super.inspectRender();
+    return this.surface.active ? { ...facet, frameIndex: this.frame } : facet;
   }
 
   /**

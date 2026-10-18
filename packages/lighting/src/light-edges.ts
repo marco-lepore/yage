@@ -1,5 +1,5 @@
 import { BufferImageSource } from "pixi.js";
-import { EDGE_TEXTURE_WIDTH } from "./light-shader.js";
+import { EDGE_TEXTURE_WIDTH } from "./light-visibility.js";
 
 /** Texture rows the buffer starts at, doubling from there as lights need it. */
 const INITIAL_ROWS = 8;
@@ -63,34 +63,42 @@ export class LightEdgeTexture {
     this.cursor += count;
   }
 
+  /** Write one light or shape texel in the shared data layout. */
+  pushValues(a: number, b: number, c: number, d: number): void {
+    const values = [
+      Math.fround(a),
+      Math.fround(b),
+      Math.fround(c),
+      Math.fround(d),
+    ];
+    if (!values.every(Number.isFinite)) {
+      throw new RangeError(
+        `Lighting buffer: values must fit finite GPU floats, got ${a}, ${b}, ${c}, ${d}.`,
+      );
+    }
+    const offset = this.reserve();
+    for (let i = 0; i < 4; i++) {
+      const value = values[i]!;
+      if (this.texels[offset + i] !== value) {
+        this.texels[offset + i] = value;
+        this.written = true;
+      }
+    }
+  }
+
   /** Write one occluder edge, in coordinates measured from its light. */
   pushEdge(ax: number, ay: number, bx: number, by: number): void {
-    const offset = this.reserve();
-    const texels = this.texels;
-    texels[offset] = ax;
-    texels[offset + 1] = ay;
-    texels[offset + 2] = bx;
-    texels[offset + 3] = by;
+    this.pushValues(ax, ay, bx, by);
   }
 
   /** Write one outline's run: where its first edge sits, and how many it has. */
   pushOutline(firstEdge: number, edgeCount: number): void {
-    const offset = this.reserve();
-    const texels = this.texels;
-    texels[offset] = firstEdge;
-    texels[offset + 1] = edgeCount;
-    texels[offset + 2] = 0;
-    texels[offset + 3] = 0;
+    this.pushValues(firstEdge, edgeCount, 0, 0);
   }
 
   /** Write one disc, in coordinates measured from its light. */
   pushDisc(centerX: number, centerY: number, radius: number): void {
-    const offset = this.reserve();
-    const texels = this.texels;
-    texels[offset] = centerX;
-    texels[offset + 1] = centerY;
-    texels[offset + 2] = radius;
-    texels[offset + 3] = 0;
+    this.pushValues(centerX, centerY, radius, 0);
   }
 
   /** Send the frame's shapes to the GPU, unless nothing was written. */
@@ -105,9 +113,9 @@ export class LightEdgeTexture {
 
   /** Make room for one shape and return where its floats go. */
   private reserve(): number {
-    const index = this.cursor++;
-    this.written = true;
+    const index = this.cursor;
     if (index >= EDGE_TEXTURE_WIDTH * this.rows) this.grow(index);
+    this.cursor++;
     return index * FLOATS_PER_SHAPE;
   }
 
@@ -116,10 +124,9 @@ export class LightEdgeTexture {
     while (index >= EDGE_TEXTURE_WIDTH * rows) rows *= 2;
     if (rows > MAX_ROWS) {
       throw new RangeError(
-        `ShaderLightingRenderer: a scene's lights reach more than ` +
-          `${EDGE_TEXTURE_WIDTH * MAX_ROWS} occluder shapes at once, which is ` +
-          `past what one light buffer holds. Reduce light radii or the number ` +
-          `of occluders that cast shadows.`,
+        `Lighting buffer "${this.source.label}": needs ${index + 1} texels, ` +
+          `exceeding its ${EDGE_TEXTURE_WIDTH * MAX_ROWS} texel capacity. ` +
+          `Reduce light counts, light radii, or shadow-casting occluders.`,
       );
     }
     const texels = new Float32Array(
@@ -128,6 +135,7 @@ export class LightEdgeTexture {
     texels.set(this.texels);
     this.texels = texels;
     this.rows = rows;
+    this.written = true;
     this.source.resource = texels;
     this.source.resize(EDGE_TEXTURE_WIDTH, rows);
   }
