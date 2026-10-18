@@ -10,6 +10,9 @@ npm install @yagejs-addons/behavior-tree @yagejs/core
 
 The package exports a headless `BehaviorTree`, the `BehaviorTreeAgent` component,
 and `behaviorNodes<C>()` helpers. It has no renderer dependency.
+Probability gates, weighted choices, sampled waits, and cooldowns use the agent's
+scene clock and random generator, or sources supplied by a headless host. Pass a
+typed context with live state reads and owner commands; no separate blackboard is required.
 
 - [Guide](https://yage.dev/addons/behavior-tree/)
 - [API and lifecycle reference](docs/llms/behavior-tree.md)

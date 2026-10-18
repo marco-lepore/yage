@@ -21,6 +21,25 @@ export function behaviorNodes<C>(): BehaviorNodes<C> {
     subtree: (id, child) => ({ kind: "subtree", id, child }),
     invert: (id, child) => ({ kind: "invert", id, child }),
     wait: (id, seconds) => ({ kind: "wait", id, seconds }),
+    randomWait: (id, min, max) => ({ kind: "randomWait", id, min, max }),
+    chance: (id, probability, child) => ({
+      kind: "chance",
+      id,
+      probability,
+      child,
+    }),
+    weightedSelector: (id, choices, options) => ({
+      kind: "weightedSelector",
+      id,
+      choices,
+      ...options,
+    }),
+    cooldown: (id, seconds, child) => ({
+      kind: "cooldown",
+      id,
+      seconds,
+      child,
+    }),
     timeout: (id, seconds, child) => ({ kind: "timeout", id, seconds, child }),
   };
 }

@@ -6,6 +6,7 @@ import {
   ErrorBoundaryKey,
   InspectorKey,
   InspectorPlugin,
+  RandomKey,
   Scene,
 } from "@yagejs/core";
 import { BehaviorTree } from "./core/BehaviorTree.js";
@@ -18,6 +19,55 @@ class TestScene extends Scene {
 }
 
 describe("BehaviorTreeAgent", () => {
+  it("uses scene randomness and preserves an explicitly injected source", () => {
+    const { entity } = createMockEntity();
+    const random = vi
+      .spyOn(entity.scene.use(RandomKey), "float")
+      .mockReturnValue(0.25);
+    const tree = new BehaviorTree(bt.randomWait("wait", 0, 4), {});
+    const agent = entity.add(new BehaviorTreeAgent(tree));
+    agent.fixedUpdate(0.5);
+    expect(random).toHaveBeenCalledTimes(1);
+    expect(tree.inspect().nodes[0]?.durationSeconds).toBe(1);
+    const explicit = vi.fn(() => 0.75);
+    const second = new BehaviorTree(
+      bt.randomWait("wait", 0, 4),
+      {},
+      { random: explicit },
+    );
+    entity
+      .spawnChild("other")
+      .add(new BehaviorTreeAgent(second))
+      .fixedUpdate(0.5);
+    expect(explicit).toHaveBeenCalledTimes(1);
+    expect(random).toHaveBeenCalledTimes(1);
+    expect(second.inspect().nodes[0]?.durationSeconds).toBe(3);
+  });
+
+  it("disabling freezes an armed cooldown and re-enabling cannot bypass it", () => {
+    const { entity } = createMockEntity();
+    const fire = vi.fn(() => "success" as const);
+    const tree = new BehaviorTree(
+      bt.cooldown(
+        "limit",
+        1,
+        bt.action("fire", () => ({ tick: fire })),
+      ),
+      {},
+    );
+    const agent = entity.add(new BehaviorTreeAgent(tree));
+    agent.fixedUpdate(0.1);
+    agent.enabled = false;
+    agent.fixedUpdate(10);
+    expect(tree.inspect().nodes[0]?.remainingSeconds).toBe(1);
+    agent.enabled = true;
+    agent.fixedUpdate(0.5);
+    expect(tree.status).toBe("failure");
+    expect(fire).toHaveBeenCalledTimes(1);
+    agent.fixedUpdate(0.5);
+    expect(fire).toHaveBeenCalledTimes(2);
+  });
+
   it.each(["disable", "deactivate", "remove", "destroy"])(
     "cancels on %s and does not run exit twice",
     (operation) => {

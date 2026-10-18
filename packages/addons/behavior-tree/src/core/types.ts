@@ -3,6 +3,19 @@ import type { ErrorBoundary } from "@yagejs/core";
 /** A tick completes, rejects the branch, or asks to continue next tick. */
 export type BehaviorStatus = "success" | "failure" | "running";
 export type BehaviorNodeStatus = BehaviorStatus | "idle";
+/** Evaluated once per activation. Read current game state through the context. */
+export type BehaviorNumber<C> = number | ((context: C) => number);
+
+export interface BehaviorWeightedChild<C> {
+  /** Finite nonnegative weight. Zero excludes this child for the activation. */
+  readonly weight: BehaviorNumber<C>;
+  readonly child: BehaviorNode<C>;
+}
+
+export interface BehaviorWeightedOptions {
+  /** Default retry: draw again from untried children after failure. */
+  readonly onFailure?: "retry" | "fail";
+}
 export type BehaviorCancelReason =
   | "cancelled"
   | "disabled"
@@ -45,11 +58,26 @@ export type BehaviorNode<C> = { readonly id: string } & (
       readonly child: BehaviorNode<C>;
     }
   | { readonly kind: "subtree" | "invert"; readonly child: BehaviorNode<C> }
-  | { readonly kind: "wait"; readonly seconds: number }
+  | { readonly kind: "wait"; readonly seconds: BehaviorNumber<C> }
   | {
-      readonly kind: "timeout";
-      readonly seconds: number;
+      readonly kind: "timeout" | "cooldown";
+      readonly seconds: BehaviorNumber<C>;
       readonly child: BehaviorNode<C>;
+    }
+  | {
+      readonly kind: "randomWait";
+      readonly min: BehaviorNumber<C>;
+      readonly max: BehaviorNumber<C>;
+    }
+  | {
+      readonly kind: "chance";
+      readonly probability: BehaviorNumber<C>;
+      readonly child: BehaviorNode<C>;
+    }
+  | {
+      readonly kind: "weightedSelector";
+      readonly choices: readonly BehaviorWeightedChild<C>[];
+      readonly onFailure?: "retry" | "fail";
     }
 );
 
@@ -67,6 +95,12 @@ export interface BehaviorNodeInspection {
   readonly id: string;
   readonly kind: BehaviorNode<never>["kind"];
   readonly status: BehaviorNodeStatus;
+  readonly durationSeconds: number | null;
+  readonly remainingSeconds: number | null;
+  readonly chancePassed: boolean | null;
+  readonly selectedChild: string | null;
+  /** Sampled weights; failed choices become zero when retrying. */
+  readonly remainingWeights: readonly number[] | null;
 }
 
 export interface BehaviorError {
@@ -90,6 +124,8 @@ export interface BehaviorTreeOptions {
   readonly historyLimit?: number;
   /** Headless hosts can share their existing boundary. Components bind theirs. */
   readonly errorBoundary?: ErrorBoundary;
+  /** Returns a finite number in [0, 1). Components default to the scene RNG. */
+  readonly random?: () => number;
 }
 
 /** Returned by behaviorNodes<C>(); the same nodes can be authored as objects. */
@@ -113,6 +149,31 @@ export interface BehaviorNodes<C> {
   ): BehaviorNode<C>;
   subtree(id: string, child: BehaviorNode<C>): BehaviorNode<C>;
   invert(id: string, child: BehaviorNode<C>): BehaviorNode<C>;
-  wait(id: string, seconds: number): BehaviorNode<C>;
-  timeout(id: string, seconds: number, child: BehaviorNode<C>): BehaviorNode<C>;
+  wait(id: string, seconds: BehaviorNumber<C>): BehaviorNode<C>;
+  randomWait(
+    id: string,
+    min: BehaviorNumber<C>,
+    max: BehaviorNumber<C>,
+  ): BehaviorNode<C>;
+  chance(
+    id: string,
+    probability: BehaviorNumber<C>,
+    child: BehaviorNode<C>,
+  ): BehaviorNode<C>;
+  weightedSelector(
+    id: string,
+    choices: readonly BehaviorWeightedChild<C>[],
+    options?: BehaviorWeightedOptions,
+  ): BehaviorNode<C>;
+  /** Starts after child success; blocked visits fail. Time advances on every tree tick. */
+  cooldown(
+    id: string,
+    seconds: BehaviorNumber<C>,
+    child: BehaviorNode<C>,
+  ): BehaviorNode<C>;
+  timeout(
+    id: string,
+    seconds: BehaviorNumber<C>,
+    child: BehaviorNode<C>,
+  ): BehaviorNode<C>;
 }

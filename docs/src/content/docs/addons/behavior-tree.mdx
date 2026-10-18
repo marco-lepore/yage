@@ -13,6 +13,8 @@ Both guards share one definition. Automatic damage interrupts the first guard's
 attack and the second guard's approach. Each retreats, heals, and returns on its own
 schedule. Press **1** or **2** to damage a guard and **Space** to disable or restart
 the first guard's tree.
+Before attacking, each guard samples a reaction delay and chooses between normal
+and heavy attacks. Heavy attacks have a probability gate and a cooldown.
 
 ## Install and run
 
@@ -62,6 +64,28 @@ The tree receives the actual `WorkerState` component. Deliveries remain on that
 component. Changes to health, targets, inventory or other game data should likewise
 use their existing owner. The addon requires no plugin and imports no renderer.
 
+## Keep state on its owner
+
+`C` is one typed context. It can be a component, or an object containing a state
+reader, commands, and references to movement or other capabilities. There is no
+required `state` field or second context parameter. The runner holds the context
+by reference; it does not clone, freeze, or subscribe to it.
+
+For a small tree, passing the component directly is enough. For reusable actions,
+prefer a narrow interface: read-only access to the values they need, plus commands
+such as `heal()` or `attack()`. Keep writes inside the component that owns the data.
+A `Readonly` type restricts TypeScript writes; it does not freeze nested objects.
+
+If the state owner replaces its snapshots, pass `read: () => state.get()` instead
+of capturing `state.get()` when constructing the tree. Call `read()` inside each
+predicate or action tick. Reading once in an action factory captures that snapshot
+for the entire activation. The example below uses a live reader with core state.
+
+Writes are immediately visible to later nodes in the same traversal. There is no
+transaction or rollback around a tick. If your state owner uses drafts, create and
+commit the draft inside an owner command. Do not retain a draft across tree ticks:
+movement, events, and other effects cannot be rolled back with state.
+
 ## Read and compose results
 
 An action returns `"running"` to continue on a later tick, `"success"` to finish,
@@ -78,6 +102,10 @@ tick. The runtime never loops the root several times within one tick.
 | `guard(id, test, child)` | Check before every child visit. False cancels the child and returns failure. |
 | `subtree(id, child)` | Reuse a definition with independent progress at each occurrence. |
 | `wait(id, seconds)` | Succeed when supplied tick time reaches the duration. |
+| `randomWait(id, min, max)` | Sample a duration between the bounds once, then wait. |
+| `chance(id, probability, child)` | Roll once; visit the child if accepted, otherwise fail. |
+| `weightedSelector(id, choices, options?)` | Choose by relative weight; keep a running choice. |
+| `cooldown(id, seconds, child)` | After child success, reject visits until the cooldown expires. |
 | `timeout(id, seconds, child)` | Cancel the child and fail when the duration is reached. |
 | `invert(id, child)` | Swap success and failure; preserve running. |
 
@@ -86,6 +114,95 @@ objects directly. IDs must be nonempty, contain no `/`, and differ between sibli
 Paths join IDs with `/`. The constructor copies the definition's topology and callback
 references. To change the topology, construct another runner. Cycles, more than 4096
 node occurrences, and depths over 128 are rejected before any action runs.
+
+## Choose probabilities, weights, and delays
+
+This headless example reads the current ammo snapshot, waits before deciding, and
+chooses a shot or reload. A rejected chance or a blocked cooldown makes the weighted
+selector try its remaining choice.
+
+```ts
+import { createRandomService, createRecord } from "@yagejs/core";
+import { BehaviorTree, behaviorNodes } from "@yagejs-addons/behavior-tree";
+
+class GuardModel {
+  readonly state = createRecord({ default: { ammo: 3, shots: 0 } });
+  shoot(): void {
+    const current = this.state.get();
+    this.state.set({ ammo: current.ammo - 1, shots: current.shots + 1 });
+  }
+  reload(): void { this.state.set({ ammo: 3 }); }
+}
+const guard = new GuardModel();
+const ctx = {
+  read: () => guard.state.get(),
+  shoot: () => guard.shoot(),
+  reload: () => guard.reload(),
+};
+const bt = behaviorNodes<typeof ctx>();
+const shoot = bt.action("shoot", (ctx) => ({
+  tick: () => { ctx.shoot(); return "success"; },
+}));
+const definition = bt.sequence("turn", [
+  bt.randomWait("reaction", 0.2, 0.5),
+  bt.weightedSelector("tactic", [
+    {
+      weight: (ctx) => ctx.read().ammo > 0 ? 3 : 0,
+      child: bt.cooldown("shot-ready", 1, bt.chance("take-shot", 0.75, shoot)),
+    },
+    {
+      weight: 1,
+      child: bt.action("reload", (ctx) => ({
+        tick: () => { ctx.reload(); return "success"; },
+      })),
+    },
+  ]),
+]);
+const random = createRandomService(42);
+const tree = new BehaviorTree(definition, ctx, { random: () => random.float() });
+// Headless host owns the clock. Mounted agents receive engine time instead.
+for (let frame = 0; frame < 120; frame++) tree.tick(1 / 60);
+```
+
+`chance` accepts a probability from 0 to 1. It rolls once per activation and keeps
+the decision while its child runs. Zero always rejects and one always accepts;
+neither consumes a random number.
+
+`weightedSelector` takes `{ weight, child }` entries. Weights are relative: 3 and 1
+give a 75% and 25% initial choice. Zero excludes a child. The default
+`{ onFailure: "retry" }` retries among untried children, at most once each per
+activation. Pass `{ onFailure: "fail" }` to stop after the chosen child fails.
+Empty or all-zero choices fail. A running choice stays selected, even if game
+state changes its weight. Use a guard to interrupt a now-invalid action.
+
+Probabilities, weights, wait bounds, and wait/timeout/cooldown durations accept
+either a number or `(ctx) => number`. Each callback is sampled once per activation,
+before its child starts; blocked cooldowns do not sample a duration.
+All values must be finite and nonnegative; probability
+must also be at most 1, and random-wait bounds must satisfy `min <= max`.
+`randomWait` samples uniformly between its bounds; equal bounds consume no random
+number. Numeric callbacks and the random source use the same error attribution as
+actions. Keep numeric callbacks free of side effects.
+
+Mounted trees use the scene's random generator. An explicit `random` constructor
+option takes precedence. Headless trees must provide that option before any random
+draw is needed. The source must return a finite number in `[0, 1)`. Reusing a seed
+reproduces draws when tick order and other consumers of that generator match.
+
+### Cooldowns and reaction time
+
+A cooldown starts available. It samples its duration before entering the child and
+arms only after child success. Failure or cancellation does not arm it. While
+blocked it fails without visiting the child. Zero imposes no delay.
+
+Cooldowns advance on every positive tree tick, including while other branches run.
+They survive root restarts and cancellation. Pausing or disabling the agent freezes
+them because its clock stops. Each node occurrence and runner has its own cooldown.
+
+A reaction wait delays the action that follows it. Selecting the wait interrupts
+the previous running branch immediately. To keep an old action running until a
+stimulus has persisted long enough, track that observation on the game component
+and let a guard read when it becomes eligible.
 
 ## Choose remembered or reactive progress
 
@@ -190,6 +307,11 @@ old and new status, reason, and the causing node in `by`. `GuardState` holds hea
 and other game values. Engine callback errors identify the entity, node and phase.
 No game context, callback or resource is copied into the tree's diagnostics.
 
+Nodes also report `durationSeconds`, `remainingSeconds`, `chancePassed`,
+`selectedChild`, and `remainingWeights`. Unsampled or inapplicable values are null;
+an available cooldown reports zero remaining seconds. Failed choices have zero
+remaining weight when retrying. Inspection returns copies of the weights.
+
 The constructor option `historyLimit` defaults to 128 transitions. It accepts integers
 from 0 to 10000; zero disables history. Rechecked terminal conditions can consume
 history entries each tick. History is a bounded diagnostic record, not a replay log.
@@ -201,11 +323,13 @@ headless host can pass its `errorBoundary` in the constructor, or use
 
 Use `SteeringAgent` to move, and pathfinding to calculate routes. An action can install
 a steering behavior, poll arrival, and remove its own request on exit. The behavior
-tree does not replace those facilities. Random choices use the scene's `RandomKey`
-in game-owned actions; the runtime has no random source.
+tree does not replace those facilities. Random nodes use the scene's generator when
+mounted, or the runner's explicit `random` option. Game-owned random choices can use
+the scene's `RandomKey` too.
 
 Tree progress is temporary and has no snapshot/restore API. Persist health, targets
 and other durable data through the game's explicit save roots. Cancel the tree before
-restoring those roots, then start from the root. Running actions, partial waits and
-transition history cannot be resumed from a save. Execution is serial; parallel
-actions and visual tree editing are unsupported.
+restoring those roots, then start from the root. Cancellation preserves cooldowns;
+construct a fresh runner when loading should clear them. Running actions, partial
+waits, cooldown progress, and transition history cannot be resumed from a save.
+Execution is serial; parallel actions and visual tree editing are unsupported.

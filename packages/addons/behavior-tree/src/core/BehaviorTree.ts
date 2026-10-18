@@ -8,6 +8,7 @@ import type {
   BehaviorInspection,
   BehaviorNode,
   BehaviorNodeStatus,
+  BehaviorNumber,
   BehaviorStatus,
   BehaviorTransition,
   BehaviorTreeOptions,
@@ -20,6 +21,10 @@ interface Frame<C> {
   status: BehaviorNodeStatus;
   cursor: number;
   elapsed: number;
+  duration: number | null;
+  accepted: boolean | null;
+  weights: number[] | undefined;
+  cooldownRemaining: number;
   action: BehaviorAction | undefined;
 }
 
@@ -31,6 +36,24 @@ function duration(value: number, name: string): void {
   }
 }
 
+function numeric(value: number, name: string, max = Number.MAX_VALUE): number {
+  if (!Number.isFinite(value) || value < 0 || value > max) {
+    const constraint = max === Number.MAX_VALUE ? ">= 0" : `in [0, ${max}]`;
+    throw new Error(
+      `${name}: expected finite number ${constraint}, got ${value}`,
+    );
+  }
+  return value;
+}
+
+function validateValue<C>(
+  value: BehaviorNumber<C>,
+  name: string,
+  max?: number,
+): void {
+  if (typeof value !== "function") numeric(value, name, max);
+}
+
 /** One independently driven execution of a reusable definition. */
 export class BehaviorTree<C> {
   private readonly root: Frame<C>;
@@ -38,6 +61,7 @@ export class BehaviorTree<C> {
   private readonly history: BehaviorTransition[] = [];
   private readonly historyLimit: number;
   private boundary: ErrorBoundary;
+  private random: (() => number) | undefined;
   private owner: Pick<CallbackErrorInfo, "entity" | "scene"> = {};
   private ownerToken: object | undefined;
   private tickNumber = 0;
@@ -61,6 +85,9 @@ export class BehaviorTree<C> {
       );
     }
     this.boundary = options.errorBoundary ?? new ErrorBoundary(new Logger());
+    if (options.random !== undefined && typeof options.random !== "function")
+      throw new Error("BehaviorTree: random must be a function");
+    this.random = options.random;
     this.root = this.compile(definition, "", new Set());
   }
 
@@ -80,6 +107,9 @@ export class BehaviorTree<C> {
     this.busy = true;
     try {
       this.tickNumber++;
+      for (const frame of this.frames) {
+        frame.cooldownRemaining = Math.max(0, frame.cooldownRemaining - dt);
+      }
       if (this.status === "success" || this.status === "failure")
         this.reset(this.root, "restart");
       this.visit(this.root, dt);
@@ -124,6 +154,19 @@ export class BehaviorTree<C> {
         id: frame.definition.id,
         kind: frame.definition.kind,
         status: frame.status,
+        durationSeconds: frame.duration,
+        remainingSeconds:
+          frame.definition.kind === "cooldown"
+            ? frame.cooldownRemaining
+            : frame.duration === null
+              ? null
+              : Math.max(0, frame.duration - frame.elapsed),
+        chancePassed: frame.accepted,
+        selectedChild:
+          frame.definition.kind === "weightedSelector" && frame.weights
+            ? (frame.children[frame.cursor]?.path ?? null)
+            : null,
+        remainingWeights: frame.weights ? [...frame.weights] : null,
       })),
       transitions: this.history.map((transition) => ({ ...transition })),
       lastError: this.error ? { ...this.error } : null,
@@ -135,6 +178,7 @@ export class BehaviorTree<C> {
     token: object,
     boundary: ErrorBoundary,
     owner: Pick<CallbackErrorInfo, "entity" | "scene"> = {},
+    random?: () => number,
   ): void {
     if (this.busy || (this.ownerToken && this.ownerToken !== token)) {
       throw new Error(
@@ -144,6 +188,7 @@ export class BehaviorTree<C> {
     this.ownerToken = token;
     this.boundary = boundary;
     this.owner = { ...owner };
+    this.random ??= random;
   }
 
   private compile(
@@ -170,6 +215,10 @@ export class BehaviorTree<C> {
       status: "idle",
       cursor: 0,
       elapsed: 0,
+      duration: null,
+      accepted: null,
+      weights: undefined,
+      cooldownRemaining: 0,
       action: undefined,
     };
     this.frames.push(frame);
@@ -193,11 +242,43 @@ export class BehaviorTree<C> {
         children = copy.children;
         break;
       case "wait":
-        duration(copy.seconds, `BehaviorTree ${path}`);
+        validateValue(copy.seconds, `BehaviorTree ${path}.seconds`);
         break;
       case "timeout":
-        duration(copy.seconds, `BehaviorTree ${path}`);
+      case "cooldown":
+        validateValue(copy.seconds, `BehaviorTree ${path}.seconds`);
         children = [copy.child];
+        break;
+      case "randomWait":
+        validateValue(copy.min, `BehaviorTree ${path}.min`);
+        validateValue(copy.max, `BehaviorTree ${path}.max`);
+        if (
+          typeof copy.min === "number" &&
+          typeof copy.max === "number" &&
+          copy.min > copy.max
+        )
+          throw new Error(`BehaviorTree ${path}: min must be <= max`);
+        break;
+      case "chance":
+        validateValue(copy.probability, `BehaviorTree ${path}.probability`, 1);
+        children = [copy.child];
+        break;
+      case "weightedSelector":
+        if (
+          copy.onFailure !== undefined &&
+          copy.onFailure !== "retry" &&
+          copy.onFailure !== "fail"
+        )
+          throw new Error(
+            `BehaviorTree ${path}: onFailure must be retry or fail`,
+          );
+        copy.choices = copy.choices.map((choice) => ({ ...choice }));
+        for (const choice of copy.choices)
+          validateValue(
+            choice.weight,
+            `BehaviorTree ${path}/${choice.child.id}.weight`,
+          );
+        children = copy.choices.map((choice) => choice.child);
         break;
       case "subtree":
       case "invert":
@@ -254,12 +335,62 @@ export class BehaviorTree<C> {
     if (this.pendingCancel) throw CANCEL_TICK;
   }
 
+  private value(
+    frame: Frame<C>,
+    value: BehaviorNumber<C>,
+    phase: string,
+    max?: number,
+  ): number {
+    if (typeof value === "number") return value;
+    return this.invoke(frame, phase, () =>
+      numeric(value(this.context), `BehaviorTree ${frame.path}.${phase}`, max),
+    );
+  }
+
+  private roll(frame: Frame<C>): number {
+    return this.invoke(frame, "random", () => {
+      if (!this.random)
+        throw new Error(
+          `BehaviorTree ${frame.path}: supply options.random or mount a BehaviorTreeAgent before using random nodes`,
+        );
+      const value = this.random();
+      if (!Number.isFinite(value) || value < 0 || value >= 1)
+        throw new Error(
+          `BehaviorTree ${frame.path}.random: expected finite number in [0, 1), got ${value}`,
+        );
+      return value;
+    });
+  }
+
+  private choose(frame: Frame<C>): number {
+    const weights = frame.weights!;
+    const scale = Math.max(0, ...weights);
+    if (scale === 0) return -1;
+    // Scale before summing so several legal, large weights cannot overflow.
+    const total = weights.reduce((sum, weight) => sum + weight / scale, 0);
+    const target = this.roll(frame) * total;
+    let cumulative = 0;
+    let last = -1;
+    for (let i = 0; i < weights.length; i++) {
+      if (weights[i]! === 0) continue;
+      last = i;
+      cumulative += weights[i]! / scale;
+      if (target < cumulative) return i;
+    }
+    return last;
+  }
+
   private visit(frame: Frame<C>, dt: number): BehaviorStatus {
     const node = frame.definition;
     if (frame.status === "success" || frame.status === "failure")
       this.reset(frame, "reevaluate");
     const entering = frame.status === "idle";
-    if (entering && (node.kind === "action" || node.kind === "wait"))
+    if (
+      entering &&
+      (node.kind === "action" ||
+        node.kind === "wait" ||
+        node.kind === "randomWait")
+    )
       this.haltOutside(this.root, frame.path);
     this.checkCancellation();
     this.change(frame, "running", "enter");
@@ -331,15 +462,74 @@ export class BehaviorTree<C> {
         break;
       }
       case "wait":
-        frame.elapsed = Math.min(node.seconds, frame.elapsed + dt);
-        result = frame.elapsed >= node.seconds ? "success" : "running";
+      case "randomWait":
+        if (entering) {
+          if (node.kind === "wait")
+            frame.duration = this.value(frame, node.seconds, "duration");
+          else {
+            const min = this.value(frame, node.min, "minimum");
+            const max = this.value(frame, node.max, "maximum");
+            this.invoke(frame, "duration", () => {
+              if (min > max)
+                throw new Error(
+                  `BehaviorTree ${frame.path}: min must be <= max, got ${min}, ${max}`,
+                );
+            });
+            frame.duration =
+              min === max ? min : min + this.roll(frame) * (max - min);
+          }
+        }
+        frame.elapsed = Math.min(frame.duration!, frame.elapsed + dt);
+        result = frame.elapsed >= frame.duration! ? "success" : "running";
         break;
       case "timeout":
-        frame.elapsed = Math.min(node.seconds, frame.elapsed + dt);
-        if (frame.elapsed >= node.seconds) {
+        if (entering)
+          frame.duration = this.value(frame, node.seconds, "duration");
+        frame.elapsed = Math.min(frame.duration!, frame.elapsed + dt);
+        if (frame.elapsed >= frame.duration!) {
           this.halt(frame.children[0]!, "timeout", frame.path);
           result = "failure";
         } else result = this.visit(frame.children[0]!, dt);
+        break;
+      case "cooldown":
+        if (entering && frame.cooldownRemaining > 0) result = "failure";
+        else {
+          if (entering)
+            frame.duration = this.value(frame, node.seconds, "duration");
+          result = this.visit(frame.children[0]!, dt);
+          if (result === "success") frame.cooldownRemaining = frame.duration!;
+        }
+        break;
+      case "chance":
+        if (entering) {
+          const probability = this.value(
+            frame,
+            node.probability,
+            "probability",
+            1,
+          );
+          frame.accepted =
+            probability === 1 ||
+            (probability > 0 && this.roll(frame) < probability);
+        }
+        result = frame.accepted
+          ? this.visit(frame.children[0]!, dt)
+          : "failure";
+        break;
+      case "weightedSelector":
+        if (entering) {
+          frame.weights = node.choices.map((choice) =>
+            this.value(frame, choice.weight, "weight"),
+          );
+          frame.cursor = this.choose(frame);
+        }
+        result = "failure";
+        while (frame.cursor !== -1) {
+          result = this.visit(frame.children[frame.cursor]!, dt);
+          if (result !== "failure" || node.onFailure === "fail") break;
+          frame.weights![frame.cursor] = 0;
+          frame.cursor = this.choose(frame);
+        }
         break;
       case "subtree":
         result = this.visit(frame.children[0]!, dt);
@@ -403,6 +593,9 @@ export class BehaviorTree<C> {
   private resetFrame(frame: Frame<C>, reason: string, by: string | null): void {
     frame.cursor = 0;
     frame.elapsed = 0;
+    frame.duration = null;
+    frame.accepted = null;
+    frame.weights = undefined;
     frame.action = undefined;
     this.change(frame, "idle", reason, by);
   }

@@ -1037,6 +1037,7 @@ test("behavior-tree: interrupts owned work and keeps shared definitions independ
         phase: string;
         health: number;
         attacks: number;
+        heavyAttacks: number;
         interruptions: number;
         lastInterruption: string;
       };
@@ -1046,6 +1047,13 @@ test("behavior-tree: interrupts owned work and keeps shared definitions independ
         status: string;
         execution: {
           activePaths: string[];
+          nodes: Array<{
+            id: string;
+            kind: string;
+            durationSeconds: number | null;
+            selectedChild: string | null;
+            remainingWeights: number[] | null;
+          }>;
           transitions: Array<{
             path: string;
             reason: string;
@@ -1055,6 +1063,7 @@ test("behavior-tree: interrupts owned work and keeps shared definitions independ
       };
     inspector.time.step(90);
     const before = [state(first), state(second)];
+    const decisions = brain(first).execution.nodes;
     inspector.time.step(25);
     const interrupted = {
       first: state(first),
@@ -1078,6 +1087,7 @@ test("behavior-tree: interrupts owned work and keeps shared definitions independ
     const restarted = brain(first);
     return {
       before,
+      decisions,
       interrupted,
       both,
       completed,
@@ -1092,6 +1102,14 @@ test("behavior-tree: interrupts owned work and keeps shared definitions independ
     "attack",
     "approach",
   ]);
+  const reaction = result.decisions.find((node) => node.id === "reaction")!;
+  expect(reaction.durationSeconds).toBeGreaterThanOrEqual(0.1);
+  expect(reaction.durationSeconds).toBeLessThan(0.3);
+  expect(result.decisions.find((node) => node.id === "tactic")).toMatchObject({
+    kind: "weightedSelector",
+    selectedChild: expect.any(String),
+    remainingWeights: expect.any(Array),
+  });
   expect(result.interrupted.first).toMatchObject({
     phase: "retreat",
     attacks: 0,
@@ -1104,7 +1122,9 @@ test("behavior-tree: interrupts owned work and keeps shared definitions independ
   });
   expect(result.interrupted.trace).toContainEqual(
     expect.objectContaining({
-      path: "guard/combat/attack-cycle/attack",
+      path: expect.stringMatching(
+        /^guard\/combat\/attack-cycle\/tactic\/.*attack$/,
+      ),
       reason: "branch-changed",
       by: "guard/low-health/safety/retreat",
     }),
@@ -1117,6 +1137,9 @@ test("behavior-tree: interrupts owned work and keeps shared definitions independ
     expect(state.health).toBe(100);
     expect(state.attacks).toBeGreaterThan(0);
   }
+  expect(
+    result.completed.reduce((sum, state) => sum + state.heavyAttacks, 0),
+  ).toBeGreaterThan(0);
   expect(result.disabled).toMatchObject({ enabled: false, status: "idle" });
   expect(result.stoppedPosition).toEqual(result.position);
   expect(result.restarted).toMatchObject({ enabled: true, status: "running" });

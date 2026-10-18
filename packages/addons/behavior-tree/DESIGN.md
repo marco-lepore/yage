@@ -54,6 +54,50 @@ text language, Promise support or broader node catalog.
   and ErrorBoundary records provide access without a separate tool protocol.
   [Action lifecycle](https://behaviortree.dev/docs/tutorial-basics/tutorial_04_sequence/).
 
+## State access and runtime context
+
+Other libraries expose several state models rather than one universal blackboard
+contract. LimboAI passes an agent and a mutable per-instance blackboard. BehaviorTree.CPP
+uses input/output ports and recommends reading inputs inside ticks so updates are
+visible. Mistreevous resolves properties and getters on its agent. These provide
+live data access without requiring a draft transaction around tree execution.
+[LimboAI blackboards](https://limboai.readthedocs.io/en/stable/behavior-trees/using-blackboard.html),
+[task context](https://limboai.readthedocs.io/en/stable/classes/class_bttask.html),
+[BehaviorTree.CPP ports](https://www.behaviortree.dev/docs/tutorial-basics/tutorial_02_basic_ports/),
+[ports versus blackboards](https://www.behaviortree.dev/docs/guides/ports_vs_blackboard/),
+[Mistreevous agents](https://github.com/nikkorn/mistreevous/blob/master/README.md).
+
+YAGE keeps its single generic context. A small tree can receive its component
+directly. Larger trees can receive a read-only data view or live `read()` function,
+owner commands, and references to capabilities such as steering. This expresses
+read/write access in TypeScript without a separate state copy or named port registry.
+Replacement snapshots must be read on each tick, not captured in an action factory.
+The addon does not own, freeze, clone, or observe the game state.
+
+A mandatory draft would imply a transaction boundary that cannot include movement,
+events, audio, or arbitrary action effects. Owner commands may use their own drafts,
+but the runner neither retains them nor promises rollback. Changes remain visible
+to later nodes in the same traversal. Engine clock, RNG, and error attribution belong
+to the runner and its host; they are not replicated into game state.
+
+## Probability and timing
+
+Chance, weighted selection, and sampled waits are tree nodes. LimboAI likewise
+provides probability gates, probability selectors with configurable failure behavior,
+and random waits. YAGE samples each activation once, retains a running selection,
+and retries weighted alternatives without replacement by default. Callers can opt
+to fail immediately after the selected child fails.
+[Probability](https://limboai.readthedocs.io/en/stable/classes/class_btprobability.html),
+[selector](https://limboai.readthedocs.io/en/stable/classes/class_btprobabilityselector.html),
+[random wait](https://limboai.readthedocs.io/en/stable/classes/class_btrandomwait.html).
+
+Numeric inputs accept constants or typed context callbacks. Mounted runners use
+the scene RNG unless explicitly overridden; headless callers inject one. No browser
+timer or ambient random source controls tree execution. Cooldowns arm after child
+success and advance on every tree tick, including while other branches run. They
+survive branch/root resets and cancellation, so interruption cannot bypass a cooldown.
+Pause and disable freeze them. Game-wide or saved cooldowns remain game-owned data.
+
 ## Scope
 
 The component owns per-entity behavior. Steering owns movement, pathfinding owns

@@ -18,11 +18,13 @@ import type { BehaviorExit } from "@yagejs-addons/behavior-tree";
 
 export const GuardAttack = defineEvent<{ lane: string }>("guard:attack");
 
-/** Game state stays on this component; the tree receives its reference. */
+/** Game state stays on this component; actions read it and call owner methods. */
 export class GuardState extends Component {
   health = 100;
   phase = "idle";
   attacks = 0;
+  heavyAttacks = 0;
+  tactic: "normal" | "heavy" = "normal";
   interruptions = 0;
   lastInterruption = "none";
   readonly attack: ProcessSlot;
@@ -32,8 +34,6 @@ export class GuardState extends Component {
     readonly lane: string,
     readonly target: Vec2,
     readonly home: Vec2,
-    readonly movement: SteeringAgent,
-    readonly position: Transform,
     processes: ProcessComponent,
   ) {
     super();
@@ -45,6 +45,18 @@ export class GuardState extends Component {
     this.health = 20;
   }
 
+  heal(): void {
+    this.health = 100;
+  }
+  setPhase(phase: string): void {
+    this.phase = phase;
+  }
+  prepareAttack(tactic: "normal" | "heavy"): void {
+    this.phase = "attack";
+    this.tactic = tactic;
+    this.attack.restart({ duration: tactic === "heavy" ? 2 : 1.4 });
+  }
+
   finishAction(phase: string, result: BehaviorExit): void {
     if (result.status === "cancelled") {
       this.interruptions++;
@@ -54,16 +66,29 @@ export class GuardState extends Component {
 
   strike(): void {
     this.attacks++;
+    if (this.tactic === "heavy") this.heavyAttacks++;
     this.entity.emit(GuardAttack, { lane: this.lane });
   }
 }
 
-const bt = behaviorNodes<GuardState>();
+interface GuardContext {
+  readonly read: () => Readonly<Pick<GuardState, "health" | "target" | "home">>;
+  readonly commands: Pick<
+    GuardState,
+    "setPhase" | "prepareAttack" | "strike" | "heal" | "finishAction"
+  >;
+  readonly movement: SteeringAgent;
+  readonly position: Transform;
+  readonly attack: ProcessSlot;
+  readonly recovery: ProcessSlot;
+}
 
-function travel(id: string, destination: (guard: GuardState) => Vec2) {
+const bt = behaviorNodes<GuardContext>();
+
+function travel(id: string, destination: (guard: GuardContext) => Vec2) {
   return bt.action(id, (guard) => ({
     enter: () => {
-      guard.phase = id;
+      guard.commands.setPhase(id);
       guard.movement.setBehaviors([
         arrive(destination(guard), { slowRadius: 40, arriveRadius: 3 }),
       ]);
@@ -75,37 +100,57 @@ function travel(id: string, destination: (guard: GuardState) => Vec2) {
     exit: (result) => {
       guard.movement.setBehaviors([]);
       guard.movement.stop();
-      guard.finishAction(id, result);
+      guard.commands.finishAction(id, result);
+    },
+  }));
+}
+
+function attack(id: string, tactic: "normal" | "heavy") {
+  return bt.action(id, (guard) => ({
+    enter: () => {
+      guard.commands.prepareAttack(tactic);
+    },
+    tick: () => {
+      if (guard.attack.running) return "running";
+      guard.commands.strike();
+      return "success";
+    },
+    exit: (result) => {
+      guard.attack.cancel();
+      guard.commands.finishAction("attack", result);
     },
   }));
 }
 
 const attackCycle = bt.sequence("attack-cycle", [
-  travel("approach", (guard) => guard.target),
-  bt.action("attack", (guard) => ({
-    enter: () => {
-      guard.phase = "attack";
-      guard.attack.restart();
-    },
+  travel("approach", (guard) => guard.read().target),
+  bt.action("react", (guard) => ({
     tick: () => {
-      if (guard.attack.running) return "running";
-      guard.strike();
+      guard.commands.setPhase("react");
       return "success";
     },
-    exit: (result) => {
-      guard.attack.cancel();
-      guard.finishAction("attack", result);
-    },
   })),
+  bt.randomWait("reaction", 0.1, 0.3),
+  bt.weightedSelector("tactic", [
+    { weight: 3, child: attack("attack", "normal") },
+    {
+      weight: 1,
+      child: bt.cooldown(
+        "heavy-ready",
+        4,
+        bt.chance("commit-heavy", 0.75, attack("heavy-attack", "heavy")),
+      ),
+    },
+  ]),
   bt.action("recover", (guard) => ({
     enter: () => {
-      guard.phase = "recover";
+      guard.commands.setPhase("recover");
       guard.recovery.restart();
     },
     tick: () => (guard.recovery.running ? "running" : "success"),
     exit: (result) => {
       guard.recovery.cancel();
-      guard.finishAction("recover", result);
+      guard.commands.finishAction("recover", result);
     },
   })),
 ]);
@@ -116,19 +161,19 @@ const guardBehavior = bt.selector(
   [
     bt.guard(
       "low-health",
-      (guard) => guard.health < 30,
+      (guard) => guard.read().health < 30,
       bt.sequence("safety", [
-        travel("retreat", (guard) => guard.home),
+        travel("retreat", (guard) => guard.read().home),
         bt.action("rest", (guard) => ({
           tick: () => {
-            guard.phase = "rest";
+            guard.commands.setPhase("rest");
             return "success";
           },
         })),
         bt.wait("heal-delay", 2),
         bt.action("heal", (guard) => ({
           tick: () => {
-            guard.health = 100;
+            guard.commands.heal();
             return "success";
           },
         })),
@@ -171,7 +216,7 @@ class GuardView extends Component {
       this.phase = state.phase;
       this.label.setText(state.phase.toUpperCase());
     }
-    const summary = `${state.lane}   HP ${state.health}   attacks ${state.attacks}\nInterrupted ${state.interruptions} · ${state.lastInterruption}`;
+    const summary = `${state.lane}   HP ${state.health}   attacks ${state.attacks} (${state.heavyAttacks} heavy)\nTactic ${state.tactic} · interrupted ${state.interruptions} · ${state.lastInterruption}`;
     if (summary !== this.summary) {
       this.summary = summary;
       this.panel.setText(summary);
@@ -181,7 +226,7 @@ class GuardView extends Component {
 
 export class GuardEntity extends Entity {
   state!: GuardState;
-  brain!: BehaviorTreeAgent<GuardState>;
+  brain!: BehaviorTreeAgent<GuardContext>;
 
   setup(params: {
     lane: string;
@@ -201,13 +246,20 @@ export class GuardEntity extends Entity {
         params.lane,
         new Vec2(660, params.y),
         new Vec2(100, params.y),
-        movement,
-        position,
         processes,
       ),
     );
     this.brain = this.add(
-      new BehaviorTreeAgent(new BehaviorTree(guardBehavior, this.state)),
+      new BehaviorTreeAgent(
+        new BehaviorTree(guardBehavior, {
+          read: () => this.state,
+          commands: this.state,
+          movement,
+          position,
+          attack: this.state.attack,
+          recovery: this.state.recovery,
+        }),
+      ),
     );
     const visual = this.add(new GraphicsComponent());
     const labelHost = this.spawnChild("phase");

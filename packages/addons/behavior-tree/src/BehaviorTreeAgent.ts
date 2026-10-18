@@ -1,4 +1,4 @@
-import { Component, ErrorBoundaryKey } from "@yagejs/core";
+import { Component, ErrorBoundaryKey, RandomKey } from "@yagejs/core";
 import type { ProcessClock } from "@yagejs/core";
 import type { BehaviorTree } from "./core/BehaviorTree.js";
 import type { BehaviorInspection, BehaviorNodeStatus } from "./core/types.js";
@@ -32,10 +32,16 @@ export class BehaviorTreeAgent<C> extends Component {
   }
 
   onAdd(): void {
-    this.tree.bindOwner(this, this.use(ErrorBoundaryKey), {
-      entity: this.entity.name,
-      scene: this.scene.name,
-    });
+    const random = this.use(RandomKey);
+    this.tree.bindOwner(
+      this,
+      this.use(ErrorBoundaryKey),
+      {
+        entity: this.entity.name,
+        scene: this.scene.name,
+      },
+      () => random.float(),
+    );
   }
 
   fixedUpdate(dt: number): void {

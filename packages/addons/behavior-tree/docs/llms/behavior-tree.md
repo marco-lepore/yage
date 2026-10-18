@@ -39,17 +39,21 @@ const diagnostics: BehaviorInspection = tree.inspect();
 tree.cancel();
 ```
 
-| Builder                                          | Meaning                                                                               |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `action(id, (context) => BehaviorAction)`        | Fresh action object and closure for every activation.                                 |
-| `condition(id, (context) => boolean)`            | Success for true, failure for false. Keep predicates free of side effects.            |
-| `sequence(id, children, { reactive?: boolean })` | Visit in order until running/failure; success if all succeed. Empty succeeds.         |
-| `selector(id, children, { reactive?: boolean })` | Visit in order until running/success; failure if all fail. Empty fails.               |
-| `guard(id, predicate, child)`                    | Check every visit; false cancels child with `guard-failed` and fails.                 |
-| `subtree(id, child)`                             | Named reuse of a definition; each occurrence gets its own execution state.            |
-| `wait(id, seconds)`                              | Accumulate supplied dt, succeed at duration. Zero succeeds on first positive tick.    |
-| `timeout(id, seconds, child)`                    | Count supplied dt before child; cancel and fail at deadline. Zero never enters child. |
-| `invert(id, child)`                              | Swap success/failure; preserve running.                                               |
+| Builder                                          | Meaning                                                                                                     |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `action(id, (context) => BehaviorAction)`        | Fresh action object and closure for every activation.                                                       |
+| `condition(id, (context) => boolean)`            | Success for true, failure for false. Keep predicates free of side effects.                                  |
+| `sequence(id, children, { reactive?: boolean })` | Visit in order until running/failure; success if all succeed. Empty succeeds.                               |
+| `selector(id, children, { reactive?: boolean })` | Visit in order until running/success; failure if all fail. Empty fails.                                     |
+| `guard(id, predicate, child)`                    | Check every visit; false cancels child with `guard-failed` and fails.                                       |
+| `subtree(id, child)`                             | Named reuse of a definition; each occurrence gets its own execution state.                                  |
+| `wait(id, seconds)`                              | Accumulate supplied dt, succeed at duration. Zero succeeds on first positive tick.                          |
+| `randomWait(id, min, max)`                       | Sample a uniform duration once per activation, then wait. Equal bounds skip RNG.                            |
+| `chance(id, probability, child)`                 | Roll once per activation; visit child if accepted, otherwise fail.                                          |
+| `weightedSelector(id, choices, options?)`        | Relative `{ weight, child }` entries; keep running choice; retry untried children after failure by default. |
+| `cooldown(id, seconds, child)`                   | Available initially; arm after child success; blocked visits fail without visiting child.                   |
+| `timeout(id, seconds, child)`                    | Count supplied dt before child; cancel and fail at deadline. Zero never enters child.                       |
+| `invert(id, child)`                              | Swap success/failure; preserve running.                                                                     |
 
 The helpers return plain `BehaviorNode<C>` objects. IDs must be nonempty and
 contain no `/`; sibling IDs must differ. Paths join IDs with `/`. Construction
@@ -57,6 +61,13 @@ copies topology and callback references, validates cycles and durations, and lim
 a tree to 4096 occurrences and depth 128. Definition edits require a new runner.
 Durations and dt must be finite and nonnegative. `historyLimit` is an integer from
 0 to 10000; default 128. Zero disables transition history.
+
+`BehaviorNumber<C> = number | ((context: C) => number)` is accepted for
+probability, weights, random-wait bounds, and wait/timeout/cooldown durations.
+Callbacks sample once per activation; blocked cooldowns do not sample a duration.
+Numeric callbacks must be pure, synchronous, finite and nonnegative. Probabilities
+must be in `[0, 1]`; random-wait bounds require `min <= max`. Static values validate
+at construction; callback values validate before any child starts.
 
 ## Mounting and ownership
 
@@ -116,7 +127,100 @@ Each entity needs a distinct `BehaviorTree` and `BehaviorTreeAgent`. Sharing the
 runner between component owners throws. `agent.tree` exposes the model for manual
 inspection or cancellation; a headless host uses `tree.tick(dt)` itself. Do not
 also tick a runner which an enabled component drives. Custom hosts can supply an
-`errorBoundary` option or call `bindOwner(token, boundary, { entity, scene })`.
+`errorBoundary` option or call `bindOwner(token, boundary, { entity, scene }, random?)`.
+
+## Context and live state
+
+`C` is one arbitrary typed context held by reference. There is no required `state`
+field, second context parameter, clone, freeze, subscription, or tick transaction.
+Pass a mutable component for small trees, or a narrow interface with read-only
+data, owner commands, and capabilities for reusable actions. `Readonly` restricts
+TypeScript writes and is shallow; it does not freeze the underlying state.
+
+For owners that replace snapshots, use `read: () => state.get()`. Call `read()`
+inside each predicate or action tick. Reading once in the action factory captures
+that snapshot for the whole activation. Writes are immediately visible to later
+nodes in the same traversal. If an owner uses drafts, create and commit them inside
+its command; never retain a draft across ticks. Exceptions do not roll back state,
+events, movement, or other effects.
+
+This complete headless example supplies live state, commands, a seeded source, and
+an explicit clock. An engine-mounted tree receives the clock and RNG from its agent.
+
+```ts
+import { createRandomService, createRecord } from "@yagejs/core";
+import { BehaviorTree, behaviorNodes } from "@yagejs-addons/behavior-tree";
+
+class GuardModel {
+  readonly state = createRecord({ default: { ammo: 3, shots: 0 } });
+  shoot(): void {
+    const current = this.state.get();
+    this.state.set({ ammo: current.ammo - 1, shots: current.shots + 1 });
+  }
+  reload(): void {
+    this.state.set({ ammo: 3 });
+  }
+}
+const guard = new GuardModel();
+const ctx = {
+  read: () => guard.state.get(),
+  shoot: () => guard.shoot(),
+  reload: () => guard.reload(),
+};
+const bt = behaviorNodes<typeof ctx>();
+const shoot = bt.action("shoot", (ctx) => ({
+  tick: () => {
+    ctx.shoot();
+    return "success";
+  },
+}));
+const definition = bt.sequence("turn", [
+  bt.randomWait("reaction", 0.2, 0.5),
+  bt.weightedSelector("tactic", [
+    {
+      weight: (ctx) => (ctx.read().ammo > 0 ? 3 : 0),
+      child: bt.cooldown("shot-ready", 1, bt.chance("take-shot", 0.75, shoot)),
+    },
+    {
+      weight: 1,
+      child: bt.action("reload", (ctx) => ({
+        tick: () => {
+          ctx.reload();
+          return "success";
+        },
+      })),
+    },
+  ]),
+]);
+const random = createRandomService(42);
+const tree = new BehaviorTree(definition, ctx, {
+  random: () => random.float(),
+});
+for (let frame = 0; frame < 120; frame++) tree.tick(1 / 60);
+```
+
+## Random decisions and cooldowns
+
+`BehaviorTreeOptions.random?: () => number` must return a finite value in `[0, 1)`.
+`BehaviorTreeAgent` defaults to the scene RNG; an explicit option takes precedence.
+Headless hosts must supply a source before a draw is needed. Chance 0/1, equal
+wait bounds, and empty/all-zero weighted choices consume no random number.
+
+A chance decision and sampled wait duration persist while running. Weighted
+selectors sample all weights once per activation, exclude zero weights, and retain
+the chosen running child. Changed weights take effect next activation; use a guard
+for immediate invalidation. Default `onFailure: "retry"` samples among untried
+children after failure, at most once per child; `onFailure: "fail"` stops. Empty,
+all-zero, or exhausted choices fail. Weights 3 and 1 mean 75%/25% initial choice.
+
+Cooldown duration samples before child entry and arms only on success, never on
+failure or cancellation. Blocked visits fail. Remaining time advances on every
+positive tree tick, even when unvisited. It survives root restart and cancellation;
+disable/pause freezes it. Zero adds no delay. Each occurrence and runner is independent.
+
+A reaction wait delays subsequent work but selecting it interrupts previous work
+immediately. To delay switching until a stimulus has persisted, measure that stimulus
+on the game owner and expose eligibility through a guard.
 
 ## Progress and interruption
 
@@ -153,7 +257,7 @@ All callbacks are synchronous. Poll an existing process slot, animation or movem
 request from tick. In exit, cancel the process or release the request the action owns.
 The runtime cannot infer external resources. Promises are unsupported. Exceptions
 never become failure results: the existing `ErrorBoundary` attributes factory,
-entry, tick, exit and condition calls and rethrows the same Error. A throwing exit
+entry, tick, exit, condition, numeric and random calls and rethrows the same Error. A throwing exit
 prevents the next branch from starting. No automatic cleanup runs after a throw.
 Fix the callback and cancel the tree before deliberately driving it again.
 
@@ -176,8 +280,8 @@ starts from the root. For broad active/stunned/dead modes, let the existing
 
 Movement remains in `SteeringAgent`; exit can remove a steering behavior and call
 `stop()`. Pathfinding produces a route that a steering action can follow. The tree
-neither computes routes nor duplicates movement or state-machine state. Random choices
-belong in game actions using the scene's `RandomKey`; the runtime has no random source.
+neither computes routes nor duplicates movement or state-machine state. Game-owned
+random choices can use the scene's `RandomKey`, shared with mounted random nodes.
 
 ## Inspection and saving
 
@@ -191,11 +295,18 @@ Inspect game components separately for health or target values. Diagnostics are 
 copies and exclude context, closures and resources. History is bounded and not a replay
 log; rechecked terminal conditions can consume history entries each tick.
 
+Each node also reports `durationSeconds`, `remainingSeconds`, `chancePassed`,
+`selectedChild` (path), and `remainingWeights` (copied array). Unsampled or
+inapplicable values are null, except cooldown remaining time starts at zero.
+Failed choices become zero in `remainingWeights` when retrying.
+
 The addon owns temporary execution state only. It has no save snapshot/restore API.
 Persist health, targets and other durable state through the game's explicit save roots.
-Cancel before restoring those roots, then restart from the root. Active actions,
-wait progress and traces cannot be resumed from a save.
+Cancel before restoring those roots, then restart from the root. Cancellation
+preserves cooldowns; construct a fresh runner if loading should clear them. Active
+actions, wait/cooldown progress and traces cannot be resumed from a save.
 
 Runnable example: `examples/behavior-tree.html`, sources in
 `examples/src/behavior-tree/`. Two guards share one definition, use steering and
-process slots, and demonstrate interrupted attacks and independent progress.
+process slots, and demonstrate interrupted attacks and independent progress, sampled
+reaction waits, weighted tactics, probability gates, and heavy-attack cooldowns.

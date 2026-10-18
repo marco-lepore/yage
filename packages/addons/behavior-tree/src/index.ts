@@ -12,7 +12,10 @@ export type {
   BehaviorNodes,
   BehaviorNodeInspection,
   BehaviorNodeStatus,
+  BehaviorNumber,
   BehaviorStatus,
   BehaviorTransition,
   BehaviorTreeOptions,
+  BehaviorWeightedChild,
+  BehaviorWeightedOptions,
 } from "./core/types.js";

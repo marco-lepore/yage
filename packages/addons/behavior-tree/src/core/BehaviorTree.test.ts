@@ -245,7 +245,7 @@ describe("BehaviorTree", () => {
       expect(() => tree.tick(dt)).toThrow("finite seconds");
       expect(tree.inspect()).toEqual(before);
       expect(() => new BehaviorTree(bt.wait("wait", dt), context())).toThrow(
-        "finite seconds",
+        "finite number",
       );
     },
   );
