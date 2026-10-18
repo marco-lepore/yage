@@ -1,8 +1,14 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { runInit } from "./init.js";
-import { addFile, installed, makeTree, snapshot } from "./test/tree.js";
+import {
+  addFile,
+  installed,
+  makeTree,
+  removeTrees,
+  snapshot,
+} from "./test/tree.js";
 
 const BOOT = `import type { Plugin } from "@yagejs/core";
 
@@ -40,14 +46,20 @@ function read(root: string, file: string): string {
   return readFileSync(path.join(root, file), "utf8");
 }
 
+afterEach(() => {
+  removeTrees();
+});
+
 describe("runInit refusals", () => {
   it("names a directory that is not a game", () => {
     const root = makeTree({});
+    const before = snapshot(root);
     expect(() =>
       runInit({ root, targets: ["electron"], force: false }),
     ).toThrow(
       `yage-pack init: no package.json in ${root}. Run this from the game's root directory.`,
     );
+    expect(snapshot(root)).toEqual(before);
   });
 
   it("names an unknown target", () => {
@@ -75,15 +87,18 @@ describe("runInit refusals", () => {
       "package.json": JSON.stringify(manifest),
       "src/boot.ts": BOOT,
     });
+    const before = snapshot(root);
     expect(() =>
       runInit({ root, targets: ["ios"], appId: "com.example.a", force: false }),
     ).toThrow(
       "yage-pack init: @yagejs/host-capacitor is not installed. Run npm install @yagejs/host-capacitor first.",
     );
+    expect(snapshot(root)).toEqual(before);
   });
 
   it("asks for an identifier when the manifest has none", () => {
     const root = game();
+    const before = snapshot(root);
     expect(() =>
       runInit({ root, targets: ["electron"], force: false }),
     ).toThrow(
@@ -91,6 +106,7 @@ describe("runInit refusals", () => {
         "(for example com.example.mygame). It names the save directory and " +
         "must not change after the first release.",
     );
+    expect(snapshot(root)).toEqual(before);
   });
 
   it("refuses an identifier that differs from the one the saves follow", () => {
@@ -100,6 +116,7 @@ describe("runInit refusals", () => {
         yage: { appId: "com.example.mygame" },
       }),
     });
+    const before = snapshot(root);
     expect(() =>
       runInit({
         root,
@@ -111,17 +128,61 @@ describe("runInit refusals", () => {
       'yage-pack init: --app-id com.example.other differs from package.json "yage.appId" com.example.mygame. ' +
         "Changing it moves every player's saves; edit package.json yourself if that is intended.",
     );
+    expect(snapshot(root)).toEqual(before);
   });
 
   it("refuses an identifier a host would not accept", () => {
     const root = game();
+    const before = snapshot(root);
     expect(() =>
       runInit({ root, targets: ["electron"], appId: "mygame", force: false }),
     ).toThrow("yage-pack init: --app-id must match");
+    expect(snapshot(root)).toEqual(before);
+  });
+
+  it("names package.json as the source of an identifier it read there", () => {
+    const root = game({
+      "package.json": JSON.stringify({
+        ...manifest,
+        yage: { appId: "mygame" },
+      }),
+    });
+    const before = snapshot(root);
+    expect(() =>
+      runInit({ root, targets: ["electron"], force: false }),
+    ).toThrow('yage-pack init: package.json "yage.appId" must match');
+    expect(snapshot(root)).toEqual(before);
+  });
+
+  it("refuses a yage or scripts field that is not an object", () => {
+    const cases: [Record<string, unknown>, string][] = [
+      [{ yage: "oops" }, 'package.json "yage" must be an object, got "oops".'],
+      [{ yage: [] }, 'package.json "yage" must be an object, got [].'],
+      [
+        { scripts: "oops" },
+        'package.json "scripts" must be an object, got "oops".',
+      ],
+    ];
+    for (const [field, message] of cases) {
+      const root = game({
+        "package.json": JSON.stringify({ ...manifest, ...field }),
+      });
+      const before = snapshot(root);
+      expect(() =>
+        runInit({
+          root,
+          targets: ["electron"],
+          appId: "com.example.mygame",
+          force: false,
+        }),
+      ).toThrow(`yage-pack init: ${message}`);
+      expect(snapshot(root)).toEqual(before);
+    }
   });
 
   it("asks for a display name when nothing provides one", () => {
     const root = game({ "package.json": JSON.stringify({ version: "1.0.0" }) });
+    const before = snapshot(root);
     expect(() =>
       runInit({
         root,
@@ -130,11 +191,13 @@ describe("runInit refusals", () => {
         force: false,
       }),
     ).toThrow("yage-pack init: pass --name, the app's display name.");
+    expect(snapshot(root)).toEqual(before);
   });
 
   it("names a path it would write that is a directory", () => {
     const root = game();
     addFile(root, "forge.config.cjs/inner.txt", "x");
+    const before = snapshot(root);
     expect(() =>
       runInit({
         root,
@@ -145,6 +208,7 @@ describe("runInit refusals", () => {
     ).toThrow(
       `yage-pack init: ${path.join(root, "forge.config.cjs")} is a directory.`,
     );
+    expect(snapshot(root)).toEqual(before);
   });
 });
 
@@ -209,6 +273,20 @@ describe("runInit", () => {
       "npx cap add ios --packagemanager SPM",
       "npx cap add android",
       "npx cap open ios",
+    ]);
+  });
+
+  it("lists the next steps of the targets it was given", () => {
+    const root = game();
+    const report = runInit({
+      root,
+      targets: ["android"],
+      appId: "com.example.mygame",
+      force: false,
+    });
+    expect(report.nextSteps).toEqual([
+      "npm run build:capacitor",
+      "npx cap add android",
     ]);
   });
 
@@ -310,8 +388,10 @@ describe("runInit", () => {
       force: false,
     });
     expect(report.notes).toEqual([
-      "No build script was written: make your own build write dist-electron/.",
-      "No build script was written: make your own build write dist-capacitor/.",
+      "No build:electron script was written: add one that writes dist-electron/. " +
+        "start:electron, package:electron and make:electron run it.",
+      "No build:capacitor script was written: add one that writes dist-capacitor/. " +
+        "sync:capacitor runs it.",
     ]);
     const scripts = (
       JSON.parse(read(root, "package.json")) as {

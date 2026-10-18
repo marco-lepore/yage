@@ -24,12 +24,11 @@ function checkName(method: string, name: string): void {
 }
 
 /**
- * A directory of files on disk. Each write reaches the drive before it
- * resolves, so a save that resolved survives a power cut of the machine.
+ * A directory of files on disk, created by each write that finds it missing.
+ * On macOS each write reaches the drive before it resolves, so a save that
+ * resolved survives a power cut of the machine.
  */
 export function nodeFileStore(directory: string): SaveFileStore {
-  let created = false;
-
   return {
     async read(name: string): Promise<string | null> {
       checkName("read", name);
@@ -43,10 +42,7 @@ export function nodeFileStore(directory: string): SaveFileStore {
 
     async write(name: string, content: string): Promise<void> {
       checkName("write", name);
-      if (!created) {
-        await mkdir(directory, { recursive: true });
-        created = true;
-      }
+      await mkdir(directory, { recursive: true });
       const file = await open(join(directory, name), "w");
       try {
         await file.writeFile(content, "utf8");

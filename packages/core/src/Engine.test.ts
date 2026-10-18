@@ -1259,7 +1259,7 @@ describe("Engine", () => {
       engine.destroy();
     });
 
-    it("attaches nothing when destroy lands during an awaited install", async () => {
+    it("attaches nothing when destroy is called during an awaited install", async () => {
       const log: string[] = [];
       let release!: () => void;
       const gate = new Promise<void>((resolve) => {

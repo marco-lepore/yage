@@ -130,6 +130,7 @@ export async function bootBaseline(
   const pixi = backendOptions(search);
   const bounce = bounceOption(search);
   const lock = orientationLock(search);
+  const unfocused = activeWhenUnfocused(search);
 
   let testProfile: TestProfile | undefined;
   if (import.meta.env.MODE !== "release") {
@@ -171,7 +172,7 @@ export async function bootBaseline(
     for (const plugin of testProfile.testProfilePlugins()) engine.use(plugin);
   }
 
-  if (activeWhenUnfocused(search)) engine.host.activeWhenUnfocused = true;
+  if (unfocused) engine.host.activeWhenUnfocused = true;
 
   await engine.start();
   const scene = new BaselineScene(cases);

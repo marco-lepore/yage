@@ -1,7 +1,7 @@
 import { chromium, expect, test } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { cp, readdir, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildBaseline } from "../lib/build.js";
 import { launchElectron, newAppDataDir } from "../lib/electron.js";
@@ -391,11 +391,19 @@ async function electronScenario(
       evidence: "inspector",
       detail: JSON.stringify(booted.errors.callbackErrors),
     });
+    // Electron reads the app's name and version from the shell's package.json.
+    const shellVersion = (
+      JSON.parse(
+        readFileSync(resolve(nativeDir, "electron", "package.json"), "utf8"),
+      ) as { version: string }
+    ).version;
     record(report, {
       name: "boot: the page names the Electron host and the app's version",
       result:
         booted.host.info.runtime === "electron" &&
         booted.host.info.os === "macos" &&
+        booted.host.info.appVersion === shellVersion &&
+        booted.host.info.runtimeVersion === report.shell.version &&
         booted.policy.stringEvaluation === false
           ? "passed"
           : "failed",
@@ -860,11 +868,14 @@ function recordKillRounds(
   report: BaselineRunReport,
   rounds: readonly KillRound[],
 ): void {
-  const carried = rounds.slice(1).every((round, index) => {
-    const before = rounds[index]!.acknowledged;
-    if (before === null) return round.found === null;
-    return round.found === before || round.found === before + 1;
-  });
+  // The first launch runs on a clean profile, so it reads no save.
+  const carried =
+    rounds[0]?.found === null &&
+    rounds.slice(1).every((round, index) => {
+      const before = rounds[index]!.acknowledged;
+      if (before === null) return round.found === null;
+      return round.found === before || round.found === before + 1;
+    });
   record(report, {
     name: KILL_CHECK,
     result: carried ? "passed" : "failed",
@@ -905,6 +916,8 @@ async function recordKillTest(
       if (line["kind"] === "loop-start") {
         found = line["found"] as number | null;
         failure = line["error"] as string | null;
+        // A loop that could not read its save writes nothing more.
+        if (failure !== null) first?.();
       }
       if (line["kind"] === "write") {
         acknowledged = line["n"] as number;
@@ -912,17 +925,20 @@ async function recordKillTest(
       }
     });
     await sawFirstWrite;
-    await new Promise((done) =>
-      setTimeout(
-        done,
-        KILL_EARLIEST_MS +
-          Math.floor(Math.random() * (KILL_LATEST_MS - KILL_EARLIEST_MS)),
-      ),
-    );
-    const killed = acknowledged;
+    if (failure === null) {
+      await new Promise((done) =>
+        setTimeout(
+          done,
+          KILL_EARLIEST_MS +
+            Math.floor(Math.random() * (KILL_LATEST_MS - KILL_EARLIEST_MS)),
+        ),
+      );
+    }
     app.process().kill("SIGKILL");
     await app.waitForEvent("close").catch(() => undefined);
-    rounds.push({ acknowledged: killed, found });
+    // Read once the process is gone: a write line still on its way at the
+    // kill belongs to a write the storage finished before it.
+    rounds.push({ acknowledged, found });
     if (failure !== null) {
       record(report, {
         name: KILL_CHECK,
@@ -1048,7 +1064,14 @@ async function iosScenario(report: BaselineRunReport): Promise<void> {
     const beforeTrip = launched.lines.length;
     await sendToBackground(device.udid);
     await wait(3_000);
-    const awayLines = lifecycleLines(launched.lines.slice(beforeTrip));
+    // Each line reaches this process through the simulator's console, so the
+    // away state is read until it arrives or the deadline passes.
+    const awayLines = await waitForLifecycle(
+      launched,
+      beforeTrip,
+      (state) => state.activity === "inactive" && state.visibility === "hidden",
+      10_000,
+    );
     record(report, {
       name: "away: the app reports it is inactive and hidden",
       result:
@@ -1298,16 +1321,23 @@ async function recordIosKillTest(
       );
       failure = (started?.["error"] as string | null) ?? null;
       const found = (started?.["found"] as number | null) ?? null;
-      await launched.waitFor((line) => line.includes('"kind":"write"'), 60_000);
-      await wait(
-        KILL_EARLIEST_MS +
-          Math.floor(Math.random() * (KILL_LATEST_MS - KILL_EARLIEST_MS)),
-      );
-      await terminate(device.udid);
-      // The app writes until it is gone and its console reaches this process
-      // behind the writes, so the last write is read once both have ended.
-      await wait(CONSOLE_DRAIN_MS);
-      rounds.push({ acknowledged: lastWrite(launched.lines), found });
+      // A loop that could not read its save writes nothing more.
+      if (failure === null) {
+        await launched.waitFor(
+          (line) => line.includes('"kind":"write"'),
+          60_000,
+        );
+        await wait(
+          KILL_EARLIEST_MS +
+            Math.floor(Math.random() * (KILL_LATEST_MS - KILL_EARLIEST_MS)),
+        );
+        await terminate(device.udid);
+        // The app writes until it is gone and its console reaches this
+        // process behind the writes, so the last write is read once both
+        // have ended.
+        await wait(CONSOLE_DRAIN_MS);
+        rounds.push({ acknowledged: lastWrite(launched.lines), found });
+      }
     } finally {
       await terminate(device.udid);
       launched.close();

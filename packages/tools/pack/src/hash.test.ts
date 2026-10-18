@@ -1,15 +1,19 @@
 import { createHash } from "node:crypto";
 import { symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { hashDirectory } from "./hash.js";
-import { makeTree } from "./test/tree.js";
+import { makeTree, removeTrees } from "./test/tree.js";
 
 const files = {
   "web/index.html": "<!doctype html>\n",
   "web/assets/b.js": "console.log(2);\n",
   "web/assets/a.js": "console.log(1);\n",
 };
+
+afterEach(() => {
+  removeTrees();
+});
 
 describe("hashDirectory", () => {
   it("lists every file once, sorted by its path inside the directory", async () => {

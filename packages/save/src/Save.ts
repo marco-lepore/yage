@@ -510,6 +510,7 @@ export class Save {
     thing: Serializable<T> & Reactive,
     opts?: PersistOptions,
   ): () => void {
+    validateStoreId(id);
     const registration: AutoPersistRegistration = {
       id,
       chain: undefined,

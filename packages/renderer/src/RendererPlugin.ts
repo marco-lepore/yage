@@ -550,15 +550,16 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       this._orientation = page.part;
       this._stopDisplay.push(page.watch(sync));
     }
-    if (display) this._stopDisplay.push(display.watch(sync));
     // The state at start is the baseline the events are measured against, so
-    // reading it emits nothing.
+    // reading it emits nothing. It is read before the host display's watch,
+    // which may report a change from inside the call.
     if (this._fullscreen) {
       this._lastFullscreen = readFullscreenActive(this._fullscreen);
     }
     if (this._orientation) {
       this._lastOrientation = readOrientation(this._orientation);
     }
+    if (display) this._stopDisplay.push(display.watch(sync));
 
     // Publish the render facet (rendered geometry + visibility) into the
     // Inspector through `registerFacetContributor`, so `@yagejs/core` stays
@@ -1206,7 +1207,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * On a page this must be called from a user-gesture handler (click, touch,
    * key); the browser rejects the returned promise with a `TypeError`
    * otherwise. It targets the configured `container` when there is one, so DOM
-   * overlays beside the canvas stay inside the fullscreened area, and the
+   * overlays beside the canvas stay inside the area shown fullscreen, and the
    * canvas itself otherwise.
    */
   requestFullscreen(): Promise<void> {
@@ -1471,7 +1472,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       target,
       this._config.width,
       this._config.height,
-      this._config.resolution === undefined,
+      (this._config.pixi?.resolution ?? this._config.resolution) === undefined,
       // A scene offset is held in virtual pixels; its canvas layers move by
       // it at the new scale. The first fit applies before the provider exists.
       () => {

@@ -44,7 +44,7 @@ Usage
   yage-pack record --target <electron|ios|android> --profile <development|release> --artifact <path>... [--out <file>] [--json]
 
 Options
-  --target <name>     The packaging target; repeat it for more than one
+  --target <name>     The packaging target; init and doctor take more than one
   --app-id <id>       The app's reverse-domain identifier, such as com.example.mygame
   --name <name>       The app's display name
   --force             Rewrite the files init would otherwise keep

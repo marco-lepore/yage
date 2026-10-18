@@ -20,7 +20,7 @@ npx yage-pack doctor            # what this machine is missing, and how to fix i
 npm run start:electron          # the game in a desktop window
 npm run make:electron           # an installable package and a build record
 npm run sync:capacitor          # the mobile build into the native projects
-npx yage-pack check --release   # what a release still needs
+npx yage-pack check --target ios --release   # what an iOS release still needs
 ```
 
 ## What it writes

@@ -90,8 +90,9 @@ export class GameLoop {
    *
    * The ticker decides the largest delta it reports — a PixiJS ticker caps one
    * tick at 100 ms — and `tick()` simulates whatever delta it is given. The
-   * built-in animation-frame driver reports at most 100 ms a frame, so a long
-   * gap leaves at most one fixed step for the next frame.
+   * built-in animation-frame driver reports at most 100 ms a frame. With the
+   * default `fixedTimestep` and `maxFixedStepsPerFrame`, that runs 5 fixed
+   * steps and leaves about one for the next frame.
    */
   attachTicker(
     subscribe: (callback: (dt: number) => void) => () => void,

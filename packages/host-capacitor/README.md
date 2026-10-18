@@ -35,8 +35,8 @@ await engine.start();
 ```
 
 This entry builds the page the app loads. A browser build has its own entry
-and installs neither the plugin nor the adapter: both state, when a page
-outside an app reaches them, that the build they belong to is the mobile one.
+and installs neither the plugin nor the adapter: on a page outside an app,
+both throw an error that says to leave them out of a browser build.
 
 The plugin reports the app's identity, whether it is active and whether the
 player can see it to `engine.host`, and registers the orientation lock the

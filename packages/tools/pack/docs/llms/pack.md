@@ -22,7 +22,9 @@ yage-pack record --target <electron|ios|android> --profile <development|release>
 Exit code 0 when every rule passed, 1 on a failed rule or an authored error,
 printed as `yage-pack: <message>`. `--json` prints the report
 (`CheckReport`, an array of them for `doctor`, or the `BuildRecord`) on
-stdout. `-h`/`--help` and `-v`/`--version` are accepted everywhere.
+stdout. `-h`/`--help` and `-v`/`--version` are accepted everywhere. `check`
+and `record` run for one `--target` and refuse a second one; `--app` belongs
+to `check --target electron`.
 
 ## Conventions
 
@@ -123,7 +125,8 @@ adds these scripts:
 
 The type check is left out when the project has no TypeScript, and the build
 scripts are left out when it does not use Vite; the report then names the
-directory the game's own build has to write.
+`build:electron` or `build:capacitor` script the game has to add, the
+directory it writes, and the scripts that run it.
 
 ## Ownership
 
@@ -241,9 +244,10 @@ are installed.
 | `JDK`                          | `android` | Java 21 or later answers                                                                                                           |
 | `Android SDK`                  | `android` | `ANDROID_HOME` or `ANDROID_SDK_ROOT` holds the platform the project compiles against and a build-tools entry                       |
 
-Each failure carries the exact command or setting that fixes it. Set
-`DEVELOPER_DIR` for one command rather than changing the machine's selected
-toolchain.
+`Xcode first launch` and `iOS simulator` run only when `Xcode` passed,
+because both go through the selected developer directory. Each failure
+carries the exact command or setting that fixes it. Set `DEVELOPER_DIR` for
+one command rather than changing the machine's selected toolchain.
 
 ## `yage-pack check`
 
@@ -377,9 +381,11 @@ symbolic link leaving the directory is refused.
 ## Profiles
 
 An Electron build takes its profile from `app.isPackaged`: a packaged app is
-a release, `electron-forge start` is development. A mobile build takes it
-from the native project's Debug or Release configuration. Test and release
-saves never mix, because the profile names the save directory.
+a release, `electron-forge start` is development. A mobile game passes the
+profile to `capacitorSaveAdapter({ profile })` itself. The profile names the
+save directory, so builds that pass different profiles never share saves. A
+Debug build and a Release build of one mobile app install into one app
+container, so they share saves unless each passes its own profile.
 
 ## Upgrading
 

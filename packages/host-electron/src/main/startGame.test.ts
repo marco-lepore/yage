@@ -113,6 +113,10 @@ describe("startGame", () => {
         { query: "x=1" },
         'startGame: query must be empty or start with "?", got "x=1".',
       ],
+      [
+        { window: { simpleFullscreen: true } },
+        "startGame: window must not set simpleFullscreen, got true.",
+      ],
     ];
     for (const [overrides, message] of cases) {
       const { startGame, fake } = await load();

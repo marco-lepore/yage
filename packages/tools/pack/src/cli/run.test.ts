@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { BuildRecord } from "../record.js";
 import { installFuseReader, wire } from "../test/fuses.js";
-import { addFile, installed, makeTree } from "../test/tree.js";
+import { addFile, installed, makeTree, removeTrees } from "../test/tree.js";
 import type { CheckReport } from "../types.js";
 import { runCli } from "./run.js";
 
@@ -42,6 +42,10 @@ async function cli(
   );
   return { code, out: out.join("\n"), err: err.join("\n") };
 }
+
+afterEach(() => {
+  removeTrees();
+});
 
 describe("runCli", () => {
   it("prints the help and the version", async () => {
@@ -89,9 +93,10 @@ describe("runCli", () => {
       ["doctor", "--target", "electron", "--json"],
       game(),
     );
-    const report = JSON.parse(result.out) as CheckReport;
-    expect(report.target).toBe("electron");
-    expect(report.ok).toBe(false);
+    const reports = JSON.parse(result.out) as CheckReport[];
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.target).toBe("electron");
+    expect(reports[0]?.ok).toBe(false);
     expect(result.code).toBe(1);
   });
 
@@ -99,7 +104,50 @@ describe("runCli", () => {
     const result = await cli(["doctor", "--target", "macos"], game());
     expect(result.code).toBe(1);
     expect(result.err).toBe(
-      'yage-pack: yage-pack: --target must be electron, ios or android, got "macos".',
+      'yage-pack: --target must be electron, ios or android, got "macos".',
+    );
+  });
+
+  it("refuses a second target for a command that runs for one", async () => {
+    const check = await cli(
+      ["check", "--release", "--target", "ios", "--target", "android"],
+      game(),
+    );
+    expect(check.code).toBe(1);
+    expect(check.err).toBe(
+      "yage-pack: yage-pack check: pass one --target, got 2 (ios, android). " +
+        "Run the command once per target.",
+    );
+
+    const record = await cli(
+      [
+        "record",
+        "--target",
+        "ios",
+        "--target",
+        "electron",
+        "--profile",
+        "release",
+        "--artifact",
+        "x",
+      ],
+      game(),
+    );
+    expect(record.code).toBe(1);
+    expect(record.err).toBe(
+      "yage-pack: yage-pack record: pass one --target, got 2 (ios, electron). " +
+        "Run the command once per target.",
+    );
+  });
+
+  it("refuses --app outside the Electron target", async () => {
+    const result = await cli(
+      ["check", "--target", "ios", "--app", "out/My Game.app"],
+      game(),
+    );
+    expect(result.code).toBe(1);
+    expect(result.err).toBe(
+      "yage-pack: yage-pack check: --app reads a packaged Electron app, got --target ios.",
     );
   });
 

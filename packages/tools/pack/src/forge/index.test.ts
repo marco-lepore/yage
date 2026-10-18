@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { BuildRecord } from "../record.js";
 import { installFuseReader, installFusesPlugin, wire } from "../test/fuses.js";
-import { addFile, installed, makeTree } from "../test/tree.js";
+import { addFile, installed, makeTree, removeTrees } from "../test/tree.js";
 import { RELEASE_FUSES } from "./index.js";
 import { electronForgeConfig } from "./index.js";
 
@@ -41,6 +41,10 @@ function game(overrides: Record<string, string> = {}): string {
   installFuseReader(root, wire());
   return root;
 }
+
+afterEach(() => {
+  removeTrees();
+});
 
 describe("electronForgeConfig validation", () => {
   it("refuses a packager setting it owns", () => {
@@ -163,6 +167,19 @@ describe("electronForgeConfig result", () => {
     ]) {
       expect([dropped, ignore(dropped)]).toEqual([dropped, true]);
     }
+  });
+
+  it("keeps an include path written with a trailing slash or a dot segment", () => {
+    const root = game();
+    addFile(root, "assets/credits.txt", "x");
+    addFile(root, "data/x/level.json", "{}");
+    const config = electronForgeConfig({
+      root,
+      include: ["assets/", "data/./x"],
+    });
+    const ignore = config.packagerConfig?.ignore as (file: string) => boolean;
+    expect(ignore("/assets/credits.txt")).toBe(false);
+    expect(ignore("/data/x/level.json")).toBe(false);
   });
 });
 

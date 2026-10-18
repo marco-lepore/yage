@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { makeTree } from "../test/tree.js";
+import { makeTree, removeTrees } from "../test/tree.js";
 import { capacitorConfig } from "./index.js";
 
 const manifest = {
@@ -18,6 +18,7 @@ function inGame(overrides: Record<string, unknown> = manifest): string {
 
 afterEach(() => {
   process.chdir(original);
+  removeTrees();
 });
 
 describe("capacitorConfig", () => {

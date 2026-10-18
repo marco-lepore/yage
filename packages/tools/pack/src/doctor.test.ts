@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { runDoctor } from "./doctor.js";
 import type { RunResult } from "./run.js";
-import { addFile, installed, makeTree } from "./test/tree.js";
+import { addFile, installed, makeTree, removeTrees } from "./test/tree.js";
 import { REQUIRED_PACKAGES, type CheckReport, type Target } from "./types.js";
 
 const XCODE_DIR = "/Applications/Xcode.app/Contents/Developer";
@@ -103,6 +103,10 @@ function rule(found: CheckReport, name: string) {
   return result;
 }
 
+afterEach(() => {
+  removeTrees();
+});
+
 describe("runDoctor", () => {
   it("passes every Electron rule for a complete install", async () => {
     const found = await report(healthyGame("electron"), "electron");
@@ -144,6 +148,15 @@ describe("runDoctor", () => {
     const found = await report(root, "electron");
     expect(rule(found, "host package in dependencies").fix).toBe(
       "Move @yagejs/host-electron from devDependencies to dependencies: the packaged app loads it at run time.",
+    );
+  });
+
+  it("asks for the host package to be added when no section lists it", async () => {
+    const root = healthyGame("electron");
+    addFile(root, "package.json", JSON.stringify({ name: "game" }));
+    const found = await report(root, "electron");
+    expect(rule(found, "host package in dependencies").fix).toBe(
+      "Add @yagejs/host-electron to dependencies: npm install @yagejs/host-electron",
     );
   });
 
@@ -225,6 +238,11 @@ describe("runDoctor", () => {
     expect(rule(found, "Xcode").fix).toContain(
       "xcode-select points to /Library/Developer/CommandLineTools, the command-line tools.",
     );
+    // The two rules that run through Xcode are left out until it is selected.
+    expect(found.results.map((result) => result.name)).not.toContain(
+      "Xcode first launch",
+    );
+    expect(found.results.filter((result) => !result.ok)).toHaveLength(1);
   });
 
   it("asks for the first-launch tasks and a simulator runtime", async () => {

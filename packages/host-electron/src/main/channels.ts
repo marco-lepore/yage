@@ -56,7 +56,7 @@ export function registerHostChannels(options: HostChannelsOptions): void {
       info: {
         os: osOf(process.platform),
         appVersion: app.getVersion(),
-        runtimeVersion: process.versions.electron ?? "unknown",
+        runtimeVersion: process.versions.electron,
       },
       state: options.watch().current(),
     };

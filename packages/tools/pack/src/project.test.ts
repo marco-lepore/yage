@@ -1,10 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { APP_ID_PATTERN, readIdentity, satisfiesCaret } from "./project.js";
-import { makeTree } from "./test/tree.js";
+import { makeTree, removeTrees } from "./test/tree.js";
 
 function tree(manifest: unknown): string {
   return makeTree({ "package.json": JSON.stringify(manifest) });
 }
+
+afterEach(() => {
+  removeTrees();
+});
 
 describe("readIdentity", () => {
   it("returns the name, version and identifier the hosts share", () => {

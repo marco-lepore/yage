@@ -1,4 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import type { BrowserWindow } from "electron";
 import type { SaveAdapter } from "@yagejs/save";
 import { CHANNELS } from "../protocol.js";
@@ -35,6 +43,10 @@ function setup(): { win: FakeBrowserWindow; watch: WindowWatch } {
 
 beforeEach(() => {
   resetFakeElectron();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("assertGameSender", () => {
@@ -79,14 +91,20 @@ describe("assertGameSender", () => {
 
 describe("the identity channel", () => {
   it("names the system, the app's version and the runtime's", async () => {
+    // Vitest runs under Node, which has no Electron version of its own.
+    Object.defineProperty(process.versions, "electron", {
+      value: "44.7.0",
+      configurable: true,
+    });
+    onTestFinished(() => {
+      delete (process.versions as { electron?: string }).electron;
+    });
     const { win } = setup();
     const start = (await ipcMain.invoke(CHANNELS.start, gameEvent(win))) as {
       info: { os: string; appVersion: string; runtimeVersion: string };
     };
     expect(start.info.appVersion).toBe("1.2.3");
-    expect(start.info.runtimeVersion).toBe(
-      process.versions.electron ?? "unknown",
-    );
+    expect(start.info.runtimeVersion).toBe("44.7.0");
   });
 
   it("maps each system this shell runs on", () => {
@@ -170,7 +188,6 @@ describe("the fullscreen channel", () => {
     await vi.advanceTimersByTimeAsync(3000);
     await expect(pending).resolves.toMatchObject({ done: false });
     expect(win.listenerCount("enter-full-screen")).toBe(watching);
-    vi.useRealTimers();
   });
 
   it("answers a change that arrived without its event with a newer revision", async () => {
@@ -197,7 +214,6 @@ describe("the fullscreen channel", () => {
     expect(result.done).toBe(true);
     expect(result.state.fullscreen.active).toBe(true);
     expect(result.state.revision).toBeGreaterThan(sent.at(-1)!);
-    vi.useRealTimers();
   });
 
   it("settles when the window leaves fullscreen", async () => {
@@ -224,7 +240,6 @@ describe("the fullscreen channel", () => {
     ) as Promise<{ done: boolean }>;
     win.emit("closed");
     await expect(pending).resolves.toMatchObject({ done: false });
-    vi.useRealTimers();
   });
 });
 

@@ -129,8 +129,8 @@ needs no other dependency manager. Two settings belong to this package:
 - `App.disableBackButtonHandler` stays unset, so Back reaches the game.
 
 A `capacitor.config.ts` that exports `capacitorConfig()` from
-`@yagejs-tools/pack` carries both, along with the app's identity and the web
-directory:
+`@yagejs-tools/pack/capacitor` carries both, along with the app's identity and
+the web directory:
 
 ```ts
 import { capacitorConfig } from "@yagejs-tools/pack/capacitor";
@@ -141,6 +141,14 @@ export default capacitorConfig();
 With it, `npm run sync:capacitor` also checks on every sync that the bundle
 identifier in the Xcode and Gradle projects still matches the one the saves
 follow; see [Packaging for desktop and mobile](/tooling/packaging/).
+
+An iOS release also needs a privacy manifest,
+`ios/App/App/PrivacyInfo.xcprivacy`, that declares
+`NSPrivacyAccessedAPICategoryFileTimestamp` with reason `C617.1`, because
+`@capacitor/filesystem` requires it.
+`npx yage-pack check --target ios --release` fails until the App target
+carries it; see
+[Before a release](/tooling/packaging/#before-a-release).
 
 ## What the game gets
 
@@ -165,7 +173,8 @@ support values say what this host can do.
 `engine.host.active` turns `false` when the player takes a call, pulls down
 Control Centre, answers a permission dialog or leaves for another app, and
 `true` again on the return. Scenes with `scenes.autoPause` and audio with
-`audio.autoPause` follow it, so a game needs no code of its own for the trip.
+`audio.autoPause` follow it, so a game needs no code of its own while the
+player is away.
 
 What the app reports on each system:
 
@@ -194,10 +203,27 @@ export async function goLandscape(renderer: RendererPlugin): Promise<boolean> {
 }
 ```
 
+A `"landscape"` lock holds the screen on `landscape-primary`, and a
+`"portrait"` lock on `portrait-primary`, because the app's orientation plugin
+locks one side. To let the screen follow the player to either landscape side,
+call no lock and list the orientations in the native project instead: both
+landscape entries in the iOS `Info.plist`, and
+`android:screenOrientation="sensorLandscape"` on the Android activity.
+
+On Android, `renderer.unlockOrientation()` lets the system choose any
+orientation, whatever the manifest declares. A game the manifest limits to
+landscape locks again instead of unlocking. On iOS, an unlock returns to the
+orientations the Xcode project lists.
+
+On iOS before 16.4 the web view has no `screen.orientation`:
+`renderer.orientation` reads `null`, no `screen:orientation` event fires, and
+`goLandscape` above returns `false` after two seconds even when the screen
+turned.
+
 `renderer.fullscreenSupport` is `"unsupported"` in an Android web view: it
 leaves fullscreen in the same call that enters it, so a button would do
-nothing. On iOS the web view answers for itself. Read the support value
-before offering the button.
+nothing. On iOS the value comes from the web view's own Fullscreen API. Read
+the support value before offering the button.
 
 ### The Android Back button
 
@@ -214,8 +240,8 @@ const input = new InputPlugin({
 
 With no action bound to the key, a press moves the app to the background and
 leaves the game where it was, which is what Android itself does at the root
-of an app. That is also what a key held by a disabled action group gives: the
-press is delivered and nothing happens. On a screen where Back should leave
+of an app. A key held by a disabled action group counts as bound: the press
+is delivered and nothing happens. On a screen where Back should leave
 the app, unbind the key there:
 
 ```ts yage-group="back"
@@ -232,18 +258,22 @@ export function letBackLeaveTheApp(manager: InputManager): void {
 `Library/yage-saves/<profile>` in the app's private directory. iOS includes
 it in its backup and the Files app does not show it. The directory follows
 the app's bundle identifier, so renaming the app leaves the saves where they
-are, and a test build and a release build never read each other's slots.
+are, and builds that pass different profiles never read each other's slots.
+A Debug build and a Release build of one app install into one app container,
+so they share saves unless each passes its own profile.
 
 A write that resolved is held when the system kills the app in the
-background. Neither system's write reaches the storage hardware, so a power
-loss is not guaranteed; a game that cares takes its checkpoints at moments
-the player can repeat.
+background. Neither system's write reaches the storage hardware, so the same
+write is not guaranteed to survive a power loss; a game that cares takes its
+checkpoints at moments the player can repeat.
 
 ## Errors you may see
 
 - `CapacitorHostPlugin.install: this page is not running inside a Capacitor app. Leave this plugin out of a browser build.` — the mobile entry's bundle opened in a browser.
-- `CapacitorHostPlugin.install: the @capacitor/app plugin is not in this app. Add "@capacitor/app" to the app's package.json dependencies and run npx cap sync.` — the plugin's native half is missing. The same message names the other packages.
+- `CapacitorHostPlugin.install: the @capacitor/app plugin is not in this app. Add "@capacitor/app" to the app's package.json dependencies and run npx cap sync.` — the plugin's native half is missing. The same message names `@capacitor/screen-orientation`.
+- `capacitorSaveAdapter: the @capacitor/filesystem plugin is not in this app. Add "@capacitor/filesystem" to the app's package.json dependencies and run npx cap sync.` — the save adapter's plugin is missing.
 - `capacitorSaveAdapter: profile must match ^[a-z][a-z0-9-]*$, got "Release".` — the profile names the save directory, so it is lower case.
+- `CapacitorHostPlugin.install: this instance belongs to a destroyed engine. Construct a new CapacitorHostPlugin for each engine.` — a second engine was given the plugin of a destroyed one, for example from a module-level `hostPlugins` list. Construct the plugin for each engine.
 
 If Xcode stops at a GitHub credential prompt while it resolves a Swift
 package, add `-packageAuthorizationProvider netrc` to the `xcodebuild` call.

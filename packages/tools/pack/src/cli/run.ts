@@ -4,7 +4,7 @@ import { runDoctor } from "../doctor.js";
 import { initText, runInit } from "../init.js";
 import { writeBuildRecord } from "../record.js";
 import { reportText } from "../report.js";
-import { TARGETS, type CheckReport, type Target } from "../types.js";
+import { TARGETS, type Target } from "../types.js";
 import { HELP_TEXT, parseArgv, type ParsedArgs } from "./argv.js";
 
 /** Where the CLI writes, so a test reads what a run printed. */
@@ -75,7 +75,11 @@ async function dispatch(
         ? {}
         : { targets: args.targets.map(readTarget) }),
     });
-    print(reports, args.json, output);
+    output.out(
+      args.json
+        ? JSON.stringify(reports, null, 2)
+        : reports.map((report) => reportText(report)).join("\n\n"),
+    );
     return reports.every((report) => report.ok) ? 0 : 1;
   }
 
@@ -89,6 +93,11 @@ async function dispatch(
       );
       return 0;
     }
+    if (args.apps.length > 0 && target !== "electron") {
+      throw new Error(
+        `yage-pack check: --app reads a packaged Electron app, got --target ${target}.`,
+      );
+    }
     const report = await runCheck({
       root: cwd,
       target,
@@ -98,7 +107,9 @@ async function dispatch(
         ? {}
         : { apps: args.apps.map((app) => path.resolve(cwd, app)) }),
     });
-    print([report], args.json, output);
+    output.out(
+      args.json ? JSON.stringify(report, null, 2) : reportText(report),
+    );
     return report.ok ? 0 : 1;
   }
 
@@ -120,25 +131,11 @@ async function dispatch(
   return 0;
 }
 
-function print(
-  reports: readonly CheckReport[],
-  json: boolean,
-  output: Output,
-): void {
-  if (json) {
-    output.out(
-      JSON.stringify(reports.length === 1 ? reports[0] : reports, null, 2),
-    );
-    return;
-  }
-  output.out(reports.map((report) => reportText(report)).join("\n\n"));
-}
-
 function readTarget(value: string): Target {
   const target = TARGETS.find((candidate) => candidate === value);
   if (target === undefined) {
     throw new Error(
-      `yage-pack: --target must be electron, ios or android, got ${JSON.stringify(value)}.`,
+      `--target must be electron, ios or android, got ${JSON.stringify(value)}.`,
     );
   }
   return target;
@@ -150,7 +147,7 @@ function readTarget(value: string): Target {
  * the environment, which is why the flag is optional inside it.
  */
 function checkTarget(targets: readonly string[]): Target | null {
-  if (targets.length > 0) return readTarget(targets[0] as string);
+  if (targets.length > 0) return readOneTarget("check", targets);
   const platform = process.env.CAPACITOR_PLATFORM_NAME;
   if (platform === "ios" || platform === "android") return platform;
   if (platform === "web") return null;
@@ -161,6 +158,17 @@ function recordTarget(targets: readonly string[]): Target {
   if (targets.length === 0) {
     throw new Error(
       "yage-pack record: pass --target electron, ios or android.",
+    );
+  }
+  return readOneTarget("record", targets);
+}
+
+/** `check` and `record` run for one target; a second one would go unread. */
+function readOneTarget(command: string, targets: readonly string[]): Target {
+  if (targets.length > 1) {
+    throw new Error(
+      `yage-pack ${command}: pass one --target, got ${targets.length} ` +
+        `(${targets.join(", ")}). Run the command once per target.`,
     );
   }
   return readTarget(targets[0] as string);

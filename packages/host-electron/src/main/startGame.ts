@@ -146,6 +146,15 @@ export function startGame(options: GameShellOptions): Promise<BrowserWindow> {
       `startGame: query must be empty or start with "?", got ${JSON.stringify(query)}.`,
     );
   }
+  // The type leaves the key out, but a JavaScript shell can still pass it, and
+  // a simple-fullscreen window sends no fullscreen events.
+  const window = options.window as { simpleFullscreen?: unknown } | undefined;
+  if (window !== undefined && "simpleFullscreen" in window) {
+    throw new Error(
+      "startGame: window must not set simpleFullscreen, got " +
+        `${JSON.stringify(window.simpleFullscreen)}.`,
+    );
+  }
 
   started = true;
   protocol.registerSchemesAsPrivileged([

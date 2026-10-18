@@ -107,6 +107,7 @@ class HostReader implements Plugin {
 afterEach(() => {
   delete (globalThis as { __yageHost__?: unknown }).__yageHost__;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 async function start(
@@ -248,7 +249,6 @@ describe("ElectronHostPlugin", () => {
     vi.stubGlobal("screen", undefined);
     expect(display.orientation?.current).toBeNull();
     await engine.destroy();
-    vi.unstubAllGlobals();
   });
 
   it("stops the start when the page has no shell", async () => {
@@ -268,12 +268,12 @@ describe("ElectronHostPlugin", () => {
     });
     const shell = fakeBridge({ startDelay: delay });
     const plugin = new ElectronHostPlugin();
-    plugin.onDestroy();
     const context = {
       resolve: vi.fn(),
       register: vi.fn(),
     } as unknown as EngineContext;
     const installing = plugin.install(context);
+    plugin.onDestroy();
     release();
     await installing;
     expect(context.resolve).not.toHaveBeenCalled();
@@ -281,13 +281,32 @@ describe("ElectronHostPlugin", () => {
     expect(shell.listeners.size).toBe(0);
   });
 
+  it("refuses to install again once its engine is destroyed", async () => {
+    fakeBridge();
+    const plugin = new ElectronHostPlugin();
+    const engine = await start(plugin);
+    await engine.destroy();
+
+    await expect(
+      plugin.install({} as unknown as EngineContext),
+    ).rejects.toThrowError(
+      "ElectronHostPlugin.install: this instance belongs to a destroyed " +
+        "engine. Construct a new ElectronHostPlugin for each engine.",
+    );
+  });
+
   it("ignores a snapshot that arrives after the engine is gone", async () => {
     const shell = fakeBridge();
     const plugin = new ElectronHostPlugin();
     const engine = await start(plugin);
+    const [listener] = [...shell.listeners];
     await engine.destroy();
     expect(shell.listeners.size).toBe(0);
-    expect(() => shell.send(stateAt(20, { focus: "unfocused" }))).not.toThrow();
+    const after = engine.host.lifecycle;
+
+    listener!(stateAt(20, { focus: "unfocused" }));
+
+    expect(engine.host.lifecycle).toBe(after);
   });
 
   it("gives each engine on one page its own listener", async () => {

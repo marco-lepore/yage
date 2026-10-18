@@ -16,8 +16,8 @@ What you get:
   everything that went into it.
 - `npm run sync:capacitor` — the mobile build copied into the iOS and
   Android projects, with the app's identity checked on every sync.
-- `npx yage-pack check --release` — what a release still needs, each failure
-  with the exact setting to change.
+- `npx yage-pack check --target <electron|ios|android> --release` — what a
+  release still needs, each failure with the exact setting to change.
 
 ## A new project
 
@@ -110,8 +110,9 @@ export default defineConfig(({ mode }) => {
 `vite build` still writes `dist/`. `vite build --mode electron` writes
 `dist-electron/` and `vite build --mode capacitor` writes
 `dist-capacitor/`, and those two directories are what the packaging tools
-read. A game on another bundler packages the same way: make its build write
-those two directories.
+read. A game on another bundler packages the same way: add `build:electron`
+and `build:capacitor` scripts that write those two directories, because the
+scripts `yage-pack init` adds run them.
 
 Two things to watch:
 
@@ -242,8 +243,8 @@ export default capacitorConfig({
 ```
 
 `npm run sync:capacitor` rebuilds the mobile page, copies it into both
-native projects and runs `yage-pack check`, so a bundle identifier that has
-drifted apart from `package.json` is reported on the spot. `npx cap add`
+native projects and runs `yage-pack check`, so a bundle identifier that
+differs from `package.json` is reported during the sync. `npx cap add`
 writes the identifier into the Xcode and Gradle projects once and `npx cap
 sync` never updates it, which is why the check compares them and names the
 setting to change.

@@ -295,6 +295,11 @@ async function iosGame(
       evidence: "process",
       detail: null,
     });
+    recordPending(
+      report,
+      "relaunch: the stored keys carried over",
+      "no script runs in the simulator's page",
+    );
     const relaunchShot = await screenshotPath(report, "relaunch");
     await screenshot(device.udid, relaunchShot);
     report.screenshots.push({ path: relaunchShot, label: "visual" });

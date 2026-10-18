@@ -8,6 +8,13 @@ export const TARGETS: readonly Target[] = Object.freeze([
   "android",
 ]);
 
+/** The host package each target's game entry imports. */
+export const HOST_PACKAGE: Readonly<Record<Target, string>> = Object.freeze({
+  electron: "@yagejs/host-electron",
+  ios: "@yagejs/host-capacitor",
+  android: "@yagejs/host-capacitor",
+});
+
 /** One rule's outcome. */
 export interface CheckResult {
   readonly name: string;
@@ -41,7 +48,7 @@ export interface RequiredPackages {
 export const REQUIRED_PACKAGES: Readonly<Record<Target, RequiredPackages>> =
   Object.freeze({
     electron: {
-      dependencies: ["@yagejs/host-electron"],
+      dependencies: [HOST_PACKAGE.electron],
       devDependencies: [
         "electron",
         "@electron-forge/cli",
@@ -53,7 +60,7 @@ export const REQUIRED_PACKAGES: Readonly<Record<Target, RequiredPackages>> =
     },
     ios: {
       dependencies: [
-        "@yagejs/host-capacitor",
+        HOST_PACKAGE.ios,
         "@capacitor/core",
         "@capacitor/app",
         "@capacitor/filesystem",
@@ -64,7 +71,7 @@ export const REQUIRED_PACKAGES: Readonly<Record<Target, RequiredPackages>> =
     },
     android: {
       dependencies: [
-        "@yagejs/host-capacitor",
+        HOST_PACKAGE.android,
         "@capacitor/core",
         "@capacitor/app",
         "@capacitor/filesystem",

@@ -1493,7 +1493,7 @@ class ShellHostPlugin implements Plugin {
 
   async install(context: EngineContext): Promise<void> {
     const info = await readShellInfo();
-    // destroy() can land while install awaits, so check after every await.
+    // destroy() can run while install awaits, so check after every await.
     if (this.released) return;
     const lifecycle = await readShellState();
     if (this.released) return;

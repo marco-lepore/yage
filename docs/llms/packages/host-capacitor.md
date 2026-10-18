@@ -153,6 +153,21 @@ when the system turns nothing. Compare the result with what the game asked
 for: an orientation the iOS project does not list, and a large Android screen
 on Android 16 with target SDK 36, settle unturned.
 
+A `"landscape"` lock holds the screen on `landscape-primary` and a
+`"portrait"` lock on `portrait-primary`, because the app's orientation plugin
+locks one side. A game that wants the screen to follow the player to either
+landscape side calls no lock and lists the orientations in the native project
+instead: both landscape entries in the iOS `Info.plist`, and
+`android:screenOrientation="sensorLandscape"` on the Android activity. On
+Android, `renderer.unlockOrientation()` lets the system choose any
+orientation, whatever the manifest declares, so a game the manifest limits to
+landscape locks again instead of unlocking. On iOS, an unlock returns to the
+orientations the Xcode project lists.
+
+On iOS before 16.4 the web view has no `screen.orientation`:
+`renderer.orientation` reads `null`, no `screen:orientation` event fires, and
+a lock resolves with `null` after 2000 ms.
+
 `renderer.fullscreenSupport` is `"unsupported"` in an Android web view, which
 leaves element fullscreen in the call that enters it. On iOS it is the page's
 own answer. A game offers a fullscreen button only where the support value
@@ -190,23 +205,26 @@ stays unset: with it set, no press reaches the game.
 `Library/yage-saves/<profile>` in the app's private directory, which iOS
 includes in its backup and the Files app does not show. The directory follows
 the app's bundle identifier, so renaming the app leaves the saves where they
-are, and the two build profiles never mix.
+are, and builds that pass different profiles never read each other's saves.
+A Debug build and a Release build of one app install into one app container,
+so they share saves unless each passes its own profile.
 
 The algorithm is `fileAdapter` from `@yagejs/save`: a shadow file and a
 checksum, so an interrupted write leaves the previous value or the new one
 readable. A write that resolved is held when the system kills the app. Neither
-system's write reaches the storage hardware, so a power loss is not
-guaranteed. Keys are at most 96 bytes in UTF-8.
+system's write reaches the storage hardware, so the same write is not
+guaranteed to survive a power loss. Keys are at most 96 bytes in UTF-8.
 
 `profile` matches `^[a-z][a-z0-9-]*$`; any other value throws at the call.
 
 ## Settings the app has to carry
 
-| Setting                        | Value                                            |
-| ------------------------------ | ------------------------------------------------ |
-| `ios.contentInset`             | `"never"`, so the page owns its safe areas       |
-| `App.disableBackButtonHandler` | unset, so Back reaches the game                  |
-| The four plugin packages       | in the app's `dependencies`, then `npx cap sync` |
+| Setting                             | Value                                                                                                                                                                     |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ios.contentInset`                  | `"never"`, so the page owns its safe areas                                                                                                                                |
+| `App.disableBackButtonHandler`      | unset, so Back reaches the game                                                                                                                                           |
+| The four plugin packages            | in the app's `dependencies`, then `npx cap sync`                                                                                                                          |
+| `ios/App/App/PrivacyInfo.xcprivacy` | declares `NSPrivacyAccessedAPICategoryFileTimestamp` with reason `C617.1`, which `@capacitor/filesystem` requires; `npx yage-pack check --target ios --release` checks it |
 
 A `capacitor.config.ts` that exports `capacitorConfig()` from
 `@yagejs-tools/pack/capacitor` sets both settings and the app's identity, and
@@ -220,7 +238,9 @@ Each is thrown at the call, before anything attaches:
 - `CapacitorHostPlugin.install: this page is not running inside a Capacitor app. Leave this plugin out of a browser build.`
 - `CapacitorHostPlugin.install: this adapter runs on Capacitor's ios and android platforms, got <value>.`
 - `CapacitorHostPlugin.install: the <package> plugin is not in this app. Add "<package>" to the app's package.json dependencies and run npx cap sync.`
+- `CapacitorHostPlugin.install: this instance belongs to a destroyed engine. Construct a new CapacitorHostPlugin for each engine.`
 - `capacitorSaveAdapter: this page is not running inside a Capacitor app. Leave this adapter out of a browser build.`
+- `capacitorSaveAdapter: the @capacitor/filesystem plugin is not in this app. Add "@capacitor/filesystem" to the app's package.json dependencies and run npx cap sync.`
 - `capacitorSaveAdapter: profile must match ^[a-z][a-z0-9-]*$, got <value>.`
 
 A fullscreen request on Android rejects with `CapacitorHostPlugin: an Android

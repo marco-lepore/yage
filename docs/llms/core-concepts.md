@@ -32,7 +32,7 @@ Six phases per frame, with a fixed-timestep accumulator for physics:
 6. EndOfFrame     - deferred entity destruction flush (onDestroy, detach from scene)
 ```
 
-Fixed timestep default: `1/60` s. Max steps per frame: 5 (prevents spiral of death). One frame is at most 100 ms long, with or without a renderer, so a long gap in animation frames leaves at most one fixed step for the next frame.
+Fixed timestep default: `1/60` s. Max steps per frame: 5 (prevents spiral of death). One frame is at most 100 ms long, with or without a renderer. With the default `fixedTimestep` and `maxFixedStepsPerFrame`, a 100 ms frame runs 5 fixed steps and leaves about one for the next frame.
 
 ## Engine Setup
 

@@ -8,8 +8,9 @@ import {
   resolvePackage,
   satisfiesCaret,
 } from "./project.js";
-import { run as defaultRun, type RunResult } from "./run.js";
+import { run as defaultRun, javaBinary, type RunResult } from "./run.js";
 import {
+  HOST_PACKAGE,
   REQUIRED_PACKAGES,
   TARGETS,
   type CheckReport,
@@ -35,13 +36,6 @@ const JAVA_FLOOR = 21;
 
 /** The Android platform the generated project compiles against. */
 const DEFAULT_COMPILE_SDK = "36";
-
-/** The host package each target's game entry imports. */
-const HOST_PACKAGE: Readonly<Record<Target, string>> = {
-  electron: "@yagejs/host-electron",
-  ios: "@yagejs/host-capacitor",
-  android: "@yagejs/host-capacitor",
-};
 
 export interface DoctorOptions {
   /** The game's root. */
@@ -83,12 +77,12 @@ export async function runDoctor(
       pixiRule(root),
     ];
     if (target === "ios") {
-      results.push(
-        macOsRule(platform),
-        xcodeRule(env, run),
-        firstLaunchRule(run),
-        simulatorRule(run),
-      );
+      const xcode = xcodeRule(env, run);
+      results.push(macOsRule(platform), xcode);
+      // Both run through the selected developer directory, so with the
+      // command-line tools selected they would fail with fixes that do not
+      // apply.
+      if (xcode.ok) results.push(firstLaunchRule(run), simulatorRule(run));
     }
     if (target === "android") {
       results.push(jdkRule(env, run), androidSdkRule(root, env));
@@ -171,14 +165,16 @@ function packagesRule(root: string, target: Target): CheckResult {
 function hostDependencyRule(root: string, target: Target): CheckResult {
   const name = HOST_PACKAGE[target];
   const manifest = readManifest(root);
-  const listed = manifest?.dependencies?.[name] !== undefined;
-  return listed
-    ? pass("host package in dependencies", `${name} is a dependency.`)
-    : fail(
-        "host package in dependencies",
-        `${name} is not in "dependencies".`,
-        `Move ${name} from devDependencies to dependencies: the packaged app loads it at run time.`,
-      );
+  if (manifest?.dependencies?.[name] !== undefined) {
+    return pass("host package in dependencies", `${name} is a dependency.`);
+  }
+  return fail(
+    "host package in dependencies",
+    `${name} is not in "dependencies".`,
+    manifest?.devDependencies?.[name] !== undefined
+      ? `Move ${name} from devDependencies to dependencies: the packaged app loads it at run time.`
+      : `Add ${name} to dependencies: npm install ${name}`,
+  );
 }
 
 function peerRule(root: string, target: Target): CheckResult {
@@ -382,10 +378,7 @@ function jdkRule(
   env: NodeJS.ProcessEnv,
   run: (command: string, args: readonly string[]) => RunResult,
 ): CheckResult {
-  const binary =
-    env.JAVA_HOME === undefined
-      ? "java"
-      : path.join(env.JAVA_HOME, "bin", "java");
+  const binary = javaBinary(env);
   const missing = fail(
     "JDK",
     "No Java runtime answered.",

@@ -255,9 +255,19 @@ function writeLine(
   kind: string,
   data: Record<string, unknown>,
 ): void {
-  console.info(
-    `${BASELINE_REPORT_PREFIX} ${JSON.stringify({ kind, bootId, ...data })}`,
-  );
+  const line = `${BASELINE_REPORT_PREFIX} ${JSON.stringify({
+    kind,
+    bootId,
+    at: performance.now(),
+    ...data,
+  })}`;
+  if (line.length > MAX_LINE_LENGTH) {
+    throw new Error(
+      `Baseline reporter: the ${kind} line is ${line.length} characters, ` +
+        `the limit is ${MAX_LINE_LENGTH}.`,
+    );
+  }
+  console.info(line);
 }
 
 /** Whether the page lets a script turn a string into code. */
@@ -339,18 +349,6 @@ class BaselineReporter extends Component {
   }
 
   private write(kind: string, data: Record<string, unknown>): void {
-    const line = `${BASELINE_REPORT_PREFIX} ${JSON.stringify({
-      kind,
-      bootId: this.bootId,
-      at: performance.now(),
-      ...data,
-    })}`;
-    if (line.length > MAX_LINE_LENGTH) {
-      throw new Error(
-        `Baseline reporter: the ${kind} line is ${line.length} characters, ` +
-          `the limit is ${MAX_LINE_LENGTH}.`,
-      );
-    }
-    console.info(line);
+    writeLine(this.bootId, kind, data);
   }
 }

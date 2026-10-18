@@ -128,10 +128,12 @@ export class SceneManager {
       this.host !== undefined &&
       !this.host.active;
     if (next === this._hostPaused) return;
-    const wasPaused = this._snapshotPauseStates();
-    this._hostPaused = next;
-    if (next) this._firePauseTransitions(wasPaused);
-    else this._fireResumeTransitions(wasPaused);
+    this._withMutationSync(() => {
+      const wasPaused = this._snapshotPauseStates();
+      this._hostPaused = next;
+      if (next) this._firePauseTransitions(wasPaused);
+      else this._fireResumeTransitions(wasPaused);
+    });
   }
 
   /** The topmost (active) scene. */
@@ -155,9 +157,10 @@ export class SceneManager {
   }
 
   /**
-   * Whether a stack mutation (push/pop/replace/popAll) is running, including
-   * while its lifecycle hooks execute. Lets `Scene.paused` detect a reentrant
-   * write from inside a hook, which would race the transition's pause diff.
+   * Whether a stack mutation (push/pop/replace/popAll) or a host pause is
+   * running, including while its lifecycle hooks execute. Lets `Scene.paused`
+   * detect a reentrant write from inside a hook, which would race the pause
+   * diff.
    * @internal
    */
   get _isMutating(): boolean {

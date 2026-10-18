@@ -19,7 +19,7 @@ npm install @yagejs/host-electron
 npm install --save-dev electron@^44.7.0
 ```
 
-`electron` is a peer dependency. The package asks for version 44.
+`electron` is a peer dependency with the range `^44.7.0`.
 
 ## The game's entry file
 
@@ -75,9 +75,9 @@ await boot({
 });
 ```
 
-Building one page per target is what makes a mistake loud: open the Electron
-build in a browser and it stops at start with a message naming the missing
-shell, rather than running with the wrong saves.
+With one page per target, a wrong build fails at start: open the Electron
+build in a browser and it stops with a message naming the missing shell,
+rather than running with the wrong saves.
 
 ### One bundle for every target
 
@@ -220,9 +220,11 @@ the same game runs in a browser or on a phone.
   suspended, and `"active"` once neither holds. It reads `"unknown"` until the
   first such event, because nothing reports the lock state at launch.
 
-`engine.host.active` is `false` while the window is unfocused, so scenes,
-input and audio pause when the player switches away. A game that should keep
-running behind another window sets `engine.host.activeWhenUnfocused = true`.
+`engine.host.active` is `false` while the window is unfocused. Audio pauses
+then, because `audio.autoPause` is on by default, and held keys and buttons
+are released. Scenes pause only when the game sets
+`engine.scenes.autoPause = true`. A game that should keep running behind
+another window sets `engine.host.activeWhenUnfocused = true`.
 
 A window another window covers still counts as visible: Electron reports no
 occlusion.
@@ -301,5 +303,9 @@ stops.
 `startGame` reports its own: calling it twice, calling it after the app is
 ready, a `webDir` that is not an absolute path or holds no `index.html`, an
 `appId` or `profile` a directory name cannot hold, an external link that is
-not an `http`, `https` or `mailto` URL, and a `query` that does not start with
-a question mark.
+not an `http`, `https` or `mailto` URL, a `query` that does not start with
+a question mark, and window options that set `simpleFullscreen`.
+
+An `ElectronHostPlugin` belongs to one engine. Installing an instance whose
+engine was destroyed throws `ElectronHostPlugin.install: this instance belongs
+to a destroyed engine. Construct a new ElectronHostPlugin for each engine.`

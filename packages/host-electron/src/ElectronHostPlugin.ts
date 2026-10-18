@@ -44,6 +44,12 @@ export class ElectronHostPlugin implements Plugin {
   private stopOrientation: (() => void) | undefined;
 
   async install(context: EngineContext): Promise<void> {
+    if (this.destroyed) {
+      throw new Error(
+        "ElectronHostPlugin.install: this instance belongs to a destroyed " +
+          "engine. Construct a new ElectronHostPlugin for each engine.",
+      );
+    }
     const bridge = requireHostBridge("ElectronHostPlugin.install", "plugin");
     const stopState = bridge.onState((state) => {
       this.take(state);

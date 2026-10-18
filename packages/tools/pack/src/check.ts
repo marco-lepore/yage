@@ -10,7 +10,7 @@ import {
   nativePaths,
   privacyManifest,
   readCopiedConfig,
-  xcodeReferences,
+  xcodeCopiesResource,
   xcodeSetting,
 } from "./native.js";
 import { readIdentity, WEB_DIRS } from "./project.js";
@@ -307,7 +307,7 @@ function privacyManifestRule(root: string): CheckResult {
     existsSync(file) &&
     readFileSync(file, "utf8").includes(PRIVACY_CATEGORY) &&
     readFileSync(file, "utf8").includes(PRIVACY_REASON);
-  const referenced = xcodeReferences(
+  const referenced = xcodeCopiesResource(
     nativePaths(root, "ios").project,
     "PrivacyInfo.xcprivacy",
   );
@@ -458,14 +458,27 @@ function previousReleaseRule(previous: string, appId: string): CheckResult {
       `Point --previous at the build record of the last release.`,
     );
   }
-  const record = JSON.parse(readFileSync(previous, "utf8")) as BuildRecord;
-  const old = record.app?.appId;
+  const notRecord = fail(
+    name,
+    `${previous} is not a build record.`,
+    `Point --previous at the build record of the last release.`,
+  );
+  let record: Partial<BuildRecord> | null;
+  try {
+    record = JSON.parse(
+      readFileSync(previous, "utf8"),
+    ) as Partial<BuildRecord> | null;
+  } catch {
+    return notRecord;
+  }
+  const old = record?.app?.appId;
+  if (record?.schema !== 1 || typeof old !== "string") return notRecord;
   return old === appId
     ? pass(name, `The last release was ${old}.`)
     : fail(
         name,
-        `The last release was ${String(old)}, this one is ${appId}.`,
-        `The previous release was ${String(old)}. Players' saves stay under the old identifier; restore it in package.json "yage.appId".`,
+        `The last release was ${old}, this one is ${appId}.`,
+        `The previous release was ${old}. Players' saves stay under the old identifier; restore it in package.json "yage.appId".`,
       );
 }
 

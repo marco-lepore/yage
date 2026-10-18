@@ -10,14 +10,12 @@ import { RELEASE_FUSES, type FuseName } from "../fuses.js";
 import { reportText } from "../report.js";
 import { readIdentity, readManifest, WEB_DIRS } from "../project.js";
 import { writeBuildRecord } from "../record.js";
+import { HOST_PACKAGE } from "../types.js";
 
 export { RELEASE_FUSES, type FuseName } from "../fuses.js";
 
 /** The packager settings this configuration owns. */
 const OWNED_PACKAGER_KEYS = ["asar", "appBundleId", "ignore"] as const;
-
-/** The package whose production closure a packaged game always carries. */
-const HOST_PACKAGE = "@yagejs/host-electron";
 
 export interface ElectronForgeOptions {
   /** The game's root. Default: the directory Forge runs in. */
@@ -69,10 +67,10 @@ export function electronForgeConfig(
     );
   }
 
-  const include = options.include ?? [];
-  include.forEach((entry, index) => {
-    const resolved = path.resolve(root, entry);
-    const relative = path.relative(root, resolved);
+  // Each entry is kept in its resolved form, so "assets/" and "data/./x" keep
+  // the files they name.
+  const include = (options.include ?? []).map((entry, index) => {
+    const relative = path.relative(root, path.resolve(root, entry));
     if (
       path.isAbsolute(entry) ||
       relative === "" ||
@@ -82,10 +80,12 @@ export function electronForgeConfig(
         `electronForgeConfig: include[${index}] must be a path inside the game, got ${JSON.stringify(entry)}.`,
       );
     }
+    return relative;
   });
 
+  // A packaged game always carries the host package's production closure.
   const closure = productionClosure(root, [
-    HOST_PACKAGE,
+    HOST_PACKAGE.electron,
     ...(options.runtimeDependencies ?? []),
   ]);
 

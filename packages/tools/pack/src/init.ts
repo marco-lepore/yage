@@ -13,7 +13,7 @@ import {
   WEB_DIRS,
   type GameManifest,
 } from "./project.js";
-import type { Target } from "./types.js";
+import { HOST_PACKAGE, type Target } from "./types.js";
 
 /** The module every target's entry imports the engine setup from. */
 const BOOT_FILE = "src/boot.ts";
@@ -21,13 +21,6 @@ const BOOT_FILE = "src/boot.ts";
 /** What counts as an exported boot function in the game's own source. */
 const BOOT_EXPORT =
   /export\s+(async\s+)?function\s+boot\b|export\s+const\s+boot\b/;
-
-/** The host package each target's entry imports. */
-const HOST_PACKAGE: Readonly<Record<Target, string>> = {
-  electron: "@yagejs/host-electron",
-  ios: "@yagejs/host-capacitor",
-  android: "@yagejs/host-capacitor",
-};
 
 /** What happened to one file or field. */
 export type Outcome = "wrote" | "kept";
@@ -80,6 +73,8 @@ export function runInit(options: InitOptions): InitReport {
   }
 
   const targets = readTargets(options.targets);
+  checkObjectField(manifest, "yage");
+  checkObjectField(manifest, "scripts");
   checkBootModule(root);
   for (const target of targets) {
     const name = HOST_PACKAGE[target];
@@ -124,7 +119,7 @@ export function runInit(options: InitOptions): InitReport {
     files,
     manifest: fields,
     ignored: updateGitignore(root, hosts),
-    nextSteps: nextSteps(hosts),
+    nextSteps: nextSteps(targets),
     notes,
   };
 }
@@ -143,6 +138,20 @@ function readTargets(raw: readonly string[]): Target[] {
     }
     return value;
   });
+}
+
+/** `init` adds keys to these fields, so each has to be an object when present. */
+function checkObjectField(
+  manifest: GameManifest,
+  field: "yage" | "scripts",
+): void {
+  const value: unknown = manifest[field];
+  if (value === undefined || value === null) return;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(
+      `yage-pack init: package.json "${field}" must be an object, got ${JSON.stringify(value)}.`,
+    );
+  }
 }
 
 function checkBootModule(root: string): void {
@@ -173,8 +182,10 @@ function readAppId(flag: string | undefined, manifest: GameManifest): string {
   }
   const appId = flag ?? (existing as string);
   if (!APP_ID_PATTERN.test(appId)) {
+    const source =
+      flag === undefined ? 'package.json "yage.appId"' : "--app-id";
     throw new Error(
-      `yage-pack init: --app-id must match ${APP_ID_PATTERN.source}, got ${JSON.stringify(appId)}.`,
+      `yage-pack init: ${source} must match ${APP_ID_PATTERN.source}, got ${JSON.stringify(appId)}.`,
     );
   }
   return appId;
@@ -351,7 +362,8 @@ function plannedScripts(
     const command = build("electron");
     if (command === undefined) {
       update.notes.push(
-        `No build script was written: make your own build write ${WEB_DIRS.electron}/.`,
+        `No build:electron script was written: add one that writes ${WEB_DIRS.electron}/. ` +
+          "start:electron, package:electron and make:electron run it.",
       );
     } else {
       scripts.push(["build:electron", command]);
@@ -366,7 +378,8 @@ function plannedScripts(
     const command = build("capacitor");
     if (command === undefined) {
       update.notes.push(
-        `No build script was written: make your own build write ${WEB_DIRS.capacitor}/.`,
+        `No build:capacitor script was written: add one that writes ${WEB_DIRS.capacitor}/. ` +
+          "sync:capacitor runs it.",
       );
     } else {
       scripts.push(["build:capacitor", command]);
@@ -398,17 +411,15 @@ function updateGitignore(root: string, hosts: ReadonlySet<string>): string[] {
   return added;
 }
 
-function nextSteps(hosts: ReadonlySet<string>): string[] {
+function nextSteps(targets: readonly Target[]): string[] {
+  const ios = targets.includes("ios");
+  const android = targets.includes("android");
   const steps: string[] = [];
-  if (hosts.has("electron")) steps.push("npm run start:electron");
-  if (hosts.has("capacitor")) {
-    steps.push(
-      "npm run build:capacitor",
-      "npx cap add ios --packagemanager SPM",
-      "npx cap add android",
-      "npx cap open ios",
-    );
-  }
+  if (targets.includes("electron")) steps.push("npm run start:electron");
+  if (ios || android) steps.push("npm run build:capacitor");
+  if (ios) steps.push("npx cap add ios --packagemanager SPM");
+  if (android) steps.push("npx cap add android");
+  if (ios) steps.push("npx cap open ios");
   return steps;
 }
 

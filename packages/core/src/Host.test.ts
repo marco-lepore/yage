@@ -271,6 +271,18 @@ describe("Host", () => {
     expect(host.info.runtime).toBe("second");
   });
 
+  it("detaches only its own attach when the same provider attaches again", () => {
+    const host = new Host();
+    const same = provider({ runtime: "same" });
+    const detachFirst = host.attach(same);
+    detachFirst();
+    host.attach(same);
+
+    detachFirst();
+
+    expect(host.info.runtime).toBe("same");
+  });
+
   it("refuses a second provider and keeps the first", () => {
     const host = new Host();
     host.attach(provider({ runtime: "electron" }));

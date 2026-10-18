@@ -62,6 +62,12 @@ export class CapacitorHostPlugin implements Plugin {
   private display: CapacitorDisplay | undefined;
 
   async install(context: EngineContext): Promise<void> {
+    if (this.destroyed) {
+      throw new Error(
+        "CapacitorHostPlugin.install: this instance belongs to a destroyed " +
+          "engine. Construct a new CapacitorHostPlugin for each engine.",
+      );
+    }
     requireCapacitorShell("CapacitorHostPlugin.install", "plugin");
     const platform = Capacitor.getPlatform();
     if (platform !== "ios" && platform !== "android") {

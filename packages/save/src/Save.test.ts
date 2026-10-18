@@ -12,6 +12,7 @@ import {
   StoreMigrationMissingError,
   StoreVersionTooNewError,
   CorruptPayloadError,
+  InvalidKeyError,
 } from "./Save.js";
 import type { SaveAdapter } from "./Save.js";
 import { memoryAdapter } from "./adapters/memory.js";
@@ -558,11 +559,12 @@ describe("Save — key disambiguation", () => {
 
     const ok = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await expect(save.saveSlot("ok", "", ok)).rejects.toThrow(/non-empty/i);
+    expect(() => save.autoPersist("", ok)).toThrow(InvalidKeyError);
   });
 });
 
 describe("Save — concurrent slot operations", () => {
-  it("concurrent saveSlots all land in the listing", async () => {
+  it("concurrent saveSlots all appear in the listing", async () => {
     const save = createSave({ adapter: memoryAdapter() });
     const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await Promise.all([

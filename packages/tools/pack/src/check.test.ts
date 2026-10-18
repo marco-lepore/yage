@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCheck } from "./check.js";
 import { installFuseReader, wire } from "./test/fuses.js";
-import { addFile, makeTree, snapshot } from "./test/tree.js";
+import { addFile, makeTree, removeTrees, snapshot } from "./test/tree.js";
 import type { CheckReport } from "./types.js";
 
 const APP_ID = "com.example.mygame";
@@ -21,16 +21,18 @@ const copiedConfig = {
   ios: { contentInset: "never" },
 };
 
+/** The build-file entry Xcode writes when the App target copies the file. */
+const PRIVACY_BUILD_FILE =
+  "    1A2B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3C4D /* PrivacyInfo.xcprivacy */; };\n";
+
 const PBXPROJ = `// !$*UTF8*$!
 {
+${PRIVACY_BUILD_FILE}    3C4D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; };
   buildSettings = {
     CURRENT_PROJECT_VERSION = 1;
     MARKETING_VERSION = 1.2.3;
     PRODUCT_BUNDLE_IDENTIFIER = ${APP_ID};
   };
-  files = (
-    PrivacyInfo.xcprivacy,
-  );
 }
 `;
 
@@ -85,6 +87,7 @@ function rule(report: CheckReport, name: string) {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.resetModules();
+  removeTrees();
 });
 
 describe("runCheck contract rules", () => {
@@ -160,6 +163,18 @@ describe("runCheck contract rules", () => {
     expect(result.fix).toBe(
       `Set the bundle identifier of the App target in Xcode (Signing & Capabilities) to ${APP_ID}; npx cap sync never changes it.`,
     );
+  });
+
+  it("reads a Gradle setting written with an equals sign", async () => {
+    const root = game({
+      "android/app/build.gradle": BUILD_GRADLE.replace(
+        `applicationId "${APP_ID}"`,
+        `applicationId = "${APP_ID}"`,
+      ).replace('versionName "1.2.3"', 'versionName = "1.2.3"'),
+    });
+    const report = await runCheck({ root, target: "android", release: true });
+    expect(rule(report, "app id in the native project").ok).toBe(true);
+    expect(rule(report, "version").ok).toBe(true);
   });
 
   it("names the Gradle setting on Android", async () => {
@@ -330,9 +345,11 @@ describe("runCheck release rules", () => {
       ).ok,
     ).toBe(false);
 
+    // A file added to the project with the target unticked keeps its file
+    // reference and has no Resources entry.
     const withoutReference = game({
       "ios/App/App.xcodeproj/project.pbxproj": PBXPROJ.replace(
-        "    PrivacyInfo.xcprivacy,\n",
+        PRIVACY_BUILD_FILE,
         "",
       ),
     });
@@ -433,6 +450,24 @@ describe("runCheck release rules", () => {
       "The previous release was com.example.old. Players' saves stay under the old identifier; " +
         `restore it in package.json "yage.appId".`,
     );
+  });
+
+  it("names a --previous file that is not a build record", async () => {
+    const root = game();
+    for (const body of ["{ not json", "{}", "null"]) {
+      const previous = addFile(root, "last-release.json", body);
+      const result = rule(
+        await runCheck({ root, target: "ios", release: true, previous }),
+        "same app id as the last release",
+      );
+      expect([body, result.detail]).toEqual([
+        body,
+        `${previous} is not a build record.`,
+      ]);
+      expect(result.fix).toBe(
+        "Point --previous at the build record of the last release.",
+      );
+    }
   });
 
   it("writes nothing", async () => {

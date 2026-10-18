@@ -1,11 +1,11 @@
 import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { hashDirectory } from "./hash.js";
 import { buildRecord, writeBuildRecord } from "./record.js";
 import type { RunResult } from "./run.js";
-import { addFile, makeTree } from "./test/tree.js";
+import { addFile, makeTree, removeTrees } from "./test/tree.js";
 
 const manifest = {
   productName: "My Game",
@@ -39,6 +39,11 @@ function bundle(
   }
   return path.join(root, dir);
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  removeTrees();
+});
 
 describe("buildRecord", () => {
   it("names a packaged Electron app and its archive", async () => {
@@ -132,6 +137,27 @@ describe("buildRecord", () => {
     ]);
   });
 
+  it("records the Java runtime a Gradle build starts", async () => {
+    const root = game();
+    writeFileSync(path.join(root, "app.apk"), "apk\n");
+    vi.stubEnv("JAVA_HOME", "/opt/jdk-21");
+    const commands: string[] = [];
+    const record = await buildRecord({
+      root,
+      target: "android",
+      profile: "release",
+      artifacts: [path.join(root, "app.apk")],
+      run: (command, args) => {
+        commands.push(command);
+        return command === "/opt/jdk-21/bin/java" && args[0] === "-version"
+          ? { status: 0, stdout: "", stderr: 'openjdk version "21.0.4"\n' }
+          : noGit(command, args);
+      },
+    });
+    expect(commands).toContain("/opt/jdk-21/bin/java");
+    expect(record.toolchain.java).toBe('openjdk version "21.0.4"');
+  });
+
   it("refuses an artifact the target cannot have produced", async () => {
     const root = game();
     writeFileSync(path.join(root, "notes.txt"), "x\n");
@@ -201,6 +227,18 @@ describe("buildRecord", () => {
       run: noGit,
     });
     expect(androidRecord.app.build).toBe("12");
+
+    const equals = game({
+      "android/app/build.gradle": "defaultConfig {\n  versionCode = 13\n}\n",
+    });
+    const equalsRecord = await buildRecord({
+      root: equals,
+      target: "android",
+      profile: "development",
+      artifacts: [],
+      run: noGit,
+    });
+    expect(equalsRecord.app.build).toBe("13");
   });
 
   it("leaves the source fields empty outside a repository", async () => {

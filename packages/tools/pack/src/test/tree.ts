@@ -3,17 +3,32 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+/** Every tree made since the last {@link removeTrees}. */
+const created: string[] = [];
+
 /** Write a tree of files under a fresh temporary directory and return it. */
 export function makeTree(files: Record<string, string>): string {
   const root = mkdtempSync(path.join(os.tmpdir(), "yage-pack-"));
+  created.push(root);
   for (const [file, body] of Object.entries(files)) addFile(root, file, body);
   return root;
+}
+
+/**
+ * Remove every tree made since the last call. Use in `afterEach`, after any
+ * step that moves the working directory back out of a tree.
+ */
+export function removeTrees(): void {
+  for (const root of created.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
 }
 
 /** Add one file to an existing tree, creating the directories it needs. */

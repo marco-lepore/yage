@@ -266,7 +266,7 @@ settings.set({ audio: { ...settings.get().audio, music: 0.5 } });
 time-based debouncing across user interactions (e.g. throttling a slider
 drag), wrap the value yourself.
 
-A write that fails is reported, not logged. `save.flush()` waits for the
+`autoPersist` writes nothing to the console when a write fails. `save.flush()` waits for the
 writes `autoPersist` started or scheduled before the call, and rejects with an
 `AggregateError` naming the stores whose latest write failed — use it before
 you tell the player their settings are saved. A failure nothing awaits becomes

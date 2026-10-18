@@ -334,7 +334,7 @@ What each adapter survives:
 
 `electronSaveAdapter()` from `@yagejs/host-electron` is the desktop adapter: a `fileAdapter` over the app's data directory, running in Electron's main process, so a renderer that crashes during a save does not stop the write. On macOS each write reaches the drive before it resolves.
 
-`capacitorSaveAdapter({ profile })` from `@yagejs/host-capacitor` is the mobile adapter: a `fileAdapter` over a directory in the app's private Library directory, one per build profile. A write that resolved is held when the system kills the app; neither mobile system's write reaches the storage hardware, so a power loss is not guaranteed.
+`capacitorSaveAdapter({ profile })` from `@yagejs/host-capacitor` is the mobile adapter: a `fileAdapter` over a directory in the app's private Library directory, one per build profile. A write that resolved is held when the system kills the app; neither mobile system's write reaches the storage hardware, so the same write is not guaranteed to survive a power loss.
 
 ### `fileAdapter`
 

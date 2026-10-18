@@ -25,6 +25,16 @@ describe("nodeFileStore", () => {
     expect(await store.read("k-abc.sav")).toBe("next");
   });
 
+  it("creates the directory again after the player removes it", async () => {
+    const store = nodeFileStore(directory);
+    await store.write("k-abc.sav", "value");
+    await rm(directory, { recursive: true });
+
+    await store.write("k-abc.sav", "next");
+
+    expect(await store.read("k-abc.sav")).toBe("next");
+  });
+
   it("reports an absent file, directory and removal as nothing stored", async () => {
     const store = nodeFileStore(directory);
     expect(await store.read("k-abc.sav")).toBeNull();

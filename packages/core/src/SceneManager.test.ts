@@ -1223,6 +1223,27 @@ describe("SceneManager", () => {
       warnSpy.mockRestore();
     });
 
+    it("warns when a host-driven onResume writes another scene's paused", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { manager, setHost } = setupWithHost();
+      manager.autoPause = true;
+      const below = new GameScene("below");
+      const top = new OverlayScene();
+      await manager.push(below);
+      await manager.push(top);
+      setHost({ activity: "inactive" });
+      below.onResume = () => {
+        top.paused = true;
+      };
+
+      setHost({ activity: "active" });
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("set from inside a lifecycle hook"),
+      );
+      warnSpy.mockRestore();
+    });
+
     it("fires one hook for a manual pause made during a push", async () => {
       const { manager, hooks } = setupWithHost();
       const below = new GameScene("below");
@@ -1366,7 +1387,7 @@ describe("SceneManager", () => {
       expect(scene.exitCalled).toBe(true);
       expect(resume).not.toHaveBeenCalled();
 
-      // A host signal that lands after the teardown pauses nothing.
+      // A host signal that arrives after the teardown pauses nothing.
       setHost({ activity: "active" });
       setHost({ activity: "inactive" });
 

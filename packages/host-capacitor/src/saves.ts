@@ -7,14 +7,15 @@ import { requireCapacitorShell, requirePlugin } from "./shell.js";
 const PROFILE = /^[a-z][a-z0-9-]*$/;
 
 export interface CapacitorSaveAdapterOptions {
-  /** The build profile, such as "test" or "release". Test and release saves never mix. */
+  /** The build profile, such as "test" or "release". Each profile has its own save directory. */
   readonly profile: string;
 }
 
 /**
  * Saves written as files in the app's private Library directory. A write
  * that resolved is held when the app is killed; neither system's write
- * reaches the storage hardware, so a power loss is not guaranteed.
+ * reaches the storage hardware, so the same write is not guaranteed to
+ * survive a power loss.
  */
 export function capacitorSaveAdapter(
   options: CapacitorSaveAdapterOptions,

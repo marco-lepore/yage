@@ -298,8 +298,8 @@ engine.use(new InputPlugin({ actions: { /* ... */ } }));
 `RendererPlugin` is the one place a game asks for fullscreen, whichever
 application runs it: a browser tab, or a native shell around a web view. On a
 page the element that goes fullscreen is the configured `container` when there
-is one, so DOM overlays beside the canvas stay inside the fullscreened area,
-and the canvas itself otherwise.
+is one, so DOM overlays beside the canvas stay inside the area shown
+fullscreen, and the canvas itself otherwise.
 
 In the Electron shell of `@yagejs/host-electron`, fullscreen is the window's,
 whatever started it: the application menu, the window's own button, or
@@ -374,10 +374,6 @@ Three rules make a toggle behave the way a player expects:
 
 ## Orientation
 
-In a Capacitor app the lock goes through the app itself:
-`lockOrientation()` resolves once the screen has turned, or after 2000 ms
-when the system turns nothing, so compare the result with what you asked for.
-
 `renderer.orientation` is the screen orientation, or `null` where the host
 cannot read it. Its values are the built-in DOM union: `"portrait-primary"`,
 `"portrait-secondary"`, `"landscape-primary"` and `"landscape-secondary"`. The
@@ -426,6 +422,10 @@ async function askForLandscape(): Promise<void> {
 | `orientationLockSupport: HostSupport` | Whether this host can lock the orientation. `"unknown"` means only an attempt tells. |
 | `lockOrientation(lock): Promise<OrientationType \| null>` | Lock the orientation. Rejects where locking is `"unsupported"`, and with the host's error when it refuses. |
 | `unlockOrientation(): Promise<void>` | Release a lock. Resolves without action where locking is `"unsupported"`. |
+
+In a Capacitor app with `@yagejs/host-capacitor`, the lock goes through the
+app itself: `lockOrientation()` resolves once the screen has turned, or after
+2000 ms when the system turns nothing.
 
 `orientationLockSupport` is `"unknown"` in a browser that has the operation:
 desktop browsers refuse every lock, and Chrome on Android accepts one only

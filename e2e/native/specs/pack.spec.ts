@@ -372,10 +372,10 @@ module.exports = electronForgeConfig({
       'const { electronForgeConfig } = require("@yagejs-tools/pack/forge");\n\nmodule.exports = electronForgeConfig();\n',
     );
 
-    const doctor = JSON.parse(
+    const [doctor] = JSON.parse(
       npmRun(pack, ["doctor", "--target", "electron", "--json"], project),
-    ) as { ok: boolean };
-    expect(doctor.ok).toBe(true);
+    ) as { ok: boolean }[];
+    expect(doctor?.ok).toBe(true);
     for (const target of ["ios", "android"] as const) {
       // What a mobile build needs depends on the machine, so the report
       // records what this one was missing rather than asserting it.
@@ -534,6 +534,11 @@ module.exports = electronForgeConfig({
       expect(iosRecord.web.digest).toBe(
         (await hashWebDir(resolve(project, "dist-capacitor"))).digest,
       );
+    } else {
+      test.info().annotations.push({
+        type: "ios simulator build",
+        description: "skipped: DEVELOPER_DIR is unset",
+      });
     }
 
     // The native projects are the game's: an edit survives a sync, a file
@@ -582,11 +587,11 @@ function runDoctor(
   } catch (error) {
     output = (error as { stdout?: string }).stdout ?? "";
   }
-  const report = JSON.parse(output) as {
+  const [report] = JSON.parse(output) as {
     results: { name: string; ok: boolean }[];
-  };
+  }[];
   return {
-    failures: report.results
+    failures: (report?.results ?? [])
       .filter((result) => !result.ok)
       .map((result) => result.name),
   };

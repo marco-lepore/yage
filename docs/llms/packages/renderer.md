@@ -349,7 +349,7 @@ button.addEventListener("click", () => {
 
 ### Host display
 
-`@yagejs/host-electron` registers one for the Electron window. A host adapter supplies fullscreen, orientation, or both by registering a `HostDisplay` under `HostDisplayKey` in its `install`. The renderer picks the parts up when the engine starts. A part the adapter leaves out comes from the page, so an adapter replaces only what its own shell reports differently — a desktop shell whose window fullscreen the page cannot read supplies fullscreen and leaves orientation to the page.
+A host adapter supplies fullscreen, orientation, or both by registering a `HostDisplay` under `HostDisplayKey` in its `install`. The renderer picks the parts up when the engine starts. A part the adapter leaves out comes from the page, so an adapter replaces only what its own shell reports differently — a desktop shell whose window fullscreen the page cannot read supplies fullscreen and leaves orientation to the page. `@yagejs/host-electron` registers one for the Electron window. `@yagejs/host-capacitor` registers one for the app's orientation lock, and on Android for fullscreen.
 
 | Export            | Signature                                                                                                                             |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |

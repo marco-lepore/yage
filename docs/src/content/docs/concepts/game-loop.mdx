@@ -112,8 +112,9 @@ This means:
 - If a frame takes unusually long (e.g. tab was in background), the cap of
   `maxFixedStepsPerFrame` prevents the engine from trying to "catch up" with
   dozens of ticks at once (the spiral of death). One frame is at most 100 ms
-  long, with or without a renderer, so a long gap in animation frames leaves
-  at most one fixed step for the next frame.
+  long, with or without a renderer. With the default `fixedTimestep` and
+  `maxFixedStepsPerFrame`, a 100 ms frame runs 5 fixed steps and leaves about
+  one for the next frame.
 
 ## Variable Delta Time
 

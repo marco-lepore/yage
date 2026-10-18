@@ -9,10 +9,11 @@ This is a [YAGE](https://yage.dev) 2D game engine project (TypeScript + Vite).
 - `npm run build` — production build to `dist/`
 - `npm run preview` — preview the production build
 
-A desktop or mobile build comes from the same source: `npm create yage --
---features electron,capacitor` adds the packages, and `npx yage-pack init`
-writes the entry files and the project configuration. See
-https://yage.dev/tooling/packaging.
+A desktop or mobile build comes from the same source. A project created with
+`npm create yage -- --features electron,capacitor` already has the packages;
+for a project created without those features, the packaging guide lists the
+packages to install. Then `npx yage-pack init` writes the entry files and the
+project configuration. See https://yage.dev/tooling/packaging.
 
 ## What's in the starter
 

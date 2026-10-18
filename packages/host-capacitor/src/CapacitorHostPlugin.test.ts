@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { Engine, HostKey, ServiceKey, createTestEngine } from "@yagejs/core";
 import type { EngineContext, HostInfo, Plugin } from "@yagejs/core";
 import { InputManager, InputManagerKey } from "@yagejs/input";
@@ -239,7 +239,17 @@ describe("CapacitorHostPlugin", () => {
     await engine.destroy();
     expect(app.removed).toEqual(["appStateChange", "pause", "resume"]);
     expect(listenerCount("appStateChange")).toBe(0);
-    expect(() => emitApp("appStateChange", { isActive: false })).not.toThrow();
+  });
+
+  it("refuses to install again once its engine is destroyed", async () => {
+    const plugin = new CapacitorHostPlugin();
+    const engine = await start(plugin);
+    await engine.destroy();
+
+    await expect(plugin.install(fakeContext())).rejects.toThrowError(
+      "CapacitorHostPlugin.install: this instance belongs to a destroyed " +
+        "engine. Construct a new CapacitorHostPlugin for each engine.",
+    );
   });
 
   it("ignores an event that arrives after the engine is gone", async () => {
@@ -253,14 +263,29 @@ describe("CapacitorHostPlugin", () => {
   });
 
   it("leaves a failed removal to the runtime to report", async () => {
+    // Vitest's own listener fails the run on an unhandled rejection, so it is
+    // set aside while this test collects the one it expects.
+    const others = process.listeners("unhandledRejection");
+    process.removeAllListeners("unhandledRejection");
+    const unhandled: unknown[] = [];
+    const listener = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", listener);
+    onTestFinished(() => {
+      process.off("unhandledRejection", listener);
+      for (const other of others) process.on("unhandledRejection", other);
+    });
     app.removeRejects = new Set(["pause"]);
     const engine = await start(new CapacitorHostPlugin());
-    const destroying = engine.destroy();
-    const rejected = app.removals[1];
-    await expect(rejected).rejects.toThrow(
+
+    engine.destroy();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(unhandled).toHaveLength(1);
+    expect((unhandled[0] as Error).message).toBe(
       "fake: removing the pause listener failed.",
     );
-    await destroying;
   });
 
   it("gives each engine on one page its own listeners", async () => {

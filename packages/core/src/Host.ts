@@ -246,7 +246,11 @@ function readLifecycleField<T extends string>(
  * own visibility and the focus of its window.
  */
 export class Host {
-  private attached: HostProvider | undefined;
+  /**
+   * One object per `attach` call, so the detach function and the reports of an
+   * earlier attach do nothing after the same provider object attaches again.
+   */
+  private attached: object | undefined;
   private current: HostInfo = BROWSER_HOST_INFO;
   private state: HostLifecycle = UNKNOWN_LIFECYCLE;
   private activeFlag = true;
@@ -314,10 +318,12 @@ export class Host {
       );
     }
     const info = copyHostInfo(provider.info);
+    const lifecycle: unknown = provider.lifecycle;
     const initial: MutableLifecycleReport =
-      provider.lifecycle === undefined
+      lifecycle === undefined
         ? {}
-        : readLifecycleReport(provider.lifecycle, "Host.attach: lifecycle");
+        : readLifecycleReport(lifecycle, "Host.attach: lifecycle");
+    const attachment = {};
 
     // Reports made from inside `watchLifecycle` belong to the attach: they are
     // collected over the initial state and applied with it as one change.
@@ -330,7 +336,7 @@ export class Host {
         );
         return;
       }
-      if (this.attached !== provider || this.disposed) return;
+      if (this.attached !== attachment || this.disposed) return;
       Object.assign(
         this.adapter,
         readLifecycleReport(state, "HostProvider.watchLifecycle: report"),
@@ -339,7 +345,7 @@ export class Host {
     };
     const stop = provider.watchLifecycle?.(report);
 
-    this.attached = provider;
+    this.attached = attachment;
     this.current = info;
     this.adapter = initial;
     this.stopWatching = stop;
@@ -347,7 +353,7 @@ export class Host {
     this.apply();
 
     return () => {
-      if (this.attached !== provider) return;
+      if (this.attached !== attachment) return;
       this.detachProvider();
     };
   }

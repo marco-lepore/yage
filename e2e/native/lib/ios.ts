@@ -213,8 +213,11 @@ export function launchWithConsole(
   const waiters: {
     match: (line: string) => boolean;
     take: (line: string) => void;
+    fail: (error: Error) => void;
   }[] = [];
   let pending = "";
+  /** Why the launch process ended, once it has. */
+  let ended: string | null = null;
   const consume = (chunk: string): void => {
     pending += chunk;
     const parts = pending.split("\n");
@@ -233,27 +236,48 @@ export function launchWithConsole(
   child.stderr.setEncoding("utf8");
   child.stdout.on("data", consume);
   child.stderr.on("data", consume);
+  // "close" fires once both streams are read to the end, so every line the
+  // app wrote has reached a waiter by then.
+  child.on("close", (code, signal) => {
+    ended = `simctl launch exited with ${signal ?? `code ${String(code)}`}`;
+    for (const waiter of waiters.splice(0)) {
+      waiter.fail(
+        new Error(`launchWithConsole: ${ended} before a matching line.`),
+      );
+    }
+  });
 
   return {
     lines,
     waitFor(predicate, timeoutMs) {
       const already = lines.find((line) => predicate(line));
       if (already !== undefined) return Promise.resolve(already);
+      if (ended !== null) {
+        return Promise.reject(
+          new Error(`launchWithConsole: ${ended} before a matching line.`),
+        );
+      }
       return new Promise<string>((done, fail) => {
+        const waiter = {
+          match: predicate,
+          take: (line: string) => {
+            clearTimeout(timer);
+            done(line);
+          },
+          fail: (error: Error) => {
+            clearTimeout(timer);
+            fail(error);
+          },
+        };
         const timer = setTimeout(() => {
+          waiters.splice(waiters.indexOf(waiter), 1);
           fail(
             new Error(
               `launchWithConsole: no matching line within ${timeoutMs} ms.`,
             ),
           );
         }, timeoutMs);
-        waiters.push({
-          match: predicate,
-          take: (line) => {
-            clearTimeout(timer);
-            done(line);
-          },
-        });
+        waiters.push(waiter);
       });
     },
     close() {

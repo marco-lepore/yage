@@ -59,7 +59,7 @@ export interface RendererConfig {
    * one texel per CSS pixel whatever the display does. Left out, the canvas
    * follows the display's pixel ratio for crisp rendering on HiDPI displays,
    * including a window moved to a display with another ratio and a browser
-   * zoom.
+   * zoom. A `resolution` passed in `pixi` is held fixed the same way.
    */
   resolution?: number;
   /**

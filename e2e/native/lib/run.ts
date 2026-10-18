@@ -107,9 +107,11 @@ export async function screenshotPath(
   step: string,
 ): Promise<string> {
   await mkdir(screenshotsDir, { recursive: true });
+  // Stamped like the report file, so each report points at its own image.
+  const stamp = report.run.startedAt.replace(/[:.]/g, "-");
   return resolve(
     screenshotsDir,
-    `${report.target}-${report.profile}-${step}.png`,
+    `${report.target}-${report.profile}-${stamp}-${step}.png`,
   );
 }
 
@@ -138,91 +140,86 @@ export function checkReadings(
     if (!passed) failures.push(`${name}: ${detail ?? "no detail"}`);
   };
 
-  const sprites = readings["sprites"];
-  if (sprites) {
-    check(
-      "sprites: the texture loaded",
-      JSON.stringify(sprites),
+  // A case whose reading is missing fails its check: on iOS the readings
+  // come from console lines, and one that never arrived would otherwise
+  // leave no row at all.
+  const caseCheck = (
+    caseName: string,
+    name: string,
+    passes: (reading: CaseReading) => boolean,
+  ): void => {
+    const reading = readings[caseName];
+    if (reading === undefined) {
+      check(name, "no reading", false);
+      return;
+    }
+    check(name, JSON.stringify(reading), passes(reading));
+  };
+
+  caseCheck(
+    "sprites",
+    "sprites: the texture loaded",
+    (sprites) =>
       Number(sprites["textureWidth"]) > 0 &&
-        Number(sprites["textureHeight"]) > 0 &&
-        sprites["visible"] === true,
-    );
-  }
-  const textUi = readings["text-ui"];
-  if (textUi) {
-    check(
-      "text-ui: the panel is laid out",
-      JSON.stringify(textUi),
+      Number(sprites["textureHeight"]) > 0 &&
+      sprites["visible"] === true,
+  );
+  caseCheck(
+    "text-ui",
+    "text-ui: the panel is laid out",
+    (textUi) =>
       Number(textUi["textWidth"]) > 0 &&
-        textUi["panelWidth"] === 200 &&
-        Number(textUi["panelHeight"]) > 20,
-    );
-  }
-  const masks = readings["masks"];
-  if (masks) {
-    check(
-      "masks: the mask stayed attached",
-      JSON.stringify(masks),
-      masks["maskAttached"] === true,
-    );
-  }
-  const renderTargets = readings["render-targets"];
-  if (renderTargets) {
-    check(
-      "render-targets: the buffer drew",
-      JSON.stringify(renderTargets),
+      textUi["panelWidth"] === 200 &&
+      Number(textUi["panelHeight"]) > 20,
+  );
+  caseCheck(
+    "masks",
+    "masks: the mask stayed attached",
+    (masks) => masks["maskAttached"] === true,
+  );
+  caseCheck(
+    "render-targets",
+    "render-targets: the buffer drew",
+    (renderTargets) =>
       renderTargets["width"] === 128 &&
-        renderTargets["height"] === 64 &&
-        renderTargets["resolution"] === renderTargets["rendererResolution"],
-    );
-  }
-  const effects = readings["effects"];
-  if (effects) {
+      renderTargets["height"] === 64 &&
+      renderTargets["resolution"] === renderTargets["rendererResolution"],
+  );
+  caseCheck("effects", "effects: both effects attached", (effects) => {
     const names = effects["effects"];
-    check(
-      "effects: both effects attached",
-      JSON.stringify(effects),
+    return (
       Array.isArray(names) &&
-        names.includes("yage:outline") &&
-        names.includes("baseline:tint"),
+      names.includes("yage:outline") &&
+      names.includes("baseline:tint")
     );
-  }
-  const lighting = readings["lighting"];
-  if (lighting) {
-    check(
-      "lighting: the lamp lights its own position",
-      JSON.stringify(lighting),
+  });
+  caseCheck(
+    "lighting",
+    "lighting: the lamp lights its own position",
+    (lighting) =>
       Number(lighting["levelAtLight"]) > Number(lighting["levelFar"]),
-    );
-  }
-  const physics = readings["physics"];
-  if (physics) {
-    check(
-      "physics: the ball fell and landed",
-      JSON.stringify(physics),
+  );
+  caseCheck(
+    "physics",
+    "physics: the ball fell and landed",
+    (physics) =>
       Number(physics["y"]) > Number(physics["startY"]) &&
-        Number(physics["contacts"]) >= 1,
-    );
-  }
-  const workers = readings["workers"];
-  if (workers) {
-    check(
-      "workers: the worker answered",
-      JSON.stringify(workers),
-      workers["reply"] === 42,
-    );
-  }
-  const saves = readings["saves"];
-  if (saves) {
-    check(
-      "saves: a clean profile starts at zero",
-      JSON.stringify(saves),
+      Number(physics["contacts"]) >= 1,
+  );
+  caseCheck(
+    "workers",
+    "workers: the worker answered",
+    (workers) => workers["reply"] === 42,
+  );
+  caseCheck(
+    "saves",
+    "saves: a clean profile starts at zero",
+    (saves) =>
       saves["launchesBefore"] === 0 &&
-        saves["launchesAfter"] === 1 &&
-        saves["slotBefore"] === null &&
-        saves["slotAfter"] === 1,
-    );
-  }
+      saves["launchesAfter"] === 1 &&
+      saves["slotBefore"] === null &&
+      saves["slotAfter"] === 1,
+  );
   return failures;
 }
 

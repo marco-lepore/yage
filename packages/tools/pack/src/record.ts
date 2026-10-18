@@ -13,7 +13,7 @@ import path from "node:path";
 import { hashDirectory, type HashedFile } from "./hash.js";
 import { gradleSetting, nativePaths, xcodeSetting } from "./native.js";
 import { readIdentity, WEB_DIRS } from "./project.js";
-import { run as defaultRun, type RunResult } from "./run.js";
+import { run as defaultRun, javaBinary, type RunResult } from "./run.js";
 import type { Target } from "./types.js";
 
 /** What a build produced, by the shape the target's tools give it. */
@@ -214,9 +214,9 @@ function artifactKind(file: string, target: Target): ArtifactKind {
     if (extension === ".xcarchive") return "ios-archive";
     if (extension === ".ipa") return "ios-ipa";
     if (extension === ".app") {
-      // A simulator build names its platform in the bundle's Info.plist,
-      // which is a binary plist in a device build and text in neither case
-      // worth parsing for one string.
+      // A simulator build sets its platform name, iphonesimulator, in the
+      // bundle's Info.plist. XML and binary plists both store that ASCII
+      // string as plain bytes, so a byte search finds it without a parser.
       const plist = path.join(file, "Info.plist");
       const simulator =
         existsSync(plist) &&
@@ -354,7 +354,9 @@ function readToolchain(
   const xcode =
     target === "ios" ? firstLine(run("xcodebuild", ["-version"])) : null;
   const java =
-    target === "android" ? firstLine(run("java", ["-version"])) : null;
+    target === "android"
+      ? firstLine(run(javaBinary(process.env), ["-version"]))
+      : null;
   const version =
     process.platform === "darwin"
       ? (firstLine(run("sw_vers", ["-productVersion"])) ?? os.release())

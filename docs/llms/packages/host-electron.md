@@ -293,3 +293,6 @@ payload. Each page entry checks it first and throws one of three errors:
 `electronSaveAdapter` throws the same three with its own name. The check runs
 before anything attaches, so `engine.start()` rejects and the engine is
 terminal.
+
+An `ElectronHostPlugin` belongs to one engine: installing an instance whose
+engine was destroyed throws `ElectronHostPlugin.install: this instance belongs to a destroyed engine. Construct a new ElectronHostPlugin for each engine.`

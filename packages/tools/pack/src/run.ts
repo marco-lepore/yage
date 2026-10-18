@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 
 /** What a command printed, and how it ended. */
 export interface RunResult {
@@ -29,4 +30,14 @@ export function run(
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
   };
+}
+
+/**
+ * The Java binary a Gradle build starts: `$JAVA_HOME/bin/java` when
+ * `JAVA_HOME` is set, otherwise `java` on the path.
+ */
+export function javaBinary(env: NodeJS.ProcessEnv): string {
+  return env.JAVA_HOME === undefined
+    ? "java"
+    : path.join(env.JAVA_HOME, "bin", "java");
 }

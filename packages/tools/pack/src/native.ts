@@ -92,20 +92,34 @@ export function xcodeSetting(
   return match[1]?.trim().replace(/^"(.*)"$/, "$1");
 }
 
-/** Whether the Xcode project references a file by name. */
-export function xcodeReferences(projectFile: string, file: string): boolean {
+/**
+ * Whether a target of the Xcode project copies a file into the app. Xcode
+ * writes a `<file> in Resources` build-file entry for each file a target
+ * copies, and only a file reference for a file no target copies.
+ */
+export function xcodeCopiesResource(
+  projectFile: string,
+  file: string,
+): boolean {
   if (!existsSync(projectFile)) return false;
-  return readFileSync(projectFile, "utf8").includes(file);
+  return readFileSync(projectFile, "utf8").includes(
+    `/* ${file} in Resources */`,
+  );
 }
 
-/** A property of the app module's Gradle file, such as `applicationId`. */
+/**
+ * A property of the app module's Gradle file, such as `applicationId`, in
+ * Groovy's `name value` form or the `name = value` form.
+ */
 export function gradleSetting(
   gradleFile: string,
   name: string,
 ): string | undefined {
   if (!existsSync(gradleFile)) return undefined;
   const source = readFileSync(gradleFile, "utf8");
-  const match = new RegExp(`\\b${name}\\s+("?)([^"\\n]+)\\1`).exec(source);
+  const match = new RegExp(
+    `\\b${name}(?:\\s*=\\s*|\\s+)("?)([^"\\n]+)\\1`,
+  ).exec(source);
   if (match === null) return undefined;
   return match[2]?.trim();
 }

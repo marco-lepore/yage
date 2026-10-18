@@ -64,7 +64,7 @@ describe("snapshotOf", () => {
     expect(activity({ locked: true, suspended: true, observed: true })).toBe(
       "inactive",
     );
-    expect(activity({ locked: true, suspended: false, observed: true })).toBe(
+    expect(activity({ locked: false, suspended: true, observed: true })).toBe(
       "inactive",
     );
     expect(activity({ locked: false, suspended: false, observed: true })).toBe(

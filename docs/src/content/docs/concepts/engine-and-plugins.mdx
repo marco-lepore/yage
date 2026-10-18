@@ -260,13 +260,20 @@ Inside a component, resolve the same object through the key:
 ```typescript
 import { Component, HostKey } from "@yagejs/core";
 
-class TiltHint extends Component {
+class BuildLabel extends Component {
+  text = "";
+
   onAdd(): void {
-    const os = this.use(HostKey).info.os;
-    this.entity.setActive(os === "ios" || os === "android");
+    const { runtime, os, appVersion } = this.use(HostKey).info;
+    this.text = `${runtime} on ${os}, version ${appVersion ?? "unknown"}`;
   }
 }
 ```
+
+`info` is for display and diagnostics, such as this label or a log line. What
+the game offers follows the support values, such as
+`renderer.fullscreenSupport`, which keep working when the same game runs in a
+browser.
 
 A page with no host adapter reports `runtime: "browser"`, `os: "unknown"`, and
 `undefined` for `appVersion`, `appBuild` and `runtimeVersion`. The operating
@@ -373,7 +380,7 @@ class ShellHostPlugin implements Plugin {
 
   async install(context: EngineContext): Promise<void> {
     const info = await readShellInfo();
-    // destroy() can land while install awaits, so check after every await.
+    // destroy() can run while install awaits, so check after every await.
     if (this.released) return;
     const lifecycle = await readShellState();
     if (this.released) return;

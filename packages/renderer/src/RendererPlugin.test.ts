@@ -1340,6 +1340,26 @@ describe("RendererPlugin", () => {
       expect(plugin.orientationLockSupport).toBe("supported");
     });
 
+    it("emits nothing when the display reports from inside its watch", async () => {
+      const display = new TestHostDisplay({
+        fullscreen: true,
+        orientation: "landscape-primary",
+      });
+      const watch = display.watch.bind(display);
+      display.watch = (changed) => {
+        const stop = watch(changed);
+        changed();
+        return stop;
+      };
+
+      const { fullscreenEvents, orientationEvents } = await startRenderer({
+        display,
+      });
+
+      expect(fullscreenEvents).toEqual([]);
+      expect(orientationEvents).toEqual([]);
+    });
+
     it("emits one event per state that moved", async () => {
       const display = new TestHostDisplay({ orientation: "portrait-primary" });
       const { plugin, fullscreenEvents, orientationEvents, order } =
@@ -1679,6 +1699,9 @@ describe("RendererPlugin", () => {
 
       matchMedia.mockClear();
       await startRenderer({ config: { resolution: 1 } });
+      expect(matchMedia).not.toHaveBeenCalled();
+
+      await startRenderer({ config: { pixi: { resolution: 1 } } });
       expect(matchMedia).not.toHaveBeenCalled();
     });
   });
