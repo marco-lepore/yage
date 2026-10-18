@@ -108,9 +108,11 @@ import { join } from "node:path";
 import { startGame } from "@yagejs/host-electron/main";
 
 startGame({
-  webDir: join(app.getAppPath(), "web"),
+  webDir: join(app.getAppPath(), "dist-electron"),
   appId: "dev.example.mygame",
-  profile: "release",
+  // A packaged app is a release; electron-forge start runs unpackaged.
+  profile: app.isPackaged ? "release" : "development",
+  devTools: !app.isPackaged,
   externalLinks: ["https://example.dev/"],
   window: { width: 1280, height: 720, title: "My Game" },
 }).catch((error: unknown) => {
@@ -126,7 +128,9 @@ its own menu or listeners to it.
 
 The window loads the preload script from the directory the main entry was
 loaded from, so `preload.cjs`, `main.js` and `main.cjs` stay together in the
-installed package.
+installed package. `npx yage-pack init --target electron` writes this script
+and a Forge configuration that keeps that directory in the archive; see
+`/llms/tools/pack.md`.
 
 ### `GameShellOptions`
 
@@ -258,6 +262,10 @@ operating system's own prompt and its usage text in the packaged app.
 Audio starts without a user gesture: Electron's autoplay policy asks for none.
 
 ## Development and release
+
+The script `init` writes takes both from `app.isPackaged`: a packaged app is a
+release with developer tools off, and `electron-forge start` is development
+with them on.
 
 `devTools` is the only difference. With `devTools: false`, the window opens no
 developer tools and the application menu holds Quit, the text-field commands

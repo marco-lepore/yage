@@ -112,9 +112,11 @@ import { join } from "node:path";
 import { startGame } from "@yagejs/host-electron/main";
 
 startGame({
-  webDir: join(app.getAppPath(), "web"),
+  webDir: join(app.getAppPath(), "dist-electron"),
   appId: "dev.example.mygame",
-  profile: "release",
+  // A packaged app is a release; electron-forge start runs unpackaged.
+  profile: app.isPackaged ? "release" : "development",
+  devTools: !app.isPackaged,
   externalLinks: ["https://example.dev/"],
   window: { width: 1280, height: 720, title: "My Game" },
 }).catch((error: unknown) => {
@@ -129,8 +131,12 @@ before then. It resolves with the `BrowserWindow` after the page has loaded,
 so the shell can add a menu or its own listeners.
 
 `preload.cjs` ships beside `main.js` in the installed package, and the window
-loads it from there. Keep the package's `dist` directory together when you
-package the app.
+loads it from there. The Forge configuration from `@yagejs-tools/pack` keeps
+that directory in the archive.
+
+`npx yage-pack init --target electron` writes this script and a Forge
+configuration beside it; see
+[Packaging for desktop and mobile](/tooling/packaging/).
 
 ## What `startGame` sets up
 

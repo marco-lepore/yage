@@ -37,10 +37,12 @@ function describe(args) {
   return detail === "" ? null : detail;
 }
 
-const webDir = requirePath(
-  "YAGE_BASELINE_WEB",
-  "a built web directory or archive",
-);
+// A packaged copy holds the build beside the shell, so the environment only
+// names it when the shell runs unpackaged against a directory of its own.
+const webDir =
+  process.env.YAGE_BASELINE_WEB === undefined
+    ? path.join(__dirname, "..", "dist-electron")
+    : requirePath("YAGE_BASELINE_WEB", "a built web directory or archive");
 const appData = requirePath("YAGE_BASELINE_APP_DATA", "a profile directory");
 const profile = process.env.YAGE_BASELINE_PROFILE ?? "test";
 const query = process.env.YAGE_BASELINE_QUERY ?? "";

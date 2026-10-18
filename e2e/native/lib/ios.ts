@@ -160,11 +160,15 @@ export function selectSimulator(): SimulatorDevice {
 }
 
 /** Remove any installed copy and install this build, so the app starts clean. */
-export async function installClean(udid: string, app: string): Promise<void> {
+export async function installClean(
+  udid: string,
+  app: string,
+  bundleId: string = APP_ID,
+): Promise<void> {
   const env = toolEnv();
   // An absent app is not an error for the simulator; a stale one would keep
   // the previous run's stored data.
-  await run("xcrun", ["simctl", "uninstall", udid, APP_ID], { env }).catch(
+  await run("xcrun", ["simctl", "uninstall", udid, bundleId], { env }).catch(
     () => undefined,
   );
   await run("xcrun", ["simctl", "install", udid, app], {
@@ -189,7 +193,10 @@ export interface LaunchedApp {
  * Launch the app with its log attached. A Debug build forwards the page's
  * console output here; a Release build writes nothing of its own.
  */
-export function launchWithConsole(udid: string): LaunchedApp {
+export function launchWithConsole(
+  udid: string,
+  bundleId: string = APP_ID,
+): LaunchedApp {
   const child: ChildProcessWithoutNullStreams = spawn(
     "xcrun",
     [
@@ -198,7 +205,7 @@ export function launchWithConsole(udid: string): LaunchedApp {
       "--console-pty",
       "--terminate-running-process",
       udid,
-      APP_ID,
+      bundleId,
     ],
     { env: toolEnv() },
   );
@@ -268,8 +275,11 @@ export async function sendToBackground(udid: string): Promise<void> {
 }
 
 /** Stop the app. */
-export async function terminate(udid: string): Promise<void> {
-  await run("xcrun", ["simctl", "terminate", udid, APP_ID], {
+export async function terminate(
+  udid: string,
+  bundleId: string = APP_ID,
+): Promise<void> {
+  await run("xcrun", ["simctl", "terminate", udid, bundleId], {
     env: toolEnv(),
   }).catch(() => undefined);
 }
@@ -279,7 +289,10 @@ export async function terminate(udid: string): Promise<void> {
  * running. `launchctl list` prints one row per job, `<pid>\t<status>\t<label>`,
  * with `-` in place of the pid for a job that has no process.
  */
-export async function processId(udid: string): Promise<number | null> {
+export async function processId(
+  udid: string,
+  bundleId: string = APP_ID,
+): Promise<number | null> {
   const { stdout } = await run(
     "xcrun",
     ["simctl", "spawn", udid, "launchctl", "list"],
@@ -287,7 +300,7 @@ export async function processId(udid: string): Promise<number | null> {
   );
   for (const row of stdout.split("\n")) {
     const [pid = "", , label = ""] = row.split("\t");
-    if (!label.startsWith(`UIKitApplication:${APP_ID}[`)) continue;
+    if (!label.startsWith(`UIKitApplication:${bundleId}[`)) continue;
     return /^\d+$/.test(pid) ? Number(pid) : null;
   }
   return null;

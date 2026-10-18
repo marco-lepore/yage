@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { readFile, readdir, mkdir, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
+import { hashDirectory } from "@yagejs-tools/pack";
 import { REPORT_PREFIX } from "./console.js";
 import { repoRoot, workDir } from "./paths.js";
 import type { BaselineProfile } from "./build.js";
@@ -142,20 +142,8 @@ export function resolvedDependencies(root = repoRoot): Record<string, string> {
 export async function hashWebDir(
   dir: string,
 ): Promise<{ files: ReportFile[]; digest: string }> {
-  const files: ReportFile[] = [];
-  for (const path of await listFiles(dir)) {
-    const bytes = await readFile(path);
-    files.push({
-      path: relative(dir, path),
-      bytes: bytes.byteLength,
-      sha256: createHash("sha256").update(bytes).digest("hex"),
-    });
-  }
-  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  const digest = createHash("sha256")
-    .update(files.map((file) => `${file.sha256}  ${file.path}`).join("\n"))
-    .digest("hex");
-  return { files, digest };
+  const hashed = await hashDirectory(dir);
+  return { files: [...hashed.files], digest: hashed.digest };
 }
 
 /** The emitted files that carry the test profile's reporting prefix. */

@@ -1,4 +1,4 @@
-import { Engine } from "@yagejs/core";
+import { Engine, type Plugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { InputPlugin } from "@yagejs/input";
@@ -7,8 +7,24 @@ import { DebugPlugin } from "@yagejs/debug";
 import { setupFullscreenButton } from "./fullscreen";
 import { GameScene } from "./scenes/GameScene";
 
-async function main(): Promise<void> {
+export interface BootOptions {
+  /**
+   * The host adapters this build runs with. The browser entry passes none;
+   * a desktop or mobile entry passes its own.
+   */
+  readonly hostPlugins: readonly Plugin[];
+}
+
+/**
+ * Create the engine, register the plugins and push the first scene. Every
+ * target's entry file calls this; nothing here depends on where the game
+ * runs.
+ */
+export async function boot(options: BootOptions): Promise<Engine> {
   const engine = new Engine({ debug: true });
+
+  // First, so the rest of the engine can read what the host reports.
+  for (const plugin of options.hostPlugins) engine.use(plugin);
 
   const renderer = new RendererPlugin({
     width: 800,
@@ -37,8 +53,5 @@ async function main(): Promise<void> {
   await engine.start();
   setupFullscreenButton(engine, renderer);
   await engine.scenes.push(new GameScene());
+  return engine;
 }
-
-main().catch((err) => {
-  console.error(err);
-});

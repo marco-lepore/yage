@@ -59,5 +59,9 @@ With no action bound to the key, a press moves the app to the background and
 leaves the game where it was. The Back behaviour follows from Capacitor's
 Android source code and has not been run on an Android device or emulator.
 
+A `capacitor.config.ts` that exports `capacitorConfig()` from
+`@yagejs-tools/pack/capacitor` carries the settings this package needs and the
+app's identity.
+
 Full reference: the [Mobile with Capacitor](https://yage.dev/guides/capacitor/)
-guide.
+guide, and [Packaging](https://yage.dev/tooling/packaging/).

@@ -19,7 +19,8 @@
     "vite": "^8.0.0",
     "@electron/asar": "4.3.1",
     "vite-plugin-wasm": "^3.6.0",
-    "pixi.js": "^8.22.0"
+    "pixi.js": "^8.22.0",
+    "@yagejs-tools/pack": "^0.0.0"
   },
   "dependencies": {
     "@yagejs-tools/editor": "^0.2.0",

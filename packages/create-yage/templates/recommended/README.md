@@ -32,5 +32,20 @@ in the `manifest` block of `vite.config.ts`, replace the icons in `public/`,
 and serve the site over HTTPS. The dev server does not use a service worker;
 test offline play with `npm run build` and `npm run preview`.
 
+## Desktop and mobile builds
+
+The same source builds a desktop app with Electron and iOS and Android apps
+with Capacitor. A project created with
+`npm create yage -- --features electron,capacitor` has the packages installed.
+For a project created without those features, the packaging guide lists the
+packages to install. Then `yage-pack init` writes each target's entry file and
+project configuration:
+
+```bash
+npx yage-pack init --target electron --target ios --target android --app-id com.example.mygame
+```
+
+See https://yage.dev/tooling/packaging for the build commands.
+
 See `AGENTS.md` for project layout, conventions, and links to the full YAGE
 documentation.

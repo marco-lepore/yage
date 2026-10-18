@@ -379,14 +379,15 @@ The baseline fixture is one small game built from the workspace packages, so eve
 
 A test build adds an Inspector, an extension named `baseline` that answers `read()` with every case's reading, and a console reporter that writes one `[yage-baseline]` line per event. The extension also answers `pixels()` with the colour at each named point of the drawing and `loseContext()`, which takes the graphics context away and waits for the page to get one back. A test build reads three more launch flags: `?backend=webgl1` or `?backend=webgpu` picks the graphics API, `?bounce=max` turns on bounced light, and `?lockOrientation=landscape` locks the screen through the renderer and reports what the host answered. A build with `--mode release` has none of them: the reporting module is reached through one dynamic import behind a mode check, which the release build removes, and the release build reads no launch flag.
 
-`e2e/specs/baseline.spec.ts` checks every case in Chromium, so CI covers the fixture on each push. The native suite under `e2e/native/` is local only, and has four projects:
+`e2e/specs/baseline.spec.ts` checks every case in Chromium, so CI covers the fixture on each push. The native suite under `e2e/native/` is local only, and has five projects:
 
-| Project         | Needs                                                                                                                      |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `harness`       | `npm --prefix e2e/native/capacitor ci`: the suite's own helpers, and the generated Android project, read rather than built |
-| `browser`       | Chromium, over a built web directory served on loopback                                                                    |
-| `electron`      | the root `npm install`, which brings Electron in through `@yagejs/host-electron`                                           |
-| `ios-simulator` | `npm --prefix e2e/native/capacitor ci`, Xcode and a booted simulator, with `DEVELOPER_DIR` set                             |
+| Project         | Needs                                                                                                                                         |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `harness`       | `npm --prefix e2e/native/capacitor ci`: the suite's own helpers, and the generated Android project, read rather than built                    |
+| `browser`       | Chromium, over a built web directory served on loopback                                                                                       |
+| `electron`      | the root `npm install`, which brings Electron in through `@yagejs/host-electron`                                                              |
+| `ios-simulator` | `npm --prefix e2e/native/capacitor ci`, Xcode and a booted simulator, with `DEVELOPER_DIR` set                                                |
+| `pack`          | the npm registry: it packages the fixture with Electron Forge and builds a game scaffolded by `create-yage` for every target this machine has |
 
 The Capacitor app loads one fixed path with no query string, so its test
 build carries its launch flags from the build: `buildBaseline` takes a

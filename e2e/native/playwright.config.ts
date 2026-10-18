@@ -33,5 +33,10 @@ export default defineConfig({
       testMatch: ["**/fixture.spec.ts", "**/game.spec.ts"],
       timeout: 1_200_000,
     },
+    {
+      name: "pack",
+      testMatch: "**/pack.spec.ts",
+      timeout: 1_800_000,
+    },
   ],
 });

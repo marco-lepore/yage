@@ -38,9 +38,11 @@ import { join } from "node:path";
 import { startGame } from "@yagejs/host-electron/main";
 
 startGame({
-  webDir: join(app.getAppPath(), "web"),
+  webDir: join(app.getAppPath(), "dist-electron"),
   appId: "dev.example.mygame",
-  profile: "release",
+  // A packaged app is a release; electron-forge start runs unpackaged.
+  profile: app.isPackaged ? "release" : "development",
+  devTools: !app.isPackaged,
   window: { width: 1280, height: 720, title: "My Game" },
 }).catch((error: unknown) => {
   console.error(error);
@@ -54,5 +56,8 @@ browser tab grants without a prompt, serves the bridge and the save channels
 to the game page alone, keeps the app to one copy, and quits when the window
 closes.
 
+`npx yage-pack init --target electron` writes this script and an Electron
+Forge configuration beside it.
+
 Full reference: the [Desktop with Electron](https://yage.dev/guides/electron/)
-guide.
+guide, and [Packaging](https://yage.dev/tooling/packaging/).

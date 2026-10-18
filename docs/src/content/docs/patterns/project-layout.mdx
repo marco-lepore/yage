@@ -12,7 +12,8 @@ but starting here will save you refactors later.
 
 ```
 src/
-├── main.ts                 # entry: create Engine, register plugins, push initial scene
+├── boot.ts                 # create Engine, register plugins, push initial scene
+├── main.web.ts             # the browser entry; `yage-pack init` adds main.electron.ts and main.capacitor.ts
 ├── scenes/
 │   └── <SceneName>.ts      # one file per scene
 ├── entities/
@@ -154,25 +155,46 @@ If the starter had only `Coin` using `Oscillate`, the component would live at
 `entities/Coin/Oscillate.ts` instead (and `Coin.ts` would be promoted to a
 folder).
 
-### 4. `main.ts` stays short
+### 4. `boot.ts` stays short
 
-Engine creation, plugin registration, scene push. No game logic. If `main.ts`
+Engine creation, plugin registration, scene push. No game logic. If `boot.ts`
 grows, the overflow belongs in a scene or a plugin.
 
-```typescript yage-group="layout" yage-file="main.ts"
-// main.ts — entire file
-import { Engine } from "@yagejs/core";
+Every build of the game calls `boot`, and each one passes the host adapters
+it runs with: none in the browser, the Electron or Capacitor adapter in a
+desktop or mobile build.
+
+```typescript yage-group="layout" yage-file="boot.ts"
+// boot.ts — entire file
+import { Engine, type Plugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { InputPlugin } from "@yagejs/input";
 import { GameScene } from "./scenes/GameScene.js";
 
-const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({ width: 800, height: 600, container: document.getElementById("game")! }));
-engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
-engine.use(new InputPlugin({ actions: { jump: ["Space"] } }));
-await engine.start();
-engine.scenes.push(new GameScene());
+export interface BootOptions {
+  readonly hostPlugins: readonly Plugin[];
+}
+
+export async function boot(options: BootOptions): Promise<Engine> {
+  const engine = new Engine({ debug: true });
+  for (const plugin of options.hostPlugins) engine.use(plugin);
+  engine.use(new RendererPlugin({ width: 800, height: 600, container: document.getElementById("game")! }));
+  engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
+  engine.use(new InputPlugin({ actions: { jump: ["Space"] } }));
+  await engine.start();
+  await engine.scenes.push(new GameScene());
+  return engine;
+}
+```
+
+```typescript yage-group="layout" yage-file="main.web.ts"
+// main.web.ts — entire file
+import { boot } from "./boot.js";
+
+boot({ hostPlugins: [] }).catch((err: unknown) => {
+  console.error(err);
+});
 ```
 
 ### 5. Traits are optional and advanced
@@ -222,7 +244,7 @@ feel friction:
 | Scene file > 150 lines with inline spawn helpers | Extract entity classes |
 | Entity file > 100 lines with a dedicated controller component | Promote to `entities/<Name>/` folder |
 | Same component code appearing in two entity files | Move to `src/components/` |
-| `main.ts` contains game logic | Move it into a scene or plugin |
+| `boot.ts` contains game logic | Move it into a scene or plugin |
 | Two scenes need the same asset path constants | Export them from a shared module |
 
 ## See also

@@ -208,6 +208,7 @@ export default defineConfig({
             { label: "Sequence Mode", slug: "tooling/sequence-editor" },
             { label: "Level Editor", slug: "tooling/level-editor" },
             { label: "Runtime Feedback", slug: "tooling/feedback" },
+            { label: "Packaging", slug: "tooling/packaging" },
             { label: "Local Engine Checkout", slug: "tooling/local-engine" },
           ],
         },

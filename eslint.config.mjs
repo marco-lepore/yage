@@ -679,9 +679,12 @@ export default tseslint.config(
   //    packages/level carves itself out because blocks K and L restrict more.
   //    The glob has three path segments, so packages/addons/*/src and
   //    packages/tools/*/src are outside it, as they are outside the block above.
+  //    The scaffolder's tests are carved out: they check the versions it writes
+  //    into a new project against what the tools themselves declare, and
+  //    nothing it ships imports one.
   {
     files: ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
-    ignores: [`${LEVEL}/src/**`],
+    ignores: [`${LEVEL}/src/**`, "packages/create-yage/src/**/*.test.ts"],
     rules: {
       "no-restricted-imports": [
         "error",

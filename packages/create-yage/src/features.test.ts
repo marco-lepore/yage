@@ -1,8 +1,12 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { REQUIRED_PACKAGES } from "@yagejs-tools/pack";
 import { describe, expect, it } from "vitest";
 import {
   EDITOR_RANGE,
   FEATURES,
   isFeatureId,
+  PACK_RANGE,
   parseFeatureList,
   YAGE_RANGE,
 } from "./features.js";
@@ -17,6 +21,8 @@ describe("feature registry", () => {
     expect(isFeatureId("save")).toBe(true);
     expect(isFeatureId("effects")).toBe(true);
     expect(isFeatureId("editor")).toBe(true);
+    expect(isFeatureId("electron")).toBe(true);
+    expect(isFeatureId("capacitor")).toBe(true);
     expect(isFeatureId("xyz")).toBe(false);
   });
 
@@ -43,6 +49,93 @@ describe("feature registry", () => {
     });
     expect(FEATURES.editor.scripts).toEqual({ editor: "yage-editor" });
     expect(FEATURES.editor.nextSteps).toEqual(["npx yage-editor init"]);
+  });
+});
+
+describe("packaging features", () => {
+  /** A package's manifest, read from its own directory in this repository. */
+  function manifest(name: string): {
+    peerDependencies?: Record<string, string>;
+  } {
+    const file = fileURLToPath(
+      new URL(`../../${name}/package.json`, import.meta.url),
+    );
+    return JSON.parse(readFileSync(file, "utf8")) as {
+      peerDependencies?: Record<string, string>;
+    };
+  }
+
+  it("gives Electron the host package, the build tools and the setup step", () => {
+    expect(FEATURES.electron.dependencies).toEqual({
+      "@yagejs/host-electron": YAGE_RANGE,
+    });
+    expect(FEATURES.electron.devDependencies).toEqual({
+      electron: "^44.7.0",
+      "@electron-forge/cli": "^8.0.1",
+      "@electron-forge/maker-zip": "^8.0.1",
+      "@electron-forge/plugin-fuses": "^8.0.1",
+      "@electron/fuses": "^2.1.3",
+      "@yagejs-tools/pack": PACK_RANGE,
+    });
+    expect(FEATURES.electron.nextSteps).toEqual([
+      "npx yage-pack init --target electron --app-id com.example.mygame",
+    ]);
+  });
+
+  it("gives Capacitor every plugin the app itself has to list", () => {
+    expect(FEATURES.capacitor.dependencies).toEqual({
+      "@yagejs/host-capacitor": YAGE_RANGE,
+      "@capacitor/core": "^8.5.3",
+      "@capacitor/app": "^8.1.2",
+      "@capacitor/filesystem": "^8.1.4",
+      "@capacitor/screen-orientation": "^8.0.2",
+      "@capacitor/ios": "^8.5.3",
+      "@capacitor/android": "^8.5.3",
+    });
+    expect(FEATURES.capacitor.devDependencies).toEqual({
+      "@capacitor/cli": "^8.5.3",
+      "@yagejs-tools/pack": PACK_RANGE,
+    });
+    expect(FEATURES.capacitor.nextSteps).toEqual([
+      "npx yage-pack init --target ios --target android --app-id com.example.mygame",
+    ]);
+  });
+
+  it("asks for the versions each host adapter accepts", () => {
+    const electron = manifest("host-electron").peerDependencies ?? {};
+    expect(FEATURES.electron.devDependencies?.electron).toBe(electron.electron);
+
+    const capacitor = manifest("host-capacitor").peerDependencies ?? {};
+    for (const [name, range] of Object.entries(capacitor)) {
+      expect([name, FEATURES.capacitor.dependencies[name]]).toEqual([
+        name,
+        range,
+      ]);
+    }
+  });
+
+  it("installs exactly what each target's build needs", () => {
+    expect(Object.keys(FEATURES.electron.dependencies).sort()).toEqual(
+      [...REQUIRED_PACKAGES.electron.dependencies].sort(),
+    );
+    expect(Object.keys(FEATURES.electron.devDependencies ?? {}).sort()).toEqual(
+      [...REQUIRED_PACKAGES.electron.devDependencies].sort(),
+    );
+
+    const mobileDependencies = new Set([
+      ...REQUIRED_PACKAGES.ios.dependencies,
+      ...REQUIRED_PACKAGES.android.dependencies,
+    ]);
+    const mobileDevDependencies = new Set([
+      ...REQUIRED_PACKAGES.ios.devDependencies,
+      ...REQUIRED_PACKAGES.android.devDependencies,
+    ]);
+    expect(Object.keys(FEATURES.capacitor.dependencies).sort()).toEqual(
+      [...mobileDependencies].sort(),
+    );
+    expect(
+      Object.keys(FEATURES.capacitor.devDependencies ?? {}).sort(),
+    ).toEqual([...mobileDevDependencies].sort());
   });
 });
 

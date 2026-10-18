@@ -46,6 +46,36 @@ describe("templates registry", () => {
     }
   });
 
+  it("boots every target from one module that calls nothing itself", () => {
+    for (const template of TEMPLATES) {
+      const dir = join(templatesRoot, template.id);
+      const boot = readFileSync(join(dir, "src", "boot.ts"), "utf8");
+      expect(boot).toContain("export async function boot(");
+      expect(boot).not.toMatch(/^\s*(boot|main)\(/m);
+
+      const web = readFileSync(join(dir, "src", "main.web.ts"), "utf8");
+      expect(web).toContain("boot({ hostPlugins: [] })");
+
+      const page = readFileSync(join(dir, "index.html"), "utf8");
+      expect(page).toContain('src="/src/main.web.ts"');
+
+      const vite = readFileSync(join(dir, "vite.config.ts"), "utf8");
+      expect(vite).toContain('name: "target-entry"');
+      expect(vite).toContain('mode === "electron" || mode === "capacitor"');
+      expect(vite).toContain(
+        'outDir: target === "web" ? "dist" : `dist-${target}`',
+      );
+    }
+  });
+
+  it("installs the service worker in the browser build only", () => {
+    const vite = readFileSync(
+      join(templatesRoot, "recommended", "vite.config.ts"),
+      "utf8",
+    );
+    expect(vite).toMatch(/target === "web"\s*\?\s*\[\s*\n?\s*VitePWA\(/);
+  });
+
   it("keeps recommended guide paths in sync with the template", () => {
     const templateDir = join(templatesRoot, "recommended");
     const guide = readFileSync(join(templateDir, "AGENTS.md"), "utf8");

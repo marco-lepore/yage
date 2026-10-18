@@ -27,13 +27,11 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { packLocalPackages, pointAtTarballs } from "./lib/localPackages.mjs";
 
 const nativeDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(nativeDir, "../..");
 const workDir = resolve(nativeDir, ".work");
-
-/** Where this repository keeps the packages a game can be built against. */
-const PACKAGE_ROOTS = ["packages", "packages/addons", "packages/tools"];
 
 function fail(message) {
   console.error(message);
@@ -117,22 +115,6 @@ function dependencyNames(manifest) {
   ];
 }
 
-/** This repository's packages, by package name. */
-function readLocalPackages() {
-  const found = new Map();
-  for (const root of PACKAGE_ROOTS) {
-    for (const entry of readdirSync(resolve(repoRoot, root), {
-      withFileTypes: true,
-    })) {
-      if (!entry.isDirectory()) continue;
-      const path = resolve(repoRoot, root, entry.name, "package.json");
-      if (!existsSync(path)) continue;
-      found.set(readJson(path).name, `${root}/${entry.name}`);
-    }
-  }
-  return found;
-}
-
 const args = parseArgs(process.argv.slice(2));
 if (!existsSync(resolve(args.source, "package.json"))) {
   fail(`prepare-game: ${args.source} has no package.json.`);
@@ -206,77 +188,29 @@ rmSync(resolve(copyDir, "package-lock.json"), { force: true });
 
 // --- 2. Pack the engine packages the copy uses ----------------------------
 
-const localPackages = readLocalPackages();
-const wanted = new Set();
 const declared = new Set();
-const packQueue = [];
+const names = [];
 for (const dir of copiedDirs) {
   const manifest = readJson(resolve(copyDir, dir, "package.json"));
-  for (const name of dependencyNames(manifest)) declared.add(name);
-  packQueue.push(...dependencyNames(manifest));
-}
-while (packQueue.length > 0) {
-  const name = packQueue.shift();
-  if (!localPackages.has(name) || wanted.has(name)) continue;
-  wanted.add(name);
-  const manifest = readJson(
-    resolve(repoRoot, localPackages.get(name), "package.json"),
-  );
-  packQueue.push(...Object.keys(manifest.dependencies ?? {}));
-  packQueue.push(...Object.keys(manifest.peerDependencies ?? {}));
-}
-if (wanted.size === 0) {
-  fail(
-    `prepare-game: the copied workspaces declare no package of this ` +
-      `repository, so there is nothing to build against.`,
-  );
-}
-for (const name of wanted) {
-  const dist = resolve(repoRoot, localPackages.get(name), "dist");
-  if (!existsSync(dist)) {
-    fail(`prepare-game: ${name} has no built dist. Run npx turbo build first.`);
+  for (const name of dependencyNames(manifest)) {
+    declared.add(name);
+    names.push(name);
   }
 }
-const packed = JSON.parse(
-  run(
-    "npm",
-    [
-      "pack",
-      ...[...wanted].flatMap((name) => ["-w", name]),
-      "--pack-destination",
-      packsDir,
-      "--json",
-    ],
-    { cwd: repoRoot },
-  ),
-);
-const tarballs = new Map();
-for (const entry of packed) {
-  tarballs.set(entry.name, {
-    name: entry.name,
-    version: entry.version,
-    file: resolve(packsDir, entry.filename),
-    integrity: entry.integrity ?? entry.shasum ?? null,
-  });
-}
-for (const name of wanted) {
-  if (!tarballs.has(name)) fail(`prepare-game: npm packed no ${name}.`);
+let tarballs;
+try {
+  tarballs = packLocalPackages({ names, destination: packsDir });
+} catch (error) {
+  fail(`prepare-game: ${error.message}`);
 }
 
 // --- 3. Point every reference at a packed file ----------------------------
 
-const overrides = {};
-for (const [name, tarball] of tarballs) {
-  overrides[name] = `file:${tarball.file}`;
-}
+let overrides = {};
 for (const dir of ["", ...copiedDirs]) {
   const path = resolve(copyDir, dir, "package.json");
   const manifest = readJson(path);
-  for (const field of ["dependencies", "devDependencies"]) {
-    for (const name of Object.keys(manifest[field] ?? {})) {
-      if (overrides[name]) manifest[field][name] = overrides[name];
-    }
-  }
+  overrides = pointAtTarballs(manifest, tarballs);
   if (dir === "") manifest.overrides = { ...manifest.overrides, ...overrides };
   writeJson(path, manifest);
 }

@@ -9,7 +9,13 @@
  * CLI flag accepts a comma-separated list of these ids.
  */
 
-export type FeatureId = "ui" | "save" | "effects" | "editor";
+export type FeatureId =
+  | "ui"
+  | "save"
+  | "effects"
+  | "editor"
+  | "electron"
+  | "capacitor";
 
 /** Range used for `@yagejs/*` deps the features add. Mirrors the templates. */
 export const YAGE_RANGE = "^0.12.0";
@@ -21,6 +27,23 @@ export const YAGE_RANGE = "^0.12.0";
  * leaves this one alone. It spans every 0.x release from the first one.
  */
 export const EDITOR_RANGE = ">=0.1.0 <1.0.0";
+
+/**
+ * Range used for `@yagejs-tools/pack`, for the same reason as
+ * {@link EDITOR_RANGE}: the tools are versioned apart from the engine.
+ */
+export const PACK_RANGE = ">=0.1.0 <1.0.0";
+
+/** Electron and the Forge packages, at the versions the host adapter accepts. */
+const ELECTRON_RANGE = "^44.7.0";
+const FORGE_RANGE = "^8.0.1";
+const FUSES_RANGE = "^2.1.3";
+
+/** Capacitor and the plugins the mobile host adapter needs. */
+const CAPACITOR_RANGE = "^8.5.3";
+const CAPACITOR_APP_RANGE = "^8.1.2";
+const CAPACITOR_FILESYSTEM_RANGE = "^8.1.4";
+const CAPACITOR_ORIENTATION_RANGE = "^8.0.2";
 
 /** React versions used by the `ui` feature. Matches `@yagejs/ui-react`. */
 const REACT_RANGE = "^19.0.0";
@@ -64,6 +87,42 @@ export const FEATURES: Readonly<Record<FeatureId, FeatureSpec>> = {
   effects: {
     id: "effects",
     dependencies: { "@yagejs/effects": YAGE_RANGE },
+  },
+  electron: {
+    id: "electron",
+    dependencies: { "@yagejs/host-electron": YAGE_RANGE },
+    devDependencies: {
+      electron: ELECTRON_RANGE,
+      "@electron-forge/cli": FORGE_RANGE,
+      "@electron-forge/maker-zip": FORGE_RANGE,
+      "@electron-forge/plugin-fuses": FORGE_RANGE,
+      "@electron/fuses": FUSES_RANGE,
+      "@yagejs-tools/pack": PACK_RANGE,
+    },
+    nextSteps: [
+      "npx yage-pack init --target electron --app-id com.example.mygame",
+    ],
+  },
+  capacitor: {
+    id: "capacitor",
+    // Every plugin is a runtime dependency of the app itself: `npx cap sync`
+    // installs native code only for the plugins the app's manifest lists.
+    dependencies: {
+      "@yagejs/host-capacitor": YAGE_RANGE,
+      "@capacitor/core": CAPACITOR_RANGE,
+      "@capacitor/app": CAPACITOR_APP_RANGE,
+      "@capacitor/filesystem": CAPACITOR_FILESYSTEM_RANGE,
+      "@capacitor/screen-orientation": CAPACITOR_ORIENTATION_RANGE,
+      "@capacitor/ios": CAPACITOR_RANGE,
+      "@capacitor/android": CAPACITOR_RANGE,
+    },
+    devDependencies: {
+      "@capacitor/cli": CAPACITOR_RANGE,
+      "@yagejs-tools/pack": PACK_RANGE,
+    },
+    nextSteps: [
+      "npx yage-pack init --target ios --target android --app-id com.example.mygame",
+    ],
   },
   editor: {
     id: "editor",

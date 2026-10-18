@@ -122,12 +122,25 @@ npx cap sync
 ```
 
 Every plugin this package uses ships a `Package.swift`, so an iOS project
-needs no other dependency manager. Two settings in `capacitor.config.json`
-belong to this package:
+needs no other dependency manager. Two settings belong to this package:
 
 - `ios.contentInset` is `"never"`, so the web view goes edge to edge and the
   page's own CSS pads for the safe areas.
 - `App.disableBackButtonHandler` stays unset, so Back reaches the game.
+
+A `capacitor.config.ts` that exports `capacitorConfig()` from
+`@yagejs-tools/pack` carries both, along with the app's identity and the web
+directory:
+
+```ts
+import { capacitorConfig } from "@yagejs-tools/pack/capacitor";
+
+export default capacitorConfig();
+```
+
+With it, `npm run sync:capacitor` also checks on every sync that the bundle
+identifier in the Xcode and Gradle projects still matches the one the saves
+follow; see [Packaging for desktop and mobile](/tooling/packaging/).
 
 ## What the game gets
 

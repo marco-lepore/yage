@@ -19,7 +19,7 @@ The scaffolder asks you to pick a template:
   sound effects, enemies, and collectibles. Great for learning the engine. Its
   production build is an installable app that runs offline (see below).
 - **Minimal** — just `@yagejs/core` + `@yagejs/renderer` and an empty scene. Start
-  from scratch and add packages as you go (`src/main.ts` has commented-out
+  from scratch and add packages as you go (`src/boot.ts` has commented-out
   examples showing how to wire each plugin).
 
 Both templates include a Vite config, TypeScript setup, and an `AGENTS.md`
@@ -27,6 +27,13 @@ for AI-assisted development. Their page is set up for phones: the game fills
 the visible screen and stays clear of the notch and home indicator (see
 [Mobile readiness](/guides/rendering/responsive/#mobile-readiness)). The
 Recommended template also has a fullscreen button.
+
+Both templates set the engine up in `src/boot.ts` and call it from
+`src/main.web.ts`, the browser entry. A desktop or mobile build gets its own
+entry beside it, so each build carries only the host it runs on. Add the
+packages for those targets with
+`npm create yage@latest my-game -- --features electron,capacitor`, and see
+[Packaging for desktop and mobile](/tooling/packaging/).
 
 ### Installable and offline (Recommended template)
 
@@ -65,6 +72,10 @@ Things to know:
   the build is fetched up front, not only the first scene's assets.
 - **Files from other servers are not cached.** Assets loaded from a CDN or
   another origin need a `runtimeCaching` rule in the `workbox` block.
+- **Desktop and mobile builds leave the service worker out.** The template
+  registers the plugin for the browser build only: an app ships its own
+  files, and a worker inside it would keep serving the old ones after an
+  update.
 - **To remove it**, delete the `VitePWA(...)` entry and the
   `vite-plugin-pwa` dependency. Players who installed the game keep the old
   service worker until you deploy one that unregisters itself; see
@@ -139,17 +150,18 @@ export function applyUpdate(): Promise<void> {
 }
 ```
 
-Import it once from `src/main.ts`, for example with
-`import { isUpdateReady, applyUpdate } from "./pwa";`. Importing
-`virtual:pwa-register` replaces the plugin's own registration script, so
-nothing else changes in `vite.config.ts`.
+Import it once from `src/main.web.ts`, the browser entry, for example with
+`import { isUpdateReady, applyUpdate } from "./pwa";`. The desktop and mobile
+builds do not include the PWA plugin. Importing `virtual:pwa-register`
+replaces the plugin's own registration script, so nothing else changes in
+`vite.config.ts`.
 
 Then decide where the game asks. `applyUpdate()` reloads the page, which
 discards everything in memory, so call it where losing the current state is
 acceptable: on the title screen, in a pause menu, or right after a save. A
 game that saves between levels can apply the update without asking:
 
-```ts yage-group="pwa" yage-file="main.ts" yage-context="engine"
+```ts yage-group="pwa" yage-file="main.web.ts" yage-context="engine"
 import { isUpdateReady, applyUpdate } from "./pwa";
 
 engine.events.on("scene:replaced", () => {

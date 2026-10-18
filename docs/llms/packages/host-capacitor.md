@@ -208,6 +208,11 @@ guaranteed. Keys are at most 96 bytes in UTF-8.
 | `App.disableBackButtonHandler` | unset, so Back reaches the game                  |
 | The four plugin packages       | in the app's `dependencies`, then `npx cap sync` |
 
+A `capacitor.config.ts` that exports `capacitorConfig()` from
+`@yagejs-tools/pack/capacitor` sets both settings and the app's identity, and
+`npm run sync:capacitor` checks the identity on every sync. See
+`/llms/tools/pack.md`.
+
 ## Errors
 
 Each is thrown at the call, before anything attaches:
