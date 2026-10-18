@@ -305,6 +305,12 @@ In the Electron shell of `@yagejs/host-electron`, fullscreen is the window's,
 whatever started it: the application menu, the window's own button, or
 `requestFullscreen()`. See [Desktop with Electron](/guides/electron/).
 
+In a Capacitor app with `@yagejs/host-capacitor`, fullscreen comes from the
+page on iOS and is `"unsupported"` on Android, whose web view leaves
+fullscreen in the call that enters it. Reading `fullscreenSupport` before
+offering the button covers both. See
+[Mobile with Capacitor](/guides/capacitor/).
+
 ```typescript yage-context="engine,async"
 import { RendererPlugin } from "@yagejs/renderer";
 
@@ -366,6 +372,10 @@ Three rules make a toggle behave the way a player expects:
   the state is settled when the engine starts.
 
 ## Orientation
+
+In a Capacitor app the lock goes through the app itself:
+`lockOrientation()` resolves once the screen has turned, or after 2000 ms
+when the system turns nothing, so compare the result with what you asked for.
 
 `renderer.orientation` is the screen orientation, or `null` where the host
 cannot read it. Its values are the built-in DOM union: `"portrait-primary"`,

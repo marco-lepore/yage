@@ -1167,7 +1167,23 @@ input.enableGroup("movement");
 input.enableGroup("combat");
 ```
 
-Disabled actions always return `false` / `0` when queried.
+Disabled actions always return `false` / `0` when queried. A disabled group
+still holds its keys, so a key a host delivers for one of its actions is
+taken and does nothing.
+
+## The Android Back button
+
+In a Capacitor app with
+[`@yagejs/host-capacitor`](/guides/capacitor/), a press of the Android Back
+button arrives as the key `"BrowserBack"`:
+
+```typescript yage-group="input" yage-context="engine"
+input.setActionMap({ back: ["Escape", "BrowserBack"] });
+```
+
+With no action bound to that key, the press moves the app to the background
+and leaves the game where it was. On a screen where Back should leave the
+app, unbind it there with `input.unbindKey("back", "BrowserBack")`.
 
 ## Display Names
 

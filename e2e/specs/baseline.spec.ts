@@ -138,13 +138,18 @@ test.describe("baseline fixture", () => {
     expect(await page.evaluate(() => window.__yage__ === undefined)).toBe(true);
   });
 
-  test("the Capacitor entry boots too", async ({ page }) => {
-    await gotoFixture(page, "/baseline-capacitor.html");
-    await page.waitForFunction(
-      () => window.__yage__?.inspector?.getExtension("baseline") !== undefined,
+  test("the Capacitor entry says what a browser page is missing", async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto("/baseline-capacitor.html");
+    await expect.poll(() => errors.length).toBeGreaterThan(0);
+    expect(errors[0]).toBe(
+      "capacitorSaveAdapter: this page is not running inside a Capacitor " +
+        "app. Leave this adapter out of a browser build.",
     );
-    await waitForSettled(page);
-    expect((await read(page)).target).toBe("capacitor");
+    expect(await page.evaluate(() => window.__yage__ === undefined)).toBe(true);
   });
 
   test("the Electron entry says what a browser page is missing", async ({

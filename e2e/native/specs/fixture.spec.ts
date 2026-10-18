@@ -10,6 +10,7 @@ import { REPORT_PREFIX, parseReportLine } from "../lib/console.js";
 import { indexUrl, serveDirectory } from "../lib/server.js";
 import { nativeDir, workDir } from "../lib/paths.js";
 import {
+  appDataDir,
   installClean,
   iosToolVersions,
   isRunning,
@@ -22,6 +23,7 @@ import {
   sendToBackground,
   terminate,
 } from "../lib/ios.js";
+import type { LaunchedApp, SimulatorDevice } from "../lib/ios.js";
 import { scanForTestProfile, writeReport } from "../lib/report.js";
 import type { BaselineRunReport, ReportTarget } from "../lib/report.js";
 import {
@@ -840,6 +842,37 @@ const KILL_ROUNDS = 20;
 const KILL_EARLIEST_MS = 150;
 const KILL_LATEST_MS = 750;
 
+/** The kill test's check name in a report, for every shell. */
+const KILL_CHECK = "kill: a relaunch reads the last acknowledged save";
+
+/** The last write acknowledged before a kill, and what the next launch read. */
+interface KillRound {
+  acknowledged: number | null;
+  found: number | null;
+}
+
+/**
+ * Record the kill test's verdict: each launch reads the write acknowledged
+ * before the previous kill or the one after it, and no save when none was
+ * acknowledged.
+ */
+function recordKillRounds(
+  report: BaselineRunReport,
+  rounds: readonly KillRound[],
+): void {
+  const carried = rounds.slice(1).every((round, index) => {
+    const before = rounds[index]!.acknowledged;
+    if (before === null) return round.found === null;
+    return round.found === before || round.found === before + 1;
+  });
+  record(report, {
+    name: KILL_CHECK,
+    result: carried ? "passed" : "failed",
+    evidence: "console",
+    detail: JSON.stringify(rounds),
+  });
+}
+
 /**
  * Kill the main process in the middle of a stream of saves, over and over,
  * and check that the relaunch reads the last write the storage acknowledged
@@ -850,7 +883,7 @@ async function recordKillTest(
   webDir: string,
 ): Promise<void> {
   const appData = await newAppDataDir();
-  const rounds: { acknowledged: number | null; found: number | null }[] = [];
+  const rounds: KillRound[] = [];
   for (let round = 0; round < KILL_ROUNDS; round += 1) {
     const app = await launchElectron({
       webDir,
@@ -892,7 +925,7 @@ async function recordKillTest(
     rounds.push({ acknowledged: killed, found });
     if (failure !== null) {
       record(report, {
-        name: "kill: a relaunch reads the last acknowledged save",
+        name: KILL_CHECK,
         result: "failed",
         evidence: "console",
         detail: `round ${round}: ${failure}`,
@@ -900,17 +933,7 @@ async function recordKillTest(
       return;
     }
   }
-  const carried = rounds.slice(1).every((round, index) => {
-    const before = rounds[index]!.acknowledged;
-    if (before === null) return round.found === null;
-    return round.found === before || round.found === before + 1;
-  });
-  record(report, {
-    name: "kill: a relaunch reads the last acknowledged save",
-    result: carried ? "passed" : "failed",
-    evidence: "console",
-    detail: JSON.stringify(rounds),
-  });
+  recordKillRounds(report, rounds);
 }
 
 /** What a release build must not offer the player. */
@@ -978,6 +1001,17 @@ async function iosScenario(report: BaselineRunReport): Promise<void> {
     const readings = readCaseLines(launched.lines);
     recordReading(report, "booted", readings);
     const failures = checkReadings(report, readings);
+    recordAppIdentity(report, launched.lines);
+    const display = readings["display"];
+    record(report, {
+      name: "display: the app supplies the orientation lock",
+      result:
+        display?.["orientationLockSupport"] === "supported"
+          ? "passed"
+          : "failed",
+      evidence: "console",
+      detail: JSON.stringify(display ?? null),
+    });
     const errorLines = launched.lines.filter((line) =>
       line.includes('"kind":"error"'),
     );
@@ -1006,18 +1040,25 @@ async function iosScenario(report: BaselineRunReport): Promise<void> {
     );
     recordPending(
       report,
-      "lifecycle: native application events beside the page's",
-      "the app installs no native lifecycle bridge",
-    );
-    recordPending(
-      report,
       "graphics: a lost and restored context draws every case as before",
       "no script runs in the simulator's page",
     );
 
     const pidBefore = await processId(device.udid);
+    const beforeTrip = launched.lines.length;
     await sendToBackground(device.udid);
     await wait(3_000);
+    const awayLines = lifecycleLines(launched.lines.slice(beforeTrip));
+    record(report, {
+      name: "away: the app reports it is inactive and hidden",
+      result:
+        awayLines.some((line) => line.activity === "inactive") &&
+        awayLines.some((line) => line.visibility === "hidden")
+          ? "passed"
+          : "failed",
+      evidence: "console",
+      detail: JSON.stringify(awayLines),
+    });
     await bringToFront(device.udid);
     const returned = await launched
       .waitFor(
@@ -1039,6 +1080,29 @@ async function iosScenario(report: BaselineRunReport): Promise<void> {
       result: returned || hostLines.length === 0 ? "passed" : "pending",
       evidence: "console",
       detail: hostLines.join("\n") || "no host line arrived",
+    });
+    // The app states it is active again a moment after the window is back,
+    // and each line reaches this process through the simulator's console.
+    const backLines = await waitForLifecycle(
+      launched,
+      beforeTrip,
+      (state) =>
+        state.activity === "active" &&
+        state.visibility === "visible" &&
+        state.focus === "focused",
+      10_000,
+    );
+    const last = backLines.at(-1);
+    record(report, {
+      name: "after return: the app reports it is active, visible and focused",
+      result:
+        last?.activity === "active" &&
+        last.visibility === "visible" &&
+        last.focus === "focused"
+          ? "passed"
+          : "failed",
+      evidence: "console",
+      detail: JSON.stringify(backLines),
     });
     const pidAfter = await processId(device.udid);
     record(report, {
@@ -1063,10 +1127,213 @@ async function iosScenario(report: BaselineRunReport): Promise<void> {
     const relaunchedReadings = readCaseLines(launched.lines);
     recordReading(report, "after-relaunch", relaunchedReadings);
     recordRelaunch(report, relaunchedReadings["saves"]);
+    await recordIosSaveFiles(report, device.udid);
   } finally {
     launched.close();
     await terminate(report.system.device?.udid ?? "booted");
   }
+  await recordOrientationLock(report, device);
+  await recordIosKillTest(report, device);
+}
+
+/** The app's identity, as the boot line read it from the host. */
+function recordAppIdentity(
+  report: BaselineRunReport,
+  lines: readonly string[],
+): void {
+  let info: unknown = null;
+  for (const line of lines) {
+    const parsed = parseReportLine(line);
+    if (parsed === null || parsed["kind"] !== "boot") continue;
+    info = (parsed["host"] as { info?: unknown } | undefined)?.info ?? null;
+  }
+  record(report, {
+    name: "boot: the app states its runtime, system and version",
+    result:
+      JSON.stringify(info) ===
+      JSON.stringify({
+        runtime: "capacitor",
+        os: "ios",
+        appVersion: "1.0",
+        appBuild: "1",
+        runtimeVersion: null,
+      })
+        ? "passed"
+        : "failed",
+    evidence: "console",
+    detail: JSON.stringify(info),
+  });
+}
+
+/** What one `host:lifecycle` line reported. */
+interface LifecycleLine {
+  activity: string;
+  visibility: string;
+  focus: string;
+}
+
+/** The lifecycle each `host:lifecycle` line among these reported. */
+function lifecycleLines(lines: readonly string[]): LifecycleLine[] {
+  const reported: LifecycleLine[] = [];
+  for (const line of lines) {
+    const parsed = parseReportLine(line);
+    if (parsed === null || parsed["event"] !== "host:lifecycle") continue;
+    const payload = parsed["payload"] as { lifecycle: LifecycleLine };
+    reported.push(payload.lifecycle);
+  }
+  return reported;
+}
+
+/** Read the lifecycle lines since `from` until the app settles, or give up. */
+async function waitForLifecycle(
+  launched: LaunchedApp,
+  from: number,
+  settled: (state: LifecycleLine) => boolean,
+  timeoutMs: number,
+): Promise<LifecycleLine[]> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const lines = lifecycleLines(launched.lines.slice(from));
+    const last = lines.at(-1);
+    if ((last !== undefined && settled(last)) || Date.now() > deadline) {
+      return lines;
+    }
+    await wait(100);
+  }
+}
+
+/** The files the saves case left in the app's own directory. */
+async function recordIosSaveFiles(
+  report: BaselineRunReport,
+  udid: string,
+): Promise<void> {
+  const dir = resolve(await appDataDir(udid), "Library/yage-saves/test");
+  const names = await readdir(dir).catch(() => [] as string[]);
+  record(report, {
+    name: "saves: the slots are files in the app's own directory",
+    result:
+      names.some((name) => /^k-.+\.sav$/.test(name)) &&
+      !names.some((name) => name.endsWith(".new"))
+        ? "passed"
+        : "failed",
+    evidence: "file",
+    detail: JSON.stringify(names),
+  });
+}
+
+/** Build the Capacitor page with launch flags in it, and install the app. */
+async function installWithFlags(
+  device: SimulatorDevice,
+  query: string,
+): Promise<void> {
+  await buildBaseline("capacitor", "test", { query });
+  const app = await prepareIosApp("Debug");
+  await installClean(device.udid, app);
+}
+
+/**
+ * The bound the host adapter settles an orientation lock at. A lock that
+ * turned the screen resolves well before it.
+ */
+const ORIENTATION_BOUND_MS = 2000;
+
+/** Lock the screen through the renderer and read what the app answered. */
+async function recordOrientationLock(
+  report: BaselineRunReport,
+  device: SimulatorDevice,
+): Promise<void> {
+  await installWithFlags(device, "?case=display&lockOrientation=landscape");
+  const launched = launchWithConsole(device.udid);
+  try {
+    const locked = parseReportLine(
+      await launched.waitFor(
+        (line) => line.includes('"kind":"orientation"'),
+        120_000,
+      ),
+    );
+    const result = String(locked?.["result"]);
+    const ms = Number(locked?.["ms"]);
+    const released = await launched
+      .waitFor((line) => line.includes('"kind":"orientation-unlocked"'), 30_000)
+      .then(() => true)
+      .catch(() => false);
+    record(report, {
+      name: "orientation: the lock settles at the turned screen",
+      result:
+        result.startsWith("landscape") && ms < ORIENTATION_BOUND_MS && released
+          ? "passed"
+          : "failed",
+      evidence: "console",
+      detail: JSON.stringify({ ...locked, released }),
+    });
+  } finally {
+    launched.close();
+    await terminate(device.udid);
+  }
+}
+
+/** How long the simulator's console takes to deliver what a dead app wrote. */
+const CONSOLE_DRAIN_MS = 1000;
+
+/**
+ * Stop the app in the middle of a stream of saves, over and over, and check
+ * that the next launch reads the last write the storage acknowledged or the
+ * one after it, never a damaged document.
+ */
+async function recordIosKillTest(
+  report: BaselineRunReport,
+  device: SimulatorDevice,
+): Promise<void> {
+  await installWithFlags(device, "?case=saves&writeLoop=1");
+  const rounds: KillRound[] = [];
+  for (let round = 0; round < KILL_ROUNDS; round += 1) {
+    const launched = launchWithConsole(device.udid);
+    let failure: string | null = null;
+    try {
+      const started = parseReportLine(
+        await launched.waitFor(
+          (line) => line.includes('"kind":"loop-start"'),
+          120_000,
+        ),
+      );
+      failure = (started?.["error"] as string | null) ?? null;
+      const found = (started?.["found"] as number | null) ?? null;
+      await launched.waitFor((line) => line.includes('"kind":"write"'), 60_000);
+      await wait(
+        KILL_EARLIEST_MS +
+          Math.floor(Math.random() * (KILL_LATEST_MS - KILL_EARLIEST_MS)),
+      );
+      await terminate(device.udid);
+      // The app writes until it is gone and its console reaches this process
+      // behind the writes, so the last write is read once both have ended.
+      await wait(CONSOLE_DRAIN_MS);
+      rounds.push({ acknowledged: lastWrite(launched.lines), found });
+    } finally {
+      await terminate(device.udid);
+      launched.close();
+    }
+    if (failure !== null) {
+      record(report, {
+        name: KILL_CHECK,
+        result: "failed",
+        evidence: "console",
+        detail: `round ${round}: ${failure}`,
+      });
+      return;
+    }
+  }
+  recordKillRounds(report, rounds);
+}
+
+/** The counter of the last write the storage acknowledged. */
+function lastWrite(lines: readonly string[]): number | null {
+  let last: number | null = null;
+  for (const line of lines) {
+    const parsed = parseReportLine(line);
+    if (parsed === null || parsed["kind"] !== "write") continue;
+    last = parsed["n"] as number;
+  }
+  return last;
 }
 
 async function iosRelease(report: BaselineRunReport): Promise<void> {

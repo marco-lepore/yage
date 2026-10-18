@@ -88,7 +88,9 @@ When modifying packages, changes flow downstream. Build and test in dependency o
   │
   ├── @yagejs/level (→ core) — level documents; `/document` entry has no engine dependency
   │
-  └── @yagejs/host-electron (→ core, save; peer: electron) — Electron shell and host adapter
+  ├── @yagejs/host-electron (→ core, save; peer: electron) — Electron shell and host adapter
+  │
+  └── @yagejs/host-capacitor (→ core, save; peer: @capacitor/core, app, filesystem, screen-orientation) — Capacitor mobile host adapter
 ```
 
 ### Modification Order
@@ -310,6 +312,22 @@ the preload script, and the main-process shell:
 | `src/main/nodeFileStore.ts`, `src/main/saveDirectory.ts` | The save files on disk and the directory they live in                                      |
 | `src/test/fakeElectron.ts`                               | The stand-in every unit test reads in place of `electron`                                  |
 
+### `@yagejs/host-capacitor`
+
+The Capacitor mobile host: the page side that feeds `Host`, the renderer and
+the input manager from the app's official plugins:
+
+| File                         | Purpose                                                                                                         |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `src/CapacitorHostPlugin.ts` | `Plugin` named `host`: identity and lifecycle to `Host`, the display to the renderer, Back to the input manager |
+| `src/lifecycle.ts`           | What one App plugin event reports, per system                                                                   |
+| `src/display.ts`             | The orientation lock and its settle bound; fullscreen on Android                                                |
+| `src/fileStore.ts`           | A `SaveFileStore` over the Filesystem plugin's Library directory                                                |
+| `src/saves.ts`               | `capacitorSaveAdapter({ profile })` — a `SaveAdapter` over that store                                           |
+| `src/shell.ts`               | The checks every entry runs: inside an app, and the plugin it needs                                             |
+| `src/detect.ts`              | `isCapacitorHost()`, the `./detect` entry; imports nothing                                                      |
+| `src/test/fakeCapacitor.ts`  | The stand-in every unit test reads in place of the four `@capacitor/*` packages                                 |
+
 ### Project Root
 
 | File                       | Purpose                                                       |
@@ -359,16 +377,20 @@ npx turbo test && npx turbo typecheck && npx turbo build && npx playwright test
 
 The baseline fixture is one small game built from the workspace packages, so every build of it tests this checkout's engine. It has 13 selectable cases — sprites, text and UI, masks, render targets, effects, lighting, physics, workers, audio, input, saves, lifecycle and display — and three entries, one per target: `e2e/fixtures/baseline.html`, `baseline-electron.html` and `baseline-capacitor.html`. Each entry passes its host plugins and its save adapter to one `bootBaseline` call, so an artifact carries only the adapters of the target it was built for. `?case=sprites,physics` mounts a subset; an unknown name stops the start with an authored error.
 
-A test build adds an Inspector, an extension named `baseline` that answers `read()` with every case's reading, and a console reporter that writes one `[yage-baseline]` line per event. The extension also answers `pixels()` with the colour at each named point of the drawing and `loseContext()`, which takes the graphics context away and waits for the page to get one back. A test build reads two more launch flags: `?backend=webgl1` or `?backend=webgpu` picks the graphics API, and `?bounce=max` turns on bounced light. A build with `--mode release` has none of them: the reporting module is reached through one dynamic import behind a mode check, which the release build removes, and the release build reads no launch flag.
+A test build adds an Inspector, an extension named `baseline` that answers `read()` with every case's reading, and a console reporter that writes one `[yage-baseline]` line per event. The extension also answers `pixels()` with the colour at each named point of the drawing and `loseContext()`, which takes the graphics context away and waits for the page to get one back. A test build reads three more launch flags: `?backend=webgl1` or `?backend=webgpu` picks the graphics API, `?bounce=max` turns on bounced light, and `?lockOrientation=landscape` locks the screen through the renderer and reports what the host answered. A build with `--mode release` has none of them: the reporting module is reached through one dynamic import behind a mode check, which the release build removes, and the release build reads no launch flag.
 
 `e2e/specs/baseline.spec.ts` checks every case in Chromium, so CI covers the fixture on each push. The native suite under `e2e/native/` is local only, and has four projects:
 
-| Project         | Needs                                                                                          |
-| --------------- | ---------------------------------------------------------------------------------------------- |
-| `harness`       | Node alone: the suite's own report and parsing helpers                                         |
-| `browser`       | Chromium, over a built web directory served on loopback                                        |
-| `electron`      | the root `npm install`, which brings Electron in through `@yagejs/host-electron`               |
-| `ios-simulator` | `npm --prefix e2e/native/capacitor ci`, Xcode and a booted simulator, with `DEVELOPER_DIR` set |
+| Project         | Needs                                                                                                                      |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `harness`       | `npm --prefix e2e/native/capacitor ci`: the suite's own helpers, and the generated Android project, read rather than built |
+| `browser`       | Chromium, over a built web directory served on loopback                                                                    |
+| `electron`      | the root `npm install`, which brings Electron in through `@yagejs/host-electron`                                           |
+| `ios-simulator` | `npm --prefix e2e/native/capacitor ci`, Xcode and a booted simulator, with `DEVELOPER_DIR` set                             |
+
+The Capacitor app loads one fixed path with no query string, so its test
+build carries its launch flags from the build: `buildBaseline` takes a
+`query` for them.
 
 Each shell project builds its target's web directory, runs the scenario — launch, read every case, send input, let the shell take the app away and give it back, relaunch on the same stored profile — then builds the release profile and checks that nothing of the test profile reached it. Every run writes one JSON report to `e2e/native/.work/reports/`: the engine commit and package versions, the third-party versions actually resolved, the shell and system versions, every emitted file's hash, each check's outcome and evidence, the readings, a timeline of page and shell events, and the screenshots taken.
 

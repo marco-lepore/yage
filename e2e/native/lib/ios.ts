@@ -87,8 +87,6 @@ export async function prepareIosApp(
       "generic/platform=iOS Simulator",
       "-derivedDataPath",
       derivedDataDir,
-      "-packageAuthorizationProvider",
-      "netrc",
       "CODE_SIGNING_ALLOWED=NO",
       "build",
     ],
@@ -300,6 +298,16 @@ export async function isRunning(udid: string): Promise<boolean> {
   return (await processId(udid)) !== null;
 }
 
+/** Where the installed app keeps the files it writes. */
+export async function appDataDir(udid: string): Promise<string> {
+  const { stdout } = await run(
+    "xcrun",
+    ["simctl", "get_app_container", udid, APP_ID, "data"],
+    { env: toolEnv() },
+  );
+  return stdout.trim();
+}
+
 /** Save a screenshot of the simulator's screen. */
 export async function screenshot(udid: string, path: string): Promise<void> {
   await run("xcrun", ["simctl", "io", udid, "screenshot", path], {
@@ -310,7 +318,14 @@ export async function screenshot(udid: string, path: string): Promise<void> {
 /** The versions of the Capacitor packages and Xcode this run used. */
 export function iosToolVersions(): Record<string, string> {
   const versions: Record<string, string> = {};
-  for (const name of ["@capacitor/cli", "@capacitor/core", "@capacitor/ios"]) {
+  for (const name of [
+    "@capacitor/cli",
+    "@capacitor/core",
+    "@capacitor/ios",
+    "@capacitor/app",
+    "@capacitor/filesystem",
+    "@capacitor/screen-orientation",
+  ]) {
     const manifest = resolve(
       capacitorDir,
       "node_modules",

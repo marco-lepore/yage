@@ -448,6 +448,11 @@ An adapter is where the bytes go. Three ship with the package, and
 process, so a page that crashes during a save does not stop the write. See
 [Desktop with Electron](/guides/electron/).
 
+`@yagejs/host-capacitor` adds `capacitorSaveAdapter({ profile })` for a
+mobile build: a `fileAdapter` over a directory in the app's private Library
+directory, one per build profile. A write that resolved is held when the
+system kills the app. See [Mobile with Capacitor](/guides/capacitor/).
+
 ```typescript
 import type { SaveAdapter, SaveFileStore } from "@yagejs/save";
 

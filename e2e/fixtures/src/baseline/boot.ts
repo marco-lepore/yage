@@ -9,6 +9,7 @@ import type { RendererConfig } from "@yagejs/renderer";
 import { SavePlugin, createSave } from "@yagejs/save";
 import type { SaveAdapter } from "@yagejs/save";
 import type { BounceLightOptions } from "@yagejs/lighting";
+import type { OrientationLock } from "@yagejs/renderer";
 import { UIPlugin } from "@yagejs/ui";
 import { BaselineScene, CASE_NAMES, selectCases } from "./cases.js";
 import type { installTestProfile, testProfilePlugins } from "./test-profile.js";
@@ -36,6 +37,26 @@ interface TestProfile {
 
 const VIRTUAL_WIDTH = 640;
 const VIRTUAL_HEIGHT = 360;
+
+/** Every orientation a `lockOrientation` flag may ask for. */
+const ORIENTATION_LOCKS: readonly OrientationLock[] = [
+  "portrait",
+  "landscape",
+  "portrait-primary",
+  "portrait-secondary",
+  "landscape-primary",
+  "landscape-secondary",
+];
+
+/**
+ * The launch flags this page carries. A page a driver opens by URL reads its
+ * query string; a Capacitor app loads one fixed path, so a test build for it
+ * carries the flags from the build.
+ */
+export function launchSearch(): string {
+  if (location.search !== "") return location.search;
+  return import.meta.env.VITE_BASELINE_QUERY ?? "";
+}
 
 /** The bounce the `bounce=max` build draws with. */
 const MAX_BOUNCE: BounceLightOptions = {
@@ -86,6 +107,21 @@ function bounceOption(search: string): BounceLightOptions | undefined {
   );
 }
 
+/**
+ * The orientation a `lockOrientation` launch flag asks the test build to
+ * lock, or `undefined` for none.
+ */
+function orientationLock(search: string): OrientationLock | undefined {
+  const requested = new URLSearchParams(search).get("lockOrientation");
+  if (requested === null || requested === "") return undefined;
+  const known = ORIENTATION_LOCKS.find((lock) => lock === requested);
+  if (known !== undefined) return known;
+  throw new Error(
+    `Baseline: unknown lockOrientation ${JSON.stringify(requested)}. ` +
+      `Known values: ${ORIENTATION_LOCKS.join(", ")}.`,
+  );
+}
+
 /** Start the fixture: select the cases, install the plugins, push the scene. */
 export async function bootBaseline(
   options: BaselineBootOptions,
@@ -94,11 +130,11 @@ export async function bootBaseline(
     import.meta.env.MODE === "release" ? "release" : "test";
   // A launch flag belongs to a test build, so a release build mounts
   // everything and reads no query string.
-  const cases =
-    profile === "release" ? CASE_NAMES : selectCases(location.search);
-  const search = profile === "release" ? "" : location.search;
+  const search = profile === "release" ? "" : launchSearch();
+  const cases = profile === "release" ? CASE_NAMES : selectCases(search);
   const pixi = backendOptions(search);
   const bounce = bounceOption(search);
+  const lock = orientationLock(search);
 
   let testProfile: TestProfile | undefined;
   if (import.meta.env.MODE !== "release") {
@@ -145,5 +181,5 @@ export async function bootBaseline(
   await engine.start();
   const scene = new BaselineScene(cases);
   await engine.scenes.push(scene);
-  testProfile?.installTestProfile(engine, scene, options.target);
+  testProfile?.installTestProfile(engine, scene, options.target, lock);
 }

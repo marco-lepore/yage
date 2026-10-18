@@ -338,8 +338,10 @@ replaces any of them.
 ### Writing a host adapter
 
 The Electron adapter ships as `@yagejs/host-electron`, together with the
-shell it talks to; see [Desktop with Electron](/guides/electron/). Write your
-own for another application.
+shell it talks to; see [Desktop with Electron](/guides/electron/). The
+Capacitor adapter ships as `@yagejs/host-capacitor`; see
+[Mobile with Capacitor](/guides/capacitor/). Write your own for another
+application.
 
 A host adapter is a plugin named `"host"`. It reads the shell's own state,
 attaches it in `install`, and releases it in `onDestroy`. One engine takes one

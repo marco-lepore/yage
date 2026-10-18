@@ -684,6 +684,12 @@ input.isGroupEnabled("gameplay");
 
 Ungrouped actions are always active. An action active in any enabled group remains active.
 
+A disabled group still holds its keys: `getActionsForKey(code)` lists them, and a key a host delivers for a disabled action is taken and does nothing.
+
+## The Android Back button
+
+In a Capacitor app with `@yagejs/host-capacitor`, a press of the Android Back button arrives as the key `"BrowserBack"`. Bind it in the action map like any other key: `actions: { back: ["Escape", "BrowserBack"] }`. With no action bound to that key, the press moves the app to the background instead. A screen where Back should leave the app calls `input.unbindKey("back", "BrowserBack")` there.
+
 ## Important
 
 Always use `InputManagerKey` for all game input. Do not use raw DOM event listeners (`window.addEventListener("keydown", ...)`) or manual key-tracking sets. The InputPlugin handles action mapping, rebinding, group enable/disable, hold detection, and automatic cleanup. Raw listeners bypass all of this and leak when scenes change.

@@ -11,9 +11,11 @@ import type {
   Plugin,
 } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
+import type { OrientationLock } from "@yagejs/renderer";
 import { SaveServiceKey } from "@yagejs/save";
 import type { BaselineScene, CaseName } from "./cases.js";
 import type { CaseReading } from "./probe.js";
+import { launchSearch } from "./boot.js";
 import type { BaselineTarget } from "./boot.js";
 
 /** The prefix every reported line carries. */
@@ -100,6 +102,7 @@ export function installTestProfile(
   engine: Engine,
   scene: BaselineScene,
   target: BaselineTarget,
+  lock?: OrientationLock,
 ): void {
   const inspector = engine.context.resolve(InspectorKey);
   const bootId = crypto.randomUUID();
@@ -217,9 +220,41 @@ export function installTestProfile(
   inspector.addExtension("baseline", extension);
 
   scene.spawn("baseline:reporter").add(new BaselineReporter(read, bootId));
-  if (new URLSearchParams(location.search).get("writeLoop") === "1") {
+  if (new URLSearchParams(launchSearch()).get("writeLoop") === "1") {
     void writeLoop(engine, bootId);
   }
+  if (lock !== undefined) void reportOrientationLock(engine, bootId, lock);
+}
+
+/**
+ * Lock the screen through the renderer, report the orientation it settled
+ * at and how long that took, then release it.
+ */
+async function reportOrientationLock(
+  engine: Engine,
+  bootId: string,
+  lock: OrientationLock,
+): Promise<void> {
+  const renderer = engine.context.resolve(RendererKey);
+  const started = performance.now();
+  try {
+    const result = await renderer.lockOrientation(lock);
+    writeLine(bootId, "orientation", {
+      requested: lock,
+      result,
+      ms: Math.round(performance.now() - started),
+      error: null,
+    });
+  } catch (error) {
+    writeLine(bootId, "orientation", {
+      requested: lock,
+      result: null,
+      ms: Math.round(performance.now() - started),
+      error: (error as Error).message,
+    });
+  }
+  await renderer.unlockOrientation();
+  writeLine(bootId, "orientation-unlocked", {});
 }
 
 /** The one counter the write loop keeps. */

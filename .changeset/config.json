@@ -23,6 +23,7 @@
       "@yagejs/lighting",
       "@yagejs/level",
       "@yagejs/host-electron",
+      "@yagejs/host-capacitor",
       "create-yage"
     ]
   ],

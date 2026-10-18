@@ -17,7 +17,8 @@
     "../packages/ui/src",
     "../packages/save/src",
     "../packages/debug/src",
-    "../packages/host-electron/src"
+    "../packages/host-electron/src",
+    "../packages/host-capacitor/src"
   ],
   "exclude": ["**/*.test.ts", "**/*.test.tsx"]
 }

@@ -31,6 +31,15 @@ export function webDirFor(
   return resolve(workDir, "web", slot);
 }
 
+/** What a build carries that a driver cannot pass at launch. */
+export interface BuildOptions {
+  /**
+   * The launch flags the built page reads. A Capacitor app loads one fixed
+   * path with no query string, so its test build carries them.
+   */
+  readonly query?: string;
+}
+
 /**
  * Build one target's web directory with Vite and return its absolute path.
  * The emitted page is renamed `index.html`, so a shell loads one well-known
@@ -39,6 +48,7 @@ export function webDirFor(
 export async function buildBaseline(
   target: BaselineTarget,
   profile: BaselineProfile,
+  options: BuildOptions = {},
 ): Promise<string> {
   if (!existsSync(resolve(repoRoot, "packages/core/dist/index.js"))) {
     throw new Error(
@@ -58,6 +68,15 @@ export async function buildBaseline(
     // Vite's default, which is what the development server also reports.
     ...(profile === "release" ? { mode: "release" } : {}),
     logLevel: "warn",
+    ...(options.query === undefined
+      ? {}
+      : {
+          define: {
+            "import.meta.env.VITE_BASELINE_QUERY": JSON.stringify(
+              options.query,
+            ),
+          },
+        }),
     build: { ...config.build, outDir, emptyOutDir: true },
   });
   const emitted = resolve(outDir, page);

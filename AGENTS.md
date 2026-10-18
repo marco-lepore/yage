@@ -15,23 +15,24 @@ YAGE is a 2D game engine built as a Turborepo monorepo.
   which documents are authoritative, and which gates must pass before the next
   slice begins.
 
-| Package                 | Description                                                      |
-| ----------------------- | ---------------------------------------------------------------- |
-| `@yagejs/core`          | ECS, DI, game loop, scenes, events (zero runtime deps)           |
-| `@yagejs/renderer`      | PixiJS v8 rendering, sprites, camera                             |
-| `@yagejs/lighting`      | Radial lights, light-level queries, render backends              |
-| `@yagejs/physics`       | Rapier2D physics (pixel↔meter conversion is internal)            |
-| `@yagejs/input`         | Keyboard/mouse/gamepad input + action maps                       |
-| `@yagejs/audio`         | Channel-based audio via @pixi/sound                              |
-| `@yagejs/particles`     | Particle emitters with pooling and presets                       |
-| `@yagejs/tilemap`       | Tiled map loading and rendering                                  |
-| `@yagejs/pathfinding`   | Grid A\* pathfinding, tilemap adapter                            |
-| `@yagejs/ui`            | Yoga flexbox-based UI components                                 |
-| `@yagejs/ui-react`      | React reconciler over the UI layer                               |
-| `@yagejs/debug`         | Debug overlay, stats, world/HUD drawing                          |
-| `@yagejs/save`          | Controlled state documents, migrations, and named slots          |
-| `@yagejs/level`         | Level documents: read, validate, prepare, load                   |
-| `@yagejs/host-electron` | Electron shell and host adapter: window state, fullscreen, saves |
+| Package                  | Description                                                          |
+| ------------------------ | -------------------------------------------------------------------- |
+| `@yagejs/core`           | ECS, DI, game loop, scenes, events (zero runtime deps)               |
+| `@yagejs/renderer`       | PixiJS v8 rendering, sprites, camera                                 |
+| `@yagejs/lighting`       | Radial lights, light-level queries, render backends                  |
+| `@yagejs/physics`        | Rapier2D physics (pixel↔meter conversion is internal)                |
+| `@yagejs/input`          | Keyboard/mouse/gamepad input + action maps                           |
+| `@yagejs/audio`          | Channel-based audio via @pixi/sound                                  |
+| `@yagejs/particles`      | Particle emitters with pooling and presets                           |
+| `@yagejs/tilemap`        | Tiled map loading and rendering                                      |
+| `@yagejs/pathfinding`    | Grid A\* pathfinding, tilemap adapter                                |
+| `@yagejs/ui`             | Yoga flexbox-based UI components                                     |
+| `@yagejs/ui-react`       | React reconciler over the UI layer                                   |
+| `@yagejs/debug`          | Debug overlay, stats, world/HUD drawing                              |
+| `@yagejs/save`           | Controlled state documents, migrations, and named slots              |
+| `@yagejs/level`          | Level documents: read, validate, prepare, load                       |
+| `@yagejs/host-electron`  | Electron shell and host adapter: window state, fullscreen, saves     |
+| `@yagejs/host-capacitor` | Capacitor host adapter: app lifecycle, orientation lock, Back, saves |
 
 ## Design Rules
 

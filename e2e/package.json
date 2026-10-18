@@ -41,6 +41,7 @@
     "@yagejs/ui": "^0.12.0",
     "@yagejs/audio": "^0.12.0",
     "@yagejs/effects": "^0.12.0",
-    "@yagejs/host-electron": "^0.12.0"
+    "@yagejs/host-electron": "^0.12.0",
+    "@yagejs/host-capacitor": "^0.12.0"
   }
 }

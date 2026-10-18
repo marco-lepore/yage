@@ -1,7 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import {
+  androidProjectDir,
+  prepareAndroidProject,
+  readAndroidProject,
+} from "../lib/android.js";
 import { parseReportLine } from "../lib/console.js";
 import { repoRoot } from "../lib/paths.js";
 import {
@@ -64,6 +69,59 @@ test("a directory's digest follows its bytes", async () => {
 
   await writeFile(resolve(same, "b.txt"), "secone");
   expect((await hashWebDir(same)).digest).not.toBe(hashed.digest);
+});
+
+test("the app installs the Capacitor packages the adapter was built against", async () => {
+  const read = async (path: string): Promise<Record<string, string>> => {
+    const manifest = JSON.parse(
+      await readFile(resolve(repoRoot, path), "utf8"),
+    ) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    return { ...manifest.dependencies, ...manifest.devDependencies };
+  };
+  const adapter = await read("packages/host-capacitor/package.json");
+  const shell = await read("e2e/native/capacitor/package.json");
+  for (const name of [
+    "@capacitor/core",
+    "@capacitor/app",
+    "@capacitor/filesystem",
+    "@capacitor/screen-orientation",
+  ]) {
+    expect(shell[name], name).toBe(adapter[name]);
+  }
+});
+
+test("the generated Android project carries what the adapter relies on", async () => {
+  // prepareAndroidProject keeps a project an earlier run generated, so the
+  // check starts from none.
+  await rm(androidProjectDir, { recursive: true, force: true });
+  const dir = await prepareAndroidProject();
+  const facts = readAndroidProject(dir);
+  expect(facts.configChanges).toContain("orientation");
+  expect(facts.configChanges).toContain("screenSize");
+  expect(facts.plugins).toEqual(
+    expect.arrayContaining([
+      "capacitor-app",
+      "capacitor-filesystem",
+      "capacitor-screen-orientation",
+    ]),
+  );
+  expect(facts.webIndex).toBe(true);
+  expect(facts.minSdk).toBe(24);
+  expect(facts.targetSdk).toBe(36);
+  // The app's category and heap size are the pack tool's settings; what the
+  // generated project states about them is recorded, not asserted.
+  test.info().annotations.push({
+    type: "android",
+    description: JSON.stringify({
+      appCategory: facts.appCategory,
+      largeHeap: facts.largeHeap,
+      compileSdk: facts.compileSdk,
+      launchMode: facts.launchMode,
+    }),
+  });
 });
 
 test("a run records the engine it built and the versions it resolved", async () => {

@@ -6,5 +6,8 @@
   "ios": {
     "path": "../.work/ios",
     "contentInset": "never"
+  },
+  "android": {
+    "path": "../.work/android"
   }
 }

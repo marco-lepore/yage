@@ -294,6 +294,8 @@ Pair with `@yagejs/input` — `InputPlugin` auto-resolves the renderer via `Rend
 
 In the Electron shell of `@yagejs/host-electron`, fullscreen is the window's, whatever started it: the menu, the system button, or `requestFullscreen()`.
 
+In a Capacitor app with `@yagejs/host-capacitor`, fullscreen comes from the page on iOS and is `"unsupported"` on Android, whose web view leaves fullscreen in the call that enters it. The orientation lock goes through the app on both systems and resolves once the screen has turned, or after 2000 ms when the system turns nothing.
+
 | Member                                                                     | Purpose                                                                                                                                                             |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `requestFullscreen(): Promise<void>`                                       | Present the game fullscreen. On a page, must be called from a user gesture. Resolves without asking the host when the game is fullscreen already.                   |

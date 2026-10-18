@@ -230,6 +230,9 @@ export default tseslint.config(
       // The Electron main process has no engine clock: the bound on a
       // fullscreen request is wall-clock time in the shell.
       "packages/host-electron/src/main/channels.ts",
+      // A mobile app turns its screen while the engine is paused, so the
+      // bound on an orientation lock is wall-clock time too.
+      "packages/host-capacitor/src/display.ts",
     ],
     rules: {
       "no-restricted-globals": [
