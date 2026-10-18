@@ -90,6 +90,7 @@ import { loadDataTexture, unloadDataTexture } from "./dataTexture.js";
 import { installMaterialPipe } from "./materials/MaterialPipe.js";
 import { loadTexture, loadWebFont, unloadWebFont } from "./assets.js";
 import { assertPositiveNumber } from "./internal/validate.js";
+import { stringEvaluationAllowed } from "./internal/stringEvaluation.js";
 
 import "./scene-augmentation.js";
 
@@ -130,7 +131,11 @@ export interface CreateTextureOptions {
   readonly height: number;
 }
 
-/** RendererPlugin wraps PixiJS v8 behind the YAGE plugin interface. */
+/**
+ * RendererPlugin wraps PixiJS v8 behind the YAGE plugin interface. It draws
+ * under a content security policy whose `script-src` omits `'unsafe-eval'`:
+ * on such a page it loads PixiJS's prebuilt shader and uniform code itself.
+ */
 export class RendererPlugin implements Plugin, RendererAdapter {
   readonly name = "renderer";
   /** Whether automatic canvas and render-target drawing is enabled. */
@@ -288,7 +293,12 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       setDefaultTextStyle(this._config.defaultTextStyle);
     }
 
-    // 2. Create & init PixiJS Application
+    // 2. Create & init PixiJS Application. PixiJS writes shader and uniform
+    //    code at run time; on a page that forbids turning strings into code,
+    //    its prebuilt replacements are loaded first.
+    if (!stringEvaluationAllowed()) {
+      await import("./internal/noStringEvaluation.js");
+    }
     installMaterialPipe();
     this._app = new PixiApplication();
     const resolution =

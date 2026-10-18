@@ -1,5 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+/**
+ * What the page allows, and what the install did about it. A page that
+ * forbids turning strings into code needs PixiJS's prebuilt replacements
+ * loaded before the application exists.
+ */
+const { policy } = vi.hoisted(() => ({
+  policy: { stringEvaluation: true, steps: [] as string[] },
+}));
+
+vi.mock("./internal/stringEvaluation.js", () => ({
+  stringEvaluationAllowed: (): boolean => policy.stringEvaluation,
+}));
+
+vi.mock("./internal/noStringEvaluation.js", () => {
+  policy.steps.push("no-eval module");
+  return {};
+});
+
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
@@ -187,6 +205,10 @@ const { mocks } = vi.hoisted(() => {
     render = vi.fn();
     initialized = false;
     destroyCalled = false;
+
+    constructor() {
+      policy.steps.push("application");
+    }
 
     async init(opts: Record<string, unknown> = {}): Promise<void> {
       this.initialized = true;
@@ -397,6 +419,31 @@ const defaultConfig: RendererConfig = {
 describe("RendererPlugin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  // The two cases run in order: the mock of the no-eval module is evaluated
+  // the first time something imports it, so the case that forbids string
+  // evaluation has to be the one that triggers that import.
+  describe("a page that forbids turning strings into code", () => {
+    afterEach(() => {
+      policy.stringEvaluation = true;
+      policy.steps.length = 0;
+    });
+
+    it("leaves PixiJS its generated code where the page allows it", async () => {
+      const { context } = createInstallContext();
+      policy.steps.length = 0;
+      await new RendererPlugin(defaultConfig).install(context);
+      expect(policy.steps).toEqual(["application"]);
+    });
+
+    it("loads PixiJS's prebuilt code before the application exists", async () => {
+      const { context } = createInstallContext();
+      policy.stringEvaluation = false;
+      policy.steps.length = 0;
+      await new RendererPlugin(defaultConfig).install(context);
+      expect(policy.steps).toEqual(["no-eval module", "application"]);
+    });
   });
 
   it("has correct name and version", () => {

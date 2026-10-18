@@ -60,6 +60,21 @@ function backendOptions(search: string): RendererConfig["pixi"] {
   );
 }
 
+/**
+ * Whether an `activeWhenUnfocused` launch flag asks the game to keep running
+ * behind another window. A test build reads it so the cases run on a machine
+ * that gives the window no focus.
+ */
+function activeWhenUnfocused(search: string): boolean {
+  const requested = new URLSearchParams(search).get("activeWhenUnfocused");
+  if (requested === null || requested === "") return false;
+  if (requested === "1") return true;
+  throw new Error(
+    `Baseline: unknown activeWhenUnfocused ${JSON.stringify(requested)}. ` +
+      "Known values: 1.",
+  );
+}
+
 /** The bounce a `bounce` launch flag asks for, or `undefined` for none. */
 function bounceOption(search: string): BounceLightOptions | undefined {
   const requested = new URLSearchParams(search).get("bounce");
@@ -124,6 +139,8 @@ export async function bootBaseline(
   if (testProfile) {
     for (const plugin of testProfile.testProfilePlugins()) engine.use(plugin);
   }
+
+  if (activeWhenUnfocused(search)) engine.host.activeWhenUnfocused = true;
 
   await engine.start();
   const scene = new BaselineScene(cases);

@@ -296,7 +296,10 @@ tree.fx.addEffect(oldFilm({ sepia: 0.4, noise: 0.4 }));
 layer.fx.addEffect(wave({ amplitude: 6, speed: 2 }));
 
 // motionBlur — directional. Coerces invalid kernel sizes (must be odd
-// and ≥ 5) up to the nearest valid value with a one-shot warning.
+// and ≥ 5) up to the nearest valid value with a one-shot warning. Under a
+// content security policy without 'unsafe-eval', PixiJS on WebGPU writes
+// integer uniforms as floats and this filter draws nothing; WebGL, the
+// renderer's first choice, draws it.
 const mb = sprite.fx.addEffect(motionBlur({ velocity: { x: 30, y: 0 } }));
 mb.setVelocity(50, 12);
 

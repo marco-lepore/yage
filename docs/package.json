@@ -49,6 +49,7 @@
     "@yagejs/core": "^0.12.0",
     "@yagejs/debug": "^0.12.0",
     "@yagejs/effects": "^0.12.0",
+    "@yagejs/host-electron": "^0.12.0",
     "@yagejs/input": "^0.12.0",
     "@yagejs/level": "^0.12.0",
     "@yagejs/lighting": "^0.12.0",

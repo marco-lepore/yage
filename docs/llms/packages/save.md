@@ -332,6 +332,8 @@ What each adapter survives:
 | `fileAdapter` over a store whose `write` syncs         | yes                                                                              | where the sync reaches the drive |
 | `fileAdapter` over a store whose `write` does not sync | yes                                                                              | not guaranteed                   |
 
+`electronSaveAdapter()` from `@yagejs/host-electron` is the desktop adapter: a `fileAdapter` over the app's data directory, running in Electron's main process, so a renderer that crashes during a save does not stop the write. On macOS each write reaches the drive before it resolves.
+
 ### `fileAdapter`
 
 ```ts

@@ -16,7 +16,8 @@
     "../packages/tilemap/src",
     "../packages/ui/src",
     "../packages/save/src",
-    "../packages/debug/src"
+    "../packages/debug/src",
+    "../packages/host-electron/src"
   ],
   "exclude": ["**/*.test.ts", "**/*.test.tsx"]
 }

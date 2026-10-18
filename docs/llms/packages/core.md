@@ -1429,6 +1429,8 @@ The host is the application that runs the game's page: a browser tab, or a nativ
 
 `Host` holds no display state: a host adapter supplies fullscreen and screen orientation by registering a `HostDisplay` from `@yagejs/renderer`, and `RendererPlugin` reports both.
 
+The Electron adapter ships as `@yagejs/host-electron`, with its shell: [reference](host-electron.md), [guide](https://yage.dev/guides/electron/).
+
 An adapter supplies `runtime` and `os`, and leaves out a version it has no authoritative value for. `host.info` holds all five fields, with `undefined` in every version the adapter did not supply.
 
 A page with no adapter reports `{ runtime: "browser", os: "unknown" }` and no versions. The operating system stays `"unknown"` there: a page reads the system name only from the user agent, and an emulated device changes it. `runtime` is an open string, so an adapter outside this repository names itself.

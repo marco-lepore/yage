@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { parseReportLine } from "../lib/console.js";
+import { repoRoot } from "../lib/paths.js";
 import {
   hashWebDir,
   readEngineProvenance,
@@ -13,6 +14,17 @@ import {
 async function temporaryDir(): Promise<string> {
   return mkdtemp(resolve(tmpdir(), "yage-baseline-harness-"));
 }
+
+test("the preload script loads nothing a sandboxed page refuses", async () => {
+  const built = await readFile(
+    resolve(repoRoot, "packages/host-electron/dist/preload.cjs"),
+    "utf8",
+  );
+  const required = [...built.matchAll(/require\("([^"]+)"\)/g)].map(
+    (match) => match[1],
+  );
+  expect([...new Set(required)]).toEqual(["electron"]);
+});
 
 test("a report line is read in both of the forms a host writes", () => {
   expect(parseReportLine('[yage-baseline] {"kind":"boot"}')).toEqual({

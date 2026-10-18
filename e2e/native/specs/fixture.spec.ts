@@ -1,10 +1,14 @@
 import { chromium, expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
-import { writeFile } from "node:fs/promises";
+import type { ElectronApplication, Page } from "@playwright/test";
+import { cp, readdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { buildBaseline } from "../lib/build.js";
-import { launchElectron, newUserDataDir } from "../lib/electron.js";
+import { launchElectron, newAppDataDir } from "../lib/electron.js";
+import { packWebDir } from "../lib/asar.js";
 import { REPORT_PREFIX, parseReportLine } from "../lib/console.js";
 import { indexUrl, serveDirectory } from "../lib/server.js";
+import { nativeDir, workDir } from "../lib/paths.js";
 import {
   installClean,
   iosToolVersions,
@@ -347,8 +351,14 @@ async function electronScenario(
   report: BaselineRunReport,
   webDir: string,
 ): Promise<void> {
-  const userData = await newUserDataDir();
-  let app = await launchElectron({ webDir, userData });
+  const appData = await newAppDataDir();
+  const query = "?activeWhenUnfocused=1";
+  let app = await launchElectron({
+    webDir,
+    appData,
+    profile: "test",
+    query,
+  });
   try {
     watchShell(app, report);
     report.shell.details = await app.evaluate(({ app: electronApp }) => ({
@@ -363,6 +373,13 @@ async function electronScenario(
     let page = await app.firstWindow();
     watchPage(page, report);
     await waitForSettled(page, 60_000);
+    const focused = await windowIsFocused(app);
+    record(report, {
+      name: "shell: the window had focus after launch",
+      result: focused ? "passed" : "pending",
+      evidence: "harness",
+      detail: focused ? null : NO_FOCUS_REASON,
+    });
     const booted = (await readPage(page))!;
     foldReading(report, "booted", booted);
     const failures = checkReadings(report, booted.readings);
@@ -372,6 +389,21 @@ async function electronScenario(
       evidence: "inspector",
       detail: JSON.stringify(booted.errors.callbackErrors),
     });
+    record(report, {
+      name: "boot: the page names the Electron host and the app's version",
+      result:
+        booted.host.info.runtime === "electron" &&
+        booted.host.info.os === "macos" &&
+        booted.policy.stringEvaluation === false
+          ? "passed"
+          : "failed",
+      evidence: "inspector",
+      detail: JSON.stringify({
+        host: booted.host.info,
+        policy: booted.policy,
+      }),
+    });
+    await recordBridge(report, page, appData);
     record(report, {
       name: "shell: the page runs without Node reachable from it",
       result: (await page.evaluate(
@@ -398,13 +430,30 @@ async function electronScenario(
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.minimize();
     });
-    await page.waitForTimeout(1_000);
+    await expect
+      .poll(async () => (await readPage(page))!.host.lifecycle.visibility, {
+        timeout: 15_000,
+      })
+      .toBe("hidden");
+    record(report, {
+      name: "background: a minimised window reports the page hidden",
+      result: "passed",
+      evidence: "inspector",
+      detail: JSON.stringify((await readPage(page))!.host.lifecycle),
+    });
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.restore();
     });
+    await expect
+      .poll(async () => (await readPage(page))!.host.lifecycle.visibility, {
+        timeout: 15_000,
+      })
+      .toBe("visible");
     await session.send("Emulation.setFocusEmulationEnabled", { enabled: true });
     await session.detach();
     await afterReturn(report, page);
+    await recordFocus(report, app, page, focused);
+    await recordFullscreen(report, app, page, focused);
 
     const shot = await screenshotPath(report, "visual");
     const captured = await app.evaluate(async ({ BrowserWindow }) => {
@@ -416,7 +465,8 @@ async function electronScenario(
     report.screenshots.push({ path: shot, label: "visual" });
 
     await app.close();
-    app = await launchElectron({ webDir, userData });
+    await recordSaveFiles(report, appData);
+    app = await launchElectron({ webDir, appData, profile: "test", query });
     watchShell(app, report);
     page = await app.firstWindow();
     watchPage(page, report);
@@ -425,22 +475,21 @@ async function electronScenario(
     foldReading(report, "after-relaunch", relaunched);
     recordRelaunch(report, relaunched.readings["saves"]);
     recordPageHealth(report);
-    recordPending(
-      report,
-      "electron: a packaged app with an archived web directory",
-      "the suite drives an unpackaged shell; the production shell is not built here",
-    );
+    await recordQuit(report, app, page);
   } finally {
     await app.close().catch(() => undefined);
   }
+  await recordRename(report, webDir, appData, query);
+  await recordArchive(report, webDir);
+  await recordKillTest(report, webDir);
 }
 
 async function electronRelease(
   report: BaselineRunReport,
   webDir: string,
 ): Promise<void> {
-  const userData = await newUserDataDir();
-  const app = await launchElectron({ webDir, userData });
+  const appData = await newAppDataDir();
+  const app = await launchElectron({ webDir, appData, profile: "release" });
   try {
     watchShell(app, report);
     report.shell.version = await app.evaluate(
@@ -457,9 +506,441 @@ async function electronRelease(
     });
     await writeBase64(shot, captured);
     report.screenshots.push({ path: shot, label: "visual" });
+    await recordReleaseShell(report, app);
   } finally {
     await app.close().catch(() => undefined);
   }
+}
+
+/** Why a check that needs the window in front could not run. */
+const NO_FOCUS_REASON =
+  "the window never received focus: macOS kept another app or the lock " +
+  "screen in front";
+
+/** Whether the game window holds the keyboard focus. */
+function windowIsFocused(app: ElectronApplication): Promise<boolean> {
+  return app.evaluate(
+    ({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.isFocused() === true,
+  );
+}
+
+/** The page's own view of the bridge, and what it refuses. */
+async function recordBridge(
+  report: BaselineRunReport,
+  page: Page,
+  appData: string,
+): Promise<void> {
+  const bridge = await page.evaluate(() => {
+    const exposed = (
+      window as unknown as { __yageHost__?: { protocol: number } }
+    ).__yageHost__;
+    return {
+      protocol: exposed?.protocol ?? null,
+      frozen: exposed !== undefined && Object.isFrozen(exposed),
+    };
+  });
+  record(report, {
+    name: "bridge: the page sees one frozen object at protocol 1",
+    result: bridge.protocol === 1 && bridge.frozen ? "passed" : "failed",
+    evidence: "inspector",
+    detail: JSON.stringify(bridge),
+  });
+
+  const before = await saveFileNames(appData);
+  const refusals = await page.evaluate(async () => {
+    const host = (
+      window as unknown as {
+        __yageHost__: {
+          saves: { write(key: unknown, value: unknown): Promise<void> };
+          setFullscreen(active: unknown): Promise<unknown>;
+        };
+      }
+    ).__yageHost__;
+    const refusal = async (call: () => Promise<unknown>): Promise<string> => {
+      try {
+        await call();
+        return "resolved";
+      } catch (error) {
+        return (error as Error).message;
+      }
+    };
+    return {
+      numericKey: await refusal(() => host.saves.write(42, "x")),
+      numericValue: await refusal(() => host.saves.write("k", 7)),
+      stringFullscreen: await refusal(() => host.setFullscreen("yes")),
+    };
+  });
+  const refused =
+    refusals.numericKey.includes("key must be a string, got number.") &&
+    refusals.numericValue.includes("value must be a string, got number.") &&
+    refusals.stringFullscreen.includes('active must be a boolean, got "yes".');
+  const after = await saveFileNames(appData);
+  record(report, {
+    name: "bridge: an argument of the wrong kind reaches no native operation",
+    result: refused && after.join() === before.join() ? "passed" : "failed",
+    evidence: "inspector",
+    detail: JSON.stringify({ refusals, before, after }),
+  });
+}
+
+/** The save directory the shell writes, and the files in it. */
+function saveDir(appData: string): string {
+  return resolve(appData, "dev.yage.baseline/saves/test");
+}
+
+async function saveFileNames(appData: string): Promise<string[]> {
+  const directory = saveDir(appData);
+  if (!existsSync(directory)) return [];
+  return (await readdir(directory)).sort();
+}
+
+/** What the save directory holds once the first launch closed. */
+async function recordSaveFiles(
+  report: BaselineRunReport,
+  appData: string,
+): Promise<void> {
+  const names = await saveFileNames(appData);
+  record(report, {
+    name: "saves: the app data directory holds one finished file per key",
+    result:
+      names.length > 0 &&
+      names.every((name) => name.endsWith(".sav")) &&
+      names.every((name) => name.startsWith("k-"))
+        ? "passed"
+        : "failed",
+    evidence: "file",
+    detail: JSON.stringify(names),
+  });
+}
+
+/** Focus moving away from the game window and back. */
+async function recordFocus(
+  report: BaselineRunReport,
+  app: ElectronApplication,
+  page: Page,
+  focused: boolean,
+): Promise<void> {
+  if (!focused) {
+    recordPending(
+      report,
+      "focus: another window in front reports the game unfocused",
+      NO_FOCUS_REASON,
+    );
+    return;
+  }
+  await app.evaluate(({ BrowserWindow }) => {
+    const second = new BrowserWindow({ width: 320, height: 240 });
+    second.focus();
+  });
+  await expect
+    .poll(async () => (await readPage(page))!.host.lifecycle.focus, {
+      timeout: 15_000,
+    })
+    .toBe("unfocused");
+  await app.evaluate(({ BrowserWindow }) => {
+    const windows = BrowserWindow.getAllWindows();
+    windows[windows.length - 1]?.close();
+    windows[0]?.focus();
+  });
+  await expect
+    .poll(async () => (await readPage(page))!.host.lifecycle.focus, {
+      timeout: 15_000,
+    })
+    .toBe("focused");
+  record(report, {
+    name: "focus: another window in front reports the game unfocused",
+    result: "passed",
+    evidence: "inspector",
+    detail: null,
+  });
+}
+
+/** The window's fullscreen, asked for through the renderer. */
+async function recordFullscreen(
+  report: BaselineRunReport,
+  app: ElectronApplication,
+  page: Page,
+  focused: boolean,
+): Promise<void> {
+  const outcome = await page.evaluate(async () => {
+    const extension = (
+      window as unknown as {
+        __yage__: {
+          inspector: {
+            getExtension(name: string): {
+              fullscreen(active: boolean): Promise<{ outcome: string }>;
+            };
+          };
+        };
+      }
+    ).__yage__.inspector.getExtension("baseline");
+    return extension.fullscreen(true);
+  });
+  const inFullscreen = await app.evaluate(
+    ({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.isFullScreen() === true,
+  );
+  const reading = (await readPage(page))!.readings["display"]!;
+  const detail = JSON.stringify({
+    outcome,
+    window: inFullscreen,
+    reading,
+  });
+  if (!focused) {
+    recordPending(
+      report,
+      "fullscreen: a request through the renderer moves the window",
+      `${NO_FOCUS_REASON}; the request settled as ${detail}`,
+    );
+  } else {
+    record(report, {
+      name: "fullscreen: a request through the renderer moves the window",
+      result:
+        outcome.outcome === "resolved" &&
+        inFullscreen &&
+        reading["isFullscreen"] === true &&
+        (reading["fullscreenEvents"] as boolean[]).at(-1) === true
+          ? "passed"
+          : "failed",
+      evidence: "inspector",
+      detail,
+    });
+  }
+
+  // However the request ended, the page and the window agree, and a change
+  // the main process makes reaches the page.
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setFullScreen(false);
+  });
+  await expect
+    .poll(
+      async () => (await readPage(page))!.readings["display"]!["isFullscreen"],
+      { timeout: 15_000 },
+    )
+    .toBe(false);
+  record(report, {
+    name: "fullscreen: the page follows a change the shell made",
+    result: "passed",
+    evidence: "inspector",
+    detail: JSON.stringify((await readPage(page))!.readings["display"]),
+  });
+}
+
+/** Closing the window from the page ends the app. */
+async function recordQuit(
+  report: BaselineRunReport,
+  app: ElectronApplication,
+  page: Page,
+): Promise<void> {
+  const closed = app.waitForEvent("close", { timeout: 10_000 }).then(
+    () => true,
+    () => false,
+  );
+  await page.evaluate(() => window.close());
+  record(report, {
+    name: "quit: the page closing its window ends the app",
+    result: (await closed) ? "passed" : "failed",
+    evidence: "process",
+    detail: null,
+  });
+}
+
+/** A copy of the shell under another app name reads the same saves. */
+async function recordRename(
+  report: BaselineRunReport,
+  webDir: string,
+  appData: string,
+  query: string,
+): Promise<void> {
+  const renamed = resolve(workDir, "electron-renamed");
+  await cp(resolve(nativeDir, "electron"), renamed, { recursive: true });
+  await writeFile(
+    resolve(renamed, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "yage-baseline-electron-shell",
+        productName: "YAGE Baseline Renamed",
+        private: true,
+        version: "0.0.0",
+        main: "main.cjs",
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  const app = await launchElectron({
+    webDir,
+    appData,
+    profile: "test",
+    query,
+    shellDir: renamed,
+  });
+  try {
+    watchShell(app, report);
+    const name = await app.evaluate(({ app: electronApp }) =>
+      electronApp.getName(),
+    );
+    const page = await app.firstWindow();
+    watchPage(page, report);
+    await waitForSettled(page, 60_000);
+    const saves = (await readPage(page))!.readings["saves"]!;
+    record(report, {
+      name: "rename: an app under a new name reads the saves it wrote",
+      result:
+        name === "YAGE Baseline Renamed" && Number(saves["launchesBefore"]) >= 2
+          ? "passed"
+          : "failed",
+      evidence: "inspector",
+      detail: JSON.stringify({ name, saves }),
+    });
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+}
+
+/** The same build, served from inside an archive. */
+async function recordArchive(
+  report: BaselineRunReport,
+  webDir: string,
+): Promise<void> {
+  const archive = await packWebDir(webDir);
+  const appData = await newAppDataDir();
+  const app = await launchElectron({
+    webDir: archive,
+    appData,
+    profile: "test",
+    query: "?activeWhenUnfocused=1",
+  });
+  try {
+    watchShell(app, report);
+    const page = await app.firstWindow();
+    watchPage(page, report);
+    await waitForSettled(page, 60_000);
+    const reading = (await readPage(page))!;
+    foldReading(report, "archive", reading);
+    const failures = checkReadings(report, reading.readings);
+    record(report, {
+      name: "archive: every case settles from inside the packed web directory",
+      result:
+        failures.length === 0 && reading.errors.callbackErrors.length === 0
+          ? "passed"
+          : "failed",
+      evidence: "inspector",
+      detail: JSON.stringify(failures),
+    });
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+}
+
+/** How many rounds the kill test runs, and the window it kills in. */
+const KILL_ROUNDS = 20;
+const KILL_EARLIEST_MS = 150;
+const KILL_LATEST_MS = 750;
+
+/**
+ * Kill the main process in the middle of a stream of saves, over and over,
+ * and check that the relaunch reads the last write the storage acknowledged
+ * or the one after it, never a damaged document.
+ */
+async function recordKillTest(
+  report: BaselineRunReport,
+  webDir: string,
+): Promise<void> {
+  const appData = await newAppDataDir();
+  const rounds: { acknowledged: number | null; found: number | null }[] = [];
+  for (let round = 0; round < KILL_ROUNDS; round += 1) {
+    const app = await launchElectron({
+      webDir,
+      appData,
+      profile: "test",
+      query: "?case=saves&activeWhenUnfocused=1&writeLoop=1",
+    });
+    let acknowledged: number | null = null;
+    let found: number | null = null;
+    let failure: string | null = null;
+    const page = await app.firstWindow();
+    let first: (() => void) | null = null;
+    const sawFirstWrite = new Promise<void>((done) => {
+      first = done;
+    });
+    page.on("console", (message) => {
+      const line = parseReportLine(message.text());
+      if (line === null) return;
+      if (line["kind"] === "loop-start") {
+        found = line["found"] as number | null;
+        failure = line["error"] as string | null;
+      }
+      if (line["kind"] === "write") {
+        acknowledged = line["n"] as number;
+        first?.();
+      }
+    });
+    await sawFirstWrite;
+    await new Promise((done) =>
+      setTimeout(
+        done,
+        KILL_EARLIEST_MS +
+          Math.floor(Math.random() * (KILL_LATEST_MS - KILL_EARLIEST_MS)),
+      ),
+    );
+    const killed = acknowledged;
+    app.process().kill("SIGKILL");
+    await app.waitForEvent("close").catch(() => undefined);
+    rounds.push({ acknowledged: killed, found });
+    if (failure !== null) {
+      record(report, {
+        name: "kill: a relaunch reads the last acknowledged save",
+        result: "failed",
+        evidence: "console",
+        detail: `round ${round}: ${failure}`,
+      });
+      return;
+    }
+  }
+  const carried = rounds.slice(1).every((round, index) => {
+    const before = rounds[index]!.acknowledged;
+    if (before === null) return round.found === null;
+    return round.found === before || round.found === before + 1;
+  });
+  record(report, {
+    name: "kill: a relaunch reads the last acknowledged save",
+    result: carried ? "passed" : "failed",
+    evidence: "console",
+    detail: JSON.stringify(rounds),
+  });
+}
+
+/** What a release build must not offer the player. */
+async function recordReleaseShell(
+  report: BaselineRunReport,
+  app: ElectronApplication,
+): Promise<void> {
+  const shell = await app.evaluate(async ({ BrowserWindow, Menu }) => {
+    const win = BrowserWindow.getAllWindows()[0]!;
+    win.webContents.openDevTools();
+    await new Promise((done) => setTimeout(done, 500));
+    const roles = (Menu.getApplicationMenu()?.items ?? []).flatMap((item) =>
+      (item.submenu?.items ?? []).map((entry) => entry.role ?? ""),
+    );
+    return { devTools: win.webContents.isDevToolsOpened(), roles };
+  });
+  record(report, {
+    name: "release: the player reaches no developer tools",
+    result:
+      !shell.devTools &&
+      !shell.roles.some((role) =>
+        ["reload", "forcereload", "toggledevtools"].includes(
+          role.toLowerCase(),
+        ),
+      )
+        ? "passed"
+        : "failed",
+    evidence: "inspector",
+    detail: JSON.stringify(shell),
+  });
 }
 
 // ---------------------------------------------------------------------------

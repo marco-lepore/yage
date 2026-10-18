@@ -32,6 +32,8 @@ export interface BaselineReading {
   errors: { callbackErrors: unknown[] };
   /** Every `graphics:context` payload the page has seen, oldest first. */
   graphicsContext: boolean[];
+  /** What the page's content security policy allows. */
+  policy: { stringEvaluation: boolean };
   userAgent: string;
 }
 

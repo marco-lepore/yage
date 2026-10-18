@@ -301,6 +301,10 @@ page the element that goes fullscreen is the configured `container` when there
 is one, so DOM overlays beside the canvas stay inside the fullscreened area,
 and the canvas itself otherwise.
 
+In the Electron shell of `@yagejs/host-electron`, fullscreen is the window's,
+whatever started it: the application menu, the window's own button, or
+`requestFullscreen()`. See [Desktop with Electron](/guides/electron/).
+
 ```typescript yage-context="engine,async"
 import { RendererPlugin } from "@yagejs/renderer";
 

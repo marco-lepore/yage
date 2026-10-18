@@ -34,7 +34,11 @@ export interface RendererFitOptions {
   target?: HTMLElement;
 }
 
-/** Configuration for the renderer plugin. */
+/**
+ * Configuration for the renderer plugin. The renderer draws under a content
+ * security policy whose `script-src` omits `'unsafe-eval'` with no extra
+ * configuration.
+ */
 export interface RendererConfig {
   /** Initial canvas width in CSS pixels before responsive `fit` takes over. Backing-store size is `width × resolution`. */
   width: number;

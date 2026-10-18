@@ -442,7 +442,11 @@ types: `createValue<Date, string>({ default: () => new Date(), codec: dateCodec(
 
 ## Adapters
 
-An adapter is where the bytes go. Three ship with the package:
+An adapter is where the bytes go. Three ship with the package, and
+`@yagejs/host-electron` adds `electronSaveAdapter()` for a desktop build: a
+`fileAdapter` over the app's data directory, running in Electron's main
+process, so a page that crashes during a save does not stop the write. See
+[Desktop with Electron](/guides/electron/).
 
 ```typescript
 import type { SaveAdapter, SaveFileStore } from "@yagejs/save";

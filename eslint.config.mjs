@@ -227,6 +227,9 @@ export default tseslint.config(
       "packages/tools/lab/src/cli/test.ts",
       "packages/tools/lab/src/runner/LabPanel.ts",
       "packages/tools/lab/src/runner/mountLab.ts",
+      // The Electron main process has no engine clock: the bound on a
+      // fullscreen request is wall-clock time in the shell.
+      "packages/host-electron/src/main/channels.ts",
     ],
     rules: {
       "no-restricted-globals": [

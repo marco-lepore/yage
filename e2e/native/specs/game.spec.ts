@@ -2,7 +2,7 @@ import { chromium, expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { webDirFor } from "../lib/build.js";
-import { launchElectron, newUserDataDir } from "../lib/electron.js";
+import { launchElectron, newAppDataDir } from "../lib/electron.js";
 import { indexUrl, serveDirectory } from "../lib/server.js";
 import {
   installClean,
@@ -205,8 +205,13 @@ async function electronGame(
   report: BaselineRunReport,
   built: string,
 ): Promise<void> {
-  const userData = await newUserDataDir();
-  let app = await launchElectron({ webDir: built, userData, query });
+  const appData = await newAppDataDir();
+  let app = await launchElectron({
+    webDir: built,
+    appData,
+    profile: "test",
+    query,
+  });
   try {
     report.shell.version = await app.evaluate(
       () => process.versions.electron ?? "unknown",
@@ -226,7 +231,12 @@ async function electronGame(
     report.screenshots.push({ path: shot, label: "visual" });
 
     await app.close();
-    app = await launchElectron({ webDir: built, userData, query });
+    app = await launchElectron({
+      webDir: built,
+      appData,
+      profile: "test",
+      query,
+    });
     page = await app.firstWindow();
     watchPage(page, report);
     await checkGamePage(report, page);

@@ -34,6 +34,7 @@ export interface BaselineReading {
   };
   errors: { callbackErrors: unknown[] };
   graphicsContext: boolean[];
+  policy: { stringEvaluation: boolean };
   userAgent: string;
 }
 
@@ -41,6 +42,11 @@ export type BaselinePixel = [number, number, number, number];
 
 export interface BaselineExtension {
   read(): BaselineReading;
+  fullscreen(
+    active: boolean,
+  ): Promise<
+    { outcome: "resolved" } | { outcome: "rejected"; message: string }
+  >;
   pointFor(x: number, y: number): { x: number; y: number };
   pixels(): Record<string, BaselinePixel>;
   loseContext(): Promise<void>;

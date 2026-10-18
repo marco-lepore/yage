@@ -38,6 +38,7 @@
 - [ui-react](llms/packages/ui-react.md): React reconciler, hooks, reactive stores
 - [level](llms/packages/level.md): Authored level files — placeable entity declarations, parameter schemas, strict loading into a scene
 - [save](llms/packages/save.md): Controlled save/load, slots, adapters, migrations
+- [host-electron](llms/packages/host-electron.md): Electron desktop shell — window state, fullscreen, file saves, content security policy
 - [debug](llms/packages/debug.md): Debug overlay, custom contributors, stats
 - [effects](llms/packages/effects.md): Visual-effect presets — bloom, outline, CRT, vignette, color grade, etc.
 

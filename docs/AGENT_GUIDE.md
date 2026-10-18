@@ -45,8 +45,7 @@ npx playwright test e2e/specs/physics-bounce.spec.ts
 # Run Playwright with headed browser (for debugging)
 npx playwright test --headed
 
-# Install the shells the native baseline suite drives (once per checkout)
-npm --prefix e2e/native/electron ci
+# Install the shell the iOS half of the native baseline suite drives
 npm --prefix e2e/native/capacitor ci
 
 # Run the native baseline suite: Chromium, Electron and the iOS simulator
@@ -87,7 +86,9 @@ When modifying packages, changes flow downstream. Build and test in dependency o
   │
   ├── @yagejs/save (→ core)
   │
-  └── @yagejs/level (→ core) — level documents; `/document` entry has no engine dependency
+  ├── @yagejs/level (→ core) — level documents; `/document` entry has no engine dependency
+  │
+  └── @yagejs/host-electron (→ core, save; peer: electron) — Electron shell and host adapter
 ```
 
 ### Modification Order
@@ -289,6 +290,26 @@ Controlled persistence for typed reactive stores and custom
 
 The reactive state factories themselves live in `@yagejs/core` under `src/state/`: the compound `createStore` plus the leaf factories `createRecord`, `createValue`, `createSet`, `createMap`, `createCounter`, and `createList`. They implement three contracts: `Reactive`, `Serializable<T>`, and `Resettable`. Those contracts and the `Reactive*` shape interfaces are defined in `state/reactive.ts`. The save layer accepts any `Serializable<T>` by id at the call site. The state factories know nothing about the save layer's documents, slots, or migrations.
 
+### `@yagejs/host-electron`
+
+The Electron desktop host: the page side that feeds `Host` and the renderer,
+the preload script, and the main-process shell:
+
+| File                                                     | Purpose                                                                                    |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `src/ElectronHostPlugin.ts`                              | `Plugin` named `host`: identity and lifecycle to `Host`, window fullscreen to the renderer |
+| `src/saves.ts`                                           | `electronSaveAdapter()` — a `SaveAdapter` over the main process's file store               |
+| `src/detect.ts`                                          | `isElectronHost()`, the `./detect` entry; imports nothing                                  |
+| `src/bridge.ts`                                          | The one check every page entry runs, and the bridge's page-side type                       |
+| `src/protocol.ts`                                        | `HOST_BRIDGE_PROTOCOL`, the channel names and the payload types, shared by all three sides |
+| `src/preload/`                                           | `createBridge(ipc)` and the script that exposes it as `window.__yageHost__`                |
+| `src/main/startGame.ts`                                  | `startGame(options)` and `DEFAULT_CONTENT_SECURITY_POLICY`                                 |
+| `src/main/gameProtocol.ts`                               | Serving the built web directory from `yage://game`                                         |
+| `src/main/channels.ts`                                   | The sender check and the handlers behind each bridge operation                             |
+| `src/main/windowState.ts`                                | The window and power events, as the snapshots the page reads                               |
+| `src/main/nodeFileStore.ts`, `src/main/saveDirectory.ts` | The save files on disk and the directory they live in                                      |
+| `src/test/fakeElectron.ts`                               | The stand-in every unit test reads in place of `electron`                                  |
+
 ### Project Root
 
 | File                       | Purpose                                                       |
@@ -346,7 +367,7 @@ A test build adds an Inspector, an extension named `baseline` that answers `read
 | --------------- | ---------------------------------------------------------------------------------------------- |
 | `harness`       | Node alone: the suite's own report and parsing helpers                                         |
 | `browser`       | Chromium, over a built web directory served on loopback                                        |
-| `electron`      | `npm --prefix e2e/native/electron ci`                                                          |
+| `electron`      | the root `npm install`, which brings Electron in through `@yagejs/host-electron`               |
 | `ios-simulator` | `npm --prefix e2e/native/capacitor ci`, Xcode and a booted simulator, with `DEVELOPER_DIR` set |
 
 Each shell project builds its target's web directory, runs the scenario — launch, read every case, send input, let the shell take the app away and give it back, relaunch on the same stored profile — then builds the release profile and checks that nothing of the test profile reached it. Every run writes one JSON report to `e2e/native/.work/reports/`: the engine commit and package versions, the third-party versions actually resolved, the shell and system versions, every emitted file's hash, each check's outcome and evidence, the readings, a timeline of page and shell events, and the screenshots taken.

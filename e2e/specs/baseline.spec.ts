@@ -24,6 +24,7 @@ test.describe("baseline fixture", () => {
     expect(reading.errors.callbackErrors).toEqual([]);
     expect(reading.host.info.runtime).toBe("browser");
     expect(reading.host.info.os).toBe("unknown");
+    expect(reading.policy.stringEvaluation).toBe(true);
   });
 
   test("sprites: the texture loaded at its own size", async ({ page }) => {
@@ -137,19 +138,52 @@ test.describe("baseline fixture", () => {
     expect(await page.evaluate(() => window.__yage__ === undefined)).toBe(true);
   });
 
-  test("the other targets' entries boot too", async ({ page }) => {
-    for (const [path, target] of [
-      ["/baseline-electron.html", "electron"],
-      ["/baseline-capacitor.html", "capacitor"],
-    ] as const) {
-      await gotoFixture(page, path);
-      await page.waitForFunction(
-        () =>
-          window.__yage__?.inspector?.getExtension("baseline") !== undefined,
-      );
-      await waitForSettled(page);
-      expect((await read(page)).target).toBe(target);
-    }
+  test("the Capacitor entry boots too", async ({ page }) => {
+    await gotoFixture(page, "/baseline-capacitor.html");
+    await page.waitForFunction(
+      () => window.__yage__?.inspector?.getExtension("baseline") !== undefined,
+    );
+    await waitForSettled(page);
+    expect((await read(page)).target).toBe("capacitor");
+  });
+
+  test("the Electron entry says what a browser page is missing", async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto("/baseline-electron.html");
+    await expect.poll(() => errors.length).toBeGreaterThan(0);
+    expect(errors[0]).toBe(
+      "electronSaveAdapter: no YAGE host bridge on this page. Load the game " +
+        "in a shell that runs the @yagejs/host-electron preload script, or " +
+        "leave this adapter out of a browser build.",
+    );
+    expect(await page.evaluate(() => window.__yage__ === undefined)).toBe(true);
+  });
+});
+
+test.describe("baseline under a policy that forbids string evaluation", () => {
+  test("every case draws what the default page draws", async ({ page }) => {
+    await gotoFixture(page, "/baseline.html");
+    await waitForSettled(page);
+    const allowed = await read(page);
+    expect(allowed.policy.stringEvaluation).toBe(true);
+    const allowedPixels = await readPixels(page);
+
+    await gotoFixture(page, "/baseline-strict.html");
+    await waitForSettled(page);
+    const strict = await read(page);
+    expect(strict.policy.stringEvaluation).toBe(false);
+    expect(strict.cases).toEqual(CASE_NAMES);
+    expect(strict.settledCases).toEqual(CASE_NAMES);
+    expect(strict.errors.callbackErrors).toEqual([]);
+    expect(
+      (strict.readings["display"]!["graphics"] as Record<string, unknown>)[
+        "backend"
+      ],
+    ).toBe("webgl2");
+    expect(await readPixels(page)).toEqual(allowedPixels);
   });
 });
 

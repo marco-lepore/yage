@@ -14,11 +14,20 @@ export interface DisplayReading extends CaseReading {
   resolution: number;
   graphics: GraphicsCapabilities;
   contextLost: boolean;
+  /** Every `screen:fullscreen` payload the page has seen, oldest first. */
+  fullscreenEvents: boolean[];
 }
 
 /** Reads what the renderer says about the screen it drew on. */
 export class DisplayProbe extends CaseProbe {
   private readonly renderer = this.service(RendererKey);
+  private readonly fullscreenEvents: boolean[] = [];
+
+  onAdd(): void {
+    this.listenBus("screen:fullscreen", ({ active }) => {
+      this.fullscreenEvents.push(active);
+    });
+  }
 
   get settled(): boolean {
     return true;
@@ -39,6 +48,7 @@ export class DisplayProbe extends CaseProbe {
         rgba32float: { ...this.renderer.capabilities.rgba32float },
       },
       contextLost: this.renderer.contextLost,
+      fullscreenEvents: [...this.fullscreenEvents],
     };
   }
 }

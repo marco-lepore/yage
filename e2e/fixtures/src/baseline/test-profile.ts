@@ -1,4 +1,9 @@
-import { Component, InspectorKey, InspectorPlugin } from "@yagejs/core";
+import {
+  Component,
+  InspectorKey,
+  InspectorPlugin,
+  createStore,
+} from "@yagejs/core";
 import type {
   CallbackErrorRecord,
   Engine,
@@ -6,6 +11,7 @@ import type {
   Plugin,
 } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
+import { SaveServiceKey } from "@yagejs/save";
 import type { BaselineScene, CaseName } from "./cases.js";
 import type { CaseReading } from "./probe.js";
 import type { BaselineTarget } from "./boot.js";
@@ -36,6 +42,8 @@ export interface BaselineReading {
   errors: { callbackErrors: CallbackErrorRecord[] };
   /** Every `graphics:context` payload the page has seen, oldest first. */
   graphicsContext: boolean[];
+  /** What the page's content security policy allows. */
+  policy: { stringEvaluation: boolean };
   userAgent: string;
 }
 
@@ -62,6 +70,12 @@ export type BaselinePixel = [number, number, number, number];
 /** What a driver can ask the page for. */
 export interface BaselineExtension {
   read(): BaselineReading;
+  /** Ask the renderer to enter or leave fullscreen, and report how it went. */
+  fullscreen(
+    active: boolean,
+  ): Promise<
+    { outcome: "resolved" } | { outcome: "rejected"; message: string }
+  >;
   /** Viewport CSS position of a virtual point, for real input from a driver. */
   pointFor(x: number, y: number): { x: number; y: number };
   /** The colour drawn at each of {@link BASELINE_PIXEL_POINTS}. */
@@ -89,6 +103,7 @@ export function installTestProfile(
 ): void {
   const inspector = engine.context.resolve(InspectorKey);
   const bootId = crypto.randomUUID();
+  const stringEvaluation = allowsStringEvaluation();
   const graphicsContext: boolean[] = [];
   engine.events.on("graphics:context", ({ lost }) => {
     graphicsContext.push(lost);
@@ -114,12 +129,28 @@ export function installTestProfile(
       host: inspector.getHost(),
       errors: { callbackErrors: inspector.getErrors().callbackErrors },
       graphicsContext: [...graphicsContext],
+      policy: { stringEvaluation },
       userAgent: navigator.userAgent,
     };
   };
 
   const extension: BaselineExtension = {
     read,
+    async fullscreen(
+      active: boolean,
+    ): Promise<
+      { outcome: "resolved" } | { outcome: "rejected"; message: string }
+    > {
+      const renderer = engine.context.resolve(RendererKey);
+      try {
+        await (active
+          ? renderer.requestFullscreen()
+          : renderer.exitFullscreen());
+        return { outcome: "resolved" };
+      } catch (error) {
+        return { outcome: "rejected", message: (error as Error).message };
+      }
+    },
     pointFor(x: number, y: number): { x: number; y: number } {
       const renderer = engine.context.resolve(RendererKey);
       const point = renderer.virtualToCanvas(x, y);
@@ -186,6 +217,58 @@ export function installTestProfile(
   inspector.addExtension("baseline", extension);
 
   scene.spawn("baseline:reporter").add(new BaselineReporter(read, bootId));
+  if (new URLSearchParams(location.search).get("writeLoop") === "1") {
+    void writeLoop(engine, bootId);
+  }
+}
+
+/** The one counter the write loop keeps. */
+const loop = createStore((state) => ({
+  n: state.counter({ default: 0 }),
+}));
+
+/**
+ * Write one document over and over, reporting each write the storage
+ * acknowledged, so a driver that kills the process can check what a relaunch
+ * reads back. Each write starts when the previous one resolved.
+ */
+async function writeLoop(engine: Engine, bootId: string): Promise<void> {
+  const save = engine.context.resolve(SaveServiceKey);
+  let found: number | null = null;
+  let failure: string | null = null;
+  try {
+    await save.restore("loop", loop);
+    found = loop.n.value() === 0 ? null : loop.n.value();
+  } catch (error) {
+    failure = (error as Error).message;
+  }
+  writeLine(bootId, "loop-start", { found, error: failure });
+  if (failure !== null) return;
+  for (;;) {
+    loop.n.increment(1);
+    await save.persist("loop", loop);
+    writeLine(bootId, "write", { n: loop.n.value() });
+  }
+}
+
+/** One reported line, in the shape every driver parses. */
+function writeLine(
+  bootId: string,
+  kind: string,
+  data: Record<string, unknown>,
+): void {
+  console.info(
+    `${BASELINE_REPORT_PREFIX} ${JSON.stringify({ kind, bootId, ...data })}`,
+  );
+}
+
+/** Whether the page lets a script turn a string into code. */
+function allowsStringEvaluation(): boolean {
+  try {
+    return new Function("return true")() === true;
+  } catch {
+    return false;
+  }
 }
 
 /** Resolve when the renderer reports the context lost or back. */

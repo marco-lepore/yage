@@ -1,10 +1,7 @@
 {
   "name": "yage-baseline-electron-shell",
+  "productName": "YAGE Baseline",
   "private": true,
   "version": "0.0.0",
-  "description": "Unpackaged Electron shell that loads a built baseline web directory.",
-  "main": "main.cjs",
-  "dependencies": {
-    "electron": "44.7.0"
-  }
+  "main": "main.cjs"
 }

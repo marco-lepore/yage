@@ -22,6 +22,7 @@
       "@yagejs/effects",
       "@yagejs/lighting",
       "@yagejs/level",
+      "@yagejs/host-electron",
       "create-yage"
     ]
   ],

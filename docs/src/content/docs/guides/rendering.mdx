@@ -28,6 +28,11 @@ engine.use(
 The plugin creates the PixiJS application, sets up the render loop, and
 registers all rendering systems.
 
+The renderer also draws on a page whose content security policy forbids
+turning strings into code. PixiJS writes shader and uniform code at run time,
+and the renderer loads PixiJS's prebuilt replacements itself on such a page;
+your game needs no import and no option for it.
+
 ### Pixel-art preset
 
 If you're shipping pixel art, set `pixelArtPreset: true`. One flag flips
@@ -113,6 +118,10 @@ exact order. Pixi's Canvas 2D renderer is never asked for: it draws no light,
 skips every filter and ignores inverse masks, so a game that reached it would
 run half-drawn without saying so. Any other preference makes the plugin's
 constructor throw.
+
+Under a content security policy without `'unsafe-eval'`, PixiJS on WebGPU
+writes integer uniforms as floats, so `motionBlur` from `@yagejs/effects`
+draws nothing there. WebGL, the renderer's first choice, draws it.
 
 On a browser that offers neither WebGL nor WebGPU, `engine.start()` rejects
 with Pixi's `No available renderer for the current environment`. Catch it

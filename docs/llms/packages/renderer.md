@@ -37,6 +37,8 @@ A drawing callback (`GraphicsComponent.draw`, `createTexture`, `graphicsMask`) r
 
 ## Setup
 
+The renderer draws under a content security policy whose `script-src` omits `'unsafe-eval'`: on such a page it loads PixiJS's prebuilt shader and uniform code itself, before it creates the Pixi application. A game needs no import and no option for it.
+
 ```ts yage-context="engine"
 import { RendererPlugin } from "@yagejs/renderer";
 
@@ -125,6 +127,8 @@ const atlasSide = Math.min(2048, caps.maxTextureSize);
 ### Backends
 
 The renderer draws with WebGL or WebGPU. Pixi's Canvas 2D renderer draws no light, skips every filter with a console warning and ignores inverse masks, so the renderer never asks for it.
+
+Under a content security policy without `'unsafe-eval'`, PixiJS on WebGPU writes integer uniforms as floats, so `motionBlur` from `@yagejs/effects` draws nothing there. WebGL, which the renderer asks for first, draws it.
 
 | `pixi.preference`                    | What Pixi is asked for |
 | ------------------------------------ | ---------------------- |
@@ -288,6 +292,8 @@ Pair with `@yagejs/input` — `InputPlugin` auto-resolves the renderer via `Rend
 
 `RendererPlugin` is the one entrypoint for fullscreen and screen orientation, whichever application runs the game. It reads both from the `HostDisplay` a host adapter registered, and from the page's Fullscreen and Screen Orientation APIs for whatever no adapter supplies. The page's fullscreen target is the configured `container`, falling back to the canvas.
 
+In the Electron shell of `@yagejs/host-electron`, fullscreen is the window's, whatever started it: the menu, the system button, or `requestFullscreen()`.
+
 | Member                                                                     | Purpose                                                                                                                                                             |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `requestFullscreen(): Promise<void>`                                       | Present the game fullscreen. On a page, must be called from a user gesture. Resolves without asking the host when the game is fullscreen already.                   |
@@ -341,7 +347,7 @@ button.addEventListener("click", () => {
 
 ### Host display
 
-A host adapter supplies fullscreen, orientation, or both by registering a `HostDisplay` under `HostDisplayKey` in its `install`. The renderer picks the parts up when the engine starts. A part the adapter leaves out comes from the page, so an adapter replaces only what its own shell reports differently — a desktop shell whose window fullscreen the page cannot read supplies fullscreen and leaves orientation to the page.
+`@yagejs/host-electron` registers one for the Electron window. A host adapter supplies fullscreen, orientation, or both by registering a `HostDisplay` under `HostDisplayKey` in its `install`. The renderer picks the parts up when the engine starts. A part the adapter leaves out comes from the page, so an adapter replaces only what its own shell reports differently — a desktop shell whose window fullscreen the page cannot read supplies fullscreen and leaves orientation to the page.
 
 | Export            | Signature                                                                                                                             |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |

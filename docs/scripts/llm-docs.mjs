@@ -38,6 +38,7 @@ const EXPLICIT = {
   "guides/ui": "/llms/packages/ui.md",
   "guides/ui-react": "/llms/packages/ui-react.md",
   "guides/save-and-load": "/llms/packages/save.md",
+  "guides/electron": "/llms/packages/host-electron.md",
   "guides/assets": "/llms/assets.md",
   "guides/loading-scene": "/llms/loading-scene.md",
   "guides/scene-transitions": "/llms/scene-transitions.md",
