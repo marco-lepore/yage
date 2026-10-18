@@ -188,8 +188,11 @@ import {
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
 } from "@yagejs/core";
-import type { EngineEvents, SceneTransition } from "@yagejs/core";
+import type { EngineEvents, HostSupport, SceneTransition } from "@yagejs/core";
 import { RendererPlugin } from "./RendererPlugin.js";
+import { HostDisplayKey } from "./HostDisplay.js";
+import type { HostDisplay } from "./HostDisplay.js";
+import { TestHostDisplay } from "./TestHostDisplay.js";
 import { RenderFacetContributor } from "./RenderFacetContributor.js";
 import { RendererKey } from "./types.js";
 import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
@@ -761,12 +764,258 @@ describe("RendererPlugin", () => {
     });
   });
 
-  describe("fullscreen", () => {
+  describe("display", () => {
     afterEach(() => {
       vi.unstubAllGlobals();
     });
 
-    it("calls requestFullscreen on the configured container", async () => {
+    /** The eight members, with the message each reports outside the run. */
+    const DISPLAY_MEMBERS = [
+      "isFullscreen",
+      "fullscreenSupport",
+      "orientation",
+      "orientationLockSupport",
+      "requestFullscreen",
+      "exitFullscreen",
+      "lockOrientation",
+      "unlockOrientation",
+    ] as const;
+
+    function unavailableMessage(member: string): string {
+      return (
+        `RendererPlugin.${member}: the display is only available between ` +
+        "engine.start() and engine.destroy()."
+      );
+    }
+
+    /** Read every display member, collecting the failure each one reports. */
+    async function readAll(plugin: RendererPlugin): Promise<string[]> {
+      const reads: Record<(typeof DISPLAY_MEMBERS)[number], () => unknown> = {
+        isFullscreen: () => plugin.isFullscreen,
+        fullscreenSupport: () => plugin.fullscreenSupport,
+        orientation: () => plugin.orientation,
+        orientationLockSupport: () => plugin.orientationLockSupport,
+        requestFullscreen: () => plugin.requestFullscreen(),
+        exitFullscreen: () => plugin.exitFullscreen(),
+        lockOrientation: () => plugin.lockOrientation("portrait"),
+        unlockOrientation: () => plugin.unlockOrientation(),
+      };
+      const failures: string[] = [];
+      for (const member of DISPLAY_MEMBERS) {
+        try {
+          await reads[member]();
+          failures.push(`${member}: no failure`);
+        } catch (error) {
+          failures.push((error as Error).message);
+        }
+      }
+      return failures;
+    }
+
+    interface HarnessOptions {
+      readonly display?: HostDisplay;
+      readonly config?: Partial<RendererConfig>;
+    }
+
+    interface Harness {
+      readonly plugin: RendererPlugin;
+      readonly boundary: ErrorBoundary;
+      readonly fullscreenEvents: boolean[];
+      readonly orientationEvents: OrientationType[];
+      /** Both events in the order they were emitted, by name. */
+      readonly order: string[];
+    }
+
+    /** Install and start a renderer, recording both display events. */
+    async function startRenderer(
+      options: HarnessOptions = {},
+    ): Promise<Harness> {
+      const { context } = createInstallContext();
+      const bus = context.resolve(EventBusKey);
+      const boundary = context.resolve(ErrorBoundaryKey);
+      bus._setErrorBoundary(boundary);
+      if (options.display) context.register(HostDisplayKey, options.display);
+      const fullscreenEvents: boolean[] = [];
+      const orientationEvents: OrientationType[] = [];
+      const order: string[] = [];
+      bus.on("screen:fullscreen", ({ active }) => {
+        fullscreenEvents.push(active);
+        order.push("fullscreen");
+      });
+      bus.on("screen:orientation", ({ type }) => {
+        orientationEvents.push(type);
+        order.push("orientation");
+      });
+      const plugin = new RendererPlugin({
+        ...defaultConfig,
+        ...options.config,
+      });
+      await plugin.install(context);
+      plugin.onStart();
+      return { plugin, boundary, fullscreenEvents, orientationEvents, order };
+    }
+
+    /** The state a {@link manualDisplay} reports, before validation. */
+    interface ManualState {
+      active: unknown;
+      support: unknown;
+      current: unknown;
+      lockSupport: unknown;
+    }
+
+    /**
+     * A display whose fullscreen transitions settle when the test says so, so
+     * a test can observe what the renderer does while one is in flight and in
+     * which order it publishes the result.
+     */
+    function manualDisplay(initial: Partial<ManualState> = {}): {
+      display: HostDisplay;
+      state: ManualState;
+      calls: string[];
+      rejectWith: { error: Error | null };
+      settle: () => void;
+      notify: () => void;
+      notifyDetached: () => void;
+      stops: () => number;
+    } {
+      const state: ManualState = {
+        active: false,
+        support: "supported",
+        current: "landscape-primary",
+        lockSupport: "supported",
+        ...initial,
+      };
+      const calls: string[] = [];
+      const rejectWith: { error: Error | null } = { error: null };
+      let pending: (() => void) | null = null;
+      let changed: (() => void) | null = null;
+      // Kept past the stop function, so a test can report a change the way a
+      // host whose own listener outlives the engine does.
+      let detached: (() => void) | null = null;
+      let stops = 0;
+      const transition = (to: boolean): Promise<void> =>
+        new Promise<void>((resolve, reject) => {
+          pending = () => {
+            pending = null;
+            if (rejectWith.error) {
+              reject(rejectWith.error);
+              return;
+            }
+            state.active = to;
+            resolve();
+          };
+        });
+      const display: HostDisplay = {
+        fullscreen: {
+          get support(): HostSupport {
+            return state.support as HostSupport;
+          },
+          get active(): boolean {
+            return state.active as boolean;
+          },
+          request(): Promise<void> {
+            calls.push("request");
+            return transition(true);
+          },
+          exit(): Promise<void> {
+            calls.push("exit");
+            return transition(false);
+          },
+        },
+        orientation: {
+          get current(): OrientationType | null {
+            return state.current as OrientationType | null;
+          },
+          get lockSupport(): HostSupport {
+            return state.lockSupport as HostSupport;
+          },
+          lock(lock): Promise<void> {
+            calls.push(`lock:${lock}`);
+            state.current = lock === "portrait" ? "portrait-primary" : lock;
+            return Promise.resolve();
+          },
+          unlock(): Promise<void> {
+            calls.push("unlock");
+            return Promise.resolve();
+          },
+        },
+        watch(fn): () => void {
+          changed = fn;
+          detached = fn;
+          return () => {
+            stops += 1;
+            changed = null;
+          };
+        },
+      };
+      return {
+        display,
+        state,
+        calls,
+        rejectWith,
+        settle: () => pending?.(),
+        notify: () => changed?.(),
+        notifyDetached: () => detached?.(),
+        stops: () => stops,
+      };
+    }
+
+    it("reports every member as unavailable before the engine starts", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+
+      expect(await readAll(plugin)).toEqual(
+        DISPLAY_MEMBERS.map(unavailableMessage),
+      );
+    });
+
+    it("reports every member as unavailable after the engine is destroyed", async () => {
+      const { plugin } = await startRenderer({
+        display: new TestHostDisplay(),
+      });
+      plugin.onDestroy();
+
+      expect(await readAll(plugin)).toEqual(
+        DISPLAY_MEMBERS.map(unavailableMessage),
+      );
+    });
+
+    it("reads a registered display and leaves the page alone", async () => {
+      const documentAddEventListener = vi.fn();
+      const orientationAddEventListener = vi.fn();
+      vi.stubGlobal("document", {
+        fullscreenElement: null,
+        fullscreenEnabled: true,
+        addEventListener: documentAddEventListener,
+        removeEventListener: vi.fn(),
+      });
+      vi.stubGlobal("window", {
+        screen: {
+          orientation: {
+            type: "portrait-primary",
+            addEventListener: orientationAddEventListener,
+            removeEventListener: vi.fn(),
+          },
+        },
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      });
+      const display = new TestHostDisplay({ orientation: "landscape-primary" });
+
+      const { plugin } = await startRenderer({ display });
+
+      expect(plugin.fullscreenSupport).toBe("supported");
+      expect(plugin.orientation).toBe("landscape-primary");
+      const attached = documentAddEventListener.mock.calls.map(
+        (args: unknown[]) => args[0],
+      );
+      expect(attached).not.toContain("fullscreenchange");
+      expect(attached).not.toContain("webkitfullscreenchange");
+      expect(orientationAddEventListener).not.toHaveBeenCalled();
+    });
+
+    it("asks the configured container for fullscreen with no display registered", async () => {
       const requestFullscreen = vi.fn().mockResolvedValue(undefined);
       const container = {
         requestFullscreen,
@@ -775,105 +1024,418 @@ describe("RendererPlugin", () => {
       } as unknown as HTMLElement;
       vi.stubGlobal("document", {
         fullscreenElement: null,
+        fullscreenEnabled: true,
         exitFullscreen: vi.fn().mockResolvedValue(undefined),
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
       });
 
-      const { context } = createInstallContext();
-      const plugin = new RendererPlugin({ ...defaultConfig, container });
-      await plugin.install(context);
+      const { plugin } = await startRenderer({ config: { container } });
       await plugin.requestFullscreen();
 
       expect(requestFullscreen).toHaveBeenCalledOnce();
     });
 
-    it("falls back to the webkit-prefixed API when unprefixed is unavailable", async () => {
-      const webkitRequestFullscreen = vi.fn();
-      const container = {
-        webkitRequestFullscreen,
-        appendChild: vi.fn(),
-        getBoundingClientRect: () => ({ width: 800, height: 600 }),
-      } as unknown as HTMLElement;
+    it("asks the canvas for fullscreen when there is no container", async () => {
       vi.stubGlobal("document", {
-        webkitFullscreenElement: null,
-        webkitExitFullscreen: vi.fn(),
+        fullscreenElement: null,
+        fullscreenEnabled: true,
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
       });
+      const { plugin } = await startRenderer();
+      const canvas = plugin.canvas as unknown as {
+        requestFullscreen: () => Promise<void>;
+      };
+      canvas.requestFullscreen = vi.fn().mockResolvedValue(undefined);
 
-      const { context } = createInstallContext();
-      const plugin = new RendererPlugin({ ...defaultConfig, container });
-      await plugin.install(context);
       await plugin.requestFullscreen();
 
-      expect(webkitRequestFullscreen).toHaveBeenCalledOnce();
+      expect(canvas.requestFullscreen).toHaveBeenCalledOnce();
     });
 
-    it("emits screen:fullscreen when fullscreenchange fires", async () => {
-      let changeHandler: (() => void) | null = null;
-      const container = {
-        requestFullscreen: vi.fn().mockResolvedValue(undefined),
-        appendChild: vi.fn(),
-        getBoundingClientRect: () => ({ width: 800, height: 600 }),
-      } as unknown as HTMLElement;
-      vi.stubGlobal("document", {
-        fullscreenElement: null,
-        exitFullscreen: vi.fn().mockResolvedValue(undefined),
-        addEventListener: vi.fn((event: string, fn: () => void) => {
-          if (event === "fullscreenchange") changeHandler = fn;
-        }),
+    it("takes the part a display leaves out from the page", async () => {
+      vi.stubGlobal("window", {
+        screen: { orientation: { type: "portrait-secondary" } },
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      });
+      const fullscreenOnly: HostDisplay = {
+        fullscreen: {
+          support: "unsupported",
+          active: false,
+          request: () => Promise.resolve(),
+          exit: () => Promise.resolve(),
+        },
+        watch: () => () => {},
+      };
+
+      const { plugin } = await startRenderer({ display: fullscreenOnly });
+
+      expect(plugin.fullscreenSupport).toBe("unsupported");
+      expect(plugin.orientation).toBe("portrait-secondary");
+      expect(plugin.orientationLockSupport).toBe("unsupported");
+    });
+
+    it("takes fullscreen from the page for a display that only reports orientation", async () => {
+      const orientationOnly: HostDisplay = {
+        orientation: {
+          current: "portrait-primary",
+          lockSupport: "supported",
+          lock: () => Promise.resolve(),
+          unlock: () => Promise.resolve(),
+        },
+        watch: () => () => {},
+      };
+
+      const { plugin } = await startRenderer({ display: orientationOnly });
+
+      // No document in this environment, so the page reports no fullscreen.
+      expect(plugin.fullscreenSupport).toBe("unsupported");
+      expect(plugin.orientation).toBe("portrait-primary");
+      expect(plugin.orientationLockSupport).toBe("supported");
+    });
+
+    it("emits one event per state that moved", async () => {
+      const display = new TestHostDisplay({ orientation: "portrait-primary" });
+      const { plugin, fullscreenEvents, orientationEvents, order } =
+        await startRenderer({ display });
+
+      // The state at start is the baseline, not a change.
+      expect(plugin.isFullscreen).toBe(false);
+      expect(fullscreenEvents).toEqual([]);
+      expect(orientationEvents).toEqual([]);
+
+      display.set({ fullscreen: false });
+      expect(fullscreenEvents).toEqual([]);
+      expect(orientationEvents).toEqual([]);
+
+      display.set({ orientation: "landscape-primary" });
+      expect(orientationEvents).toEqual(["landscape-primary"]);
+
+      display.set({ orientation: null });
+      expect(orientationEvents).toEqual(["landscape-primary"]);
+
+      order.length = 0;
+      display.set({ fullscreen: true, orientation: "portrait-secondary" });
+      expect(fullscreenEvents).toEqual([true]);
+      expect(orientationEvents).toEqual([
+        "landscape-primary",
+        "portrait-secondary",
+      ]);
+      // One change of both states publishes fullscreen first.
+      expect(order).toEqual(["fullscreen", "orientation"]);
+    });
+
+    it("resolves a request that changes nothing without asking the host", async () => {
+      const { display, calls } = manualDisplay({ active: true });
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      await expect(plugin.requestFullscreen()).resolves.toBeUndefined();
+
+      expect(calls).toEqual([]);
+      expect(fullscreenEvents).toEqual([]);
+    });
+
+    it("rejects a request on a host that cannot change to fullscreen", async () => {
+      const { display, calls } = manualDisplay({ support: "unsupported" });
+      const { plugin } = await startRenderer({ display });
+
+      await expect(plugin.requestFullscreen()).rejects.toThrow(
+        "RendererPlugin.requestFullscreen: this host cannot change to " +
+          'fullscreen (fullscreenSupport is "unsupported").',
+      );
+      expect(calls).toEqual([]);
+    });
+
+    it("asks a host that cannot tell whether it supports fullscreen", async () => {
+      const { display, calls, settle } = manualDisplay({ support: "unknown" });
+      const { plugin } = await startRenderer({ display });
+
+      const pending = plugin.requestFullscreen();
+      settle();
+      await pending;
+
+      expect(calls).toEqual(["request"]);
+      expect(plugin.isFullscreen).toBe(true);
+    });
+
+    it("emits the change before the request resolves", async () => {
+      const { display, settle } = manualDisplay();
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const pending = plugin.requestFullscreen();
+      expect(fullscreenEvents).toEqual([]);
+      settle();
+      await pending;
+
+      expect(fullscreenEvents).toEqual([true]);
+    });
+
+    it("passes a host's refusal on and emits nothing", async () => {
+      const refusal = new TypeError("Permissions check failed");
+      const { display, rejectWith, settle } = manualDisplay();
+      rejectWith.error = refusal;
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const pending = plugin.requestFullscreen();
+      settle();
+
+      await expect(pending).rejects.toBe(refusal);
+      expect(fullscreenEvents).toEqual([]);
+    });
+
+    it("shares one request between callers", async () => {
+      const { display, calls, settle } = manualDisplay();
+      const { plugin } = await startRenderer({ display });
+
+      const first = plugin.requestFullscreen();
+      const second = plugin.requestFullscreen();
+      expect(second).toBe(first);
+      settle();
+      await Promise.all([first, second]);
+
+      expect(calls).toEqual(["request"]);
+    });
+
+    it("shares one exit between callers", async () => {
+      const { display, calls, settle } = manualDisplay({ active: true });
+      const { plugin } = await startRenderer({ display });
+
+      const first = plugin.exitFullscreen();
+      const second = plugin.exitFullscreen();
+      expect(second).toBe(first);
+      settle();
+      await Promise.all([first, second]);
+
+      expect(calls).toEqual(["exit"]);
+    });
+
+    it("runs an exit after the request it interrupts", async () => {
+      const { display, calls, settle } = manualDisplay();
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const request = plugin.requestFullscreen();
+      const exit = plugin.exitFullscreen();
+      settle();
+      await request;
+      settle();
+      await exit;
+
+      expect(calls).toEqual(["request", "exit"]);
+      expect(fullscreenEvents).toEqual([true, false]);
+      expect(plugin.isFullscreen).toBe(false);
+    });
+
+    it("runs a request after the exit it interrupts", async () => {
+      const { display, calls, settle } = manualDisplay({ active: true });
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const exit = plugin.exitFullscreen();
+      const request = plugin.requestFullscreen();
+      settle();
+      await exit;
+      settle();
+      await request;
+
+      expect(calls).toEqual(["exit", "request"]);
+      expect(fullscreenEvents).toEqual([false, true]);
+      expect(plugin.isFullscreen).toBe(true);
+    });
+
+    it("resolves an exit that changes nothing without asking the host", async () => {
+      const { display, calls } = manualDisplay();
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      await expect(plugin.exitFullscreen()).resolves.toBeUndefined();
+
+      expect(calls).toEqual([]);
+      expect(fullscreenEvents).toEqual([]);
+    });
+
+    it("rejects an orientation lock on a host that cannot lock", async () => {
+      const { display, calls } = manualDisplay({ lockSupport: "unsupported" });
+      const { plugin } = await startRenderer({ display });
+
+      await expect(plugin.lockOrientation("landscape")).rejects.toThrow(
+        "RendererPlugin.lockOrientation: this host cannot lock the screen " +
+          'orientation (orientationLockSupport is "unsupported").',
+      );
+      expect(calls).toEqual([]);
+    });
+
+    it("resolves a lock with the orientation the host reports afterwards", async () => {
+      const { display, calls } = manualDisplay();
+      const { plugin, orientationEvents } = await startRenderer({ display });
+
+      await expect(plugin.lockOrientation("portrait")).resolves.toBe(
+        "portrait-primary",
+      );
+
+      expect(calls).toEqual(["lock:portrait"]);
+      expect(orientationEvents).toEqual(["portrait-primary"]);
+    });
+
+    it("resolves the release on a host that cannot lock", async () => {
+      const { display, calls } = manualDisplay({ lockSupport: "unsupported" });
+      const { plugin } = await startRenderer({ display });
+
+      await expect(plugin.unlockOrientation()).resolves.toBeUndefined();
+
+      expect(calls).toEqual([]);
+    });
+
+    it("releases the lock through the host", async () => {
+      const { display, calls } = manualDisplay();
+      const { plugin } = await startRenderer({ display });
+
+      await plugin.unlockOrientation();
+
+      expect(calls).toEqual(["unlock"]);
+    });
+
+    it.each([
+      [
+        { active: "yes" },
+        'HostFullscreen.active must be a boolean, got "yes".',
+      ],
+      [
+        { support: "maybe" },
+        "HostFullscreen.support must be one of supported, unsupported, " +
+          'unknown, got "maybe".',
+      ],
+      [
+        { current: "up" },
+        "HostOrientation.current must be one of portrait-primary, " +
+          "portrait-secondary, landscape-primary, landscape-secondary or " +
+          'null, got "up".',
+      ],
+      [
+        { lockSupport: 7 },
+        "HostOrientation.lockSupport must be one of supported, unsupported, " +
+          "unknown, got 7.",
+      ],
+    ])("rejects the value %o a host reports", async (broken, message) => {
+      const { display, state } = manualDisplay();
+      const { plugin, fullscreenEvents, orientationEvents } =
+        await startRenderer({ display });
+      Object.assign(state, broken);
+
+      expect(() => {
+        if ("active" in broken) return plugin.isFullscreen;
+        if ("support" in broken) return plugin.fullscreenSupport;
+        if ("current" in broken) return plugin.orientation;
+        return plugin.orientationLockSupport;
+      }).toThrow(message);
+      expect(fullscreenEvents).toEqual([]);
+      expect(orientationEvents).toEqual([]);
+    });
+
+    it("passes a host's refusal of an exit on and emits nothing", async () => {
+      const refusal = new TypeError("Document not active");
+      const { display, rejectWith, settle } = manualDisplay({ active: true });
+      rejectWith.error = refusal;
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const pending = plugin.exitFullscreen();
+      settle();
+
+      await expect(pending).rejects.toBe(refusal);
+      expect(fullscreenEvents).toEqual([]);
+    });
+
+    it("rejects a request that reads a broken value from the host", async () => {
+      const { display, state } = manualDisplay();
+      const { plugin } = await startRenderer({ display });
+      state.active = "yes";
+
+      await expect(plugin.requestFullscreen()).rejects.toThrow(
+        'HostFullscreen.active must be a boolean, got "yes".',
+      );
+    });
+
+    it("rejects an exit that reads a broken value from the host", async () => {
+      const { display, state } = manualDisplay();
+      const { plugin } = await startRenderer({ display });
+      state.active = 1;
+
+      await expect(plugin.exitFullscreen()).rejects.toThrow(
+        "HostFullscreen.active must be a boolean, got 1.",
+      );
+    });
+
+    it("rejects a lock and a release that read a broken value", async () => {
+      const { display, state } = manualDisplay();
+      const { plugin } = await startRenderer({ display });
+      state.lockSupport = null;
+      const message =
+        "HostOrientation.lockSupport must be one of supported, unsupported, " +
+        "unknown, got null.";
+
+      await expect(plugin.lockOrientation("portrait")).rejects.toThrow(message);
+      await expect(plugin.unlockOrientation()).rejects.toThrow(message);
+    });
+
+    it("stops watching the display once, on destroy", async () => {
+      const { display, state, stops, notifyDetached } = manualDisplay();
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      plugin.onDestroy();
+      expect(stops()).toBe(1);
+
+      state.active = true;
+      expect(() => notifyDetached()).not.toThrow();
+      expect(fullscreenEvents).toEqual([]);
+    });
+
+    it("records a throwing event handler and reports it to the caller", async () => {
+      const failure = new Error("handler failed");
+      const { display, settle, notifyDetached } = manualDisplay();
+      const { context } = createInstallContext();
+      const bus = context.resolve(EventBusKey);
+      const boundary = context.resolve(ErrorBoundaryKey);
+      bus._setErrorBoundary(boundary);
+      context.register(HostDisplayKey, display);
+      bus.on("screen:fullscreen", () => {
+        throw failure;
+      });
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      plugin.onStart();
+
+      const pending = plugin.requestFullscreen();
+      settle();
+      await expect(pending).rejects.toBe(failure);
+
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]?.event).toBe("screen:fullscreen");
+      // The state was stored before the handler ran, so the same state is not
+      // a change: the handler, which throws on every emit, is not called
+      // again.
+      expect(plugin.isFullscreen).toBe(true);
+      expect(() => notifyDetached()).not.toThrow();
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+    });
+
+    it("follows the display's pixel ratio unless the game fixed the resolution", async () => {
+      const matchMedia = vi.fn(() => ({
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+      vi.stubGlobal("window", {
+        devicePixelRatio: 2,
+        matchMedia,
+        screen: {},
+        addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
       });
 
-      const { context } = createInstallContext();
-      const bus = context.resolve(EventBusKey);
-      const received: Array<{ active: boolean }> = [];
-      bus.on("screen:fullscreen", (data) => received.push(data));
+      await startRenderer();
+      expect(matchMedia).toHaveBeenCalledWith("(resolution: 2dppx)");
 
-      const plugin = new RendererPlugin({ ...defaultConfig, container });
-      await plugin.install(context);
-
-      // Simulate the browser entering fullscreen, then dispatching the event.
-      const fire = changeHandler as unknown as (() => void) | null;
-      (
-        document as unknown as { fullscreenElement: HTMLElement | null }
-      ).fullscreenElement = container;
-      fire?.();
-      expect(received).toEqual([{ active: true }]);
-
-      (
-        document as unknown as { fullscreenElement: HTMLElement | null }
-      ).fullscreenElement = null;
-      fire?.();
-      expect(received).toEqual([{ active: true }, { active: false }]);
-    });
-
-    it("removes the fullscreenchange listener on destroy", async () => {
-      const removeEventListener = vi.fn();
-      const container = {
-        requestFullscreen: vi.fn().mockResolvedValue(undefined),
-        appendChild: vi.fn(),
-        getBoundingClientRect: () => ({ width: 800, height: 600 }),
-      } as unknown as HTMLElement;
-      vi.stubGlobal("document", {
-        fullscreenElement: null,
-        exitFullscreen: vi.fn().mockResolvedValue(undefined),
-        addEventListener: vi.fn(),
-        removeEventListener,
-      });
-
-      const { context } = createInstallContext();
-      const plugin = new RendererPlugin({ ...defaultConfig, container });
-      await plugin.install(context);
-      plugin.onDestroy();
-
-      // Both the standard and prefixed listener names are detached.
-      const detached = removeEventListener.mock.calls.map(
-        (args: unknown[]) => args[0],
-      );
-      expect(detached).toContain("fullscreenchange");
-      expect(detached).toContain("webkitfullscreenchange");
+      matchMedia.mockClear();
+      await startRenderer({ config: { resolution: 1 } });
+      expect(matchMedia).not.toHaveBeenCalled();
     });
   });
 
@@ -1006,105 +1568,6 @@ describe("RendererPlugin", () => {
     });
   });
 
-  describe("orientation", () => {
-    afterEach(() => {
-      vi.unstubAllGlobals();
-    });
-
-    it("emits screen:orientation when the screen orientation changes", async () => {
-      let changeHandler: (() => void) | null = null;
-      const orientationMock = {
-        type: "landscape-primary",
-        addEventListener: vi.fn((event: string, fn: () => void) => {
-          if (event === "change") changeHandler = fn;
-        }),
-        removeEventListener: vi.fn(),
-      };
-      vi.stubGlobal("window", {
-        screen: { orientation: orientationMock },
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      });
-      vi.stubGlobal("document", {
-        fullscreenElement: null,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      });
-
-      const { context } = createInstallContext();
-      const bus = context.resolve(EventBusKey);
-      const received: Array<{ type: OrientationType }> = [];
-      bus.on("screen:orientation", (data) => received.push(data));
-
-      const plugin = new RendererPlugin(defaultConfig);
-      await plugin.install(context);
-
-      orientationMock.type = "portrait-primary";
-      (changeHandler as unknown as (() => void) | null)?.();
-
-      expect(received).toEqual([{ type: "portrait-primary" }]);
-      expect(plugin.orientation).toBe("portrait-primary");
-    });
-
-    it("falls back to window.orientationchange on browsers without screen.orientation", async () => {
-      let changeHandler: (() => void) | null = null;
-      const windowAddEventListener = vi.fn((event: string, fn: () => void) => {
-        if (event === "orientationchange") changeHandler = fn;
-      });
-      vi.stubGlobal("window", {
-        screen: {},
-        orientation: 90,
-        addEventListener: windowAddEventListener,
-        removeEventListener: vi.fn(),
-      });
-      vi.stubGlobal("document", {
-        fullscreenElement: null,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      });
-
-      const { context } = createInstallContext();
-      const bus = context.resolve(EventBusKey);
-      const received: Array<{ type: OrientationType }> = [];
-      bus.on("screen:orientation", (data) => received.push(data));
-
-      const plugin = new RendererPlugin(defaultConfig);
-      await plugin.install(context);
-
-      (changeHandler as unknown as (() => void) | null)?.();
-      expect(received).toEqual([{ type: "landscape-primary" }]);
-    });
-
-    it("removes the orientation listener on destroy", async () => {
-      const removeEventListener = vi.fn();
-      vi.stubGlobal("window", {
-        screen: {
-          orientation: {
-            type: "portrait-primary",
-            addEventListener: vi.fn(),
-            removeEventListener,
-          },
-        },
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      });
-      vi.stubGlobal("document", {
-        fullscreenElement: null,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      });
-
-      const { context } = createInstallContext();
-      const plugin = new RendererPlugin(defaultConfig);
-      await plugin.install(context);
-      plugin.onDestroy();
-
-      expect(removeEventListener).toHaveBeenCalledWith(
-        "change",
-        expect.any(Function),
-      );
-    });
-  });
   describe("UI hit testing and pointer dispatch", () => {
     /** A container chain the hit test can walk, innermost first. */
     function chain(depth: number): Array<{ parent: object | null }> {

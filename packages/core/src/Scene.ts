@@ -205,11 +205,13 @@ export abstract class Scene {
 
   /**
    * Manual pause flag. Set by game code to pause this scene regardless of
-   * stack position. Assigning it fires `onPause`/`onResume` when the
-   * effective pause state (`isPaused`) flips — writes that don't change the
-   * flag, or that are masked by a stack pause, fire nothing. Writes before
-   * the scene is pushed fire nothing either; the push itself fires `onPause`
-   * for a scene entering paused.
+   * stack position, and written by game code only: the manager's `autoPause`
+   * holds its own pause, so a write made while the game is in the background
+   * is still in force after the return. Assigning it fires
+   * `onPause`/`onResume` when the effective pause state (`isPaused`) flips —
+   * writes that don't change the flag, or that are masked by a stack or host
+   * pause, fire nothing. Writes before the scene is pushed fire nothing
+   * either; the push itself fires `onPause` for a scene entering paused.
    *
    * To start a scene paused, set `paused = true` before pushing it — the push
    * fires `onPause` once. Do NOT write `paused` from inside a lifecycle hook
@@ -252,8 +254,8 @@ export abstract class Scene {
   /**
    * Run a lifecycle hook (`onPause`/`onResume` triggered from this setter,
    * separate from the push/pop/replace-driven calls in `SceneManager`)
-   * through the error boundary when one is available. Reports and rethrows
-   * so a throwing hook still surfaces exactly as it does today.
+   * through the error boundary when one is available. Reports and rethrows,
+   * so a throwing hook propagates to its caller.
    */
   private _invokeLifecycleHook(
     boundary: ErrorBoundary | undefined,
@@ -322,7 +324,11 @@ export abstract class Scene {
     return this._context;
   }
 
-  /** Whether this scene is effectively paused (manual pause or paused by stack). */
+  /**
+   * Whether this scene is effectively paused: the manual {@link paused} flag,
+   * the manager's `autoPause` while the host is inactive, or a scene above it
+   * on the stack with `pauseBelow`.
+   */
   get isPaused(): boolean {
     if (this.paused) return true;
     const sm = this._context?.tryResolve(SceneManagerKey);
@@ -330,6 +336,7 @@ export abstract class Scene {
     const stack = sm.all;
     const idx = stack.indexOf(this);
     if (idx === -1) return false;
+    if (sm._pausedByHost) return true;
     for (let i = idx + 1; i < stack.length; i++) {
       if (stack[i]!.pauseBelow) return true;
     }
@@ -978,14 +985,14 @@ export abstract class Scene {
   /**
    * Called when the scene becomes effectively paused (`isPaused` flips to
    * true), whatever the source: a `pauseBelow` scene pushed on top, a manual
-   * `paused = true`, or the manager's blur auto-pause.
+   * `paused = true`, or the manager's `autoPause` while the host is inactive.
    */
   onPause?(): void;
 
   /**
    * Called when the scene stops being effectively paused (`isPaused` flips
-   * to false): the scene above is popped, `paused` is cleared, or focus
-   * returns after a blur auto-pause.
+   * to false): the scene above is popped, `paused` is cleared, or the host
+   * becomes active again under the manager's `autoPause`.
    */
   onResume?(): void;
 

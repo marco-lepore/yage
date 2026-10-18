@@ -308,43 +308,45 @@ if (!audio.isUnlocked()) {
 }
 ```
 
-`isUnlocked()` reflects `AudioContext.state === "running"` and is **never**
-flipped by the mute/pause-on-blur flags below — it is strictly the
-browser-capability check.
+`isUnlocked()` reflects `AudioContext.state === "running"`. It is `false`
+before the first gesture, while audio is held because the game is in the
+background, and until the context has resumed after the game comes back.
 
-## Tab Visibility
+## Pausing in the Background
 
-Most web games go silent when the user backgrounds the tab. `AudioManager`
-suspends the underlying `AudioContext` when the window loses focus and
-resumes it on return:
+Most web games go silent when the player leaves them. `AudioManager` holds all
+audio while the game is in the background — the app is inactive, the page is
+hidden, or the window is unfocused — and releases it on the return:
 
 ```typescript yage-context="engine,scene-enter"
 import { AudioManagerKey, AudioPlugin } from "@yagejs/audio";
 
 engine.use(new AudioPlugin({
-  autoMuteOnBlur: true, // default: true
+  autoPause: true, // default: true
 }));
 
 // Or toggle at runtime:
 const audio = this.use(AudioManagerKey);
-audio.autoMuteOnBlur = false;
+audio.autoPause = false;
 ```
 
-`autoMuteOnBlur` is delegated to `@pixi/sound`'s built-in
-`WebAudioContext.autoPause`, which listens for `window.blur`/`focus` events
-and pauses/resumes the entire `AudioContext`. Per-channel mutes and volumes
-are untouched. Toggling the flag while the window is currently unfocused
-takes effect immediately (the manager reconciles `paused` for you);
-otherwise the new policy applies on the next blur event.
+The hold pauses the whole audio output, so a loop continues from where it
+stopped rather than restarting. Channel and handle volume, mute and pause stay
+as the player set them, and a sound the game had paused itself is still paused
+after the return. Toggling the setting takes effect at once, in either
+direction.
 
-Pausing scenes on tab blur is a scene-lifecycle concern, not an audio one —
-see [`SceneManager.autoPauseOnBlur`](/patterns/scene-management/#pause-on-tab-blur).
+What counts as "in the background" is one engine-wide answer,
+`engine.host.active` — see
+[Active, visible, focused](/concepts/engine-and-plugins/#active-visible-focused).
+Pausing scenes is a scene-lifecycle concern, not an audio one: see
+[`SceneManager.autoPause`](/patterns/scene-management/#pause-while-the-game-is-in-the-background).
 
 ## Runtime Sounds
 
 `registerSound(alias, buffer)` registers a runtime-generated `AudioBuffer`
 under an alias, so it resolves and plays exactly like a preloaded sound —
-through the same `AudioManager` channels, mute, and blur auto-pause. This is
+through the same `AudioManager` channels, mute, and automatic pause. This is
 the audio counterpart to the renderer's `registerTexture(key, texture)`, and
 it's how a procedural-audio addon plugs a synthesized sound effect into the
 engine.

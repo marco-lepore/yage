@@ -1,6 +1,9 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   EngineContext,
+  EventBus,
+  Host,
+  HostKey,
   RendererAdapterKey,
   SceneHookRegistry,
   SceneHookRegistryKey,
@@ -10,6 +13,7 @@ import {
   SystemScheduler,
   createMockScene,
 } from "@yagejs/core";
+import type { HostLifecycleReport } from "@yagejs/core";
 
 // Local mock key — simulates a foreign (non-@yagejs/renderer) renderer
 // registered under its own ServiceKey. Its distinct string id keeps it
@@ -22,13 +26,26 @@ import { InputPlugin } from "./InputPlugin.js";
 import { InputManagerKey } from "./types.js";
 import { InputManager } from "./InputManager.js";
 
+/**
+ * Every engine registers a `Host`, and the plugin follows it for the states
+ * that end a hold. The host here is connected, so it reads this document and
+ * its window the way it does in a browser.
+ */
+let host: Host | undefined;
+
 function createContext(options?: {
   withRenderer?: boolean;
   underKey?: ServiceKey<{ canvas: HTMLCanvasElement }>;
   canvas?: HTMLCanvasElement;
+  connectHost?: boolean;
 }): EngineContext {
   const context = new EngineContext();
   context.register(SceneHookRegistryKey, new SceneHookRegistry());
+  host = new Host();
+  context.register(HostKey, host);
+  if (options?.connectHost !== false) {
+    host._connect({ events: new EventBus(), syncScenes: () => {} });
+  }
 
   if (options?.withRenderer) {
     const canvas = options.canvas ?? document.createElement("canvas");
@@ -38,12 +55,37 @@ function createContext(options?: {
   return context;
 }
 
+/** Attach an adapter to the context's host and report a change through it. */
+function reportHost(state: HostLifecycleReport): void {
+  const current = host;
+  if (!current) throw new Error("no host in the context");
+  let push: ((report: HostLifecycleReport) => void) | undefined;
+  current.attach({
+    info: {
+      runtime: "test",
+      os: "unknown",
+      appVersion: undefined,
+      appBuild: undefined,
+      runtimeVersion: undefined,
+    },
+    watchLifecycle: (report) => {
+      push = report;
+      return () => {
+        push = undefined;
+      };
+    },
+  });
+  push?.(state);
+}
+
 describe("InputPlugin", () => {
   let plugin: InputPlugin;
   let context: EngineContext;
 
   afterEach(() => {
     plugin?.onDestroy();
+    host?._dispose();
+    host = undefined;
   });
 
   it("registers InputManagerKey service on install", () => {
@@ -237,6 +279,7 @@ describe("InputPlugin", () => {
     // canvasToVirtual doubles them to prove the branch ran.
     const context = new EngineContext();
     context.register(SceneHookRegistryKey, new SceneHookRegistry());
+    context.register(HostKey, new Host());
     context.register(RendererAdapterKey, {
       canvas,
       canvasToVirtual: (x, y) => ({ x: x * 2, y: y * 2 }),
@@ -352,6 +395,7 @@ describe("InputPlugin", () => {
     const { scene, context } = createMockScene();
     const hooks = new SceneHookRegistry();
     context.register(SceneHookRegistryKey, hooks);
+    context.register(HostKey, new Host());
     plugin = new InputPlugin({ actions: { jump: ["Space"] } });
     plugin.install(context);
     const manager = context.resolve(InputManagerKey);
@@ -976,5 +1020,72 @@ describe("InputPlugin", () => {
     expect(manager.getStick("left")).toEqual(Vec2.ZERO);
     manager.fireGamepadAxis("leftX", 0.5);
     expect(manager.getStick("left").x).toBeGreaterThan(0);
+  });
+
+  describe("host state that ends a hold", () => {
+    it("releases held input when the host reports the app inactive", () => {
+      context = createContext();
+      plugin = new InputPlugin({ actions: { jump: ["Space"] } });
+      plugin.install(context);
+      const manager = context.resolve(InputManagerKey);
+
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
+      manager._drainInputQueue();
+      expect(manager.isPressed("jump")).toBe(true);
+
+      reportHost({ activity: "inactive" });
+
+      expect(manager.isPressed("jump")).toBe(false);
+    });
+
+    it("releases nothing when a field turns positive or stays unknown", () => {
+      context = createContext();
+      plugin = new InputPlugin({ actions: { jump: ["Space"] } });
+      plugin.install(context);
+      const manager = context.resolve(InputManagerKey);
+
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
+      manager._drainInputQueue();
+      expect(manager.isPressed("jump")).toBe(true);
+
+      window.dispatchEvent(new Event("focus"));
+      reportHost({ visibility: "visible", activity: "active" });
+
+      expect(manager.isPressed("jump")).toBe(true);
+    });
+
+    it("releases nothing after the plugin is destroyed", () => {
+      context = createContext();
+      plugin = new InputPlugin({ actions: { jump: ["Space"] } });
+      plugin.install(context);
+      const manager = context.resolve(InputManagerKey);
+
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
+      manager._drainInputQueue();
+      plugin.onDestroy();
+
+      window.dispatchEvent(new Event("blur"));
+
+      expect(manager.isPressed("jump")).toBe(true);
+    });
+
+    it("adds no page listener of its own", () => {
+      const windowSpy = vi.spyOn(window, "addEventListener");
+      const documentSpy = vi.spyOn(document, "addEventListener");
+      context = createContext({ connectHost: false });
+      plugin = new InputPlugin({ actions: { jump: ["Space"] } });
+      plugin.install(context);
+
+      const listened = [
+        ...windowSpy.mock.calls.map((args) => args[0]),
+        ...documentSpy.mock.calls.map((args) => args[0]),
+      ];
+      expect(listened).not.toContain("blur");
+      expect(listened).not.toContain("focus");
+      expect(listened).not.toContain("visibilitychange");
+      windowSpy.mockRestore();
+      documentSpy.mockRestore();
+    });
   });
 });

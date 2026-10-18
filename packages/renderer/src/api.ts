@@ -9,6 +9,13 @@ export type {
   SceneRenderTreeProvider,
 } from "./SceneRenderTree.js";
 export type { LayerDef } from "./LayerDef.js";
+export { HostDisplayKey } from "./HostDisplay.js";
+export type {
+  HostDisplay,
+  HostFullscreen,
+  HostOrientation,
+  OrientationLock,
+} from "./HostDisplay.js";
 
 export { SpriteLightingKey } from "./materials/SpriteLighting.js";
 export type {

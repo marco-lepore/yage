@@ -22,7 +22,9 @@ import {
   GameLoopKey,
   InspectorKey,
   SystemSchedulerKey,
+  HostKey,
 } from "./EngineContext.js";
+import { TestHostPlugin } from "./test-utils.js";
 
 class TestScene extends Scene {
   readonly name = "test";
@@ -1181,6 +1183,336 @@ describe("Engine", () => {
       expect(snap.entityCount).toBe(2);
       expect(snap.sceneStack).toHaveLength(1);
       engine.destroy();
+    });
+  });
+
+  describe("host service", () => {
+    it("registers one Host per engine under HostKey", async () => {
+      const first = new Engine();
+      const second = new Engine();
+      await first.start();
+      await second.start();
+
+      expect(first.context.resolve(HostKey)).toBe(first.host);
+      expect(second.host).not.toBe(first.host);
+
+      first.host.attach({
+        info: {
+          runtime: "electron",
+          os: "macos",
+          appVersion: "1.0.0",
+          appBuild: undefined,
+          runtimeVersion: "44.7.0",
+        },
+      });
+
+      expect(first.host.info.runtime).toBe("electron");
+      expect(second.host.info.runtime).toBe("browser");
+      first.destroy();
+      second.destroy();
+    });
+
+    it("starts and stops with no document and reports the browser host", async () => {
+      expect(typeof document).toBe("undefined");
+      const engine = new Engine();
+
+      expect(engine.host.info).toMatchObject({
+        runtime: "browser",
+        os: "unknown",
+      });
+      await engine.start();
+      expect(engine.host.info.runtime).toBe("browser");
+      engine.destroy();
+      expect(engine.host.info.runtime).toBe("browser");
+    });
+
+    it("refuses a second plugin named host", () => {
+      const engine = new Engine();
+      engine.use(new TestHostPlugin());
+
+      expect(() => engine.use(new TestHostPlugin())).toThrow(
+        'Plugin "host" is already registered.',
+      );
+      engine.destroy();
+    });
+
+    it("gives a consumer the host info from onStart on", async () => {
+      const readings: Record<string, string> = {};
+      const consumer: Plugin = {
+        name: "consumer",
+        version: "1.0.0",
+        install(context) {
+          readings["install"] = context.resolve(HostKey).info.runtime;
+        },
+        onStart() {
+          readings["onStart"] = engine.host.info.runtime;
+        },
+      };
+      const engine = new Engine();
+      engine.use(consumer);
+      engine.use(new TestHostPlugin({ runtime: "capacitor", os: "android" }));
+      await engine.start();
+
+      expect(readings).toEqual({
+        install: "browser",
+        onStart: "capacitor",
+      });
+      engine.destroy();
+    });
+
+    it("attaches nothing when destroy lands during an awaited install", async () => {
+      const log: string[] = [];
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let abandoned = false;
+      const adapter: Plugin = {
+        name: "host",
+        version: "1.0.0",
+        async install(context) {
+          log.push("install-start");
+          await gate;
+          if (abandoned) {
+            log.push("install-abandoned");
+            return;
+          }
+          context.resolve(HostKey).attach({
+            info: {
+              runtime: "electron",
+              os: "macos",
+              appVersion: undefined,
+              appBuild: undefined,
+              runtimeVersion: undefined,
+            },
+          });
+        },
+        onDestroy() {
+          abandoned = true;
+          log.push("onDestroy");
+        },
+      };
+      const engine = new Engine();
+      engine.use(adapter);
+      const started = engine.start();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(log).toEqual(["install-start"]);
+
+      engine.destroy();
+      release();
+      await started;
+
+      expect(log).toEqual(["install-start", "onDestroy", "install-abandoned"]);
+      expect(engine.host.info.runtime).toBe("browser");
+    });
+
+    it("leaves the engine terminal when a host install throws", async () => {
+      let destroyCount = 0;
+      const adapter: Plugin = {
+        name: "host",
+        version: "1.0.0",
+        install() {
+          throw new Error("TestHost.install: no shell on this page.");
+        },
+        onDestroy() {
+          destroyCount += 1;
+        },
+      };
+      const engine = new Engine({ logger: { level: LogLevel.None } });
+      engine.use(adapter);
+
+      await expect(engine.start()).rejects.toThrow("no shell on this page");
+      expect(engine.host.info.runtime).toBe("browser");
+      await expect(engine.start()).rejects.toThrow(
+        "Engine.start() already failed on this instance",
+      );
+      expect(() => engine.use({ name: "late", version: "1.0.0" })).toThrow(
+        "Cannot register plugins after start() failed on this instance.",
+      );
+      expect(engine.loop.isRunning).toBe(false);
+
+      engine.destroy();
+      expect(destroyCount).toBe(1);
+    });
+  });
+
+  describe("host lifecycle", () => {
+    /**
+     * A page whose visibility the test drives, with the listener calls on
+     * `document` and `window` recorded.
+     */
+    function stubPage(hidden: boolean) {
+      let isHidden = hidden;
+      const page = new EventTarget();
+      Object.defineProperty(page, "visibilityState", {
+        get: () => (isHidden ? "hidden" : "visible"),
+      });
+      Object.defineProperty(page, "hasFocus", { value: () => true });
+      const frame = new EventTarget();
+      const added = vi.fn();
+      const removed = vi.fn();
+      for (const target of [page, frame]) {
+        vi.spyOn(target, "addEventListener").mockImplementation(((
+          type: string,
+          listener: EventListener,
+        ) => {
+          added(type);
+          EventTarget.prototype.addEventListener.call(target, type, listener);
+        }) as typeof target.addEventListener);
+        vi.spyOn(target, "removeEventListener").mockImplementation(((
+          type: string,
+          listener: EventListener,
+        ) => {
+          removed(type);
+          EventTarget.prototype.removeEventListener.call(
+            target,
+            type,
+            listener,
+          );
+        }) as typeof target.removeEventListener);
+      }
+      vi.stubGlobal("document", page);
+      vi.stubGlobal("window", frame);
+      return {
+        added,
+        removed,
+        show() {
+          isHidden = false;
+          page.dispatchEvent(new Event("visibilitychange"));
+        },
+      };
+    }
+
+    it("reads the page before the engine starts", () => {
+      stubPage(true);
+      const engine = new Engine();
+
+      expect(engine.host.lifecycle).toEqual({
+        activity: "unknown",
+        visibility: "hidden",
+        focus: "focused",
+      });
+      expect(engine.host.active).toBe(false);
+
+      engine.destroy();
+      vi.unstubAllGlobals();
+    });
+
+    it("gives each engine its own page listeners and removes them on destroy", async () => {
+      const page = stubPage(true);
+      const first = new Engine();
+      const second = new Engine();
+      expect(page.added.mock.calls.flat()).toEqual([
+        "visibilitychange",
+        "blur",
+        "focus",
+        "visibilitychange",
+        "blur",
+        "focus",
+      ]);
+      await first.start();
+      await second.start();
+      const firstSeen: boolean[] = [];
+      const secondSeen: boolean[] = [];
+      first.events.on("host:active", ({ active }) => firstSeen.push(active));
+      second.events.on("host:active", ({ active }) => secondSeen.push(active));
+
+      first.destroy();
+      expect(page.removed.mock.calls.flat()).toEqual([
+        "visibilitychange",
+        "blur",
+        "focus",
+      ]);
+
+      page.show();
+
+      expect(firstSeen).toEqual([]);
+      expect(secondSeen).toEqual([true]);
+      expect(second.host.active).toBe(true);
+
+      second.destroy();
+      vi.unstubAllGlobals();
+    });
+
+    it("disposes the host before the plugins are destroyed", async () => {
+      const engine = new Engine();
+      engine.use(new TestHostPlugin(undefined, { activity: "inactive" }));
+      await engine.start();
+      expect(engine.host.active).toBe(false);
+      const seen: boolean[] = [];
+      engine.events.on("host:active", ({ active }) => seen.push(active));
+
+      engine.destroy();
+
+      expect(seen).toEqual([]);
+    });
+
+    it("hands an adapter's starting state to the plugins before them", async () => {
+      const changes: boolean[] = [];
+      let activeOnStart: boolean | undefined;
+      const consumer: Plugin = {
+        name: "consumer",
+        version: "1.0.0",
+        install(context) {
+          context
+            .resolve(HostKey)
+            ._observe(({ active }) => changes.push(active));
+        },
+        onStart() {
+          activeOnStart = engine.host.active;
+        },
+      };
+      const engine = new Engine();
+      engine.use(consumer);
+      engine.use(new TestHostPlugin(undefined, { activity: "inactive" }));
+      engine.scenes.autoPause = true;
+      await engine.start();
+
+      expect(changes).toEqual([false]);
+      expect(activeOnStart).toBe(false);
+
+      const scene = new TestScene();
+      const pauses = vi.fn();
+      scene.onPause = pauses;
+      await engine.scenes.push(scene);
+
+      expect(scene.isPaused).toBe(true);
+      expect(pauses).toHaveBeenCalledOnce();
+      engine.destroy();
+    });
+
+    it("refuses an attach from an adapter that outlived the engine", async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const adapter: Plugin = {
+        name: "host",
+        version: "1.0.0",
+        async install(context) {
+          await gate;
+          context.resolve(HostKey).attach({
+            info: {
+              runtime: "electron",
+              os: "macos",
+              appVersion: undefined,
+              appBuild: undefined,
+              runtimeVersion: undefined,
+            },
+          });
+        },
+      };
+      const engine = new Engine({ logger: { level: LogLevel.None } });
+      engine.use(adapter);
+      const started = engine.start();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      engine.destroy();
+      release();
+
+      await expect(started).rejects.toThrow(
+        "Host.attach: the engine has been destroyed. A host adapter attaches during install.",
+      );
     });
   });
 });

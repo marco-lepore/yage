@@ -99,61 +99,63 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 
 ### `@yagejs/core`
 
-| File                       | Purpose                                                        |
-| -------------------------- | -------------------------------------------------------------- |
-| `src/index.ts`             | Barrel export -- all public API                                |
-| `src/Engine.ts`            | Entry point, plugin orchestration                              |
-| `src/EngineContext.ts`     | DI container (ServiceKey, register, resolve)                   |
-| `src/Entity.ts`            | Entity class (component CRUD)                                  |
-| `src/Component.ts`         | Base component class                                           |
-| `src/System.ts`            | Base system class, Phase enum                                  |
-| `src/SystemScheduler.ts`   | Ordered system execution                                       |
-| `src/GameLoop.ts`          | Fixed timestep loop                                            |
-| `src/QueryCache.ts`        | Incremental entity query cache                                 |
-| `src/EventBus.ts`          | Typed pub/sub                                                  |
-| `src/SceneManager.ts`      | Scene stack (push/pop/replace)                                 |
-| `src/Scene.ts`             | Scene base class (entity factory)                              |
-| `src/Process.ts`           | Coroutine / tween / sequence                                   |
-| `src/ProcessSlot.ts`       | Reusable restartable process handle (cooldowns, effects)       |
-| `src/ProcessComponent.ts`  | Entity component for slots + one-off processes                 |
-| `src/TimerEntity.ts`       | Pre-built entity exposing ProcessComponent API                 |
-| `src/Trait.ts`             | Trait system (`defineTrait`, `@trait`)                         |
-| `src/Blueprint.ts`         | Reusable entity templates (deprecated)                         |
-| `src/ErrorBoundary.ts`     | System/component error wrapping                                |
-| `src/Inspector.ts`         | Programmatic state queries                                     |
-| `src/InspectorPlugin.ts`   | Installs the Inspector (`InspectorPlugin`, `installInspector`) |
-| `src/SceneRandomSource.ts` | Creates each scene's `RandomKey` RNG; owns the seed            |
-| `src/Logger.ts`            | Structured logging                                             |
-| `src/Vec2.ts`              | Immutable 2D vector                                            |
-| `src/Vec2Buffer.ts`        | Caller-owned mutable coordinates for `Into` results            |
-| `src/Transform.ts`         | Position/rotation/scale component                              |
-| `src/MathUtils.ts`         | Math utilities                                                 |
-| `src/types.ts`             | Shared type definitions                                        |
-| `src/test-utils.ts`        | Mock factories for testing                                     |
-| `package.json`             | Zero runtime dependencies                                      |
-| `tsconfig.json`            | Extends root tsconfig.base.json                                |
-| `tsup.config.ts`           | Build config (ESM + CJS + .d.ts)                               |
-| `vitest.config.ts`         | Test config (100% coverage threshold)                          |
+| File                       | Purpose                                                                                                    |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`             | Barrel export -- all public API                                                                            |
+| `src/Engine.ts`            | Entry point, plugin orchestration                                                                          |
+| `src/EngineContext.ts`     | DI container (ServiceKey, register, resolve)                                                               |
+| `src/Host.ts`              | Which application runs the game, and whether it is active, visible and focused; where host adapters attach |
+| `src/Entity.ts`            | Entity class (component CRUD)                                                                              |
+| `src/Component.ts`         | Base component class                                                                                       |
+| `src/System.ts`            | Base system class, Phase enum                                                                              |
+| `src/SystemScheduler.ts`   | Ordered system execution                                                                                   |
+| `src/GameLoop.ts`          | Fixed timestep loop                                                                                        |
+| `src/QueryCache.ts`        | Incremental entity query cache                                                                             |
+| `src/EventBus.ts`          | Typed pub/sub                                                                                              |
+| `src/SceneManager.ts`      | Scene stack (push/pop/replace)                                                                             |
+| `src/Scene.ts`             | Scene base class (entity factory)                                                                          |
+| `src/Process.ts`           | Coroutine / tween / sequence                                                                               |
+| `src/ProcessSlot.ts`       | Reusable restartable process handle (cooldowns, effects)                                                   |
+| `src/ProcessComponent.ts`  | Entity component for slots + one-off processes                                                             |
+| `src/TimerEntity.ts`       | Pre-built entity exposing ProcessComponent API                                                             |
+| `src/Trait.ts`             | Trait system (`defineTrait`, `@trait`)                                                                     |
+| `src/Blueprint.ts`         | Reusable entity templates (deprecated)                                                                     |
+| `src/ErrorBoundary.ts`     | System/component error wrapping                                                                            |
+| `src/Inspector.ts`         | Programmatic state queries                                                                                 |
+| `src/InspectorPlugin.ts`   | Installs the Inspector (`InspectorPlugin`, `installInspector`)                                             |
+| `src/SceneRandomSource.ts` | Creates each scene's `RandomKey` RNG; owns the seed                                                        |
+| `src/Logger.ts`            | Structured logging                                                                                         |
+| `src/Vec2.ts`              | Immutable 2D vector                                                                                        |
+| `src/Vec2Buffer.ts`        | Caller-owned mutable coordinates for `Into` results                                                        |
+| `src/Transform.ts`         | Position/rotation/scale component                                                                          |
+| `src/MathUtils.ts`         | Math utilities                                                                                             |
+| `src/types.ts`             | Shared type definitions                                                                                    |
+| `src/test-utils.ts`        | Mock factories for testing                                                                                 |
+| `package.json`             | Zero runtime dependencies                                                                                  |
+| `tsconfig.json`            | Extends root tsconfig.base.json                                                                            |
+| `tsup.config.ts`           | Build config (ESM + CJS + .d.ts)                                                                           |
+| `vitest.config.ts`         | Test config (100% coverage threshold)                                                                      |
 
 ### `@yagejs/renderer`
 
-| File                             | Purpose                                                        |
-| -------------------------------- | -------------------------------------------------------------- |
-| `src/RendererPlugin.ts`          | Plugin entry, PixiJS v8 setup                                  |
-| `src/SpriteComponent.ts`         | Sprite wrapper                                                 |
-| `src/GraphicsComponent.ts`       | Graphics wrapper with `draw()`                                 |
-| `src/AnimatedSpriteComponent.ts` | Animated sprite using `FrameSource`                            |
-| `src/AnimationController.ts`     | Named animations, one-shot locking                             |
-| `src/spritesheet.ts`             | `sliceSheet`, `FrameSource`, `resolveFrames`                   |
-| `src/assets.ts`                  | `texture()`, `spritesheet()` factories                         |
-| `src/CameraEntity.ts`            | Entity for camera instances                                    |
-| `src/CameraComponent.ts`         | Core camera component                                          |
-| `src/CameraFollow.ts`            | Follow behavior component                                      |
-| `src/CameraShake.ts`             | Shake behavior component                                       |
-| `src/CameraZoom.ts`              | Zoom behavior component                                        |
-| `src/CameraBoundsComponent.ts`   | Bounds constraint component                                    |
-| `src/DisplaySystem.ts`           | Render-phase Transform→PixiJS sync for every `VisualComponent` |
-| `src/RenderLayer.ts`             | Named draw-order layers                                        |
+| File                             | Purpose                                                               |
+| -------------------------------- | --------------------------------------------------------------------- |
+| `src/RendererPlugin.ts`          | Plugin entry, PixiJS v8 setup                                         |
+| `src/HostDisplay.ts`             | What a host supplies for fullscreen and orientation; `HostDisplayKey` |
+| `src/SpriteComponent.ts`         | Sprite wrapper                                                        |
+| `src/GraphicsComponent.ts`       | Graphics wrapper with `draw()`                                        |
+| `src/AnimatedSpriteComponent.ts` | Animated sprite using `FrameSource`                                   |
+| `src/AnimationController.ts`     | Named animations, one-shot locking                                    |
+| `src/spritesheet.ts`             | `sliceSheet`, `FrameSource`, `resolveFrames`                          |
+| `src/assets.ts`                  | `texture()`, `spritesheet()` factories                                |
+| `src/CameraEntity.ts`            | Entity for camera instances                                           |
+| `src/CameraComponent.ts`         | Core camera component                                                 |
+| `src/CameraFollow.ts`            | Follow behavior component                                             |
+| `src/CameraShake.ts`             | Shake behavior component                                              |
+| `src/CameraZoom.ts`              | Zoom behavior component                                               |
+| `src/CameraBoundsComponent.ts`   | Bounds constraint component                                           |
+| `src/DisplaySystem.ts`           | Render-phase Transform→PixiJS sync for every `VisualComponent`        |
+| `src/RenderLayer.ts`             | Named draw-order layers                                               |
 
 ### `@yagejs/lighting`
 
@@ -1023,6 +1025,8 @@ Engine code that invokes a callback the game registered (event handlers, collisi
 Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`) use `ErrorBoundary.wrapLifecycleHook`. A synchronous throw from one of them is reported and rethrown the same way. A rejected async hook can only be reported, because the call has already returned by the time the rejection settles, leaving no stack to rethrow into. Plugin `beforeEnter` hooks behave differently. `SceneHookRegistry.runBeforeEnter` awaits each one, so a rejection is reported and rethrown, and the scene push or replace that triggered it rejects rather than activating the scene. `Logger`'s own `output` sink catches and reports its own errors, because it cannot route through the boundary it is reporting into.
 
 `GameLoop.tick()` is the one place that decides a failure is terminal: an error that escapes an entire frame unhandled stops the loop and rethrows so it reaches the host.
+
+One change of host state (`Host`) dispatches in a fixed order: it stores the new state, calls the internal observers that input and audio register, brings the scene pause in line, emits `host:active`, then emits `host:lifecycle`. A throw at any step ends the sequence there and reaches whoever caused the change — the DOM event dispatch, a host adapter's report, the `activeWhenUnfocused` setter, `attach`, or the function `attach` returned. The steps after it do not run, and nothing catches the error. The consumers read `host.active` rather than counting events, so the next change brings them back in line.
 
 Every new dispatch site needs the same wrap. Without it, the throw is attributed to whichever caller was on the stack when the error escaped, not to the callback that threw.
 

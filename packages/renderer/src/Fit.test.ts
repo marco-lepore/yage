@@ -174,6 +174,7 @@ describe("FitController", () => {
     vH: number,
     hostW: number,
     hostH: number,
+    followDevicePixelRatio = false,
   ): { fit: FitController; app: MockApp; target: HTMLElement } {
     const app = new MockApp();
     const target = makeTarget(hostW, hostH);
@@ -186,6 +187,7 @@ describe("FitController", () => {
       target,
       app.renderer.width,
       app.renderer.height,
+      followDevicePixelRatio,
     );
     return { fit, app, target };
   }
@@ -866,6 +868,7 @@ describe("FitController", () => {
         null,
         1000,
         600,
+        false,
       );
       fit.start();
 
@@ -889,6 +892,7 @@ describe("FitController", () => {
         null,
         800,
         600,
+        false,
       );
       fit.start();
       expect(() => fit.stop()).not.toThrow();
@@ -937,6 +941,165 @@ describe("FitController", () => {
       fit.reconfigure("letterbox", fit.currentTarget);
       expect(app.stage.mask).toBeInstanceOf(Graphics);
       expect(app.stage.children).toContain(app.stage.mask);
+    });
+  });
+  describe("device pixel ratio", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    /** One `matchMedia` result, with the listeners the controller attached. */
+    interface FakeQuery {
+      readonly media: string;
+      readonly listeners: Array<() => void>;
+    }
+
+    /** A window whose pixel ratio the test moves, reporting it by query. */
+    function stubWindow(ratio: number): {
+      queries: FakeQuery[];
+      matchMedia: ReturnType<typeof vi.fn>;
+      setRatio: (next: number) => void;
+      fireLatest: () => void;
+    } {
+      const queries: FakeQuery[] = [];
+      const matchMedia = vi.fn((media: string) => {
+        const listeners: Array<() => void> = [];
+        queries.push({ media, listeners });
+        return {
+          media,
+          addEventListener: (_event: string, fn: () => void) =>
+            listeners.push(fn),
+          removeEventListener: (_event: string, fn: () => void) => {
+            const index = listeners.indexOf(fn);
+            if (index !== -1) listeners.splice(index, 1);
+          },
+        };
+      });
+      const win = { devicePixelRatio: ratio, matchMedia };
+      vi.stubGlobal("window", win);
+      return {
+        queries,
+        matchMedia,
+        setRatio: (next: number) => {
+          win.devicePixelRatio = next;
+        },
+        fireLatest: () => {
+          const latest = queries[queries.length - 1];
+          for (const fn of [...(latest?.listeners ?? [])]) fn();
+        },
+      };
+    }
+
+    it("resizes at the same canvas size with the new ratio", () => {
+      const win = stubWindow(1);
+      const { fit, app } = makeFit("letterbox", 400, 300, 800, 600, true);
+      fit.start();
+      expect(win.queries.map((q) => q.media)).toEqual(["(resolution: 1dppx)"]);
+
+      app.renderer.resize.mockClear();
+      win.setRatio(2);
+      win.fireLatest();
+
+      expect(app.renderer.resize).toHaveBeenCalledTimes(1);
+      expect(app.renderer.resize).toHaveBeenCalledWith(800, 600, 2);
+      expect(win.queries.map((q) => q.media)).toEqual([
+        "(resolution: 1dppx)",
+        "(resolution: 2dppx)",
+      ]);
+      expect(win.queries[0]!.listeners).toHaveLength(0);
+    });
+
+    it("asks nothing of the page for a fixed resolution", () => {
+      const win = stubWindow(1);
+      const { fit } = makeFit("letterbox", 400, 300, 800, 600);
+      fit.start();
+
+      win.setRatio(2);
+      expect(win.matchMedia).not.toHaveBeenCalled();
+    });
+
+    it("stops following once stopped", () => {
+      const win = stubWindow(1);
+      const { fit, app } = makeFit("letterbox", 400, 300, 800, 600, true);
+      fit.start();
+      const armed = win.queries[0]!;
+
+      fit.stop();
+      app.renderer.resize.mockClear();
+      win.setRatio(2);
+      for (const fn of [...armed.listeners]) fn();
+
+      expect(app.renderer.resize).not.toHaveBeenCalled();
+    });
+
+    it("keeps one listener when the target changes", () => {
+      const win = stubWindow(1);
+      const { fit, app } = makeFit("letterbox", 400, 300, 800, 600, true);
+      fit.start();
+
+      fit.reconfigure("letterbox", makeTarget(640, 480));
+      expect(win.matchMedia).toHaveBeenCalledTimes(1);
+      expect(win.queries[0]!.listeners).toHaveLength(1);
+
+      app.renderer.resize.mockClear();
+      win.setRatio(2);
+      win.fireLatest();
+      expect(app.renderer.resize).toHaveBeenCalledTimes(1);
+    });
+
+    it("follows the ratio with no element to observe", () => {
+      const win = stubWindow(1);
+      const app = new MockApp();
+      const fit = new FitController(
+        app as unknown as Application,
+        app.stage as unknown as Container,
+        400,
+        300,
+        "letterbox",
+        null,
+        800,
+        600,
+        true,
+      );
+      fit.start();
+
+      app.renderer.resize.mockClear();
+      win.setRatio(3);
+      win.fireLatest();
+
+      expect(app.renderer.resize).toHaveBeenCalledWith(800, 600, 3);
+    });
+
+    it("follows the ratio while auto-resize is frozen", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const win = stubWindow(1);
+        const { fit, app } = makeFit("letterbox", 400, 300, 800, 600, true);
+        fit.start();
+        const ro = observers[0]!;
+        for (let i = 1; i <= 64; i++) ro.fire(800, 600 + 4 * i);
+
+        const frozen = fit.canvasSize;
+        app.renderer.resize.mockClear();
+        win.setRatio(2);
+        win.fireLatest();
+
+        expect(app.renderer.resize).toHaveBeenCalledWith(
+          frozen.width,
+          frozen.height,
+          2,
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("starts where the page answers no media query", () => {
+      vi.stubGlobal("window", { devicePixelRatio: 2 });
+      const { fit, app } = makeFit("letterbox", 400, 300, 800, 600, true);
+
+      expect(() => fit.start()).not.toThrow();
+      expect(app.renderer.resize).toHaveBeenCalledWith(800, 600);
     });
   });
 });

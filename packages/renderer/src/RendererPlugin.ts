@@ -15,6 +15,7 @@ import type {
   EngineContext,
   EngineEvents,
   EventBus,
+  HostSupport,
   Plugin,
   ProcessSystem,
   RendererAdapter,
@@ -39,6 +40,16 @@ import { RenderFacetContributor } from "./RenderFacetContributor.js";
 import { FitController } from "./Fit.js";
 import type { CanvasRect, VirtualRect } from "./Fit.js";
 import type { DrawContext } from "./DrawContext.js";
+import { HostDisplayKey } from "./HostDisplay.js";
+import type {
+  HostFullscreen,
+  HostOrientation,
+  OrientationLock,
+} from "./HostDisplay.js";
+import {
+  createPageFullscreen,
+  createPageOrientation,
+} from "./internal/pageDisplay.js";
 import type {
   Application,
   DisplayContainer,
@@ -168,9 +179,27 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   fx!: EffectsHost;
   private _unregisterFacetContributor: (() => void) | null = null;
   private _context: EngineContext | null = null;
-  private _unregisterFullscreenListener: (() => void) | null = null;
-  private _unregisterOrientationListener: (() => void) | null = null;
   private _unregisterSceneVisibility: (() => void) | null = null;
+  /**
+   * The display parts in use, the page's unless a host adapter registered a
+   * {@link HostDisplay}. Both are set from `onStart` to `onDestroy` and `null`
+   * outside that span, which is where every display member reports that it is
+   * unavailable.
+   */
+  private _fullscreen: HostFullscreen | null = null;
+  private _orientation: HostOrientation | null = null;
+  private _stopDisplay: Array<() => void> = [];
+  /** The last state the renderer read, and the state its events describe. */
+  private _lastFullscreen = false;
+  private _lastOrientation: OrientationType | null = null;
+  /**
+   * The transition in flight, which a second call joins. A browser rejects a
+   * second request made in the same task, and a player toggling a button
+   * expects the last call to win.
+   */
+  private _pendingRequest: Promise<void> | null = null;
+  private _pendingExit: Promise<void> | null = null;
+  private _bus: EventBus<EngineEvents> | null = null;
   /**
    * Snapshot of `TextureStyle.defaultOptions.scaleMode` captured before
    * `pixelArtPreset` flips it to `"nearest"`. Pixi's defaults live on a
@@ -242,15 +271,15 @@ export class RendererPlugin implements Plugin, RendererAdapter {
 
     // 2b. Tell the browser to scale the canvas backing store with
     //     nearest-neighbor when it's CSS-scaled past 1:1 (e.g. on a HiDPI
-    //     monitor, under fit, or when the host CSS-sizes the canvas larger
-    //     than its backing store). Without this the browser bicubic-blurs
-    //     the pixel art back into mush. We write both declarations via
-    //     `cssText` because the CSS cascade only keeps the LAST
-    //     `image-rendering` value the browser understands — Safari falls
+    //     monitor, under fit, or when the host element CSS-sizes the canvas
+    //     larger than its backing store). Without this the browser
+    //     bicubic-blurs the pixel art back into mush. We write both
+    //     declarations via `cssText` because the CSS cascade only keeps the
+    //     LAST `image-rendering` value the browser understands — Safari falls
     //     through `pixelated` (which it ignores) to the older
     //     `-webkit-optimize-contrast`; everywhere else `pixelated` wins.
-    //     Guarded for headless test runs that stub `canvas` as a plain
-    //     object without a `style`.
+    //     Guarded for headless test runs that stub `canvas` as a plain object
+    //     without a `style`.
     if (this._config.pixelArtPreset) {
       const style = (this._app.canvas as { style?: CSSStyleDeclaration }).style;
       if (style) {
@@ -261,14 +290,14 @@ export class RendererPlugin implements Plugin, RendererAdapter {
 
     // 2b. Force `display:block` on the canvas. The <canvas> UA default is
     //     `display:inline`, which seats it on the text baseline and leaves a
-    //     ~4px line-box descender beneath it. On a fit host whose height is
-    //     content-driven (no explicit/bounded height) that descender makes
-    //     the host measure taller than the canvas the FitController just
-    //     sized to it, the ResizeObserver re-fires, the canvas grows, the
-    //     host grows again — an unbounded loop. `display:block` removes the
-    //     descender so the host content box equals the canvas height and the
-    //     controller reaches a fixed point. Canvas-local and overridable from
-    //     a developer stylesheet. Guarded for headless test runs that stub
+    //     ~4px line-box descender beneath it. On a fit host element whose
+    //     height is content-driven (no explicit/bounded height) that descender
+    //     makes the element measure taller than the canvas the FitController
+    //     just sized to it, the ResizeObserver re-fires, the canvas grows, the
+    //     element grows again — an unbounded loop. `display:block` removes the
+    //     descender so the element's content box equals the canvas height and
+    //     the controller reaches a fixed point. Canvas-local and overridable
+    //     from a developer stylesheet. Guarded for headless test runs that stub
     //     `canvas` without a `style`.
     const canvasStyle = (this._app.canvas as { style?: CSSStyleDeclaration })
       .style;
@@ -370,13 +399,10 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       return () => this._app.ticker.remove(fn);
     });
 
-    // 10b. Wire viewport-lifecycle listeners (fullscreen + orientation).
-    //     Both emit onto the engine event bus. Gated behind environment
-    //     checks so node-environment tests that don't stub the globals
-    //     skip the wiring without crashing.
-    const bus = context.resolve(EventBusKey);
-    this.installFullscreenListener(bus);
-    this.installOrientationListener(bus);
+    // 10b. Keep the bus the display events are emitted on. Which display the
+    //     renderer reads is resolved in `onStart`, once every plugin has
+    //     installed and a host adapter could have registered one.
+    this._bus = context.resolve(EventBusKey);
 
     // 11. Register asset loaders (if AssetManager is available)
     const am = context.tryResolve(AssetManagerKey);
@@ -430,6 +456,39 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   onStart(): void {
+    // Pick the display parts first. A host adapter registers its HostDisplay
+    // during install, so every install has run by now whatever order the
+    // plugins were registered in, and the page supplies each part the adapter
+    // leaves out.
+    const display = this._context?.tryResolve(HostDisplayKey);
+    const sync = (): void => this._syncDisplay();
+    const hostFullscreen = display?.fullscreen;
+    const target = this.fullscreenTarget();
+    if (hostFullscreen) {
+      this._fullscreen = hostFullscreen;
+    } else if (target) {
+      const page = createPageFullscreen(target);
+      this._fullscreen = page.part;
+      this._stopDisplay.push(page.watch(sync));
+    }
+    const hostOrientation = display?.orientation;
+    if (hostOrientation) {
+      this._orientation = hostOrientation;
+    } else {
+      const page = createPageOrientation();
+      this._orientation = page.part;
+      this._stopDisplay.push(page.watch(sync));
+    }
+    if (display) this._stopDisplay.push(display.watch(sync));
+    // The state at start is the baseline the events are measured against, so
+    // reading it emits nothing.
+    if (this._fullscreen) {
+      this._lastFullscreen = readFullscreenActive(this._fullscreen);
+    }
+    if (this._orientation) {
+      this._lastOrientation = readOrientation(this._orientation);
+    }
+
     // Publish the render facet (rendered geometry + visibility) into the
     // Inspector through `registerFacetContributor`, so `@yagejs/core` stays
     // agnostic of any rendering concept. In onStart rather than install: the
@@ -452,10 +511,13 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     this._unregisterFacetContributor?.();
     this._unregisterFacetContributor = null;
     this._context = null;
-    this._unregisterFullscreenListener?.();
-    this._unregisterFullscreenListener = null;
-    this._unregisterOrientationListener?.();
-    this._unregisterOrientationListener = null;
+    for (const stop of this._stopDisplay) stop();
+    this._stopDisplay = [];
+    this._fullscreen = null;
+    this._orientation = null;
+    this._pendingRequest = null;
+    this._pendingExit = null;
+    this._bus = null;
     this._unregisterSceneVisibility?.();
     this._unregisterSceneVisibility = null;
     this._unregisterHooks?.();
@@ -532,7 +594,10 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     return { width: this._virtualWidth, height: this._virtualHeight };
   }
 
-  /** Current canvas size in CSS pixels. Changes on host resize under responsive fit. */
+  /**
+   * Current canvas size in CSS pixels. Changes on host-element resize under
+   * responsive fit.
+   */
   get canvasSize(): { width: number; height: number } {
     return this._fitController.canvasSize;
   }
@@ -549,7 +614,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   /**
    * Change the fit mode and/or target at runtime. Omitting `target` keeps the
    * element the fit currently observes, so switching mode alone does not send
-   * the fit back to its default host.
+   * the fit back to its default host element.
    */
   setFit(options: RendererFitOptions): void {
     if (options.target !== undefined) {
@@ -746,8 +811,8 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   /**
    * Full canvas extent expressed in virtual-space pixels — unlike
    * {@link visibleVirtualRect}, not clamped to the declared virtual rect.
-   * Under `letterbox` / `expand` on an off-aspect host this extends past
-   * `virtualSize` on the unscaled axis (useful for drawing backdrops that
+   * Under `letterbox` / `expand` on an off-aspect host element this extends
+   * past `virtualSize` on the unscaled axis (useful for drawing backdrops that
    * fill the bars). Under `cover` it equals `visibleVirtualRect`; under
    * `stretch` it equals the virtual rect.
    */
@@ -897,54 +962,233 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     }
   }
 
-  // ─── Fullscreen ──────────────────────────────────────────────────
+  // ─── Display ─────────────────────────────────────────────────────
 
   /**
-   * Request fullscreen for the renderer's host element. Targets the
-   * configured `container` when present (so DOM overlays placed
-   * alongside the canvas remain inside the fullscreened area), falling
-   * back to the canvas itself otherwise. Wraps `Element.requestFullscreen`
-   * with the legacy `webkitRequestFullscreen` fallback for iOS Safari.
+   * Present the game fullscreen. Resolves once the game is fullscreen, with
+   * `screen:fullscreen` already emitted. Resolves without asking the host when
+   * the game is fullscreen already, and rejects where
+   * {@link fullscreenSupport} is `"unsupported"`.
    *
-   * Must be called from a user-gesture handler (click, touch, key);
-   * browsers reject the returned Promise with a `TypeError` otherwise.
+   * A second call made while a request is in flight shares that request's
+   * promise, and a call made while an exit is in flight runs once the exit
+   * settles, so the last call wins.
+   *
+   * On a page this must be called from a user-gesture handler (click, touch,
+   * key); the browser rejects the returned promise with a `TypeError`
+   * otherwise. It targets the configured `container` when there is one, so DOM
+   * overlays beside the canvas stay inside the fullscreened area, and the
+   * canvas itself otherwise.
    */
-  async requestFullscreen(): Promise<void> {
-    const target = this.fullscreenTarget();
-    if (!target) {
-      throw new Error(
-        "RendererPlugin.requestFullscreen: no host element available.",
+  requestFullscreen(): Promise<void> {
+    const part = this._fullscreen;
+    if (part === null) {
+      return Promise.reject(displayUnavailable("requestFullscreen"));
+    }
+    if (this._pendingRequest !== null) return this._pendingRequest;
+    if (this._pendingExit !== null) {
+      const run = (): Promise<void> => this.requestFullscreen();
+      return this._pendingExit.then(run, run);
+    }
+    let support: HostSupport;
+    try {
+      if (readFullscreenActive(part)) return Promise.resolve();
+      support = readFullscreenSupport(part);
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
+    if (support === "unsupported") {
+      return Promise.reject(
+        new Error(
+          "RendererPlugin.requestFullscreen: this host cannot change to " +
+            'fullscreen (fullscreenSupport is "unsupported").',
+        ),
       );
     }
-    await getFullscreenAPI(target).request();
-  }
-
-  /** Exit fullscreen. No-op if the page isn't currently fullscreen. */
-  async exitFullscreen(): Promise<void> {
-    const target = this.fullscreenTarget();
-    if (!target) return;
-    await getFullscreenAPI(target).exit();
+    const pending: Promise<void> = part.request().then(
+      () => {
+        this.settleFullscreen(pending);
+      },
+      (error: unknown) => {
+        this.settleFullscreen(pending);
+        throw error;
+      },
+    );
+    this._pendingRequest = pending;
+    return pending;
   }
 
   /**
-   * Whether the renderer's host element is currently the fullscreen
-   * element. Reads live from the DOM, so this stays accurate when the
-   * user exits fullscreen via Esc or the browser UI.
+   * Leave fullscreen. Resolves once the game is not fullscreen, with
+   * `screen:fullscreen` already emitted. Resolves without asking the host when
+   * the game is not fullscreen, so another element's fullscreen is left alone.
+   *
+   * A second call made while an exit is in flight shares that exit's promise,
+   * and a call made while a request is in flight runs once the request
+   * settles.
+   */
+  exitFullscreen(): Promise<void> {
+    const part = this._fullscreen;
+    if (part === null) {
+      return Promise.reject(displayUnavailable("exitFullscreen"));
+    }
+    if (this._pendingExit !== null) return this._pendingExit;
+    if (this._pendingRequest !== null) {
+      const run = (): Promise<void> => this.exitFullscreen();
+      return this._pendingRequest.then(run, run);
+    }
+    try {
+      if (!readFullscreenActive(part)) return Promise.resolve();
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
+    const pending: Promise<void> = part.exit().then(
+      () => {
+        this.settleFullscreen(pending);
+      },
+      (error: unknown) => {
+        this.settleFullscreen(pending);
+        throw error;
+      },
+    );
+    this._pendingExit = pending;
+    return pending;
+  }
+
+  /**
+   * Whether the game is presented fullscreen. Read live from the host, so it
+   * stays accurate when the player leaves fullscreen with Esc, the browser's
+   * own control, or a window menu. Another element's fullscreen does not count.
    */
   get isFullscreen(): boolean {
-    const target = this.fullscreenTarget();
-    if (!target) return false;
-    const current = getFullscreenAPI(target).fullscreenElement();
-    return current === target;
+    const part = this._fullscreen;
+    if (part === null) throw displayUnavailable("isFullscreen");
+    return readFullscreenActive(part);
   }
 
   /**
-   * Current device orientation. Returns `null` when neither the
-   * `screen.orientation` API nor the legacy `window.orientation` angle
-   * is available — typical of headless tests and very old browsers.
+   * Whether a fullscreen request can change how the game is presented on this
+   * host. `"unsupported"` covers a browser without the Fullscreen API, a frame
+   * from another origin without `allow="fullscreen"`, and an app that already
+   * opens fullscreen. Hide a fullscreen control where this reads
+   * `"unsupported"`, and show it for `"unknown"`.
+   */
+  get fullscreenSupport(): HostSupport {
+    const part = this._fullscreen;
+    if (part === null) throw displayUnavailable("fullscreenSupport");
+    return readFullscreenSupport(part);
+  }
+
+  /**
+   * The screen orientation, or `null` where the host cannot read it — typical
+   * of headless tests and very old browsers. No order is promised between
+   * `screen:orientation` and the canvas taking its new size, so layout code
+   * reads the fit getters each frame.
    */
   get orientation(): OrientationType | null {
-    return deriveOrientationType();
+    const part = this._orientation;
+    if (part === null) throw displayUnavailable("orientation");
+    return readOrientation(part);
+  }
+
+  /**
+   * Whether this host can lock the screen orientation. `"unknown"` means the
+   * operation exists and only an attempt tells whether this device accepts it:
+   * a desktop browser refuses, and Android Chrome accepts while the page is
+   * fullscreen or installed.
+   */
+  get orientationLockSupport(): HostSupport {
+    const part = this._orientation;
+    if (part === null) throw displayUnavailable("orientationLockSupport");
+    return readLockSupport(part);
+  }
+
+  /**
+   * Lock the screen orientation. Resolves with the orientation the host
+   * reports once it accepted the lock, which can differ from `lock` when the
+   * device does not turn — compare the two to decide whether to show a
+   * rotate-device prompt. Rejects where {@link orientationLockSupport} is
+   * `"unsupported"`, and with the host's own error when it refuses.
+   */
+  lockOrientation(lock: OrientationLock): Promise<OrientationType | null> {
+    const part = this._orientation;
+    if (part === null) {
+      return Promise.reject(displayUnavailable("lockOrientation"));
+    }
+    let support: HostSupport;
+    try {
+      support = readLockSupport(part);
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
+    if (support === "unsupported") {
+      return Promise.reject(
+        new Error(
+          "RendererPlugin.lockOrientation: this host cannot lock the screen " +
+            'orientation (orientationLockSupport is "unsupported").',
+        ),
+      );
+    }
+    return part.lock(lock).then(() => {
+      this._syncDisplay();
+      return this.orientation;
+    });
+  }
+
+  /**
+   * Release an orientation lock. Resolves without action where
+   * {@link orientationLockSupport} is `"unsupported"`.
+   */
+  unlockOrientation(): Promise<void> {
+    const part = this._orientation;
+    if (part === null) {
+      return Promise.reject(displayUnavailable("unlockOrientation"));
+    }
+    let support: HostSupport;
+    try {
+      support = readLockSupport(part);
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
+    if (support === "unsupported") return Promise.resolve();
+    return part.unlock();
+  }
+
+  /**
+   * Drop the settled transition and publish the state the host reports.
+   * Clearing first lets a `screen:fullscreen` handler start the next
+   * transition rather than join the one that just finished.
+   */
+  private settleFullscreen(pending: Promise<void>): void {
+    if (this._pendingRequest === pending) this._pendingRequest = null;
+    if (this._pendingExit === pending) this._pendingExit = null;
+    this._syncDisplay();
+  }
+
+  /**
+   * Read both parts and emit one event per state that moved. Every value is
+   * validated before any of it is stored, so a part reporting nonsense leaves
+   * the renderer's state as it was. A throwing event handler ends the sequence
+   * and reaches whoever caused the read, with the new state already stored.
+   */
+  private _syncDisplay(): void {
+    const fullscreen = this._fullscreen;
+    // A host event that arrives after teardown is expected, not an error.
+    if (fullscreen === null) return;
+    const active = readFullscreenActive(fullscreen);
+    const current = this._orientation
+      ? readOrientation(this._orientation)
+      : null;
+    if (active !== this._lastFullscreen) {
+      this._lastFullscreen = active;
+      this._bus?.emit("screen:fullscreen", { active });
+    }
+    if (current !== this._lastOrientation) {
+      this._lastOrientation = current;
+      if (current !== null) {
+        this._bus?.emit("screen:orientation", { type: current });
+      }
+    }
   }
 
   private fullscreenTarget(): HTMLElement | null {
@@ -986,41 +1230,6 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     };
   }
 
-  private installFullscreenListener(bus: EventBus<EngineEvents>): void {
-    if (typeof document === "undefined") return;
-    const handler = (): void => {
-      bus.emit("screen:fullscreen", { active: this.isFullscreen });
-    };
-    document.addEventListener("fullscreenchange", handler);
-    document.addEventListener("webkitfullscreenchange", handler);
-    this._unregisterFullscreenListener = () => {
-      document.removeEventListener("fullscreenchange", handler);
-      document.removeEventListener("webkitfullscreenchange", handler);
-    };
-  }
-
-  private installOrientationListener(bus: EventBus<EngineEvents>): void {
-    if (typeof window === "undefined") return;
-    const emit = (): void => {
-      const type = deriveOrientationType();
-      if (type !== null) bus.emit("screen:orientation", { type });
-    };
-    const orientation = window.screen?.orientation;
-    if (orientation && typeof orientation.addEventListener === "function") {
-      orientation.addEventListener("change", emit);
-      this._unregisterOrientationListener = () => {
-        orientation.removeEventListener("change", emit);
-      };
-      return;
-    }
-    // Legacy fallback: window.orientationchange. Deprecated but still the
-    // only signal on older iOS Safari.
-    window.addEventListener("orientationchange", emit);
-    this._unregisterOrientationListener = () => {
-      window.removeEventListener("orientationchange", emit);
-    };
-  }
-
   // ─── Internal ────────────────────────────────────────────────────
 
   private startFit(options: RendererFitOptions): void {
@@ -1035,6 +1244,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       target,
       this._config.width,
       this._config.height,
+      this._config.resolution === undefined,
       // A scene offset is held in virtual pixels; its canvas layers move by
       // it at the new scale. The first fit applies before the provider exists.
       () => {
@@ -1045,14 +1255,14 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
-   * Resolve the fit target. Returns `null` when no reasonable host can be
-   * inferred — the controller then applies a one-shot transform against
-   * `config.width × config.height` without observing. We intentionally do
-   * NOT fall through to `document.body`: a `ResizeObserver` on `body` fires
-   * on any page layout change (font loads, text reflows, dynamic content),
-   * not just viewport resizes, which would silently re-layout the canvas
-   * every frame. Callers that want full-page fit must opt in explicitly
-   * via `fit: { target: document.body }`.
+   * Resolve the fit target. Returns `null` when no reasonable host element can
+   * be inferred — the controller then applies a one-shot transform against
+   * `config.width × config.height` without observing. We intentionally do NOT
+   * fall through to `document.body`: a `ResizeObserver` on `body` fires on any
+   * page layout change (font loads, text reflows, dynamic content), not just
+   * viewport resizes, which would silently re-layout the canvas every frame.
+   * Callers that want full-page fit must opt in explicitly via
+   * `fit: { target: document.body }`.
    */
   private resolveFitTarget(options: RendererFitOptions): HTMLElement | null {
     if (options.target) return options.target;
@@ -1065,77 +1275,71 @@ export class RendererPlugin implements Plugin, RendererAdapter {
 
 // ─── Module-private helpers ──────────────────────────────────────────
 
-interface FullscreenAPI {
-  request(): Promise<void>;
-  exit(): Promise<void>;
-  fullscreenElement(): Element | null;
+const HOST_SUPPORT_VALUES: readonly string[] = [
+  "supported",
+  "unsupported",
+  "unknown",
+];
+
+const ORIENTATION_VALUES: readonly string[] = [
+  "portrait-primary",
+  "portrait-secondary",
+  "landscape-primary",
+  "landscape-secondary",
+];
+
+/** The error every display member reports outside the engine's run. */
+function displayUnavailable(member: string): Error {
+  return new Error(
+    `RendererPlugin.${member}: the display is only available between ` +
+      "engine.start() and engine.destroy().",
+  );
 }
 
-type WebkitElement = Element & {
-  webkitRequestFullscreen?: () => void | Promise<void>;
-};
+// A registered display part reports values from a native bridge, so each read
+// is checked at that boundary. The page's own parts always pass.
 
-type WebkitDocument = Document & {
-  webkitExitFullscreen?: () => void | Promise<void>;
-  webkitFullscreenElement?: Element | null;
-};
-
-/**
- * Resolve the fullscreen API at call time, picking the unprefixed
- * standard methods when present and falling back to the `webkit*`
- * variants on iOS Safari. Detection runs on each call rather than at
- * module load so the helper still works if the prefixed API is
- * polyfilled or wrapped after import.
- */
-function getFullscreenAPI(el: Element): FullscreenAPI {
-  if (typeof document === "undefined") {
-    return {
-      request: () =>
-        Promise.reject(new Error("Fullscreen unavailable: no document")),
-      exit: () => Promise.resolve(),
-      fullscreenElement: () => null,
-    };
+function readFullscreenActive(part: HostFullscreen): boolean {
+  const value: unknown = part.active;
+  if (typeof value !== "boolean") {
+    throw new Error(
+      `HostFullscreen.active must be a boolean, got ${JSON.stringify(value)}.`,
+    );
   }
-  if ("requestFullscreen" in el) {
-    return {
-      request: () => Promise.resolve(el.requestFullscreen()),
-      exit: () => Promise.resolve(document.exitFullscreen()),
-      fullscreenElement: () => document.fullscreenElement,
-    };
-  }
-  const webkitEl = el as WebkitElement;
-  const webkitDoc = document as WebkitDocument;
-  if (typeof webkitEl.webkitRequestFullscreen === "function") {
-    return {
-      request: () => Promise.resolve(webkitEl.webkitRequestFullscreen?.()),
-      exit: () => Promise.resolve(webkitDoc.webkitExitFullscreen?.()),
-      fullscreenElement: () => webkitDoc.webkitFullscreenElement ?? null,
-    };
-  }
-  return {
-    request: () =>
-      Promise.reject(new Error("Fullscreen API not supported in this browser")),
-    exit: () => Promise.resolve(),
-    fullscreenElement: () => null,
-  };
+  return value;
 }
 
-/**
- * Best-effort device orientation read. Prefers `window.screen.orientation.type`,
- * falling back to deriving from the legacy numeric `window.orientation` angle
- * (deprecated but still the only signal on some old iOS Safari versions).
- * Returns `null` when neither API is available.
- */
-function deriveOrientationType(): OrientationType | null {
-  if (typeof window === "undefined") return null;
-  const modern = window.screen?.orientation?.type;
-  if (modern) return modern;
-  const legacyAngle =
-    (window as Window & { orientation?: number }).orientation ?? null;
-  if (legacyAngle === null) return null;
-  if (legacyAngle === 0) return "portrait-primary";
-  if (legacyAngle === 180) return "portrait-secondary";
-  if (legacyAngle === 90) return "landscape-primary";
-  if (legacyAngle === -90 || legacyAngle === 270) return "landscape-secondary";
-  return null;
+function readFullscreenSupport(part: HostFullscreen): HostSupport {
+  const value: unknown = part.support;
+  if (!HOST_SUPPORT_VALUES.includes(value as string)) {
+    throw new Error(
+      "HostFullscreen.support must be one of supported, unsupported, " +
+        `unknown, got ${JSON.stringify(value)}.`,
+    );
+  }
+  return value as HostSupport;
+}
+
+function readLockSupport(part: HostOrientation): HostSupport {
+  const value: unknown = part.lockSupport;
+  if (!HOST_SUPPORT_VALUES.includes(value as string)) {
+    throw new Error(
+      "HostOrientation.lockSupport must be one of supported, unsupported, " +
+        `unknown, got ${JSON.stringify(value)}.`,
+    );
+  }
+  return value as HostSupport;
+}
+
+function readOrientation(part: HostOrientation): OrientationType | null {
+  const value: unknown = part.current;
+  if (value === null) return null;
+  if (!ORIENTATION_VALUES.includes(value as string)) {
+    throw new Error(
+      "HostOrientation.current must be one of portrait-primary, " +
+        "portrait-secondary, landscape-primary, landscape-secondary or " +
+        `null, got ${JSON.stringify(value)}.`,
+    );
+  }
+  return value as OrientationType;
 }

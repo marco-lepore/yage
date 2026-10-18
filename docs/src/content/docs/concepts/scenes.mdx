@@ -40,7 +40,8 @@ class GameplayScene extends Scene {
 
   onPause() {
     // the scene became paused: a scene was pushed on top,
-    // `paused` was set, or the tab blurred with autoPauseOnBlur
+    // `paused` was set, or the game went to the background
+    // with the manager's autoPause on
   }
 
   onResume() {
@@ -184,12 +185,12 @@ per-frame.
 
 `onPause` and `onResume` fire on **every** effective pause transition, not
 just stack changes: setting `scene.paused = true` from game code, the
-manager's `autoPauseOnBlur` pausing scenes on tab blur, and scene stack
-changes all use the same hooks. The hooks track `scene.isPaused` — a write
+manager's `autoPause` pausing scenes while the game is in the background, and
+scene stack changes all use the same hooks. The hooks track `scene.isPaused` — a write
 that does not change the effective state (re-assigning the same value, or
 flipping the flag while the scene is already paused by a scene above) fires
 nothing. Ducking music or muting input in `onPause` therefore covers manual
-pauses and tab blur, not only pushed pause menus.
+pauses and the game going to the background, not only pushed pause menus.
 
 To start a scene already paused, set `scene.paused = true` before pushing
 it — the push fires `onPause` once. Don't write `scene.paused` from inside a

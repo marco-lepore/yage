@@ -88,16 +88,21 @@ function createMockSoundLibrary(options?: {
   muted?: boolean;
   autoPause?: boolean;
   paused?: boolean;
+  /** `false` builds the HTML-audio fallback, which has no `autoPause`. */
+  webAudio?: boolean;
 }): MockSoundLibrary {
   const instances = new Map<string, MockMediaInstance>();
   let nextId = 1;
 
-  const context = {
+  const context: Record<string, unknown> = {
     muted: options?.muted ?? false,
-    autoPause: options?.autoPause ?? true,
     paused: options?.paused ?? false,
+    refreshPaused: vi.fn(),
     audioContext: { state: options?.state ?? "running" },
   };
+  if (options?.webAudio !== false) {
+    context["autoPause"] = options?.autoPause ?? true;
+  }
 
   return {
     _instances: instances,
@@ -268,18 +273,20 @@ describe("AudioManager", () => {
         );
         expect(manager.masterVolume).toBe(0.5);
         expect(mockSound._instances.get("music")?.volume).toBeCloseTo(0.35);
+        const context = mockSound.context as unknown as {
+          autoPause: boolean;
+        };
+        context.autoPause = true;
         expect(
           () =>
             new AudioManager(mockSound, {
               masterVolume: value,
-              autoMuteOnBlur: false,
+              autoPause: false,
             }),
         ).toThrow(
           `AudioManager.masterVolume: volume must be a finite number from 0 to 1, got ${value}.`,
         );
-        expect(
-          (mockSound.context as unknown as { autoPause: boolean }).autoPause,
-        ).toBe(true);
+        expect(context.autoPause).toBe(true);
       },
     );
   });
@@ -1132,31 +1139,123 @@ describe("AudioManager", () => {
     });
   });
 
-  describe("autoMuteOnBlur", () => {
-    function getAutoPause(s: MockSoundLibrary): boolean {
-      return (s.context as unknown as { autoPause: boolean }).autoPause;
+  describe("autoPause", () => {
+    function contextOf(s: MockSoundLibrary): {
+      autoPause?: boolean;
+      paused: boolean;
+      refreshPaused: ReturnType<typeof vi.fn>;
+    } {
+      return s.context as unknown as {
+        autoPause?: boolean;
+        paused: boolean;
+        refreshPaused: ReturnType<typeof vi.fn>;
+      };
     }
 
-    it("defaults to true", () => {
-      const s = createMockSoundLibrary();
-      const m = new AudioManager(s);
-      expect(m.autoMuteOnBlur).toBe(true);
+    it("defaults to on and takes the value the config gives", () => {
+      expect(new AudioManager(createMockSoundLibrary()).autoPause).toBe(true);
+      expect(
+        new AudioManager(createMockSoundLibrary(), { autoPause: false })
+          .autoPause,
+      ).toBe(false);
     });
 
-    it("propagates the initial value to context.autoPause", () => {
-      const s = createMockSoundLibrary({ autoPause: true });
-      new AudioManager(s, { autoMuteOnBlur: false });
-      expect(getAutoPause(s)).toBe(false);
+    it("switches the audio library's own focus listener off", () => {
+      const on = createMockSoundLibrary({ autoPause: true });
+      new AudioManager(on, { autoPause: true });
+      expect(contextOf(on).autoPause).toBe(false);
+
+      const off = createMockSoundLibrary({ autoPause: true });
+      new AudioManager(off, { autoPause: false });
+      expect(contextOf(off).autoPause).toBe(false);
+
+      const fallback = createMockSoundLibrary({ webAudio: false });
+      new AudioManager(fallback);
+      expect("autoPause" in contextOf(fallback)).toBe(false);
     });
 
-    it("setter writes through to context.autoPause", () => {
+    it("holds the context paused while the host is inactive", () => {
       const s = createMockSoundLibrary();
       const m = new AudioManager(s);
-      expect(getAutoPause(s)).toBe(true);
-      m.autoMuteOnBlur = false;
-      expect(getAutoPause(s)).toBe(false);
-      m.autoMuteOnBlur = true;
-      expect(getAutoPause(s)).toBe(true);
+      const ctx = contextOf(s);
+
+      m._setHostActive(false);
+      expect(ctx.paused).toBe(true);
+      expect(ctx.refreshPaused).toHaveBeenCalledOnce();
+
+      m._setHostActive(false);
+      expect(ctx.refreshPaused).toHaveBeenCalledOnce();
+
+      m._setHostActive(true);
+      expect(ctx.paused).toBe(false);
+      expect(ctx.refreshPaused).toHaveBeenCalledTimes(2);
+
+      m._setHostActive(true);
+      expect(ctx.refreshPaused).toHaveBeenCalledTimes(2);
+    });
+
+    it("leaves a context the game had already paused paused", () => {
+      const s = createMockSoundLibrary({ paused: true });
+      const m = new AudioManager(s);
+
+      m._setHostActive(false);
+      m._setHostActive(true);
+
+      expect(contextOf(s).paused).toBe(true);
+    });
+
+    it("takes effect the moment it is switched on or off", () => {
+      const s = createMockSoundLibrary();
+      const m = new AudioManager(s);
+      const ctx = contextOf(s);
+
+      m._setHostActive(false);
+      m.autoPause = false;
+      expect(ctx.paused).toBe(false);
+
+      m.autoPause = true;
+      expect(ctx.paused).toBe(true);
+
+      m._setHostActive(true);
+      const calls = ctx.refreshPaused.mock.calls.length;
+      m.autoPause = false;
+      m.autoPause = true;
+      expect(ctx.paused).toBe(false);
+      expect(ctx.refreshPaused).toHaveBeenCalledTimes(calls);
+    });
+
+    it("leaves channel and handle state as the game set it", () => {
+      const s = createMockSoundLibrary();
+      const m = new AudioManager(s);
+      const music = m.play("theme", { channel: "music" });
+      const voice = m.play("line", { channel: "voice" });
+      const held = m.play("kept", { channel: "sfx" });
+      m.pauseChannel("music");
+      m.muteChannel("voice");
+      held.paused = true;
+
+      m._setHostActive(false);
+      const during = m.play("during", { channel: "ambient" });
+      during.paused = true;
+      m._setHostActive(true);
+
+      expect(music.paused).toBe(true);
+      expect(voice.muted).toBe(true);
+      expect(held.paused).toBe(true);
+      expect(during.paused).toBe(true);
+    });
+
+    it("holds the HTML-audio fallback the same way", () => {
+      const s = createMockSoundLibrary({ webAudio: false });
+      const m = new AudioManager(s);
+      const ctx = contextOf(s);
+
+      m._setHostActive(false);
+      expect(ctx.paused).toBe(true);
+      expect(ctx.refreshPaused).toHaveBeenCalledOnce();
+
+      m._setHostActive(true);
+      expect(ctx.paused).toBe(false);
     });
   });
 });

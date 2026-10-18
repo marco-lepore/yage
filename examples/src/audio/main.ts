@@ -42,8 +42,8 @@ function setUnlockLabel(unlocked: boolean): void {
   el.classList.toggle("locked", !unlocked);
 }
 
-function setBlurLabel(on: boolean): void {
-  const el = document.getElementById("blur-state");
+function setAutoPauseLabel(on: boolean): void {
+  const el = document.getElementById("auto-pause-state");
   if (!el) return;
   el.textContent = on ? "on" : "off";
   el.classList.toggle("off", !on);
@@ -315,7 +315,7 @@ class AudioController extends Component {
     // the context flips to "running" (or synchronously if already unlocked).
     setUnlockLabel(this._audio.isUnlocked());
     this.addCleanup(this._audio.onUnlock(() => setUnlockLabel(true)));
-    setBlurLabel(this._audio.autoMuteOnBlur);
+    setAutoPauseLabel(this._audio.autoPause);
   }
 
   update(): void {
@@ -347,10 +347,10 @@ class AudioController extends Component {
       }
     }
 
-    // Toggle autoMuteOnBlur — tab-away to hear the effect.
-    if (this._input.isJustPressed("toggleBlurMute")) {
-      this._audio.autoMuteOnBlur = !this._audio.autoMuteOnBlur;
-      setBlurLabel(this._audio.autoMuteOnBlur);
+    // Toggle autoPause — click away from the window to hear the effect.
+    if (this._input.isJustPressed("toggleAutoPause")) {
+      this._audio.autoPause = !this._audio.autoPause;
+      setAutoPauseLabel(this._audio.autoPause);
     }
   }
 
@@ -464,7 +464,7 @@ async function main() {
         sfxUp: ["ArrowRight"],
         sfxDown: ["ArrowLeft"],
         muteAll: ["Space"],
-        toggleBlurMute: ["KeyB"],
+        toggleAutoPause: ["KeyB"],
       },
       preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown"],
     }),

@@ -83,6 +83,7 @@ Enforced by tooling — match these conventions exactly:
   input before anything mutates. This is edge validation, not mid-operation
   recovery.
 - **No non-finite number (`NaN`, `Infinity`) enters engine state unguarded.** A game-supplied number written into simulation state (setter, config, callback return) throws at the write site with `Context.method: constraint, got ${x}`. Two legal inputs that combine into a non-finite result (a documented `Infinity` times a `dt` of `0`) get a defined result plus a one-shot `devWarn` when it is lossy. A read-only query stays unguarded and documents that the result is undefined. Full cases: the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
+- **`Host` is the one source of host state.** Whether the app is active, the page visible or the window focused comes from `Host`: `host.lifecycle`, `host.active`, and the `host:active` and `host:lifecycle` events. An engine package or addon adds no listener of its own for those states (`visibilitychange`, window `blur` and `focus`, a native app-state event). Engine packages follow `Host._observe`; game code uses the events. Why: listeners in separate packages each define "in the background" their own way, and a native host cannot reach them. Fullscreen and screen orientation come from `RendererPlugin` (`isFullscreen`, `orientation`, the `screen:fullscreen` and `screen:orientation` events), which reads them from the registered `HostDisplay` or the page; no other package listens for them.
 
 ## Testing
 

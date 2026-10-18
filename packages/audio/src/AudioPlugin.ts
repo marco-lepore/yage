@@ -1,6 +1,7 @@
 import {
   AssetManagerKey,
   ErrorBoundaryKey,
+  HostKey,
   ProcessSystemKey,
   globalRandom,
   makeGlobalScopedQueue,
@@ -56,6 +57,12 @@ export class AudioPlugin implements Plugin {
     manager._setErrorBoundary(context.tryResolve(ErrorBoundaryKey));
     context.register(AudioManagerKey, manager);
 
+    const host = context.resolve(HostKey);
+    manager._setHostActive(host.active);
+    this._cleanupFns.push(
+      host._observe(({ active }) => manager._setHostActive(active)),
+    );
+
     // Register sound asset loader (if AssetManager is available)
     const am = context.tryResolve(AssetManagerKey);
     am?.registerLoader("sound", {
@@ -76,9 +83,6 @@ export class AudioPlugin implements Plugin {
     });
 
     if (typeof document === "undefined") return;
-
-    // Pause-on-blur is delegated to pixi-sound's WebAudioContext.autoPause
-    // (configured by AudioManager from `autoMuteOnBlur`). No listener here.
 
     // Attach gesture listeners only if audio is not already unlocked. These
     // run in bubble phase so @pixi/sound's capture-phase `_unlock()` has

@@ -26,7 +26,7 @@ export interface SynthPluginConfig {
 /**
  * Renders every configured sound at install time and registers the buffers
  * with `@yagejs/audio`, so the aliases play through `AudioManager` like
- * preloaded files — same channels, volumes, mute, and blur auto-pause.
+ * preloaded files — same channels, volumes, mute, and automatic pause.
  *
  * ```ts
  * engine.use(new AudioPlugin());

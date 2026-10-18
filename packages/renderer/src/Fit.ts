@@ -28,19 +28,18 @@ export interface VirtualRect {
 export type CanvasRect = VirtualRect;
 
 /**
- * Runaway-feedback guard thresholds. A fit host whose own height is
+ * Runaway-feedback guard thresholds. A fit host element whose own height is
  * content-driven has no stable size: the canvas the controller sizes to it
- * becomes its tallest child, so the host's measured size is a function of the
- * canvas size. The renderer sets `display:block` on the canvas, which
- * collapses the common ~4px inline-descender gap to zero so the loop
- * converges. These bound the residual cases it can't (a vertical margin on
- * the canvas, sub-pixel / devicePixelRatio rounding, an extra wrapper
- * element): once the host has grown by at most `RUNAWAY_STEP_PX` on this many
- * consecutive observer fires with the other axis held stable, treat it as a
- * runaway, freeze auto-resize, and warn once. The thresholds are deliberately
- * loose — a real resize jumps by more than `RUNAWAY_STEP_PX` or stops growing
- * (resetting the streak) long before `RUNAWAY_LIMIT`, while a true feedback
- * loop never stops.
+ * becomes its tallest child, so the element's measured size is a function of
+ * the canvas size. The renderer sets `display:block` on the canvas, which
+ * collapses the common ~4px inline-descender gap to zero so the loop converges.
+ * These bound the residual cases it can't (a vertical margin on the canvas,
+ * sub-pixel / devicePixelRatio rounding, an extra wrapper element): once the
+ * host element has grown by at most `RUNAWAY_STEP_PX` on this many consecutive
+ * observer fires with the other axis held stable, treat it as a runaway, freeze
+ * auto-resize, and warn once. The thresholds are deliberately loose — a real
+ * resize jumps by more than `RUNAWAY_STEP_PX` or stops growing (resetting the
+ * streak) long before `RUNAWAY_LIMIT`, while a true feedback loop never stops.
  */
 const RUNAWAY_STEP_PX = 16;
 const RUNAWAY_LIMIT = 64;
@@ -52,7 +51,7 @@ const RUNAWAY_LIMIT = 64;
  * `app.renderer.resize(hostW, hostH)` and a scale/position transform on the
  * supplied container that maps the virtual rectangle into the new canvas
  * according to the fit mode. Guards against zero-size firings (detached /
- * `display:none` hosts).
+ * `display:none` host elements).
  *
  * The container we transform must NOT be `app.stage` itself — Pixi's stage
  * is the active render group and `@pixi/tilemap`'s pipe double-applies any
@@ -60,11 +59,24 @@ const RUNAWAY_LIMIT = 64;
  * dedicated `_worldRoot` child of stage for this purpose; constructors in
  * tests pass any plain Container.
  *
- * With a null target (headless environments, tests without a DOM), applies
- * the transform once against a fixed host size and installs no observer.
+ * With a null target (headless environments, tests without a DOM), applies the
+ * transform once against a fixed host-element size and installs no observer.
+ *
+ * When `followDevicePixelRatio` is set, the canvas backing store also follows
+ * the display's pixel ratio: a window moved to a display with another ratio,
+ * or a browser zoom, resizes at the same CSS size with the new density. A game
+ * that configured `resolution` keeps that fixed density instead.
  */
 export class FitController {
   private observer: ResizeObserver | null = null;
+  /**
+   * The media query that reports the current pixel ratio, and the listener on
+   * it. Both are replaced on each change, because the query names one ratio.
+   * Armed by the first `start()` and released only by `stop()`, so switching
+   * fit mode or target keeps one listener.
+   */
+  private ratioQuery: MediaQueryList | null = null;
+  private ratioListener: (() => void) | null = null;
   private transform: FitTransform = {
     scaleX: 1,
     scaleY: 1,
@@ -84,9 +96,10 @@ export class FitController {
   private letterboxMask: Graphics | null = null;
   /**
    * Runaway-feedback guard. See {@link RUNAWAY_LIMIT}. `runawayStreak` counts
-   * consecutive small monotonic host growths on one axis; on crossing the
-   * limit `frozen` latches (auto-resize stops) and `runawayWarned` debounces
-   * the console warning. All three reset whenever observation (re)starts.
+   * consecutive small monotonic host-element growths on one axis; on crossing
+   * the limit `frozen` latches (auto-resize stops) and `runawayWarned`
+   * debounces the console warning. All three reset whenever observation
+   * (re)starts.
    */
   private runawayStreak = 0;
   private runawayWarned = false;
@@ -101,6 +114,7 @@ export class FitController {
     private target: HTMLElement | null,
     initialCanvasW: number,
     initialCanvasH: number,
+    private readonly followDevicePixelRatio: boolean,
     /** Runs after every transform this controller applies. */
     private readonly onApply?: () => void,
   ) {
@@ -109,8 +123,8 @@ export class FitController {
   }
 
   /**
-   * Apply the current host size synchronously, then start observing it for
-   * subsequent resizes. Idempotent: a second call while already observing
+   * Apply the current host-element size synchronously, then start observing it
+   * for subsequent resizes. Idempotent: a second call while already observing
    * is a no-op. Pair with {@link stop} to disconnect.
    * With a null target, applies once using the initial canvas size and does
    * not observe.
@@ -121,6 +135,8 @@ export class FitController {
     this.runawayStreak = 0;
     this.runawayWarned = false;
     this.frozen = false;
+
+    this.armRatioQuery();
 
     if (!this.target) {
       this.apply(this.canvasW, this.canvasH);
@@ -136,9 +152,9 @@ export class FitController {
     this.observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
-      // Read the host's content box, not its border box. The canvas is a
-      // block-level child (the renderer forces `display:block`) laid out
-      // inside the host content box; measuring the host's border-box would
+      // Read the host element's content box, not its border box. The canvas is
+      // a block-level child (the renderer forces `display:block`) laid out
+      // inside that content box; measuring the element's border box would
       // re-add padding+border to the canvas on every apply and the observer
       // would chase its own output. contentBoxSize already excludes both.
       const size = entry.contentBoxSize?.[0];
@@ -151,12 +167,12 @@ export class FitController {
       }
       if (this.frozen) return;
 
-      // A host with no bounded height of its own is sized by the canvas we
-      // just put in it, so each apply can make it measure slightly larger
+      // A host element with no bounded height of its own is sized by the canvas
+      // we just put in it, so each apply can make it measure slightly larger
       // and the observer re-fires forever. `display:block` kills the common
-      // ~4px descender; this catches the residual (canvas margin, sub-pixel
-      // / DPR rounding, wrapper elements): a small monotonic growth on one
-      // axis with the other axis exactly stable, sustained for the limit.
+      // ~4px descender; this catches the residual (canvas margin, sub-pixel /
+      // DPR rounding, wrapper elements): a small monotonic growth on one axis
+      // with the other axis exactly stable, sustained for the limit.
       const dw = w - this.canvasW;
       const dh = h - this.canvasH;
       const creeping =
@@ -200,7 +216,52 @@ export class FitController {
   stop(): void {
     this.observer?.disconnect();
     this.observer = null;
+    this.releaseRatioQuery();
     this.removeLetterboxMask();
+  }
+
+  /**
+   * Start following the display's pixel ratio, unless the game fixed the
+   * resolution or the controller already follows it.
+   */
+  private armRatioQuery(): void {
+    if (!this.followDevicePixelRatio) return;
+    if (this.ratioQuery) return;
+    this.listenToRatio();
+  }
+
+  /**
+   * Listen for the current ratio ceasing to match. The query names one ratio,
+   * so the listener arms a fresh query for the new one before resizing the
+   * canvas at its unchanged CSS size. The density is independent of that size,
+   * so this runs while auto-resize is frozen too.
+   */
+  private listenToRatio(): void {
+    if (typeof window === "undefined") return;
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(
+      `(resolution: ${window.devicePixelRatio}dppx)`,
+    );
+    const listener = (): void => {
+      this.releaseRatioQuery();
+      this.listenToRatio();
+      this.app.renderer.resize(
+        this.canvasW,
+        this.canvasH,
+        window.devicePixelRatio,
+      );
+    };
+    query.addEventListener("change", listener);
+    this.ratioQuery = query;
+    this.ratioListener = listener;
+  }
+
+  private releaseRatioQuery(): void {
+    if (this.ratioQuery && this.ratioListener) {
+      this.ratioQuery.removeEventListener("change", this.ratioListener);
+    }
+    this.ratioQuery = null;
+    this.ratioListener = null;
   }
 
   /** Update mode and/or target without rebuilding the controller. */
@@ -268,8 +329,8 @@ export class FitController {
   /**
    * Full canvas extent expressed in virtual-space pixels. Unlike
    * {@link visibleVirtualRect} this is NOT clamped to the declared virtual
-   * bounds — under `letterbox` / `expand` on an off-aspect host it extends
-   * past `virtualSize` on the unscaled axis (negative `x`/`y` or
+   * bounds — under `letterbox` / `expand` on an off-aspect host element it
+   * extends past `virtualSize` on the unscaled axis (negative `x`/`y` or
    * `width`/`height` greater than the virtual dimension). Under `cover` it
    * equals `visibleVirtualRect`; under `stretch` it equals the virtual rect.
    */
@@ -292,7 +353,7 @@ export class FitController {
    *
    * - `letterbox` / `expand` / `stretch`: always the full virtual rect (no cropping).
    * - `cover`: a strict sub-rect — the long axis is cropped by the canvas
-   *   edges. Example: under 1000×600 host with 400×300 virtual, cover
+   *   edges. Example: under a 1000×600 host element with 400×300 virtual, cover
    *   scales to 2.5 and crops 30 virtual pixels off each of top / bottom,
    *   so `visibleVirtualRect` is `{ x: 0, y: 30, width: 400, height: 240 }`.
    */
@@ -318,9 +379,9 @@ export class FitController {
    * in these regions — they are just clipped by the canvas edges.
    *
    * - `letterbox` / `expand` / `stretch`: always `[]` (nothing cropped inside virtual).
-   * - `cover`: 1 or 2 strips on the cropped axis (top + bottom on a wide
-   *   host; left + right on a tall host). Example: under 1000×600 host with
-   *   400×300 virtual, cover crops 30 px off top/bottom, so the rects are
+   * - `cover`: 1 or 2 strips on the cropped axis (top + bottom on a wide host
+   *   element; left + right on a tall one). Example: under a 1000×600 element
+   *   with 400×300 virtual, cover crops 30 px off top/bottom, so the rects are
    *   `[{x:0,y:0,w:400,h:30}, {x:0,y:270,w:400,h:30}]`.
    *
    * Strips are returned in axis order: top-then-bottom or left-then-right.
@@ -367,10 +428,10 @@ export class FitController {
    * rect — the letterbox/expand "bars" expressed in virtual-space pixels.
    * Geometric complement of `virtualRect` inside {@link visibleCanvasRect}.
    *
-   * Populated whenever the host aspect doesn't match virtual and there's
-   * canvas area beyond virtual: true under `letterbox` and `expand`, empty
-   * under `cover` (virtual always covers the canvas) and `stretch` (virtual
-   * exactly fills the canvas).
+   * Populated whenever the host element's aspect doesn't match virtual and
+   * there's canvas area beyond virtual: true under `letterbox` and `expand`,
+   * empty under `cover` (virtual always covers the canvas) and `stretch`
+   * (virtual exactly fills the canvas).
    *
    * Under `expand` these are the "play-adjacent" strips the game is expected
    * to draw into — fog, parallax, decorative backdrop, bar-anchored HUD.
@@ -378,8 +439,8 @@ export class FitController {
    * the same rects can drive optional bar customization on top of a
    * letterbox render.
    *
-   * Strips are returned in axis order: top-then-bottom on tall hosts,
-   * left-then-right on wide hosts. Zero-sized strips are omitted.
+   * Strips are returned in axis order: top-then-bottom on tall host elements,
+   * left-then-right on wide ones. Zero-sized strips are omitted.
    */
   get extendedVirtualRects(): readonly VirtualRect[] {
     const vc = this.visibleCanvasRect;
@@ -427,8 +488,8 @@ export class FitController {
     // border-box. `getBoundingClientRect()` always reports border-box, so
     // subtract padding + border via computed style. Without this, the
     // initial synchronous apply (before any observer fire) sizes the canvas
-    // to the host's outer rect; on a host without an explicit height that
-    // pushes the host taller, and the observer then chases it.
+    // to the host element's outer rect; on an element without an explicit
+    // height that pushes it taller, and the observer then chases it.
     const rect = el.getBoundingClientRect();
     if (typeof getComputedStyle === "undefined") {
       return { width: rect.width, height: rect.height };

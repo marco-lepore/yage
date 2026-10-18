@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE E2E — Display in frames</title>
+    <style>
+      iframe {
+        display: block;
+        width: 400px;
+        height: 300px;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Two frames of the display fixture, neither with an `allow` attribute.
+      The second names the same server through its other loopback name, which
+      makes it a different origin for the fullscreen permission policy.
+    -->
+    <iframe id="same-origin" src="/display.html"></iframe>
+    <iframe id="cross-origin" src="http://localhost:5200/display.html"></iframe>
+  </body>
+</html>

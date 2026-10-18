@@ -241,3 +241,204 @@ A plugin that uses a service another plugin provides, without depending on it,
 resolves that service in `onStart` rather than `install`: by then every plugin
 has installed. `RendererPlugin` publishes its render facet to the Inspector this
 way, since the Inspector usually comes from `DebugPlugin`.
+
+## The Host
+
+The host is the application that runs the game's page: a browser tab, or a
+native shell built around a web view. Every engine has a `Host` that names it,
+as `engine.host` and under `HostKey`:
+
+```typescript yage-context="engine"
+const info = engine.host.info;
+if (info.runtime !== "browser") {
+  console.log(`${info.runtime} ${info.os} app ${info.appVersion}`);
+}
+```
+
+Inside a component, resolve the same object through the key:
+
+```typescript
+import { Component, HostKey } from "@yagejs/core";
+
+class TiltHint extends Component {
+  onAdd(): void {
+    const os = this.use(HostKey).info.os;
+    this.entity.setActive(os === "ios" || os === "android");
+  }
+}
+```
+
+A page with no host adapter reports `runtime: "browser"`, `os: "unknown"`, and
+`undefined` for `appVersion`, `appBuild` and `runtimeVersion`. The operating
+system is `"unknown"` in a browser because a page reads the system name only
+from the user agent, and an emulated device changes that string. `undefined` in
+a version field means the host has no authoritative value to report.
+
+`runtime` is a plain string rather than a fixed set of names, so an adapter you
+write names itself. `os` is one of `"macos"`, `"windows"`, `"linux"`, `"ios"`,
+`"android"` and `"unknown"`.
+
+### Active, visible, focused
+
+The host also reports what the application is doing. Three states, each
+`"unknown"` where the host cannot observe it:
+
+| State        | What it says                                                                         |
+| ------------ | ------------------------------------------------------------------------------------ |
+| `activity`   | Whether the operating system runs the app in the foreground and delivers input to it |
+| `visibility` | Whether the player can see the game's page                                           |
+| `focus`      | Whether the game's window has keyboard focus                                         |
+
+`engine.host.active` folds them into the one answer the engine follows: it is
+`false` while the app is inactive, the page is hidden, or the window is
+unfocused. `"unknown"` never makes the host inactive. Scenes follow it through
+`scenes.autoPause`, audio through `audio.autoPause`, and input releases held
+keys, buttons and touches whenever one of the three states turns negative.
+
+```typescript yage-context="engine"
+engine.host.lifecycle.visibility; // "visible" | "hidden" | "unknown"
+engine.host.active; // false while the game is in the background
+engine.host.activeWhenUnfocused = true; // keep running behind another window
+```
+
+`activeWhenUnfocused` defaults to `false`, so clicking away from the window
+counts as going to the background. It is the only setting, which is what keeps
+scenes and audio from disagreeing about what "in the background" means. One
+consequence: a game in a frame nobody has clicked yet starts unfocused, so its
+audio is held until the player clicks it.
+
+Two events carry the state to game code. `host:active` fires when
+`engine.host.active` flips; `host:lifecycle` fires on every change of the three
+states, for a game that wants the detail.
+
+```typescript
+import { Component } from "@yagejs/core";
+
+declare function writeCheckpoint(): void;
+
+class CheckpointOnBackground extends Component {
+  onAdd(): void {
+    this.listenBus("host:active", ({ active }) => {
+      if (!active) writeCheckpoint();
+    });
+  }
+}
+```
+
+In a browser the page supplies two of the three: `visibility` follows the
+page's own visibility, `focus` follows the window's `focus` and `blur` events,
+and `activity` stays `"unknown"` because a page cannot see it. A host adapter
+replaces any of them.
+
+### Writing a host adapter
+
+A host adapter is a plugin named `"host"`. It reads the shell's own state,
+attaches it in `install`, and releases it in `onDestroy`. One engine takes one
+adapter: a second `attach` throws, and `engine.use` refuses a second plugin
+named `"host"`.
+
+```typescript
+import { HostKey } from "@yagejs/core";
+import type {
+  EngineContext,
+  HostInfo,
+  HostLifecycleReport,
+  Plugin,
+} from "@yagejs/core";
+
+declare function readShellInfo(): Promise<HostInfo>;
+declare function readShellState(): Promise<HostLifecycleReport>;
+declare function onShellStateChange(
+  listener: (state: HostLifecycleReport) => void,
+): () => void;
+
+class ShellHostPlugin implements Plugin {
+  readonly name = "host";
+  readonly version = "1.0.0";
+
+  private detach: (() => void) | undefined;
+  private released = false;
+
+  async install(context: EngineContext): Promise<void> {
+    const info = await readShellInfo();
+    // destroy() can land while install awaits, so check after every await.
+    if (this.released) return;
+    const lifecycle = await readShellState();
+    if (this.released) return;
+    this.detach = context.resolve(HostKey).attach({
+      info,
+      lifecycle,
+      watchLifecycle: (report) => onShellStateChange(report),
+    });
+  }
+
+  onDestroy(): void {
+    this.released = true;
+    this.detach?.();
+    this.detach = undefined;
+  }
+}
+```
+
+Every `install` finishes before the loop starts and before any `onStart` runs,
+so the host's state is in place before the first scene. `attach` validates
+every field and throws when one is wrong, then copies and freezes them:
+changing the provider's object afterwards does not change `engine.host`. The
+function `attach` returns stops the reports and hands every state back to the
+page, and a plugin that reads `engine.host.info` without depending on the
+adapter reads it in `onStart`.
+
+`lifecycle` is the shell's state at attach, read once like `info`.
+`watchLifecycle` is called once; the adapter reports whichever of the three
+states changed and returns the function that stops the reports. For each state
+the adapter reports, its value is the answer and the page's is ignored, so a
+shell whose window focus the page reads wrongly can correct it.
+
+Fullscreen and screen orientation reach the engine the same way, through
+`@yagejs/renderer`. An adapter registers a `HostDisplay` under
+`HostDisplayKey` in its `install`, with a `fullscreen` part, an `orientation`
+part, or both, and `RendererPlugin` reports whichever parts it finds there and
+takes the rest from the page. A shell whose window fullscreen the page cannot
+read supplies fullscreen and leaves orientation alone:
+
+```typescript
+import { HostDisplayKey } from "@yagejs/renderer";
+import type { EngineContext, Plugin } from "@yagejs/core";
+import type { HostFullscreen } from "@yagejs/renderer";
+
+declare const shellFullscreen: HostFullscreen; // the shell's own window state
+declare function onShellFullscreenChange(listener: () => void): () => void;
+
+class ShellHostPlugin implements Plugin {
+  readonly name = "host";
+  readonly version = "1.0.0";
+
+  install(context: EngineContext): void {
+    context.register(HostDisplayKey, {
+      fullscreen: shellFullscreen,
+      watch: (changed) => onShellFullscreenChange(changed),
+    });
+  }
+}
+```
+
+`HostDisplayKey` is also exported from `@yagejs/renderer/api`, the entry
+without Pixi, so an adapter package can import it without loading the
+renderer's drawing code. The renderer resolves the key when the engine starts,
+after every `install` has run.
+
+### Support and permission
+
+Two sets of words describe what a host lets a game do, and every operation that
+needs them uses these:
+
+- `HostSupport` is `"supported"`, `"unsupported"` or `"unknown"`, and answers
+  whether the host has the operation at all.
+- `HostPermission` is `"granted"`, `"denied"`, `"prompt"` or `"unknown"`, and
+  answers whether the player or the operating system allows it.
+
+Reading either one never shows a permission prompt. `"unknown"` is what a host
+reports when it cannot observe the state, so a game is never given a guess.
+Whether an operation works at this moment — the hardware is present, a stream
+starts — comes back from the operation itself, not from a stored status. The
+package that owns an operation reports its support and permission beside it.

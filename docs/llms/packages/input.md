@@ -121,8 +121,9 @@ in a frame that runs no step is held for the next step.
 for a release the player made: a key-up, a gamepad button-up, a pointer-button
 release, an on-screen control the finger left. It answers `false` for held
 state the engine drops on its own — the window losing focus, the page hiding,
-a pad disconnecting, a cancelled pointer gesture, `clearAll()`, an action
-source's `releaseAll()` — and `false` while the action's group is disabled.
+the host reporting the app inactive, a pad disconnecting, a cancelled pointer
+gesture, `clearAll()`, an action source's `releaseAll()` — and `false` while
+the action's group is disabled.
 Read it wherever the release commits something the player cannot take back: a
 menu confirming the row under the cursor, a charged shot leaving the barrel.
 The other release queries (`isJustReleased`, `getReleaseDuration`,
@@ -498,9 +499,10 @@ Synthetic injection bypasses the queue and applies state synchronously — tests
 
 Synthetic injection also reaches no `@yagejs/ui` element: it writes manager state, while a UI primitive receives clicks as renderer events on its own container. `inspector.pointer` (see the debug package) asks the renderer to deliver a real pointer event, which does reach one.
 
-Window blur and page hide release held keyboard, gamepad, and pointer input
-through the normal release paths, then discard browser events queued before
-the focus boundary. Action-source holds are independent and remain held until
+Held keyboard, gamepad and pointer input is released when the window loses
+focus, the page is hidden, or the host reports the app inactive — all three
+read from `Host`. The release goes through the normal release paths, and the
+browser events queued before that boundary are discarded. Action-source holds are independent and remain held until
 their owner releases them.
 
 ## Pointer / wheel consume

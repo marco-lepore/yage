@@ -4,6 +4,7 @@ import type { SceneTransitionKind } from "./SceneTransition.js";
 import type { Scene } from "./Scene.js";
 import type { ErrorBoundary } from "./ErrorBoundary.js";
 import type { Entity } from "./Entity.js";
+import type { HostLifecycle } from "./Host.js";
 
 // Forward declaration for scene payloads
 type SceneRef = { readonly name: string };
@@ -42,6 +43,11 @@ export interface EngineEvents {
   // changes. `OrientationType` is the built-in DOM lib union.
   "screen:fullscreen": { active: boolean };
   "screen:orientation": { type: OrientationType };
+  // Host events. Emitted by `Host` when the application that runs the game
+  // changes state: `host:active` when the game goes to or returns from the
+  // background, `host:lifecycle` for every change of the three fields.
+  "host:active": { active: boolean };
+  "host:lifecycle": { lifecycle: HostLifecycle; previous: HostLifecycle };
 }
 
 /** Typed publish/subscribe event bus. */

@@ -190,8 +190,10 @@ The engine emits these events automatically:
 | `scene:loading:done` | `{ scene }` | A loading scene has finished loading |
 | `engine:started` | `undefined` | The engine loop has started |
 | `engine:stopped` | `undefined` | The engine is being destroyed |
-| `screen:fullscreen` | `{ active }` | The canvas host entered or left fullscreen |
-| `screen:orientation` | `{ type }` | The device orientation changed |
+| `screen:fullscreen` | `{ active }` | The game entered or left fullscreen (`renderer.isFullscreen` changed) |
+| `screen:orientation` | `{ type }` | The screen orientation changed |
+| `host:active` | `{ active }` | The game went to or returned from the background |
+| `host:lifecycle` | `{ lifecycle, previous }` | The app's activity, the page's visibility, or the window's focus changed |
 
 `entity` in the `entity:*` and `component:*` payloads is the live `Entity`,
 so a listener can read its tags and components. The `scene` fields carry

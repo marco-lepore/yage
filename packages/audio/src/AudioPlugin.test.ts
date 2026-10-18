@@ -14,6 +14,7 @@ const mockSound = vi.hoisted(() => ({
     muted: false,
     autoPause: true,
     paused: false,
+    refreshPaused: vi.fn(),
     audioContext: { state: "running" as "suspended" | "running" },
   },
 }));
@@ -22,20 +23,64 @@ vi.mock("@pixi/sound", () => ({
   sound: mockSound,
 }));
 
-import { EngineContext, ProcessSystem, ProcessSystemKey } from "@yagejs/core";
+import {
+  EngineContext,
+  EventBus,
+  Host,
+  HostKey,
+  ProcessSystem,
+  ProcessSystemKey,
+} from "@yagejs/core";
+import type { HostLifecycleReport } from "@yagejs/core";
 import { AudioPlugin } from "./AudioPlugin.js";
 import { AudioManagerKey } from "./types.js";
 import { AudioManager } from "./AudioManager.js";
 
-function createContext(): EngineContext {
+/** Every engine registers a `Host`; audio follows it. */
+let host: Host | undefined;
+
+function createContext(lifecycle?: HostLifecycleReport): EngineContext {
   const context = new EngineContext();
   context.register(ProcessSystemKey, new ProcessSystem());
+  host = new Host();
+  context.register(HostKey, host);
+  host._connect({ events: new EventBus(), syncScenes: () => {} });
+  if (lifecycle) setHost(lifecycle);
   return context;
 }
+
+/** Attach an adapter to the context's host and report a change through it. */
+function setHost(state: HostLifecycleReport): void {
+  const current = host;
+  if (!current) throw new Error("no host in the context");
+  if (reportToHost === undefined) {
+    current.attach({
+      info: {
+        runtime: "test",
+        os: "unknown",
+        appVersion: undefined,
+        appBuild: undefined,
+        runtimeVersion: undefined,
+      },
+      watchLifecycle: (report) => {
+        reportToHost = report;
+        return () => {
+          reportToHost = undefined;
+        };
+      },
+    });
+  }
+  reportToHost?.(state);
+}
+
+let reportToHost: ((state: HostLifecycleReport) => void) | undefined;
 
 describe("AudioPlugin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    host?._dispose();
+    host = undefined;
+    reportToHost = undefined;
     mockSound.context.muted = false;
     mockSound.context.autoPause = true;
     mockSound.context.paused = false;
@@ -90,56 +135,68 @@ describe("AudioPlugin", () => {
     addSpy.mockRestore();
   });
 
-  describe("autoMuteOnBlur runtime toggle", () => {
-    function setHasFocus(value: boolean): void {
-      Object.defineProperty(document, "hasFocus", {
-        configurable: true,
-        value: () => value,
-      });
-    }
-
-    it("toggling off while window is unfocused resumes immediately", async () => {
-      mockSound.context.paused = true;
+  describe("following the host", () => {
+    it("pauses the context when it installs under an inactive host", async () => {
       const plugin = new AudioPlugin();
-      const context = createContext();
+      const context = createContext({ activity: "inactive" });
+
       await plugin.install(context);
-      const manager = context.resolve(AudioManagerKey);
 
-      setHasFocus(false);
-      manager.autoMuteOnBlur = false;
+      expect(mockSound.context.paused).toBe(true);
       expect(mockSound.context.autoPause).toBe(false);
-      expect(mockSound.context.paused).toBe(false);
-
-      setHasFocus(true);
       plugin.onDestroy();
     });
 
-    it("toggling on while window is unfocused pauses immediately", async () => {
-      const plugin = new AudioPlugin({ autoMuteOnBlur: false });
+    it("pauses and resumes the context as the host changes", async () => {
+      const plugin = new AudioPlugin();
       const context = createContext();
       await plugin.install(context);
-      const manager = context.resolve(AudioManagerKey);
 
-      setHasFocus(false);
-      manager.autoMuteOnBlur = true;
-      expect(mockSound.context.autoPause).toBe(true);
+      setHost({ activity: "inactive" });
       expect(mockSound.context.paused).toBe(true);
 
-      setHasFocus(true);
+      setHost({ activity: "active" });
+      expect(mockSound.context.paused).toBe(false);
       plugin.onDestroy();
     });
 
-    it("toggling while focused does not touch paused state", async () => {
+    it("leaves the context alone after it is destroyed", async () => {
       const plugin = new AudioPlugin();
       const context = createContext();
       await plugin.install(context);
-      const manager = context.resolve(AudioManagerKey);
-
-      setHasFocus(true);
-      manager.autoMuteOnBlur = false;
-      expect(mockSound.context.paused).toBe(false);
-
       plugin.onDestroy();
+
+      setHost({ activity: "inactive" });
+
+      expect(mockSound.context.paused).toBe(false);
+    });
+
+    it("adds no page listener of its own", async () => {
+      const plugin = new AudioPlugin();
+      const context = createContext();
+      const addSpy = vi.spyOn(document, "addEventListener");
+
+      await plugin.install(context);
+
+      const listened = addSpy.mock.calls.map((args) => args[0]);
+      expect(listened).not.toContain("blur");
+      expect(listened).not.toContain("focus");
+      expect(listened).not.toContain("visibilitychange");
+      addSpy.mockRestore();
+      plugin.onDestroy();
+    });
+
+    it("registers no observer when it is destroyed while the library loads", async () => {
+      const plugin = new AudioPlugin();
+      const context = createContext();
+
+      const installing = plugin.install(context);
+      plugin.onDestroy();
+      await installing;
+
+      setHost({ activity: "inactive" });
+
+      expect(mockSound.context.paused).toBe(false);
     });
   });
 

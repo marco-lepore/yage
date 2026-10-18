@@ -8,7 +8,9 @@ import {
   QueryCacheKey,
   EventBusKey,
   ErrorBoundaryKey,
+  HostKey,
 } from "./EngineContext.js";
+import type { HostInfo, HostLifecycleReport } from "./Host.js";
 import { QueryCache } from "./QueryCache.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
@@ -39,6 +41,61 @@ export async function createTestEngine(
   for (const plugin of plugins) engine.use(plugin);
   await engine.start();
   return engine;
+}
+
+/**
+ * A host adapter for tests. Attaches `info` and the lifecycle state it was
+ * given on install, reports later changes through `setLifecycle`, and detaches
+ * on destroy. Fields left out of `info` default to
+ * `{ runtime: "test", os: "unknown" }` with no versions; a lifecycle field
+ * left out comes from the page, as it does for any host adapter.
+ */
+export class TestHostPlugin implements Plugin {
+  readonly name = "host";
+  readonly version = "1.0.0";
+  readonly info: HostInfo;
+
+  private state: HostLifecycleReport;
+  private report: ((state: HostLifecycleReport) => void) | undefined;
+  private detach: (() => void) | undefined;
+
+  constructor(info?: Partial<HostInfo>, lifecycle?: HostLifecycleReport) {
+    this.info = {
+      runtime: info?.runtime ?? "test",
+      os: info?.os ?? "unknown",
+      appVersion: info?.appVersion,
+      appBuild: info?.appBuild,
+      runtimeVersion: info?.runtimeVersion,
+    };
+    this.state = { ...lifecycle };
+  }
+
+  /** The state this fake host has reported so far. */
+  get lifecycle(): HostLifecycleReport {
+    return this.state;
+  }
+
+  /** Report a change, as a native host would. Fields left out keep their value. */
+  setLifecycle(report: HostLifecycleReport): void {
+    this.state = { ...this.state, ...report };
+    this.report?.(report);
+  }
+
+  watchLifecycle(report: (state: HostLifecycleReport) => void): () => void {
+    this.report = report;
+    return () => {
+      this.report = undefined;
+    };
+  }
+
+  install(context: EngineContext): void {
+    this.detach = context.resolve(HostKey).attach(this);
+  }
+
+  onDestroy(): void {
+    this.detach?.();
+    this.detach = undefined;
+  }
 }
 
 /** Create a lightweight mock scene with EngineContext for unit tests. */

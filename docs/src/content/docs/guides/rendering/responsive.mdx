@@ -24,11 +24,11 @@ Pass `fit` to override the mode or the observed element:
 ```typescript
 import { RendererPlugin } from "@yagejs/renderer";
 
-const host = document.getElementById("game")!;
+const hostElement = document.getElementById("game")!;
 
 new RendererPlugin({
   width: 800, height: 600,
-  container: host,
+  container: hostElement,
   fit: { mode: "cover" },                    // change mode
   // fit: { mode: "letterbox", target: other } // observe a different element
 });
@@ -37,7 +37,7 @@ new RendererPlugin({
 Four modes cover the usual web-game needs:
 
 - **`letterbox`** *(default)* — preserves the virtual aspect ratio and
-  centers it inside the host. Leftover space around the game is painted
+  centers it inside the host element. Leftover space around the game is painted
   with `backgroundColor` (the "bars"). This is what most games want: no
   distortion, no cropping.
 - **`expand`** — same scaling as `letterbox` (virtual is always fully
@@ -45,12 +45,12 @@ Four modes cover the usual web-game needs:
   Pair with `extendedVirtualRects` to render fog, parallax, or a decorative
   backdrop into the play-adjacent space. Matches Godot's `expand`, Unity's
   `Expand` match mode, and Construct 3's "Scale inner."
-- **`cover`** — preserves aspect and fills the host edge-to-edge, CSS-cover
-  style. Whichever axis has the wider host aspect ratio gets overflow
+- **`cover`** — preserves aspect and fills the host element edge-to-edge,
+  CSS-cover style. Whichever axis has the wider aspect ratio gets overflow
   clipped by the canvas boundary. Rarely the right choice for gameplay —
   aspect ratio changes what the player can see. Good for full-bleed
   backgrounds or splash screens.
-- **`stretch`** — scales each axis independently to fill the host. Distorts
+- **`stretch`** — scales each axis independently to fill the host element. Distorts
   the image; use sparingly (menus, editor panels, deliberate stylistic
   effects).
 
@@ -61,21 +61,24 @@ flat background color, under `expand` the game is expected to fill them.
 `fit.target` defaults to the `container` you passed, or the canvas'
 `parentElement`. There is no `document.body` fallback — a `ResizeObserver`
 on `body` fires on any page layout change, not just viewport resizes. With
-no host to observe, the fit applies once against the configured
+no host element to observe, the fit applies once against the configured
 `width × height`. Pass `fit: { target: document.body }` to opt in, or name
 any other element. `setFit({ mode })` changes the mode and keeps the target
 already in use.
 
-Under the hood the plugin uses a `ResizeObserver` and calls
-`renderer.resize(hostW, hostH)` on each change, so the backing buffer stays
-hi-DPI-correct via `resolution` + `autoDensity`. Stage scale and position
-are recomputed to map the virtual rectangle into the new canvas per the
-active mode. In headless environments (no DOM target) the plugin applies a
-one-shot transform against the initial `width × height` and installs no
-observer.
+A `ResizeObserver` drives the updates, and stage scale and position are
+recomputed to map the virtual rectangle into the new canvas per the active
+mode. In headless environments (no DOM target) the plugin applies a one-shot
+transform against the initial `width × height` and installs no observer.
+
+The canvas backing store follows the display's pixel ratio, so the game stays
+crisp on a HiDPI screen, after a window moves to a display with another ratio,
+and after a browser zoom. Set `resolution` in the renderer config to fix the
+density instead: that value is then kept whatever the display does, which caps
+the texel count on a very dense screen.
 
 :::caution[Give the fit container a bounded height]
-The host's measured size is fed back into the canvas on every resize, so a
+The host element's measured size is fed back into the canvas on every resize, so a
 container that has **no height of its own** — one whose height is driven
 purely by its content — has no stable size, and the observer can grow it
 without bound. Browsers default `<canvas>` to `display:inline`, which adds
@@ -155,7 +158,7 @@ around the virtual rect. Two getters describe that space:
   on-screen pixel, not just the play area.
 - `renderer.extendedVirtualRects` — 0–2 rectangles of the visible canvas
   that sit outside virtual, in virtual-space pixels. Exactly the bars.
-  Empty on aspect-matched hosts, under `cover`, and under `stretch`.
+  Empty on an aspect-matched host element, under `cover`, and under `stretch`.
 
 ```typescript yage-context="scene-enter"
 import { Transform } from "@yagejs/core";
@@ -282,47 +285,56 @@ make sure you register `RendererPlugin` before `InputPlugin`.
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 
-const host = document.getElementById("game")!;
+const hostElement = document.getElementById("game")!;
 
-engine.use(new RendererPlugin({ width: 800, height: 600, container: host }));
+engine.use(
+  new RendererPlugin({ width: 800, height: 600, container: hostElement }),
+);
 engine.use(new InputPlugin({ actions: { /* ... */ } }));
 ```
 
 ## Fullscreen
 
-`RendererPlugin` exposes a small fullscreen helper that wraps the
-browser API with the legacy `webkitRequestFullscreen` fallback for
-iOS Safari. The target is the configured `container` when present
-(so DOM overlays alongside the canvas remain inside the fullscreen
-area), or the canvas itself otherwise.
+`RendererPlugin` is the one place a game asks for fullscreen, whichever
+application runs it: a browser tab, or a native shell around a web view. On a
+page the element that goes fullscreen is the configured `container` when there
+is one, so DOM overlays beside the canvas stay inside the fullscreened area,
+and the canvas itself otherwise.
 
-```typescript yage-context="engine"
+```typescript yage-context="engine,async"
 import { RendererPlugin } from "@yagejs/renderer";
 
-const host = document.getElementById("game")!;
+const hostElement = document.getElementById("game")!;
 const button = document.getElementById("fullscreen")!;
 
-const renderer = new RendererPlugin({ width: 800, height: 600, container: host });
+const renderer = new RendererPlugin({
+  width: 800,
+  height: 600,
+  container: hostElement,
+});
 engine.use(renderer);
+await engine.start();
 
+button.hidden = renderer.fullscreenSupport === "unsupported";
 button.addEventListener("click", () => {
   const toggle = renderer.isFullscreen
     ? renderer.exitFullscreen()
     : renderer.requestFullscreen();
-  toggle.catch((err: unknown) => console.warn(err)); // rejects if unsupported
+  toggle.catch((err: unknown) => console.warn(err));
 });
 ```
 
 | Member | Purpose |
 |---|---|
-| `requestFullscreen(): Promise<void>` | Enter fullscreen on the host element. Rejects if unsupported. |
-| `exitFullscreen(): Promise<void>` | Exit fullscreen. No-op if not currently fullscreen. |
-| `isFullscreen: boolean` | Reads `document.fullscreenElement` live, so it stays correct when the user exits via Esc or browser UI. |
+| `requestFullscreen(): Promise<void>` | Present the game fullscreen. Resolves without asking the host when the game is fullscreen already. |
+| `exitFullscreen(): Promise<void>` | Leave fullscreen. No-op if not currently fullscreen. |
+| `isFullscreen: boolean` | Whether the game is presented fullscreen, read live from the host, so it stays correct when the player exits with Esc, the browser's own control, or a window menu. |
+| `fullscreenSupport: HostSupport` | Whether a request can change how the game is presented: `"supported"`, `"unsupported"`, or `"unknown"`. |
 
-The renderer also emits a `screen:fullscreen` event on the engine
-event bus whenever the fullscreen state changes (entering, exiting,
-or the user pressing Esc). Subscribe via `EventBusKey` for HUD
-relayouts or to update a button label:
+The renderer emits `screen:fullscreen` on the engine event bus once per
+change, and the event arrives before the promise of a request the game made
+resolves. Subscribe through `EventBusKey` to relayout a HUD or update a button
+label:
 
 ```typescript yage-context="engine"
 import { EventBusKey } from "@yagejs/core";
@@ -335,20 +347,27 @@ bus.on("screen:fullscreen", ({ active }) => {
 });
 ```
 
-**iOS Safari caveat.** `requestFullscreen` must be called from a
-user-gesture handler (click, touch, key); the returned Promise rejects
-with a `TypeError` otherwise, so wrap the call in `try` / `catch` (or
-`.catch()`) if you want to recover gracefully. The
-`webkitRequestFullscreen` variant on older iOS returns `void` rather
-than a `Promise`; the wrapper handles both.
+Three rules make a toggle behave the way a player expects:
+
+- A request made while a request is in flight shares that request's promise,
+  and one made while an exit is in flight runs after the exit settles. The last
+  call wins, so a double click does not fail.
+- `requestFullscreen()` rejects where `fullscreenSupport` is `"unsupported"`,
+  and with the browser's own error where the browser refuses — on a page it
+  must be called from a user-gesture handler (click, touch, key), or the
+  promise rejects with a `TypeError`.
+- The four members above, and the four orientation members below, are readable
+  between `engine.start()` and `engine.destroy()`. Outside that span each one
+  reports that the display is unavailable, because which application supplies
+  the state is settled when the engine starts.
 
 ## Orientation
 
-The engine emits a `screen:orientation` event on the event bus when
-the device orientation changes. Payload is
-`{ type: OrientationType }` where `OrientationType` is the built-in
-DOM union (`"portrait-primary" | "portrait-secondary" |
-"landscape-primary" | "landscape-secondary"`).
+`renderer.orientation` is the screen orientation, or `null` where the host
+cannot read it. Its values are the built-in DOM union: `"portrait-primary"`,
+`"portrait-secondary"`, `"landscape-primary"` and `"landscape-secondary"`. The
+renderer emits `screen:orientation` on the event bus once per change, with
+`{ type: OrientationType }`.
 
 ```typescript yage-context="engine"
 import { EventBusKey } from "@yagejs/core";
@@ -364,15 +383,43 @@ bus.on("screen:orientation", ({ type }) => {
 });
 ```
 
-For one-shot reads, `renderer.orientation` returns the current
-orientation type, or `null` when neither the modern
-`screen.orientation` API nor the legacy `window.orientation` angle
-is available.
+The event fires only on a change, so read `renderer.orientation` once after
+`engine.start()` for the orientation the game starts in.
 
-The renderer prefers `window.screen.orientation.addEventListener
-("change", …)` and falls back to `window.addEventListener
-("orientationchange", …)` on browsers that don't expose the modern
-API (older iOS Safari). Both wire onto the same bus event.
+A game can also ask for one orientation. `lockOrientation(lock)` resolves with
+the orientation the host reports once it accepted the lock, which can differ
+from what was asked for when the device does not turn — so compare the result
+and show a rotate-device overlay when they differ:
+
+```typescript
+import type { RendererPlugin } from "@yagejs/renderer";
+
+declare const renderer: RendererPlugin;
+declare function showRotateOverlay(): void;
+
+async function askForLandscape(): Promise<void> {
+  if (renderer.orientationLockSupport === "unsupported") return;
+  const result = await renderer.lockOrientation("landscape").catch(() => null);
+  // A lock the host accepted does not guarantee the screen turned.
+  if (result === null || result.startsWith("portrait")) showRotateOverlay();
+}
+```
+
+| Member | Purpose |
+|---|---|
+| `orientation: OrientationType \| null` | The screen orientation, or `null` where the host cannot read it. |
+| `orientationLockSupport: HostSupport` | Whether this host can lock the orientation. `"unknown"` means only an attempt tells. |
+| `lockOrientation(lock): Promise<OrientationType \| null>` | Lock the orientation. Rejects where locking is `"unsupported"`, and with the host's error when it refuses. |
+| `unlockOrientation(): Promise<void>` | Release a lock. Resolves without action where locking is `"unsupported"`. |
+
+`orientationLockSupport` is `"unknown"` in a browser that has the operation:
+desktop browsers refuse every lock, and Chrome on Android accepts one only
+while the game is fullscreen or installed. Safari has no orientation lock at
+all, where the value is `"unsupported"`.
+
+No order is promised between `screen:orientation` and the canvas taking its
+new size. Read the fit getters each frame rather than once inside the event
+handler.
 
 ## Mobile readiness
 
@@ -422,7 +469,9 @@ notch and the home indicator:
   the size of what to avoid on that side, and `0` where there is nothing to
   avoid. The values are only non-zero with `viewport-fit=cover`.
   `RendererPlugin` sizes the canvas to the area inside the container's
-  padding, so no renderer config is needed.
+  padding, so no renderer config is needed. This padding is the one place the
+  insets are subtracted; a native shell draws the web view edge to edge and
+  adds none of its own.
 - **Give the container a background.** The padding shows the container's
   own background. In fullscreen the browser draws only the container, so a
   background set on `body` alone leaves black strips. Use the renderer's
@@ -435,22 +484,22 @@ browser allows it:
 
 - **Put the button inside the renderer's `container`.** The renderer makes
   the container fullscreen, so a button inside it stays on screen to exit.
-- **Hide the button when fullscreen is unavailable.** iPhone cannot show a
-  page fullscreen, and neither can an iframe without `allow="fullscreen"`.
-  Check `document.fullscreenEnabled` before showing the button:
+- **Hide the button where a request would do nothing.** One check covers
+  every such case:
 
   ```typescript
+  import type { RendererPlugin } from "@yagejs/renderer";
+
+  declare const renderer: RendererPlugin;
+
   const button = document.getElementById("fullscreen")!;
-  const doc = document as Document & { webkitFullscreenEnabled?: boolean };
-  button.hidden = !(
-    doc.fullscreenEnabled === true || doc.webkitFullscreenEnabled === true
-  );
+  button.hidden = renderer.fullscreenSupport === "unsupported";
   ```
 
-  iPad Safari before 16.4 only has `webkitFullscreenEnabled`.
-- **Hide the button in an installed app that opens fullscreen.** The game
-  already fills the screen there. Check
-  `matchMedia("(display-mode: fullscreen)").matches`.
+  `fullscreenSupport` is `"unsupported"` on iPhone, which cannot show a page
+  fullscreen; in a frame from another origin without `allow="fullscreen"`; and
+  in an installed app that already opens fullscreen, where the game fills the
+  screen anyway.
 - **Move focus off the button after a click.** Otherwise the button keeps
   focus, and a game key such as Enter presses it again. Call
   `button.blur()` in the click handler.
@@ -463,13 +512,14 @@ follows these rules and changes its label on `screen:fullscreen`.
 
 ### Rotate-device overlay
 
-Safari cannot lock the screen orientation: it has no
-`screen.orientation.lock()`. Chrome on Android can lock it, but only while
-the game is fullscreen or installed. For a landscape game, show an overlay
-that asks the player to turn the device while the orientation is portrait.
-Update the overlay on the `screen:orientation` event (see
-[Orientation](#orientation)). The event only fires on a change, so also check
-`renderer.orientation` once at startup.
+For a landscape game, ask for the orientation with `lockOrientation` where
+`orientationLockSupport` allows it, and show an overlay asking the player to
+turn the device when the result is portrait. Safari has no orientation lock,
+and Chrome on Android locks only while the game is fullscreen or installed, so
+the overlay is the fallback on most phones. Update it on the
+`screen:orientation` event (see [Orientation](#orientation)), and read
+`renderer.orientation` once after `engine.start()`, because the event fires
+only on a change.
 
 ### Add to Home Screen
 

@@ -14,6 +14,7 @@ import {
   createMockScene,
   createMockEntity,
   advanceFrames,
+  TestHostPlugin,
 } from "@yagejs/core";
 ```
 
@@ -23,6 +24,8 @@ import {
 | `createMockScene(name?)` | `{ scene, context }` | Scene with a working ECS world, no engine |
 | `createMockEntity(name?)` | `{ entity, scene, context }` | Entity spawned into a mock scene |
 | `advanceFrames(engine, n, dtMs?)` | `void` | Tick the game loop `n` times. `dtMs` defaults to `1000 / 60` |
+| `new TestHostPlugin(info?, lifecycle?)` | `Plugin` | Host adapter for a test engine. Attaches `info` and `lifecycle` on install and detaches on destroy; the `info` fields you leave out default to `runtime: "test"`, `os: "unknown"` and no versions. Call `setLifecycle({ activity: "inactive" })` on it to drive the engine into the background |
+| `new TestHostDisplay(state?)` | `HostDisplay` | Fake fullscreen and orientation for a test engine, from `@yagejs/renderer`. Register it with `engine.context.register(HostDisplayKey, display)` before `engine.start()`, then call `set({ fullscreen: true })` on it to drive the renderer. `calls` lists every request it received |
 
 `createTestEngine` is async — it starts the engine for you, so `await` it and
 don't call `engine.start()` yourself. The mock helpers return an object: take
@@ -420,6 +423,7 @@ if (lantern) {
 | `getComponentData(nameOrId, componentName)` | Reflected public fields and getters from the live component. Typed `unknown`, and `null` when nothing is inspectable |
 | `getSystems()` | Every registered system, with phase/priority/enabled flags |
 | `getErrors()` | Recorded failures from the error boundary (`callbackErrors`) — system, component, and callback throws, most recent last. The same list is `engine.context.resolve(ErrorBoundaryKey).getCallbackErrors()` without an Inspector |
+| `getHost()` | Which application runs the game, and whether it is active, visible and focused. Left out of `snapshot()`, because window focus differs between runs |
 
 The four per-entity helpers take either address form. A name resolves the
 first *active* entity with that name in the *active* scene, so a deactivated

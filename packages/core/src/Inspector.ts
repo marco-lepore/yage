@@ -11,9 +11,11 @@ import type { CallbackErrorRecord } from "./ErrorBoundary.js";
 import {
   EngineContext,
   ErrorBoundaryKey,
+  HostKey,
   ServiceKey,
   SystemSchedulerKey,
 } from "./EngineContext.js";
+import type { HostLifecycle, HostOS } from "./Host.js";
 import { RandomKey } from "./Random.js";
 import { SceneRandomSourceKey } from "./SceneRandomSource.js";
 import {
@@ -522,6 +524,20 @@ export interface InputStateSnapshot {
      */
     axes: Array<{ key: string; value: number }>;
   };
+}
+
+/** Host state as the Inspector reports it. An absent version reads as `null`. */
+export interface HostSnapshot {
+  info: {
+    runtime: string;
+    os: HostOS;
+    appVersion: string | null;
+    appBuild: string | null;
+    runtimeVersion: string | null;
+  };
+  lifecycle: HostLifecycle;
+  active: boolean;
+  activeWhenUnfocused: boolean;
 }
 
 /** Full deterministic inspector snapshot. */
@@ -1644,6 +1660,28 @@ export class Inspector {
       priority: sys.priority,
       enabled: sys.enabled,
     }));
+  }
+
+  /**
+   * Which application runs the game, and whether it is active, visible and
+   * focused. Left out of {@link snapshot}: focus depends on the machine's
+   * windows, so it is not comparable between runs.
+   */
+  getHost(): HostSnapshot {
+    const host = this.engine.context.resolve(HostKey);
+    const info = host.info;
+    return {
+      info: {
+        runtime: info.runtime,
+        os: info.os,
+        appVersion: info.appVersion ?? null,
+        appBuild: info.appBuild ?? null,
+        runtimeVersion: info.runtimeVersion ?? null,
+      },
+      lifecycle: { ...host.lifecycle },
+      active: host.active,
+      activeWhenUnfocused: host.activeWhenUnfocused,
+    };
   }
 
   /** Get recorded failures from the error boundary. */

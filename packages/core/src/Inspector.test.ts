@@ -22,10 +22,13 @@ import {
   QueryCacheKey,
   EventBusKey,
   ErrorBoundaryKey,
+  InspectorKey,
   SceneManagerKey,
 } from "./EngineContext.js";
 import { _resetEntityIdCounter } from "./Entity.js";
 import { RendererAdapterKey, type RendererAdapter } from "./RendererAdapter.js";
+import { InspectorPlugin } from "./InspectorPlugin.js";
+import { createTestEngine, TestHostPlugin } from "./test-utils.js";
 
 const SystemSchedulerKey = new ServiceKey<SystemScheduler>("systemScheduler");
 
@@ -2702,4 +2705,83 @@ describe("Inspector.pointer", () => {
       expect(dispatched).toHaveLength(0);
     },
   );
+});
+
+describe("Inspector host state", () => {
+  it("reports the host identity, its three fields and the setting", async () => {
+    const fake = new TestHostPlugin(
+      { runtime: "capacitor", os: "ios", appVersion: "1.4.0" },
+      { activity: "active" },
+    );
+    const engine = await createTestEngine(undefined, [
+      new InspectorPlugin(),
+      fake,
+    ]);
+    const inspector = engine.context.resolve(InspectorKey);
+
+    expect(inspector.getHost()).toEqual({
+      info: {
+        runtime: "capacitor",
+        os: "ios",
+        appVersion: "1.4.0",
+        appBuild: null,
+        runtimeVersion: null,
+      },
+      lifecycle: {
+        activity: "active",
+        visibility: "unknown",
+        focus: "unknown",
+      },
+      active: true,
+      activeWhenUnfocused: false,
+    });
+
+    fake.setLifecycle({ activity: "inactive" });
+    engine.host.activeWhenUnfocused = true;
+
+    expect(inspector.getHost()).toMatchObject({
+      lifecycle: { activity: "inactive" },
+      active: false,
+      activeWhenUnfocused: true,
+    });
+    engine.destroy();
+  });
+
+  it("leaves the host out of the comparable snapshot", () => {
+    const { inspector } = setup();
+
+    expect(Object.keys(inspector.snapshot()).sort()).toEqual([
+      "camera",
+      "entityCount",
+      "errors",
+      "fixedStepIndex",
+      "frame",
+      "input",
+      "interpolationAlpha",
+      "sceneStack",
+      "scenes",
+      "systemCount",
+      "version",
+    ]);
+  });
+
+  it("logs one host change as both of its events", async () => {
+    const fake = new TestHostPlugin();
+    const engine = await createTestEngine(undefined, [
+      new InspectorPlugin(),
+      fake,
+    ]);
+    const inspector = engine.context.resolve(InspectorKey);
+    inspector.setEventLogEnabled(true);
+
+    fake.setLifecycle({ visibility: "hidden" });
+
+    expect(
+      inspector.events
+        .getLog()
+        .filter((entry) => entry.type.startsWith("host:"))
+        .map((entry) => entry.type),
+    ).toEqual(["host:active", "host:lifecycle"]);
+    engine.destroy();
+  });
 });

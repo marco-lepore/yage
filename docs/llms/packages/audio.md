@@ -19,12 +19,12 @@ engine.use(
       sfx: { volume: 1 },
       music: { volume: 0.7 },
     },
-    autoMuteOnBlur: true, // default: true — pause AudioContext on window blur
+    autoPause: true, // default: true — pause all audio while the host is inactive
   }),
 );
 ```
 
-## Unlock & Tab Mute
+## Unlock & Automatic Pause
 
 Browsers suspend the `AudioContext` until the user interacts with the page. `@pixi/sound` already resumes it on the first pointer/touch gesture, so "play on click" works without extra setup. That means **music scheduled on page-load stays silent until first click** — not a bug, but surprising. Use `isUnlocked` / `onUnlock` to schedule autoplay that survives the delay:
 
@@ -40,12 +40,13 @@ audio.isUnlocked(); // boolean — AudioContext.state === "running"
 audio.onUnlock(startMusic);
 audio.offUnlock(startMusic); // remove a pending listener (disposer from onUnlock also works)
 
-audio.autoMuteOnBlur = true; // default true — toggles @pixi/sound's WebAudioContext.autoPause (suspends context on window blur)
+audio.autoPause = true; // default true — pause all audio while the host is inactive
 ```
 
 - `onUnlock(cb)` fires synchronously if already unlocked; otherwise once on the first gesture that resumes the context. Returns a disposer.
-- `isUnlocked()` is never flipped by `autoMuteOnBlur` — it is strictly the browser capability check.
-- Pausing scenes on tab blur is a scene-lifecycle concern, not an audio one: use `SceneManager.autoPauseOnBlur` (see `core.md`).
+- `isUnlocked()` is `false` before the first gesture, while audio is held for an inactive host, and until the context has resumed after the host becomes active again.
+- `autoPause` holds all audio while `Host.active` is `false`: the app is in the background, the page is hidden, or the window is unfocused. Playback continues from where it stopped, and channel and handle volume, mute and pause are left as the player set them. The HTML-audio fallback is held the same way.
+- Pausing scenes is a scene-lifecycle concern, not an audio one: use `SceneManager.autoPause` (see `core.md`).
 
 ## Asset Factory
 
@@ -214,7 +215,7 @@ apply to both recordings.
 
 ## Runtime sounds
 
-**`registerSound(alias, buffer)` / `unregisterSound(alias)`** — register a runtime-generated `AudioBuffer` under an alias so it resolves and plays exactly like a preloaded sound, through the same `AudioManager` channels, mute, and blur auto-pause. Audio analogue of the renderer's `registerTexture(key, texture)`.
+**`registerSound(alias, buffer)` / `unregisterSound(alias)`** — register a runtime-generated `AudioBuffer` under an alias so it resolves and plays exactly like a preloaded sound, through the same `AudioManager` channels, mute, and automatic pause. Audio analogue of the renderer's `registerTexture(key, texture)`.
 
 ```ts yage-context="scene-enter"
 import { registerSound, AudioManagerKey } from "@yagejs/audio";
