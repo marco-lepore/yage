@@ -278,13 +278,14 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 Controlled persistence for typed reactive stores and custom
 `Serializable<TEncoded>` state roots:
 
-| File                           | Purpose                                                            |
-| ------------------------------ | ------------------------------------------------------------------ |
-| `src/Save.ts`                  | `Save` class + `createSave({ adapter })`, slot manifest, IO        |
-| `src/SavePlugin.ts`            | Plugin entry, registers `SaveServiceKey` from user-provided `Save` |
-| `src/keys.ts`                  | `SaveServiceKey`                                                   |
-| `src/adapters/localStorage.ts` | `localStorageAdapter()` — browser default                          |
-| `src/adapters/memory.ts`       | `memoryAdapter()` — tests + Node                                   |
+| File                           | Purpose                                                                    |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| `src/Save.ts`                  | `Save` class + `createSave({ adapter })`, slot documents, IO               |
+| `src/SavePlugin.ts`            | Plugin entry, registers `SaveServiceKey` from user-provided `Save`         |
+| `src/keys.ts`                  | `SaveServiceKey`                                                           |
+| `src/adapters/localStorage.ts` | `localStorageAdapter()` — browser default                                  |
+| `src/adapters/memory.ts`       | `memoryAdapter()` — tests + Node                                           |
+| `src/adapters/file.ts`         | `fileAdapter({ store })` — atomic per-key writes over a directory of files |
 
 The reactive state factories themselves live in `@yagejs/core` under `src/state/`: the compound `createStore` plus the leaf factories `createRecord`, `createValue`, `createSet`, `createMap`, `createCounter`, and `createList`. They implement three contracts: `Reactive`, `Serializable<T>`, and `Resettable`. Those contracts and the `Reactive*` shape interfaces are defined in `state/reactive.ts`. The save layer accepts any `Serializable<T>` by id at the call site. The state factories know nothing about the save layer's documents, slots, or migrations.
 

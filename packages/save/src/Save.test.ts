@@ -13,6 +13,7 @@ import {
   StoreVersionTooNewError,
   CorruptPayloadError,
 } from "./Save.js";
+import type { SaveAdapter } from "./Save.js";
 import { memoryAdapter } from "./adapters/memory.js";
 
 describe("Save — unslotted persist/restore", () => {
@@ -121,10 +122,23 @@ describe("Save — slots", () => {
     expect(b.get()).toEqual({ chapter: 3, coins: 42 });
   });
 
+  it("saveSlot stores the value as it was at the call", async () => {
+    const save = createSave({ adapter: memoryAdapter() });
+    const a = make();
+    a.set({ chapter: 2, coins: 5 });
+    const saving = save.saveSlot("run", "auto", a);
+    a.set({ chapter: 9, coins: 0 });
+    await saving;
+
+    const b = make();
+    await save.loadSlot("run", "auto", b);
+    expect(b.get()).toEqual({ chapter: 2, coins: 5 });
+  });
+
   it("a slot named like an Object.prototype member round-trips and lists", async () => {
-    // `__proto__` is the real hazard: on a plain object the assignment hits
-    // the inherited setter, so the slot saved but never listed. The others
-    // cover the `in` check in deleteSlot seeing inherited members.
+    // A slot name is one segment of its storage key and never a property name
+    // on an object, so `__proto__` and the other inherited member names are
+    // stored, listed, loaded and deleted like any other name.
     const save = createSave({ adapter: memoryAdapter() });
     for (const name of ["__proto__", "constructor", "toString"]) {
       const a = make();
@@ -197,7 +211,7 @@ describe("Save — slots", () => {
     ]);
   });
 
-  it("deleteSlot removes the slot data and manifest entry", async () => {
+  it("deleteSlot removes the slot", async () => {
     const save = createSave({ adapter: memoryAdapter() });
     const s = make();
     await save.saveSlot("run", "manual-1", s);
@@ -213,7 +227,7 @@ describe("Save — slots", () => {
     );
   });
 
-  it("saveSlot updates manifest savedAt on subsequent saves", async () => {
+  it("saveSlot updates savedAt on subsequent saves", async () => {
     vi.useFakeTimers();
     try {
       const save = createSave({ adapter: memoryAdapter() });
@@ -485,7 +499,7 @@ describe("Save — corrupt payloads", () => {
 });
 
 describe("Save — listSlots / deleteSlot edge cases", () => {
-  it("listSlots returns empty array when no manifest exists", async () => {
+  it("listSlots returns an empty array for a store with no slots", async () => {
     const save = createSave({ adapter: memoryAdapter() });
     expect(await save.listSlots("ls-empty")).toEqual([]);
   });
@@ -547,8 +561,8 @@ describe("Save — key disambiguation", () => {
   });
 });
 
-describe("Save — manifest serialization across concurrent updates", () => {
-  it("concurrent saveSlots both land in the manifest", async () => {
+describe("Save — concurrent slot operations", () => {
+  it("concurrent saveSlots all land in the listing", async () => {
     const save = createSave({ adapter: memoryAdapter() });
     const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await Promise.all([
@@ -615,5 +629,658 @@ describe("Save — autoPersist serialization", () => {
     const last = seenWrites[seenWrites.length - 1];
     expect(last).toBeDefined();
     expect(JSON.parse(last as string).data).toEqual({ v: 3 });
+  });
+});
+
+describe("Save — slot documents", () => {
+  const make = () =>
+    createRecord<{ chapter: number }>({ default: () => ({ chapter: 1 }) });
+
+  it("saveSlot writes one key and deleteSlot deletes one", async () => {
+    const adapter = memoryAdapter();
+    const save = createSave({ adapter });
+    const writeSpy = vi.spyOn(adapter, "write");
+    const deleteSpy = vi.spyOn(adapter, "delete");
+
+    await save.saveSlot("run", "manual-1", make());
+    expect(writeSpy.mock.calls.map((c) => c[0])).toEqual(["run/s/manual-1"]);
+    expect(await adapter.list("")).toEqual(["run/s/manual-1"]);
+
+    await save.deleteSlot("run", "manual-1");
+    expect(deleteSpy.mock.calls.map((c) => c[0])).toEqual(["run/s/manual-1"]);
+    expect(await adapter.list("")).toEqual([]);
+  });
+
+  it("a slot document holds the payload, the time and the metadata", async () => {
+    const adapter = memoryAdapter();
+    const save = createSave({ adapter });
+    const s = make();
+    s.set({ chapter: 4 });
+
+    await save.saveSlot("run", "with", s, { metadata: { label: "Forest" } });
+    await save.saveSlot("run", "without", s);
+
+    const withMeta = JSON.parse((await adapter.read("run/s/with")) as string);
+    expect(Object.keys(withMeta).sort()).toEqual([
+      "data",
+      "metadata",
+      "savedAt",
+      "version",
+    ]);
+    expect(withMeta.data).toEqual({ chapter: 4 });
+    expect(withMeta.version).toBe(1);
+    expect(withMeta.metadata).toEqual({ label: "Forest" });
+
+    const plain = JSON.parse((await adapter.read("run/s/without")) as string);
+    expect(Object.hasOwn(plain, "metadata")).toBe(false);
+  });
+
+  it("listSlots returns the newest first and equal times in name order", async () => {
+    vi.useFakeTimers();
+    try {
+      const save = createSave({ adapter: memoryAdapter() });
+      const s = make();
+      vi.setSystemTime(new Date("2026-05-03T00:00:00Z"));
+      await save.saveSlot("run", "b", s);
+      await save.saveSlot("run", "a", s);
+      vi.setSystemTime(new Date("2026-05-03T00:01:00Z"));
+      await save.saveSlot("run", "c", s);
+
+      expect((await save.listSlots("run")).map((x) => x.name)).toEqual([
+        "c",
+        "a",
+        "b",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a rejected slot write leaves the previous document", async () => {
+    const base = memoryAdapter();
+    let failing = false;
+    const adapter: SaveAdapter = {
+      ...base,
+      async write(key, value) {
+        if (failing) throw new Error("storage full");
+        return base.write(key, value);
+      },
+    };
+    const save = createSave({ adapter });
+    const s = make();
+    s.set({ chapter: 2 });
+    await save.saveSlot("run", "a", s, { metadata: { take: 1 } });
+    const first = (await save.listSlots("run"))[0]?.savedAt;
+
+    failing = true;
+    s.set({ chapter: 9 });
+    await expect(
+      save.saveSlot("run", "a", s, { metadata: { take: 2 } }),
+    ).rejects.toThrow("storage full");
+
+    const slots = await save.listSlots("run");
+    expect(slots).toEqual([
+      { name: "a", savedAt: first, metadata: { take: 1 } },
+    ]);
+    const loaded = make();
+    await save.loadSlot("run", "a", loaded);
+    expect(loaded.get()).toEqual({ chapter: 2 });
+  });
+
+  it("listSlots leaves out a damaged document and lists the others", async () => {
+    const adapter = memoryAdapter();
+    const save = createSave({ adapter });
+    await save.saveSlot("run", "good", make());
+    await adapter.write("run/s/not-json", "{");
+    await adapter.write("run/s/not-object", "7");
+    await adapter.write(
+      "run/s/no-version",
+      JSON.stringify({ data: 1, savedAt: 1 }),
+    );
+    await adapter.write(
+      "run/s/no-data",
+      JSON.stringify({ version: 1, savedAt: 1 }),
+    );
+    await adapter.write(
+      "run/s/text-time",
+      JSON.stringify({ version: 1, data: 1, savedAt: "yesterday" }),
+    );
+    await adapter.write(
+      "run/s/endless",
+      '{"version":1,"data":1,"savedAt":1e999}',
+    );
+
+    expect((await save.listSlots("run")).map((x) => x.name)).toEqual(["good"]);
+  });
+
+  it("listSlots rejects with the adapter's error when a read fails", async () => {
+    const base = memoryAdapter();
+    const adapter: SaveAdapter = {
+      ...base,
+      async read(key) {
+        if (key === "run/s/b") throw new Error("disk unreadable");
+        return base.read(key);
+      },
+    };
+    const save = createSave({ adapter });
+    await base.write(
+      "run/s/a",
+      JSON.stringify({ version: 1, data: 1, savedAt: 1 }),
+    );
+    await base.write(
+      "run/s/b",
+      JSON.stringify({ version: 1, data: 1, savedAt: 2 }),
+    );
+
+    await expect(save.listSlots("run")).rejects.toThrow("disk unreadable");
+  });
+
+  it("bytes that are not JSON are a CorruptPayloadError", async () => {
+    const adapter = memoryAdapter();
+    const save = createSave({ adapter });
+    await adapter.write("doc/d", '{"version":1,"data":{"v":');
+    await adapter.write("doc/s/a", "\u0000\u0000\u0000");
+
+    const target = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    const docError = await save.restore("doc", target).catch((e: unknown) => e);
+    expect(docError).toBeInstanceOf(CorruptPayloadError);
+    expect((docError as CorruptPayloadError).storeId).toBe("doc");
+    expect((docError as Error).message).toContain("bytes are not JSON");
+
+    const slotError = await save
+      .loadSlot("doc", "a", target)
+      .catch((e: unknown) => e);
+    expect(slotError).toBeInstanceOf(CorruptPayloadError);
+    expect((slotError as Error).message).toContain("bytes are not JSON");
+  });
+});
+
+describe("Save — slots saved by an earlier layout", () => {
+  const make = () =>
+    createRecord<{ chapter: number }>({ default: () => ({ chapter: 1 }) });
+
+  /** A store holding two slot documents and the earlier details record. */
+  async function seedEarlierLayout(adapter: SaveAdapter): Promise<void> {
+    await adapter.write(
+      "run/s/a",
+      JSON.stringify({ version: 1, data: { chapter: 1 } }),
+    );
+    await adapter.write(
+      "run/s/b",
+      JSON.stringify({ version: 1, data: { chapter: 2 } }),
+    );
+    await adapter.write(
+      "run/m",
+      JSON.stringify({
+        version: 1,
+        slots: {
+          a: { name: "a", savedAt: 100 },
+          b: { name: "b", savedAt: 200, metadata: { label: "B" } },
+          "": { name: "", savedAt: 300 },
+          c: { name: "c", savedAt: 400 },
+          d: "not an entry",
+          e: { name: "e" },
+        },
+      }),
+    );
+  }
+
+  it("merges the earlier details into the slot documents once", async () => {
+    const adapter = memoryAdapter();
+    await seedEarlierLayout(adapter);
+    const save = createSave({ adapter });
+
+    const slots = await save.listSlots("run");
+    expect(slots).toEqual([
+      { name: "b", savedAt: 200, metadata: { label: "B" } },
+      { name: "a", savedAt: 100 },
+    ]);
+    expect(JSON.parse((await adapter.read("run/s/a")) as string)).toEqual({
+      version: 1,
+      savedAt: 100,
+      data: { chapter: 1 },
+    });
+    expect(
+      JSON.parse((await adapter.read("run/s/b")) as string).metadata,
+    ).toEqual({ label: "B" });
+    expect(await adapter.read("run/m")).toBeNull();
+
+    const writeSpy = vi.spyOn(adapter, "write");
+    const deleteSpy = vi.spyOn(adapter, "delete");
+    await save.listSlots("run");
+    expect(writeSpy).not.toHaveBeenCalled();
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  it("an interrupted merge leaves the details record and runs again", async () => {
+    const base = memoryAdapter();
+    await seedEarlierLayout(base);
+    let failingKey: string | null = "run/s/b";
+    const adapter: SaveAdapter = {
+      ...base,
+      async write(key, value) {
+        if (key === failingKey) throw new Error("disk full");
+        return base.write(key, value);
+      },
+    };
+    const save = createSave({ adapter });
+
+    await expect(save.listSlots("run")).rejects.toThrow("disk full");
+    expect(await base.read("run/m")).not.toBeNull();
+
+    failingKey = null;
+    const writeSpy = vi.spyOn(adapter, "write");
+    const slots = await save.listSlots("run");
+    expect(writeSpy.mock.calls.map((c) => c[0])).toEqual(["run/s/b"]);
+    expect(await base.read("run/m")).toBeNull();
+    expect(slots.map((x) => x.name)).toEqual(["b", "a"]);
+  });
+
+  it("the merge keeps details a slot document already carries", async () => {
+    const adapter = memoryAdapter();
+    await adapter.write(
+      "run/s/a",
+      JSON.stringify({
+        version: 1,
+        savedAt: 900,
+        metadata: { label: "kept" },
+        data: { chapter: 3 },
+      }),
+    );
+    await adapter.write(
+      "run/m",
+      JSON.stringify({
+        version: 1,
+        slots: { a: { name: "a", savedAt: 100, metadata: { label: "old" } } },
+      }),
+    );
+    const save = createSave({ adapter });
+
+    expect(await save.listSlots("run")).toEqual([
+      { name: "a", savedAt: 900, metadata: { label: "kept" } },
+    ]);
+  });
+
+  it("saveSlot and deleteSlot wait for the merge", async () => {
+    const base = memoryAdapter();
+    await seedEarlierLayout(base);
+    const calls: string[] = [];
+    const adapter: SaveAdapter = {
+      async read(key) {
+        calls.push(`read ${key}`);
+        return base.read(key);
+      },
+      async write(key, value) {
+        calls.push(`write ${key}`);
+        return base.write(key, value);
+      },
+      async delete(key) {
+        calls.push(`delete ${key}`);
+        return base.delete(key);
+      },
+      async list(prefix) {
+        return base.list(prefix);
+      },
+    };
+    const save = createSave({ adapter });
+
+    await Promise.all([
+      save.listSlots("run"),
+      save.saveSlot("run", "fresh", make()),
+      save.deleteSlot("run", "a"),
+    ]);
+
+    expect(calls.indexOf("write run/s/fresh")).toBeGreaterThan(
+      calls.indexOf("write run/s/b"),
+    );
+    expect(calls.indexOf("delete run/s/a")).toBeGreaterThan(
+      calls.indexOf("delete run/m"),
+    );
+  });
+
+  it("an unreadable details record stays and the store keeps working", async () => {
+    const adapter = memoryAdapter();
+    await adapter.write("run/m", "{broken");
+    await adapter.write(
+      "run/s/old",
+      JSON.stringify({ version: 1, data: { chapter: 1 } }),
+    );
+    const save = createSave({ adapter });
+
+    await save.saveSlot("run", "fresh", make());
+    expect((await save.listSlots("run")).map((x) => x.name)).toEqual(["fresh"]);
+    expect(await adapter.read("run/m")).toBe("{broken");
+  });
+
+  it("a details record of an unexpected shape stays and contributes nothing", async () => {
+    const adapter = memoryAdapter();
+    await adapter.write("one/m", "null");
+    await adapter.write("two/m", JSON.stringify({ version: 1 }));
+    const save = createSave({ adapter });
+
+    expect(await save.listSlots("one")).toEqual([]);
+    expect(await save.listSlots("two")).toEqual([]);
+    expect(await adapter.read("one/m")).toBe("null");
+    expect(await adapter.read("two/m")).not.toBeNull();
+  });
+
+  it("a slot the details record does not name stays loadable", async () => {
+    const adapter = memoryAdapter();
+    await seedEarlierLayout(adapter);
+    await adapter.write(
+      "run/s/hidden",
+      JSON.stringify({ version: 1, data: { chapter: 7 } }),
+    );
+    const save = createSave({ adapter });
+
+    expect((await save.listSlots("run")).map((x) => x.name)).toEqual([
+      "b",
+      "a",
+    ]);
+    const loaded = make();
+    await save.loadSlot("run", "hidden", loaded);
+    expect(loaded.get()).toEqual({ chapter: 7 });
+  });
+
+  it("the merge skips a slot document it cannot read as a payload", async () => {
+    const adapter = memoryAdapter();
+    await adapter.write("run/s/not-json", "{truncated");
+    await adapter.write("run/s/not-object", "7");
+    await adapter.write("run/s/no-version", JSON.stringify({ data: 1 }));
+    await adapter.write("run/s/no-data", JSON.stringify({ version: 1 }));
+    await adapter.write(
+      "run/m",
+      JSON.stringify({
+        version: 1,
+        slots: {
+          "not-json": { name: "not-json", savedAt: 100 },
+          "not-object": { name: "not-object", savedAt: 101 },
+          "no-version": { name: "no-version", savedAt: 102 },
+          "no-data": { name: "no-data", savedAt: 103 },
+        },
+      }),
+    );
+    const save = createSave({ adapter });
+
+    expect(await save.listSlots("run")).toEqual([]);
+    expect(await adapter.read("run/s/not-json")).toBe("{truncated");
+    expect(await adapter.read("run/m")).toBeNull();
+  });
+
+  it("listSlots skips a key whose name does not decode", async () => {
+    const adapter = memoryAdapter();
+    await adapter.write(
+      "run/s/%zz",
+      JSON.stringify({ version: 1, data: 1, savedAt: 1 }),
+    );
+    const save = createSave({ adapter });
+    await save.saveSlot("run", "good", createRecord({ default: () => ({}) }));
+
+    expect((await save.listSlots("run")).map((x) => x.name)).toEqual(["good"]);
+  });
+
+  it("loadSlot reads a slot of the earlier layout without merging", async () => {
+    const adapter = memoryAdapter();
+    await seedEarlierLayout(adapter);
+    const save = createSave({ adapter });
+    const readSpy = vi.spyOn(adapter, "read");
+
+    const loaded = make();
+    await save.loadSlot("run", "a", loaded);
+    expect(loaded.get()).toEqual({ chapter: 1 });
+    expect(readSpy.mock.calls.map((c) => c[0])).toEqual(["run/s/a"]);
+    expect(await adapter.read("run/m")).not.toBeNull();
+  });
+});
+
+describe("Save — reported automatic writes", () => {
+  /** Let the microtask queue and one macrotask turn drain. */
+  const settle = (): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, 0));
+
+  const counter = () =>
+    createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+
+  /** Collect the rejections nothing in the process awaited. */
+  function watchUnhandled(): {
+    readonly seen: unknown[];
+    restore: () => void;
+  } {
+    const seen: unknown[] = [];
+    const others = process.listeners("unhandledRejection");
+    process.removeAllListeners("unhandledRejection");
+    const listener = (reason: unknown): void => {
+      seen.push(reason);
+    };
+    process.on("unhandledRejection", listener);
+    return {
+      seen,
+      restore() {
+        process.off("unhandledRejection", listener);
+        for (const other of others) process.on("unhandledRejection", other);
+      },
+    };
+  }
+
+  it("a failed write nothing awaits is an unhandled rejection", async () => {
+    const boom = new Error("write refused");
+    const adapter: SaveAdapter = {
+      ...memoryAdapter(),
+      async write() {
+        throw boom;
+      },
+    };
+    const save = createSave({ adapter });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const unhandled = watchUnhandled();
+    try {
+      const s = counter();
+      const stop = save.autoPersist("ap", s);
+      s.set({ v: 1 });
+      await settle();
+
+      expect(unhandled.seen).toEqual([boom]);
+      expect(errorSpy).not.toHaveBeenCalled();
+
+      const failure = await save.flush().catch((e: unknown) => e);
+      expect(failure).toBeInstanceOf(AggregateError);
+      expect((failure as AggregateError).errors).toEqual([boom]);
+      expect((failure as Error).message).toBe(
+        'Save.flush: automatic writes failed for "ap".',
+      );
+      stop();
+    } finally {
+      unhandled.restore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("a failure reaches a waiting flush and is reported once", async () => {
+    const boom = new Error("write refused");
+    const release: Array<() => void> = [];
+    const adapter: SaveAdapter = {
+      ...memoryAdapter(),
+      async write() {
+        await new Promise<void>((resolve) => release.push(resolve));
+        throw boom;
+      },
+    };
+    const save = createSave({ adapter });
+    const unhandled = watchUnhandled();
+    try {
+      const s = counter();
+      const stop = save.autoPersist("ap", s);
+      s.set({ v: 1 });
+      const flushed = save.flush();
+      await settle();
+      release.shift()?.();
+
+      await expect(flushed).rejects.toBeInstanceOf(AggregateError);
+      await settle();
+      expect(unhandled.seen).toEqual([]);
+      stop();
+    } finally {
+      unhandled.restore();
+    }
+  });
+
+  it("a later successful write clears the failure", async () => {
+    const base = memoryAdapter();
+    let failing = true;
+    const adapter: SaveAdapter = {
+      ...base,
+      async write(key, value) {
+        if (failing) throw new Error("write refused");
+        return base.write(key, value);
+      },
+    };
+    const save = createSave({ adapter });
+    const s = counter();
+    const stop = save.autoPersist("ap", s);
+
+    s.set({ v: 1 });
+    await expect(save.flush()).rejects.toBeInstanceOf(AggregateError);
+
+    failing = false;
+    s.set({ v: 2 });
+    await expect(save.flush()).resolves.toBeUndefined();
+    stop();
+  });
+
+  it("a failure a later write in the same run supersedes is not reported", async () => {
+    const base = memoryAdapter();
+    const release: Array<() => void> = [];
+    let writes = 0;
+    const adapter: SaveAdapter = {
+      ...base,
+      async write(key, value) {
+        writes += 1;
+        if (writes === 1) {
+          await new Promise<void>((resolve) => release.push(resolve));
+          throw new Error("write refused");
+        }
+        return base.write(key, value);
+      },
+    };
+    const save = createSave({ adapter });
+    const unhandled = watchUnhandled();
+    try {
+      const s = counter();
+      const stop = save.autoPersist("ap", s);
+      s.set({ v: 1 });
+      await settle();
+      s.set({ v: 2 });
+      release.shift()?.();
+      await settle();
+
+      expect(writes).toBe(2);
+      expect(unhandled.seen).toEqual([]);
+      await expect(save.flush()).resolves.toBeUndefined();
+      stop();
+    } finally {
+      unhandled.restore();
+    }
+  });
+
+  it("flush waits for the in-flight write and for a change just made", async () => {
+    const seen: string[] = [];
+    const release: Array<() => void> = [];
+    const adapter: SaveAdapter = {
+      ...memoryAdapter(),
+      async write(_key, value) {
+        seen.push(value);
+        await new Promise<void>((resolve) => release.push(resolve));
+      },
+    };
+    const save = createSave({ adapter });
+    const s = counter();
+    const stop = save.autoPersist("ap", s);
+
+    s.set({ v: 1 });
+    await settle();
+    expect(seen).toHaveLength(1);
+
+    s.set({ v: 2 });
+    let done = false;
+    const flushed = save.flush().then(() => {
+      done = true;
+    });
+    release.shift()?.();
+    await settle();
+    expect(done).toBe(false);
+    expect(seen).toHaveLength(2);
+    release.shift()?.();
+    await flushed;
+    expect(JSON.parse(seen[1] as string).data).toEqual({ v: 2 });
+
+    s.set({ v: 3 });
+    let secondDone = false;
+    const second = save.flush().then(() => {
+      secondDone = true;
+    });
+    await settle();
+    expect(secondDone).toBe(false);
+    expect(seen).toHaveLength(3);
+    release.shift()?.();
+    await second;
+    stop();
+  });
+
+  it("a change after stop writes nothing", async () => {
+    const adapter = memoryAdapter();
+    const save = createSave({ adapter });
+    const writeSpy = vi.spyOn(adapter, "write");
+    const s = counter();
+    const stop = save.autoPersist("ap", s);
+
+    stop();
+    s.set({ v: 1 });
+    await settle();
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+
+  it("flush resolves with no registrations and ignores a stopped one", async () => {
+    const adapter: SaveAdapter = {
+      ...memoryAdapter(),
+      async write() {
+        throw new Error("write refused");
+      },
+    };
+    const save = createSave({ adapter });
+    await expect(save.flush()).resolves.toBeUndefined();
+
+    const s = counter();
+    const stop = save.autoPersist("ap", s);
+    s.set({ v: 1 });
+    await expect(save.flush()).rejects.toBeInstanceOf(AggregateError);
+
+    stop();
+    await expect(save.flush()).resolves.toBeUndefined();
+  });
+
+  it("flush reports every failing store in registration order", async () => {
+    const first = new Error("one refused");
+    const second = new Error("two refused");
+    const adapter: SaveAdapter = {
+      ...memoryAdapter(),
+      async write(key) {
+        throw key.startsWith("a1") ? first : second;
+      },
+    };
+    const save = createSave({ adapter });
+    const a = counter();
+    const b = counter();
+    const stopA = save.autoPersist("a1", a);
+    const stopB = save.autoPersist("a2", b);
+
+    a.set({ v: 1 });
+    b.set({ v: 1 });
+    const failure = await save.flush().catch((e: unknown) => e);
+    expect((failure as AggregateError).errors).toEqual([first, second]);
+    expect((failure as Error).message).toBe(
+      'Save.flush: automatic writes failed for "a1", "a2".',
+    );
+    stopA();
+    stopB();
   });
 });

@@ -237,7 +237,10 @@ export function checkReadings(
     check(
       "saves: a clean profile starts at zero",
       JSON.stringify(saves),
-      saves["launchesBefore"] === 0 && saves["launchesAfter"] === 1,
+      saves["launchesBefore"] === 0 &&
+        saves["launchesAfter"] === 1 &&
+        saves["slotBefore"] === null &&
+        saves["slotAfter"] === 1,
     );
   }
   return failures;

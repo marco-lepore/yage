@@ -97,6 +97,8 @@ test.describe("baseline fixture", () => {
     const reading = await readCase(page, "saves");
     expect(reading["launchesBefore"]).toBe(0);
     expect(reading["launchesAfter"]).toBe(1);
+    expect(reading["slotBefore"]).toBeNull();
+    expect(reading["slotAfter"]).toBe(1);
     expect(reading["failure"]).toBeNull();
   });
 
@@ -162,6 +164,8 @@ test.describe("baseline saves", () => {
     expect((await read(page)).readings["saves"]).toMatchObject({
       launchesBefore: 0,
       launchesAfter: 1,
+      slotBefore: null,
+      slotAfter: 1,
     });
 
     await page.reload();
@@ -172,6 +176,8 @@ test.describe("baseline saves", () => {
     expect((await read(page)).readings["saves"]).toMatchObject({
       launchesBefore: 1,
       launchesAfter: 2,
+      slotBefore: 1,
+      slotAfter: 2,
     });
     await first.close();
 
@@ -182,6 +188,8 @@ test.describe("baseline saves", () => {
     expect((await read(fresh)).readings["saves"]).toMatchObject({
       launchesBefore: 0,
       launchesAfter: 1,
+      slotBefore: null,
+      slotAfter: 1,
     });
     await second.close();
   });

@@ -763,7 +763,10 @@ function recordRelaunch(
   record(report, {
     name: "relaunch: the stored launch count carried over",
     result:
-      saves?.["launchesBefore"] === 1 && saves["launchesAfter"] === 2
+      saves?.["launchesBefore"] === 1 &&
+      saves["launchesAfter"] === 2 &&
+      saves["slotBefore"] === 1 &&
+      saves["slotAfter"] === 2
         ? "passed"
         : "failed",
     evidence: "inspector",

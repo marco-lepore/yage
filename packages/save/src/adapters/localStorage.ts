@@ -7,7 +7,9 @@ export interface LocalStorageAdapterOptions {
 
 /**
  * Browser localStorage-backed adapter. Throws helpfully on quota and
- * unsupported environments.
+ * unsupported environments. Each key is replaced atomically, and the browser
+ * commits its storage on its own schedule, so a write from the last moments
+ * before the browser or shell process is killed can be lost, never torn.
  */
 export function localStorageAdapter(
   opts: LocalStorageAdapterOptions = {},
