@@ -66,6 +66,9 @@ test.use({
             "--use-webgpu-adapter=swiftshader",
             "--use-angle=swiftshader",
             "--enable-unsafe-swiftshader",
+            // Linux needs Vulkan-backed shared images for WebGPU canvases.
+            "--enable-features=Vulkan",
+            "--use-vulkan=swiftshader",
           ]
         : []),
     ],

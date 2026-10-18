@@ -33,7 +33,7 @@ import {
   surfaceLighting,
 } from "@yagejs/lighting";
 import { DebugPlugin } from "@yagejs/debug";
-import { Rectangle, ColorMatrixFilter, Sprite, AnimatedSprite } from "pixi.js";
+import { ColorMatrixFilter, Sprite, AnimatedSprite } from "pixi.js";
 import { setupContainer } from "./shared.js";
 
 const images = {
@@ -97,11 +97,7 @@ class MaterialProbe extends Component {
       popScene: () => this.use(SceneManagerKey).pop(),
       backend: () => renderer.application.renderer.name,
       pixel: (x: number, y: number) => {
-        const captured = renderer.application.renderer.extract.canvas({
-          target: renderer.application.stage,
-          frame: new Rectangle(0, 0, 256, 128),
-          resolution: 1,
-        });
+        const captured = renderer.captureCanvas();
         if (!(captured instanceof HTMLCanvasElement))
           throw new Error(
             "Material probe: browser canvas extraction required.",

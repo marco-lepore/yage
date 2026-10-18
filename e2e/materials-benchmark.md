@@ -100,9 +100,12 @@ segment on both backends. The shared soft-shadow and compositor tests also run
 on both backends.
 
 On Linux CI, the correctness suite requests Chromium's SwiftShader adapter
-with the flags used in its [WebGPU test configuration](https://chromium.googlesource.com/chromium/src/+/HEAD/third_party/blink/web_tests/FlagSpecificConfig).
-That configuration was not executed on the Mac used for this report. The
-hardware benchmark does not force a software adapter.
+and enables SwiftShader Vulkan for WebGPU canvas presentation. All 50 material
+checks passed in the Linux Playwright 1.60.0 container with Chromium
+148.0.7778.0 on 2026-10-18. Captures use YAGE's shared capture method, which
+matches the canvas format to the render target before copying pixels. The
+hardware benchmark does not force a software adapter; these Linux runs verify
+correctness, not the performance figures above.
 
 ## Delivery boundary
 

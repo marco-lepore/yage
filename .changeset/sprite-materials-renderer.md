@@ -9,3 +9,4 @@ Add sprite materials with normal maps, specular highlights, and emission.
 - Bind companion maps to texture and animation sources. Add `AnimatedSpriteComponent.setSource`, preserve maps through controller transitions, and release owned frame views on replacement and destruction.
 - Draw material sprites through WebGL2/WebGPU while preserving their public Sprite objects and expose settings through the Inspector render facet.
 - Batch adjacent compatible sprites while preserving transparency order, individual tint/alpha/transforms, and filter or mask boundaries.
+- Match WebGPU canvas and render-target pixel formats so Linux captures contain rendered pixels.

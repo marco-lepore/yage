@@ -822,9 +822,37 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     const enabled = this.drawingEnabled;
     this.drawingEnabled = true;
     try {
-      return this._app.renderer.extract.canvas(
-        this._app.stage,
-      ) as HTMLCanvasElement;
+      const renderer = this._app.renderer;
+      const texture = renderer.generateTexture(this._app.stage);
+      try {
+        if (!("gpu" in renderer))
+          return renderer.extract.canvas(texture) as HTMLCanvasElement;
+
+        // Pixi's canvas extraction uses the preferred canvas format, which can
+        // differ from its BGRA render targets on Linux. A texture copy requires
+        // matching formats; the browser converts the canvas for presentation.
+        const canvas = document.createElement("canvas");
+        canvas.width = texture.source.pixelWidth;
+        canvas.height = texture.source.pixelHeight;
+        const context = canvas.getContext("webgpu")!;
+        const device = renderer.gpu.device;
+        context.configure({
+          device,
+          format: texture.source.format as GPUTextureFormat,
+          usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
+          alphaMode: "premultiplied",
+        });
+        const encoder = device.createCommandEncoder();
+        encoder.copyTextureToTexture(
+          { texture: renderer.texture.getGpuSource(texture.source) },
+          { texture: context.getCurrentTexture() },
+          { width: canvas.width, height: canvas.height },
+        );
+        device.queue.submit([encoder.finish()]);
+        return canvas;
+      } finally {
+        texture.destroy(true);
+      }
     } finally {
       this.drawingEnabled = enabled;
     }
