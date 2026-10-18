@@ -65,13 +65,7 @@ class RunningScene extends GameScene {
 function driveHost(host: Host): (state: HostLifecycleReport) => void {
   let push: ((state: HostLifecycleReport) => void) | undefined;
   host.attach({
-    info: {
-      runtime: "test",
-      os: "unknown",
-      appVersion: undefined,
-      appBuild: undefined,
-      runtimeVersion: undefined,
-    },
+    info: { runtime: "test", os: "unknown" },
     watchLifecycle: (report) => {
       push = report;
       return () => {

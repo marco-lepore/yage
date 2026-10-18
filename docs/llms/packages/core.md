@@ -1246,10 +1246,12 @@ const { turret, target } = scene.spawnBatch((batch) => {
 | Export                                | Purpose                                                                                                                                       |
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `createTestEngine(config?, plugins?)` | Started Engine for integration tests; `plugins` install before it starts                                                                      |
-| `createMockScene(name?)`              | Lightweight scene with EngineContext for unit tests                                                                                           |
+| `createMockScene(name?)`              | Lightweight scene with EngineContext for unit tests; its context carries a `Logger`, an `AssetManager` and a `Host`                           |
 | `createMockEntity(name?)`             | Entity spawned in a mock scene                                                                                                                |
 | `advanceFrames(engine, n, dtMs?)`     | Advance game loop by N frames (`dtMs` is the per-frame ms delta; default `1000/60`)                                                           |
 | `TestHostPlugin(info?, lifecycle?)`   | Host adapter for tests; attaches `info` and `lifecycle` on install, reports later changes through `setLifecycle(report)`, detaches on destroy |
+
+The mock scene's `Host` is not connected to the page or to the event bus: `host.lifecycle` reads `"unknown"` for all three fields, `host.active` is `true`, and `host:active` and `host:lifecycle` never fire. Test background behavior with `createTestEngine` and a `TestHostPlugin`.
 
 See also the `Testing & Debugging` section in the Quick Start for a runnable example and the Inspector API for runtime introspection.
 
@@ -1412,6 +1414,7 @@ The host is the application that runs the game's page: a browser tab, or a nativ
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Host`                | `info: HostInfo`, `lifecycle: HostLifecycle`, `active: boolean` (read-only); `activeWhenUnfocused: boolean`; `attach(provider: HostProvider): () => void` — returns the function that detaches that provider |
 | `HostInfo`            | `{ runtime: string; os: HostOS; appVersion: string \| undefined; appBuild: string \| undefined; runtimeVersion: string \| undefined }`                                                                       |
+| `HostInfoInput`       | What an adapter supplies: `runtime` and `os` required, `appVersion`, `appBuild` and `runtimeVersion` optional                                                                                                |
 | `HostOS`              | `"macos" \| "windows" \| "linux" \| "ios" \| "android" \| "unknown"`                                                                                                                                         |
 | `HostActivity`        | `"active" \| "inactive" \| "unknown"`                                                                                                                                                                        |
 | `HostVisibility`      | `"visible" \| "hidden" \| "unknown"`                                                                                                                                                                         |
@@ -1419,13 +1422,15 @@ The host is the application that runs the game's page: a browser tab, or a nativ
 | `HostLifecycle`       | `{ activity: HostActivity; visibility: HostVisibility; focus: HostFocus }`                                                                                                                                   |
 | `HostLifecycleReport` | The same three fields, each optional — what an adapter reports                                                                                                                                               |
 | `HostChange`          | `{ lifecycle; previous; active; wasActive }` — the payload engine packages receive                                                                                                                           |
-| `HostProvider`        | `{ info: HostInfo; lifecycle?: HostLifecycleReport; watchLifecycle?(report): () => void }` — what a host adapter hands to `attach`                                                                           |
+| `HostProvider`        | `{ info: HostInfoInput; lifecycle?: HostLifecycleReport; watchLifecycle?(report): () => void }` — what a host adapter hands to `attach`                                                                      |
 | `HostSupport`         | `"supported" \| "unsupported" \| "unknown"`                                                                                                                                                                  |
 | `HostPermission`      | `"granted" \| "denied" \| "prompt" \| "unknown"`                                                                                                                                                             |
 
 `Host` holds no display state: a host adapter supplies fullscreen and screen orientation by registering a `HostDisplay` from `@yagejs/renderer`, and `RendererPlugin` reports both.
 
-A page with no adapter reports `{ runtime: "browser", os: "unknown" }` and no versions. The operating system stays `"unknown"` there: a page reads the system name only from the user agent, and an emulated device changes it. `runtime` is an open string, so an adapter outside this repository names itself. `undefined` in a version field means the host has no authoritative value.
+An adapter supplies `runtime` and `os`, and leaves out a version it has no authoritative value for. `host.info` holds all five fields, with `undefined` in every version the adapter did not supply.
+
+A page with no adapter reports `{ runtime: "browser", os: "unknown" }` and no versions. The operating system stays `"unknown"` there: a page reads the system name only from the user agent, and an emulated device changes it. `runtime` is an open string, so an adapter outside this repository names itself.
 
 `attach` reads `info` and `lifecycle` once, copies their fields, and freezes the copies. `host.info` and `host.lifecycle` each keep their identity between reads until something changes. The returned function restores the browser values and detaches only its own provider, so a stale call does nothing. `attach` throws when the engine has been destroyed, when a provider is already attached, when `runtime` is not a non-empty string, when `os` is outside `HostOS`, when `appVersion`, `appBuild` or `runtimeVersion` is neither `undefined` nor a non-empty string, when `lifecycle` is neither `undefined` nor an object, or when one of its three fields holds a value outside its union. A report with a value outside its union throws the same way, from `report`.
 
@@ -1466,12 +1471,12 @@ A host adapter is a `Plugin` named `"host"` that attaches in `install` and detac
 import { HostKey } from "@yagejs/core";
 import type {
   EngineContext,
-  HostInfo,
+  HostInfoInput,
   HostLifecycleReport,
   Plugin,
 } from "@yagejs/core";
 
-declare function readShellInfo(): Promise<HostInfo>;
+declare function readShellInfo(): Promise<HostInfoInput>;
 declare function readShellState(): Promise<HostLifecycleReport>;
 declare function onShellStateChange(
   listener: (state: HostLifecycleReport) => void,

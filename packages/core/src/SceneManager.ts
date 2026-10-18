@@ -251,7 +251,7 @@ export class SceneManager {
       // `isTransitioning` is still true when `scene:replaced` fires.
       await this._runTransition("replace", transition, old, scene, () => {
         if (old) {
-          this._removeScene(old, true);
+          this._removeScene(old);
         }
         this.bus?.emit("scene:replaced", {
           oldScene: old ?? scene,
@@ -521,7 +521,11 @@ export class SceneManager {
     });
   }
 
-  private _removeScene(scene: Scene, suppressEvent = false): void {
+  /**
+   * Take a scene off the stack and tear it down, without a `scene:popped`
+   * event: the caller announces the stack change itself.
+   */
+  private _removeScene(scene: Scene): void {
     this._withMutationSync(() => {
       const idx = this.stack.indexOf(scene);
       if (idx === -1) return;
@@ -531,9 +535,6 @@ export class SceneManager {
       this._teardownScene(scene);
       this._firePauseTransitions(wasPaused);
       this._fireResumeTransitions(wasPaused);
-      if (!suppressEvent) {
-        this.bus?.emit("scene:popped", { scene });
-      }
     });
   }
 

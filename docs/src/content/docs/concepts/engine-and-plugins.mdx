@@ -274,6 +274,11 @@ system is `"unknown"` in a browser because a page reads the system name only
 from the user agent, and an emulated device changes that string. `undefined` in
 a version field means the host has no authoritative value to report.
 
+`engine.host.info` always holds all five fields. An adapter supplies a
+`HostInfoInput`, where `runtime` and `os` are required and the three versions
+are optional, so a shell that knows only its app version leaves the other two
+out.
+
 `runtime` is a plain string rather than a fixed set of names, so an adapter you
 write names itself. `os` is one of `"macos"`, `"windows"`, `"linux"`, `"ios"`,
 `"android"` and `"unknown"`.
@@ -341,12 +346,12 @@ named `"host"`.
 import { HostKey } from "@yagejs/core";
 import type {
   EngineContext,
-  HostInfo,
+  HostInfoInput,
   HostLifecycleReport,
   Plugin,
 } from "@yagejs/core";
 
-declare function readShellInfo(): Promise<HostInfo>;
+declare function readShellInfo(): Promise<HostInfoInput>;
 declare function readShellState(): Promise<HostLifecycleReport>;
 declare function onShellStateChange(
   listener: (state: HostLifecycleReport) => void,
@@ -382,7 +387,8 @@ class ShellHostPlugin implements Plugin {
 
 Every `install` finishes before the loop starts and before any `onStart` runs,
 so the host's state is in place before the first scene. `attach` validates
-every field and throws when one is wrong, then copies and freezes them:
+every field it is given and throws when one is wrong, then copies and freezes
+them:
 changing the provider's object afterwards does not change `engine.host`. The
 function `attach` returns stops the reports and hands every state back to the
 page, and a plugin that reads `engine.host.info` without depending on the

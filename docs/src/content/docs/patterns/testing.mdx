@@ -21,7 +21,7 @@ import {
 | Utility | Returns | Purpose |
 |---|---|---|
 | `createTestEngine(config?, plugins?)` | `Promise<Engine>` | Headless engine, already started, with the `plugins` you pass installed. No renderer, audio, or input plugins unless you pass them |
-| `createMockScene(name?)` | `{ scene, context }` | Scene with a working ECS world, no engine |
+| `createMockScene(name?)` | `{ scene, context }` | Scene with a working ECS world, no engine. Its context carries the services that need no running engine: the query cache, event bus and error boundary, plus a `Logger`, an `AssetManager` and a `Host`, so `this.use(LoggerKey)` in a component resolves with no extra setup |
 | `createMockEntity(name?)` | `{ entity, scene, context }` | Entity spawned into a mock scene |
 | `advanceFrames(engine, n, dtMs?)` | `void` | Tick the game loop `n` times. `dtMs` defaults to `1000 / 60` |
 | `new TestHostPlugin(info?, lifecycle?)` | `Plugin` | Host adapter for a test engine. Attaches `info` and `lifecycle` on install and detaches on destroy; the `info` fields you leave out default to `runtime: "test"`, `os: "unknown"` and no versions. Call `setLifecycle({ activity: "inactive" })` on it to drive the engine into the background |
@@ -30,6 +30,12 @@ import {
 `createTestEngine` is async — it starts the engine for you, so `await` it and
 don't call `engine.start()` yourself. The mock helpers return an object: take
 the piece you need with destructuring (`const { entity } = createMockEntity()`).
+
+The `Host` in a mock scene's context is not connected to the page or to the
+event bus. Its `lifecycle` reads `"unknown"` for activity, visibility and
+focus, `active` stays `true`, and `host:active` and `host:lifecycle` never
+fire. To test what a component does when the game goes into the background,
+use `createTestEngine` with a `TestHostPlugin` and call `setLifecycle` on it.
 
 ## Unit Testing a Component
 

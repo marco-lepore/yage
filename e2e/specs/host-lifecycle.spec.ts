@@ -85,6 +85,27 @@ function dispatchWindowEvent(page: Page, type: string): Promise<void> {
   );
 }
 
+/**
+ * Let the page see the window's real focus, and drive that window. A page
+ * under automation reports itself focused whatever the window does, so the
+ * emulation that holds it there is turned off first.
+ */
+async function takeRealFocus(page: Page): Promise<{
+  setState(state: "minimized" | "normal"): Promise<void>;
+}> {
+  const session = await page.context().newCDPSession(page);
+  await session.send("Emulation.setFocusEmulationEnabled", { enabled: false });
+  const { windowId } = await session.send("Browser.getWindowForTarget");
+  return {
+    async setState(state) {
+      await session.send("Browser.setWindowBounds", {
+        windowId,
+        bounds: { windowState: state },
+      });
+    },
+  };
+}
+
 /** Wait until the loop has advanced past `frame`. */
 async function waitForFrameAfter(page: Page, frame: number): Promise<void> {
   await page.waitForFunction(
@@ -172,24 +193,29 @@ test.describe("host lifecycle", () => {
     await waitForFrameAfter(page, (await read(page)).frame);
     expect((await read(page)).jumpHeld).toBe(true);
 
-    await dispatchWindowEvent(page, "blur");
+    const window = await takeRealFocus(page);
+    await window.setState("minimized");
 
-    expect(await read(page)).toMatchObject({
-      focus: "unfocused",
-      visibility: "visible",
-      active: false,
-      paused: true,
-      jumpHeld: false,
-    });
+    await expect
+      .poll(() => read(page))
+      .toMatchObject({
+        focus: "unfocused",
+        visibility: "visible",
+        active: false,
+        paused: true,
+        jumpHeld: false,
+      });
 
-    await dispatchWindowEvent(page, "focus");
-    expect(await read(page)).toMatchObject({
-      focus: "focused",
-      active: true,
-      paused: false,
-      pauses: 1,
-      resumes: 1,
-    });
+    await window.setState("normal");
+    await expect
+      .poll(() => read(page))
+      .toMatchObject({
+        focus: "focused",
+        active: true,
+        paused: false,
+        pauses: 1,
+        resumes: 1,
+      });
     await page.keyboard.up("Space");
   });
 

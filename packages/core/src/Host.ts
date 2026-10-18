@@ -18,6 +18,22 @@ const HOST_OS_VALUES: readonly string[] = [
   "unknown",
 ];
 
+/**
+ * What a host adapter states about itself when it attaches. A version the host
+ * has no authoritative value for is left out.
+ */
+export interface HostInfoInput {
+  /** The adapter's own name for the application that runs the page. */
+  readonly runtime: string;
+  readonly os: HostOS;
+  /** The app's version, when the host has an authoritative value. */
+  readonly appVersion?: string;
+  /** The app's build number, when the host has an authoritative value. */
+  readonly appBuild?: string;
+  /** The version of the host runtime, when the host has an authoritative value. */
+  readonly runtimeVersion?: string;
+}
+
 /** Which application runs the game's page, and what it knows about itself. */
 export interface HostInfo {
   /** `"browser"` unless a host adapter attached. Adapters name themselves. */
@@ -64,7 +80,7 @@ export interface HostChange {
 
 /** What a host adapter hands to the engine. */
 export interface HostProvider {
-  readonly info: HostInfo;
+  readonly info: HostInfoInput;
   /** The adapter's state at attach. Read once, like `info`. */
   readonly lifecycle?: HostLifecycleReport;
   /**
@@ -124,7 +140,7 @@ interface MutableLifecycleReport {
  * any of it reaches the engine. Each field is read once: the value stored is
  * the value that passed its check.
  */
-function copyHostInfo(info: HostInfo): HostInfo {
+function copyHostInfo(info: HostInfoInput): HostInfo {
   const runtime: unknown = info.runtime;
   if (typeof runtime !== "string" || runtime.length === 0) {
     throw new Error(

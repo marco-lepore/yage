@@ -55,13 +55,7 @@ function setHost(state: HostLifecycleReport): void {
   if (!current) throw new Error("no host in the context");
   if (reportToHost === undefined) {
     current.attach({
-      info: {
-        runtime: "test",
-        os: "unknown",
-        appVersion: undefined,
-        appBuild: undefined,
-        runtimeVersion: undefined,
-      },
+      info: { runtime: "test", os: "unknown" },
       watchLifecycle: (report) => {
         reportToHost = report;
         return () => {

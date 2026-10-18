@@ -102,7 +102,7 @@ export function createPageFullscreen(
         };
         document.addEventListener("webkitfullscreenchange", onChange);
         document.addEventListener("webkitfullscreenerror", onError);
-        void webkitTarget.webkitRequestFullscreen?.();
+        void webkitTarget.webkitRequestFullscreen!();
       });
     },
     exit(): Promise<void> {
@@ -116,7 +116,7 @@ export function createPageFullscreen(
           resolve();
         };
         document.addEventListener("webkitfullscreenchange", onChange);
-        void doc.webkitExitFullscreen?.();
+        void doc.webkitExitFullscreen!();
       });
     },
   };

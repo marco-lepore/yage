@@ -3,6 +3,7 @@ import type {
   HostActivity,
   HostFocus,
   HostInfo,
+  HostInfoInput,
   HostLifecycleReport,
   HostOS,
   HostPermission,
@@ -47,6 +48,32 @@ function assertTypes(): void {
   // @ts-expect-error — the support union has no "available".
   const support: HostSupport = "available";
   void support;
+
+  // An adapter leaves out a version it has no value for; every field of
+  // `host.info` is present, holding `undefined` where the host said nothing.
+  const minimal: HostInfoInput = { runtime: "electron", os: "macos" };
+  void minimal;
+  expectTypeOf<HostInfoInput["appVersion"]>().toEqualTypeOf<
+    string | undefined
+  >();
+  expectTypeOf<HostInfoInput>().toEqualTypeOf<{
+    readonly runtime: string;
+    readonly os: HostOS;
+    readonly appVersion?: string;
+    readonly appBuild?: string;
+    readonly runtimeVersion?: string;
+  }>();
+  expectTypeOf<HostInfo>().toEqualTypeOf<{
+    readonly runtime: string;
+    readonly os: HostOS;
+    readonly appVersion: string | undefined;
+    readonly appBuild: string | undefined;
+    readonly runtimeVersion: string | undefined;
+  }>();
+
+  // @ts-expect-error — `HostInfo` requires the three version keys.
+  const missing: HostInfo = { runtime: "electron", os: "macos" };
+  void missing;
 }
 
 describe("Host types", () => {

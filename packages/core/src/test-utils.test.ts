@@ -1,14 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { createTestEngine, TestHostPlugin } from "./test-utils.js";
+import {
+  createMockEntity,
+  createMockScene,
+  createTestEngine,
+  TestHostPlugin,
+} from "./test-utils.js";
+import { AssetManager } from "./AssetManager.js";
+import { AssetManagerKey, HostKey, LoggerKey } from "./EngineContext.js";
+import { Component } from "./Component.js";
+import { Host } from "./Host.js";
+import { Logger } from "./Logger.js";
 
 describe("TestHostPlugin", () => {
   it("defaults to a test host with no versions", () => {
-    expect(new TestHostPlugin().info).toEqual({
+    expect(new TestHostPlugin().info).toStrictEqual({
       runtime: "test",
       os: "unknown",
-      appVersion: undefined,
-      appBuild: undefined,
-      runtimeVersion: undefined,
     });
   });
 
@@ -75,5 +82,62 @@ describe("TestHostPlugin", () => {
     // The engine's teardown dropped the adapter, so every field falls back to
     // what the page reports.
     expect(engine.host.lifecycle.activity).toBe("unknown");
+  });
+});
+
+describe("createMockScene", () => {
+  it("registers a host", () => {
+    const { context } = createMockScene();
+
+    expect(context.resolve(HostKey)).toBeInstanceOf(Host);
+  });
+
+  it("registers a logger", () => {
+    const { context } = createMockScene();
+
+    expect(context.resolve(LoggerKey)).toBeInstanceOf(Logger);
+  });
+
+  it("registers an asset manager", () => {
+    const { context } = createMockScene();
+
+    expect(context.resolve(AssetManagerKey)).toBeInstanceOf(AssetManager);
+  });
+
+  it("gives each scene its own services", () => {
+    const first = createMockScene();
+    const second = createMockScene();
+
+    expect(second.context.resolve(HostKey)).not.toBe(
+      first.context.resolve(HostKey),
+    );
+    expect(second.context.resolve(LoggerKey)).not.toBe(
+      first.context.resolve(LoggerKey),
+    );
+    expect(second.context.resolve(AssetManagerKey)).not.toBe(
+      first.context.resolve(AssetManagerKey),
+    );
+  });
+
+  it("lets a component on a mock entity resolve all three", () => {
+    class Resolver extends Component {
+      readonly resolved: unknown[] = [];
+
+      override onAdd(): void {
+        this.resolved.push(
+          this.use(HostKey),
+          this.use(LoggerKey),
+          this.use(AssetManagerKey),
+        );
+      }
+    }
+
+    const { entity } = createMockEntity();
+
+    expect(entity.add(new Resolver()).resolved).toEqual([
+      expect.any(Host),
+      expect.any(Logger),
+      expect.any(AssetManager),
+    ]);
   });
 });

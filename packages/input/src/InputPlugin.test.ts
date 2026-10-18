@@ -61,13 +61,7 @@ function reportHost(state: HostLifecycleReport): void {
   if (!current) throw new Error("no host in the context");
   let push: ((report: HostLifecycleReport) => void) | undefined;
   current.attach({
-    info: {
-      runtime: "test",
-      os: "unknown",
-      appVersion: undefined,
-      appBuild: undefined,
-      runtimeVersion: undefined,
-    },
+    info: { runtime: "test", os: "unknown" },
     watchLifecycle: (report) => {
       push = report;
       return () => {
@@ -395,7 +389,6 @@ describe("InputPlugin", () => {
     const { scene, context } = createMockScene();
     const hooks = new SceneHookRegistry();
     context.register(SceneHookRegistryKey, hooks);
-    context.register(HostKey, new Host());
     plugin = new InputPlugin({ actions: { jump: ["Space"] } });
     plugin.install(context);
     const manager = context.resolve(InputManagerKey);

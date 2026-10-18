@@ -52,6 +52,7 @@ export type { ServiceScope, ServiceKeyOptions } from "./EngineContext.js";
 export { Host } from "./Host.js";
 export type {
   HostInfo,
+  HostInfoInput,
   HostOS,
   HostProvider,
   HostSupport,

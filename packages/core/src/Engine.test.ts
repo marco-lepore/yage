@@ -1201,7 +1201,6 @@ describe("Engine", () => {
           runtime: "electron",
           os: "macos",
           appVersion: "1.0.0",
-          appBuild: undefined,
           runtimeVersion: "44.7.0",
         },
       });
@@ -1278,13 +1277,7 @@ describe("Engine", () => {
             return;
           }
           context.resolve(HostKey).attach({
-            info: {
-              runtime: "electron",
-              os: "macos",
-              appVersion: undefined,
-              appBuild: undefined,
-              runtimeVersion: undefined,
-            },
+            info: { runtime: "electron", os: "macos" },
           });
         },
         onDestroy() {
@@ -1492,13 +1485,7 @@ describe("Engine", () => {
         async install(context) {
           await gate;
           context.resolve(HostKey).attach({
-            info: {
-              runtime: "electron",
-              os: "macos",
-              appVersion: undefined,
-              appBuild: undefined,
-              runtimeVersion: undefined,
-            },
+            info: { runtime: "electron", os: "macos" },
           });
         },
       };

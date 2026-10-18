@@ -3,6 +3,7 @@ import { Host } from "./Host.js";
 import type {
   HostChange,
   HostInfo,
+  HostInfoInput,
   HostLifecycleReport,
   HostProvider,
 } from "./Host.js";
@@ -25,14 +26,11 @@ const UNKNOWN_LIFECYCLE = {
   focus: "unknown",
 };
 
-function provider(info: Partial<HostInfo>): { info: HostInfo } {
+function provider(info: Partial<HostInfoInput>): { info: HostInfoInput } {
   return {
     info: {
       runtime: "electron",
       os: "macos",
-      appVersion: undefined,
-      appBuild: undefined,
-      runtimeVersion: undefined,
       ...info,
     },
   };
@@ -107,7 +105,7 @@ function lifecycleProvider(lifecycle?: HostLifecycleReport): {
   let stops = 0;
   return {
     provider: {
-      info: { ...BROWSER_INFO, runtime: "electron", os: "macos" },
+      info: { runtime: "electron", os: "macos" },
       ...(lifecycle === undefined ? {} : { lifecycle }),
       watchLifecycle(report) {
         push = report;
@@ -160,9 +158,8 @@ describe("Host", () => {
       os: "ios",
       appVersion: "1.4.0",
       appBuild: "42",
-      runtimeVersion: undefined,
       extra: "dropped",
-    } as unknown as HostInfo;
+    } as unknown as HostInfoInput;
 
     host.attach({ info: source });
     (source as { runtime: string }).runtime = "changed";
@@ -176,6 +173,31 @@ describe("Host", () => {
     });
     expect("extra" in host.info).toBe(false);
     expect(Object.isFrozen(host.info)).toBe(true);
+  });
+
+  it("fills in the versions an adapter leaves out", () => {
+    const host = new Host();
+
+    host.attach({ info: { runtime: "electron", os: "macos" } });
+
+    expect(host.info).toStrictEqual({
+      runtime: "electron",
+      os: "macos",
+      appVersion: undefined,
+      appBuild: undefined,
+      runtimeVersion: undefined,
+    });
+    expect("appVersion" in host.info).toBe(true);
+  });
+
+  it("rejects an empty version an adapter does supply", () => {
+    const host = new Host();
+
+    expect(() =>
+      host.attach({ info: { runtime: "electron", os: "macos", appBuild: "" } }),
+    ).toThrow(
+      'Host.attach: info.appBuild must be a non-empty string or undefined, got "".',
+    );
   });
 
   it("reads each info field once and stores the value it checked", () => {
@@ -200,7 +222,7 @@ describe("Host", () => {
         appBuild: counted("appBuild", "42", 7),
         runtimeVersion: counted("runtimeVersion", "44.7.0", ""),
       },
-    ) as HostInfo;
+    ) as HostInfoInput;
 
     host.attach({ info });
 
@@ -298,7 +320,7 @@ describe("Host", () => {
     const defaults = host.info;
 
     expect(() =>
-      host.attach(provider(field as unknown as Partial<HostInfo>)),
+      host.attach(provider(field as unknown as Partial<HostInfoInput>)),
     ).toThrow(message);
     expect(host.info).toBe(defaults);
     expect(host.info).toEqual({
@@ -651,7 +673,7 @@ describe("Host lifecycle", () => {
     const { log } = connect(host);
 
     host.attach({
-      info: { ...BROWSER_INFO, runtime: "electron" },
+      info: { runtime: "electron", os: "unknown" },
       lifecycle: { activity: "active" },
       watchLifecycle(report) {
         report({ activity: "inactive", visibility: "hidden" });
@@ -688,7 +710,7 @@ describe("Host lifecycle", () => {
 
     expect(() =>
       host.attach({
-        info: { ...BROWSER_INFO, runtime: "electron" },
+        info: { runtime: "electron", os: "unknown" },
         lifecycle: lifecycle as HostLifecycleReport,
         watchLifecycle,
       }),
@@ -724,7 +746,7 @@ describe("Host lifecycle", () => {
 
     expect(() =>
       host.attach({
-        info: { ...BROWSER_INFO, runtime: "electron" },
+        info: { runtime: "electron", os: "unknown" },
         watchLifecycle() {
           throw new Error("bridge is gone");
         },
