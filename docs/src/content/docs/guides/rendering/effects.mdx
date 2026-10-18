@@ -769,7 +769,11 @@ soon as zoom, rotation, or shake are in play. Or size the texture to
 - **`resize()` keeps the density you asked for.** Omit the third argument
   and the texture re-derives its resolution from the renderer's current one
   using the configured `resolutionScale`; pass one to replace that scale.
-- **WebGPU is unverified.** PixiJS tries WebGL first unless you pass
+- **A restored graphics context redraws every texture.** After the browser
+  takes the context away and gives one back, each render-target layer and
+  each live `createRenderTarget` texture draws again at the next frame,
+  inputs before the targets that sample them.
+- **WebGPU is unverified.** YAGE asks for WebGL first unless you pass
   `pixi: { preference: "webgpu" }`, and blend behaviour inside a render
   target has only been checked on WebGL.
 
@@ -783,6 +787,11 @@ three things when done: the texture with `destroy()`, the source container
 with `source.destroy({ children: true })`, and any registered key with
 `unregisterTexture(key)`. Keep the source out of the scene's render tree, so
 it is not drawn twice.
+
+- **`followResolution` keeps the texture as sharp as the canvas.** Set it
+  when the texture redraws anyway and should follow a window moved to a
+  display with another pixel ratio. Default `false`: the texture keeps the
+  density it was created with, so a texture drawn once stays as drawn.
 
 ## Save / load
 

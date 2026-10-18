@@ -5,6 +5,7 @@ import type { LightSource } from "./LightSource.js";
 import type {
   AmbientLightOptions,
   LightGrid,
+  LightingFallbackReason,
   LightingRenderer,
   LightingRenderFrame,
 } from "./types.js";
@@ -41,6 +42,11 @@ export class LightingWorld {
   private readonly _occluders = new Set<LightOccluder>();
   private readonly errorBoundary: ErrorBoundary | undefined;
   private backend: LightingRenderer | null = null;
+  /** Set by a renderer factory that built something other than it names. */
+  private _fallback: {
+    readonly reason: LightingFallbackReason;
+    readonly detail: string | null;
+  } | null = null;
   private _ambientLevel: number;
   private _ambientColor: number;
   private destroyed = false;
@@ -343,6 +349,19 @@ export class LightingWorld {
   /** Remove renderer-neutral shadow geometry without destroying it. */
   unregisterOccluder(occluder: LightOccluder): void {
     this._occluders.delete(occluder);
+  }
+
+  /** @internal Why the shader renderer's fallback drew this scene. */
+  _noteFallback(reason: LightingFallbackReason, detail: string | null): void {
+    this._fallback = { reason, detail };
+  }
+
+  /** @internal The fallback record, or `null` when none was chosen. */
+  get _fallbackRecord(): {
+    readonly reason: LightingFallbackReason;
+    readonly detail: string | null;
+  } | null {
+    return this._fallback;
   }
 
   /** @internal */

@@ -1,5 +1,6 @@
 import { Entity, Transform, Vec2 } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
+import type { GraphicsCapabilities } from "@yagejs/renderer";
 import { CaseProbe } from "../probe.js";
 import type { CaseReading } from "../probe.js";
 
@@ -11,8 +12,8 @@ export interface DisplayReading extends CaseReading {
   orientationLockSupport: string;
   canvasSize: { width: number; height: number };
   resolution: number;
-  rendererName: string;
-  glVersion: string | null;
+  graphics: GraphicsCapabilities;
+  contextLost: boolean;
 }
 
 /** Reads what the renderer says about the screen it drew on. */
@@ -32,21 +33,14 @@ export class DisplayProbe extends CaseProbe {
       orientationLockSupport: this.renderer.orientationLockSupport,
       canvasSize: { ...this.renderer.canvasSize },
       resolution: pixi.resolution,
-      rendererName: pixi.name,
-      glVersion: readGlVersion(pixi),
+      graphics: {
+        ...this.renderer.capabilities,
+        rgba16float: { ...this.renderer.capabilities.rgba16float },
+        rgba32float: { ...this.renderer.capabilities.rgba32float },
+      },
+      contextLost: this.renderer.contextLost,
     };
   }
-}
-
-/**
- * The graphics API version the page actually got, which only a WebGL context
- * reports. A WebGPU run reads `null`.
- */
-function readGlVersion(pixi: unknown): string | null {
-  const gl = (pixi as { gl?: { getParameter(name: number): string } }).gl;
-  const constants = gl as unknown as { VERSION?: number } | undefined;
-  if (!gl || constants?.VERSION === undefined) return null;
-  return gl.getParameter(constants.VERSION);
 }
 
 /** The renderer's view of fullscreen, orientation and canvas size. */

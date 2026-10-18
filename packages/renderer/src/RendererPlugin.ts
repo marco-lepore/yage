@@ -32,7 +32,13 @@ import {
   TextureStyle,
   UPDATE_PRIORITY,
 } from "pixi.js";
-import type { BitmapFont, Spritesheet, SCALE_MODE } from "pixi.js";
+import type {
+  BitmapFont,
+  Spritesheet,
+  SCALE_MODE,
+  WebGLRenderer,
+  WebGPURenderer,
+} from "pixi.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { synchronizeInteraction } from "./drawing.js";
 import { DisplaySystem } from "./DisplaySystem.js";
@@ -60,11 +66,14 @@ import {
   getDefaultTextStyle,
   setDefaultTextStyle,
 } from "./internal/textConstruction.js";
-import { createRenderTarget } from "./RenderTarget.js";
+import { createBakedTarget, createRenderTarget } from "./RenderTarget.js";
 import type {
   RenderTargetHandle,
   RenderTargetOptions,
 } from "./RenderTarget.js";
+import { readGraphicsCapabilities } from "./GraphicsCapabilities.js";
+import type { GraphicsCapabilities } from "./GraphicsCapabilities.js";
+import type { GraphicsDiagnostics } from "./GraphicsDiagnostics.js";
 import { RendererKey } from "./types.js";
 import type {
   RendererBackend,
@@ -102,6 +111,16 @@ const SYNTHETIC_POINTER_ID = 1;
 
 /** `PointerEvent.button` for an event that presses and releases nothing. */
 const NO_BUTTON_CHANGE = -1;
+
+/**
+ * The graphics APIs the renderer draws with, in Pixi's own order. Pixi's
+ * Canvas 2D renderer draws no light, skips every filter and ignores inverse
+ * masks, so a game that reached it would run half-drawn without saying so.
+ */
+const DRAWN_BACKENDS = ["webgl", "webgpu"] as const;
+
+/** One graphics API the renderer draws with. */
+type DrawnBackend = (typeof DRAWN_BACKENDS)[number];
 
 /** The region {@link RendererPlugin.createTexture} bakes, in pixels. */
 export interface CreateTextureOptions {
@@ -215,11 +234,36 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   private _scaleModeCaptured = false;
   private _prevDefaultTextStyle: TextStyle | undefined = undefined;
   private _defaultTextStyleCaptured = false;
+  /** The backends Pixi is asked for, narrowed from the configured preference. */
+  private readonly _backends: readonly DrawnBackend[];
+  /**
+   * What the graphics context reports, read once per context. `null` outside
+   * the window from `install` to `onDestroy`, where the two public readers
+   * throw instead of reporting a context that does not exist.
+   */
+  private _capabilities: GraphicsCapabilities | null = null;
+  private _contextLost = false;
+  /**
+   * Context changes waiting for a tick. A game handler runs between frames
+   * rather than inside Pixi's own recovery, where throwing would stop the
+   * systems queued behind it.
+   */
+  private _contextNotices: boolean[] = [];
+  private _onCanvasContextLost: (() => void) | null = null;
+  private _contextRunner: { contextChange(): void } | null = null;
+  /**
+   * The GPU device whose loss is being awaited. A restore brings a new
+   * device, and the promise of the replaced one resolves against nothing.
+   */
+  private _watchedDevice: GPUDevice | null = null;
+  private _inspector: { removeExtension(namespace: string): void } | null =
+    null;
 
   constructor(config: RendererConfig) {
     this._config = config;
     this._virtualWidth = config.virtualWidth ?? config.width;
     this._virtualHeight = config.virtualHeight ?? config.height;
+    this._backends = resolveBackends(config.pixi?.preference);
   }
 
   async install(context: EngineContext): Promise<void> {
@@ -258,9 +302,13 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       autoDensity: true,
       ...(this._config.pixelArtPreset ? { roundPixels: true } : undefined),
       ...this._config.pixi,
+      // After the spread: the narrowed list is what the renderer draws with,
+      // whatever shape the configured preference had.
+      preference: [...this._backends],
       ...(this._config.canvas ? { canvas: this._config.canvas } : undefined),
     });
     this._installed.app = true;
+    this.watchGraphicsContext();
     const draw = this._app.render;
     this._app.ticker.remove(draw, this._app);
     this._app.render = () => {
@@ -351,11 +399,22 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       this._processSystem,
       this._canvasRoot,
       (source, options) =>
-        createRenderTarget(this._app.renderer, source, options, {
-          stage: this._app.stage,
-          isEnabled: () => this.drawingEnabled,
-          refresh: options.refresh ?? "every-frame",
-        }),
+        createRenderTarget(
+          this._app.renderer,
+          source,
+          {
+            ...options,
+            // A context with no multisampled render target draws the texture
+            // the same either way; asking for one only earns a warning.
+            antialias:
+              options.antialias === true && this.capabilities.maxSamples > 0,
+          },
+          {
+            stage: this._app.stage,
+            isEnabled: () => this.drawingEnabled,
+            refresh: options.refresh ?? "every-frame",
+          },
+        ),
     );
     this._installed.provider = true;
 
@@ -393,7 +452,10 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     // 10. Attach PixiJS ticker to GameLoop
     const gameLoop = context.resolve(GameLoopKey);
     gameLoop.attachTicker((callback) => {
-      const fn = () => callback(this._app.ticker.deltaMS);
+      const fn = () => {
+        this.flushContextNotices();
+        callback(this._app.ticker.deltaMS);
+      };
       this._tickerFn = fn;
       this._app.ticker.add(fn);
       return () => this._app.ticker.remove(fn);
@@ -500,6 +562,12 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       this._unregisterFacetContributor = inspector.registerFacetContributor(
         new RenderFacetContributor(),
       );
+      const diagnostics: GraphicsDiagnostics = {
+        capabilities: () => this.capabilities,
+        contextLost: () => this.contextLost,
+      };
+      inspector.addExtension("graphics", diagnostics);
+      this._inspector = inspector;
     }
   }
 
@@ -510,7 +578,26 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     // instead of throwing on access.
     this._unregisterFacetContributor?.();
     this._unregisterFacetContributor = null;
+    this._inspector?.removeExtension("graphics");
+    this._inspector = null;
     this._context = null;
+    if (this._installed.app) {
+      const canvas = this._app.canvas as Partial<EventTarget>;
+      if (this._onCanvasContextLost && canvas.removeEventListener) {
+        canvas.removeEventListener(
+          "webglcontextlost",
+          this._onCanvasContextLost,
+        );
+      }
+      if (this._contextRunner) {
+        this._app.renderer.runners.contextChange.remove(this._contextRunner);
+      }
+    }
+    this._onCanvasContextLost = null;
+    this._contextRunner = null;
+    this._watchedDevice = null;
+    this._contextNotices = [];
+    this._capabilities = null;
     for (const stop of this._stopDisplay) stop();
     this._stopDisplay = [];
     this._fullscreen = null;
@@ -553,6 +640,103 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
+   * What the graphics context the renderer draws with can do. Read when the
+   * renderer installs and again after a lost context is restored; each read
+   * is a new frozen object.
+   */
+  get capabilities(): GraphicsCapabilities {
+    return this.assertContextKnown("capabilities");
+  }
+
+  /**
+   * Whether the graphics context is lost. While it is, nothing draws and the
+   * canvas keeps its last frame. `graphics:context` reports each change.
+   */
+  get contextLost(): boolean {
+    this.assertContextKnown("contextLost");
+    return this._contextLost;
+  }
+
+  private assertContextKnown(member: string): GraphicsCapabilities {
+    const capabilities = this._capabilities;
+    if (capabilities === null) {
+      throw new Error(
+        `RendererPlugin.${member}: the graphics context is only known from ` +
+          "the renderer's install to engine.destroy().",
+      );
+    }
+    return capabilities;
+  }
+
+  /**
+   * Read what the context Pixi settled on can do and follow it from there: a
+   * lost context is reported to the game, and a replacement is read again, so
+   * every reader sees the context that is drawing.
+   */
+  private watchGraphicsContext(): void {
+    const pixi = this._app.renderer;
+    this._capabilities = readGraphicsCapabilities(pixi);
+    if (pixi.name === "webgl") {
+      const gl = (pixi as WebGLRenderer).gl;
+      this._contextLost = gl.isContextLost();
+      const canvas = this._app.canvas as Partial<EventTarget>;
+      if (canvas.addEventListener) {
+        const listener = (): void => this.noteContextLost();
+        this._onCanvasContextLost = listener;
+        canvas.addEventListener("webglcontextlost", listener);
+      }
+    } else {
+      this.watchDevice((pixi as WebGPURenderer).gpu.device);
+    }
+    // A private object rather than the plugin itself, so the renderer gains
+    // no public method named after a Pixi runner.
+    const runner = { contextChange: () => this.noteContextRestored() };
+    this._contextRunner = runner;
+    pixi.runners.contextChange.add(runner);
+  }
+
+  /**
+   * Wait for a WebGPU device to be lost. A device the engine itself tore down
+   * reports `"destroyed"`, and a device Pixi has already replaced is no
+   * longer the one drawing.
+   */
+  private watchDevice(device: GPUDevice): void {
+    this._watchedDevice = device;
+    void device.lost.then((info) => {
+      if (info.reason === "destroyed") return;
+      if (this._watchedDevice !== device) return;
+      this.noteContextLost();
+    });
+  }
+
+  private noteContextLost(): void {
+    this._contextLost = true;
+    this._contextNotices.push(true);
+  }
+
+  private noteContextRestored(): void {
+    const pixi = this._app.renderer;
+    this._capabilities = readGraphicsCapabilities(pixi);
+    this._contextLost = false;
+    if (pixi.name === "webgpu") {
+      this.watchDevice((pixi as WebGPURenderer).gpu.device);
+    }
+    this._contextNotices.push(false);
+  }
+
+  /**
+   * Report the context changes since the last frame, oldest first, before the
+   * game loop runs. A throwing handler keeps the notices behind it queued for
+   * the next frame.
+   */
+  private flushContextNotices(): void {
+    while (this._contextNotices.length > 0) {
+      const lost = this._contextNotices.shift() as boolean;
+      this._bus?.emit("graphics:context", { lost });
+    }
+  }
+
+  /**
    * The PixiJS Application instance, for tools and for code that adds its
    * own Pixi objects to the stage. Game code draws through visual components
    * on scene layers.
@@ -567,9 +751,10 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
-   * The graphics API drawing the canvas. Pixi tries WebGL, then WebGPU, then
-   * a 2D canvas, and the first the browser supports wins;
-   * `RendererConfig.pixi.preference` moves one of them to the front.
+   * The graphics API drawing the canvas, `"webgl"` or `"webgpu"`. The
+   * renderer asks Pixi for WebGL, then WebGPU, and never for Pixi's 2D canvas;
+   * `RendererConfig.pixi.preference` moves WebGPU to the front.
+   * {@link capabilities} reports the WebGL version and the context's limits.
    */
   get backend(): RendererBackend {
     return this._app.renderer.name as RendererBackend;
@@ -856,9 +1041,10 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * drawn rather than `(0, 0)`, and a drawing that starts at `(10, 4)` bakes
    * shifted by that much.
    *
-   * The pixels live only on the GPU, with no image to reload from. Calling
-   * `update()` on the returned texture's `source` re-uploads it empty and
-   * everything drawn from it turns transparent.
+   * The drawing is kept and drawn again after a lost graphics context is
+   * restored, so the texture survives one. Calling `update()` on the returned
+   * texture's `source` re-uploads it empty and everything drawn from it turns
+   * transparent.
    */
   createTexture(
     draw: (g: DrawContext) => void,
@@ -872,18 +1058,41 @@ export class RendererPlugin implements Plugin, RendererAdapter {
         size.height,
       );
     }
+    const pixi = this._app.renderer;
     const graphics = new Graphics();
-    try {
-      draw(graphics);
-      return this._app.renderer.generateTexture({
-        target: graphics,
-        ...(size
-          ? { frame: new Rectangle(0, 0, size.width, size.height) }
-          : {}),
-      });
-    } finally {
-      graphics.destroy();
-    }
+    draw(graphics);
+    const region = size
+      ? new Rectangle(0, 0, size.width, size.height)
+      : graphics.getLocalBounds().rectangle;
+    const resolution = pixi.resolution;
+    // One texel is the smallest buffer there is, and a fractional edge is
+    // measured in whole texels.
+    const width = Math.max(1, Math.max(region.width, 1 / resolution) | 0);
+    const height = Math.max(1, Math.max(region.height, 1 / resolution) | 0);
+    // The drawing starts wherever it was drawn; the wrapper slides it so the
+    // region's top-left corner lands on the texture's.
+    const wrapper = new Container();
+    wrapper.label = "yage:bakedTexture";
+    wrapper.addChild(graphics);
+    graphics.position.set(-region.x, -region.y);
+    const target = createBakedTarget(
+      pixi,
+      wrapper,
+      {
+        width,
+        height,
+        antialias:
+          pixi.view.antialias === true && this.capabilities.maxSamples > 0,
+      },
+      { stage: this._app.stage, isEnabled: () => this.drawingEnabled },
+    );
+    const texture = target.texture;
+    // The game owns the texture: destroying it frees the drawing behind it.
+    texture.once("destroy", () => {
+      target.release();
+      wrapper.destroy({ children: true });
+    });
+    return texture;
   }
 
   /**
@@ -904,10 +1113,21 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     source: DisplayContainer,
     options: RenderTargetOptions,
   ): RenderTargetHandle {
-    return createRenderTarget(this._app.renderer, source, options, {
-      stage: this._app.stage,
-      isEnabled: () => this.drawingEnabled,
-    });
+    return createRenderTarget(
+      this._app.renderer,
+      source,
+      {
+        ...options,
+        // A context with no multisampled render target draws the buffer the
+        // same either way; asking for one only earns a warning per buffer.
+        antialias:
+          options.antialias === true && this.capabilities.maxSamples > 0,
+      },
+      {
+        stage: this._app.stage,
+        isEnabled: () => this.drawingEnabled,
+      },
+    );
   }
 
   /** Draw the current stage and pending targets without advancing time. */
@@ -1342,4 +1562,38 @@ function readOrientation(part: HostOrientation): OrientationType | null {
     );
   }
   return value as OrientationType;
+}
+
+/**
+ * The backend list Pixi is asked for. A single name keeps its own place at
+ * the front and the other backend follows it, so a game that prefers WebGPU
+ * still draws where only WebGL exists.
+ */
+function resolveBackends(preference: unknown): readonly DrawnBackend[] {
+  if (preference === undefined) return DRAWN_BACKENDS;
+  if (isDrawnBackend(preference)) {
+    return [
+      preference,
+      ...DRAWN_BACKENDS.filter((backend) => backend !== preference),
+    ];
+  }
+  if (
+    Array.isArray(preference) &&
+    preference.length > 0 &&
+    preference.every(isDrawnBackend)
+  ) {
+    return preference;
+  }
+  throw new Error(
+    'RendererPlugin: pixi.preference must name "webgl" or "webgpu"; YAGE ' +
+      "does not draw with Pixi's Canvas 2D renderer. Got " +
+      `${JSON.stringify(preference)}.`,
+  );
+}
+
+function isDrawnBackend(value: unknown): value is DrawnBackend {
+  return (
+    typeof value === "string" &&
+    (DRAWN_BACKENDS as readonly string[]).includes(value)
+  );
 }

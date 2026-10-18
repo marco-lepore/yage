@@ -152,6 +152,8 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 | File                             | Purpose                                                               |
 | -------------------------------- | --------------------------------------------------------------------- |
 | `src/RendererPlugin.ts`          | Plugin entry, PixiJS v8 setup                                         |
+| `src/GraphicsCapabilities.ts`    | What the graphics context can do, read from Pixi's renderer           |
+| `src/RenderTarget.ts`            | Offscreen buffers; redraw after a restore and on a resolution change  |
 | `src/HostDisplay.ts`             | What a host supplies for fullscreen and orientation; `HostDisplayKey` |
 | `src/SpriteComponent.ts`         | Sprite wrapper                                                        |
 | `src/GraphicsComponent.ts`       | Graphics wrapper with `draw()`                                        |
@@ -179,6 +181,8 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 | `src/LightingSystem.ts`          | Render-phase backend synchronization            |
 | `src/OverlayLightingRenderer.ts` | Built-in multiply-overlay renderer              |
 | `src/ShaderLightingRenderer.ts`  | Soft-shadow renderer, one shaded quad per light |
+| `src/LightingComposite.ts`       | Light buffer, bounce, multiply over the scene   |
+| `src/shader-probe.ts`            | One link test of the light shader per context   |
 
 ### `@yagejs/physics`
 
@@ -333,7 +337,7 @@ npx turbo test && npx turbo typecheck && npx turbo build && npx playwright test
 
 The baseline fixture is one small game built from the workspace packages, so every build of it tests this checkout's engine. It has 13 selectable cases — sprites, text and UI, masks, render targets, effects, lighting, physics, workers, audio, input, saves, lifecycle and display — and three entries, one per target: `e2e/fixtures/baseline.html`, `baseline-electron.html` and `baseline-capacitor.html`. Each entry passes its host plugins and its save adapter to one `bootBaseline` call, so an artifact carries only the adapters of the target it was built for. `?case=sprites,physics` mounts a subset; an unknown name stops the start with an authored error.
 
-A test build adds an Inspector, an extension named `baseline` that answers `read()` with every case's reading, and a console reporter that writes one `[yage-baseline]` line per event. A build with `--mode release` has none of them: the reporting module is reached through one dynamic import behind a mode check, which the release build removes.
+A test build adds an Inspector, an extension named `baseline` that answers `read()` with every case's reading, and a console reporter that writes one `[yage-baseline]` line per event. The extension also answers `pixels()` with the colour at each named point of the drawing and `loseContext()`, which takes the graphics context away and waits for the page to get one back. A test build reads two more launch flags: `?backend=webgl1` or `?backend=webgpu` picks the graphics API, and `?bounce=max` turns on bounced light. A build with `--mode release` has none of them: the reporting module is reached through one dynamic import behind a mode check, which the release build removes, and the release build reads no launch flag.
 
 `e2e/specs/baseline.spec.ts` checks every case in Chromium, so CI covers the fixture on each push. The native suite under `e2e/native/` is local only, and has four projects:
 

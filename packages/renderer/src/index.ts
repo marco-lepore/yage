@@ -275,6 +275,14 @@ export type {
   RenderTargetOptions,
 } from "./RenderTarget.js";
 
+// Graphics context
+export type {
+  GraphicsBackend,
+  GraphicsCapabilities,
+  GraphicsFormatSupport,
+} from "./GraphicsCapabilities.js";
+export type { GraphicsDiagnostics } from "./GraphicsDiagnostics.js";
+
 // Masks
 export type { MaskHandle } from "./masks/MaskHandle.js";
 export type { Mask, MaskFactory } from "./masks/MaskFactory.js";

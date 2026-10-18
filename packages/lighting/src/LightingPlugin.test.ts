@@ -1,5 +1,6 @@
 import {
   createMockScene,
+  InspectorKey,
   Phase,
   SceneHookRegistry,
   SceneHookRegistryKey,
@@ -7,6 +8,7 @@ import {
 } from "@yagejs/core";
 import { RendererKey, SceneRenderTreeKey } from "@yagejs/renderer";
 import type {
+  GraphicsCapabilities,
   RenderTargetHandle,
   RendererPlugin,
   SceneRenderTree,
@@ -15,7 +17,7 @@ import { Container, Texture } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 import { LightingPlugin } from "./LightingPlugin.js";
 import { LightingSystem } from "./LightingSystem.js";
-import type { LightingRenderer } from "./types.js";
+import type { LightingDiagnostics, LightingRenderer } from "./types.js";
 import { LightingWorldKey, LightingWorldManagerKey } from "./types.js";
 
 /** A render tree that hands out one screen-space layer. */
@@ -185,5 +187,76 @@ describe("LightingPlugin", () => {
     expect(systems).toHaveLength(1);
     expect(systems[0]).toBeInstanceOf(LightingSystem);
     expect(systems[0]?.priority).toBe(100);
+  });
+
+  it("reports what drew each live scene through the Inspector", async () => {
+    const { scene, context } = createMockScene("lit");
+    const { scene: queries } = createMockScene("queries");
+    Object.assign(queries, { lighting: { renderer: "none" } });
+    const hooks = new SceneHookRegistry();
+    context.register(SceneHookRegistryKey, hooks);
+    context.register(RendererKey, {
+      capabilities: { blendMinMax: "unsupported" } as GraphicsCapabilities,
+    } as RendererPlugin);
+    const extensions = new Map<string, LightingDiagnostics>();
+    context.register(InspectorKey, {
+      addExtension: (namespace: string, api: LightingDiagnostics) => {
+        extensions.set(namespace, api);
+      },
+      removeExtension: (namespace: string) => {
+        extensions.delete(namespace);
+      },
+    } as never);
+    const backend: LightingRenderer = { render: vi.fn(), destroy: vi.fn() };
+    const plugin = new LightingPlugin({
+      renderers: { custom: () => backend, none: null },
+      defaultRenderer: "custom",
+      bounce: { strength: 0.4, radius: 18, blend: "max" },
+    });
+
+    plugin.install(context);
+    plugin.onStart();
+    await hooks.runBeforeEnter(scene);
+    await hooks.runBeforeEnter(queries);
+
+    const lit = {
+      scene: "lit",
+      renderer: "custom",
+      fallback: null,
+      bounce: { requested: "max", drawn: "mix" },
+    };
+    // A scene no renderer draws reports no bounce, whatever the default.
+    const queriesOnly = {
+      scene: "queries",
+      renderer: "none",
+      fallback: null,
+      bounce: null,
+    };
+    const lighting = extensions.get("lighting");
+    expect(lighting?.scenes()).toEqual([lit, queriesOnly]);
+
+    hooks.runAfterExit(scene);
+    expect(lighting?.scenes()).toEqual([queriesOnly]);
+    hooks.runAfterExit(queries);
+    expect(lighting?.scenes()).toEqual([]);
+
+    plugin.onDestroy();
+    expect(extensions.has("lighting")).toBe(false);
+  });
+
+  it("starts without an Inspector", async () => {
+    const { scene, context } = createMockScene();
+    const hooks = new SceneHookRegistry();
+    context.register(SceneHookRegistryKey, hooks);
+    context.register(RendererKey, {} as RendererPlugin);
+    const plugin = new LightingPlugin({
+      renderers: { none: null },
+      defaultRenderer: "none",
+    });
+
+    plugin.install(context);
+    expect(() => plugin.onStart()).not.toThrow();
+    await hooks.runBeforeEnter(scene);
+    plugin.onDestroy();
   });
 });

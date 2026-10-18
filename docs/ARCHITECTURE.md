@@ -565,23 +565,24 @@ class DebugPlugin implements Plugin {
 
 ### Available Engine Events
 
-| Event                      | Data                                                 | When                                                                       |
-| -------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------- |
-| `entity:created`           | `{ entity: Entity }`                                 | After `scene.spawn()`                                                      |
-| `entity:destroyed`         | `{ entity: Entity; scene: Scene }`                   | After entity is cleaned up in endOfFrame                                   |
-| `component:added`          | `{ entity: Entity; component: Component }`           | After `entity.add()`                                                       |
-| `component:removed`        | `{ entity: Entity; componentClass: ComponentClass }` | After `entity.remove()`                                                    |
-| `scene:pushed`             | `{ scene: Scene }`                                   | After `sceneManager.push()`                                                |
-| `scene:popped`             | `{ scene: Scene }`                                   | After `sceneManager.pop()`                                                 |
-| `scene:replaced`           | `{ oldScene: Scene; newScene: Scene }`               | After `sceneManager.replace()`                                             |
-| `scene:transition:started` | `{ kind; fromScene?; toScene? }`                     | A scene transition begins                                                  |
-| `scene:transition:ended`   | `{ kind; fromScene?; toScene? }`                     | A scene transition finishes                                                |
-| `scene:loading:progress`   | `{ scene: Scene; ratio: number }`                    | A loading scene reports progress                                           |
-| `scene:loading:done`       | `{ scene: Scene }`                                   | A loading scene finishes                                                   |
-| `engine:started`           | `undefined`                                          | After every plugin's `onStart()` has completed                             |
-| `engine:stopped`           | `undefined`                                          | First step of `engine.destroy()`                                           |
-| `screen:fullscreen`        | `{ active: boolean }`                                | The game is presented fullscreen, or stops being (from `@yagejs/renderer`) |
-| `screen:orientation`       | `{ type: OrientationType }`                          | Screen orientation changes (from `@yagejs/renderer`)                       |
+| Event                      | Data                                                 | When                                                                              |
+| -------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `entity:created`           | `{ entity: Entity }`                                 | After `scene.spawn()`                                                             |
+| `entity:destroyed`         | `{ entity: Entity; scene: Scene }`                   | After entity is cleaned up in endOfFrame                                          |
+| `component:added`          | `{ entity: Entity; component: Component }`           | After `entity.add()`                                                              |
+| `component:removed`        | `{ entity: Entity; componentClass: ComponentClass }` | After `entity.remove()`                                                           |
+| `scene:pushed`             | `{ scene: Scene }`                                   | After `sceneManager.push()`                                                       |
+| `scene:popped`             | `{ scene: Scene }`                                   | After `sceneManager.pop()`                                                        |
+| `scene:replaced`           | `{ oldScene: Scene; newScene: Scene }`               | After `sceneManager.replace()`                                                    |
+| `scene:transition:started` | `{ kind; fromScene?; toScene? }`                     | A scene transition begins                                                         |
+| `scene:transition:ended`   | `{ kind; fromScene?; toScene? }`                     | A scene transition finishes                                                       |
+| `scene:loading:progress`   | `{ scene: Scene; ratio: number }`                    | A loading scene reports progress                                                  |
+| `scene:loading:done`       | `{ scene: Scene }`                                   | A loading scene finishes                                                          |
+| `engine:started`           | `undefined`                                          | After every plugin's `onStart()` has completed                                    |
+| `engine:stopped`           | `undefined`                                          | First step of `engine.destroy()`                                                  |
+| `screen:fullscreen`        | `{ active: boolean }`                                | The game is presented fullscreen, or stops being (from `@yagejs/renderer`)        |
+| `screen:orientation`       | `{ type: OrientationType }`                          | Screen orientation changes (from `@yagejs/renderer`)                              |
+| `graphics:context`         | `{ lost: boolean }`                                  | The graphics context is lost, and again when it is back (from `@yagejs/renderer`) |
 
 Entity payloads carry the live `Entity`. Scene payloads are `SceneRef` views, except `entity:destroyed` and the loading events, which carry the full `Scene`.
 

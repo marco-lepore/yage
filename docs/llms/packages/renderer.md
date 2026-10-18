@@ -52,11 +52,12 @@ engine.use(
     resolution: 2, // fixed density; left out, the canvas follows the display
     fit: { mode: "cover" }, // override default letterbox (see below)
     pixelArtPreset: true, // crisp, non-blurred pixel art (see below)
+    // pixi: { preference: "webgpu" }, // backend order: "webgl" and "webgpu" only
   }),
 );
 ```
 
-`renderer.backend: RendererBackend` reports the graphics API Pixi picked: `"webgl"`, `"webgpu"` or `"canvas"`. Pixi tries them in that order and takes the first the browser supports; `pixi: { preference }` moves one to the front.
+`renderer.backend: RendererBackend` reports the graphics API Pixi picked: `"webgl"` or `"webgpu"`. The renderer never asks for Pixi's Canvas 2D renderer (see Backends below), and `pixi: { preference: "webgpu" }` moves WebGPU to the front. `renderer.capabilities` reports the WebGL version (`capabilities.backend`) and the context's limits.
 
 ### `pixelArtPreset`
 
@@ -84,6 +85,84 @@ new RendererPlugin({
 Registers `RendererKey`, `SceneRenderTreeProviderKey`, and the cross-package `RendererAdapterKey` (from `@yagejs/core`, consumed by `@yagejs/input`) in `EngineContext`, plus a `beforeEnter` scene hook that materializes a per-scene `SceneRenderTree` (accessible via the scene-scoped `SceneRenderTreeKey`).
 
 The adapter contract (`RendererAdapter` in `@yagejs/core`) carries `canvas`, `canvasToVirtual`, `hitTestUI`, `hitTestUIPath` (the same test, reporting the container chain it crossed), `dispatchPointerEvent` (deliver a pointer event at a virtual-space point, which `inspector.pointer` drives the user interface through), and the optional `visibleVirtualRect` — the on-screen region of virtual space CLAMPED to the declared virtual rect. Renderer-agnostic overlays (e.g. `@yagejs-addons/virtual-controls`) lay out against `visibleVirtualRect`, NOT against `canvasToVirtual`-mapped canvas corners: under letterbox the corners map into the masked bars, where drawn content is clipped but pointer input still registers.
+
+## Graphics capabilities
+
+`renderer.capabilities` reports what the graphics context — the WebGL context or WebGPU device the renderer draws with — can do. A game reads it to pick between two ways of drawing the same thing.
+
+```ts yage-context="object-member"
+import type { GraphicsCapabilities } from "@yagejs/renderer";
+
+get capabilities(): GraphicsCapabilities;
+get contextLost(): boolean;
+```
+
+Both are readable from the end of the renderer's `install` to `engine.destroy()`; outside that window each throws `RendererPlugin.<member>: the graphics context is only known from the renderer's install to engine.destroy().` The snapshot is a frozen object, read once when the renderer installs and again after a lost context is restored, so reading it every frame costs nothing.
+
+| Field                                   | Type                               | What it holds                                                                    |
+| --------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------- |
+| `backend`                               | `"webgl1" \| "webgl2" \| "webgpu"` | The graphics API Pixi settled on                                                 |
+| `maxTextureSize`                        | `number`                           | Largest texture width or height, in texels                                       |
+| `maxRenderTargetSize`                   | `number`                           | Largest render target width or height                                            |
+| `maxViewportWidth`, `maxViewportHeight` | `number`                           | Largest drawable size, in device pixels                                          |
+| `maxSamples`                            | `number`                           | Samples one antialiased render target takes; `0` where `antialias` has no effect |
+| `highpFragment`                         | `HostSupport`                      | Whether fragment shaders compute at high float precision                         |
+| `blendMinMax`                           | `HostSupport`                      | Whether the `"min"` and `"max"` blend modes draw as named                        |
+| `rgba16float`, `rgba32float`            | `GraphicsFormatSupport`            | `sample`, `filter` and `render` for each float colour format                     |
+
+`HostSupport` (from `@yagejs/core`) is `"supported" | "unsupported" | "unknown"`. A field reads `"unknown"` when only a draw would settle it and YAGE draws nothing to find out: a WebGL 1 context that promises float sampling without promising a float render target is the one case.
+
+```ts
+import type { RendererPlugin } from "@yagejs/renderer";
+
+declare const renderer: RendererPlugin;
+
+const caps = renderer.capabilities;
+const bounceBlend = caps.blendMinMax === "supported" ? "max" : "mix";
+const atlasSide = Math.min(2048, caps.maxTextureSize);
+```
+
+### Backends
+
+The renderer draws with WebGL or WebGPU. Pixi's Canvas 2D renderer draws no light, skips every filter with a console warning and ignores inverse masks, so the renderer never asks for it.
+
+| `pixi.preference`                    | What Pixi is asked for |
+| ------------------------------------ | ---------------------- |
+| absent                               | `["webgl", "webgpu"]`  |
+| `"webgl"`                            | `["webgl", "webgpu"]`  |
+| `"webgpu"`                           | `["webgpu", "webgl"]`  |
+| an array of `"webgl"` and `"webgpu"` | the array as given     |
+
+Anything else makes the constructor throw `RendererPlugin: pixi.preference must name "webgl" or "webgpu"; YAGE does not draw with Pixi's Canvas 2D renderer. Got <value>.` On a browser that offers neither, `engine.start()` rejects with Pixi's own `No available renderer for the current environment`, and the game shows whatever error page it has.
+
+### Lost graphics context
+
+A browser takes the graphics context away when the system reclaims the GPU: a driver reset, a laptop switching graphics processors, an application the system put in the background. While the context is gone nothing draws and the canvas keeps its last frame.
+
+`renderer.contextLost` reads the state live. The engine's event bus carries `graphics:context` with `{ lost: boolean }`: `{ lost: true }` when the context goes, `{ lost: false }` when Pixi has it back. Each arrives at the start of the next frame, before the game loop runs, so a handler never runs inside Pixi's own recovery.
+
+```ts yage-context="engine"
+const overlay = document.getElementById("graphics-interrupted")!;
+engine.events.on("graphics:context", ({ lost }) => {
+  overlay.hidden = !lost;
+});
+```
+
+What comes back by itself after a restore: Pixi uploads again everything it holds on the CPU (image textures, buffers, programs, uniforms), every live render target redraws from its source, and every `createTexture` result redraws from the drawing it keeps.
+
+A restore that never comes means `{ lost: false }` never arrives. A game that shows an overlay on `{ lost: true }` keeps it up, with whatever reload control it offers. The engine keeps running its loop and its scenes; pausing them is the game's own call.
+
+### Diagnostics
+
+With an Inspector installed, `RendererPlugin` registers the `"graphics"` extension:
+
+```ts yage-context="inspector"
+import type { GraphicsDiagnostics } from "@yagejs/renderer";
+
+const graphics = inspector.getExtension<GraphicsDiagnostics>("graphics");
+graphics?.capabilities(); // the same object renderer.capabilities returns
+graphics?.contextLost();
+```
 
 ## Responsive fit
 
@@ -1010,10 +1089,10 @@ class SkyBand extends Component {
 - There is no wrap mode to set. Pixi switches the fill texture's address mode
   to `repeat` when it builds the geometry, so `texture.source.addressMode`
   needs no help.
-- Never call `texture.source.update()` on a texture from `createTexture`. That
-  texture's pixels live only on the GPU, so the re-upload `update()` triggers
-  writes an empty image over them. Everything drawn from the texture then
-  renders transparent, permanently.
+- Never call `texture.source.update()` on a texture from `createTexture`. The
+  renderer drew that texture rather than loading an image into it, so the
+  re-upload `update()` triggers writes an empty image over it. Everything
+  drawn from the texture then renders transparent, permanently.
 
 ## Camera
 
@@ -1834,19 +1913,19 @@ Semantics:
 
 `renderer.createRenderTarget(source, options)` draws a Pixi container the caller builds and owns into a texture. It is for rendering tools that manage their own Pixi objects (the lighting renderers use it). Game content goes on a render-target layer instead.
 
-| Member                                   | Signature                                                                        | Description                                                                                                                                                                                                                                                                                              |
-| ---------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RendererPlugin.createRenderTarget`      | `(source: DisplayContainer, options: RenderTargetOptions) => RenderTargetHandle` | Allocate the buffer. The repeatable counterpart of `createTexture`, which bakes once and never changes.                                                                                                                                                                                                  |
-| `RenderTargetOptions`                    | `{ width, height, resolutionScale?, antialias?, clearColor?, label? }`           | `width` / `height` are in source coordinates. `resolutionScale` (default `1`) multiplies the renderer's resolution at creation and at each `resize()`. `clearColor` defaults to transparent.                                                                                                             |
-| `handle.texture`                         | `TextureResource`                                                                | What the buffer draws into. Feed it to `SpriteComponent` or `textureMask` (via `registerTexture`), or to a filter uniform.                                                                                                                                                                               |
-| `handle.source`                          | `DisplayContainer`                                                               | The container passed to `createRenderTarget`. `destroy()` leaves it alone — freeing it is the caller's job.                                                                                                                                                                                              |
-| `handle.render()`                        | `() => void`                                                                     | Draw now and clear the pending flag.                                                                                                                                                                                                                                                                     |
-| `handle.renderIfNeeded()`                | `() => boolean`                                                                  | Draw only when pending; returns whether it drew.                                                                                                                                                                                                                                                         |
-| `handle.invalidate()`                    | `() => void`                                                                     | Mark the buffer stale.                                                                                                                                                                                                                                                                                   |
-| `handle.needsRender`                     | `boolean`                                                                        | Whether a render is pending.                                                                                                                                                                                                                                                                             |
-| `handle.resize(w, h, scale?)`            | `(number, number, number?) => void`                                              | Resize and mark stale. Anything showing the texture picks up the new size on its next draw. Omitting `scale` keeps the configured `resolutionScale`, re-derived against the renderer's current resolution; passing one replaces it.                                                                      |
-| `handle.width` / `height` / `resolution` | `number`                                                                         | Measured size in source coordinates, and the texels-per-pixel actually allocated.                                                                                                                                                                                                                        |
-| `handle.destroy()`                       | `() => void`                                                                     | Free the texture's GPU memory. Repeatable. The source container is untouched — destroy that as well. Afterwards `texture`, `width`, `height`, `resolution`, `render()` and `resize()` throw `RenderTargetHandle.<member>: the handle is destroyed.`; so does `renderIfNeeded()` while a draw is pending. |
+| Member                                   | Signature                                                                                             | Description                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RendererPlugin.createRenderTarget`      | `(source: DisplayContainer, options: RenderTargetOptions) => RenderTargetHandle`                      | Allocate the buffer. The repeatable counterpart of `createTexture`, which bakes once and never changes.                                                                                                                                                                                                                                                                                        |
+| `RenderTargetOptions`                    | `{ width, height, resolutionScale?, antialias?, clearColor?, label?, dependsOn?, followResolution? }` | `width` / `height` are in source coordinates. `resolutionScale` (default `1`) multiplies the renderer's resolution at creation and at each `resize()`. `clearColor` defaults to transparent. `followResolution` (default `false`) re-allocates the buffer at the renderer's new resolution and redraws it at the next frame. `antialias` has no effect where `capabilities.maxSamples` is `0`. |
+| `handle.texture`                         | `TextureResource`                                                                                     | What the buffer draws into. Feed it to `SpriteComponent` or `textureMask` (via `registerTexture`), or to a filter uniform.                                                                                                                                                                                                                                                                     |
+| `handle.source`                          | `DisplayContainer`                                                                                    | The container passed to `createRenderTarget`. `destroy()` leaves it alone — freeing it is the caller's job.                                                                                                                                                                                                                                                                                    |
+| `handle.render()`                        | `() => void`                                                                                          | Draw now and clear the pending flag.                                                                                                                                                                                                                                                                                                                                                           |
+| `handle.renderIfNeeded()`                | `() => boolean`                                                                                       | Draw only when pending; returns whether it drew.                                                                                                                                                                                                                                                                                                                                               |
+| `handle.invalidate()`                    | `() => void`                                                                                          | Mark the buffer stale.                                                                                                                                                                                                                                                                                                                                                                         |
+| `handle.needsRender`                     | `boolean`                                                                                             | Whether a render is pending.                                                                                                                                                                                                                                                                                                                                                                   |
+| `handle.resize(w, h, scale?)`            | `(number, number, number?) => void`                                                                   | Resize and mark stale. Anything showing the texture picks up the new size on its next draw. Omitting `scale` keeps the configured `resolutionScale`, re-derived against the renderer's current resolution; passing one replaces it.                                                                                                                                                            |
+| `handle.width` / `height` / `resolution` | `number`                                                                                              | Measured size in source coordinates, and the texels-per-pixel actually allocated.                                                                                                                                                                                                                                                                                                              |
+| `handle.destroy()`                       | `() => void`                                                                                          | Free the texture's GPU memory. Repeatable. The source container is untouched — destroy that as well. Afterwards `texture`, `width`, `height`, `resolution`, `render()` and `resize()` throw `RenderTargetHandle.<member>: the handle is destroyed.`; so does `renderIfNeeded()` while a draw is pending.                                                                                       |
 
 Semantics of a handle from `createRenderTarget`:
 
@@ -1858,7 +1937,8 @@ Semantics of a handle from `createRenderTarget`:
 - **`resolutionScale` costs sharpness, not layout.** Only the texel count drops. The one exception is rounding: Pixi stores whole texels, so a `width × resolution` that lands between them is rounded up and the measured size grows to match — at `resolutionScale: 0.25` on a resolution-2 renderer, `resize(1279, 719)` measures `1280 × 720`. Use sizes that divide evenly by the effective resolution if the exact measurement matters. Worth it for gradients and glows, not for text or pixel art.
 - **One owner frees three things.** A render target is the texture (`handle.destroy()`), the source container (`source.destroy({ children: true })` — `handle.destroy()` never touches it) and any key it was registered under (`unregisterTexture(key)`, or that key keeps resolving a destroyed texture). Put all three in one component's `onDestroy`, which runs when its entity is destroyed or when the scene tears down. A scene's `onEnter` / `onExit` pair is the alternative for a buffer whose lifetime is the whole scene.
 - **Cost.** Every `render()` is a full draw of the source plus a render-target switch. A buffer that only changes when the game state does should be invalidated on that change, not every frame. A buffer that tracks moving content pays that cost per frame — `resolutionScale` is the lever there.
-- **Backends.** Pixi's default backend order is WebGL first, so a game that doesn't pass `pixi: { preference: "webgpu" }` runs on WebGL. Blend behaviour inside a render target, `"erase"` included, is verified on WebGL and unmeasured on WebGPU.
+- **A restored graphics context redraws every buffer.** After the browser gives the page a context back, each live target draws from its source again at the next frame, inputs before the targets that sample them. A target whose source was destroyed throws then, as it would on any other draw.
+- **Backends.** The renderer asks Pixi for WebGL first, and for WebGPU first with `pixi: { preference: "webgpu" }`; it never asks for Canvas 2D. Blend behaviour inside a render target, `"erase"` included, is verified on WebGL and unmeasured on WebGPU.
 
 ## Save state
 
@@ -1959,6 +2039,7 @@ Semantics:
 - Re-registering a key replaces the entry; components constructed before the replacement keep the old texture instance (resolution happens at construction).
 - Registering a key already used by a loaded asset (or any cache entry the API didn't create) throws — shadowing a loaded asset would let that asset's unload destroy the registered texture.
 - A runtime texture also works as a graphics fill — `g.rect(...).fill({ texture, textureSpace: "global" })` tiles it across the shape. See "Texture fills". Do not call `update()` on the `source` of a `createTexture` result: that re-uploads the texture empty and it stays blank.
+- A `createTexture` result keeps the drawing it was baked from and draws it again after a lost graphics context is restored. `texture.destroy()` frees the drawing with it.
 - A frame grid needs the size option on `createTexture`. Without it the texture measures the drawn bounds and its origin is the top-left of the drawing, so `frameWidth` slices land between the shapes rather than on them: four circles of radius 6 to 12 drawn at `x = i * 32 + 16` bake into a 114 x 24 texture whose cells start 10 pixels off. `{ width: 128, height: 32 }` makes the grid line up. A non-finite or zero dimension throws naming the dimension.
 
 **`installBitmapFont(source, opts)`** — bake a bitmap glyph atlas from a `.ttf`/`.woff` at runtime via Pixi v8's `BitmapFont.install`. Returns the registered font name, ready to pass as `style.fontFamily` (with `bitmap: true`):

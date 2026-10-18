@@ -4,7 +4,8 @@ import type {
   RendererPlugin,
   RenderTargetHandle,
 } from "@yagejs/renderer";
-import type { BounceLightOptions } from "./types.js";
+import type { GraphicsCapabilities } from "@yagejs/renderer";
+import type { BounceBlend, BounceLightOptions } from "./types.js";
 import { assertBounce } from "./validation.js";
 
 /**
@@ -15,6 +16,26 @@ import { assertBounce } from "./validation.js";
 const BOUNCE_RESOLUTION = 0.25;
 /** Passes the Gaussian blur makes over that copy. */
 const BOUNCE_QUALITY = 6;
+
+/** The blend a bounce asks for: its own `blend`, else `"max"`. */
+export function requestedBounceBlend(bounce: BounceLightOptions): BounceBlend {
+  return bounce.blend ?? "max";
+}
+
+/**
+ * How a bounce blend is drawn on this context. A context without min/max
+ * blending draws a requested `"max"` as `"mix"`: in the dark the two are
+ * close, and dropping the bounce would lose the lift it is there for.
+ */
+export function drawnBounceBlend(
+  requested: BounceBlend,
+  capabilities: GraphicsCapabilities,
+): BounceBlend {
+  if (requested === "max" && capabilities.blendMinMax !== "supported") {
+    return "mix";
+  }
+  return requested;
+}
 
 /** Options for {@link LightingComposite}. */
 export interface LightingCompositeOptions {
@@ -79,6 +100,7 @@ export class LightingComposite {
       antialias: options.antialias ?? false,
       clearColor: 0x000000,
       label,
+      followResolution: true,
     });
 
     if (bounce) {
@@ -92,7 +114,13 @@ export class LightingComposite {
         resolution: BOUNCE_RESOLUTION,
         // Pixi draws a filtered sprite with the filter's blend mode, not the
         // sprite's. "normal" with the alpha below is the mix.
-        blendMode: (bounce.blend ?? "max") === "max" ? "max" : "normal",
+        blendMode:
+          drawnBounceBlend(
+            requestedBounceBlend(bounce),
+            renderer.capabilities,
+          ) === "max"
+            ? "max"
+            : "normal",
       });
       blurred.alpha = bounce.strength;
       blurred.filters = [this.blur];
@@ -106,6 +134,7 @@ export class LightingComposite {
         clearColor: 0x000000,
         label: `${label}:bounce`,
         dependsOn: [this.buffer],
+        followResolution: true,
       });
     }
 

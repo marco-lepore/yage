@@ -523,6 +523,7 @@ interface EntityHandle<
 | `engine:started` / `engine:stopped`                   | `undefined`                                                                                                                                                  |
 | `screen:fullscreen`                                   | `{ active: boolean }` — emitted by `RendererPlugin` when `isFullscreen` changes                                                                              |
 | `screen:orientation`                                  | `{ type: OrientationType }` — emitted by `RendererPlugin` when `orientation` changes to a non-null value                                                     |
+| `graphics:context`                                    | `{ lost: boolean }` — emitted by `RendererPlugin` when the graphics context is lost and when it is restored, at the next frame                               |
 | `host:active`                                         | `{ active: boolean }` — emitted by `Host` when the game goes to or returns from the background                                                               |
 | `host:lifecycle`                                      | `{ lifecycle: HostLifecycle; previous: HostLifecycle }` — emitted by `Host` on every change of activity, visibility or focus                                 |
 

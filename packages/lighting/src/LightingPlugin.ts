@@ -1,11 +1,19 @@
-import { ErrorBoundaryKey, SceneHookRegistryKey } from "@yagejs/core";
+import {
+  ErrorBoundaryKey,
+  InspectorKey,
+  SceneHookRegistryKey,
+} from "@yagejs/core";
 import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
 import { LightingSystem } from "./LightingSystem.js";
 import { LightingWorldManager, describeNames } from "./LightingWorldManager.js";
 import { overlayLighting } from "./OverlayLightingRenderer.js";
 import { LightingWorldKey, LightingWorldManagerKey } from "./types.js";
-import type { LightingConfig, LightingRendererFactory } from "./types.js";
+import type {
+  LightingConfig,
+  LightingDiagnostics,
+  LightingRendererFactory,
+} from "./types.js";
 import { assertBounce } from "./validation.js";
 
 /** Name the built-in overlay is registered under when nothing replaces it. */
@@ -20,12 +28,15 @@ export class LightingPlugin implements Plugin {
   private readonly config: LightingConfig;
   private manager: LightingWorldManager | undefined;
   private unregisterHooks: (() => void) | null = null;
+  private context: EngineContext | null = null;
+  private inspector: { removeExtension(namespace: string): void } | null = null;
 
   constructor(config: LightingConfig = {}) {
     this.config = config;
   }
 
   install(context: EngineContext): void {
+    this.context = context;
     const renderer = context.resolve(RendererKey);
     const configured = this.config.renderers;
     const renderers: Readonly<Record<string, LightingRendererFactory | null>> =
@@ -64,7 +75,23 @@ export class LightingPlugin implements Plugin {
     scheduler.add(new LightingSystem());
   }
 
+  onStart(): void {
+    // In onStart rather than install: the Inspector is installed by a plugin,
+    // and every install has run by now whatever order they were registered in.
+    const inspector = this.context?.tryResolve(InspectorKey);
+    const manager = this.manager;
+    if (!inspector || !manager) return;
+    const diagnostics: LightingDiagnostics = {
+      scenes: () => manager._describe(),
+    };
+    inspector.addExtension("lighting", diagnostics);
+    this.inspector = inspector;
+  }
+
   onDestroy(): void {
+    this.inspector?.removeExtension("lighting");
+    this.inspector = null;
+    this.context = null;
     this.unregisterHooks?.();
     this.unregisterHooks = null;
     this.manager?.destroy();

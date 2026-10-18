@@ -231,6 +231,7 @@ async function browserScenario(
     if (failures.length > 0) throw new Error(failures.join("\n"));
 
     await inputStep(report, page);
+    await restoreStep(report, page);
 
     // A page under automation reports itself focused whatever the window
     // does, so the emulation that holds it there is turned off first.
@@ -388,6 +389,7 @@ async function electronScenario(
     if (failures.length > 0) throw new Error(failures.join("\n"));
 
     await inputStep(report, page);
+    await restoreStep(report, page);
 
     const session = await page.context().newCDPSession(page);
     await session.send("Emulation.setFocusEmulationEnabled", {
@@ -526,6 +528,11 @@ async function iosScenario(report: BaselineRunReport): Promise<void> {
       "lifecycle: native application events beside the page's",
       "the app installs no native lifecycle bridge",
     );
+    recordPending(
+      report,
+      "graphics: a lost and restored context draws every case as before",
+      "no script runs in the simulator's page",
+    );
 
     const pidBefore = await processId(device.udid);
     await sendToBackground(device.udid);
@@ -646,6 +653,75 @@ async function inputStep(report: BaselineRunReport, page: Page): Promise<void> {
     result: reached(afterInput.readings["input"]!) ? "passed" : "failed",
     evidence: "inspector",
     detail: JSON.stringify(afterInput.readings["input"]),
+  });
+}
+
+/**
+ * Take the graphics context away, wait for the page to get one back and
+ * compare what it draws with what it drew before.
+ */
+async function restoreStep(
+  report: BaselineRunReport,
+  page: Page,
+): Promise<void> {
+  const before = await readPixels(page);
+  await page.evaluate(async () => {
+    const host = window as unknown as {
+      __yage__?: {
+        inspector?: {
+          getExtension(
+            name: string,
+          ): { loseContext(): Promise<void> } | undefined;
+        };
+      };
+    };
+    const extension = host.__yage__?.inspector?.getExtension("baseline");
+    if (extension === undefined) {
+      throw new Error("the page has no baseline extension");
+    }
+    await extension.loseContext();
+  });
+  const after = await readPixels(page);
+  const changed: string[] = [];
+  for (const [name, channels] of Object.entries(before)) {
+    const drawn = after[name]!;
+    if (channels.some((value, i) => Math.abs(drawn[i]! - value) > 2)) {
+      changed.push(`${name}: ${channels.join(",")} -> ${drawn.join(",")}`);
+    }
+  }
+  const reading = (await readPage(page))!;
+  foldReading(report, "after-context-restore", reading);
+  record(report, {
+    name: "graphics: a lost and restored context draws every case as before",
+    result: changed.length === 0 ? "passed" : "failed",
+    evidence: "inspector",
+    detail:
+      changed.join("; ") ||
+      `context events: ${JSON.stringify(reading.graphicsContext)}`,
+  });
+}
+
+/** The colour the page draws at each of its named points. */
+function readPixels(
+  page: Page,
+): Promise<Record<string, [number, number, number, number]>> {
+  return page.evaluate(() => {
+    const host = window as unknown as {
+      __yage__?: {
+        inspector?: {
+          getExtension(
+            name: string,
+          ):
+            | { pixels(): Record<string, [number, number, number, number]> }
+            | undefined;
+        };
+      };
+    };
+    const extension = host.__yage__?.inspector?.getExtension("baseline");
+    if (extension === undefined) {
+      throw new Error("the page has no baseline extension");
+    }
+    return extension.pixels();
   });
 }
 

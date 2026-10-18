@@ -192,6 +192,7 @@ The engine emits these events automatically:
 | `engine:stopped` | `undefined` | The engine is being destroyed |
 | `screen:fullscreen` | `{ active }` | The game entered or left fullscreen (`renderer.isFullscreen` changed) |
 | `screen:orientation` | `{ type }` | The screen orientation changed |
+| `graphics:context` | `{ lost }` | The graphics context was lost, or is back |
 | `host:active` | `{ active }` | The game went to or returned from the background |
 | `host:lifecycle` | `{ lifecycle, previous }` | The app's activity, the page's visibility, or the window's focus changed |
 

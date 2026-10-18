@@ -78,22 +78,107 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
+  /** Pixi's own dispatch list: it calls the runner's name on every item. */
+  class MockRunner {
+    items: Array<Record<string, (...args: unknown[]) => void>> = [];
+    constructor(private readonly method: string) {}
+
+    add(item: object): void {
+      if (!this.items.includes(item as never)) this.items.push(item as never);
+    }
+
+    remove(item: object): void {
+      const idx = this.items.indexOf(item as never);
+      if (idx !== -1) this.items.splice(idx, 1);
+    }
+
+    emit(...args: unknown[]): void {
+      for (const item of [...this.items]) item[this.method]?.(...args);
+    }
+  }
+
+  /** A WebGL 2 context reporting the limits a desktop browser reports. */
+  function mockGl(): Record<string, unknown> {
+    const present = new Set([
+      "EXT_color_buffer_float",
+      "OES_texture_float_linear",
+    ]);
+    return {
+      MAX_TEXTURE_SIZE: 0x0d33,
+      MAX_RENDERBUFFER_SIZE: 0x84e8,
+      MAX_VIEWPORT_DIMS: 0x0d3a,
+      MAX_SAMPLES: 0x8d57,
+      FRAGMENT_SHADER: 0x8b30,
+      HIGH_FLOAT: 0x8df2,
+      extensions: present,
+      contextLost: false,
+      isContextLost(this: { contextLost: boolean }) {
+        return this.contextLost;
+      },
+      getParameter(name: number) {
+        if (name === 0x0d3a) return [8192, 8192];
+        if (name === 0x8d57) return 4;
+        return 8192;
+      },
+      getExtension(name: string) {
+        return present.has(name) ? {} : null;
+      },
+      getShaderPrecisionFormat() {
+        return { precision: 23 };
+      },
+    };
+  }
+
+  /** What the next application's renderer looks like, set per test. */
+  const rendererShape: { build: (() => Record<string, unknown>) | null } = {
+    build: null,
+  };
+
   class MockApplication {
     stage = new MockContainer();
     ticker = new MockTicker();
     canvas: unknown = {
       tagName: "CANVAS",
       style: { cssText: "" } as { cssText: string },
+      listeners: new Map<string, Set<() => void>>(),
+      addEventListener(
+        this: { listeners: Map<string, Set<() => void>> },
+        type: string,
+        fn: () => void,
+      ) {
+        const set = this.listeners.get(type) ?? new Set();
+        set.add(fn);
+        this.listeners.set(type, set);
+      },
+      removeEventListener(
+        this: { listeners: Map<string, Set<() => void>> },
+        type: string,
+        fn: () => void,
+      ) {
+        this.listeners.get(type)?.delete(fn);
+      },
     };
     initOptions: Record<string, unknown> = {};
-    renderer = {
-      name: "webgl",
+    renderer: Record<string, unknown> = {
+      ...(rendererShape.build?.() ?? {
+        name: "webgl",
+        context: { webGLVersion: 2 },
+        gl: mockGl(),
+      }),
       width: 800,
       height: 600,
+      resolution: 1,
+      view: { antialias: false },
+      runners: {
+        prerender: new MockRunner("prerender"),
+        contextChange: new MockRunner("contextChange"),
+        resolutionChange: new MockRunner("resolutionChange"),
+      },
       resize(this: { width: number; height: number }, w: number, h: number) {
         this.width = w;
         this.height = h;
       },
+      render: vi.fn(),
       generateTexture: vi.fn((options: unknown) => ({
         label: "generated",
         options,
@@ -114,7 +199,15 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
-  return { mocks: { MockContainer, MockTicker, MockApplication } };
+  return {
+    mocks: {
+      MockContainer,
+      MockTicker,
+      MockApplication,
+      MockRunner,
+      rendererShape,
+    },
+  };
 });
 
 vi.mock("pixi.js", () => {
@@ -123,18 +216,83 @@ vi.mock("pixi.js", () => {
     constructor(public label = "filter") {}
   }
   class MockGraphics extends mocks.MockContainer {
+    /** Union of every drawn rectangle, as Pixi measures local bounds. */
+    bounds = { x: 0, y: 0, width: 0, height: 0 };
     clear(): this {
+      this.bounds = { x: 0, y: 0, width: 0, height: 0 };
       return this;
     }
-    rect(): this {
+    rect(x: number, y: number, width: number, height: number): this {
+      const right = Math.max(this.bounds.x + this.bounds.width, x + width);
+      const bottom = Math.max(this.bounds.y + this.bounds.height, y + height);
+      const left = this.bounds.width === 0 ? x : Math.min(this.bounds.x, x);
+      const top = this.bounds.height === 0 ? y : Math.min(this.bounds.y, y);
+      this.bounds = {
+        x: left,
+        y: top,
+        width: right - left,
+        height: bottom - top,
+      };
       return this;
     }
     fill(): this {
       return this;
     }
+    getLocalBounds(): {
+      rectangle: { x: number; y: number; width: number; height: number };
+    } {
+      return { rectangle: this.bounds };
+    }
     destroy(): void {
       // mirror Pixi v8: just a no-op marker, parent removeChild already
       // detaches us from any container.
+    }
+  }
+  /** Enough of a Pixi render texture for the buffer code paths. */
+  class MockRenderTexture {
+    static created: MockRenderTexture[] = [];
+    source: { resolution: number; destroyed: boolean };
+    private readonly handlers = new Map<string, Array<() => void>>();
+    constructor(
+      public width: number,
+      public height: number,
+      resolution: number,
+      public antialias: boolean,
+    ) {
+      this.source = { resolution, destroyed: false };
+    }
+    once(event: string, fn: () => void): void {
+      const list = this.handlers.get(event) ?? [];
+      list.push(fn);
+      this.handlers.set(event, list);
+    }
+    emit(event: string): void {
+      for (const fn of this.handlers.get(event) ?? []) fn();
+      this.handlers.delete(event);
+    }
+    static create(options: {
+      width: number;
+      height: number;
+      resolution: number;
+      antialias?: boolean;
+    }): MockRenderTexture {
+      const texture = new MockRenderTexture(
+        options.width,
+        options.height,
+        options.resolution,
+        options.antialias ?? false,
+      );
+      MockRenderTexture.created.push(texture);
+      return texture;
+    }
+    resize(width: number, height: number, resolution: number): void {
+      this.width = width;
+      this.height = height;
+      this.source.resolution = resolution;
+    }
+    destroy(): void {
+      this.source.destroyed = true;
+      this.emit("destroy");
     }
   }
   return {
@@ -152,6 +310,13 @@ vi.mock("pixi.js", () => {
       }
     },
     TextureStyle: { defaultOptions: { scaleMode: "linear" } },
+    RenderTexture: MockRenderTexture,
+    Color: class {
+      constructor(private readonly value: number) {}
+      toArray(): number[] {
+        return [this.value, 0, 0, 1];
+      }
+    },
     Rectangle: class {
       constructor(
         public x: number,
@@ -197,6 +362,7 @@ import { RenderFacetContributor } from "./RenderFacetContributor.js";
 import { RendererKey } from "./types.js";
 import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
 import type { RendererConfig } from "./types.js";
+import type { GraphicsDiagnostics } from "./GraphicsDiagnostics.js";
 
 function createInstallContext(): {
   context: EngineContext;
@@ -319,7 +485,13 @@ describe("RendererPlugin", () => {
       // (which installs the Inspector) comes after the renderer.
       const unregister = vi.fn();
       const registerFacetContributor = vi.fn(() => unregister);
-      context.register(InspectorKey, { registerFacetContributor } as never);
+      const addExtension = vi.fn();
+      const removeExtension = vi.fn();
+      context.register(InspectorKey, {
+        registerFacetContributor,
+        addExtension,
+        removeExtension,
+      } as never);
 
       plugin.onStart();
       expect(registerFacetContributor).toHaveBeenCalledWith(
@@ -327,6 +499,30 @@ describe("RendererPlugin", () => {
       );
       plugin.onDestroy();
       expect(unregister).toHaveBeenCalledOnce();
+    });
+
+    it("reports the graphics context through the Inspector, and removes the reader on destroy", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      const extensions = new Map<string, GraphicsDiagnostics>();
+      context.register(InspectorKey, {
+        registerFacetContributor: () => () => {},
+        addExtension: (namespace: string, api: GraphicsDiagnostics) => {
+          extensions.set(namespace, api);
+        },
+        removeExtension: (namespace: string) => {
+          extensions.delete(namespace);
+        },
+      } as never);
+
+      plugin.onStart();
+      const graphics = extensions.get("graphics");
+      expect(graphics?.capabilities().backend).toBe("webgl2");
+      expect(graphics?.contextLost()).toBe(false);
+
+      plugin.onDestroy();
+      expect(extensions.has("graphics")).toBe(false);
     });
 
     it("starts without an Inspector", async () => {
@@ -1887,6 +2083,300 @@ describe("RendererPlugin", () => {
     });
   });
 
+  describe("graphics context", () => {
+    interface MockPixi {
+      name: string;
+      resolution: number;
+      gl: {
+        contextLost: boolean;
+        getParameter: (name: number) => unknown;
+        getExtension: (name: string) => unknown;
+      };
+      context: { webGLVersion: number };
+      gpu?: { device: unknown };
+      runners: {
+        contextChange: { emit(): void };
+        prerender: { emit(options: { container: unknown }): void };
+      };
+    }
+
+    async function installed(config: RendererConfig = defaultConfig): Promise<{
+      plugin: RendererPlugin;
+      context: EngineContext;
+      gameLoop: GameLoop;
+      bus: EventBus<EngineEvents>;
+      pixi: MockPixi;
+      canvas: { listeners: Map<string, Set<() => void>> };
+      tick: () => void;
+    }> {
+      const { context, gameLoop } = createInstallContext();
+      const plugin = new RendererPlugin(config);
+      await plugin.install(context);
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
+      const frame = app.ticker.callbacks[app.ticker.callbacks.length - 1]!;
+      return {
+        plugin,
+        context,
+        gameLoop,
+        bus: context.resolve(EventBusKey),
+        pixi: plugin.application.renderer as unknown as MockPixi,
+        canvas: plugin.canvas as unknown as {
+          listeners: Map<string, Set<() => void>>;
+        },
+        tick: () => frame(),
+      };
+    }
+
+    /** Fire the DOM event a browser sends when it takes the context away. */
+    function loseContext(canvas: {
+      listeners: Map<string, Set<() => void>>;
+    }): void {
+      for (const fn of canvas.listeners.get("webglcontextlost") ?? []) fn();
+    }
+
+    it("reports the context only while one exists", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      const message =
+        "the graphics context is only known from the renderer's install to engine.destroy().";
+
+      expect(() => plugin.capabilities).toThrow(
+        `RendererPlugin.capabilities: ${message}`,
+      );
+      expect(() => plugin.contextLost).toThrow(
+        `RendererPlugin.contextLost: ${message}`,
+      );
+
+      await plugin.install(context);
+      expect(plugin.capabilities.backend).toBe("webgl2");
+      plugin.onDestroy();
+
+      expect(() => plugin.capabilities).toThrow(
+        `RendererPlugin.capabilities: ${message}`,
+      );
+      expect(() => plugin.contextLost).toThrow(
+        `RendererPlugin.contextLost: ${message}`,
+      );
+    });
+
+    it("reads what the context reports once, not every frame", async () => {
+      const { plugin, pixi, tick } = await installed();
+      const first = plugin.capabilities;
+      expect(first).toMatchObject({
+        backend: "webgl2",
+        maxTextureSize: 8192,
+        maxRenderTargetSize: 8192,
+        maxViewportWidth: 8192,
+        maxViewportHeight: 8192,
+        maxSamples: 4,
+        highpFragment: "supported",
+        blendMinMax: "supported",
+      });
+      const reads = vi.spyOn(pixi.gl, "getParameter");
+
+      for (let i = 0; i < 60; i++) tick();
+
+      expect(reads).not.toHaveBeenCalled();
+      expect(plugin.capabilities).toBe(first);
+    });
+
+    it("asks pixi for the backends it draws with", async () => {
+      const cases: Array<[unknown, string[]]> = [
+        [undefined, ["webgl", "webgpu"]],
+        ["webgl", ["webgl", "webgpu"]],
+        ["webgpu", ["webgpu", "webgl"]],
+        [["webgpu"], ["webgpu"]],
+      ];
+      for (const [preference, expected] of cases) {
+        const { context } = createInstallContext();
+        const plugin = new RendererPlugin({
+          ...defaultConfig,
+          ...(preference === undefined
+            ? {}
+            : { pixi: { preference } as never }),
+        });
+        await plugin.install(context);
+        const app = plugin.application as unknown as InstanceType<
+          typeof mocks.MockApplication
+        >;
+        expect(app.initOptions["preference"]).toEqual(expected);
+      }
+    });
+
+    it("rejects a backend it does not draw with, before anything is built", () => {
+      const message =
+        'RendererPlugin: pixi.preference must name "webgl" or "webgpu"; YAGE does not draw with Pixi\'s Canvas 2D renderer. Got ';
+      for (const preference of ["canvas", ["webgl", "canvas"], [], "metal"]) {
+        expect(
+          () =>
+            new RendererPlugin({
+              ...defaultConfig,
+              pixi: { preference } as never,
+            }),
+        ).toThrow(`${message}${JSON.stringify(preference)}.`);
+      }
+    });
+
+    it("reports a lost context at once and tells the game at the next frame", async () => {
+      const { plugin, bus, gameLoop, canvas, tick } = await installed();
+      const seen: boolean[] = [];
+      const order: string[] = [];
+      bus.on("graphics:context", ({ lost }) => {
+        seen.push(lost);
+        order.push("event");
+      });
+      vi.spyOn(gameLoop, "tick").mockImplementation(() => {
+        order.push("frame");
+      });
+
+      loseContext(canvas);
+      expect(plugin.contextLost).toBe(true);
+      expect(seen).toEqual([]);
+
+      tick();
+      expect(seen).toEqual([true]);
+      expect(order).toEqual(["event", "frame"]);
+
+      tick();
+      expect(seen).toEqual([true]);
+    });
+
+    it("reads the replacement context and reports the restore", async () => {
+      const { plugin, bus, pixi, canvas, tick } = await installed();
+      const seen: boolean[] = [];
+      bus.on("graphics:context", ({ lost }) => seen.push(lost));
+      const before = plugin.capabilities;
+
+      loseContext(canvas);
+      pixi.runners.contextChange.emit();
+
+      expect(plugin.contextLost).toBe(false);
+      expect(plugin.capabilities).not.toBe(before);
+      expect(plugin.capabilities).toEqual(before);
+
+      tick();
+      expect(seen).toEqual([true, false]);
+    });
+
+    function fakeDevice(): {
+      device: Record<string, unknown>;
+      lose: (reason: string) => void;
+    } {
+      let settle: (info: { reason: string }) => void = () => {};
+      const lost = new Promise<{ reason: string }>((resolve) => {
+        settle = resolve;
+      });
+      return {
+        device: {
+          limits: { maxTextureDimension2D: 4096 },
+          features: new Set<string>(["float32-filterable"]),
+          lost,
+        },
+        lose: (reason: string) => settle({ reason }),
+      };
+    }
+
+    /** Install a renderer whose pixi settled on WebGPU with `device`. */
+    async function installedOnWebGPU(
+      device: Record<string, unknown>,
+    ): Promise<Awaited<ReturnType<typeof installed>>> {
+      mocks.rendererShape.build = () => ({
+        name: "webgpu",
+        gpu: { device },
+      });
+      try {
+        return await installed();
+      } finally {
+        mocks.rendererShape.build = null;
+      }
+    }
+
+    it("reads what a webgpu device reports", async () => {
+      const device = fakeDevice();
+      const { plugin } = await installedOnWebGPU(device.device);
+
+      expect(plugin.capabilities).toMatchObject({
+        backend: "webgpu",
+        maxTextureSize: 4096,
+        maxRenderTargetSize: 4096,
+        maxSamples: 4,
+        blendMinMax: "supported",
+        rgba32float: { filter: "supported" },
+      });
+    });
+
+    it("takes the engine tearing its own device down for what it is", async () => {
+      const device = fakeDevice();
+      const { plugin } = await installedOnWebGPU(device.device);
+
+      device.lose("destroyed");
+      await Promise.resolve();
+
+      expect(plugin.contextLost).toBe(false);
+    });
+
+    it("follows the device a webgpu restore hands back, and leaves the one it replaced", async () => {
+      const first = fakeDevice();
+      const second = fakeDevice();
+      const stranger = fakeDevice();
+      const { plugin, pixi } = await installedOnWebGPU(first.device);
+
+      pixi.gpu = { device: second.device };
+      pixi.runners.contextChange.emit();
+
+      first.lose("unknown");
+      stranger.lose("unknown");
+      await Promise.resolve();
+      expect(plugin.contextLost).toBe(false);
+
+      second.lose("unknown");
+      await Promise.resolve();
+      expect(plugin.contextLost).toBe(true);
+    });
+
+    it("stops following the context once the renderer is destroyed", async () => {
+      const { plugin, bus, pixi, canvas } = await installed();
+      const seen: boolean[] = [];
+      bus.on("graphics:context", ({ lost }) => seen.push(lost));
+
+      plugin.onDestroy();
+      loseContext(canvas);
+      pixi.runners.contextChange.emit();
+
+      expect(canvas.listeners.get("webglcontextlost")?.size ?? 0).toBe(0);
+      expect(seen).toEqual([]);
+    });
+
+    it("drops antialiasing on a buffer where the context cannot multisample", async () => {
+      const { plugin, pixi } = await installed();
+      const source = new (
+        await import("pixi.js")
+      ).Container() as unknown as import("./public-types.js").DisplayContainer;
+
+      const sharp = plugin.createRenderTarget(source, {
+        width: 10,
+        height: 10,
+        antialias: true,
+      });
+      expect(
+        (sharp.texture as unknown as { antialias: boolean }).antialias,
+      ).toBe(true);
+
+      pixi.gl.getParameter = (name: number) => (name === 0x8d57 ? 0 : 8192);
+      pixi.runners.contextChange.emit();
+      const flat = plugin.createRenderTarget(source, {
+        width: 10,
+        height: 10,
+        antialias: true,
+      });
+      expect(
+        (flat.texture as unknown as { antialias: boolean }).antialias,
+      ).toBe(false);
+    });
+  });
+
   describe("createTexture", () => {
     async function installedPlugin(): Promise<RendererPlugin> {
       const { context } = createInstallContext();
@@ -1895,40 +2385,150 @@ describe("RendererPlugin", () => {
       return plugin;
     }
 
-    function generateCalls(plugin: RendererPlugin): { frame?: unknown }[] {
-      const generate = (
-        plugin.application.renderer as unknown as {
-          generateTexture: { mock: { calls: [{ frame?: unknown }][] } };
-        }
-      ).generateTexture;
-      return generate.mock.calls.map(([options]) => options);
+    /** The texture the bake produced, with the sizes it was built at. */
+    function baked(texture: unknown): {
+      width: number;
+      height: number;
+      resolution: number;
+    } {
+      const resource = texture as {
+        width: number;
+        height: number;
+        source: { resolution: number };
+      };
+      return {
+        width: resource.width,
+        height: resource.height,
+        resolution: resource.source.resolution,
+      };
+    }
+
+    /** The wrapper the bake drew, parented under nothing else. */
+    function drawnWrapper(plugin: RendererPlugin): {
+      children: Array<{ position: { x: number; y: number } }>;
+    } {
+      const renderer = plugin.application.renderer as unknown as {
+        render: { mock: { calls: [{ container: unknown }][] } };
+      };
+      const [call] = renderer.render.mock.calls;
+      return call![0].container as never;
     }
 
     it("bakes the region a size names, starting at the origin", async () => {
       const plugin = await installedPlugin();
 
-      plugin.createTexture(() => {}, { width: 128, height: 32 });
+      const texture = plugin.createTexture(
+        (g) => {
+          (
+            g as unknown as {
+              rect(x: number, y: number, w: number, h: number): void;
+            }
+          ).rect(0, 0, 40, 10);
+        },
+        { width: 128, height: 32 },
+      );
 
-      const [options] = generateCalls(plugin);
-      expect(options?.frame).toMatchObject({
-        x: 0,
-        y: 0,
-        width: 128,
-        height: 32,
+      expect(baked(texture)).toEqual({ width: 128, height: 32, resolution: 1 });
+      const origin = drawnWrapper(plugin).children[0]?.position;
+      expect(origin?.x).toBeCloseTo(0);
+      expect(origin?.y).toBeCloseTo(0);
+    });
+
+    it("bakes the drawn bounds without a size, however far from the origin the drawing starts", async () => {
+      const plugin = await installedPlugin();
+
+      const texture = plugin.createTexture((g) => {
+        (
+          g as unknown as {
+            rect(x: number, y: number, w: number, h: number): void;
+          }
+        ).rect(10, 4, 20, 12);
+      });
+
+      expect(baked(texture)).toEqual({ width: 20, height: 12, resolution: 1 });
+      expect(drawnWrapper(plugin).children[0]?.position).toMatchObject({
+        x: -10,
+        y: -4,
       });
     });
 
-    it("passes no frame without a size, so pixi bakes the drawn bounds", async () => {
+    it("bakes one texel for a drawing with no bounds", async () => {
       const plugin = await installedPlugin();
 
-      plugin.createTexture(() => {});
+      const texture = plugin.createTexture(() => {});
 
-      const [options] = generateCalls(plugin);
-      expect(options).not.toHaveProperty("frame");
+      expect(baked(texture)).toEqual({ width: 1, height: 1, resolution: 1 });
+    });
+
+    it("draws the kept drawing again once the graphics context is replaced", async () => {
+      const plugin = await installedPlugin();
+      const pixi = plugin.application.renderer as unknown as {
+        render: { mock: { calls: unknown[] } };
+        runners: {
+          contextChange: { emit(): void };
+          prerender: { emit(options: { container: unknown }): void };
+        };
+      };
+      plugin.createTexture((g) => {
+        (
+          g as unknown as {
+            rect(x: number, y: number, w: number, h: number): void;
+          }
+        ).rect(0, 0, 8, 8);
+      });
+      expect(pixi.render.mock.calls).toHaveLength(1);
+
+      pixi.runners.contextChange.emit();
+      pixi.runners.prerender.emit({ container: plugin.application.stage });
+
+      expect(pixi.render.mock.calls).toHaveLength(2);
+    });
+
+    it("frees the drawing when the game destroys the texture", async () => {
+      const plugin = await installedPlugin();
+      const pixi = plugin.application.renderer as unknown as {
+        render: { mock: { calls: unknown[] } };
+        runners: {
+          contextChange: { emit(): void; items: unknown[] };
+          prerender: {
+            emit(options: { container: unknown }): void;
+            items: unknown[];
+          };
+        };
+      };
+      const texture = plugin.createTexture((g) => {
+        (
+          g as unknown as {
+            rect(x: number, y: number, w: number, h: number): void;
+          }
+        ).rect(0, 0, 8, 8);
+      }) as unknown as { destroy(): void };
+      const wrapper = drawnWrapper(plugin) as unknown as {
+        destroy(options?: unknown): void;
+      };
+      const destroyWrapper = vi.spyOn(wrapper, "destroy");
+      const destroyTexture = vi.spyOn(texture, "destroy");
+
+      texture.destroy();
+
+      // The game's call is the only texture destroy; the wrapper takes the
+      // kept drawing with it.
+      expect(destroyTexture).toHaveBeenCalledTimes(1);
+      expect(destroyWrapper).toHaveBeenCalledTimes(1);
+      expect(destroyWrapper).toHaveBeenCalledWith({ children: true });
+      // The renderer's own listener stays; the baked buffer left both lists.
+      expect(pixi.runners.contextChange.items).toHaveLength(1);
+      expect(pixi.runners.prerender.items).toHaveLength(0);
+      pixi.runners.contextChange.emit();
+      pixi.runners.prerender.emit({ container: plugin.application.stage });
+      expect(pixi.render.mock.calls).toHaveLength(1);
     });
 
     it("throws naming the offending dimension", async () => {
       const plugin = await installedPlugin();
+      const pixi = plugin.application.renderer as unknown as {
+        render: { mock: { calls: unknown[] } };
+      };
 
       expect(() =>
         plugin.createTexture(() => {}, { width: 0, height: 32 }),
@@ -1936,7 +2536,7 @@ describe("RendererPlugin", () => {
       expect(() =>
         plugin.createTexture(() => {}, { width: 128, height: NaN }),
       ).toThrow("RendererPlugin.createTexture: height must be finite and > 0");
-      expect(generateCalls(plugin)).toEqual([]);
+      expect(pixi.render.mock.calls).toEqual([]);
     });
   });
 });

@@ -1,12 +1,14 @@
 import { SpriteLightingKey } from "@yagejs/renderer/api";
 import type { ErrorBoundary, Scene } from "@yagejs/core";
 import type { RendererPlugin } from "@yagejs/renderer";
+import { drawnBounceBlend, requestedBounceBlend } from "./LightingComposite.js";
 import { LightingWorld } from "./LightingWorld.js";
 import type {
   AmbientLightOptions,
   BounceLightOptions,
   LightingRenderer,
   LightingRendererFactory,
+  LightingSceneDiagnostics,
 } from "./types.js";
 import { assertBounce } from "./validation.js";
 
@@ -27,6 +29,11 @@ export interface LightingWorldManagerOptions {
 /** Owns every live scene's {@link LightingWorld}. */
 export class LightingWorldManager {
   private readonly worlds = new Map<Scene, LightingWorld>();
+  /** What each live scene was drawn from, for the diagnostics reader. */
+  private readonly resolved = new Map<
+    Scene,
+    { readonly renderer: string; readonly bounce: BounceLightOptions | null }
+  >();
 
   constructor(
     private readonly renderer: RendererPlugin,
@@ -66,7 +73,36 @@ export class LightingWorldManager {
     }
 
     this.worlds.set(scene, world);
+    this.resolved.set(scene, {
+      renderer: scene.lighting?.renderer ?? this.options.defaultRenderer,
+      // A scene no renderer draws has no bounce to report.
+      bounce: factory ? bounce : null,
+    });
     return world;
+  }
+
+  /** @internal One entry per live scene, oldest first. */
+  _describe(): LightingSceneDiagnostics[] {
+    const capabilities = this.renderer.capabilities;
+    const entries: LightingSceneDiagnostics[] = [];
+    for (const [scene, world] of this.worlds) {
+      const resolved = this.resolved.get(scene);
+      const bounce = resolved?.bounce ?? null;
+      const requested = bounce ? requestedBounceBlend(bounce) : null;
+      entries.push({
+        scene: scene.name,
+        renderer: resolved?.renderer ?? this.options.defaultRenderer,
+        fallback: world._fallbackRecord,
+        bounce:
+          requested === null
+            ? null
+            : {
+                requested,
+                drawn: drawnBounceBlend(requested, capabilities),
+              },
+      });
+    }
+    return entries;
   }
 
   /** Get a scene's world, or `undefined` before entry or after exit. */
@@ -87,6 +123,7 @@ export class LightingWorldManager {
       world.destroy();
     } finally {
       this.worlds.delete(scene);
+      this.resolved.delete(scene);
     }
   }
 
@@ -100,6 +137,7 @@ export class LightingWorldManager {
         firstError ??= error;
       } finally {
         this.worlds.delete(scene);
+        this.resolved.delete(scene);
       }
     }
     if (firstError !== undefined) throw firstError;

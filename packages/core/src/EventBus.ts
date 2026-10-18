@@ -43,6 +43,9 @@ export interface EngineEvents {
   // changes. `OrientationType` is the built-in DOM lib union.
   "screen:fullscreen": { active: boolean };
   "screen:orientation": { type: OrientationType };
+  // Graphics context events. Emitted by RendererPlugin when the graphics
+  // context is lost and again when it is restored.
+  "graphics:context": { lost: boolean };
   // Host events. Emitted by `Host` when the application that runs the game
   // changes state: `host:active` when the game goes to or returns from the
   // background, `host:lifecycle` for every change of the three fields.

@@ -13,7 +13,10 @@ import type { LightUniforms } from "./light-shader.js";
 import { LightingComposite } from "./LightingComposite.js";
 import type { LightSource } from "./LightSource.js";
 import { OccluderWatch } from "./occlusion.js";
+import { overlayLighting } from "./OverlayLightingRenderer.js";
+import { lightShaderVerdict } from "./shader-probe.js";
 import type {
+  LightingFallbackReason,
   LightingRenderer,
   LightingRendererContext,
   LightingRendererFactory,
@@ -40,9 +43,10 @@ export interface ShaderLightingRendererOptions {
    */
   resolutionScale?: number;
   /**
-   * Renderer to build instead on a device whose browser gives Pixi a WebGL 1
-   * context, where this renderer's shader language does not exist. With none
-   * given, such a device throws when a scene using this renderer is entered.
+   * Renderer to build where this one cannot draw: a WebGL 1 context, whose
+   * shader language does not have what this renderer is written in, and a
+   * WebGL 2 driver that refuses to build its light program. Default
+   * {@link overlayLighting} in the same layer, order and texel density.
    */
   fallback?: LightingRendererFactory;
 }
@@ -398,39 +402,60 @@ export class ShaderLightingRenderer implements LightingRenderer {
 /**
  * Return a per-scene factory for the shader-based renderer.
  *
- * A browser that gives Pixi a WebGL 1 context has none of the shader language
- * this renderer is written in, which is the one device limit it can read
- * before drawing. Such a device gets `options.fallback`, or an error naming
- * the option when none is given. A shader that fails to build on a context
- * that does have the language is reported to the browser console by Pixi and
- * by the driver, not to this factory, so nothing here can answer it.
+ * Where this renderer cannot draw, the factory builds `options.fallback`
+ * instead, or {@link overlayLighting} in the same layer and order when no
+ * fallback is given:
+ *
+ * - a WebGL 1 context, whose shader language cannot express this renderer;
+ * - a WebGL 2 driver that refuses to build the light program, tested once per
+ *   graphics context.
+ *
+ * A WebGPU device draws with this renderer's WGSL program and is not tested:
+ * its shader errors arrive after a scene has started drawing.
+ *
+ * `LightingWorld` records which of the two reasons applied, and the
+ * `"lighting"` Inspector extension reports it with the driver's log.
  */
 export function shaderLighting(
   options: ShaderLightingRendererOptions = {},
 ): LightingRendererFactory {
   return (context) => {
-    if (usesWebGL1(context.renderer)) {
-      const fallback = options.fallback;
-      if (!fallback) {
-        throw new Error(
-          `ShaderLightingRenderer: scene "${context.scene.name}" runs on a ` +
-            "WebGL 1 context, whose shader language cannot express this " +
-            "renderer. Pass shaderLighting({ fallback }) with another " +
-            "renderer factory for such devices.",
-        );
-      }
-      return fallback(context);
+    const unavailable = shaderUnavailable(context.renderer);
+    if (unavailable === null) {
+      return new ShaderLightingRenderer(context, options);
     }
-    return new ShaderLightingRenderer(context, options);
+    context.world._noteFallback(unavailable.reason, unavailable.detail);
+    const fallback = options.fallback ?? defaultFallback(options);
+    return fallback(context);
   };
 }
 
-/** Whether Pixi settled on a WebGL 1 context for this renderer. */
-function usesWebGL1(renderer: RendererPlugin): boolean {
-  const live = renderer.application.renderer as {
-    context?: { webGLVersion?: number };
-  };
-  return live.context?.webGLVersion === 1;
+/** Why the shader renderer cannot draw on this context, or `null`. */
+function shaderUnavailable(renderer: RendererPlugin): {
+  reason: LightingFallbackReason;
+  detail: string | null;
+} | null {
+  const backend = renderer.capabilities.backend;
+  if (backend === "webgl1") return { reason: "webgl1", detail: null };
+  // A lost context builds nothing, and Pixi compiles again on the one that
+  // replaces it.
+  if (backend !== "webgl2" || renderer.contextLost) return null;
+  const verdict = lightShaderVerdict(renderer);
+  if (verdict.linked) return null;
+  return { reason: "shader-rejected", detail: verdict.log };
+}
+
+/** The overlay renderer, drawn in the layer the shader renderer was given. */
+function defaultFallback(
+  options: ShaderLightingRendererOptions,
+): LightingRendererFactory {
+  return overlayLighting({
+    ...(options.layer !== undefined ? { layer: options.layer } : {}),
+    ...(options.order !== undefined ? { order: options.order } : {}),
+    ...(options.resolutionScale !== undefined
+      ? { resolutionScale: options.resolutionScale }
+      : {}),
+  });
 }
 
 /** Copy a light's colour, reach and cone into the uniforms its quad reads. */

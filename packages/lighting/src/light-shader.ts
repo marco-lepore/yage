@@ -167,6 +167,31 @@ export function lightQuadGeometry(): Geometry {
   return quadGeometry;
 }
 
+/** The one WebGL program every light's quad is drawn with. */
+function lightGlProgram(): GlProgram {
+  glProgram ??= GlProgram.from({
+    vertex: VERTEX_GL,
+    fragment: FRAGMENT_GL,
+    name: "yage-lighting-shadow",
+  });
+  return glProgram;
+}
+
+/**
+ * @internal The light program's sources as Pixi hands them to a driver, so a
+ * link test compiles exactly what the renderer would draw with.
+ */
+export function lightProgramSources(): {
+  readonly vertex: string;
+  readonly fragment: string;
+} {
+  const { vertex, fragment } = lightGlProgram();
+  if (vertex == null || fragment == null) {
+    throw new Error("lightProgramSources: the light program has no sources.");
+  }
+  return { vertex, fragment };
+}
+
 /** Uniforms one light writes before its quad is drawn. */
 export interface LightUniforms {
   /** RGB tint already scaled by the light's intensity. */
@@ -188,11 +213,7 @@ export interface LightUniforms {
  * program and one WebGPU module.
  */
 export function createLightShader(edges: TextureSource): Shader {
-  glProgram ??= GlProgram.from({
-    vertex: VERTEX_GL,
-    fragment: FRAGMENT_GL,
-    name: "yage-lighting-shadow",
-  });
+  const glProgram = lightGlProgram();
   gpuProgram ??= new GpuProgram({
     vertex: { source: SHADER_WGSL, entryPoint: "mainVertex" },
     fragment: { source: SHADER_WGSL, entryPoint: "mainFragment" },

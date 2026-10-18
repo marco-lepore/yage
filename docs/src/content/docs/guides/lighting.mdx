@@ -410,7 +410,9 @@ shaderLighting({
 
 `resolutionScale` starts at `1`, where the drawn light lands on the same pixel
 grid `levelAt()` is asked about. The overlay starts at `0.5`. Lower it to cut
-fill cost, at the price of a coarser shadow border.
+fill cost, at the price of a coarser shadow border. `fallback` starts at
+`overlayLighting()` in the same layer and order, with the same
+`resolutionScale` when you set one.
 
 :::note[The picture equals the query]
 `levelAt()` measures light reaching a point. Surface materials also respond to
@@ -426,20 +428,48 @@ drawn on one side of the line and queried as partly lit.
 
 ### When the shader cannot run
 
-`fallback` takes another renderer factory, and a scene gets it instead when the
-browser hands Pixi a WebGL 1 context. That context's shader language has none
-of what this renderer is written in, and it is the one device limit the
-renderer can read before it draws anything. A scene on such a context with no
-`fallback` throws as it is entered, naming the option.
+Two graphics contexts cannot draw this renderer, and a scene on either gets
+`fallback` instead:
 
-A shader that a driver refuses on a context that does have the language is a
-different case, and `fallback` does not cover it: the refusal goes to the
-browser console, not to the renderer, so nothing in the engine sees it. A game
-that wants a cheaper renderer on weaker devices configures both under names and
-picks one per scene.
+- A WebGL 1 context, whose shader language has none of what the renderer is
+  written in.
+- A WebGL 2 driver that refuses to build the light program. The renderer
+  compiles and links that program once per graphics context, which takes a
+  few milliseconds and leaves the result in the browser's own cache for the
+  draw that follows.
+
+Without a `fallback` of your own, the scene is drawn by `overlayLighting()` in
+the same layer and order, so a game that never thinks about WebGL 1 still
+draws its lights there. Pass a `fallback` to pick something else:
+
+```typescript
+import { overlayLighting, shaderLighting } from "@yagejs/lighting";
+
+shaderLighting({ fallback: overlayLighting({ resolutionScale: 0.25 }) });
+```
 
 The renderer ships a WebGL shader and a WebGPU shader. Both draw the same
-picture from the same uniforms and the same occluder data.
+picture from the same uniforms and the same occluder data. A WebGPU device is
+never tested: its shader errors arrive after a scene has started drawing, so a
+choice made before the first frame cannot use them.
+
+### Find out what drew a scene
+
+With a debug build, the `"lighting"` Inspector extension lists every live
+scene: the renderer name it asked for, why the fallback drew it, and the
+bounce blend it asked for beside the one drawn.
+
+```typescript yage-context="inspector"
+import type { LightingDiagnostics } from "@yagejs/lighting";
+
+const lighting = inspector.getExtension<LightingDiagnostics>("lighting");
+lighting?.scenes();
+// [{ scene: "cave", renderer: "shader",
+//    fallback: { reason: "webgl1", detail: null }, bounce: null }]
+```
+
+From the browser console the same call is
+`__yage__.inspector.getExtension("lighting").scenes()`.
 
 ## Let light bounce off surfaces
 
@@ -480,6 +510,10 @@ different:
 - `"mix"` blends the whole picture toward the blurred copy. The room keeps its
   overall brightness, every shadow edge softens and the brightest spots dim a
   little. Pick it to take the hard edge off the overlay renderer's shadows.
+
+`"max"` needs a graphics context with min/max blending. Where
+`renderer.capabilities.blendMinMax` reads `"unsupported"`, the scene is drawn
+with `"mix"` instead and the lighting diagnostics report both blends.
 
 ```typescript
 import { Scene } from "@yagejs/core";
@@ -644,8 +678,10 @@ the query applies, or the drawn light and the queried light disagree.
 The `bounce` the factory receives is what this scene resolved to: its own
 setting, or the plugin's, or `null`. Hand it to `LightingComposite`, the step
 `overlayLighting()` and `shaderLighting()` finish with, to give a custom renderer
-the same multiply composite and bounced light. `surfaceLighting()` does not use
-this composite:
+the same multiply composite and bounced light. The composite also draws a
+requested `"max"` blend as `"mix"` where the context has no min/max blending,
+and keeps its buffers at the display's pixel ratio. `surfaceLighting()` does
+not use this composite:
 
 ```typescript
 import { Container } from "pixi.js";
@@ -659,6 +695,8 @@ const customLighting: LightingRendererFactory = ({ scene, renderer, bounce }) =>
     .use(SceneRenderTreeKey)
     .ensureLayer({ name: "lighting", order: 900, space: "screen" });
 
+  // renderer.capabilities says which graphics API drew the scene and what it
+  // can do, for a factory that builds one of two renderers.
   const composite = new LightingComposite(renderer, {
     source: lightContainer, // the container this renderer draws into
     parent: layer.container, // a screen-space render layer

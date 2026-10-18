@@ -16,6 +16,12 @@ export type {
   HostOrientation,
   OrientationLock,
 } from "./HostDisplay.js";
+export type {
+  GraphicsBackend,
+  GraphicsCapabilities,
+  GraphicsFormatSupport,
+} from "./GraphicsCapabilities.js";
+export type { GraphicsDiagnostics } from "./GraphicsDiagnostics.js";
 
 export { SpriteLightingKey } from "./materials/SpriteLighting.js";
 export type {

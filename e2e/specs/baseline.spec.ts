@@ -1,84 +1,16 @@
-import { expect, test } from "@playwright/test";
+import { chromium, expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { gotoFixture } from "./helpers.js";
-
-/** The cases the fixture mounts, in the order it mounts them. */
-const CASE_NAMES = [
-  "sprites",
-  "text-ui",
-  "masks",
-  "render-targets",
-  "effects",
-  "lighting",
-  "physics",
-  "workers",
-  "audio",
-  "input",
-  "saves",
-  "lifecycle",
-  "display",
-];
-
-interface BaselineReading {
-  target: string;
-  profile: string;
-  bootId: string;
-  cases: string[];
-  settledCases: string[];
-  settled: boolean;
-  readings: Record<string, Record<string, unknown>>;
-  host: {
-    info: { runtime: string; os: string };
-    lifecycle: { activity: string; visibility: string; focus: string };
-    active: boolean;
-  };
-  errors: { callbackErrors: unknown[] };
-  userAgent: string;
-}
-
-interface BaselineExtension {
-  read(): BaselineReading;
-  pointFor(x: number, y: number): { x: number; y: number };
-}
-
-async function openBaseline(page: Page, query = ""): Promise<void> {
-  await gotoFixture(page, `/baseline.html${query}`);
-  await page.waitForFunction(
-    () => window.__yage__?.inspector?.getExtension("baseline") !== undefined,
-  );
-}
-
-function read(page: Page): Promise<BaselineReading> {
-  return page.evaluate(() =>
-    window
-      .__yage__!.inspector.getExtension<BaselineExtension>("baseline")!
-      .read(),
-  );
-}
-
-async function waitForSettled(page: Page, timeout = 30_000): Promise<void> {
-  await page.waitForFunction(
-    () =>
-      window.__yage__?.inspector
-        ?.getExtension<BaselineExtension>("baseline")
-        ?.read().settled === true,
-    null,
-    { timeout },
-  );
-}
-
-/** The reading of one case, after it settled. */
-async function readCase(
-  page: Page,
-  name: string,
-): Promise<Record<string, unknown>> {
-  await openBaseline(page, `?case=${name}`);
-  await waitForSettled(page);
-  const reading = await read(page);
-  expect(reading.cases).toEqual([name]);
-  expect(reading.errors.callbackErrors).toEqual([]);
-  return reading.readings[name]!;
-}
+import {
+  CASE_NAMES,
+  openBaseline,
+  read,
+  readCase,
+  readLighting,
+  readPixels,
+  waitForSettled,
+} from "./baseline-probe.js";
+import type { BaselineExtension, BaselinePixel } from "./baseline-probe.js";
 
 test.describe("baseline fixture", () => {
   test("mounts every case and reports the browser host", async ({ page }) => {
@@ -175,7 +107,7 @@ test.describe("baseline fixture", () => {
     expect(reading["pausedNow"]).toBe(false);
   });
 
-  test("display: the renderer reports the screen it drew on", async ({
+  test("display: the renderer reports the screen and the context it drew on", async ({
     page,
   }) => {
     const reading = await readCase(page, "display");
@@ -183,8 +115,12 @@ test.describe("baseline fixture", () => {
     expect(reading["isFullscreen"]).toBe(false);
     expect(reading["orientation"]).toBe("landscape-primary");
     expect(reading["orientationLockSupport"]).toBe("unknown");
-    expect(reading["rendererName"]).toBe("webgl");
-    expect(reading["glVersion"]).toContain("WebGL");
+    expect(reading["contextLost"]).toBe(false);
+    const graphics = reading["graphics"] as Record<string, unknown>;
+    expect(graphics["backend"]).toBe("webgl2");
+    expect(graphics["blendMinMax"]).toBe("supported");
+    expect(Number.isInteger(graphics["maxTextureSize"])).toBe(true);
+    expect(graphics["maxTextureSize"]).toBeGreaterThan(0);
   });
 
   test("an unknown case name stops the start", async ({ page }) => {
@@ -361,3 +297,228 @@ for (const deviceScaleFactor of [1, 2]) {
     });
   });
 }
+
+test.describe("baseline graphics", () => {
+  /**
+   * The lamp lit its own spot and the far corner stayed at the ambient
+   * level. The fixture draws on a near-black background, so the gap between
+   * the two is a few tens of levels rather than a few hundred.
+   */
+  function expectLampBrighterThanShadow(
+    pixels: Record<string, [number, number, number, number]>,
+  ): void {
+    const lamp = pixels["lamp"]!;
+    const far = pixels["far"]!;
+    for (let i = 0; i < 3; i++) {
+      expect(lamp[i]! - far[i]!, `channel ${i}`).toBeGreaterThan(8);
+    }
+  }
+
+  /** Every point of the drawing is the colour it was, within rounding. */
+  function expectSamePixels(
+    before: Record<string, [number, number, number, number]>,
+    after: Record<string, [number, number, number, number]>,
+  ): void {
+    for (const [name, channels] of Object.entries(before)) {
+      const drawn = after[name]!;
+      for (let i = 0; i < channels.length; i++) {
+        expect(
+          Math.abs(drawn[i]! - channels[i]!),
+          `${name} channel ${i}`,
+        ).toBeLessThanOrEqual(2);
+      }
+    }
+  }
+
+  test("a WebGL 1 context draws every case through the overlay renderer", async ({
+    page,
+  }) => {
+    await openBaseline(page, "?backend=webgl1");
+    await waitForSettled(page);
+    const reading = await read(page);
+    expect(reading.errors.callbackErrors).toEqual([]);
+
+    const graphics = reading.readings["display"]!["graphics"] as Record<
+      string,
+      unknown
+    >;
+    expect(graphics["backend"]).toBe("webgl1");
+    expect(graphics["maxSamples"]).toBe(0);
+    expect(await readLighting(page)).toMatchObject([
+      { scene: "baseline", fallback: { reason: "webgl1", detail: null } },
+    ]);
+
+    expectLampBrighterThanShadow(await readPixels(page));
+  });
+
+  for (const deviceScaleFactor of [1, 2]) {
+    test.describe(`at device scale factor ${deviceScaleFactor}`, () => {
+      test.use({ deviceScaleFactor });
+
+      test("a lost and restored context draws every case as before", async ({
+        page,
+      }) => {
+        await openBaseline(page);
+        await waitForSettled(page);
+        const before = await readPixels(page);
+
+        await page.evaluate(() =>
+          window
+            .__yage__!.inspector.getExtension<BaselineExtension>("baseline")!
+            .loseContext(),
+        );
+
+        expectSamePixels(before, await readPixels(page));
+        expect((await read(page)).graphicsContext).toEqual([true, false]);
+        expect(
+          await page.evaluate(() =>
+            window
+              .__yage__!.inspector.getExtension<{
+                contextLost(): boolean;
+              }>("graphics")!
+              .contextLost(),
+          ),
+        ).toBe(false);
+      });
+    });
+  }
+
+  test("a buffer that follows the pixel ratio keeps the canvas density", async ({
+    page,
+  }) => {
+    await openBaseline(page, "?case=render-targets");
+    await waitForSettled(page);
+    expect((await read(page)).readings["render-targets"]).toMatchObject({
+      resolution: 1,
+      followingResolution: 1,
+    });
+
+    const session = await page.context().newCDPSession(page);
+    await session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 720,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+    await expect
+      .poll(
+        async () =>
+          (await read(page)).readings["render-targets"]!["followingResolution"],
+      )
+      .toBe(2);
+    const reading = (await read(page)).readings["render-targets"]!;
+    // A buffer without the option keeps the density it was built with.
+    expect(reading["resolution"]).toBe(1);
+    // The buffer's own magenta, darkened by the scene's ambient light.
+    const magenta = (await readPixels(page))["followingTarget"]!;
+    expect(magenta[0]).toBeGreaterThan(30);
+    expect(magenta[1]).toBeLessThan(10);
+    expect(magenta[2]).toBeGreaterThan(30);
+    await session.detach();
+  });
+
+  test("bounce draws as the mix where the context has no min/max blending", async ({
+    page,
+  }) => {
+    await openBaseline(page, "?backend=webgl1&bounce=max");
+    await waitForSettled(page);
+    expect((await read(page)).readings["display"]!["graphics"]).toMatchObject({
+      blendMinMax: "supported",
+    });
+    expect(await readLighting(page)).toMatchObject([
+      { bounce: { requested: "max", drawn: "max" } },
+    ]);
+
+    const without = await page.context().newPage();
+    await without.addInitScript(() => {
+      const proto = WebGLRenderingContext.prototype as unknown as {
+        getExtension(name: string): unknown;
+      };
+      const original = proto.getExtension;
+      proto.getExtension = function (name: string): unknown {
+        if (name === "EXT_blend_minmax") return null;
+        return Reflect.apply(original, this, [name]);
+      };
+    });
+    await openBaseline(without, "?backend=webgl1&bounce=max");
+    await waitForSettled(without);
+    expect(
+      (await read(without)).readings["display"]!["graphics"],
+    ).toMatchObject({ blendMinMax: "unsupported" });
+    expect(await readLighting(without)).toMatchObject([
+      { bounce: { requested: "max", drawn: "mix" } },
+    ]);
+    await without.close();
+  });
+
+  test("a driver that refuses the light shader gets the overlay and the log", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      const REFUSED = "rejected by the test";
+      const rejected = new WeakSet<WebGLProgram>();
+      const sources = new WeakMap<WebGLShader, string>();
+      const attached = new WeakMap<WebGLProgram, WebGLShader[]>();
+      const proto = WebGL2RenderingContext.prototype;
+      const shaderSource = proto.shaderSource;
+      proto.shaderSource = function (shader, source: string): void {
+        sources.set(shader, source);
+        Reflect.apply(shaderSource, this, [shader, source]);
+      };
+      const attachShader = proto.attachShader;
+      proto.attachShader = function (program, shader): void {
+        const list = attached.get(program) ?? [];
+        list.push(shader);
+        attached.set(program, list);
+        if ((sources.get(shader) ?? "").includes("SLOT_SCALE")) {
+          rejected.add(program);
+        }
+        Reflect.apply(attachShader, this, [program, shader]);
+      };
+      const getProgramParameter = proto.getProgramParameter;
+      proto.getProgramParameter = function (program, name: number): unknown {
+        if (name === this.LINK_STATUS && rejected.has(program)) return false;
+        return Reflect.apply(getProgramParameter, this, [program, name]);
+      };
+      const getProgramInfoLog = proto.getProgramInfoLog;
+      proto.getProgramInfoLog = function (program): string | null {
+        if (rejected.has(program)) return REFUSED;
+        return Reflect.apply(getProgramInfoLog, this, [program]);
+      };
+    });
+    await openBaseline(page);
+    await waitForSettled(page);
+
+    expect((await read(page)).errors.callbackErrors).toEqual([]);
+    expect(await readLighting(page)).toMatchObject([
+      {
+        fallback: { reason: "shader-rejected", detail: "rejected by the test" },
+      },
+    ]);
+    expectLampBrighterThanShadow(await readPixels(page));
+  });
+
+  test("a browser with neither WebGL nor WebGPU stops the start", async ({
+    baseURL,
+  }) => {
+    const browser = await chromium.launch({ args: ["--disable-3d-apis"] });
+    try {
+      const page = await browser.newPage();
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await page.goto(new URL("baseline.html", baseURL).href);
+      await expect.poll(() => errors.length).toBeGreaterThan(0);
+      expect(errors.join("\n")).toContain(
+        "No available renderer for the current environment",
+      );
+      expect(
+        await page.evaluate(
+          () =>
+            window.__yage__?.inspector?.getExtension("baseline") === undefined,
+        ),
+      ).toBe(true);
+    } finally {
+      await browser.close();
+    }
+  });
+});

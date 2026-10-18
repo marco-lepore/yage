@@ -30,6 +30,8 @@ export interface BaselineReading {
     activeWhenUnfocused: boolean;
   };
   errors: { callbackErrors: unknown[] };
+  /** Every `graphics:context` payload the page has seen, oldest first. */
+  graphicsContext: boolean[];
   userAgent: string;
 }
 

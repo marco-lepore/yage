@@ -2,15 +2,13 @@ import { Engine } from "@yagejs/core";
 import type { Plugin } from "@yagejs/core";
 import { AudioPlugin } from "@yagejs/audio";
 import { InputPlugin } from "@yagejs/input";
-import {
-  LightingPlugin,
-  overlayLighting,
-  shaderLighting,
-} from "@yagejs/lighting";
+import { LightingPlugin, shaderLighting } from "@yagejs/lighting";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { RendererPlugin } from "@yagejs/renderer";
+import type { RendererConfig } from "@yagejs/renderer";
 import { SavePlugin, createSave } from "@yagejs/save";
 import type { SaveAdapter } from "@yagejs/save";
+import type { BounceLightOptions } from "@yagejs/lighting";
 import { UIPlugin } from "@yagejs/ui";
 import { BaselineScene, CASE_NAMES, selectCases } from "./cases.js";
 import type { installTestProfile, testProfilePlugins } from "./test-profile.js";
@@ -39,6 +37,40 @@ interface TestProfile {
 const VIRTUAL_WIDTH = 640;
 const VIRTUAL_HEIGHT = 360;
 
+/** The bounce the `bounce=max` build draws with. */
+const MAX_BOUNCE: BounceLightOptions = {
+  strength: 0.6,
+  radius: 40,
+  blend: "max",
+};
+
+/**
+ * The Pixi options a `backend` launch flag asks for. A test build reads the
+ * flag so one page can be driven on each graphics API the renderer draws
+ * with; a release build asks for nothing and takes the renderer's own order.
+ */
+function backendOptions(search: string): RendererConfig["pixi"] {
+  const requested = new URLSearchParams(search).get("backend");
+  if (requested === null || requested === "") return undefined;
+  if (requested === "webgl1") return { preferWebGLVersion: 1 };
+  if (requested === "webgpu") return { preference: "webgpu" };
+  throw new Error(
+    `Baseline: unknown backend ${JSON.stringify(requested)}. ` +
+      "Known backends: webgl1, webgpu.",
+  );
+}
+
+/** The bounce a `bounce` launch flag asks for, or `undefined` for none. */
+function bounceOption(search: string): BounceLightOptions | undefined {
+  const requested = new URLSearchParams(search).get("bounce");
+  if (requested === null || requested === "") return undefined;
+  if (requested === "max") return MAX_BOUNCE;
+  throw new Error(
+    `Baseline: unknown bounce ${JSON.stringify(requested)}. ` +
+      "Known values: max.",
+  );
+}
+
 /** Start the fixture: select the cases, install the plugins, push the scene. */
 export async function bootBaseline(
   options: BaselineBootOptions,
@@ -49,6 +81,9 @@ export async function bootBaseline(
   // everything and reads no query string.
   const cases =
     profile === "release" ? CASE_NAMES : selectCases(location.search);
+  const search = profile === "release" ? "" : location.search;
+  const pixi = backendOptions(search);
+  const bounce = bounceOption(search);
 
   let testProfile: TestProfile | undefined;
   if (import.meta.env.MODE !== "release") {
@@ -68,6 +103,7 @@ export async function bootBaseline(
       height: VIRTUAL_HEIGHT,
       backgroundColor: 0x111111,
       container,
+      ...(pixi ? { pixi } : {}),
     }),
   );
   engine.use(new InputPlugin({ actions: { jump: ["Space"] } }));
@@ -77,8 +113,9 @@ export async function bootBaseline(
   engine.use(
     new LightingPlugin({
       ambient: { level: 0.2 },
-      renderers: { shader: shaderLighting({ fallback: overlayLighting() }) },
+      renderers: { shader: shaderLighting() },
       defaultRenderer: "shader",
+      ...(bounce ? { bounce } : {}),
     }),
   );
   engine.use(
