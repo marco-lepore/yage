@@ -1,0 +1,10 @@
+{
+  "appId": "dev.yage.baseline",
+  "appName": "YAGE Baseline",
+  "webDir": "../.work/web/capacitor",
+  "backgroundColor": "#111111",
+  "ios": {
+    "path": "../.work/ios",
+    "contentInset": "never"
+  }
+}

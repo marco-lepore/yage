@@ -91,6 +91,7 @@ Enforced by tooling — match these conventions exactly:
 - **E2E tests**: `e2e/` directory at repo root (Playwright)
 - **Test utilities**: `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core`
 - **E2E assertions**: use the Inspector API (`window.__yage__.inspector`), not screenshots. The page's engine needs `debug: true` and an installed Inspector: `DebugPlugin` installs one, or `InspectorPlugin` from `@yagejs/core` without the overlay
+- **Native shells**: `e2e/native/` runs the baseline fixture (`e2e/fixtures/baseline*.html`) in Chromium, Electron and the iOS simulator and writes a report per run. CI does not run it; see the Testing Workflow section of `docs/AGENT_GUIDE.md`.
 
 ## Documentation
 

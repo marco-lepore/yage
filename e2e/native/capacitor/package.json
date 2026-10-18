@@ -1,0 +1,13 @@
+{
+  "name": "yage-baseline-capacitor-shell",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Capacitor inputs for the generated iOS project that loads a built baseline web directory.",
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.5.3",
+    "@capacitor/ios": "8.5.3"
+  }
+}

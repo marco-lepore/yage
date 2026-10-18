@@ -44,6 +44,17 @@ npx playwright test e2e/specs/physics-bounce.spec.ts
 
 # Run Playwright with headed browser (for debugging)
 npx playwright test --headed
+
+# Install the shells the native baseline suite drives (once per checkout)
+npm --prefix e2e/native/electron ci
+npm --prefix e2e/native/capacitor ci
+
+# Run the native baseline suite: Chromium, Electron and the iOS simulator
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  npm run native -w @yagejs/e2e
+
+# Run one of its projects
+npm run native -w @yagejs/e2e -- --project=electron
 ```
 
 ---
@@ -275,13 +286,14 @@ The reactive state factories themselves live in `@yagejs/core` under `src/state/
 
 ### Project Root
 
-| File                       | Purpose                  |
-| -------------------------- | ------------------------ |
-| `package.json`             | Workspace root, scripts  |
-| `turbo.json`               | Turborepo task pipeline  |
-| `tsconfig.base.json`       | Shared TypeScript config |
-| `playwright.config.ts`     | E2E test config          |
-| `.github/workflows/ci.yml` | CI pipeline              |
+| File                       | Purpose                                                       |
+| -------------------------- | ------------------------------------------------------------- |
+| `package.json`             | Workspace root, scripts                                       |
+| `turbo.json`               | Turborepo task pipeline                                       |
+| `tsconfig.base.json`       | Shared TypeScript config                                      |
+| `playwright.config.ts`     | E2E test config                                               |
+| `e2e/native/`              | Native baseline suite: shells, build, reports (not run by CI) |
+| `.github/workflows/ci.yml` | CI pipeline                                                   |
 
 ---
 
@@ -316,6 +328,27 @@ npx turbo test && npx turbo typecheck && npx turbo build && npx playwright test
 - **Use test utilities**: Import `createTestEngine`, `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core`
 - **E2E assertions**: Use Inspector API (`window.__yage__.inspector`) for state assertions, not screenshots
 - **Deterministic browser timing**: Prefer `window.__yage__.inspector.time.freeze()` + `step()` over `waitForTimeout()` when a fixture needs exact frame control. The fixture must install `DebugPlugin` — `inspector.time.*` throws without it
+
+### Native baseline runs
+
+The baseline fixture is one small game built from the workspace packages, so every build of it tests this checkout's engine. It has 13 selectable cases — sprites, text and UI, masks, render targets, effects, lighting, physics, workers, audio, input, saves, lifecycle and display — and three entries, one per target: `e2e/fixtures/baseline.html`, `baseline-electron.html` and `baseline-capacitor.html`. Each entry passes its host plugins and its save adapter to one `bootBaseline` call, so an artifact carries only the adapters of the target it was built for. `?case=sprites,physics` mounts a subset; an unknown name stops the start with an authored error.
+
+A test build adds an Inspector, an extension named `baseline` that answers `read()` with every case's reading, and a console reporter that writes one `[yage-baseline]` line per event. A build with `--mode release` has none of them: the reporting module is reached through one dynamic import behind a mode check, which the release build removes.
+
+`e2e/specs/baseline.spec.ts` checks every case in Chromium, so CI covers the fixture on each push. The native suite under `e2e/native/` is local only, and has four projects:
+
+| Project         | Needs                                                                                          |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| `harness`       | Node alone: the suite's own report and parsing helpers                                         |
+| `browser`       | Chromium, over a built web directory served on loopback                                        |
+| `electron`      | `npm --prefix e2e/native/electron ci`                                                          |
+| `ios-simulator` | `npm --prefix e2e/native/capacitor ci`, Xcode and a booted simulator, with `DEVELOPER_DIR` set |
+
+Each shell project builds its target's web directory, runs the scenario — launch, read every case, send input, let the shell take the app away and give it back, relaunch on the same stored profile — then builds the release profile and checks that nothing of the test profile reached it. Every run writes one JSON report to `e2e/native/.work/reports/`: the engine commit and package versions, the third-party versions actually resolved, the shell and system versions, every emitted file's hash, each check's outcome and evidence, the readings, a timeline of page and shell events, and the screenshots taken.
+
+`node e2e/native/prepare-game.mjs --source <checkout> --workspace <name>` builds a game from another checkout against packed copies of this repository's packages, and prints the built directory and a provenance file. Pointing `BASELINE_WEB` at that directory runs it through the same shells.
+
+A target counts as verified only from a recorded run of that target. A check the machine cannot run is written `pending` with its reason, never `passed`, and a simulator result is labelled as a simulator's.
 
 ---
 
