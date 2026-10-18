@@ -3,7 +3,7 @@ import { RendererKey, RendererPlugin } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 import { InputPlugin } from "@yagejs/input";
 import { Anchor, UIPlugin, UISurface } from "@yagejs/ui";
-import { LightingComposite } from "@yagejs/lighting";
+import { LightingComposite, LightingWorld } from "@yagejs/lighting";
 import { Container, Graphics } from "pixi.js";
 import { injectStyles, setupContainer } from "./shared.js";
 
@@ -49,6 +49,7 @@ class DrawingProbe extends Component {
     this.graphicsParent.addChild(this.graphic);
     this.source.label = "drawing-test-light";
     this.composite = new LightingComposite(owner, {
+      world: new LightingWorld(this.scene),
       source: this.source,
       parent: this.parent,
       width: 320,

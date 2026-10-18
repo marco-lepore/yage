@@ -9,7 +9,7 @@ export type HostOS =
   | "android"
   | "unknown";
 
-const HOST_OS_VALUES: readonly string[] = [
+const HOST_OS_VALUES: readonly HostOS[] = [
   "macos",
   "windows",
   "linux",
@@ -93,9 +93,6 @@ export interface HostProvider {
 /** Whether a host can perform an operation at all. */
 export type HostSupport = "supported" | "unsupported" | "unknown";
 
-/** Whether the player or the operating system allows an operation. */
-export type HostPermission = "granted" | "denied" | "prompt" | "unknown";
-
 /**
  * What a page with no host adapter reports. A browser's own values for the
  * operating system follow the user agent, which an emulated device changes, so
@@ -119,14 +116,31 @@ const UNKNOWN_LIFECYCLE: HostLifecycle = Object.freeze({
 const VERSION_FIELDS = ["appVersion", "appBuild", "runtimeVersion"] as const;
 type VersionField = (typeof VERSION_FIELDS)[number];
 
-const LIFECYCLE_FIELDS: readonly {
-  readonly key: "activity" | "visibility" | "focus";
-  readonly values: readonly string[];
-}[] = [
-  { key: "activity", values: ["active", "inactive", "unknown"] },
-  { key: "visibility", values: ["visible", "hidden", "unknown"] },
-  { key: "focus", values: ["focused", "unfocused", "unknown"] },
+const HOST_ACTIVITY_VALUES: readonly HostActivity[] = [
+  "active",
+  "inactive",
+  "unknown",
 ];
+const HOST_VISIBILITY_VALUES: readonly HostVisibility[] = [
+  "visible",
+  "hidden",
+  "unknown",
+];
+const HOST_FOCUS_VALUES: readonly HostFocus[] = [
+  "focused",
+  "unfocused",
+  "unknown",
+];
+
+/** Whether a value is one of a known list, narrowed to that list's type. */
+function isOneOf<T extends string>(
+  values: readonly T[],
+  value: unknown,
+): value is T {
+  return (
+    typeof value === "string" && (values as readonly string[]).includes(value)
+  );
+}
 
 /** The three fields as the attached adapter has reported them so far. */
 interface MutableLifecycleReport {
@@ -148,9 +162,9 @@ function copyHostInfo(info: HostInfoInput): HostInfo {
     );
   }
   const os: unknown = info.os;
-  if (!HOST_OS_VALUES.includes(os as string)) {
+  if (!isOneOf(HOST_OS_VALUES, os)) {
     throw new Error(
-      `Host.attach: info.os must be one of macos, windows, linux, ios, android, unknown, got ${JSON.stringify(os)}.`,
+      `Host.attach: info.os must be one of ${HOST_OS_VALUES.join(", ")}, got ${JSON.stringify(os)}.`,
     );
   }
   const versions: Record<VersionField, string | undefined> = {
@@ -168,7 +182,7 @@ function copyHostInfo(info: HostInfoInput): HostInfo {
     }
     versions[field] = value;
   }
-  return Object.freeze({ runtime, os: os as HostOS, ...versions });
+  return Object.freeze({ runtime, os, ...versions });
 }
 
 /**
@@ -187,17 +201,40 @@ function readLifecycleReport(
   }
   const source = value as Record<string, unknown>;
   const read: MutableLifecycleReport = {};
-  for (const field of LIFECYCLE_FIELDS) {
-    const reported: unknown = source[field.key];
-    if (reported === undefined) continue;
-    if (!field.values.includes(reported as string)) {
-      throw new Error(
-        `${prefix}.${field.key} must be one of ${field.values.join(", ")}, got ${JSON.stringify(reported)}.`,
-      );
-    }
-    read[field.key] = reported as never;
-  }
+  const activity = readLifecycleField(
+    source,
+    "activity",
+    HOST_ACTIVITY_VALUES,
+    prefix,
+  );
+  if (activity !== undefined) read.activity = activity;
+  const visibility = readLifecycleField(
+    source,
+    "visibility",
+    HOST_VISIBILITY_VALUES,
+    prefix,
+  );
+  if (visibility !== undefined) read.visibility = visibility;
+  const focus = readLifecycleField(source, "focus", HOST_FOCUS_VALUES, prefix);
+  if (focus !== undefined) read.focus = focus;
   return read;
+}
+
+/** One reported lifecycle field, checked against the values it may take. */
+function readLifecycleField<T extends string>(
+  source: Record<string, unknown>,
+  key: string,
+  values: readonly T[],
+  prefix: string,
+): T | undefined {
+  const reported: unknown = source[key];
+  if (reported === undefined) return undefined;
+  if (!isOneOf(values, reported)) {
+    throw new Error(
+      `${prefix}.${key} must be one of ${values.join(", ")}, got ${JSON.stringify(reported)}.`,
+    );
+  }
+  return reported;
 }
 
 /**
@@ -220,7 +257,7 @@ export class Host {
   private pageVisibility: HostVisibility = "unknown";
   private pageFocus: HostFocus = "unknown";
 
-  private wiring:
+  private engineLink:
     | {
         readonly events: EventBus<EngineEvents>;
         readonly syncScenes: () => void;
@@ -316,16 +353,16 @@ export class Host {
   }
 
   /**
-   * Wire the engine's event bus and scene pause, and start reading the page.
+   * Connect the engine's event bus and scene pause, and start reading the page.
    * `EventBus` has no `EngineContext` of its own, so `Engine` calls this once
    * after both are constructed.
    * @internal
    */
-  _connect(wiring: {
+  _connect(link: {
     readonly events: EventBus<EngineEvents>;
     readonly syncScenes: () => void;
   }): void {
-    this.wiring = wiring;
+    this.engineLink = link;
     if (typeof document === "undefined") return;
 
     const onVisibilityChange = (): void => {
@@ -388,7 +425,7 @@ export class Host {
     this.domCleanup.length = 0;
     this.detachProvider();
     this.observers.length = 0;
-    this.wiring = undefined;
+    this.engineLink = undefined;
   }
 
   /** Drop the attached provider and fall back to the page for every field. */
@@ -404,9 +441,9 @@ export class Host {
   }
 
   /**
-   * Fold the page's and the adapter's values into one state, and dispatch the
-   * change when there is one. A throwing step ends the sequence with the new
-   * state already stored, so the consumers that read it come back in line on
+   * Combine the page's and the adapter's values into one state, and dispatch
+   * the change when there is one. A throwing step ends the sequence with the
+   * new state already stored, so the consumers that read it match it again at
    * the next change.
    */
   private apply(): void {
@@ -439,11 +476,11 @@ export class Host {
     };
     for (const observer of [...this.observers]) observer(change);
     if (active !== wasActive) {
-      this.wiring?.syncScenes();
-      this.wiring?.events.emit("host:active", { active });
+      this.engineLink?.syncScenes();
+      this.engineLink?.events.emit("host:active", { active });
     }
     if (changed) {
-      this.wiring?.events.emit("host:lifecycle", {
+      this.engineLink?.events.emit("host:lifecycle", {
         lifecycle: change.lifecycle,
         previous,
       });

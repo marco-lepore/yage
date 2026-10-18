@@ -1,5 +1,13 @@
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import type { LightingSceneDiagnostics } from "@yagejs/lighting";
+import type { CaseName } from "../fixtures/src/baseline/cases.js";
+import type { CaseReading } from "../fixtures/src/baseline/probe.js";
+import type {
+  BaselineExtension,
+  BaselinePixel,
+  BaselineReading,
+} from "../fixtures/src/baseline/types.js";
 import { gotoFixture } from "./helpers.js";
 
 /** The cases the fixture mounts, in the order it mounts them. */
@@ -19,45 +27,7 @@ export const CASE_NAMES = [
   "display",
 ];
 
-export interface BaselineReading {
-  target: string;
-  profile: string;
-  bootId: string;
-  cases: string[];
-  settledCases: string[];
-  settled: boolean;
-  readings: Record<string, Record<string, unknown>>;
-  host: {
-    info: { runtime: string; os: string };
-    lifecycle: { activity: string; visibility: string; focus: string };
-    active: boolean;
-  };
-  errors: { callbackErrors: unknown[] };
-  graphicsContext: boolean[];
-  policy: { stringEvaluation: boolean };
-  userAgent: string;
-}
-
-export type BaselinePixel = [number, number, number, number];
-
-export interface BaselineExtension {
-  read(): BaselineReading;
-  fullscreen(
-    active: boolean,
-  ): Promise<
-    { outcome: "resolved" } | { outcome: "rejected"; message: string }
-  >;
-  pointFor(x: number, y: number): { x: number; y: number };
-  pixels(): Record<string, BaselinePixel>;
-  loseContext(): Promise<void>;
-}
-
-export interface LightingSceneDiagnostics {
-  scene: string;
-  renderer: string;
-  fallback: { reason: string; detail: string | null } | null;
-  bounce: { requested: string; drawn: string } | null;
-}
+export type { BaselineExtension, BaselinePixel, BaselineReading };
 
 export function readPixels(page: Page): Promise<Record<string, BaselinePixel>> {
   return page.evaluate(() =>
@@ -78,9 +48,18 @@ export function readLighting(page: Page): Promise<LightingSceneDiagnostics[]> {
 
 export async function openBaseline(page: Page, query = ""): Promise<void> {
   await gotoFixture(page, `/baseline.html${query}`);
-  await page.waitForFunction(
-    () => window.__yage__?.inspector?.getExtension("baseline") !== undefined,
-  );
+  // The page publishes its extension before the scene enters, so the wait
+  // runs until every case the page mounts has a reading of its own.
+  await page.waitForFunction(() => {
+    const reading = window.__yage__?.inspector
+      ?.getExtension<{
+        read(): { cases: string[]; readings: object };
+      }>("baseline")
+      ?.read();
+    if (reading === undefined) return false;
+    const readings = reading.readings as Record<string, unknown>;
+    return reading.cases.every((name) => readings[name] !== undefined);
+  });
 }
 
 export function read(page: Page): Promise<BaselineReading> {
@@ -108,8 +87,8 @@ export async function waitForSettled(
 /** The reading of one case, after it settled. */
 export async function readCase(
   page: Page,
-  name: string,
-): Promise<Record<string, unknown>> {
+  name: CaseName,
+): Promise<CaseReading> {
   await openBaseline(page, `?case=${name}`);
   await waitForSettled(page);
   const reading = await read(page);

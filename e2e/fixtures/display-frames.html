@@ -17,9 +17,17 @@
     <!--
       Two frames of the display fixture, neither with an `allow` attribute.
       The second names the same server through its other loopback name, which
-      makes it a different origin for the fullscreen permission policy.
+      makes it a different origin for the fullscreen permission policy. The
+      page reads the server's port from its own address, so the frames follow
+      whichever port the fixture server was given.
     -->
     <iframe id="same-origin" src="/display.html"></iframe>
-    <iframe id="cross-origin" src="http://localhost:5200/display.html"></iframe>
+    <iframe id="cross-origin"></iframe>
+    <script>
+      const other =
+        location.hostname === "localhost" ? "127.0.0.1" : "localhost";
+      document.getElementById("cross-origin").src =
+        `${location.protocol}//${other}:${location.port}/display.html`;
+    </script>
   </body>
 </html>

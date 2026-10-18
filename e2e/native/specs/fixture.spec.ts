@@ -63,12 +63,12 @@ async function readPage(page: Page): Promise<BaselineReading | null> {
     const host = window as unknown as {
       __yage__?: {
         inspector?: {
-          getExtension(name: string): { read(): unknown } | undefined;
+          getExtension(name: string): { read(): BaselineReading } | undefined;
         };
       };
     };
     const extension = host.__yage__?.inspector?.getExtension("baseline");
-    return (extension?.read() ?? null) as never;
+    return extension?.read() ?? null;
   });
 }
 
@@ -134,8 +134,8 @@ function watchPage(page: Page, report: BaselineRunReport): void {
   );
 }
 
-/** What the page read, folded into the report. */
-function foldReading(
+/** What the page read, added to the report. */
+function addReading(
   report: BaselineRunReport,
   step: string,
   reading: BaselineReading,
@@ -226,7 +226,7 @@ async function browserScenario(
     await waitForSettled(page, 60_000);
 
     const booted = (await readPage(page))!;
-    foldReading(report, "booted", booted);
+    addReading(report, "booted", booted);
     const failures = checkReadings(report, booted.readings);
     record(report, {
       name: "boot: no callback error",
@@ -262,7 +262,7 @@ async function browserScenario(
     await page.reload();
     await waitForSettled(page, 60_000);
     const relaunched = (await readPage(page))!;
-    foldReading(report, "after-relaunch", relaunched);
+    addReading(report, "after-relaunch", relaunched);
     recordRelaunch(report, relaunched.readings["saves"]);
 
     await page.screenshot({ path: await screenshotPath(report, "visual") });
@@ -383,7 +383,7 @@ async function electronScenario(
       detail: focused ? null : NO_FOCUS_REASON,
     });
     const booted = (await readPage(page))!;
-    foldReading(report, "booted", booted);
+    addReading(report, "booted", booted);
     const failures = checkReadings(report, booted.readings);
     record(report, {
       name: "boot: no callback error",
@@ -474,7 +474,7 @@ async function electronScenario(
     watchPage(page, report);
     await waitForSettled(page, 60_000);
     const relaunched = (await readPage(page))!;
-    foldReading(report, "after-relaunch", relaunched);
+    addReading(report, "after-relaunch", relaunched);
     recordRelaunch(report, relaunched.readings["saves"]);
     recordPageHealth(report);
     await recordQuit(report, app, page);
@@ -821,7 +821,7 @@ async function recordArchive(
     watchPage(page, report);
     await waitForSettled(page, 60_000);
     const reading = (await readPage(page))!;
-    foldReading(report, "archive", reading);
+    addReading(report, "archive", reading);
     const failures = checkReadings(report, reading.readings);
     record(report, {
       name: "archive: every case settles from inside the packed web directory",
@@ -1395,7 +1395,7 @@ async function inputStep(report: BaselineRunReport, page: Page): Promise<void> {
     .poll(async () => reached((await readPage(page))!.readings["input"]!))
     .toBe(true);
   const afterInput = (await readPage(page))!;
-  foldReading(report, "after-input", afterInput);
+  addReading(report, "after-input", afterInput);
   record(report, {
     name: "input: a key press and a click reached the action map",
     result: reached(afterInput.readings["input"]!) ? "passed" : "failed",
@@ -1438,7 +1438,7 @@ async function restoreStep(
     }
   }
   const reading = (await readPage(page))!;
-  foldReading(report, "after-context-restore", reading);
+  addReading(report, "after-context-restore", reading);
   record(report, {
     name: "graphics: a lost and restored context draws every case as before",
     result: changed.length === 0 ? "passed" : "failed",
@@ -1485,7 +1485,7 @@ async function afterReturn(
     )
     .toBe(true);
   const reading = (await readPage(page))!;
-  foldReading(report, "after-return", reading);
+  addReading(report, "after-return", reading);
   const lifecycle = reading.readings["lifecycle"]!;
   const changes = lifecycle["activeChanges"] as boolean[];
   record(report, {

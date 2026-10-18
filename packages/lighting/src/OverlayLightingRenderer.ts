@@ -137,6 +137,7 @@ export class OverlayLightingRenderer implements LightingRenderer {
     this.ambient = new AmbientFill("lighting-ambient");
     this.source.addChild(this.ambient.graphics);
     this.composite = new LightingComposite(context.renderer, {
+      world: context.world,
       source: this.source,
       parent: layer.container,
       width,

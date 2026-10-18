@@ -367,9 +367,10 @@ Three rules make a toggle behave the way a player expects:
   must be called from a user-gesture handler (click, touch, key), or the
   promise rejects with a `TypeError`.
 - The four members above, and the four orientation members below, are readable
-  between `engine.start()` and `engine.destroy()`. Outside that span each one
-  reports that the display is unavailable, because which application supplies
-  the state is settled when the engine starts.
+  from the renderer's `onStart` to `engine.destroy()`, because which
+  application supplies the state is settled as the engine starts. Outside that
+  span each one reports that the display is unavailable, and a plugin that
+  reads one in its own `onStart` is registered after `RendererPlugin`.
 
 ## Orientation
 

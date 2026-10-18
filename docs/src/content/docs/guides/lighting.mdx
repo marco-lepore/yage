@@ -513,7 +513,9 @@ different:
 
 `"max"` needs a graphics context with min/max blending. Where
 `renderer.capabilities.blendMinMax` reads `"unsupported"`, the scene is drawn
-with `"mix"` instead and the lighting diagnostics report both blends.
+with `"mix"` instead, a development build warns once naming the scene, and the
+lighting diagnostics report both blends. After a lost context is replaced, the
+scene follows what the new context can blend.
 
 ```typescript
 import { Scene } from "@yagejs/core";
@@ -678,10 +680,12 @@ the query applies, or the drawn light and the queried light disagree.
 The `bounce` the factory receives is what this scene resolved to: its own
 setting, or the plugin's, or `null`. Hand it to `LightingComposite`, the step
 `overlayLighting()` and `shaderLighting()` finish with, to give a custom renderer
-the same multiply composite and bounced light. The composite also draws a
-requested `"max"` blend as `"mix"` where the context has no min/max blending,
-and keeps its buffers at the display's pixel ratio. `surfaceLighting()` does
-not use this composite:
+the same multiply composite and bounced light. Pass the `world` as well: it is
+where the lighting diagnostics read the blend the composite drew. The
+composite also draws a requested `"max"` blend as `"mix"` where the context
+has no min/max blending, reads that again on a context that replaces a lost
+one, and keeps its buffers at the display's pixel ratio. `surfaceLighting()`
+does not use this composite:
 
 ```typescript
 import { Container } from "pixi.js";
@@ -689,7 +693,12 @@ import { LightingComposite } from "@yagejs/lighting";
 import type { LightingRendererFactory } from "@yagejs/lighting";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 
-const customLighting: LightingRendererFactory = ({ scene, renderer, bounce }) => {
+const customLighting: LightingRendererFactory = ({
+  scene,
+  world,
+  renderer,
+  bounce,
+}) => {
   const lightContainer = new Container();
   const layer = scene
     .use(SceneRenderTreeKey)
@@ -698,6 +707,7 @@ const customLighting: LightingRendererFactory = ({ scene, renderer, bounce }) =>
   // renderer.capabilities says which graphics API drew the scene and what it
   // can do, for a factory that builds one of two renderers.
   const composite = new LightingComposite(renderer, {
+    world, // reports the drawn bounce blend to the diagnostics
     source: lightContainer, // the container this renderer draws into
     parent: layer.container, // a screen-space render layer
     width: renderer.virtualSize.width,

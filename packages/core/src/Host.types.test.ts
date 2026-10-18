@@ -6,12 +6,11 @@ import type {
   HostInfoInput,
   HostLifecycleReport,
   HostOS,
-  HostPermission,
   HostSupport,
   HostVisibility,
 } from "./Host.js";
 
-// Type-level coverage for the status vocabulary: the two status unions are
+// Type-level coverage for the status vocabulary: the support union is
 // closed, the operating system union carries `"unknown"`, and `runtime` stays
 // open so an adapter outside this repository can name itself. The assertions
 // compile; `assertTypes` is never called, and the runtime test below only
@@ -20,9 +19,6 @@ import type {
 function assertTypes(): void {
   expectTypeOf<HostSupport>().toEqualTypeOf<
     "supported" | "unsupported" | "unknown"
-  >();
-  expectTypeOf<HostPermission>().toEqualTypeOf<
-    "granted" | "denied" | "prompt" | "unknown"
   >();
   expectTypeOf<HostOS>().toEqualTypeOf<
     "macos" | "windows" | "linux" | "ios" | "android" | "unknown"

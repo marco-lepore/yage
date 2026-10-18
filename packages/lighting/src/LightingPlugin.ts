@@ -1,5 +1,6 @@
 import {
   ErrorBoundaryKey,
+  EventBusKey,
   InspectorKey,
   SceneHookRegistryKey,
 } from "@yagejs/core";
@@ -28,6 +29,7 @@ export class LightingPlugin implements Plugin {
   private readonly config: LightingConfig;
   private manager: LightingWorldManager | undefined;
   private unregisterHooks: (() => void) | null = null;
+  private stopWatchingContext: (() => void) | null = null;
   private context: EngineContext | null = null;
   private inspector: { removeExtension(namespace: string): void } | null = null;
 
@@ -59,6 +61,13 @@ export class LightingPlugin implements Plugin {
     this.manager = manager;
     context.register(LightingWorldManagerKey, manager);
 
+    // A replacement graphics context can blend differently from the one a
+    // scene's bounce was built for, so every live composite reads it again.
+    const events = context.resolve(EventBusKey);
+    this.stopWatchingContext = events.on("graphics:context", ({ lost }) => {
+      if (!lost) manager._followGraphicsContext();
+    });
+
     const hooks = context.resolve(SceneHookRegistryKey);
     this.unregisterHooks = hooks.register({
       beforeEnter: (scene) => {
@@ -78,9 +87,9 @@ export class LightingPlugin implements Plugin {
   onStart(): void {
     // In onStart rather than install: the Inspector is installed by a plugin,
     // and every install has run by now whatever order they were registered in.
-    const inspector = this.context?.tryResolve(InspectorKey);
-    const manager = this.manager;
-    if (!inspector || !manager) return;
+    const inspector = this.context!.tryResolve(InspectorKey);
+    if (!inspector) return;
+    const manager = this.manager!;
     const diagnostics: LightingDiagnostics = {
       scenes: () => manager._describe(),
     };
@@ -89,6 +98,8 @@ export class LightingPlugin implements Plugin {
   }
 
   onDestroy(): void {
+    this.stopWatchingContext?.();
+    this.stopWatchingContext = null;
     this.inspector?.removeExtension("lighting");
     this.inspector = null;
     this.context = null;

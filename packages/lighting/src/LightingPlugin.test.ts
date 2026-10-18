@@ -1,5 +1,6 @@
 import {
   createMockScene,
+  EventBusKey,
   InspectorKey,
   Phase,
   SceneHookRegistry,
@@ -66,6 +67,30 @@ describe("LightingPlugin", () => {
       context.resolve(LightingWorldManagerKey).getWorld(scene),
     ).toBeUndefined();
     plugin.onDestroy();
+  });
+
+  it("reads the bounce blend again once a lost graphics context is back", () => {
+    const { context } = createMockScene();
+    context.register(SceneHookRegistryKey, new SceneHookRegistry());
+    context.register(RendererKey, {} as RendererPlugin);
+    const plugin = new LightingPlugin({
+      renderers: { none: null },
+      defaultRenderer: "none",
+    });
+
+    plugin.install(context);
+    const manager = context.resolve(LightingWorldManagerKey);
+    const follow = vi.spyOn(manager, "_followGraphicsContext");
+    const events = context.resolve(EventBusKey);
+
+    events.emit("graphics:context", { lost: true });
+    expect(follow).not.toHaveBeenCalled();
+    events.emit("graphics:context", { lost: false });
+    expect(follow).toHaveBeenCalledTimes(1);
+
+    plugin.onDestroy();
+    events.emit("graphics:context", { lost: false });
+    expect(follow).toHaveBeenCalledTimes(1);
   });
 
   it("creates and destroys one custom renderer per scene", async () => {

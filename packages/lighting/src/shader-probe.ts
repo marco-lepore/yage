@@ -2,10 +2,17 @@ import type { GraphicsCapabilities, RendererPlugin } from "@yagejs/renderer";
 import type { WebGLRenderer } from "pixi.js";
 import { lightProgramSources } from "./light-shader.js";
 
-/** Whether a driver built the light program, and what it said when it did not. */
+/**
+ * What a driver said about the light program: it linked, it rejected the
+ * program with a log, or the context went away while the program was built
+ * and said nothing about the driver.
+ */
 export type LightShaderVerdict =
-  | { readonly linked: true }
-  | { readonly linked: false; readonly log: string | null };
+  | { readonly outcome: "linked" }
+  | { readonly outcome: "rejected"; readonly log: string | null }
+  | { readonly outcome: "context-lost" };
+
+const CONTEXT_LOST: LightShaderVerdict = { outcome: "context-lost" };
 
 /**
  * One verdict per graphics context. A restore brings a new capability
@@ -26,7 +33,12 @@ export function lightShaderVerdict(
   const cached = verdicts.get(capabilities);
   if (cached) return cached;
   const gl = (renderer.application.renderer as WebGLRenderer).gl;
+  // A context is marked lost as soon as it goes, and the page is told from a
+  // later task. In between it builds nothing, so what it answers says nothing
+  // about the driver and is neither reported nor kept.
+  if (gl.isContextLost()) return CONTEXT_LOST;
   const verdict = linkLightProgram(gl);
+  if (verdict.outcome === "context-lost") return verdict;
   verdicts.set(capabilities, verdict);
   return verdict;
 }
@@ -43,9 +55,10 @@ function linkLightProgram(gl: WebGL2RenderingContext): LightShaderVerdict {
   const program = gl.createProgram();
   try {
     if (vertex === null || fragment === null || program === null) {
+      if (gl.isContextLost()) return CONTEXT_LOST;
       // A context that builds nothing at all is a context that cannot draw
       // this renderer either.
-      return { linked: false, log: null };
+      return { outcome: "rejected", log: null };
     }
     gl.shaderSource(vertex, sources.vertex);
     gl.compileShader(vertex);
@@ -55,10 +68,13 @@ function linkLightProgram(gl: WebGL2RenderingContext): LightShaderVerdict {
     gl.attachShader(program, fragment);
     gl.linkProgram(program);
     if (gl.getProgramParameter(program, gl.LINK_STATUS) === true) {
-      return { linked: true };
+      return { outcome: "linked" };
     }
+    // A link that fails because the context went away during it reports the
+    // same empty result as a driver that refused the program.
+    if (gl.isContextLost()) return CONTEXT_LOST;
     return {
-      linked: false,
+      outcome: "rejected",
       log: firstLog([
         gl.getProgramInfoLog(program),
         gl.getShaderInfoLog(fragment),

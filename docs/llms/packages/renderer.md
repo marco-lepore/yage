@@ -137,7 +137,7 @@ Under a content security policy without `'unsafe-eval'`, PixiJS on WebGPU writes
 | `"webgpu"`                           | `["webgpu", "webgl"]`  |
 | an array of `"webgl"` and `"webgpu"` | the array as given     |
 
-Anything else makes the constructor throw `RendererPlugin: pixi.preference must name "webgl" or "webgpu"; YAGE does not draw with Pixi's Canvas 2D renderer. Got <value>.` On a browser that offers neither, `engine.start()` rejects with Pixi's own `No available renderer for the current environment`, and the game shows whatever error page it has.
+The config type admits those two names only, so `"canvas"` fails to compile; anything else that reaches the constructor at run time makes it throw `RendererPlugin: pixi.preference must name "webgl" or "webgpu"; YAGE does not draw with Pixi's Canvas 2D renderer. Got <value>.` On a browser that offers neither, `engine.start()` rejects with Pixi's own `No available renderer for the current environment`, and the game shows whatever error page it has.
 
 ### Lost graphics context
 
@@ -313,7 +313,7 @@ Rules that hold whichever host supplies the state:
 - A request made while a request is pending shares that request's promise. One made while an exit is pending runs after the exit settles, and the reverse — the last call wins, which is what a player clicking a toggle twice expects.
 - `requestFullscreen()` rejects with `RendererPlugin.requestFullscreen: this host cannot change to fullscreen (fullscreenSupport is "unsupported").` where the support says so, and with the host's own error when the host refuses (no user gesture, a denied permission). `lockOrientation()` rejects the same way through `RendererPlugin.lockOrientation: this host cannot lock the screen orientation (orientationLockSupport is "unsupported").`
 - No order is promised between `screen:orientation` and the canvas taking its new size. Layout code reads the fit getters each frame.
-- The eight members are available between `engine.start()` and `engine.destroy()`. Outside that span each one fails with `RendererPlugin.<member>: the display is only available between engine.start() and engine.destroy().`
+- The eight members are available from the renderer's `onStart` to `engine.destroy()`. A plugin that reads one in its own `onStart` is registered after `RendererPlugin`. Outside that span each one fails with `RendererPlugin.<member>: the display is only available from the renderer's onStart to engine.destroy(). A plugin that reads it in its own onStart must be registered after RendererPlugin.`
 
 Emits on the engine `EventBus`:
 

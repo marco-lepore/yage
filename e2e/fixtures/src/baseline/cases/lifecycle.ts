@@ -15,6 +15,7 @@ export interface LifecycleReading extends CaseReading {
   active: boolean;
   activeChanges: boolean[];
   pausedNow: boolean;
+  /** Wall-clock milliseconds from the resume to the update that followed it. */
   firstFrameAfterResumeMs: number | null;
 }
 
@@ -26,21 +27,24 @@ export class LifecycleProbe extends CaseProbe {
   private readonly host = this.service(HostKey);
   private readonly activeChanges: boolean[] = [];
   private firstFrameAfterResumeMs: number | null = null;
-  private awaitingFrame = false;
+  /** When the host last reported the game active, or `null` once measured. */
+  private resumedAt: number | null = null;
 
   onAdd(): void {
     this.use(SceneManagerKey).autoPause = true;
     this.listenBus("host:active", ({ active }) => {
       this.activeChanges.push(active);
-      if (active) this.awaitingFrame = true;
+      // The frame's own `dt` is capped at 100 ms, so how long the game stood
+      // still is only visible in wall-clock time.
+      if (active) this.resumedAt = performance.now();
     });
   }
 
-  update(dt: number): void {
-    if (this.awaitingFrame) {
-      this.awaitingFrame = false;
-      this.firstFrameAfterResumeMs = dt * 1000;
-    }
+  update(): void {
+    const resumedAt = this.resumedAt;
+    if (resumedAt === null) return;
+    this.resumedAt = null;
+    this.firstFrameAfterResumeMs = performance.now() - resumedAt;
   }
 
   get settled(): boolean {

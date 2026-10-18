@@ -163,6 +163,7 @@ export class ShaderLightingRenderer implements LightingRenderer {
     this.ambient = new AmbientFill("lighting-ambient");
     this.source.addChild(this.ambient.graphics, this.lights);
     this.composite = new LightingComposite(context.renderer, {
+      world: context.world,
       source: this.source,
       parent: layer.container,
       width,
@@ -441,7 +442,7 @@ function shaderUnavailable(renderer: RendererPlugin): {
   // replaces it.
   if (backend !== "webgl2" || renderer.contextLost) return null;
   const verdict = lightShaderVerdict(renderer);
-  if (verdict.linked) return null;
+  if (verdict.outcome !== "rejected") return null;
   return { reason: "shader-rejected", detail: verdict.log };
 }
 

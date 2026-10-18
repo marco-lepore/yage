@@ -1026,8 +1026,9 @@ describe("RendererPlugin", () => {
 
     function unavailableMessage(member: string): string {
       return (
-        `RendererPlugin.${member}: the display is only available between ` +
-        "engine.start() and engine.destroy()."
+        `RendererPlugin.${member}: the display is only available from the ` +
+        "renderer's onStart to engine.destroy(). A plugin that reads it in " +
+        "its own onStart must be registered after RendererPlugin."
       );
     }
 

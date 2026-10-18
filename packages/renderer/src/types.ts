@@ -62,8 +62,14 @@ export interface RendererConfig {
    * zoom.
    */
   resolution?: number;
-  /** Additional PixiJS Application options. */
-  pixi?: Partial<ApplicationOptions>;
+  /**
+   * Additional PixiJS Application options. `preference` names the graphics
+   * API tried first, or the list tried in order: the renderer draws with
+   * WebGL or WebGPU, and Pixi's Canvas 2D renderer is not one of them.
+   */
+  pixi?: Omit<Partial<ApplicationOptions>, "preference"> & {
+    preference?: "webgl" | "webgpu" | readonly ("webgl" | "webgpu")[];
+  };
   /**
    * Responsive fit. Defaults to `{ mode: "letterbox" }` against the resolved
    * target (see {@link RendererFitOptions.target}), so the canvas is

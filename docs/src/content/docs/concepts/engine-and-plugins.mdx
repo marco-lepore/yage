@@ -294,7 +294,7 @@ The host also reports what the application is doing. Three states, each
 | `visibility` | Whether the player can see the game's page                                           |
 | `focus`      | Whether the game's window has keyboard focus                                         |
 
-`engine.host.active` folds them into the one answer the engine follows: it is
+`engine.host.active` combines them into the one answer the engine follows: it is
 `false` while the app is inactive, the page is hidden, or the window is
 unfocused. `"unknown"` never makes the host inactive. Scenes follow it through
 `scenes.autoPause`, audio through `audio.autoPause`, and input releases held
@@ -309,8 +309,9 @@ engine.host.activeWhenUnfocused = true; // keep running behind another window
 `activeWhenUnfocused` defaults to `false`, so clicking away from the window
 counts as going to the background. It is the only setting, which is what keeps
 scenes and audio from disagreeing about what "in the background" means. One
-consequence: a game in a frame nobody has clicked yet starts unfocused, so its
-audio is held until the player clicks it.
+consequence: a game in a page frame starts unfocused until the player clicks
+it, so with `scenes.autoPause` on it holds there, audio included; set
+`engine.host.activeWhenUnfocused = true` to keep it running.
 
 Two events carry the state to game code. `host:active` fires when
 `engine.host.active` flips; `host:lifecycle` fires on every change of the three
@@ -439,18 +440,14 @@ without Pixi, so an adapter package can import it without loading the
 renderer's drawing code. The renderer resolves the key when the engine starts,
 after every `install` has run.
 
-### Support and permission
+### Support
 
-Two sets of words describe what a host lets a game do, and every operation that
-needs them uses these:
+One set of words describes what a host can do, and every operation that needs
+them uses these: `HostSupport` is `"supported"`, `"unsupported"` or
+`"unknown"`, and answers whether the host has the operation at all.
 
-- `HostSupport` is `"supported"`, `"unsupported"` or `"unknown"`, and answers
-  whether the host has the operation at all.
-- `HostPermission` is `"granted"`, `"denied"`, `"prompt"` or `"unknown"`, and
-  answers whether the player or the operating system allows it.
-
-Reading either one never shows a permission prompt. `"unknown"` is what a host
-reports when it cannot observe the state, so a game is never given a guess.
-Whether an operation works at this moment — the hardware is present, a stream
-starts — comes back from the operation itself, not from a stored status. The
-package that owns an operation reports its support and permission beside it.
+Reading it never shows a permission prompt. `"unknown"` is what a host reports
+when it cannot observe the state, so a game is never given a guess. Whether an
+operation works at this moment — the hardware is present, a stream starts —
+comes back from the operation itself, not from a stored status. The package
+that owns an operation reports its support beside it.

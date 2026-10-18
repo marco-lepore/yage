@@ -62,6 +62,7 @@ function fakeGl(options: HarnessOptions): Record<string, unknown> {
     VERTEX_SHADER: 0x8b31,
     FRAGMENT_SHADER: 0x8b30,
     LINK_STATUS: 0x8b82,
+    isContextLost: () => false,
     createShader: () => {
       live.shaders++;
       return {};

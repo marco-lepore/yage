@@ -10,32 +10,10 @@ import {
 } from "./report.js";
 import type { BaselineRunReport, ReportCheck, ReportTarget } from "./report.js";
 import type { BaselineProfile } from "./build.js";
+import type { CaseReading } from "../../fixtures/src/baseline/probe.js";
+import type { BaselineReading } from "../../fixtures/src/baseline/types.js";
 
-/** What one case of the fixture reported. */
-export type CaseReading = Record<string, unknown>;
-
-/** What the fixture's test profile reports about itself. */
-export interface BaselineReading {
-  target: string;
-  profile: string;
-  bootId: string;
-  cases: string[];
-  settledCases: string[];
-  settled: boolean;
-  readings: Record<string, CaseReading>;
-  host: {
-    info: { runtime: string; os: string };
-    lifecycle: { activity: string; visibility: string; focus: string };
-    active: boolean;
-    activeWhenUnfocused: boolean;
-  };
-  errors: { callbackErrors: unknown[] };
-  /** Every `graphics:context` payload the page has seen, oldest first. */
-  graphicsContext: boolean[];
-  /** What the page's content security policy allows. */
-  policy: { stringEvaluation: boolean };
-  userAgent: string;
-}
+export type { CaseReading, BaselineReading };
 
 /** Where a run's screenshots land. */
 export const screenshotsDir = resolve(workDir, "screenshots");

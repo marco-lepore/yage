@@ -3,13 +3,16 @@ import { rename } from "node:fs/promises";
 import { resolve } from "node:path";
 import { build } from "vite";
 import { fixtureBuildConfig } from "../../fixtures/vite.config.js";
+import type {
+  BaselineProfile,
+  BaselineTarget,
+} from "../../fixtures/src/baseline/types.js";
 import { repoRoot, workDir } from "./paths.js";
 
-/** Which entry's page is built. */
-export type BaselineTarget = "web" | "electron" | "capacitor";
-
-/** Which build of the fixture is produced. */
-export type BaselineProfile = "test" | "release";
+export type {
+  BaselineProfile,
+  BaselineTarget,
+} from "../../fixtures/src/baseline/types.js";
 
 /** The page each target's entry is reached through. */
 const PAGES: Record<BaselineTarget, string> = {

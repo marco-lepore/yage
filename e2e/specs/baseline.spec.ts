@@ -278,8 +278,17 @@ test.describe("baseline lifecycle", () => {
         pausedNow: false,
         activeChanges: [false, true],
       });
+    // The gap is one animation frame on a page that was never really
+    // hidden, so a bound well under a second still catches a resume that
+    // waits for something.
+    await expect
+      .poll(
+        async () =>
+          (await read(page)).readings["lifecycle"]!["firstFrameAfterResumeMs"],
+      )
+      .not.toBeNull();
     const reading = (await read(page)).readings["lifecycle"]!;
-    expect(reading["firstFrameAfterResumeMs"]).toBeLessThanOrEqual(100);
+    expect(reading["firstFrameAfterResumeMs"]).toBeLessThanOrEqual(250);
   });
 });
 

@@ -56,7 +56,6 @@ export type {
   HostOS,
   HostProvider,
   HostSupport,
-  HostPermission,
   HostActivity,
   HostVisibility,
   HostFocus,

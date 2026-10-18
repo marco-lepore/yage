@@ -13,12 +13,7 @@ import type { OrientationLock } from "@yagejs/renderer";
 import { UIPlugin } from "@yagejs/ui";
 import { BaselineScene, CASE_NAMES, selectCases } from "./cases.js";
 import type { installTestProfile, testProfilePlugins } from "./test-profile.js";
-
-/** Which entry built the page. Recorded in every reading; never branched on. */
-export type BaselineTarget = "web" | "electron" | "capacitor";
-
-/** Which build of the fixture is running. */
-export type BaselineProfile = "test" | "release";
+import type { BaselineProfile, BaselineTarget } from "./types.js";
 
 /** What one target's entry hands to {@link bootBaseline}. */
 export interface BaselineBootOptions {
@@ -180,6 +175,14 @@ export async function bootBaseline(
 
   await engine.start();
   const scene = new BaselineScene(cases);
+  // The extension is published before the scene enters, so a case that
+  // throws in its setup still leaves a driver a reading to pull.
+  const startReporting = testProfile?.installTestProfile(
+    engine,
+    scene,
+    options.target,
+    lock,
+  );
   await engine.scenes.push(scene);
-  testProfile?.installTestProfile(engine, scene, options.target, lock);
+  startReporting?.();
 }

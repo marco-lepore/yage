@@ -10,13 +10,19 @@ interface GlOptions {
   readonly programLog?: string | null;
   readonly fragmentLog?: string | null;
   readonly vertexLog?: string | null;
+  /** The context is already lost when the probe reads it. */
+  readonly contextLost?: boolean;
+  /** The context goes away while the program is being built. */
+  readonly losesContext?: boolean;
 }
 
 /** A renderer whose context answers a link test the way `options` says. */
 function fakeRenderer(options: GlOptions = {}): RendererPlugin {
   const deleted = { shaders: 0, programs: 0 };
+  let lost = options.contextLost === true;
   const gl = {
     deleted,
+    isContextLost: () => lost,
     VERTEX_SHADER: 0x8b31,
     FRAGMENT_SHADER: 0x8b30,
     LINK_STATUS: 0x8b82,
@@ -25,7 +31,9 @@ function fakeRenderer(options: GlOptions = {}): RendererPlugin {
     shaderSource: () => {},
     compileShader: () => {},
     attachShader: () => {},
-    linkProgram: () => {},
+    linkProgram: () => {
+      if (options.losesContext === true) lost = true;
+    },
     getProgramParameter: () => options.links !== false,
     getProgramInfoLog: () => options.programLog ?? "",
     getShaderInfoLog: (shader: unknown) =>
@@ -61,7 +69,7 @@ describe("lightShaderVerdict", () => {
   it("reports a program the driver built, and leaves nothing behind", () => {
     const renderer = fakeRenderer();
 
-    expect(lightShaderVerdict(renderer)).toEqual({ linked: true });
+    expect(lightShaderVerdict(renderer)).toEqual({ outcome: "linked" });
     expect(deletions(renderer)).toEqual({ shaders: 2, programs: 1 });
   });
 
@@ -79,7 +87,7 @@ describe("lightShaderVerdict", () => {
       lightShaderVerdict(
         fakeRenderer({ links: false, programLog: "  too many varyings  " }),
       ),
-    ).toEqual({ linked: false, log: "too many varyings" });
+    ).toEqual({ outcome: "rejected", log: "too many varyings" });
   });
 
   it("falls back to a shader's log where the program has none", () => {
@@ -91,7 +99,7 @@ describe("lightShaderVerdict", () => {
           fragmentLog: "no 300 es",
         }),
       ),
-    ).toEqual({ linked: false, log: "no 300 es" });
+    ).toEqual({ outcome: "rejected", log: "no 300 es" });
   });
 
   it("reports a refusal the driver said nothing about", () => {
@@ -99,13 +107,38 @@ describe("lightShaderVerdict", () => {
       lightShaderVerdict(
         fakeRenderer({ links: false, programLog: null, fragmentLog: null }),
       ),
-    ).toEqual({ linked: false, log: null });
+    ).toEqual({ outcome: "rejected", log: null });
   });
 
   it("takes a context that builds nothing for one that cannot draw the shader", () => {
     const renderer = fakeRenderer({ buildsNothing: true });
 
-    expect(lightShaderVerdict(renderer)).toEqual({ linked: false, log: null });
+    expect(lightShaderVerdict(renderer)).toEqual({
+      outcome: "rejected",
+      log: null,
+    });
+    expect(deletions(renderer)).toEqual({ shaders: 0, programs: 0 });
+  });
+
+  it("builds nothing on a context that is already lost", () => {
+    const renderer = fakeRenderer({ contextLost: true });
+
+    expect(lightShaderVerdict(renderer)).toEqual({ outcome: "context-lost" });
+    expect(deletions(renderer)).toEqual({ shaders: 0, programs: 0 });
+  });
+
+  it("reports a context lost during the link rather than a refusal", () => {
+    const renderer = fakeRenderer({ losesContext: true, links: false });
+
+    expect(lightShaderVerdict(renderer)).toEqual({ outcome: "context-lost" });
+  });
+
+  it("keeps no verdict taken from a lost context", () => {
+    const renderer = fakeRenderer({ contextLost: true });
+
+    lightShaderVerdict(renderer);
+    lightShaderVerdict(renderer);
+
     expect(deletions(renderer)).toEqual({ shaders: 0, programs: 0 });
   });
 });

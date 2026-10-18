@@ -4,19 +4,19 @@ import {
   InspectorPlugin,
   createStore,
 } from "@yagejs/core";
-import type {
-  CallbackErrorRecord,
-  Engine,
-  HostSnapshot,
-  Plugin,
-} from "@yagejs/core";
+import type { Engine, Plugin } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
 import type { OrientationLock } from "@yagejs/renderer";
 import { SaveServiceKey } from "@yagejs/save";
 import type { BaselineScene, CaseName } from "./cases.js";
 import type { CaseReading } from "./probe.js";
 import { launchSearch } from "./boot.js";
-import type { BaselineTarget } from "./boot.js";
+import type {
+  BaselineExtension,
+  BaselinePixel,
+  BaselineReading,
+  BaselineTarget,
+} from "./types.js";
 
 /** The prefix every reported line carries. */
 export const BASELINE_REPORT_PREFIX = "[yage-baseline]";
@@ -27,27 +27,6 @@ export const BASELINE_REPORT_PREFIX = "[yage-baseline]";
  * reader parsing half a line.
  */
 const MAX_LINE_LENGTH = 4000;
-
-/** Everything the page reports about itself, in one object. */
-export interface BaselineReading {
-  target: BaselineTarget;
-  profile: "test";
-  /** Random per page load; a change means the page restarted. */
-  bootId: string;
-  cases: CaseName[];
-  /** The cases that have reached their own settled state. */
-  settledCases: CaseName[];
-  /** Whether every mounted case has settled. */
-  settled: boolean;
-  readings: Partial<Record<CaseName, CaseReading>>;
-  host: HostSnapshot;
-  errors: { callbackErrors: CallbackErrorRecord[] };
-  /** Every `graphics:context` payload the page has seen, oldest first. */
-  graphicsContext: boolean[];
-  /** What the page's content security policy allows. */
-  policy: { stringEvaluation: boolean };
-  userAgent: string;
-}
 
 /**
  * Named points of the drawing, in virtual pixels. A driver reads the colour
@@ -66,29 +45,6 @@ export const BASELINE_PIXEL_POINTS: Readonly<
   far: [40, 40],
 };
 
-/** One point's colour, as red, green, blue and alpha from 0 to 255. */
-export type BaselinePixel = [number, number, number, number];
-
-/** What a driver can ask the page for. */
-export interface BaselineExtension {
-  read(): BaselineReading;
-  /** Ask the renderer to enter or leave fullscreen, and report how it went. */
-  fullscreen(
-    active: boolean,
-  ): Promise<
-    { outcome: "resolved" } | { outcome: "rejected"; message: string }
-  >;
-  /** Viewport CSS position of a virtual point, for real input from a driver. */
-  pointFor(x: number, y: number): { x: number; y: number };
-  /** The colour drawn at each of {@link BASELINE_PIXEL_POINTS}. */
-  pixels(): Record<string, BaselinePixel>;
-  /**
-   * Take the graphics context away and wait for the page to get one back.
-   * Only a WebGL context can be taken away from the page itself.
-   */
-  loseContext(): Promise<void>;
-}
-
 /** The plugins only a test build installs. */
 export function testProfilePlugins(): Plugin[] {
   return [new InspectorPlugin()];
@@ -97,13 +53,18 @@ export function testProfilePlugins(): Plugin[] {
 /**
  * Publish the page's readings: an Inspector extension a driver calls, and one
  * console line per event for a host that offers nothing but its log.
+ *
+ * The extension is registered straight away, so a case whose setup throws
+ * while the scene enters still leaves a driver a reading to pull. Call the
+ * returned function once the scene is on the stack: the reporter it spawns
+ * is an entity of that scene.
  */
 export function installTestProfile(
   engine: Engine,
   scene: BaselineScene,
   target: BaselineTarget,
   lock?: OrientationLock,
-): void {
+): () => void {
   const inspector = engine.context.resolve(InspectorKey);
   const bootId = crypto.randomUUID();
   const stringEvaluation = allowsStringEvaluation();
@@ -219,11 +180,13 @@ export function installTestProfile(
   };
   inspector.addExtension("baseline", extension);
 
-  scene.spawn("baseline:reporter").add(new BaselineReporter(read, bootId));
-  if (new URLSearchParams(launchSearch()).get("writeLoop") === "1") {
-    void writeLoop(engine, bootId);
-  }
-  if (lock !== undefined) void reportOrientationLock(engine, bootId, lock);
+  return () => {
+    scene.spawn("baseline:reporter").add(new BaselineReporter(read, bootId));
+    if (new URLSearchParams(launchSearch()).get("writeLoop") === "1") {
+      void writeLoop(engine, bootId);
+    }
+    if (lock !== undefined) void reportOrientationLock(engine, bootId, lock);
+  };
 }
 
 /**

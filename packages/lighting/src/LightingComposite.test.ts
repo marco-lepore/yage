@@ -6,8 +6,10 @@ import type {
   RenderTargetOptions,
   RendererPlugin,
 } from "@yagejs/renderer";
+import { createMockScene } from "@yagejs/core";
 import { describe, expect, it, vi } from "vitest";
 import { LightingComposite, drawnBounceBlend } from "./LightingComposite.js";
+import { LightingWorld } from "./LightingWorld.js";
 import type { BounceLightOptions } from "./types.js";
 
 interface BlurOptions {
@@ -92,11 +94,25 @@ function createHarness(blendMinMax = "supported"): Harness {
   };
 }
 
+/** Hand the harness the capability snapshot of a replacement context. */
+function setCapabilities(harness: Harness, blendMinMax: string): void {
+  (harness.renderer as { capabilities: GraphicsCapabilities }).capabilities =
+    fakeCapabilities(blendMinMax);
+}
+
+/** A world the composite reports its drawn bounce blend to. */
+function createWorld(): LightingWorld {
+  const { scene } = createMockScene();
+  return new LightingWorld(scene, { level: 0 });
+}
+
 function createComposite(
   harness: Harness,
   bounce: BounceLightOptions | null = null,
+  world: LightingWorld = createWorld(),
 ): LightingComposite {
   return new LightingComposite(harness.renderer, {
+    world,
     source: harness.source,
     parent: harness.parent,
     width: 800,
@@ -236,6 +252,44 @@ describe("LightingComposite", () => {
     expect(
       blendOf({ strength: 0.4, radius: 18, blend: "mix" }, "unsupported"),
     ).toBe("normal");
+  });
+
+  it("follows the blend of the context that replaced a lost one", () => {
+    const harness = createHarness("unsupported");
+    const world = createWorld();
+    const composite = createComposite(
+      harness,
+      { strength: 0.4, radius: 18 },
+      world,
+    );
+    const [, blurred] = (harness.targets[1]?.source.children ?? []) as Sprite[];
+    const filter = (blurred?.filters as Filter[])[0] as Filter;
+    expect(
+      (filter as unknown as { options: BlurOptions }).options.blendMode,
+    ).toBe("normal");
+    expect(composite.bounceBlend).toBe("mix");
+    expect(world._bounceBlend).toBe("mix");
+
+    setCapabilities(harness, "supported");
+    world._followGraphicsContext();
+
+    expect(filter.blendMode).toBe("max");
+    expect(composite.bounceBlend).toBe("max");
+    expect(world._bounceBlend).toBe("max");
+  });
+
+  it("names the scene once where the bounce blend is substituted", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const harness = createHarness("unsupported");
+      const composite = createComposite(harness, { strength: 0.4, radius: 18 });
+      composite._followGraphicsContext();
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain('drawn as "mix"');
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("reports which blend a context draws", () => {

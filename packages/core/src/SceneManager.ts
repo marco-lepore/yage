@@ -117,7 +117,7 @@ export class SceneManager {
   }
 
   /**
-   * Bring the host pause in line with `Host.active` and `autoPause`, firing
+   * Match the host pause to `Host.active` and `autoPause`, firing
    * `onPause` or `onResume` for the scenes whose effective pause flips.
    * @internal
    */

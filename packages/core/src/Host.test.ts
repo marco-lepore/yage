@@ -667,7 +667,7 @@ describe("Host lifecycle", () => {
     ]);
   });
 
-  it("folds a report made from inside watchLifecycle into the attach", () => {
+  it("combines a report made from inside watchLifecycle with the attach", () => {
     stubPage();
     const host = new Host();
     const { log } = connect(host);

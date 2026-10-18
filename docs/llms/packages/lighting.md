@@ -225,8 +225,11 @@ class CaveScene extends Scene {
 
 `"max"` needs min/max blending. Where `renderer.capabilities.blendMinMax` is
 `"unsupported"` — a WebGL 1 context without `EXT_blend_minmax` — the scene is
-drawn with `"mix"` instead, and the lighting diagnostics report both the
-requested blend and the drawn one.
+drawn with `"mix"` instead, a development build warns once per scene, and the
+lighting diagnostics report both the requested blend and the drawn one. A
+context that replaces a lost one is read again, so a scene whose replacement
+blends differently is redrawn with what that context supports and the
+diagnostics follow it.
 
 `LightingConfig.bounce` is the default for scenes that set none:
 
@@ -545,13 +548,19 @@ import { LightingComposite } from "@yagejs/lighting";
 import type { LightingRendererFactory } from "@yagejs/lighting";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 
-const composited: LightingRendererFactory = ({ scene, renderer, bounce }) => {
+const composited: LightingRendererFactory = ({
+  scene,
+  world,
+  renderer,
+  bounce,
+}) => {
   const lightContainer = new Container();
   const layer = scene
     .use(SceneRenderTreeKey)
     .ensureLayer({ name: "lighting", order: 900, space: "screen" });
 
   const composite = new LightingComposite(renderer, {
+    world, // reports the drawn bounce blend to the diagnostics
     source: lightContainer, // what this renderer draws into
     parent: layer.container, // a screen-space layer
     width: renderer.virtualSize.width,
@@ -576,7 +585,9 @@ const composited: LightingRendererFactory = ({ scene, renderer, bounce }) => {
 ```
 
 `LightingComposite` also substitutes the bounce blend where the context has
-no min/max blending, and keeps its buffers at the display's pixel ratio. A
+no min/max blending, reads the blend again on a context that replaces a lost
+one, and keeps its buffers at the display's pixel ratio. The `world` it is
+given is where the lighting diagnostics read the drawn blend. A
 factory that decides what to build reads `context.renderer.capabilities`:
 `backend` says which graphics API drew the scene, and a feature's own field
 says whether the context has it.

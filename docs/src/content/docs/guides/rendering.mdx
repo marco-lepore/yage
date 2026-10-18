@@ -116,8 +116,9 @@ YAGE draws with WebGL or WebGPU. WebGL is asked for first; pass
 `pixi: { preference: "webgpu" }` to put WebGPU first, and an array to give the
 exact order. Pixi's Canvas 2D renderer is never asked for: it draws no light,
 skips every filter and ignores inverse masks, so a game that reached it would
-run half-drawn without saying so. Any other preference makes the plugin's
-constructor throw.
+run half-drawn without saying so. The option takes those two names only, so
+`"canvas"` fails to compile, and any other value that reaches the plugin's
+constructor at run time makes it throw.
 
 Under a content security policy without `'unsafe-eval'`, PixiJS on WebGPU
 writes integer uniforms as floats, so `motionBlur` from `@yagejs/effects`

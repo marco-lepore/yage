@@ -1108,7 +1108,7 @@ Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`) use `ErrorBou
 
 `GameLoop.tick()` is the one place that decides a failure is terminal: an error that escapes an entire frame unhandled stops the loop and rethrows so it reaches the host.
 
-One change of host state (`Host`) dispatches in a fixed order: it stores the new state, calls the internal observers that input and audio register, brings the scene pause in line, emits `host:active`, then emits `host:lifecycle`. A throw at any step ends the sequence there and reaches whoever caused the change — the DOM event dispatch, a host adapter's report, the `activeWhenUnfocused` setter, `attach`, or the function `attach` returned. The steps after it do not run, and nothing catches the error. The consumers read `host.active` rather than counting events, so the next change brings them back in line.
+One change of host state (`Host`) dispatches in a fixed order: it stores the new state, calls the internal observers that input and audio register, matches the scene pause to it, emits `host:active`, then emits `host:lifecycle`. A throw at any step ends the sequence there and reaches whoever caused the change — the DOM event dispatch, a host adapter's report, the `activeWhenUnfocused` setter, `attach`, or the function `attach` returned. The steps after it do not run, and nothing catches the error. The consumers read `host.active` rather than counting events, so the next change makes them match it again.
 
 Every new dispatch site needs the same wrap. Without it, the throw is attributed to whichever caller was on the stack when the error escaped, not to the callback that threw.
 

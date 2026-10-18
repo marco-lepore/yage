@@ -9,7 +9,7 @@ Zero runtime dependencies. ECS foundation, DI, game loop, scenes, events, proces
 | Export            | Purpose                                                                                |
 | ----------------- | -------------------------------------------------------------------------------------- |
 | `Engine`          | Entry point; plugin orchestration, game loop, scene manager                            |
-| `Host`            | Which application runs the game: runtime, operating system, app versions               |
+| `Host`            | Which application runs the game, and whether it is active, visible and focused         |
 | `EngineContext`   | DI container                                                                           |
 | `ServiceKey<T>`   | Typed DI key                                                                           |
 | `Scene`           | Abstract scene base class                                                              |
@@ -1425,7 +1425,6 @@ The host is the application that runs the game's page: a browser tab, or a nativ
 | `HostChange`          | `{ lifecycle; previous; active; wasActive }` — the payload engine packages receive                                                                                                                           |
 | `HostProvider`        | `{ info: HostInfoInput; lifecycle?: HostLifecycleReport; watchLifecycle?(report): () => void }` — what a host adapter hands to `attach`                                                                      |
 | `HostSupport`         | `"supported" \| "unsupported" \| "unknown"`                                                                                                                                                                  |
-| `HostPermission`      | `"granted" \| "denied" \| "prompt" \| "unknown"`                                                                                                                                                             |
 
 `Host` holds no display state: a host adapter supplies fullscreen and screen orientation by registering a `HostDisplay` from `@yagejs/renderer`, and `RendererPlugin` reports both.
 
@@ -1460,7 +1459,7 @@ const active =
   (host.activeWhenUnfocused || host.lifecycle.focus !== "unfocused");
 ```
 
-`"unknown"` never makes the host inactive. `host.activeWhenUnfocused` defaults to `false`, so a window the player clicked away from counts as inactive; set it to `true` for a game that should keep running behind another window. It is the one policy setting, so scenes and audio can never be given different definitions.
+`"unknown"` never makes the host inactive. `host.activeWhenUnfocused` defaults to `false`, so a window the player clicked away from counts as inactive; set it to `true` for a game that should keep running behind another window. A game in a page frame starts unfocused until the player clicks it, so with `scenes.autoPause` on it holds until then. It is the one policy setting, so scenes and audio can never be given different definitions.
 
 A page with no adapter reports `activity: "unknown"`, `visibility` from `document.visibilityState`, and `focus` from the window's `focus` and `blur` events, starting from `document.hasFocus()`. Without a `document` all three are `"unknown"` and the host is active. A game in a frame nobody has clicked yet therefore starts unfocused, which holds audio and, with `scenes.autoPause` on, the scenes too.
 
@@ -1513,17 +1512,13 @@ class ShellHostPlugin implements Plugin {
 }
 ```
 
-`HostSupport` and `HostPermission` are the words every operation uses for its own status. `HostSupport` answers whether the host has the operation at all; `HostPermission` answers whether the player or the operating system allows it. Reading either never shows a prompt. Whether an operation works at this moment — the hardware is present, a stream starts — is the result of the operation, not a stored state. The package that owns an operation reports its support and permission beside it; `Host` holds no capability registry.
+`HostSupport` is the word every operation uses for its own status: whether the host has the operation at all. Reading it never shows a prompt. Whether an operation works at this moment — the hardware is present, a stream starts — is the result of the operation, not a stored state. The package that owns an operation reports its support beside it; `Host` holds no capability registry.
 
-| Value                    | Meaning                                                                                                   |
-| ------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `"supported"`            | The host has the operation. Says nothing about permission or about the hardware.                          |
-| `"unsupported"`          | The host has no such operation. A request returns its documented unsupported outcome and shows no prompt. |
-| `"unknown"` (support)    | The host cannot tell without trying. Never read from the operating system name or user agent.             |
-| `"granted"`              | Allowed, including where the operation needs no permission on this host.                                  |
-| `"denied"`               | Refused by the player or by a system restriction. A request shows no prompt.                              |
-| `"prompt"`               | Not decided. A request may show the system prompt.                                                        |
-| `"unknown"` (permission) | The host cannot read the state without requesting.                                                        |
+| Value           | Meaning                                                                                                   |
+| --------------- | --------------------------------------------------------------------------------------------------------- |
+| `"supported"`   | The host has the operation. Says nothing about the hardware.                                              |
+| `"unsupported"` | The host has no such operation. A request returns its documented unsupported outcome and shows no prompt. |
+| `"unknown"`     | The host cannot tell without trying. Never read from the operating system name or user agent.             |
 
 ### Well-known DI Keys
 

@@ -532,14 +532,13 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     // during install, so every install has run by now whatever order the
     // plugins were registered in, and the page supplies each part the adapter
     // leaves out.
-    const display = this._context?.tryResolve(HostDisplayKey);
+    const display = this._context!.tryResolve(HostDisplayKey);
     const sync = (): void => this._syncDisplay();
     const hostFullscreen = display?.fullscreen;
-    const target = this.fullscreenTarget();
     if (hostFullscreen) {
       this._fullscreen = hostFullscreen;
-    } else if (target) {
-      const page = createPageFullscreen(target);
+    } else {
+      const page = createPageFullscreen(this.fullscreenTarget());
       this._fullscreen = page.part;
       this._stopDisplay.push(page.watch(sync));
     }
@@ -567,7 +566,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     // Inspector is installed by a plugin (DebugPlugin or InspectorPlugin),
     // and every install has run by now whatever order the plugins were
     // registered in.
-    const inspector = this._context?.tryResolve(InspectorKey);
+    const inspector = this._context!.tryResolve(InspectorKey);
     if (inspector) {
       this._unregisterFacetContributor = inspector.registerFacetContributor(
         new RenderFacetContributor(),
@@ -1421,10 +1420,8 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     }
   }
 
-  private fullscreenTarget(): HTMLElement | null {
-    if (this._config.container) return this._config.container;
-    if (this._installed.app) return this._app.canvas;
-    return null;
+  private fullscreenTarget(): HTMLElement {
+    return this._config.container ?? this._app.canvas;
   }
 
   private installSceneVisibilityListeners(context: EngineContext): void {
@@ -1521,8 +1518,9 @@ const ORIENTATION_VALUES: readonly string[] = [
 /** The error every display member reports outside the engine's run. */
 function displayUnavailable(member: string): Error {
   return new Error(
-    `RendererPlugin.${member}: the display is only available between ` +
-      "engine.start() and engine.destroy().",
+    `RendererPlugin.${member}: the display is only available from the ` +
+      "renderer's onStart to engine.destroy(). A plugin that reads it in " +
+      "its own onStart must be registered after RendererPlugin.",
   );
 }
 
