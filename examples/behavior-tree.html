@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Behavior Trees</title>
+    <link rel="stylesheet" href="/shared.css" />
+  </head>
+  <body>
+    <a class="back-link" href="/#behavior-tree">&larr; All Examples</a>
+    <h1>Behavior Trees</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span
+        >Two guards share one tree. They approach, attack, and recover.</span
+      >
+      <span
+        >Automatic damage interrupts A's attack, then B's approach. Low health
+        makes each guard retreat to the green circle, rest, and return.</span
+      >
+      <span
+        ><kbd>1</kbd>/<kbd>2</kbd> damage a guard · <kbd>Space</kbd> disable or
+        restart A's tree</span
+      >
+    </div>
+    <script type="module" src="/src/behavior-tree/main.ts"></script>
+  </body>
+</html>

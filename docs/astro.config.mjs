@@ -182,6 +182,7 @@ export default defineConfig({
             { label: "Loot Tables", slug: "addons/loot" },
             { label: "Abilities", slug: "addons/abilities" },
             { label: "Stats", slug: "addons/stats" },
+            { label: "Behavior Trees", slug: "addons/behavior-tree" },
             { label: "Steering", slug: "addons/steering" },
             { label: "Synth", slug: "addons/synth" },
             { label: "Feel", slug: "addons/feel" },

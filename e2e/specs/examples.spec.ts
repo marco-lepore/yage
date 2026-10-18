@@ -1009,3 +1009,117 @@ test.describe("Examples index", () => {
     expect(layout.bottom).toBeLessThanOrEqual(layout.height);
   });
 });
+
+test("behavior-tree: interrupts owned work and keeps shared definitions independent", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/behavior-tree.html?test");
+  await page.waitForFunction(
+    () =>
+      window.__yage__?.inspector.time.isFrozen() === true &&
+      window.__yage__.inspector.getSceneStack().length > 0,
+  );
+  const result = await page.evaluate(() => {
+    const inspector = window.__yage__!.inspector;
+    const first = inspector
+      .snapshot()
+      .scenes.flatMap((scene) => scene.entities)
+      .find((entity) => entity.key === "guard-a")!.id;
+    const second = inspector
+      .snapshot()
+      .scenes.flatMap((scene) => scene.entities)
+      .find((entity) => entity.key === "guard-b")!.id;
+    const state = (id: string) =>
+      inspector.getComponentData(id, "GuardState") as {
+        phase: string;
+        health: number;
+        attacks: number;
+        interruptions: number;
+        lastInterruption: string;
+      };
+    const brain = (id: string) =>
+      inspector.getComponentData(id, "BehaviorTreeAgent") as {
+        enabled: boolean;
+        status: string;
+        execution: {
+          activePaths: string[];
+          transitions: Array<{
+            path: string;
+            reason: string;
+            by: string | null;
+          }>;
+        };
+      };
+    inspector.time.step(90);
+    const before = [state(first), state(second)];
+    inspector.time.step(25);
+    const interrupted = {
+      first: state(first),
+      second: state(second),
+      trace: brain(first).execution.transitions,
+    };
+    inspector.time.step(65);
+    const both = [state(first), state(second)];
+    // Larger rendered frames still drive the guards through fixed simulation steps.
+    inspector.time.setDelta(100);
+    inspector.time.step(240);
+    inspector.time.setDelta(1000 / 60);
+    const completed = [state(first), state(second)];
+    inspector.input.tap("Space");
+    const disabled = brain(first);
+    const position = inspector.getEntityPosition(first);
+    inspector.time.step(90);
+    const stoppedPosition = inspector.getEntityPosition(first);
+    inspector.input.tap("Space");
+    inspector.time.step(1);
+    const restarted = brain(first);
+    return {
+      before,
+      interrupted,
+      both,
+      completed,
+      disabled,
+      position,
+      stoppedPosition,
+      restarted,
+      callbackErrors: inspector.getErrors().callbackErrors,
+    };
+  });
+  expect(result.before.map((state) => state.phase)).toEqual([
+    "attack",
+    "approach",
+  ]);
+  expect(result.interrupted.first).toMatchObject({
+    phase: "retreat",
+    attacks: 0,
+    interruptions: 1,
+    lastInterruption: "attack: branch-changed",
+  });
+  expect(result.interrupted.second).toMatchObject({
+    phase: "approach",
+    interruptions: 0,
+  });
+  expect(result.interrupted.trace).toContainEqual(
+    expect.objectContaining({
+      path: "guard/combat/attack-cycle/attack",
+      reason: "branch-changed",
+      by: "guard/low-health/safety/retreat",
+    }),
+  );
+  expect(result.both[1]).toMatchObject({
+    phase: "retreat",
+    lastInterruption: "approach: branch-changed",
+  });
+  for (const state of result.completed) {
+    expect(state.health).toBe(100);
+    expect(state.attacks).toBeGreaterThan(0);
+  }
+  expect(result.disabled).toMatchObject({ enabled: false, status: "idle" });
+  expect(result.stoppedPosition).toEqual(result.position);
+  expect(result.restarted).toMatchObject({ enabled: true, status: "running" });
+  expect(result.callbackErrors).toEqual([]);
+  expect(errors).toEqual([]);
+});
