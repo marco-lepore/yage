@@ -45,8 +45,7 @@ text language, Promise support or broader node catalog.
   [Conditional aborts](https://opsive.com/support/documentation/behavior-designer-pro/conditional-aborts/).
 - NodeCanvas makes subgraph inputs explicit and separates local state between
   instances. YAGE uses typed context references and per-activation action closures.
-  Subtree configuration can be an ordinary typed function argument. A second
-  blackboard would duplicate authoritative component state.
+  Subtree configuration is expressed through ordinary typed function arguments.
   [Subgraph variables](https://nodecanvas.paradoxnotion.com/documentation/?section=mapping-sub-graph-variables).
 - BehaviorTree.CPP distinguishes action start, continuation and halt and demonstrates
   reactive sequences. YAGE uses create/enter/tick/exit with cancellation reasons,
@@ -61,18 +60,27 @@ contract. LimboAI passes an agent and a mutable per-instance blackboard. Behavio
 uses input/output ports and recommends reading inputs inside ticks so updates are
 visible. Mistreevous resolves properties and getters on its agent. These provide
 live data access without requiring a draft transaction around tree execution.
+Blackboards do not necessarily duplicate state: LimboAI can link variables so
+different scopes share the same value in memory without copying or polling.
 [LimboAI blackboards](https://limboai.readthedocs.io/en/stable/behavior-trees/using-blackboard.html),
 [task context](https://limboai.readthedocs.io/en/stable/classes/class_bttask.html),
 [BehaviorTree.CPP ports](https://www.behaviortree.dev/docs/tutorial-basics/tutorial_02_basic_ports/),
 [ports versus blackboards](https://www.behaviortree.dev/docs/guides/ports_vs_blackboard/),
 [Mistreevous agents](https://github.com/nikkorn/mistreevous/blob/master/README.md).
 
-YAGE keeps its single generic context. A small tree can receive its component
-directly. Larger trees can receive a read-only data view or live `read()` function,
+YAGE keeps its single generic context because its trees are authored in TypeScript
+and components already own game state and rules. A small tree can receive its
+component directly. Larger trees can receive a read-only data view or live `read()` function,
 owner commands, and references to capabilities such as steering. This expresses
 read/write access in TypeScript without a separate state copy or named port registry.
 Replacement snapshots must be read on each tick, not captured in an action factory.
 The addon does not own, freeze, clone, or observe the game state.
+
+The tradeoff is runtime visibility into data access. TypeScript interfaces are
+erased after compilation, so the Inspector cannot infer which state fields a
+callback reads or writes. BehaviorTree.CPP's explicit ports describe that data flow
+for tools and allow remapping through XML. YAGE's context expresses those connections
+in TypeScript; it provides no port schema for visual authoring or runtime remapping.
 
 A mandatory draft would imply a transaction boundary that cannot include movement,
 events, audio, or arbitrary action effects. Owner commands may use their own drafts,
