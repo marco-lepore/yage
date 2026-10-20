@@ -51,6 +51,7 @@ export const ADDONS = [
   "abilities",
   "dialogue",
   "feel",
+  "hotbar",
   "i18n",
   "interaction",
   "inventory",
@@ -85,6 +86,16 @@ export interface Example {
 /** Every example, grouped by section in display order. */
 export const EXAMPLES: readonly Example[] = [
   // Start here
+  {
+    slug: "hotbar",
+    title: "Hotbar",
+    summary:
+      "Bind an ability and consumables to numbered slots, swap assignments, inspect cooldowns and save the layout.",
+    section: "gameplay",
+    packages: ["input"],
+    addons: ["hotbar", "abilities", "inventory"],
+    guide: "/addons/hotbar/",
+  },
   {
     slug: "hello-world",
     title: "Hello World",

@@ -181,6 +181,7 @@ export default defineConfig({
             { label: "Inventory", slug: "addons/inventory" },
             { label: "Loot Tables", slug: "addons/loot" },
             { label: "Abilities", slug: "addons/abilities" },
+            { label: "Hotbar", slug: "addons/hotbar" },
             { label: "Stats", slug: "addons/stats" },
             { label: "Steering", slug: "addons/steering" },
             { label: "Synth", slug: "addons/synth" },

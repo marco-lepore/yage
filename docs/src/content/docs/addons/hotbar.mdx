@@ -1,0 +1,135 @@
+---
+title: Hotbar
+description: Bind abilities, consumables and game actions to slots with live availability and cooldowns.
+---
+
+A hotbar gives players numbered shortcuts to abilities, consumables and other game actions. `@yagejs-addons/hotbar` handles assignments, selection, input and display. Your game keeps ownership of the action's effects, quantities and cooldowns.
+
+Try the [Hotbar example](https://examples.yage.dev/hotbar.html): cast an ability, consume potions, drag assignments, clear slots and restore a saved layout.
+
+## Install and show a bar
+
+```bash
+npm install @yagejs-addons/hotbar @yagejs/core @yagejs/input @yagejs/renderer
+```
+
+Install `RendererPlugin` and `InputPlugin` before mounting the controller. Merge `HOTBAR_ACTION_MAP` into the input plugin's `actions`. The renderer is optional when you omit the presenter.
+
+```ts
+import { Component, Entity } from "@yagejs/core";
+import { InputPlugin } from "@yagejs/input";
+import { HOTBAR_ACTION_MAP, Hotbar, HotbarController } from "@yagejs-addons/hotbar";
+import { HotbarView } from "@yagejs-addons/hotbar/presenters";
+
+export const inputPlugin = new InputPlugin({ actions: HOTBAR_ACTION_MAP });
+
+class Lantern extends Component {
+  lit = false;
+  toggle() { this.lit = !this.lit; }
+}
+
+export class PlayerHud extends Entity {
+  setup() {
+    const lantern = this.add(new Lantern());
+    const model = new Hotbar({
+      bindings: {
+        lantern: {
+          label: "Lantern",
+          activate: () => { lantern.toggle(); return { ok: true }; },
+        },
+      },
+      slots: ["lantern"],
+    });
+    this.add(new HotbarController({ model, presenter: new HotbarView() }));
+  }
+}
+```
+
+The default bar has eight slots. Assignments start empty unless supplied in `slots`. Number keys activate the first ten slots; arrows or gamepad LB/RB select a slot, Enter or gamepad A activates it, and Delete or gamepad Y clears it. A mouse or touch tap activates on release. Dragging between slots swaps their assignments. Releasing outside the bar or cancelling the pointer gesture does nothing.
+
+## Describe an action
+
+Each catalog key is a binding ID. TypeScript checks IDs in `assign()` and initial assignments. A binding has a `label`, an optional registered texture key in `icon`, an optional `read()` query, and an `activate()` callback.
+
+`read()` is a pure synchronous query. It may run several times per frame through presentation, activation or inspection. Return:
+
+- `available: false` and `reason` when an owner cannot accept activation. Omitted availability means available; an omitted rejection reason becomes `"unavailable"`.
+- `cooldown: { remaining, total }` in seconds. A positive remaining time blocks activation with `"cooldown"` unless an explicit unavailable reason takes precedence.
+- `count` for a quantity badge. A zero count does not block by itself; the owner decides availability.
+
+Counts and cooldown values must be finite and nonnegative. Remaining cooldown must not exceed total. The hotbar never advances a cooldown clock.
+
+`activate()` returns `{ ok: true }` or `{ ok: false, reason: "..." }`. The hotbar rereads availability before calling it. The owner still checks its rules, since state may have changed. Success means the request was accepted; a running ability can complete or fail later. Promises and held-action release are outside this callback contract.
+
+### Bind an ability
+
+```ts
+import type { Abilities } from "@yagejs-addons/abilities";
+import type { HotbarBinding } from "@yagejs-addons/hotbar";
+
+export function zapBinding(abilities: Abilities): HotbarBinding {
+  return {
+    label: "Zap",
+    read: () => ({
+      available: abilities.canSend("zap"),
+      reason: abilities.cooldownRemaining("zap") > 0 ? "cooldown" : "busy",
+      cooldown: { remaining: abilities.cooldownRemaining("zap"), total: 2 },
+    }),
+    activate: () => abilities.send("zap"),
+  };
+}
+```
+
+The example assumes the ability defines a two-second cooldown. For a variable duration, read the duration captured by your owner. Do not start a separate hotbar timer. Inventory bindings similarly query the current item owner and request consumption there; the runnable example demonstrates this with `Inventory.remove()` and a game component's health.
+
+## Assign, clear and reorder
+
+```ts
+import type { Hotbar } from "@yagejs-addons/hotbar";
+
+export function arrange(bar: Hotbar<"zap" | "potion">) {
+  bar.assign(0, "zap");
+  bar.assign(1, "potion");
+  bar.swap(0, 1);
+  bar.clear(2);
+  bar.select(0);
+  return bar.activate();
+}
+```
+
+Slots use zero-based indexes. Invalid indexes and unknown binding IDs throw before assignments change. Assigning replaces the previous binding; swapping exchanges both assignments, including empty slots. Duplicate bindings are allowed. Clearing or moving a slot never moves an inventory item, consumes it or restarts an ability. Depleted bindings remain assigned so replenished items become usable again.
+
+Use `cycle(-1)` or `cycle(1)` to wrap selection around the bar. Selection stays at its numbered index when assignments move. The default controls do not provide an inventory picker: your game calls `assign()` when the player chooses an action or item.
+
+## Customize input and presentation
+
+Pass `input: null` to construct no device binding, then call the controller or model yourself. Pass a `HotbarInputBinding` to replace the default controls. `hotbarControls({ actions, dragThreshold })` customizes action names and the drag distance in virtual pixels. The default distance is six pixels. Input action maps remain owned by `InputPlugin`.
+
+`controller.setInputEnabled(false)` releases device listeners while keeping the bar visible. Your host can still call the controller. Use it to give one bar focus when several are visible. Keyboard/gamepad action reads are non-consuming, so two focused bars using the same actions both respond. Pointer gestures use InputManager's claim mechanism.
+
+Disabling the controller or its entity hides the view and releases input. Re-enabling restores both. A paused scene accepts no controller activation. Direct model calls remain available regardless of component state. Removing the controller disposes its view and listeners; the model's assignments remain usable. One model can have one mounted controller.
+
+```ts
+import { HotbarView, defaultHotbarTheme } from "@yagejs-addons/hotbar/presenters";
+
+export const view = new HotbarView({
+  ...defaultHotbarTheme(),
+  slotWidth: 96,
+  selected: 0xffcc66,
+  fontFamily: "monospace",
+});
+```
+
+The default view uses canvas text, registered icons and a cooldown bar. It centers horizontally and sits 24 pixels above the virtual viewport bottom; set theme `x` and `y` for explicit placement. Mount it on a stationary HUD host with an identity transform. Choose dimensions that fit your viewport. Set `keyLabels` to match custom bindings; use an empty array to hide hints. The default `hotbar` screen layer has order 1070; an existing layer keeps its order.
+
+Implement `HotbarPresenter` to replace the view. Its methods are `mount(owner)`, `present(state)`, `setVisible(visible)` and `dispose()`. An optional `slotAtPoint(x, y)` supplies pointer hit testing in virtual screen coordinates. Omitting the method leaves keyboard and programmatic controls available. Each controller needs its own presenter instance.
+
+## Save and inspect
+
+`model.snapshot()` returns a versioned plain object with every assignment and the selected index. `restore(snapshot)` validates the complete document before applying it. The slot count must match and every ID must exist in the current catalog. Unknown IDs throw; a game migration can rename or clear obsolete IDs first. Snapshots contain no callbacks, textures, item quantities or ability state. Include the snapshot in your game's explicit save root and save those other owners separately.
+
+`model.inspect()` returns plain slot records with IDs, display data, availability, reasons, quantities and cooldowns, plus selection and the last activation result. `model.read(index)` reads one slot. `controller.diagnostic` exposes the same data, input focus and lifecycle state to `Inspector.getComponentData(entityId, "HotbarController")`.
+
+`HotbarChangedEvent` carries the complete assignment/selection snapshot. `HotbarActivationEvent` carries the slot, binding ID and accepted/rejected result. These are entity events, so the Inspector event log can record them. Headless callers can subscribe with `model.on(listener)` and keep its returned unsubscribe. Owner read/activation failures and listener failures are attributed through `ErrorBoundary`, then rethrown. A thrown callback stops the current operation; it is not converted into an ordinary rejection.
+
+The default view shows the availability returned by `read()`. Handle `HotbarActivationEvent` in your game to show activation feedback, including an owner rejection such as `"out of range"` that was not known to `read()`. The runnable example displays the latest outcome above the bar.
