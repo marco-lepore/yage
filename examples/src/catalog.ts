@@ -57,6 +57,7 @@ export const ADDONS = [
   "interaction",
   "inventory",
   "loot",
+  "perception",
   "procedural",
   "stats",
   "quests",
@@ -88,6 +89,16 @@ export interface Example {
 
 /** Every example, grouped by section in display order. */
 export const EXAMPLES: readonly Example[] = [
+  {
+    slug: "perception",
+    title: "Perception",
+    summary:
+      "Sight, physics occlusion, last-seen memory, and configurable reactions.",
+    section: "world",
+    packages: ["physics", "input"],
+    addons: ["perception"],
+    guide: "/addons/perception/",
+  },
   // Start here
   {
     slug: "hello-world",

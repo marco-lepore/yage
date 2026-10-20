@@ -57,6 +57,7 @@ Installable, opinionated gameplay patterns (`@yagejs-addons` scope), independent
 - [i18n](llms/addons/i18n.md): Localization — `msg` descriptors, an i18next-backed service, and localized text for renderer, UI, React, dialogue, and inventory
 - [interaction](llms/addons/interaction.md): Proximity interaction — walk up, see a prompt, press E; headless
 - [procedural](llms/addons/procedural.md): Seeded maps — region graphs with keys, catalog room layouts, catalog selection without placement, caves, navigation and level loading
+- [perception](llms/addons/perception.md): 2D sight, optional physics occlusion, rejection diagnostics, and last-seen memory
 - [quests](llms/addons/quests.md): Headless quest log — objectives and progression
 - [behavior-tree](llms/addons/behavior-tree.md): Typed behavior trees: cancellable actions, parallel branches, repeats, weighted choices, cooldowns, and execution inspection
 - [steering](llms/addons/steering.md): Movement AI — seek, flee, arrive, wander, pursue/evade, obstacle avoidance, flocking, path-following

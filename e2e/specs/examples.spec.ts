@@ -1560,3 +1560,72 @@ test.describe("Examples index", () => {
     expect(layout.bottom).toBeLessThanOrEqual(layout.height);
   });
 });
+
+test("perception explains sight loss, remembers positions, and allows a separate reaction", async ({
+  page,
+}) => {
+  await page.goto("/perception.html?test");
+  await page.waitForFunction(
+    () =>
+      window.__yage__?.inspector?.getSceneStack().at(-1)?.name === "perception",
+  );
+  const result = await page.evaluate(async () => {
+    const inspector = window.__yage__!.inspector;
+    const read = () =>
+      inspector.getComponentData("Observer", "PerceptionSensor");
+    await inspector.time.stepAsync(3);
+    const initial = read();
+    inspector.input.tap("Digit2");
+    await inspector.time.stepAsync(3);
+    const cover = read();
+    await inspector.time.stepAsync(190);
+    const expired = read();
+    inspector.input.tap("Digit1");
+    await inspector.time.stepAsync(3);
+    const reacquired = read();
+    inspector.input.tap("Digit3");
+    await inspector.time.stepAsync(3);
+    const range = read();
+    inspector.input.tap("Digit4");
+    await inspector.time.stepAsync(3);
+    const fov = read();
+    inspector.input.tap("Digit1");
+    await inspector.time.stepAsync(3);
+    inspector.input.tap("KeyC");
+    await inspector.time.stepAsync(3);
+    const concealed = read();
+    inspector.input.tap("KeyR");
+    await inspector.time.stepAsync(3);
+    return {
+      initial,
+      cover,
+      expired,
+      reacquired,
+      range,
+      fov,
+      concealed,
+      reaction: inspector.getComponentData("Observer", "ObserverReaction"),
+      errors: inspector.getErrors(),
+    };
+  });
+  expect(result.initial).toMatchObject({
+    diagnostics: [{ visible: true, lastPosition: { x: 300, y: 310 } }],
+  });
+  expect(result.cover).toMatchObject({
+    evaluations: [{ reason: "occluded" }],
+    diagnostics: [{ visible: false, lastPosition: { x: 300, y: 310 } }],
+  });
+  expect(result.expired).toMatchObject({ diagnostics: [] });
+  expect(result.reacquired).toMatchObject({ diagnostics: [{ visible: true }] });
+  expect(result.range).toMatchObject({
+    evaluations: [{ reason: "out-of-range" }],
+  });
+  expect(result.fov).toMatchObject({
+    evaluations: [{ reason: "outside-field-of-view" }],
+  });
+  expect(result.concealed).toMatchObject({
+    evaluations: [{ reason: "below-visibility-threshold" }],
+  });
+  expect(result.reaction).toMatchObject({ tracking: true, forgotten: 1 });
+  expect(result.errors.callbackErrors).toEqual([]);
+});

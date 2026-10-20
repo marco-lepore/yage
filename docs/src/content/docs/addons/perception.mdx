@@ -1,0 +1,260 @@
+---
+title: Perception
+description: Detect targets in 2D, explain failed sight checks, and remember the last seen position.
+---
+
+`@yagejs-addons/perception` gives an entity sight and last-seen memory. Your game
+chooses what to do with those facts: follow a target, investigate a remembered
+position, or ignore a friendly character.
+
+## Install and detect a target
+
+```bash
+npm install @yagejs-addons/perception @yagejs/core
+```
+
+Add a `PerceptionSensor` beside the observer's `Transform`. Targets need a
+`Transform` and the `perceptible` tag. No perception plugin is required.
+
+```ts
+import { Engine, Entity, Scene, Transform, Vec2 } from "@yagejs/core";
+import { PerceptionSensor, PerceptionDetectedEvent } from "@yagejs-addons/perception";
+
+class Observer extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new PerceptionSensor({ range: 300, fieldOfView: Math.PI }));
+    this.on(PerceptionDetectedEvent, ({ observation }) => {
+      const target = observation.target.current;
+      if (target) console.log(`Saw ${target.name}`);
+    });
+  }
+}
+class Target extends Entity {
+  setup() {
+    this.tags.add("perceptible");
+    this.add(new Transform({ position: new Vec2(100, 0) }));
+  }
+}
+class PerceptionScene extends Scene {
+  readonly name = "perception";
+  onEnter() {
+    this.spawn(Observer);
+    this.spawn(Target);
+  }
+}
+
+const engine = new Engine();
+await engine.start();
+await engine.scenes.push(new PerceptionScene());
+```
+
+The running scene advances the sensor automatically. The observer sees 300 world
+pixels through a 180-degree field of view. Forward follows its world rotation, with +X
+at zero. The full angle is in radians. Range and angle boundaries are inclusive;
+coincident points pass the angle test.
+
+Without options, range is 256 pixels, the field of view is a full circle, and
+memory lasts three seconds. The default sensor sees through walls.
+
+[Try the runnable example](https://examples.yage.dev/perception.html). Move the
+blue target, place it behind cover, and switch the observer's reaction.
+
+## Add occlusion and game policies
+
+For physical walls, install `@yagejs/physics` and `PhysicsPlugin`, then supply
+the world's raycast adapter. Physics is an optional peer.
+
+```ts
+import { Engine, Entity, Scene, Transform } from "@yagejs/core";
+import type { PhysicsWorld } from "@yagejs/physics";
+import { PhysicsPlugin, PhysicsWorldKey } from "@yagejs/physics";
+import { PerceptionSensor } from "@yagejs-addons/perception";
+import { perceptionRaycast } from "@yagejs-addons/perception/physics";
+
+class Guard extends Entity {
+  setup(world: PhysicsWorld) {
+    this.add(new Transform());
+    this.add(new PerceptionSensor({
+      range: 300,
+      loseRange: 330,
+      fieldOfView: Math.PI,
+      lineOfSight: perceptionRaycast(world),
+      eligible: ({ target }) => target.tags.has("friendly") ? "friendly" : null,
+      visibility: ({ target }) => target.tags.has("concealed") ? 0.2 : 1,
+      visibilityThreshold: 0.5,
+    }));
+  }
+}
+class GuardScene extends Scene {
+  readonly name = "guards";
+  onEnter() {
+    this.spawn(Guard, this.use(PhysicsWorldKey));
+  }
+}
+
+const engine = new Engine();
+engine.use(new PhysicsPlugin());
+await engine.start();
+await engine.scenes.push(new GuardScene());
+```
+
+Spawn your targets and walls in `GuardScene.onEnter()` alongside the guard.
+The scene resolves its own `PhysicsWorldKey` service.
+
+`loseRange` lets a currently detected target travel farther before range alone
+causes loss. It must be at least `range`. A lost target must enter the acquisition
+range again. FOV, occlusion and visibility still apply during retention.
+
+Policies run in this order: eligibility, range, field of view, line of sight,
+visibility. A rejection stops the remaining checks. `eligible` returns a
+nonempty reason or `null`. `lineOfSight` returns whether the path is clear.
+`visibility` returns a finite number from 0 to 1; values below
+`visibilityThreshold` fail. The threshold defaults to 0.01 and must be greater
+than zero and at most 1. Lighting can supply that score, but no lighting package
+is required.
+
+Each policy receives the observer, target, world origin, sampled position,
+distance and angle. Policies are synchronous and should only read state. Their
+exceptions stop sampling and appear in the existing ErrorBoundary diagnostics.
+
+Replace `candidates(observer)` to use a scene query, team list, or explicit entity
+references. Replace `position(target)` to sample a different world point or
+support targets without a Transform. The sensor skips itself, duplicate entity
+references, dormant entities, destroyed entities and entities in another scene.
+Identifiers must be unique. Config is copied at construction; policy closures
+can read changing game state.
+
+The physics adapter casts one ray, excludes the observer's colliders, and accepts
+an unobstructed path or a first hit on the target itself. It skips trigger
+colliders by default. Pass `filterGroups` or `sensors` in its second argument to
+customize that query. A child's collider counts as a different entity. Use
+collision groups or a custom policy for compound targets and partial visibility.
+Each ray has the normal physics query refresh cost.
+
+## Use current sightings and remembered positions
+
+Read `sensor.detected` for last-sampled visible observations whose entity life is
+still active. Read `sensor.observations` for all retained observations, including
+lost targets. Every observation contains an `EntityHandle`; resolve
+`observation.target.current` before using the entity. A pooled entity's next life
+cannot become the target of an old handle.
+
+`lastPosition` and `visibility` hold the last successful observation. A rejected
+sample never reveals a new position through memory. `firstSeenAt`, `lastSeenAt`
+and `lostAt` use scene simulation seconds. A never-detected target gets no memory
+record.
+
+The observer emits `PerceptionDetectedEvent`, `PerceptionLostEvent` and
+`PerceptionForgottenEvent`, each with `{ sensor, observation }`. Facts are
+installed before listeners run. Loss fires once, and forgetting occurs on a
+sample at or after `memoryDuration` seconds since the last success. A value of
+zero emits loss and forgetting together. A new success refreshes the observation.
+Continuously visible targets produce no repeated detection event.
+
+Events describe facts; a game component owns reactions and target selection.
+A steering behavior can consume `lastPosition`. A decision component can read
+`detected` directly without copying the observations into another store.
+
+## Timing and lifecycle
+
+Automatic sampling occurs on positive-delta component updates. Set
+`autoUpdate: false` and call `sense()` to choose your own schedule. Memory expiry
+is checked during sampling, so a manual sensor retains its last results between
+calls. `sampledAt` tells you when memory was last updated.
+
+The sensor uses `SceneTime.elapsed`. Scene pause and freeze hold time.
+Entity-local time scaling affects updates; memory age still follows the scene
+clock. `sense()` is an explicit sample even at zero delta, and does nothing while
+the component is disabled.
+
+Disabling the sensor, deactivating its host or removing the component clears
+observations. Re-enabling begins fresh. `clear(reason = "cleared")` also clears
+observations and emits loss/forgotten transitions. An already destroyed host
+cannot emit entity events. A throwing handler stops dispatch; a handler that
+replaces memory stops the superseded batch. Recursive `sense()` calls throw.
+
+## Explain a failed detection
+
+`evaluations` contains the latest evaluated candidates, including rejections.
+Each row has an id, entityId, entityName, distance, angle, visibility and reason.
+Built-in reasons include `out-of-range`, `outside-field-of-view`, `occluded` and
+`below-visibility-threshold`. Visibility is zero when an earlier check rejected
+before the visibility policy ran. Missing targets become `unavailable` in memory
+on the next sample.
+
+With an Inspector installed, `getComponentData("Observer", "PerceptionSensor")`
+includes `config`, `evaluations`, `sampledAt` and `diagnostics`. Diagnostics derive
+from the same observations and add age, alive and active fields. The visible flag
+is a sampled fact; read it alongside those lifetime fields when inspecting a
+manual sensor. Callback failures appear in `getErrors().callbackErrors`.
+
+## Save memory explicitly
+
+Use `identify: target => target.requireKey()` for targets spawned with stable
+keys. Default identifiers contain runtime entity IDs and generations and do not
+survive scene reconstruction.
+
+```ts
+import { Entity, Transform } from "@yagejs/core";
+import { PerceptionSensor } from "@yagejs-addons/perception";
+import type { PerceptionSnapshot } from "@yagejs-addons/perception";
+
+class PersistentObserver extends Entity {
+  private readonly sensor = new PerceptionSensor({
+    identify: (target) => target.requireKey(),
+  });
+
+  setup() {
+    this.add(new Transform());
+    this.add(this.sensor);
+  }
+
+  captureMemory(): PerceptionSnapshot {
+    return this.sensor.snapshot();
+  }
+
+  restoreMemory(saved: PerceptionSnapshot): void {
+    this.sensor.restore(saved, (id) => this.scene.findByKey(id));
+  }
+}
+```
+
+Use `PersistentObserver` in the scene above and spawn targets with stable keys,
+for example `this.spawn(Target, { key: "player" })`. Capture memory while the
+observer is attached. Restore it after the scene has spawned the saved targets.
+
+Include `snapshot()` data in your game's explicit save root. The addon registers
+no save root or slot. Snapshots contain IDs, positions, visibility and ages;
+they contain no entities or callbacks. Configuration stays with the game.
+
+Restore silently replaces memory, rebases the saved ages to the current scene
+clock, and marks every restored record remembered with reason `restored`.
+Fresh sensing must establish visibility. A previously visible record gets a
+loss timestamp at restore time. Unresolved, dormant, dead or expired records are
+omitted. Resolved entities must have matching IDs and belong to the same scene.
+Invalid saved values throw before memory is replaced.
+
+## Use the headless model
+
+`PerceptionMemory<T>` accepts complete evaluated sample sets through
+`update(now, samples)`. Each sample contains `{ id, target, position, visibility,
+reason }`; a null reason is success. The method returns transitions without
+calling game callbacks. Time must be finite, nonnegative and monotonic until
+restore. Keep target identity stable; replacing it under one ID ends the old
+observation with reason `replaced`.
+
+Read `get(id)`, `observations`, `detected`, `sampledAt` and the mutation counter
+`version`. Observations and their positions are frozen. `clear(now, reason?)`
+returns transitions. `snapshot(now = sampledAt)` captures data, and
+`restore(snapshot, now, bindings)` accepts explicit `{ id, target }` bindings.
+Unbound and expired records are omitted.
+
+The sensor exposes its `memory` and accepts a model instance or subclass in its
+options. Use one model per observer. An injected model's duration takes precedence
+over the sensor's `memoryDuration` option. Direct model changes do not emit
+sensor events. `perceptionGeometry` is a separate read-only distance/angle helper;
+its result is undefined for non-finite inputs.
+
+Sensing is one point per candidate. Hearing propagation, target ranking, gradual
+awareness and reaction logic belong to the game.
