@@ -179,6 +179,7 @@ export default defineConfig({
             { label: "Dialogue", slug: "addons/dialogue" },
             { label: "Virtual Controls", slug: "addons/virtual-controls" },
             { label: "Inventory", slug: "addons/inventory" },
+            { label: "Loot Tables", slug: "addons/loot" },
             { label: "Abilities", slug: "addons/abilities" },
             { label: "Stats", slug: "addons/stats" },
             { label: "Steering", slug: "addons/steering" },

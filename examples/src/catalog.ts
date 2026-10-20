@@ -54,6 +54,8 @@ export const ADDONS = [
   "i18n",
   "interaction",
   "inventory",
+  "loot",
+  "stats",
   "quests",
   "steering",
   "synth",
@@ -462,6 +464,16 @@ export const EXAMPLES: readonly Example[] = [
   },
 
   // Gameplay addons
+  {
+    slug: "loot-addon",
+    title: "Loot Tables",
+    summary:
+      "Seeded chest rewards, unique supplies, level conditions, and inventory overflow with a selection explanation.",
+    section: "gameplay",
+    packages: ["input"],
+    addons: ["loot", "inventory", "stats"],
+    guide: "/addons/loot/",
+  },
   {
     slug: "dialogue-addon",
     title: "Dialogue Addon",
