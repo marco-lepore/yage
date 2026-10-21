@@ -13,6 +13,7 @@
  * The strip along the bottom demonstrates component `blendMode` without a
  * render target.
  */
+// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- no visual component draws into a render target
 import { Container, Graphics } from "pixi.js";
 import {
   Component,

@@ -22,6 +22,45 @@ import prettier from "eslint-config-prettier";
 const EDITOR = "packages/tools/editor";
 const LEVEL = "packages/level";
 
+// Engine time in runtime source. Shared because flat config replaces a rule's
+// options when two blocks match one file: the addon-source block below repeats
+// these selectors next to its own.
+const ENGINE_TIME_SYNTAX = [
+  {
+    selector:
+      "CallExpression[callee.type='MemberExpression'][callee.object.name='Date'][callee.property.name='now']",
+    message:
+      "Use engine time instead of Date.now() outside approved infrastructure files.",
+  },
+  {
+    selector:
+      "CallExpression[callee.type='MemberExpression'][callee.object.name='performance'][callee.property.name='now']",
+    message:
+      "Use engine time instead of performance.now() outside approved infrastructure files.",
+  },
+];
+
+// Game-facing code (examples, addon source) changes a visual through its
+// component, never the Pixi object underneath, which the engine overwrites.
+// Only these member names are unambiguous: `sprite`, `graphics`, `text` and
+// `container` are also ordinary component field names, which an untyped rule
+// cannot tell apart from the raw handles. Docs fences get a typed check in
+// docs/scripts/check-snippets.mjs.
+const RAW_PIXI_SYNTAX = [
+  "animatedSprite",
+  "renderObject",
+  "splitText",
+  "displayObject",
+].map((name) => ({
+  selector: `MemberExpression[property.name='${name}']`,
+  message: `\`${name}\` is the Pixi object the engine overwrites. Change the visual through its component; a task that needs the object is a missing renderer API.`,
+}));
+const NO_PIXI_IMPORT = {
+  name: "pixi.js",
+  message:
+    "Reach Pixi through @yagejs/renderer's components and type aliases, not pixi.js.",
+};
+
 // Directory groups name the bare specifier as well as the paths under it:
 // `**/server/**` needs at least one segment after `server`, so `../../server`
 // alone would pass.
@@ -147,20 +186,24 @@ export default tseslint.config(
       "packages/tools/lab/src/runner/runDrive.ts",
     ],
     rules: {
+      "no-restricted-syntax": ["error", ...ENGINE_TIME_SYNTAX],
+    },
+  },
+  // Addon presenters follow the game-code rule for visuals
+  // (packages/addons/AGENTS.md). Repeats the engine-time selectors, which the
+  // block above sets for the same files.
+  {
+    files: ["packages/addons/*/src/**/*.ts", "packages/addons/*/src/**/*.tsx"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
+    rules: {
       "no-restricted-syntax": [
         "error",
-        {
-          selector:
-            "CallExpression[callee.type='MemberExpression'][callee.object.name='Date'][callee.property.name='now']",
-          message:
-            "Use engine time instead of Date.now() outside approved infrastructure files.",
-        },
-        {
-          selector:
-            "CallExpression[callee.type='MemberExpression'][callee.object.name='performance'][callee.property.name='now']",
-          message:
-            "Use engine time instead of performance.now() outside approved infrastructure files.",
-        },
+        ...ENGINE_TIME_SYNTAX,
+        ...RAW_PIXI_SYNTAX,
+      ],
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        { paths: [NO_PIXI_IMPORT] },
       ],
     },
   },
@@ -217,9 +260,11 @@ export default tseslint.config(
               message:
                 "Blueprints are deprecated; define an Entity subclass with setup().",
             },
+            NO_PIXI_IMPORT,
           ],
         },
       ],
+      "no-restricted-syntax": ["error", ...RAW_PIXI_SYNTAX],
     },
   },
   // The index page is a DOM app around the examples, not game code, so it

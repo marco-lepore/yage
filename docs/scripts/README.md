@@ -131,3 +131,14 @@ Non-executable game-local pseudocode may use `yage-check="syntax"` with a
 substantive `yage-reason="..."` explaining why a truthful typed context cannot
 describe it. Review each exception; API recipes need actual types. Syntax
 errors still fail, and every exception appears individually in the report.
+
+A fence fails when it reaches the raw Pixi object of a game object: a member
+of a visual component, a particle emitter, a sort group or a UI element whose
+type is a Pixi display object (`renderObject`, `.sprite`, `.graphics`,
+`.text`, `displayObject`, the UI `container` fields). Docs teach the component
+API instead. A fence that needs the object on purpose, such as a custom visual
+component reading its own container, carries `yage-raw-pixi="<reason>"` with a
+reason of at least 20 characters. The attribute fails on a fence that reaches
+no such object. Handles meant for rendering extensions, such as a layer's
+`container`, the scene tree's `root` and the renderer's `application`, are not
+checked.

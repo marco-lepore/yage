@@ -357,7 +357,10 @@ component (`visible`, `alpha`, `tint`, `setText`, `mergeStyle`, `draw`,
 underneath (`renderObject`, `.graphics`, `.text`, `.sprite`). The component
 re-applies `visible` and `alpha`, and `DisplaySystem` writes position, rotation
 and scale, so a write on the Pixi object is lost. A task that needs the Pixi
-object is a missing renderer API: add it to the renderer. Don't pull
+object is a missing renderer API: add it to the renderer. Lint rejects
+`pixi.js` imports and the `renderObject`, `displayObject`, `animatedSprite`
+and `splitText` members in addon source; a deliberate use carries an
+`eslint-disable-next-line` comment with its reason. Don't pull
 `@yagejs/ui` for nine-slice either: `grep -rc "@yagejs/ui" packages/addons/dialogue`
 must return 0. The textured variants (`TexturedChrome`, `TexturedBubble`) are
 opt-in, reachable only through the `./presenters` barrel plus the optional

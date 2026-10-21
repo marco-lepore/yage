@@ -106,8 +106,11 @@ A small example can keep everything in `main.ts`, in the same order.
 ### Rendering and assets
 
 - Change a visual through its component: `text.setText(...)`,
-  `visual.visible`, `visual.alpha`. Not the Pixi object underneath
-  (`.text.text`, `.graphics.alpha`), which the component can overwrite.
+  `visual.visible`, `visual.alpha`, `gfx.draw(...)`. Not the Pixi object
+  underneath (`.text.text`, `.graphics.alpha`), which the component can
+  overwrite. Lint rejects `pixi.js` imports and the `renderObject`,
+  `displayObject`, `animatedSprite` and `splitText` members; a task that
+  needs one is a missing renderer API.
 - Pass asset handles as they are: `audio.play(CoinSfx)`, `sheet: HeroSheet`.
   Not `CoinSfx.path`.
 - Register textures with the renderer's asset API (`texture(...)`,

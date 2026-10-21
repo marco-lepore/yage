@@ -116,6 +116,7 @@ export function feelAfterimage(options: FeelAfterimageOptions): FeelNode {
             blendMode: options.blendMode ?? target.blendMode,
           }),
         );
+        // eslint-disable-next-line no-restricted-syntax -- no component API places one visual directly behind another
         moveBehindSource(visual.sprite, target.renderObject);
         active.push({
           entity,
@@ -196,9 +197,9 @@ function resolveTarget(
 function getDisplay(
   target: FeelAfterimageVisual,
 ): DisplaySprite | DisplayAnimatedSprite {
-  return target instanceof SpriteComponent
-    ? target.sprite
-    : target.animatedSprite;
+  if (target instanceof SpriteComponent) return target.sprite;
+  // eslint-disable-next-line no-restricted-syntax -- the copied frame's texture and anchor have no component getter
+  return target.animatedSprite;
 }
 
 function moveBehindSource(

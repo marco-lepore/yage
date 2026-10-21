@@ -358,6 +358,7 @@ export class DialogueTextView implements TextPresenter {
       new SplitTextComponent(this.lineSplitOptions(text)),
     );
     const chars = comp.chars;
+    // eslint-disable-next-line no-restricted-syntax -- per-glyph effects walk up to the split root
     const root = comp.splitText;
 
     // One run-style per non-space glyph, in reading order (1:1 with `chars`).
