@@ -162,7 +162,9 @@ grows, the overflow belongs in a scene or a plugin.
 
 Every build of the game calls `boot`, and each one passes the host adapters
 it runs with: none in the browser, the Electron or Capacitor adapter in a
-desktop or mobile build.
+desktop or mobile build. Each one also passes the save adapter for where its
+saves go: browser storage in the browser, files in the app's data directory
+in a desktop or mobile build.
 
 ```typescript yage-group="layout" yage-file="boot.ts"
 // boot.ts — entire file
@@ -170,10 +172,12 @@ import { Engine, type Plugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { InputPlugin } from "@yagejs/input";
+import { SavePlugin, createSave, type SaveAdapter } from "@yagejs/save";
 import { GameScene } from "./scenes/GameScene.js";
 
 export interface BootOptions {
   readonly hostPlugins: readonly Plugin[];
+  readonly saveAdapter: SaveAdapter;
 }
 
 export async function boot(options: BootOptions): Promise<Engine> {
@@ -182,6 +186,7 @@ export async function boot(options: BootOptions): Promise<Engine> {
   engine.use(new RendererPlugin({ width: 800, height: 600, container: document.getElementById("game")! }));
   engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
   engine.use(new InputPlugin({ actions: { jump: ["Space"] } }));
+  engine.use(new SavePlugin({ save: createSave({ adapter: options.saveAdapter }) }));
   await engine.start();
   await engine.scenes.push(new GameScene());
   return engine;
@@ -190,9 +195,13 @@ export async function boot(options: BootOptions): Promise<Engine> {
 
 ```typescript yage-group="layout" yage-file="main.web.ts"
 // main.web.ts — entire file
+import { localStorageAdapter } from "@yagejs/save";
 import { boot } from "./boot.js";
 
-boot({ hostPlugins: [] }).catch((err: unknown) => {
+boot({
+  hostPlugins: [],
+  saveAdapter: localStorageAdapter({ namespace: "my-game" }),
+}).catch((err: unknown) => {
   console.error(err);
 });
 ```

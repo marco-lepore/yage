@@ -11,9 +11,11 @@ import {
 } from "./test/tree.js";
 
 const BOOT = `import type { Plugin } from "@yagejs/core";
+import type { SaveAdapter } from "@yagejs/save";
 
 export interface BootOptions {
   readonly hostPlugins: readonly Plugin[];
+  readonly saveAdapter: SaveAdapter;
 }
 
 export async function boot(options: BootOptions): Promise<void> {
@@ -231,10 +233,10 @@ describe("runInit", () => {
     expect(report.files.every((file) => file.outcome === "wrote")).toBe(true);
 
     expect(read(root, "src/main.electron.ts")).toContain(
-      'import { ElectronHostPlugin } from "@yagejs/host-electron";',
+      'import { ElectronHostPlugin, electronSaveAdapter } from "@yagejs/host-electron";',
     );
     expect(read(root, "src/main.capacitor.ts")).toContain(
-      'import { CapacitorHostPlugin } from "@yagejs/host-capacitor";',
+      'from "@yagejs/host-capacitor";',
     );
     expect(read(root, "electron/main.cjs")).toContain(
       'const { startGame } = require("@yagejs/host-electron/main");',
@@ -274,6 +276,88 @@ describe("runInit", () => {
       "npx cap add android",
       "npx cap open ios",
     ]);
+    expect(report.notes).toEqual([
+      "src/main.electron.ts and src/main.capacitor.ts pass the host's save adapter to boot as saveAdapter. " +
+        "BootOptions in src/boot.ts needs a saveAdapter: SaveAdapter field, " +
+        "and boot hands it to createSave from @yagejs/save " +
+        '("One boot function" in the packaging guide).',
+      "build:electron runs vite build --mode electron. The Vite config has to map that mode to " +
+        'src/main.electron.ts and dist-electron/, as "One build per target" in the packaging guide shows.',
+      "build:capacitor runs vite build --mode capacitor. The Vite config has to map that mode to " +
+        'src/main.capacitor.ts and dist-capacitor/, as "One build per target" in the packaging guide shows.',
+    ]);
+  });
+
+  it("writes entries that pass the host's save adapter to boot", () => {
+    const root = game();
+    runInit({
+      root,
+      targets: allTargets,
+      appId: "com.example.mygame",
+      force: false,
+    });
+    expect(read(root, "src/main.electron.ts")).toBe(
+      `import { ElectronHostPlugin, electronSaveAdapter } from "@yagejs/host-electron";
+import { boot } from "./boot";
+
+boot({
+  hostPlugins: [new ElectronHostPlugin()],
+  saveAdapter: electronSaveAdapter(),
+}).catch((err) => {
+  console.error(err);
+});
+`,
+    );
+    expect(read(root, "src/main.capacitor.ts")).toBe(
+      `import {
+  CapacitorHostPlugin,
+  capacitorSaveAdapter,
+} from "@yagejs/host-capacitor";
+import { boot } from "./boot";
+
+boot({
+  hostPlugins: [new CapacitorHostPlugin()],
+  saveAdapter: capacitorSaveAdapter(),
+}).catch((err) => {
+  console.error(err);
+});
+`,
+    );
+  });
+
+  it("names the one entry it wrote in the save adapter note", () => {
+    const root = game();
+    const report = runInit({
+      root,
+      targets: ["ios"],
+      appId: "com.example.mygame",
+      force: false,
+    });
+    expect(report.notes[0]).toBe(
+      "src/main.capacitor.ts passes the host's save adapter to boot as saveAdapter. " +
+        "BootOptions in src/boot.ts needs a saveAdapter: SaveAdapter field, " +
+        "and boot hands it to createSave from @yagejs/save " +
+        '("One boot function" in the packaging guide).',
+    );
+  });
+
+  it("shows a rejected startGame in a dialog and exits the shell", () => {
+    const root = game();
+    runInit({
+      root,
+      targets: ["electron"],
+      appId: "com.example.mygame",
+      force: false,
+    });
+    const shell = read(root, "electron/main.cjs");
+    expect(shell).toContain('const { app, dialog } = require("electron");');
+    expect(shell).toContain(
+      "}).catch((error) => {\n  console.error(error);\n" +
+        "  // A packaged app's console output reaches no terminal, so the player\n" +
+        "  // sees the error in a dialog.\n" +
+        "  dialog.showErrorBox(`${productName} could not start`, String(error));\n" +
+        "  app.exit(1);\n});\n",
+    );
   });
 
   it("lists the next steps of the targets it was given", () => {
@@ -306,6 +390,7 @@ describe("runInit", () => {
       true,
     );
     expect(report.ignored).toEqual([]);
+    expect(report.notes).toEqual([]);
     expect(snapshot(root)).toEqual(after);
   });
 
@@ -388,6 +473,10 @@ describe("runInit", () => {
       force: false,
     });
     expect(report.notes).toEqual([
+      "src/main.electron.ts and src/main.capacitor.ts pass the host's save adapter to boot as saveAdapter. " +
+        "BootOptions in src/boot.ts needs a saveAdapter: SaveAdapter field, " +
+        "and boot hands it to createSave from @yagejs/save " +
+        '("One boot function" in the packaging guide).',
       "No build:electron script was written: add one that writes dist-electron/. " +
         "start:electron, package:electron and make:electron run it.",
       "No build:capacitor script was written: add one that writes dist-capacitor/. " +

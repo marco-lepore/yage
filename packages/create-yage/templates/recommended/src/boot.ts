@@ -4,6 +4,7 @@ import { PhysicsPlugin } from "@yagejs/physics";
 import { InputPlugin } from "@yagejs/input";
 import { AudioPlugin } from "@yagejs/audio";
 import { DebugPlugin } from "@yagejs/debug";
+import { SavePlugin, createSave, type SaveAdapter } from "@yagejs/save";
 import { setupFullscreenButton } from "./fullscreen";
 import { GameScene } from "./scenes/GameScene";
 
@@ -13,6 +14,11 @@ export interface BootOptions {
    * a desktop or mobile entry passes its own.
    */
   readonly hostPlugins: readonly Plugin[];
+  /**
+   * Where saves are kept: browser storage for the browser entry, files in
+   * the app's data directory for a desktop or mobile entry.
+   */
+  readonly saveAdapter: SaveAdapter;
 }
 
 /**
@@ -48,6 +54,10 @@ export async function boot(options: BootOptions): Promise<Engine> {
     }),
   );
   engine.use(new AudioPlugin());
+  // A component reads and writes saves through this.use(SaveServiceKey).
+  engine.use(
+    new SavePlugin({ save: createSave({ adapter: options.saveAdapter }) }),
+  );
   engine.use(new DebugPlugin());
 
   await engine.start();

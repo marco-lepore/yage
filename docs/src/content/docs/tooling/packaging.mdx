@@ -41,17 +41,20 @@ saves behind.
 
 ### One boot function
 
-Every target's build contains only the adapter it needs, so each target gets
-its own entry file and all of them call one boot function. Move the engine
-setup out of your browser entry into `src/boot.ts`:
+Every target's build contains only the adapters it needs, so each target
+gets its own entry file and all of them call one boot function. Move the
+engine setup out of your browser entry into `src/boot.ts`:
 
 ```ts yage-group="boot" yage-file="boot.ts"
 import { Engine, type Plugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
+import { SavePlugin, createSave, type SaveAdapter } from "@yagejs/save";
 
 export interface BootOptions {
   /** The host adapters this build runs with. */
   readonly hostPlugins: readonly Plugin[];
+  /** Where this build keeps its saves. */
+  readonly saveAdapter: SaveAdapter;
 }
 
 export async function boot(options: BootOptions): Promise<Engine> {
@@ -59,6 +62,9 @@ export async function boot(options: BootOptions): Promise<Engine> {
   // First, so the rest of the engine can read what the host reports.
   for (const plugin of options.hostPlugins) engine.use(plugin);
   engine.use(new RendererPlugin({ width: 800, height: 600 }));
+  engine.use(
+    new SavePlugin({ save: createSave({ adapter: options.saveAdapter }) }),
+  );
   await engine.start();
   return engine;
 }
@@ -68,9 +74,13 @@ The module must not call `boot` itself, or a target's entry would start the
 game twice. The browser entry does the calling:
 
 ```ts yage-group="boot" yage-file="main.web.ts"
+import { localStorageAdapter } from "@yagejs/save";
 import { boot } from "./boot.js";
 
-boot({ hostPlugins: [] }).catch((err) => {
+boot({
+  hostPlugins: [],
+  saveAdapter: localStorageAdapter({ namespace: "my-game" }),
+}).catch((err) => {
   console.error(err);
 });
 ```
@@ -80,6 +90,14 @@ Point `index.html` at it:
 ```html
 <script type="module" src="/src/main.web.ts"></script>
 ```
+
+Each entry passes the save adapter for where its build runs. The browser
+entry keeps saves in the browser's storage, and the `namespace` keeps them
+apart from other games on the same site. The entries `yage-pack init` writes
+pass `electronSaveAdapter()` and `capacitorSaveAdapter()`, which keep saves as
+files in the app's data directory. A game that passes `localStorageAdapter`
+in every build saves into the web view's storage on desktop and mobile, and
+nothing reports it.
 
 ### One build per target
 
@@ -128,13 +146,13 @@ Two things to watch:
 ### Install and set up
 
 ```bash
-npm install @yagejs/host-electron
+npm install @yagejs/host-electron @yagejs/save
 npm install -D electron @electron-forge/cli @electron-forge/maker-zip @electron-forge/plugin-fuses @electron/fuses @yagejs-tools/pack
 npx yage-pack init --target electron --app-id com.example.mygame
 ```
 
 ```bash
-npm install @yagejs/host-capacitor @capacitor/core @capacitor/app @capacitor/filesystem @capacitor/screen-orientation @capacitor/ios @capacitor/android
+npm install @yagejs/host-capacitor @yagejs/save @capacitor/core @capacitor/app @capacitor/filesystem @capacitor/screen-orientation @capacitor/ios @capacitor/android
 npm install -D @capacitor/cli @yagejs-tools/pack
 npx yage-pack init --target ios --target android --app-id com.example.mygame
 ```
@@ -171,8 +189,10 @@ npm run package:electron   # the app directory under out/
 npm run make:electron      # the app plus what the makers write under out/make/
 ```
 
-`init` writes `electron/main.cjs`, the shell that serves the build, and
-`forge.config.cjs`, which is one line:
+`init` writes `electron/main.cjs`, the shell that serves the build. When the
+shell cannot start the game, it shows the error in a dialog and quits,
+because a packaged app's console output reaches no terminal. `init` also
+writes `forge.config.cjs`, which is one line:
 
 ```js
 const { electronForgeConfig } = require("@yagejs-tools/pack/forge");
@@ -367,6 +387,11 @@ Every refusal names the input:
   is refused by one of the two hosts.
 - `src/boot.ts with an exported boot function is missing` — do the split
   under [One boot function](#one-boot-function) first.
+- `dist-electron/index.html is missing` or `dist-capacitor/index.html is
+  missing` — `npm run build:electron` and `npm run build:capacitor` write
+  those directories only when the Vite config maps each mode to them, as
+  [One build per target](#one-build-per-target) shows. Without that mapping
+  the build writes `dist/`.
 - `packagerConfig.asar is set by @yagejs-tools/pack` — remove it;
   `electronForgeConfig` owns the archive, the bundle identifier and what
   goes into the package.

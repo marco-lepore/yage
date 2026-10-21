@@ -18,9 +18,10 @@ The scaffolder asks you to pick a template:
 - **Recommended** — a playable platformer seed with physics, input, animations,
   sound effects, enemies, and collectibles. Great for learning the engine. Its
   production build is an installable app that runs offline (see below).
-- **Minimal** — just `@yagejs/core` + `@yagejs/renderer` and an empty scene. Start
-  from scratch and add packages as you go (`src/boot.ts` has commented-out
-  examples showing how to wire each plugin).
+- **Minimal** — just `@yagejs/core`, `@yagejs/renderer` and `@yagejs/save`,
+  and an empty scene. Start from scratch and add packages as you go
+  (`src/boot.ts` has commented-out examples showing how to register each
+  plugin).
 
 Both templates include a Vite config, TypeScript setup, and an `AGENTS.md`
 for AI-assisted development. Their page is set up for phones: the game fills
@@ -30,8 +31,13 @@ Recommended template also has a fullscreen button.
 
 Both templates set the engine up in `src/boot.ts` and call it from
 `src/main.web.ts`, the browser entry. A desktop or mobile build gets its own
-entry beside it, so each build carries only the host it runs on. Add the
-packages for those targets with
+entry beside it, so each build carries only the host it runs on. Each entry
+also passes `boot` the save adapter for its build. `src/main.web.ts` keeps
+saves in the browser's storage under a namespace set to the project's name,
+so games served from one site keep their saves apart. Renaming the project
+later does not change the namespace. Changing the namespace after the first
+release leaves every player's saves behind. Add the packages for the desktop
+and mobile targets with
 `npm create yage@latest my-game -- --features electron,capacitor`, and see
 [Packaging for desktop and mobile](/tooling/packaging/).
 

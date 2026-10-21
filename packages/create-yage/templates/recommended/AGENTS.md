@@ -81,7 +81,7 @@ See https://yage.dev/patterns/project-layout for the full conventions.
 - **One scene per file.** A scene preloads assets, sets up the camera, and spawns entities. Game rules stay out of it. If a scene grows past ~150 lines, extract entity classes.
 - **Simple entity → single file; complex entity → folder.** Move an entity into a folder only when it has a second supporting file.
 - **Entity-specific components live next to the entity**, such as `Player/PlayerController.ts`. Use `components/` only for components shared across multiple entities, such as `Oscillate`.
-- **`boot.ts` stays short.** It creates the engine, registers plugins, and pushes the first scene. Keep game logic out of it. Each target's entry file calls `boot` with the host adapters that build runs with.
+- **`boot.ts` stays short.** It creates the engine, registers plugins, and pushes the first scene. Keep game logic out of it. Each target's entry file calls `boot` with the host adapters and the save adapter that build runs with.
 
 ## Installed packages
 
@@ -91,8 +91,9 @@ See https://yage.dev/patterns/project-layout for the full conventions.
 - `@yagejs/input` — keyboard, mouse, gamepad, action maps
 - `@yagejs/audio` — sound effects and music
 - `@yagejs/debug` — debug overlay and runtime inspector (`DebugPlugin` in `boot.ts`)
+- `@yagejs/save` — save slots and saved state (`SavePlugin` in `boot.ts`)
 
-Add more as you need them: `@yagejs/particles`, `@yagejs/tilemap`, `@yagejs/ui`, `@yagejs/ui-react`, `@yagejs/save`.
+Add more as you need them: `@yagejs/particles`, `@yagejs/tilemap`, `@yagejs/ui`, `@yagejs/ui-react`.
 
 ## Writing game code
 
@@ -239,6 +240,11 @@ Use `@yagejs/save` with an explicit `Serializable<TEncoded>` state root. Save
 files contain only the state you choose. YAGE does not serialize the live ECS
 world automatically. The Vite config preserves class and function names so
 diagnostics stay readable. Do not rely on those names for save-file identity.
+
+`boot.ts` registers `SavePlugin` with the save adapter the entry file passes:
+browser storage from `main.web.ts`, files in the app's data directory from a
+desktop or mobile entry. A component reaches the saves with
+`this.use(SaveServiceKey)`.
 
 ## Full YAGE documentation
 

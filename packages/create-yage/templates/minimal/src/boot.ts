@@ -1,5 +1,6 @@
 import { Engine, InspectorPlugin, type Plugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
+import { SavePlugin, createSave, type SaveAdapter } from "@yagejs/save";
 import { MainScene } from "./scenes/MainScene";
 
 export interface BootOptions {
@@ -8,6 +9,11 @@ export interface BootOptions {
    * a desktop or mobile entry passes its own.
    */
   readonly hostPlugins: readonly Plugin[];
+  /**
+   * Where saves are kept: browser storage for the browser entry, files in
+   * the app's data directory for a desktop or mobile entry.
+   */
+  readonly saveAdapter: SaveAdapter;
 }
 
 /**
@@ -35,6 +41,11 @@ export async function boot(options: BootOptions): Promise<Engine> {
       backgroundColor: 0x0f172a,
       container: document.getElementById("game")!,
     }),
+  );
+
+  // A component reads and writes saves through this.use(SaveServiceKey).
+  engine.use(
+    new SavePlugin({ save: createSave({ adapter: options.saveAdapter }) }),
   );
 
   // ---------------------------------------------------------------------

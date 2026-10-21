@@ -38,7 +38,7 @@ export interface InitReport {
   readonly ignored: readonly string[];
   /** What to run next. */
   readonly nextSteps: readonly string[];
-  /** Anything the command could not fill in. */
+  /** What the game's own code and configuration have to provide. */
   readonly notes: readonly string[];
 }
 
@@ -106,7 +106,7 @@ export function runInit(options: InitOptions): InitReport {
     });
   }
 
-  const notes: string[] = [];
+  const notes = entryNotes(files);
   const fields = updateManifest(root, manifest, {
     appId,
     name: displayName,
@@ -225,24 +225,36 @@ function plannedFiles(
   return planned;
 }
 
-const ELECTRON_ENTRY = `import { ElectronHostPlugin } from "@yagejs/host-electron";
+/** The entry files that pass a host's save adapter to `boot`. */
+const ENTRY_FILES = ["src/main.electron.ts", "src/main.capacitor.ts"];
+
+const ELECTRON_ENTRY = `import { ElectronHostPlugin, electronSaveAdapter } from "@yagejs/host-electron";
 import { boot } from "./boot";
 
-boot({ hostPlugins: [new ElectronHostPlugin()] }).catch((err) => {
+boot({
+  hostPlugins: [new ElectronHostPlugin()],
+  saveAdapter: electronSaveAdapter(),
+}).catch((err) => {
   console.error(err);
 });
 `;
 
-const CAPACITOR_ENTRY = `import { CapacitorHostPlugin } from "@yagejs/host-capacitor";
+const CAPACITOR_ENTRY = `import {
+  CapacitorHostPlugin,
+  capacitorSaveAdapter,
+} from "@yagejs/host-capacitor";
 import { boot } from "./boot";
 
-boot({ hostPlugins: [new CapacitorHostPlugin()] }).catch((err) => {
+boot({
+  hostPlugins: [new CapacitorHostPlugin()],
+  saveAdapter: capacitorSaveAdapter(),
+}).catch((err) => {
   console.error(err);
 });
 `;
 
 const ELECTRON_SHELL = `// The Electron shell: one window serving the Electron build.
-const { app } = require("electron");
+const { app, dialog } = require("electron");
 const path = require("node:path");
 const { startGame } = require("@yagejs/host-electron/main");
 const { productName, yage } = require("../package.json");
@@ -256,6 +268,9 @@ startGame({
   window: { width: 1280, height: 720, title: productName },
 }).catch((error) => {
   console.error(error);
+  // A packaged app's console output reaches no terminal, so the player
+  // sees the error in a dialog.
+  dialog.showErrorBox(\`\${productName} could not start\`, String(error));
   app.exit(1);
 });
 `;
@@ -275,6 +290,24 @@ function write(file: string, body: string, force: boolean): Outcome {
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, body);
   return "wrote";
+}
+
+/** What the boot function has to accept from the entries this run wrote. */
+function entryNotes(files: readonly InitFileResult[]): string[] {
+  const written = files
+    .filter(
+      (result) =>
+        result.outcome === "wrote" && ENTRY_FILES.includes(result.file),
+    )
+    .map((result) => result.file);
+  if (written.length === 0) return [];
+  const verb = written.length === 1 ? "passes" : "pass";
+  return [
+    `${written.join(" and ")} ${verb} the host's save adapter to boot as saveAdapter. ` +
+      `BootOptions in ${BOOT_FILE} needs a saveAdapter: SaveAdapter field, ` +
+      `and boot hands it to createSave from @yagejs/save ` +
+      `("One boot function" in the packaging guide).`,
+  ];
 }
 
 interface ManifestUpdate {
@@ -323,13 +356,18 @@ function updateManifest(
   }
 
   const scripts = (raw.scripts ?? {}) as Record<string, string>;
-  for (const [name, command] of plannedScripts(root, manifest, update)) {
+  for (const { name, command, note } of plannedScripts(
+    root,
+    manifest,
+    update,
+  )) {
     if (typeof scripts[name] === "string") {
       results.push({ file: `scripts.${name}`, outcome: "kept" });
       continue;
     }
     scripts[name] = command;
     results.push({ file: `scripts.${name}`, outcome: "wrote" });
+    if (note !== undefined) update.notes.push(note);
   }
   raw.scripts = scripts;
 
@@ -337,12 +375,19 @@ function updateManifest(
   return results;
 }
 
+/** One script `init` adds, with the report note it carries when written. */
+interface PlannedScript {
+  readonly name: string;
+  readonly command: string;
+  readonly note?: string;
+}
+
 /** The scripts each host adds, and the build command they share. */
 function plannedScripts(
   root: string,
   manifest: GameManifest,
   update: ManifestUpdate,
-): [string, string][] {
+): PlannedScript[] {
   const declared = {
     ...manifest.dependencies,
     ...manifest.devDependencies,
@@ -351,44 +396,64 @@ function plannedScripts(
   const hasTypescript =
     declared.typescript !== undefined &&
     existsSync(path.join(root, "tsconfig.json"));
-  const build = (target: Host): string | undefined => {
+  const build = (target: Host): PlannedScript | undefined => {
     if (!hasVite) return undefined;
+    const name = `build:${target}`;
     const command = `vite build --mode ${target}`;
-    return hasTypescript ? `tsc --noEmit && ${command}` : command;
+    return {
+      name,
+      command: hasTypescript ? `tsc --noEmit && ${command}` : command,
+      // The scripts work only with a config that turns the mode into the
+      // target's entry file and output directory.
+      note:
+        `${name} runs ${command}. The Vite config has to map that mode to ` +
+        `src/main.${target}.ts and ${WEB_DIRS[target]}/, as ` +
+        `"One build per target" in the packaging guide shows.`,
+    };
   };
+  const script = (name: string, command: string): PlannedScript => ({
+    name,
+    command,
+  });
 
-  const scripts: [string, string][] = [];
+  const scripts: PlannedScript[] = [];
   if (update.hosts.has("electron")) {
-    const command = build("electron");
-    if (command === undefined) {
+    const planned = build("electron");
+    if (planned === undefined) {
       update.notes.push(
         `No build:electron script was written: add one that writes ${WEB_DIRS.electron}/. ` +
           "start:electron, package:electron and make:electron run it.",
       );
     } else {
-      scripts.push(["build:electron", command]);
+      scripts.push(planned);
     }
     scripts.push(
-      ["start:electron", "npm run build:electron && electron-forge start"],
-      ["package:electron", "npm run build:electron && electron-forge package"],
-      ["make:electron", "npm run build:electron && electron-forge make"],
+      script(
+        "start:electron",
+        "npm run build:electron && electron-forge start",
+      ),
+      script(
+        "package:electron",
+        "npm run build:electron && electron-forge package",
+      ),
+      script("make:electron", "npm run build:electron && electron-forge make"),
     );
   }
   if (update.hosts.has("capacitor")) {
-    const command = build("capacitor");
-    if (command === undefined) {
+    const planned = build("capacitor");
+    if (planned === undefined) {
       update.notes.push(
         `No build:capacitor script was written: add one that writes ${WEB_DIRS.capacitor}/. ` +
           "sync:capacitor runs it.",
       );
     } else {
-      scripts.push(["build:capacitor", command]);
+      scripts.push(planned);
     }
     scripts.push(
-      ["sync:capacitor", "npm run build:capacitor && cap sync"],
+      script("sync:capacitor", "npm run build:capacitor && cap sync"),
       // Capacitor spawns a hook with the inherited PATH, which holds
       // node_modules/.bin under npm run and npx cap.
-      ["capacitor:sync:after", "npx yage-pack check"],
+      script("capacitor:sync:after", "npx yage-pack check"),
     );
   }
   return scripts;

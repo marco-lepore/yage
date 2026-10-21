@@ -108,18 +108,26 @@ describe("runCheck contract rules", () => {
     }
   });
 
-  it("names the build command when the web build is missing", async () => {
+  it("names the build script and the Vite mapping when the web build is missing", async () => {
     const root = makeTree({ "package.json": JSON.stringify(manifest) });
     expect(
       rule(
         await runCheck({ root, target: "electron", release: false }),
         "web build",
       ).fix,
-    ).toBe("Build it first: npm run build:electron.");
+    ).toBe(
+      "npm run build:electron writes it when the Vite config maps --mode electron " +
+        'to dist-electron/ ("One build per target" in the packaging guide). ' +
+        "A config without that mapping builds into dist/.",
+    );
     expect(
       rule(await runCheck({ root, target: "ios", release: false }), "web build")
         .fix,
-    ).toBe("Build it first: npm run build:capacitor.");
+    ).toBe(
+      "npm run build:capacitor writes it when the Vite config maps --mode capacitor " +
+        'to dist-capacitor/ ("One build per target" in the packaging guide). ' +
+        "A config without that mapping builds into dist/.",
+    );
   });
 
   it("refuses a native build that registers a service worker", async () => {

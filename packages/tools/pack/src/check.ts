@@ -163,12 +163,16 @@ function identityRule(root: string): {
 function webBuildRule(root: string, target: Target): CheckResult {
   const dir = target === "electron" ? WEB_DIRS.electron : WEB_DIRS.capacitor;
   const script = target === "electron" ? "electron" : "capacitor";
+  // Inside package:electron and sync:capacitor the build script has just
+  // run, so the fix also says when that script writes this directory.
   return existsSync(path.join(root, dir, "index.html"))
     ? pass("web build", `${dir}/index.html is there.`)
     : fail(
         "web build",
         `${dir}/index.html is missing.`,
-        `Build it first: npm run build:${script}.`,
+        `npm run build:${script} writes it when the Vite config maps ` +
+          `--mode ${script} to ${dir}/ ("One build per target" in the ` +
+          `packaging guide). A config without that mapping builds into dist/.`,
       );
 }
 

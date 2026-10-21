@@ -44,8 +44,10 @@ export default capacitorConfig();
 
 Both read the app's name, version and identifier from the game's
 `package.json`, so the desktop and mobile builds can never disagree about
-them. Everything `init` writes is yours afterwards: it keeps a file that is
-already there.
+them. Each entry file passes the host adapter and the host's save adapter to
+the game's `boot` function, so desktop and mobile saves are files in the
+app's data directory. Everything `init` writes is yours afterwards: it keeps
+a file that is already there.
 
 Full reference: [yage.dev/tooling/packaging](https://yage.dev/tooling/packaging).
 

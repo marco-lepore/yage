@@ -50,22 +50,32 @@ file and all of them call one boot function:
 ```ts
 // src/boot.ts
 import { Engine, type Plugin } from "@yagejs/core";
+import { SavePlugin, createSave, type SaveAdapter } from "@yagejs/save";
 
 export interface BootOptions {
   readonly hostPlugins: readonly Plugin[];
+  readonly saveAdapter: SaveAdapter;
 }
 
 export async function boot(options: BootOptions): Promise<Engine> {
   const engine = new Engine();
   for (const plugin of options.hostPlugins) engine.use(plugin);
+  engine.use(
+    new SavePlugin({ save: createSave({ adapter: options.saveAdapter }) }),
+  );
   await engine.start();
   return engine;
 }
 ```
 
-`src/main.web.ts` calls `boot({ hostPlugins: [] })`. `yage-pack init` writes
-`src/main.electron.ts` and `src/main.capacitor.ts`, which pass
-`new ElectronHostPlugin()` and `new CapacitorHostPlugin()`.
+`src/main.web.ts` calls
+`boot({ hostPlugins: [], saveAdapter: localStorageAdapter({ namespace: "my-game" }) })`.
+`yage-pack init` writes `src/main.electron.ts` and `src/main.capacitor.ts`,
+which pass `new ElectronHostPlugin()` with `electronSaveAdapter()` and
+`new CapacitorHostPlugin()` with `capacitorSaveAdapter()`, so desktop and
+mobile saves are files in the app's data directory. A build that passes
+`localStorageAdapter` saves into the web view's storage, and nothing reports
+it.
 
 With Vite, the mode picks the target:
 
@@ -127,6 +137,15 @@ The type check is left out when the project has no TypeScript, and the build
 scripts are left out when it does not use Vite; the report then names the
 `build:electron` or `build:capacitor` script the game has to add, the
 directory it writes, and the scripts that run it.
+
+The report also lists what the game's own code has to provide for the files
+written in that run: `BootOptions` needs the `saveAdapter` field the entries
+pass, and each `vite build --mode <target>` script needs a Vite config that
+maps the mode to `src/main.<target>.ts` and `dist-<target>/`.
+
+`electron/main.cjs` handles a rejected `startGame` with
+`dialog.showErrorBox` and `app.exit(1)`, because a packaged app's console
+output reaches no terminal.
 
 ## Ownership
 
@@ -312,6 +331,11 @@ sync hook and every Forge package through `prePackage`.
 | `copied config`                | `ios`, `android` | `npx cap sync` has copied `capacitor.config.json` into the native project                             |
 | `app id in the native project` | `ios`, `android` | the copied config, and `PRODUCT_BUNDLE_IDENTIFIER` or `applicationId`, equal `yage.appId`             |
 | `YAGE settings`                | `ios`, `android` | the copied config has `ios.contentInset: "never"` and no `plugins.App.disableBackButtonHandler: true` |
+
+A failed `web build` names the build script and the Vite mapping it relies
+on. Inside `package:electron` and `sync:capacitor` the script has just run,
+so a missing `index.html` there means the config writes the build to
+another directory, such as `dist/`.
 
 `npx cap add` writes the bundle identifier into the native project once and
 `npx cap sync` never updates it, which is why the check compares them and

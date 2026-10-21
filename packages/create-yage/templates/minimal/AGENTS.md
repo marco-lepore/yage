@@ -17,11 +17,11 @@ project configuration. See https://yage.dev/tooling/packaging.
 
 ## What's in the starter
 
-The starter installs `@yagejs/core` and `@yagejs/renderer` only. It contains
-one scene that spawns a placeholder rectangle. `src/boot.ts` has commented-out
-blocks that register `@yagejs/physics`, `@yagejs/input`, `@yagejs/audio`, and
-`@yagejs/debug`. Uncomment the blocks you need, and run the install command
-listed above each block.
+The starter installs `@yagejs/core`, `@yagejs/renderer` and `@yagejs/save`
+only. It contains one scene that spawns a placeholder rectangle.
+`src/boot.ts` has commented-out blocks that register `@yagejs/physics`,
+`@yagejs/input`, `@yagejs/audio`, and `@yagejs/debug`. Uncomment the blocks
+you need, and run the install command listed above each block.
 
 ## Project layout
 
@@ -56,7 +56,7 @@ See https://yage.dev/patterns/project-layout for the full conventions.
 - Entity-specific components live next to their entity. Use `components/` only
   for components shared across entities.
 - Keep `boot.ts` short. Each target's entry file calls `boot` with the host
-  adapters that build runs with.
+  adapters and the save adapter that build runs with.
 
 ## Writing game code
 
@@ -163,6 +163,11 @@ Follow these rules for every entity, component, and scene you add.
 Use `@yagejs/save` with an explicit `Serializable<TEncoded>` state root. Save
 files contain only the state you choose. YAGE does not serialize the live ECS
 world automatically.
+
+`boot.ts` registers `SavePlugin` with the save adapter the entry file passes:
+browser storage from `main.web.ts`, files in the app's data directory from a
+desktop or mobile entry. A component reaches the saves with
+`this.use(SaveServiceKey)`.
 
 ## Full YAGE documentation
 
