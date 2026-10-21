@@ -5,7 +5,11 @@ import { OccluderWatch } from "./occlusion.js";
 import { writeLightShapes } from "./write-light-shapes.js";
 import type { LightShapeSpan } from "./write-light-shapes.js";
 import { coneInnerCosine, coneOuterCosine } from "./cone.js";
-import { SURFACE_GL, SURFACE_WGSL } from "./surface-shader.js";
+import {
+  SURFACE_GL,
+  SURFACE_GPU_LAYOUT,
+  SURFACE_WGSL,
+} from "./surface-shader.js";
 import type {
   LightingRenderer,
   LightingRendererContext,
@@ -52,9 +56,12 @@ class SurfaceLightingRenderer implements LightingRenderer {
       kind: "surface",
       glsl: SURFACE_GL,
       wgsl: SURFACE_WGSL,
-      uniforms: this.uniforms,
-      lights: this.lights.source,
-      edges: this.edges.source,
+      resources: {
+        lightingUniforms: this.uniforms,
+        uLights: this.lights.source,
+        uEdges: this.edges.source,
+      },
+      gpuLayout: SURFACE_GPU_LAYOUT,
     });
   }
 
@@ -118,7 +125,11 @@ class SurfaceLightingRenderer implements LightingRenderer {
   }
 }
 
-/** Select surface shading for sprites with litMaterial(), emission, and maps. */
+/**
+ * Light every sprite on a world layer individually, with its normal map,
+ * specular highlights, and emission. A sprite without a material draws with
+ * `litMaterial()` defaults; `unlitMaterial()` opts one sprite out.
+ */
 export function surfaceLighting(): LightingRendererFactory {
   return (context) => new SurfaceLightingRenderer(context);
 }

@@ -37,9 +37,11 @@ everywhere except inside that border.
 
 ## Surface renderer
 
-`surfaceLighting()` shades sprites with `litMaterial()` individually, with normal
-maps, specular highlights, and emission. Select it in the existing `renderers`
-map. See [Sprite materials](../materials.md) for complete setup, source rules,
+`surfaceLighting()` shades every sprite on a world layer individually, with
+optional normal maps, specular highlights, and emission. It does not multiply
+the finished scene, so Graphics, text, tilemaps, and particles keep their own
+colors. Select it in the existing `renderers` map. See
+[Sprite materials](../materials.md) for complete setup, source rules,
 transparency, and limits. Requires WebGL2/WebGPU; bounce must be null.
 
 ## Renderers by name

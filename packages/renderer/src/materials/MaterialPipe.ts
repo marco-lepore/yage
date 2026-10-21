@@ -6,13 +6,18 @@ import {
   Texture,
   RendererType,
 } from "pixi.js";
-import type { InstructionSet, Renderer, RenderPipe } from "pixi.js";
-import { materialBinding } from "./MaterialBinding.js";
+import type {
+  InstructionSet,
+  RenderPipe,
+  WebGLRenderer,
+  WebGPURenderer,
+} from "pixi.js";
+import { MATERIAL_PIPE, materialBinding } from "./MaterialBinding.js";
 import type { MaterialGpu, MaterialSprite } from "./MaterialBinding.js";
 import { createMaterialGpu, MATERIAL_VERTEX_SIZE } from "./material-shader.js";
 
 interface MaterialInstruction {
-  renderPipeId: "yage-material";
+  renderPipeId: typeof MATERIAL_PIPE;
   canBundle: false;
   sprites: MaterialSprite[];
 }
@@ -22,23 +27,24 @@ class MaterialPipe implements RenderPipe<MaterialSprite> {
   static get extension() {
     return {
       type: [ExtensionType.WebGLPipes, ExtensionType.WebGPUPipes],
-      name: "yage-material",
+      name: MATERIAL_PIPE,
     };
   }
   private readonly state = State.for2d();
   private readonly surface = new Matrix();
 
-  constructor(private readonly renderer: Renderer) {}
+  // Registered only as a WebGL and WebGPU pipe.
+  constructor(private readonly renderer: WebGLRenderer | WebGPURenderer) {}
 
   addRenderable(sprite: MaterialSprite, instructions: InstructionSet): void {
     this.renderer.renderPipes.batch.break(instructions);
     const previous =
       instructions.instructions[instructions.instructionSize - 1];
-    if (previous?.renderPipeId === "yage-material") {
+    if (previous?.renderPipeId === MATERIAL_PIPE) {
       (previous as MaterialInstruction).sprites.push(sprite);
     } else {
       const instruction: MaterialInstruction = {
-        renderPipeId: "yage-material",
+        renderPipeId: MATERIAL_PIPE,
         canBundle: false,
         sprites: [sprite],
       };
@@ -51,8 +57,6 @@ class MaterialPipe implements RenderPipe<MaterialSprite> {
   }
 
   execute(instruction: MaterialInstruction): void {
-    if (!("encoder" in this.renderer))
-      throw new Error("Sprite material: WebGL2 or WebGPU is required.");
     const sprites = instruction.sprites;
     for (let start = 0; start < sprites.length; ) {
       const first = sprites[start]!;
@@ -66,9 +70,9 @@ class MaterialPipe implements RenderPipe<MaterialSprite> {
   private draw(sprites: MaterialSprite[], start: number, end: number): void {
     const first = sprites[start]!;
     const binding = first[materialBinding];
-    const gpu = (binding.gpu ??= createMaterialGpu(
-      binding.definition.kind === "lit" ? binding.inputs : undefined,
-    ));
+    // The binding routes a sprite here only while it has a material.
+    const material = binding.material!;
+    const gpu = (binding.gpu ??= createMaterialGpu(binding.lighting));
     reserve(gpu, end - start);
     let count = 0;
     for (let i = start; i < end; i++) {
@@ -79,7 +83,6 @@ class MaterialPipe implements RenderPipe<MaterialSprite> {
     geometry
       .getBuffer("aPosition")
       .update(count * 4 * MATERIAL_VERTEX_SIZE * 4);
-    const material = binding.definition;
     uniforms.uParams.set(
       material.kind === "lit"
         ? [
@@ -153,13 +156,12 @@ class MaterialPipe implements RenderPipe<MaterialSprite> {
     if (this.renderer.type === RendererType.WEBGL)
       shader.groups[100] = this.renderer.globalUniforms.bindGroup;
     else shader.groups[0] = this.renderer.globalUniforms.bindGroup;
-    if ("encoder" in this.renderer)
-      this.renderer.encoder.draw({
-        geometry,
-        shader,
-        state: this.state,
-        size: count * 6,
-      });
+    this.renderer.encoder.draw({
+      geometry,
+      shader,
+      state: this.state,
+      size: count * 6,
+    });
   }
 
   private pack(
@@ -235,12 +237,12 @@ class MaterialPipe implements RenderPipe<MaterialSprite> {
 function compatible(a: MaterialSprite, b: MaterialSprite): boolean {
   const left = a[materialBinding];
   const right = b[materialBinding];
-  const lm = left.definition;
-  const rm = right.definition;
+  const lm = left.material!;
+  const rm = right.material!;
   return (
     a.texture.source === b.texture.source &&
     a.groupBlendMode === b.groupBlendMode &&
-    left.inputs === right.inputs &&
+    left.lighting === right.lighting &&
     left.maps.normal?.source === right.maps.normal?.source &&
     left.maps.specular?.source === right.maps.specular?.source &&
     left.maps.emission?.source === right.maps.emission?.source &&

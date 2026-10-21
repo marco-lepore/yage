@@ -16,7 +16,11 @@ let animationTicker: Ticker | undefined;
 export interface AnimatedSpriteComponentOptions extends VisualComponentOptions {
   /** Frame source (sheet grid or atlas animation). */
   source: FrameSource;
-  /** Reusable surface settings; companion maps belong to source. */
+  /**
+   * Reusable shading settings; companion maps belong to `source`. Omit to
+   * follow the scene: lit on a world layer of a `surfaceLighting()` scene,
+   * ordinary drawing everywhere else.
+   */
   material?: SpriteMaterial;
   /**
    * Default sprite anchor (0,0 = top-left, 0.5,0.5 = center, 1,1 = bottom-right).
@@ -65,39 +69,25 @@ export class AnimatedSpriteComponent extends MaterialVisualComponent {
     return this.animatedSprite;
   }
 
-  /** Replace frames and maps together, stop at frame zero, and clear completion. */
+  /**
+   * Replace frames and maps together, stop at frame zero, and clear the
+   * completion callback. Omitted maps are cleared.
+   */
   setSource(source: FrameSource): void {
-    if (this.surface.scene) {
-      const maps = source.maps;
-      const active =
-        this.surface.active ||
-        !!(maps?.normal || maps?.specular || maps?.emission);
-      this.surface.assertCompatible(
-        this.surface.scene,
-        this.layerName,
-        this.material,
-        active,
-      );
-    }
+    this.binding.assertMaps(source.maps);
     const resolved = resolveSpriteSource(source);
     this._installSource(resolved);
     resolved.release();
   }
 
-  /** @internal Check a controller transition before changing playback state. */
-  _assertSource(source: ResolvedSpriteSource): void {
-    if (this.surface.scene)
-      this.surface.assertCompatible(
-        this.surface.scene,
-        this.layerName,
-        this.material,
-        this.surface.active || source.maps.page !== undefined,
-      );
+  /** @internal Throw if this sprite's scene cannot draw a source's maps. */
+  _assertMaps(source: ResolvedSpriteSource): void {
+    this.binding.assertMaps(source.maps.refs);
   }
 
   /** @internal Controllers use the same installation path with their retained source. */
   _installSource(source: ResolvedSpriteSource): void {
-    this.surface.setMaps(source.maps, this.layerName);
+    this.binding.setMaps(source.maps, this.layerName);
     source.retain();
     const previous = this.source;
     this.source = source;
@@ -113,7 +103,7 @@ export class AnimatedSpriteComponent extends MaterialVisualComponent {
 
   override inspectRender() {
     const facet = super.inspectRender();
-    return this.surface.active ? { ...facet, frameIndex: this.frame } : facet;
+    return this.binding.material ? { ...facet, frameIndex: this.frame } : facet;
   }
 
   /**

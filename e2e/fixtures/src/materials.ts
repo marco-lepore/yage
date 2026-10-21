@@ -55,6 +55,7 @@ class MaterialProbe extends Component {
   readonly animated: AnimatedSpriteComponent;
   readonly light: LightSource;
   camera: CameraEntity | undefined;
+  plain: SpriteComponent | undefined;
 
   constructor(
     left: SpriteComponent,
@@ -210,17 +211,25 @@ class MaterialProbe extends Component {
       },
       additive: () => {
         this.left.blendMode = "add";
+        // A screen-space layer keeps this sprite on Pixi's own sprite pipe.
         const reference = this.scene.spawn("ordinary-additive-reference");
         reference.add(new Transform({ position: new Vec2(32, 80) }));
         reference.add(
           new SpriteComponent({
             texture: images.gray,
+            layer: "native",
             tint: 0xff0000,
             alpha: 0.5,
             blendMode: "add",
           }),
         );
       },
+      plain: () => {
+        const plain = this.scene.spawn("plain");
+        plain.add(new Transform({ position: new Vec2(112, 80) }));
+        this.plain = plain.add(new SpriteComponent({ texture: images.gray }));
+      },
+      plainUnlit: () => this.plain?.setMaterial(unlitMaterial()),
       reverseOrder: () => {
         this.left.sprite.zIndex = 1;
       },
@@ -306,6 +315,7 @@ class TestLamp extends Entity {
 class MaterialScene extends Scene {
   readonly name = "materials";
   readonly preload = Object.values(images);
+  readonly layers = [{ name: "native", order: 1, space: "screen" as const }];
   onEnter(): void {
     const background = this.spawn("background");
     background.add(new Transform());

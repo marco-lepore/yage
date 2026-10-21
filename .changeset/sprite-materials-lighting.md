@@ -1,11 +1,10 @@
 ---
-"@yagejs/lighting": minor
+"@yagejs/lighting": patch
 ---
 
 Add sprite materials with normal maps, specular highlights, and emission.
 
-- Add `surfaceLighting()` through the existing named backend configuration. It shades individual sprites with ambient light, radial lights, cones, and occluders before alpha blending.
-- Add positive pixel `LightSource.height`, defaulting to 64, for surface light direction without changing light-level queries or shadow geometry.
-- Share shadow evaluation and shape preparation with the shader compositor. Skip unchanged light-data uploads and reject unsupported bounce or GPU configurations explicitly.
-- Use direct segment intersections for point-light shadows and skip edges outside the pixel-to-lamp region before soft-shadow projection in both GPU lighting backends.
-- Skip shadow evaluation for back-facing surface lights and specular work for fully shadowed pixels.
+- `surfaceLighting()` is a lighting backend that lights each sprite on a world layer individually, with its normal map, specular highlights, and emission, before the sprite blends with what is behind it. It uses the scene's ambient light, lights, cones, and occluders. It requires WebGL2 or WebGPU and rejects bounce. Graphics, text, tilemaps, and particles keep their own colors under it.
+- `LightSource.height` places a light above the sprite plane in pixels, default 64. It changes the direction of surface lighting only, not light-level queries or shadows.
+- `shaderLighting()` spends less GPU time on the shadows of point lights (`size: 0`), and skips occluder edges that cannot block a pixel's view of a finite lamp.
+- A lighting buffer that runs out of room names the buffer and its capacity in its error.

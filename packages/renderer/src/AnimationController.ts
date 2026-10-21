@@ -216,7 +216,6 @@ export class AnimationController<T extends string = string> extends Component {
   /** Clear lock and force-switch to the given animation. */
   forcePlay(name: T): void {
     const def = this._def(name, "forcePlay");
-    this._sprite._assertSource(def.source);
     const cancelled = this._onCancel;
     this._clearLock();
     this._apply(name, def);
@@ -296,8 +295,14 @@ export class AnimationController<T extends string = string> extends Component {
     return f >= start && f <= end;
   }
 
-  /** Auto-play the first defined animation. */
+  /**
+   * Check every animation's maps against the scene, then auto-play the first
+   * defined animation. A scene that cannot draw a source's maps throws here,
+   * so no later transition fails.
+   */
   onAdd(): void {
+    for (const def of Object.values<ResolvedAnimDef>(this._anims))
+      this._sprite._assertMaps(def.source);
     const names = Object.keys(this._anims) as T[];
     const first = names[0];
     if (first !== undefined) {
@@ -346,11 +351,6 @@ export class AnimationController<T extends string = string> extends Component {
     return this._anims[name];
   }
 
-  /** @internal Validate source compatibility before a layered transition. */
-  _assertSource(name: T): void {
-    this._sprite._assertSource(this._def(name, "play").source);
-  }
-
   private _validateTiming(
     def: ResolvedAnimDef,
     startFrame: number,
@@ -380,7 +380,6 @@ export class AnimationController<T extends string = string> extends Component {
     def: ResolvedAnimDef,
     options?: { startFrame: number; speed: number },
   ): void {
-    this._sprite._assertSource(def.source);
     this._current = name;
     this._shotSpeed = options?.speed ?? 1;
     const sprite = this._sprite.animatedSprite;

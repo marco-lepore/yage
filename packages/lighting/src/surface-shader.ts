@@ -35,6 +35,24 @@ vec3 evaluateLighting(vec3 base, vec3 normal, vec2 point, vec3 specular, float s
 }
 `;
 
+/** `GPUShaderStage.FRAGMENT`. The global exists only in browsers with WebGPU. */
+const FRAGMENT = 2;
+
+/** Bind group 3 as {@link SURFACE_WGSL} declares it, all read by fragments. */
+export const SURFACE_GPU_LAYOUT: readonly GPUBindGroupLayoutEntry[] = [
+  { binding: 0, visibility: FRAGMENT, buffer: { type: "uniform" } },
+  {
+    binding: 1,
+    visibility: FRAGMENT,
+    texture: { sampleType: "unfilterable-float" },
+  },
+  {
+    binding: 2,
+    visibility: FRAGMENT,
+    texture: { sampleType: "unfilterable-float" },
+  },
+];
+
 export const SURFACE_WGSL = /* wgsl */ `
 struct LightingUniforms { uAmbient: vec4<f32>, };
 @group(3) @binding(0) var<uniform> lightingUniforms: LightingUniforms;

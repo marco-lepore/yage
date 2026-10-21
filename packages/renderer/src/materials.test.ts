@@ -7,6 +7,7 @@ import {
   Rectangle,
   UniformGroup,
 } from "pixi.js";
+import type { Scene } from "@yagejs/core";
 import {
   createRendererTestContext,
   spawnEntityInScene,
@@ -36,6 +37,27 @@ function image(width = 32, height = 32): Texture {
   textures.push(result);
   return result;
 }
+/** A scene whose lighting backend shades sprites individually, on WebGL2. */
+function surfaceScene(): ReturnType<typeof createRendererTestContext> {
+  const context = createRendererTestContext();
+  useWebGL2(context.scene);
+  context.scene.registerScoped(SpriteLightingKey, {
+    kind: "surface",
+    glsl: "",
+    wgsl: "",
+    resources: { lightingUniforms: new UniformGroup({}) },
+    gpuLayout: [],
+  });
+  return context;
+}
+function useWebGL2(scene: Scene): void {
+  Object.assign(scene.context.resolve(RendererKey), {
+    application: {
+      renderer: { name: "webgl", context: { webGLVersion: 2 } },
+    },
+  });
+}
+
 afterEach(() => {
   for (const key of ["material-color", "material-other", "material-sheet"])
     unregisterTexture(key);
@@ -93,22 +115,75 @@ describe("sprite materials", () => {
     );
   });
 
-  it("snapshots definitions so replacing one sprite does not change another", () => {
+  it("shares one definition and replaces only the sprite it is set on", () => {
     registerTexture("material-color", image());
     const material = unlitMaterial({ emissionIntensity: 0.2 });
     const a = new SpriteComponent({ texture: "material-color", material });
     const b = new SpriteComponent({ texture: "material-color", material });
-    a.setMaterial(unlitMaterial({ emissionIntensity: 0.8 }));
-    expect(a.material.emissionIntensity).toBe(0.8);
-    expect(b.material.emissionIntensity).toBe(0.2);
-    const before = a.material;
-    expect(() =>
-      a.setMaterial({ ...material, emissionIntensity: NaN }),
-    ).toThrow();
-    expect(a.material).toBe(before);
+    expect(a.material).toBe(material);
+    const brighter = unlitMaterial({ emissionIntensity: 0.8 });
+    a.setMaterial(brighter);
+    expect(a.material).toBe(brighter);
+    expect(b.material).toBe(material);
+    a.setMaterial(undefined);
+    expect(a.material).toBeUndefined();
     a.onDestroy();
     b.onDestroy();
     expect(textures[0]!.destroyed).toBe(false);
+  });
+
+  it("rejects a copy of a definition and keeps the current material", () => {
+    registerTexture("material-color", image());
+    const material = unlitMaterial({ emissionIntensity: 0.2 });
+    const copy = { ...material, emissionIntensity: NaN };
+    expect(
+      () => new SpriteComponent({ texture: "material-color", material: copy }),
+    ).toThrow(/litMaterial\(\) or unlitMaterial\(\)/);
+    const sprite = new SpriteComponent({ texture: "material-color", material });
+    expect(() => sprite.setMaterial(copy)).toThrow(
+      /litMaterial\(\) or unlitMaterial\(\)/,
+    );
+    expect(sprite.material).toBe(material);
+    sprite.onDestroy();
+  });
+
+  it("lights sprites without a material on the world layers of a surface scene", () => {
+    registerTexture("material-color", image());
+    const { scene, tree } = surfaceScene();
+    tree.ensureLayer({ name: "hud", order: 1 }, { space: "screen" });
+    const sprite = spawnEntityInScene(scene).add(
+      new SpriteComponent({ texture: "material-color" }),
+    );
+    expect(sprite.material).toBeUndefined();
+    expect(sprite.sprite.renderPipeId).toBe("yage-material");
+    expect(sprite.inspectRender()).toMatchObject({
+      material: litMaterial(),
+      lighting: "surface",
+    });
+    sprite.setLayer("hud");
+    expect(sprite.sprite.renderPipeId).toBe("sprite");
+    expect(sprite.inspectRender()).not.toHaveProperty("material");
+    sprite.setLayer("default");
+    sprite.setMaterial(unlitMaterial());
+    expect(sprite.sprite.renderPipeId).toBe("yage-material");
+    expect(sprite.inspectRender()).toMatchObject({
+      material: { kind: "unlit" },
+      lighting: "none",
+    });
+  });
+
+  it("draws sprites without a material through Pixi outside surface scenes", () => {
+    registerTexture("material-color", image());
+    const { scene } = createRendererTestContext();
+    const sprite = spawnEntityInScene(scene).add(
+      new SpriteComponent({ texture: "material-color" }),
+    );
+    expect(sprite.sprite.renderPipeId).toBe("sprite");
+    scene.registerScoped(SpriteLightingKey, { kind: "composite" });
+    const other = spawnEntityInScene(scene).add(
+      new SpriteComponent({ texture: "material-color" }),
+    );
+    expect(other.sprite.renderPipeId).toBe("sprite");
   });
 
   it("validates map role, dimensions, and full-page layout before replacing the source", () => {
@@ -142,7 +217,10 @@ describe("sprite materials", () => {
     Assets.cache.set(dataTextureKey("normal.png"), image(64, 32));
     const normal = dataTexture("normal.png");
     const source = { sheet: "material-sheet", frameWidth: 32, count: 2 };
-    const sprite = new AnimatedSpriteComponent({ source });
+    const { scene } = surfaceScene();
+    const sprite = spawnEntityInScene(scene).add(
+      new AnimatedSpriteComponent({ source }),
+    );
     const oldFrames = [...sprite.animatedSprite.textures];
     sprite.gotoFrame(1);
     const seen: (DataTextureHandle | undefined)[] = [];
@@ -153,7 +231,7 @@ describe("sprite materials", () => {
     expect(seen).toEqual([normal]);
     expect(sprite.inspectRender()).toMatchObject({
       maps: { normal: "normal.png" },
-      material: { kind: "unlit" },
+      material: { kind: "lit" },
       frameIndex: 0,
       frame: { x: 0, y: 0, width: 32, height: 32, rotation: 0 },
     });
@@ -174,32 +252,19 @@ describe("sprite materials", () => {
     // The component binds its scene through the same entry used on attachment.
     const entity = spawnEntityInScene(scene);
     entity.add(sprite);
-    const before = sprite.material;
     expect(() => sprite.setMaterial(litMaterial())).toThrow(/surfaceLighting/);
-    expect(sprite.material).toBe(before);
+    expect(sprite.material).toBeUndefined();
     scene.registerScoped(SpriteLightingKey, { kind: "composite" });
     expect(() => sprite.setMaterial(unlitMaterial())).toThrow(
       /surfaceLighting/,
     );
-    expect(sprite.material).toBe(before);
+    expect(sprite.material).toBeUndefined();
+    expect(sprite.sprite.renderPipeId).toBe("sprite");
   });
 
   it("rejects a screen-space layer before moving a lit sprite", () => {
     registerTexture("material-color", image());
-    const { scene, tree } = createRendererTestContext();
-    Object.assign(scene.context.resolve(RendererKey), {
-      application: {
-        renderer: { name: "webgl", context: { webGLVersion: 2 } },
-      },
-    });
-    scene.registerScoped(SpriteLightingKey, {
-      kind: "surface",
-      glsl: "",
-      wgsl: "",
-      uniforms: new UniformGroup({}),
-      lights: image().source,
-      edges: image().source,
-    });
+    const { scene, tree } = surfaceScene();
     tree.ensureLayer({ name: "hud", order: 1 }, { space: "screen" });
     const sprite = spawnEntityInScene(scene).add(
       new SpriteComponent({
@@ -270,7 +335,7 @@ describe("mapped animation sources", () => {
     expect(textures[0]!.source.destroyed).toBe(false);
   });
 
-  it("rejects mapped controller transitions before changing a one-shot lock", () => {
+  it("rejects a controller whose maps the scene cannot draw when it is added", () => {
     registerTexture("material-sheet", image(64, 32));
     Assets.cache.set(dataTextureKey("normal.png"), image(64, 32));
     const source = { sheet: "material-sheet", frameWidth: 32, count: 2 };
@@ -278,20 +343,22 @@ describe("mapped animation sources", () => {
     scene.registerScoped(SpriteLightingKey, { kind: "composite" });
     const entity = spawnEntityInScene(scene);
     const sprite = entity.add(new AnimatedSpriteComponent({ source }));
-    const controller = entity.add(
-      new AnimationController({
-        idle: { source, speed: 0.1 },
-        mapped: {
-          source: { ...source, maps: { normal: dataTexture("normal.png") } },
-          speed: 0.1,
-        },
-      }),
-    );
-    controller.playOneShot("idle");
     const before = sprite.animatedSprite.textures;
-    expect(() => controller.forcePlay("mapped")).toThrow(/surfaceLighting/);
-    expect(controller.current).toBe("idle");
-    expect(controller.locked).toBe(true);
+    const controller = new AnimationController({
+      idle: { source, speed: 0.1 },
+      mapped: {
+        source: { ...source, maps: { normal: dataTexture("normal.png") } },
+        speed: 0.1,
+      },
+    });
+    expect(() => entity.add(controller)).toThrow(/surfaceLighting/);
+    expect(sprite.animatedSprite.textures).toBe(before);
+    expect(() =>
+      sprite.setSource({
+        ...source,
+        maps: { normal: dataTexture("normal.png") },
+      }),
+    ).toThrow(/surfaceLighting/);
     expect(sprite.animatedSprite.textures).toBe(before);
     controller.onDestroy();
     sprite.onDestroy();

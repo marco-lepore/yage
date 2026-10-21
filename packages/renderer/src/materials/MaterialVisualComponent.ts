@@ -8,37 +8,43 @@ import type { RenderFacetSnapshot } from "../internal/renderFacet.js";
 /** Shared material attachment for sprite components, including animated sprites. */
 export abstract class MaterialVisualComponent extends VisualComponent {
   abstract override readonly renderObject: DisplaySprite;
-  protected surface!: MaterialBinding;
+  protected binding!: MaterialBinding;
 
   protected initializeMaterial(
     maps: ResolvedMaps,
-    material?: SpriteMaterial,
+    material: SpriteMaterial | undefined,
   ): void {
-    this.surface = new MaterialBinding(this.renderObject, maps, material);
+    this.binding = new MaterialBinding(this.renderObject, maps, material);
   }
 
-  get material(): SpriteMaterial {
-    return this.surface.definition;
+  /**
+   * The material set through the `material` option or {@link setMaterial}.
+   * `undefined` follows the scene: lit on a world layer of a
+   * `surfaceLighting()` scene, ordinary drawing everywhere else.
+   */
+  get material(): SpriteMaterial | undefined {
+    return this.binding.explicit;
   }
+
+  /** The companion images drawn with the current color image. */
   get maps(): SpriteMaps {
-    return this.surface.maps.refs;
+    return this.binding.maps.refs;
   }
 
-  /** Replace this sprite's immutable shading settings. */
-  setMaterial(material: SpriteMaterial): void {
-    this.surface.setMaterial(material, this.layerName);
+  /** Replace this sprite's material. `undefined` returns it to the scene's default. */
+  setMaterial(material: SpriteMaterial | undefined): void {
+    this.binding.setMaterial(material, this.layerName);
   }
 
   override onAdd(): void {
-    this.surface.attach(this.scene, this.layerName);
+    this.binding.attach(this.scene, this.layerName);
     super.onAdd();
   }
 
   override setLayer(name: string): void {
-    if (this.surface.scene)
-      this.surface.assertCompatible(this.surface.scene, name);
+    if (name === this.layerName) return;
+    this.binding.setLayer(name);
     super.setLayer(name);
-    if (this.surface.scene) this.surface.attach(this.surface.scene, name);
   }
 
   override inspectRender(): RenderFacetSnapshot<{
@@ -56,7 +62,8 @@ export abstract class MaterialVisualComponent extends VisualComponent {
     frameIndex?: number;
   }> {
     const base = super.inspectRender();
-    if (!this.surface.active) return base;
+    const material = this.binding.material;
+    if (!material) return base;
     const maps: Record<string, string> = {};
     for (const [role, ref] of Object.entries(this.maps))
       maps[role] = typeof ref === "string" ? ref : ref.path;
@@ -64,9 +71,9 @@ export abstract class MaterialVisualComponent extends VisualComponent {
     const frame = texture.frame;
     return {
       ...base,
-      material: this.material,
+      material,
       maps,
-      lighting: this.surface.inputs?.kind ?? "none",
+      lighting: this.binding.lighting?.kind ?? "none",
       source: texture.source.label,
       frame: {
         x: frame.x,
@@ -80,6 +87,6 @@ export abstract class MaterialVisualComponent extends VisualComponent {
 
   override onDestroy(): void {
     super.onDestroy();
-    this.surface.destroyGpu();
+    this.binding.destroyGpu();
   }
 }

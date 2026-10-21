@@ -52,6 +52,8 @@ interface MaterialProbe {
   separateBatch(): void;
   replaceBatchMaterial(): void;
   pointBlocker(shape: "box" | "circle", x: number, y: number): void;
+  plain(): void;
+  plainUnlit(): void;
 }
 
 test.use({
@@ -174,6 +176,29 @@ for (const backend of ["webgl", "webgpu"]) {
     expect(result.masked[1]).toBeGreaterThan(result.base[1]! + 40);
     expect(result.up).toBeGreaterThan(50);
     expect(result.down).toBeLessThan(3);
+  });
+
+  test(`sprites without a material follow the lights and opt out with unlitMaterial on ${backend}`, async ({
+    page,
+  }) => {
+    await openMaterials(page, backend);
+    const result = await page.evaluate(() => {
+      const inspector = window.__yage__!.inspector;
+      const probe = inspector.getExtension<MaterialProbe>("materials")!;
+      probe.plain();
+      inspector.time.step();
+      const lit = probe.pixel(128, 96);
+      probe.darkness();
+      inspector.time.step();
+      const dark = probe.pixel(128, 96);
+      probe.plainUnlit();
+      inspector.time.step();
+      return { lit, dark, unlit: probe.pixel(128, 96) };
+    });
+    expect(result.lit[0]).toBeGreaterThan(20);
+    expect(result.lit[0]).toBeLessThan(120);
+    expect(result.dark.slice(0, 3)).toEqual([0, 0, 0]);
+    expect(result.unlit.slice(0, 3)).toEqual([128, 128, 128]);
   });
 
   test(`tint, alpha, additive blending and draw order on ${backend}`, async ({

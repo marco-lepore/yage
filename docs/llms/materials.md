@@ -29,10 +29,18 @@ interface LitMaterialOptions extends UnlitMaterialOptions {
 }
 ```
 
-Factories return frozen readonly definitions with `kind: "lit" | "unlit"`.
-Colors become numeric RGB; all numeric settings must be finite. Share definitions
-freely. `SpriteComponent` and `AnimatedSpriteComponent` expose `material`, `maps`,
-and `setMaterial(material: SpriteMaterial): void`. Replacement changes one component.
+Factories return frozen readonly definitions with `kind: "lit" | "unlit"`; only
+the factories can create one. Colors become numeric RGB; all numeric settings
+must be finite. Share definitions freely. `SpriteComponent` and
+`AnimatedSpriteComponent` expose `material: SpriteMaterial | undefined`, `maps`,
+and `setMaterial(material: SpriteMaterial | undefined): void`. `material` returns
+the definition given; `undefined` follows the scene. Replacement changes one
+component.
+
+In a `surfaceLighting()` scene every sprite on a world layer is lit. A sprite
+without a material draws with `litMaterial()` defaults; no maps or material are
+needed. `unlitMaterial()` opts one sprite out. Outside such scenes, a sprite
+without a material draws through Pixi's ordinary sprite path.
 
 ## Complete setup
 
@@ -56,7 +64,7 @@ class Orb extends Entity {
     this.add(
       new SpriteComponent({
         texture: color,
-        maps: { normal },
+        maps: { normal }, // lit without a material; this one adds specular
         material: polished,
       }),
     );
@@ -118,15 +126,16 @@ Scene preload owns images; components release only their own frame views.
   rotation use the color frame's UVs. Independent map packing is unsupported.
 - For atlas frames, preload `spritesheet("/assets/hero.json")` and map handles;
   use `{ atlas: "/assets/hero.json", animation: "walk", maps: { normal } }`.
-- The real public `sprite`/`animatedSprite` objects remain. Raw texture writes to
-  another page while maps are attached throw; use component methods/controllers.
+- Change a sprite's image only through `setTexture`, `setSource`, or an animation
+  controller, and place it with `Transform`.
 
 ## Shading and composition
 
-Missing material means ordinary unlit drawing. Missing normal means `(0,0,1)`.
+Missing material means `litMaterial()` defaults on a surface-lit world layer and
+ordinary drawing elsewhere. Missing normal means `(0,0,1)`.
 Normal RGB decodes XYZ from `0..1` to `-1..1`; `normalY: "up"` reverses green for
-screen coordinates. Inverse-transpose visual transforms handle mirroring,
-rotation, and nonuniform scale; cameras do not rotate world lighting.
+screen coordinates. Lighting follows mirroring, rotation, and nonuniform scale
+set on the entity's `Transform`; cameras do not rotate world lighting.
 
 Specular is Blinn–Phong with fixed viewer direction `(0,0,1)`. The map's red
 channel multiplies `specularStrength`; without a map, strength is uniform.
@@ -142,6 +151,12 @@ bloom reads the shaded image and can also affect non-emissive highlights.
 Standard color range clamps to 0..1. No HDR, PBR, refraction, transmission, or
 per-pixel/colored transparent shadows. Occluders remain opaque geometry.
 
+Every pixel inside a `LightOccluder` is dark for each light outside it,
+including the pixels of the sprite that owns the occluder. Give an object a
+footprint occluder (a polygon along its base) to keep its face lit:
+`shape: { type: "polygon", vertices: [{ x: -32, y: 20 }, { x: 32, y: 20 }, { x: 32, y: 32 }, { x: -32, y: 32 }] }`
+for a 64-pixel sprite anchored at its center.
+
 `LightSourceOptions.height` / `light.height`: positive pixels, default 64, finite
 and representable as a positive GPU float. Affects direction only; it does not
 change radius falloff, queries, occlusion, draw order, or Transform.
@@ -150,16 +165,20 @@ change radius falloff, queries, occlusion, draw order, or Transform.
 
 `surfaceLighting()` takes no options. Select it through LightingPlugin.renderers
 or the existing scene lighting.renderer name. WebGL2/WebGPU required. Bounce
-must be null/omitted. Lit sprites require world-space layers. Explicit materials
-or maps reject overlay/shader compositor scenes. Unlit materials work without
-lighting or with a null backend; lit materials require surfaceLighting.
+must be null/omitted. A lit material on a screen-space layer throws; a sprite
+without a material there draws unlit. A material or maps in an overlay or
+shader scene throws. Unlit materials work without lighting or with a null
+backend; lit materials require surfaceLighting. An `AnimationController` checks
+every animation's maps when added, so an incompatible scene throws then.
 
-Graphics, text, UI, particles, and tilemaps do not receive surface lighting.
+Graphics, text, UI, particles, and tilemaps do not receive surface lighting and
+keep their own colors in a surface scene.
 Adjacent sprites with matching material settings, image pages, lighting provider,
 and blend mode share a draw. Sorting, masks, filters, and other visuals keep their
 draw boundaries; different tint, alpha, frames, and transforms can share a draw.
 Every active light is evaluated, rejecting pixels outside its radius before
 shadow work. Point lights use segment intersections; finite lamps retain soft
-shadow coverage. Cost grows with lights, occluders, and overdraw.
+shadow coverage. Cost grows with lights, occluders, and overdraw, and applies to
+every sprite on a world layer of a surface scene, mapped or not.
 The Inspector render facet reports material, map paths, source page
 label, frame rectangle/packing rotation, animation frame index, and provider.

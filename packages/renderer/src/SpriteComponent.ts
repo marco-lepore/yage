@@ -15,7 +15,10 @@ export interface SpriteComponentOptions extends VisualComponentOptions {
   texture: TextureRef;
   /** Companion images with the same page dimensions and UV layout. */
   maps?: SpriteMaps;
-  /** Reusable surface settings. Omit for ordinary unlit drawing. */
+  /**
+   * Reusable shading settings. Omit to follow the scene: lit on a world layer
+   * of a `surfaceLighting()` scene, ordinary drawing everywhere else.
+   */
   material?: SpriteMaterial;
   /** Anchor point (0-1). */
   anchor?: { x: number; y: number };
@@ -42,11 +45,11 @@ export class SpriteComponent extends MaterialVisualComponent {
     return this.sprite;
   }
 
-  /** Replace the sprite's texture. */
+  /** Replace the sprite's texture and its whole map set. Omitted maps are cleared. */
   setTexture(texture: TextureRef, maps?: SpriteMaps): void {
     const resolved = resolveTextureInput(texture);
     const companions = resolveMaps([resolved], maps);
-    this.surface.setMaps(companions, this.layerName);
+    this.binding.setMaps(companions, this.layerName);
     this.sprite.texture = resolved;
   }
 }

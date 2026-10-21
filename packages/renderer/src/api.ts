@@ -15,3 +15,4 @@ export type {
   SpriteLighting,
   SurfaceLightingInputs,
 } from "./materials/SpriteLighting.js";
+export type { ShaderUniforms, TextureSourceResource } from "./public-types.js";

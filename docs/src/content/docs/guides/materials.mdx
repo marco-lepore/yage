@@ -7,14 +7,17 @@ Sprite materials let a moving light reveal painted surface detail. A normal map
 changes the direction each pixel faces, a specular map controls highlights, and
 an emission map adds color that remains visible in darkness.
 
-[Run the materials example](https://examples.yage.dev/materials.html) to compare
-flat, mapped, polished, emissive, and transparent sprites.
+[Run the materials example](https://examples.yage.dev/materials.html) to carry a
+lamp over flat, mapped, polished, emissive, transparent, and animated sprites,
+and a crate that casts a shadow.
 
 ## Make a lit sprite
 
-Install `@yagejs/renderer` and `@yagejs/lighting`. Select `surfaceLighting()`
-and give the sprite a `litMaterial()`. Preload the color image and every
-companion image through the scene's existing asset list:
+Install `@yagejs/renderer` and `@yagejs/lighting`, and select
+`surfaceLighting()` for the scene. Every sprite on a world layer of that scene
+is lit. Give a sprite companion maps for surface detail, and a `litMaterial()`
+to tune how it responds. Preload the color image and every companion image
+through the scene's existing asset list:
 
 ```typescript yage-group="materials"
 import { Engine, Entity, Scene, Transform, Vec2 } from "@yagejs/core";
@@ -79,15 +82,23 @@ void main();
 ```
 
 The four paths above are game-owned images with the same dimensions and layout.
-No normal map is required: a lit sprite without one faces straight toward the
-viewer. Sprites without an explicit material keep their ordinary unlit appearance.
-Graphics, text, UI, tilemaps, and particles also keep their ordinary appearance.
+
+A sprite needs neither maps nor a material to be lit. A sprite without a
+material draws with the `litMaterial()` defaults, and a sprite without a normal
+map faces straight toward the viewer. Background sprites and characters
+without maps are therefore darkened and lit like the mapped ones. Give a
+sprite `unlitMaterial()` to draw it in its own colors instead.
+
+Graphics, text, UI, tilemaps, and particles are not lit. They keep their own
+colors in a `surfaceLighting()` scene, so a level drawn with them stays at full
+brightness while its sprites are lit.
 
 `surfaceLighting()` uses the existing ambient light, radial lights, spotlight
 cones, and occluders. It requires WebGL2 or WebGPU and rejects `bounce` settings.
-The default lighting backend remains the overlay. Explicit materials or companion
-maps in an overlay or shader-compositor scene throw an error asking for
-`surfaceLighting()`. A lit material also requires a world-space render layer.
+The default lighting backend remains the overlay. A sprite with a material or
+companion maps in an overlay or shader scene throws an error asking for
+`surfaceLighting()`. A sprite on a screen-space layer is not lit: without a
+material it draws in its own colors, and with a lit material it throws.
 
 ## Prepare companion images
 
@@ -109,9 +120,10 @@ For emission, export an opaque image with black where nothing should emit.
 Ordinary color-image decoding can discard RGB under zero alpha.
 
 Normal maps default to `normalY: "up"`, the OpenGL green-channel convention.
-Use `"down"` for maps authored with the opposite convention. Rotation, mirroring,
-and nonuniform scale follow the sprite's actual visual transform. Camera movement
-changes the view without turning the surface toward a different world light.
+Use `"down"` for maps authored with the opposite convention. The lighting follows
+rotation, mirroring, and nonuniform scale set on the entity's `Transform`.
+Camera movement changes the view without turning the surface toward a different
+world light.
 
 `dataTexture(path, { scaleMode: "nearest" })` selects pixel-art sampling.
 Omitting the option follows the renderer's default, including `pixelArtPreset`.
@@ -123,7 +135,9 @@ a sprite does not unload an image shared by another sprite or scene.
 
 `litMaterial(options)` and `unlitMaterial(options)` return immutable definitions.
 Share a definition between sprites, then call `sprite.setMaterial(...)` to replace
-one sprite's settings. The `material` getter returns its current definition.
+one sprite's settings. `sprite.setMaterial(undefined)` returns the sprite to the
+scene's default. The `material` getter returns the definition the sprite was
+given, or `undefined` when it follows the scene.
 
 | Setting | Default | Range or meaning |
 | --- | --- | --- |
@@ -150,6 +164,44 @@ It does not simulate metallic reflection or an environment image. Emission does
 not illuminate nearby objects or affect light-level queries. Add a `LightSource`
 to an emitting entity when nearby objects should receive light.
 
+## Cast shadows on sprites
+
+`LightOccluder` blocks light for lit sprites as it does for the overlay. Every
+pixel inside an occluder is dark for each light outside it, including the
+pixels of the sprite the occluder belongs to. To keep an object's face lit,
+cover only its footprint, such as a strip along the base of a crate:
+
+```typescript
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent, dataTexture, texture } from "@yagejs/renderer";
+import { LightOccluder } from "@yagejs/lighting";
+
+const crate = texture("/assets/crate.png");
+const crateNormal = dataTexture("/assets/crate.normal.png");
+
+class Crate extends Entity {
+  setup(params: { x: number; y: number }): void {
+    this.add(new Transform({ position: new Vec2(params.x, params.y) }));
+    this.add(new SpriteComponent({
+      texture: crate,
+      maps: { normal: crateNormal },
+      anchor: { x: 0.5, y: 0.5 },
+    }));
+    // The 64-pixel crate blocks light along its bottom 12 pixels.
+    this.add(new LightOccluder({
+      shape: {
+        type: "polygon",
+        vertices: [
+          { x: -32, y: 20 }, { x: 32, y: 20 }, { x: 32, y: 32 }, { x: -32, y: 32 },
+        ],
+      },
+    }));
+  }
+}
+```
+
+The scene that spawns `Crate` preloads `crate` and `crateNormal`.
+
 ## Animate and replace sources
 
 Animated maps belong to the animation's `source`. The color frame drives every
@@ -159,7 +211,7 @@ that preloads `sheet` and `normals`, using the same engine setup above:
 ```typescript
 import { Entity, Scene, Transform } from "@yagejs/core";
 import {
-  AnimatedSpriteComponent, AnimationController, dataTexture, litMaterial, texture,
+  AnimatedSpriteComponent, AnimationController, dataTexture, texture,
 } from "@yagejs/renderer";
 
 const sheet = texture("/assets/hero.png");
@@ -168,7 +220,7 @@ class Hero extends Entity {
   setup(): void {
     const source = { sheet, frameWidth: 32, count: 4, maps: { normal: normals } };
     this.add(new Transform());
-    this.add(new AnimatedSpriteComponent({ source, material: litMaterial() }));
+    this.add(new AnimatedSpriteComponent({ source }));
     this.add(new AnimationController({ walk: { source, speed: 0.15 } }));
   }
 }
@@ -179,8 +231,9 @@ class WalkScene extends Scene {
 }
 ```
 
-Use `setTexture(color, maps?)` for a static sprite or `setSource(source)` for an
-animated sprite. Each call replaces the entire map set; omitting maps clears them.
+A sprite's image changes through its component. Use `setTexture(color, maps?)`
+for a static sprite or `setSource(source)` for an animated sprite. Each call
+replaces the entire map set; omitting maps clears them.
 The material and ordinary visual settings remain. `setSource` stops at frame zero
 and clears the completion callback while retaining frame listeners, speed, and
 loop settings. Use controller transitions when an `AnimationController` owns playback.
@@ -188,8 +241,8 @@ loop settings. Use controller transitions when an `AnimationController` owns pla
 For an atlas, use `{ atlas: "/assets/hero.json", animation: "walk", maps: ... }`
 and preload the JSON with `spritesheet(...)` alongside the companion handles.
 Invalid dimensions, roles, or pages throw before the current source changes.
-Raw writes to a Pixi sprite's texture that cross image pages are rejected when
-maps are attached; use the component's source methods instead.
+An `AnimationController` checks the maps of every animation when it is added,
+so a scene that cannot draw them throws then, not at a later transition.
 
 ## Transparency and effects
 
@@ -209,15 +262,17 @@ lighting provider, and blend mode match. Their tint, alpha, animation frame, and
 transform can differ. Sorting order is preserved; masks, filters, and intervening
 visuals keep separate draws.
 
-Pixel cost grows with overlapping lights, occluders in each light's reach, and
-transparent overdraw. Point lights (`size: 0`) have cheaper shadow calculations
+Every lit pixel evaluates every light in the scene. Pixel cost grows with the
+number of lights, the occluders in each light's reach, and overlapping sprites,
+because each layer of overlap is lit again. In a `surfaceLighting()` scene this
+cost applies to every sprite on a world layer, including floor tiles and other
+sprites without maps. Point lights (`size: 0`) have cheaper shadow calculations
 than finite lamps with soft shadows. Keep light radii and shadow-casting geometry
 limited to the area that needs them, and measure the actual scene on its target
 device. See the [recorded benchmark](https://github.com/marco-lepore/yage/blob/main/e2e/materials-benchmark.md)
-for the test scene and measurement method. Unchanged map and light data avoids
-repeat uploads.
+for the test scene and measurement method.
 
 The Inspector's existing render facet includes the material settings, companion
 paths, source page label, sampled frame rectangle and packing rotation, and
-lighting provider for sprites using materials. Animated sprites also report
-their current frame index.
+lighting provider for every sprite drawn with a material, including the default
+lit one. Animated sprites also report their current frame index.

@@ -180,9 +180,9 @@ export const EXAMPLES: readonly Example[] = [
     slug: "materials",
     title: "Sprite materials",
     summary:
-      "Normal maps, specular highlights, emission, and transparent animated sprites under a moving light.",
+      "Carry a lamp over normal-mapped, polished, emissive and animated sprites, and a crate that casts a shadow.",
     section: "effects",
-    packages: ["lighting", "effects"],
+    packages: ["lighting", "effects", "input"],
     guide: "/guides/materials/",
   },
   {

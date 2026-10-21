@@ -32,17 +32,27 @@ export interface LitMaterialOptions extends UnlitMaterialOptions {
   shininess?: number;
 }
 
+/** Only the material factories produce a definition. */
+declare const materialBrand: unique symbol;
+
 interface EmissionDefinition {
+  readonly [materialBrand]: true;
   readonly emissionColor: number;
   readonly emissionIntensity: number;
 }
 
-/** Immutable shading settings. Images and GPU resources are owned elsewhere. */
+/**
+ * Shading that ignores the scene's lights. Create with {@link unlitMaterial}.
+ * Images and GPU resources are owned elsewhere.
+ */
 export interface UnlitMaterial extends EmissionDefinition {
   readonly kind: "unlit";
 }
 
-/** Immutable settings for diffuse and Blinn–Phong specular lighting. */
+/**
+ * Diffuse and Blinn–Phong specular response to a `surfaceLighting()` scene.
+ * Create with {@link litMaterial}.
+ */
 export interface LitMaterial extends EmissionDefinition {
   readonly kind: "lit";
   readonly normalStrength: number;
@@ -53,6 +63,26 @@ export interface LitMaterial extends EmissionDefinition {
 }
 
 export type SpriteMaterial = LitMaterial | UnlitMaterial;
+
+/**
+ * Every definition the factories returned. A spread copy keeps the brand's
+ * type but not the identity, so the identity is what sprites check.
+ */
+const definitions = new WeakSet<SpriteMaterial>();
+
+function register<T extends SpriteMaterial>(material: T): T {
+  definitions.add(material);
+  return material;
+}
+
+/** @internal Throw unless `material` is `undefined` or a factory's definition. */
+export function assertMaterial(material: SpriteMaterial | undefined): void {
+  if (material !== undefined && !definitions.has(material)) {
+    throw new Error(
+      "Sprite material: expected a definition returned by litMaterial() or unlitMaterial(), got another object.",
+    );
+  }
+}
 
 function range(
   value: number,
@@ -69,13 +99,13 @@ function range(
 }
 
 function color(value: ColorValue, context: string): number {
-  if (
-    typeof value === "number" &&
-    (!Number.isInteger(value) || value < 0 || value > 0xffffff)
-  ) {
-    throw new Error(
-      `${context}: expected an RGB integer in 0..0xffffff, got ${value}.`,
-    );
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || value < 0 || value > 0xffffff) {
+      throw new Error(
+        `${context}: expected an RGB integer in 0..0xffffff, got ${value}.`,
+      );
+    }
+    return value;
   }
   if (typeof value === "object") {
     const channels =
@@ -99,7 +129,7 @@ function color(value: ColorValue, context: string): number {
 function emission(
   options: UnlitMaterialOptions,
   context: string,
-): EmissionDefinition {
+): Pick<UnlitMaterial, "emissionColor" | "emissionIntensity"> {
   return {
     emissionColor: color(
       options.emissionColor ?? 0xffffff,
@@ -114,17 +144,27 @@ function emission(
   };
 }
 
-/** Create reusable unlit settings; no light plugin is needed. */
+/**
+ * Create reusable settings for a sprite that ignores the scene's lights. In a
+ * `surfaceLighting()` scene it opts the sprite out of lighting; elsewhere it
+ * adds emission to ordinary drawing.
+ */
 export function unlitMaterial(
   options: UnlitMaterialOptions = {},
 ): UnlitMaterial {
-  return Object.freeze({
-    kind: "unlit",
-    ...emission(options, "unlitMaterial"),
-  });
+  return register(
+    Object.freeze({
+      kind: "unlit",
+      ...emission(options, "unlitMaterial"),
+    }) as UnlitMaterial,
+  );
 }
 
-/** Create reusable lit settings. Attach in a scene using surfaceLighting(). */
+/**
+ * Create reusable lit settings for a sprite in a `surfaceLighting()` scene.
+ * Sprites on a world layer of such a scene use `litMaterial()` when they set
+ * no material of their own.
+ */
 export function litMaterial(options: LitMaterialOptions = {}): LitMaterial {
   const normalY = options.normalY ?? "up";
   if (normalY !== "up" && normalY !== "down") {
@@ -132,33 +172,33 @@ export function litMaterial(options: LitMaterialOptions = {}): LitMaterial {
       `litMaterial.normalY: expected "up" or "down", got ${String(normalY)}.`,
     );
   }
-  return Object.freeze({
-    kind: "lit",
-    ...emission(options, "litMaterial"),
-    normalStrength: range(
-      options.normalStrength ?? 1,
-      0,
-      4,
-      "litMaterial.normalStrength",
-    ),
-    normalY,
-    specularColor: color(
-      options.specularColor ?? 0xffffff,
-      "litMaterial.specularColor",
-    ),
-    specularStrength: range(
-      options.specularStrength ?? 0,
-      0,
-      1,
-      "litMaterial.specularStrength",
-    ),
-    shininess: range(options.shininess ?? 32, 1, 256, "litMaterial.shininess"),
-  });
-}
-
-/** @internal Validate structural callers and take an immutable copy. */
-export function snapshotMaterial(material: SpriteMaterial): SpriteMaterial {
-  if (material.kind === "lit") return litMaterial(material);
-  if (material.kind === "unlit") return unlitMaterial(material);
-  throw new Error('Sprite material: expected kind "lit" or "unlit".');
+  return register(
+    Object.freeze({
+      kind: "lit",
+      ...emission(options, "litMaterial"),
+      normalStrength: range(
+        options.normalStrength ?? 1,
+        0,
+        4,
+        "litMaterial.normalStrength",
+      ),
+      normalY,
+      specularColor: color(
+        options.specularColor ?? 0xffffff,
+        "litMaterial.specularColor",
+      ),
+      specularStrength: range(
+        options.specularStrength ?? 0,
+        0,
+        1,
+        "litMaterial.specularStrength",
+      ),
+      shininess: range(
+        options.shininess ?? 32,
+        1,
+        256,
+        "litMaterial.shininess",
+      ),
+    }) as LitMaterial,
+  );
 }

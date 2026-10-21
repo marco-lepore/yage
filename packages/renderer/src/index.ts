@@ -252,9 +252,4 @@ export type {
   LitMaterialOptions,
   UnlitMaterialOptions,
 } from "./materials.js";
-export type {
-  DataTextureHandle,
-  DataTextureResource,
-  TextureSourceResource,
-  ShaderUniforms,
-} from "./public-types.js";
+export type { DataTextureHandle, DataTextureResource } from "./public-types.js";

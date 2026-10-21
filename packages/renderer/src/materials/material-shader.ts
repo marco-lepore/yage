@@ -164,20 +164,7 @@ export function createMaterialGpu(inputs?: SurfaceLightingInputs): MaterialGpu {
         : { binding, visibility: 2, sampler: { type: "filtering" as const } },
     ),
   ];
-  if (inputs)
-    layout.push([
-      { binding: 0, visibility: 2, buffer: { type: "uniform" } },
-      {
-        binding: 1,
-        visibility: 2,
-        texture: { sampleType: "unfilterable-float" },
-      },
-      {
-        binding: 2,
-        visibility: 2,
-        texture: { sampleType: "unfilterable-float" },
-      },
-    ]);
+  if (inputs) layout.push([...inputs.gpuLayout]);
   const group = new UniformGroup(
     {
       uParams: { value: new Float32Array(4), type: "vec4<f32>" },
@@ -192,12 +179,7 @@ export function createMaterialGpu(inputs?: SurfaceLightingInputs): MaterialGpu {
     resources[`u${role}Texture`] = Texture.WHITE.source;
     resources[`u${role}Sampler`] = Texture.WHITE.source.style;
   }
-  if (inputs)
-    Object.assign(resources, {
-      lightingUniforms: inputs.uniforms,
-      uLights: inputs.lights,
-      uEdges: inputs.edges,
-    });
+  if (inputs) Object.assign(resources, inputs.resources);
   const shader = new Shader({
     glProgram: GlProgram.from({
       vertex: VERTEX_GL,
