@@ -74,13 +74,40 @@ class TestFadeQueue implements ScopedProcessQueue {
   }
 }
 
+/** A WebAudio context that reports its state changes to its listeners. */
+interface MockAudioContext {
+  state: string;
+  readonly listeners: Set<() => void>;
+  addEventListener(type: string, listener: () => void): void;
+  removeEventListener(type: string, listener: () => void): void;
+}
+
+function createMockAudioContext(state: string): MockAudioContext {
+  const listeners = new Set<() => void>();
+  return {
+    state,
+    listeners,
+    addEventListener(type, listener) {
+      if (type === "statechange") listeners.add(listener);
+    },
+    removeEventListener(type, listener) {
+      if (type === "statechange") listeners.delete(listener);
+    },
+  };
+}
+
+/**
+ * Move the context to `state` and report the change, as the browser does
+ * after a gesture resumes it or after the audio library suspends it.
+ */
 function setAudioContextState(
   s: SoundLibrary,
   state: "suspended" | "running",
 ): void {
-  (
-    s as unknown as { context: { audioContext: { state: string } } }
-  ).context.audioContext.state = state;
+  const ctx = (s as unknown as { context: { audioContext: MockAudioContext } })
+    .context.audioContext;
+  ctx.state = state;
+  for (const listener of [...ctx.listeners]) listener();
 }
 
 function createMockSoundLibrary(options?: {
@@ -98,10 +125,12 @@ function createMockSoundLibrary(options?: {
     muted: options?.muted ?? false,
     paused: options?.paused ?? false,
     refreshPaused: vi.fn(),
-    audioContext: { state: options?.state ?? "running" },
   };
   if (options?.webAudio !== false) {
     context["autoPause"] = options?.autoPause ?? true;
+    context["audioContext"] = createMockAudioContext(
+      options?.state ?? "running",
+    );
   }
 
   return {
@@ -1023,21 +1052,45 @@ describe("AudioManager", () => {
       expect(cb).toHaveBeenCalledTimes(1);
     });
 
-    it("queues listener while suspended and fires on gesture when state flips", () => {
+    it("queues a listener while suspended and fires it when the context starts running", () => {
       const s = createMockSoundLibrary({ state: "suspended" });
       const m = new AudioManager(s);
       const cb = vi.fn();
       m.onUnlock(cb);
-      // Gesture arrives but context is still suspended
-      m._handleGesture();
+      // A change that leaves the context suspended runs nothing.
+      setAudioContextState(s, "suspended");
       expect(cb).not.toHaveBeenCalled();
-      // Browser resumes context (e.g. @pixi/sound's _unlock ran)
+      // The browser resumes the context after the first gesture.
       setAudioContextState(s, "running");
-      m._handleGesture();
       expect(cb).toHaveBeenCalledTimes(1);
-      // Idempotent
-      m._handleGesture();
+      setAudioContextState(s, "running");
       expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it("fires a listener registered while audio is held when the hold ends", () => {
+      const s = createMockSoundLibrary({ state: "running" });
+      const m = new AudioManager(s);
+      m._setHostActive(false);
+      // The audio library suspends the context for the hold.
+      setAudioContextState(s, "suspended");
+      const cb = vi.fn();
+      m.onUnlock(cb);
+      expect(cb).not.toHaveBeenCalled();
+
+      m._setHostActive(true);
+      // The audio library resumes the context when the hold ends.
+      setAudioContextState(s, "running");
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops following the context once disposed", () => {
+      const s = createMockSoundLibrary({ state: "suspended" });
+      const m = new AudioManager(s);
+      const cb = vi.fn();
+      m.onUnlock(cb);
+      m._dispose();
+      setAudioContextState(s, "running");
+      expect(cb).not.toHaveBeenCalled();
     });
 
     it("returned disposer removes a pending listener", () => {
@@ -1047,7 +1100,6 @@ describe("AudioManager", () => {
       const dispose = m.onUnlock(cb);
       dispose();
       setAudioContextState(s, "running");
-      m._handleGesture();
       expect(cb).not.toHaveBeenCalled();
     });
 
@@ -1058,7 +1110,6 @@ describe("AudioManager", () => {
       m.onUnlock(cb);
       m.offUnlock(cb);
       setAudioContextState(s, "running");
-      m._handleGesture();
       expect(cb).not.toHaveBeenCalled();
     });
 
@@ -1069,7 +1120,6 @@ describe("AudioManager", () => {
       m.onUnlock(() => order.push(1));
       m.onUnlock(() => order.push(2));
       setAudioContextState(s, "running");
-      m._handleGesture();
       expect(order).toEqual([1, 2]);
     });
 
@@ -1082,8 +1132,13 @@ describe("AudioManager", () => {
       });
       m.onUnlock(after);
       setAudioContextState(s, "running");
-      m._handleGesture();
       expect(after).toHaveBeenCalledTimes(1);
+    });
+
+    it("follows no context on the HTML-audio fallback, which has none", () => {
+      const s = createMockSoundLibrary({ webAudio: false });
+      const m = new AudioManager(s);
+      expect(() => m._dispose()).not.toThrow();
     });
 
     it("sync-path (already unlocked) also swallows a throwing listener", () => {
@@ -1109,9 +1164,8 @@ describe("AudioManager", () => {
           throw new Error("boom");
         });
         m.onUnlock(after);
-        setAudioContextState(s, "running");
 
-        expect(() => m._handleGesture()).toThrow("boom");
+        expect(() => setAudioContextState(s, "running")).toThrow("boom");
 
         expect(after).not.toHaveBeenCalled();
         const errors = boundary.getCallbackErrors();

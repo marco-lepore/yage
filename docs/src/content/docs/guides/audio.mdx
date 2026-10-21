@@ -284,9 +284,10 @@ audio.onUnlock(() => {
 });
 ```
 
-`onUnlock` fires synchronously if the context is already running, or once on
-the next gesture that resumes it. It returns a disposer, so you can cancel a
-pending registration:
+`onUnlock` fires synchronously if the context is already running. Otherwise
+it fires once, when the context next starts running: after the first gesture,
+or when the game comes back from the background and its audio resumes. It
+returns a disposer, so you can cancel a pending registration:
 
 ```typescript yage-group="unlock" yage-context="scene-enter"
 const startMusic = () => {

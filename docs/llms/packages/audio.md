@@ -43,7 +43,7 @@ audio.offUnlock(startMusic); // remove a pending listener (disposer from onUnloc
 audio.autoPause = true; // default true — pause all audio while the host is inactive
 ```
 
-- `onUnlock(cb)` fires synchronously if already unlocked; otherwise once on the first gesture that resumes the context. Returns a disposer.
+- `onUnlock(cb)` fires synchronously if already unlocked; otherwise once, when the context next starts running: after the first gesture, or when audio held for an inactive host resumes. Returns a disposer.
 - `isUnlocked()` is `false` before the first gesture, while audio is held for an inactive host, and until the context has resumed after the host becomes active again.
 - `autoPause` holds all audio while `Host.active` is `false`: the app is in the background, the page is hidden, or the window is unfocused. Playback continues from where it stopped, and channel and handle volume, mute and pause are left as the player set them. The HTML-audio fallback is held the same way.
 - Pausing scenes is a scene-lifecycle concern, not an audio one: use `SceneManager.autoPause` (see `core.md`).

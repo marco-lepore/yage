@@ -1,4 +1,5 @@
 import type { SaveAdapter } from "../Save.js";
+import { MAX_KEY_BYTES, exceedsKeyBudget, keyBytes } from "../keyBudget.js";
 
 /** A directory of files that a {@link fileAdapter} keeps its values in. */
 export interface SaveFileStore {
@@ -19,9 +20,6 @@ export interface FileAdapterOptions {
   /** Where the values live. One adapter per store. */
   store: SaveFileStore;
 }
-
-/** The longest key a file name can hold. */
-const MAX_KEY_BYTES = 96;
 
 /**
  * RFC 4648 base32 in lower case. A file name therefore holds only `a-z`,
@@ -128,11 +126,10 @@ function checkKey(method: string, key: string): void {
         `got a lone surrogate at index ${index}.`,
     );
   }
-  const bytes = encoder.encode(key).length;
-  if (bytes > MAX_KEY_BYTES) {
+  if (exceedsKeyBudget(key)) {
     throw new Error(
       `fileAdapter.${method}: key must be at most ${MAX_KEY_BYTES} bytes ` +
-        `in UTF-8, got ${bytes} (${JSON.stringify(key)}).`,
+        `in UTF-8, got ${keyBytes(key)} (${JSON.stringify(key)}).`,
     );
   }
 }

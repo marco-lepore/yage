@@ -1,4 +1,5 @@
 import type { Reactive, Serializable } from "@yagejs/core";
+import { MAX_KEY_BYTES, exceedsKeyBudget, keyBytes } from "./keyBudget.js";
 
 /**
  * Storage backend of a `Save`. Values are strings; envelopes and codecs live
@@ -10,7 +11,10 @@ import type { Reactive, Serializable } from "@yagejs/core";
  *   the previous value or the new one, never a mix.
  * - Completion: a resolved `write` or `delete` is reflected by every later
  *   `read` and `list`, and is held by the storage when the process is killed
- *   afterwards. Survival of a power loss depends on the storage.
+ *   afterwards. Two shipped adapters are exceptions to the kill clause:
+ *   `memoryAdapter` keeps its values in the process, and the browser behind
+ *   `localStorageAdapter` commits on its own schedule, so its last writes can
+ *   be lost. Survival of a power loss depends on the storage.
  * - Order: operations on one key take effect in call order.
  * - Failure: an operation that cannot complete rejects; a rejected `write`
  *   leaves the previous value or the new one.
@@ -72,7 +76,10 @@ export class SlotNotFoundError extends Error {
   }
 }
 
-/** Thrown when a store id or slot name contains a reserved character. */
+/**
+ * Thrown when a store id or slot name is empty, or makes a storage key longer
+ * than 96 bytes.
+ */
 export class InvalidKeyError extends Error {
   constructor(message: string) {
     super(message);
@@ -181,9 +188,29 @@ function validateSlotName(slot: string): void {
   }
 }
 
+/**
+ * `key` when it fits the key budget. Otherwise throws naming `source`: the
+ * store id and slot name the key holds, as the game passed them.
+ */
+function withinBudget(key: string, source: string): string {
+  if (exceedsKeyBudget(key)) {
+    throw new InvalidKeyError(
+      `Save: the storage key for ${source} takes ${keyBytes(key)} bytes, ` +
+        `over the limit of ${MAX_KEY_BYTES}. A key holds the store id, and ` +
+        `for a slot the slot name, URI-encoded: A-Z, a-z, 0-9 and ` +
+        `- _ . ! ~ * ' ( ) take 1 byte each, and any other character takes ` +
+        `3 bytes per byte of its UTF-8 form.`,
+    );
+  }
+  return key;
+}
+
 function docKey(id: string): string {
   validateStoreId(id);
-  return `${encodeURIComponent(id)}${SEP}${DOC_TAG}`;
+  return withinBudget(
+    `${encodeURIComponent(id)}${SEP}${DOC_TAG}`,
+    `store id ${JSON.stringify(id)}`,
+  );
 }
 
 function slotPrefix(id: string): string {
@@ -191,15 +218,26 @@ function slotPrefix(id: string): string {
   return `${encodeURIComponent(id)}${SEP}${SLOT_TAG}${SEP}`;
 }
 
+/** The adapter key of `slot` under a store's `prefix`, of any length. */
+function slotKeyOf(prefix: string, slot: string): string {
+  return `${prefix}${encodeURIComponent(slot)}`;
+}
+
 function slotKey(id: string, slot: string): string {
   const prefix = slotPrefix(id);
   validateSlotName(slot);
-  return `${prefix}${encodeURIComponent(slot)}`;
+  return withinBudget(
+    slotKeyOf(prefix, slot),
+    `store id ${JSON.stringify(id)} and slot name ${JSON.stringify(slot)}`,
+  );
 }
 
 function manifestKey(id: string): string {
   validateStoreId(id);
-  return `${encodeURIComponent(id)}${SEP}${MANIFEST_TAG}`;
+  return withinBudget(
+    `${encodeURIComponent(id)}${SEP}${MANIFEST_TAG}`,
+    `store id ${JSON.stringify(id)}`,
+  );
 }
 
 /**
@@ -296,10 +334,13 @@ export class Save {
   readonly adapter: SaveAdapter;
 
   /**
-   * The in-flight upgrade per store id, so the slots of one store are merged
-   * into the current layout once per instance.
+   * The running upgrade per store id. The slots of one store are merged into
+   * the current layout once per instance.
    */
   private readonly slotUpgrades = new Map<string, Promise<void>>();
+
+  /** The store ids whose upgrade finished in this instance. */
+  private readonly upgradedStores = new Set<string>();
 
   /** Every live `autoPersist` registration, in the order they were made. */
   private readonly registrations = new Set<AutoPersistRegistration>();
@@ -337,7 +378,8 @@ export class Save {
   /**
    * Save into a named slot. The slot is one document holding the payload, the
    * time it was written and the optional metadata, so the save is a single
-   * storage operation.
+   * storage operation. The write reaches the adapter at the call, except
+   * while the store's one-time upgrade runs; then it follows the upgrade.
    */
   async saveSlot<T, M = unknown>(
     id: string,
@@ -355,18 +397,35 @@ export class Save {
     };
     if (opts?.metadata !== undefined) document.metadata = opts.metadata;
     const payload = JSON.stringify(document);
-    await this.upgradeSlots(id);
+    const upgrade = this.upgradeSlots(id);
+    if (upgrade !== undefined) await upgrade;
     await this.adapter.write(key, payload);
   }
 
-  /** Load a slot. Throws `SlotNotFoundError` when missing. */
+  /**
+   * Load a slot. Throws `SlotNotFoundError` when missing. Reads after every
+   * `saveSlot` and `deleteSlot` called before it, awaited or not.
+   */
   async loadSlot<T>(
     id: string,
     slot: string,
     thing: Serializable<T>,
     opts?: RestoreOptions<T>,
   ): Promise<void> {
-    const raw = await this.adapter.read(slotKey(id, slot));
+    const key = slotKey(id, slot);
+    // A slot write called during the upgrade reaches the adapter when the
+    // upgrade settles. Awaiting the same promise keeps this read in call
+    // order with those writes.
+    const upgrade = this.slotUpgrades.get(id);
+    if (upgrade !== undefined) {
+      try {
+        await upgrade;
+      } catch {
+        // The slot operation that waits on the upgrade reports its failure.
+        // A read needs no upgrade: both layouts load.
+      }
+    }
+    const raw = await this.adapter.read(key);
     if (raw == null) throw new SlotNotFoundError(id, slot);
     const envelope = parseDocument(id, raw) as VersionEnvelope;
     applyEnvelope(id, thing, envelope, opts?.version ?? 1, opts?.migrate);
@@ -382,10 +441,13 @@ export class Save {
     opts?: { prefix?: string },
   ): Promise<SlotInfo<M>[]> {
     const prefix = slotPrefix(id);
-    await this.upgradeSlots(id);
+    const upgrade = this.upgradeSlots(id);
+    if (upgrade !== undefined) await upgrade;
     const keys = await this.adapter.list(prefix);
     const wanted: Array<{ key: string; name: string }> = [];
     for (const key of keys) {
+      // `loadSlot` refuses the name of a key over the budget.
+      if (exceedsKeyBudget(key)) continue;
       let name: string;
       try {
         name = decodeURIComponent(key.slice(prefix.length));
@@ -410,10 +472,15 @@ export class Save {
     return slots;
   }
 
-  /** Delete a slot. No-op when the slot doesn't exist. */
+  /**
+   * Delete a slot. No-op when the slot doesn't exist. The delete reaches the
+   * adapter at the call, except while the store's one-time upgrade runs; then
+   * it follows the upgrade.
+   */
   async deleteSlot(id: string, slot: string): Promise<void> {
     const key = slotKey(id, slot);
-    await this.upgradeSlots(id);
+    const upgrade = this.upgradeSlots(id);
+    if (upgrade !== undefined) await upgrade;
     await this.adapter.delete(key);
   }
 
@@ -423,20 +490,35 @@ export class Save {
    * most once per store id, before the first slot operation that needs the
    * details. Interrupted, it leaves the earlier record in place and the next
    * slot operation runs it again.
+   *
+   * Returns the running upgrade, or `undefined` once it finished, so the
+   * caller reaches the adapter without an await.
    */
-  private upgradeSlots(id: string): Promise<void> {
+  private upgradeSlots(id: string): Promise<void> | undefined {
+    if (this.upgradedStores.has(id)) return undefined;
     const running = this.slotUpgrades.get(id);
     if (running !== undefined) return running;
     const upgrade = this.mergeSlotDetails(id);
     this.slotUpgrades.set(id, upgrade);
-    upgrade.catch(() => {
-      this.slotUpgrades.delete(id);
-    });
+    // Registered before any caller awaits `upgrade`. Reactions to one promise
+    // run back to back in registration order, so the operations that waited
+    // reach the adapter, in call order, before any later call finds the store
+    // upgraded and reaches it at its call.
+    upgrade.then(
+      () => {
+        this.slotUpgrades.delete(id);
+        this.upgradedStores.add(id);
+      },
+      () => {
+        this.slotUpgrades.delete(id);
+      },
+    );
     return upgrade;
   }
 
   private async mergeSlotDetails(id: string): Promise<void> {
     const key = manifestKey(id);
+    const prefix = slotPrefix(id);
     const raw = await this.adapter.read(key);
     if (raw == null) return;
     let parsed: unknown;
@@ -457,7 +539,10 @@ export class Save {
       const details = entry as Record<string, unknown>;
       const savedAt = details["savedAt"];
       if (typeof savedAt !== "number" || !Number.isFinite(savedAt)) continue;
-      const slotKeyForName = slotKey(id, name);
+      // A name over the key budget stays out of the listing: `loadSlot`
+      // refuses it.
+      const slotKeyForName = slotKeyOf(prefix, name);
+      if (exceedsKeyBudget(slotKeyForName)) continue;
       const stored = await this.adapter.read(slotKeyForName);
       if (stored == null) continue;
       let document: unknown;
@@ -510,7 +595,9 @@ export class Save {
     thing: Serializable<T> & Reactive,
     opts?: PersistOptions,
   ): () => void {
-    validateStoreId(id);
+    // Throws at the call for an id every write of this subscription would
+    // refuse.
+    docKey(id);
     const registration: AutoPersistRegistration = {
       id,
       chain: undefined,

@@ -324,6 +324,29 @@ listing and left in storage.
 `loadSlot` throws `SlotNotFoundError` for missing slots, and
 `CorruptPayloadError` when the stored bytes are not readable as a save.
 
+Operations on one slot take effect in the order you call them, whether or not
+you await them. A `loadSlot` called right after an unawaited `saveSlot`
+or `deleteSlot` of the same slot reads its result.
+
+### How long a slot name can be
+
+`Save` stores each slot under a key of at most 96 bytes, on every adapter, so
+a slot name that works in a web build also works in a packaged one. A longer
+key throws `InvalidKeyError`, naming the store id and the slot name, before
+anything is written.
+
+A slot's key is the store id, 3 bytes of separators, then the slot name. The
+store id and the slot name are URI-encoded:
+
+- `A-Z`, `a-z`, `0-9` and `- _ . ! ~ * ' ( )` take 1 byte each.
+- Any other character takes 3 bytes per byte of its UTF-8 form: 3 for a space
+  or `/`, 6 for `é`, 9 for most Chinese, Japanese and Korean characters, and
+  12 for an emoji.
+
+With the store id `saves`, a slot name holds 88 ASCII letters or 9 Japanese
+characters. A document saved with `persist` or `autoPersist` has a key of the
+store id and 2 bytes, so its store id takes up to 94 bytes once encoded.
+
 ### Continue (load latest)
 
 ```typescript yage-group="save" yage-file="continue.ts"
@@ -471,7 +494,9 @@ The interface is four async string operations — `read`, `write`, `delete`,
 - **Replacing a key is all-or-nothing.** If a write is cut off, a later read
   gives you the value that was there before, or the new one. Never a mix.
 - **A resolved write is stored.** Every later `read` and `list` sees it, and
-  it is still there if the process is killed a moment later.
+  it is still there if the process is killed a moment later. `memoryAdapter`
+  and `localStorageAdapter` do not keep that last promise; the table below
+  says what they keep.
 - **Operations on one key keep their order.**
 - **A write that cannot finish rejects** and leaves the key readable.
 
@@ -519,8 +544,9 @@ export const save = createSave({ adapter: fileAdapter({ store }) });
 ```
 
 Keys are at most 96 bytes in UTF-8, which keeps the longest file name at 160
-characters. A file is named `k-` plus the key in base32, so names hold only
-`a-z`, `2-7`, `-` and `.`.
+characters. `Save` refuses a longer key on every adapter; see
+[How long a slot name can be](#how-long-a-slot-name-can-be). A file is named
+`k-` plus the key in base32, so names hold only `a-z`, `2-7`, `-` and `.`.
 
 A custom adapter — IndexedDB, cloud sync, your own shell — has to meet the
 same four promises.

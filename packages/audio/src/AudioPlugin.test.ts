@@ -3,21 +3,40 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockSound = vi.hoisted(() => ({
-  play: vi.fn(),
-  stop: vi.fn(),
-  muteAll: vi.fn(),
-  unmuteAll: vi.fn(),
-  close: vi.fn(),
-  exists: vi.fn(() => true),
-  context: {
-    muted: false,
-    autoPause: true,
-    paused: false,
-    refreshPaused: vi.fn(),
-    audioContext: { state: "running" as "suspended" | "running" },
-  },
-}));
+const mockSound = vi.hoisted(() => {
+  const listeners = new Set<() => void>();
+  return {
+    play: vi.fn(),
+    stop: vi.fn(),
+    muteAll: vi.fn(),
+    unmuteAll: vi.fn(),
+    close: vi.fn(),
+    exists: vi.fn(() => true),
+    context: {
+      muted: false,
+      autoPause: true,
+      paused: false,
+      refreshPaused: vi.fn(),
+      audioContext: {
+        state: "running" as "suspended" | "running",
+        listeners,
+        addEventListener(type: string, listener: () => void): void {
+          if (type === "statechange") listeners.add(listener);
+        },
+        removeEventListener(type: string, listener: () => void): void {
+          if (type === "statechange") listeners.delete(listener);
+        },
+      },
+    },
+  };
+});
+
+/** Move the context to `state` and report the change, as the browser does. */
+function setContextState(state: "suspended" | "running"): void {
+  const audioContext = mockSound.context.audioContext;
+  audioContext.state = state;
+  for (const listener of [...audioContext.listeners]) listener();
+}
 
 vi.mock("@pixi/sound", () => ({
   sound: mockSound,
@@ -79,6 +98,7 @@ describe("AudioPlugin", () => {
     mockSound.context.autoPause = true;
     mockSound.context.paused = false;
     mockSound.context.audioContext.state = "running";
+    mockSound.context.audioContext.listeners.clear();
   });
 
   it("has name 'audio'", () => {
@@ -112,7 +132,6 @@ describe("AudioPlugin", () => {
   });
 
   it("registers nothing when destroyed while the library is loading", async () => {
-    const addSpy = vi.spyOn(document, "addEventListener");
     const plugin = new AudioPlugin();
     const context = createContext();
 
@@ -122,11 +141,7 @@ describe("AudioPlugin", () => {
 
     expect(context.tryResolve(AudioManagerKey)).toBeUndefined();
     expect(mockSound.close).toHaveBeenCalledTimes(1);
-    const gestureEvents = new Set(["pointerdown", "keydown", "touchstart"]);
-    expect(
-      addSpy.mock.calls.filter((args) => gestureEvents.has(args[0])),
-    ).toHaveLength(0);
-    addSpy.mockRestore();
+    expect(mockSound.context.audioContext.listeners.size).toBe(0);
   });
 
   describe("following the host", () => {
@@ -172,10 +187,7 @@ describe("AudioPlugin", () => {
 
       await plugin.install(context);
 
-      const listened = addSpy.mock.calls.map((args) => args[0]);
-      expect(listened).not.toContain("blur");
-      expect(listened).not.toContain("focus");
-      expect(listened).not.toContain("visibilitychange");
+      expect(addSpy).not.toHaveBeenCalled();
       addSpy.mockRestore();
       plugin.onDestroy();
     });
@@ -194,8 +206,8 @@ describe("AudioPlugin", () => {
     });
   });
 
-  describe("unlock gesture wiring", () => {
-    it("fires onUnlock listeners once the context reports running", async () => {
+  describe("unlock", () => {
+    it("fires onUnlock listeners when the context starts running", async () => {
       mockSound.context.audioContext.state = "suspended";
       const plugin = new AudioPlugin();
       const context = createContext();
@@ -206,51 +218,49 @@ describe("AudioPlugin", () => {
       manager.onUnlock(cb);
       expect(cb).not.toHaveBeenCalled();
 
-      // Simulate @pixi/sound's capture-phase unlock having already run by the
-      // time our bubble-phase handler sees the event.
-      mockSound.context.audioContext.state = "running";
-      document.dispatchEvent(new Event("pointerdown"));
+      setContextState("running");
       expect(cb).toHaveBeenCalledTimes(1);
 
+      const late = vi.fn();
+      manager.onUnlock(late);
+      expect(late).toHaveBeenCalledTimes(1);
+
       plugin.onDestroy();
     });
 
-    it("skips gesture listeners if already unlocked at install", async () => {
-      mockSound.context.audioContext.state = "running";
-      const addSpy = vi.spyOn(document, "addEventListener");
-
-      const plugin = new AudioPlugin();
-      const context = createContext();
-      await plugin.install(context);
-
-      const gestureEvents = new Set(["pointerdown", "keydown", "touchstart"]);
-      const attachedGestureCalls = addSpy.mock.calls.filter((args) =>
-        gestureEvents.has(args[0] as string),
-      );
-      expect(attachedGestureCalls).toEqual([]);
-
-      addSpy.mockRestore();
-      plugin.onDestroy();
-    });
-
-    it("removes gesture listeners after first successful unlock", async () => {
-      mockSound.context.audioContext.state = "suspended";
+    it("fires a listener registered while the host is inactive when it returns", async () => {
       const plugin = new AudioPlugin();
       const context = createContext();
       await plugin.install(context);
       const manager = context.resolve(AudioManagerKey);
 
-      mockSound.context.audioContext.state = "running";
-      document.dispatchEvent(new Event("pointerdown"));
-
-      // Register a new listener after unlock — should fire synchronously,
-      // proving the state is now tracked as unlocked without needing another
-      // gesture.
+      setHost({ activity: "inactive" });
+      setContextState("suspended");
       const cb = vi.fn();
       manager.onUnlock(cb);
+      expect(cb).not.toHaveBeenCalled();
+
+      setHost({ activity: "active" });
+      setContextState("running");
       expect(cb).toHaveBeenCalledTimes(1);
 
       plugin.onDestroy();
+    });
+
+    it("stops following the context after it is destroyed", async () => {
+      mockSound.context.audioContext.state = "suspended";
+      const plugin = new AudioPlugin();
+      const context = createContext();
+      await plugin.install(context);
+      const manager = context.resolve(AudioManagerKey);
+      const cb = vi.fn();
+      manager.onUnlock(cb);
+
+      plugin.onDestroy();
+      setContextState("running");
+
+      expect(mockSound.context.audioContext.listeners.size).toBe(0);
+      expect(cb).not.toHaveBeenCalled();
     });
   });
 });

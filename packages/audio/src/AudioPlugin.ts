@@ -12,8 +12,6 @@ import { AudioManager } from "./AudioManager.js";
 import { _setSoundLibrary } from "./assets.js";
 import { AudioManagerKey, type AudioConfig } from "./types.js";
 
-const GESTURE_EVENTS = ["pointerdown", "keydown", "touchstart"] as const;
-
 export class AudioPlugin implements Plugin {
   readonly name = "audio";
   readonly version = "2.0.0";
@@ -37,8 +35,8 @@ export class AudioPlugin implements Plugin {
     const { sound } = await import("@pixi/sound");
     // The engine can be destroyed while the library is still loading, and
     // `onDestroy` then runs with nothing to tear down. Registering into a
-    // context that is already gone would leave the manager and the gesture
-    // listeners behind.
+    // context that is already gone would leave the manager and its listeners
+    // behind.
     if (this._destroyed) {
       sound.close();
       return;
@@ -81,27 +79,6 @@ export class AudioPlugin implements Plugin {
         sound.remove(path);
       },
     });
-
-    if (typeof document === "undefined") return;
-
-    // Attach gesture listeners only if audio is not already unlocked. These
-    // run in bubble phase so @pixi/sound's capture-phase `_unlock()` has
-    // already toggled `context.state` to "running" by the time we check.
-    if (!manager.isUnlocked()) {
-      const onGesture = (): void => {
-        manager._handleGesture();
-        if (manager.isUnlocked()) removeGestureListeners();
-      };
-      const removeGestureListeners = (): void => {
-        for (const ev of GESTURE_EVENTS) {
-          document.removeEventListener(ev, onGesture);
-        }
-      };
-      for (const ev of GESTURE_EVENTS) {
-        document.addEventListener(ev, onGesture);
-      }
-      this._cleanupFns.push(removeGestureListeners);
-    }
   }
 
   onDestroy(): void {

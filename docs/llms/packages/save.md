@@ -203,7 +203,7 @@ Errors:
 - `StoreVersionTooNewError` — stored version is greater than the read's `version`.
 - `StoreMigrationMissingError` — stored version is older and no `migrate` configured.
 - `CorruptPayloadError` — the stored bytes aren't JSON, or aren't a valid version envelope (corrupt, legacy, or written by something other than `Save`).
-- `InvalidKeyError` — empty store id or slot name passed to `Save` methods.
+- `InvalidKeyError` — an empty store id or slot name, or one that makes a storage key longer than 96 bytes (see Storage layout). Thrown before the adapter is called, on every adapter; `autoPersist` throws it at the call.
 - `AggregateError` — from `flush()`, when the latest automatic write of one or more stores failed. `errors` holds those failures.
 
 ## Boot pattern
@@ -317,7 +317,7 @@ interface SaveAdapter extends BaseSaveAdapter {
 Every adapter, including one you write, guarantees for each key:
 
 - **Atomic replace** — after an interrupted `write` or `delete`, `read` returns the previous value or the new one, never a mix.
-- **Completion** — a resolved `write` or `delete` is reflected by every later `read` and `list`, and is held by the storage when the process is killed afterwards.
+- **Completion** — a resolved `write` or `delete` is reflected by every later `read` and `list`, and is held by the storage when the process is killed afterwards. `memoryAdapter` and `localStorageAdapter` are the exceptions to the process-kill clause; the table below says what they keep.
 - **Order** — operations on one key take effect in call order.
 - **Failure** — an operation that cannot complete rejects; a rejected `write` leaves the previous value or the new one.
 
@@ -348,7 +348,7 @@ interface SaveFileStore {
 }
 ```
 
-A store's `write` may leave a partial file when it is interrupted; `fileAdapter` adds the guarantees above on top of it. Each value goes to a shadow file first, then to the main file, and both carry a length and a checksum, so an interrupted write leaves the previous value or the new one readable. Keys are at most 96 bytes in UTF-8, which keeps the longest file name at 160 characters. File names are `k-<base32 of the key>.sav` and `.new`, so they hold only `a-z`, `2-7`, `-` and `.`.
+A store's `write` may leave a partial file when it is interrupted; `fileAdapter` adds the guarantees above on top of it. Each value goes to a shadow file first, then to the main file, and both carry a length and a checksum, so an interrupted write leaves the previous value or the new one readable. Keys are at most 96 bytes in UTF-8, which keeps the longest file name at 160 characters. `Save` refuses a longer key on every adapter (see Storage layout). File names are `k-<base32 of the key>.sav` and `.new`, so they hold only `a-z`, `2-7`, `-` and `.`.
 
 ```ts yage-group="file-store"
 import { fileAdapter, createSave } from "@yagejs/save";
@@ -388,10 +388,20 @@ saves/m                    ← only in a store written by an earlier release
 
 A slot is one document, so `saveSlot` and `deleteSlot` are one storage operation each. `listSlots` calls the adapter's `list` with `saves/s/` and reads every listed document (10 documents of 1 MB parse in about 7 ms in Node; a native bridge adds its own cost), sorts newest first, and leaves out a document that carries no slot details. A `saves/m` left by an earlier release is merged into the slot documents the first time `listSlots`, `saveSlot` or `deleteSlot` touches that store, then removed.
 
+### Key length
+
+Every key `Save` builds is at most 96 bytes, whatever the adapter, so a store that works in a web build works in a packaged one. For a longer key, `Save` throws `InvalidKeyError` naming the store id and slot name before it calls the adapter.
+
+- A slot key is the encoded store id, 3 bytes (`/s/`) and the encoded slot name.
+- A document key (`persist`, `restore`, `autoPersist`) is the encoded store id and 2 bytes (`/d`).
+- URI encoding keeps `A-Z`, `a-z`, `0-9` and `- _ . ! ~ * ' ( )` at 1 byte each. Any other character takes 3 bytes per byte of its UTF-8 form: 3 for a space or `/`, 6 for `é`, 9 for most Chinese, Japanese and Korean characters, 12 for an emoji.
+- With store id `saves`, a slot name holds 88 ASCII letters or 9 Japanese characters.
+
 ## Interruptions and failures
 
 - **One document is the unit that changes atomically.** Two keys never change together, so group state that must agree into one compound store.
 - **A resolved `persist`, `saveSlot` or `deleteSlot` means the storage holds the value** and every later read sees it. Surviving a power loss is the storage's promise, not the engine's; see the table above.
+- **Calls on one document or slot take effect in call order, awaited or not.** A `loadSlot` called right after an unawaited `saveSlot` or `deleteSlot` of the same slot reads its result, and a `restore` right after an unawaited `persist` reads what it wrote.
 - **`autoPersist` reports a failed write.** It writes nothing to the console. `save.flush()` waits for the writes it started or scheduled before the call and rejects with an `AggregateError` naming the stores whose latest write failed; a failure nothing awaits is an unhandled promise rejection. A later successful write of the same store clears it.
 - **Keep one `Save` per storage.** Two instances, or two browser tabs, writing the same keys are not coordinated.
 - **Damaged bytes** reach `restore` and `loadSlot` as `CorruptPayloadError`; `listSlots` leaves such a slot out of the listing and leaves it in storage.

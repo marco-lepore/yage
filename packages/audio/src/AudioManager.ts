@@ -45,6 +45,12 @@ interface StartedPlayback {
   readonly instance: IMediaInstance;
 }
 
+/** The members of the WebAudio context this manager reads. */
+type AudioContextEvents = Pick<
+  BaseAudioContext,
+  "state" | "addEventListener" | "removeEventListener"
+>;
+
 const DEFAULT_CHANNELS: Record<string, { volume: number }> = {
   sfx: { volume: 1 },
   music: { volume: 0.7 },
@@ -67,6 +73,18 @@ export class AudioManager {
   private _holding = false;
   private _pausedBeforeHold = false;
   private readonly _unlockListeners: Array<() => void> = [];
+  /**
+   * Runs the pending `onUnlock` listeners once the `AudioContext` is running.
+   * The context reports every transition: the resume after the first
+   * gesture, and the resume after a hold for an inactive host.
+   */
+  private readonly _onContextStateChange = (): void => {
+    if (!this.isUnlocked()) return;
+    const pending = this._unlockListeners.splice(0);
+    for (const cb of pending) {
+      this._runUnlockCallback(cb);
+    }
+  };
   /**
    * Wired by {@link _setErrorBoundary} during `AudioPlugin.install`, since
    * this manager is constructed directly (no `EngineContext` of its own)
@@ -108,6 +126,11 @@ export class AudioManager {
     // hidden page and a backgrounded app as well as an unfocused window.
     const ctx = this._getAutoPauseContext();
     if (ctx) ctx.autoPause = false;
+
+    this._getAudioContext()?.addEventListener(
+      "statechange",
+      this._onContextStateChange,
+    );
   }
 
   /**
@@ -334,8 +357,10 @@ export class AudioManager {
 
   /**
    * Fires `cb` once when audio becomes playable. If already unlocked, fires
-   * synchronously. Returns a disposer that removes the pending listener (no-op
-   * once it has fired).
+   * synchronously. Otherwise it fires when the `AudioContext` next starts
+   * running: after the first user gesture, or when audio held for an
+   * inactive host resumes. Returns a disposer that removes the pending
+   * listener (no-op once it has fired).
    */
   onUnlock(cb: () => void): () => void {
     if (this.isUnlocked()) {
@@ -383,19 +408,6 @@ export class AudioManager {
   }
 
   /**
-   * Called by `AudioPlugin` after a user gesture fires. Fires pending
-   * `onUnlock` listeners if the context has become running.
-   * @internal
-   */
-  _handleGesture(): void {
-    if (!this.isUnlocked()) return;
-    const pending = this._unlockListeners.splice(0);
-    for (const cb of pending) {
-      this._runUnlockCallback(cb);
-    }
-  }
-
-  /**
    * Wire the error boundary so a throwing developer callback is attributed
    * instead of escaping into `@pixi/sound`. Called by `AudioPlugin.install`.
    * @internal
@@ -404,9 +416,16 @@ export class AudioManager {
     this._errorBoundary = boundary;
   }
 
-  /** Cancel every fade owned by this manager. @internal */
+  /**
+   * Cancel every fade owned by this manager and stop following the
+   * `AudioContext`. @internal
+   */
   _dispose(): void {
     this._fadeQueue?.cancelAll();
+    this._getAudioContext()?.removeEventListener(
+      "statechange",
+      this._onContextStateChange,
+    );
   }
 
   /**
@@ -473,10 +492,11 @@ export class AudioManager {
     return undefined;
   }
 
-  private _getAudioContext(): { state: string } | undefined {
+  /** The WebAudio context. The HTML-audio fallback has none. */
+  private _getAudioContext(): AudioContextEvents | undefined {
     const ctx = (
       this._sound as unknown as {
-        context?: { audioContext?: { state: string } };
+        context?: { audioContext?: AudioContextEvents };
       }
     ).context;
     return ctx?.audioContext;
