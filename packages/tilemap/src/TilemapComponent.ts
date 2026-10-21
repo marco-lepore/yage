@@ -131,7 +131,10 @@ export class TilemapComponent extends VisualComponent {
     this.syncColorFilter();
   }
 
-  /** The underlying tilemap container. */
+  /**
+   * The Pixi object this component draws with. Change the visual through the
+   * component; see {@link VisualComponent.renderObject}.
+   */
   get renderObject(): DisplayContainer {
     return this.container;
   }

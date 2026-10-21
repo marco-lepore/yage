@@ -26,7 +26,8 @@ export type EnsureLayerOptions = Pick<
 export interface SceneRenderTree {
   /** The single root container for the scene. Lives under the renderer's
    * world-root container (which sits under `app.stage` and holds the fit
-   * transform). */
+   * transform). For rendering extensions; game code changes the scene's
+   * look through `fx` and `setMask`. */
   readonly root: DisplayContainer;
   /** Get a layer by name. Throws if not found. */
   get(name: string): RenderLayer;

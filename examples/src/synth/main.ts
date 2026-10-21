@@ -149,40 +149,43 @@ function pluginSounds(): Record<string, SynthSoundEntry> {
 const PANEL = { x: 40, y: 40, width: WIDTH - 80, height: HEIGHT - 120 };
 
 function drawWaveform(gfx: GraphicsComponent, samples: Float32Array): void {
-  const g = gfx.graphics;
-  g.clear();
-  g.rect(PANEL.x, PANEL.y, PANEL.width, PANEL.height).fill({ color: 0x11131c });
-  g.rect(PANEL.x, PANEL.y, PANEL.width, PANEL.height).stroke({
-    color: 0x2a2f42,
-    width: 1,
-  });
-
-  const midY = PANEL.y + PANEL.height / 2;
-  g.moveTo(PANEL.x, midY)
-    .lineTo(PANEL.x + PANEL.width, midY)
-    .stroke({
+  gfx.draw((g) => {
+    g.clear();
+    g.rect(PANEL.x, PANEL.y, PANEL.width, PANEL.height).fill({
+      color: 0x11131c,
+    });
+    g.rect(PANEL.x, PANEL.y, PANEL.width, PANEL.height).stroke({
       color: 0x2a2f42,
       width: 1,
     });
 
-  // One column per pixel: the min/max of the samples that fall in it.
-  const columns = Math.floor(PANEL.width);
-  const perColumn = samples.length / columns;
-  for (let c = 0; c < columns; c++) {
-    let min = 0;
-    let max = 0;
-    const from = Math.floor(c * perColumn);
-    const to = Math.min(Math.floor((c + 1) * perColumn), samples.length);
-    for (let i = from; i < to; i++) {
-      const v = samples[i] ?? 0;
-      if (v < min) min = v;
-      if (v > max) max = v;
+    const midY = PANEL.y + PANEL.height / 2;
+    g.moveTo(PANEL.x, midY)
+      .lineTo(PANEL.x + PANEL.width, midY)
+      .stroke({
+        color: 0x2a2f42,
+        width: 1,
+      });
+
+    // One column per pixel: the min/max of the samples that fall in it.
+    const columns = Math.floor(PANEL.width);
+    const perColumn = samples.length / columns;
+    for (let c = 0; c < columns; c++) {
+      let min = 0;
+      let max = 0;
+      const from = Math.floor(c * perColumn);
+      const to = Math.min(Math.floor((c + 1) * perColumn), samples.length);
+      for (let i = from; i < to; i++) {
+        const v = samples[i] ?? 0;
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+      const x = PANEL.x + c;
+      g.moveTo(x, midY - max * (PANEL.height / 2))
+        .lineTo(x, midY - min * (PANEL.height / 2))
+        .stroke({ color: 0x38bdf8, width: 1 });
     }
-    const x = PANEL.x + c;
-    g.moveTo(x, midY - max * (PANEL.height / 2))
-      .lineTo(x, midY - min * (PANEL.height / 2))
-      .stroke({ color: 0x38bdf8, width: 1 });
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -70,26 +70,27 @@ only changes the *default* sampling mode.
 - **[Camera](/guides/rendering/camera/)** — `CameraEntity` (follow, shake, zoom, bounds), camera bindings for parallax / minimaps / billboards, `ScreenFollow` for entity-anchored UI, and the `DisplaySystem`.
 - **[Layers & Draw Order](/guides/rendering/layers/)** — declaring render layers, depth sorting (Y-sort) so a top-down game paints entities in the right order, and `SortGroupComponent` for multi-part entities.
 
-## How wrappers relate to PixiJS
+## How the components relate to PixiJS
 
-The renderer's components are thin shells around their PixiJS counterparts.
-You'll see two patterns called out in each section:
+Each visual component draws with one PixiJS display object. Change a visual
+through its component and its entity's `Transform`, never through that Pixi
+object:
 
-- **Escape hatch** — the wrapper exposes the underlying pixi display object
-  (`.sprite` on `SpriteComponent`, `.graphics` on `GraphicsComponent`,
-  `.text` on `TextComponent`, etc.). When you need to reach for a pixi
-  feature the wrapper doesn't surface, drop down to the pixi handle directly.
-- **Thin wrapper / re-export** — config options forward to pixi as-is
-  (`TextComponent`'s `style` is a pixi `TextStyleOptions`; `GradientFill`
-  IS pixi `FillGradient`). When in doubt about an option, the upstream
-  pixi docs are the source of truth.
-- **Type aliases, not raw pixi types** — every exported field, parameter,
-  and return type (`SpriteComponent.sprite`, `RenderLayer.container`, ...)
+- **The engine owns the Pixi object's state.** `DisplaySystem` writes its
+  position, rotation and scale from the entity's `Transform` every frame. The
+  component writes its own `visible` and `alpha` onto it whenever either
+  changes, when the entity activates, and when a modifier changes. A value
+  written on the Pixi object directly is lost at the next of those.
+- **A task that needs the Pixi object is a missing component API.** Open an
+  issue for it rather than writing to the object.
+- **Options forward to PixiJS.** `TextComponent`'s `style` is a pixi
+  `TextStyleOptions`, and `GradientFill` is pixi's `FillGradient`. When in
+  doubt about an option, the upstream pixi docs are the source of truth.
+- **Type aliases, not raw pixi types.** Every exported field, parameter, and
+  return type (`VisualComponent.renderObject`, `RenderLayer.container`, ...)
   is typed through `@yagejs/renderer`'s own alias names (`DisplaySprite`,
-  `DisplayContainer`, `GraphicsContext`, `ColorValue`, ...) rather than a
-  direct `pixi.js` import, so your code never has to import `pixi.js` just
-  to name a type. The aliases are transparent — `DisplaySprite` IS pixi's
-  `Sprite` — so every pixi method still works on the value; only the type
-  you write down to describe it changes.
+  `DisplayContainer`, `GraphicsContext`, `ColorValue`, ...), so your code
+  never imports `pixi.js` to name a type. `DisplaySprite` is pixi's `Sprite`
+  under another name; the alias changes only the import.
 
 Each section links to the relevant pixi v8 docs.

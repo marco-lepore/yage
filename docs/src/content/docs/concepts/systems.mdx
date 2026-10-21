@@ -108,41 +108,53 @@ a new one in, are in [What Runs When](/concepts/game-loop/#what-runs-when).
 ## QueryCache
 
 Systems that need to iterate entities matching a specific component signature
-use the `QueryCache`:
+use the `QueryCache`. Here a plugin ships a `Lifetime` component and one system
+that retires every entity whose time is up:
 
 ```typescript
 import {
+  Component,
   System,
   Phase,
   EngineContext,
   QueryCacheKey,
   QueryResult,
-  Transform,
 } from "@yagejs/core";
-import { SpriteComponent } from "@yagejs/renderer";
 
-class SpriteRenderSystem extends System {
-  readonly phase = Phase.Render;
+/** Seconds left before the entity is destroyed. */
+class Lifetime extends Component {
+  remaining: number;
+
+  constructor(seconds: number) {
+    super();
+    this.remaining = seconds;
+  }
+}
+
+class LifetimeSystem extends System {
+  readonly phase = Phase.Update;
   readonly priority = 0;
 
   private query!: QueryResult;
 
   onRegister(context: EngineContext) {
     const cache = context.resolve(QueryCacheKey);
-    this.query = cache.register([Transform, SpriteComponent]);
+    this.query = cache.register([Lifetime]);
   }
 
   update(dt: number) {
     for (const entity of this.query) {
-      const transform = entity.get(Transform);
-      const sprite = entity.get(SpriteComponent);
-      // sync sprite position to transform
-      sprite.sprite.x = transform.position.x;
-      sprite.sprite.y = transform.position.y;
+      const lifetime = entity.get(Lifetime);
+      lifetime.remaining -= dt;
+      if (lifetime.remaining <= 0) entity.destroy();
     }
   }
 }
 ```
+
+A system never copies positions onto visuals. The renderer's `DisplaySystem`
+writes every visual's position, rotation and scale from its entity's
+`Transform` each frame, so move an entity through its `Transform`.
 
 ### Working with Query Results
 

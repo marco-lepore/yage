@@ -157,6 +157,14 @@ Follow these rules for every entity, component, and scene you add.
   `int(min, max)`, `pick(array)`, and `shuffle(array)`. Do not use
   `Math.random`. `window.__yage__.inspector.setSeed(1)` seeds every scene's
   generator, so a test run is reproducible.
+- **Change a visual through its component.** Move an entity with its
+  `Transform` (`setPosition`, `setScale`). Set `visible`, `alpha` and `tint`
+  on the visual component (`sprite.alpha = 0.5`), and change text with
+  `label.setText(...)`. Do not write to the Pixi object underneath
+  (`renderObject`, `.sprite`, `.text`, `.graphics`): the engine writes its
+  position, rotation, scale, visibility and alpha itself and overwrites yours.
+  Register a runtime texture with `registerTexture`, not `Assets.cache.set` or
+  `Texture.from`.
 - Resolve engine services with `this.service(Key)` or `this.use(Key)` inside
   components, never through a module-level `engine` variable.
 

@@ -171,7 +171,7 @@ class DefaultMenuSkin implements MenuSkinPresenter {
         if (labels.length === 0) return;
         selected = Math.max(0, Math.min(position, labels.length - 1));
         labels.forEach((row, i) => {
-          row.comp.text.tint =
+          row.comp.tint =
             i === selected
               ? this.cfg.actionSelectedColor
               : this.cfg.actionColor;
@@ -179,9 +179,9 @@ class DefaultMenuSkin implements MenuSkinPresenter {
         drawBar();
       },
       setVisible: (visible: boolean): void => {
-        frame.graphics.visible = visible;
-        bar.graphics.visible = visible;
-        for (const row of labels) row.comp.text.visible = visible;
+        frame.visible = visible;
+        bar.visible = visible;
+        for (const row of labels) row.comp.visible = visible;
       },
       dispose: (): void => {
         for (const row of labels) row.entity.destroy();

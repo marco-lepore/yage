@@ -163,7 +163,11 @@ export interface SortGroupComponentOptions {
  */
 export class SortGroupComponent extends Component {
   private readonly positionScratch = new Vec2Buffer();
-  /** The group's Pixi container. Kept at identity; holds the member visuals. */
+  /**
+   * The group's Pixi container. Kept at identity; holds the member visuals.
+   * The group writes its `zIndex` and re-parents members into it, so game
+   * code does not write to it.
+   */
   readonly container: DisplayContainer;
   /** Layer this group renders into. */
   readonly layer: string;

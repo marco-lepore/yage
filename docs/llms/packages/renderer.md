@@ -29,7 +29,7 @@ Every exported field, parameter, and return type across `@yagejs/renderer` (and 
 | `TextStyle`              | `TextStyleOptions`                                       | every `style` option                                                                           |
 | `TextureRef`             | none — `string \| TextureHandle`, a key/handle reference | `SpriteComponent.texture`, `setTexture()`                                                      |
 
-The aliases are transparent (`type DisplayContainer = Container`) and provide no encapsulation. Escape hatches (`RendererPlugin.application`, every `renderObject` getter, `.sprite`/`.graphics`/`.text`/`.splitText`/`.animatedSprite`) still return the real Pixi object. Only the _type_ used to describe it is aliased, so calling any native Pixi method on it works exactly as it would on the raw type.
+The aliases are transparent (`type DisplayContainer = Container`) and provide no encapsulation: `RendererPlugin.application`, every `renderObject` getter and the class fields (`.sprite`/`.graphics`/`.text`/`.splitText`/`.animatedSprite`) return the real Pixi object. Game code never writes to it. `DisplaySystem` writes position, rotation and scale from the entity's `Transform` every frame, and the component re-applies its own `visible` and `alpha` on every change, on activation and on every modifier change, so a write on the Pixi object is lost. Change a visual through its component; a task that needs the Pixi object is a missing component API.
 
 A `GraphicsContext` therefore carries Pixi's graphics transform stack —
 `translateTransform`, `scaleTransform`, `rotateTransform`, `setTransform`,
@@ -375,7 +375,7 @@ entity.add(
 
 `texture` takes a `TextureRef` (asset key or handle), not a raw `Texture` object. A key that is neither preloaded nor registered throws, naming the key. Runtime-created textures: register them under a key first — see "Runtime textures" under Asset Factories.
 
-**Escape hatch:** `.sprite` is the underlying pixi `Sprite` instance — full pixi API surface available, including `sprite.tint`. See [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
+Tint, alpha, visibility and blend mode live on the component: `sprite.tint = 0xff0000`, `sprite.alpha = 0.5`, `sprite.visible = false`.
 
 > `sprite.tint` multiplies the source RGB by the tint colour. That's cheap on the GPU and right for "darken / desaturate / multiply with a colour" effects, but it turns saturated source colours into mud (a blue mushroom × yellow tint reads as olive). For replace-style recolour — where black stays black, white reaches the target colour, and midtones blend proportionally — use the `colorize` effect from `@yagejs/effects` instead.
 
@@ -435,7 +435,7 @@ entity.add(
 );
 ```
 
-**Escape hatch:** `.graphics` (and the `g` passed to `.draw(fn)`) is a raw pixi `Graphics` with the v8 fluent API: `rect` / `circle` / `roundRect` / `poly` / `moveTo` / `lineTo` / `arc` / `fill` / `stroke`. `arc` continues the current path like Canvas 2D: call `moveTo(x, y)` at the arc's start point first for a standalone arc, otherwise a line connects it from the previous point. See [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
+The `g` passed to `.draw(fn)` is a pixi `Graphics` with the v8 fluent API; draw only inside `draw`, and set `visible` / `alpha` / `tint` on the component. Methods: `rect` / `circle` / `roundRect` / `poly` / `moveTo` / `lineTo` / `arc` / `fill` / `stroke`. `arc` continues the current path like Canvas 2D: call `moveTo(x, y)` at the arc's start point first for a standalone arc, otherwise a line connects it from the previous point. See [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
 
 Gradient fills: use `linearGradient` / `radialGradient` (see below) instead of reaching into `pixi.js` for `FillGradient`.
 
@@ -633,8 +633,6 @@ const icon = new UIImage({
   texture: resolveFrames({ atlas: "ui.json", animation: "coin" })[0]!,
 });
 ```
-
-**Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
 
 ### AnimationController
 
@@ -1364,16 +1362,13 @@ class Nameplate extends Entity {
 
 ```ts yage-context="component"
 import { Scene } from "@yagejs/core";
-import { Graphics } from "pixi.js";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
-import { crt } from "@yagejs/effects";
-
-const myDisplayObject = new Graphics().circle(0, 0, 8).fill(0xffffff);
+import { crt, vignette } from "@yagejs/effects";
 
 // Inside a Component:
 const tree = this.use(SceneRenderTreeKey);
 const layer = tree.get("world");
-layer.container.addChild(myDisplayObject);
+layer.fx.addEffect(vignette({}));
 
 // Also resolvable from anything holding the scene (onEnter onward) — Scene.use is
 // scope-aware, so a scene-scoped effect/mask can be attached at setup:
@@ -1390,8 +1385,9 @@ Don't use `SceneRenderTreeProviderKey` from game code — it's tooling-only
 (Inspector/debug tools enumerate trees across scenes). Resolve the tree for
 the current scene with `this.use(SceneRenderTreeKey)`.
 
-`SpriteComponent`/`GraphicsComponent`/etc. take a `layer` option and handle
-this internally. DisplaySystem syncs `Transform` to PixiJS display objects
+`SpriteComponent`/`GraphicsComponent`/etc. take a `layer` option and add
+their Pixi object to that layer themselves; game code never adds Pixi objects
+to `layer.container`. DisplaySystem syncs `Transform` to PixiJS display objects
 each Render phase and applies camera + virtual-resolution scaling to the
 world root.
 

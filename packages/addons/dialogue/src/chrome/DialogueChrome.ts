@@ -156,7 +156,7 @@ export class DialogueChrome implements ChromePresenter {
     const frame = scene.spawn("dlg-frame");
     frame.add(new Transform()).setPosition(0, 0);
     this.frameGfx = frame.add(new GraphicsComponent({ layer: cfg.layerFrame }));
-    this.frameGfx.graphics.visible = false;
+    this.frameGfx.visible = false;
     this.frame = frame;
 
     // Textured frame styles: a nine-slice sprite per named style, parented into
@@ -210,7 +210,7 @@ export class DialogueChrome implements ChromePresenter {
     const indTransform = ind.add(new Transform());
     const indGfx = ind.add(new GraphicsComponent({ layer: cfg.layerFrame }));
     indGfx.draw((g) => drawCaret(g, cfg.indicatorColor, caretSize));
-    indGfx.graphics.visible = false;
+    indGfx.visible = false;
     this.indicator = { entity: ind, transform: indTransform, gfx: indGfx };
 
     this.applyGeometry();
@@ -222,9 +222,8 @@ export class DialogueChrome implements ChromePresenter {
     // hide-all (that overload died; the Session hides via setVisible).
     this.nameShown = name !== undefined;
     if (name !== undefined) {
-      // Mutate fill in place — replacing the whole style would drop the bitmap
-      // font (BitmapText resolves its font from style.fontFamily).
-      this.name.comp.text.style.fill = color ?? this.cfg.nameColor;
+      // Merge, not replace: the bitmap font name lives in style.fontFamily.
+      this.name.comp.mergeStyle({ fill: color ?? this.cfg.nameColor });
       this.name.comp.setText(name);
     }
     this.apply();
@@ -298,28 +297,26 @@ export class DialogueChrome implements ChromePresenter {
   private apply(): void {
     const active = resolveActiveFrame(this.styleKey, this.nineSlices);
     if (this.frameGfx) {
-      this.frameGfx.graphics.visible =
-        this.visible && active.kind === "graphics";
+      this.frameGfx.visible = this.visible && active.kind === "graphics";
     }
     if (this.nineSliceHost) {
       // The host shows only while a nine-slice is the active frame (so the
       // "graphics"/"none" cases leave nothing textured on screen).
-      this.nineSliceHost.graphics.visible =
-        this.visible && active.kind === "nineSlice";
+      this.nineSliceHost.visible = this.visible && active.kind === "nineSlice";
       for (const [key, sprite] of this.nineSlices) {
         sprite.visible = active.kind === "nineSlice" && active.key === key;
       }
     }
-    if (this.name) this.name.comp.text.visible = this.visible && this.nameShown;
+    if (this.name) this.name.comp.visible = this.visible && this.nameShown;
     if (this.indicator) {
-      this.indicator.gfx.graphics.visible = this.visible && this.caretShown;
+      this.indicator.gfx.visible = this.visible && this.caretShown;
     }
   }
 
   update(dt: number): void {
-    // Read pixi's `visible` directly — a parallel boolean could desync (e.g.
-    // keep animating a caret that `setVisible(false)` hid).
-    const gfx = this.indicator?.gfx.graphics;
+    // The component's `visible` is the state `apply()` wrote, so a caret that
+    // `setVisible(false)` hid stops blinking.
+    const gfx = this.indicator?.gfx;
     if (gfx?.visible) {
       this.indicatorTime += dt;
       gfx.alpha = caretAlpha(this.indicatorTime, this.cfg.caret?.blink);

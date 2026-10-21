@@ -36,7 +36,10 @@ export class GraphicsComponent extends VisualComponent {
     if (options) this.applyVisualOptions(options);
   }
 
-  /** The underlying Pixi display object. */
+  /**
+   * The Pixi object this component draws with. Change the visual through the
+   * component; see {@link VisualComponent.renderObject}.
+   */
   get renderObject(): GraphicsContext {
     return this.graphics;
   }

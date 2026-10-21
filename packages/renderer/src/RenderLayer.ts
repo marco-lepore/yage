@@ -61,6 +61,12 @@ export function layerDefToOptions(
 export class RenderLayer {
   readonly name: string;
   readonly order: number;
+  /**
+   * The layer's Pixi container. For rendering extensions (a custom visual
+   * component, a lighting renderer); game code puts a visual on the layer
+   * with the component's `layer` option and changes the layer through
+   * `fx`, `setSort` and `setMask`.
+   */
   readonly container: DisplayContainer;
   /** Coordinate space — see `CreateLayerOptions.space`. */
   readonly space: LayerSpace;
@@ -256,7 +262,7 @@ export class RenderLayerManager {
     return [...this.layers.values()].sort((a, b) => a.order - b.order);
   }
 
-  /** The root container holding all layers. */
+  /** The root container holding all layers. For rendering extensions. */
   get root(): DisplayContainer {
     return this.rootContainer;
   }

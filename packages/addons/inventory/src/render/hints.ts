@@ -73,7 +73,7 @@ class DefaultHints implements HintsPresenter {
     return {
       update: (s: HintsState): void => draw(s),
       setVisible: (visible: boolean): void => {
-        gfx.graphics.visible = visible;
+        gfx.visible = visible;
       },
       dispose: (): void => {
         entity.destroy();

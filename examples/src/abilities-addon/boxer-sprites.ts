@@ -408,17 +408,14 @@ export function playBoxerAnim(
   const controller = entity.get(AnimationController);
   const key = boxerKey(anim, dir);
   if (options.oneShot) {
-    controller.playOneShot(
-      key,
-      options.lockDuration !== undefined
+    controller.playOneShot(key, {
+      ...(options.startFrame !== undefined
+        ? { startFrame: options.startFrame }
+        : {}),
+      ...(options.lockDuration !== undefined
         ? { duration: options.lockDuration }
-        : undefined,
-    );
-    if (options.startFrame !== undefined) {
-      entity
-        .get(AnimatedSpriteComponent)
-        .animatedSprite.gotoAndPlay(options.startFrame);
-    }
+        : {}),
+    });
   } else {
     controller.play(key);
   }

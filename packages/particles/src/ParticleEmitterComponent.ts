@@ -104,6 +104,12 @@ export interface ParticleEmissionHandle {
  */
 export class ParticleEmitterComponent extends Component {
   private readonly positionScratch = new Vec2Buffer();
+  /**
+   * The Pixi container the particles draw in. The emitter writes its position
+   * from the entity's `Transform`, and its visibility on enable and disable.
+   * Change the emitter through this component; a task that needs this object
+   * is a missing component API.
+   */
   readonly container: ParticleContainer;
   /** Container visibility to restore on enable, so a hand-set hide survives. */
   private _visibleWhenActive = true;

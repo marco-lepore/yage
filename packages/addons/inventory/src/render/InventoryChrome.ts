@@ -130,12 +130,13 @@ export class InventoryChrome implements ChromePresenter {
   }
 
   present(info: InventoryChromeInfo): void {
-    if (this.title) this.title.text.text = info.title ?? "";
+    if (this.title) this.title.setText(info.title ?? "");
     if (this.counter) {
       // The counter only means something with a slot limit; unbounded
       // inventories show none.
-      this.counter.text.text =
-        info.capacity !== undefined ? `${info.used}/${info.capacity}` : "";
+      this.counter.setText(
+        info.capacity !== undefined ? `${info.used}/${info.capacity}` : "",
+      );
     }
     this.redraw();
   }
@@ -221,9 +222,9 @@ export class InventoryChrome implements ChromePresenter {
 
   private applyHidden(): void {
     const visible = !this.hidden;
-    if (this.frameTex) this.frameTex.host.graphics.visible = visible;
-    if (this.frame) this.frame.gfx.graphics.visible = visible;
-    if (this.title) this.title.text.visible = visible;
-    if (this.counter) this.counter.text.visible = visible;
+    if (this.frameTex) this.frameTex.host.visible = visible;
+    if (this.frame) this.frame.gfx.visible = visible;
+    if (this.title) this.title.visible = visible;
+    if (this.counter) this.counter.visible = visible;
   }
 }

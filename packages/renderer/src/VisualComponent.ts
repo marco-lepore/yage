@@ -88,7 +88,13 @@ export interface VisualComponentOptions {
  * constructor since `renderObject` isn't assigned yet at that point.
  */
 export abstract class VisualComponent extends Component {
-  /** The underlying Pixi display object. */
+  /**
+   * The Pixi object this component draws with. Game code does not write to
+   * it: `DisplaySystem` writes its position, rotation and scale from the
+   * entity's `Transform` every frame, and the component re-applies `visible`
+   * and `alpha`. Change the visual through this component; a task that needs
+   * this object is a missing component API.
+   */
   abstract readonly renderObject: DisplayContainer;
   private _layerName: string;
   /**

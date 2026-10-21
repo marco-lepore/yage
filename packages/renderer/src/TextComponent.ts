@@ -63,7 +63,10 @@ export class TextComponent extends VisualComponent {
     this.applyVisualOptions(options);
   }
 
-  /** The underlying Pixi display object. */
+  /**
+   * The Pixi object this component draws with. Change the visual through the
+   * component; see {@link VisualComponent.renderObject}.
+   */
   get renderObject(): DisplayText | DisplayBitmapText {
     return this.text;
   }

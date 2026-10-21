@@ -168,7 +168,7 @@ class IconCellPresenter implements CellPresenter {
           }),
         );
         entities.push(icon);
-        displays.push(sprite.sprite);
+        displays.push(sprite);
       } else {
         const letterEntity = scene.spawn("inv-cell-letter");
         letterEntity
@@ -187,7 +187,7 @@ class IconCellPresenter implements CellPresenter {
           ),
         );
         entities.push(letterEntity);
-        displays.push(letter.text);
+        displays.push(letter);
       }
 
       if (view.stack.quantity > 1) {
@@ -208,14 +208,14 @@ class IconCellPresenter implements CellPresenter {
           ),
         );
         entities.push(badgeEntity);
-        displays.push(badge.text);
+        displays.push(badge);
       }
     }
 
     return {
       setSelected: draw,
       setVisible: (visible: boolean): void => {
-        bg.graphics.visible = visible;
+        bg.visible = visible;
         for (const d of displays) d.visible = visible;
       },
       dispose: (): void => {

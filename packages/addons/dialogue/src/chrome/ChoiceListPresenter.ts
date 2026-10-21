@@ -143,7 +143,6 @@ export class ChoiceListPresenter implements ChoicePresenter {
       const comp = entity.add(
         new TextComponent(this.textOptions(choiceRowLabel(choice), wrapWidth)),
       );
-      comp.text.visible = true;
       const slotHeight = Math.ceil(comp.text.height) + gap;
       return { entity, comp, disabled: choice.disabled ?? false, slotHeight };
     });
@@ -182,11 +181,11 @@ export class ChoiceListPresenter implements ChoicePresenter {
 
   /** Render = rows present AND not hidden. Disabled rows still show (greyed). */
   private applyHidden(): void {
-    for (const row of this.rows) row.comp.text.visible = !this.hidden;
+    for (const row of this.rows) row.comp.visible = !this.hidden;
     if (this.highlightBar) {
       const onEnabled =
         this.selected >= 0 && !this.rows[this.selected]?.disabled;
-      this.highlightBar.gfx.graphics.visible = !this.hidden && onEnabled;
+      this.highlightBar.gfx.visible = !this.hidden && onEnabled;
     }
   }
 

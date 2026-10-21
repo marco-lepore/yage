@@ -10,6 +10,13 @@ import type { LayoutProps, UIElement } from "./types.js";
  * calls {@link applyTransformProps} from its constructor and its `update()`.
  */
 export abstract class UIElementBase implements UIElement {
+  /**
+   * The Pixi container this element draws with. Game code does not write to
+   * it: layout writes its position, and the `scale`, `rotation` and `zIndex`
+   * props write theirs, so a direct write is replaced at the next layout pass
+   * or prop change. Change the element through its props; a task that needs
+   * this object is a missing API.
+   */
   abstract readonly displayObject: DisplayContainer;
   abstract readonly yogaNode: YogaNode;
   abstract visible: boolean;

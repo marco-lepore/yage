@@ -117,7 +117,7 @@ export class BubbleChrome implements ChromePresenter {
       this.bubbleSlice = slice;
     }
     this.drawBubble();
-    this.gfx.graphics.visible = false;
+    this.gfx.visible = false;
 
     // Name floats just above the bubble; left-aligned to the inner edge.
     const nameEntity = scene.spawn("dlg-bubble-name");
@@ -127,14 +127,14 @@ export class BubbleChrome implements ChromePresenter {
         makeTextOptions(c, "", c.nameSize, c.nameColor, c.layer),
       ),
     );
-    this.name.text.visible = false;
+    this.name.visible = false;
 
     const caretEntity = scene.spawn("dlg-bubble-caret");
     this.caretTransform = caretEntity.add(new Transform());
     this.caret = caretEntity.add(new GraphicsComponent({ layer: c.layer }));
     // Drawn once in local coords; positioned each frame via the transform.
     this.caret.draw((g) => drawCaret(g, c.indicatorColor, c.caret?.size));
-    this.caret.graphics.visible = false;
+    this.caret.visible = false;
 
     this.root = root;
   }
@@ -153,7 +153,9 @@ export class BubbleChrome implements ChromePresenter {
       const label = line.speaker?.name;
       this.nameShown = label !== undefined && label.length > 0;
       if (label && this.name) {
-        this.name.text.style.fill = line.speaker?.color ?? this.cfg.nameColor;
+        this.name.mergeStyle({
+          fill: line.speaker?.color ?? this.cfg.nameColor,
+        });
         this.name.setText(label);
       }
     } else {
@@ -191,21 +193,20 @@ export class BubbleChrome implements ChromePresenter {
 
   /** Render each piece = master-visible AND a line is up AND its content present. */
   private apply(): void {
-    if (this.gfx) this.gfx.graphics.visible = this.visible && this.hasLine;
+    if (this.gfx) this.gfx.visible = this.visible && this.hasLine;
     if (this.name) {
-      this.name.text.visible = this.visible && this.hasLine && this.nameShown;
+      this.name.visible = this.visible && this.hasLine && this.nameShown;
     }
     if (this.caret) {
-      this.caret.graphics.visible =
-        this.visible && this.hasLine && this.caretShown;
+      this.caret.visible = this.visible && this.hasLine && this.caretShown;
     }
   }
 
   update(dt: number): void {
     this.follow();
-    // Read pixi's `visible` directly — a parallel boolean could desync (e.g.
-    // keep animating a caret that `setVisible(false)` hid).
-    const gfx = this.caret?.graphics;
+    // The component's `visible` is the state `apply()` wrote, so a caret that
+    // `setVisible(false)` hid stops blinking.
+    const gfx = this.caret;
     if (gfx?.visible) {
       this.caretTime += dt;
       gfx.alpha = caretAlpha(this.caretTime, this.cfg.caret?.blink);
@@ -263,7 +264,7 @@ export class BubbleChrome implements ChromePresenter {
     const lean = c.tailLean ?? DEFAULT_TAIL_LEAN;
     const tipX = lean.x; // slight lean
     const tipY = lean.y; // just above the actor's head anchor (local 0,0)
-    this.gfx?.graphics.clear(); // re-drawn per line at a new size — don't accumulate
+    this.gfx?.draw((g) => g.clear()); // re-drawn per line at a new size — don't accumulate
 
     if (this.bubbleSlice) {
       // Textured body: stretch the nine-slice to the content size and place it

@@ -22,11 +22,13 @@ import {
 } from "@yagejs/core";
 import {
   RendererPlugin,
+  RendererKey,
   CameraEntity,
   GraphicsComponent,
   SplitTextComponent,
+  registerTexture,
+  type GraphicsContext,
 } from "@yagejs/renderer";
-import { Assets, Texture } from "pixi.js";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
 import {
@@ -57,29 +59,20 @@ const WIDTH = 800;
 const HEIGHT = 600;
 const container = setupContainer(WIDTH, HEIGHT);
 
-/** A synchronous 48×48 nine-slice frame (8px border) for the textured
- *  `meta.chrome` scenario — drawn on a canvas so it resolves immediately, with
- *  no async asset load to race the chrome mount. */
-function makeFrameTexture(): Texture {
-  const size = 48;
-  const border = 8;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    ctx.fillStyle = "#b89a5e"; // border
-    ctx.fillRect(0, 0, size, size);
-    ctx.fillStyle = "#2a2418"; // center
-    ctx.fillRect(border, border, size - 2 * border, size - 2 * border);
-  }
-  return Texture.from(canvas);
-}
+/** A 48×48 nine-slice frame (8px border) for the textured `meta.chrome`
+ *  scenario. Baked and registered in `onEnter`, so it resolves synchronously
+ *  with no async asset load to race the chrome mount. */
+const FRAME_KEY = "e2e/frame";
 
-/** The in-box avatar's `meta.portrait` texture key. Preloaded into the Pixi
- *  cache in `onEnter` (after `RendererPlugin` initialises `Assets`) so the
- *  avatar resolves it synchronously, the way a host preloads portrait art. */
+/** The in-box avatar's `meta.portrait` texture key, registered in `onEnter`
+ *  so the avatar resolves it synchronously, the way a host preloads portrait
+ *  art. */
 const PORTRAIT_KEY = "e2e/portrait";
+
+function drawFrame(g: GraphicsContext): void {
+  g.rect(0, 0, 48, 48).fill(0xb89a5e); // border
+  g.rect(8, 8, 32, 32).fill(0x2a2418); // center
+}
 
 const SCRIPT: DialogueScript = {
   id: "demo",
@@ -468,10 +461,10 @@ class DialogueScene extends Scene {
   ];
 
   onEnter(): void {
-    // Preload the in-box avatar portrait into the Pixi cache now that the
-    // renderer has initialised Assets, so `texture(PORTRAIT_KEY)` resolves
-    // synchronously when a meta.portrait line spawns the avatar sprite.
-    Assets.cache.set(PORTRAIT_KEY, makeFrameTexture());
+    const renderer = this.use(RendererKey);
+    const frameSize = { width: 48, height: 48 };
+    registerTexture(FRAME_KEY, renderer.createTexture(drawFrame, frameSize));
+    registerTexture(PORTRAIT_KEY, renderer.createTexture(drawFrame, frameSize));
 
     const cam = this.spawn(CameraEntity, {
       position: new Vec2(WIDTH / 2, HEIGHT / 2),
@@ -497,15 +490,15 @@ class DialogueScene extends Scene {
           ...defaultDialogueTheme(),
           textured: {
             default: {
-              frame: { texture: makeFrameTexture(), insets },
-              bubble: { texture: makeFrameTexture(), insets },
+              frame: { texture: FRAME_KEY, insets },
+              bubble: { texture: FRAME_KEY, insets },
             },
           },
         }
       : {
           ...defaultDialogueTheme(),
           textured: {
-            parchment: { frame: { texture: makeFrameTexture(), insets } },
+            parchment: { frame: { texture: FRAME_KEY, insets } },
           },
         };
     let sharedLayout: BoxLayout | undefined;

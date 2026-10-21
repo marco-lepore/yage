@@ -194,33 +194,42 @@ Systems are for engine-level cross-cutting concerns (rendering, physics, audio s
 
 ```ts
 import {
+  Component,
   System,
   Phase,
   QueryCacheKey,
-  Transform,
   type EngineContext,
   type QueryResult,
 } from "@yagejs/core";
-import { SpriteComponent } from "@yagejs/renderer";
 
-class DisplaySyncSystem extends System {
-  readonly phase = Phase.Render; // which frame phase to run in
+/** Seconds left before the entity is destroyed. Shipped by the plugin. */
+class Lifetime extends Component {
+  remaining: number;
+
+  constructor(seconds: number) {
+    super();
+    this.remaining = seconds;
+  }
+}
+
+class LifetimeSystem extends System {
+  readonly phase = Phase.Update; // which frame phase to run in
   readonly priority = 0; // lower = earlier within the phase (default: 0)
 
-  private bodies!: QueryResult;
+  private expiring!: QueryResult;
 
   onRegister(context: EngineContext) {
     // Register queries for efficient entity iteration
     const cache = this.use(QueryCacheKey);
-    this.bodies = cache.register([Transform, SpriteComponent]);
+    this.expiring = cache.register([Lifetime]);
   }
 
   update(dt: number) {
     // Called once per frame (or per fixed step for FixedUpdate systems)
-    for (const entity of this.bodies) {
-      const transform = entity.get(Transform);
-      const sprite = entity.get(SpriteComponent);
-      sprite.sprite.position.set(transform.position.x, transform.position.y);
+    for (const entity of this.expiring) {
+      const lifetime = entity.get(Lifetime);
+      lifetime.remaining -= dt;
+      if (lifetime.remaining <= 0) entity.destroy(); // leaves the query at once
     }
   }
 
@@ -229,6 +238,8 @@ class DisplaySyncSystem extends System {
   }
 }
 ```
+
+A system never writes positions on a visual's Pixi object. `DisplaySystem` (renderer, `Render` phase) copies each entity's `Transform` to its visuals every frame and overwrites any other write; move entities with `transform.setPosition()`.
 
 **Phase choices:**
 

@@ -203,16 +203,17 @@ class VolumeBar extends Component {
 
   update(): void {
     const vol = this._audio.getChannelVolume(this._channel);
-    const g = this._gfx.graphics;
-    g.clear();
-    // Background
-    g.rect(0, 0, 200, 20).fill({ color: 0x1a1a1a });
-    g.rect(0, 0, 200, 20).stroke({ color: 0x333333, width: 1 });
-    // Fill
-    const w = Math.round(vol * 200);
-    if (w > 0) {
-      g.rect(0, 0, w, 20).fill({ color: this._color, alpha: 0.7 });
-    }
+    this._gfx.draw((g) => {
+      g.clear();
+      // Background
+      g.rect(0, 0, 200, 20).fill({ color: 0x1a1a1a });
+      g.rect(0, 0, 200, 20).stroke({ color: 0x333333, width: 1 });
+      // Fill
+      const w = Math.round(vol * 200);
+      if (w > 0) {
+        g.rect(0, 0, w, 20).fill({ color: this._color, alpha: 0.7 });
+      }
+    });
   }
 }
 

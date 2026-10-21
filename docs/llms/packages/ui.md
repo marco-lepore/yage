@@ -460,8 +460,6 @@ card.scale; // { x, y }: the same object on every read, updated in place
 Unlike a sprite's `anchor` or a graphic's `pivot`, `transformOrigin` never
 moves the element: layout places it, and the origin is only the turning point.
 
-`image.displayObject` is a plain container; `image.sprite` is the picture.
-
 A custom element takes the four props by extending `UIElementBase` and calling
 `this.applyTransformProps(props)` from its constructor and `update()`. A custom
 container places each child with `placeElement(child, left, top)`, which

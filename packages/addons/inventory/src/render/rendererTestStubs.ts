@@ -56,7 +56,6 @@ export class RecordingContext {
 /** A minimal Pixi-Container stand-in: records added children (nine-slice
  *  sprites) so tests can assert a textured frame was parented. */
 export class StubContainer {
-  visible = true;
   readonly children: unknown[] = [];
   addChild(child: unknown): void {
     this.children.push(child);
@@ -64,6 +63,7 @@ export class StubContainer {
 }
 
 export class GraphicsComponent extends Component {
+  visible = true;
   readonly graphics = new StubContainer();
   /** Every `draw()` call's recorded ops, latest last. */
   readonly draws: RecordingContext[] = [];
@@ -95,12 +95,20 @@ export interface TextOptions {
 }
 
 export class TextComponent extends Component {
-  readonly text = {
-    visible: true,
-    style: { wordWrap: false, wordWrapWidth: 0 },
-  };
+  visible = true;
+  tint = 0xffffff;
+  content: string;
+  /** Every style patch passed to `mergeStyle`, latest last. */
+  readonly styleMerges: Record<string, unknown>[] = [];
   constructor(readonly options: TextOptions) {
     super();
+    this.content = options.text;
+  }
+  setText(value: string): void {
+    this.content = value;
+  }
+  mergeStyle(style: Record<string, unknown>): void {
+    this.styleMerges.push(style);
   }
 }
 
@@ -111,7 +119,7 @@ export interface SpriteOptions {
 }
 
 export class SpriteComponent extends Component {
-  readonly sprite = { visible: true };
+  visible = true;
   constructor(readonly options: SpriteOptions) {
     super();
   }

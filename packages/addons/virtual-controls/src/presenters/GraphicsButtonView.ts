@@ -66,8 +66,8 @@ export class GraphicsButtonView implements ControlView {
   update(dt: number): void {
     if (this.disposed) return;
     const visible = this.globallyVisible && this.button.visible;
-    this.gfx.graphics.visible = visible;
-    this.text.text.visible = visible;
+    this.gfx.visible = visible;
+    this.text.visible = visible;
     if (!visible) return;
 
     const layout = this.button.layout;
@@ -83,7 +83,7 @@ export class GraphicsButtonView implements ControlView {
       targetAlpha,
       Math.min(1, dt * FADE_SPEED),
     );
-    this.text.text.alpha =
+    this.text.alpha =
       this.theme.labelAlpha * (this.button.enabled ? 1 : DISABLED_ALPHA);
 
     const scale = this.button.pressed ? PRESSED_SCALE : 1;
@@ -110,8 +110,8 @@ export class GraphicsButtonView implements ControlView {
     this.globallyVisible = visible;
     if (this.disposed) return;
     const shown = visible && this.button.visible;
-    this.gfx.graphics.visible = shown;
-    this.text.text.visible = shown;
+    this.gfx.visible = shown;
+    this.text.visible = shown;
   }
 
   dispose(): void {
@@ -124,16 +124,17 @@ export class GraphicsButtonView implements ControlView {
     const t = this.theme;
     const radius = this.button.layout.radius;
     const pressed = this.button.pressed;
-    const g = this.gfx.graphics;
-    g.clear();
-    g.circle(0, 0, radius).fill({
-      color: pressed ? t.buttonPressedColor : t.buttonColor,
-      alpha: (pressed ? t.buttonPressedAlpha : t.buttonAlpha) * this.alpha,
-    });
-    g.circle(0, 0, radius).stroke({
-      width: t.buttonBorderWidth,
-      color: t.buttonBorderColor,
-      alpha: t.buttonBorderAlpha * this.alpha,
+    this.gfx.draw((g) => {
+      g.clear();
+      g.circle(0, 0, radius).fill({
+        color: pressed ? t.buttonPressedColor : t.buttonColor,
+        alpha: (pressed ? t.buttonPressedAlpha : t.buttonAlpha) * this.alpha,
+      });
+      g.circle(0, 0, radius).stroke({
+        width: t.buttonBorderWidth,
+        color: t.buttonBorderColor,
+        alpha: t.buttonBorderAlpha * this.alpha,
+      });
     });
     this.drawnPressed = pressed;
     this.drawnRadius = radius;

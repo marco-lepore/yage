@@ -48,10 +48,6 @@ proportionally — use the
 from `@yagejs/effects` instead.
 :::
 
-**Escape hatch:** `.sprite` is the underlying pixi `Sprite`. Reach for it
-when you need a pixi feature `SpriteComponent` doesn't surface — full pixi
-API is available. See the [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
-
 ### What `anchor` does
 
 `anchor` is a fraction of the texture: `{ x: 0, y: 0 }` is its top-left
@@ -195,10 +191,6 @@ quarter speed and `2` plays at double speed. A paused scene,
 `scene.timeScale = 0`, or a disabled `AnimatedSpriteComponent` freezes
 playback. Put an animation in a separate active overlay scene when it must keep
 playing while gameplay is frozen.
-
-**Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
-Frame selection, playback rate, and restart control are available directly on
-the component — see below. Use `.animatedSprite` for other pixi features.
 
 ### Hold a frame or restart playback
 

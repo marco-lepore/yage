@@ -347,10 +347,12 @@ export function drawHealthBar(
   color: number,
 ): void {
   const frac = Math.max(0, hpFrac);
-  gfx.graphics
-    .clear()
-    .rect(-HP_BAR_WIDTH / 2, HP_BAR_TOP, HP_BAR_WIDTH, HP_BAR_HEIGHT)
-    .fill({ color: 0x1e293b })
-    .rect(-HP_BAR_WIDTH / 2, HP_BAR_TOP, HP_BAR_WIDTH * frac, HP_BAR_HEIGHT)
-    .fill({ color });
+  gfx.draw((g) =>
+    g
+      .clear()
+      .rect(-HP_BAR_WIDTH / 2, HP_BAR_TOP, HP_BAR_WIDTH, HP_BAR_HEIGHT)
+      .fill({ color: 0x1e293b })
+      .rect(-HP_BAR_WIDTH / 2, HP_BAR_TOP, HP_BAR_WIDTH * frac, HP_BAR_HEIGHT)
+      .fill({ color }),
+  );
 }

@@ -137,7 +137,6 @@ export class BubbleChoicePresenter implements ChoicePresenter {
       const comp = e.add(
         new TextComponent(this.textOptions(promptStr, c.textColor, innerW)),
       );
-      comp.text.visible = true;
       promptH = Math.ceil(comp.text.height);
       this.prompt = { entity: e, comp };
     }
@@ -167,7 +166,6 @@ export class BubbleChoicePresenter implements ChoicePresenter {
           this.textOptions(choiceRowLabel(choice), c.choiceColor),
         ),
       );
-      comp.text.visible = true;
       this.rows.push({
         entity,
         comp,
@@ -194,14 +192,14 @@ export class BubbleChoicePresenter implements ChoicePresenter {
    *  Disabled rows still show (greyed); only the highlight bar is suppressed. */
   private applyHidden(): void {
     const shown = !this.hidden;
-    if (this.bg) this.bg.gfx.graphics.visible = shown && this.rows.length > 0;
+    if (this.bg) this.bg.gfx.visible = shown && this.rows.length > 0;
     if (this.highlightBar) {
       const onEnabled =
         this.selected >= 0 && !this.rows[this.selected]?.disabled;
-      this.highlightBar.gfx.graphics.visible = shown && onEnabled;
+      this.highlightBar.gfx.visible = shown && onEnabled;
     }
-    if (this.prompt) this.prompt.comp.text.visible = shown;
-    for (const row of this.rows) row.comp.text.visible = shown;
+    if (this.prompt) this.prompt.comp.visible = shown;
+    for (const row of this.rows) row.comp.visible = shown;
   }
 
   highlight(position: number): void {
