@@ -1,20 +1,25 @@
 ---
 title: Behavior Trees
-description: Compose typed decisions with cancellable actions, reusable subtrees, and Inspector diagnostics.
+description: Compose typed decisions with cancellable actions, parallel branches, reusable subtrees, and Inspector diagnostics.
 ---
 
-Behavior trees choose what a character does and keep track of work that spans
-several ticks. Use sequences for ordered tasks and selectors for alternatives.
-Running actions have an explicit exit, so changing priorities can stop movement or
-cancel an attack before another action begins.
+Behavior trees choose what a character does and track work that spans several
+ticks. Sequences run tasks in order, selectors take the first alternative that
+works, and parallels run branches side by side. Every running action has an
+exit callback, so when priorities change, the tree stops the old movement or
+attack before the next action starts.
 
 [Run the two-guard example](https://examples.yage.dev/behavior-tree.html).
-Both guards share one definition. Automatic damage interrupts the first guard's
-attack and the second guard's approach. Each retreats, heals, and returns on its own
-schedule. Press **1** or **2** to damage a guard and **Space** to disable or restart
-the first guard's tree.
-Before attacking, each guard samples a reaction delay and chooses between normal
-and heavy attacks. Heavy attacks have a probability gate and a cooldown.
+Both guards share one definition. Before attacking, each guard waits a random
+reaction time and picks a normal or a heavy attack. Heavy attacks also pass a
+chance check and have a cooldown. Automatic damage interrupts the first guard's
+attack and the second guard's approach. Each guard then runs home and calls for
+help at the same time, through a parallel node. It heals and returns on its own
+schedule. A panel
+above each lane shows the running branch, the heavy-attack cooldown, and the
+last interruption. Press **1** or **2** to damage a guard and **Space** to
+disable or restart the first guard's tree. The tree definition is in
+`examples/src/behavior-tree/behavior.ts`.
 
 ## Install and run
 
@@ -22,14 +27,15 @@ and heavy attacks. Heavy attacks have a probability gate and a cooldown.
 npm install @yagejs-addons/behavior-tree @yagejs/core
 ```
 
-Create a definition with `behaviorNodes<C>()`, where `C` is the game's state owner
-or an interface containing the references the actions need. Mount a separate runner
-on each entity. This complete headless example advances the engine manually. In a
-rendered game, the renderer advances the engine's loop.
+Build a definition with `behaviorNodes<C>()`. `C` is the context type: the game
+component the actions use, or an interface that groups the references they
+need. Add a `BehaviorTreeAgent` to each entity, with the shared definition and
+that entity's context. This example runs headless and advances the engine by
+hand. In a rendered game, the renderer drives the loop.
 
 ```ts
 import { Component, Engine, Entity, Scene, advanceFrames } from "@yagejs/core";
-import { BehaviorTree, BehaviorTreeAgent, behaviorNodes } from "@yagejs-addons/behavior-tree";
+import { BehaviorTreeAgent, behaviorNodes } from "@yagejs-addons/behavior-tree";
 
 class WorkerState extends Component {
   deliveries = 0;
@@ -38,14 +44,12 @@ class WorkerState extends Component {
 const bt = behaviorNodes<WorkerState>();
 const delivery = bt.sequence("delivery", [
   bt.wait("prepare", 0.5),
-  bt.action("deliver", (worker) => ({
-    tick: () => { worker.deliver(); return "success"; },
-  })),
+  bt.call("deliver", (worker) => worker.deliver()),
 ]);
 class Worker extends Entity {
   setup(): void {
     const state = this.add(new WorkerState());
-    this.add(new BehaviorTreeAgent(new BehaviorTree(delivery, state)));
+    this.add(new BehaviorTreeAgent(delivery, state));
   }
 }
 class WorkScene extends Scene {
@@ -60,66 +64,166 @@ advanceFrames(engine, 120);
 await engine.destroy();
 ```
 
-The tree receives the actual `WorkerState` component. Deliveries remain on that
-component. Changes to health, targets, inventory or other game data should likewise
-use their existing owner. The addon requires no plugin and imports no renderer.
+Each agent builds its own runner when it is added, so progress, cooldowns, and
+diagnostics stay separate between entities. The tree receives the actual
+`WorkerState` component, and the delivery count stays on it. Health, targets,
+inventory, and other game data stay on their existing owners too. The addon
+needs no plugin and imports no renderer.
 
 ## Keep state on its owner
 
-`C` is one typed context. It can be a component, or an object containing a state
-reader, commands, and references to movement or other capabilities. There is no
-required `state` field or second context parameter. The runner holds the context
-by reference; it does not clone, freeze, or subscribe to it.
+`C` is one typed context. It can be a component, or an object that holds a
+state reader, commands, and references to movement or other capabilities. The
+tree holds the context by reference and never copies it.
 
-For a small tree, passing the component directly is enough. For reusable actions,
-prefer a narrow interface: read-only access to the values they need, plus commands
-such as `heal()` or `attack()`. Keep writes inside the component that owns the data.
-A `Readonly` type restricts TypeScript writes; it does not freeze nested objects.
+For a small tree, pass the component directly. For actions you reuse in several
+trees, prefer a narrow interface: read-only access to the values they need, plus
+commands such as `heal()` or `attack()`. Keep writes inside the component that
+owns the data. A `Readonly` type stops TypeScript writes but does not freeze
+nested objects.
 
-If the state owner replaces its snapshots, pass `read: () => state.get()` instead
-of capturing `state.get()` when constructing the tree. Call `read()` inside each
-predicate or action tick. Reading once in an action factory captures that snapshot
-for the entire activation. The example below uses a live reader with core state.
+If the owner replaces its state object on each change, pass a reader such as
+`read: () => state.get()`, and call `read()` inside each condition or action
+tick. An action factory that calls `state.get()` once keeps that one snapshot
+for the whole activation. The probability example below uses a reader over core
+state.
 
-Writes are immediately visible to later nodes in the same traversal. There is no
-transaction or rollback around a tick. If your state owner uses drafts, create and
-commit the draft inside an owner command. Do not retain a draft across tree ticks:
-movement, events, and other effects cannot be rolled back with state.
+Writes are visible to later nodes in the same tick. Nothing is rolled back when
+a callback throws. If the owner uses drafts, create and commit each draft inside
+an owner command, and never keep a draft open across ticks: movement, events,
+and other effects cannot be rolled back with state.
 
-## Read and compose results
+## Statuses and nodes
 
-An action returns `"running"` to continue on a later tick, `"success"` to finish,
-or `"failure"` to reject its branch. Inspection also reports `"idle"` before
-execution or after cancellation. A completed root starts again on the next positive
-tick. The runtime never loops the root several times within one tick.
+An action returns `"running"` to continue on a later tick, `"success"` to
+finish, or `"failure"` to reject its branch. Inspection also reports `"idle"`
+for a node that has not started or was cancelled. A finished root starts again
+on the next tick with positive time. One tick never runs the root twice.
 
 | Node | Behavior |
 | --- | --- |
 | `action(id, create)` | Create an action for this activation, then enter and tick it. |
-| `condition(id, test)` | Return success for true or failure for false. |
-| `sequence(id, children, options?)` | Continue through successful children; stop at running or failure. Empty succeeds. |
-| `selector(id, children, options?)` | Continue through failed children; stop at running or success. Empty fails. |
-| `guard(id, test, child)` | Check before every child visit. False cancels the child and returns failure. |
-| `subtree(id, child)` | Reuse a definition with independent progress at each occurrence. |
-| `wait(id, seconds)` | Succeed when supplied tick time reaches the duration. |
-| `randomWait(id, min, max)` | Sample a duration between the bounds once, then wait. |
-| `chance(id, probability, child)` | Roll once; visit the child if accepted, otherwise fail. |
-| `weightedSelector(id, choices, options?)` | Choose by relative weight; keep a running choice. |
-| `cooldown(id, seconds, child)` | After child success, reject visits until the cooldown expires. |
+| `call(id, run)` | Run `run(context)` once and succeed in the same tick. |
+| `condition(id, test)` | Succeed when `test` returns true, fail otherwise. |
+| `sequence(id, children, options?)` | Run children in order. Stop at the first running or failed child. Empty succeeds. |
+| `selector(id, children, options?)` | Try children in order. Stop at the first running or successful child. Empty fails. |
+| `parallel(id, children, options?)` | Tick every unfinished child on each visit. By default, succeed when all succeed and fail when one fails. |
+| `guard(id, test, child)` | Check before every visit. False cancels the child and fails. |
+| `subtree(id, child)` | Reuse a definition. Each occurrence keeps its own progress. |
+| `wait(id, seconds)` | Succeed once the tick time adds up to the duration. |
+| `randomWait(id, min, max)` | Pick a duration between the bounds once, then wait. |
+| `chance(id, probability, child)` | Roll once. Visit the child if the roll passes, otherwise fail. |
+| `weightedSelector(id, choices, options?)` | Pick a child by relative weight and keep it while it runs. |
+| `cooldown(id, seconds, child)` | After the child succeeds, fail every visit until the cooldown ends. |
 | `timeout(id, seconds, child)` | Cancel the child and fail when the duration is reached. |
-| `invert(id, child)` | Swap success and failure; preserve running. |
+| `repeat(id, times, child)` | Run the child again after each success. Succeed after `times` successes. |
+| `retry(id, attempts, child)` | Run the child again after each failure. Fail after `attempts` failures. |
+| `invert(id, child)` | Swap success and failure. Keep running. |
+| `forceSuccess(id, child)`, `forceFailure(id, child)` | Replace a finished result. Keep running. |
 
-All helpers return plain `BehaviorNode<C>` definitions, so you can also author
-objects directly. IDs must be nonempty, contain no `/`, and differ between siblings.
-Paths join IDs with `/`. The constructor copies the definition's topology and callback
-references. To change the topology, construct another runner. Cycles, more than 4096
-node occurrences, and depths over 128 are rejected before any action runs.
+The helpers return plain `BehaviorNode<C>` objects, so you can also write the
+objects by hand. IDs must be nonempty, contain no `/`, and differ between
+siblings. A node's path joins the IDs from the root with `/`. The tree copies
+the definition's structure when it is built, so later edits to the definition
+objects have no effect on it. Cycles, more than 4096 nodes, and nesting deeper
+than 128 levels throw when the tree is built, before any callback runs.
+
+## Choose remembered or reactive progress
+
+Sequences and selectors remember their running child by default. An
+approach, attack, and recover sequence therefore continues its current action
+without repeating the earlier ones.
+
+Pass `{ reactive: true }` as the third argument to start from the first child on
+every tick. A reactive selector notices that a low-health retreat branch has
+become eligible while combat is running. Put a pure `guard` around each
+priority branch, and use remembered sequences inside those guards.
+
+A reactive sequence runs its earlier children again on every tick while a later
+action runs. The later action keeps running as long as every earlier child
+succeeds in that tick. An earlier child that fails, or that is still running,
+stops it. An earlier `wait` that has finished starts again on the next tick.
+While it runs, the sequence stops the later action, so the action advances only
+on ticks in which the wait completes. Put conditions and guards first in a
+reactive sequence. An earlier `call` runs its callback on every tick.
+
+A reactive selector also runs earlier finished actions again. Before a
+higher-priority action or wait starts, the running lower-priority action exits.
+That includes a newly tried action that fails at once: trying it still stops the
+previous action. Use a guard without side effects when an ineligible branch must
+leave the current action alone. A false guard cancels its own child. Conditions
+should read state without changing it.
+
+## Run branches side by side
+
+`parallel` ticks each unfinished child, in order, on every visit. Each child
+keeps its own running action, so an action that starts in one child never
+cancels the action running in another. Use it for work that happens together,
+such as chasing while barking, or moving while aiming.
+
+```ts
+import { BehaviorTree, behaviorNodes } from "@yagejs-addons/behavior-tree";
+
+class Hunter {
+  distance = 200;
+  barks = 0;
+  approach(dt: number): void { this.distance = Math.max(0, this.distance - 80 * dt); }
+  bark(): void { this.barks++; }
+}
+const bt = behaviorNodes<Hunter>();
+const hunt = bt.timeout("patience", 3, bt.parallel(
+  "hunt",
+  [
+    bt.action("chase", (hunter) => ({
+      tick: (dt) => {
+        hunter.approach(dt);
+        return hunter.distance === 0 ? "success" : "running";
+      },
+    })),
+    bt.repeat("barking", Infinity, bt.sequence("bark", [
+      bt.wait("breath", 0.5),
+      bt.call("shout", (hunter) => hunter.bark()),
+    ])),
+  ],
+  { success: "any" },
+));
+const hunter = new Hunter();
+const tree = new BehaviorTree(hunt, hunter);
+// Headless host owns the clock. Mounted agents receive engine time instead.
+for (let frame = 0; frame < 180; frame++) tree.tick(1 / 60);
+```
+
+The default `{ success: "all" }` succeeds when every child has succeeded and
+fails as soon as one child fails. `{ success: "any" }` succeeds as soon as one
+child succeeds and fails only when every child has failed. A finished child
+keeps its result and is not ticked again until the parallel starts over. Once
+the result is decided, the children still running are cancelled with
+`branch-changed`. In the hunt above, reaching the target cancels the barking.
+
+A higher-priority branch outside the parallel cancels every child before its
+own action starts. All children share the same context. When two children
+would drive the same resource, such as one `SteeringAgent`, decide in the game
+which child owns it.
+
+## Repeat and retry
+
+`repeat(id, times, child)` runs the child again after each success. It succeeds
+after `times` successes and fails as soon as the child fails.
+`retry(id, attempts, child)` runs the child again after each failure. It fails
+after `attempts` failures and succeeds as soon as the child succeeds. Each
+further run starts on the next tick, so an instant child never loops inside one
+tick.
+
+`times` and `attempts` take an integer from 0 up, or `Infinity` to keep going
+until the child's result ends the node. Zero finishes without visiting the
+child: `repeat` succeeds and `retry` fails. Inspection reports the runs so far
+in `count` and the value in use in `limit`.
 
 ## Choose probabilities, weights, and delays
 
-This headless example reads the current ammo snapshot, waits before deciding, and
-chooses a shot or reload. A rejected chance or a blocked cooldown makes the weighted
-selector try its remaining choice.
+This headless example reads the current ammo, waits before deciding, and
+chooses a shot or a reload. A rejected chance or a blocked cooldown makes the
+weighted selector try its other choice.
 
 ```ts
 import { createRandomService, createRecord } from "@yagejs/core";
@@ -140,22 +244,16 @@ const ctx = {
   reload: () => guard.reload(),
 };
 const bt = behaviorNodes<typeof ctx>();
-const shoot = bt.action("shoot", (ctx) => ({
-  tick: () => { ctx.shoot(); return "success"; },
-}));
 const definition = bt.sequence("turn", [
   bt.randomWait("reaction", 0.2, 0.5),
   bt.weightedSelector("tactic", [
     {
       weight: (ctx) => ctx.read().ammo > 0 ? 3 : 0,
-      child: bt.cooldown("shot-ready", 1, bt.chance("take-shot", 0.75, shoot)),
+      child: bt.cooldown("shot-ready", 1, bt.chance("take-shot", 0.75,
+        bt.call("shoot", (ctx) => ctx.shoot()),
+      )),
     },
-    {
-      weight: 1,
-      child: bt.action("reload", (ctx) => ({
-        tick: () => { ctx.reload(); return "success"; },
-      })),
-    },
+    { weight: 1, child: bt.call("reload", (ctx) => ctx.reload()) },
   ]),
 ]);
 const random = createRandomService(42);
@@ -164,134 +262,163 @@ const tree = new BehaviorTree(definition, ctx, { random: () => random.float() })
 for (let frame = 0; frame < 120; frame++) tree.tick(1 / 60);
 ```
 
-`chance` accepts a probability from 0 to 1. It rolls once per activation and keeps
-the decision while its child runs. Zero always rejects and one always accepts;
-neither consumes a random number.
+`chance` accepts a probability from 0 to 1. It rolls once per activation and
+keeps the result while its child runs. Zero always rejects and one always
+accepts, and neither draws a random number.
 
-`weightedSelector` takes `{ weight, child }` entries. Weights are relative: 3 and 1
-give a 75% and 25% initial choice. Zero excludes a child. The default
-`{ onFailure: "retry" }` retries among untried children, at most once each per
-activation. Pass `{ onFailure: "fail" }` to stop after the chosen child fails.
-Empty or all-zero choices fail. A running choice stays selected, even if game
-state changes its weight. Use a guard to interrupt a now-invalid action.
+`weightedSelector` takes `{ weight, child }` entries. Weights are relative: 3
+and 1 give a 75% and a 25% first pick. Zero excludes a child. The default
+`{ onFailure: "retry" }` picks again among the untried children after a failure,
+at most once each per activation. Pass `{ onFailure: "fail" }` to stop after the
+picked child fails. Empty or all-zero choices fail. A running choice stays
+picked even when game state changes its weight. Use a guard to interrupt an
+action that is no longer valid.
 
-Probabilities, weights, wait bounds, and wait/timeout/cooldown durations accept
-either a number or `(ctx) => number`. Each callback is sampled once per activation,
-before its child starts; blocked cooldowns do not sample a duration.
-All values must be finite and nonnegative; probability
-must also be at most 1, and random-wait bounds must satisfy `min <= max`.
-`randomWait` samples uniformly between its bounds; equal bounds consume no random
-number. Numeric callbacks and the random source use the same error attribution as
-actions. Keep numeric callbacks free of side effects.
+Probabilities, weights, wait bounds, the durations of wait, timeout, and
+cooldown, and the counts of repeat and retry accept a number or a
+`(ctx) => number` callback. Each callback runs once per activation, before the
+child starts. A blocked cooldown does not run its duration callback. Every
+value must be finite and nonnegative. A probability must also be at most 1, and
+random wait bounds must satisfy `min <= max`. Repeat and retry counts are the
+one exception: they also accept `Infinity`. Numeric callbacks and the random
+source report errors the same way as actions. Keep numeric callbacks free of
+side effects.
 
-Mounted trees use the scene's random generator. An explicit `random` constructor
-option takes precedence. Headless trees must provide that option before any random
-draw is needed. The source must return a finite number in `[0, 1)`. Reusing a seed
-reproduces draws when tick order and other consumers of that generator match.
+`BehaviorTreeAgent` uses the scene's random generator. Pass
+`{ random: () => number }` in the agent options to use another source. A
+headless `BehaviorTree` needs the `random` option when its definition has a node
+that can draw: a `chance` whose probability is not a constant 0 or 1, a
+`randomWait` whose bounds are not equal constants, or any `weightedSelector`.
+Without it, building the tree throws. The source must return a finite number in
+`[0, 1)`. A reused seed reproduces the draws when the tick order and the other
+users of that generator match.
 
 ### Cooldowns and reaction time
 
-A cooldown starts available. It samples its duration before entering the child and
-arms only after child success. Failure or cancellation does not arm it. While
-blocked it fails without visiting the child. Zero imposes no delay.
+A cooldown starts available. It reads its duration before entering the child
+and starts counting only after the child succeeds. A failure or a cancellation
+does not start it. While it counts, every visit fails without visiting the
+child. A duration of zero adds no delay.
 
-Cooldowns advance on every positive tree tick, including while other branches run.
-They survive root restarts and cancellation. Pausing or disabling the agent freezes
-them because its clock stops. Each node occurrence and runner has its own cooldown.
+Cooldowns count down on every tree tick with positive time, including while
+other branches run. They are kept when the root restarts and when the tree is
+cancelled. Pausing or disabling the agent freezes them, because its clock
+stops. Each node occurrence in each runner has its own cooldown.
 
-A reaction wait delays the action that follows it. Selecting the wait interrupts
-the previous running branch immediately. To keep an old action running until a
-stimulus has persisted long enough, track that observation on the game component
-and let a guard read when it becomes eligible.
-
-## Choose remembered or reactive progress
-
-Sequences and selectors remember their running child by default. An approach/attack/
-recovery sequence therefore continues its current action without repeating earlier
-successful actions.
-
-Pass `{ reactive: true }` as the third argument to start from the first child on
-every tick. A reactive selector can notice that a low-health retreat branch has
-become eligible while combat is running. Use a pure `guard` predicate around each
-priority branch, and remembered sequences inside those guards. A reactive sequence
-can recheck earlier conditions while a later action runs.
-
-Reactive traversal also repeats earlier completed actions. Before a different action
-or wait starts, the previous running branch exits. Even a newly attempted action
-that fails interrupts the previous action. Use a side-effect-free guard when an
-ineligible branch must leave the current action alone. A false guard interrupts its
-own child. Conditions should read state without changing it.
+A reaction wait delays the action that follows it. Starting the wait interrupts
+the previous running branch at once. To keep an old action running until a
+stimulus has lasted long enough, track that stimulus on the game component and
+let a guard read when the new branch becomes eligible.
 
 ## Own an action's lifetime
 
-The action factory runs for every activation. Allocate local counters or handles
-inside that factory so different entities and subtree occurrences cannot share them.
-Return an object with these callbacks:
+The action factory runs for every activation. Create local counters and handles
+inside that factory, so different entities and subtree occurrences never share
+them. Return an object with these callbacks:
 
 | Callback | When it runs |
 | --- | --- |
 | `enter?()` | Once, before the first tick. Start the action's work here. |
-| `tick(dt)` | Immediately after entry and on subsequent visits until complete. Return a status. |
-| `exit?(result)` | Once on completion or cancellation. Release work this action owns. |
+| `tick(dt)` | Right after entry, then on each later visit until the action finishes. Return a status. |
+| `exit?(result)` | Once, on completion or cancellation. Release the work this action owns. |
 
-A completed exit receives `{ status: "success" }` or `{ status: "failure" }`.
-A cancelled exit receives `{ status: "cancelled", reason, by }`. Reasons are
-`cancelled`, `disabled`, `destroyed`, `branch-changed`, `guard-failed`, and `timeout`.
-`by` is the causing node's path, or null for cancellation requested by the host.
-The old action's cleanup finishes before the replacement factory or entry runs.
+A completed exit receives `{ status: "success" }` or `{ status: "failure" }`. A
+cancelled exit receives `{ status: "cancelled", reason, by }`. The reasons are
+`cancelled`, `disabled`, `branch-changed`, `guard-failed`, and `timeout`. `by`
+is the path of the node that caused the cancellation, or null when the host
+cancelled the tree. The old action's exit finishes before the replacement's
+factory or entry runs.
 
-Poll a process slot, movement request or animation from `tick`. Release that resource
-in `exit`: the runtime cannot infer which external work an action owns. The two-guard
-example cancels its attack slot and clears its steering request there. Callbacks are
-synchronous; Promise actions are unsupported.
+Poll a process slot, a movement request, or an animation from `tick`, and
+release it in `exit`: the tree cannot tell which external work an action owns.
+The two-guard example cancels its attack slot and clears its steering request
+there. All callbacks are synchronous. A callback that returns a Promise throws.
 
-Exceptions propagate through YAGE's existing error boundary with the node path and
-callback phase. They never become a failure result. A throwing exit prevents the next
-branch from starting, and the runtime does not continue cleanup after a throw. Fix the
-callback and cancel the tree before deliberately resuming execution. Exit is not
-retried if it throws. Game state already changed by a callback stays changed.
+Exceptions go through YAGE's error boundary with the node path and the callback
+phase, then propagate. They never turn into a failure result. A throwing exit
+stops the next branch from starting, and the tree runs no further cleanup after
+a throw. Game state that a callback already changed stays changed. After a
+callback throws, every later `tick()` throws too, until `cancel()` exits what is
+still running and lets the tree start again from the root. An exit that threw
+is not called again.
 
 ## Reuse definitions and typed contracts
 
-`subtree(id, child)` gives each occurrence its own progress, even when the same child
-object appears several times. Every runner also has independent state. Each subtree
-receives its parent's context; TypeScript structural typing lets a reusable subtree
-require only the fields it uses. Use ordinary typed function arguments for reusable
-configuration such as attack range or duration.
+`subtree(id, child)` gives each occurrence its own progress, even when the same
+child object appears several times. Each subtree receives its parent's context.
+TypeScript structural typing lets a reusable subtree require only the fields it
+uses. Pass reusable settings such as attack range or duration as ordinary typed
+function arguments.
 
-Share definitions, and construct one `BehaviorTree` per entity. Sharing a runner
-between `BehaviorTreeAgent` owners throws. Avoid mutable variables in the shared
-definition's outer closure. Keep per-activation variables inside the action factory,
-and durable game state on its game component or save root.
+Share one definition between entities and give each entity its own
+`BehaviorTreeAgent`. Avoid mutable variables in the shared definition's outer
+closure. Keep per-activation variables inside the action factory, and durable
+game state on its game component or save root.
 
 ## Time, pause, and cancellation
 
-`BehaviorTreeAgent` uses `clock: "fixed"` by default, with update priority -10 so
-it runs before ordinary steering siblings. Set `clock: "frame"` to use frame
-updates. Both clocks receive scene- and entity-scaled seconds. A scene pause stops
-ticks without exiting actions. A zero time scale freezes tree execution, including
-conditions and instant actions. Give external work the same time owner.
+`BehaviorTreeAgent` uses `clock: "fixed"` by default, with update priority -10,
+so it decides before ordinary steering siblings move. Set `clock: "frame"` to
+tick on frame updates. Both clocks receive seconds scaled by the scene and the
+entity. A scene pause stops ticks without exiting actions. A time scale of zero
+freezes the tree, including conditions and instant actions. Give external work
+the same clock as the tree.
 
-Disabling the component or deactivating its entity or ancestor cancels running work
-with `disabled`. Removal and destruction also use that lifecycle hook. Destruction
-additionally cancels any manually started work with `destroyed`; an idle tree does
-not exit twice. Re-enabling starts from the root.
+Disabling the agent, deactivating its entity or an ancestor, removing the
+agent, and destroying the entity all cancel running work with reason
+`disabled`. Re-enabling starts from the root.
 
-`agent.tree.cancel()` returns the tree to idle. The next tick starts it again; disable
-the agent to keep it stopped. Cancellation requested inside a callback stops traversal
-when that callback returns. Recursive ticks throw. For active/stunned/dead modes, the
-existing `Component.stateMachine()` can control whether the tree is enabled.
+`agent.tree` is the entity's runner. `agent.tree.cancel()` returns the tree to
+idle, and the next tick starts it again. Disable the agent to keep it stopped.
+A cancel requested inside a callback stops the traversal when that callback
+returns. Calling `tick()` from inside a callback throws. For broad modes such as
+active, stunned, and dead, let the existing `Component.stateMachine()` enable or
+disable the agent.
 
-A headless host calls `tree.tick(dt)` directly. Do not manually tick an enabled
-component's runner as well. Durations and dt must be finite and nonnegative. Every
-visited child receives the same dt; durations do not distribute leftover time across
-siblings. `wait(…, 0)` succeeds on its first positive tick. Timeout counts the current
-dt before visiting its child, so a zero timeout never enters the child.
+A headless host builds a `BehaviorTree` and calls `tree.tick(dt)` itself. Never
+tick an agent's runner by hand while the agent is enabled. Durations and `dt`
+must be finite and nonnegative. Every visited child receives the same `dt`, and
+time left over when a child finishes is not passed on to the next sibling.
+`wait(…, 0)` succeeds on its first tick with positive time. A timeout counts the
+current `dt` before it visits its child, so a zero timeout never enters the
+child.
+
+## Save cooldowns
+
+A running action cannot be saved, because it is a closure over live game
+objects. After a load, the tree starts again from the root, and its actions read
+the restored game state. Cooldowns are the progress that outlasts a cancel, so
+the tree saves them: `snapshot()` returns `{ cooldowns }`, a JSON object of the
+remaining seconds keyed by node path.
+
+```ts
+import { BehaviorTree, behaviorNodes } from "@yagejs-addons/behavior-tree";
+
+const shots = { fired: 0 };
+const bt = behaviorNodes<typeof shots>();
+const definition = bt.cooldown("reload", 2, bt.call("fire", (s) => {
+  s.fired++;
+}));
+const tree = new BehaviorTree(definition, shots);
+tree.tick(0.5);
+// Store this string with the game's own save data.
+const saved = JSON.stringify(tree.snapshot());
+// After loading the game data, give the new runner the saved cooldowns.
+const loaded = new BehaviorTree(definition, shots);
+loaded.restore(JSON.parse(saved));
+```
+
+For a mounted tree, call `agent.tree.snapshot()` and `agent.tree.restore(...)`.
+`restore()` cancels running work first, so actions exit and the next tick starts
+from the root. A path that the current definition does not have is dropped, so
+a save made with an older definition still loads. A cooldown missing from the
+snapshot starts available. A known path whose value is not a finite number of
+zero or more throws before anything is cancelled, so a damaged save is reported.
 
 ## Inspect decisions
 
-Install the usual Inspector through `DebugPlugin` or `InspectorPlugin`, and enable
-engine debug access. Then inspect the example with:
+Install the usual Inspector through `DebugPlugin` or `InspectorPlugin`, and
+enable engine debug access. Then inspect the example with:
 
 ```ts yage-context="browser"
 const inspector = window.__yage__!.inspector;
@@ -301,35 +428,31 @@ const state = inspector.getComponentData(id, "GuardState");
 const errors = inspector.getErrors().callbackErrors;
 ```
 
-`guard.execution` contains active paths, every node's kind and status, recent
-transitions, tick number and the last callback error. Each transition reports the
-old and new status, reason, and the causing node in `by`. `GuardState` holds health
-and other game values. Engine callback errors identify the entity, node and phase.
-No game context, callback or resource is copied into the tree's diagnostics.
+`guard.execution` contains the active paths, every node's kind and status,
+recent transitions, the tick number, and the last callback error. Each
+transition reports the old and the new status, the reason, and the causing node
+in `by`. `GuardState` holds health and the other game values. Engine callback
+errors name the entity, the scene, the node, and the phase. The diagnostics
+never include the game context, callbacks, or resources.
 
 Nodes also report `durationSeconds`, `remainingSeconds`, `chancePassed`,
-`selectedChild`, and `remainingWeights`. Unsampled or inapplicable values are null;
-an available cooldown reports zero remaining seconds. Failed choices have zero
-remaining weight when retrying. Inspection returns copies of the weights.
+`selectedChild`, `remainingWeights`, `count`, and `limit`. A value that was not
+sampled or does not apply is null. An unbounded `limit` is `Infinity` in
+`tree.inspect()`. The Inspector copies components through JSON, so there it
+reads null. An available cooldown reports zero remaining seconds. A failed choice has zero remaining weight while the selector retries.
 
-The constructor option `historyLimit` defaults to 128 transitions. It accepts integers
-from 0 to 10000; zero disables history. Rechecked terminal conditions can consume
-history entries each tick. History is a bounded diagnostic record, not a replay log.
-`tree.inspect()` returns the same diagnostics as independent plain copies. A custom
-headless host can pass its `errorBoundary` in the constructor, or use
-`bindOwner(token, boundary, { entity, scene })` for attribution.
+The `historyLimit` option defaults to 128 transitions and accepts an integer
+from 0 to 10000. Zero turns history off. Conditions that are checked again and
+again can fill the history with their status changes. History is a bounded
+diagnostic record, not a replay log. `tree.inspect()` returns the same
+diagnostics as independent plain copies. A custom host that ticks a
+`BehaviorTree` itself can pass its `errorBoundary` and
+`owner: { entity, scene }` in the constructor options, so its callback errors
+carry the same attribution.
 
-## Movement, randomness, and saves
+## Movement and randomness
 
-Use `SteeringAgent` to move, and pathfinding to calculate routes. An action can install
-a steering behavior, poll arrival, and remove its own request on exit. The behavior
-tree does not replace those facilities. Random nodes use the scene's generator when
-mounted, or the runner's explicit `random` option. Game-owned random choices can use
-the scene's `RandomKey` too.
-
-Tree progress is temporary and has no snapshot/restore API. Persist health, targets
-and other durable data through the game's explicit save roots. Cancel the tree before
-restoring those roots, then start from the root. Cancellation preserves cooldowns;
-construct a fresh runner when loading should clear them. Running actions, partial
-waits, cooldown progress, and transition history cannot be resumed from a save.
-Execution is serial; parallel actions and visual tree editing are unsupported.
+Use `SteeringAgent` to move, and pathfinding to compute routes. An action can
+install a steering behavior, poll for arrival, and remove its own request in
+exit. The behavior tree does not replace those packages. Game-owned random
+choices can use the scene's `RandomKey`, the same generator a mounted tree uses.

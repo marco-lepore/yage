@@ -4,31 +4,42 @@ import {
   ProcessComponent,
   Transform,
   Vec2,
-  defineEvent,
 } from "@yagejs/core";
 import type { ProcessSlot } from "@yagejs/core";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
-import { arrive, SteeringAgent } from "@yagejs-addons/steering";
-import {
-  BehaviorTree,
-  BehaviorTreeAgent,
-  behaviorNodes,
-} from "@yagejs-addons/behavior-tree";
+import { SteeringAgent } from "@yagejs-addons/steering";
+import { BehaviorTreeAgent } from "@yagejs-addons/behavior-tree";
 import type { BehaviorExit } from "@yagejs-addons/behavior-tree";
+import { guardBehavior, type GuardContext } from "./behavior.js";
+import { GuardStruck, HOME_X, STRIKE_X } from "./constants.js";
 
-export const GuardAttack = defineEvent<{ lane: string }>("guard:attack");
+export type GuardPhase =
+  | "idle"
+  | "approach"
+  | "react"
+  | "attack"
+  | "recover"
+  | "retreat"
+  | "rest";
 
-/** Game state stays on this component; actions read it and call owner methods. */
+// ---------------------------------------------------------------------------
+// GuardState — one guard's game state and the commands that change it
+// ---------------------------------------------------------------------------
+
+/** Game state stays on this component; the tree reads it and calls its methods. */
 export class GuardState extends Component {
   health = 100;
-  phase = "idle";
+  phase: GuardPhase = "idle";
   attacks = 0;
   heavyAttacks = 0;
+  calls = 0;
   tactic: "normal" | "heavy" = "normal";
   interruptions = 0;
   lastInterruption = "none";
   readonly attack: ProcessSlot;
   readonly recovery: ProcessSlot;
+  /** Running while the latest call for help is shown. */
+  readonly shout: ProcessSlot;
 
   constructor(
     readonly lane: string,
@@ -39,6 +50,7 @@ export class GuardState extends Component {
     super();
     this.attack = processes.slot({ clock: "fixed", duration: 1.4 });
     this.recovery = processes.slot({ clock: "fixed", duration: 0.8 });
+    this.shout = processes.slot({ clock: "fixed", duration: 0.4 });
   }
 
   damage(): void {
@@ -48,192 +60,84 @@ export class GuardState extends Component {
   heal(): void {
     this.health = 100;
   }
-  setPhase(phase: string): void {
+
+  setPhase(phase: GuardPhase): void {
     this.phase = phase;
   }
+
   prepareAttack(tactic: "normal" | "heavy"): void {
     this.phase = "attack";
     this.tactic = tactic;
     this.attack.restart({ duration: tactic === "heavy" ? 2 : 1.4 });
   }
 
-  finishAction(phase: string, result: BehaviorExit): void {
-    if (result.status === "cancelled") {
-      this.interruptions++;
-      this.lastInterruption = `${phase}: ${result.reason}`;
-    }
-  }
-
   strike(): void {
     this.attacks++;
     if (this.tactic === "heavy") this.heavyAttacks++;
-    this.entity.emit(GuardAttack, { lane: this.lane });
+    this.entity.emit(GuardStruck, { heavy: this.tactic === "heavy" });
+  }
+
+  callForHelp(): void {
+    this.calls++;
+    this.shout.restart();
+  }
+
+  /** Every action reports how it ended; cancellations count as interruptions. */
+  finishAction(action: string, result: BehaviorExit): void {
+    if (result.status !== "cancelled") return;
+    this.interruptions++;
+    this.lastInterruption = `${action}: ${result.reason}`;
   }
 }
 
-interface GuardContext {
-  readonly read: () => Readonly<Pick<GuardState, "health" | "target" | "home">>;
-  readonly commands: Pick<
-    GuardState,
-    "setPhase" | "prepareAttack" | "strike" | "heal" | "finishAction"
-  >;
-  readonly movement: SteeringAgent;
-  readonly position: Transform;
-  readonly attack: ProcessSlot;
-  readonly recovery: ProcessSlot;
-}
-
-const bt = behaviorNodes<GuardContext>();
-
-function travel(id: string, destination: (guard: GuardContext) => Vec2) {
-  return bt.action(id, (guard) => ({
-    enter: () => {
-      guard.commands.setPhase(id);
-      guard.movement.setBehaviors([
-        arrive(destination(guard), { slowRadius: 40, arriveRadius: 3 }),
-      ]);
-    },
-    tick: () =>
-      guard.position.position.distance(destination(guard)) < 4
-        ? "success"
-        : "running",
-    exit: (result) => {
-      guard.movement.setBehaviors([]);
-      guard.movement.stop();
-      guard.commands.finishAction(id, result);
-    },
-  }));
-}
-
-function attack(id: string, tactic: "normal" | "heavy") {
-  return bt.action(id, (guard) => ({
-    enter: () => {
-      guard.commands.prepareAttack(tactic);
-    },
-    tick: () => {
-      if (guard.attack.running) return "running";
-      guard.commands.strike();
-      return "success";
-    },
-    exit: (result) => {
-      guard.attack.cancel();
-      guard.commands.finishAction("attack", result);
-    },
-  }));
-}
-
-const attackCycle = bt.sequence("attack-cycle", [
-  travel("approach", (guard) => guard.read().target),
-  bt.action("react", (guard) => ({
-    tick: () => {
-      guard.commands.setPhase("react");
-      return "success";
-    },
-  })),
-  bt.randomWait("reaction", 0.1, 0.3),
-  bt.weightedSelector("tactic", [
-    { weight: 3, child: attack("attack", "normal") },
-    {
-      weight: 1,
-      child: bt.cooldown(
-        "heavy-ready",
-        4,
-        bt.chance("commit-heavy", 0.75, attack("heavy-attack", "heavy")),
-      ),
-    },
-  ]),
-  bt.action("recover", (guard) => ({
-    enter: () => {
-      guard.commands.setPhase("recover");
-      guard.recovery.restart();
-    },
-    tick: () => (guard.recovery.running ? "running" : "success"),
-    exit: (result) => {
-      guard.recovery.cancel();
-      guard.commands.finishAction("recover", result);
-    },
-  })),
-]);
-
-/** One immutable definition used by every GuardEntity. */
-const guardBehavior = bt.selector(
-  "guard",
-  [
-    bt.guard(
-      "low-health",
-      (guard) => guard.read().health < 30,
-      bt.sequence("safety", [
-        travel("retreat", (guard) => guard.read().home),
-        bt.action("rest", (guard) => ({
-          tick: () => {
-            guard.commands.setPhase("rest");
-            return "success";
-          },
-        })),
-        bt.wait("heal-delay", 2),
-        bt.action("heal", (guard) => ({
-          tick: () => {
-            guard.commands.heal();
-            return "success";
-          },
-        })),
-      ]),
-    ),
-    bt.subtree("combat", attackCycle),
-  ],
-  { reactive: true },
-);
+// ---------------------------------------------------------------------------
+// GuardView — the guard's body and the label above it
+// ---------------------------------------------------------------------------
 
 class GuardView extends Component {
+  private readonly state = this.sibling(GuardState);
+  private readonly body = this.sibling(GraphicsComponent);
   private color = -1;
-  private phase = "";
-  private summary = "";
-  constructor(
-    private readonly state: GuardState,
-    private readonly visual: GraphicsComponent,
-    private readonly label: TextComponent,
-    private readonly panel: TextComponent,
-  ) {
+  private caption = "";
+
+  constructor(private readonly label: TextComponent) {
     super();
   }
 
   update(): void {
-    const state = this.state;
     const color =
-      state.health < 30
+      this.state.health < 30
         ? 0xfb7185
-        : state.phase === "attack"
+        : this.state.phase === "attack"
           ? 0xfbbf24
           : 0x38bdf8;
     if (color !== this.color) {
       this.color = color;
-      this.visual.draw((g) => {
+      this.body.draw((g) => {
         g.circle(0, 0, 16).fill({ color });
         g.circle(5, -4, 3).fill({ color: 0x0f172a });
       });
     }
-    if (state.phase !== this.phase) {
-      this.phase = state.phase;
-      this.label.setText(state.phase.toUpperCase());
-    }
-    const summary = `${state.lane}   HP ${state.health}   attacks ${state.attacks} (${state.heavyAttacks} heavy)\nTactic ${state.tactic} · interrupted ${state.interruptions} · ${state.lastInterruption}`;
-    if (summary !== this.summary) {
-      this.summary = summary;
-      this.panel.setText(summary);
+    const caption = this.state.shout.running
+      ? "HELP!"
+      : this.state.phase.toUpperCase();
+    if (caption !== this.caption) {
+      this.caption = caption;
+      this.label.setText(caption);
     }
   }
 }
 
+// ---------------------------------------------------------------------------
+// GuardEntity
+// ---------------------------------------------------------------------------
+
+/** A guard that attacks the gate at the end of its lane and retreats when hurt. */
 export class GuardEntity extends Entity {
   state!: GuardState;
   brain!: BehaviorTreeAgent<GuardContext>;
 
-  setup(params: {
-    lane: string;
-    x: number;
-    y: number;
-    panel: TextComponent;
-  }): void {
+  setup(params: { lane: string; x: number; y: number }): void {
     const position = this.add(
       new Transform({ position: new Vec2(params.x, params.y) }),
     );
@@ -244,24 +148,23 @@ export class GuardEntity extends Entity {
     this.state = this.add(
       new GuardState(
         params.lane,
-        new Vec2(660, params.y),
-        new Vec2(100, params.y),
+        new Vec2(STRIKE_X, params.y),
+        new Vec2(HOME_X, params.y),
         processes,
       ),
     );
+    // Each guard gets its own agent and context over the shared definition.
     this.brain = this.add(
-      new BehaviorTreeAgent(
-        new BehaviorTree(guardBehavior, {
-          read: () => this.state,
-          commands: this.state,
-          movement,
-          position,
-          attack: this.state.attack,
-          recovery: this.state.recovery,
-        }),
-      ),
+      new BehaviorTreeAgent(guardBehavior, {
+        read: () => this.state,
+        commands: this.state,
+        movement,
+        position,
+        attack: this.state.attack,
+        recovery: this.state.recovery,
+      }),
     );
-    const visual = this.add(new GraphicsComponent());
+    this.add(new GraphicsComponent());
     const labelHost = this.spawnChild("phase");
     labelHost.add(new Transform({ position: new Vec2(0, -36) }));
     const label = labelHost.add(
@@ -271,6 +174,6 @@ export class GuardEntity extends Entity {
         style: { fontFamily: "monospace", fontSize: 13, fill: 0xffffff },
       }),
     );
-    this.add(new GuardView(this.state, visual, label, params.panel));
+    this.add(new GuardView(label));
   }
 }

@@ -85,16 +85,6 @@ export interface Example {
 
 /** Every example, grouped by section in display order. */
 export const EXAMPLES: readonly Example[] = [
-  {
-    slug: "behavior-tree",
-    title: "Behavior Trees",
-    summary:
-      "Two guards share a behavior tree, interrupt attacks to retreat, and resume with independent state.",
-    section: "world",
-    packages: ["input"],
-    addons: ["behavior-tree", "steering"],
-    guide: "/addons/behavior-tree/",
-  },
   // Start here
   {
     slug: "hello-world",
@@ -472,6 +462,16 @@ export const EXAMPLES: readonly Example[] = [
     packages: ["physics", "input"],
     addons: ["steering"],
     guide: "/addons/steering/",
+  },
+  {
+    slug: "behavior-tree",
+    title: "Behavior Trees",
+    summary:
+      "Two guards share a behavior tree: weighted attacks, cooldowns, and a retreat that interrupts combat and calls for help in parallel.",
+    section: "world",
+    packages: ["input"],
+    addons: ["behavior-tree", "steering"],
+    guide: "/addons/behavior-tree/",
   },
 
   // Gameplay addons

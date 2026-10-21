@@ -9,7 +9,6 @@ import {
   RandomKey,
   Scene,
 } from "@yagejs/core";
-import { BehaviorTree } from "./core/BehaviorTree.js";
 import { behaviorNodes } from "./core/nodes.js";
 import { BehaviorTreeAgent } from "./BehaviorTreeAgent.js";
 
@@ -24,101 +23,121 @@ describe("BehaviorTreeAgent", () => {
     const random = vi
       .spyOn(entity.scene.use(RandomKey), "float")
       .mockReturnValue(0.25);
-    const tree = new BehaviorTree(bt.randomWait("wait", 0, 4), {});
-    const agent = entity.add(new BehaviorTreeAgent(tree));
+    const agent = entity.add(
+      new BehaviorTreeAgent(bt.randomWait("wait", 0, 4), {}),
+    );
     agent.fixedUpdate(0.5);
     expect(random).toHaveBeenCalledTimes(1);
-    expect(tree.inspect().nodes[0]?.durationSeconds).toBe(1);
+    expect(agent.execution.nodes[0]?.durationSeconds).toBe(1);
     const explicit = vi.fn(() => 0.75);
-    const second = new BehaviorTree(
-      bt.randomWait("wait", 0, 4),
-      {},
-      { random: explicit },
-    );
-    entity
+    const second = entity
       .spawnChild("other")
-      .add(new BehaviorTreeAgent(second))
-      .fixedUpdate(0.5);
+      .add(
+        new BehaviorTreeAgent(
+          bt.randomWait("wait", 0, 4),
+          {},
+          { random: explicit },
+        ),
+      );
+    second.fixedUpdate(0.5);
     expect(explicit).toHaveBeenCalledTimes(1);
     expect(random).toHaveBeenCalledTimes(1);
-    expect(second.inspect().nodes[0]?.durationSeconds).toBe(3);
+    expect(second.execution.nodes[0]?.durationSeconds).toBe(3);
   });
 
-  it("disabling freezes an armed cooldown and re-enabling cannot bypass it", () => {
+  it("builds its runner when added and validates the definition there", () => {
+    const agent = new BehaviorTreeAgent(bt.wait("rest", 1), {});
+    expect(() => agent.tree).toThrow("add the agent to an entity first");
     const { entity } = createMockEntity();
+    expect(() =>
+      entity
+        .spawnChild("invalid")
+        .add(new BehaviorTreeAgent(bt.wait("bad/id", 1), {})),
+    ).toThrow("node id");
+    const shared = bt.wait("rest", 1);
+    const a = entity.add(new BehaviorTreeAgent(shared, {}));
+    const b = entity.spawnChild("b").add(new BehaviorTreeAgent(shared, {}));
+    a.fixedUpdate(0.5);
+    expect(a.status).toBe("running");
+    expect(b.status).toBe("idle");
+  });
+
+  it("disabling freezes an armed cooldown and re-enabling cannot bypass it", async () => {
+    const engine = await createTestEngine({ fixedTimestep: 0.25 });
+    const scene = new TestScene();
+    await engine.scenes.push(scene);
     const fire = vi.fn(() => "success" as const);
-    const tree = new BehaviorTree(
-      bt.cooldown(
-        "limit",
-        1,
-        bt.action("fire", () => ({ tick: fire })),
+    const agent = scene.spawn("gun").add(
+      new BehaviorTreeAgent(
+        bt.cooldown(
+          "limit",
+          0.5,
+          bt.action("fire", () => ({ tick: fire })),
+        ),
+        {},
       ),
-      {},
     );
-    const agent = entity.add(new BehaviorTreeAgent(tree));
-    agent.fixedUpdate(0.1);
+    advanceFrames(engine, 1, 250);
     agent.enabled = false;
-    agent.fixedUpdate(10);
-    expect(tree.inspect().nodes[0]?.remainingSeconds).toBe(1);
+    advanceFrames(engine, 8, 250);
+    expect(agent.execution.nodes[0]?.remainingSeconds).toBe(0.5);
     agent.enabled = true;
-    agent.fixedUpdate(0.5);
-    expect(tree.status).toBe("failure");
+    advanceFrames(engine, 1, 250);
+    expect(agent.status).toBe("failure");
     expect(fire).toHaveBeenCalledTimes(1);
-    agent.fixedUpdate(0.5);
+    advanceFrames(engine, 1, 250);
     expect(fire).toHaveBeenCalledTimes(2);
+    await engine.destroy();
   });
 
   it.each(["disable", "deactivate", "remove", "destroy"])(
-    "cancels on %s and does not run exit twice",
+    "cancels on %s with reason disabled and does not run exit twice",
     (operation) => {
       const { entity } = createMockEntity();
       const exit = vi.fn();
-      const tree = new BehaviorTree(
-        bt.action("move", () => ({ tick: () => "running", exit })),
-        {},
+      const agent = entity.add(
+        new BehaviorTreeAgent(
+          bt.action("move", () => ({ tick: () => "running", exit })),
+          {},
+        ),
       );
-      const agent = entity.add(new BehaviorTreeAgent(tree));
       agent.fixedUpdate(1);
       if (operation === "disable") agent.enabled = false;
       if (operation === "deactivate") entity.setActive(false);
       if (operation === "remove") entity.remove(BehaviorTreeAgent);
       if (operation === "destroy") entity.destroy();
-      expect(exit).toHaveBeenCalledTimes(1);
-      expect(tree.status).toBe("idle");
+      expect(exit).toHaveBeenCalledExactlyOnceWith({
+        status: "cancelled",
+        reason: "disabled",
+        by: null,
+      });
+      expect(agent.status).toBe("idle");
     },
   );
-
-  it("rejects a runner shared between component owners", () => {
-    const { scene } = createMockEntity();
-    const tree = new BehaviorTree(bt.wait("wait", 1), {});
-    scene.spawn("a").add(new BehaviorTreeAgent(tree));
-    expect(() => scene.spawn("b").add(new BehaviorTreeAgent(tree))).toThrow(
-      "runner already owned",
-    );
-  });
 
   it("supports disabling its entity inside an action without continuing the sequence", () => {
     const { entity } = createMockEntity();
     const next = vi.fn();
     const exit = vi.fn();
-    const tree = new BehaviorTree(
-      bt.sequence("root", [
-        bt.action("stop", () => ({
-          tick: () => {
-            entity.setActive(false);
-            return "success";
-          },
-          exit,
-        })),
-        bt.action("next", () => ({ tick: next })),
-      ]),
-      {},
+    const agent = entity.add(
+      new BehaviorTreeAgent(
+        bt.sequence("root", [
+          bt.action("stop", () => ({
+            tick: () => {
+              entity.setActive(false);
+              return "success";
+            },
+            exit,
+          })),
+          bt.action("next", () => ({ tick: next })),
+        ]),
+        {},
+      ),
     );
-    const agent = entity.add(new BehaviorTreeAgent(tree));
     agent.fixedUpdate(1);
     expect(exit).toHaveBeenCalledTimes(1);
     expect(next).not.toHaveBeenCalled();
-    expect(tree.status).toBe("idle");
+    expect(agent.status).toBe("idle");
   });
 
   it("uses the selected scaled clock, freezes with the scene, restarts after disable and exposes Inspector data", async () => {
@@ -131,18 +150,19 @@ describe("BehaviorTreeAgent", () => {
     const deltas: number[] = [];
     const enter = vi.fn();
     const exit = vi.fn();
-    const tree = new BehaviorTree(
-      bt.action("move", () => ({
-        enter,
-        tick: (dt) => {
-          deltas.push(dt);
-          return "running";
-        },
-        exit,
-      })),
-      {},
+    const agent = host.add(
+      new BehaviorTreeAgent(
+        bt.action("move", () => ({
+          enter,
+          tick: (dt) => {
+            deltas.push(dt);
+            return "running";
+          },
+          exit,
+        })),
+        {},
+      ),
     );
-    const agent = host.add(new BehaviorTreeAgent(tree));
     scene.timeScale = 0.5;
     host.timeScale = 0.5;
     advanceFrames(engine, 1, 20);
@@ -169,18 +189,19 @@ describe("BehaviorTreeAgent", () => {
     await engine.destroy();
   });
 
-  it("attributes callbacks to their node and entity in the existing error boundary", () => {
+  it("attributes callbacks to their node, entity and scene in the existing error boundary", () => {
     const { entity, context } = createMockEntity("enemy");
     const original = new Error("attack failed");
-    const tree = new BehaviorTree(
-      bt.action("attack", () => ({
-        tick: () => {
-          throw original;
-        },
-      })),
-      {},
+    const agent = entity.add(
+      new BehaviorTreeAgent(
+        bt.action("attack", () => ({
+          tick: () => {
+            throw original;
+          },
+        })),
+        {},
+      ),
     );
-    const agent = entity.add(new BehaviorTreeAgent(tree));
     expect(() => agent.fixedUpdate(1)).toThrow(original);
     expect(
       context.resolve(ErrorBoundaryKey).getCallbackErrors(),
@@ -189,6 +210,7 @@ describe("BehaviorTreeAgent", () => {
         kind: "Behavior tree tick",
         event: "attack",
         entity: "enemy",
+        scene: entity.scene.name,
       }),
     );
   });
@@ -200,8 +222,9 @@ describe("BehaviorTreeAgent", () => {
       tick: () => "running" as const,
       exit: vi.fn(),
     }));
-    const tree = new BehaviorTree(bt.action("work", create), {});
-    const agent = child.add(new BehaviorTreeAgent(tree));
+    const agent = child.add(
+      new BehaviorTreeAgent(bt.action("work", create), {}),
+    );
     agent.fixedUpdate(0.1);
     const activation = create.mock.results[0]!.value;
     parent.setActive(false);
@@ -210,8 +233,6 @@ describe("BehaviorTreeAgent", () => {
       reason: "disabled",
       by: null,
     });
-    agent.fixedUpdate(0.1);
-    expect(create).toHaveBeenCalledTimes(1);
     parent.setActive(true);
     agent.fixedUpdate(0.1);
     expect(create).toHaveBeenCalledTimes(2);
@@ -224,11 +245,12 @@ describe("BehaviorTreeAgent", () => {
     const enter = vi.fn();
     const tick = vi.fn(() => "running" as const);
     const exit = vi.fn();
-    const tree = new BehaviorTree(
-      bt.action("work", () => ({ enter, tick, exit })),
-      {},
+    scene.spawn("worker").add(
+      new BehaviorTreeAgent(
+        bt.action("work", () => ({ enter, tick, exit })),
+        {},
+      ),
     );
-    scene.spawn("worker").add(new BehaviorTreeAgent(tree));
     advanceFrames(engine, 1, 20);
     await engine.scenes.push(new TestScene());
     advanceFrames(engine, 5, 20);
@@ -241,15 +263,13 @@ describe("BehaviorTreeAgent", () => {
     await engine.destroy();
   });
 
-  it("update clock runs only on update", () => {
+  it('clock: "frame" ticks only in update', () => {
     const { entity } = createMockEntity();
     const tick = vi.fn(() => "running" as const);
     const agent = entity.add(
       new BehaviorTreeAgent(
-        new BehaviorTree(
-          bt.action("move", () => ({ tick })),
-          {},
-        ),
+        bt.action("move", () => ({ tick })),
+        {},
         { clock: "frame" },
       ),
     );

@@ -16,10 +16,19 @@ export interface BehaviorWeightedOptions {
   /** Default retry: draw again from untried children after failure. */
   readonly onFailure?: "retry" | "fail";
 }
+
+export interface BehaviorParallelOptions {
+  /**
+   * Default "all": succeed when every child succeeds, fail as soon as one
+   * fails. "any": succeed as soon as one child succeeds, fail when every
+   * child fails.
+   */
+  readonly success?: "all" | "any";
+}
+
 export type BehaviorCancelReason =
   | "cancelled"
   | "disabled"
-  | "destroyed"
   | "branch-changed"
   | "guard-failed"
   | "timeout";
@@ -53,11 +62,19 @@ export type BehaviorNode<C> = { readonly id: string } & (
       readonly reactive?: boolean;
     }
   | {
+      readonly kind: "parallel";
+      readonly children: readonly BehaviorNode<C>[];
+      readonly success?: "all" | "any";
+    }
+  | {
       readonly kind: "guard";
       readonly test: (context: C) => boolean;
       readonly child: BehaviorNode<C>;
     }
-  | { readonly kind: "subtree" | "invert"; readonly child: BehaviorNode<C> }
+  | {
+      readonly kind: "subtree" | "invert" | "forceSuccess" | "forceFailure";
+      readonly child: BehaviorNode<C>;
+    }
   | { readonly kind: "wait"; readonly seconds: BehaviorNumber<C> }
   | {
       readonly kind: "timeout" | "cooldown";
@@ -75,18 +92,53 @@ export type BehaviorNode<C> = { readonly id: string } & (
       readonly child: BehaviorNode<C>;
     }
   | {
+      readonly kind: "repeat";
+      /** Integer >= 0, or Infinity to repeat until the child fails. */
+      readonly times: BehaviorNumber<C>;
+      readonly child: BehaviorNode<C>;
+    }
+  | {
+      readonly kind: "retry";
+      /** Integer >= 0, or Infinity to retry until the child succeeds. */
+      readonly attempts: BehaviorNumber<C>;
+      readonly child: BehaviorNode<C>;
+    }
+  | {
       readonly kind: "weightedSelector";
       readonly choices: readonly BehaviorWeightedChild<C>[];
       readonly onFailure?: "retry" | "fail";
     }
 );
 
+/** The callback, or the numeric field a callback supplied, that threw. */
+export type BehaviorCallbackPhase =
+  | "create"
+  | "enter"
+  | "tick"
+  | "exit"
+  | "condition"
+  | "random"
+  | "seconds"
+  | "min"
+  | "max"
+  | "probability"
+  | "weight"
+  | "times"
+  | "attempts";
+
+export type BehaviorTransitionReason =
+  | "enter"
+  | BehaviorStatus
+  | "restart"
+  | "reevaluate"
+  | BehaviorCancelReason;
+
 export interface BehaviorTransition {
   readonly tick: number;
   readonly path: string;
   readonly from: BehaviorNodeStatus;
   readonly to: BehaviorNodeStatus;
-  readonly reason: string;
+  readonly reason: BehaviorTransitionReason;
   readonly by: string | null;
 }
 
@@ -101,12 +153,19 @@ export interface BehaviorNodeInspection {
   readonly selectedChild: string | null;
   /** Sampled weights; failed choices become zero when retrying. */
   readonly remainingWeights: readonly number[] | null;
+  /** Repeat: child successes this activation. Retry: child failures. */
+  readonly count: number | null;
+  /**
+   * Sampled `times` or `attempts`; `Infinity` when unbounded. The Inspector
+   * copies components through JSON, so there an unbounded limit reads `null`.
+   */
+  readonly limit: number | null;
 }
 
 export interface BehaviorError {
   readonly tick: number;
   readonly path: string;
-  readonly phase: string;
+  readonly phase: BehaviorCallbackPhase;
   readonly message: string;
 }
 
@@ -119,18 +178,27 @@ export interface BehaviorInspection {
   readonly lastError: BehaviorError | null;
 }
 
+/** Remaining cooldown seconds keyed by node path; plain JSON. */
+export interface BehaviorTreeSnapshot {
+  readonly cooldowns: Readonly<Record<string, number>>;
+}
+
 export interface BehaviorTreeOptions {
   /** Number of recent transitions retained. Default 128; zero disables history. */
   readonly historyLimit?: number;
-  /** Headless hosts can share their existing boundary. Components bind theirs. */
+  /** Records callback errors. Default: a private boundary that logs and rethrows. */
   readonly errorBoundary?: ErrorBoundary;
-  /** Returns a finite number in [0, 1). Components default to the scene RNG. */
+  /** Returns a finite number in [0, 1). Required before a random node draws. */
   readonly random?: () => number;
+  /** Entity and scene names recorded with callback errors. */
+  readonly owner?: { readonly entity?: string; readonly scene?: string };
 }
 
 /** Returned by behaviorNodes<C>(); the same nodes can be authored as objects. */
 export interface BehaviorNodes<C> {
   action(id: string, create: (context: C) => BehaviorAction): BehaviorNode<C>;
+  /** An action that runs `run` once and succeeds in the same tick. */
+  call(id: string, run: (context: C) => void): BehaviorNode<C>;
   condition(id: string, test: (context: C) => boolean): BehaviorNode<C>;
   sequence(
     id: string,
@@ -142,6 +210,12 @@ export interface BehaviorNodes<C> {
     children: readonly BehaviorNode<C>[],
     options?: { reactive?: boolean },
   ): BehaviorNode<C>;
+  /** Tick every unfinished child on each visit. Each child keeps its own running work. */
+  parallel(
+    id: string,
+    children: readonly BehaviorNode<C>[],
+    options?: BehaviorParallelOptions,
+  ): BehaviorNode<C>;
   guard(
     id: string,
     test: (context: C) => boolean,
@@ -149,6 +223,20 @@ export interface BehaviorNodes<C> {
   ): BehaviorNode<C>;
   subtree(id: string, child: BehaviorNode<C>): BehaviorNode<C>;
   invert(id: string, child: BehaviorNode<C>): BehaviorNode<C>;
+  forceSuccess(id: string, child: BehaviorNode<C>): BehaviorNode<C>;
+  forceFailure(id: string, child: BehaviorNode<C>): BehaviorNode<C>;
+  /** Run the child again on the next tick after each success; fail when it fails. */
+  repeat(
+    id: string,
+    times: BehaviorNumber<C>,
+    child: BehaviorNode<C>,
+  ): BehaviorNode<C>;
+  /** Run the child again on the next tick after each failure; succeed when it succeeds. */
+  retry(
+    id: string,
+    attempts: BehaviorNumber<C>,
+    child: BehaviorNode<C>,
+  ): BehaviorNode<C>;
   wait(id: string, seconds: BehaviorNumber<C>): BehaviorNode<C>;
   randomWait(
     id: string,

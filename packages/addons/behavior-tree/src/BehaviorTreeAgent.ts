@@ -1,27 +1,54 @@
 import { Component, ErrorBoundaryKey, RandomKey } from "@yagejs/core";
 import type { ProcessClock } from "@yagejs/core";
-import type { BehaviorTree } from "./core/BehaviorTree.js";
-import type { BehaviorInspection, BehaviorNodeStatus } from "./core/types.js";
+import { BehaviorTree } from "./core/BehaviorTree.js";
+import type {
+  BehaviorInspection,
+  BehaviorNode,
+  BehaviorNodeStatus,
+  BehaviorTreeOptions,
+} from "./core/types.js";
 
-export interface BehaviorTreeAgentOptions {
+export interface BehaviorTreeAgentOptions extends Pick<
+  BehaviorTreeOptions,
+  "historyLimit" | "random"
+> {
   /** Default fixed: decisions precede sibling steering on the same fixed step. */
   readonly clock?: ProcessClock;
 }
 
-/** Entity-owned tree. Disable cancels work; re-enable starts from the root. */
+/**
+ * Runs one entity's execution of a shared definition. Random nodes use the
+ * scene's generator unless `random` is passed. Disable cancels work;
+ * re-enable starts from the root.
+ */
 export class BehaviorTreeAgent<C> extends Component {
   static updatePriority = -10;
-  static inspectExclude = ["tree"];
+  static inspectExclude = ["definition", "treeContext", "treeOptions"];
   readonly clock: ProcessClock;
+  private readonly treeOptions: Pick<
+    BehaviorTreeOptions,
+    "historyLimit" | "random"
+  >;
+  private runner: BehaviorTree<C> | undefined;
 
   constructor(
-    readonly tree: BehaviorTree<C>,
+    private readonly definition: BehaviorNode<C>,
+    private readonly treeContext: C,
     options: BehaviorTreeAgentOptions = {},
   ) {
     super();
-    this.clock = options.clock ?? "fixed";
-    if (this.clock !== "fixed" && this.clock !== "frame")
-      throw new Error(`BehaviorTreeAgent: unknown clock ${String(this.clock)}`);
+    const { clock = "fixed", ...treeOptions } = options;
+    this.clock = clock;
+    this.treeOptions = treeOptions;
+  }
+
+  /** This entity's runner: inspect, cancel, snapshot or restore it. */
+  get tree(): BehaviorTree<C> {
+    if (!this.runner)
+      throw new Error(
+        "BehaviorTreeAgent.tree: add the agent to an entity first",
+      );
+    return this.runner;
   }
 
   get status(): BehaviorNodeStatus {
@@ -33,29 +60,23 @@ export class BehaviorTreeAgent<C> extends Component {
 
   onAdd(): void {
     const random = this.use(RandomKey);
-    this.tree.bindOwner(
-      this,
-      this.use(ErrorBoundaryKey),
-      {
-        entity: this.entity.name,
-        scene: this.scene.name,
-      },
-      () => random.float(),
-    );
+    this.runner = new BehaviorTree(this.definition, this.treeContext, {
+      random: () => random.float(),
+      ...this.treeOptions,
+      errorBoundary: this.use(ErrorBoundaryKey),
+      owner: { entity: this.entity.name, scene: this.scene.name },
+    });
   }
 
   fixedUpdate(dt: number): void {
-    if (this.effectiveEnabled && this.clock === "fixed") this.tree.tick(dt);
+    if (this.clock === "fixed") this.tree.tick(dt);
   }
 
   update(dt: number): void {
-    if (this.effectiveEnabled && this.clock === "frame") this.tree.tick(dt);
+    if (this.clock === "frame") this.tree.tick(dt);
   }
 
   onDisable(): void {
     this.tree.cancel("disabled");
-  }
-  onDestroy(): void {
-    this.tree.cancel("destroyed");
   }
 }

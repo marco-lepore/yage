@@ -314,6 +314,86 @@ describe("behavior decisions and timing", () => {
     expect(running.tick(1)).toBe("running");
   });
 
+  it("snapshot and restore carry armed cooldowns into a fresh runner", () => {
+    const fire = vi.fn(() => "success" as const);
+    const definition = bt.sequence("root", [
+      bt.cooldown(
+        "reload",
+        2,
+        bt.action("fire", () => ({ tick: fire })),
+      ),
+    ]);
+    const before = new BehaviorTree(definition, context());
+    before.tick(0.5);
+    const saved = JSON.parse(JSON.stringify(before.snapshot())) as ReturnType<
+      typeof before.snapshot
+    >;
+    expect(saved).toEqual({ cooldowns: { "root/reload": 2 } });
+    const after = new BehaviorTree(definition, context());
+    after.restore(saved);
+    expect(after.tick(1)).toBe("failure");
+    expect(fire).toHaveBeenCalledTimes(1);
+    expect(after.tick(1)).toBe("success");
+    expect(fire).toHaveBeenCalledTimes(2);
+  });
+
+  it("restore cancels running work, drops unknown paths and resets missing ones", () => {
+    const exit = vi.fn();
+    const tree = new BehaviorTree(
+      bt.sequence("root", [
+        bt.cooldown("a", 5, bt.wait("w", 0)),
+        bt.cooldown("b", 5, bt.wait("w", 0)),
+        bt.action("work", () => ({ tick: () => "running", exit })),
+      ]),
+      context(),
+    );
+    tree.tick(1);
+    expect(tree.snapshot()).toEqual({
+      cooldowns: { "root/a": 5, "root/b": 5 },
+    });
+    tree.restore({ cooldowns: { "root/a": 3, "root/missing": 4 } });
+    expect(exit).toHaveBeenCalledExactlyOnceWith({
+      status: "cancelled",
+      reason: "cancelled",
+      by: null,
+    });
+    expect(tree.status).toBe("idle");
+    expect(tree.snapshot()).toEqual({ cooldowns: { "root/a": 3 } });
+  });
+
+  it.each([NaN, Infinity, -1, "4", null])(
+    "restore rejects %s for a known path before cancelling anything",
+    (value) => {
+      const exit = vi.fn();
+      const tree = new BehaviorTree(
+        bt.sequence("root", [
+          bt.cooldown("a", 5, bt.wait("w", 0)),
+          bt.action("work", () => ({ tick: () => "running", exit })),
+        ]),
+        context(),
+      );
+      tree.tick(1);
+      const snapshot = {
+        cooldowns: { "root/a": value },
+      } as unknown as Parameters<typeof tree.restore>[0];
+      expect(() => tree.restore(snapshot)).toThrow(
+        'BehaviorTree.restore: cooldowns["root/a"] must be a finite number >= 0',
+      );
+      expect(exit).not.toHaveBeenCalled();
+      expect(tree.status).toBe("running");
+      expect(tree.snapshot()).toEqual({ cooldowns: { "root/a": 5 } });
+    },
+  );
+
+  it("restore rejects a snapshot without a cooldowns object", () => {
+    const tree = new BehaviorTree(bt.wait("w", 1), context());
+    expect(() =>
+      tree.restore({ cooldowns: null } as unknown as Parameters<
+        typeof tree.restore
+      >[0]),
+    ).toThrow("snapshot.cooldowns must be a plain object");
+  });
+
   it.each([NaN, Infinity, -1, 1, 2])(
     "attributes invalid RNG output %s without entering the child",
     (roll) => {
@@ -339,11 +419,15 @@ describe("behavior decisions and timing", () => {
     },
   );
 
-  it("requires explicit randomness for a headless random decision", () => {
-    const tree = new BehaviorTree(bt.randomWait("wait", 0, 1), context(), {
-      errorBoundary: errors(),
-    });
-    expect(() => tree.tick(1)).toThrow("options.random");
+  it("requires a random source at construction when a node can draw", () => {
+    for (const node of [
+      bt.randomWait("wait", 0, 1),
+      bt.chance("chance", () => 1, bt.wait("work", 0)),
+      bt.weightedSelector("choice", [{ weight: 1, child: bt.wait("work", 0) }]),
+    ])
+      expect(() => new BehaviorTree(node, context())).toThrow(
+        "pass options.random",
+      );
   });
 
   it("attributes reversed dynamic wait bounds and validates dynamic durations", () => {
@@ -354,10 +438,10 @@ describe("behavior decisions and timing", () => {
         () => 1,
       ),
       context(),
-      { errorBoundary: errors() },
+      { random: () => 0, errorBoundary: errors() },
     );
     expect(() => tree.tick(1)).toThrow("min must be <= max");
-    expect(tree.inspect().lastError?.phase).toBe("duration");
+    expect(tree.inspect().lastError?.phase).toBe("max");
     for (const node of [
       bt.wait("wait", () => Infinity),
       bt.timeout("limit", () => -1, bt.wait("child", 0)),
@@ -450,7 +534,7 @@ describe("behavior decisions and timing", () => {
     expect(tree.inspect().lastError?.phase).toBe("weight");
   });
 
-  it.each(["probability", "duration", "weight", "random"] as const)(
+  it.each(["probability", "seconds", "weight", "random"] as const)(
     "preserves errors from %s callbacks",
     (phase) => {
       const original = new Error("broken callback");
@@ -459,7 +543,7 @@ describe("behavior decisions and timing", () => {
       };
       const nodes: Record<typeof phase, BehaviorNode<{ ready: boolean }>> = {
         probability: bt.chance("node", fail, bt.wait("work", 0)),
-        duration: bt.wait("node", fail),
+        seconds: bt.wait("node", fail),
         weight: bt.weightedSelector("node", [
           { weight: fail, child: bt.wait("work", 0) },
         ]),
@@ -486,6 +570,7 @@ describe("behavior decisions and timing", () => {
         bt.action("work", start),
       ),
       context(),
+      { random: () => 0 },
     );
     expect(tree.tick(1)).toBe("idle");
     expect(start).not.toHaveBeenCalled();

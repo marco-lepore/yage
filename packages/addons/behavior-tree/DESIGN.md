@@ -35,8 +35,9 @@ text language, Promise support or broader node catalog.
 
 - LimboAI separates ordinary and dynamic selection and gives running actions explicit
   exits. YAGE exposes remembered progress by default and a `reactive` option. Its
-  cancellation-before-entry rule also means a failing action probe can interrupt an
-  old branch; a pure guard is the recommended eligibility check.
+  cancellation-before-entry rule also means that a higher-priority action that fails
+  at once still interrupts an old branch; a pure guard is the recommended eligibility
+  check.
   [Task lifecycle](https://limboai.readthedocs.io/en/stable/classes/class_bttask.html),
   [dynamic selector](https://limboai.readthedocs.io/en/stable/classes/class_btdynamicselector.html).
 - Opsive Behavior Designer Pro makes conditional interruption explicit. YAGE uses
@@ -104,7 +105,23 @@ the scene RNG unless explicitly overridden; headless callers inject one. No brow
 timer or ambient random source controls tree execution. Cooldowns arm after child
 success and advance on every tree tick, including while other branches run. They
 survive branch/root resets and cancellation, so interruption cannot bypass a cooldown.
-Pause and disable freeze them. Game-wide or saved cooldowns remain game-owned data.
+Pause and disable freeze them. Because cooldowns are the only progress that outlasts
+a cancel, they are the runner's save state: `snapshot()` and `restore()` exchange them
+as plain JSON keyed by node path. Game-wide cooldowns shared between entities remain
+game-owned data.
+
+## Parallel branches
+
+Entering an action or wait cancels running work outside that leaf's path before the
+new leaf starts. A `parallel` node limits that rule to its own children: entering a
+leaf inside one child cancels running work only within that child, so sibling children
+keep their actions. Once the parallel's result is decided, it cancels its remaining
+running children. A sequence also keeps its later running children while an earlier
+child is entered again, as a reactive sequence does on every tick. The sequence
+halts them itself when that earlier child fails or is still running. BehaviorTree.CPP and LimboAI offer the same success and failure
+policies through thresholds; YAGE exposes the two common ones, all and any. The runtime
+does not arbitrate resources between children; the game decides which child drives a
+shared resource such as one steering agent.
 
 ## Scope
 
@@ -112,6 +129,7 @@ The component owns per-entity behavior. Steering owns movement, pathfinding owns
 route construction, process slots own externally running timing, and the core state
 machine can control broad modes. No plugin or global service is required.
 
-Execution is serial. Parallel actions, Promise cancellation, visual authoring and
-saving a live tree are unsupported. Those features need contracts for shared resources,
-external effects or durable execution identity beyond this runtime's scope.
+Callbacks are synchronous. A Promise cannot be cancelled with the tree, so actions poll
+work that the game owns, such as process slots. A running action is a closure over live
+game objects and cannot be serialized; after a load the tree restarts from the root and
+reads the restored game state. Visual authoring is not part of the package.

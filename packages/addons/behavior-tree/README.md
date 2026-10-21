@@ -1,24 +1,27 @@
 # @yagejs-addons/behavior-tree
 
-Compose typed actions and conditions into behavior trees. Each entity owns its
-execution state, running actions release their work on interruption, and the
-existing YAGE Inspector reports active nodes and recent transitions.
+Compose typed actions and conditions into behavior trees. One definition serves
+many entities, each entity keeps its own progress, running actions release their
+work when they are interrupted, and the existing YAGE Inspector reports active
+nodes and recent transitions.
 
 ```sh
 npm install @yagejs-addons/behavior-tree @yagejs/core
 ```
 
-The package exports a headless `BehaviorTree`, the `BehaviorTreeAgent` component,
-and `behaviorNodes<C>()` helpers. It has no renderer dependency.
-Probability gates, weighted choices, sampled waits, and cooldowns use the agent's
-scene clock and random generator, or sources supplied by a headless host. Pass a
-typed context with live state reads and owner commands; no separate blackboard is required.
+The package exports the `BehaviorTreeAgent` component, a headless
+`BehaviorTree` runner, and the `behaviorNodes<C>()` helpers. It has no renderer
+dependency. Trees combine sequences, selectors, parallel branches, guards,
+waits, timeouts, repeats, retries, probability gates, weighted choices, and
+cooldowns. Mounted trees use the scene clock and random generator; a headless
+host supplies both. Pass one typed context with live state reads and owner
+commands; no separate blackboard is required.
 
 - [Guide](https://yage.dev/addons/behavior-tree/)
 - [API and lifecycle reference](docs/llms/behavior-tree.md)
-- [Runnable example](../../../examples/src/behavior-tree/main.ts)
+- [Runnable example](../../../examples/src/behavior-tree/behavior.ts)
 - [Runtime design decision](DESIGN.md)
 
-Execution state is temporary. Save durable game state on its existing owner and
-restart the tree after loading. Actions are synchronous and poll work owned by the
-game; Promise actions and visual editing are not part of the package.
+Actions are synchronous and poll work owned by the game. `snapshot()` and
+`restore()` save cooldowns. A running action cannot be saved, so a loaded tree
+starts again from the root and reads the restored game state.

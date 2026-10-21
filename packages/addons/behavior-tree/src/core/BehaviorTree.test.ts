@@ -75,6 +75,48 @@ describe("BehaviorTree", () => {
     },
   );
 
+  it("a reactive sequence runs an earlier call again without restarting the running action", () => {
+    const ctx = context();
+    const face = vi.fn();
+    const tree = new BehaviorTree(
+      bt.sequence("root", [bt.call("face", face), work("move")], {
+        reactive: true,
+      }),
+      ctx,
+    );
+    tree.tick(0.1);
+    tree.tick(0.1);
+    tree.tick(0.1);
+    expect(face).toHaveBeenCalledTimes(3);
+    expect(ctx.calls).toEqual([
+      "move:enter",
+      "move:tick",
+      "move:tick",
+      "move:tick",
+    ]);
+  });
+
+  it("a reactive sequence halts the running action when an earlier wait runs again", () => {
+    const ctx = context();
+    const tree = new BehaviorTree(
+      bt.sequence("root", [bt.wait("aim", 0.5), work("move")], {
+        reactive: true,
+      }),
+      ctx,
+    );
+    tree.tick(0.5);
+    expect(ctx.calls).toEqual(["move:enter", "move:tick"]);
+    expect(tree.tick(0.1)).toBe("running");
+    expect(ctx.calls.slice(2)).toEqual(["move:branch-changed"]);
+    expect(tree.inspect().transitions).toContainEqual(
+      expect.objectContaining({
+        path: "root/move",
+        reason: "branch-changed",
+        by: "root/aim",
+      }),
+    );
+  });
+
   it.each([false, true])(
     "selector reactive=%s defines whether higher priority is reconsidered",
     (reactive) => {
@@ -134,7 +176,7 @@ describe("BehaviorTree", () => {
     ]);
   });
 
-  it("a reactive action probe cancels the previous branch even when the probe fails", () => {
+  it("a newly tried higher-priority action cancels the running branch even when it fails at once", () => {
     const ctx = context();
     let eligible = false;
     const tree = new BehaviorTree(
@@ -142,7 +184,7 @@ describe("BehaviorTree", () => {
         "root",
         [
           bt.guard(
-            "probe",
+            "eligible",
             () => eligible,
             bt.action("try", (c) => ({
               tick: () => {
@@ -242,7 +284,7 @@ describe("BehaviorTree", () => {
     (dt) => {
       const tree = new BehaviorTree(work("work"), context());
       const before = tree.inspect();
-      expect(() => tree.tick(dt)).toThrow("finite seconds");
+      expect(() => tree.tick(dt)).toThrow("expected finite number >= 0");
       expect(tree.inspect()).toEqual(before);
       expect(() => new BehaviorTree(bt.wait("wait", dt), context())).toThrow(
         "finite number",
@@ -333,6 +375,34 @@ describe("BehaviorTree", () => {
     },
   );
 
+  it.each(["create", "seconds"] as const)(
+    "after a %s error, ticking throws until cancel() resets the tree",
+    (phase) => {
+      let broken = true;
+      const fail = (): never => {
+        throw new Error("broken");
+      };
+      const node =
+        phase === "create"
+          ? bt.action("node", () =>
+              broken ? fail() : { tick: () => "running" },
+            )
+          : bt.wait("node", () => (broken ? fail() : 1));
+      const tree = new BehaviorTree(node, context(), {
+        errorBoundary: boundary(),
+      });
+      expect(() => tree.tick(0.5)).toThrow("broken");
+      broken = false;
+      expect(() => tree.tick(0.5)).toThrow(
+        `node.${phase} threw on tick 1; call cancel() before ticking again`,
+      );
+      expect(() => tree.tick(0)).toThrow("call cancel() before ticking again");
+      tree.cancel();
+      expect(tree.tick(0.5)).toBe("running");
+      expect(tree.inspect().lastError?.phase).toBe(phase);
+    },
+  );
+
   it("a throwing exit prevents replacement entry", () => {
     const ctx = context();
     const start = vi.fn();
@@ -384,6 +454,21 @@ describe("BehaviorTree", () => {
       reason: "cancelled",
       by: null,
     });
+  });
+
+  it("cancellation requested by a factory ends the tick without enter or exit", () => {
+    const enter = vi.fn();
+    const exit = vi.fn();
+    const tree: BehaviorTree<Context> = new BehaviorTree(
+      bt.action("work", () => {
+        tree.cancel();
+        return { enter, tick: () => "running", exit };
+      }),
+      context(),
+    );
+    expect(tree.tick(1)).toBe("idle");
+    expect(enter).not.toHaveBeenCalled();
+    expect(exit).not.toHaveBeenCalled();
   });
 
   it("cancellation from a preempted exit prevents the replacement factory", () => {

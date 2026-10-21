@@ -26,6 +26,7 @@
   "dependencies": {
     "@yagejs-tools/lab": "^0.3.0",
     "@yagejs-addons/abilities": "^0.5.0",
+    "@yagejs-addons/behavior-tree": "^0.0.0",
     "@yagejs-addons/steering": "^0.5.0",
     "@yagejs-addons/synth": "^0.3.0",
     "@yagejs-addons/dialogue": "^0.7.0",
@@ -51,7 +52,6 @@
     "@yagejs/tilemap": "^0.12.0",
     "@yagejs/ui": "^0.12.0",
     "@yagejs/ui-react": "^0.12.0",
-    "react": "^19.0.0",
-    "@yagejs-addons/behavior-tree": "^0.0.0"
+    "react": "^19.0.0"
   }
 }

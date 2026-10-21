@@ -12,15 +12,22 @@
     <div id="game-container"></div>
     <div class="controls">
       <span
-        >Two guards share one tree. They approach, attack, and recover.</span
+        >Two guards share one tree. Each walks to the gate at the end of its
+        lane, waits a random reaction time, attacks, and recovers. The gate
+        flashes on every strike, orange for a heavy one.</span
       >
       <span
-        >Reaction delays vary. Weighted choices select normal or heavy attacks;
-        heavy attacks also have a chance check and a four-second cooldown.</span
+        >A weighted choice picks a normal or heavy attack. Heavy attacks also
+        pass a chance check and have a four-second cooldown.</span
       >
       <span
-        >Automatic damage interrupts A's attack, then B's approach. Low health
-        makes each guard retreat to the green circle, rest, and return.</span
+        >Low health interrupts whatever the guard is doing. It runs back to the
+        green circle while calling for help, rests, heals, and returns. Damage
+        hits A during an attack and B during its approach at the start.</span
+      >
+      <span
+        >Each panel shows the running branch, the heavy-attack cooldown, and the
+        last interrupted action.</span
       >
       <span
         ><kbd>1</kbd>/<kbd>2</kbd> damage a guard · <kbd>Space</kbd> disable or
