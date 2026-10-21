@@ -523,7 +523,7 @@ interface EntityHandle<
 | `engine:started` / `engine:stopped`                   | `undefined`                                                                                                                                                  |
 | `screen:fullscreen`                                   | `{ active: boolean }` — emitted by `RendererPlugin` when `isFullscreen` changes                                                                              |
 | `screen:orientation`                                  | `{ type: OrientationType }` — emitted by `RendererPlugin` when `orientation` changes to a non-null value                                                     |
-| `graphics:context`                                    | `{ lost: boolean }` — emitted by `RendererPlugin` when the graphics context is lost and when it is restored, at the next frame                               |
+| `graphics:context`                                    | `{ lost: boolean }` — emitted by `RendererPlugin` when the graphics context is lost and when it is restored, at the start of the next frame's `Render` phase |
 | `host:active`                                         | `{ active: boolean }` — emitted by `Host` when the game goes to or returns from the background                                                               |
 | `host:lifecycle`                                      | `{ lifecycle: HostLifecycle; previous: HostLifecycle }` — emitted by `Host` on every change of activity, visibility or focus                                 |
 
@@ -1004,27 +1004,27 @@ preloaded and never pushed keeps its references until `assets.clear()`.
 
 ### Pause While the Host Is Inactive
 
-```ts yage-context="scene-enter"
-import { SceneManagerKey } from "@yagejs/core";
+```ts
+import { Engine } from "@yagejs/core";
 
-const scenes = this.context.resolve(SceneManagerKey);
-
-scenes.autoPause = true; // default: false
+const engine = new Engine();
+engine.scenes.autoPause = true; // default: false
+await engine.start();
 ```
 
 While `autoPause` is on and `Host.active` is `false` — the app is in the background, the page is hidden, or the window is unfocused — every scene on the stack reads `isPaused === true` and `activeScenes` is empty. The pause belongs to the manager: `scene.paused` keeps whatever the game wrote, so a manual pause made while the game was in the background is still in force after the return. Switching `autoPause` on or off takes effect at once. A scene that is not on the stack is never paused this way.
 
 Hooks follow the effective state, so a repeated or out-of-order host signal fires nothing extra:
 
-| Case                                                       | Hooks                                                                                           |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| A running scene                                            | One `onPause` when the host turns inactive, one `onResume` at the return                        |
-| A manually paused scene, or one under a `pauseBelow` scene | Neither, at either end                                                                          |
-| A manual pause written while the host is inactive          | Neither; the scene is still paused after the return                                             |
-| A manual unpause written while the host is inactive        | One `onResume` at the return                                                                    |
-| A scene pushed while the host is inactive                  | One `onPause` after its `onEnter`, one `onResume` at the return                                 |
-| A scene popped while the host is inactive                  | `onExit` only                                                                                   |
-| A throwing `onPause`                                       | Reported and rethrown; the scenes after it get no `onPause`, and the return resumes every scene |
+| Case                                                       | Hooks                                                                                                                                                               |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A running scene                                            | One `onPause` when the host turns inactive, one `onResume` at the return                                                                                            |
+| A manually paused scene, or one under a `pauseBelow` scene | Neither, at either end                                                                                                                                              |
+| A manual pause written while the host is inactive          | Neither; the scene is still paused after the return                                                                                                                 |
+| A manual unpause written while the host is inactive        | One `onResume` at the return                                                                                                                                        |
+| A scene pushed while the host is inactive                  | One `onPause` after its `onEnter`, one `onResume` at the return                                                                                                     |
+| A scene popped while the host is inactive                  | `onExit` only                                                                                                                                                       |
+| A throwing `onPause`                                       | Reported and rethrown; the scenes after it get neither hook. The return ends the host pause for every scene and fires `onResume` on the scene whose `onPause` threw |
 
 For a resume the player confirms, react to `host:active` with a pause of the game's own:
 
@@ -1045,7 +1045,7 @@ engine.events.on("host:active", ({ active }) => {
 
 While the stack is held paused, the loop, engine-global processes, scene transitions and rendering keep running on whatever frames the host delivers, and the game's own event handlers, timers and promises run — networking code keeps working. What a paused scene stops is in `Scene` above.
 
-`onPause`/`onResume` fire on every effective pause transition, i.e. whenever `scene.isPaused` flips, whatever the source: a `pauseBelow` scene pushed above, manual `scene.paused = true`/`false`, or the manager's `autoPause`. Writes that don't change the effective state fire nothing: repeated assignments, flag flips masked by a stack pause, and writes before the scene is pushed. Pushing a scene whose `paused` flag is already true fires `onPause` on entry — this is how you start a scene paused. Do NOT write `scene.paused` from inside a lifecycle hook (`onEnter`/`onExit`/`onPause`/`onResume`): the write races the stack transition's own pause diff, so the hooks can fire twice or unpaired. A dev-mode warning flags it.
+`onPause`/`onResume` follow `scene.isPaused`, whatever changes it: a `pauseBelow` scene pushed above, manual `scene.paused = true`/`false`, or the manager's `autoPause`. Each scene's hooks fire when its effective state differs from the one they last reported, so every change fires one hook. Writes that leave the effective state where it was fire nothing: repeated assignments, flag flips masked by a stack or host pause, and writes to a scene that is not on the stack. Pushing a scene whose `paused` flag is already true fires `onPause` on entry — this is how you start a scene paused. A `paused` write from inside a lifecycle hook, `onEnter` included, follows the same rule.
 
 ### Scene Transitions
 

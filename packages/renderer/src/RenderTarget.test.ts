@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import { Container, WebGLRenderer } from "pixi.js";
 import type { Renderer } from "pixi.js";
 import { createRenderTarget } from "./RenderTarget.js";
-import type { RenderTargetOptions } from "./RenderTarget.js";
+import type {
+  RenderTargetDrawing,
+  RenderTargetOptions,
+} from "./RenderTarget.js";
 
 interface CapturedRender {
   container: Container;
@@ -293,7 +296,11 @@ describe("deferred target drawing", () => {
     const prerender = runners.prerender;
     Object.assign(renderer, { runners });
     const stage = new Container();
-    const drawing = { stage, isEnabled: () => true };
+    const drawing: RenderTargetDrawing = {
+      stage,
+      isEnabled: () => true,
+      live: new Set(),
+    };
     const source = new Container();
     const input = createRenderTarget(
       renderer,
@@ -340,7 +347,11 @@ describe("deferred target drawing", () => {
     Object.assign(renderer, { runners });
     const stage = new Container();
     let enabled = false;
-    const drawing = { stage, isEnabled: () => enabled };
+    const drawing: RenderTargetDrawing = {
+      stage,
+      isEnabled: () => enabled,
+      live: new Set(),
+    };
     const source = new Container();
     const first = createRenderTarget(
       renderer,
@@ -457,7 +468,7 @@ describe("a replaced graphics context", () => {
       renderer,
       source,
       { width: 10, height: 10, ...options },
-      { stage, isEnabled: () => true },
+      { stage, isEnabled: () => true, live: new Set() },
     );
     return { target, runners, stage, source, calls, renderer };
   }
@@ -496,7 +507,11 @@ describe("a replaced graphics context", () => {
     const runners = fakeRunners();
     Object.assign(renderer, { runners });
     const stage = new Container();
-    const drawing = { stage, isEnabled: () => true };
+    const drawing: RenderTargetDrawing = {
+      stage,
+      isEnabled: () => true,
+      live: new Set(),
+    };
     const inputSource = new Container();
     const input = createRenderTarget(
       renderer,

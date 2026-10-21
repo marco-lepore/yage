@@ -791,6 +791,10 @@ with `source.destroy({ children: true })`, and any registered key with
 `unregisterTexture(key)`. Keep the source out of the scene's render tree, so
 it is not drawn twice.
 
+- **The texture outlives the engine.** `engine.destroy()` stops every render
+  target following the renderer and leaves the texture to the caller, so
+  `destroy()` still frees it afterwards, for example from a hot-reload or test
+  teardown that runs after the engine is gone.
 - **`followResolution` keeps the texture as sharp as the canvas.** Set it
   when the texture redraws anyway and should follow a window moved to a
   display with another pixel ratio. Default `false`: the texture keeps the

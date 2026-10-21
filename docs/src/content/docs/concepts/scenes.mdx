@@ -186,17 +186,18 @@ per-frame.
 `onPause` and `onResume` fire on **every** effective pause transition, not
 just stack changes: setting `scene.paused = true` from game code, the
 manager's `autoPause` pausing scenes while the game is in the background, and
-scene stack changes all use the same hooks. The hooks track `scene.isPaused` — a write
-that does not change the effective state (re-assigning the same value, or
-flipping the flag while the scene is already paused by a scene above) fires
-nothing. Ducking music or muting input in `onPause` therefore covers manual
-pauses and the game going to the background, not only pushed pause menus.
+scene stack changes all use the same hooks. The hooks track `scene.isPaused`,
+and each change fires one hook. A write that does not change the effective
+state (re-assigning the same value, or flipping the flag while the scene is
+already paused by a scene above) fires nothing. Ducking music or muting input
+in `onPause` therefore covers manual pauses and the game going to the
+background, not only pushed pause menus.
 
 To start a scene already paused, set `scene.paused = true` before pushing
-it — the push fires `onPause` once. Don't write `scene.paused` from inside a
-lifecycle hook (`onEnter`, `onExit`, `onPause`, `onResume`): that write races
-the stack transition's own pause diff, so the hooks can fire twice or
-unpaired. A dev-mode warning flags this case.
+it — the push fires `onPause` once. A write from inside a lifecycle hook
+(`onEnter`, `onExit`, `onPause`, `onResume`) follows the same rule. A scene
+that is not on the stack, such as one running its `onExit`, fires neither
+hook.
 
 ## Querying Entities
 

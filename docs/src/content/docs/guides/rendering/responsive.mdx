@@ -359,9 +359,12 @@ bus.on("screen:fullscreen", ({ active }) => {
 
 Three rules make a toggle behave the way a player expects:
 
-- A request made while a request is in flight shares that request's promise,
-  and one made while an exit is in flight runs after the exit settles. The last
-  call wins, so a double click does not fail.
+- The last call wins, so a double or triple click does not fail. A request
+  made while a request is in flight shares that request's promise. One made
+  while an exit is in flight waits for the exit to settle and then moves in
+  the direction of the latest call, and the reverse. A call a later one
+  overrode resolves when the final transition settles: exit, request, exit
+  leaves the game out of fullscreen, and all three promises resolve.
 - `requestFullscreen()` rejects where `fullscreenSupport` is `"unsupported"`,
   and with the browser's own error where the browser refuses — on a page it
   must be called from a user-gesture handler (click, touch, key), or the

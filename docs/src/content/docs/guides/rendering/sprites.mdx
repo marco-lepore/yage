@@ -681,7 +681,8 @@ The rules that make this safe:
   reference their keys. A missing key throws an error naming the key.
 - Registered keys are engine-global and live until `unregisterTexture(key)`.
   Unregistering never destroys the texture — you created it, so call
-  `texture.destroy()` when nothing draws it anymore.
+  `texture.destroy()` when nothing draws it anymore. `engine.destroy()` leaves
+  the texture to you as well, and `texture.destroy()` still works after it.
 - Registering a key that collides with a loaded asset's path throws;
   re-registering your own key replaces the entry (components built earlier
   keep the old texture instance).

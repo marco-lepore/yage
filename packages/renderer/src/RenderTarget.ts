@@ -166,7 +166,9 @@ export interface RenderTargetHandle {
    * Destroy the texture and its GPU memory. Safe to call repeatedly. Frees
    * the texture only: destroy the source container yourself, and call
    * `unregisterTexture(key)` for any key the texture was registered under, or
-   * that key keeps resolving a destroyed texture.
+   * that key keeps resolving a destroyed texture. `engine.destroy()` leaves
+   * the texture to the game, so this call frees it after the engine is gone
+   * too.
    */
   destroy(): void;
 }
@@ -186,6 +188,12 @@ export interface RenderTargetDrawing {
    * time or only while a render is pending.
    */
   readonly refresh?: LayerRenderRefresh;
+  /**
+   * Every target built with this policy and not yet destroyed. Before Pixi
+   * destroys the runners these targets joined, the renderer calls `release()`
+   * on each one.
+   */
+  readonly live: Set<{ release(): void }>;
 }
 
 class RenderTargetImpl implements RenderTargetHandle, LayerRenderTarget {
@@ -258,6 +266,7 @@ class RenderTargetImpl implements RenderTargetHandle, LayerRenderTarget {
       if (options.followResolution) {
         this.join(renderer.runners.resolutionChange);
       }
+      drawing.live.add(this);
     }
   }
 
@@ -392,9 +401,19 @@ class RenderTargetImpl implements RenderTargetHandle, LayerRenderTarget {
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+    this.release();
+    if (this._ownsTexture) this._texture.destroy(true);
+  }
+
+  /**
+   * Stop following the renderer: leave every Pixi runner this target joined.
+   * The texture stays with whoever owns it, so a `destroy()` after the
+   * renderer is gone still frees it.
+   */
+  release(): void {
     for (const runner of this._runners) runner.remove(this);
     this._runners.length = 0;
-    if (this._ownsTexture) this._texture.destroy(true);
+    this.drawing?.live.delete(this);
   }
 
   /**

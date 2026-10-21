@@ -10,4 +10,4 @@ Report what the graphics context can do, and bring YAGE's drawing back after a l
 - `Breaking:` `LightingCompositeOptions` takes the scene's `world`, which a renderer factory is handed. The composite reports the bounce blend it draws to that world, and the `"lighting"` extension reads it there. A scene whose renderer builds no composite reports the blend its graphics context implies.
 - The light buffers keep the display's pixel ratio, so a window moved to a display with another ratio redraws them at the new density. The lighting pass also redraws after a lost graphics context is restored.
 - With an Inspector installed, the `"lighting"` extension answers `scenes()` with one entry per live scene: the configured renderer it asked for, why a fallback drew it, and the bounce blend asked for beside the one drawn. The types are `LightingDiagnostics`, `LightingSceneDiagnostics` and `LightingFallbackReason`.
-- Requires `pixi.js` 8.22.0 or later.
+- `Breaking:` requires `pixi.js` 8.22.0 or later.

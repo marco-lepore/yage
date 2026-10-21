@@ -1223,7 +1223,7 @@ describe("SceneManager", () => {
       warnSpy.mockRestore();
     });
 
-    it("warns when a host-driven onResume writes another scene's paused", async () => {
+    it("fires no hook on a scene a host-driven onResume keeps paused by hand", async () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       const { manager, setHost } = setupWithHost();
       manager.autoPause = true;
@@ -1232,16 +1232,52 @@ describe("SceneManager", () => {
       await manager.push(below);
       await manager.push(top);
       setHost({ activity: "inactive" });
+      const topPause = vi.fn();
+      const topResume = vi.fn();
+      top.onPause = topPause;
+      top.onResume = topResume;
       below.onResume = () => {
         top.paused = true;
       };
 
       setHost({ activity: "active" });
 
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("set from inside a lifecycle hook"),
-      );
+      // `top` was reported paused when the host turned inactive and is still
+      // paused, so neither of its hooks runs.
+      expect(top.isPaused).toBe(true);
+      expect(topPause).not.toHaveBeenCalled();
+      expect(topResume).not.toHaveBeenCalled();
+      expect(warnSpy).not.toHaveBeenCalled();
       warnSpy.mockRestore();
+    });
+
+    it("fires onPause once for autoPause switched on in onEnter while the host is inactive", async () => {
+      const { manager, setHost } = setupWithHost();
+      setHost({ focus: "unfocused" });
+      const order: string[] = [];
+      const below = new GameScene("below");
+      below.onPause = () => order.push("below:pause");
+      below.onResume = () => order.push("below:resume");
+      await manager.push(below);
+      const scene = new OverlayScene();
+      scene.onEnter = () => {
+        order.push("enter");
+        manager.autoPause = true;
+      };
+      scene.onPause = () => order.push("pause");
+      scene.onResume = () => order.push("resume");
+
+      await manager.push(scene);
+      expect(order).toEqual(["enter", "below:pause", "pause"]);
+
+      setHost({ focus: "focused" });
+      expect(order).toEqual([
+        "enter",
+        "below:pause",
+        "pause",
+        "below:resume",
+        "resume",
+      ]);
     });
 
     it("fires one hook for a manual pause made during a push", async () => {
@@ -1330,8 +1366,12 @@ describe("SceneManager", () => {
       broken.onPause = () => {
         throw new Error("pause failed");
       };
+      const brokenResume = vi.fn();
+      broken.onResume = brokenResume;
       const lastPause = vi.fn();
+      const lastResume = vi.fn();
       last.onPause = lastPause;
+      last.onResume = lastResume;
 
       expect(() => setHost({ activity: "inactive" })).toThrow("pause failed");
 
@@ -1349,6 +1389,12 @@ describe("SceneManager", () => {
       expect(first.isPaused).toBe(false);
       expect(broken.isPaused).toBe(false);
       expect(last.isPaused).toBe(false);
+      // `broken` was reported paused when its `onPause` ran, so the return
+      // resumes it once.
+      expect(brokenResume).toHaveBeenCalledOnce();
+      // `last` was never reported paused, so the return fires no hook on it.
+      expect(lastPause).not.toHaveBeenCalled();
+      expect(lastResume).not.toHaveBeenCalled();
     });
 
     it("leaves a detached scene running", async () => {
@@ -1463,22 +1509,32 @@ describe("SceneManager", () => {
       expect(onPause).toHaveBeenCalledOnce();
     });
 
-    it("warns when paused is written from inside a lifecycle hook", async () => {
+    it("fires one onPause for a pause written in onEnter, and one onResume when it is cleared", async () => {
       const { manager } = setup();
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const onPause = vi.fn();
+      const onResume = vi.fn();
       class SelfPausing extends GameScene {
         override onEnter() {
           super.onEnter();
           this.paused = true;
         }
+        override onPause() {
+          onPause();
+        }
+        override onResume() {
+          onResume();
+        }
       }
       const scene = new SelfPausing("a");
 
       await manager.push(scene);
+      expect(onPause).toHaveBeenCalledOnce();
 
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("set from inside a lifecycle hook"),
-      );
+      scene.paused = false;
+      expect(onResume).toHaveBeenCalledOnce();
+      expect(onPause).toHaveBeenCalledOnce();
+      expect(warnSpy).not.toHaveBeenCalled();
       warnSpy.mockRestore();
     });
 

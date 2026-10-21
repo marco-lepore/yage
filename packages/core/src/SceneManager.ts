@@ -77,6 +77,14 @@ export class SceneManager {
   private _hostPaused = false;
 
   /**
+   * Scenes whose hooks last reported them paused: `onPause` ran and no
+   * `onResume` since. Every change of a scene's effective pause is compared
+   * against this record, whatever caused the change, so each change fires
+   * one hook. A scene leaves the record when it leaves the stack.
+   */
+  private readonly _pauseReported = new WeakSet<Scene>();
+
+  /**
    * Pause every scene on the stack while the host is inactive — the app is in
    * the background, the page is hidden, or the window is unfocused — and
    * resume them when it is active again. Default: `false`.
@@ -128,12 +136,28 @@ export class SceneManager {
       this.host !== undefined &&
       !this.host.active;
     if (next === this._hostPaused) return;
-    this._withMutationSync(() => {
-      const wasPaused = this._snapshotPauseStates();
-      this._hostPaused = next;
-      if (next) this._firePauseTransitions(wasPaused);
-      else this._fireResumeTransitions(wasPaused);
-    });
+    this._hostPaused = next;
+    this._withMutationSync(() => this._reportPauseChanges());
+  }
+
+  /**
+   * Fire `onPause` or `onResume` when `scene`'s effective pause differs from
+   * the state its hooks last reported. The new state is recorded before the
+   * hook runs, so a `paused` write the hook makes is compared against it. A
+   * scene that is not on the stack fires nothing.
+   * @internal
+   */
+  _reportPause(scene: Scene): void {
+    if (!this.stack.includes(scene)) return;
+    const paused = scene.isPaused;
+    if (paused === this._pauseReported.has(scene)) return;
+    if (paused) {
+      this._pauseReported.add(scene);
+      this._invokeLifecycle(scene, "onPause", () => scene.onPause?.());
+    } else {
+      this._pauseReported.delete(scene);
+      this._invokeLifecycle(scene, "onResume", () => scene.onResume?.());
+    }
   }
 
   /** The topmost (active) scene. */
@@ -154,17 +178,6 @@ export class SceneManager {
   /** Whether a scene transition is currently running. */
   get isTransitioning(): boolean {
     return this._currentRun !== undefined;
-  }
-
-  /**
-   * Whether a stack mutation (push/pop/replace/popAll) or a host pause is
-   * running, including while its lifecycle hooks execute. Lets `Scene.paused`
-   * detect a reentrant write from inside a hook, which would race the pause
-   * diff.
-   * @internal
-   */
-  get _isMutating(): boolean {
-    return this._mutationDepth > 0;
   }
 
   /**
@@ -472,12 +485,9 @@ export class SceneManager {
       // Preload before pushing so a failed asset load doesn't leave an
       // un-entered scene on the stack.
       await this._preloadScene(scene);
-      // Taken after the awaits, so a pause that landed while a hook or a load
-      // was in flight is part of the state this push diffs against.
-      const wasPaused = this._snapshotPauseStates();
       this.stack.push(scene);
       this._invokeLifecycle(scene, "onEnter", () => scene.onEnter?.());
-      this._firePauseTransitions(wasPaused);
+      this._reportPauseChanges();
       if (!suppressEvent) {
         this.bus?.emit("scene:pushed", { scene });
       }
@@ -485,14 +495,12 @@ export class SceneManager {
   }
 
   private _popScene(suppressEvent = false): Scene | undefined {
-    const wasPaused = this._snapshotPauseStates();
-
     return this._withMutationSync(() => {
       const removed = this.stack.pop();
       if (!removed) return undefined;
 
       this._teardownScene(removed);
-      this._fireResumeTransitions(wasPaused);
+      this._reportPauseChanges();
       if (!suppressEvent) {
         this.bus?.emit("scene:popped", { scene: removed });
       }
@@ -508,15 +516,12 @@ export class SceneManager {
       // tear down the old scene without a working replacement.
       await this._preloadScene(scene);
 
-      // Taken after the awaits, for the reason given in `_pushScene`.
-      const wasPaused = this._snapshotPauseStates();
       const old = this.stack.pop();
       if (old) this._teardownScene(old);
       this.stack.push(scene);
       this._invokeLifecycle(scene, "onEnter", () => scene.onEnter?.());
 
-      this._firePauseTransitions(wasPaused);
-      this._fireResumeTransitions(wasPaused);
+      this._reportPauseChanges();
       this.bus?.emit("scene:replaced", {
         oldScene: old ?? scene,
         newScene: scene,
@@ -533,11 +538,9 @@ export class SceneManager {
       const idx = this.stack.indexOf(scene);
       if (idx === -1) return;
 
-      const wasPaused = this._snapshotPauseStates();
       this.stack.splice(idx, 1);
       this._teardownScene(scene);
-      this._firePauseTransitions(wasPaused);
-      this._fireResumeTransitions(wasPaused);
+      this._reportPauseChanges();
     });
   }
 
@@ -579,6 +582,7 @@ export class SceneManager {
   }
 
   private _teardownScene(scene: Scene): void {
+    this._pauseReported.delete(scene);
     this._invokeLifecycle(scene, "onExit", () => scene.onExit?.());
     scene._destroyAllEntities();
     this.hookRegistry?.runAfterExit(scene);
@@ -712,10 +716,6 @@ export class SceneManager {
     };
   }
 
-  private _snapshotPauseStates(): Map<Scene, boolean> {
-    return new Map(this.stack.map((scene) => [scene, scene.isPaused] as const));
-  }
-
   private _warnIfMutating(method: string): void {
     if (this._mutationDepth === 0) return;
     // The call is safe — _enqueue chains it onto _pendingChain, so it runs
@@ -750,24 +750,12 @@ export class SceneManager {
     }
   }
 
-  /** Fire onPause() for scenes that transitioned from not-paused to paused. */
-  private _firePauseTransitions(wasPaused: Map<Scene, boolean>): void {
-    for (const scene of this.stack) {
-      const was = wasPaused.get(scene) ?? false;
-      if (scene.isPaused && !was) {
-        this._invokeLifecycle(scene, "onPause", () => scene.onPause?.());
-      }
-    }
-  }
-
-  /** Fire onResume() for scenes that transitioned from paused to not-paused. */
-  private _fireResumeTransitions(wasPaused: Map<Scene, boolean>): void {
-    for (const scene of this.stack) {
-      const was = wasPaused.get(scene) ?? false;
-      if (!scene.isPaused && was) {
-        this._invokeLifecycle(scene, "onResume", () => scene.onResume?.());
-      }
-    }
+  /**
+   * Report every scene on the stack, bottom to top. A throwing hook ends the
+   * pass, and the next pass reports the scenes after it.
+   */
+  private _reportPauseChanges(): void {
+    for (const scene of this.stack) this._reportPause(scene);
   }
 
   /**

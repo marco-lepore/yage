@@ -22,11 +22,9 @@ import {
   ErrorBoundaryKey,
   formatMissingHint,
 } from "./EngineContext.js";
-import type { ErrorBoundary } from "./ErrorBoundary.js";
 import type { ComponentClass } from "./types.js";
 import type { SpawnBatch } from "./SpawnBatch.js";
 import { SpawnBatchRunner } from "./SpawnBatch.js";
-import { devWarn } from "./internal/dev.js";
 import { isolate } from "./internal/isolate.js";
 import { lazyRefPrototype } from "./internal/lazyRef.js";
 
@@ -207,17 +205,16 @@ export abstract class Scene {
    * Manual pause flag. Set by game code to pause this scene regardless of
    * stack position, and written by game code only: the manager's `autoPause`
    * holds its own pause, so a write made while the game is in the background
-   * is still in force after the return. Assigning it fires
-   * `onPause`/`onResume` when the effective pause state (`isPaused`) flips —
-   * writes that don't change the flag, or that are masked by a stack or host
-   * pause, fire nothing. Writes before the scene is pushed fire nothing
-   * either; the push itself fires `onPause` for a scene entering paused.
+   * is still in force after the return. Assigning it fires `onPause` or
+   * `onResume` when the effective pause state (`isPaused`) differs from the
+   * one the hooks last reported: writes that don't change the flag, or that
+   * are masked by a stack or host pause, fire nothing. A scene that is not on
+   * the stack fires nothing either; the push fires `onPause` for a scene
+   * entering paused.
    *
    * To start a scene paused, set `paused = true` before pushing it — the push
-   * fires `onPause` once. Do NOT write `paused` from inside a lifecycle hook
-   * (`onEnter`/`onExit`/`onPause`/`onResume`): that write races the stack
-   * transition's own pause diff, so `onPause`/`onResume` can fire twice or
-   * unpaired. A dev-mode warning flags this case.
+   * fires `onPause` once. A write from inside a lifecycle hook, `onEnter`
+   * included, follows the same rule, so each change fires one hook.
    */
   get paused(): boolean {
     return this._paused;
@@ -225,51 +222,8 @@ export abstract class Scene {
 
   set paused(value: boolean) {
     if (value === this._paused) return;
-    // Diff the effective state across the write, mirroring the stack-
-    // transition diff in SceneManager: the hooks track isPaused, not the
-    // raw flag.
-    const wasEffective = this.isPaused;
     this._paused = value;
-    if (!this._context) return;
-    const isEffective = this.isPaused;
-    if (isEffective === wasEffective) return;
-    // A write from inside a lifecycle hook double-counts: the transition
-    // snapshots effective pause before the mutation and re-fires the hook
-    // after, so this synchronous fire duplicates or unpairs it.
-    if (this._context.tryResolve(SceneManagerKey)?._isMutating) {
-      devWarn(
-        "Scene.paused was set from inside a lifecycle hook; onPause/onResume " +
-          "may fire twice or unpaired. To start a scene paused, set " +
-          "`paused = true` before pushing it.",
-      );
-    }
-    const boundary = this._context.tryResolve(ErrorBoundaryKey);
-    if (isEffective) {
-      this._invokeLifecycleHook(boundary, "onPause", () => this.onPause?.());
-    } else {
-      this._invokeLifecycleHook(boundary, "onResume", () => this.onResume?.());
-    }
-  }
-
-  /**
-   * Run a lifecycle hook (`onPause`/`onResume` triggered from this setter,
-   * separate from the push/pop/replace-driven calls in `SceneManager`)
-   * through the error boundary when one is available. Reports and rethrows,
-   * so a throwing hook propagates to its caller.
-   */
-  private _invokeLifecycleHook(
-    boundary: ErrorBoundary | undefined,
-    phase: string,
-    fn: () => void,
-  ): void {
-    if (boundary) {
-      boundary.wrapLifecycleHook(fn, {
-        kind: `Scene ${phase} hook`,
-        scene: this.name,
-      });
-    } else {
-      fn();
-    }
+    this._context?.tryResolve(SceneManagerKey)?._reportPause(this);
   }
 
   private _paused = false;

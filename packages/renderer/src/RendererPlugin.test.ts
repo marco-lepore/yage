@@ -96,22 +96,29 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
-  /** Pixi's own dispatch list: it calls the runner's name on every item. */
+  /**
+   * Pixi's own dispatch list: it calls the runner's name on every item. A
+   * destroyed runner holds `null`, as Pixi's does, so any later use throws.
+   */
   class MockRunner {
-    items: Array<Record<string, (...args: unknown[]) => void>> = [];
+    items: Array<Record<string, (...args: unknown[]) => void>> | null = [];
     constructor(private readonly method: string) {}
 
     add(item: object): void {
-      if (!this.items.includes(item as never)) this.items.push(item as never);
+      if (!this.items!.includes(item as never)) this.items!.push(item as never);
     }
 
     remove(item: object): void {
-      const idx = this.items.indexOf(item as never);
-      if (idx !== -1) this.items.splice(idx, 1);
+      const idx = this.items!.indexOf(item as never);
+      if (idx !== -1) this.items!.splice(idx, 1);
     }
 
     emit(...args: unknown[]): void {
-      for (const item of [...this.items]) item[this.method]?.(...args);
+      for (const item of [...this.items!]) item[this.method]?.(...args);
+    }
+
+    destroy(): void {
+      this.items = null;
     }
   }
 
@@ -217,6 +224,11 @@ const { mocks } = vi.hoisted(() => {
 
     destroy(): void {
       this.ticker.remove(this.render);
+      for (const runner of Object.values(
+        this.renderer["runners"] as Record<string, MockRunner>,
+      )) {
+        runner.destroy();
+      }
       this.destroyCalled = true;
     }
   }
@@ -351,6 +363,7 @@ vi.mock("pixi.js", () => {
 });
 
 import {
+  Engine,
   EngineContext,
   GameLoop,
   GameLoopKey,
@@ -359,6 +372,8 @@ import {
   Scene,
   SceneManager,
   SceneManagerKey,
+  Phase,
+  System,
   SystemScheduler,
   SystemSchedulerKey,
   QueryCache,
@@ -385,6 +400,7 @@ import { RendererKey } from "./types.js";
 import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
 import type { RendererConfig } from "./types.js";
 import type { GraphicsDiagnostics } from "./GraphicsDiagnostics.js";
+import type { DisplayContainer } from "./public-types.js";
 
 function createInstallContext(): {
   context: EngineContext;
@@ -1507,6 +1523,73 @@ describe("RendererPlugin", () => {
       expect(plugin.isFullscreen).toBe(true);
     });
 
+    it("leaves fullscreen after exit, request, exit, the last call winning", async () => {
+      const { display, calls, settle } = manualDisplay({ active: true });
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const first = plugin.exitFullscreen();
+      const overridden = plugin.requestFullscreen();
+      const last = plugin.exitFullscreen();
+      settle();
+      await Promise.all([first, overridden, last]);
+
+      expect(calls).toEqual(["exit"]);
+      expect(fullscreenEvents).toEqual([false]);
+      expect(plugin.isFullscreen).toBe(false);
+    });
+
+    it("stays fullscreen after request, exit, request, the last call winning", async () => {
+      const { display, calls, settle } = manualDisplay();
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const first = plugin.requestFullscreen();
+      const overridden = plugin.exitFullscreen();
+      const last = plugin.requestFullscreen();
+      settle();
+      await Promise.all([first, overridden, last]);
+
+      expect(calls).toEqual(["request"]);
+      expect(fullscreenEvents).toEqual([true]);
+      expect(plugin.isFullscreen).toBe(true);
+    });
+
+    it("runs the latest direction once the step in flight settles", async () => {
+      const { display, calls, settle } = manualDisplay({ active: true });
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const first = plugin.exitFullscreen();
+      const queued = [
+        plugin.requestFullscreen(),
+        plugin.exitFullscreen(),
+        plugin.requestFullscreen(),
+      ];
+      settle();
+      await first;
+      settle();
+      await Promise.all(queued);
+
+      expect(calls).toEqual(["exit", "request"]);
+      expect(fullscreenEvents).toEqual([false, true]);
+      expect(plugin.isFullscreen).toBe(true);
+    });
+
+    it("rejects the queued calls with a refusal they asked for, without asking again", async () => {
+      const refusal = new TypeError("Permissions check failed");
+      const { display, calls, rejectWith, settle } = manualDisplay();
+      rejectWith.error = refusal;
+      const { plugin } = await startRenderer({ display });
+
+      const first = plugin.requestFullscreen();
+      const overridden = plugin.exitFullscreen();
+      const last = plugin.requestFullscreen();
+      settle();
+
+      await expect(first).rejects.toBe(refusal);
+      await expect(overridden).rejects.toBe(refusal);
+      await expect(last).rejects.toBe(refusal);
+      expect(calls).toEqual(["request"]);
+    });
+
     it("resolves an exit that changes nothing without asking the host", async () => {
       const { display, calls } = manualDisplay();
       const { plugin, fullscreenEvents } = await startRenderer({ display });
@@ -2171,27 +2254,27 @@ describe("RendererPlugin", () => {
       };
     }
 
+    /** A started engine drawing with a renderer, and one frame of its loop. */
     async function installed(config: RendererConfig = defaultConfig): Promise<{
+      engine: Engine;
       plugin: RendererPlugin;
-      context: EngineContext;
-      gameLoop: GameLoop;
       bus: EventBus<EngineEvents>;
       pixi: MockPixi;
       canvas: { listeners: Map<string, Set<() => void>> };
       tick: () => void;
     }> {
-      const { context, gameLoop } = createInstallContext();
+      const engine = new Engine();
       const plugin = new RendererPlugin(config);
-      await plugin.install(context);
+      await engine.use(plugin).start();
       const app = plugin.application as unknown as InstanceType<
         typeof mocks.MockApplication
       >;
+      // The game loop's ticker function, attached after Pixi's own render.
       const frame = app.ticker.callbacks[app.ticker.callbacks.length - 1]!;
       return {
+        engine,
         plugin,
-        context,
-        gameLoop,
-        bus: context.resolve(EventBusKey),
+        bus: engine.events,
         pixi: plugin.application.renderer as unknown as MockPixi,
         canvas: plugin.canvas as unknown as {
           listeners: Map<string, Set<() => void>>;
@@ -2290,17 +2373,30 @@ describe("RendererPlugin", () => {
       }
     });
 
-    it("reports a lost context at once and tells the game at the next frame", async () => {
-      const { plugin, bus, gameLoop, canvas, tick } = await installed();
+    it("reports a lost context at once and tells the game in the next frame's Render phase", async () => {
+      const { engine, plugin, bus, canvas, tick } = await installed();
       const seen: boolean[] = [];
       const order: string[] = [];
       bus.on("graphics:context", ({ lost }) => {
         seen.push(lost);
         order.push("event");
       });
-      vi.spyOn(gameLoop, "tick").mockImplementation(() => {
-        order.push("frame");
-      });
+      class UpdateProbe extends System {
+        readonly phase = Phase.Update;
+        update(): void {
+          order.push("update");
+        }
+      }
+      class LateRenderProbe extends System {
+        readonly phase = Phase.Render;
+        readonly priority = 100;
+        update(): void {
+          order.push("render");
+        }
+      }
+      const scheduler = engine.context.resolve(SystemSchedulerKey);
+      scheduler.add(new UpdateProbe());
+      scheduler.add(new LateRenderProbe());
 
       loseContext(canvas);
       expect(plugin.contextLost).toBe(true);
@@ -2308,9 +2404,40 @@ describe("RendererPlugin", () => {
 
       tick();
       expect(seen).toEqual([true]);
-      expect(order).toEqual(["event", "frame"]);
+      expect(order).toEqual(["update", "event", "render"]);
 
       tick();
+      expect(seen).toEqual([true]);
+    });
+
+    it("stops the game loop when a handler throws, recording the handler", async () => {
+      const { engine, bus, canvas, tick } = await installed();
+      const failure = new Error("handler failed");
+      bus.on("graphics:context", () => {
+        throw failure;
+      });
+
+      loseContext(canvas);
+
+      expect(() => tick()).toThrow(failure);
+      expect(engine.loop.isRunning).toBe(false);
+      expect(
+        engine.context.resolve(ErrorBoundaryKey).getCallbackErrors(),
+      ).toEqual([expect.objectContaining({ event: "graphics:context" })]);
+    });
+
+    it("waits for a frame while the loop is stopped", async () => {
+      const { engine, bus, canvas, tick } = await installed();
+      const seen: boolean[] = [];
+      bus.on("graphics:context", ({ lost }) => seen.push(lost));
+
+      engine.loop.stop();
+      loseContext(canvas);
+      tick();
+      expect(seen).toEqual([]);
+
+      engine.loop.start();
+      engine.loop.tick(16);
       expect(seen).toEqual([true]);
     });
 
@@ -2411,11 +2538,19 @@ describe("RendererPlugin", () => {
       const { plugin, bus, pixi, canvas } = await installed();
       const seen: boolean[] = [];
       bus.on("graphics:context", ({ lost }) => seen.push(lost));
+      const contextChange = pixi.runners
+        .contextChange as unknown as InstanceType<typeof mocks.MockRunner>;
+      const destroyRunner = contextChange.destroy.bind(contextChange);
+      let leftWhenPixiDestroyed = -1;
+      contextChange.destroy = () => {
+        leftWhenPixiDestroyed = contextChange.items!.length;
+        destroyRunner();
+      };
 
       plugin.onDestroy();
       loseContext(canvas);
-      pixi.runners.contextChange.emit();
 
+      expect(leftWhenPixiDestroyed).toBe(0);
       expect(canvas.listeners.get("webglcontextlost")?.size ?? 0).toBe(0);
       expect(seen).toEqual([]);
     });
@@ -2593,6 +2728,35 @@ describe("RendererPlugin", () => {
       pixi.runners.contextChange.emit();
       pixi.runners.prerender.emit({ container: plugin.application.stage });
       expect(pixi.render.mock.calls).toHaveLength(1);
+    });
+
+    it("leaves its textures to the game after engine.destroy()", async () => {
+      const engine = new Engine();
+      const plugin = new RendererPlugin(defaultConfig);
+      await engine.use(plugin).start();
+      const baked = plugin.createTexture((g) => {
+        (
+          g as unknown as {
+            rect(x: number, y: number, w: number, h: number): void;
+          }
+        ).rect(0, 0, 8, 8);
+      }) as unknown as { destroy(): void; source: { destroyed: boolean } };
+      const target = plugin.createRenderTarget(
+        new mocks.MockContainer() as unknown as DisplayContainer,
+        { width: 10, height: 10 },
+      );
+      const buffer = target.texture as unknown as {
+        source: { destroyed: boolean };
+      };
+
+      engine.destroy();
+
+      expect(baked.source.destroyed).toBe(false);
+      expect(buffer.source.destroyed).toBe(false);
+      expect(() => baked.destroy()).not.toThrow();
+      expect(() => target.destroy()).not.toThrow();
+      expect(baked.source.destroyed).toBe(true);
+      expect(buffer.source.destroyed).toBe(true);
     });
 
     it("throws naming the offending dimension", async () => {

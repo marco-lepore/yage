@@ -128,6 +128,7 @@ import {
 import type { EngineEvents } from "@yagejs/core";
 import {
   DisplaySystem,
+  RendererKey,
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
   ySort,
@@ -198,6 +199,8 @@ function createTestContext() {
   };
 
   const scene = new TestScene();
+  // `DisplaySystem` emits the renderer's queued `graphics:context` events.
+  ctx.register(RendererKey, { _flushContextNotices: () => undefined } as never);
   ctx.register(SceneRenderTreeProviderKey, {
     createForScene: () => tree,
     destroyForScene: () => undefined,

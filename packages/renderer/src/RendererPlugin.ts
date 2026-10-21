@@ -123,6 +123,13 @@ const DRAWN_BACKENDS = ["webgl", "webgpu"] as const;
 /** One graphics API the renderer draws with. */
 type DrawnBackend = (typeof DRAWN_BACKENDS)[number];
 
+/** A fullscreen transition the host is running. */
+interface FullscreenStep {
+  /** `true` for a request, `false` for an exit. */
+  readonly enter: boolean;
+  readonly done: Promise<void>;
+}
+
 /** The region {@link RendererPlugin.createTexture} bakes, in pixels. */
 export interface CreateTextureOptions {
   /** Width of the baked texture, measured from x = 0. */
@@ -217,12 +224,18 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   private _lastFullscreen = false;
   private _lastOrientation: OrientationType | null = null;
   /**
-   * The transition in flight, which a second call joins. A browser rejects a
-   * second request made in the same task, and a player toggling a button
-   * expects the last call to win.
+   * The fullscreen transition in flight, which a call in the same direction
+   * joins. A browser rejects a second request made in the same task.
    */
-  private _pendingRequest: Promise<void> | null = null;
-  private _pendingExit: Promise<void> | null = null;
+  private _fullscreenStep: FullscreenStep | null = null;
+  /**
+   * The direction the latest fullscreen call asked for. The run queued behind
+   * the step in flight reads it when that step settles, so the last call
+   * wins however many calls arrived in between.
+   */
+  private _wantFullscreen = false;
+  /** The one run queued behind the step in flight, shared by every later call. */
+  private _queuedFullscreen: Promise<void> | null = null;
   private _bus: EventBus<EngineEvents> | null = null;
   /**
    * Snapshot of `TextureStyle.defaultOptions.scaleMode` captured before
@@ -249,9 +262,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   private _capabilities: GraphicsCapabilities | null = null;
   private _contextLost = false;
   /**
-   * Context changes waiting for a tick. A game handler runs between frames
-   * rather than inside Pixi's own recovery, where throwing would stop the
-   * systems queued behind it.
+   * Context changes waiting for the next frame's `DisplaySystem` pass. A game
+   * handler runs inside the game loop's frame rather than inside Pixi's own
+   * recovery, where throwing would stop the Pixi systems queued behind it.
    */
   private _contextNotices: boolean[] = [];
   private _onCanvasContextLost: (() => void) | null = null;
@@ -263,6 +276,11 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   private _watchedDevice: GPUDevice | null = null;
   private _inspector: { removeExtension(namespace: string): void } | null =
     null;
+  /**
+   * Render targets and `createTexture` bakes that follow the renderer, from
+   * creation until the game destroys them.
+   */
+  private readonly _renderTargets = new Set<{ release(): void }>();
 
   constructor(config: RendererConfig) {
     this._config = config;
@@ -462,10 +480,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     // 10. Attach PixiJS ticker to GameLoop
     const gameLoop = context.resolve(GameLoopKey);
     gameLoop.attachTicker((callback) => {
-      const fn = () => {
-        this.flushContextNotices();
-        callback(this._app.ticker.deltaMS);
-      };
+      const fn = () => callback(this._app.ticker.deltaMS);
       this._tickerFn = fn;
       this._app.ticker.add(fn);
       return () => this._app.ticker.remove(fn);
@@ -612,8 +627,8 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     this._stopDisplay = [];
     this._fullscreen = null;
     this._orientation = null;
-    this._pendingRequest = null;
-    this._pendingExit = null;
+    this._fullscreenStep = null;
+    this._queuedFullscreen = null;
     this._bus = null;
     this._unregisterSceneVisibility?.();
     this._unregisterSceneVisibility = null;
@@ -628,6 +643,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     // user-assigned filters on app.stage outside our addEffect calls.
     this.fx?.destroy();
     if (this._installed.provider) this._provider.destroyAll();
+    // Pixi empties the runners these targets joined, so they leave first. Their
+    // textures stay with the game, which destroys them whenever it likes.
+    for (const target of [...this._renderTargets]) target.release();
     if (this._installed.app) this._app.destroy();
     // Restore the global TextureStyle default the pixel-art preset
     // mutated on install. Skipped when nothing was captured (preset was
@@ -735,11 +753,13 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
-   * Report the context changes since the last frame, oldest first, before the
-   * game loop runs. A throwing handler keeps the notices behind it queued for
-   * the next frame.
+   * Report the context changes since the last frame, oldest first.
+   * `DisplaySystem` calls this at the start of its pass in the `Render`
+   * phase, so a throwing handler stops the game loop the way any error that
+   * escapes a frame does, with the notices behind it still queued.
+   * @internal
    */
-  private flushContextNotices(): void {
+  _flushContextNotices(): void {
     while (this._contextNotices.length > 0) {
       const lost = this._contextNotices.shift() as boolean;
       this._bus?.emit("graphics:context", { lost });
@@ -1055,6 +1075,10 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * restored, so the texture survives one. Calling `update()` on the returned
    * texture's `source` re-uploads it empty and everything drawn from it turns
    * transparent.
+   *
+   * The game owns the texture, and `engine.destroy()` leaves it alone:
+   * destroying it frees the drawing with it, before or after the engine is
+   * gone.
    */
   createTexture(
     draw: (g: DrawContext) => void,
@@ -1094,7 +1118,11 @@ export class RendererPlugin implements Plugin, RendererAdapter {
         antialias:
           pixi.view.antialias === true && this.capabilities.maxSamples > 0,
       },
-      { stage: this._app.stage, isEnabled: () => this.drawingEnabled },
+      {
+        stage: this._app.stage,
+        isEnabled: () => this.drawingEnabled,
+        live: this._renderTargets,
+      },
     );
     const texture = target.texture;
     // The game owns the texture: destroying it frees the drawing behind it.
@@ -1136,6 +1164,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       {
         stage: this._app.stage,
         isEnabled: () => this.drawingEnabled,
+        live: this._renderTargets,
       },
     );
   }
@@ -1200,9 +1229,12 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * the game is fullscreen already, and rejects where
    * {@link fullscreenSupport} is `"unsupported"`.
    *
-   * A second call made while a request is in flight shares that request's
-   * promise, and a call made while an exit is in flight runs once the exit
-   * settles, so the last call wins.
+   * The last call to this method or {@link exitFullscreen} wins. A call in
+   * the direction of the transition in flight shares its promise. A call in
+   * the other direction waits for that transition to settle and then moves in
+   * the direction of the latest call, and every call made until then shares
+   * that one run. A call a later one overrode therefore resolves when the
+   * final transition settles, with the game where the latest call asked.
    *
    * On a page this must be called from a user-gesture handler (click, touch,
    * key); the browser rejects the returned promise with a `TypeError`
@@ -1211,19 +1243,63 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * canvas itself otherwise.
    */
   requestFullscreen(): Promise<void> {
+    return this.changeFullscreen(true);
+  }
+
+  /**
+   * Leave fullscreen. Resolves once the game is not fullscreen, with
+   * `screen:fullscreen` already emitted. Resolves without asking the host when
+   * the game is not fullscreen, so another element's fullscreen is left alone.
+   *
+   * Calls made while a transition is in flight follow the same rule as
+   * {@link requestFullscreen}: the last call wins, and a call a later one
+   * overrode resolves when the final transition settles.
+   */
+  exitFullscreen(): Promise<void> {
+    return this.changeFullscreen(false);
+  }
+
+  /**
+   * Record the direction asked for, then join the step in flight when it
+   * goes that way, or the run queued behind it.
+   */
+  private changeFullscreen(enter: boolean): Promise<void> {
     const part = this._fullscreen;
     if (part === null) {
-      return Promise.reject(displayUnavailable("requestFullscreen"));
+      return Promise.reject(
+        displayUnavailable(enter ? "requestFullscreen" : "exitFullscreen"),
+      );
     }
-    if (this._pendingRequest !== null) return this._pendingRequest;
-    if (this._pendingExit !== null) {
-      const run = (): Promise<void> => this.requestFullscreen();
-      return this._pendingExit.then(run, run);
-    }
-    let support: HostSupport;
+    this._wantFullscreen = enter;
+    if (this._queuedFullscreen !== null) return this._queuedFullscreen;
+    const step = this._fullscreenStep;
+    if (step === null) return this.startFullscreenStep(part, enter);
+    if (step.enter === enter) return step.done;
+    const run = (): Promise<void> => this.runQueuedFullscreen(step);
+    const queued = step.done.then(run, run);
+    this._queuedFullscreen = queued;
+    return queued;
+  }
+
+  /**
+   * The run queued behind `step`, once it settled. When the latest call asked
+   * for the direction `step` went, the queued calls share its outcome, so a
+   * refused request is not asked for a second time.
+   */
+  private runQueuedFullscreen(step: FullscreenStep): Promise<void> {
+    this._queuedFullscreen = null;
+    if (this._wantFullscreen === step.enter) return step.done;
+    return this.changeFullscreen(this._wantFullscreen);
+  }
+
+  private startFullscreenStep(
+    part: HostFullscreen,
+    enter: boolean,
+  ): Promise<void> {
+    let support: HostSupport | undefined;
     try {
-      if (readFullscreenActive(part)) return Promise.resolve();
-      support = readFullscreenSupport(part);
+      if (readFullscreenActive(part) === enter) return Promise.resolve();
+      if (enter) support = readFullscreenSupport(part);
     } catch (error) {
       return Promise.reject(error as Error);
     }
@@ -1235,54 +1311,17 @@ export class RendererPlugin implements Plugin, RendererAdapter {
         ),
       );
     }
-    const pending: Promise<void> = part.request().then(
+    const done: Promise<void> = (enter ? part.request() : part.exit()).then(
       () => {
-        this.settleFullscreen(pending);
+        this.settleFullscreen(done);
       },
       (error: unknown) => {
-        this.settleFullscreen(pending);
+        this.settleFullscreen(done);
         throw error;
       },
     );
-    this._pendingRequest = pending;
-    return pending;
-  }
-
-  /**
-   * Leave fullscreen. Resolves once the game is not fullscreen, with
-   * `screen:fullscreen` already emitted. Resolves without asking the host when
-   * the game is not fullscreen, so another element's fullscreen is left alone.
-   *
-   * A second call made while an exit is in flight shares that exit's promise,
-   * and a call made while a request is in flight runs once the request
-   * settles.
-   */
-  exitFullscreen(): Promise<void> {
-    const part = this._fullscreen;
-    if (part === null) {
-      return Promise.reject(displayUnavailable("exitFullscreen"));
-    }
-    if (this._pendingExit !== null) return this._pendingExit;
-    if (this._pendingRequest !== null) {
-      const run = (): Promise<void> => this.exitFullscreen();
-      return this._pendingRequest.then(run, run);
-    }
-    try {
-      if (!readFullscreenActive(part)) return Promise.resolve();
-    } catch (error) {
-      return Promise.reject(error as Error);
-    }
-    const pending: Promise<void> = part.exit().then(
-      () => {
-        this.settleFullscreen(pending);
-      },
-      (error: unknown) => {
-        this.settleFullscreen(pending);
-        throw error;
-      },
-    );
-    this._pendingExit = pending;
-    return pending;
+    this._fullscreenStep = { enter, done };
+    return done;
   }
 
   /**
@@ -1385,13 +1424,13 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
-   * Drop the settled transition and publish the state the host reports.
-   * Clearing first lets a `screen:fullscreen` handler start the next
-   * transition rather than join the one that just finished.
+   * Drop the settled step and publish the state the host reports. Clearing
+   * first lets a `screen:fullscreen` handler start the next transition rather
+   * than join the one that just finished; while a run is queued, the
+   * handler's call joins that run.
    */
-  private settleFullscreen(pending: Promise<void>): void {
-    if (this._pendingRequest === pending) this._pendingRequest = null;
-    if (this._pendingExit === pending) this._pendingExit = null;
+  private settleFullscreen(done: Promise<void>): void {
+    if (this._fullscreenStep?.done === done) this._fullscreenStep = null;
     this._syncDisplay();
   }
 

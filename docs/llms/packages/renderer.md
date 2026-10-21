@@ -143,7 +143,7 @@ The config type admits those two names only, so `"canvas"` fails to compile; any
 
 A browser takes the graphics context away when the system reclaims the GPU: a driver reset, a laptop switching graphics processors, an application the system put in the background. While the context is gone nothing draws and the canvas keeps its last frame.
 
-`renderer.contextLost` reads the state live. The engine's event bus carries `graphics:context` with `{ lost: boolean }`: `{ lost: true }` when the context goes, `{ lost: false }` when Pixi has it back. Each arrives at the start of the next frame, before the game loop runs, so a handler never runs inside Pixi's own recovery.
+`renderer.contextLost` reads the state live. The engine's event bus carries `graphics:context` with `{ lost: boolean }`: `{ lost: true }` when the context goes, `{ lost: false }` when Pixi has it back. Each arrives in the next frame the game loop runs, at the start of its `Render` phase: after the game's updates, before `DisplaySystem` copies transforms and before lighting draws. A handler never runs inside Pixi's own recovery. A handler that throws stops the loop, like any error that escapes a frame, and while the loop is stopped the events wait.
 
 ```ts yage-context="engine"
 const overlay = document.getElementById("graphics-interrupted")!;
@@ -310,7 +310,7 @@ In a Capacitor app with `@yagejs/host-capacitor`, fullscreen comes from the page
 Rules that hold whichever host supplies the state:
 
 - Each event is emitted once per change, and before the promise of a request the game made resolves. A repeated page event, or one for another element's fullscreen, emits nothing.
-- A request made while a request is pending shares that request's promise. One made while an exit is pending runs after the exit settles, and the reverse — the last call wins, which is what a player clicking a toggle twice expects.
+- The last call wins, which is what a player clicking a toggle several times expects. A request made while a request is pending shares that request's promise. One made while an exit is pending waits for the exit to settle and then moves in the direction of the latest call, and the reverse; every call made in the meantime shares that one run. A call a later one overrode resolves when the final transition settles, so exit, request, exit leaves the game out of fullscreen and all three promises resolve. When the pending transition already went where the latest call asked, the waiting calls share its result, a refusal included.
 - `requestFullscreen()` rejects with `RendererPlugin.requestFullscreen: this host cannot change to fullscreen (fullscreenSupport is "unsupported").` where the support says so, and with the host's own error when the host refuses (no user gesture, a denied permission). `lockOrientation()` rejects the same way through `RendererPlugin.lockOrientation: this host cannot lock the screen orientation (orientationLockSupport is "unsupported").`
 - No order is promised between `screen:orientation` and the canvas taking its new size. Layout code reads the fit getters each frame.
 - The eight members are available from the renderer's `onStart` to `engine.destroy()`. A plugin that reads one in its own `onStart` is registered after `RendererPlugin`. Outside that span each one fails with `RendererPlugin.<member>: the display is only available from the renderer's onStart to engine.destroy(). A plugin that reads it in its own onStart must be registered after RendererPlugin.`
@@ -1946,6 +1946,7 @@ Semantics of a handle from `createRenderTarget`:
 - **One owner frees three things.** A render target is the texture (`handle.destroy()`), the source container (`source.destroy({ children: true })` — `handle.destroy()` never touches it) and any key it was registered under (`unregisterTexture(key)`, or that key keeps resolving a destroyed texture). Put all three in one component's `onDestroy`, which runs when its entity is destroyed or when the scene tears down. A scene's `onEnter` / `onExit` pair is the alternative for a buffer whose lifetime is the whole scene.
 - **Cost.** Every `render()` is a full draw of the source plus a render-target switch. A buffer that only changes when the game state does should be invalidated on that change, not every frame. A buffer that tracks moving content pays that cost per frame — `resolutionScale` is the lever there.
 - **A restored graphics context redraws every buffer.** After the browser gives the page a context back, each live target draws from its source again at the next frame, inputs before the targets that sample them. A target whose source was destroyed throws then, as it would on any other draw.
+- **The texture outlives the engine.** `engine.destroy()` stops every buffer following the renderer and leaves its texture to the game, so `handle.destroy()` still frees it afterwards, from a hot-reload or test teardown that runs after the engine is gone.
 - **Backends.** The renderer asks Pixi for WebGL first, and for WebGPU first with `pixi: { preference: "webgpu" }`; it never asks for Canvas 2D. Blend behaviour inside a render target, `"erase"` included, is verified on WebGL and unmeasured on WebGPU.
 
 ## Save state
@@ -2047,7 +2048,7 @@ Semantics:
 - Re-registering a key replaces the entry; components constructed before the replacement keep the old texture instance (resolution happens at construction).
 - Registering a key already used by a loaded asset (or any cache entry the API didn't create) throws — shadowing a loaded asset would let that asset's unload destroy the registered texture.
 - A runtime texture also works as a graphics fill — `g.rect(...).fill({ texture, textureSpace: "global" })` tiles it across the shape. See "Texture fills". Do not call `update()` on the `source` of a `createTexture` result: that re-uploads the texture empty and it stays blank.
-- A `createTexture` result keeps the drawing it was baked from and draws it again after a lost graphics context is restored. `texture.destroy()` frees the drawing with it.
+- A `createTexture` result keeps the drawing it was baked from and draws it again after a lost graphics context is restored. `texture.destroy()` frees the drawing with it, also after `engine.destroy()`, which leaves the texture to the game.
 - A frame grid needs the size option on `createTexture`. Without it the texture measures the drawn bounds and its origin is the top-left of the drawing, so `frameWidth` slices land between the shapes rather than on them: four circles of radius 6 to 12 drawn at `x = i * 32 + 16` bake into a 114 x 24 texture whose cells start 10 pixels off. `{ width: 128, height: 32 }` makes the grid line up. A non-finite or zero dimension throws naming the dimension.
 
 **`installBitmapFont(source, opts)`** — bake a bitmap glyph atlas from a `.ttf`/`.woff` at runtime via Pixi v8's `BitmapFont.install`. Returns the registered font name, ready to pass as `style.fontFamily` (with `bitmap: true`):

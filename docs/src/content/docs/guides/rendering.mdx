@@ -145,7 +145,10 @@ engine.events.on("graphics:context", ({ lost }) => {
 });
 ```
 
-Each event arrives at the start of the next frame, before the game loop runs.
+Each event arrives in the next frame the game loop runs, at the start of the
+`Render` phase: after the component updates, and before the frame's transforms
+are copied to the display objects and lighting draws. A handler that throws
+stops the loop, the same way any error that escapes a frame does.
 `renderer.contextLost` reads the same state at any moment.
 
 Everything the engine drew comes back by itself once the browser hands over a
