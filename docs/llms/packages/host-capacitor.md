@@ -112,9 +112,9 @@ to the browser's storage.
 
 ## What the game reads
 
-Every Android statement on this page, the default save profile, and the iOS
-cases that need a phone (a call, Control Centre, a notification banner, a
-system alert) follow from Capacitor's source code and have not been run.
+Every Android statement on this page, the default save profile on a device,
+and the iOS cases that need a phone (a call, Control Centre, a notification
+banner, a system alert) follow from Capacitor's code and have not been run.
 
 `engine.host.info` reports `{ runtime: "capacitor", os, appVersion,
 appBuild }`. `os` is `"ios"` or `"android"`; `appVersion` and `appBuild` are
@@ -206,11 +206,14 @@ saves where they are, and builds with different profiles never read each
 other's saves.
 
 Without `profile`, the profile is `"development"` when `Capacitor.DEBUG` is
-`true` and `"release"` otherwise. The app sets `Capacitor.DEBUG` to `true` in
-an iOS build with the Debug configuration and in a debuggable Android build,
-such as the `debug` build type. A Debug build and a Release build of one app
-install into one app container, and the two default profiles keep their saves
-apart. A game that passes `profile` names the directory itself.
+`true` and `"release"` otherwise. On a device, the app sets `Capacitor.DEBUG`
+to `true` in an iOS build with the Debug configuration and in a debuggable
+Android build, such as the `debug` build type. The iOS simulator reports
+`true` in every configuration, so a simulator build saves under
+`"development"` even when it is a Release build. A Debug build and a Release
+build of one app install into one app container, and the two default profiles
+keep their saves apart. A game that passes `profile` names the directory
+itself.
 
 The algorithm is `fileAdapter` from `@yagejs/save`: a shadow file and a
 checksum, so an interrupted write leaves the previous value or the new one

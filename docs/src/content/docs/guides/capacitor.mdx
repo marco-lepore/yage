@@ -152,9 +152,9 @@ carries it; see
 
 ## What the game gets
 
-Every Android behaviour on this page, the default save profile, and the iOS
-cases that need an iPhone (a call, Control Centre, a system alert or a
-permission dialog) follow from Capacitor's source code and have not been run.
+Every Android behaviour on this page, the default save profile on a device,
+and the iOS cases that need an iPhone (a call, Control Centre, a system alert
+or a permission dialog) follow from Capacitor's code and have not been run.
 
 ### Who is running it
 
@@ -259,10 +259,13 @@ the app's bundle identifier, so renaming the app leaves the saves where they
 are, and builds with different profiles never read each other's slots.
 
 The profile comes from the build. The adapter reads `Capacitor.DEBUG`, which
-the app sets to `true` in an iOS build with the Debug configuration and in a
-debuggable Android build. Such a build saves under `development`, and any
-other build under `release`. A Debug build and a Release build of one app
-install into one app container, and the two profiles keep their saves apart.
+the app sets to `true` on a device in an iOS build with the Debug
+configuration and in a debuggable Android build. Such a build saves under
+`development`, and any other build under `release`. The iOS simulator
+reports `true` in every configuration, so a simulator build saves under
+`development` even when it is a Release build. A Debug build and a Release
+build of one app install into one app container, and the two profiles keep
+their saves apart.
 To name the directory yourself, pass a profile:
 `capacitorSaveAdapter({ profile: "beta" })`.
 

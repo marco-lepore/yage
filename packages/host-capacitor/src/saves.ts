@@ -11,8 +11,9 @@ export interface CapacitorSaveAdapterOptions {
   /**
    * The build profile, such as "development" or "release". Each profile has
    * its own save directory. Defaults to "development" when `Capacitor.DEBUG`
-   * is true, which the app sets in an iOS Debug build and a debuggable
-   * Android build, and to "release" otherwise.
+   * is true and to "release" otherwise. On a device the app sets it in an
+   * iOS Debug build and a debuggable Android build; the iOS simulator sets
+   * it in every build.
    */
   readonly profile?: string;
 }

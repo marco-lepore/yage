@@ -498,7 +498,9 @@ An Electron build takes its profile from `app.isPackaged`: a packaged app is
 a release, `electron-forge start` is development. A mobile build takes it
 from `Capacitor.DEBUG`: `capacitorSaveAdapter()` saves under `development` in
 a Debug build and under `release` otherwise, unless the game passes a
-`profile`. The profile names the save directory, so builds with different
+`profile`. The iOS simulator sets `Capacitor.DEBUG` in every build, so a
+simulator build saves under `development` even when it is a Release build.
+The profile names the save directory, so builds with different
 profiles never share saves. A Debug build and a Release build of one mobile
 app install into one app container, and the two default profiles keep their
 saves apart.

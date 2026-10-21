@@ -40,15 +40,16 @@ both throw an error that says to leave them out of a browser build.
 
 `capacitorSaveAdapter()` keeps the saves in a directory named after the build
 profile: `development` when the app is a debug build, which sets
-`Capacitor.DEBUG`, and `release` otherwise. Pass `{ profile }` to name the
-directory yourself.
+`Capacitor.DEBUG`, and `release` otherwise. The iOS simulator sets
+`Capacitor.DEBUG` in every build, so a simulator build saves under
+`development`. Pass `{ profile }` to name the directory yourself.
 
 The plugin reports the app's identity, whether it is active and whether the
 player can see it to `engine.host`, and registers the orientation lock the
 renderer performs through `renderer.lockOrientation`.
 
-Every Android behaviour of this package and the default save profile follow
-from Capacitor's source code and have not been run.
+Every Android behaviour of this package and the default save profile on a
+device follow from Capacitor's code and have not been run.
 
 ## The Android Back button
 
