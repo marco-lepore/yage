@@ -23,7 +23,11 @@ import {
   sendToBackground,
   terminate,
 } from "../lib/ios.js";
-import type { LaunchedApp, SimulatorDevice } from "../lib/ios.js";
+import type {
+  IosConfiguration,
+  LaunchedApp,
+  SimulatorDevice,
+} from "../lib/ios.js";
 import { scanForTestProfile, writeReport } from "../lib/report.js";
 import type { BaselineRunReport, ReportTarget } from "../lib/report.js";
 import {
@@ -1015,7 +1019,8 @@ function readCaseLines(lines: readonly string[]): Record<string, CaseReading> {
 }
 
 async function iosScenario(report: BaselineRunReport): Promise<void> {
-  const app = await prepareIosApp("Debug");
+  const configuration: IosConfiguration = "Debug";
+  const app = await prepareIosApp(configuration);
   const device = selectSimulator();
   report.system.device = device;
   report.shell.details = iosToolVersions();
@@ -1032,6 +1037,7 @@ async function iosScenario(report: BaselineRunReport): Promise<void> {
     recordReading(report, "booted", readings);
     const failures = checkReadings(report, readings);
     recordAppIdentity(report, launched.lines);
+    recordCapacitorDebug(report, configuration, launched.lines);
     const display = readings["display"];
     record(report, {
       name: "display: the app supplies the orientation lock",
@@ -1200,6 +1206,30 @@ function recordAppIdentity(
         : "failed",
     evidence: "console",
     detail: JSON.stringify(info),
+  });
+}
+
+/**
+ * The `window.Capacitor.DEBUG` value the boot line read, and the profile
+ * `capacitorSaveAdapter` defaults to with it: `"development"` when it is
+ * `true`, `"release"` otherwise. Recorded, not checked: the fixture passes its
+ * own profile, so no check depends on the default.
+ */
+function recordCapacitorDebug(
+  report: BaselineRunReport,
+  configuration: IosConfiguration,
+  lines: readonly string[],
+): void {
+  let debug: unknown = null;
+  for (const line of lines) {
+    const parsed = parseReportLine(line);
+    if (parsed === null || parsed["kind"] !== "boot") continue;
+    debug = parsed["capacitorDebug"] ?? null;
+  }
+  recordReading(report, "capacitor-debug", {
+    configuration,
+    debug,
+    defaultProfile: debug === true ? "development" : "release",
   });
 }
 

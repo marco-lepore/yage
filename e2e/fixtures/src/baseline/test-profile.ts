@@ -296,6 +296,16 @@ function nextFrame(): Promise<void> {
   });
 }
 
+/**
+ * The `DEBUG` value the Capacitor app wrote on `window.Capacitor`, which
+ * `capacitorSaveAdapter` reads when a game passes no profile. `null` on a page
+ * outside a Capacitor app.
+ */
+function capacitorDebug(): unknown {
+  const page = window as unknown as { Capacitor?: { DEBUG?: unknown } };
+  return page.Capacitor?.DEBUG ?? null;
+}
+
 /** Writes one line per reported event. */
 class BaselineReporter extends Component {
   private readonly reported = new Set<CaseName>();
@@ -316,6 +326,7 @@ class BaselineReporter extends Component {
       cases: reading.cases,
       userAgent: reading.userAgent,
       host: reading.host,
+      capacitorDebug: capacitorDebug(),
     });
     this.listenBus("host:active", (payload) => {
       this.write("host", { event: "host:active", payload });
