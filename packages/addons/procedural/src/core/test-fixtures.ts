@@ -17,8 +17,6 @@ export const crossRoom: RoomTemplate = {
 };
 export function roomDefinition(): RoomDefinition {
   return {
-    id: "test",
-    revision: "1",
     templates: [crossRoom, { ...crossRoom, id: "other" }],
     graph: {
       start: "start",
@@ -46,8 +44,6 @@ export const dungeonRequirements: RegionRequirements = {
   counts: [
     { kind: "shop", min: 1 },
     { kind: "forge", min: 1 },
-    { kind: "treasure", min: 2 },
-    { kind: "boss", min: 1 },
   ],
   minRegions: 15,
   fillKind: "hall",

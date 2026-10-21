@@ -1,81 +1,85 @@
 import { GridGraph } from "@yagejs/pathfinding";
-import { prepareRoomNavigation, validateRoomLayout } from "./core/layout.js";
-import { assertInteger, fail } from "./core/geometry.js";
+import { ownerOpen, tileOwner } from "./core/layout.js";
+import { fail } from "./core/internal.js";
 import type {
-  CatalogDefinition,
+  RoomConnection,
   RoomLayout,
+  RoomPlacement,
   TileMap,
   TileScale,
 } from "./core/types.js";
-import { resolveTileScale } from "./scale.js";
-export interface RoomNavigationOptions {
-  readonly keys?: readonly string[];
-  readonly maxCells?: number;
+
+export interface RoomLayoutGraphOptions extends TileScale {
+  /**
+   * Whether the game holds a key. Asked during every `findPath`, so a
+   * collected key opens its rooms and connections without a rebuild.
+   * Default: no keys.
+   */
+  readonly hasKey?: (key: string) => boolean;
 }
-/** Static four-neighbour navigation. Rebuild when the game's collected keys change. */
+
+/**
+ * Four-direction navigation over a room layout, with the same rules as
+ * `isRoomLayoutWalkable`. Queries and waypoints use world pixels.
+ */
 export function createRoomLayoutGraph(
-  definition: CatalogDefinition,
   layout: RoomLayout,
-  scale: TileScale,
-  options: RoomNavigationOptions = {},
+  options: RoomLayoutGraphOptions,
 ): GridGraph {
-  resolveTileScale(scale);
-  const errors = validateRoomLayout(definition, layout);
-  if (errors.length) fail(`invalid navigation layout: ${errors.join("; ")}`);
-  if (layout.validation.connectedWalkableCells !== true)
-    fail(
-      "Room navigation requires a navigation mask for every placed template",
-    );
-  const x = Math.min(...layout.rooms.map((r) => r.x)),
-    y = Math.min(...layout.rooms.map((r) => r.y));
-  const width = Math.max(...layout.rooms.map((r) => r.x + r.width)) - x,
-    height = Math.max(...layout.rooms.map((r) => r.y + r.height)) - y;
-  const max = options.maxCells ?? 1_000_000;
-  assertInteger("createRoomLayoutGraph maxCells", max, 1, 10_000_000);
-  assertInteger("createRoomLayoutGraph cell count", width * height, 1, max);
-  const navigation = prepareRoomNavigation(definition, layout, options.keys);
-  const cells = Array.from({ length: height }, () =>
-    Array<string>(width).fill("#"),
-  );
-  for (const { room, isWalkable } of navigation)
+  const hasKey = options.hasKey ?? (() => false);
+  const left = Math.min(...layout.regions.map((r) => r.x)),
+    top = Math.min(...layout.regions.map((r) => r.y));
+  const cols = Math.max(...layout.regions.map((r) => r.x + r.width)) - left,
+    rows = Math.max(...layout.regions.map((r) => r.y + r.height)) - top;
+  // Tile owners are resolved once; only the key checks run per query.
+  const owners: (RoomPlacement | RoomConnection | null)[] = Array(
+    cols * rows,
+  ).fill(null);
+  for (const room of layout.regions)
     for (let row = 0; row < room.height; row++)
       for (let col = 0; col < room.width; col++)
-        if (isWalkable(col, row))
-          cells[room.y - y + row]![room.x - x + col] = ".";
-  return createTileMapGraph(
-    { origin: { x, y }, cells: cells.map((row) => row.join("")) },
-    scale,
-    max,
-  );
+        owners[(room.y - top + row) * cols + room.x - left + col] = tileOwner(
+          layout.connections,
+          room,
+          col,
+          row,
+        );
+  const rooms = new Map(layout.regions.map((room) => [room.id, room]));
+  const room = (id: string): RoomPlacement => rooms.get(id)!;
+  return new GridGraph({
+    cols,
+    rows,
+    tileWidth: options.tileWidth,
+    tileHeight: options.tileHeight,
+    origin: { x: left * options.tileWidth, y: top * options.tileHeight },
+    diagonalMovement: "never",
+    isWalkable: (col, row) => {
+      const owner = owners[row * cols + col];
+      return !!owner && ownerOpen(owner, room, hasKey);
+    },
+  });
 }
-/** Navigation for a cell map, including cave output. No room catalog or region graph required. */
-export function createTileMapGraph(
-  map: TileMap,
-  scale: TileScale,
-  maxCells = 1_000_000,
-): GridGraph {
-  const { tileWidth, tileHeight } = resolveTileScale(scale);
-  assertInteger("createTileMapGraph maxCells", maxCells, 1, 10_000_000);
+
+/** Four-direction navigation over a tile map, such as a cave. Queries and waypoints use world pixels. */
+export function createTileMapGraph(map: TileMap, scale: TileScale): GridGraph {
   const rows = map.cells.length,
     cols = map.cells[0]?.length ?? 0;
-  assertInteger("createTileMapGraph cell count", rows * cols, 1, maxCells);
-  for (const axis of ["x", "y"] as const)
-    assertInteger(
-      `createTileMapGraph origin.${axis}`,
-      map.origin[axis],
-      -1_000_000,
-      1_000_000,
-    );
-  if (map.cells.some((row) => row.length !== cols || /[^.#]/u.test(row)))
-    fail("TileMap cells must be a rectangular #/. mask");
+  if (
+    !rows ||
+    map.cells.some((row) => row.length !== cols || /[^.#]/u.test(row))
+  )
+    fail('createTileMapGraph needs equal-length rows of "#" and "." cells');
   const cells = [...map.cells];
   return new GridGraph({
     cols,
     rows,
-    tileWidth,
-    tileHeight,
-    origin: { x: map.origin.x * tileWidth, y: map.origin.y * tileHeight },
+    tileWidth: scale.tileWidth,
+    tileHeight: scale.tileHeight,
+    origin: {
+      x: map.origin.x * scale.tileWidth,
+      y: map.origin.y * scale.tileHeight,
+    },
     diagonalMovement: "never",
-    isWalkable: (col, row) => cells[row]?.[col] === ".",
+    isWalkable: (col, row) => cells[row]![col] === ".",
   });
 }

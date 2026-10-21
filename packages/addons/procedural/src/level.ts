@@ -1,12 +1,17 @@
 import { instantiateLevel } from "@yagejs/level";
 import type { LevelInstance, PreparedLevel } from "@yagejs/level";
 import type { Scene } from "@yagejs/core";
-import type { CatalogDefinition, RoomLayout, TileScale } from "./core/types.js";
-import { validateRoomLayout } from "./core/layout.js";
-import { fail } from "./core/geometry.js";
-import { resolveTileScale } from "./scale.js";
+import type { RoomLayout, TileScale } from "./core/types.js";
+import { assertPositive, fail } from "./core/internal.js";
 
-/** Earlier successful loads remain owned by the caller when a later room throws. */
+export interface RoomLayoutLoadOptions extends TileScale {
+  /** Prepared level content for each template id the layout uses. */
+  readonly levels: Readonly<Record<string, PreparedLevel>>;
+  /** Room `i` loads with namespace `<namespace>:<i>`, in layout order. */
+  readonly namespace: string;
+}
+
+/** Thrown when one room fails to load. Rooms loaded before it stay in the scene and are the caller's to dispose. */
 export class RoomLayoutLoadError extends Error {
   readonly instances: readonly LevelInstance[];
   constructor(
@@ -21,42 +26,45 @@ export class RoomLayoutLoadError extends Error {
 }
 
 /**
- * Instantiate prepared authored room content at generated offsets. Returns the
- * existing level handles; the game owns their lifetime and door/wall rendering.
+ * Loads each room's prepared level at the room's position: its tile offset
+ * times the tile size. Returns one instance per room, in layout order; the
+ * game owns their lifetime. Walls, doors and locks stay game code.
  */
 export function instantiateRoomLayout(
   scene: Scene,
-  definition: CatalogDefinition,
   layout: RoomLayout,
-  levels: Readonly<Record<string, PreparedLevel>>,
-  namespace: string,
-  scale: TileScale,
+  options: RoomLayoutLoadOptions,
 ): readonly LevelInstance[] {
-  const { tileWidth, tileHeight } = resolveTileScale(scale);
-  const errors = validateRoomLayout(definition, layout);
-  if (errors.length) fail(`invalid level layout: ${errors.join("; ")}`);
-  if (!namespace || namespace.includes("/"))
-    fail("instantiateRoomLayout namespace must be non-empty and contain no /");
-  for (const [index, room] of layout.rooms.entries()) {
-    if (!Object.hasOwn(levels, room.templateId))
-      fail(`missing prepared level for template "${room.templateId}"`);
-    const prepared = levels[room.templateId]!;
-    if (prepared.diagnostics.length)
-      fail(`prepared level for template "${room.templateId}" has diagnostics`);
-    for (const { placement } of prepared.placements) {
-      const key = `${namespace}:${index}/${placement.key ?? placement.id}`;
-      if (scene.findByKey(key))
-        fail(`instantiateRoomLayout: scene key "${key}" is already occupied`);
-    }
+  assertPositive("instantiateRoomLayout tileWidth", options.tileWidth);
+  assertPositive("instantiateRoomLayout tileHeight", options.tileHeight);
+  // Room namespaces append ":<index>", which would hide an empty one from
+  // the level loader's own check.
+  if (!options.namespace)
+    fail("instantiateRoomLayout namespace must not be empty");
+  // Missing or refused content is a predictable failure, so it throws
+  // before any room loads.
+  for (const room of layout.regions) {
+    if (!Object.hasOwn(options.levels, room.templateId))
+      fail(
+        `instantiateRoomLayout has no prepared level for template "${room.templateId}"`,
+      );
+    const { diagnostics } = options.levels[room.templateId]!;
+    if (diagnostics.length)
+      fail(
+        `instantiateRoomLayout: prepared level for template "${room.templateId}" has ${diagnostics.length} diagnostics`,
+      );
   }
   const instances: LevelInstance[] = [];
-  for (const [index, room] of layout.rooms.entries()) {
+  for (const [index, room] of layout.regions.entries()) {
     try {
       instances.push(
-        instantiateLevel(scene, levels[room.templateId]!, {
-          namespace: `${namespace}:${index}`,
+        instantiateLevel(scene, options.levels[room.templateId]!, {
+          namespace: `${options.namespace}:${index}`,
           transform: {
-            position: { x: room.x * tileWidth, y: room.y * tileHeight },
+            position: {
+              x: room.x * options.tileWidth,
+              y: room.y * options.tileHeight,
+            },
           },
         }),
       );

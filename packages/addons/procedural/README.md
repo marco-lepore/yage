@@ -1,19 +1,23 @@
 # @yagejs-addons/procedural
 
-Generate region graphs from room counts, forbidden neighbours and key
-requirements. Select data-only catalog entries and weighted metadata variants
-under count, eligibility and neighbour rules. Assemble those graphs from catalog footprints and flexible
-connection areas, or generate cellular caves without room templates.
-All coordinates are integer tiles; engine adapters apply the game's pixel scale.
+Seeded map generation for YAGE, in integer tiles.
 
-`RegionGraphGenerator`, `CatalogGenerator`, `RoomGenerator` and `CaveGenerator` run directly or
-through `GenerationController` on a host entity. Each job has a seed,
-operation budget, cancellation and inspection. Catalog navigation masks are
-optional; walkability queries require them. Keys are reusable capabilities.
-The game owns collision, rendering, key pickups and door behavior.
+- `RegionGraphGenerator` turns requirements into a region graph: named
+  regions, counts per kind, forbidden neighbours and key-locked regions.
+- `RoomGenerator` places a room template for every region, with matching
+  doors, under catalog rules and weighted variants.
+- `CatalogGenerator` chooses templates and variants for a graph without
+  placing anything.
+- `CaveGenerator` builds a connected cellular cave.
 
-`/level` loads prepared YAGE level content. `/navigation` creates static
-four-direction navigation for a room layout with supplied keys or a tile map.
+Results are plain JSON that carry everything the game needs to draw,
+navigate and load each room. `GenerationController` runs any generator on
+an entity, a bounded amount of work per frame. Keys are permanent; the game
+owns pickups, doors, collision and rendering.
+
+`/navigation` builds pathfinding graphs for layouts and tile maps, reading the
+game's keys during every path search. `/level` loads authored YAGE level
+content into each room.
 
 See the [guide](https://yage.dev/addons/procedural/), the
 [agent reference](docs/llms/procedural.md), and the

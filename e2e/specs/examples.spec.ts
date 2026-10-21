@@ -1189,6 +1189,218 @@ test.describe("Examples", () => {
     expect(result.callbackErrors).toEqual([]);
     expect(errors).toEqual([]);
   });
+
+  test("procedural-rooms explores a generated dungeon and reports failed searches", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const errors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+    page.on("pageerror", (error) => errors.push(error.message));
+
+    await page.goto("/procedural-rooms.html?test");
+    await page.waitForFunction(
+      () => {
+        const insp = window.__yage__?.inspector;
+        return (
+          insp?.time.isFrozen() === true &&
+          insp.getSceneStack().at(-1)?.name === "procedural-rooms"
+        );
+      },
+      undefined,
+      { timeout: 10_000 },
+    );
+
+    interface Region {
+      id: string;
+      templateId: string;
+      variantId: string | null;
+      metadata: Record<string, unknown>;
+      tags: string[];
+    }
+    interface MapView {
+      mode: string;
+      seed: number;
+      status: string;
+      diagnostics: { code: string; message: string }[];
+      summary: {
+        regions: number;
+        keys: string[];
+        visited: string[];
+        caveSize: { width: number; height: number } | null;
+      };
+      generation: {
+        regions: Region[];
+        connections: { fromPort?: string; fromOpening?: unknown }[];
+      };
+    }
+    interface Stop {
+      currentRoom: string | null;
+      targetRoom: string | null;
+      walking: boolean;
+      blocked: boolean;
+      atTarget: boolean;
+      /** Space found a route and the explorer set off. */
+      started: boolean;
+      keys: string[];
+      visited: number;
+    }
+    // Taps a key, steps until the map's generation job finishes, and reads
+    // the map. The job runs inside a GenerationController, a bounded number
+    // of operations per frame.
+    const press = (code: string): Promise<MapView> =>
+      page.evaluate((code) => {
+        const insp = window.__yage__!.inspector;
+        const map = () =>
+          insp.getComponentData("MapHost", "MapState") as Omit<
+            MapView,
+            "generation"
+          >;
+        insp.input.tap(code);
+        for (let frame = 0; frame < 600 && map().status === "running"; frame++)
+          insp.time.step(1);
+        return {
+          ...map(),
+          generation: (
+            insp.getComponentData("MapHost", "GenerationController") as {
+              generation: MapView["generation"];
+            }
+          ).generation,
+        };
+      }, code);
+    // Walks to each room in turn, in one page call. Tab cycles the target
+    // through the map's regions; `null` keeps the current target. Space
+    // walks the route there, and the frames step until the walk ends.
+    const tour = (rooms: readonly (string | null)[]): Promise<Stop[]> =>
+      page.evaluate((rooms) => {
+        const insp = window.__yage__!.inspector;
+        const explorer = () =>
+          (
+            insp.getComponentData("ExplorerEntity", "Explorer") as {
+              exploration: Omit<Stop, "started" | "keys" | "visited">;
+            }
+          ).exploration;
+        const map = () =>
+          insp.getComponentData("MapHost", "MapState") as Pick<
+            MapView,
+            "summary"
+          >;
+        return rooms.map((room) => {
+          for (let i = 0; i < 20 && room && explorer().targetRoom !== room; i++)
+            insp.input.tap("Tab");
+          insp.input.tap("Space");
+          const started = explorer().walking;
+          for (let frame = 0; frame < 3000 && explorer().walking; frame++)
+            insp.time.step(1);
+          const { keys, visited } = map().summary;
+          return {
+            ...explorer(),
+            started,
+            keys: [...keys].sort(),
+            visited: visited.length,
+          };
+        });
+      }, rooms);
+
+    // Seeds come from the scene's random service, which `?test` makes
+    // deterministic, so this run always sees the same dungeon.
+    const first = await press("Digit1");
+    expect(first.mode).toBe("dungeon");
+    expect(first.status).toBe("succeeded");
+    const rooms = first.generation.regions;
+    expect(rooms).toHaveLength(15);
+    expect(first.generation.connections).toHaveLength(14);
+    // The catalog rules: exactly one healing shop, two to five mossy halls.
+    const healing = rooms.filter((room) => room.tags.includes("healing"));
+    expect(healing).toHaveLength(1);
+    expect(healing[0]).toMatchObject({
+      templateId: "shop",
+      variantId: "healing",
+      metadata: { stock: "potions", merchant: "traveller" },
+    });
+    const moss = rooms.filter((room) => room.tags.includes("moss"));
+    expect(moss.length).toBeGreaterThanOrEqual(2);
+    expect(moss.length).toBeLessThanOrEqual(5);
+
+    const [lockedBoss, treasureA, treasureB, boss, ...visits] = await tour([
+      "boss",
+      "treasure-a",
+      "treasure-b",
+      "boss",
+      ...rooms.map((room) => room.id),
+    ]);
+    // The boss room needs both keys. Each treasure room grants one.
+    expect(lockedBoss).toMatchObject({ blocked: true, started: false });
+    expect(treasureA).toMatchObject({ currentRoom: "treasure-a" });
+    expect(treasureA?.keys).toContain("key-a");
+    expect(treasureB).toMatchObject({
+      currentRoom: "treasure-b",
+      keys: ["key-a", "key-b"],
+    });
+    expect(boss).toMatchObject({ currentRoom: "boss", blocked: false });
+    // With both keys, every room is reachable.
+    expect(visits.map((stop) => stop.currentRoom)).toEqual(
+      rooms.map((room) => room.id),
+    );
+    expect(visits.at(-1)?.visited).toBe(15);
+
+    // R moves to the next seed and starts a new run.
+    const layouts = new Set([JSON.stringify(rooms)]);
+    let seed = first.seed;
+    for (let i = 0; i < 3; i++) {
+      const next = await press("KeyR");
+      expect(next.status).toBe("succeeded");
+      expect(next.seed).toBe(seed + 1);
+      expect(next.summary.keys).toEqual([]);
+      seed = next.seed;
+      layouts.add(JSON.stringify(next.generation.regions));
+    }
+    // Every seed gives a different layout.
+    expect(layouts.size).toBe(4);
+
+    // A budget too small for fifteen rooms stops without an answer, and an
+    // impossible rule exhausts the search.
+    const budget = await press("KeyB");
+    expect(budget.status).toBe("budget-exceeded");
+    expect(budget.diagnostics.at(-1)?.code).toBe("budget");
+    const impossible = await press("KeyU");
+    expect(impossible.status).toBe("exhausted");
+    expect(
+      impossible.diagnostics.find((d) => d.code === "catalog-rule")?.message,
+    ).toContain('breaks the forbidden connection {"kind":"entrance"} to {}');
+    expect(await press("KeyR")).toMatchObject({
+      mode: "dungeon",
+      status: "succeeded",
+    });
+
+    // The catalog map selects templates and connection slots without placing
+    // anything.
+    const catalog = await press("Digit2");
+    expect(catalog.status).toBe("succeeded");
+    expect(catalog.generation.regions).toHaveLength(15);
+    expect(
+      catalog.generation.connections.every(
+        (link) => link.fromPort !== undefined && link.fromOpening === undefined,
+      ),
+    ).toBe(true);
+
+    // The cave is one connected floor area, so the walk to its marked tile
+    // arrives.
+    const cave = await press("Digit3");
+    expect(cave.status).toBe("succeeded");
+    expect(cave.summary.caveSize).toEqual({ width: 72, height: 42 });
+    expect(await tour([null])).toMatchObject([
+      { started: true, walking: false, blocked: false, atTarget: true },
+    ]);
+
+    const callbackErrors = await page.evaluate(
+      () => window.__yage__!.inspector.getErrors().callbackErrors,
+    );
+    expect(callbackErrors).toEqual([]);
+    expect(errors).toEqual([]);
+  });
 });
 
 // The index page (examples/index.html): a sidebar of every example and a

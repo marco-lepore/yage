@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { createMockScene, Entity, Transform } from "@yagejs/core";
 import {
   buildLevelCatalog,
@@ -9,6 +9,7 @@ import {
 import type { LevelDocument } from "@yagejs/level";
 import { RoomGenerator } from "./core/RoomGenerator.js";
 import { roomDefinition } from "./core/test-fixtures.js";
+import type { RoomDefinition } from "./core/types.js";
 import { instantiateRoomLayout, RoomLayoutLoadError } from "./level.js";
 class Marker extends Entity {
   static readonly level = defineLevelEntity({ id: "marker", version: 1 });
@@ -42,44 +43,53 @@ it("loads existing authored levels at room offsets and preserves per-instance ke
     ],
   };
   const prepared = prepareLevel(document, catalog.catalog);
-  const definition = roomDefinition(),
-    layout = new RoomGenerator(definition, { seed: 0 }).generate()!;
+  const layout = new RoomGenerator(roomDefinition(), {
+    seed: 0,
+  }).generate()!;
   const { scene } = createMockScene();
+  const options = {
+    levels: { cross: prepared, other: prepared },
+    namespace: "dungeon",
+    tileWidth: 16,
+    tileHeight: 32,
+  };
   expect(() =>
-    instantiateRoomLayout(scene, definition, layout, {}, "dungeon", {
-      tileWidth: 16,
-      tileHeight: 32,
+    instantiateRoomLayout(scene, layout, {
+      ...options,
+      levels: { cross: prepared },
     }),
-  ).toThrow("missing prepared level");
+  ).toThrow('no prepared level for template "other"');
+  expect(scene.findByKey("dungeon:0/marker")).toBeUndefined();
+  const refused = prepareLevel(
+    {
+      ...document,
+      entities: [{ ...document.entities[0]!, type: "missing" }],
+    },
+    catalog.catalog,
+  );
+  expect(refused.diagnostics.length).toBeGreaterThan(0);
+  expect(() =>
+    instantiateRoomLayout(scene, layout, {
+      ...options,
+      levels: { cross: prepared, other: refused },
+    }),
+  ).toThrow('prepared level for template "other" has');
   expect(scene.findByKey("dungeon:0/marker")).toBeUndefined();
   expect(() =>
-    instantiateRoomLayout(
-      scene,
-      definition,
-      layout,
-      { cross: prepared, other: prepared },
-      "dungeon",
-      {
-        tileWidth: NaN,
-        tileHeight: 32,
-      },
-    ),
-  ).toThrow("tileWidth");
+    instantiateRoomLayout(scene, layout, { ...options, namespace: "" }),
+  ).toThrow("namespace must not be empty");
+  for (const tileWidth of [NaN, 0, -16])
+    expect(() =>
+      instantiateRoomLayout(scene, layout, { ...options, tileWidth }),
+    ).toThrow("tileWidth");
   expect(scene.findByKey("dungeon:0/marker")).toBeUndefined();
-  const instances = instantiateRoomLayout(
-    scene,
-    definition,
-    layout,
-    { cross: prepared, other: prepared },
-    "dungeon",
-    { tileWidth: 16, tileHeight: 32 },
-  );
+  const instances = instantiateRoomLayout(scene, layout, options);
   for (let i = 0; i < instances.length; i++) {
     const marker = instances[i]!.get("marker")!;
     expect(scene.findByKey(`dungeon:${i}/marker`)).toBe(marker);
     expect(marker.get(Transform).position).toMatchObject({
-      x: layout.rooms[i]!.x * 16 + 40,
-      y: layout.rooms[i]!.y * 32 + 40,
+      x: layout.regions[i]!.x * 16 + 40,
+      y: layout.regions[i]!.y * 32 + 40,
     });
   }
   for (const instance of instances) instance.dispose();
@@ -90,64 +100,61 @@ it("loads existing authored levels at room offsets and preserves per-instance ke
   ).toBe(true);
 });
 
-it.each([undefined, "landmark/entrance"])(
-  "rejects occupied later-room keys before setup, with placement key %s",
-  (key) => {
-    const catalog = buildLevelCatalog(
-      defineLevelProject({ entities: [Marker] }),
-    );
-    if (!catalog.ok) throw new Error("test catalog failed");
-    const prepared = prepareLevel(
-      {
-        format: "yage-level",
-        version: 1,
-        id: "room",
-        metadata: {},
-        extensions: {},
-        entities: [
-          {
-            id: "marker",
-            ...(key === undefined ? {} : { key }),
-            type: "marker",
-            typeVersion: 1,
-            active: true,
-            transform: {
-              position: { x: 40, y: 40 },
-              rotation: 0,
-              scale: { x: 1, y: 1 },
-            },
-            params: {},
-            extensions: {},
+it("stops at a room whose scene key is taken and hands back the rooms loaded before it", () => {
+  const catalog = buildLevelCatalog(defineLevelProject({ entities: [Marker] }));
+  if (!catalog.ok) throw new Error("test catalog failed");
+  const prepared = prepareLevel(
+    {
+      format: "yage-level",
+      version: 1,
+      id: "room",
+      metadata: {},
+      extensions: {},
+      entities: [
+        {
+          id: "marker",
+          type: "marker",
+          typeVersion: 1,
+          active: true,
+          transform: {
+            position: { x: 40, y: 40 },
+            rotation: 0,
+            scale: { x: 1, y: 1 },
           },
-        ],
-      },
-      catalog.catalog,
-    );
-    const definition = roomDefinition();
-    const layout = new RoomGenerator(definition, { seed: 0 }).generate()!;
-    const { scene } = createMockScene();
-    const occupiedKey = `dungeon:${layout.rooms.length - 1}/${key ?? "marker"}`;
-    const existing = scene.spawn(Marker, { key: occupiedKey, active: false });
-    const setup = vi.spyOn(Marker.prototype, "setup");
-    try {
-      expect(() =>
-        instantiateRoomLayout(
-          scene,
-          definition,
-          layout,
-          { cross: prepared, other: prepared },
-          "dungeon",
-          { tileWidth: 16, tileHeight: 32 },
-        ),
-      ).toThrow(`scene key "${occupiedKey}" is already occupied`);
-      expect(setup).not.toHaveBeenCalled();
-      expect([...scene.getEntities()]).toEqual([existing]);
-      expect(scene.findByKey(occupiedKey)).toBe(existing);
-    } finally {
-      setup.mockRestore();
-    }
-  },
-);
+          params: {},
+          extensions: {},
+        },
+      ],
+    },
+    catalog.catalog,
+  );
+  const layout = new RoomGenerator(roomDefinition(), {
+    seed: 0,
+  }).generate()!;
+  const { scene } = createMockScene();
+  const existing = scene.spawn(Marker, { key: "dungeon:1/marker" });
+  let failure: RoomLayoutLoadError | undefined;
+  try {
+    instantiateRoomLayout(scene, layout, {
+      levels: { cross: prepared, other: prepared },
+      namespace: "dungeon",
+      tileWidth: 16,
+      tileHeight: 32,
+    });
+  } catch (error) {
+    if (!(error instanceof RoomLayoutLoadError)) throw error;
+    failure = error;
+  }
+  expect(failure?.roomId).toBe(layout.regions[1]!.id);
+  expect(String((failure?.cause as Error).message)).toContain(
+    "dungeon:1/marker",
+  );
+  expect(failure?.instances).toHaveLength(1);
+  expect(scene.findByKey("dungeon:0/marker")).toBe(
+    failure!.instances[0]!.get("marker"),
+  );
+  expect(scene.findByKey("dungeon:1/marker")).toBe(existing);
+});
 
 it("preserves earlier handles and stops loading when a room's setup throws", () => {
   class BrokenMarker extends Entity {
@@ -182,7 +189,7 @@ it("preserves earlier handles and stops loading when a room's setup throws", () 
       },
     ],
   });
-  const definition = {
+  const definition: RoomDefinition = {
     ...roomDefinition(),
     templates: [
       { ...roomDefinition().templates[0]!, kinds: ["good"] },
@@ -205,17 +212,15 @@ it("preserves earlier handles and stops loading when a room's setup throws", () 
   const { scene } = createMockScene();
   let failure: RoomLayoutLoadError | undefined;
   try {
-    instantiateRoomLayout(
-      scene,
-      definition,
-      layout,
-      {
+    instantiateRoomLayout(scene, layout, {
+      levels: {
         cross: prepareLevel(makeDocument("marker"), catalog.catalog),
         other: prepareLevel(makeDocument("broken"), catalog.catalog),
       },
-      "dungeon",
-      { tileWidth: 16, tileHeight: 32 },
-    );
+      namespace: "dungeon",
+      tileWidth: 16,
+      tileHeight: 32,
+    });
   } catch (error) {
     if (!(error instanceof RoomLayoutLoadError)) throw error;
     failure = error;

@@ -1,155 +1,165 @@
-import { createRandomService } from "@yagejs/core";
-import type { RandomService } from "@yagejs/core";
-import { GenerationSearch } from "./GenerationSearch.js";
+import { GenerationSearch, restartAfter } from "./GenerationSearch.js";
 import {
-  assignment,
-  CatalogCandidates,
   portAvailable,
+  selectionErrors,
   validateCatalogDefinition,
-  validateCatalogSelection,
 } from "./catalog.js";
-import type { CatalogChoice } from "./catalog.js";
-import { fail, freezeCopy } from "./geometry.js";
+import type { Candidate, CatalogCandidates } from "./catalog.js";
+import { freezeCopy } from "./internal.js";
 import type {
-  CatalogAssignment,
   CatalogDefinition,
-  CatalogGenerationSnapshot,
+  CatalogGenerationInspection,
   CatalogLink,
   CatalogSelection,
   GenerationOptions,
   RegionConnection,
 } from "./types.js";
 
-/** Selects entries, variants and connection slots without placing rooms. */
+/**
+ * Selects a template, variant and connection slots for every region of the
+ * supplied graph, without placing anything. The graph is kept as given,
+ * cycles included.
+ */
 export class CatalogGenerator extends GenerationSearch<CatalogSelection> {
   readonly definition: CatalogDefinition;
   private readonly candidates: CatalogCandidates;
-  private readonly random: RandomService;
-  private readonly regions: CatalogAssignment[] = [];
-  private readonly connections: CatalogLink[] = [];
+  private readonly chosen: Candidate[] = [];
+  private readonly links: CatalogLink[] = [];
   constructor(definition: CatalogDefinition, options: GenerationOptions) {
-    super(options);
-    this.definition = validateCatalogDefinition(definition);
-    this.candidates = new CatalogCandidates(this.definition);
-    this.random = createRandomService(this.seed);
+    super(options, restartAfter(definition.graph.regions.length));
+    this.definition = freezeCopy(definition);
+    this.candidates = validateCatalogDefinition(this.definition, false);
   }
-  private *join(
-    choice: CatalogChoice,
-    edges: readonly RegionConnection[],
-    extra: CatalogLink[] = [],
-  ): Generator<CatalogLink[] | null> {
-    if (!edges.length) {
-      yield extra;
-      return;
-    }
-    const edge = edges[0]!;
-    const other = this.candidates.find(
-      this.regions.find(
-        (r) => r.id === (edge.from === choice.id ? edge.to : edge.from),
-      )!,
-    )!;
-    for (const a of this.random.shuffle([...choice.connections]))
-      for (const b of this.random.shuffle([...other.connections])) {
-        const links = [...this.connections, ...extra];
-        if (
-          (a.socket ?? "passage") !== (b.socket ?? "passage") ||
-          !portAvailable(choice, a.id, links) ||
-          !portAvailable(other, b.id, links)
-        ) {
-          yield null;
-          continue;
-        }
-        const link = {
-          id: edge.id,
-          from: edge.from,
-          to: edge.to,
-          fromPort: edge.from === choice.id ? a.id : b.id,
-          toPort: edge.from === choice.id ? b.id : a.id,
-        };
-        yield* this.join(choice, edges.slice(1), [...extra, link]);
-      }
+  override inspect(): CatalogGenerationInspection {
+    return {
+      ...super.inspect(),
+      regions: this.chosen.map((c) => c.selected),
+      connections: [...this.links],
+    };
+  }
+  protected *run(): Generator<void, CatalogSelection | null> {
+    this.chosen.length = 0;
+    this.links.length = 0;
+    if (!(yield* this.search())) return null;
+    const graph = this.definition.graph;
+    // Results follow the graph's own order.
+    return {
+      start: graph.start,
+      regions: graph.regions.map(
+        (region) =>
+          this.chosen.find((c) => c.region.id === region.id)!.selected,
+      ),
+      connections: graph.connections.map(
+        (edge) => this.links.find((link) => link.id === edge.id)!,
+      ),
+    };
+  }
+  /** Graph connections between `regionId` and regions already chosen. */
+  private edgesToChosen(regionId: string): RegionConnection[] {
+    const chosen = (id: string): boolean =>
+      this.chosen.some((c) => c.region.id === id);
+    return this.definition.graph.connections.filter(
+      (edge) =>
+        (edge.from === regionId && chosen(edge.to)) ||
+        (edge.to === regionId && chosen(edge.from)),
+    );
   }
   private *search(): Generator<void, boolean> {
-    if (this.regions.length === this.definition.graph.regions.length)
-      return this.candidates.accepts(this.regions, true);
     const graph = this.definition.graph;
-    const edgesFor = (regionId: string): RegionConnection[] =>
-      graph.connections.filter(
-        (edge) =>
-          (edge.from === regionId &&
-            this.regions.some((r) => r.id === edge.to)) ||
-          (edge.to === regionId &&
-            this.regions.some((r) => r.id === edge.from)),
-      );
-    const region = this.regions.length
+    if (this.chosen.length === graph.regions.length) {
+      const broken = this.candidates.brokenRule(this.chosen, true);
+      if (broken)
+        this.note(
+          "catalog-rule",
+          `The complete selection breaks the ${broken}.`,
+        );
+      return !broken;
+    }
+    // Start first, then the connected region with the fewest candidates.
+    const region = this.chosen.length
       ? graph.regions
           .filter(
             (r) =>
-              !this.regions.some((value) => value.id === r.id) &&
-              edgesFor(r.id).length,
+              !this.chosen.some((c) => c.region.id === r.id) &&
+              this.edgesToChosen(r.id).length,
           )
           .sort(
             (a, b) =>
-              this.candidates.forRegion(a).length -
-              this.candidates.forRegion(b).length,
+              this.candidates.forRegion(a.id).length -
+              this.candidates.forRegion(b.id).length,
           )[0]!
       : graph.regions.find((r) => r.id === graph.start)!;
-    for (const choice of this.candidates.ordered(region, this.random)) {
+    const edges = this.edgesToChosen(region.id);
+    for (const candidate of this.candidates.ordered(region.id, this.random)) {
       yield;
-      const value = assignment(choice);
-      if (!this.candidates.accepts([...this.regions, value])) continue;
-      for (const links of this.join(choice, edgesFor(region.id))) {
+      const broken = this.candidates.brokenRule(
+        [...this.chosen, candidate],
+        false,
+      );
+      if (broken) {
+        this.note(
+          "catalog-rule",
+          `A candidate for "${region.id}" breaks the ${broken}.`,
+        );
+        continue;
+      }
+      for (const links of this.join(candidate, edges, [])) {
         yield;
         if (!links) continue;
-        this.regions.push(value);
-        this.connections.push(...links);
+        this.chosen.push(candidate);
+        this.links.push(...links);
         if (yield* this.search()) return true;
-        this.regions.pop();
-        this.connections.splice(this.connections.length - links.length);
-        yield;
+        this.chosen.pop();
+        this.links.splice(this.links.length - links.length);
       }
     }
     return false;
   }
-  protected *run(): Generator<void, CatalogSelection | null> {
-    if (!(yield* this.search())) return null;
-    return {
-      generatorVersion: 1,
-      definitionId: this.definition.id,
-      definitionRevision: this.definition.revision,
-      options: { seed: this.seed, maxSteps: this.maxSteps },
-      regions: this.regions,
-      connections: this.connections,
-    };
+  /** Every way to give each edge a free, socket-compatible slot at both ends. */
+  private *join(
+    candidate: Candidate,
+    edges: readonly RegionConnection[],
+    added: readonly CatalogLink[],
+  ): Generator<readonly CatalogLink[] | null> {
+    const edge = edges[0];
+    if (!edge) {
+      yield added;
+      return;
+    }
+    const otherId = edge.from === candidate.region.id ? edge.to : edge.from;
+    const other = this.chosen.find((c) => c.region.id === otherId)!;
+    const used = [...this.links, ...added];
+    for (const a of this.random.shuffle([...candidate.ports]))
+      for (const b of this.random.shuffle([...other.ports])) {
+        if (
+          (a.socket ?? "passage") !== (b.socket ?? "passage") ||
+          !portAvailable(candidate, a.id, used) ||
+          !portAvailable(other, b.id, used)
+        ) {
+          yield null;
+          continue;
+        }
+        const forward = edge.from === candidate.region.id;
+        const link: CatalogLink = {
+          ...edge,
+          fromPort: forward ? a.id : b.id,
+          toPort: forward ? b.id : a.id,
+        };
+        yield* this.join(candidate, edges.slice(1), [...added, link]);
+      }
   }
-  override inspect() {
-    return freezeCopy({
-      ...super.inspect(),
-      selectedRegions: this.regions,
-      connections: this.connections,
-    });
-  }
-  snapshot(): CatalogGenerationSnapshot {
-    if (!this.result) fail("snapshot requires a completed catalog selection");
-    return freezeCopy({
-      version: 1,
-      definition: this.definition,
-      selection: this.result,
-    });
-  }
-  static restore(snapshot: CatalogGenerationSnapshot): CatalogGenerator {
-    if (snapshot.version !== 1)
-      fail(`unsupported catalog snapshot version ${snapshot.version}`);
-    const job = new CatalogGenerator(
-      snapshot.definition,
-      snapshot.selection.options,
-    );
-    const errors = validateCatalogSelection(job.definition, snapshot.selection);
-    if (errors.length) fail(`invalid catalog snapshot: ${errors.join("; ")}`);
-    job._result = freezeCopy(snapshot.selection);
-    job._status = "succeeded";
-    job.regions.push(...job.result!.regions);
-    job.connections.push(...job.result!.connections);
-    return job;
-  }
+}
+
+/** Errors for a saved selection checked against the current definition. Throws for an invalid definition. */
+export function validateCatalogSelection(
+  definition: CatalogDefinition,
+  selection: CatalogSelection,
+): readonly string[] {
+  const candidates = validateCatalogDefinition(definition, false);
+  return selectionErrors(
+    candidates,
+    selection.start,
+    selection.regions,
+    selection.connections,
+  ).errors;
 }

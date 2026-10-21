@@ -1,33 +1,37 @@
-import { createRandomService } from "@yagejs/core";
 import { GenerationSearch } from "./GenerationSearch.js";
-import { assertInteger, direction, fail, freezeCopy } from "./geometry.js";
+import { direction } from "./geometry.js";
+import { assertInteger, fail, freezeCopy } from "./internal.js";
 import type { CaveOptions, TileMap } from "./types.js";
 
-/** Cellular cave generation. Keeps the largest connected floor area and a closed boundary. */
+/**
+ * Cellular cave on a closed boundary. Keeps only the largest connected floor
+ * area; when no floor survives smoothing, the centre tile is the floor.
+ */
 export class CaveGenerator extends GenerationSearch<TileMap> {
   readonly options: CaveOptions;
   constructor(options: CaveOptions) {
     super(options);
-    assertInteger("CaveGenerator width", options.width, 3, 256);
-    assertInteger("CaveGenerator height", options.height, 3, 256);
-    assertInteger("CaveGenerator iterations", options.iterations ?? 4, 0, 16);
+    assertInteger("CaveGenerator width", options.width, 3);
+    assertInteger("CaveGenerator height", options.height, 3);
+    assertInteger("CaveGenerator iterations", options.iterations ?? 4, 0);
+    assertInteger("CaveGenerator origin.x", options.origin?.x ?? 0, -Infinity);
+    assertInteger("CaveGenerator origin.y", options.origin?.y ?? 0, -Infinity);
     const p = options.wallProbability ?? 0.45;
     if (!Number.isFinite(p) || p < 0 || p > 1)
       fail(
-        `CaveGenerator wallProbability: finite number in [0, 1] required, got ${p}`,
+        `CaveGenerator wallProbability: number in [0, 1] required, got ${p}`,
       );
     this.options = freezeCopy(options);
   }
   protected *run(): Generator<void, TileMap> {
-    const { width, height } = this.options,
-      random = createRandomService(this.seed);
+    const { width, height } = this.options;
+    const wallProbability = this.options.wallProbability ?? 0.45;
     let cells = Array.from({ length: height }, () =>
       Array<string>(width).fill("#"),
     );
     for (let y = 1; y < height - 1; y++)
       for (let x = 1; x < width - 1; x++) {
-        cells[y]![x] =
-          random.float() < (this.options.wallProbability ?? 0.45) ? "#" : ".";
+        cells[y]![x] = this.random.float() < wallProbability ? "#" : ".";
         yield;
       }
     for (let pass = 0; pass < (this.options.iterations ?? 4); pass++) {
@@ -54,14 +58,11 @@ export class CaveGenerator extends GenerationSearch<TileMap> {
         const queue = [start];
         visited.add(start);
         for (let i = 0; i < queue.length; i++) {
-          const p = queue[i]!,
-            px = p % width,
-            py = Math.floor(p / width);
+          const px = queue[i]! % width,
+            py = Math.floor(queue[i]! / width);
           for (const d of Object.values(direction)) {
-            const nx = px + d.x,
-              ny = py + d.y,
-              key = ny * width + nx;
-            if (cells[ny]?.[nx] === "." && !visited.has(key)) {
+            const key = (py + d.y) * width + px + d.x;
+            if (cells[py + d.y]?.[px + d.x] === "." && !visited.has(key)) {
               visited.add(key);
               queue.push(key);
             }
@@ -72,12 +73,15 @@ export class CaveGenerator extends GenerationSearch<TileMap> {
       }
     if (!largest.length)
       largest = [Math.floor(height / 2) * width + Math.floor(width / 2)];
-    const retained = new Set(largest);
-    for (let y = 0; y < height; y++)
-      for (let x = 0; x < width; x++) {
-        cells[y]![x] = retained.has(y * width + x) ? "." : "#";
-        yield;
-      }
-    return { origin: { x: 0, y: 0 }, cells: cells.map((row) => row.join("")) };
+    const kept = new Set(largest);
+    const rows: string[] = [];
+    for (let y = 0; y < height; y++) {
+      let row = "";
+      for (let x = 0; x < width; x++)
+        row += kept.has(y * width + x) ? "." : "#";
+      rows.push(row);
+      yield;
+    }
+    return { origin: this.options.origin ?? { x: 0, y: 0 }, cells: rows };
   }
 }

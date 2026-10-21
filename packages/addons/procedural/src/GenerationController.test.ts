@@ -11,7 +11,7 @@ import { RoomGenerator } from "./core/RoomGenerator.js";
 import { roomDefinition } from "./core/test-fixtures.js";
 import {
   GenerationController,
-  GenerationFinishedEvent,
+  ProceduralGenerationFinishedEvent,
 } from "./GenerationController.js";
 
 class TestScene extends Scene {
@@ -29,7 +29,7 @@ describe("GenerationController", () => {
       const generator = new RoomGenerator(roomDefinition(), { seed: 2 });
       const controller = host.add(new GenerationController(generator, 1));
       const finished = vi.fn();
-      host.on(GenerationFinishedEvent, finished);
+      host.on(ProceduralGenerationFinishedEvent, finished);
       advanceFrames(engine, 1);
       expect(generator.steps).toBe(1);
       controller.enabled = false;
@@ -49,8 +49,8 @@ describe("GenerationController", () => {
       expect(inspected).toMatchObject({
         generation: {
           status: "succeeded",
-          options: { seed: 2 },
-          placedRooms: expect.any(Array),
+          seed: 2,
+          regions: expect.any(Array),
           connections: expect.any(Array),
         },
       });
@@ -86,10 +86,10 @@ describe("GenerationController", () => {
       const host = scene.spawn("host");
       host.add(new GenerationController(generator));
       const later = vi.fn();
-      host.on(GenerationFinishedEvent, () => {
+      host.on(ProceduralGenerationFinishedEvent, () => {
         throw new Error("completion failed");
       });
-      host.on(GenerationFinishedEvent, later);
+      host.on(ProceduralGenerationFinishedEvent, later);
       expect(() => advanceFrames(engine, 1)).toThrow("completion failed");
       expect(later).not.toHaveBeenCalled();
       expect(

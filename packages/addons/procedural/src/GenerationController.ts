@@ -1,12 +1,12 @@
 import { Component, defineEvent } from "@yagejs/core";
-import { assertInteger } from "./core/geometry.js";
+import { assertInteger } from "./core/internal.js";
 import type {
   GenerationInspection,
   GenerationJob,
   GenerationStatus,
 } from "./core/types.js";
 
-export const GenerationFinishedEvent = defineEvent<{
+export const ProceduralGenerationFinishedEvent = defineEvent<{
   readonly status: Exclude<GenerationStatus, "running">;
 }>("procedural:finished");
 
@@ -29,7 +29,6 @@ export class GenerationController<
       "GenerationController operationsPerUpdate",
       operationsPerUpdate,
       1,
-      10_000_000,
     );
   }
   get generation(): GenerationInspection {
@@ -39,7 +38,7 @@ export class GenerationController<
     this.generator.step(this.operationsPerUpdate);
     if (!this.reported && this.generator.status !== "running") {
       this.reported = true;
-      this.entity.emit(GenerationFinishedEvent, {
+      this.entity.emit(ProceduralGenerationFinishedEvent, {
         status: this.generator.status,
       });
     }

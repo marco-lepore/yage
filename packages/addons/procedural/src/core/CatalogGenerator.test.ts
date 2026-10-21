@@ -1,25 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { CatalogGenerator } from "./CatalogGenerator.js";
 import {
-  resolveCatalogEntry,
-  resolveRoomTemplate,
+  CatalogGenerator,
   validateCatalogSelection,
-} from "./catalog.js";
-import { RoomGenerator } from "./RoomGenerator.js";
-import { isRoomLayoutWalkable, validateRoomLayout } from "./layout.js";
+} from "./CatalogGenerator.js";
+import { RoomGenerator, validateRoomLayout } from "./RoomGenerator.js";
+import { isRoomLayoutWalkable } from "./layout.js";
 import { RegionGraphGenerator } from "./RegionGraphGenerator.js";
-import { crossRoom, dungeonRequirements } from "./test-fixtures.js";
+import {
+  crossRoom,
+  dungeonRequirements,
+  roomDefinition,
+} from "./test-fixtures.js";
 import type {
   CatalogDefinition,
-  CatalogMetadata,
+  CatalogSelection,
   RoomDefinition,
+  RoomLayout,
 } from "./types.js";
 
 const ports = [{ id: "door", capacity: 4 }];
 function catalog(): CatalogDefinition {
   return {
-    id: "town",
-    revision: "1",
     graph: {
       start: "entry",
       regions: [
@@ -75,6 +76,7 @@ describe("CatalogGenerator", () => {
       const selection = job.generate()!;
       expect(job.status).toBe("succeeded");
       expect(selection.regions.find((r) => r.id === "a")).toMatchObject({
+        kind: "shop",
         templateId: "shop",
         variantId: "healing",
         metadata: { music: "market", stock: "potions" },
@@ -84,27 +86,23 @@ describe("CatalogGenerator", () => {
         "weapons",
       );
       expect(validateCatalogSelection(definition, selection)).toEqual([]);
-      expect(selection.connections).toHaveLength(3);
+      expect(selection.start).toBe("entry");
+      expect(selection.connections.map((c) => c.id)).toEqual([
+        "ea",
+        "af",
+        "eb",
+      ]);
       expect(selection.regions.some((r) => "x" in r)).toBe(false);
     }
   });
-  it("allows optional size without opening coordinates and resolves selected data", () => {
-    const base = catalog();
-    const definition = {
-      ...base,
-      templates: base.templates.map((entry) => ({
-        ...entry,
-        size: { width: 12, height: 8 },
-      })),
-    };
+  it("selects from a room catalog without placing anything", () => {
+    const definition = roomDefinition();
     const selection = new CatalogGenerator(definition, { seed: 5 }).generate()!;
-    const selected = selection.regions.find((r) => r.id === "a")!;
-    expect(resolveCatalogEntry(definition, selected)).toMatchObject({
-      size: { width: 12, height: 8 },
-      metadata: { stock: "potions" },
-      connections: ports,
-    });
-    expect(() => resolveRoomTemplate(definition, selected)).toThrow("spatial");
+    expect(selection.regions.map((r) => r.templateId).sort()).toEqual(
+      expect.arrayContaining(["cross"]),
+    );
+    expect(selection.regions.some((r) => "x" in r || "width" in r)).toBe(false);
+    expect(validateCatalogSelection(definition, selection)).toEqual([]);
   });
   it("backtracks when the preferred variant lacks sufficient connection capacity", () => {
     const base = catalog();
@@ -149,8 +147,6 @@ describe("CatalogGenerator", () => {
   });
   it("supports cycles with matched sockets and detects exhausted capacities in saved selections", () => {
     const definition: CatalogDefinition = {
-      id: "cycle",
-      revision: "1",
       templates: [
         {
           id: "portal",
@@ -181,7 +177,7 @@ describe("CatalogGenerator", () => {
       ],
     };
     expect(validateCatalogSelection(limited, selection).join(" ")).toContain(
-      "connection",
+      "is invalid",
     );
     const mismatch = {
       ...definition,
@@ -232,23 +228,23 @@ describe("CatalogGenerator", () => {
     expect(
       new CatalogGenerator(definition, { seed: 0 }).generate(),
     ).not.toBeNull();
-    const job = new CatalogGenerator(
-      {
-        ...definition,
-        rules: {
-          ...definition.rules,
-          regions: [{ regionId: "b", match: { variantId: "healing" } }],
-        },
-      },
-      { seed: 0 },
-    );
-    expect(job.generate()).toBeNull();
-    expect(job.status).toBe("exhausted");
+    // Region "b" can only be "weapons" through regionIds, so the rule leaves it nothing.
+    expect(
+      () =>
+        new CatalogGenerator(
+          {
+            ...definition,
+            rules: {
+              ...definition.rules,
+              regions: [{ regionId: "b", match: { variantId: "healing" } }],
+            },
+          },
+          { seed: 0 },
+        ),
+    ).toThrow('region "b" has no eligible template');
   });
   it("uses weights for preference without excluding lower-weight candidates", () => {
     const definition: CatalogDefinition = {
-      id: "weight",
-      revision: "1",
       graph: {
         start: "shop",
         regions: [{ id: "shop", kind: "shop" }],
@@ -276,15 +272,31 @@ describe("CatalogGenerator", () => {
     expect(common).toBeGreaterThan(150);
     expect(common).toBeLessThan(200);
   });
-  it("counts usage across variants of an entry", () => {
-    const job = new CatalogGenerator(
-      { ...catalog(), maxUses: { shop: 1 } },
-      { seed: 0 },
+  it("caps a template's uses across its variants with a count rule", () => {
+    const base = catalog();
+    const capped: CatalogDefinition = {
+      ...base,
+      rules: { counts: [{ match: { templateId: "shop" }, max: 1 }] },
+    };
+    // Both shop regions can only use "shop", so no selection meets the cap.
+    expect(() => new CatalogGenerator(capped, { seed: 0 })).toThrow(
+      'count rule {"templateId":"shop"}: at most 1, but at least 2 regions must match',
     );
-    expect(job.generate()).toBeNull();
-    expect(job.status).toBe("exhausted");
+    const withStall: CatalogDefinition = {
+      ...capped,
+      templates: [
+        ...base.templates,
+        { id: "stall", kinds: ["shop"], connections: ports },
+      ],
+    };
+    for (let seed = 0; seed < 10; seed++)
+      expect(
+        new CatalogGenerator(withStall, { seed })
+          .generate()!
+          .regions.filter((r) => r.templateId === "shop"),
+      ).toHaveLength(1);
   });
-  it("copies inputs, is chunk-independent, and restores frozen resolved metadata", () => {
+  it("copies inputs, is chunk-independent and freezes its result", () => {
     const definition = catalog(),
       input = { ...definition, templates: [...definition.templates] };
     const one = new CatalogGenerator(input, { seed: 20 }),
@@ -294,42 +306,37 @@ describe("CatalogGenerator", () => {
     many.generate();
     expect(one.result).toEqual(many.result);
     expect(one.steps).toBe(many.steps);
-    const snapshot = one.snapshot(),
-      restored = CatalogGenerator.restore(
-        JSON.parse(JSON.stringify(snapshot)) as typeof snapshot,
-      );
-    expect(restored.snapshot()).toEqual(snapshot);
-    expect(Object.isFrozen(restored.result!.regions[1]!.metadata)).toBe(true);
-    expect(() =>
-      CatalogGenerator.restore({
-        ...snapshot,
-        selection: {
-          ...snapshot.selection,
-          regions: snapshot.selection.regions.map((r) => ({
-            ...r,
-            metadata: { tampered: true },
-          })),
-        },
-      }),
-    ).toThrow("metadata");
-    expect(() =>
-      CatalogGenerator.restore({
-        ...snapshot,
-        selection: {
-          ...snapshot.selection,
-          regions: snapshot.selection.regions.map((r) => ({
-            ...r,
-            variantId: "missing",
-          })),
-        },
-      }),
-    ).toThrow("variant");
-    expect(() =>
-      CatalogGenerator.restore({
-        ...snapshot,
-        selection: { ...snapshot.selection, connections: [] },
-      }),
-    ).toThrow("connection");
+    expect(Object.isFrozen(one.result!.regions[1]!.metadata)).toBe(true);
+  });
+  it("validates a saved selection against the current definition", () => {
+    const definition = catalog();
+    const selection = new CatalogGenerator(definition, { seed: 3 }).generate()!;
+    const saved = JSON.parse(JSON.stringify(selection)) as CatalogSelection;
+    expect(validateCatalogSelection(definition, saved)).toEqual([]);
+    const tampered = (
+      change: (region: CatalogSelection["regions"][number]) => object,
+    ): CatalogSelection => ({
+      ...saved,
+      regions: saved.regions.map((r) =>
+        r.id === "a" ? { ...r, ...change(r) } : r,
+      ),
+    });
+    for (const selectionWithError of [
+      tampered(() => ({ metadata: { tampered: true } })),
+      tampered(() => ({ variantId: "missing" })),
+      tampered(() => ({ kind: "forge" })),
+      tampered(() => ({ grants: ["gold"] })),
+    ])
+      expect(validateCatalogSelection(definition, selectionWithError)).toEqual([
+        'Region "a" does not match an eligible template or variant.',
+      ]);
+    expect(
+      validateCatalogSelection(definition, { ...saved, connections: [] }),
+    ).toEqual([
+      'Connection "ea" is missing.',
+      'Connection "af" is missing.',
+      'Connection "eb" is missing.',
+    ]);
   });
   it("distinguishes budgets, cancellation and unsatisfied hard rules", () => {
     const job = new CatalogGenerator(catalog(), { seed: 0, maxSteps: 1 });
@@ -340,18 +347,53 @@ describe("CatalogGenerator", () => {
     cancelled.cancel();
     expect(cancelled.generate()).toBeNull();
     expect(cancelled.status).toBe("cancelled");
-    expect(() => cancelled.snapshot()).toThrow("completed");
+    // Knowable before any search: no template carries the tag.
+    expect(
+      () =>
+        new CatalogGenerator(
+          {
+            ...catalog(),
+            rules: { counts: [{ match: { tags: ["missing"] }, min: 1 }] },
+          },
+          { seed: 0 },
+        ),
+    ).toThrow(
+      'no selection can meet the count rule {"tags":["missing"]}: at least 1, but at most 0 regions can match',
+    );
+    // Found by the search: the entry connects to shops, which the rule forbids.
     const impossible = new CatalogGenerator(
       {
         ...catalog(),
-        rules: { counts: [{ match: { tags: ["missing"] }, min: 1 }] },
+        rules: {
+          forbiddenConnections: [
+            { from: { kind: "entry" }, to: { kind: "shop" } },
+          ],
+        },
       },
       { seed: 0 },
     );
     expect(impossible.generate()).toBeNull();
     expect(impossible.status).toBe("exhausted");
+    expect(impossible.inspect().diagnostics[0]?.message).toBe(
+      'A candidate for "a" breaks the forbidden connection {"kind":"entry"} to {"kind":"shop"} on "ea".',
+    );
+    expect(
+      validateCatalogSelection(
+        {
+          ...catalog(),
+          rules: {
+            forbiddenConnections: [
+              { from: { kind: "shop" }, to: { kind: "forge" } },
+            ],
+          },
+        },
+        new CatalogGenerator(catalog(), { seed: 0 }).generate()!,
+      ),
+    ).toEqual([
+      'The selection breaks the forbidden connection {"kind":"shop"} to {"kind":"forge"} on "af".',
+    ]);
   });
-  it.each([0, -1, NaN, Infinity, 1_000_001])(
+  it.each([0, -1, NaN, Infinity])(
     "rejects invalid weight %s at construction",
     (weight) => {
       const base = catalog();
@@ -367,43 +409,18 @@ describe("CatalogGenerator", () => {
       ).toThrow("weight");
     },
   );
-  it("rejects invalid metadata, capacity, rule references and duplicate variants", () => {
+  it("rejects invalid capacity, rule references and duplicate variants", () => {
     const base = catalog();
-    const cycle: Record<string, unknown> = {};
-    cycle.self = cycle;
-    for (const metadata of [
-      { n: Infinity },
-      { n: undefined },
-      { fn: () => 1 },
-      { date: new Date() },
-      cycle,
-    ])
-      expect(
-        () =>
-          new CatalogGenerator(
-            {
-              ...base,
-              templates: base.templates.map((entry) => ({
-                ...entry,
-                metadata: metadata as CatalogMetadata,
-              })),
-            },
-            { seed: 0 },
-          ),
-      ).toThrow("metadata");
     expect(
       () =>
         new CatalogGenerator(
           {
             ...base,
-            templates: base.templates.map(
-              (entry) =>
-                ({
-                  ...entry,
-                  connections: [{ id: "x", capacity: NaN }],
-                  variants: undefined,
-                }) as unknown as typeof entry,
-            ),
+            templates: base.templates.map((entry) => ({
+              id: entry.id,
+              kinds: entry.kinds,
+              connections: [{ id: "x", capacity: NaN }],
+            })),
           },
           { seed: 0 },
         ),
@@ -420,6 +437,16 @@ describe("CatalogGenerator", () => {
         new CatalogGenerator(
           {
             ...base,
+            rules: { counts: [{ match: { templateId: "inn" }, min: 1 }] },
+          },
+          { seed: 0 },
+        ),
+    ).toThrow('unknown template "inn"');
+    expect(
+      () =>
+        new CatalogGenerator(
+          {
+            ...base,
             templates: base.templates.map((entry) => ({
               ...entry,
               variants: [{ id: "same" }, { id: "same" }],
@@ -427,7 +454,7 @@ describe("CatalogGenerator", () => {
           },
           { seed: 0 },
         ),
-    ).toThrow("duplicate variant");
+    ).toThrow("duplicate");
   });
 });
 
@@ -444,8 +471,6 @@ describe("spatial catalog variants", () => {
         { seed },
       ).generate()!;
       const definition: RoomDefinition = {
-        id: "catalog-dungeon",
-        revision: "1",
         graph,
         templates: [
           ["entry", "entrance"],
@@ -495,48 +520,13 @@ describe("spatial catalog variants", () => {
       const job = new RoomGenerator(definition, { seed, maxSteps: 5_000 });
       const layout = job.generate();
       expect(job.status).toBe("succeeded");
-      expect(layout!.rooms).toHaveLength(15);
+      expect(layout!.regions).toHaveLength(15);
       expect(validateRoomLayout(definition, layout!)).toEqual([]);
     },
   );
 
-  it("accepts geometry supplied entirely by a variant", () => {
-    const definition: CatalogDefinition = {
-      id: "variant-only",
-      revision: "1",
-      graph: {
-        start: "a",
-        regions: [{ id: "a", kind: "hall" }],
-        connections: [],
-      },
-      templates: [
-        {
-          id: "room",
-          kinds: ["hall"],
-          connections: [],
-          variants: [
-            {
-              id: "small",
-              size: crossRoom.size,
-              connections: crossRoom.connections,
-              navigation: crossRoom.navigation!,
-            },
-          ],
-        },
-      ],
-    };
-    const layout = new RoomGenerator(definition, { seed: 0 }).generate()!;
-    expect(layout.rooms[0]).toMatchObject({
-      variantId: "small",
-      width: 5,
-      height: 5,
-    });
-    expect(validateRoomLayout(definition, layout)).toEqual([]);
-  });
   function spatial(): RoomDefinition {
     return {
-      id: "variants",
-      revision: "1",
       graph: {
         start: "a",
         regions: [
@@ -562,7 +552,7 @@ describe("spatial catalog variants", () => {
       ],
     };
   }
-  it("backtracks variants during placement and snapshots the actual selected geometry", () => {
+  it("backtracks variants during placement and keeps the selected geometry", () => {
     const definition = spatial();
     const job = new RoomGenerator(definition, {
       seed: 0,
@@ -571,34 +561,26 @@ describe("spatial catalog variants", () => {
     });
     const layout = job.generate()!;
     expect(layout).not.toBeNull();
-    expect(layout.rooms.map((r) => r.variantId)).toEqual(["small", "small"]);
-    expect(layout.rooms.map((r) => r.metadata.theme)).toEqual([
+    expect(layout.regions.map((r) => r.variantId)).toEqual(["small", "small"]);
+    expect(layout.regions.map((r) => r.metadata["theme"])).toEqual([
       "intact",
       "intact",
     ]);
-    expect(layout.validation.connectedWalkableCells).toBe(true);
-    expect(isRoomLayoutWalkable(definition, layout, { x: 4, y: 2 })).toBe(true);
-    expect(job.inspect().rejections.bounds).toBeGreaterThan(0);
+    expect(layout.regions[0]!.navigation).toEqual(crossRoom.navigation);
+    expect(isRoomLayoutWalkable(layout, { x: 4, y: 2 })).toBe(true);
+    expect(job.inspect().rejections["bounds"]).toBeGreaterThan(0);
     expect(validateRoomLayout(definition, layout)).toEqual([]);
-    const snapshot = job.snapshot();
-    expect(
-      RoomGenerator.restore(
-        JSON.parse(JSON.stringify(snapshot)) as typeof snapshot,
-      ).snapshot(),
-    ).toEqual(snapshot);
-    expect(() =>
-      RoomGenerator.restore({
-        ...snapshot,
-        layout: {
-          ...layout,
-          rooms: layout.rooms.map((r) => ({
-            ...r,
-            variantId: "large",
-            metadata: { theme: "ruined" },
-          })),
-        },
-      }),
-    ).toThrow("geometry");
+    const relabelled: RoomLayout = {
+      ...layout,
+      regions: layout.regions.map((r) => ({
+        ...r,
+        variantId: "large",
+        metadata: { theme: "ruined" },
+      })),
+    };
+    expect(validateRoomLayout(definition, relabelled).join(" ")).toContain(
+      "footprint",
+    );
   });
   it("enforces catalog rules in spatial mode and resolves overridden masks and ports", () => {
     const base = spatial();
@@ -622,12 +604,27 @@ describe("spatial catalog variants", () => {
       ],
     };
     const layout = new RoomGenerator(definition, { seed: 0 }).generate()!;
-    expect(layout.rooms[0]!.width).toBe(7);
+    expect(layout.regions[0]!.width).toBe(7);
     expect(layout.connections[0]!.fromOpening.areaId).toBe("east");
-    expect(layout.validation.connectedWalkableCells).toBeNull();
-    expect(
-      resolveRoomTemplate(definition, layout.rooms[0]!).navigation,
-    ).toBeUndefined();
+    expect(layout.regions[0]!.navigation).toBeUndefined();
+    expect(layout.regions[1]!.navigation).toEqual(crossRoom.navigation);
     expect(validateRoomLayout(definition, layout)).toEqual([]);
+  });
+  it("rejects non-finite metadata at construction", () => {
+    const base = catalog();
+    expect(
+      () =>
+        new CatalogGenerator(
+          {
+            ...base,
+            templates: base.templates.map((entry) =>
+              entry.id === "forge"
+                ? { ...entry, metadata: { cost: [1, NaN] } }
+                : entry,
+            ),
+          },
+          { seed: 0 },
+        ),
+    ).toThrow('template "forge" metadata.cost[1]: finite number required');
   });
 });

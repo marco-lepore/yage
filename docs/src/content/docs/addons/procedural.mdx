@@ -1,18 +1,20 @@
 ---
 title: Procedural Maps
-description: Generate room graphs with progression rules, assemble catalog rooms, or create caves without rooms.
+description: Generate room graphs with progression rules, place catalog rooms, choose catalog content without placement, or create caves.
 ---
 
-`@yagejs-addons/procedural` generates room graphs from gameplay requirements,
-selects catalog data and variants, places rooms, and creates cellular caves. Each generator uses
-an isolated seed and a bounded search. Generation uses integer tiles; your
-game chooses their pixel dimensions when rendering or loading content.
+`@yagejs-addons/procedural` builds maps from rules. Describe the regions a
+dungeon needs and which keys open which doors, give it a catalog of room
+templates, and it returns rooms placed in tiles with matching doors. It can
+also choose catalog content for a graph without placing anything, and
+generate cellular caves. Every generator is seeded, so the same inputs and
+seed give the same map, and it can run a bounded amount of work per frame.
 
 [Run the interactive example](https://examples.yage.dev/procedural-rooms.html).
-Tab selects a room and Space follows an available path. Enter both treasure
-rooms to collect the keys needed for the boss. C switches to a cave with no
-room catalog. Room variants include a healing shop and two to five moss-covered
-rooms. R changes the seed; B and U demonstrate generation failures.
+Press 1 for a fifteen-room dungeon: Tab picks a room and Space walks there.
+Walk into both treasure rooms to collect the keys that open the boss room.
+Press 2 for the same catalog chosen without placement, and 3 for a cave. R
+changes the seed. B and U show the two ways a search can fail.
 
 ## Install and generate a dungeon
 
@@ -20,10 +22,14 @@ rooms. R changes the seed; B and U demonstrate generation failures.
 npm install @yagejs-addons/procedural @yagejs/core
 ```
 
-Describe which regions the map needs, then choose catalog templates for their
-kinds. The following map contains fifteen regions, including a shop, a forge,
-two treasure rooms and a boss. Shop and forge never connect directly. Every
-entrance to the boss requires both keys.
+Generation has two steps. A `RegionGraphGenerator` turns requirements into a
+region graph: which regions exist and which connect. A `RoomGenerator` then
+gives each region a room template from your catalog and places the rooms so
+that every connection becomes a door.
+
+The following dungeon has fifteen regions, including a shop, a forge, two
+treasure rooms and a boss. The shop and the forge never connect directly.
+The boss room needs both treasure keys.
 
 ```ts yage-group="rooms"
 import {
@@ -38,10 +44,7 @@ const graphJob = new RegionGraphGenerator({
     { id: "treasure-b", kind: "treasure", grants: ["key-b"] },
     { id: "boss", kind: "boss", requires: ["key-a", "key-b"] },
   ],
-  counts: [
-    { kind: "shop", min: 1 }, { kind: "forge", min: 1 },
-    { kind: "treasure", min: 2 }, { kind: "boss", min: 1 },
-  ],
+  counts: [{ kind: "shop", min: 1 }, { kind: "forge", min: 1 }],
   minRegions: 15,
   fillKind: "encounter",
   forbiddenConnections: [["shop", "forge"]],
@@ -51,7 +54,7 @@ const graph = graphJob.generate();
 if (!graph) throw new Error(graphJob.status);
 
 const definition: RoomDefinition = {
-  id: "ruins", revision: "1", graph,
+  graph,
   templates: [{
     id: "hall",
     kinds: ["entrance", "encounter", "shop", "forge", "treasure", "boss"],
@@ -62,7 +65,6 @@ const definition: RoomDefinition = {
       { id: "s", side: "south", offset: { min: 1, max: 3 } },
       { id: "w", side: "west", offset: { min: 1, max: 3 } },
     ],
-    navigation: ["#####", "#...#", "#...#", "#...#", "#####"],
   }],
 };
 const generator = new RoomGenerator(definition, { seed: 42, maxSteps: 200_000 });
@@ -70,62 +72,146 @@ const layout = generator.generate();
 console.log(layout ?? generator.inspect());
 ```
 
-The example shares one template across every kind. Supply separate templates
-for shops, encounters and other kinds to vary their shapes and content. A
-region's kind selects eligible templates; its id identifies that specific
-region, such as `treasure-a`.
+The example shares one template across every kind. Give shops, encounters
+and the boss their own templates to vary their shapes and content. A region's
+kind selects the eligible templates; its id names that one region, such as
+`treasure-a`.
 
-Both jobs return an immutable result on success or `null` on failure. Read
-`status` and `inspect()` for the reason. A valid region graph can still be
-impossible to place with a particular catalog or bounding rectangle. Adjust
-the catalog, graph or bounds when layout generation fails.
+Each job returns a frozen result on success and `null` otherwise. Read
+`status` and `inspect()` to learn why. A valid region graph can still be
+impossible to place with a particular catalog or bounding rectangle; change
+the catalog, the bounds or the seed when placement fails.
 
-## Express structure and progression
+The result is the region graph with the selections, positions and doors added.
+`layout.regions` holds one room per region, with its `kind`, keys, `templateId`,
+`variantId`, `metadata`, tile position and size. `layout.connections` holds the
+exact opening used at each end. Everything is in integer tiles; your game
+chooses the pixel size of a tile when it draws, navigates or loads content.
 
-`RegionGraphGenerator` creates a connected tree. `start` and `required` declare
-named regions. `counts` sets totals per kind, including those named regions;
-`max` defaults to `min`. With a larger maximum the generator selects a seeded
-count within the interval. It adds `fillKind` regions until `minRegions` is
-met, while respecting count maxima. `maxConnections` limits each region's
-number of neighbours and defaults to four. `forbiddenConnections` contains
-unordered pairs of kinds that cannot connect directly.
+## Describe structure and progression
 
-`grants` lists keys collected when a region is visited. `requires` lists keys
-needed to enter a region. Every listed key is required. Keys are permanent,
-reusable capabilities: collecting them does not consume them or change other
-requirements. The game owns the pickup and door behavior.
+`RegionGraphGenerator` creates a connected tree. `start` and `required` name
+regions that always exist. `counts` sets how many regions of a kind to create:
+`min` of them, or a seeded number between `min` and `max` when `max` is set.
+Named regions count toward the total, and an omitted `max` sets no upper
+limit. Regions of `fillKind` are added until the graph has `minRegions`
+regions. `maxConnections` limits each region's number of neighbours, default
+four. `forbiddenConnections` lists pairs of kinds that never connect directly.
+The constructor throws when the `fillKind` count's `max` is too small to reach
+`minRegions` with any draw of the other counts. When a count has a range and
+the search for one draw fails, the generator draws new counts and searches
+again. Requirements with ranges that no draw can meet therefore end
+`budget-exceeded`, not `exhausted`.
 
-For an authored graph, pass a `RegionGraph` directly to `RoomDefinition.graph`.
-It contains `start`, `regions`, and `connections`; each connection has `id`,
-`from`, `to`, and optional `requires`. Connections are undirected. Cycles are
-supported by the layout solver, subject to the catalog's geometry. Graphs
-contain up to 64 regions and 256 connections. A room graph requires a template
-for every region kind, including a corridor kind if the graph contains one.
+`grants` lists the keys a region gives when the player enters it. `requires`
+lists the keys needed to enter it. Keys are permanent and reusable:
+collecting one never consumes it. A region that requires keys joins the tree
+only after the regions that grant them, so every generated region is
+reachable. Your game owns the pickups and doors that act on keys.
 
-`validateRegionGraph(graph)` returns errors for duplicate ids, unknown
-endpoints, missing key grants, disconnected regions and progression deadlocks.
-`inspectProgression(graph)` returns reachable region ids, collected keys and
-unreachable region ids. It repeatedly collects reachable keys until no further
-regions become accessible. `inspectProgression(graph, keys, false)` checks
-reachability with exactly the supplied keys and no automatic collection.
-These functions work with region graphs independently of room placement.
+A hand-authored graph can replace the generated one: pass a `RegionGraph`
+with `start`, `regions` and `connections` as `definition.graph`. Each
+connection has an `id`, `from`, `to`, and optional `requires` for a locked
+door. Connections are undirected. Authored graphs may contain cycles. The
+room generator turns every connection into a pair of openings, so a cycle
+the footprints cannot close makes the search fail.
 
-## Select catalog data without placing rooms
+`validateRegionGraph(graph, { keys })` returns errors for duplicate ids,
+unknown endpoints, keys that neither a region nor `keys` provides, and
+regions the player can never reach. `keys` lists the keys the player holds
+before entering the start region. `inspectProgression(graph)` returns the reachable regions, the keys
+collected and the unreachable regions, collecting keys until no further
+region opens. `inspectProgression(graph, { keys, collectKeys: false })`
+tests exactly the keys you pass. Both work on any graph, generated or not.
 
-`CatalogGenerator` assigns catalog entries and variants to an existing region
-graph. Use it for portal-connected locations, separate screens, or rooms whose
-interiors and positions the game builds. Entries need an id, supported kinds,
-and connection slots. Size, opening coordinates and navigation are optional.
+## Author room templates
 
-This example selects two shops. Exactly one must sell healing supplies, and a
-weapon shop cannot connect directly to the forge. The game receives metadata
-and connection ids without any room positions or tile arrays.
+A room template has a rectangular `size` in tiles, walls included, and the
+`kinds` it can represent. Rooms are placed by translation only: author a
+rotated or mirrored room as its own template or variant. Rooms never overlap.
+The start room's top-left tile is `origin`, default `(0, 0)`, and the
+optional `bounds` rectangle must contain every room.
+
+Each connection area says where on the room's boundary a door may go:
+
+- `side` is `north`, `east`, `south` or `west`.
+- `offset` is the zero-based boundary column (north and south) or row (east
+  and west) of the door's first tile. A number fixes the position;
+  `{ min, max }` allows every position in that inclusive range.
+- `width` is the door's width in tiles, default one. Doors keep the corner
+  tiles closed.
+- `socket` names the kind of door, default `"passage"`. Two doors connect
+  when they face each other with the same width and socket.
+- `capacity` is how many doors one area may hold, default one. Doors in one
+  room never overlap.
+
+Rooms touch: a connection is a pair of doors in adjacent walls. A corridor
+between two rooms is a corridor region in the graph with a corridor template.
+
+`roomOpenings(layout, roomId)` returns the doors selected for one room. Use
+them, with the room's size, to build its walls, doors and colliders.
+
+### Navigation masks
+
+A template's optional `navigation` rows mark walkable tiles with `.` and
+blocked tiles with `#`. The rows must match `size`, be `#` on the whole
+boundary, and contain one connected floor that every permitted door leads
+onto. A room without a mask has walls on its boundary and an open floor
+inside.
+
+## Choose variants with catalog rules
+
+A template can list `variants`. Exactly one variant is selected for each
+region that uses the template; the template itself supplies the defaults and
+is not an extra choice. A variant may set `weight`, `metadata`, `tags`,
+`regionIds`, `kinds`, `connections`, `size` and `navigation`:
+
+- `metadata` shallowly overrides the template's metadata, and `tags` are added
+  to its tags. Metadata is JSON data the addon copies into the result and
+  never reads: a theme, a shop's stock, a music track.
+- `regionIds` and `kinds` restrict where the variant applies.
+- `connections` replaces the whole list. `size` replaces both dimensions.
+  `navigation` replaces the mask, and `navigation: null` removes it.
+
+Rules on the definition are hard constraints:
+
+- `counts: [{ match, min?, max? }]`: the number of regions whose selection
+  matches, at least `min` (default zero) and at most `max` (default no limit).
+- `regions: [{ regionId, match }]`: that region selects only matching
+  templates and variants.
+- `forbiddenConnections: [{ from, to }]`: no direct connection, in either
+  direction, between matching selections.
+
+A `match` can name a `kind`, `templateId`, `variantId` and `tags`. Every named
+field and every listed tag must match, and `{}` matches everything. Variant
+ids are local to a template, so pair `variantId` with `templateId` to name one
+template's variant. To cap how often a template appears across all its
+variants, count it: `{ match: { templateId: "fountain" }, max: 1 }`.
+
+Weights are positive and default to one; a template's weight multiplies its
+variant's. Weights decide which candidates the seeded search tries first. They
+do not promise how often each one appears, and rules always apply first.
+`preferUniqueTemplates`, on by default, tries templates not yet placed first.
+
+The room generator chooses variants while it places rooms, and tries another
+variant when one does not fit. Read `room.variantId` and `room.metadata` to
+build each room's content.
+
+## Choose catalog content without placing rooms
+
+`CatalogGenerator` gives every region of a graph a template, a variant and the
+connection slots to use, and places nothing. Use it for locations joined by
+portals, a world map drawn by your game, or rooms whose positions your game
+decides. Templates need an id, kinds and connection slots; a room catalog
+works too, and its sizes and doors are ignored.
+
+This market selects two shops. Exactly one sells healing supplies, and a
+weapon shop never connects directly to the forge.
 
 ```ts
-import { CatalogGenerator, resolveCatalogEntry, type CatalogDefinition } from "@yagejs-addons/procedural";
+import { CatalogGenerator, type CatalogDefinition } from "@yagejs-addons/procedural";
 
-const catalog: CatalogDefinition = {
-  id: "market", revision: "1",
+const market: CatalogDefinition = {
   graph: {
     start: "gate",
     regions: [
@@ -147,7 +233,7 @@ const catalog: CatalogDefinition = {
       metadata: { music: "market" },
       variants: [
         { id: "weapons", weight: 4, tags: ["weapons"], metadata: { stock: "weapons" } },
-        { id: "healing", weight: 1, tags: ["healing"], metadata: { stock: "potions" } },
+        { id: "healing", tags: ["healing"], metadata: { stock: "potions" } },
       ],
     },
   ],
@@ -156,208 +242,46 @@ const catalog: CatalogDefinition = {
     forbiddenConnections: [{ from: { tags: ["weapons"] }, to: { kind: "forge" } }],
   },
 };
-const job = new CatalogGenerator(catalog, { seed: 42 });
+const job = new CatalogGenerator(market, { seed: 42 });
 const selection = job.generate();
 if (selection) {
-  for (const region of selection.regions) {
-    const entry = resolveCatalogEntry(catalog, region);
-    console.log(region.id, entry.variantId, entry.metadata, entry.connections);
-  }
+  for (const region of selection.regions)
+    console.log(region.id, region.variantId, region.metadata);
   console.log(selection.connections);
 } else console.log(job.inspect());
 ```
 
 `shop-a` always selects `healing` because it connects to the forge. `shop-b`
-selects `weapons` because the healing count is capped at one. Both inherit
-`music: "market"`. The result tells the game which connection slots to connect;
-the game decides how each location looks and how travel between them works.
+then selects `weapons` because only one healing shop is allowed. Both carry
+`music: "market"` from the template.
 
-A connection slot declares `id`, optional `socket` (default `"passage"`), and
-`capacity` (default one link, range 1–64). Only matching sockets connect. This
-mode checks connection capacity and the graph's rules; it makes no spatial
-placement or walkability claim. Supplied opening sides are not used to arrange
-locations. Optional size dimensions accept integer tiles from 1 to 1,000,000
-without requiring opening coordinates.
-
-`selection.regions` contains `{ id, templateId, variantId, metadata, tags }`.
-`selection.connections` contains `{ id, from, to, fromPort, toPort }`.
-`resolveCatalogEntry(catalog, region)` returns the selected entry's merged data,
-connection slots, optional size and optional navigation. Results are copied and
-frozen. `validateCatalogSelection(catalog, selection)` checks external results.
-
-## Choose variants with generation rules
-
-Both `CatalogGenerator` and `RoomGenerator` accept the same catalog rules and
-variants. Entries without variants are selected directly with `variantId: null`.
-When `variants` is present, exactly one listed variant is selected; the base
-entry supplies defaults and is not an extra choice.
-
-Variants have an id and may supply `weight`, `metadata`, `tags`, `regionIds`,
-`kinds`, `connections`, `size`, and `navigation`. Their metadata shallowly
-replaces matching base keys; nested objects are replaced as whole values.
-Variant tags are added to base tags. Metadata must be plain JSON data with
-finite numbers, no callbacks or class instances, and at most 10,000 values and
-32 levels of nesting per metadata object. The addon carries metadata for the
-game and does not interpret its fields as behavior or progression requirements.
-
-`regionIds` and `kinds` restrict where a variant is eligible. A variant's
-connections replace the complete base list. Size replaces both dimensions.
-Navigation replaces the mask; `navigation: null` removes an inherited mask.
-A size change with an inherited mask must still match that mask's dimensions.
-
-Rules on the definition express hard constraints:
-
-- `counts: [{ match, min, max? }]` counts selected regions. Here `max` defaults
-  to 64, so omitting it requests at least `min` matches.
-- `regions: [{ regionId, match }]` restricts a particular named region.
-- `forbiddenConnections: [{ from, to }]` forbids either direction of a direct
-  graph connection between matching selections.
-
-A `match` can specify `kind`, `templateId`, `variantId`, and `tags`. Every
-specified field and every listed tag must match. An empty selector matches
-all choices. Variant ids are local to each entry; include `templateId` when
-selecting one entry's variant. `maxUses` counts uses of an entry across all
-its variants. Limits are 64 variants per entry and 256 rules in each list.
-
-Weights are positive, finite numbers up to 1,000,000 and default to one.
-Entry and variant weights multiply; a product that underflows to zero is
-rejected. Weights determine seeded search preference, not guaranteed output
-frequencies. Hard rules always apply. The spatial generator also tries unused
-entries first when `preferUniqueTemplates` is enabled.
-
-`RoomGenerator` chooses variants during placement and can retry a different
-variant when its footprint or openings do not fit. Its input can be a
-`CatalogDefinition` whose variants supply spatial data, or a `RoomDefinition`
-whose base entries are already spatial. Every eligible spatial candidate must have a size and spatial connection areas; masks remain optional.
-Read `room.variantId` and `room.metadata` to build content, and use
-`resolveRoomTemplate(definition, room)` for its resolved footprint, openings
-and mask. A result from abstract catalog selection does not prove that those
-choices fit together spatially. Neither generator changes the supplied graph.
-
-## Author catalog footprints and openings
-
-A template declares a rectangular `size` in tiles and its supported `kinds`.
-Placement uses that footprint even when no navigation mask is supplied.
-Footprints include boundary walls and never overlap. The start region is
-placed at `origin`, default `(0, 0)`. Optional `bounds` contains every footprint.
-`maxUses` on the definition limits each named template's use. The solver
-translates templates; author separate variants for rotations and corridors.
-
-Each connection area has an id, side, offset, optional width, socket and capacity.
-`offset` is a zero-based boundary column for north/south or row for east/west.
-A number permits one opening position; `{ min, max }` permits every starting
-position in that inclusive range. `width` defaults to one tile. An entire
-opening must fit between the corners, leaving at least one boundary tile at
-either end. `socket` defaults to `"passage"`; connecting openings must have
-opposite sides, identical sockets and identical widths. `capacity` defaults to
-one link per area; increase it to permit multiple non-overlapping openings.
-
-Only selected openings become passages. A successful layout contains room
-placements and connections with exact `fromOpening` and `toOpening` values:
-area id, side, offset, width and socket. `roomOpenings(layout, roomId)` returns
-the openings selected for one room. Use those positions to build the game's
-walls, doors and colliders. Allowed areas may overlap; selected openings on
-the same room cannot overlap.
-
-`preferUniqueTemplates` defaults to true and tries unused eligible templates
-first. It does not guarantee uniqueness or minimize repetitions. Use `maxUses`
-for a hard cap.
-
-## Add navigation when the game needs it
-
-A template's optional `navigation` array describes four-direction movement
-between tile centres. `.` is walkable; `#` is blocked. Its dimensions must
-match `size`, all boundary cells must be `#`, and the interior floor must be
-connected. Every permitted opening must lead directly to walkable interior.
-The selected openings are carved by the query and navigation adapter.
-
-Without masks, the result validates placement and declared progression.
-`layout.validation.connectedWalkableCells` is `null`. Navigation queries and
-the room navigation adapter reject such a layout. With masks on every placed
-template, the flag is `true`: all declared floor connects when all keys are
-held. Closed locks can intentionally make portions inaccessible.
-
-Install `@yagejs/pathfinding` for the optional navigation adapter:
-
-```ts yage-group="rooms"
-import { createRoomLayoutGraph } from "@yagejs-addons/procedural/navigation";
-if (layout) {
-  const navigation = createRoomLayoutGraph(definition, layout,
-    { tileWidth: 16, tileHeight: 16 },
-    { keys: ["key-a", "key-b"], maxCells: 1_000_000 },
-  );
-  const start = layout.rooms.find(room => room.id === "start")!;
-  const boss = layout.rooms.find(room => room.id === "boss")!;
-  console.log(navigation.findPath(
-    { x: (start.x + 2.5) * 16, y: (start.y + 2.5) * 16 },
-    { x: (boss.x + 2.5) * 16, y: (boss.y + 2.5) * 16 },
-  ));
-}
-```
-
-With no keys, the boss is inaccessible. Supplying only one of the two keys
-still leaves it inaccessible. Navigation never collects keys itself: pass the
-game's current keys and rebuild the static graph after collecting one.
-`isRoomLayoutWalkable(definition, layout, { x, y }, keys)` queries the same
-rules in integer tile coordinates. Invalid query coordinates return false.
-
-The adapter returns an ordinary `GridGraph`, with diagonal movement disabled.
-Queries and returned waypoints use world pixels. `TileScale.tileWidth` and
-`tileHeight` are integer pixel dimensions from 1 through 1,000,000 and can
-differ. The bounding-grid limit defaults to 1,000,000 cells and can be set up
-to 10,000,000 through `maxCells`.
-
-Navigation masks are authored claims about the room. The addon does not
-inspect entity colliders, Tiled collision layers, player radius, moving
-obstacles or jump ability. The game must close unused openings and enforce
-the same locks in its collision behavior. Content outside the declared
-footprint is not included in overlap checks. One-way movement, consumable
-keys and tile-adjacency rules are not modeled.
-
-## Generate a cave without room templates
-
-`CaveGenerator` returns a `TileMap` containing an origin and a rectangular
-`cells` array. It requires no region graph or room catalog.
-
-```ts
-import { CaveGenerator } from "@yagejs-addons/procedural";
-import { createTileMapGraph } from "@yagejs-addons/procedural/navigation";
-const job = new CaveGenerator({ seed: 42, width: 48, height: 32 });
-const map = job.generate();
-if (map) {
-  const navigation = createTileMapGraph(map, { tileWidth: 16, tileHeight: 16 });
-  console.log(map.cells, navigation);
-}
-```
-
-The generator smooths randomly placed walls, keeps the largest connected
-floor area, and closes the outer boundary. If no floor survives, it creates
-one central floor tile. Width and height accept 3–256 tiles. Initial
-`wallProbability` defaults to 0.45 and accepts 0–1; `iterations` defaults to
-four and accepts 0–16. Larger maps may need a larger `maxSteps` budget.
-
-The tile-map navigation adapter also accepts maps supplied by your own
-generator. It does not need room or progression data.
+A connection slot has an `id`, a `socket` (default `"passage"`) and a
+`capacity` (default one link). Only slots with the same socket link. The
+selection has the graph's shape: `selection.regions` adds `templateId`,
+`variantId`, `metadata` and `tags` to each region, and
+`selection.connections` adds the `fromPort` and `toPort` slot ids to each
+connection.
 
 ## Generate across frames and inspect failures
 
-Every supplied generator supports `step(operations = 256)`, `generate()`,
-`cancel()`, `inspect()`, `status`, `steps` and `result`. `maxSteps` defaults to
-20,000 and accepts 1–10,000,000. Frame chunk size does not change the result.
-The operation budget bounds work but is not a frame-duration guarantee;
-configuration validation occurs synchronously at construction.
+Every generator has `step(operations = 256)`, `generate()`, `cancel()`,
+`inspect()`, `status`, `steps` and `result`. `maxSteps`, default 20,000, is
+the operation budget. Splitting the work into different step sizes never
+changes the result. The budget counts search operations, not milliseconds.
+Constructors check and copy their input, so later changes to your objects do
+not affect a running job.
 
-`GenerationController` hosts any `GenerationJob`, including graph, catalog, room
-and cave generators. It advances the job through ordinary component updates.
+`GenerationController` runs any of the generators on its host entity, a fixed
+number of operations per component update.
 
 ```ts
 import { Component, Entity, Scene } from "@yagejs/core";
-import { CaveGenerator, GenerationController, GenerationFinishedEvent } from "@yagejs-addons/procedural";
+import { CaveGenerator, GenerationController, ProceduralGenerationFinishedEvent } from "@yagejs-addons/procedural";
 
 class GenerateCave extends Component {
   onAdd(): void {
     const job = new CaveGenerator({ seed: 42, width: 48, height: 32 });
-    this.listen(this.entity, GenerationFinishedEvent, ({ status }) => {
+    this.listen(this.entity, ProceduralGenerationFinishedEvent, ({ status }) => {
       if (status === "succeeded") console.log(job.result);
     });
     this.entity.add(new GenerationController(job, 256));
@@ -372,30 +296,85 @@ class MapScene extends Scene {
 }
 ```
 
-Disabling the component, deactivating its entity or pausing the scene pauses
-generation. Removal or scene exit cancels an unfinished job. The completion
-event fires once on the first update observing a terminal status. Removal
-emits no teardown event. Read `controller.generator` for the model and
-`controller.generation` for Inspector data.
+Disabling the controller, deactivating its entity or pausing the scene pauses
+generation. Removing the controller or exiting the scene cancels an
+unfinished job. `ProceduralGenerationFinishedEvent` fires once, on the first update that
+sees the job finish. `controller.generator` is the job, and
+`controller.generation` shows its inspection in the Inspector.
 
-- `succeeded` publishes a complete immutable result.
-- `exhausted` means all supported candidates for the supplied inputs were
-  rejected. Different templates, bounds or graphs may work.
-- `budget-exceeded` leaves feasibility unknown. Increase the budget or simplify
-  the input; it does not prove the requirements impossible.
-- `cancelled` publishes no result. Create a new job to retry.
+- `succeeded`: `result` holds the map.
+- `exhausted`: every candidate was rejected, so these inputs have no result.
+  Different templates, rules, bounds or a different graph may work.
+- `budget-exceeded`: the budget ran out first, so the inputs may or may not
+  have a result. Raise `maxSteps` or simplify the input.
+- `cancelled`: no result. Create a new job to retry.
 
-`inspect()` returns status, step count and diagnostics. Room inspection also
-includes resolved options, placements, connections and rejection counts. Room
-diagnostics retain the most recent example of each rejected candidate category;
-those rejections can occur during an eventually successful search.
+A count rule that no selection can meet throws in the constructor: a
+minimum larger than the number of regions with a matching candidate, or a
+maximum smaller than the number of regions whose every candidate matches.
 
-## Load authored content and save layouts
+A search can lose most of its budget to one early choice that leaves no
+room for the regions after it. Region graph, catalog and room searches
+therefore start over in a new random order when one attempt runs long, and
+give each new attempt twice as many operations. The result depends only on
+the inputs and the seed. An attempt that finishes has tried every choice, so
+`exhausted` means the inputs have no result. The `budget-exceeded`
+diagnostic says how many restarts ran. Caves never restart.
 
-Install `@yagejs/level` for the optional `/level` adapter. Prepare ordinary
-`LevelDocument` content and associate it by template id. This continues the
-`definition` and `layout` example above. It places an invisible spawn marker
-at the centre of each hall; replace its content with your game's entities.
+A search proves a contradiction quickly only when it meets the contradiction
+near its start. A contradiction it meets only after placing most of the map
+usually ends `budget-exceeded`.
+
+`inspect()` returns the status, seed, step count and diagnostics. A room job
+also reports the rooms placed so far and `rejections`, a count of rejected
+candidates per reason: `socket`, `opening-used`, `alignment`, `overlap`,
+`bounds` and `catalog-rule`. Rejections also happen during searches that
+succeed. The diagnostics keep the latest example of each reason. A
+`catalog-rule` diagnostic names the broken rule, for example
+`A candidate for "shop:2" breaks the forbidden connection {"kind":"entrance"} to {} on "connection:6".`
+Catalog jobs report `catalog-rule` diagnostics too.
+
+## Navigate a layout
+
+Install `@yagejs/pathfinding` for the `/navigation` adapter.
+`createRoomLayoutGraph` turns a layout into a `GridGraph` for your tile size.
+It asks your `hasKey` function during every path search, so a key the player
+collects opens the rooms and doors that need it without rebuilding the graph.
+
+```ts yage-group="rooms"
+import { createRoomLayoutGraph } from "@yagejs-addons/procedural/navigation";
+
+const keys = new Set<string>();
+if (layout) {
+  const navigation = createRoomLayoutGraph(layout, {
+    tileWidth: 16, tileHeight: 16,
+    hasKey: (key) => keys.has(key),
+  });
+  const centre = (id: string) => {
+    const room = layout.regions.find((r) => r.id === id)!;
+    return { x: (room.x + 2.5) * 16, y: (room.y + 2.5) * 16 };
+  };
+  console.log(navigation.findPath(centre("start"), centre("boss"))); // null
+  keys.add("key-a").add("key-b");
+  console.log(navigation.findPath(centre("start"), centre("boss"))); // a path
+}
+```
+
+`isRoomLayoutWalkable(layout, { x, y }, hasKey)` answers the same question for
+one tile, in tile coordinates, without pathfinding. Both describe a point
+moving in four directions. The graph's queries and waypoints are world pixels.
+
+Masks and doors are what the layout claims about a room. The addon does not
+read colliders, Tiled collision layers, player size, jumps or moving
+obstacles. Close the unused parts of each wall and enforce the same locks in
+your collision code.
+
+## Load authored content
+
+Install `@yagejs/level` for the `/level` adapter. Prepare one level document
+per template id; `instantiateRoomLayout` loads each room's document at the
+room's position. This continues the dungeon above and places an invisible
+spawn marker in each hall.
 
 ```ts yage-group="rooms"
 import { Component, Entity, Scene, Transform } from "@yagejs/core";
@@ -425,8 +404,11 @@ class LoadRooms extends Component {
   private instances: readonly LevelInstance[] = [];
   onAdd(): void {
     if (!layout) throw new Error("Generate a layout before loading its content");
-    this.instances = instantiateRoomLayout(this.scene, definition, layout,
-      { hall: preparedHall }, "ruins", { tileWidth: 16, tileHeight: 16 });
+    this.instances = instantiateRoomLayout(this.scene, layout, {
+      levels: { hall: preparedHall },
+      namespace: "ruins",
+      tileWidth: 16, tileHeight: 16,
+    });
   }
   onRemove(): void {
     for (const instance of this.instances) instance.dispose();
@@ -441,34 +423,56 @@ class DungeonScene extends Scene {
 }
 ```
 
-Loading applies each room's tile offset multiplied by the pixel scale. It
-does not resize authored entities or colliders, construct walls or operate
-locks. Prepared content is keyed by template id; apply selected variant
-metadata in game code. Author content for that pixel scale and apply the selected openings
-and progression rules in game code. Preload assets with `levelAssets()`.
+Each room's content is placed at its tile position times the tile size;
+authored entities and colliders are not resized. Room `i` loads with the
+namespace `<namespace>:<i>`, so its scene keys stay separate from the other
+rooms'. Content is chosen by template id: build variant-specific content from
+`room.metadata` in your entities. Preload the documents' assets with
+`levelAssets()`.
 
-The helper validates the layout, prepared documents and every planned scene
-key before loading any room. An occupied key throws an error naming that key
-without loading any rooms. Each instance receives namespace `<prefix>:<index>`;
-the prefix must be non-empty, contain no `/`, and be unique in the scene. References remain within the room
-instance. A setup error stops later loads. `RoomLayoutLoadError` carries the
-failing `roomId`, original `cause`, and earlier successful `instances`, which
-remain owned by the game for disposal.
+The adapter throws before loading anything when a template has no prepared
+level, its prepared level has diagnostics, or the namespace is empty. When one room fails to load,
+for example because a scene key is already taken, it throws
+`RoomLayoutLoadError` with the failing `roomId`, the original `cause`, and
+the `instances` loaded before it. Those rooms stay in the scene for your game
+to dispose.
 
-`RoomGenerator.snapshot()` captures the full definition and completed layout.
-`RoomGenerator.restore(snapshot)` validates and restores it without rerunning
-search. Snapshot and generator version 4 include selected variants and metadata;
-older versions are rejected. `validateRoomLayout(definition, layout)` checks
-external layouts against the same geometry, graph, catalog rules, resolved
-metadata, limits and validation claims.
+## Generate a cave
 
-`CatalogGenerator.snapshot()` and `CatalogGenerator.restore(snapshot)` save and
-validate completed catalog selections with snapshot version 1. Neither restore
-operation reruns selection. A changed catalog requires a new definition revision.
+`CaveGenerator` returns a `TileMap`: an `origin` and rows of `#` and `.`. It
+needs no region graph or catalog.
 
-Store the snapshot, a generated `RegionGraph`, or a cave's `TileMap` in the
-game's explicit save root. Save runtime key ownership and entity state
-separately. Active searches cannot be saved or resumed. Reproduction requires
-the same seed, input data, array order, options and algorithm version. Increment
-`definition.revision` when its catalog or graph changes. Restoring a snapshot
-uses its embedded definition; migration to changed game content belongs to the game.
+```ts
+import { CaveGenerator } from "@yagejs-addons/procedural";
+import { createTileMapGraph } from "@yagejs-addons/procedural/navigation";
+
+const job = new CaveGenerator({ seed: 42, width: 48, height: 32 });
+const map = job.generate();
+if (map) {
+  const navigation = createTileMapGraph(map, { tileWidth: 16, tileHeight: 16 });
+  console.log(map.cells, navigation.cols, navigation.rows);
+}
+```
+
+The generator smooths randomly placed walls, keeps the largest connected
+floor area and closes the outer boundary. When no floor survives, the centre
+tile is the floor. `wallProbability` defaults to 0.45, `iterations` to four,
+and `origin` to `(0, 0)`. Large caves need a larger `maxSteps`.
+`createTileMapGraph` also reads tile maps from your own generators.
+
+## Save and restore
+
+Results are plain JSON. Store a `RoomLayout`, `CatalogSelection`,
+`RegionGraph` or `TileMap` in your game's save root. A layout needs nothing
+else to be drawn, navigated or loaded.
+
+Before using a layout or selection read from a save, check it against your
+current catalog with `validateRoomLayout(definition, layout)` or
+`validateCatalogSelection(definition, selection)`. Both return a list of
+errors, empty when the saved data still matches the graph, templates,
+variants, metadata, rules, doors and footprints. When content has changed
+since the save, regenerate or migrate the save in your own code.
+
+A running job cannot be saved. Collected keys and entity state belong in your
+own save data. The same inputs, input order, seed and addon version reproduce
+the same result.

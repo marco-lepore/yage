@@ -1,182 +1,141 @@
 import type { RandomService } from "@yagejs/core";
-import {
-  assertInteger,
-  fail,
-  freezeCopy,
-  id,
-  templateUseLimit,
-} from "./geometry.js";
+import { validateRoomGeometry } from "./geometry.js";
+import { assertInteger, assertPositive, fail } from "./internal.js";
 import { validateRegionGraph } from "./progression.js";
-import { validateTemplate } from "./spatial.js";
 import type {
-  CatalogAssignment,
   CatalogDefinition,
-  CatalogEntry,
   CatalogLink,
-  CatalogMetadata,
   CatalogPort,
-  CatalogSelection,
   CatalogSelector,
+  CatalogValue,
+  CatalogTemplate,
   CatalogVariant,
-  ResolvedCatalogEntry,
   Region,
   RoomConnectionArea,
-  RoomTemplate,
+  SelectedRegion,
+  TileSize,
 } from "./types.js";
 
-export interface CatalogChoice extends ResolvedCatalogEntry {
-  readonly kind: string;
-  readonly weight: number;
-  readonly connections: readonly (CatalogPort | RoomConnectionArea)[];
-  readonly size?: { readonly width: number; readonly height: number };
+type AnyTemplate = CatalogTemplate & {
+  readonly size?: TileSize;
   readonly navigation?: readonly string[];
+};
+type AnyVariant = CatalogVariant & {
+  readonly size?: TileSize;
+  readonly navigation?: readonly string[] | null;
+};
+
+/** One template or variant resolved for one region. */
+export interface Candidate {
+  readonly region: Region;
+  readonly selected: SelectedRegion;
+  readonly weight: number;
+  readonly ports: readonly CatalogPort[];
+  /** Room templates only. */
+  readonly size: TileSize | undefined;
+  readonly navigation: readonly string[] | undefined;
 }
 function resolve(
-  entry: CatalogEntry,
-  variant: CatalogVariant | undefined,
+  template: AnyTemplate,
+  variant: AnyVariant | undefined,
   region: Region,
-): CatalogChoice {
+): Candidate {
   const navigation =
     variant?.navigation === null
       ? undefined
-      : (variant?.navigation ?? entry.navigation);
-  const size = variant?.size ?? entry.size;
-  const combinedWeight = (entry.weight ?? 1) * (variant?.weight ?? 1);
-  if (!Number.isFinite(combinedWeight) || combinedWeight <= 0)
-    fail(
-      `template "${entry.id}" combined weight: finite positive number required, got ${combinedWeight}`,
-    );
+      : (variant?.navigation ?? template.navigation);
   return {
-    id: region.id,
-    kind: region.kind,
-    templateId: entry.id,
-    variantId: variant?.id ?? null,
-    metadata: { ...entry.metadata, ...variant?.metadata },
-    tags: [...new Set([...(entry.tags ?? []), ...(variant?.tags ?? [])])],
-    weight: combinedWeight,
-    connections: variant?.connections ?? entry.connections,
-    ...(size ? { size } : {}),
-    ...(navigation ? { navigation } : {}),
+    region,
+    selected: {
+      ...region,
+      templateId: template.id,
+      variantId: variant?.id ?? null,
+      metadata: { ...template.metadata, ...variant?.metadata },
+      tags: [...new Set([...(template.tags ?? []), ...(variant?.tags ?? [])])],
+    },
+    weight: (template.weight ?? 1) * (variant?.weight ?? 1),
+    ports: variant?.connections ?? template.connections,
+    size: variant?.size ?? template.size,
+    navigation,
   };
 }
-export function assignment(choice: CatalogChoice): CatalogAssignment {
-  return {
-    id: choice.id,
-    templateId: choice.templateId,
-    variantId: choice.variantId,
-    metadata: choice.metadata,
-    tags: choice.tags,
-  };
-}
-export function spatialTemplate(choice: CatalogChoice): RoomTemplate | null {
-  if (
-    !choice.size ||
-    !choice.connections.every(
-      (port): port is RoomConnectionArea => "side" in port,
-    )
-  )
-    return null;
-  return {
-    id: choice.templateId,
-    kinds: [choice.kind],
-    size: choice.size,
-    connections: choice.connections,
-    ...(choice.navigation ? { navigation: choice.navigation } : {}),
-  };
-}
-function selectedChoice(
-  definition: CatalogDefinition,
-  selected: CatalogAssignment,
-): CatalogChoice {
-  const region = definition.graph.regions.find((r) => r.id === selected.id);
-  const entry = definition.templates.find((t) => t.id === selected.templateId);
-  const variant = entry?.variants?.find((v) => v.id === selected.variantId);
-  if (
-    !entry ||
-    !region ||
-    (entry.variants ? !variant : selected.variantId !== null)
-  )
-    fail(`unknown catalog selection for "${selected.id}"`);
-  return resolve(entry, variant, region);
-}
-/** Read the selected entry's data and connections without requiring spatial information. */
-export function resolveCatalogEntry(
-  definition: CatalogDefinition,
-  selected: CatalogAssignment,
-): ResolvedCatalogEntry {
-  const choice = selectedChoice(definition, selected);
-  return freezeCopy({
-    ...assignment(choice),
-    connections: choice.connections,
-    ...(choice.size ? { size: choice.size } : {}),
-    ...(choice.navigation ? { navigation: choice.navigation } : {}),
-  });
-}
-/** Resolve the chosen variant's footprint, openings and optional mask. Use a validated result. */
-export function resolveRoomTemplate(
-  definition: CatalogDefinition,
-  selected: CatalogAssignment,
-): RoomTemplate {
-  const template = spatialTemplate(selectedChoice(definition, selected));
-  if (!template)
-    fail(`selection "${selected.id}" has no complete spatial data`);
-  return template;
-}
-function matches(selector: CatalogSelector, choice: CatalogChoice): boolean {
+function matches(selector: CatalogSelector, selected: SelectedRegion): boolean {
   return (
-    (selector.kind === undefined || choice.kind === selector.kind) &&
+    (selector.kind === undefined || selected.kind === selector.kind) &&
     (selector.templateId === undefined ||
-      choice.templateId === selector.templateId) &&
+      selected.templateId === selector.templateId) &&
     (selector.variantId === undefined ||
-      choice.variantId === selector.variantId) &&
-    (selector.tags ?? []).every((tag) => choice.tags.includes(tag))
+      selected.variantId === selector.variantId) &&
+    (selector.tags ?? []).every((tag) => selected.tags.includes(tag))
   );
 }
-/** One candidate and rule mechanism for abstract selection and spatial placement. */
+
+/** The candidates of every region and the catalog rules, shared by both generators. */
 export class CatalogCandidates {
-  private readonly candidates = new Map<string, readonly CatalogChoice[]>();
+  private readonly byRegion = new Map<string, readonly Candidate[]>();
+  /**
+   * Per count rule: the regions with at least one matching candidate, and
+   * the regions whose every candidate matches.
+   */
+  private readonly matching: readonly {
+    readonly can: readonly string[];
+    readonly must: readonly string[];
+  }[];
   constructor(readonly definition: CatalogDefinition) {
-    for (const region of definition.graph.regions) {
-      const choices = definition.templates
-        .filter((entry) => entry.kinds.includes(region.kind))
-        .flatMap((entry) =>
-          (entry.variants ?? [undefined])
-            .filter(
-              (variant) =>
-                (!variant?.regionIds ||
-                  variant.regionIds.includes(region.id)) &&
-                (!variant?.kinds || variant.kinds.includes(region.kind)),
-            )
-            .map((variant) => resolve(entry, variant, region)),
-        )
-        .filter((choice) =>
-          (definition.rules?.regions ?? []).every(
-            (rule) =>
-              rule.regionId !== region.id || matches(rule.match, choice),
+    for (const region of definition.graph.regions)
+      this.byRegion.set(
+        region.id,
+        definition.templates
+          .filter((template) => template.kinds.includes(region.kind))
+          .flatMap((template) =>
+            (template.variants ?? [undefined])
+              .filter(
+                (variant) =>
+                  (!variant?.regionIds ||
+                    variant.regionIds.includes(region.id)) &&
+                  (!variant?.kinds || variant.kinds.includes(region.kind)),
+              )
+              .map((variant) => resolve(template, variant, region)),
+          )
+          .filter((candidate) =>
+            (definition.rules?.regions ?? []).every(
+              (rule) =>
+                rule.regionId !== region.id ||
+                matches(rule.match, candidate.selected),
+            ),
           ),
-        );
-      this.candidates.set(region.id, choices);
-    }
-  }
-  forRegion(region: Region): readonly CatalogChoice[] {
-    return this.candidates.get(region.id)!;
-  }
-  find(selected: CatalogAssignment): CatalogChoice | undefined {
-    return this.candidates
-      .get(selected.id)
-      ?.find(
-        (choice) =>
-          choice.templateId === selected.templateId &&
-          choice.variantId === selected.variantId,
       );
+    const regions = definition.graph.regions;
+    this.matching = (definition.rules?.counts ?? []).map((rule) => {
+      const test = (candidate: Candidate): boolean =>
+        matches(rule.match, candidate.selected);
+      return {
+        can: regions
+          .filter((r) => this.forRegion(r.id).some(test))
+          .map((r) => r.id),
+        must: regions
+          .filter((r) => this.forRegion(r.id).every(test))
+          .map((r) => r.id),
+      };
+    });
   }
-  ordered(region: Region, random: RandomService): CatalogChoice[] {
-    const pending = [...this.forRegion(region)],
-      result: CatalogChoice[] = [];
+  forRegion(regionId: string): readonly Candidate[] {
+    return this.byRegion.get(regionId) ?? [];
+  }
+  find(selected: SelectedRegion): Candidate | undefined {
+    return this.forRegion(selected.id).find(
+      (candidate) =>
+        candidate.selected.templateId === selected.templateId &&
+        candidate.selected.variantId === selected.variantId,
+    );
+  }
+  /** Seeded weighted order: heavier candidates tend to come first. */
+  ordered(regionId: string, random: RandomService): Candidate[] {
+    const pending = [...this.forRegion(regionId)],
+      result: Candidate[] = [];
     while (pending.length) {
       let target =
-        random.float() *
-        pending.reduce((sum, choice) => sum + choice.weight, 0);
+        random.float() * pending.reduce((sum, c) => sum + c.weight, 0);
       let index = 0;
       while (index < pending.length - 1 && target >= pending[index]!.weight)
         target -= pending[index++]!.weight;
@@ -184,364 +143,308 @@ export class CatalogCandidates {
     }
     return result;
   }
-  accepts(selected: readonly CatalogAssignment[], complete = false): boolean {
-    const choices = selected.map((value) => this.find(value));
-    if (choices.some((choice) => !choice)) return false;
-    const resolved = choices as CatalogChoice[];
-    for (const choice of resolved)
-      if (
-        resolved.filter((other) => other.templateId === choice.templateId)
-          .length > templateUseLimit(this.definition, choice.templateId)
-      )
-        return false;
-    for (const rule of this.definition.rules?.counts ?? []) {
-      const count = resolved.filter((choice) =>
-        matches(rule.match, choice),
+  /**
+   * The first count or connection rule these choices break, described for a
+   * diagnostic, or null. A partial selection breaks a minimum only when no
+   * completion could reach it.
+   */
+  brokenRule(chosen: readonly Candidate[], complete: boolean): string | null {
+    const rules = this.definition.rules;
+    const ids = new Set(chosen.map((c) => c.region.id));
+    const open = (regionIds: readonly string[]): number =>
+      regionIds.filter((id) => !ids.has(id)).length;
+    for (const [index, rule] of (rules?.counts ?? []).entries()) {
+      const label = `count rule ${JSON.stringify(rule.match)}`;
+      const count = chosen.filter((c) =>
+        matches(rule.match, c.selected),
       ).length;
-      if (count > (rule.max ?? 64) || (complete && count < rule.min))
-        return false;
-      const possible = this.definition.graph.regions.filter(
-        (region) =>
-          !selected.some((value) => value.id === region.id) &&
-          this.forRegion(region).some((choice) => matches(rule.match, choice)),
-      ).length;
-      if (count + possible < rule.min) return false;
+      const min = rule.min ?? 0;
+      if (rule.max !== undefined && count > rule.max)
+        return `${label}: at most ${rule.max}, got ${count}`;
+      if (complete) {
+        if (count < min) return `${label}: at least ${min}, got ${count}`;
+        continue;
+      }
+      const { can, must } = this.matching[index]!;
+      if (count < min && count + open(can) < min)
+        return `${label}: at least ${min}, but at most ${count + open(can)} regions can match`;
+      if (rule.max !== undefined && count + open(must) > rule.max)
+        return `${label}: at most ${rule.max}, but at least ${count + open(must)} regions must match`;
     }
+    const byId = new Map(chosen.map((c) => [c.region.id, c.selected]));
     for (const edge of this.definition.graph.connections) {
-      const a = resolved.find((choice) => choice.id === edge.from),
-        b = resolved.find((choice) => choice.id === edge.to);
+      const a = byId.get(edge.from),
+        b = byId.get(edge.to);
       if (!a || !b) continue;
-      if (
-        (this.definition.rules?.forbiddenConnections ?? []).some(
-          (rule) =>
-            (matches(rule.from, a) && matches(rule.to, b)) ||
-            (matches(rule.to, a) && matches(rule.from, b)),
-        )
-      )
-        return false;
+      const rule = rules?.forbiddenConnections?.find(
+        (rule) =>
+          (matches(rule.from, a) && matches(rule.to, b)) ||
+          (matches(rule.to, a) && matches(rule.from, b)),
+      );
+      if (rule)
+        return `forbidden connection ${JSON.stringify(rule.from)} to ${JSON.stringify(rule.to)} on "${edge.id}"`;
     }
-    return true;
+    return null;
   }
 }
+
+/** Whether `candidate` can use `portId` for one more link. */
 export function portAvailable(
-  choice: CatalogChoice,
+  candidate: Candidate,
   portId: string,
   links: readonly CatalogLink[],
 ): boolean {
-  const port = choice.connections.find((p) => p.id === portId);
-  return (
-    !!port &&
-    links.filter(
-      (link) =>
-        (link.from === choice.id && link.fromPort === portId) ||
-        (link.to === choice.id && link.toPort === portId),
-    ).length < (port.capacity ?? 1)
-  );
+  const port = candidate.ports.find((p) => p.id === portId);
+  if (!port) return false;
+  const id = candidate.region.id;
+  const used = links.filter(
+    (link) =>
+      (link.from === id && link.fromPort === portId) ||
+      (link.to === id && link.toPort === portId),
+  ).length;
+  return used < (port.capacity ?? 1);
 }
-function metadata(value: CatalogMetadata | undefined, context: string): void {
-  if (value === undefined) return;
-  const ancestors = new Set<object>();
-  let nodes = 0;
-  const visit = (item: unknown, depth: number): void => {
-    if (++nodes > 10_000 || depth > 32)
-      fail(`${context} metadata exceeds 10000 values or depth 32`);
-    if (item === null || typeof item === "string" || typeof item === "boolean")
-      return;
-    if (typeof item === "number" && Number.isFinite(item)) return;
-    if (typeof item !== "object" || item === null || ancestors.has(item))
-      fail(`${context} metadata must be finite, acyclic JSON data`);
-    if (
-      !Array.isArray(item) &&
-      Object.getPrototypeOf(item) !== Object.prototype &&
-      Object.getPrototypeOf(item) !== null
-    )
-      fail(`${context} metadata must use plain objects`);
-    if (Object.getOwnPropertySymbols(item).length)
-      fail(`${context} metadata cannot contain symbol keys`);
-    if (
-      Array.isArray(item) &&
-      (item.length > 10_000 ||
-        Object.keys(item).length !== item.length ||
-        !Array.from({ length: item.length }, (_, index) =>
-          Object.hasOwn(item, index),
-        ).every(Boolean))
-    )
-      fail(`${context} metadata arrays must be dense JSON arrays`);
-    ancestors.add(item);
-    for (const descriptor of Object.values(
-      Object.getOwnPropertyDescriptors(item),
-    )) {
-      if (!Object.hasOwn(descriptor, "value"))
-        fail(`${context} metadata cannot contain accessors`);
-      visit(descriptor.value, depth + 1);
-    }
-    ancestors.delete(item);
-  };
-  if (!value || Array.isArray(value) || typeof value !== "object")
-    fail(`${context} metadata must be an object`);
-  visit(value, 0);
-}
-function strings(values: readonly string[] | undefined, context: string): void {
-  if (values === undefined) return;
-  assertInteger(context, values.length, 0, 256);
-  values.forEach((value) => id(value, context));
-  if (new Set(values).size !== values.length) fail(`${context} must be unique`);
-}
-function weight(value: number | undefined, context: string): void {
-  if (
-    value !== undefined &&
-    (!Number.isFinite(value) || value <= 0 || value > 1_000_000)
-  )
-    fail(
-      `${context} weight: finite number in (0, 1000000] required, got ${value}`,
-    );
-}
+
+/**
+ * Throws naming the first invalid template, variant, rule or region. With
+ * `rooms`, every candidate also needs placeable geometry.
+ */
 export function validateCatalogDefinition(
   definition: CatalogDefinition,
-): CatalogDefinition {
-  id(definition.id, "definition id");
-  id(definition.revision, "definition revision");
-  const errors = validateRegionGraph(definition.graph);
-  if (errors.length) fail(errors.join("; "));
-  assertInteger("Catalog template count", definition.templates.length, 1, 128);
-  const entries = new Set<string>();
-  for (const entry of definition.templates) {
-    id(entry.id, "template id");
-    if (entries.has(entry.id)) fail(`duplicate template "${entry.id}"`);
-    entries.add(entry.id);
-    strings(entry.kinds, `template "${entry.id}" kinds`);
-    if (!entry.kinds.length) fail(`template "${entry.id}" needs kinds`);
-    strings(entry.tags, `template "${entry.id}" tags`);
-    metadata(entry.metadata, entry.id);
-    weight(entry.weight, entry.id);
-    if (entry.variants)
-      assertInteger(
-        `template "${entry.id}" variants`,
-        entry.variants.length,
-        1,
-        64,
-      );
-    const variants = new Set<string>();
-    for (const variant of entry.variants ?? []) {
-      id(variant.id, `template "${entry.id}" variant id`);
-      if (variants.has(variant.id))
-        fail(`duplicate variant "${variant.id}" in "${entry.id}"`);
-      variants.add(variant.id);
-      strings(variant.tags, variant.id);
-      strings(variant.regionIds, variant.id);
-      strings(variant.kinds, variant.id);
-      if (
-        variant.regionIds?.some(
-          (regionId) =>
-            !definition.graph.regions.some((r) => r.id === regionId),
-        )
-      )
-        fail(`variant "${variant.id}" references unknown region`);
-      if (variant.kinds?.some((kind) => !entry.kinds.includes(kind)))
-        fail(`variant "${variant.id}" references a kind absent from its entry`);
-      metadata(variant.metadata, variant.id);
-      weight(variant.weight, variant.id);
+  rooms: boolean,
+): CatalogCandidates {
+  const graphErrors = validateRegionGraph(definition.graph);
+  if (graphErrors.length) fail(graphErrors.join(" "));
+  const regionIds = new Set(definition.graph.regions.map((r) => r.id));
+  const templateIds = new Set<string>();
+  for (const template of definition.templates as readonly AnyTemplate[]) {
+    const label = `template "${template.id}"`;
+    if (templateIds.has(template.id)) fail(`duplicate ${label}`);
+    templateIds.add(template.id);
+    if (template.weight !== undefined)
+      assertPositive(`${label} weight`, template.weight);
+    assertFiniteData(`${label} metadata`, template.metadata ?? {});
+    const variantIds = new Set<string>();
+    for (const variant of template.variants ?? []) {
+      const variantLabel = `${label} variant "${variant.id}"`;
+      if (variantIds.has(variant.id)) fail(`duplicate ${variantLabel}`);
+      variantIds.add(variant.id);
+      if (variant.weight !== undefined)
+        assertPositive(`${variantLabel} weight`, variant.weight);
+      assertFiniteData(`${variantLabel} metadata`, variant.metadata ?? {});
+      for (const regionId of variant.regionIds ?? [])
+        if (!regionIds.has(regionId))
+          fail(`${variantLabel} names unknown region "${regionId}"`);
+      for (const kind of variant.kinds ?? [])
+        if (!template.kinds.includes(kind))
+          fail(
+            `${variantLabel} names kind "${kind}", which its template lacks`,
+          );
     }
-    for (const variant of entry.variants ?? [undefined]) {
-      const choice = resolve(entry, variant, {
-        id: entry.id,
-        kind: entry.kinds[0]!,
+    for (const variant of (template.variants ?? [undefined]) as readonly (
+      | AnyVariant
+      | undefined
+    )[]) {
+      const candidateLabel = variant
+        ? `${label} variant "${variant.id}"`
+        : label;
+      const candidate = resolve(template, variant, {
+        id: template.id,
+        kind: template.kinds[0] ?? "",
       });
-      assertInteger(
-        `template "${entry.id}" connections`,
-        choice.connections.length,
-        0,
-        64,
-      );
-      const ports = new Set<string>();
-      for (const port of choice.connections) {
-        id(port.id, `${entry.id} connection id`);
-        id(port.socket ?? "passage", `${entry.id} socket`);
+      assertPositive(`${candidateLabel} combined weight`, candidate.weight);
+      const portIds = new Set<string>();
+      for (const port of candidate.ports) {
+        if (portIds.has(port.id))
+          fail(`${candidateLabel} has duplicate connection "${port.id}"`);
+        portIds.add(port.id);
         assertInteger(
-          `${entry.id} connection capacity`,
+          `${candidateLabel} connection "${port.id}" capacity`,
           port.capacity ?? 1,
           1,
-          64,
         );
-        if (ports.has(port.id))
-          fail(`duplicate connection "${port.id}" in "${entry.id}"`);
-        ports.add(port.id);
       }
-      if (choice.size) {
-        assertInteger(`${entry.id} width`, choice.size.width, 1, 1_000_000);
-        assertInteger(`${entry.id} height`, choice.size.height, 1, 1_000_000);
-      }
-      if (
-        choice.navigation ||
-        choice.connections.some((port) => "side" in port)
-      ) {
-        if (!choice.size)
-          fail(`template "${entry.id}" needs size for spatial data`);
-        validateTemplate({
-          id: entry.id,
-          kinds: entry.kinds,
-          size: choice.size,
-          connections: choice.connections.filter(
-            (port): port is RoomConnectionArea => "side" in port,
-          ),
-          ...(choice.navigation ? { navigation: choice.navigation } : {}),
-        });
-      }
+      if (rooms)
+        validateRoomGeometry(
+          candidateLabel,
+          candidate.size!,
+          candidate.ports as readonly RoomConnectionArea[],
+          candidate.navigation,
+        );
     }
   }
-  for (const region of definition.graph.regions)
-    if (
-      !definition.templates.some((entry) => entry.kinds.includes(region.kind))
-    )
-      fail(`region "${region.id}" has no template for kind "${region.kind}"`);
-  for (const [key, count] of Object.entries(definition.maxUses ?? {})) {
-    if (!entries.has(key)) fail(`maxUses references unknown template "${key}"`);
-    assertInteger(`Catalog maxUses.${key}`, count, 0, 64);
-  }
-  const selector = (match: CatalogSelector): void => {
-    if (match.kind !== undefined) {
-      id(match.kind, "selector kind");
-      if (!definition.graph.regions.some((r) => r.kind === match.kind))
-        fail(`selector references unknown kind "${match.kind}"`);
-    }
-    if (match.templateId !== undefined && !entries.has(match.templateId))
-      fail(`selector references unknown template "${match.templateId}"`);
+  const kinds = new Set(definition.graph.regions.map((r) => r.kind));
+  const selector = (match: CatalogSelector, context: string): void => {
+    if (match.kind !== undefined && !kinds.has(match.kind))
+      fail(`${context} names unknown kind "${match.kind}"`);
+    if (match.templateId !== undefined && !templateIds.has(match.templateId))
+      fail(`${context} names unknown template "${match.templateId}"`);
     if (
       match.variantId !== undefined &&
       !definition.templates.some(
-        (entry) =>
-          (match.templateId === undefined || entry.id === match.templateId) &&
-          entry.variants?.some((v) => v.id === match.variantId),
+        (template) =>
+          (match.templateId === undefined ||
+            template.id === match.templateId) &&
+          template.variants?.some((v) => v.id === match.variantId),
       )
     )
-      fail(`selector references unknown variant "${match.variantId}"`);
-    strings(match.tags, "selector tags");
+      fail(`${context} names unknown variant "${match.variantId}"`);
   };
-  for (const rules of [
-    definition.rules?.counts,
-    definition.rules?.regions,
-    definition.rules?.forbiddenConnections,
-  ])
-    if (rules) assertInteger("Catalog rule count", rules.length, 0, 256);
-  for (const rule of definition.rules?.counts ?? []) {
-    selector(rule.match);
-    assertInteger("Catalog count min", rule.min, 0, 64);
-    assertInteger("Catalog count max", rule.max ?? 64, rule.min, 64);
+  for (const [index, rule] of (definition.rules?.counts ?? []).entries()) {
+    const context = `rules.counts[${index}]`;
+    selector(rule.match, context);
+    const min = rule.min ?? 0;
+    assertInteger(`${context} min`, min, 0);
+    if (rule.max !== undefined) assertInteger(`${context} max`, rule.max, min);
   }
-  for (const rule of definition.rules?.regions ?? []) {
-    if (!definition.graph.regions.some((r) => r.id === rule.regionId))
-      fail(`rule references unknown region "${rule.regionId}"`);
-    selector(rule.match);
+  for (const [index, rule] of (definition.rules?.regions ?? []).entries()) {
+    const context = `rules.regions[${index}]`;
+    if (!regionIds.has(rule.regionId))
+      fail(`${context} names unknown region "${rule.regionId}"`);
+    selector(rule.match, context);
   }
-  for (const rule of definition.rules?.forbiddenConnections ?? []) {
-    selector(rule.from);
-    selector(rule.to);
+  for (const [index, rule] of (
+    definition.rules?.forbiddenConnections ?? []
+  ).entries()) {
+    selector(rule.from, `rules.forbiddenConnections[${index}].from`);
+    selector(rule.to, `rules.forbiddenConnections[${index}].to`);
   }
-  return freezeCopy(definition);
+  const candidates = new CatalogCandidates(definition);
+  for (const region of definition.graph.regions)
+    if (!candidates.forRegion(region.id).length)
+      fail(
+        `region "${region.id}" has no eligible template for kind "${region.kind}"`,
+      );
+  const broken = candidates.brokenRule([], false);
+  if (broken) fail(`no selection can meet the ${broken}`);
+  return candidates;
 }
-function equal(a: unknown, b: unknown): boolean {
+
+/** Metadata is compared and saved as JSON, so every number must be finite. */
+function assertFiniteData(context: string, value: CatalogValue): void {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value))
+      fail(`${context}: finite number required, got ${value}`);
+  } else if (Array.isArray(value)) {
+    value.forEach((item: CatalogValue, i) =>
+      assertFiniteData(`${context}[${i}]`, item),
+    );
+  } else if (value !== null && typeof value === "object") {
+    for (const [key, item] of Object.entries(value))
+      assertFiniteData(`${context}.${key}`, item);
+  }
+}
+
+/** Deep equality for JSON-shaped data; `undefined` fields count as absent. */
+export function sameData(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (
-    !a ||
-    !b ||
+    a === null ||
+    b === null ||
     typeof a !== "object" ||
     typeof b !== "object" ||
     Array.isArray(a) !== Array.isArray(b)
   )
     return false;
-  const x = Object.keys(a),
-    y = Object.keys(b);
+  const record = (value: object): [string, unknown][] =>
+    Object.entries(value).filter(([, v]) => v !== undefined);
+  const x = record(a),
+    y = new Map(record(b));
   return (
-    x.length === y.length &&
-    x.every(
-      (key) =>
-        Object.hasOwn(b, key) &&
-        equal(
-          (a as Record<string, unknown>)[key],
-          (b as Record<string, unknown>)[key],
-        ),
-    )
+    x.length === y.size &&
+    x.every(([key, value]) => y.has(key) && sameData(value, y.get(key)))
   );
 }
-export function validateAssignments(
-  definition: CatalogDefinition,
-  selected: readonly CatalogAssignment[],
+
+function sameRegion(a: Region, b: Region): boolean {
+  return (
+    a.kind === b.kind &&
+    sameData(a.grants ?? [], b.grants ?? []) &&
+    sameData(a.requires ?? [], b.requires ?? [])
+  );
+}
+
+/**
+ * Errors for a saved selection or layout checked against the current
+ * definition: graph, eligibility, resolved data, rules, slots and capacities.
+ */
+export function selectionErrors(
+  candidates: CatalogCandidates,
+  start: string,
+  regions: readonly SelectedRegion[],
   links: readonly CatalogLink[],
-): string[] {
-  const errors: string[] = [],
-    candidates = new CatalogCandidates(definition);
-  const ids = new Set(selected.map((value) => value.id));
-  if (ids.size !== selected.length)
-    errors.push("Duplicate catalog region ids.");
-  for (const region of definition.graph.regions)
-    if (!ids.has(region.id))
-      errors.push(`Required region "${region.id}" missing.`);
-  for (const value of selected) {
-    const choice = candidates.find(value);
-    if (
-      !choice ||
-      !equal(choice.metadata, value.metadata) ||
-      !equal(choice.tags, value.tags)
-    )
-      errors.push(`Invalid catalog variant or metadata for "${value.id}".`);
-  }
-  if (!candidates.accepts(selected, true))
+): { errors: string[]; chosen: ReadonlyMap<string, Candidate> } {
+  const graph = candidates.definition.graph;
+  const errors: string[] = [];
+  if (start !== graph.start)
     errors.push(
-      "Catalog selection violates count, region, adjacency or usage rules.",
+      `Start "${start}" does not match graph start "${graph.start}".`,
     );
-  const seen = new Set<string>(),
-    accepted: CatalogLink[] = [];
-  for (const link of links) {
-    const expected = definition.graph.connections.find(
-      (edge) => edge.id === link.id,
-    );
-    const a = selected.find((value) => value.id === link.from),
-      b = selected.find((value) => value.id === link.to);
-    const ac = a && candidates.find(a),
-      bc = b && candidates.find(b);
-    const ap = ac?.connections.find((port) => port.id === link.fromPort),
-      bp = bc?.connections.find((port) => port.id === link.toPort);
+  const chosen = new Map<string, Candidate>();
+  for (const selected of regions) {
+    const region = graph.regions.find((r) => r.id === selected.id);
+    if (!region) {
+      errors.push(`Region "${selected.id}" is not in the graph.`);
+      continue;
+    }
+    if (chosen.has(selected.id)) {
+      errors.push(`Region "${selected.id}" appears twice.`);
+      continue;
+    }
+    const candidate = candidates.find(selected);
     if (
-      !expected ||
-      expected.from !== link.from ||
-      expected.to !== link.to ||
-      seen.has(link.id) ||
-      !ac ||
-      !bc ||
+      !candidate ||
+      !sameRegion(region, selected) ||
+      !sameData(candidate.selected.metadata, selected.metadata) ||
+      !sameData(candidate.selected.tags, selected.tags)
+    ) {
+      errors.push(
+        `Region "${selected.id}" does not match an eligible template or variant.`,
+      );
+      continue;
+    }
+    chosen.set(selected.id, candidate);
+  }
+  for (const region of graph.regions)
+    if (!regions.some((r) => r.id === region.id))
+      errors.push(`Region "${region.id}" is missing.`);
+  const broken = errors.length
+    ? null
+    : candidates.brokenRule([...chosen.values()], true);
+  if (broken) errors.push(`The selection breaks the ${broken}.`);
+  const accepted: CatalogLink[] = [];
+  for (const link of links) {
+    const edge = graph.connections.find((c) => c.id === link.id);
+    const a = chosen.get(link.from),
+      b = chosen.get(link.to);
+    if (
+      !edge ||
+      accepted.some((l) => l.id === link.id) ||
+      edge.from !== link.from ||
+      edge.to !== link.to ||
+      !sameData(edge.requires ?? [], link.requires ?? [])
+    ) {
+      errors.push(`Connection "${link.id}" is invalid.`);
+      continue;
+    }
+    // An endpoint that failed its own check is already reported.
+    if (!a || !b) continue;
+    const ap = a.ports.find((p) => p.id === link.fromPort),
+      bp = b.ports.find((p) => p.id === link.toPort);
+    if (
       !ap ||
       !bp ||
       (ap.socket ?? "passage") !== (bp.socket ?? "passage") ||
-      !portAvailable(ac, ap.id, accepted) ||
-      !portAvailable(bc, bp.id, accepted)
-    )
-      errors.push(`Invalid catalog connection "${link.id}".`);
-    seen.add(link.id);
+      !portAvailable(a, ap.id, accepted) ||
+      !portAvailable(b, bp.id, accepted)
+    ) {
+      errors.push(`Connection "${link.id}" is invalid.`);
+      continue;
+    }
     accepted.push(link);
   }
-  for (const edge of definition.graph.connections)
-    if (!seen.has(edge.id))
-      errors.push(`Required connection "${edge.id}" missing.`);
-  return errors;
-}
-export function validateCatalogSelection(
-  definition: CatalogDefinition,
-  selection: CatalogSelection,
-): readonly string[] {
-  validateCatalogDefinition(definition);
-  assertInteger("Catalog seed", selection.options.seed, 0, 0xffff_ffff);
-  assertInteger("Catalog maxSteps", selection.options.maxSteps, 1, 10_000_000);
-  const errors = validateAssignments(
-    definition,
-    selection.regions,
-    selection.connections,
-  );
-  if (
-    selection.generatorVersion !== 1 ||
-    selection.definitionId !== definition.id ||
-    selection.definitionRevision !== definition.revision
-  )
-    errors.push(
-      "Generator version or definition identity/revision does not match.",
-    );
-  return errors;
+  for (const edge of graph.connections)
+    if (!links.some((l) => l.id === edge.id))
+      errors.push(`Connection "${edge.id}" is missing.`);
+  return { errors, chosen };
 }

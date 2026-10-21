@@ -2,12 +2,12 @@
 "@yagejs-addons/procedural": minor
 ---
 
-Add seeded procedural map generation with region requirements, catalog room assembly and cellular caves.
+Add seeded procedural map generation: region graphs from requirements, catalog room layouts, catalog selection without placement, and cellular caves.
 
-- Generate region graphs with room counts, forbidden neighbours and reusable key requirements. Validate progression independently of spatial layout.
-- Select catalog entries and metadata variants independently of spatial placement. Enforce count, eligibility, connection-capacity and neighbour rules before weighted preferences. Preserve selected variants and resolved metadata in results and snapshots.
-- Place catalog footprints around authored or generated graphs, including cycles. Select exact openings from fixed positions or wall ranges with matching widths and sockets. Retry variants during placement when their geometry does not fit. Connection areas default to one link; capacity permits additional distinct openings.
-- Keep navigation masks optional and report when walkability has not been checked. Query locked routes using the game's collected keys, or navigate cave maps without room templates.
-- Run bounded jobs through a shared component with cancellation and Inspector diagnostics. Save completed room layouts and load authored YAGE level content through an optional adapter.
-- Use integer tile coordinates throughout generation and choose pixel dimensions separately in engine adapters.
-- Reject occupied scene keys before loading any room content. Build navigation from resolved room masks and openings without repeating catalog resolution for each tile.
+- Generate region graphs with named regions, counts per kind, forbidden neighbours, a degree limit and permanent keys. Validate any graph's progression.
+- Place room templates for every region with doors that match by side, width and socket. Doors can take a fixed position or any position in a range. Rooms without a navigation mask are walls around an open floor.
+- Choose templates and weighted variants under count, per-region and connection rules, with or without placing rooms. Count rules that no selection can meet throw when the generator is created. Results carry each region's kind, keys, variant, metadata and tags.
+- Return layouts as plain JSON that need no catalog to draw, navigate or load. Check saved layouts and selections against the current catalog.
+- Run generation across frames with a component that pauses, cancels and reports to the Inspector. Diagnostics name the count or connection rule that rejected a candidate.
+- Restart region graph, catalog and room searches in a new random order when one attempt runs long, so a single early choice cannot use up the budget. A finished attempt has tried every choice, so `exhausted` means the inputs have no result.
+- Navigate layouts with a pathfinding graph that reads the game's keys during every path search, or navigate any tile map. Load authored level content into each room.

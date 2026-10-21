@@ -1,88 +1,130 @@
 import { RegionGraphGenerator } from "@yagejs-addons/procedural";
 import type {
+  CatalogRules,
+  RegionGraph,
   RegionRequirements,
   RoomConnectionArea,
   RoomDefinition,
   RoomTemplate,
 } from "@yagejs-addons/procedural";
-const connections: readonly RoomConnectionArea[] = [
+import { COLORS } from "./constants.js";
+
+// ---------------------------------------------------------------------------
+// Room catalog — footprints in tiles, walls included
+// ---------------------------------------------------------------------------
+
+/** Where a 9 × 7 room may open: any wall tile at least two tiles from a corner. */
+const SMALL_DOORS: readonly RoomConnectionArea[] = [
   { id: "north", side: "north", offset: { min: 2, max: 6 } },
   { id: "south", side: "south", offset: { min: 2, max: 6 } },
   { id: "east", side: "east", offset: { min: 2, max: 4 } },
   { id: "west", side: "west", offset: { min: 2, max: 4 } },
 ];
-const navigation = [
-  "#########",
-  "#.......#",
-  "#.......#",
-  "#.......#",
-  "#.......#",
-  "#.......#",
-  "#########",
-];
+const SMALL = { width: 9, height: 7 };
+
 export const TEMPLATES: readonly RoomTemplate[] = [
+  // No mask: walls on the boundary, an open floor inside.
   {
     id: "entry",
     kinds: ["entrance"],
-    size: { width: 9, height: 7 },
-    navigation,
-    connections,
+    size: SMALL,
+    connections: SMALL_DOORS,
+    metadata: { color: COLORS.start },
   },
   {
     id: "hall",
     kinds: ["encounter"],
+    size: SMALL,
+    connections: SMALL_DOORS,
     variants: [
-      { id: "stone", weight: 3, metadata: { color: 0x314a67, theme: "stone" } },
-      {
-        id: "moss",
-        weight: 1,
-        tags: ["moss"],
-        metadata: { color: 0x355e4b, theme: "moss" },
-      },
+      { id: "stone", weight: 3, metadata: { color: COLORS.floor } },
+      { id: "moss", weight: 1, tags: ["moss"], metadata: { color: 0x355e4b } },
     ],
-    size: { width: 9, height: 7 },
-    navigation,
-    connections,
   },
   {
     id: "shop",
     kinds: ["shop"],
-    metadata: { merchant: "traveller" },
+    size: SMALL,
+    connections: SMALL_DOORS,
+    // A counter across the middle of the room.
+    navigation: [
+      "#########",
+      "#.......#",
+      "#..###..#",
+      "#.......#",
+      "#.......#",
+      "#.......#",
+      "#########",
+    ],
+    metadata: { color: COLORS.special, merchant: "traveller" },
     variants: [
       { id: "weapons", weight: 4, metadata: { stock: "weapons" } },
       {
         id: "healing",
         weight: 1,
         tags: ["healing"],
-        metadata: { stock: "potions" },
+        metadata: { stock: "potions", color: 0x6b4a7a },
       },
     ],
-    size: { width: 9, height: 7 },
-    navigation,
-    connections,
   },
   {
     id: "forge",
     kinds: ["forge"],
-    size: { width: 9, height: 7 },
-    navigation,
-    connections,
+    size: SMALL,
+    connections: SMALL_DOORS,
+    // Four pillars around the anvil.
+    navigation: [
+      "#########",
+      "#.......#",
+      "#.#...#.#",
+      "#.......#",
+      "#.#...#.#",
+      "#.......#",
+      "#########",
+    ],
+    metadata: { color: COLORS.special },
   },
   {
     id: "treasure",
     kinds: ["treasure"],
-    size: { width: 9, height: 7 },
-    navigation,
-    connections,
+    size: SMALL,
+    connections: SMALL_DOORS,
+    metadata: { color: 0x7a5a2b },
   },
   {
     id: "boss",
     kinds: ["boss"],
-    size: { width: 9, height: 7 },
-    navigation,
-    connections,
+    size: { width: 13, height: 9 },
+    connections: [
+      { id: "north", side: "north", offset: { min: 2, max: 10 } },
+      { id: "south", side: "south", offset: { min: 2, max: 10 } },
+      { id: "east", side: "east", offset: { min: 2, max: 6 } },
+      { id: "west", side: "west", offset: { min: 2, max: 6 } },
+    ],
+    navigation: [
+      "#############",
+      "#...........#",
+      "#...........#",
+      "#..#.....#..#",
+      "#...........#",
+      "#..#.....#..#",
+      "#...........#",
+      "#...........#",
+      "#############",
+    ],
+    metadata: { color: COLORS.boss },
   },
 ];
+
+// ---------------------------------------------------------------------------
+// What the dungeon must contain
+// ---------------------------------------------------------------------------
+
+/**
+ * Fifteen regions: an entrance, two shops, a forge, two treasure rooms that
+ * each grant a key, and a boss room that needs both keys. Shops never touch
+ * the forge, and no region has more than three neighbours.
+ */
 export const REQUIREMENTS: RegionRequirements = {
   start: { id: "start", kind: "entrance" },
   required: [
@@ -91,30 +133,41 @@ export const REQUIREMENTS: RegionRequirements = {
     { id: "boss", kind: "boss", requires: ["key-a", "key-b"] },
   ],
   counts: [
-    { kind: "shop", min: 1 },
+    { kind: "shop", min: 2 },
     { kind: "forge", min: 1 },
-    { kind: "treasure", min: 2 },
-    { kind: "boss", min: 1 },
   ],
   minRegions: 15,
   fillKind: "encounter",
   forbiddenConnections: [["shop", "forge"]],
   maxConnections: 3,
 };
-export function createRooms(seed: number): RoomDefinition {
+
+/** Exactly one healing shop, and two to five mossy halls. */
+export const RULES: CatalogRules = {
+  counts: [
+    { match: { tags: ["healing"] }, min: 1, max: 1 },
+    { match: { tags: ["moss"] }, min: 2, max: 5 },
+  ],
+};
+/**
+ * Forbids the entrance from connecting to any room. Every map connects the
+ * entrance to something, so the search tries every candidate and fails.
+ */
+export const IMPOSSIBLE_RULES: CatalogRules = {
+  forbiddenConnections: [{ from: { kind: "entrance" }, to: {} }],
+};
+
+/** The region graph for one seed. Graph generation is fast, so it runs in one call. */
+export function dungeonGraph(seed: number): RegionGraph {
   const job = new RegionGraphGenerator(REQUIREMENTS, { seed });
   const graph = job.generate();
-  if (!graph) throw new Error(`Room graph generation failed: ${job.status}`);
-  return {
-    id: "room-lab",
-    revision: "4",
-    templates: TEMPLATES,
-    graph,
-    rules: {
-      counts: [
-        { match: { tags: ["healing"] }, min: 1 },
-        { match: { tags: ["moss"] }, min: 2, max: 5 },
-      ],
-    },
-  };
+  if (!graph) throw new Error(`Region graph generation ended ${job.status}`);
+  return graph;
+}
+
+export function dungeonDefinition(
+  graph: RegionGraph,
+  rules: CatalogRules = RULES,
+): RoomDefinition {
+  return { graph, templates: TEMPLATES, rules };
 }

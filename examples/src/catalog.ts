@@ -57,9 +57,9 @@ export const ADDONS = [
   "interaction",
   "inventory",
   "loot",
+  "procedural",
   "stats",
   "quests",
-  "procedural",
   "steering",
   "synth",
   "virtual-controls",
@@ -87,16 +87,6 @@ export interface Example {
 
 /** Every example, grouped by section in display order. */
 export const EXAMPLES: readonly Example[] = [
-  {
-    slug: "procedural-rooms",
-    title: "Procedural Maps",
-    summary:
-      "Generate a dungeon with treasure keys and a boss gate, or switch to a cave without rooms.",
-    section: "world",
-    packages: ["pathfinding", "input"],
-    addons: ["procedural"],
-    guide: "/addons/procedural/",
-  },
   // Start here
   {
     slug: "hello-world",
@@ -464,6 +454,16 @@ export const EXAMPLES: readonly Example[] = [
     section: "world",
     packages: ["pathfinding", "tilemap", "input"],
     guide: "/guides/pathfinding/",
+  },
+  {
+    slug: "procedural-rooms",
+    title: "Procedural Maps",
+    summary:
+      "A fifteen-room dungeon with key-locked rooms, the same catalog chosen without placement, and a cave.",
+    section: "world",
+    packages: ["pathfinding", "input"],
+    addons: ["procedural"],
+    guide: "/addons/procedural/",
   },
   {
     slug: "steering",

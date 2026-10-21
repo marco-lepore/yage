@@ -1,343 +1,392 @@
+import { GenerationSearch, restartAfter } from "./GenerationSearch.js";
 import {
-  assignment,
-  CatalogCandidates,
   portAvailable,
-  resolveRoomTemplate,
-  spatialTemplate,
+  sameData,
+  selectionErrors,
+  validateCatalogDefinition,
 } from "./catalog.js";
-import { createRandomService } from "@yagejs/core";
-import type { RandomService } from "@yagejs/core";
-import { GenerationSearch } from "./GenerationSearch.js";
+import type { Candidate, CatalogCandidates } from "./catalog.js";
 import {
+  aligned,
   compatible,
   contains,
   direction,
-  fail,
-  freezeCopy,
   openingPoint,
   openings,
   openingsOverlap,
   overlaps,
 } from "./geometry.js";
-import { resolveOptions, validateDefinition } from "./validate.js";
-import { roomOpenings, validateRoomLayout } from "./layout.js";
+import { assertInteger, freezeCopy } from "./internal.js";
+import { roomOpenings } from "./layout.js";
 import type {
-  Region,
+  CatalogLink,
   RegionConnection,
-  ResolvedRoomOptions,
   RoomConnection,
-  CatalogDefinition,
+  RoomConnectionArea,
+  RoomDefinition,
   RoomGenerationInspection,
   RoomGenerationOptions,
-  RoomGenerationSnapshot,
   RoomLayout,
   RoomOpening,
   RoomPlacement,
-  RoomTemplate,
+  TileBounds,
+  TilePoint,
 } from "./types.js";
-interface Candidate {
-  room: RoomPlacement;
-  connections: RoomConnection[];
+
+interface Placed {
+  readonly candidate: Candidate;
+  readonly room: RoomPlacement;
 }
 
-/** Embeds a region graph using catalog footprints and candidate boundary openings. */
+function linksOf(connections: readonly RoomConnection[]): CatalogLink[] {
+  return connections.map((c) => ({
+    ...c,
+    fromPort: c.fromOpening.areaId,
+    toPort: c.toOpening.areaId,
+  }));
+}
+
+/**
+ * Places a footprint for every region of the supplied graph so that every
+ * connection becomes a pair of aligned, compatible openings. Rooms never
+ * overlap. A cycle the footprints cannot close makes the search fail.
+ */
 export class RoomGenerator extends GenerationSearch<RoomLayout> {
-  readonly definition: CatalogDefinition;
-  readonly options: ResolvedRoomOptions;
-  private readonly random: RandomService;
-  private readonly catalog: CatalogCandidates;
-  private readonly rooms: RoomPlacement[] = [];
+  readonly definition: RoomDefinition;
+  readonly origin: TilePoint;
+  readonly bounds: TileBounds | undefined;
+  readonly preferUniqueTemplates: boolean;
+  private readonly candidates: CatalogCandidates;
+  private readonly allowed = new Map<Candidate, readonly RoomOpening[]>();
+  private readonly placed: Placed[] = [];
   private readonly connections: RoomConnection[] = [];
   private readonly rejections: Record<string, number> = {};
-  constructor(definition: CatalogDefinition, options: RoomGenerationOptions) {
-    super(options);
-    this.definition = validateDefinition(definition);
-    this.options = resolveOptions(options);
-    this.random = createRandomService(this.seed);
-    this.catalog = new CatalogCandidates(this.definition);
+  constructor(definition: RoomDefinition, options: RoomGenerationOptions) {
+    super(options, restartAfter(definition.graph.regions.length));
+    this.definition = freezeCopy(definition);
+    this.candidates = validateCatalogDefinition(this.definition, true);
+    this.origin = freezeCopy(options.origin ?? { x: 0, y: 0 });
+    assertInteger("RoomGenerator origin.x", this.origin.x, -Infinity);
+    assertInteger("RoomGenerator origin.y", this.origin.y, -Infinity);
+    this.bounds = options.bounds && freezeCopy(options.bounds);
+    if (this.bounds) {
+      assertInteger("RoomGenerator bounds.x", this.bounds.x, -Infinity);
+      assertInteger("RoomGenerator bounds.y", this.bounds.y, -Infinity);
+      assertInteger("RoomGenerator bounds.width", this.bounds.width, 1);
+      assertInteger("RoomGenerator bounds.height", this.bounds.height, 1);
+    }
+    this.preferUniqueTemplates = options.preferUniqueTemplates ?? true;
   }
   override inspect(): RoomGenerationInspection {
-    return freezeCopy({
+    return {
       ...super.inspect(),
-      validation: this.result?.validation ?? null,
-      options: this.options,
-      placedRooms: this.rooms,
-      connections: this.connections,
-      rejections: this.rejections,
-    });
+      regions: this.placed.map((p) => p.room),
+      connections: [...this.connections],
+      rejections: { ...this.rejections },
+    };
   }
-  snapshot(): RoomGenerationSnapshot {
-    if (!this.result)
-      fail(
-        "snapshot requires a completed layout; active searches cannot be resumed",
-      );
-    return freezeCopy({
-      version: 4,
-      definition: this.definition,
-      layout: this.result,
-    });
+  protected *run(): Generator<void, RoomLayout | null> {
+    this.placed.length = 0;
+    this.connections.length = 0;
+    if (!(yield* this.search())) return null;
+    const graph = this.definition.graph;
+    // Results follow the graph's own order.
+    return {
+      start: graph.start,
+      regions: graph.regions.map(
+        (region) => this.placed.find((p) => p.room.id === region.id)!.room,
+      ),
+      connections: graph.connections.map(
+        (edge) => this.connections.find((c) => c.id === edge.id)!,
+      ),
+    };
   }
-  static restore(snapshot: RoomGenerationSnapshot): RoomGenerator {
-    if (snapshot.version !== 4)
-      fail(`unsupported snapshot version ${snapshot.version}`);
-    const generator = new RoomGenerator(
-      snapshot.definition,
-      snapshot.layout.options,
-    );
-    const errors = validateRoomLayout(generator.definition, snapshot.layout);
-    if (errors.length) fail(`invalid snapshot: ${errors.join("; ")}`);
-    generator._result = freezeCopy(snapshot.layout);
-    generator._status = "succeeded";
-    generator.rooms.push(...generator.result!.rooms);
-    generator.connections.push(...generator.result!.connections);
-    generator.diagnostics.push(...generator.result!.diagnostics);
-    return generator;
+
+  private openingsOf(candidate: Candidate): readonly RoomOpening[] {
+    let result = this.allowed.get(candidate);
+    if (!result) {
+      result = openings(candidate.ports as readonly RoomConnectionArea[]);
+      this.allowed.set(candidate, result);
+    }
+    return result;
   }
   private reject(code: string, message: string): null {
     this.rejections[code] = (this.rejections[code] ?? 0) + 1;
-    // Keep one current example per rejection category, rather than one per search operation.
-    const index = this.diagnostics.findIndex((d) => d.code === code);
-    if (index < 0) this.diagnostics.push({ code, message });
-    else this.diagnostics[index] = { code, message };
+    this.note(code, message);
     return null;
   }
-  private template(room: RoomPlacement): RoomTemplate {
-    return resolveRoomTemplate(this.definition, room);
-  }
+  /** Whether `placed` can use `opening` for one more connection. */
   private free(
-    room: RoomPlacement,
+    placed: Placed,
     opening: RoomOpening,
-    extra: RoomConnection[] = [],
+    added: readonly RoomConnection[],
   ): boolean {
-    const choice = this.catalog.find(room)!;
-    const links = [...this.connections, ...extra].map((edge) => ({
-      ...edge,
-      fromPort: edge.fromOpening.areaId,
-      toPort: edge.toOpening.areaId,
-    }));
+    const used = [...this.connections, ...added];
     return (
-      portAvailable(choice, opening.areaId, links) &&
-      !roomOpenings(
-        { connections: [...this.connections, ...extra] },
-        room.id,
-      ).some((used) => openingsOverlap(used, opening))
+      portAvailable(placed.candidate, opening.areaId, linksOf(used)) &&
+      !used.some(
+        (c) =>
+          (c.from === placed.room.id &&
+            openingsOverlap(c.fromOpening, opening)) ||
+          (c.to === placed.room.id && openingsOverlap(c.toOpening, opening)),
+      )
     );
-  }
-  private connection(
-    edge: RegionConnection,
-    a: RoomPlacement,
-    opening: RoomOpening,
-    b: RoomPlacement,
-    other: RoomOpening,
-  ): RoomConnection {
-    return edge.from === a.id
-      ? {
-          id: edge.id,
-          from: a.id,
-          to: b.id,
-          fromOpening: opening,
-          toOpening: other,
-        }
-      : {
-          id: edge.id,
-          from: b.id,
-          to: a.id,
-          fromOpening: other,
-          toOpening: opening,
-        };
-  }
-  private *completeConnections(
-    room: RoomPlacement,
-    edges: RegionConnection[],
-    extra: RoomConnection[] = [],
-  ): Generator<RoomConnection[] | null> {
-    if (!edges.length) {
-      yield extra;
-      return;
-    }
-    const edge = edges[0]!;
-    const neighbour = this.rooms.find(
-      (p) => p.id === (edge.from === room.id ? edge.to : edge.from),
-    )!;
-    for (const a of this.random.shuffle(openings(this.template(room))))
-      for (const b of this.random.shuffle(openings(this.template(neighbour)))) {
-        const p = openingPoint(this.template(room), a),
-          q = openingPoint(this.template(neighbour), b),
-          d = direction[a.side];
-        if (
-          !compatible(a, b) ||
-          room.x + p.x + d.x !== neighbour.x + q.x ||
-          room.y + p.y + d.y !== neighbour.y + q.y
-        ) {
-          yield this.reject(
-            "alignment",
-            `Connection "${edge.id}" needs aligned compatible openings.`,
-          );
-          continue;
-        }
-        if (!this.free(room, a, extra) || !this.free(neighbour, b, extra)) {
-          yield this.reject(
-            "opening-used",
-            `Connection "${edge.id}" overlaps another opening.`,
-          );
-          continue;
-        }
-        yield* this.completeConnections(room, edges.slice(1), [
-          ...extra,
-          this.connection(edge, room, a, neighbour, b),
-        ]);
-      }
-  }
-  private *candidates(region: Region): Generator<Candidate | null> {
-    const uses = (id: string): number =>
-      this.rooms.filter((room) => room.templateId === id).length;
-    const choices = this.catalog.ordered(region, this.random);
-    if (this.options.preferUniqueTemplates)
-      choices.sort(
-        (a, b) =>
-          Number(uses(a.templateId) > 0) - Number(uses(b.templateId) > 0),
-      );
-    const edges = this.definition.graph.connections.filter(
-      (edge) =>
-        (edge.from === region.id && this.rooms.some((r) => r.id === edge.to)) ||
-        (edge.to === region.id && this.rooms.some((r) => r.id === edge.from)),
-    );
-    for (const choice of choices) {
-      const template = spatialTemplate(choice)!;
-      if (!this.catalog.accepts([...this.rooms, assignment(choice)])) {
-        yield this.reject(
-          "catalog-rule",
-          `Selection for "${region.id}" violates catalog rules.`,
-        );
-        continue;
-      }
-      if (!this.rooms.length) {
-        const room = {
-          ...assignment(choice),
-          ...this.options.origin,
-          ...template.size,
-        };
-        yield this.fits(room) ? { room, connections: [] } : null;
-        continue;
-      }
-      const anchor = edges[0]!;
-      const neighbour = this.rooms.find(
-        (r) => r.id === (anchor.from === region.id ? anchor.to : anchor.from),
-      )!;
-      const targetOpenings = openings(template);
-      for (const from of this.random.shuffle(
-        openings(this.template(neighbour)),
-      )) {
-        if (!this.free(neighbour, from)) {
-          yield this.reject(
-            "opening-used",
-            `Room "${neighbour.id}" has an occupied opening.`,
-          );
-          continue;
-        }
-        const matches = targetOpenings.filter((to) => compatible(from, to));
-        if (!matches.length) {
-          yield this.reject(
-            "socket",
-            `Templates "${neighbour.templateId}" and "${template.id}" need opposite sides, equal widths and matching sockets.`,
-          );
-          continue;
-        }
-        for (const to of this.random.shuffle(matches)) {
-          const a = openingPoint(this.template(neighbour), from),
-            b = openingPoint(template, to),
-            d = direction[from.side];
-          const room = {
-            ...assignment(choice),
-            x: neighbour.x + a.x + d.x - b.x,
-            y: neighbour.y + a.y + d.y - b.y,
-            ...template.size,
-          };
-          if (!this.fits(room)) {
-            yield null;
-            continue;
-          }
-          const connection = this.connection(anchor, neighbour, from, room, to);
-          for (const connections of this.completeConnections(
-            room,
-            edges.slice(1),
-            [connection],
-          ))
-            yield connections ? { room, connections } : null;
-        }
-      }
-    }
   }
   private fits(room: RoomPlacement): boolean {
-    if (this.options.bounds && !contains(this.options.bounds, room)) {
-      this.reject("bounds", `Room "${room.id}" exceeds bounds.`);
+    if (this.bounds && !contains(this.bounds, room)) {
+      this.reject("bounds", `Room "${room.id}" does not fit the bounds.`);
       return false;
     }
-    if (this.rooms.some((placed) => overlaps(room, placed))) {
-      this.reject("overlap", `Room "${room.id}" overlaps a placed footprint.`);
+    if (this.placed.some((p) => overlaps(room, p.room))) {
+      this.reject("overlap", `Room "${room.id}" overlaps a placed room.`);
       return false;
     }
     return true;
   }
-  private *search(): Generator<void, boolean> {
-    if (this.rooms.length === this.definition.graph.regions.length)
-      return this.catalog.accepts(this.rooms, true);
-    const graph = this.definition.graph;
-    const adjacent = (region: Region): number =>
-      graph.connections.filter(
-        (edge) =>
-          (edge.from === region.id &&
-            this.rooms.some((r) => r.id === edge.to)) ||
-          (edge.to === region.id && this.rooms.some((r) => r.id === edge.from)),
-      ).length;
-    const region = !this.rooms.length
-      ? graph.regions.find((r) => r.id === graph.start)!
-      : graph.regions
-          .filter(
-            (r) => !this.rooms.some((p) => p.id === r.id) && adjacent(r) > 0,
-          )
-          .sort((a, b) => adjacent(b) - adjacent(a))[0]!;
-    for (const candidate of this.candidates(region)) {
-      if (!candidate) {
-        yield;
+  /** The connection with `aOpening` at room `aId`'s end. */
+  private connect(
+    edge: RegionConnection,
+    aId: string,
+    aOpening: RoomOpening,
+    bOpening: RoomOpening,
+  ): RoomConnection {
+    return edge.from === aId
+      ? { ...edge, fromOpening: aOpening, toOpening: bOpening }
+      : { ...edge, fromOpening: bOpening, toOpening: aOpening };
+  }
+  /** Every way to realise the remaining edges with exactly aligned free openings. */
+  private *completeConnections(
+    room: Placed,
+    edges: readonly RegionConnection[],
+    added: readonly RoomConnection[],
+  ): Generator<readonly RoomConnection[] | null> {
+    const edge = edges[0];
+    if (!edge) {
+      yield added;
+      return;
+    }
+    const otherId = edge.from === room.room.id ? edge.to : edge.from;
+    const other = this.placed.find((p) => p.room.id === otherId)!;
+    for (const a of this.random.shuffle([...this.openingsOf(room.candidate)]))
+      for (const b of this.random.shuffle([
+        ...this.openingsOf(other.candidate),
+      ])) {
+        if (!compatible(a, b) || !aligned(room.room, a, other.room, b)) {
+          yield this.reject(
+            "alignment",
+            `Connection "${edge.id}" needs aligned, compatible openings.`,
+          );
+          continue;
+        }
+        if (!this.free(room, a, added) || !this.free(other, b, added)) {
+          yield this.reject(
+            "opening-used",
+            `Connection "${edge.id}" needs an opening that is still free.`,
+          );
+          continue;
+        }
+        yield* this.completeConnections(room, edges.slice(1), [
+          ...added,
+          this.connect(edge, room.room.id, a, b),
+        ]);
+      }
+  }
+  private *placements(
+    regionId: string,
+    edges: readonly RegionConnection[],
+  ): Generator<{
+    placed: Placed;
+    connections: readonly RoomConnection[];
+  } | null> {
+    const uses = (templateId: string): number =>
+      this.placed.filter((p) => p.room.templateId === templateId).length;
+    const choices = this.candidates.ordered(regionId, this.random);
+    if (this.preferUniqueTemplates)
+      choices.sort(
+        (a, b) =>
+          Number(uses(a.selected.templateId) > 0) -
+          Number(uses(b.selected.templateId) > 0),
+      );
+    for (const candidate of choices) {
+      const size = candidate.size!;
+      const room = (x: number, y: number): Placed => ({
+        candidate,
+        room: {
+          ...candidate.selected,
+          x,
+          y,
+          ...size,
+          ...(candidate.navigation ? { navigation: candidate.navigation } : {}),
+        },
+      });
+      const broken = this.candidates.brokenRule(
+        [...this.placed.map((p) => p.candidate), candidate],
+        false,
+      );
+      if (broken) {
+        yield this.reject(
+          "catalog-rule",
+          `A candidate for "${regionId}" breaks the ${broken}.`,
+        );
         continue;
       }
-      this.rooms.push(candidate.room);
-      this.connections.push(...candidate.connections);
-      yield;
-      if (yield* this.search()) return true;
-      this.rooms.pop();
-      this.connections.splice(
-        this.connections.length - candidate.connections.length,
+      const anchor = edges[0];
+      if (!anchor) {
+        const placed = room(this.origin.x, this.origin.y);
+        yield this.fits(placed.room) ? { placed, connections: [] } : null;
+        continue;
+      }
+      const neighbourId = anchor.from === regionId ? anchor.to : anchor.from;
+      const neighbour = this.placed.find((p) => p.room.id === neighbourId)!;
+      const targets = this.openingsOf(candidate);
+      for (const from of this.random.shuffle([
+        ...this.openingsOf(neighbour.candidate),
+      ])) {
+        if (!this.free(neighbour, from, [])) {
+          yield this.reject(
+            "opening-used",
+            `Room "${neighbourId}" has no free opening there.`,
+          );
+          continue;
+        }
+        const matching = targets.filter((to) => compatible(from, to));
+        if (!matching.length) {
+          yield this.reject(
+            "socket",
+            `Templates "${neighbour.room.templateId}" and "${candidate.selected.templateId}" need openings on opposite sides with equal widths and sockets.`,
+          );
+          continue;
+        }
+        for (const to of this.random.shuffle(matching)) {
+          const a = openingPoint(neighbour.room, from),
+            b = openingPoint(size, to),
+            d = direction[from.side];
+          const placed = room(
+            neighbour.room.x + a.x + d.x - b.x,
+            neighbour.room.y + a.y + d.y - b.y,
+          );
+          if (!this.fits(placed.room)) {
+            yield null;
+            continue;
+          }
+          const first = this.connect(anchor, neighbourId, from, to);
+          for (const connections of this.completeConnections(
+            placed,
+            edges.slice(1),
+            [first],
+          ))
+            yield connections ? { placed, connections } : null;
+        }
+      }
+    }
+  }
+  private *search(): Generator<void, boolean> {
+    const graph = this.definition.graph;
+    if (this.placed.length === graph.regions.length) {
+      const broken = this.candidates.brokenRule(
+        this.placed.map((p) => p.candidate),
+        true,
       );
+      if (broken)
+        this.reject(
+          "catalog-rule",
+          `The complete layout breaks the ${broken}.`,
+        );
+      return !broken;
+    }
+    const isPlaced = (id: string): boolean =>
+      this.placed.some((p) => p.room.id === id);
+    const edgesToPlaced = (regionId: string): RegionConnection[] =>
+      graph.connections.filter(
+        (edge) =>
+          (edge.from === regionId && isPlaced(edge.to)) ||
+          (edge.to === regionId && isPlaced(edge.from)),
+      );
+    // Start first, then the region with the most placed neighbours.
+    const region = this.placed.length
+      ? graph.regions
+          .filter((r) => !isPlaced(r.id) && edgesToPlaced(r.id).length)
+          .sort(
+            (a, b) => edgesToPlaced(b.id).length - edgesToPlaced(a.id).length,
+          )[0]!
+      : graph.regions.find((r) => r.id === graph.start)!;
+    for (const option of this.placements(region.id, edgesToPlaced(region.id))) {
       yield;
+      if (!option) continue;
+      this.placed.push(option.placed);
+      this.connections.push(...option.connections);
+      if (yield* this.search()) return true;
+      this.placed.pop();
+      this.connections.splice(
+        this.connections.length - option.connections.length,
+      );
     }
     return false;
   }
-  protected *run(): Generator<void, RoomLayout | null> {
-    if (!(yield* this.search())) return null;
-    const layout: RoomLayout = {
-      generatorVersion: 4,
-      definitionId: this.definition.id,
-      definitionRevision: this.definition.revision,
-      options: this.options,
-      rooms: this.rooms,
-      connections: this.connections,
-      diagnostics: this.diagnostics,
-      validation: {
-        requiredRegions: true,
-        nonOverlapping: true,
-        compatibleOpenings: true,
-        progression: true,
-        connectedWalkableCells: this.rooms.every(
-          (room) => this.template(room).navigation,
-        )
-          ? true
-          : null,
-      },
-    };
-    const errors = validateRoomLayout(this.definition, layout);
-    if (errors.length) fail(errors.join("; "));
-    return layout;
+}
+
+/**
+ * Errors for a saved layout checked against the current definition: the
+ * catalog checks plus footprints, overlaps and opening alignment. Throws for
+ * an invalid definition.
+ */
+export function validateRoomLayout(
+  definition: RoomDefinition,
+  layout: RoomLayout,
+): readonly string[] {
+  const candidates = validateCatalogDefinition(definition, true);
+  const { errors, chosen } = selectionErrors(
+    candidates,
+    layout.start,
+    layout.regions,
+    linksOf(layout.connections),
+  );
+  if (errors.length) return errors;
+  for (const room of layout.regions) {
+    const candidate = chosen.get(room.id)!;
+    if (
+      !Number.isSafeInteger(room.x) ||
+      !Number.isSafeInteger(room.y) ||
+      room.width !== candidate.size!.width ||
+      room.height !== candidate.size!.height ||
+      !sameData(room.navigation, candidate.navigation)
+    )
+      errors.push(`Room "${room.id}" does not match its template's footprint.`);
   }
+  for (let i = 0; i < layout.regions.length; i++)
+    for (let j = i + 1; j < layout.regions.length; j++)
+      if (overlaps(layout.regions[i]!, layout.regions[j]!))
+        errors.push(
+          `Rooms "${layout.regions[i]!.id}" and "${layout.regions[j]!.id}" overlap.`,
+        );
+  if (errors.length) return errors;
+  const byId = new Map(layout.regions.map((room) => [room.id, room]));
+  const declared = (roomId: string, opening: RoomOpening): boolean =>
+    openings(chosen.get(roomId)!.ports as readonly RoomConnectionArea[]).some(
+      (allowed) => sameData(allowed, opening),
+    );
+  for (const edge of layout.connections) {
+    if (
+      !declared(edge.from, edge.fromOpening) ||
+      !declared(edge.to, edge.toOpening) ||
+      !compatible(edge.fromOpening, edge.toOpening) ||
+      !aligned(
+        byId.get(edge.from)!,
+        edge.fromOpening,
+        byId.get(edge.to)!,
+        edge.toOpening,
+      )
+    )
+      errors.push(
+        `Connection "${edge.id}" has undeclared or misaligned openings.`,
+      );
+  }
+  for (const room of layout.regions) {
+    const used = roomOpenings(layout, room.id);
+    if (
+      used.some((a, i) => used.slice(i + 1).some((b) => openingsOverlap(a, b)))
+    )
+      errors.push(`Room "${room.id}" has overlapping openings.`);
+  }
+  return errors;
 }

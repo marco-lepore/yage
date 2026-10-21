@@ -9,28 +9,38 @@ import {
   prepareLevel,
 } from "@yagejs/level";
 import type { LevelDocument, ParamsOf, PreparedLevel } from "@yagejs/level";
+import { CONTENT_LAYER, TILE } from "./constants.js";
 import { TEMPLATES } from "./rooms.js";
-import { ROOM_CENTER } from "./constants.js";
+
+// ---------------------------------------------------------------------------
+// Authored room content, one level document per template
+// ---------------------------------------------------------------------------
 
 const BeaconParams = defineParams({
   color: param.color("#93c5fd"),
 });
-/** Game-owned authored content: replace this entity with enemies, rewards or interactions. */
-class Beacon extends Entity {
+
+/** Stands in for a room's authored content: enemies, rewards or interactions. */
+export class Beacon extends Entity {
   static readonly level = defineLevelEntity({
-    id: "room-lab.beacon",
+    id: "procedural-rooms.beacon",
     version: 1,
     params: BeaconParams,
   });
   setup(params: ParamsOf<typeof BeaconParams>): void {
     this.add(new Transform());
     this.add(
-      new GraphicsComponent({ layer: "content" }).draw((g) => {
+      new GraphicsComponent({ layer: CONTENT_LAYER }).draw((g) => {
         g.circle(0, 0, 5).stroke({ color: params.color, width: 2 });
       }),
     );
   }
 }
+
+/**
+ * Prepared content keyed by template id, as `instantiateRoomLayout` expects.
+ * Positions are room-local pixels; the loader adds each room's offset.
+ */
 export function prepareRoomContent(): Readonly<Record<string, PreparedLevel>> {
   const catalog = buildLevelCatalog(defineLevelProject({ entities: [Beacon] }));
   if (!catalog.ok) throw new Error("Room content catalog is invalid");
@@ -45,11 +55,14 @@ export function prepareRoomContent(): Readonly<Record<string, PreparedLevel>> {
         entities: [
           {
             id: "beacon",
-            type: "room-lab.beacon",
+            type: "procedural-rooms.beacon",
             typeVersion: 1,
             active: true,
             transform: {
-              position: { ...ROOM_CENTER },
+              position: {
+                x: (template.size.width / 2) * TILE,
+                y: (template.size.height / 2) * TILE,
+              },
               rotation: 0,
               scale: { x: 1, y: 1 },
             },
