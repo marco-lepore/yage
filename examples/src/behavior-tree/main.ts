@@ -7,6 +7,8 @@
  * Layout, after the platformer reference:
  * - `constants.ts` — sizes, lane positions, events.
  * - `behavior.ts` — the shared tree definition and the context it reads.
+ * - `state.ts` — `GuardState`: one guard's game state and the commands the
+ *   tree calls.
  * - `guard.ts`, `level.ts`, `hud.ts`, `demonstration.ts` — one `Entity`
  *   subclass per entity type, and the components that hold the rules.
  * - `scene.ts` — the `Scene` subclass; `onEnter` only spawns.

@@ -2,7 +2,7 @@ import type { ProcessSlot, Transform, Vec2 } from "@yagejs/core";
 import { arrive } from "@yagejs-addons/steering";
 import type { SteeringAgent } from "@yagejs-addons/steering";
 import { behaviorNodes } from "@yagejs-addons/behavior-tree";
-import type { GuardState } from "./guard.js";
+import type { GuardState } from "./state.js";
 
 // ---------------------------------------------------------------------------
 // GuardContext — what the tree may read and do
