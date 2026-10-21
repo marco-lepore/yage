@@ -113,7 +113,7 @@ startGame({
   // A packaged app is a release; electron-forge start runs unpackaged.
   profile: app.isPackaged ? "release" : "development",
   devTools: !app.isPackaged,
-  externalLinks: ["https://example.dev/"],
+  externalLinks: ["https://example.dev/", "mailto:support@example.dev"],
   window: { width: 1280, height: 720, title: "My Game" },
 }).catch((error: unknown) => {
   console.error(error);
@@ -122,9 +122,14 @@ startGame({
 ```
 
 `startGame` is called once, at the top of the main script, before the app is
-ready: the scheme the page is served from has to be registered first. It
-resolves with the `BrowserWindow` once the page has loaded, so a shell can add
-its own menu or listeners to it.
+ready: it registers the scheme the page is served from before it returns, and
+Electron accepts that registration only before the app is ready. A shell must
+not call `protocol.registerSchemesAsPrivileged` itself: Electron accepts one
+registration, and `startGame` makes it.
+
+It resolves with the `BrowserWindow` once the page has loaded, so a shell can
+add its own menu or listeners to it. Every failure rejects the returned
+promise, an invalid option included, so the shell's `catch` handles each one.
 
 The window loads the preload script from the directory the main entry was
 loaded from, so `preload.cjs`, `main.js` and `main.cjs` stay together in the
@@ -134,20 +139,20 @@ and a Forge configuration that keeps that directory in the archive; see
 
 ### `GameShellOptions`
 
-| Option                  | Default                           | Meaning                                                                                                     |
-| ----------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `webDir`                | required                          | Absolute path of the built web directory, which may lie inside an archive. It must hold an `index.html`.    |
-| `appId`                 | required                          | The app's stable identifier, matching `^[A-Za-z0-9][A-Za-z0-9.-]*$`. Names the save directory.              |
-| `profile`               | required                          | The build profile, matching `^[a-z][a-z0-9-]*$`. Test and release saves never mix.                          |
-| `window`                | Electron's defaults               | Size, title and look. Web preferences, `show` and `simpleFullscreen` stay the shell's.                      |
-| `externalLinks`         | none                              | URL prefixes `window.open` may open in the system browser. Each must be an `http`, `https` or `mailto` URL. |
-| `permissions`           | none                              | Permission names granted beyond fullscreen, pointer lock, keyboard lock and clipboard writes.               |
-| `contentSecurityPolicy` | `DEFAULT_CONTENT_SECURITY_POLICY` | Replaces the policy every response carries.                                                                 |
-| `devTools`              | `false`                           | Developer tools and Electron's default menu.                                                                |
-| `query`                 | `""`                              | Appended to the page's URL; empty or starting with `?`.                                                     |
+| Option                  | Default                           | Meaning                                                                                                                                           |
+| ----------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `webDir`                | required                          | Absolute path of the built web directory, which may lie inside an archive. It must hold an `index.html`.                                          |
+| `appId`                 | required                          | The app's stable identifier, matching `^[A-Za-z0-9][A-Za-z0-9.-]*$`. Names the save directory.                                                    |
+| `profile`               | required                          | The build profile, matching `^[a-z][a-z0-9-]*$`. Test and release saves never mix.                                                                |
+| `window`                | Electron's defaults               | Size, title and look. Web preferences, `show` and `simpleFullscreen` stay the shell's.                                                            |
+| `externalLinks`         | none                              | Links `window.open` may open outside the app: an `http` or `https` site path, or a `mailto` address. See [Links](#links-closing-and-permissions). |
+| `permissions`           | none                              | Permission names granted beyond fullscreen, pointer lock, keyboard lock and clipboard writes.                                                     |
+| `contentSecurityPolicy` | `DEFAULT_CONTENT_SECURITY_POLICY` | Replaces the policy every response carries.                                                                                                       |
+| `devTools`              | `false`                           | Developer tools and Electron's default menu.                                                                                                      |
+| `query`                 | `""`                              | Appended to the page's URL; empty or starting with `?`.                                                                                           |
 
-Each invalid option throws at the call, naming the option and the value, before
-anything is registered.
+Each invalid option rejects the returned promise with an error naming the
+option and the value, before anything is registered.
 
 ## The content security policy
 
@@ -246,12 +251,28 @@ processes would write the same save directory out of order.
 
 ### Links, closing and permissions
 
-A game opens a link with `window.open(url)`. The shell opens it in the system
-browser when it starts with one of `externalLinks`, and opens no window of its
-own. The game page never leaves `yage://game`.
+A game opens a link with `window.open(url)`. The shell opens no window of its
+own, and the game page never leaves `yage://game`. When one of `externalLinks`
+allows the URL, the shell passes it to the system browser or mail client:
+
+| Entry                          | Allows                                                                  |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| `"https://example.dev"`        | every URL with the origin `https://example.dev`                         |
+| `"https://example.dev/docs"`   | `/docs` and the paths under it by whole segments, never `/docs-private` |
+| `"mailto:support@example.dev"` | that address exactly, with no query: no second recipient, `cc` or `bcc` |
+
+An `http` or `https` entry matches a URL with the same scheme, host and port
+whose path is the entry's path or lies under it. `/docs` and `/docs/` are the
+same entry, and the URL may carry any query or hash. `startGame` parses each
+entry with `URL`, so `https://Example.dev/` and `https://example.dev:443/`
+name the same origin. `startGame` rejects, naming the entry, when an `http` or
+`https` entry holds a user name, a password, a query or a hash, when an entry
+is a bare `"mailto:"`, and when a `mailto` entry holds a query:
+`startGame: externalLinks[0] must not hold a query or a hash, got "https://example.dev/?from=game".`
 
 A game's Quit button calls `window.close()`, which closes the window and ends
-the app.
+the app. A browser tab ignores `window.close()`, so a game shows Quit only in
+the build its Electron entry starts.
 
 The page is granted what a browser tab grants without a prompt: `fullscreen`,
 `pointerLock`, `keyboardLock` and `clipboard-sanitized-write`, plus every name
@@ -267,10 +288,25 @@ The script `init` writes takes both from `app.isPackaged`: a packaged app is a
 release with developer tools off, and `electron-forge start` is development
 with them on.
 
-`devTools` is the only difference. With `devTools: false`, the window opens no
-developer tools and the application menu holds Quit, the text-field commands
-and the window commands on macOS, and nothing elsewhere. With `devTools: true`,
-Electron's default menu stays, which offers Reload and Toggle Developer Tools.
+`devTools` sets the developer tools and the menu. With `devTools: false`, the
+window opens no developer tools and the application menu holds Quit, the
+text-field commands and the window commands on macOS, and nothing elsewhere.
+With `devTools: true`, Electron's default menu stays, which offers Reload and
+Toggle Developer Tools.
+
+`devTools: false` does not close every route into the page. Chromium's
+`--remote-debugging-port` and `--remote-debugging-pipe` switches let another
+program inspect and control it, and no fuse turns them off. A packaged app
+(`app.isPackaged`) started with either switch does not load the game:
+`startGame` rejects before it registers anything, and opens no window.
+
+```text
+startGame: a packaged app does not load the game when started with --remote-debugging-port, which lets another program control the page. Start the app without it, or debug the game unpackaged.
+```
+
+Chromium may already have opened the port by then, so the refusal stops the
+game from loading, not the port from opening. An unpackaged app accepts both
+switches.
 
 The policy, the permissions, the bridge and the saves are the same in both.
 Saves differ only through `profile`.

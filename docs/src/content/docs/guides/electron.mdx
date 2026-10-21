@@ -117,7 +117,7 @@ startGame({
   // A packaged app is a release; electron-forge start runs unpackaged.
   profile: app.isPackaged ? "release" : "development",
   devTools: !app.isPackaged,
-  externalLinks: ["https://example.dev/"],
+  externalLinks: ["https://example.dev/", "mailto:support@example.dev"],
   window: { width: 1280, height: 720, title: "My Game" },
 }).catch((error: unknown) => {
   console.error(error);
@@ -125,10 +125,16 @@ startGame({
 });
 ```
 
-Call `startGame` once, at the top of the main script, before the app is ready:
-it registers the scheme the page is served from, which Electron accepts only
-before then. It resolves with the `BrowserWindow` after the page has loaded,
-so the shell can add a menu or its own listeners.
+Call `startGame` once, at the top of the main script, before the app is ready.
+It registers the scheme the page is served from before it returns, and
+Electron accepts that registration only before the app is ready. Do not call
+`protocol.registerSchemesAsPrivileged` in your shell: Electron accepts one
+registration, and `startGame` makes it.
+
+`startGame` resolves with the `BrowserWindow` after the page has loaded, so
+the shell can add a menu or its own listeners. Every failure rejects the
+promise it returns, an invalid option included, so the `catch` above handles
+each one.
 
 `preload.cjs` ships beside `main.js` in the installed package, and the window
 loads it from there. The Forge configuration from `@yagejs-tools/pack` keeps
@@ -147,16 +153,48 @@ configuration beside it; see
   fullscreen, pointer lock, keyboard lock and sanitized clipboard writes. Add
   more with `permissions`. Everything else is denied, including any request
   that did not come from the game page.
-- **Links.** `window.open(url)` opens the URL in the system browser when it
-  starts with one of `externalLinks`, and opens no window of its own. The game
-  page never navigates away from `yage://game`.
+- **Links.** `window.open(url)` opens no window of its own. It passes the URL
+  to the system browser or mail client when one of `externalLinks` allows it,
+  as described below. The game page never navigates away from `yage://game`.
 - **One copy of the app.** A second launch quits at once and brings the first
   window forward. Two copies would write the same save directory out of order.
 - **Closing.** `window.close()` from the game closes the window and ends the
-  app, so a Quit button needs nothing else.
+  app, so a Quit button needs nothing else. A browser tab ignores
+  `window.close()`, so show Quit only in the build your Electron entry starts.
 - **The menu.** On macOS: Quit, the text-field commands and the window
   commands. Elsewhere: no menu bar. With `devTools: true` Electron's default
   menu stays, which offers Reload and Toggle Developer Tools.
+- **No remote debugging in a packaged app.** Chromium's
+  `--remote-debugging-port` and `--remote-debugging-pipe` switches let another
+  program inspect and control the page, even with `devTools: false`. No
+  release setting turns them off. A packaged app started with either switch
+  does not load the game: `startGame` rejects and opens no window. Chromium
+  may already have opened the port by then, so the refusal stops the game from
+  loading, not the port from opening. `electron-forge start` runs unpackaged
+  and accepts both switches.
+
+### Which links open
+
+Each entry in `externalLinks` allows a part of one site, or one mail address:
+
+| Entry | Allows |
+| ----- | ------ |
+| `"https://example.dev"` | every page of `https://example.dev` |
+| `"https://example.dev/docs"` | `/docs` and the pages under it, such as `/docs/guide`, but not `/docs-private` |
+| `"mailto:support@example.dev"` | a mail to that address alone, with no subject, body, `cc` or `bcc` |
+
+A web link opens when it has the entry's scheme, host and port and its path is
+the entry's path or lies under it. `/docs` and `/docs/` are the same entry,
+and the link may carry any query or hash. The host is compared after
+`startGame` reads the entry as a URL, so `https://Example.dev/` works, and a
+look-alike such as `https://example.dev.other.test/` or
+`https://example.dev@evil.test/` does not match.
+
+`startGame` rejects these entries and names each one:
+
+- a web entry with a user name, a password, a query or a hash
+- a bare `"mailto:"`
+- a `mailto` entry with a query
 
 ## Configuration
 
@@ -166,14 +204,14 @@ configuration beside it; see
 | `appId` | required | The app's stable identifier, matching `^[A-Za-z0-9][A-Za-z0-9.-]*$`. Names the save directory. |
 | `profile` | required | The build profile, matching `^[a-z][a-z0-9-]*$`. Test and release saves never mix. |
 | `window` | Electron's defaults | Size, title and look. Web preferences, `show` and `simpleFullscreen` stay the shell's. |
-| `externalLinks` | none | URL prefixes `window.open` may open in the system browser. Each must be an `http`, `https` or `mailto` URL. |
+| `externalLinks` | none | Links `window.open` may open outside the app: an `http` or `https` site path, or a `mailto` address. See [Which links open](#which-links-open). |
 | `permissions` | none | Permission names granted beyond the four above. |
 | `contentSecurityPolicy` | `DEFAULT_CONTENT_SECURITY_POLICY` | Replaces the policy every response carries. |
 | `devTools` | `false` | Developer tools and Electron's default menu. |
 | `query` | `""` | Appended to the page's URL; empty or starting with `?`. |
 
-An option the shell cannot use throws at the call, naming the option and the
-value, before anything is registered.
+An option the shell cannot use rejects the promise `startGame` returns, naming
+the option and the value, before anything is registered.
 
 ## The content security policy
 
@@ -300,11 +338,13 @@ reports what to do:
 before the plugin attaches anything, so `engine.start()` rejects and the engine
 stops.
 
-`startGame` reports its own: calling it twice, calling it after the app is
-ready, a `webDir` that is not an absolute path or holds no `index.html`, an
+`startGame` rejects with its own: calling it twice, calling it after the app
+is ready, a `webDir` that is not an absolute path or holds no `index.html`, an
 `appId` or `profile` a directory name cannot hold, an external link that is
-not an `http`, `https` or `mailto` URL, a `query` that does not start with
-a question mark, and window options that set `simpleFullscreen`.
+not an `http`, `https` or `mailto` URL or breaks the rules in
+[Which links open](#which-links-open), a `query` that does not start with a
+question mark, window options that set `simpleFullscreen`, and a packaged app
+started with `--remote-debugging-port` or `--remote-debugging-pipe`.
 
 An `ElectronHostPlugin` belongs to one engine. Installing an instance whose
 engine was destroyed throws `ElectronHostPlugin.install: this instance belongs

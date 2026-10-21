@@ -51,7 +51,16 @@ export interface GameShellOptions {
     BrowserWindowConstructorOptions,
     "webPreferences" | "show" | "simpleFullscreen"
   >;
-  /** URL prefixes `window.open` may open in the system browser. Default: none. */
+  /**
+   * Links `window.open` may open outside the app, in the system browser or
+   * mail client. Default: none.
+   *
+   * An `http` or `https` entry allows its origin and every path at or below
+   * its own, by whole segments: `"https://example.dev"` allows the whole site,
+   * and `"https://example.dev/docs"` allows `/docs` and the paths under it but
+   * not `/docs-private`. Such an entry holds no user name, password, query or
+   * hash. A `mailto` entry allows that exact address, and only with no query.
+   */
   readonly externalLinks?: readonly string[];
   /** Permissions granted beyond fullscreen, pointer lock, keyboard lock and clipboard writes. */
   readonly permissions?: readonly string[];
@@ -66,23 +75,69 @@ export interface GameShellOptions {
 /** One app serves one game, and the lock that keeps it to one process. */
 let started = false;
 
-/** Whether a link names a target the system browser can open. */
-function isExternalLink(link: string): boolean {
-  let scheme: string;
-  try {
-    scheme = new URL(link).protocol;
-  } catch {
-    return false;
+/** The Chromium switches that let another program drive the page. */
+const REMOTE_DEBUGGING_SWITCHES: readonly string[] = [
+  "remote-debugging-port",
+  "remote-debugging-pipe",
+];
+
+/** Parse one `externalLinks` entry, or throw naming it. */
+function parseExternalLink(link: string, index: number): URL {
+  const refuse = (constraint: string): Error =>
+    new Error(
+      `startGame: externalLinks[${index}] ${constraint}, got ${JSON.stringify(link)}.`,
+    );
+  const url = URL.parse(link);
+  if (
+    url === null ||
+    (url.protocol !== "https:" &&
+      url.protocol !== "http:" &&
+      url.protocol !== "mailto:")
+  ) {
+    throw refuse("must be an http, https or mailto URL");
   }
-  return scheme === "https:" || scheme === "http:" || scheme === "mailto:";
+  if (url.protocol === "mailto:") {
+    if (url.pathname === "") {
+      throw refuse('must name an address after "mailto:"');
+    }
+    if (url.search !== "") throw refuse("must not hold a query");
+    return url;
+  }
+  if (url.username !== "" || url.password !== "") {
+    throw refuse("must not hold a user name or password");
+  }
+  if (url.search !== "" || url.hash !== "") {
+    throw refuse("must not hold a query or a hash");
+  }
+  return url;
+}
+
+/** Whether a link the page opens lies inside one of the shell's entries. */
+function isAllowedLink(target: URL, links: readonly URL[]): boolean {
+  return links.some((link) => {
+    if (link.protocol === "mailto:") {
+      return (
+        target.protocol === "mailto:" &&
+        target.search === "" &&
+        target.pathname === link.pathname
+      );
+    }
+    if (target.origin !== link.origin) return false;
+    const base = link.pathname.replace(/\/+$/, "");
+    return target.pathname === base || target.pathname.startsWith(`${base}/`);
+  });
 }
 
 /**
  * Serve the game in one locked-down window. Call once, at the top of the main
  * script: the scheme the page is served from has to be registered before the
- * app is ready.
+ * app is ready, and the call registers it before it returns.
+ *
+ * Every failure rejects the returned promise, an invalid option included.
  */
-export function startGame(options: GameShellOptions): Promise<BrowserWindow> {
+export async function startGame(
+  options: GameShellOptions,
+): Promise<BrowserWindow> {
   // The started check comes first: once a game is running the app is ready
   // too, and "already started" is the cause the caller can act on.
   if (started) {
@@ -111,15 +166,7 @@ export function startGame(options: GameShellOptions): Promise<BrowserWindow> {
   const root = resolve(webDir);
   checkAppId("startGame", options.appId);
   checkProfile("startGame", options.profile);
-  const externalLinks = options.externalLinks ?? [];
-  externalLinks.forEach((link, index) => {
-    if (!isExternalLink(link)) {
-      throw new Error(
-        `startGame: externalLinks[${index}] must be an http, https or ` +
-          `mailto URL, got ${JSON.stringify(link)}.`,
-      );
-    }
-  });
+  const externalLinks = (options.externalLinks ?? []).map(parseExternalLink);
   const permissions = options.permissions ?? [];
   permissions.forEach((permission, index) => {
     if (typeof permission !== "string" || permission.length === 0) {
@@ -155,7 +202,21 @@ export function startGame(options: GameShellOptions): Promise<BrowserWindow> {
         `${JSON.stringify(window.simpleFullscreen)}.`,
     );
   }
+  // No fuse turns these switches off, and Chromium reads them before the
+  // main script runs, so the most a packaged app can do is not load the game.
+  const debugging = app.isPackaged
+    ? REMOTE_DEBUGGING_SWITCHES.find((name) => app.commandLine.hasSwitch(name))
+    : undefined;
+  if (debugging !== undefined) {
+    throw new Error(
+      `startGame: a packaged app does not load the game when started with ` +
+        `--${debugging}, which lets another program control the page. ` +
+        "Start the app without it, or debug the game unpackaged.",
+    );
+  }
 
+  // Everything up to the first await runs at the call: Electron accepts the
+  // scheme registration only before the app is ready.
   started = true;
   protocol.registerSchemesAsPrivileged([
     {
@@ -173,10 +234,8 @@ export function startGame(options: GameShellOptions): Promise<BrowserWindow> {
 
   if (!app.requestSingleInstanceLock()) {
     app.quit();
-    return Promise.reject(
-      new Error(
-        "startGame: another instance of this app is running. It received the focus.",
-      ),
+    throw new Error(
+      "startGame: another instance of this app is running. It received the focus.",
     );
   }
 
@@ -187,7 +246,7 @@ async function open(
   options: GameShellOptions,
   root: string,
   policy: string,
-  externalLinks: readonly string[],
+  externalLinks: readonly URL[],
   permissions: readonly string[],
   query: string,
 ): Promise<BrowserWindow> {
@@ -223,8 +282,11 @@ async function open(
   );
 
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (externalLinks.some((prefix) => url.startsWith(prefix))) {
-      void shell.openExternal(url);
+    const target = URL.parse(url);
+    // The system browser receives the URL as parsed here, so it opens the
+    // target that was checked.
+    if (target !== null && isAllowedLink(target, externalLinks)) {
+      void shell.openExternal(target.href);
     }
     return { action: "deny" };
   });

@@ -54,7 +54,8 @@ startGame({
 security policy that forbids turning strings into code, grants the page what a
 browser tab grants without a prompt, serves the bridge and the save channels
 to the game page alone, keeps the app to one copy, and quits when the window
-closes.
+closes. It reports every failure by rejecting, an invalid option included, so
+the `catch` above handles each one.
 
 `npx yage-pack init --target electron` writes this script and an Electron
 Forge configuration beside it.

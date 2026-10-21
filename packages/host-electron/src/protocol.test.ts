@@ -14,9 +14,10 @@ import {
 
 /**
  * What the bridge looked like at each protocol number: the members a page can
- * reach, the channels behind them, and the keys of each payload. A change to
- * any of it without a new number fails here, which is the point: a shell and
- * a game of different versions must not look alike to each other.
+ * reach, the channels behind them, the number of arguments each operation
+ * sends, and the keys of each payload. A change to any of it without a new
+ * number fails here, which is the point: a shell and a game of different
+ * versions must not look alike to each other.
  */
 const RECORDED: Record<number, unknown> = {
   1: {
@@ -38,6 +39,14 @@ const RECORDED: Record<number, unknown> = {
       savesWrite: "yage:saves:write",
       start: "yage:host:start",
       state: "yage:host:state",
+    },
+    arguments: {
+      "saves.delete": 1,
+      "saves.list": 1,
+      "saves.read": 1,
+      "saves.write": 2,
+      setFullscreen: 1,
+      start: 0,
     },
     state: [
       "fullscreen.active",
@@ -71,13 +80,53 @@ function keys(value: unknown): string[] {
   return paths(value).sort();
 }
 
-function fakeIpc(): BridgeIpc {
+/** A renderer IPC that records the arguments of every request it sends. */
+function fakeIpc(): { ipc: BridgeIpc; invoked: unknown[][] } {
   const emitter = new EventEmitter();
-  return {
-    invoke: () => Promise.resolve(undefined),
+  const invoked: unknown[][] = [];
+  const ipc = {
+    invoke: (_channel: string, ...args: unknown[]) => {
+      invoked.push(args);
+      return Promise.resolve(undefined);
+    },
     on: emitter.on.bind(emitter),
     removeListener: emitter.removeListener.bind(emitter),
   } as unknown as BridgeIpc;
+  return { ipc, invoked };
+}
+
+/**
+ * How many arguments each request operation of the bridge sends, found by
+ * calling it with as many as it declares. `onState` sends no request.
+ */
+async function argumentCounts(): Promise<Record<string, number>> {
+  const { ipc, invoked } = fakeIpc();
+  const bridge = createBridge(ipc) as unknown as Record<string, unknown>;
+  const operations: [string, (...args: unknown[]) => Promise<unknown>][] = [];
+  const collect = (value: Record<string, unknown>, prefix: string): void => {
+    for (const [key, member] of Object.entries(value)) {
+      const path = prefix === "" ? key : `${prefix}.${key}`;
+      if (typeof member === "function" && key !== "onState") {
+        operations.push([
+          path,
+          member as (...args: unknown[]) => Promise<unknown>,
+        ]);
+      } else if (typeof member === "object" && member !== null) {
+        collect(member as Record<string, unknown>, path);
+      }
+    }
+  };
+  collect(bridge, "");
+  const counts: Record<string, number> = {};
+  for (const [path, operation] of operations) {
+    invoked.length = 0;
+    await operation(
+      ...Array.from({ length: operation.length }, (_, i) => `argument ${i}`),
+    );
+    expect(invoked, path).toHaveLength(1);
+    counts[path] = (invoked[0] as unknown[]).length;
+  }
+  return counts;
 }
 
 describe("the bridge protocol", () => {
@@ -106,8 +155,9 @@ describe("the bridge protocol", () => {
     watch.stop();
 
     const table = {
-      bridge: paths(createBridge(fakeIpc())),
+      bridge: paths(createBridge(fakeIpc().ipc)),
       channels: { ...CHANNELS },
+      arguments: await argumentCounts(),
       state: keys((start as { state: unknown }).state),
       start: keys({ ...(start as object), state: "state" }),
       fullscreenResult: keys({ ...(fullscreen as object), state: "state" }),

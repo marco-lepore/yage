@@ -102,11 +102,17 @@ export class FakeBrowserWindow extends EventEmitter {
 /** The application, with the few readings and calls the shell makes. */
 class FakeApp extends EventEmitter {
   ready = false;
+  isPackaged = false;
   version = "1.2.3";
   name = "Fake";
   singleInstanceLock = true;
   quitCalls = 0;
   paths: Record<string, string> = { appData: "/fake/appData" };
+  /** The Chromium switches the process was started with, without dashes. */
+  readonly switches = new Set<string>();
+  readonly commandLine = {
+    hasSwitch: (name: string): boolean => this.switches.has(name),
+  };
 
   isReady(): boolean {
     return this.ready;
@@ -261,6 +267,8 @@ export const ipcRenderer = new EventEmitter();
 export function resetFakeElectron(): void {
   app.removeAllListeners();
   app.ready = false;
+  app.isPackaged = false;
+  app.switches.clear();
   app.version = "1.2.3";
   app.name = "Fake";
   app.singleInstanceLock = true;

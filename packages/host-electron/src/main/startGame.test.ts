@@ -43,9 +43,9 @@ function options(overrides: Record<string, unknown> = {}): GameShellOptions {
 }
 
 describe("startGame", () => {
-  it("registers the game scheme before the app is ready", async () => {
+  it("registers the game scheme at the call, before it returns", async () => {
     const { startGame, fake } = await load();
-    await startGame(options());
+    const started = startGame(options());
     expect(fake.protocol.privileged).toEqual([
       {
         scheme: "yage",
@@ -59,18 +59,19 @@ describe("startGame", () => {
         },
       },
     ]);
+    await started;
     expect(fake.protocol.handlers.has("yage")).toBe(true);
   });
 
   it("is called once, at the top of the main script", async () => {
     const { startGame, fake } = await load();
     fake.app.ready = true;
-    expect(() => startGame(options())).toThrowError(
+    await expect(startGame(options())).rejects.toThrowError(
       "startGame: call startGame at the top of the main script, before the app is ready.",
     );
     fake.app.ready = false;
     await startGame(options());
-    expect(() => startGame(options())).toThrowError(
+    await expect(startGame(options())).rejects.toThrowError(
       "startGame: the game is already started. Call startGame once per app.",
     );
   });
@@ -102,6 +103,31 @@ describe("startGame", () => {
         'startGame: externalLinks[0] must be an http, https or mailto URL, got "nope".',
       ],
       [
+        {
+          externalLinks: [
+            "https://example.dev/",
+            "https://player:secret@example.dev/",
+          ],
+        },
+        'startGame: externalLinks[1] must not hold a user name or password, got "https://player:secret@example.dev/".',
+      ],
+      [
+        { externalLinks: ["https://example.dev/?from=game"] },
+        'startGame: externalLinks[0] must not hold a query or a hash, got "https://example.dev/?from=game".',
+      ],
+      [
+        { externalLinks: ["https://example.dev/#top"] },
+        'startGame: externalLinks[0] must not hold a query or a hash, got "https://example.dev/#top".',
+      ],
+      [
+        { externalLinks: ["mailto:"] },
+        'startGame: externalLinks[0] must name an address after "mailto:", got "mailto:".',
+      ],
+      [
+        { externalLinks: ["mailto:support@example.dev?subject=Hi"] },
+        'startGame: externalLinks[0] must not hold a query, got "mailto:support@example.dev?subject=Hi".',
+      ],
+      [
         { permissions: [""] },
         'startGame: permissions[0] must be a non-empty string, got "".',
       ],
@@ -120,7 +146,7 @@ describe("startGame", () => {
     ];
     for (const [overrides, message] of cases) {
       const { startGame, fake } = await load();
-      expect(() => startGame(options(overrides)), message).toThrowError(
+      await expect(startGame(options(overrides)), message).rejects.toThrowError(
         message,
       );
       expect(fake.protocol.privileged).toEqual([]);
@@ -153,6 +179,33 @@ describe("startGame", () => {
     expect(win.shown).toBe(false);
     win.emit("ready-to-show");
     expect(win.shown).toBe(true);
+  });
+
+  it("refuses a remote-debugging switch in a packaged app, and opens nothing", async () => {
+    for (const name of ["remote-debugging-port", "remote-debugging-pipe"]) {
+      const { startGame, fake } = await load();
+      fake.app.isPackaged = true;
+      fake.app.switches.add(name);
+      await expect(startGame(options()), name).rejects.toThrowError(
+        `startGame: a packaged app does not load the game when started with --${name}, ` +
+          "which lets another program control the page. Start the app without it, " +
+          "or debug the game unpackaged.",
+      );
+      expect(fake.protocol.privileged).toEqual([]);
+      expect(fake.FakeBrowserWindow.created).toEqual([]);
+    }
+  });
+
+  it("opens a packaged app without the switch, and an unpackaged app with it", async () => {
+    let loaded = await load();
+    loaded.fake.app.isPackaged = true;
+    await loaded.startGame(options());
+    expect(loaded.fake.FakeBrowserWindow.created).toHaveLength(1);
+
+    loaded = await load();
+    loaded.fake.app.switches.add("remote-debugging-pipe");
+    await loaded.startGame(options());
+    expect(loaded.fake.FakeBrowserWindow.created).toHaveLength(1);
   });
 
   it("hands the focus to the running instance instead of opening a second", async () => {
@@ -232,6 +285,62 @@ describe("startGame", () => {
       win.webContents.openHandler!({ url: "https://example.com/" }),
     ).toEqual({ action: "deny" });
     expect(fake.shell.opened).toEqual(["https://yage.dev/docs"]);
+  });
+
+  it("opens a link only inside an allowed site path or at an allowed address", async () => {
+    const { startGame, fake } = await load();
+    const win = (await startGame(
+      options({
+        externalLinks: [
+          "https://Example.dev",
+          "https://yage.dev/docs/",
+          "https://yage.dev/guides",
+          "mailto:support@example.dev",
+        ],
+      }),
+    )) as unknown as FakeBrowserWindow;
+    const allowed = [
+      "https://example.dev/",
+      "https://example.dev/any/page?from=game#top",
+      "https://example.dev:443/news",
+      "https://yage.dev/docs",
+      "https://yage.dev/docs/",
+      "https://yage.dev/docs/guides/electron",
+      "https://yage.dev/guides",
+      "https://yage.dev/guides/electron",
+      "mailto:support@example.dev",
+    ];
+    const refused = [
+      "https://example.dev.other.test/",
+      "https://example.devil.test/",
+      "https://example.dev@evil.test/login",
+      "https://example.dev:8443/",
+      "http://example.dev/",
+      "https://yage.dev/",
+      "https://yage.dev/docs-private",
+      "https://yage.dev/guides-private",
+      "https://yage.dev/docs/../admin",
+      "mailto:support@example.dev.other.test",
+      "mailto:support@example.dev,someone@other.test",
+      "mailto:support@example.dev?bcc=someone@other.test",
+      "not a url",
+    ];
+    for (const url of [...allowed, ...refused]) {
+      expect(win.webContents.openHandler!({ url }), url).toEqual({
+        action: "deny",
+      });
+    }
+    expect(fake.shell.opened).toEqual([
+      "https://example.dev/",
+      "https://example.dev/any/page?from=game#top",
+      "https://example.dev/news",
+      "https://yage.dev/docs",
+      "https://yage.dev/docs/",
+      "https://yage.dev/docs/guides/electron",
+      "https://yage.dev/guides",
+      "https://yage.dev/guides/electron",
+      "mailto:support@example.dev",
+    ]);
   });
 
   it("grants the game what a browser tab grants, and nothing else", async () => {
