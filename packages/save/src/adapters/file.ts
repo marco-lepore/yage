@@ -126,19 +126,14 @@ function checkKey(method: string, key: string): void {
         `got a lone surrogate at index ${index}.`,
     );
   }
-  if (exceedsKeyBudget(key)) {
-    throw new Error(
-      `fileAdapter.${method}: key must be at most ${MAX_KEY_BYTES} bytes ` +
-        `in UTF-8, got ${keyBytes(key)} (${JSON.stringify(key)}).`,
-    );
-  }
 }
 
 /**
  * A `SaveAdapter` over a directory of files whose writes may tear when
  * interrupted. Each value is written to a shadow file first and checksummed,
  * so an interrupted write leaves the previous value or the new one readable.
- * Keys are at most 96 bytes in UTF-8.
+ * `write` takes keys of at most 96 bytes in UTF-8. No file holds a longer key,
+ * so `read` returns `null` for one and `delete` resolves.
  */
 export function fileAdapter(options: FileAdapterOptions): SaveAdapter {
   const store = options.store;
@@ -168,6 +163,7 @@ export function fileAdapter(options: FileAdapterOptions): SaveAdapter {
   return {
     async read(key) {
       checkKey("read", key);
+      if (exceedsKeyBudget(key)) return null;
       return inOrder(key, async () => {
         const { main, shadow } = fileNames(key);
         const stored = await store.read(main);
@@ -181,6 +177,12 @@ export function fileAdapter(options: FileAdapterOptions): SaveAdapter {
 
     async write(key, value) {
       checkKey("write", key);
+      if (exceedsKeyBudget(key)) {
+        throw new Error(
+          `fileAdapter.write: key must be at most ${MAX_KEY_BYTES} bytes ` +
+            `in UTF-8, got ${keyBytes(key)} (${JSON.stringify(key)}).`,
+        );
+      }
       const index = loneSurrogateIndex(value);
       if (index >= 0) {
         throw new Error(
@@ -207,6 +209,7 @@ export function fileAdapter(options: FileAdapterOptions): SaveAdapter {
 
     async delete(key) {
       checkKey("delete", key);
+      if (exceedsKeyBudget(key)) return;
       return inOrder(key, async () => {
         const { main, shadow } = fileNames(key);
         // The first removal never takes the only intact copy, so an

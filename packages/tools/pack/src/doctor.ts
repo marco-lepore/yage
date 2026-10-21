@@ -4,12 +4,13 @@ import {
   atLeast,
   inGameModules,
   installedVersion,
-  nodeModulesChain,
+  loadedCopies,
   parseVersion,
   productionClosure,
   readManifest,
   resolvePackage,
   satisfiesCaret,
+  WORKSPACE_GUIDE,
 } from "./project.js";
 import { run as defaultRun, javaBinary, type RunResult } from "./run.js";
 import {
@@ -246,37 +247,41 @@ function gameFolderRule(root: string): CheckResult {
     `${outside
       .map((entry) => `${entry.name} (${String(entry.dir)})`)
       .join(", ")} ${outside.length === 1 ? "is" : "are"} installed outside ` +
-      "the game's node_modules, and an Electron package carries only the game's folder.",
-    `Run npm install --workspaces=false in ${root}: it installs the game's ` +
-      "packages in its own node_modules. An npm install at the workspace root moves them out again.",
+      "the game's node_modules, and an Electron package carries only the packages in the game's own node_modules.",
+    `Install ${outside.length === 1 ? "it" : "them"} in the game's own node_modules. ` +
+      `The packaging guide lists the ways to do that in an npm workspace and what each one changes: ${WORKSPACE_GUIDE}`,
   );
 }
 
+/**
+ * Two copies of pixi.js fail each other's class checks, so the game and every
+ * `@yagejs/*` package it loads have to resolve the same one. A copy that none
+ * of them resolves does not count.
+ */
 function pixiRule(root: string): CheckResult {
-  const copies = nodeModulesChain(root).flatMap((modules) =>
-    findPixiCopies(modules, 0),
-  );
-  if (copies.length === 0) {
+  const copies = loadedCopies(root, "pixi.js");
+  const [only] = copies;
+  if (only === undefined) {
     return fail(
       "pixi.js",
       "pixi.js is not installed.",
       `npm install pixi.js@^${PIXI_FLOOR}`,
     );
   }
-  const extra = copies.slice(1);
-  if (extra.length > 0) {
+  if (copies.length > 1) {
     return fail(
       "pixi.js",
-      `${copies.length} copies of pixi.js are installed.`,
-      extra
+      `The game loads ${copies.length} copies of pixi.js: ${copies
         .map(
           (copy) =>
-            `Remove the second copy at ${copy.dir}: two copies of pixi.js fail each other's class checks.`,
+            `${copy.version} at ${copy.dir}, loaded by ${copy.loadedBy.join(", ")}`,
         )
-        .join("\n"),
+        .join("; ")}.`,
+      "Leave one copy that the game and every @yagejs package resolve: two copies of " +
+        "pixi.js fail each other's class checks. npm ls pixi.js shows which package " +
+        `installed each copy. For a game in an npm workspace, see ${WORKSPACE_GUIDE}`,
     );
   }
-  const only = copies[0] as PixiCopy;
   return atLeast(only.version, PIXI_FLOOR)
     ? pass("pixi.js", `One copy of pixi.js, ${only.version}.`)
     : fail(
@@ -284,39 +289,6 @@ function pixiRule(root: string): CheckResult {
         `pixi.js ${only.version} is below ${PIXI_FLOOR}.`,
         `npm install pixi.js@^${PIXI_FLOOR}`,
       );
-}
-
-interface PixiCopy {
-  readonly dir: string;
-  readonly version: string;
-}
-
-/** Every installed `pixi.js`, including the nested copies npm leaves behind. */
-function findPixiCopies(modules: string, depth: number): PixiCopy[] {
-  if (depth > 6 || !existsSync(modules)) return [];
-  const found: PixiCopy[] = [];
-  const own = path.join(modules, "pixi.js", "package.json");
-  if (existsSync(own)) {
-    const parsed = JSON.parse(readFileSync(own, "utf8")) as {
-      version?: string;
-    };
-    found.push({
-      dir: path.dirname(own),
-      version: parsed.version ?? "unknown",
-    });
-  }
-  for (const entry of readdirSync(modules, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name === "pixi.js") continue;
-    const inner = entry.name.startsWith("@")
-      ? readdirSync(path.join(modules, entry.name), { withFileTypes: true })
-          .filter((scoped) => scoped.isDirectory())
-          .map((scoped) => path.join(modules, entry.name, scoped.name))
-      : [path.join(modules, entry.name)];
-    for (const dir of inner) {
-      found.push(...findPixiCopies(path.join(dir, "node_modules"), depth + 1));
-    }
-  }
-  return found;
 }
 
 function macOsRule(platform: NodeJS.Platform): CheckResult {

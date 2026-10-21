@@ -551,8 +551,11 @@ export const save = createSave({ adapter: fileAdapter({ store }) });
 
 Keys are at most 96 bytes in UTF-8, which keeps the longest file name at 160
 characters. `Save` refuses to write a longer key on every adapter; see
-[How long a slot name can be](#how-long-a-slot-name-can-be). A file is named
-`k-` plus the key in base32, so names hold only `a-z`, `2-7`, `-` and `.`.
+[How long a slot name can be](#how-long-a-slot-name-can-be). No file can hold
+a longer key, so `fileAdapter` reads one as absent: `loadSlot` throws
+`SlotNotFoundError` for such a name and `deleteSlot` completes, as they do on
+the other adapters. A file is named `k-` plus the key in base32, so names hold
+only `a-z`, `2-7`, `-` and `.`.
 
 A custom adapter — IndexedDB, cloud sync, your own shell — has to meet the
 same four promises.

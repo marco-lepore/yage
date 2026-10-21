@@ -240,14 +240,19 @@ describe("buildRecord", () => {
         debug: { CURRENT_PROJECT_VERSION: "6" },
       }),
     });
-    const iosRecord = await buildRecord({
-      root: ios,
-      target: "ios",
-      profile: "development",
-      artifacts: [],
-      run: noGit,
-    });
-    expect(iosRecord.app.build).toBe("7");
+    // Each profile reads the App target's configuration its build runs with.
+    const iosRecords = await Promise.all(
+      (["development", "release"] as const).map((profile) =>
+        buildRecord({
+          root: ios,
+          target: "ios",
+          profile,
+          artifacts: [],
+          run: noGit,
+        }),
+      ),
+    );
+    expect(iosRecords.map((record) => record.app.build)).toEqual(["6", "7"]);
 
     const android = game({
       "android/app/build.gradle": "defaultConfig {\n  versionCode 12\n}\n",

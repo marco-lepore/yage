@@ -126,7 +126,10 @@ export async function buildRecord(
     createdAt: new Date().toISOString(),
     target,
     profile: options.profile,
-    app: { ...identity, build: readBuildNumber(root, target) },
+    app: {
+      ...identity,
+      build: readBuildNumber(root, target, options.profile),
+    },
     source: readSource(run),
     packages: readYagePackages(root),
     dependencies: readDependencies(root),
@@ -274,10 +277,15 @@ function readSignature(
   return "unknown";
 }
 
-function readBuildNumber(root: string, target: Target): string | null {
+function readBuildNumber(
+  root: string,
+  target: Target,
+  profile: BuildRecord["profile"],
+): string | null {
   if (target === "ios") {
     const setting = xcodeSetting(
       nativePaths(root, "ios").project,
+      profile === "release" ? "Release" : "Debug",
       "CURRENT_PROJECT_VERSION",
     );
     return "value" in setting ? setting.value : null;

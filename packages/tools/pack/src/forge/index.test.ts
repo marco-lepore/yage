@@ -91,19 +91,27 @@ describe("electronForgeConfig validation", () => {
     );
   });
 
-  it("names a package installed at the workspace root, outside the game's folder", () => {
+  it("names every package installed at the workspace root, outside the game's folder", () => {
     const workspace = makeTree({
       "package.json": JSON.stringify({ private: true, workspaces: ["game"] }),
-      ...installed("@yagejs/host-electron", { version: "0.12.0" }),
+      ...installed("@yagejs/host-electron", {
+        version: "0.12.0",
+        dependencies: { "@yagejs/save": "^0.12.0" },
+      }),
+      ...installed("@yagejs/save", { version: "0.12.0" }),
     });
     const root = path.join(workspace, "game");
     addFile(workspace, "game/package.json", JSON.stringify(manifest));
     addFile(workspace, "game/electron/main.cjs", "// shell\n");
     mkdirSync(path.join(workspace, "node_modules"), { recursive: true });
     symlinkSync(root, path.join(workspace, "node_modules", "my-game"));
+    const modules = path.join(workspace, "node_modules", "@yagejs");
     expect(() => electronForgeConfig({ root })).toThrow(
-      `electronForgeConfig: @yagejs/host-electron is installed at ${path.join(workspace, "node_modules", "@yagejs", "host-electron")}, ` +
-        `outside the game's node_modules, and an Electron package carries only the game's folder. Run npm install --workspaces=false in ${root}.`,
+      `electronForgeConfig: @yagejs/host-electron (${path.join(modules, "host-electron")}), ` +
+        `@yagejs/save (${path.join(modules, "save")}) are installed outside the game's node_modules, ` +
+        "and an Electron package carries only the packages in the game's own node_modules. " +
+        "The packaging guide lists the ways to install them there in an npm workspace and what each one changes: " +
+        "https://yage.dev/tooling/packaging#a-game-inside-an-npm-workspace",
     );
   });
 

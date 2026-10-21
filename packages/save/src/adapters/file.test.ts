@@ -236,7 +236,7 @@ describe("fileAdapter", () => {
     for (const key of keys) expect(await adapter.read(key)).toBe(OLD);
   });
 
-  it("takes a 96-byte key and refuses a longer one", async () => {
+  it("writes a 96-byte key and refuses to write a longer one", async () => {
     const store = memoryFileStore();
     const adapter = fileAdapter({ store });
     const longest = "k".repeat(96);
@@ -247,18 +247,19 @@ describe("fileAdapter", () => {
     const tracked = trackingStore(memoryFileStore());
     const guarded = fileAdapter({ store: tracked.store });
     const tooLong = "k".repeat(97);
-    const message =
-      "key must be at most 96 bytes in UTF-8, got 97 " +
-      `(${JSON.stringify(tooLong)}).`;
-    await expect(guarded.read(tooLong)).rejects.toThrow(
-      `fileAdapter.read: ${message}`,
-    );
     await expect(guarded.write(tooLong, OLD)).rejects.toThrow(
-      `fileAdapter.write: ${message}`,
+      "fileAdapter.write: key must be at most 96 bytes in UTF-8, got 97 " +
+        `(${JSON.stringify(tooLong)}).`,
     );
-    await expect(guarded.delete(tooLong)).rejects.toThrow(
-      `fileAdapter.delete: ${message}`,
-    );
+    expect(tracked.calls).toEqual([]);
+  });
+
+  it("reads a longer key as absent and deletes it without touching the store", async () => {
+    const tracked = trackingStore(memoryFileStore());
+    const adapter = fileAdapter({ store: tracked.store });
+    const tooLong = "k".repeat(97);
+    expect(await adapter.read(tooLong)).toBeNull();
+    await expect(adapter.delete(tooLong)).resolves.toBeUndefined();
     expect(tracked.calls).toEqual([]);
   });
 
@@ -494,5 +495,20 @@ describe("fileAdapter", () => {
     await expect(
       save.loadSlot("run", "manual-1", loaded),
     ).rejects.toBeInstanceOf(SlotNotFoundError);
+  });
+
+  it("a Save over the adapter finds no slot under a name over the key budget", async () => {
+    const save = createSave({
+      adapter: fileAdapter({ store: memoryFileStore() }),
+    });
+    const run = createRecord<{ chapter: number }>({
+      default: () => ({ chapter: 1 }),
+    });
+    // "run/s/" and 91 letters make a 97-byte key.
+    const name = "n".repeat(91);
+    await expect(save.loadSlot("run", name, run)).rejects.toBeInstanceOf(
+      SlotNotFoundError,
+    );
+    await expect(save.deleteSlot("run", name)).resolves.toBeUndefined();
   });
 });

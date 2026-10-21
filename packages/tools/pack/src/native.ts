@@ -81,13 +81,20 @@ export type XcodeSetting =
   | { readonly value: string }
   | { readonly unreadable: string };
 
+/** The configurations of the App target a Capacitor project generates. */
+export type XcodeConfiguration = "Debug" | "Release";
+
 /**
- * A build setting of the App target's Release configuration, the one a
- * release archive builds with. A value the target inherits from the project
- * or an xcconfig file, or builds from other settings, is unreadable: the
- * project file alone does not hold it.
+ * A build setting of one configuration of the App target: Release is the one
+ * a release archive builds with, Debug the one a development build runs. A
+ * value the target inherits from the project or an xcconfig file, or builds
+ * from other settings, is unreadable: the project file alone does not hold it.
  */
-export function xcodeSetting(projectFile: string, name: string): XcodeSetting {
+export function xcodeSetting(
+  projectFile: string,
+  configuration: XcodeConfiguration,
+  name: string,
+): XcodeSetting {
   if (!existsSync(projectFile)) {
     return { unreadable: "project.pbxproj is missing" };
   }
@@ -106,24 +113,23 @@ export function xcodeSetting(projectFile: string, name: string): XcodeSetting {
   const ids = Array.isArray(list?.buildConfigurations)
     ? list.buildConfigurations
     : [];
-  const release = ids
+  const found = ids
     .map((id) => (typeof id === "string" ? asDict(objects[id]) : undefined))
-    .find((entry) => entry?.name === "Release");
-  if (release === undefined) {
+    .find((entry) => entry?.name === configuration);
+  if (found === undefined) {
     return {
-      unreadable: "the project has no App target with a Release configuration",
+      unreadable: `the project has no App target with a ${configuration} configuration`,
     };
   }
-  const value = asDict(release.buildSettings)?.[name];
+  const value = asDict(found.buildSettings)?.[name];
   if (typeof value !== "string") {
     return {
-      unreadable:
-        "the App target's Release configuration does not set it, so any value comes from the project or an xcconfig file",
+      unreadable: `the App target's ${configuration} configuration does not set it, so any value comes from the project or an xcconfig file`,
     };
   }
   if (value.includes("$(") || value.includes("${")) {
     return {
-      unreadable: `the App target's Release configuration sets it to ${value}, which refers to other settings`,
+      unreadable: `the App target's ${configuration} configuration sets it to ${value}, which refers to other settings`,
     };
   }
   return { value };

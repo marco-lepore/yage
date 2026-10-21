@@ -109,10 +109,7 @@ export function installedVersion(root: string, name: string): string | null {
 /** One package of a production-dependency closure. */
 export interface ClosurePackage {
   readonly name: string;
-  /**
-   * Where the install put it, as the game's folder spells the path, with
-   * symbolic links left unresolved; `undefined` when it is not installed.
-   */
+  /** Where the install put it; `undefined` when it is not installed. */
   readonly dir: string | undefined;
 }
 
@@ -126,25 +123,117 @@ export function productionClosure(
   root: string,
   names: readonly string[],
 ): ClosurePackage[] {
+  return closure(root, names, {
+    edges: (manifest) => Object.keys(manifest.dependencies ?? {}),
+    realPaths: false,
+  });
+}
+
+/** One installed copy of a package and what loads it. */
+export interface LoadedCopy {
+  /** The copy's folder, with symbolic links resolved. */
+  readonly dir: string;
+  readonly version: string;
+  /** `the game`, or the names of the packages that load this copy. */
+  readonly loadedBy: readonly string[];
+}
+
+/**
+ * The copies of `name` the game's module graph loads: the one the game
+ * resolves, and the one each `@yagejs/*` package that declares `name` resolves
+ * from its own folder. The `@yagejs/*` packages are those the game lists and
+ * those they list in `dependencies` or `peerDependencies`. Each is found the
+ * way Node finds it, from the folder a symbolic link points to.
+ */
+export function loadedCopies(root: string, name: string): LoadedCopy[] {
+  const game = path.resolve(root);
+  const top = searchTop(game);
+  const manifest = readManifest(game);
+  const engine = (names: readonly string[]): string[] =>
+    names.filter((entry) => entry.startsWith("@yagejs/"));
+  const declared = (found: GameManifest): string[] => [
+    ...Object.keys(found.dependencies ?? {}),
+    ...Object.keys(found.peerDependencies ?? {}),
+  ];
+  const loaders: { readonly name: string; readonly from: string }[] = [
+    { name: "the game", from: game },
+  ];
+  for (const entry of closure(
+    game,
+    engine([
+      ...Object.keys(manifest?.dependencies ?? {}),
+      ...Object.keys(manifest?.devDependencies ?? {}),
+    ]),
+    { edges: (found) => engine(declared(found)), realPaths: true },
+  )) {
+    if (entry.dir === undefined) continue;
+    if (declared(readPackageManifest(entry.dir)).includes(name)) {
+      loaders.push({ name: entry.name, from: entry.dir });
+    }
+  }
+  const copies = new Map<
+    string,
+    { dir: string; version: string; loadedBy: string[] }
+  >();
+  for (const loader of loaders) {
+    const dir = lookUp(loader.from, name, top);
+    if (dir === undefined) continue;
+    const real = realpathSync(dir);
+    const version = readPackageManifest(dir).version;
+    const copy = copies.get(real) ?? {
+      dir: real,
+      version: typeof version === "string" ? version : "unknown",
+      loadedBy: [],
+    };
+    copy.loadedBy.push(loader.name);
+    copies.set(real, copy);
+  }
+  return [...copies.values()];
+}
+
+/**
+ * The named packages and every package `edges` names from their manifests,
+ * each found from the folder of the package that names it. With `realPaths`,
+ * that folder is the one a symbolic link points to, as Node and a bundler
+ * resolve it; without, it keeps the path the game's folder gives it.
+ */
+function closure(
+  root: string,
+  names: readonly string[],
+  options: {
+    readonly edges: (manifest: GameManifest) => readonly string[];
+    readonly realPaths: boolean;
+  },
+): ClosurePackage[] {
   const game = path.resolve(root);
   const top = searchTop(game);
   const found: ClosurePackage[] = [];
   const seen = new Set<string>();
   const queue = names.map((name) => ({ name, from: game }));
   for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-    const dir = lookUp(next.from, next.name, top);
+    const located = lookUp(next.from, next.name, top);
+    const dir =
+      located !== undefined && options.realPaths
+        ? realpathSync(located)
+        : located;
     const key = dir ?? `missing ${next.name}`;
     if (seen.has(key)) continue;
     seen.add(key);
     found.push({ name: next.name, dir });
     if (dir === undefined) continue;
-    const dependencies = readPackageManifest(dir).dependencies ?? {};
-    for (const dependency of Object.keys(dependencies)) {
+    for (const dependency of options.edges(readPackageManifest(dir))) {
       queue.push({ name: dependency, from: dir });
     }
   }
   return found;
 }
+
+/**
+ * The packaging guide's section on installing a workspace member's packages
+ * in its own `node_modules`, with what each route changes.
+ */
+export const WORKSPACE_GUIDE =
+  "https://yage.dev/tooling/packaging#a-game-inside-an-npm-workspace";
 
 /**
  * Whether a package directory is inside the game's own `node_modules`, the

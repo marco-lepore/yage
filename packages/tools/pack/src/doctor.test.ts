@@ -1,10 +1,20 @@
-import { mkdirSync, readFileSync, symlinkSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runDoctor } from "./doctor.js";
 import type { RunResult } from "./run.js";
 import { addFile, installed, makeTree, removeTrees } from "./test/tree.js";
 import { REQUIRED_PACKAGES, type CheckReport, type Target } from "./types.js";
+
+/** Tree entries moved under a directory of the tree. */
+function prefixed(
+  dir: string,
+  files: Record<string, string>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(files).map(([file, body]) => [`${dir}${file}`, body]),
+  );
+}
 
 const XCODE_DIR = "/Applications/Xcode.app/Contents/Developer";
 
@@ -187,25 +197,56 @@ describe("runDoctor", () => {
     );
   });
 
-  it("names the second copy of pixi.js", async () => {
+  it("names each copy of pixi.js the game loads and what loads it", async () => {
     const root = healthyGame("electron");
     addFile(
       root,
-      "node_modules/some-addon/package.json",
-      JSON.stringify({ name: "some-addon", version: "1.0.0" }),
+      "package.json",
+      JSON.stringify({
+        name: "game",
+        dependencies: { "@yagejs/host-electron": "*", "@yagejs/renderer": "*" },
+      }),
     );
     addFile(
       root,
-      "node_modules/some-addon/node_modules/pixi.js/package.json",
+      "node_modules/@yagejs/renderer/package.json",
+      JSON.stringify({
+        name: "@yagejs/renderer",
+        version: "0.12.0",
+        dependencies: { "pixi.js": "^8.21.0" },
+      }),
+    );
+    addFile(
+      root,
+      "node_modules/@yagejs/renderer/node_modules/pixi.js/package.json",
       JSON.stringify({ name: "pixi.js", version: "8.21.0" }),
     );
-    const found = await report(root, "electron");
-    expect(rule(found, "pixi.js").fix).toContain(
-      "node_modules/some-addon/node_modules/pixi.js",
+    const real = realpathSync(root);
+    const found = rule(await report(root, "electron"), "pixi.js");
+    expect(found.ok).toBe(false);
+    expect(found.detail).toBe(
+      "The game loads 2 copies of pixi.js: " +
+        `8.22.0 at ${path.join(real, "node_modules", "pixi.js")}, loaded by the game; ` +
+        `8.21.0 at ${path.join(real, "node_modules", "@yagejs", "renderer", "node_modules", "pixi.js")}, loaded by @yagejs/renderer.`,
     );
-    expect(rule(found, "pixi.js").fix).toContain(
+    expect(found.fix).toContain(
       "two copies of pixi.js fail each other's class checks.",
     );
+  });
+
+  it("leaves out a copy of pixi.js that no package of the game resolves", async () => {
+    const root = healthyGame("electron");
+    addFile(
+      root,
+      "node_modules/some-tool/package.json",
+      JSON.stringify({ name: "some-tool", version: "1.0.0" }),
+    );
+    addFile(
+      root,
+      "node_modules/some-tool/node_modules/pixi.js/package.json",
+      JSON.stringify({ name: "pixi.js", version: "7.4.0" }),
+    );
+    expect(rule(await report(root, "electron"), "pixi.js").ok).toBe(true);
   });
 
   it("asks for a Pixi version the engine packages are built against", async () => {
@@ -251,6 +292,59 @@ describe("runDoctor", () => {
     expect(rule(await report(root, "electron"), "pixi.js").ok).toBe(true);
   });
 
+  /** A workspace whose root holds hoisted copies, with the game linked in. */
+  function workspaceGame(files: Record<string, string>): string {
+    const workspace = makeTree({
+      "package.json": JSON.stringify({ private: true, workspaces: ["game"] }),
+      "game/package.json": JSON.stringify({
+        name: "my-game",
+        dependencies: { "@yagejs/core": "*", "@yagejs/renderer": "*" },
+      }),
+      ...installed("pixi.js", { version: "8.21.0" }),
+      ...installed("@yagejs/core", { version: "0.12.0" }),
+      ...files,
+    });
+    const root = path.join(workspace, "game");
+    symlinkSync(root, path.join(workspace, "node_modules", "my-game"));
+    return root;
+  }
+
+  it("passes a workspace member whose packages resolve its own pixi.js", async () => {
+    const root = workspaceGame({
+      ...prefixed(
+        "game/",
+        installed("@yagejs/renderer", {
+          version: "0.12.0",
+          dependencies: { "@yagejs/core": "^0.12.0", "pixi.js": "^8.22.0" },
+        }),
+      ),
+      ...prefixed("game/", installed("pixi.js", { version: "8.22.0" })),
+    });
+    // The workspace root's pixi.js and the @yagejs/core beside it, which
+    // imports no pixi.js, are not the game's copy and do not count.
+    expect(rule(await report(root, "electron"), "pixi.js").detail).toBe(
+      "One copy of pixi.js, 8.22.0.",
+    );
+  });
+
+  it("fails a workspace member whose renderer resolves the workspace root's pixi.js", async () => {
+    const root = workspaceGame({
+      ...installed("@yagejs/renderer", {
+        version: "0.12.0",
+        dependencies: { "@yagejs/core": "^0.12.0", "pixi.js": "^8.21.0" },
+      }),
+      ...prefixed("game/", installed("pixi.js", { version: "8.22.0" })),
+    });
+    const workspace = realpathSync(path.dirname(root));
+    const found = rule(await report(root, "electron"), "pixi.js");
+    expect(found.ok).toBe(false);
+    expect(found.detail).toBe(
+      "The game loads 2 copies of pixi.js: " +
+        `8.22.0 at ${path.join(workspace, "game", "node_modules", "pixi.js")}, loaded by the game; ` +
+        `8.21.0 at ${path.join(workspace, "node_modules", "pixi.js")}, loaded by @yagejs/renderer.`,
+    );
+  });
+
   it("names the packages an Electron package cannot carry from a workspace root", async () => {
     const workspace = makeTree({
       "package.json": JSON.stringify({ private: true, workspaces: ["game"] }),
@@ -276,11 +370,12 @@ describe("runDoctor", () => {
     expect(result.ok).toBe(false);
     expect(result.detail).toBe(
       `@yagejs/host-electron (${path.join(workspace, "node_modules", "@yagejs", "host-electron")}) ` +
-        "is installed outside the game's node_modules, and an Electron package carries only the game's folder.",
+        "is installed outside the game's node_modules, and an Electron package carries only the packages in the game's own node_modules.",
     );
     expect(result.fix).toBe(
-      `Run npm install --workspaces=false in ${root}: it installs the game's packages in its own ` +
-        "node_modules. An npm install at the workspace root moves them out again.",
+      "Install it in the game's own node_modules. The packaging guide lists the ways to do that " +
+        "in an npm workspace and what each one changes: " +
+        "https://yage.dev/tooling/packaging#a-game-inside-an-npm-workspace",
     );
   });
 

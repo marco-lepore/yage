@@ -159,9 +159,9 @@ FAIL Xcode: The selected developer directory is /Library/Developer/CommandLineTo
 ```
 
 It checks Node, the packages each target needs and the versions the host
-adapters accept, that only one copy of `pixi.js` is installed, and then
-Xcode and the simulator for iOS, or the JDK and the Android SDK for
-Android.
+adapters accept, that the game and every `@yagejs` package it loads use one
+copy of `pixi.js`, and then Xcode and the simulator for iOS, or the JDK and
+the Android SDK for Android.
 
 ## Desktop
 
@@ -211,23 +211,51 @@ What the configuration owns:
   writes `out/yage-build-electron.json`, and `make` adds every file the
   makers write to it, from an installer to the update files beside it. The
   release check reads the fuses from the `.app` bundle of a macOS package or
-  the `.exe` of a Windows package. A Linux package fails the check, because
-  it has no executable the check can pick out: run
-  `npx yage-pack check --target electron --release --app <path to the executable>`
-  on it yourself.
+  the `.exe` of a Windows package.
 
-**A game inside an npm workspace.** The package carries the game's folder
-and nothing above it, so the packages the shell loads have to be installed
-in the game's own `node_modules`. npm installs them at the workspace root,
-and `electronForgeConfig` then refuses to build, naming the package.
-Run `npm install --workspaces=false` in the game's folder before packaging:
-it installs the game as a project of its own. An `npm install` at the
-workspace root moves the packages out again. `npx yage-pack doctor` reports
-the same problem.
+On Linux, `npm run package:electron` and `npm run make:electron` stop at the
+release check, because the check cannot tell which file in a Linux package
+folder is the app's executable. The package folder is written, then the check
+fails, so neither the build record nor any maker's files are written.
+`npx yage-pack check --target electron --release --app <path to the executable>`
+reads the fuses of an executable you name.
 
 A packaged app is a release and `electron-forge start` is development: the
 shell reads `app.isPackaged`, which decides the save directory and whether
 developer tools open.
+
+### A game inside an npm workspace
+
+An Electron package carries the game's folder and nothing above it, so the
+packages the shell loads have to be in the game's own `node_modules`. In an
+npm workspace, npm installs them at the workspace root. `electronForgeConfig`
+then refuses to build and names each package outside the game's folder.
+`npx yage-pack doctor` reports the same problem for `@yagejs/host-electron`
+and the packages it loads.
+
+Two npm settings install the game's packages in its own `node_modules`. Each
+one changes more than the game:
+
+- **`npm install --workspaces=false` in the game's folder.** npm treats the
+  game as a project of its own. It installs the game's dependencies in the
+  game's `node_modules` and writes a `package-lock.json` beside them. A
+  dependency on another package of the workspace is downloaded from the
+  public npm registry: the install fails for a name nobody published, and it
+  installs someone else's package for a name another author published. Do
+  not use it for a game that depends on unpublished workspace packages. The
+  next `npm install` at the workspace root removes the game's copies again.
+- **`install-strategy=shallow` in the `.npmrc` at the workspace root.** npm
+  installs the dependencies of every workspace member in that member's own
+  `node_modules`. The setting takes effect only on a fresh install: delete
+  the workspace root's `node_modules` and `package-lock.json`, then run
+  `npm install` at the root. Without the lockfile, npm resolves every
+  dependency of every member again, to the newest version its range accepts.
+  A workspace package the game depends on stays linked at the workspace
+  root, outside the game's folder.
+
+`install-strategy=nested` also installs in each member's folder, but it gives
+each package its own copy of a dependency the game does not list itself, so a
+game can load two copies of one engine package.
 
 ## Mobile
 

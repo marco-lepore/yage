@@ -157,6 +157,25 @@ describe("runCheck contract rules", () => {
     ).toBe("npx cap add android");
   });
 
+  it("runs no release rule that reads a native project that is missing", async () => {
+    const root = makeTree({
+      "package.json": JSON.stringify(manifest),
+      "dist-capacitor/index.html": "<!doctype html>\n",
+    });
+    for (const target of ["ios", "android"] as const) {
+      const report = await runCheck({ root, target, release: true });
+      expect(report.results.filter((result) => !result.ok)).toEqual([
+        rule(report, "native project"),
+      ]);
+      expect(report.results.map((result) => result.name)).toEqual([
+        "identity",
+        "web build",
+        "no service worker",
+        "native project",
+      ]);
+    }
+  });
+
   it("names the setting that carries a stale bundle identifier", async () => {
     const root = game({
       "ios/App/App.xcodeproj/project.pbxproj": pbxproj({

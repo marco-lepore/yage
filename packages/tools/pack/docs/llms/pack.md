@@ -186,11 +186,11 @@ The archive holds `package.json`, the directory of the `main` script,
 of `@yagejs/host-electron` plus any `runtimeDependencies`. Nothing else.
 
 The packager copies the game's folder and nothing above it, so every package
-of that closure has to be installed in the game's own `node_modules`; one
-installed anywhere else throws at config load. In an npm workspace, npm
-installs them at the workspace root: run `npm install --workspaces=false` in
-the game's folder before packaging. An `npm install` at the workspace root
-moves them out again.
+of that closure has to be installed in the game's own `node_modules`. When
+any is installed anywhere else, it throws at config load, naming each one
+with its folder. In an npm workspace, npm installs them at the workspace
+root; the error links the guide's section on that case, summarized under
+"A game inside an npm workspace" below.
 
 `RELEASE_FUSES` is the set every package carries:
 
@@ -211,6 +211,30 @@ covers Chromium's `--remote-debugging-port` and `--remote-debugging-pipe`:
 A test driver cannot attach to a packaged app: check it by running it and
 reading what it writes. `electron-forge start` runs unpackaged, with
 developer tools on.
+
+### A game inside an npm workspace
+
+Two npm settings install a member's packages in its own `node_modules`. Each
+changes more than the game:
+
+- `npm install --workspaces=false` in the game's folder: installs the game's
+  dependencies in its `node_modules` and writes a `package-lock.json` there.
+  A dependency on another workspace package is downloaded from the public
+  npm registry: the install fails for an unpublished name and installs
+  another author's package for a name someone else published, so it does not
+  suit a game that depends on unpublished workspace packages. The next
+  `npm install` at the workspace root removes the game's copies again.
+- `install-strategy=shallow` in the workspace root's `.npmrc`: every member's
+  dependencies install in that member's `node_modules`. It takes effect only
+  on a fresh install: delete the root's `node_modules` and
+  `package-lock.json`, then run `npm install` at the root, which resolves
+  every member's dependencies again to the newest version each range
+  accepts. A workspace package the game depends on stays linked at the
+  workspace root.
+
+`install-strategy=nested` also installs in each member's folder, but gives
+each package its own copy of a dependency the game does not list, so a game
+can load two copies of one engine package.
 
 ## `capacitorConfig(overrides?)`
 
@@ -245,7 +269,7 @@ are installed.
 | `packages`                      | all        | every package the target's build needs is installed                                                                                |
 | `host package in dependencies`  | all        | the host adapter is a runtime dependency, not a development one                                                                    |
 | `peer versions`                 | all        | each package the host adapter declares is installed at a version it accepts, and each Capacitor plugin is listed in `dependencies` |
-| `pixi.js`                       | all        | exactly one copy is installed, at 8.22.0 or later                                                                                  |
+| `pixi.js`                       | all        | the game and every `@yagejs/*` package it loads resolve one copy, at 8.22.0 or later                                               |
 | `packages in the game's folder` | `electron` | `@yagejs/host-electron` and every package it loads are in the game's own `node_modules`, which is all an Electron package carries  |
 | `macOS`                         | `ios`      | the machine runs macOS                                                                                                             |
 | `Xcode`                         | `ios`      | the selected developer directory is an Xcode, at 15.0 or later                                                                     |
@@ -259,7 +283,15 @@ npm workspace, from each `node_modules` up to the workspace root. A directory
 is the workspace root when its `package.json` declares `workspaces` and its
 `node_modules` links the game in by name, as npm does for each member.
 `packages in the game's folder` runs only when `@yagejs/host-electron` is
-installed; its fix is `npm install --workspaces=false` in the game's folder.
+installed, and its fix links the section on a game inside an npm workspace.
+
+`pixi.js` counts the copies the game's module graph loads: the one the game
+resolves, and the one each `@yagejs/*` package that declares `pixi.js`
+resolves from its own folder, the way Node resolves it. The `@yagejs/*`
+packages are those the game lists in `dependencies` or `devDependencies` and
+those they list in `dependencies` or `peerDependencies`. A copy none of them
+resolves does not count, such as a copy at the workspace root when the game
+and its packages resolve the game's own.
 
 `Xcode first launch` and `iOS simulator` run only when `Xcode` passed,
 because both go through the selected developer directory. Each failure
@@ -288,7 +320,9 @@ names the Xcode or Gradle setting to change.
 `copied config` runs once `native project` passes, and the rules that read
 the copied configuration (`app id in the native project`, `YAGE settings`,
 `no development server`, `no credentials in the config`) run once it passes.
-A fresh clone fails it until `npx cap sync <target>` runs.
+A fresh clone fails it until `npx cap sync <target>` runs. The release rules
+that read the native project (`version`, `privacy manifest`,
+`game category`) run once `native project` passes.
 
 On iOS, `PRODUCT_BUNDLE_IDENTIFIER` and `MARKETING_VERSION` are read from
 the App target's Release configuration in `project.pbxproj`. A value the
@@ -315,9 +349,15 @@ Electron side it runs on every package.
 Without `--app`, `check --target electron --release` reads every package
 folder under `out/`. The fuses are read from the `.app` bundle of a macOS
 package, or from the one `.exe` beside `resources/app.asar` in a Windows
-package. Any other folder, such as a Linux package, fails `fuses` with the
-route: pass the packaged executable with `--app`. A file passed with `--app`
-is read directly, and its archive is looked for beside it.
+package. Any other folder fails `fuses` with the route: pass the packaged
+executable with `--app`. A file passed with `--app` is read directly, and its
+archive is looked for beside it.
+
+On Linux, `package:electron` and `make:electron` stop at the release check,
+because the check cannot tell which file in a Linux package folder is the
+app's executable. The package folder is written; the build record and the
+makers' files are not. Name the executable by hand to read its fuses:
+`yage-pack check --target electron --release --app <executable>`.
 
 `check` never edits a file. Inside the Capacitor sync hook the target comes
 from `CAPACITOR_PLATFORM_NAME`; the hook also runs for the browser platform,
@@ -391,8 +431,9 @@ interface BuildRecord {
 installer with its `RELEASES` and `.nupkg` files, a `RELEASES.json`. A path
 that is not there is refused.
 
-`app.build` is `CURRENT_PROJECT_VERSION` of the App target's Release
-configuration on iOS and `versionCode` on Android. It is `null` for
+`app.build` is `CURRENT_PROJECT_VERSION` of the App target's configuration
+that matches the profile on iOS (Debug for `development`, Release for
+`release`) and `versionCode` on Android. It is `null` for
 Electron, and on iOS when the project file does not hold the value.
 `packages` and `dependencies` are read the way `doctor` reads packages, up
 to the workspace root. An

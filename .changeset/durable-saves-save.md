@@ -11,5 +11,5 @@ Make every save a single atomic write and report failed automatic writes.
 - `listSlots` returns slots newest first and leaves out a slot whose document is damaged; `loadSlot` reports it.
 - `restore` and `loadSlot` throw `CorruptPayloadError` for stored bytes that are not JSON.
 - `autoPersist` throws `InvalidKeyError` at the call for an empty or over-long store id.
-- New `fileAdapter({ store })` and `SaveFileStore`: atomic per-key writes over any directory of files, with keys of at most 96 bytes.
+- New `fileAdapter({ store })` and `SaveFileStore`: atomic per-key writes over any directory of files, with keys of at most 96 bytes. No file holds a longer key, so `read` returns `null` for one and `delete` resolves.
 - `SaveAdapter` documents the guarantees every adapter gives: atomic replace per key, completion, order per key, and failure. `memoryAdapter` keeps nothing through a process kill, and `localStorageAdapter` can lose its last resolved writes.

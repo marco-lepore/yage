@@ -18,7 +18,7 @@ npx yage-pack init --target electron --app-id com.example.mygame
 ```sh
 npx yage-pack doctor            # what this machine is missing, and how to fix it
 npm run start:electron          # the game in a desktop window
-npm run make:electron           # an installable package and a build record
+npm run make:electron           # the app, the files the configured makers write, and a build record
 npm run sync:capacitor          # the mobile build into the native projects
 npx yage-pack check --target ios --release   # what an iOS release still needs
 ```

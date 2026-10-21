@@ -14,6 +14,7 @@ import {
   readIdentity,
   readManifest,
   WEB_DIRS,
+  WORKSPACE_GUIDE,
 } from "../project.js";
 import { writeBuildRecord } from "../record.js";
 import { HOST_PACKAGE } from "../types.js";
@@ -100,14 +101,19 @@ export function electronForgeConfig(
         `electronForgeConfig: ${name} is not installed. Run npm install ${name}.`,
       );
     }
-    if (!inGameModules(root, dir)) {
-      throw new Error(
-        `electronForgeConfig: ${name} is installed at ${dir}, outside the game's node_modules, ` +
-          `and an Electron package carries only the game's folder. Run npm install --workspaces=false in ${root}.`,
-      );
-    }
-    return path.relative(root, dir);
+    return { name, dir };
   });
+  const outside = closure.filter(({ dir }) => !inGameModules(root, dir));
+  if (outside.length > 0) {
+    const named = outside.map(({ name, dir }) => `${name} (${dir})`);
+    throw new Error(
+      `electronForgeConfig: ${named.join(", ")} ${outside.length === 1 ? "is" : "are"} ` +
+        "installed outside the game's node_modules, and an Electron package carries " +
+        "only the packages in the game's own node_modules. The packaging guide lists " +
+        "the ways to install them there in an npm workspace and what each one changes: " +
+        WORKSPACE_GUIDE,
+    );
+  }
 
   // A shell script at the game's root is kept by name; one in its own folder
   // keeps the folder, which is where a shell with more than one file sits.
@@ -117,7 +123,7 @@ export function electronForgeConfig(
     posix(mainDirectory === "." ? main : mainDirectory),
     `/${WEB_DIRS.electron}`,
     ...include.map((entry) => posix(entry)),
-    ...closure.map((dir) => posix(dir)),
+    ...closure.map(({ dir }) => posix(path.relative(root, dir))),
   ]);
 
   /** Forge calls this for every project path, with a leading slash. */

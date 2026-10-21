@@ -348,7 +348,7 @@ interface SaveFileStore {
 }
 ```
 
-A store's `write` may leave a partial file when it is interrupted; `fileAdapter` adds the guarantees above on top of it. Each value goes to a shadow file first, then to the main file, and both carry a length and a checksum, so an interrupted write leaves the previous value or the new one readable. Keys are at most 96 bytes in UTF-8, which keeps the longest file name at 160 characters. `Save` refuses to write a longer key on every adapter (see Key length). File names are `k-<base32 of the key>.sav` and `.new`, so they hold only `a-z`, `2-7`, `-` and `.`.
+A store's `write` may leave a partial file when it is interrupted; `fileAdapter` adds the guarantees above on top of it. Each value goes to a shadow file first, then to the main file, and both carry a length and a checksum, so an interrupted write leaves the previous value or the new one readable. Keys are at most 96 bytes in UTF-8, which keeps the longest file name at 160 characters. `write` refuses a longer key. No file holds one, so `read` returns `null` for it and `delete` resolves, and `loadSlot` on such a name throws `SlotNotFoundError` as it does on any other adapter. `Save` refuses to write a longer key on every adapter (see Key length). File names are `k-<base32 of the key>.sav` and `.new`, so they hold only `a-z`, `2-7`, `-` and `.`.
 
 ```ts yage-group="file-store"
 import { fileAdapter, createSave } from "@yagejs/save";

@@ -80,14 +80,16 @@ export async function runCheck(options: CheckOptions): Promise<CheckReport> {
   results.push(webBuildRule(root, target));
   results.push(await serviceWorkerRule(root, target));
 
-  // The rules that read the configuration `npx cap sync` copies into the
-  // native project run only once it is there: without it they would report
-  // fixes that do not apply.
+  // The rules that read the native project, or the configuration `npx cap
+  // sync` copies into it, run only once it is there: without it they would
+  // report fixes that do not apply.
+  let generated = false;
   let synced = false;
   if (target !== "electron") {
     const project = nativeProjectRule(root, target);
     results.push(project);
-    if (project.ok) {
+    generated = project.ok;
+    if (generated) {
       const copied = copiedConfigRule(root, target);
       results.push(copied);
       synced = copied.ok;
@@ -104,9 +106,11 @@ export async function runCheck(options: CheckOptions): Promise<CheckReport> {
         results.push(developmentServerRule(root, target));
         if (target === "android") results.push(credentialsRule(root));
       }
-      if (known) results.push(versionRule(root, target, identity.version));
-      if (target === "ios") results.push(privacyManifestRule(root));
-      if (target === "android") results.push(gameCategoryRule(root));
+      if (generated) {
+        if (known) results.push(versionRule(root, target, identity.version));
+        if (target === "ios") results.push(privacyManifestRule(root));
+        if (target === "android") results.push(gameCategoryRule(root));
+      }
     } else {
       results.push(...(await fuseRules(root, options.apps)));
     }
@@ -236,7 +240,11 @@ function appIdRule(root: string, target: Target, appId: string): CheckResult {
     wrong.push(`the copied config says ${String(inConfig)}`);
   let unreadable = false;
   if (target === "ios") {
-    const setting = xcodeSetting(project, "PRODUCT_BUNDLE_IDENTIFIER");
+    const setting = xcodeSetting(
+      project,
+      "Release",
+      "PRODUCT_BUNDLE_IDENTIFIER",
+    );
     if ("unreadable" in setting) {
       unreadable = true;
       wrong.push(
@@ -326,7 +334,7 @@ function versionRule(
   const project = nativePaths(root, target).project;
   let found: string | undefined;
   if (target === "ios") {
-    const setting = xcodeSetting(project, "MARKETING_VERSION");
+    const setting = xcodeSetting(project, "Release", "MARKETING_VERSION");
     if ("unreadable" in setting) {
       return fail(
         "version",
