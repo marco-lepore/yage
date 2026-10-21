@@ -25,14 +25,23 @@ export interface FloatConfig {
 }
 
 /**
- * One live floating element. The owner parents content into `container`;
- * the overlay re-anchors it to `getReference()` every frame and asks the
- * owner-supplied `setLayout` callback for the content's shrink-to-content
- * size — so the overlay stays agnostic of how that content is built (React
- * reconciler tree, hand-built `UIPanel`s, …).
+ * One live floating element. The owner hands it content with
+ * {@link FloatingHandle.setContent}; the overlay re-anchors it to
+ * `getReference()` every frame and lays the content out shrink-to-content.
  */
 export interface FloatingHandle {
+  /**
+   * The float's Pixi container. For a renderer that builds content outside
+   * `@yagejs/ui` elements (the React layer portals into it); hand-built
+   * content goes through {@link setContent}.
+   */
   readonly container: DisplayContainer;
+  /**
+   * Show `element` as the float's content, laid out shrink-to-content. A
+   * previous content element is destroyed, and `release()` destroys the
+   * current one.
+   */
+  setContent(element: UIElement): void;
   setReference(get: () => UIElement | null): void;
   setConfig(cfg: FloatConfig): void;
   /**
@@ -140,9 +149,17 @@ export class FloatingOverlay {
     };
     this.entries.add(entry);
     if (this.layer) this.layer.addChild(container);
+    let content: UIElement | undefined;
 
     return {
       container,
+      setContent: (element) => {
+        if (content && content !== element) content.destroy();
+        content = element;
+        container.addChild(element.displayObject);
+        entry.layout = (mw) => layoutFloat([element], mw);
+        entry.dirty = true;
+      },
       setReference: (get) => {
         entry.getReference = get;
         entry.dirty = true;
@@ -169,6 +186,8 @@ export class FloatingOverlay {
       },
       release: () => {
         this.entries.delete(entry);
+        content?.destroy();
+        content = undefined;
         container.removeFromParent();
         container.destroy({ children: true });
       },

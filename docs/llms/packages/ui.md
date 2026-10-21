@@ -317,7 +317,7 @@ title.onSplit((seg) => {
 title.setText("YOU WIN"); // destroys + recreates chars, then onSplit
 ```
 
-API: `chars` / `words` / `lines` getters, `segments`, `setText`, `setStyle`, `resplit()`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `onSplit(cb) → unsubscribe`. Animate the segments with the engine's `Tween` / `Process` — the element doesn't impose an animation API.
+API: `chars` / `words` / `lines` getters, `segments`, `setText`, `setStyle`, `resplit()`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `onSplit(cb) → unsubscribe`. Animate the segments with the engine's `Tween` / `Process` — the element doesn't impose an animation API. Segment `x` / `y` / `rotation` / `scale` / `alpha` / `tint` / `visible` are the game's: the engine writes none of them. Every re-split replaces the segment objects, so re-read `chars` after `setText` / `setStyle` / `resplit()`.
 
 **React:** `<SplitText>` (props mirror `<Text>` minus `truncate`, plus the three anchors + `autoSplit`) and the `useSplitText()` hook. The hook returns a `[ref, controls]` tuple — `controls` has live `chars` / `words` / `lines` / `segments` getters, `resplit()`, and `run(process | process[])`. `run` enqueues on a scene-scoped process queue (pauses with the scene; cancelled on unmount and on re-split, so a tween never writes to a destroyed glyph) and returns `{ cancel() }` for that batch. Animate imperatively from any handler — pair `run` with `Tween.stagger(items, factory, stepSeconds)` to cascade a tween across the segments.
 
@@ -373,6 +373,22 @@ Pass `backdrop` when the loading scene is transitioned into — without it the s
 ```ts yage-group="builder" yage-context="entity"
 panel.visible = false; // hide
 label.visible = true;
+```
+
+## Destroy listener
+
+`element.onDestroy(fn): () => void` — every `UIElement` calls `fn` once on `destroy()` (a throw is recorded on the `ErrorBoundary`); the returned function removes the listener. A class implementing `UIElement` directly must provide it.
+
+```ts yage-context="entity"
+import { defineEvent } from "@yagejs/core";
+import { UISurface } from "@yagejs/ui";
+
+const ScoreChanged = defineEvent<number>("score-changed");
+const label = entity.get(UISurface).text("Score: 0");
+const stopListening = entity.on(ScoreChanged, (score) => {
+  label.setText(`Score: ${score}`);
+});
+label.onDestroy(stopListening); // the label stops listening when destroyed
 ```
 
 ## Absolute Positioning
@@ -464,7 +480,8 @@ A custom element takes the four props by extending `UIElementBase` and calling
 `this.applyTransformProps(props)` from its constructor and `update()`. A custom
 container places each child with `placeElement(child, left, top)`, which
 honours the child's `transformOrigin`. An element that implements `UIElement`
-directly is placed at its top-left corner and ignores the four props.
+directly is placed at its top-left corner, ignores the four props, and
+implements `onDestroy` itself.
 
 ## Hover / pointer events
 
@@ -989,16 +1006,22 @@ the input while another row is focused — a field clicked in a
 `pointerFocus: "none"` scope — takes focus with it.
 
 ```typescript yage-group="focus" yage-context="entity"
-import { Graphics } from "pixi.js";
+import { RendererKey, registerTexture } from "@yagejs/renderer";
 import { isCapturingInput, PixiInput, PixiSelect } from "@yagejs/ui";
 
-const nameField = new PixiInput({
-  bg: new Graphics().rect(0, 0, 220, 40).fill(0x222230),
-  placeholder: "Save name",
-});
+// Views take a texture key: bake the background once and register it.
+const fieldBg = entity.scene
+  .use(RendererKey)
+  .createTexture((g) => g.rect(0, 0, 220, 40).fill(0x222230), {
+    width: 220,
+    height: 40,
+  });
+registerTexture("field-bg", fieldBg);
+
+const nameField = new PixiInput({ bg: "field-bg", placeholder: "Save name" });
 const displaySelect = new PixiSelect({
-  closedBG: new Graphics().rect(0, 0, 220, 40).fill(0x222230),
-  openBG: new Graphics().rect(0, 0, 220, 40).fill(0x222230),
+  closedBG: "field-bg",
+  openBG: "field-bg",
   items: ["Windowed", "Fullscreen"],
 });
 menu.addElement(nameField);
@@ -1126,12 +1149,16 @@ on each (re)open.
 For custom popovers / menus, use the lower-level pieces directly:
 
 - `scene.use(FloatingOverlayKey).acquire()` → a
-  `FloatingHandle` with `setReference(get)`, `setConfig(FloatConfig)`,
+  `FloatingHandle` with `setContent(element)` (shows a `UIElement`, lays it
+  out shrink-to-content, destroys a replaced one; `release()` destroys the
+  current one), `setReference(get)`, `setConfig(FloatConfig)`,
   `setLayout(fn)`, `invalidateLayout()`, `setActive(bool)`,
-  `bringToFront()`, `release()`, and a `container` to add content to.
+  `bringToFront()` and `release()`. Its `container` is for a renderer that
+  builds content outside `@yagejs/ui` elements (the React layer portals
+  into it).
   The overlay caches layout while the reference geometry, config, and
-  viewport stay the same. Call `invalidateLayout()` after changing
-  imperative content without replacing its layout callback.
+  viewport stay the same. Call `invalidateLayout()` after changing the
+  content element's children or text.
   `FloatingOverlayKey` is a scene-scoped `ServiceKey`; resolve it on the
   scene first, then call `acquire()` on the resulting `FloatingOverlay`.
 - `computePosition(reference, floating, viewport, config)` — the pure

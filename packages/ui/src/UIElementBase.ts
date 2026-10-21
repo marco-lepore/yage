@@ -1,6 +1,7 @@
 import type { DisplayContainer } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { ElementTransform } from "./internal/element-transform.js";
+import { runUICallback } from "./error-boundary.js";
 import type { LayoutProps, UIElement } from "./types.js";
 
 /**
@@ -25,6 +26,21 @@ export abstract class UIElementBase implements UIElement {
 
   /** @internal */
   readonly _transform: ElementTransform = new ElementTransform(this);
+
+  /**
+   * Call `fn` once when this element is destroyed. A throw from `fn` is
+   * recorded on the scene's `ErrorBoundary`. Returns a function that removes
+   * the listener before then.
+   */
+  onDestroy(fn: () => void): () => void {
+    const display = this.displayObject;
+    const listener = (): void =>
+      runUICallback(display, "UI destroy listener", fn);
+    display.once("destroyed", listener);
+    return () => {
+      display.off("destroyed", listener);
+    };
+  }
 
   /**
    * Apply the four transform props present in `props`. A present key holding

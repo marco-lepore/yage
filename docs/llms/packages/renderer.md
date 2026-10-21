@@ -536,6 +536,8 @@ const title = entity.add(
 title.chars; // (Text | BitmapText)[] — one per glyph
 title.words; // Container[] — word groups
 title.lines; // Container[] — line groups
+// Glyph x / y / rotation / scale / alpha / tint / visible are yours: the engine
+// writes none. setText / setStyle / resplit() replace every segment — re-read.
 
 // Typewriter: stagger each glyph's fade-in (0.05s apart) via a ProcessComponent.
 title.chars.forEach((c) => (c.alpha = 0));

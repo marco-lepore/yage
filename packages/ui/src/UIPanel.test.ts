@@ -55,6 +55,10 @@ class FocusProbe implements UIElement {
 
   update(): void {}
 
+  onDestroy(): () => void {
+    return () => {};
+  }
+
   destroy(): void {
     this.focus.destroy();
     this.yogaNode.free();
@@ -558,5 +562,28 @@ describe("UIPanel pointer focus", () => {
     const request = takePointerRequest();
     expect(request?.element).toBe(inner);
     expect(request?.trigger).toBe(trigger);
+  });
+});
+
+describe("UIElementBase.onDestroy", () => {
+  it("calls the listener once when the element is destroyed", () => {
+    const panel = new UIPanel({});
+    const fn = vi.fn();
+    panel.onDestroy(fn);
+
+    panel.destroy();
+
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call a listener removed before destroy", () => {
+    const panel = new UIPanel({});
+    const fn = vi.fn();
+    const off = panel.onDestroy(fn);
+
+    off();
+    panel.destroy();
+
+    expect(fn).not.toHaveBeenCalled();
   });
 });

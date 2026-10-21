@@ -122,6 +122,10 @@ export class TestNode implements UIContainerElement {
 
   update(): void {}
 
+  onDestroy(): () => void {
+    return () => {};
+  }
+
   destroy(): void {
     this.state?.destroy();
   }

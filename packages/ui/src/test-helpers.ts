@@ -280,6 +280,10 @@ export class TreeContextProbe implements UIElement {
     return this.received !== undefined;
   }
 
+  onDestroy(): () => void {
+    return () => {};
+  }
+
   get visible(): boolean {
     return this.displayObject.visible;
   }

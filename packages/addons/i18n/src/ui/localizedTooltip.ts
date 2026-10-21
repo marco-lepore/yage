@@ -64,11 +64,11 @@ export function localizedTooltip(
     },
   });
   const unsubscribe = localization.subscribe(() => label.relocalize(resolve));
-  anchor.displayObject.once("destroyed", unsubscribe);
+  const stopListening = anchor.onDestroy(unsubscribe);
   return {
     setActive: (active) => handle.setActive(active),
     dispose: () => {
-      anchor.displayObject.off("destroyed", unsubscribe);
+      stopListening();
       unsubscribe();
       handle.dispose();
     },

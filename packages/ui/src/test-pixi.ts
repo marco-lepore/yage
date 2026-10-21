@@ -41,6 +41,7 @@ export class MockContainer {
   cursor = "default";
   mask: MockContainer | null = null;
   private readonly _listeners = new Map<string, Set<Listener>>();
+  private readonly _onceOriginals = new WeakMap<Listener, Listener>();
 
   setMask(opts: { mask: MockContainer | null }): void {
     this.mask = opts.mask;
@@ -104,8 +105,24 @@ export class MockContainer {
   }
 
   off(event: string, fn: Listener): this {
-    this._listeners.get(event)?.delete(fn);
+    const listeners = this._listeners.get(event);
+    if (listeners === undefined) return this;
+    // Like Pixi's EventEmitter, `off` also removes a `once` registration of `fn`.
+    for (const listener of [...listeners]) {
+      if (listener === fn || this._onceOriginals.get(listener) === fn) {
+        listeners.delete(listener);
+      }
+    }
     return this;
+  }
+
+  once(event: string, fn: Listener): this {
+    const wrapped: Listener = (...args) => {
+      this.off(event, wrapped);
+      fn(...args);
+    };
+    this._onceOriginals.set(wrapped, fn);
+    return this.on(event, wrapped);
   }
 
   emit(event: string, ...args: unknown[]): void {
@@ -115,6 +132,8 @@ export class MockContainer {
   destroy(): void {
     this.destroyed = true;
     this.removeFromParent();
+    // Pixi's Container.destroy emits "destroyed" after detaching.
+    this.emit("destroyed");
   }
 }
 

@@ -226,6 +226,11 @@ export interface UIElement {
   update(props: Record<string, unknown>): void;
   destroy(): void;
   /**
+   * Call `fn` once when this element is destroyed. Returns a function that
+   * removes the listener before then.
+   */
+  onDestroy(fn: () => void): () => void;
+  /**
    * The element's `transformOrigin`, `scale`, `rotation` and `zIndex`. The
    * parent's layout pass reads it to place the element; an element without
    * one is placed at its top-left corner with no pivot.
