@@ -55,7 +55,7 @@ function healthyGame(target: Target): string {
     version: "1.0.0",
     yage: { appId: "com.example.mygame" },
     dependencies: Object.fromEntries(
-      required.dependencies.map((name) => [name, "*"]),
+      [...required.dependencies, "@yagejs/renderer"].map((name) => [name, "*"]),
     ),
     devDependencies: Object.fromEntries(
       required.devDependencies.map((name) => [name, "*"]),
@@ -64,6 +64,10 @@ function healthyGame(target: Target): string {
   const files: Record<string, string> = {
     "package.json": `${JSON.stringify(manifest)}\n`,
     ...installed("pixi.js", { version: "8.22.0" }),
+    ...installed("@yagejs/renderer", {
+      version: "0.12.0",
+      dependencies: { "pixi.js": "^8.22.0" },
+    }),
     ...installed("@yagejs/host-electron", {
       version: "0.12.0",
       peerDependencies: { electron: "^44.7.0" },
@@ -204,7 +208,11 @@ describe("runDoctor", () => {
       "package.json",
       JSON.stringify({
         name: "game",
-        dependencies: { "@yagejs/host-electron": "*", "@yagejs/renderer": "*" },
+        dependencies: {
+          "@yagejs/host-electron": "*",
+          "@yagejs/renderer": "*",
+          "pixi.js": "*",
+        },
       }),
     );
     addFile(
@@ -263,13 +271,16 @@ describe("runDoctor", () => {
   it("reads a workspace member's packages up to the workspace root", async () => {
     const workspace = makeTree({
       "package.json": JSON.stringify({ private: true, workspaces: ["game"] }),
-      "game/package.json": JSON.stringify({ name: "my-game" }),
+      "game/package.json": JSON.stringify({
+        name: "my-game",
+        dependencies: { "pixi.js": "*" },
+      }),
       ...installed("pixi.js", { version: "8.22.0" }),
     });
     const root = path.join(workspace, "game");
-    expect(rule(await report(root, "electron"), "pixi.js").fix).toBe(
-      "npm install pixi.js@^8.22.0",
-    );
+    const outside = rule(await report(root, "electron"), "pixi.js");
+    expect(outside.detail).toBe("The game loads no copy of pixi.js.");
+    expect(outside.fix).toBe("npm install pixi.js@^8.22.0");
     // npm links each workspace member into the workspace root's node_modules.
     symlinkSync(root, path.join(workspace, "node_modules", "my-game"));
     expect(rule(await report(root, "electron"), "pixi.js").detail).toBe(
@@ -280,7 +291,10 @@ describe("runDoctor", () => {
   it("counts a workspace member's own copy of pixi.js once", async () => {
     const workspace = makeTree({
       "package.json": JSON.stringify({ private: true, workspaces: ["game"] }),
-      "game/package.json": JSON.stringify({ name: "my-game" }),
+      "game/package.json": JSON.stringify({
+        name: "my-game",
+        dependencies: { "pixi.js": "*" },
+      }),
       "game/node_modules/pixi.js/package.json": JSON.stringify({
         name: "pixi.js",
         version: "8.22.0",
@@ -292,13 +306,23 @@ describe("runDoctor", () => {
     expect(rule(await report(root, "electron"), "pixi.js").ok).toBe(true);
   });
 
-  /** A workspace whose root holds hoisted copies, with the game linked in. */
-  function workspaceGame(files: Record<string, string>): string {
+  /**
+   * A workspace whose root holds hoisted copies, with the game linked in. The
+   * game lists @yagejs/core, @yagejs/renderer and the `listed` packages.
+   */
+  function workspaceGame(
+    files: Record<string, string>,
+    listed: Record<string, string> = {},
+  ): string {
     const workspace = makeTree({
       "package.json": JSON.stringify({ private: true, workspaces: ["game"] }),
       "game/package.json": JSON.stringify({
         name: "my-game",
-        dependencies: { "@yagejs/core": "*", "@yagejs/renderer": "*" },
+        dependencies: {
+          "@yagejs/core": "*",
+          "@yagejs/renderer": "*",
+          ...listed,
+        },
       }),
       ...installed("pixi.js", { version: "8.21.0" }),
       ...installed("@yagejs/core", { version: "0.12.0" }),
@@ -320,21 +344,78 @@ describe("runDoctor", () => {
       ),
       ...prefixed("game/", installed("pixi.js", { version: "8.22.0" })),
     });
-    // The workspace root's pixi.js and the @yagejs/core beside it, which
-    // imports no pixi.js, are not the game's copy and do not count.
+    // No package of the game resolves the workspace root's pixi.js, and the
+    // @yagejs/core beside it declares no pixi.js, so neither counts.
     expect(rule(await report(root, "electron"), "pixi.js").detail).toBe(
       "One copy of pixi.js, 8.22.0.",
     );
   });
 
-  it("fails a workspace member whose renderer resolves the workspace root's pixi.js", async () => {
+  it("passes a game that lists no pixi.js when its packages resolve one copy", async () => {
+    const renderer = "game/node_modules/@yagejs/renderer/";
     const root = workspaceGame({
-      ...installed("@yagejs/renderer", {
-        version: "0.12.0",
-        dependencies: { "@yagejs/core": "^0.12.0", "pixi.js": "^8.21.0" },
-      }),
-      ...prefixed("game/", installed("pixi.js", { version: "8.22.0" })),
+      ...prefixed(
+        "game/",
+        installed("@yagejs/renderer", {
+          version: "0.12.0",
+          dependencies: { "@pixi/ui": "^2.3.0", "pixi.js": "^8.22.0" },
+        }),
+      ),
+      ...prefixed(
+        renderer,
+        installed("@pixi/ui", {
+          version: "2.3.0",
+          peerDependencies: { "pixi.js": "^8.0.0" },
+        }),
+      ),
+      ...prefixed(renderer, installed("pixi.js", { version: "8.22.0" })),
     });
+    // The game itself resolves the workspace root's 8.21.0, but it does not
+    // list pixi.js, so that copy does not count.
+    expect(rule(await report(root, "electron"), "pixi.js").detail).toBe(
+      "One copy of pixi.js, 8.22.0.",
+    );
+  });
+
+  it("fails a hoisted pixi plugin that resolves the workspace root's pixi.js", async () => {
+    const root = workspaceGame(
+      {
+        ...prefixed(
+          "game/",
+          installed("@yagejs/renderer", {
+            version: "0.12.0",
+            dependencies: { "pixi.js": "^8.22.0" },
+          }),
+        ),
+        ...prefixed("game/", installed("pixi.js", { version: "8.22.0" })),
+        ...installed("@pixi/ui", {
+          version: "2.3.0",
+          peerDependencies: { "pixi.js": "^8.0.0" },
+        }),
+      },
+      { "@pixi/ui": "*" },
+    );
+    const workspace = realpathSync(path.dirname(root));
+    const found = rule(await report(root, "electron"), "pixi.js");
+    expect(found.ok).toBe(false);
+    expect(found.detail).toBe(
+      "The game loads 2 copies of pixi.js: " +
+        `8.22.0 at ${path.join(workspace, "game", "node_modules", "pixi.js")}, loaded by @yagejs/renderer; ` +
+        `8.21.0 at ${path.join(workspace, "node_modules", "pixi.js")}, loaded by @pixi/ui.`,
+    );
+  });
+
+  it("fails a workspace member whose renderer resolves the workspace root's pixi.js", async () => {
+    const root = workspaceGame(
+      {
+        ...installed("@yagejs/renderer", {
+          version: "0.12.0",
+          dependencies: { "@yagejs/core": "^0.12.0", "pixi.js": "^8.21.0" },
+        }),
+        ...prefixed("game/", installed("pixi.js", { version: "8.22.0" })),
+      },
+      { "pixi.js": "^8.22.0" },
+    );
     const workspace = realpathSync(path.dirname(root));
     const found = rule(await report(root, "electron"), "pixi.js");
     expect(found.ok).toBe(false);

@@ -99,14 +99,14 @@ export function runInit(options: InitOptions): InitReport {
   }
 
   const files: InitFileResult[] = [];
-  for (const [file, body] of planned) {
+  for (const [file, { body }] of planned) {
     files.push({
       file,
       outcome: write(path.join(root, file), body(displayName), options.force),
     });
   }
 
-  const notes = entryNotes(files);
+  const notes = entryNotes(planned, files);
   const fields = updateManifest(root, manifest, {
     appId,
     name: displayName,
@@ -208,25 +208,34 @@ function readName(flag: string | undefined, manifest: GameManifest): string {
 
 type Host = "electron" | "capacitor";
 
+/** One file `init` writes. */
+interface PlannedFile {
+  /** The file's contents for the app's display name. */
+  readonly body: (name: string) => string;
+  /** An entry file, which passes the host's save adapter to `boot`. */
+  readonly entry?: true;
+}
+
 /** The files each host adds, in the order the report lists them. */
-function plannedFiles(
-  hosts: ReadonlySet<string>,
-): Map<string, (name: string) => string> {
-  const planned = new Map<string, (name: string) => string>();
+function plannedFiles(hosts: ReadonlySet<string>): Map<string, PlannedFile> {
+  const planned = new Map<string, PlannedFile>();
   if (hosts.has("electron")) {
-    planned.set("src/main.electron.ts", () => ELECTRON_ENTRY);
-    planned.set("electron/main.cjs", () => ELECTRON_SHELL);
-    planned.set("forge.config.cjs", () => FORGE_CONFIG);
+    planned.set("src/main.electron.ts", {
+      body: () => ELECTRON_ENTRY,
+      entry: true,
+    });
+    planned.set("electron/main.cjs", { body: () => ELECTRON_SHELL });
+    planned.set("forge.config.cjs", { body: () => FORGE_CONFIG });
   }
   if (hosts.has("capacitor")) {
-    planned.set("src/main.capacitor.ts", () => CAPACITOR_ENTRY);
-    planned.set("capacitor.config.ts", () => CAPACITOR_CONFIG);
+    planned.set("src/main.capacitor.ts", {
+      body: () => CAPACITOR_ENTRY,
+      entry: true,
+    });
+    planned.set("capacitor.config.ts", { body: () => CAPACITOR_CONFIG });
   }
   return planned;
 }
-
-/** The entry files that pass a host's save adapter to `boot`. */
-const ENTRY_FILES = ["src/main.electron.ts", "src/main.capacitor.ts"];
 
 const ELECTRON_ENTRY = `import { ElectronHostPlugin, electronSaveAdapter } from "@yagejs/host-electron";
 import { boot } from "./boot";
@@ -293,11 +302,14 @@ function write(file: string, body: string, force: boolean): Outcome {
 }
 
 /** What the boot function has to accept from the entries this run wrote. */
-function entryNotes(files: readonly InitFileResult[]): string[] {
+function entryNotes(
+  planned: ReadonlyMap<string, PlannedFile>,
+  files: readonly InitFileResult[],
+): string[] {
   const written = files
     .filter(
       (result) =>
-        result.outcome === "wrote" && ENTRY_FILES.includes(result.file),
+        result.outcome === "wrote" && planned.get(result.file)?.entry === true,
     )
     .map((result) => result.file);
   if (written.length === 0) return [];

@@ -254,9 +254,9 @@ function gameFolderRule(root: string): CheckResult {
 }
 
 /**
- * Two copies of pixi.js fail each other's class checks, so the game and every
- * `@yagejs/*` package it loads have to resolve the same one. A copy that none
- * of them resolves does not count.
+ * Two copies of pixi.js fail each other's class checks, so every package the
+ * game loads that declares pixi.js, and the game when it lists pixi.js, has
+ * to resolve the same one. A copy that none of them resolves does not count.
  */
 function pixiRule(root: string): CheckResult {
   const copies = loadedCopies(root, "pixi.js");
@@ -264,7 +264,7 @@ function pixiRule(root: string): CheckResult {
   if (only === undefined) {
     return fail(
       "pixi.js",
-      "pixi.js is not installed.",
+      "The game loads no copy of pixi.js.",
       `npm install pixi.js@^${PIXI_FLOOR}`,
     );
   }
@@ -277,7 +277,7 @@ function pixiRule(root: string): CheckResult {
             `${copy.version} at ${copy.dir}, loaded by ${copy.loadedBy.join(", ")}`,
         )
         .join("; ")}.`,
-      "Leave one copy that the game and every @yagejs package resolve: two copies of " +
+      "Leave one copy that everything named above resolves: two copies of " +
         "pixi.js fail each other's class checks. npm ls pixi.js shows which package " +
         `installed each copy. For a game in an npm workspace, see ${WORKSPACE_GUIDE}`,
     );

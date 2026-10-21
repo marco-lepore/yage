@@ -177,9 +177,11 @@ FAIL Xcode: The selected developer directory is /Library/Developer/CommandLineTo
 ```
 
 It checks Node, the packages each target needs and the versions the host
-adapters accept, that the game and every `@yagejs` package it loads use one
-copy of `pixi.js`, and then Xcode and the simulator for iOS, or the JDK and
-the Android SDK for Android.
+adapters accept, that every package the game loads that declares `pixi.js`
+uses one copy of it, and then Xcode and the simulator for iOS, or the JDK and
+the Android SDK for Android. The packages that declare `pixi.js` include the
+`@yagejs` packages, addons and Pixi plugins such as `@pixi/ui`, and the game
+itself when its `package.json` lists `pixi.js`.
 
 ## Desktop
 
@@ -388,10 +390,10 @@ Every refusal names the input:
 - `src/boot.ts with an exported boot function is missing` — do the split
   under [One boot function](#one-boot-function) first.
 - `dist-electron/index.html is missing` or `dist-capacitor/index.html is
-  missing` — `npm run build:electron` and `npm run build:capacitor` write
-  those directories only when the Vite config maps each mode to them, as
-  [One build per target](#one-build-per-target) shows. Without that mapping
-  the build writes `dist/`.
+  missing` — `npm run build:electron` and `npm run build:capacitor` have to
+  write those directories. With Vite, the config maps each mode to its
+  directory, as [One build per target](#one-build-per-target) shows. Without
+  that mapping, Vite writes `dist/`.
 - `packagerConfig.asar is set by @yagejs-tools/pack` — remove it;
   `electronForgeConfig` owns the archive, the bundle identifier and what
   goes into the package.

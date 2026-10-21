@@ -257,7 +257,7 @@ async function browserScenario(
       .toBe(false);
     const away = (await readPage(page))!.host;
     record(report, {
-      name: "background: a minimised window reports the page inactive",
+      name: "background: the page reports inactive once the window loses focus and is minimised",
       result: "passed",
       evidence: "inspector",
       detail: JSON.stringify({

@@ -164,15 +164,15 @@ function webBuildRule(root: string, target: Target): CheckResult {
   const dir = target === "electron" ? WEB_DIRS.electron : WEB_DIRS.capacitor;
   const script = target === "electron" ? "electron" : "capacitor";
   // Inside package:electron and sync:capacitor the build script has just
-  // run, so the fix also says when that script writes this directory.
+  // run, so the fix also says how a Vite build writes this directory.
   return existsSync(path.join(root, dir, "index.html"))
     ? pass("web build", `${dir}/index.html is there.`)
     : fail(
         "web build",
         `${dir}/index.html is missing.`,
-        `npm run build:${script} writes it when the Vite config maps ` +
-          `--mode ${script} to ${dir}/ ("One build per target" in the ` +
-          `packaging guide). A config without that mapping builds into dist/.`,
+        `npm run build:${script} has to write ${dir}/. With Vite, the config ` +
+          `maps --mode ${script} to it ("One build per target" in the ` +
+          `packaging guide). Without that mapping, Vite writes dist/.`,
       );
 }
 

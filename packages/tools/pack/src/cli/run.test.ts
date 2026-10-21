@@ -73,7 +73,7 @@ describe("runCli", () => {
     expect(result.out).toContain("yage-pack check — electron");
     expect(result.out).toContain("FAIL web build");
     expect(result.out).toContain(
-      "  Fix: npm run build:electron writes it when the Vite config maps --mode electron to dist-electron/",
+      "  Fix: npm run build:electron has to write dist-electron/. With Vite, the config maps --mode electron to it",
     );
   });
 

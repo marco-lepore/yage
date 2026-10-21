@@ -107,7 +107,7 @@ storage, where the next release will not find them.
 ## The shell's main script
 
 ```ts yage-group="shell"
-import { app } from "electron";
+import { app, dialog } from "electron";
 import { join } from "node:path";
 import { startGame } from "@yagejs/host-electron/main";
 
@@ -121,6 +121,7 @@ startGame({
   window: { width: 1280, height: 720, title: "My Game" },
 }).catch((error: unknown) => {
   console.error(error);
+  dialog.showErrorBox("My Game could not start", String(error));
   app.exit(1);
 });
 ```
@@ -134,7 +135,8 @@ registration, and `startGame` makes it.
 `startGame` resolves with the `BrowserWindow` after the page has loaded, so
 the shell can add a menu or its own listeners. Every failure rejects the
 promise it returns, an invalid option included, so the `catch` above handles
-each one.
+each one. The `catch` shows the error in a dialog and quits with exit code 1,
+because a packaged app's console output reaches no terminal.
 
 `preload.cjs` ships beside `main.js` in the installed package, and the window
 loads it from there. The Forge configuration from `@yagejs-tools/pack` keeps

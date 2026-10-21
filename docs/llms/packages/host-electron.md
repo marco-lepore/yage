@@ -103,7 +103,7 @@ the browser's storage.
 ## The shell's main script
 
 ```ts yage-group="shell"
-import { app } from "electron";
+import { app, dialog } from "electron";
 import { join } from "node:path";
 import { startGame } from "@yagejs/host-electron/main";
 
@@ -117,6 +117,7 @@ startGame({
   window: { width: 1280, height: 720, title: "My Game" },
 }).catch((error: unknown) => {
   console.error(error);
+  dialog.showErrorBox("My Game could not start", String(error));
   app.exit(1);
 });
 ```
@@ -130,6 +131,8 @@ registration, and `startGame` makes it.
 It resolves with the `BrowserWindow` once the page has loaded, so a shell can
 add its own menu or listeners to it. Every failure rejects the returned
 promise, an invalid option included, so the shell's `catch` handles each one.
+The `catch` shows the error in a dialog and exits with code 1, because a
+packaged app's console output reaches no terminal.
 
 The window loads the preload script from the directory the main entry was
 loaded from, so `preload.cjs`, `main.js` and `main.cjs` stay together in the

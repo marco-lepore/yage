@@ -33,7 +33,7 @@ started it: the menu, the system button or the game.
 ## The shell's main script
 
 ```ts yage-group="readme-shell"
-import { app } from "electron";
+import { app, dialog } from "electron";
 import { join } from "node:path";
 import { startGame } from "@yagejs/host-electron/main";
 
@@ -46,6 +46,7 @@ startGame({
   window: { width: 1280, height: 720, title: "My Game" },
 }).catch((error: unknown) => {
   console.error(error);
+  dialog.showErrorBox("My Game could not start", String(error));
   app.exit(1);
 });
 ```
@@ -55,7 +56,8 @@ security policy that forbids turning strings into code, grants the page what a
 browser tab grants without a prompt, serves the bridge and the save channels
 to the game page alone, keeps the app to one copy, and quits when the window
 closes. It reports every failure by rejecting, an invalid option included, so
-the `catch` above handles each one.
+the `catch` above handles each one. The `catch` shows the error in a dialog,
+because a packaged app's console output reaches no terminal.
 
 `npx yage-pack init --target electron` writes this script and an Electron
 Forge configuration beside it.

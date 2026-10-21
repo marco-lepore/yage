@@ -108,7 +108,7 @@ describe("runCheck contract rules", () => {
     }
   });
 
-  it("names the build script and the Vite mapping when the web build is missing", async () => {
+  it("names the build script and how Vite writes the directory when the web build is missing", async () => {
     const root = makeTree({ "package.json": JSON.stringify(manifest) });
     expect(
       rule(
@@ -116,17 +116,17 @@ describe("runCheck contract rules", () => {
         "web build",
       ).fix,
     ).toBe(
-      "npm run build:electron writes it when the Vite config maps --mode electron " +
-        'to dist-electron/ ("One build per target" in the packaging guide). ' +
-        "A config without that mapping builds into dist/.",
+      "npm run build:electron has to write dist-electron/. With Vite, the config " +
+        'maps --mode electron to it ("One build per target" in the packaging guide). ' +
+        "Without that mapping, Vite writes dist/.",
     );
     expect(
       rule(await runCheck({ root, target: "ios", release: false }), "web build")
         .fix,
     ).toBe(
-      "npm run build:capacitor writes it when the Vite config maps --mode capacitor " +
-        'to dist-capacitor/ ("One build per target" in the packaging guide). ' +
-        "A config without that mapping builds into dist/.",
+      "npm run build:capacitor has to write dist-capacitor/. With Vite, the config " +
+        'maps --mode capacitor to it ("One build per target" in the packaging guide). ' +
+        "Without that mapping, Vite writes dist/.",
     );
   });
 

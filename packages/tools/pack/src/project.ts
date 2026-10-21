@@ -139,33 +139,32 @@ export interface LoadedCopy {
 }
 
 /**
- * The copies of `name` the game's module graph loads: the one the game
- * resolves, and the one each `@yagejs/*` package that declares `name` resolves
- * from its own folder. The `@yagejs/*` packages are those the game lists and
- * those they list in `dependencies` or `peerDependencies`. Each is found the
- * way Node finds it, from the folder a symbolic link points to.
+ * The copies of `name` the game's module graph loads. The graph holds every
+ * package the game lists in `dependencies` or `devDependencies`, and every
+ * package that a package in the graph lists in `dependencies` or
+ * `peerDependencies`, at any depth. Each is found the way Node finds it, from
+ * the folder a symbolic link points to. Each package that declares `name`
+ * loads the copy it resolves from its own folder, and the game loads the copy
+ * it resolves when it lists `name` itself.
  */
 export function loadedCopies(root: string, name: string): LoadedCopy[] {
   const game = path.resolve(root);
   const top = searchTop(game);
   const manifest = readManifest(game);
-  const engine = (names: readonly string[]): string[] =>
-    names.filter((entry) => entry.startsWith("@yagejs/"));
   const declared = (found: GameManifest): string[] => [
     ...Object.keys(found.dependencies ?? {}),
     ...Object.keys(found.peerDependencies ?? {}),
   ];
-  const loaders: { readonly name: string; readonly from: string }[] = [
-    { name: "the game", from: game },
+  const listed = [
+    ...Object.keys(manifest?.dependencies ?? {}),
+    ...Object.keys(manifest?.devDependencies ?? {}),
   ];
-  for (const entry of closure(
-    game,
-    engine([
-      ...Object.keys(manifest?.dependencies ?? {}),
-      ...Object.keys(manifest?.devDependencies ?? {}),
-    ]),
-    { edges: (found) => engine(declared(found)), realPaths: true },
-  )) {
+  const loaders: { readonly name: string; readonly from: string }[] =
+    listed.includes(name) ? [{ name: "the game", from: game }] : [];
+  for (const entry of closure(game, listed, {
+    edges: declared,
+    realPaths: true,
+  })) {
     if (entry.dir === undefined) continue;
     if (declared(readPackageManifest(entry.dir)).includes(name)) {
       loaders.push({ name: entry.name, from: entry.dir });

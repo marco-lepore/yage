@@ -9,13 +9,7 @@
  * CLI flag accepts a comma-separated list of these ids.
  */
 
-export type FeatureId =
-  | "ui"
-  | "save"
-  | "effects"
-  | "editor"
-  | "electron"
-  | "capacitor";
+export type FeatureId = "ui" | "effects" | "editor" | "electron" | "capacitor";
 
 /** Range used for `@yagejs/*` deps the features add. Mirrors the templates. */
 export const YAGE_RANGE = "^0.12.0";
@@ -79,10 +73,6 @@ export const FEATURES: Readonly<Record<FeatureId, FeatureSpec>> = {
     tsconfigOptions: {
       jsx: "react-jsx",
     },
-  },
-  save: {
-    id: "save",
-    dependencies: { "@yagejs/save": YAGE_RANGE },
   },
   effects: {
     id: "effects",

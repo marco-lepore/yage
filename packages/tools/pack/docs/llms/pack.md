@@ -288,7 +288,7 @@ are installed.
 | `packages`                      | all        | every package the target's build needs is installed                                                                                |
 | `host package in dependencies`  | all        | the host adapter is a runtime dependency, not a development one                                                                    |
 | `peer versions`                 | all        | each package the host adapter declares is installed at a version it accepts, and each Capacitor plugin is listed in `dependencies` |
-| `pixi.js`                       | all        | the game and every `@yagejs/*` package it loads resolve one copy, at 8.22.0 or later                                               |
+| `pixi.js`                       | all        | every package the game loads that declares `pixi.js`, and the game when it lists `pixi.js`, resolves one copy, at 8.22.0 or later  |
 | `packages in the game's folder` | `electron` | `@yagejs/host-electron` and every package it loads are in the game's own `node_modules`, which is all an Electron package carries  |
 | `macOS`                         | `ios`      | the machine runs macOS                                                                                                             |
 | `Xcode`                         | `ios`      | the selected developer directory is an Xcode, at 15.0 or later                                                                     |
@@ -304,13 +304,16 @@ is the workspace root when its `package.json` declares `workspaces` and its
 `packages in the game's folder` runs only when `@yagejs/host-electron` is
 installed, and its fix links the section on a game inside an npm workspace.
 
-`pixi.js` counts the copies the game's module graph loads: the one the game
-resolves, and the one each `@yagejs/*` package that declares `pixi.js`
-resolves from its own folder, the way Node resolves it. The `@yagejs/*`
-packages are those the game lists in `dependencies` or `devDependencies` and
-those they list in `dependencies` or `peerDependencies`. A copy none of them
-resolves does not count, such as a copy at the workspace root when the game
-and its packages resolve the game's own.
+`pixi.js` counts the copies the game's module graph loads. The graph holds
+every package the game lists in `dependencies` or `devDependencies`, and every
+package that a package in the graph lists in `dependencies` or
+`peerDependencies`, at any depth: the `@yagejs/*` packages, addons, and Pixi
+plugins such as `@pixi/ui`. Each package that
+declares `pixi.js` loads the copy it resolves from its own folder, the way
+Node resolves it. The game loads the copy it resolves only when it lists
+`pixi.js` itself. A copy none of them resolves does not count, such as a copy
+at the workspace root when every package that declares `pixi.js` resolves the
+game's own.
 
 `Xcode first launch` and `iOS simulator` run only when `Xcode` passed,
 because both go through the selected developer directory. Each failure
@@ -332,10 +335,11 @@ sync hook and every Forge package through `prePackage`.
 | `app id in the native project` | `ios`, `android` | the copied config, and `PRODUCT_BUNDLE_IDENTIFIER` or `applicationId`, equal `yage.appId`             |
 | `YAGE settings`                | `ios`, `android` | the copied config has `ios.contentInset: "never"` and no `plugins.App.disableBackButtonHandler: true` |
 
-A failed `web build` names the build script and the Vite mapping it relies
-on. Inside `package:electron` and `sync:capacitor` the script has just run,
-so a missing `index.html` there means the config writes the build to
-another directory, such as `dist/`.
+A failed `web build` names the build script that has to write the target's
+directory and, for Vite, the mode mapping that makes it write there. Inside
+`package:electron` and `sync:capacitor` the script has just run, so a
+missing `index.html` there means the script writes the build to another
+directory, such as `dist/`.
 
 `npx cap add` writes the bundle identifier into the native project once and
 `npx cap sync` never updates it, which is why the check compares them and
