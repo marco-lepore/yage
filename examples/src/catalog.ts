@@ -59,6 +59,7 @@ export const ADDONS = [
   "loot",
   "stats",
   "quests",
+  "procedural",
   "steering",
   "synth",
   "virtual-controls",
@@ -86,6 +87,16 @@ export interface Example {
 
 /** Every example, grouped by section in display order. */
 export const EXAMPLES: readonly Example[] = [
+  {
+    slug: "procedural-rooms",
+    title: "Procedural Maps",
+    summary:
+      "Generate a dungeon with treasure keys and a boss gate, or switch to a cave without rooms.",
+    section: "world",
+    packages: ["pathfinding", "input"],
+    addons: ["procedural"],
+    guide: "/addons/procedural/",
+  },
   // Start here
   {
     slug: "hello-world",
