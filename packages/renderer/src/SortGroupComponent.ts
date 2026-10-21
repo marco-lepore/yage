@@ -143,8 +143,10 @@ export function sortOwnerOf(
  * Write the `zIndex` the owning component asked for back onto `child`. A
  * sorted parent overwrites a child's `zIndex` with its depth key every frame,
  * so a child moving to a parent that keeps manual order carries a stale key.
+ *
+ * @internal Also used by `RenderLayer.setSort` when a layer stops sorting.
  */
-function restoreZIndex(child: DisplayContainer): void {
+export function restoreZIndex(child: DisplayContainer): void {
   const owner = ownerByContainer.get(child);
   if (owner !== undefined && !(owner instanceof SortGroupComponent)) {
     child.zIndex = owner.zIndex;

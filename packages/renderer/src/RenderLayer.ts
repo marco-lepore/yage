@@ -7,6 +7,7 @@ import { attachMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
 import type { DisplayContainer } from "./public-types.js";
+import { restoreZIndex } from "./SortGroupComponent.js";
 
 /**
  * Factory that produces a fresh `ScopedProcessQueue` instance — called once
@@ -114,16 +115,18 @@ export class RenderLayer {
    * auto-created `"default"` layer into `ySort` after the scene is live,
    * or toggling depth sorting on dynamically.
    *
-   * Passing `undefined` stops the per-frame re-sort, but does **not**
-   * restore the original insertion order: Pixi reorders `container.children`
-   * in place while sorting is on, so clearing `sortableChildren` only halts
-   * further sorting — children keep their current (last-sorted) order and
-   * `zIndex`. Re-establish paint order yourself if you need the original
-   * sequence back.
+   * Passing `undefined` stops the per-frame re-sort and gives each visual
+   * back its own `zIndex`, but does **not** restore the original insertion
+   * order: Pixi reorders `container.children` in place while sorting is on,
+   * so visuals with equal `zIndex` keep their last-sorted order. Re-establish
+   * paint order yourself if you need the original sequence back.
    */
   setSort(sort: LayerSortFn | undefined): void {
     this._sort = sort;
     this.container.sortableChildren = sort !== undefined;
+    if (sort === undefined) {
+      for (const child of this.container.children) restoreZIndex(child);
+    }
   }
 
   /**

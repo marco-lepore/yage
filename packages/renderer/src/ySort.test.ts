@@ -213,6 +213,18 @@ describe("DisplaySystem layer sort", () => {
     expect(a.sprite.zIndex).toBe(0);
   });
 
+  it("gives visuals back their zIndex when the layer stops sorting", () => {
+    const { scene, tree, system } = setup();
+    tree.ensureLayer({ name: "characters", order: 0, sort: ySort });
+    const a = spawnSpriteAt(scene, "a", 300);
+    a.setLayer("characters");
+    system.update();
+    expect(a.sprite.zIndex).toBe(300);
+
+    tree.get("characters").setSort(undefined);
+    expect(a.sprite.zIndex).toBe(0);
+  });
+
   it("warns once when zIndex is set on a sorted layer", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
