@@ -1,26 +1,47 @@
-import type { DisplayContainer } from "./public-types.js";
+import type { Entity } from "@yagejs/core";
 
 /** Coordinate space a layer lives in. See `LayerDef.space`. */
 export type LayerSpace = "world" | "screen";
 
 /**
+ * What a layer's depth-key function reads for one child of the layer.
+ *
+ * `DisplaySystem` reuses one item for every child, so read its fields inside
+ * the call and keep no reference to it.
+ */
+export interface SortItem {
+  /** The child's x position in its layer, in pixels. */
+  readonly x: number;
+  /** The child's y position in its layer, in pixels. */
+  readonly y: number;
+  /**
+   * The `sortOffset` of the component that draws the child; `0` for a child
+   * no component owns.
+   */
+  readonly sortOffset: number;
+  /**
+   * The entity whose component draws the child. `undefined` for a container a
+   * rendering extension added to the layer directly.
+   */
+  readonly entity: Entity | undefined;
+}
+
+/**
  * Depth-key function applied to a layer's children before each render.
- * Receives a Pixi `Container` and returns the **paint order key** — lower
- * values render first (behind), higher values render on top. Identical
- * semantics to writing `container.zIndex = key` by hand, but applied to
- * every child of the layer each frame.
+ * Receives one {@link SortItem} per child and returns the **paint order
+ * key** — lower values render first (behind), higher values render on top.
  *
  * Default behaviour (no `sort`) is **insertion order** — entities render
  * in the order their visual containers were added. Use `ySort` for the
  * classic top-down 2D depth rule, or compose your own depth-key for
- * isometric / layered-depth setups.
+ * isometric / layered-depth setups. A key that reads another component
+ * through `item.entity` costs a component lookup per child per frame.
  *
- * The key is written to `container.zIndex` by `DisplaySystem` after
- * transform sync, then Pixi's own render-time `sortChildren()` orders
- * the layer by zIndex — so the resulting paint order is exactly what
- * Pixi shows for any manually-zIndexed scene, no separate sort path.
+ * `DisplaySystem` writes the key to each child's Pixi `zIndex` after
+ * transform sync, so on a sorted layer the key replaces any `zIndex` the
+ * child's component sets.
  */
-export type LayerSortFn = (c: DisplayContainer) => number;
+export type LayerSortFn = (item: SortItem) => number;
 
 /**
  * Declarative layer definition attached to a Scene subclass via
@@ -69,21 +90,15 @@ export interface LayerDef {
   space?: LayerSpace;
   /**
    * Depth-key function applied to the layer's children. When set,
-   * `DisplaySystem` writes `child.zIndex = sort(child)` for every child
-   * each frame, and flips `container.sortableChildren = true` so Pixi's
-   * render pipeline orders the layer by zIndex. Default: unset (insertion
-   * order).
+   * `DisplaySystem` computes every child's key each frame and the layer
+   * draws its children in key order. Default: unset (insertion order).
    *
-   * Use `ySort` for the classic top-down depth rule, or
-   * `ySortBy(getOffset)` to anchor each sprite's sort key at a per-entity
-   * Y offset (Godot's `y_sort_origin` pattern — matches a sprite's
-   * apparent "footprint" instead of its top-left).
+   * Use `ySort` for the classic top-down depth rule. A visual's
+   * `sortOffset` shifts its key (Godot's `y_sort_origin` pattern — key a
+   * sprite at its apparent footprint instead of its anchor).
    *
-   * Game code that manually writes `child.zIndex` on individual sprites
-   * doesn't need `sort` — Pixi already sorts them once `sortableChildren`
-   * is on. `sort` is for the common case where the key is a function of
-   * the sprite's current state (position, depth offset, etc.) and needs
-   * to be recomputed each frame.
+   * On a layer without `sort`, a visual's `zIndex` orders it among its
+   * siblings. On a sorted layer the key decides the order instead.
    */
   sort?: LayerSortFn;
   /**

@@ -79,8 +79,22 @@ const { mocks } = vi.hoisted(() => {
   // Mock Container for RenderLayerManager
   class MockContainer {
     children: unknown[] = [];
-    position = { x: 0, y: 0 };
-    scale = { x: 1, y: 1 };
+    position = {
+      x: 0,
+      y: 0,
+      set(x: number, y: number) {
+        this.x = x;
+        this.y = y;
+      },
+    };
+    scale = {
+      x: 1,
+      y: 1,
+      set(x: number, y = x) {
+        this.x = x;
+        this.y = y;
+      },
+    };
     rotation = 0;
     visible = true;
     alpha = 1;
@@ -165,7 +179,7 @@ vi.mock("pixi.js", () => ({
 }));
 
 import { Transform, Vec2 } from "@yagejs/core";
-import { ySort } from "@yagejs/renderer";
+import { DisplaySystem, ySort } from "@yagejs/renderer";
 import {
   createParticlesTestContext,
   spawnEntityInScene,
@@ -1179,11 +1193,33 @@ describe("ParticleEmitterComponent", () => {
       expect(emitter.container.position.y).toBe(275);
     });
 
-    it("is the depth key ySort reads", () => {
+    it("is keyed by a sorted layer at its y plus its sortOffset", () => {
       const emitter = createEmitter();
-      setupEntity(emitter, new Transform({ position: new Vec2(250, 275) }));
+      const { context, layerManager } = setupEntity(
+        emitter,
+        new Transform({ position: new Vec2(250, 275) }),
+      );
       emitter._update(0, 250, 275);
-      expect(ySort(emitter.container)).toBe(275);
+      emitter.sortOffset = 32;
+      layerManager.defaultLayer.setSort(ySort);
+      const system = new DisplaySystem();
+      system._setContext(context);
+      system.onRegister?.(context);
+
+      system.update();
+
+      expect(emitter.container.zIndex).toBe(307);
+    });
+
+    it("orders by its zIndex on a layer without sort", () => {
+      const emitter = createEmitter();
+      setupEntity(emitter);
+      emitter.zIndex = 3;
+      expect(emitter.zIndex).toBe(3);
+      expect(emitter.container.zIndex).toBe(3);
+      expect(() => {
+        emitter.zIndex = Number.NaN;
+      }).toThrow("ParticleEmitterComponent.zIndex: value must be finite");
     });
 
     it("world-space particles hold their position as the emitter moves", () => {

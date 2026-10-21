@@ -155,7 +155,7 @@ describe("SortGroupComponent", () => {
     expect(layer.children).toEqual([group, between.sprite]);
   });
 
-  it("keeps member insertion order and honours manual zIndex by default", () => {
+  it("keeps member insertion order and honours member zIndex by default", () => {
     const { scene, tree, system } = setup();
     tree.ensureLayer({ name: "world", order: 0, sort: ySort });
 
@@ -171,12 +171,12 @@ describe("SortGroupComponent", () => {
       new SpriteComponent({ texture: {} as never, layer: "world" }),
     );
     // Author intent: the cape draws behind the body regardless of position.
-    cape.sprite.zIndex = -1;
+    cape.zIndex = -1;
 
     system.update();
 
     const group = knight.get(SortGroupComponent).container;
-    // No innerSort → member zIndex untouched; manual -1 stands.
+    // No innerSort → member zIndex untouched; the cape's -1 stands.
     expect(cape.sprite.zIndex).toBe(-1);
     expect(body.sprite.zIndex).toBe(0);
     group.sortChildren();
@@ -223,7 +223,61 @@ describe("SortGroupComponent", () => {
     system.update();
 
     const group = mount.get(SortGroupComponent).container;
-    expect(group.zIndex).toBe(50); // proxy at the owner's world position
+    expect(group.zIndex).toBe(50); // the owner's world position
+  });
+
+  it("keys a group off its owner's sortOffset", () => {
+    const { scene, tree, system } = setup();
+    tree.ensureLayer({ name: "world", order: 0, sort: ySort });
+
+    const knight = spawnEntityInScene(scene, "knight");
+    knight.add(new Transform({ position: new Vec2(0, 100) }));
+    knight.add(new SortGroupComponent({ layer: "world" }));
+    knight.add(
+      new SpriteComponent({
+        texture: {} as never,
+        layer: "world",
+        sortOffset: 24,
+      }),
+    );
+
+    system.update();
+
+    expect(knight.get(SortGroupComponent).container.zIndex).toBe(124);
+  });
+
+  it("restores member zIndex when a late group gathers them from a sorted layer", () => {
+    const { scene, tree, system } = setup();
+    tree.ensureLayer({ name: "world", order: 0, sort: ySort });
+
+    const knight = spawnEntityInScene(scene, "knight");
+    knight.add(new Transform({ position: new Vec2(0, 100) }));
+    const body = knight.add(
+      new SpriteComponent({ texture: {} as never, layer: "world", zIndex: 1 }),
+    );
+    system.update();
+    expect(body.sprite.zIndex).toBe(100); // the layer's depth key
+
+    knight.add(new SortGroupComponent({ layer: "world" }));
+    expect(body.sprite.zIndex).toBe(1);
+  });
+
+  it("restores member zIndex when the group is removed", () => {
+    const { scene, tree, system } = setup();
+    tree.ensureLayer({ name: "world", order: 0 });
+
+    const knight = spawnEntityInScene(scene, "knight");
+    knight.add(new Transform({ position: new Vec2(0, 100) }));
+    knight.add(new SortGroupComponent({ layer: "world", innerSort: ySort }));
+    const body = knight.add(
+      new SpriteComponent({ texture: {} as never, layer: "world", zIndex: 2 }),
+    );
+    system.update();
+    expect(body.sprite.zIndex).toBe(100); // innerSort's key
+
+    knight.remove(SortGroupComponent);
+    expect(tree.get("world").container.children).toContain(body.sprite);
+    expect(body.sprite.zIndex).toBe(2);
   });
 
   it("leaves visuals on a different layer outside the group", () => {

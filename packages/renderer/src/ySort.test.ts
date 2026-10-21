@@ -69,39 +69,19 @@ vi.mock("pixi.js", () => ({
 }));
 
 import { Transform, Vec2 } from "@yagejs/core";
-import type { Container } from "pixi.js";
 import { DisplaySystem } from "./DisplaySystem.js";
+import type { LayerSortFn } from "./LayerDef.js";
 import { SpriteComponent } from "./SpriteComponent.js";
 import {
   createRendererTestContext,
   spawnEntityInScene,
 } from "./test-helpers.js";
-import { ySort, ySortBy } from "./ySort.js";
+import { ySort } from "./ySort.js";
 
 describe("ySort", () => {
-  it("returns position.y as the depth key", () => {
-    const c = new mocks.MockContainer();
-    c.position.y = 42;
-    expect(ySort(c as unknown as Container)).toBe(42);
-  });
-});
-
-describe("ySortBy", () => {
-  it("adds the per-container offset to position.y", () => {
-    const c = new mocks.MockContainer();
-    c.position.y = 50;
-    (c as unknown as { depthOffset: number }).depthOffset = 20;
-    const sort = ySortBy(
-      (x) => (x as unknown as { depthOffset?: number }).depthOffset,
-    );
-    expect(sort(c as unknown as Container)).toBe(70);
-  });
-
-  it("treats undefined offsets as 0", () => {
-    const c = new mocks.MockContainer();
-    c.position.y = 10;
-    const sort = ySortBy(() => undefined);
-    expect(sort(c as unknown as Container)).toBe(10);
+  it("keys an item at its y plus its sortOffset", () => {
+    expect(ySort({ x: 5, y: 42, sortOffset: 0, entity: undefined })).toBe(42);
+    expect(ySort({ x: 5, y: 50, sortOffset: 20, entity: undefined })).toBe(70);
   });
 });
 
@@ -180,11 +160,87 @@ describe("DisplaySystem layer sort", () => {
     const layer = tree.get("characters").container;
 
     const a = spawnSpriteAt(scene, "a", 30);
-    a.sprite.zIndex = 999;
     layer.addChild(a.sprite);
+    a.zIndex = 999;
 
     system.update();
     expect(a.sprite.zIndex).toBe(999);
+    expect(a.zIndex).toBe(999);
+  });
+
+  it("keys a visual at its y plus its sortOffset", () => {
+    const { scene, tree, system } = setup();
+    tree.ensureLayer({ name: "characters", order: 0, sort: ySort });
+    const tree1 = spawnSpriteAt(scene, "tree", 10);
+    const hero = spawnSpriteAt(scene, "hero", 40);
+    tree1.setLayer("characters");
+    hero.setLayer("characters");
+    tree1.sortOffset = 96;
+
+    system.update();
+    expect(tree1.sprite.zIndex).toBe(106);
+    expect(hero.sprite.zIndex).toBe(40);
+  });
+
+  it("hands a custom depth key the entity that draws the child", () => {
+    const { scene, tree, system } = setup();
+    const seen: (string | undefined)[] = [];
+    const sort: LayerSortFn = (item) => {
+      seen.push(item.entity?.name);
+      return item.x;
+    };
+    tree.ensureLayer({ name: "characters", order: 0, sort });
+    const a = spawnSpriteAt(scene, "a", 0);
+    a.setLayer("characters");
+    tree
+      .get("characters")
+      .container.addChild(new mocks.MockContainer() as never);
+
+    system.update();
+    expect(seen).toEqual(["a", undefined]);
+  });
+
+  it("restores a visual's zIndex when it leaves a sorted layer", () => {
+    const { scene, tree, system } = setup();
+    tree.ensureLayer({ name: "characters", order: 0, sort: ySort });
+    tree.ensureLayer({ name: "props", order: 1 });
+    const a = spawnSpriteAt(scene, "a", 300);
+    a.setLayer("characters");
+    system.update();
+    expect(a.sprite.zIndex).toBe(300);
+
+    a.setLayer("props");
+    expect(a.sprite.zIndex).toBe(0);
+  });
+
+  it("warns once when zIndex is set on a sorted layer", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { scene, tree } = setup();
+      tree.ensureLayer({ name: "characters", order: 0, sort: ySort });
+      const a = spawnSpriteAt(scene, "a", 0);
+      a.setLayer("characters");
+      a.zIndex = 5;
+      a.zIndex = 6;
+      const zIndexWarnings = warn.mock.calls.filter((call) =>
+        String(call[0]).includes("zIndex"),
+      );
+      expect(zIndexWarnings).toHaveLength(1);
+      expect(String(zIndexWarnings[0]![0])).toContain('layer "characters"');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("rejects a non-finite zIndex or sortOffset", () => {
+    const { scene } = setup();
+    const a = spawnSpriteAt(scene, "a", 0);
+    expect(() => {
+      a.zIndex = Number.NaN;
+    }).toThrow("SpriteComponent.zIndex: value must be finite, got NaN.");
+    expect(() => {
+      a.sortOffset = Number.POSITIVE_INFINITY;
+    }).toThrow("SpriteComponent.sortOffset: value must be finite");
   });
 
   it("flips sortableChildren on a layer with a depth-key fn", () => {

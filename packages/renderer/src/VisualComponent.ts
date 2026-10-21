@@ -1,5 +1,6 @@
 import {
   Component,
+  devWarn,
   makeEntityScopedQueue,
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
@@ -7,7 +8,14 @@ import {
 import { computeRenderFacet } from "./internal/renderFacet.js";
 import type { RenderFacetSnapshot } from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
-import { resolveRenderParent } from "./SortGroupComponent.js";
+import {
+  SortGroupComponent,
+  resolveRenderParent,
+  setSortSource,
+  sortOwnerOf,
+} from "./SortGroupComponent.js";
+import type { SortSource } from "./SortGroupComponent.js";
+import { assertFiniteNumber } from "./internal/validate.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { VisualModifierHost } from "./VisualModifiers.js";
 import { attachMask } from "./masks/attachMask.js";
@@ -45,6 +53,13 @@ export interface VisualComponentOptions {
   tint?: ColorValue;
   /** Alpha (opacity). Default: 1. */
   alpha?: number;
+  /** Draw order among siblings. See {@link VisualComponent.zIndex}. Default: 0. */
+  zIndex?: number;
+  /**
+   * Pixels added to the y position a depth sort reads. See
+   * {@link VisualComponent.sortOffset}. Default: 0.
+   */
+  sortOffset?: number;
   /**
    * How this object's pixels combine with what is drawn beneath it.
    * Default: `"inherit"` — the mode of the nearest ancestor that sets one,
@@ -87,7 +102,7 @@ export interface VisualComponentOptions {
  * it exists — options can't be applied during `VisualComponent`'s own
  * constructor since `renderObject` isn't assigned yet at that point.
  */
-export abstract class VisualComponent extends Component {
+export abstract class VisualComponent extends Component implements SortSource {
   /**
    * The Pixi object this component draws with. Game code does not write to
    * it: `DisplaySystem` writes its position, rotation and scale from the
@@ -120,6 +135,12 @@ export abstract class VisualComponent extends Component {
   private _userAlpha = 1;
   /** See {@link renderAboveEffects}. */
   private _renderAboveEffects = false;
+  /** See {@link zIndex}. */
+  private _zIndex = 0;
+  /** See {@link sortOffset}. */
+  private _sortOffset = 0;
+  /** Whether the ignored-`zIndex` development warning has fired. */
+  private _warnedZIndex = false;
 
   constructor(layer: string | undefined) {
     super();
@@ -141,6 +162,10 @@ export abstract class VisualComponent extends Component {
     if (options.visible !== undefined) this.visible = options.visible;
     if (options.tint !== undefined) this.renderObject.tint = options.tint;
     if (options.alpha !== undefined) this.alpha = options.alpha;
+    if (options.zIndex !== undefined) this.zIndex = options.zIndex;
+    if (options.sortOffset !== undefined) {
+      this.sortOffset = options.sortOffset;
+    }
     if (options.blendMode !== undefined) {
       this.renderObject.blendMode = options.blendMode;
     }
@@ -210,6 +235,45 @@ export abstract class VisualComponent extends Component {
       name,
       this.use(SceneRenderTreeKey),
     ).addChild(this.renderObject);
+    // A sorted layer overwrote the Pixi zIndex with its depth key.
+    this.renderObject.zIndex = this._zIndex;
+    this.warnIfZIndexIgnored();
+  }
+
+  /**
+   * Draw order among the visuals that share this visual's parent: higher
+   * values draw on top, and equal values keep the order they were added in.
+   * Default `0`. It orders visuals on a layer without `sort` and inside a
+   * `SortGroupComponent` without `innerSort`.
+   *
+   * On a layer with `sort`, or in a group with `innerSort`, the depth key
+   * decides the order, so a non-zero `zIndex` there logs one development
+   * warning. Shift the key with {@link sortOffset}, or draw on another layer.
+   */
+  get zIndex(): number {
+    return this._zIndex;
+  }
+
+  set zIndex(value: number) {
+    assertFiniteNumber(`${this.constructor.name}.zIndex`, "value", value);
+    this._zIndex = value;
+    this.renderObject.zIndex = value;
+    this.warnIfZIndexIgnored();
+  }
+
+  /**
+   * Pixels added to this visual's y position when a layer's depth key reads
+   * it: `ySort` keys the visual at `y + sortOffset`. Use it when the anchor is
+   * not where the visual meets the ground, such as a tree anchored at its top
+   * whose trunk base is 96 px lower. Default `0`.
+   */
+  get sortOffset(): number {
+    return this._sortOffset;
+  }
+
+  set sortOffset(value: number) {
+    assertFiniteNumber(`${this.constructor.name}.sortOffset`, "value", value);
+    this._sortOffset = value;
   }
 
   /** Set the container's tint color. */
@@ -295,6 +359,8 @@ export abstract class VisualComponent extends Component {
     resolveRenderParent(this.entity, this._layerName, tree).addChild(
       this.renderObject,
     );
+    setSortSource(this.renderObject, this);
+    this.warnIfZIndexIgnored();
     if (this._renderAboveEffects) tree.renderAboveEffects(this.renderObject);
     // A component is never effectively enabled during `onAdd` — `onEnable`
     // runs right after, and only for an active entity. Start hidden so a
@@ -312,6 +378,7 @@ export abstract class VisualComponent extends Component {
   }
 
   onDestroy(): void {
+    setSortSource(this.renderObject, undefined);
     unmarkPointerConsumeContainer(this.renderObject);
     this.modifiers._destroy();
     this.fx.destroy();
@@ -333,6 +400,30 @@ export abstract class VisualComponent extends Component {
   /** Apply the final alpha after transient modifiers. */
   protected applyEffectiveAlpha(alpha: number): void {
     this.renderObject.alpha = alpha;
+  }
+
+  /** Warn once when the parent re-keys its children, which ignores `zIndex`. */
+  private warnIfZIndexIgnored(): void {
+    if (this._zIndex === 0 || this._warnedZIndex) return;
+    const parent = this.renderObject.parent;
+    if (!parent) return;
+    const group = sortOwnerOf(parent);
+    let where: string | undefined;
+    if (group instanceof SortGroupComponent) {
+      if (group.innerSort) where = "a SortGroupComponent with innerSort";
+    } else {
+      const tree = this.use(SceneRenderTreeKey);
+      const layer = tree.tryGet(this._layerName) ?? tree.defaultLayer;
+      if (layer.sort) where = `layer "${layer.name}", which has a sort`;
+    }
+    if (where === undefined) return;
+    this._warnedZIndex = true;
+    devWarn(
+      `${this.constructor.name} on entity "${this.entity.name}": zIndex ` +
+        `${this._zIndex} has no effect inside ${where}, because the depth ` +
+        `key orders the children every frame. Shift the key with ` +
+        `sortOffset, or draw on a layer without sort.`,
+    );
   }
 
   private applyAppearance(): void {

@@ -80,7 +80,10 @@ export {
 export type {
   SortGroupComponentOptions,
   LayerRenderable,
+  SortSource,
 } from "./SortGroupComponent.js";
+/** @internal - sort-source registration for @yagejs/particles' emitter, not for public consumption. */
+export { setSortSource } from "./SortGroupComponent.js";
 /** @internal - shared Text/BitmapText constructor logic for @yagejs/ui, not for public consumption. */
 export {
   buildTextOptions,
@@ -166,8 +169,13 @@ export { RenderLayer, RenderLayerManager } from "./RenderLayer.js";
 export type { CreateLayerOptions } from "./RenderLayer.js";
 
 // Per-scene render tree
-export type { LayerDef, LayerSortFn, LayerSpace } from "./LayerDef.js";
-export { ySort, ySortBy } from "./ySort.js";
+export type {
+  LayerDef,
+  LayerSortFn,
+  LayerSpace,
+  SortItem,
+} from "./LayerDef.js";
+export { ySort } from "./ySort.js";
 export type {
   EnsureLayerOptions,
   SceneRenderTree,

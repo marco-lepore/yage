@@ -217,8 +217,9 @@ its parent's origin. Each particle is drawn centred on its spawn point and
 texture alike.
 
 The emitter's container follows the entity's position, so a layer sort reads
-it like any other visual: `ySort` keys an emitter off its entity, and
-`ySortBy` reads a depth offset you set on `emitter.container`.
+it like any other visual: `ySort` keys an emitter off its entity plus
+`emitter.sortOffset`. On a layer without `sort`, `emitter.zIndex` orders it
+among its siblings.
 
 **`simulationSpace`** decides what happens to particles already in flight when
 the emitter moves. `"world"` (default) leaves them where they were drawn —

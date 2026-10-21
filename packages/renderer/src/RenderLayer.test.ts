@@ -60,7 +60,7 @@ describe("RenderLayer", () => {
       container as never,
       "world",
       undefined,
-      (c) => c.position.y,
+      (item) => item.y,
     );
     expect(layer.sort).toBeDefined();
     expect(container.sortableChildren).toBe(true);
@@ -72,8 +72,8 @@ describe("RenderLayer", () => {
       const layer = new RenderLayer("chars", 0, container as never);
       expect(container.sortableChildren).toBe(false);
 
-      const sort = (c: { position: { y: number } }) => c.position.y;
-      layer.setSort(sort as never);
+      const sort = (item: { y: number }) => item.y;
+      layer.setSort(sort);
 
       expect(layer.sort).toBe(sort);
       expect(container.sortableChildren).toBe(true);
@@ -87,7 +87,7 @@ describe("RenderLayer", () => {
         container as never,
         "world",
         undefined,
-        (c) => c.position.y,
+        (item) => item.y,
       );
       expect(container.sortableChildren).toBe(true);
 
@@ -135,8 +135,8 @@ describe("RenderLayerManager", () => {
   it("default layer can be opted into a sort at runtime via setSort", () => {
     const def = manager.defaultLayer;
     expect(def.sort).toBeUndefined();
-    const sort = (c: { position: { y: number } }) => c.position.y;
-    def.setSort(sort as never);
+    const sort = (item: { y: number }) => item.y;
+    def.setSort(sort);
     expect(def.sort).toBe(sort);
     expect(
       (def.container as unknown as InstanceType<typeof MockContainer>)
@@ -203,7 +203,7 @@ describe("RenderLayerManager", () => {
     const layer = manager.createFromDef({
       name: "characters",
       order: 0,
-      sort: (c) => c.position.y,
+      sort: (item) => item.y,
     });
     expect(layer.container.sortableChildren).toBe(true);
     expect(layer.sort).toBeDefined();

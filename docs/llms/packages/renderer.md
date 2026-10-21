@@ -292,7 +292,7 @@ For procedural shapes plus a label, use a parent entity with `GraphicsComponent`
 
 ### Shared options vocabulary
 
-All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitText) accept the same `visible` / `tint` / `alpha` / `blendMode` / `interactive` options, with runtime accessors for the first four. Pixi's `Container` carries all five natively, so the behavior is identical across every component:
+All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitText) accept the same `visible` / `tint` / `alpha` / `blendMode` / `zIndex` / `sortOffset` / `interactive` options, with runtime accessors for all but `interactive`. The behavior is identical across every component:
 
 ```ts
 import type {
@@ -306,6 +306,8 @@ interface VisualComponentOptions extends BaseVisualComponentOptions {
   tint?: ColorValue; // number (0xff0000) or CSS color string ("red", "#ff0000")
   alpha?: number; // opacity, default 1
   blendMode?: BlendMode; // how the pixels combine with what is beneath, default "inherit"
+  zIndex?: number; // order among siblings on a layer without sort, default 0
+  sortOffset?: number; // px added to y when a depth key reads it, default 0
   interactive?: {
     eventMode?: "static" | "dynamic"; // default "static" when the object is set
     consumeOnInteraction?: boolean; // claim the press for @yagejs/input's action map
@@ -1141,18 +1143,29 @@ this.spawn(CameraEntity, {
 
 ### `LayerDef.sort` — per-frame paint order
 
-Default paint order within a layer is **insertion order** — sprites render in the order their containers were added. Set `LayerDef.sort` to a **depth-key function** `(container) => number` and `DisplaySystem` writes the result to `container.zIndex` for every child each frame; Pixi's render pipeline then orders the layer by zIndex. The hook also flips `container.sortableChildren = true` so Pixi knows to honour the zIndex.
+Default paint order within a layer is **insertion order** — sprites render in the order their containers were added. Set `LayerDef.sort` to a **depth-key function** `(item: SortItem) => number`; `DisplaySystem` calls it for every child each frame and the layer paints its children in key order.
 
-Two built-in helpers cover the common cases:
+```ts
+import type { Entity } from "@yagejs/core";
 
-| Helper              | Returns                                                                                                                                                                                                                                                 |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ySort`             | `c.position.y` — classic top-down depth, characters with higher y paint on top.                                                                                                                                                                         |
-| `ySortBy(offsetOf)` | `c.position.y + offsetOf(c)` — each container can provide a per-sprite Y offset (Godot's `y_sort_origin`) so the depth key tracks the visual "footprint" instead of the top-left. `offsetOf` returns `undefined` to fall through to plain `position.y`. |
+interface SortItem {
+  readonly x: number; // child's position in its layer, px
+  readonly y: number;
+  readonly sortOffset: number; // owning component's sortOffset; 0 for an unowned container
+  readonly entity: Entity | undefined; // undefined for a container a rendering extension added
+}
+type LayerSortFn = (item: SortItem) => number;
+```
+
+`DisplaySystem` reuses one item for every child: read fields inside the call, keep no reference. A key that reads another component through `item.entity` costs a component lookup per child per frame.
+
+| Helper  | Returns                                                                                                                                             |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ySort` | `item.y + item.sortOffset` — classic top-down depth, higher y paints on top; `sortOffset` keys a sprite at its footprint (Godot's `y_sort_origin`). |
 
 ```ts
 import { Scene } from "@yagejs/core";
-import { ySort, ySortBy, type LayerDef } from "@yagejs/renderer";
+import { ySort, type LayerDef, type LayerSortFn } from "@yagejs/renderer";
 
 class GameScene extends Scene {
   readonly name = "game";
@@ -1162,11 +1175,33 @@ class GameScene extends Scene {
   ];
 }
 
-// Per-sprite offset variant — read off a custom field on the display object:
-const sort = ySortBy((c) => (c as { depthOffset?: number }).depthOffset);
+// A custom key: isometric depth.
+const isoSort: LayerSortFn = (item) => item.x + item.y + item.sortOffset;
 ```
 
-Game code that manually writes `child.zIndex` on individual sprites doesn't need `sort` — once `sortableChildren` is on, Pixi sorts them. `sort` is for the common case where the depth key is a function of the sprite's current state (position, depth offset) and needs to be recomputed each frame. The two paths compose: a `sort` fn handles the bulk of a layer, and individual sprites can still write their own `zIndex` between updates to bias themselves above or below the depth key.
+Per-visual order, on every `VisualComponent` (option and accessor) and on `ParticleEmitterComponent` (accessor):
+
+| Member       | Meaning                                                                                                                                                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sortOffset` | Pixels added to `y` when a depth key reads the visual. Default `0`. A tree anchored at its top: `sortOffset: 96` keys it at its trunk base.                                                                                                |
+| `zIndex`     | Order among siblings on a layer **without** `sort` and inside a `SortGroupComponent` without `innerSort`: higher draws on top, ties keep add order. Default `0`. On a sorted layer the key wins; a non-zero `zIndex` logs one dev warning. |
+
+Both throw on a non-finite value. `setLayer` re-applies the visual's `zIndex`, so leaving a sorted layer does not carry the old depth key along. For "always above the crowd" on a sorted layer, use a separate layer.
+
+```ts yage-context="entity"
+import { SpriteComponent } from "@yagejs/renderer";
+
+entity.add(
+  new SpriteComponent({
+    texture: "tree",
+    anchor: { x: 0.5, y: 0 },
+    sortOffset: 96,
+  }),
+);
+entity.add(
+  new SpriteComponent({ texture: "flag", layer: "props", zIndex: 10 }),
+);
+```
 
 ### `SortGroupComponent` — keep a multi-part entity from splitting
 
@@ -1205,14 +1240,14 @@ class Knight extends Entity {
 
 `new SortGroupComponent(options?)`:
 
-| Option      | Meaning                                                                                                                                                                                                                                                                                                          |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `layer`     | Layer the group renders into (default `"default"`). Subtree visuals targeting **this same layer** are gathered in; visuals on other layers are left alone (a child's shadow can stay on a separate `"ground"` layer).                                                                                            |
-| `innerSort` | Depth key for ordering the group's own members. Default (unset): members keep **insertion order**, and a member's manually-set `zIndex` is honoured (a real stacking context — like Unity's `SortingGroup`). Pass `ySort` to order members by position among themselves while the group still sorts as one unit. |
+| Option      | Meaning                                                                                                                                                                                                                                                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `layer`     | Layer the group renders into (default `"default"`). Subtree visuals targeting **this same layer** are gathered in; visuals on other layers are left alone (a child's shadow can stay on a separate `"ground"` layer).                                                                                              |
+| `innerSort` | Depth key for ordering the group's own members. Default (unset): members keep **insertion order**, and a member's `zIndex` orders it among the others (a real stacking context — like Unity's `SortingGroup`). Pass `ySort` to order members by position among themselves while the group still sorts as one unit. |
 
 Semantics:
 
-- **Sort key** — the group sorts in the layer by the owning entity's _own_ sprite (so `ySort`/`ySortBy` read a real sprite's position/offset). A group-owning entity with no sprite of its own falls back to a proxy at its `Transform` world position — fine for a purely-logical parent that just groups children.
+- **Sort key** — the group sorts in the layer by the owning entity's _own_ sprite (so `ySort` reads a real sprite's position and `sortOffset`). A group-owning entity with no sprite of its own falls back to its `Transform` world position with no offset — fine for a purely-logical parent that just groups children.
 - **Transforms are untouched.** The group container stays at identity/origin; members keep their normal world transforms. Adding a group changes paint **order** only — never position, rotation, or scale (those stay composed by the ECS `Transform`). Rotating the parent rotates the children exactly as before.
 - **Add the group before the visuals it should capture.** It also re-homes any already-present subtree visuals when added late.
 - A `SortGroupComponent` on a _descendant_ entity starts its own independent unit rather than nesting inside the ancestor's. Sort grouping and transform parenting are independent axes.

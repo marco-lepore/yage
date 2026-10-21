@@ -33,9 +33,8 @@ export interface CreateLayerOptions {
   isRenderGroup?: boolean;
   /**
    * Depth-key function. See `LayerDef.sort` — when set, `DisplaySystem`
-   * writes `child.zIndex = sort(child)` on every child each frame, and
-   * flips `container.sortableChildren = true` so Pixi orders the layer
-   * by zIndex at render time. Default: undefined (insertion order).
+   * keys every child each frame and the layer draws its children in key
+   * order. Default: undefined (insertion order).
    */
   sort?: LayerSortFn;
 }
@@ -102,8 +101,8 @@ export class RenderLayer {
   /**
    * Per-frame depth-key function, or `undefined` for insertion-order
    * rendering. Set via `LayerDef.sort` / `CreateLayerOptions.sort` at
-   * creation, or {@link setSort} at runtime. `DisplaySystem` writes
-   * `child.zIndex = sort(child)` on every child each Render phase.
+   * creation, or {@link setSort} at runtime. `DisplaySystem` keys every
+   * child with it each Render phase.
    */
   get sort(): LayerSortFn | undefined {
     return this._sort;
