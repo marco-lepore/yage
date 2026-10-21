@@ -6,12 +6,32 @@ describe("LightSource", () => {
     const light = new LightSource({ radius: 80 });
 
     expect(light.radius).toBe(80);
+    expect(light.height).toBe(64);
     expect(light.intensity).toBe(1);
     expect(light.color).toBe(0xffffff);
     expect(light.size).toBe(0);
     expect(light.coneAngle).toBe(Math.PI * 2);
     expect(light.coneSoftness).toBe(0);
     expect(light.enabled).toBe(true);
+  });
+
+  it.each([
+    0,
+    -1,
+    NaN,
+    Infinity,
+    -Infinity,
+    Number.MAX_VALUE,
+    Number.MIN_VALUE,
+  ])("rejects invalid height %s without changing state", (height) => {
+    expect(() => new LightSource({ radius: 80, height })).toThrow(/height/);
+    const light = new LightSource({ radius: 80, height: 32 });
+    expect(() => {
+      light.height = height;
+    }).toThrow(/height/);
+    expect(light.height).toBe(32);
+    light.height = 128;
+    expect(light.height).toBe(128);
   });
 
   it("rejects a lamp size or a cone the light cannot hold", () => {

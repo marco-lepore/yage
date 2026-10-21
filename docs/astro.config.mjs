@@ -128,6 +128,7 @@ export default defineConfig({
                 },
               ],
             },
+            { label: "Sprite Materials", slug: "guides/materials" },
             { label: "Lighting", slug: "guides/lighting" },
             { label: "Input", slug: "guides/input" },
             {

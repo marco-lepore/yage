@@ -16,6 +16,7 @@
 - [Patterns](llms/patterns.md): Component, entity, process, and testing patterns; common gotchas
 - [Play Sessions](llms/play-sessions.md): Driving a running game — picking a mechanism, rule-driven runs, frame budgets, traps
 - [Performance](llms/performance.md): Allocation-aware APIs, hot-loop tips, debug-mode cost, pooling
+- [Sprite Materials](llms/materials.md): Normal maps, specular, emission, transparency, source lifetime, and surface lighting
 - [Assets](llms/assets.md): Asset handles, scene preload, manifests, cache lifetime, base path
 - [Loading Scene](llms/loading-scene.md): Loading-scene orchestration, progress events, error handling
 - [Scene Transitions](llms/scene-transitions.md): Built-in transitions and the SceneTransition contract

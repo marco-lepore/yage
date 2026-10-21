@@ -93,6 +93,19 @@ export const EXAMPLE_SCRIPTS: Record<string, ExampleScript> = {
     ],
   },
 
+  // Let the lamp circle the room, then carry it beside the crate with the
+  // pointer and lower it. Exercises surface lighting on lit-by-default floor
+  // tiles, mapped orbs, the crate's shadow, and the lamp height control.
+  materials: {
+    warmup: 20,
+    actions: [
+      { step: 30 },
+      { pointerMove: [330, 245] },
+      { step: 5 },
+      { hold: "ArrowDown", frames: 30 },
+    ],
+  },
+
   // Walk the focus demo through each of its regions with the arrow keys.
   // Ends with the confirm dialog cancelled, the save list scrolled down, and
   // focus back on the save row that opened the dialog.

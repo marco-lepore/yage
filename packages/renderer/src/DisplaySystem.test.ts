@@ -135,10 +135,15 @@ vi.mock("pixi.js", () => ({
 }));
 
 // This suite only cares that Transform syncs onto whatever display object a
-// component creates — not frame content — so resolveFrames is stubbed to
+// component creates — not frame content — so source resolution is stubbed to
 // skip the real sliceSheet/Texture/Assets path this file doesn't mock.
 vi.mock("./spritesheet.js", () => ({
-  resolveFrames: () => [{}],
+  resolveSpriteSource: () => ({
+    frames: [{}],
+    maps: { refs: {} },
+    release: () => {},
+    retain: () => {},
+  }),
 }));
 
 import { Transform, Vec2, ErrorBoundaryKey } from "@yagejs/core";

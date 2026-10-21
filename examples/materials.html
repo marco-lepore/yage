@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Sprite materials</title>
+    <link rel="stylesheet" href="/shared.css" />
+  </head>
+  <body>
+    <a class="back-link" href="/#materials">&larr; All Examples</a>
+    <h1>Sprite materials</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span>
+        Move the mouse to carry the lamp. <kbd>Up</kbd> and
+        <kbd>Down</kbd> raise and lower it; a low lamp rakes across the surfaces
+        and a high one lights them from the front.
+      </span>
+      <span>
+        The scene uses <code>surfaceLighting()</code>, so every sprite on a
+        world layer is lit. The floor tiles and the "No maps" orb set no
+        material at all. A normal map gives a sprite depth, a specular map gives
+        it highlights, and <code>unlitMaterial()</code> opts a sprite out of
+        lighting.
+      </span>
+      <span>
+        The crate is normal-mapped and blocks light, so it casts a shadow over
+        the floor and the orbs. Emission stays visible in its shadow but lights
+        nothing around it. The animated orb switches its color, normal and
+        emission frames together.
+      </span>
+      <span>
+        Text and Graphics are not lit: the labels and the lamp marker keep their
+        own colors. Tilemaps and particles are not lit either.
+      </span>
+    </div>
+    <script type="module" src="/src/materials/main.ts"></script>
+  </body>
+</html>

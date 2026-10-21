@@ -77,6 +77,7 @@ const { mocks } = vi.hoisted(() => {
 
 vi.mock("pixi.js", () => {
   class MockTexture {
+    destroy = vi.fn();
     source = { scaleMode: "nearest" };
     width: number;
     height: number;

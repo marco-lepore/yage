@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import { readdirSync } from "fs";
+import { readFileSync, readdirSync } from "fs";
 import { resolve } from "path";
 import wasm from "vite-plugin-wasm";
 
@@ -15,7 +15,23 @@ const htmlInputs = Object.fromEntries(
 export default defineConfig({
   root: __dirname,
   publicDir: resolve(__dirname, "../../examples/public"),
-  plugins: [wasm()],
+  plugins: [
+    wasm(),
+    {
+      name: "material-fixture-assets",
+      generateBundle() {
+        const directory = resolve(__dirname, "material-assets");
+        for (const name of readdirSync(directory)) {
+          if (!/\.(png|json)$/.test(name)) continue;
+          this.emitFile({
+            type: "asset",
+            fileName: `material-assets/${name}`,
+            source: readFileSync(resolve(directory, name)),
+          });
+        }
+      },
+    },
+  ],
   server: {
     port: 5200,
   },

@@ -21,11 +21,24 @@ import type {
   SplitText,
   Text,
   Texture,
+  TextureSource,
+  UniformGroup,
   TextStyleOptions,
 } from "pixi.js";
 
 /** A loaded texture resource managed by the renderer. */
 export type TextureResource = Texture;
+
+/** Numeric image data, imported without color conversion or premultiplication. */
+declare const dataTextureBrand: unique symbol;
+export type DataTextureResource = TextureResource & {
+  readonly [dataTextureBrand]: true;
+};
+export type DataTextureHandle = AssetHandle<DataTextureResource>;
+
+/** Renderer resource aliases for plugin-owned shader infrastructure. */
+export type TextureSourceResource = TextureSource;
+export type ShaderUniforms = UniformGroup;
 
 /** A typed asset handle for a texture resource. */
 export type TextureHandle = AssetHandle<TextureResource>;

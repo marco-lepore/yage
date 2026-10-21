@@ -16,6 +16,8 @@ import {
 export interface LightSourceOptions {
   /** Light radius in world pixels. */
   radius: number;
+  /** Height above the sprite plane in pixels. Positive; default 64. Surface lighting only. */
+  height?: number;
   /** Peak contribution at the light's centre, from 0 to 1. Default `1`. */
   intensity?: number;
   /** RGB tint used by renderers that support coloured light. Default `0xffffff`. */
@@ -49,6 +51,7 @@ export class LightSource extends Component {
   private readonly transform = this.sibling(Transform);
   private world: LightingWorld | undefined;
   private _radius: number;
+  private _height: number;
   private _intensity: number;
   private _color: number;
   private _size: number;
@@ -63,6 +66,7 @@ export class LightSource extends Component {
   constructor(options: LightSourceOptions) {
     super();
     assertPositive(options.radius, "LightSource radius");
+    assertHeight(options.height ?? 64);
     assertUnit(options.intensity ?? 1, "LightSource intensity");
     assertColor(options.color ?? 0xffffff, "LightSource color");
     assertNonNegative(options.size ?? 0, "LightSource size");
@@ -72,6 +76,7 @@ export class LightSource extends Component {
     }
 
     this._radius = options.radius;
+    this._height = options.height ?? 64;
     this._intensity = options.intensity ?? 1;
     this._color = options.color ?? 0xffffff;
     this._size = options.size ?? 0;
@@ -94,6 +99,15 @@ export class LightSource extends Component {
   /** Current world rotation in radians, which aims {@link coneAngle}. */
   get rotation(): number {
     return this.transform.worldRotation;
+  }
+
+  /** Height above the sprite plane. Does not change queries, radius, or shadow geometry. */
+  get height(): number {
+    return this._height;
+  }
+  set height(value: number) {
+    assertHeight(value);
+    this._height = value;
   }
 
   /** Radius in world pixels. */
@@ -185,5 +199,14 @@ export class LightSource extends Component {
   onDestroy(): void {
     this.world?.unregisterSource(this);
     this.world = undefined;
+  }
+}
+
+function assertHeight(value: number): void {
+  assertPositive(value, "LightSource.height");
+  if (!Number.isFinite(Math.fround(value)) || Math.fround(value) === 0) {
+    throw new RangeError(
+      `LightSource.height: must fit a positive GPU float, got ${value}.`,
+    );
   }
 }

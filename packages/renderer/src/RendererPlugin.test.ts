@@ -137,6 +137,7 @@ vi.mock("pixi.js", () => {
     }
   }
   return {
+    extensions: { add: vi.fn() },
     UPDATE_PRIORITY: { LOW: -25 },
     Application: mocks.MockApplication,
     Container: mocks.MockContainer,
