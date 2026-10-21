@@ -21,7 +21,7 @@ export interface PreviewTarget {
   requestRebuild(request: PreviewRequest): void;
   applyPoseDraft(poses: readonly PoseEdit[]): void;
   applyView(view: EditorViewState): void;
-  applySequenceSample?(): void;
+  applySequenceSample(): void;
 }
 
 /**
@@ -74,7 +74,7 @@ export function connectPreview(
       preview.applyView(state.view);
     }
     if (state.sequence) {
-      preview.applySequenceSample?.();
+      preview.applySequenceSample();
       if (action.type === "sequence-view") {
         if (!state.gesture && !state.poseDraft)
           preview.applyPoseDraft(

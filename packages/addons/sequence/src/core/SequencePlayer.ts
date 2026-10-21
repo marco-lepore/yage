@@ -60,6 +60,7 @@ function same(a: SequenceProperty, b: SequenceProperty): boolean {
   );
 }
 function validateBinding(
+  context: string,
   id: string,
   c: SequenceContract,
   target: SequenceTarget,
@@ -69,9 +70,7 @@ function validateBinding(
       ? target.properties[name]
       : undefined;
     if (!binding || !same(def, binding.definition))
-      throw new Error(
-        `SequencePlayer.play: incompatible property ${id}.${name}`,
-      );
+      throw new Error(`${context}: incompatible property ${id}.${name}`);
   }
   for (const [name, def] of Object.entries(c.events)) {
     const binding = Object.hasOwn(target.events, name)
@@ -86,20 +85,27 @@ function validateBinding(
           !same(value, binding.payload[key]!),
       )
     )
-      throw new Error(`SequencePlayer.play: incompatible event ${id}.${name}`);
+      throw new Error(`${context}: incompatible event ${id}.${name}`);
   }
 }
 
-/** Check an asset contract against a binding set without reading or writing targets. */
-export function validateSequenceTargets(
+function validateTargets(
+  context: string,
   clip: SequenceClip,
   targets: SequenceTargets,
 ): void {
   for (const [id, contract] of Object.entries(clip.document.targets)) {
     const target = Object.hasOwn(targets, id) ? targets[id] : undefined;
-    if (!target) throw new Error(`SequencePlayer.play: missing target ${id}`);
-    validateBinding(id, contract, target);
+    if (!target) throw new Error(`${context}: missing target ${id}`);
+    validateBinding(context, id, contract, target);
   }
+}
+/** Check an asset contract against a binding set without reading or writing targets. */
+export function validateSequenceTargets(
+  clip: SequenceClip,
+  targets: SequenceTargets,
+): void {
+  validateTargets("validateSequenceTargets", clip, targets);
 }
 /** Playback state for one asset instance. The host supplies its clock and targets. */
 export class SequencePlayer {
@@ -153,19 +159,10 @@ export class SequencePlayer {
     const speed = options.speed ?? 1;
     finite(speed, "speed");
     if (speed <= 0) throw new Error("SequencePlayer.play: speed must be > 0");
-    for (const [name, policy] of [
-      ["finish", options.finish],
-      ["cancel", options.cancel],
-    ])
-      if (policy !== undefined && policy !== "retain" && policy !== "restore")
-        throw new Error(`SequencePlayer.play: unknown ${String(name)} policy`);
+    validateTargets("SequencePlayer.play", clip, options.targets);
     const targets: Record<string, SequenceTarget> = {};
-    for (const [id, contract] of Object.entries(clip.document.targets)) {
-      const target = Object.hasOwn(options.targets, id)
-        ? options.targets[id]
-        : undefined;
-      if (!target) throw new Error(`SequencePlayer.play: missing target ${id}`);
-      validateBinding(id, contract, target);
+    for (const id of Object.keys(clip.document.targets)) {
+      const target = options.targets[id]!;
       Object.defineProperty(targets, id, {
         value: {
           ...(target.isAlive ? { isAlive: target.isAlive.bind(target) } : {}),
@@ -196,7 +193,7 @@ export class SequencePlayer {
     this.options = {
       ...options,
       targets,
-      ...(options.frame ? { frame: { ...options.frame } } : {}),
+      ...(options.rect ? { rect: { ...options.rect } } : {}),
     };
     this.captured = captured;
     this.markers = [...clip.document.events].sort((a, b) => a.frame - b.frame);
@@ -227,15 +224,9 @@ export class SequencePlayer {
   ): boolean {
     // Local rotation and scale settle before world positions. Entity helpers
     // derive depth from the current hierarchy so child positions are last.
-    const ordered: { item: Captured; order: number }[] = [];
-    for (const item of writes) {
-      const order = this.call(`${item.label}.writeOrder`, () =>
-        propertyWriteOrder(item.binding),
-      );
-      if (this.revision !== revision) return false;
-      ordered.push({ item, order });
-    }
-    ordered.sort((a, b) => a.order - b.order);
+    const ordered = writes
+      .map((item) => ({ item, order: propertyWriteOrder(item.binding) }))
+      .sort((a, b) => a.order - b.order);
     for (const { item } of ordered) {
       this.call(`${item.label}.${operation}`, () =>
         item.binding.set(cloneValue(item.value)),
@@ -332,8 +323,6 @@ export class SequencePlayer {
   cancel(
     policy: "retain" | "restore" = this.options?.cancel ?? "retain",
   ): void {
-    if (policy !== "retain" && policy !== "restore")
-      throw new Error("SequencePlayer.cancel: unknown policy");
     if (this.state === "idle" || this.state === "cancelled") {
       // Terminal playback can still be dispatching restoration callbacks.
       if (this.bindingDepth > 0) this.revision++;
@@ -357,16 +346,23 @@ export class SequencePlayer {
     }
   }
 }
-export type SequencePropertyValue<D extends SequenceProperty> =
-  D["kind"] extends "position" | "vector"
+/** The value type a property definition accepts. An enum narrows to its declared values. */
+export type SequencePropertyValue<D extends SequenceProperty> = D extends {
+  readonly kind: "enum";
+  readonly values: readonly (infer V extends string)[];
+}
+  ? V
+  : D["kind"] extends "position" | "vector"
     ? Point
     : D["kind"] extends "boolean"
       ? boolean
-      : D["kind"] extends "enum"
-        ? string
-        : number;
+      : number;
+/** The payload object an event definition dispatches. */
+export type SequencePayload<
+  P extends Readonly<Record<string, SequenceProperty>>,
+> = { readonly [K in keyof P]: SequencePropertyValue<P[K]> };
 /** Typed accessor helper. Runtime values are validated against the asset contract. */
-export function sequenceProperty<D extends SequenceProperty>(
+export function sequenceProperty<const D extends SequenceProperty>(
   definition: D,
   get: () => SequencePropertyValue<D>,
   set: (value: SequencePropertyValue<D>) => void,
@@ -375,5 +371,17 @@ export function sequenceProperty<D extends SequenceProperty>(
     definition,
     get,
     set: (value) => set(value as SequencePropertyValue<D>),
+  };
+}
+/** Typed event helper. The payload definition must match the asset contract. */
+export function sequenceEvent<
+  const P extends Readonly<Record<string, SequenceProperty>>,
+>(
+  payload: P,
+  dispatch: (payload: SequencePayload<P>, marker: SequenceMarker) => void,
+): SequenceEventBinding {
+  return {
+    payload,
+    dispatch: (value, marker) => dispatch(value as SequencePayload<P>, marker),
   };
 }

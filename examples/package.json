@@ -11,7 +11,7 @@
     "lab:test": "yage-lab test",
     "lint": "eslint src e2e lab",
     "typecheck": "tsc --noEmit",
-    "sequence:edit": "yage-editor dev --config editor.sequence.config.ts --port 5199"
+    "sequence:edit": "yage-editor dev --config editor.sequence.config.ts"
   },
   "yage-lab": {
     "scenarios": [
@@ -23,7 +23,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "vite": "^8.0.0",
     "vite-plugin-wasm": "^3.6.0",
-    "@yagejs-tools/editor": "*"
+    "@yagejs-tools/editor": "^0.2.0"
   },
   "dependencies": {
     "@yagejs-tools/lab": "^0.3.0",
@@ -38,6 +38,7 @@
     "@yagejs-addons/loot": "^0.0.0",
     "@yagejs-addons/interaction": "^0.4.0",
     "@yagejs-addons/quests": "^0.4.0",
+    "@yagejs-addons/sequence": "^0.0.0",
     "@yagejs-addons/stats": "^0.1.0",
     "@yagejs/audio": "^0.12.0",
     "@yagejs/core": "^0.12.0",
@@ -53,7 +54,6 @@
     "@yagejs/tilemap": "^0.12.0",
     "@yagejs/ui": "^0.12.0",
     "@yagejs/ui-react": "^0.12.0",
-    "react": "^19.0.0",
-    "@yagejs-addons/sequence": "0.0.0"
+    "react": "^19.0.0"
   }
 }

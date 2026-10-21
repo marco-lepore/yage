@@ -11,7 +11,8 @@ import type {
   LevelPoint,
 } from "@yagejs/level/document";
 import { MISSING_VALUE, valueAtPath } from "../../shared/commands/index.js";
-import { authoredPoint, placementWorld, pointToWorld } from "./pose.js";
+import { placementWorld, pointToWorld } from "../../shared/document/pose.js";
+import { authoredPoint } from "./pose.js";
 
 /**
  * The value at `path` inside an authored parameter object, or nothing when the

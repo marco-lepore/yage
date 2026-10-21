@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { ErrorBoundary, Logger, LogLevel } from "@yagejs/core";
 import { SequenceClip } from "./evaluate.js";
-import { SequencePlayer, sequenceProperty } from "./SequencePlayer.js";
+import {
+  SequencePlayer,
+  sequenceEvent,
+  sequenceProperty,
+} from "./SequencePlayer.js";
 
 const clip = (events = true) =>
   new SequenceClip({
@@ -10,7 +14,7 @@ const clip = (events = true) =>
     name: "probe",
     fps: 1,
     duration: 10,
-    frame: { width: 100, height: 100 },
+    size: { width: 100, height: 100 },
     targets: {
       actor: {
         properties: { x: { kind: "number" }, y: { kind: "number" } },
@@ -392,4 +396,51 @@ it("allows restoration of replacement playback inside an old restore callback", 
   p.seek(4);
   p.cancel("restore");
   expect(log).toEqual(["new-x:4", "new-y:4", "new-x:27", "new-y:28"]);
+});
+
+describe("typed event helper", () => {
+  it("dispatches the authored payload against a matching contract", () => {
+    const mood = { kind: "enum", values: ["calm", "loud"] } as const;
+    const wave = new SequenceClip({
+      format: "yage-sequence",
+      version: 1,
+      name: "wave",
+      fps: 1,
+      duration: 4,
+      size: { width: 100, height: 100 },
+      targets: {
+        actor: {
+          properties: {},
+          events: { wave: { mood, count: { kind: "number" } } },
+        },
+      },
+      tracks: [],
+      events: [
+        {
+          id: "w",
+          target: "actor",
+          event: "wave",
+          frame: 2,
+          payload: { mood: "loud", count: 3 },
+        },
+      ],
+    });
+    const received: { mood: "calm" | "loud"; count: number }[] = [];
+    const p = player();
+    p.play(wave, {
+      targets: {
+        actor: {
+          properties: {},
+          events: {
+            wave: sequenceEvent(
+              { mood, count: { kind: "number" } },
+              (payload) => received.push(payload),
+            ),
+          },
+        },
+      },
+    });
+    p.advance(2);
+    expect(received).toEqual([{ mood: "loud", count: 3 }]);
+  });
 });

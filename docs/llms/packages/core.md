@@ -853,14 +853,15 @@ class ExitDoor extends Component {
 
 Keyframe-based property animation on top of `ProcessComponent`. Runs multiple named animations concurrently; values interpolate between keyframes via an easing function and are pushed to a user-supplied setter.
 
-| Export                                 | Purpose                                                                                |
-| -------------------------------------- | -------------------------------------------------------------------------------------- |
-| `KeyframeAnimator<T>`                  | Component hosting named keyframe animations (`play`, `stop`, `stopAll`, `isPlaying`)   |
-| `Keyframe<T>`                          | `{ time, data, easing?, event? }` — single control point                               |
-| `KeyframeAnimationDef<T>`              | `{ keyframes, setter?, clock?, loop?, speed?, duration?, easing?, onEnter?, onExit? }` |
-| `createKeyframeTrack<T>(options)`      | Factory that returns a `Process` driving a single track                                |
-| `interpolate<T>(from, to, t, easing?)` | Blend two `Interpolatable` values                                                      |
-| `Interpolatable`                       | `number \| Vec2Like` — registered interpolation types                                  |
+| Export                                    | Purpose                                                                                |
+| ----------------------------------------- | -------------------------------------------------------------------------------------- |
+| `KeyframeAnimator<T>`                     | Component hosting named keyframe animations (`play`, `stop`, `stopAll`, `isPlaying`)   |
+| `Keyframe<T>`                             | `{ time, data, easing?, event? }` — single control point                               |
+| `KeyframeAnimationDef<T>`                 | `{ keyframes, setter?, clock?, loop?, speed?, duration?, easing?, onEnter?, onExit? }` |
+| `createKeyframeTrack<T>(options)`         | Factory that returns a `Process` driving a single track                                |
+| `sampleKeyframes<T>(keys, time, easing?)` | Value of a track at `time`, without a `Process` or key events                          |
+| `interpolate<T>(from, to, t, easing?)`    | Blend two `Interpolatable` values                                                      |
+| `Interpolatable`                          | `number \| Vec2Like` — registered interpolation types                                  |
 
 ```ts yage-context="entity"
 import { KeyframeAnimator, ProcessComponent, Transform } from "@yagejs/core";
@@ -888,6 +889,8 @@ anim.play("bob");
 `KeyframeAnimator` requires `ProcessComponent` on the same entity. Each keyframe's `time` is in seconds along the track.
 
 A track needs at least 2 keyframes to interpolate between, each with a finite `time` and sorted ascending (equal times are allowed); `duration` (default: the last keyframe's time) and `speed` must be finite and > 0. `createKeyframeTrack` throws on anything else, and so does `KeyframeAnimator.play` for the def it is given. A first keyframe past time 0 is allowed: the track holds that keyframe's value through the lead-in.
+
+`sampleKeyframes(keys, time, defaultEasing = easeLinear)` reads the same curve at one time without running a `Process` or calling any keyframe `event`. It needs at least one keyframe (it throws on an empty list) and assumes finite, ascending times. One keyframe is a constant. Values hold at the first and last keyframe outside their range. The result for a non-finite `time` is undefined.
 
 `setter` is **optional** — omit it for "pure timeline" animations that only
 fire keyframe `event` callbacks (cutscenes, audio cues, gameplay beats):

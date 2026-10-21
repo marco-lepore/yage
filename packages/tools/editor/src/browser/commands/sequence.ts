@@ -1,4 +1,8 @@
 import { SequenceClip } from "@yagejs-addons/sequence";
+import {
+  SEQUENCE_TRANSFORM_PROPERTIES,
+  SEQUENCE_VISUAL_PROPERTIES,
+} from "@yagejs-addons/sequence/document";
 import type {
   SequenceContract,
   SequenceDocument,
@@ -17,18 +21,15 @@ import {
 import { reduceSequenceCommand } from "../../shared/sequence/commands.js";
 import { initialSequenceTrack } from "../../shared/sequence/defaults.js";
 import { withDescendants } from "./graph.js";
-import { sampledDocument } from "../store/sequence.js";
-import type { EditorState } from "../store/types.js";
+import { sampledDocument, type EditorState } from "../store/index.js";
 
-export const TRANSFORM_CONTRACT: SequenceContract = {
+/** A new actor's contract: exactly what the addon's transform and visual targets provide. */
+export const ACTOR_CONTRACT: SequenceContract = {
   properties: {
-    position: { kind: "position" },
-    rotation: { kind: "number" },
-    scale: { kind: "vector" },
-    opacity: { kind: "number" },
-    visible: { kind: "boolean" },
+    ...SEQUENCE_TRANSFORM_PROPERTIES,
+    ...SEQUENCE_VISUAL_PROPERTIES,
   },
-  events: { cue: {} },
+  events: {},
 };
 export function sequenceChange(
   doc: SequenceWorkspaceDocument,
@@ -81,7 +82,7 @@ export function newSequenceTrack(
       track.id,
       placementWorld(sampled, placement).position,
       {
-        frame: { x: 0, y: 0, width: view.width, height: view.height },
+        rect: { x: 0, y: 0, width: view.width, height: view.height },
         fit: view.fit,
       },
     );
@@ -123,13 +124,10 @@ export function sequenceIntent(
           JSON.stringify(pose.transform[property])
         )
           continue;
-        const expectedKind =
-          property === "position"
-            ? "position"
-            : property === "scale"
-              ? "vector"
-              : "number";
-        if (sequence.targets[slot]?.properties[property]?.kind !== expectedKind)
+        if (
+          sequence.targets[slot]?.properties[property]?.kind !==
+          SEQUENCE_TRANSFORM_PROPERTIES[property].kind
+        )
           continue;
         const existing = sequence.tracks.find(
           (t) => t.target === slot && t.property === property,
@@ -173,7 +171,7 @@ export function sequenceIntent(
                   track.id,
                   k.value as { x: number; y: number },
                   {
-                    frame: {
+                    rect: {
                       x: 0,
                       y: 0,
                       width: view.width,
@@ -188,7 +186,7 @@ export function sequenceIntent(
             track.id,
             value as { x: number; y: number },
             {
-              frame: { x: 0, y: 0, width: view.width, height: view.height },
+              rect: { x: 0, y: 0, width: view.width, height: view.height },
               fit: view.fit,
             },
           );
@@ -254,13 +252,13 @@ export function sequenceIntent(
           crypto.randomUUID(),
           slot,
           property,
-          TRANSFORM_CONTRACT.properties[property]!,
+          ACTOR_CONTRACT.properties[property]!,
           value,
         ),
       );
       const sampler = new SequenceClip({
         ...sequence,
-        targets: { ...sequence.targets, [slot]: TRANSFORM_CONTRACT },
+        targets: { ...sequence.targets, [slot]: ACTOR_CONTRACT },
         tracks: [...sequence.tracks, ...tracks],
       });
       tracks = tracks.map((t) =>
@@ -273,7 +271,7 @@ export function sequenceIntent(
                   t.id,
                   k.value as { x: number; y: number },
                   {
-                    frame: {
+                    rect: {
                       x: 0,
                       y: 0,
                       width: view.width,
@@ -289,7 +287,7 @@ export function sequenceIntent(
       sequence = reduceSequenceCommand(sequence, {
         kind: "add-actor",
         id: slot,
-        contract: TRANSFORM_CONTRACT,
+        contract: ACTOR_CONTRACT,
         tracks,
       });
     }
@@ -410,7 +408,7 @@ export function cloneSequenceActors(
         let delta = { x: 0, y: 0 };
         if (contract.properties[track.property]?.kind === "position") {
           const options = {
-            frame: { x: 0, y: 0, width: view.width, height: view.height },
+            rect: { x: 0, y: 0, width: view.width, height: view.height },
             fit: view.fit,
           };
           const x = clip.unmapPosition(track.id, a, options),
@@ -471,7 +469,7 @@ export function remapSequenceTrack(
     tracks: doc.sequence.tracks.map((t) => (t.id === id ? next : t)),
   });
   const options = {
-    frame: { x: 0, y: 0, width: view.width, height: view.height },
+    rect: { x: 0, y: 0, width: view.width, height: view.height },
     fit: view.fit,
   };
   return {

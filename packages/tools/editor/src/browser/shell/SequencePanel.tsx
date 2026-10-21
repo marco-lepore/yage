@@ -1,4 +1,5 @@
 import { SequenceClip } from "@yagejs-addons/sequence";
+import { SEQUENCE_CURVE_NAMES } from "@yagejs-addons/sequence/document";
 import { removeSequenceKeys } from "../../shared/sequence/authoring.js";
 import { formatEditorDocument } from "../../shared/document/index.js";
 import {
@@ -32,15 +33,7 @@ interface Drag {
   invalid: boolean;
   delta: number;
 }
-const CURVES = [
-  "linear",
-  "hold",
-  "easeInQuad",
-  "easeOutQuad",
-  "easeInOutCubic",
-  "easeOutBack",
-  "bezier",
-];
+const CURVES = [...SEQUENCE_CURVE_NAMES, "bezier"];
 export function SequencePanel({
   store,
   commands,
@@ -471,15 +464,15 @@ export function SequencePanel({
                 <input
                   aria-label={`Authored ${dimension}`}
                   type="number"
-                  defaultValue={clip.frame[dimension]}
-                  key={clip.frame[dimension]}
+                  defaultValue={clip.size[dimension]}
+                  key={clip.size[dimension]}
                   onBlur={(e) =>
                     edit(() =>
                       commands.editSequence({
                         kind: "set-settings",
                         settings: {
-                          frame: {
-                            ...clip.frame,
+                          size: {
+                            ...clip.size,
                             [dimension]: Number(e.target.value),
                           },
                         },

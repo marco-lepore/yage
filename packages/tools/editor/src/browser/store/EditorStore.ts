@@ -761,8 +761,8 @@ function reduce(state: EditorState, action: EditorAction): EditorState {
                 playing: false,
                 loop: false,
                 speed: 1,
-                width: snapshot.document.sequence.frame.width,
-                height: snapshot.document.sequence.frame.height,
+                width: snapshot.document.sequence.size.width,
+                height: snapshot.document.sequence.size.height,
                 fit: "stretch",
                 events: [],
               }

@@ -5,16 +5,18 @@ import type {
 } from "@yagejs/level/document";
 import { describe, expect, it } from "vitest";
 import {
+  parentFrame,
+  parentWorld,
+  toLocal,
+  toWorld,
+  WORLD_ORIGIN,
+} from "../../shared/document/pose.js";
+import {
   dilated,
   nextScale,
   orbited,
-  parentFrame,
-  parentWorld,
   scaledTo,
-  toLocal,
-  toWorld,
   worldDeltaToLocal,
-  WORLD_ORIGIN,
 } from "./pose.js";
 
 /** A small deterministic generator, so a failure names a seed. */

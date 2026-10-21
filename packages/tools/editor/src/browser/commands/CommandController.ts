@@ -9,7 +9,6 @@ import {
 import { reduceSequenceCommand } from "../../shared/sequence/commands.js";
 import type { SequenceCommand } from "../../shared/sequence/commands.js";
 import type { DocumentCommand } from "../../shared/commands/index.js";
-import { sampledDocument } from "../store/sequence.js";
 import type {
   EditorDocument,
   SequenceWorkspaceDocument,
@@ -29,6 +28,7 @@ import {
 } from "../../shared/commands/index.js";
 import {
   posesOf,
+  sampledDocument,
   snappedPoint,
   type EditorPoint,
   type EditorStore,
@@ -46,19 +46,21 @@ import {
 } from "./arrange.js";
 import type { WorldBounds } from "./bounds.js";
 import {
-  draggedValue,
-  gesturePoses,
   parentFrame,
   parentWorld,
-  samePose,
-  spunTo,
   toLocal,
   toWorld,
+  WORLD_ORIGIN,
+} from "../../shared/document/pose.js";
+import {
+  draggedValue,
+  gesturePoses,
+  samePose,
+  spunTo,
   translated,
   UNIT_REFERENCE,
   withPoseNumber,
   worldDeltaToLocal,
-  WORLD_ORIGIN,
 } from "./pose.js";
 import { defaultAt, pointFields, pointHandles, valueAt } from "./params.js";
 import {

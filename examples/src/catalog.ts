@@ -57,8 +57,8 @@ export const ADDONS = [
   "loot",
   "stats",
   "quests",
-  "steering",
   "sequence",
+  "steering",
   "synth",
   "virtual-controls",
 ] as const;
@@ -85,16 +85,6 @@ export interface Example {
 
 /** Every example, grouped by section in display order. */
 export const EXAMPLES: readonly Example[] = [
-  {
-    slug: "sequence",
-    title: "Sequence studio",
-    summary:
-      "Author two actors with proportional and anchored movement, easing, opacity and timed events.",
-    section: "gameplay",
-    packages: [],
-    addons: ["sequence"],
-    guide: "/addons/sequence/",
-  },
   // Start here
   {
     slug: "hello-world",
@@ -553,5 +543,15 @@ export const EXAMPLES: readonly Example[] = [
     packages: ["ui", "ui-react", "input"],
     addons: ["i18n", "dialogue", "inventory", "quests"],
     guide: "/addons/i18n/",
+  },
+  {
+    slug: "sequence",
+    title: "Sequence Addon",
+    summary:
+      "Two actors play one authored clip: proportional and anchored movement, easing, opacity, and timed events that pause playback.",
+    section: "gameplay",
+    packages: [],
+    addons: ["sequence"],
+    guide: "/addons/sequence/",
   },
 ];

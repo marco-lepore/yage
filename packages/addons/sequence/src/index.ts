@@ -1,9 +1,14 @@
 export * from "./core/types.js";
 export { parseSequence } from "./core/validate.js";
+export {
+  SEQUENCE_TRANSFORM_PROPERTIES,
+  SEQUENCE_VISUAL_PROPERTIES,
+} from "./core/properties.js";
 export { SequenceClip, SEQUENCE_EASINGS } from "./core/evaluate.js";
 export {
   SequencePlayer,
   sequenceProperty,
+  sequenceEvent,
   validateSequenceTargets,
 } from "./core/SequencePlayer.js";
 export type {
@@ -14,6 +19,7 @@ export type {
   SequencePlayOptions,
   SequencePlaybackState,
   SequencePropertyValue,
+  SequencePayload,
 } from "./core/SequencePlayer.js";
 export { transformSequenceTarget, combineSequenceTargets } from "./bindings.js";
 export { SequenceComponent } from "./SequenceComponent.js";

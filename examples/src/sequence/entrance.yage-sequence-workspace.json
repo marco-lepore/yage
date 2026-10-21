@@ -26,8 +26,7 @@
         "name": "Aster",
         "color": "#8be9cd",
         "width": 48,
-        "height": 68,
-        "placeholder": false
+        "height": 68
       },
       "extensions": {}
     },
@@ -52,8 +51,7 @@
         "name": "Ember",
         "color": "#ffcc6e",
         "width": 72,
-        "height": 48,
-        "placeholder": false
+        "height": 48
       },
       "extensions": {}
     }
@@ -64,7 +62,7 @@
     "name": "Two actors \u00b7 an entrance and a greeting",
     "fps": 30,
     "duration": 120,
-    "frame": {
+    "size": {
       "width": 640,
       "height": 360
     },

@@ -11,12 +11,6 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [
-    {
-      name: "sequence",
-      testMatch: "**/sequence-editor.spec.ts",
-      fullyParallel: false,
-      use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5202" },
-    },
     // Hand-written deterministic fixtures (e2e/fixtures), served on :5200.
     {
       name: "fixtures",
@@ -42,16 +36,16 @@ export default defineConfig({
       testMatch: "**/level-editor.spec.ts",
       use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5201" },
     },
+    // Sequence mode over the examples project's sequence workspaces, served
+    // on :5202 by `yage-editor`, which also serves the runtime example page.
+    {
+      name: "sequence",
+      testMatch: "**/sequence-editor.spec.ts",
+      fullyParallel: false,
+      use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5202" },
+    },
   ],
   webServer: [
-    {
-      command:
-        "node ../packages/tools/editor/dist/cli.js --config editor.sequence.config.ts --port 5202 --no-open",
-      cwd: `${__dirname}/examples`,
-      url: "http://127.0.0.1:5202/",
-      reuseExistingServer: false,
-      env: { YAGE_E2E: "1" },
-    },
     {
       command: "npm run dev -- --host 127.0.0.1 --port 5200 --strictPort",
       cwd: `${__dirname}/e2e`,
@@ -75,6 +69,17 @@ export default defineConfig({
       // Never reused: this server holds the unsaved draft, so a server left
       // over from an earlier run would start the path from that run's edits.
       reuseExistingServer: false,
+    },
+    {
+      command:
+        "node ../node_modules/@yagejs-tools/editor/dist/cli.js " +
+        "--config editor.sequence.config.ts --port 5202 --no-open",
+      cwd: `${__dirname}/examples`,
+      url: "http://127.0.0.1:5202/",
+      // Never reused, for the same reason as the level editor's server.
+      reuseExistingServer: false,
+      // Enables the example-page E2E harness injection (examples/e2e/harness.ts).
+      env: { YAGE_E2E: "1" },
     },
   ],
 });

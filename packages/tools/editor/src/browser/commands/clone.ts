@@ -14,8 +14,8 @@ import {
   parentFrame,
   parentWorld,
   toWorld,
-  worldDeltaToLocal,
-} from "./pose.js";
+} from "../../shared/document/pose.js";
+import { worldDeltaToLocal } from "./pose.js";
 
 /** What to copy, where to put it, and how to name what comes out. */
 export interface CloneRequest {

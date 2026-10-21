@@ -1,4 +1,3 @@
-import { sampledDocument } from "../store/sequence.js";
 import type { LevelPlacement } from "@yagejs/level/document";
 import {
   gesturePoses,
@@ -6,10 +5,11 @@ import {
   poseNumber,
   sharedParent,
 } from "../commands/index.js";
-import type {
-  EditorState,
-  EditorStore,
-  PoseComponent,
+import {
+  sampledDocument,
+  type EditorState,
+  type EditorStore,
+  type PoseComponent,
 } from "../store/index.js";
 import {
   MIXED_LABEL,

@@ -282,6 +282,9 @@ export {
 export { isDev, devWarn } from "./internal/dev.js";
 
 /** @internal - exposed for sibling @yagejs packages, not for public consumption. */
+export { durationReached } from "./internal/duration.js";
+
+/** @internal - exposed for sibling @yagejs packages, not for public consumption. */
 export {
   assertDriveMaxFrames,
   DEFAULT_DRIVE_MAX_FRAMES,
@@ -329,5 +332,3 @@ export type {
   EncodedForLeaf,
   EncodedStore,
 } from "./state/index.js";
-
-export { durationReached } from "./internal/duration.js";

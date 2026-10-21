@@ -96,7 +96,8 @@ export interface EditorShellProps {
    * The New dialog offers these, and puts the level in the first one.
    */
   readonly levelDirectories: readonly string[];
-  readonly sequenceDirectories?: readonly string[];
+  /** The same, for a new sequence workspace. */
+  readonly sequenceDirectories: readonly string[];
   /**
    * The layers the open level may put a placement on, read on each render.
    * Empty when the project declared none for it, which is when the inspector
@@ -695,7 +696,7 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
               levelRequest.documentKind === "sequence") ||
             (levelRequest.kind === "duplicate" &&
               levelRequest.source.endsWith(".yage-sequence-workspace.json"))
-              ? (props.sequenceDirectories ?? [])
+              ? props.sequenceDirectories
               : props.levelDirectories
           }
           levels={levels}

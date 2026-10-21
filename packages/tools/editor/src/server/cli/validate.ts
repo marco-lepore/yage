@@ -138,9 +138,13 @@ async function collect(
   // that made it, and a second copy of `@yagejs/level` would reject every
   // declaration the project wrote.
   const api = (await server.ssrLoadModule(LEVEL_PACKAGE)) as typeof LevelApi;
-  // No contribution is loaded: the packages a project gets placeable types
-  // from are discovered by the editor's Vite plugin, which serves the editor
-  // page. A successful assembly therefore has nothing to report.
+  // No package contribution is loaded: the packages a project gets placeable
+  // types from are discovered by the editor's Vite plugin, which serves the
+  // editor page. The editor's own placeholder entity is the exception, so a
+  // sequence workspace that previews one validates. It loads through the same
+  // graph as the project, for the `param.*` identity above. Run from source
+  // (the tests), the module is the source file; built, it is the bundle tsup
+  // emits beside this CLI.
   const builtinPath = fileURLToPath(
     new URL(
       import.meta.url.endsWith(".ts")

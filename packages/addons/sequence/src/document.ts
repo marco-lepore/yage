@@ -1,3 +1,7 @@
 /** Sequence data parsing without engine initialization. */
 export * from "./core/types.js";
 export { parseSequence } from "./core/validate.js";
+export {
+  SEQUENCE_TRANSFORM_PROPERTIES,
+  SEQUENCE_VISUAL_PROPERTIES,
+} from "./core/properties.js";

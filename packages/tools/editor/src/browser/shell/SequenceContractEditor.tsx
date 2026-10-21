@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SEQUENCE_PROPERTY_KINDS } from "@yagejs-addons/sequence/document";
 import type {
   SequenceDocument,
   SequenceProperty,
@@ -39,11 +40,9 @@ function PropertyForm({
           value={kind}
           onChange={(e) => setKind(e.target.value as SequenceProperty["kind"])}
         >
-          {["number", "vector", "position", "color", "boolean", "enum"].map(
-            (v) => (
-              <option key={v}>{v}</option>
-            ),
-          )}
+          {SEQUENCE_PROPERTY_KINDS.map((v) => (
+            <option key={v}>{v}</option>
+          ))}
         </select>
       </label>
       {kind === "enum" ? (

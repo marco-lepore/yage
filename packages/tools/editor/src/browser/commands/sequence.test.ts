@@ -123,10 +123,14 @@ describe("sequence manipulation through document commands", () => {
   it("duplicates keys and markers with new identities and the placement offset", () => {
     const s = actors();
     const slot = Object.keys(s.document.sequence.targets)[0]!;
+    const contract = s.document.sequence.targets[slot]!;
     s.document = {
       ...s.document,
       sequence: {
         ...s.document.sequence,
+        targets: {
+          [slot]: { ...contract, events: { cue: {} } },
+        },
         events: [
           { id: "cue", frame: 40, target: slot, event: "cue", payload: {} },
         ],
@@ -150,6 +154,12 @@ describe("sequence manipulation through document commands", () => {
       ),
     );
     expect(result.document.sequence.events).toHaveLength(2);
+    // The copy keeps the source's contract, including its declared event.
+    expect(
+      Object.values(result.document.sequence.targets).map((c) =>
+        Object.keys(c.events),
+      ),
+    ).toEqual([["cue"], ["cue"]]);
     const copy = result.document.sequence.tracks.filter(
       (t) => t.target !== slot,
     );
@@ -200,7 +210,7 @@ describe("sequence manipulation through document commands", () => {
   });
 });
 
-describe("sequence coordinate regressions", () => {
+describe("sequence position mapping in a resized preview", () => {
   it("inverse maps initial position keys in a resized preview", () => {
     const s = state();
     s.sequence = { ...s.sequence, width: 1920, height: 1080 };

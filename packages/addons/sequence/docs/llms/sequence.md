@@ -1,17 +1,24 @@
 # Sequence
 
 `@yagejs-addons/sequence` plays JSON keyframes and event markers against named
-property contracts. Assets do not contain entities or callbacks. Bind the same
-asset to placeholders in an editor and real objects during gameplay.
+property contracts. A clip contains no entities or callbacks: the game binds
+each target slot to an object when playback starts. The editor's Sequence mode
+binds the same clip to preview entities.
 
-## Entry points and use
+## Entry points
 
-Root exports `SequenceClip`, `parseSequence`, `SequencePlayer`,
-`SequenceComponent`, `sequenceProperty`, `validateSequenceTargets`,
-`transformSequenceTarget`, `combineSequenceTargets`, `SEQUENCE_EASINGS`, and the
-`Sequence*`, `Point`, and `PositionMapping` types. `/renderer` exports
-`visualSequenceTarget(visual: VisualComponent): SequenceTarget`.
-`/document` exports `parseSequence` and document types without engine imports.
+- Root: `SequenceClip`, `parseSequence`, `SequencePlayer`, `SequenceComponent`,
+  `sequenceProperty`, `sequenceEvent`, `validateSequenceTargets`,
+  `transformSequenceTarget`, `combineSequenceTargets`, `SEQUENCE_EASINGS` (the
+  frozen easing function of each named curve), everything `/document` exports,
+  and the `Sequence*` types.
+- `/renderer`: `visualSequenceTarget(visual: VisualComponent): SequenceTarget`.
+  Needs the optional `@yagejs/renderer` peer.
+- `/document`: `parseSequence`, `SEQUENCE_TRANSFORM_PROPERTIES`,
+  `SEQUENCE_VISUAL_PROPERTIES`, `SEQUENCE_PROPERTY_KINDS`,
+  `SEQUENCE_CURVE_NAMES`, and the document types (`Point`,
+  `PositionMapping`, `SequenceDocument`, ...), with no engine imports. Use it
+  in Node tools and editor UI.
 
 ```ts
 import { Component, Entity } from "@yagejs/core";
@@ -35,7 +42,7 @@ class Entrance extends Component {
           visualSequenceTarget(actor.get(GraphicsComponent)),
         ),
       },
-      frame: { x: 20, y: 20, width: 800, height: 450 },
+      rect: { x: 20, y: 20, width: 800, height: 450 },
     });
   }
 }
@@ -43,25 +50,29 @@ class Entrance extends Component {
 
 Add both `SequenceComponent` and the game's component to an entity in a `Scene`
 subclass. The component advances its player with scene frame time. Do not also
-manually advance that player. Standalone use is
+advance that player by hand. Standalone use is
 `new SequencePlayer(errorBoundary)` followed by `advance(dtSeconds)`.
 
 ## Document
 
 `parseSequence(input: unknown): SequenceDocument` returns a detached, deeply
-frozen document. `new SequenceClip(input: unknown)` validates and compiles it.
+frozen document. `new SequenceClip(input: unknown)` validates and compiles it;
+`clip.document` is the parsed document.
 
 - `format: "yage-sequence"`, `version: 1`, nonempty `name`.
-- Positive finite `fps`, `duration` in frames, `frame: {width, height}` in pixels.
+- Positive finite `fps`, `duration` in frames, and `size: {width, height}`: the
+  authored rectangle in pixels.
 - `targets: Record<string, {properties, events}>`. Property definitions are
   `{kind: "number" | "vector" | "position" | "color" | "boolean"}` or
   `{kind: "enum", values: string[]}`. Each event maps payload field names to
   these definitions.
 - `tracks: {id, target, property, keys, position?}[]`. Keys are
-  `{id, frame, value, curve}`. First key must be at zero; times strictly increase
-  and stay within the duration. A single key is constant. The last value holds.
+  `{id, frame, value, curve}`. The first key is at frame 0; frames strictly
+  increase and stay within the duration. A single key is constant. The last
+  value holds.
 - `events: {id, frame, target, event, payload}[]`. All track, key and event IDs
-  are globally unique. Only one track may address each target/property pair.
+  are unique across the document. Only one track may address each
+  target/property pair.
 
 Values are finite numbers, plain `{x, y}` points, RGB integers `0..0xffffff`,
 booleans or declared enum strings. Payloads contain exactly the declared fields.
@@ -70,93 +81,127 @@ Unknown fields, unsupported versions and incompatible values throw.
 Each key's curve applies to the segment leaving it: `linear`, `hold`,
 `easeInQuad`, `easeOutQuad`, `easeInOutCubic`, `easeOutBack`, or
 `{bezier: [x1,y1,x2,y2]}`. Bézier x controls must be in `0..1`; finite y controls
-may overshoot. This controls time, not a curved spatial path. Boolean/enum keys
-require `hold`. Colors interpolate RGB channels and clamp to their range.
+may overshoot. A curve controls timing along a straight segment, not a curved
+spatial path. Boolean and enum keys require `hold`. Colors interpolate RGB
+channels and clamp to their range.
 
 ## Sampling and rectangle mapping
 
-`clip.sample(frame, {frame?: SequenceFrame, fit?: "stretch" | "contain"})`
-returns `{target, property, value}[]` without writes or events. Sample time is
-clamped to `0..duration`. Default destination is the authored rectangle at 0,0.
+`clip.sample(frame, {rect?: SequenceRect, fit?: "stretch" | "contain"})`
+returns `{target, property, value}[]` without writes or events.
+`SequenceRect` is `{x, y, width, height}` in pixels. Sample time is clamped to
+`0..duration`. The default `rect` is the document's `size` at 0,0.
 
-`clip.unmapPosition(trackId, point, options?)` converts a destination-space
-position to an authored value using the same mapping as sample. Options match
-sample's rectangle and fit options. Requires an existing position track and
-finite inputs/results. Use it when authoring a position from a preview drag.
+`clip.unmapPosition(trackId, point, options?)` converts a position in `rect`
+back to an authored key value, using the same options as `sample`. It requires
+an existing position track and finite inputs and results. Use it to author a
+position from a preview drag.
 
 Position tracks require one mapping:
 
-- `{mode: "proportional"}`: authored pixel coordinates scale with the destination
-  rectangle. Stretch uses separate x/y ratios. Contain uses the smaller ratio
-  and centers the authored rectangle inside the destination.
-- `{mode: "anchored", anchor: {x,y}}`: normalized anchor in `0..1`, plus key
-  values as fixed pixel offsets. Formula per axis is destination origin +
-  anchor × destination size + key offset. Fit does not affect anchored tracks.
+- `{mode: "proportional"}`: authored pixel coordinates scale from `size` to
+  `rect`. Stretch uses separate x and y ratios. Contain uses the smaller ratio
+  and centers the authored rectangle inside `rect`.
+- `{mode: "anchored", anchor: {x,y}}`: a normalized anchor in `0..1`, plus key
+  values as fixed pixel offsets. Per axis, the result is the `rect` origin,
+  plus anchor × `rect` size, plus the key offset. `fit` does not affect
+  anchored tracks.
 
-Mapping changes position only. It does not scale actors. Outside-frame positions
-are valid; clipping belongs to the host. Destination dimensions must be positive
-and finite. The player copies the rectangle at play; restart to change it.
+Mapping changes position only. It does not scale actors. Positions outside
+`rect` are valid; clipping belongs to the host. `rect` dimensions must be
+positive and finite. The player copies `rect` at play; restart to change it.
 
 ## Binding and playback
 
-`SequenceTarget` contains `properties`, `events`, and optional `isAlive()`.
-Liveness methods run on the original target, including class prototype methods.
-`sequenceProperty(definition, get, set)` constructs a typed property accessor.
-Event bindings expose `{payload: schema, dispatch(payload, marker)}`.
-`validateSequenceTargets(clip, targets)` checks contracts without calling getters,
-setters or liveness functions. Extra capabilities are accepted; every declared
-capability must be supplied, even if it has no track or marker.
+`SequenceTarget` is `{properties, events, isAlive?()}`. The player calls
+`isAlive` on the original target, so class prototype methods work.
 
-`player.play(clip, {targets, frame?, fit?, speed?, loop?, finish?, cancel?})` checks
-bindings and liveness, evaluates frame zero and captures every tracked starting
-value before writing. Speed is positive finite, default 1. Policies are
-`"retain"` (default) or `"restore"`. Restore writes captured starting values.
+- `sequenceProperty(definition, get, set)` builds a typed property binding.
+  `SequencePropertyValue<D>` is the value type: `Point` for position and
+  vector, `boolean`, `number` for number and color, and the union of declared
+  values for an enum, so an enum getter returns one of those literals.
+- `sequenceEvent(payload, dispatch)` builds a typed event binding.
+  `dispatch(payload: SequencePayload<P>, marker)` receives the authored
+  payload typed from the definition.
+- `validateSequenceTargets(clip, targets)` checks bindings against the clip's
+  contracts without calling getters, setters or liveness functions. Extra
+  capabilities are accepted. Every declared capability must be supplied, even
+  one with no track or marker.
+
+```ts
+import { Entity, defineEvent } from "@yagejs/core";
+import {
+  combineSequenceTargets,
+  sequenceEvent,
+  transformSequenceTarget,
+} from "@yagejs-addons/sequence";
+import type { SequenceTarget } from "@yagejs-addons/sequence";
+
+const Greet = defineEvent<{ line: "hello" | "bye" }>("game:greet");
+
+class Greeter extends Entity {
+  sequenceTarget(): SequenceTarget {
+    return combineSequenceTargets(transformSequenceTarget(this), {
+      properties: {},
+      events: {
+        greet: sequenceEvent(
+          { line: { kind: "enum", values: ["hello", "bye"] } },
+          ({ line }) => this.emit(Greet, { line }),
+        ),
+      },
+    });
+  }
+}
+```
+
+`player.play(clip, {targets, rect?, fit?, speed?, loop?, finish?, cancel?})`
+checks bindings and liveness, evaluates frame 0 and captures every tracked
+starting value before writing. Speed is positive and finite, default 1. Policies
+are `"retain"` (default) or `"restore"`. Restore writes the captured starting
+values.
 
 `advance(dtSeconds)`, `pause()`, `resume()`, `seek(frame)`, `cancel(policy?)`;
 read `frame` and `state` (`idle`, `playing`, `paused`, `completed`, `cancelled`).
-An active/paused player rejects a second play. Cancel can restore a completed
-play; cancelling an idle/already-cancelled instance has no effect outside binding
-callbacks. During restoration, cancel stops further writes even if already
-cancelled, without restarting restoration under either policy. Pause stops
-further writes and leaves the player paused. Seeking a
-completed/cancelled instance makes it paused. Seek does not dispatch events.
+An active or paused player rejects a second play; cancel first. Cancel can
+restore a completed play. Cancelling an idle or cancelled player does nothing
+outside binding callbacks. During restoration, cancel stops further writes
+without restarting restoration under either policy. Pause stops further writes
+and leaves the player paused. Seeking a completed or cancelled player leaves it
+paused. Seek dispatches no events.
 
-Events fire at play's frame zero, then at every crossed marker. All properties
-are applied at the marker's exact frame before its callback. Same-frame markers
-follow document order. Loop end markers precede the next frame-zero markers;
-large advances process every crossed loop. Pause/cancel/seek during any binding
-callback ends the current operation before further writes or events, discarding
-unused advancement time. Resume continues remaining
+Events fire at play's frame 0, then at every crossed marker. All properties are
+applied at the marker's exact frame before its callback. Same-frame markers
+follow document order. Markers at the loop end precede the next pass's frame-0
+markers, and a large advance processes every crossed loop. Pause, cancel or seek
+from any binding callback ends the current operation before further writes or
+events and discards the unused advancement time. Resume continues the remaining
 same-frame markers. Events are synchronous; pause explicitly for dialogue.
 
 Binding callbacks run through `ErrorBoundary`. A throw ends the operation;
-remaining writes/events do not run. A dead required target throws before the
-next pose. There is no rollback of callbacks already run. Playback assumes
+remaining writes and events do not run, and earlier callbacks are not rolled
+back. A dead required target throws before the next pose. Playback assumes
 exclusive use of tracked properties: the game must suspend conflicting writes.
-No global ownership registry, blending, reverse playback or resumable playback
-snapshot is provided. Store the asset or its ID in controlled save state.
+There is no ownership registry, blending, reverse playback or resumable playback
+snapshot. Store the clip or its ID in controlled save state.
 
-`transformSequenceTarget(entity, placementOffset?)` exposes world `position`,
-local `rotation` in radians and local `scale`. The placement offset is a fixed
-world-pixel point relative to the origin, not rotated/scaled with the entity.
-With related entity targets, local transforms settle before world positions,
-and ancestor world positions precede children regardless of track order.
-Restore uses the same hierarchy ordering.
-`visualSequenceTarget(visual)` exposes `opacity`, `visible`, `tint` through normal
-renderer setters. Helpers expire when their entity/component is removed.
-`combineSequenceTargets(...targets)` rejects duplicate property/event names.
-Component teardown cancels with retain, without writing other dying entities.
+## Entity and renderer targets
 
-## Core sampling helpers
+- `transformSequenceTarget(entity, placementOffset?)` provides
+  `SEQUENCE_TRANSFORM_PROPERTIES`: world `position`, local `rotation` in radians
+  and local `scale`. The placement offset is a fixed world-pixel point relative
+  to the origin; it does not rotate or scale with the entity. With related
+  entity targets, local transforms settle before world positions, and ancestor
+  positions are written before children regardless of track order. Restore uses
+  the same order.
+- `visualSequenceTarget(visual)` provides `SEQUENCE_VISUAL_PROPERTIES`:
+  `opacity`, `visible` and `tint`, through the component's setters. Opacity is
+  clamped to `0..1`, so an overshooting curve holds at the limit.
+- Both expire when their entity or component is removed.
+- `combineSequenceTargets(...targets)` merges targets and throws on a duplicate
+  property or event name.
+- `SequenceComponent` teardown cancels with retain, without writing to other
+  dying entities.
 
-`sampleKeyframes<T>(keys, time, defaultEasing?)` from `@yagejs/core` samples core
-`Keyframe<T>` values without executing key events. Supply nonempty keys ordered
-by time; one key is constant; endpoints hold; default easing is linear. Time and
-key times use the same unit. This read-only helper assumes valid finite inputs;
-use the sequence parser for unknown documents.
-
-`durationReached(elapsed, duration)` from core compares elapsed time against a
-positive duration with the engine's relative tolerance of one part in a billion.
-Use consistent time units. Both inputs must be finite; other query results are
-undefined. This avoids missing an endpoint due to accumulated floating-point
-rounding.
+A contract made of exactly `SEQUENCE_TRANSFORM_PROPERTIES` and
+`SEQUENCE_VISUAL_PROPERTIES`, the editor's default for a new actor, is satisfied
+by `combineSequenceTargets(transformSequenceTarget(e), visualSequenceTarget(v))`.

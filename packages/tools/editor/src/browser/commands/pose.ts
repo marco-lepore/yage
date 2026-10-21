@@ -1,28 +1,17 @@
-import { sampledDocument } from "../store/sequence.js";
 import {
   parentFrame,
   parentWorld,
   toWorld,
   toLocal,
   placementWorld,
-  WORLD_ORIGIN,
-  rotate,
-} from "../../shared/document/pose.js";
-export {
-  parentFrame,
-  parentWorld,
-  toWorld,
-  toLocal,
-  placementWorld,
-  pointToWorld,
   WORLD_ORIGIN,
   rotate,
 } from "../../shared/document/pose.js";
 import type { ParentFrame } from "../../shared/document/pose.js";
-export type { ParentFrame } from "../../shared/document/pose.js";
 import type { EditorDocument } from "../../shared/document/index.js";
 import type { PoseEdit } from "../../shared/commands/index.js";
 import {
+  sampledDocument,
   snappedAngle,
   snappedPoint,
   type EditGesture,

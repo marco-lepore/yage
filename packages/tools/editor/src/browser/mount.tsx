@@ -107,7 +107,7 @@ export async function mountEditor(
       listAssets={() => api.listAssets()}
       tiled={tiled}
       levelDirectories={bootstrap.levelDirectories}
-      sequenceDirectories={bootstrap.sequenceDirectories ?? []}
+      sequenceDirectories={bootstrap.sequenceDirectories}
       layerChoices={() => layers.choicesFor(store.getState().file?.layerSet)}
       layerSorts={(layer) =>
         layers.sorted(store.getState().file?.layerSet, layer)

@@ -44,7 +44,8 @@ export interface BootstrapResponse {
    * from it, the path a create asks for is matched against the globs.
    */
   readonly levelDirectories: readonly string[];
-  readonly sequenceDirectories?: readonly string[];
+  /** The same, for a new sequence workspace. */
+  readonly sequenceDirectories: readonly string[];
 }
 
 /**

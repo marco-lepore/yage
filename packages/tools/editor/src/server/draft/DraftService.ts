@@ -1,6 +1,6 @@
-import type { EditorDocument } from "../../shared/document/index.js";
-import { readEditorDocument as readLevel } from "../../shared/document/index.js";
 import type { StructuralError } from "@yagejs/level/document";
+import { readEditorDocument } from "../../shared/document/index.js";
+import type { EditorDocument } from "../../shared/document/index.js";
 import {
   CommandPreconditionError,
   reduceCommand,
@@ -314,7 +314,7 @@ export class DraftService {
       throw error;
     }
 
-    const structural = readLevel(reduced.document);
+    const structural = readEditorDocument(reduced.document);
     if (!structural.ok) {
       return {
         rejection: this.reject(

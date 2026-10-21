@@ -61,8 +61,14 @@ export interface PlacementMove {
   readonly to: MovePlacementState;
 }
 
+/** A sequence workspace's clip and its slot-to-placement bindings. */
+export interface SequenceEditState {
+  readonly sequence: SequenceDocument;
+  readonly bindings: Readonly<Record<string, string>>;
+}
+
 /**
- * A serializable edit to a level document.
+ * A serializable edit to a level document or a sequence workspace.
  *
  * A command carries stable ids, plain values, and the preconditions needed to
  * reject an edit that can no longer apply — never a closure, an entity, or a
@@ -70,15 +76,13 @@ export interface PlacementMove {
  * authoritatively, both through {@link reduceCommand}, so one edit cannot mean
  * two things.
  *
- * Every kind is plural because {@link ReduceResult.inverse} is one command:
- * removing a placement removes its authored subtree, so the inverse of one
- * removal restores several placements, and a drag of a multi-selection is one
- * undo step however many placements it reparents.
+ * Every placement kind is plural because {@link ReduceResult.inverse} is one
+ * command: removing a placement removes its authored subtree, so the inverse
+ * of one removal restores several placements, and a drag of a multi-selection
+ * is one undo step however many placements it reparents. A `transaction`
+ * applies several commands as one undo step; `set-sequence` replaces the clip
+ * and its bindings, checked against the state it was made from.
  */
-export interface SequenceEditState {
-  readonly sequence: SequenceDocument;
-  readonly bindings: Readonly<Record<string, string>>;
-}
 export type DocumentCommand =
   | {
       readonly kind: "transaction";

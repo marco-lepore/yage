@@ -1,10 +1,3 @@
-import {
-  formatEditorDocument as formatLevel,
-  readEditorDocument as readLevel,
-  emptySequenceWorkspace,
-} from "../../shared/document/index.js";
-import type { EditorStructuralResult } from "../../shared/document/index.js";
-import type { EditorDocument } from "../../shared/document/index.js";
 import { createHash } from "node:crypto";
 import {
   link,
@@ -20,7 +13,15 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import picomatch from "picomatch";
 import { emptyLevelDocument } from "@yagejs/level/document";
-
+import {
+  emptySequenceWorkspace,
+  formatEditorDocument,
+  readEditorDocument,
+} from "../../shared/document/index.js";
+import type {
+  EditorDocument,
+  EditorStructuralResult,
+} from "../../shared/document/index.js";
 import type {
   AssetListing,
   LevelSummary,
@@ -367,7 +368,7 @@ export async function createLevelFileService(
     absolute: string,
     document: EditorDocument,
   ): Promise<CreateLevelResult> {
-    const canonical = formatLevel(document);
+    const canonical = formatEditorDocument(document);
     const temporary = temporaryPath(absolute);
     try {
       await mkdir(dirname(absolute), { recursive: true });
@@ -537,7 +538,7 @@ export async function createLevelFileService(
       return {
         ok: true,
         text,
-        structural: readLevel(text),
+        structural: readEditorDocument(text),
         diskRevision: hashBytes(bytes),
       };
     },
@@ -557,7 +558,7 @@ export async function createLevelFileService(
         return { ok: false, reason: "stale-disk" };
       }
 
-      const canonical = formatLevel(document);
+      const canonical = formatEditorDocument(document);
       const revision = hashBytes(Buffer.from(canonical, "utf8"));
       // A temporary sibling and a rename, so a reader never sees half a file
       // and a failed write leaves the old one exactly as it was. The rename
@@ -574,7 +575,7 @@ export async function createLevelFileService(
     },
 
     hashCanonical(document) {
-      return hashBytes(Buffer.from(formatLevel(document), "utf8"));
+      return hashBytes(Buffer.from(formatEditorDocument(document), "utf8"));
     },
   };
 

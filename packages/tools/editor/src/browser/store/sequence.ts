@@ -11,7 +11,7 @@ export function sequenceSamples(state: EditorState): readonly SequenceSample[] {
   return new SequenceClip(view.draft ?? doc.sequence).sample(
     Math.min(view.frame, doc.sequence.duration),
     {
-      frame: { x: 0, y: 0, width: view.width, height: view.height },
+      rect: { x: 0, y: 0, width: view.width, height: view.height },
       fit: view.fit,
     },
   );

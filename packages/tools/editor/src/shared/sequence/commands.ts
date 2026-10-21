@@ -17,7 +17,7 @@ export type SequenceCommand =
   | {
       readonly kind: "set-settings";
       readonly settings: Partial<
-        Pick<SequenceDocument, "name" | "fps" | "duration" | "frame">
+        Pick<SequenceDocument, "name" | "fps" | "duration" | "size">
       >;
     }
   | {
@@ -44,7 +44,7 @@ function upsert<T extends { readonly id: string }>(
     ? items.map((item) => (item.id === value.id ? value : item))
     : [...items, value];
 }
-/** The only document mutation path. Validates the whole result before publishing. */
+/** Apply one edit to a clip. Validates the whole result before returning it. */
 export function reduceSequenceCommand(
   document: SequenceDocument,
   command: SequenceCommand,

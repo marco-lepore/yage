@@ -42,9 +42,13 @@ export interface EditorConfig {
    * Globs for level files, relative to the Vite root. A bare string is a glob
    * whose levels declare no layers, which leaves every placement on the
    * `default` layer — what a level could say before layers were authorable.
+   * At least one of `levels` and `sequences` lists a pattern.
    */
-  readonly levels: readonly (string | EditorLevelGlob)[];
-  /** Independent sequence workspace files, with optional preview layers. */
+  readonly levels?: readonly (string | EditorLevelGlob)[];
+  /**
+   * Globs for sequence workspace files (`*.yage-sequence-workspace.json`),
+   * in the same form as `levels`. A layers module applies to the preview.
+   */
   readonly sequences?: readonly (string | EditorLevelGlob)[];
   /**
    * Globs for the files the asset picker offers and the preview watches for

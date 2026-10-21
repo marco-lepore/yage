@@ -28,7 +28,10 @@ export interface ResolvedEditorConfig {
   /** The project's package name, or the root directory's name. */
   readonly projectId: string;
   readonly modules: ResolvedEditorModules;
-  /** Level globs, relative to the root, in the order the config listed them. */
+  /**
+   * Level and sequence workspace globs, relative to the root: the `levels`
+   * entries, then the `sequences` entries, each in the order listed.
+   */
   readonly levels: readonly ResolvedLevelGlob[];
   /** Asset globs, relative to the root. Empty when the project named none. */
   readonly assets: readonly string[];

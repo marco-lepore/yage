@@ -21,7 +21,10 @@ export type EditorStructuralResult =
   | { readonly ok: true; readonly document: EditorDocument }
   | { readonly ok: false; readonly errors: readonly StructuralError[] };
 
-/** Only preview preparation receives this projection; saves retain the workspace. */
+/**
+ * The workspace's placements as a level document, for previewing and
+ * validating them. Saving writes the whole workspace.
+ */
 export function previewLevel(document: EditorDocument): LevelDocument {
   if (document.format === "yage-level") return document;
   const placements = { ...document };
@@ -134,7 +137,7 @@ export function emptySequenceWorkspace(id: string): SequenceWorkspaceDocument {
       name: id,
       fps: 60,
       duration: 180,
-      frame: { width: 960, height: 540 },
+      size: { width: 960, height: 540 },
       targets: {},
       tracks: [],
       events: [],

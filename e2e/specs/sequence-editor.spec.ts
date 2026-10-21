@@ -1,9 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
-import type {} from "@yagejs/core";
 interface Probe {
-  width: number;
-  height: number;
   x: number;
   y: number;
   opacity: number;
@@ -108,8 +105,7 @@ test("two declared entities sample easing and both mappings without changing act
   [a, b] = await probes(page);
   expect(a!.x).toBeCloseTo(110);
   expect(b!.x).toBeCloseTo(220);
-  expect([a!.width, a!.height, a!.scaleX, a!.scaleY]).toEqual([48, 68, 1, 1]);
-  expect([b!.width, b!.height, b!.scaleX, b!.scaleY]).toEqual([72, 48, 1, 1]);
+  expect([a!.scaleX, a!.scaleY, b!.scaleX, b!.scaleY]).toEqual([1, 1, 1, 1]);
 });
 test("scrubbing and key retiming update before release and commit one undo step", async ({
   page,
@@ -405,8 +401,14 @@ test("the same saved workspace plays on runtime targets with typed event consequ
   await page.goto("/sequence.html?test");
   await page.waitForFunction(() => window.__yage__?.inspector?.time.isFrozen());
   await page.getByRole("button", { name: "Replay", exact: true }).click();
+  // The 4 s clip reaches its ready markers after 4 s of playback. Each of the
+  // two greetings holds playback for 0.75 s, so at 4 s they are still ahead.
   await step(page, 240);
-  const [a, b] = await probes(page);
+  let [a, b] = await probes(page);
+  expect(a!.events.map((e) => e.name)).toEqual(["hello"]);
+  expect(b!.events.map((e) => e.name)).toEqual(["hello"]);
+  await step(page, 120);
+  [a, b] = await probes(page);
   expect(a!.events.map((e) => e.name)).toEqual(["hello", "ready"]);
   expect(b!.events.map((e) => e.name)).toEqual(["hello", "ready"]);
   expect(a!.events[0]!.x).toBeCloseTo(348.75);
@@ -448,8 +450,31 @@ test("the sequence authored from a blank workspace loads into the game", async (
   expect(a!.rotation).toBeCloseTo(Math.PI / 4);
   expect(b!.x).toBeCloseTo(360);
   expect(b!.rotation).toBeCloseTo(-Math.PI / 6);
-  expect([a!.width, a!.height, a!.scaleX]).toEqual([48, 68, 1]);
-  expect([b!.width, b!.height, b!.scaleX]).toEqual([72, 48, 1.4]);
+  expect([a!.scaleX, b!.scaleX]).toEqual([1, 1.4]);
+});
+
+test("a clip naming a slot the game lacks is refused while the current clip plays on", async ({
+  page,
+}) => {
+  await page.goto("/sequence.html?test");
+  await page.waitForFunction(() => window.__yage__?.inspector?.time.isFrozen());
+  const workspace = await readFile(
+    new URL(
+      "../../examples/src/sequence/entrance.yage-sequence-workspace.json",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  await page.getByLabel("Play saved sequence", { exact: true }).setInputFiles({
+    name: "hero.yage-sequence-workspace.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(workspace.replaceAll('"actorB"', '"hero"')),
+  });
+  await expect(page.getByRole("alert")).toContainText("missing target hero");
+  // The entrance keeps playing: Aster greets 1.5 s in.
+  await step(page, 120);
+  const [a] = await probes(page);
+  expect(a!.events.map((event) => event.name)).toEqual(["hello"]);
 });
 
 test("coincident event flags can each be selected and dragged", async ({

@@ -1,6 +1,9 @@
 import type { SequencePropertyBinding } from "./SequencePlayer.js";
 
-/** Internal accessor metadata; no registry or hierarchy is stored by the player. */
+/**
+ * Key of an optional method on a property binding that returns its write
+ * order. The player writes lower orders first; a binding without one is 0.
+ */
 export const sequenceWriteOrder = Symbol("sequence write order");
 export interface OrderedSequenceProperty extends SequencePropertyBinding {
   readonly [sequenceWriteOrder]?: () => number;

@@ -4,6 +4,5 @@ export default defineEditorConfig({
     project: "./src/sequence/editorProject.ts",
     harness: "./src/sequence/editorHarness.ts",
   },
-  levels: ["src/sequence/preview-levels/*.yage-level.json"],
   sequences: ["src/sequence/*.yage-sequence-workspace.json"],
 });

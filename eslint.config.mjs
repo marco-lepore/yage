@@ -54,6 +54,13 @@ const NO_RENDER = {
   group: ["pixi.js", "react", "react-dom"],
   message: "Server code never renders.",
 };
+// The sequence addon's root and renderer entries import the engine; its
+// document entry parses and validates clips without it.
+const SEQUENCE_DOCUMENT_ONLY = {
+  regex: "^@yagejs-addons/sequence(?:$|/(?!document$))",
+  allowTypeImports: true,
+  message: "Outside the browser, import @yagejs-addons/sequence/document.",
+};
 // Every engine package by name. @yagejs/level is deliberately absent: a group
 // pattern matches the specifier and everything under it, so naming it would
 // also restrict @yagejs/level/document, which block E allows.
@@ -315,7 +322,7 @@ export default tseslint.config(
                 "The engine draws inside the viewport canvas; components never touch it.",
             },
             {
-              regex: "^@yagejs/level(?:$|/(?!document$))",
+              group: ["@yagejs/level", "@yagejs/level/*"],
               allowTypeImports: true,
               message:
                 "Components name level types; the coordinators do the level work.",
@@ -385,12 +392,7 @@ export default tseslint.config(
         "error",
         {
           patterns: [
-            {
-              regex: "^@yagejs-addons/sequence(?:$|/(?!document$))",
-              allowTypeImports: true,
-              message:
-                "Use the pure sequence/document entry outside the browser.",
-            },
+            SEQUENCE_DOCUMENT_ONLY,
             NO_RENDER,
             NO_BROWSER,
             {
@@ -436,12 +438,7 @@ export default tseslint.config(
             },
           ],
           patterns: [
-            {
-              regex: "^@yagejs-addons/sequence(?:$|/(?!document$))",
-              allowTypeImports: true,
-              message:
-                "Use the pure sequence/document entry outside the browser.",
-            },
+            SEQUENCE_DOCUMENT_ONLY,
             NO_RENDER,
             NO_BROWSER,
             {
@@ -464,12 +461,7 @@ export default tseslint.config(
         "error",
         {
           patterns: [
-            {
-              regex: "^@yagejs-addons/sequence(?:$|/(?!document$))",
-              allowTypeImports: true,
-              message:
-                "Use the pure sequence/document entry outside the browser.",
-            },
+            SEQUENCE_DOCUMENT_ONLY,
             {
               group: [
                 "**/browser",
@@ -488,13 +480,13 @@ export default tseslint.config(
             {
               group: ["@yagejs/*", "!@yagejs/level", "!@yagejs/level/document"],
               message:
-                "Shared code may depend only on @yagejs/level, and only on its types.",
+                "Shared code may depend only on @yagejs/level: its types, and the document entry's codecs.",
             },
             {
               regex: "^@yagejs/level(?:$|/(?!document$))",
               allowTypeImports: true,
               message:
-                "Type-only imports from @yagejs/level; the reducer must not evaluate engine code.",
+                "Type-only imports from the @yagejs/level barrel; the reducer must not evaluate engine code.",
             },
           ],
         },

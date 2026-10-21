@@ -2,13 +2,25 @@ export interface Point {
   readonly x: number;
   readonly y: number;
 }
-export interface SequenceFrame extends Point {
+/** A destination rectangle in pixels. */
+export interface SequenceRect extends Point {
   readonly width: number;
   readonly height: number;
 }
 export type SequenceValue = number | boolean | string | Point;
+/** Every kind a contract property or payload field can declare. */
+export const SEQUENCE_PROPERTY_KINDS = [
+  "number",
+  "vector",
+  "position",
+  "color",
+  "boolean",
+  "enum",
+] as const;
 export type SequenceProperty =
-  | { readonly kind: "number" | "vector" | "position" | "color" | "boolean" }
+  | {
+      readonly kind: Exclude<(typeof SEQUENCE_PROPERTY_KINDS)[number], "enum">;
+    }
   | { readonly kind: "enum"; readonly values: readonly string[] };
 export interface SequenceContract {
   readonly properties: Readonly<Record<string, SequenceProperty>>;
@@ -16,13 +28,17 @@ export interface SequenceContract {
     Record<string, Readonly<Record<string, SequenceProperty>>>
   >;
 }
+/** Every named curve. A curve can also be a cubic Bézier. */
+export const SEQUENCE_CURVE_NAMES = [
+  "linear",
+  "hold",
+  "easeInQuad",
+  "easeOutQuad",
+  "easeInOutCubic",
+  "easeOutBack",
+] as const;
 export type SequenceCurve =
-  | "linear"
-  | "hold"
-  | "easeInQuad"
-  | "easeOutQuad"
-  | "easeInOutCubic"
-  | "easeOutBack"
+  | (typeof SEQUENCE_CURVE_NAMES)[number]
   | { readonly bezier: readonly [number, number, number, number] };
 export interface SequenceKey {
   readonly id: string;
@@ -53,7 +69,8 @@ export interface SequenceDocument {
   readonly name: string;
   readonly fps: number;
   readonly duration: number;
-  readonly frame: { readonly width: number; readonly height: number };
+  /** The authored rectangle, in pixels. Positions map from it to the destination rectangle. */
+  readonly size: { readonly width: number; readonly height: number };
   readonly targets: Readonly<Record<string, SequenceContract>>;
   readonly tracks: readonly SequenceTrack[];
   readonly events: readonly SequenceMarker[];
@@ -64,6 +81,7 @@ export interface SequenceSample {
   readonly value: SequenceValue;
 }
 export interface SequenceSampleOptions {
-  readonly frame?: SequenceFrame;
+  /** Destination rectangle. Defaults to the document's `size` at 0,0. */
+  readonly rect?: SequenceRect;
   readonly fit?: "stretch" | "contain";
 }

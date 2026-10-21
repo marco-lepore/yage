@@ -1,12 +1,6 @@
-import { ErrorBoundaryKey } from "@yagejs/core";
-import { VisualComponent } from "@yagejs/renderer";
-import { sequenceSamples } from "../store/sequence.js";
-import { SequencePreview } from "./SequencePreview.js";
-import { sampledDocument } from "../store/sequence.js";
-import { previewLevel } from "../../shared/document/index.js";
-import type { EditorDocument } from "../../shared/document/index.js";
 import {
   AssetManagerKey,
+  ErrorBoundaryKey,
   InspectorKey,
   installInspector,
   Transform,
@@ -28,9 +22,15 @@ import {
 } from "@yagejs/level";
 import type { LevelPlacement } from "@yagejs/level/document";
 import { Graphics } from "pixi.js";
-import { RendererKey, SceneRenderTreeProviderKey } from "@yagejs/renderer";
+import {
+  RendererKey,
+  SceneRenderTreeProviderKey,
+  VisualComponent,
+} from "@yagejs/renderer";
 import type { LayerDef, RendererPlugin } from "@yagejs/renderer";
 import type { PoseEdit } from "../../shared/commands/index.js";
+import { previewLevel } from "../../shared/document/index.js";
+import type { EditorDocument } from "../../shared/document/index.js";
 import type { EditorDiagnostic } from "../../shared/diagnostics/index.js";
 import type {
   EditorPoint,
@@ -44,12 +44,18 @@ import type {
   ParamDrag,
   PivotMode,
 } from "../store/index.js";
-import { posesOf, viewAfterResize } from "../store/index.js";
+import {
+  posesOf,
+  sampledDocument,
+  sequenceSamples,
+  viewAfterResize,
+} from "../store/index.js";
+import { SequencePreview } from "./SequencePreview.js";
 import { PreviewAssetLease, placementsMissingAssets } from "./assets.js";
+import { parentWorld } from "../../shared/document/pose.js";
 import {
   draggedValue,
   hiddenClosure,
-  parentWorld,
   pointFields,
   pointHandles,
   referenceFieldNames,

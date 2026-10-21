@@ -1,8 +1,8 @@
 ---
-"@yagejs/core": minor
+"@yagejs/core": patch
 ---
 
-Add authored sequence playback and editing.
+Add authored keyframe sequences and the editor's Sequence mode.
 
-- Expose `sampleKeyframes` for pure curve sampling without dispatching key events, and share it with existing keyframe processes.
-- Expose `durationReached` so addons can use the engine's floating-point tolerance at playback boundaries.
+- Export `sampleKeyframes(keys, time, easing?)`, which reads a keyframe track at one time without running a `Process` or calling keyframe events. Keyframe tracks sample through the same function.
+- A keyframe track whose `duration` runs past its last keyframe holds that keyframe's value until it completes, the same value it sets on completion.

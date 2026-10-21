@@ -12,7 +12,7 @@ function document(curve: SequenceCurve = "linear"): SequenceDocument {
     name: "entrance",
     fps: 30,
     duration: 60,
-    frame: { width: 800, height: 600 },
+    size: { width: 800, height: 600 },
     targets: {
       actor: {
         properties: {
@@ -114,7 +114,7 @@ describe("sequence contract", () => {
   it("maps positions without applying scale and samples arbitrary frames independently", () => {
     const clip = new SequenceClip(document());
     expect(
-      clip.sample(30, { frame: { x: 10, y: 20, width: 1600, height: 900 } }),
+      clip.sample(30, { rect: { x: 10, y: 20, width: 1600, height: 900 } }),
     ).toEqual([
       { target: "actor", property: "position", value: { x: 810, y: 470 } },
       { target: "actor", property: "rotation", value: 1 },
@@ -123,7 +123,7 @@ describe("sequence contract", () => {
     expect(clip.sample(0)[0]!.value).toEqual({ x: 0, y: 300 });
     expect(
       clip.sample(30, {
-        frame: { x: 0, y: 0, width: 1600, height: 900 },
+        rect: { x: 0, y: 0, width: 1600, height: 900 },
         fit: "contain",
       })[0]!.value,
     ).toEqual({ x: 800, y: 450 });
@@ -144,7 +144,7 @@ describe("sequence contract", () => {
     };
     const clip = new SequenceClip({ ...d, tracks: [track] });
     expect(
-      clip.sample(30, { frame: { x: 10, y: 20, width: 1600, height: 900 } })[0]!
+      clip.sample(30, { rect: { x: 10, y: 20, width: 1600, height: 900 } })[0]!
         .value,
     ).toEqual({ x: 1586, y: 880 });
   });
@@ -220,7 +220,7 @@ describe("sequence contract", () => {
     { duration: Infinity },
     { version: 2 },
     { wat: 1 },
-    { frame: { width: NaN, height: 2 } },
+    { size: { width: NaN, height: 2 } },
     {
       events: [
         { id: "x", target: "actor", event: "missing", frame: 2, payload: {} },
@@ -259,6 +259,27 @@ describe("sequence contract", () => {
           events: [{ ...d.events[0], payload: { label: "typo" } }],
         }),
     ).toThrow("enum");
+  });
+  it("names the event or key whose frame is out of range", () => {
+    const d = document();
+    const event = d.events[0]!;
+    const key = d.tracks[0]!.keys.at(-1)!;
+    expect(
+      () => new SequenceClip({ ...d, events: [{ ...event, frame: 999 }] }),
+    ).toThrow(`Sequence: ${event.id}.frame: must be in 0..${d.duration}`);
+    expect(
+      () =>
+        new SequenceClip({
+          ...d,
+          tracks: [
+            {
+              ...d.tracks[0]!,
+              keys: [...d.tracks[0]!.keys.slice(0, -1), { ...key, frame: 999 }],
+            },
+            ...d.tracks.slice(1),
+          ],
+        }),
+    ).toThrow(`Sequence: ${key.id}.frame: must be in 0..${d.duration}`);
   });
 });
 describe("sequence playback", () => {
@@ -392,9 +413,9 @@ describe("sequence playback", () => {
   });
   it("captures the destination rectangle and rejects invalid advancement", () => {
     const s = setup();
-    const frame = { x: 0, y: 0, width: 1600, height: 900 };
-    s.player.play(new SequenceClip(document()), { targets: s.targets, frame });
-    frame.width = 1;
+    const rect = { x: 0, y: 0, width: 1600, height: 900 };
+    s.player.play(new SequenceClip(document()), { targets: s.targets, rect });
+    rect.width = 1;
     s.player.advance(1);
     expect(s.state.position.x).toBe(800);
     expect(() => s.player.advance(NaN)).toThrow("finite");
@@ -425,7 +446,7 @@ describe("position inverse mapping", () => {
         });
         const options = {
           fit,
-          frame: { x: 23, y: -17, width: 320, height: 700 },
+          rect: { x: 23, y: -17, width: 320, height: 700 },
         };
         const value = clip.sample(30, options)[0]!.value as {
           x: number;

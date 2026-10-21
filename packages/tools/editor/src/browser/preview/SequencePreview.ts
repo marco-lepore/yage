@@ -6,6 +6,7 @@ import type {
   SequenceValue,
   SequenceMarker,
 } from "@yagejs-addons/sequence/document";
+import { defaultSequenceValue } from "../../shared/sequence/defaults.js";
 import type { EditorStore } from "../store/index.js";
 
 /** The preview coordinator's marker traversal; callbacks never reach game code. */
@@ -45,15 +46,7 @@ export class SequencePreview {
           {
             properties: Object.fromEntries(
               Object.entries(contract.properties).map(([name, definition]) => {
-                let value: SequenceValue =
-                  definition.kind === "boolean"
-                    ? true
-                    : definition.kind === "enum"
-                      ? definition.values[0]!
-                      : definition.kind === "vector" ||
-                          definition.kind === "position"
-                        ? { x: 0, y: 0 }
-                        : 0;
+                let value = defaultSequenceValue(definition);
                 return [
                   name,
                   {
@@ -89,7 +82,7 @@ export class SequencePreview {
         targets,
         loop: view.loop,
         speed: view.speed,
-        frame: { x: 0, y: 0, width: view.width, height: view.height },
+        rect: { x: 0, y: 0, width: view.width, height: view.height },
         fit: view.fit,
       });
       if (view.frame > 0 && view.frame < doc.sequence.duration)

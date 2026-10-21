@@ -5,6 +5,7 @@ import {
 import { Transform } from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import type { Point } from "./core/types.js";
+import { SEQUENCE_TRANSFORM_PROPERTIES } from "./core/properties.js";
 import { sequenceProperty } from "./core/SequencePlayer.js";
 import type { SequenceTarget } from "./core/SequencePlayer.js";
 
@@ -20,7 +21,7 @@ export function transformSequenceTarget(
     throw new Error("transformSequenceTarget: placement offset must be finite");
   const position: OrderedSequenceProperty = {
     ...sequenceProperty(
-      { kind: "position" },
+      SEQUENCE_TRANSFORM_PROPERTIES.position,
       () => ({
         x: transform.worldPosition.x + offset.x,
         y: transform.worldPosition.y + offset.y,
@@ -39,14 +40,14 @@ export function transformSequenceTarget(
     properties: {
       position,
       rotation: sequenceProperty(
-        { kind: "number" },
+        SEQUENCE_TRANSFORM_PROPERTIES.rotation,
         () => transform.rotation,
         (value) => {
           transform.rotation = value;
         },
       ),
       scale: sequenceProperty(
-        { kind: "vector" },
+        SEQUENCE_TRANSFORM_PROPERTIES.scale,
         () => ({ ...transform.scale }),
         (value) => transform.setScale(value.x, value.y),
       ),

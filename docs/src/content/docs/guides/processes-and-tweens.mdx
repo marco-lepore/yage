@@ -753,7 +753,7 @@ animator as above.
 
 ### Lower-Level Primitives
 
-Under the hood, `KeyframeAnimator` is built on two primitives you can use
+Under the hood, `KeyframeAnimator` is built on primitives you can use
 directly when you don't need the named-track machinery:
 
 ```typescript yage-context="entity"
@@ -763,6 +763,7 @@ import {
   createKeyframeTrack,
   easeOutQuad,
   interpolate,
+  sampleKeyframes,
 } from "@yagejs/core";
 
 const pc = entity.get(ProcessComponent);
@@ -783,7 +784,20 @@ pc.run(
 
 // Raw interpolation for bespoke driver code
 const blended = interpolate(0, 100, 0.5, easeOutQuad); // ≈ 75
+
+// The value a track has at a time, without running it or firing key events
+const height = sampleKeyframes(
+  [
+    { time: 0, data: 0, easing: easeOutQuad },
+    { time: 1, data: 40 },
+  ],
+  0.5,
+); // 30
 ```
+
+`sampleKeyframes` reads a curve at one point in time, such as a scrubbed
+editor cursor or a preview. Its keyframes must be sorted by time, and the
+value holds at the first and last keyframe outside their range.
 
 `Interpolatable` — the type parameter for keyframe `data` and the
 `interpolate` primitive — resolves to `number | Vec2Like`. Both are supported

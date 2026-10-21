@@ -2,7 +2,7 @@
 
 Sequence mode in `@yagejs-tools/editor` lets you animate project entities with
 keyframes and event markers. The preview uses the same entity declarations,
-parameters, assets and transform tools as [level editing](/tooling/level-editor/).
+parameters, assets and transform tools as level editing (`tools/editor.md`).
 A resizable timeline stays below the preview.
 
 ## Open a sequence workspace
@@ -21,8 +21,9 @@ export default defineEditorConfig({
 ```
 
 Start `yage-editor`, choose **Sequence**, then **New**. The sequence has its own
-file; it does not need a gameplay level. A sequence glob can also declare
-`layers`, using the same form as a level glob.
+file and does not need a gameplay level. A project that only edits sequences
+can leave out `levels`. A sequence glob can also declare `layers`, using the
+same form as a level glob.
 
 **Save** writes the accepted draft to the project file. Undo, redo and unsaved
 work survive a browser reload while the editor server runs. Restarting that
@@ -45,6 +46,9 @@ inspector.
 **Runtime slot** names the target your game supplies during playback. It is
 separate from the preview placement ID and the entity type. The **Actor
 contract** lists the properties and event payloads that target must support.
+A new actor's contract declares the six properties the sequence addon's
+transform and visual targets provide: position, rotation, scale, opacity,
+visibility and tint. It declares no events.
 Deleting an actor removes its preview, tracks and markers together; Undo
 restores them. Duplicating an actor also copies its animation with fresh IDs.
 Copy and paste carries placement setup and creates fresh actor tracks.
@@ -81,9 +85,8 @@ containing an initial key cannot be deleted.
 later frames. With timeline focus, Left/Right steps one frame (Shift steps ten);
 Delete removes selected keys or the selected marker.
 
-Use **Add property track** for a declared property without a track. Renderer
-presets include opacity and visibility; contracts can also declare tint and
-other typed values. The preview applies standard transform and renderer channels
+Use **Add property track** for a declared property without a track. A new
+actor starts with tracks for every declared property except tint. The preview applies standard transform and renderer channels
 only with their matching kinds. Custom properties remain available to game
 targets but have no visual effect in the editor. New transform tracks start from
 the current preview pose; boolean and enum tracks start with hold interpolation.
@@ -150,21 +153,25 @@ player.play(new SequenceClip(savedWorkspace.sequence), {
     hero: combineSequenceTargets(
       transformSequenceTarget(actor),
       visualSequenceTarget(actor.get(GraphicsComponent)),
-      { properties: {}, events: { cue: { payload: {}, dispatch: () => {} } } },
     ),
   },
-  frame: { x: 20, y: 20, width: 800, height: 450 },
+  rect: { x: 20, y: 20, width: 800, height: 450 },
 });
 ```
 
 The `hero` name must match the workspace's runtime slot. Supply every declared
-property and event, even those without tracks. Replace the `cue` callback with
-the game's consequence, such as emitting a typed entity event. Transform helpers
-write world position, local rotation and local scale.
+property and event, even those without tracks. The two helpers cover a new
+actor's contract. An event you add to the contract needs a binding built with
+`sequenceEvent`, as shown in `addons/sequence.md`.
+Transform helpers write world position, local rotation and local scale.
 
 The [runtime example](https://examples.yage.dev/sequence.html) plays two actors
 with different position mappings, easing, opacity, rotation and typed events.
-In the repository, run `npm run sequence:edit -w @yagejs/examples` to edit its
+Its game pauses the clip for 0.75 seconds after each greeting. In the
+repository, run `npm run sequence:edit -w @yagejs/examples` to edit its
 workspace. The file picker also includes **Curtain call**, a second sequence
 with proportional and anchored travel, rotation, scale and typed gestures.
-The example can load either saved workspace or a runtime clip JSON file. See the [sequence addon](/addons/sequence/) for playback and binding APIs.
+The example plays a saved workspace or a runtime clip JSON file. It refuses a
+clip that names a runtime slot it has no actor for, or a property or event its
+actors do not provide, and shows the error. See
+`addons/sequence.md` for playback and binding APIs.

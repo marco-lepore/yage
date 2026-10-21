@@ -7,6 +7,7 @@ import {
   easeOutBack,
 } from "@yagejs/core";
 import type { EasingFunction, Keyframe } from "@yagejs/core";
+import { SEQUENCE_CURVE_NAMES } from "./types.js";
 import type {
   Point,
   SequenceCurve,
@@ -18,14 +19,17 @@ import type {
 } from "./types.js";
 import { finite, parseSequence, validateSequenceValue } from "./validate.js";
 
-export const SEQUENCE_EASINGS = {
+/** The easing function of each named curve. */
+export const SEQUENCE_EASINGS: Readonly<
+  Record<(typeof SEQUENCE_CURVE_NAMES)[number], EasingFunction>
+> = Object.freeze({
   linear: easeLinear,
   hold: (t: number) => (t < 1 ? 0 : 1),
   easeInQuad,
   easeOutQuad,
   easeInOutCubic,
   easeOutBack,
-};
+});
 function easing(curve: SequenceCurve): EasingFunction {
   if (typeof curve === "string") return SEQUENCE_EASINGS[curve];
   const [x1, y1, x2, y2] = curve.bezier;
@@ -66,19 +70,19 @@ export class SequenceClip {
     track: Pick<SequenceTrack, "position">,
     options: SequenceSampleOptions,
   ) {
-    const destination = options.frame ?? { x: 0, y: 0, ...this.document.frame };
+    const destination = options.rect ?? { x: 0, y: 0, ...this.document.size };
     for (const key of ["x", "y", "width", "height"] as const)
-      finite(destination[key], `destination.${key}`);
+      finite(destination[key], `rect.${key}`);
     if (destination.width <= 0 || destination.height <= 0)
-      throw new Error("Sequence: destination dimensions must be > 0");
+      throw new Error("Sequence: rect dimensions must be > 0");
     if (
       options.fit !== undefined &&
       options.fit !== "stretch" &&
       options.fit !== "contain"
     )
       throw new Error("Sequence: unknown position fit");
-    const sx = destination.width / this.document.frame.width;
-    const sy = destination.height / this.document.frame.height;
+    const sx = destination.width / this.document.size.width;
+    const sy = destination.height / this.document.size.height;
     const fitX = options.fit === "contain" ? Math.min(sx, sy) : sx;
     const fitY = options.fit === "contain" ? Math.min(sx, sy) : sy;
     if (track.position?.mode === "anchored")
@@ -91,10 +95,10 @@ export class SequenceClip {
     return {
       x:
         destination.x +
-        (destination.width - this.document.frame.width * fitX) / 2,
+        (destination.width - this.document.size.width * fitX) / 2,
       y:
         destination.y +
-        (destination.height - this.document.frame.height * fitY) / 2,
+        (destination.height - this.document.size.height * fitY) / 2,
       width: fitX,
       height: fitY,
     };

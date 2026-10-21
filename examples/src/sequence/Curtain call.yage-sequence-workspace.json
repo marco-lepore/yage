@@ -22,7 +22,6 @@
         "color": "#8be9cd",
         "height": 68,
         "name": "Aster",
-        "placeholder": false,
         "width": 48
       }
     },
@@ -45,7 +44,6 @@
         "color": "#ffcc6e",
         "height": 48,
         "name": "Ember",
-        "placeholder": false,
         "width": 72
       }
     }
@@ -74,11 +72,11 @@
     ],
     "format": "yage-sequence",
     "fps": 60,
-    "frame": {
+    "name": "Curtain call",
+    "size": {
       "height": 540,
       "width": 960
     },
-    "name": "Curtain call",
     "targets": {
       "actorA": {
         "events": {

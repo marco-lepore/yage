@@ -1,12 +1,12 @@
 ---
-"@yagejs-tools/editor": minor
+"@yagejs-tools/editor": patch
 ---
 
-Add authored sequence playback and editing.
+Add authored keyframe sequences and the editor's Sequence mode.
 
-- Add Sequence mode with a persistent preview and resizable keyframe timeline.
-- Use declared project entities and the existing parameter inspector, asset loading and transform tools for actor previews. Replace preview types without losing runtime slots or animation.
-- Save sequence workspaces through the shared draft and undo pipeline. Transform gestures create keys at the cursor; key dragging and scrubbing update the preview continuously.
-- Preview proportional or anchored positions, curves, opacity and event markers. Runtime clips remain independent of editor placements and bind to game entities at play time.
-- Add typed value and contract controls, event payload editing and dragging, track removal, timeline zoom, and runtime clip/workspace file exports. Imports validate first and reject stale file reads.
-- Keep unbound preview placements editable, including one-step undo for gestures that also key animated actors.
+- Sequence mode animates declared project entities in the level editor's preview. It uses the same parameter inspector, asset loading, transform tools, draft saving and undo history as level editing. A resizable keyframe timeline sits under the preview.
+- The `sequences` config field lists globs of sequence workspace files. A config that lists sequences can leave out `levels`.
+- Moving, rotating or scaling an actor, with the transform tools or the transform fields, keys that property at the cursor frame. Scrubbing, and dragging keys or event markers, update the preview continuously. Each release is one undo step.
+- Each actor has a runtime slot and a contract. A new actor's contract declares the six properties the sequence addon's transform and visual targets provide. The contract editor adds typed properties, events and payload fields.
+- The timeline edits typed key values and easing, including cubic Bézier curves with a curve preview. It supports zoom, track removal and moving several keys at once.
+- **Files** imports a runtime clip and exports the runtime clip or the whole workspace. An invalid import leaves the document unchanged.

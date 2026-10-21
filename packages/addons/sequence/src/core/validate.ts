@@ -1,3 +1,4 @@
+import { SEQUENCE_CURVE_NAMES, SEQUENCE_PROPERTY_KINDS } from "./types.js";
 import type {
   SequenceDocument,
   SequenceProperty,
@@ -53,11 +54,7 @@ function point(value: unknown, path: string): void {
 function schema(value: unknown, path: string): SequenceProperty {
   const p = object(value, path);
   fields(p, p.kind === "enum" ? ["kind", "values"] : ["kind"], path);
-  if (
-    !["number", "vector", "position", "color", "boolean", "enum"].includes(
-      String(p.kind),
-    )
-  )
+  if (!(SEQUENCE_PROPERTY_KINDS as readonly unknown[]).includes(p.kind))
     fail(path, "unknown property kind");
   if (p.kind === "enum") {
     const values = list(p.values, path);
@@ -97,18 +94,7 @@ export function validateSequenceValue(
   }
 }
 function curve(value: unknown, path: string): void {
-  if (
-    typeof value === "string" &&
-    [
-      "linear",
-      "hold",
-      "easeInQuad",
-      "easeOutQuad",
-      "easeInOutCubic",
-      "easeOutBack",
-    ].includes(value)
-  )
-    return;
+  if ((SEQUENCE_CURVE_NAMES as readonly unknown[]).includes(value)) return;
   const c = object(value, path);
   fields(c, ["bezier"], path);
   const points = list(c.bezier, path);
@@ -136,7 +122,7 @@ export function parseSequence(input: unknown): SequenceDocument {
       "name",
       "fps",
       "duration",
-      "frame",
+      "size",
       "targets",
       "tracks",
       "events",
@@ -148,10 +134,10 @@ export function parseSequence(input: unknown): SequenceDocument {
   name(d.name, "name");
   positive(d.fps, "fps");
   const duration = positive(d.duration, "duration");
-  const frame = object(d.frame, "frame");
-  fields(frame, ["width", "height"], "frame");
-  positive(frame.width, "frame.width");
-  positive(frame.height, "frame.height");
+  const size = object(d.size, "size");
+  fields(size, ["width", "height"], "size");
+  positive(size.width, "size.width");
+  positive(size.height, "size.height");
   const targets = object(d.targets, "targets");
   const contracts = new Map<
     string,
@@ -183,23 +169,25 @@ export function parseSequence(input: unknown): SequenceDocument {
     contracts.set(id, { properties, events });
   }
   const ids = new Set<string>();
-  const unique = (value: unknown): void => {
-    const id = name(value, "id");
+  const unique = (value: unknown, path: string): void => {
+    const id = name(value, `${path}.id`);
     if (ids.has(id)) fail(id, "duplicate id");
     ids.add(id);
   };
-  const time = (value: unknown): number => {
-    const n = finite(value, "frame");
-    if (n < 0 || n > duration) fail("frame", `must be in 0..${duration}`);
+  const time = (value: unknown, path: string): number => {
+    const n = finite(value, path);
+    if (n < 0 || n > duration) fail(path, `must be in 0..${duration}`);
     return n;
   };
   const properties = new Set<string>();
-  for (const value of list(d.tracks, "tracks")) {
-    const t = object(value, "track");
-    fields(t, ["id", "target", "property", "keys", "position"], "track");
-    unique(t.id);
-    const target = name(t.target, "track.target");
-    const prop = name(t.property, "track.property");
+  list(d.tracks, "tracks").forEach((value, trackIndex) => {
+    const path = `tracks[${trackIndex}]`;
+    const t = object(value, path);
+    fields(t, ["id", "target", "property", "keys", "position"], path);
+    unique(t.id, path);
+    // From here the track's id names it.
+    const target = name(t.target, `${String(t.id)}.target`);
+    const prop = name(t.property, `${String(t.id)}.property`);
     const defs = contracts.get(target)?.properties;
     const def = defs && Object.hasOwn(defs, prop) ? defs[prop] : undefined;
     if (!def) fail(String(t.id), `unknown property ${target}.${prop}`);
@@ -207,28 +195,26 @@ export function parseSequence(input: unknown): SequenceDocument {
     if (properties.has(pair)) fail(String(t.id), "duplicate property track");
     properties.add(pair);
     if (def.kind === "position") {
-      const p = object(t.position, `${String(t.id)}.position`);
-      fields(
-        p,
-        p.mode === "anchored" ? ["mode", "anchor"] : ["mode"],
-        "position",
-      );
+      const mapping = `${String(t.id)}.position`;
+      const p = object(t.position, mapping);
+      fields(p, p.mode === "anchored" ? ["mode", "anchor"] : ["mode"], mapping);
       if (p.mode === "anchored") {
-        point(p.anchor, "anchor");
+        point(p.anchor, `${mapping}.anchor`);
         const a = p.anchor as { x: number; y: number };
         if (a.x < 0 || a.x > 1 || a.y < 0 || a.y > 1)
-          fail("anchor", "must be in 0..1");
-      } else if (p.mode !== "proportional") fail("position", "unknown mode");
+          fail(`${mapping}.anchor`, "must be in 0..1");
+      } else if (p.mode !== "proportional") fail(mapping, "unknown mode");
     } else if (t.position !== undefined)
       fail(String(t.id), "only position tracks have a mapping");
     let previous = -1;
-    const keys = list(t.keys, "keys");
+    const keys = list(t.keys, `${String(t.id)}.keys`);
     if (!keys.length) fail(String(t.id), "requires a frame-zero key");
     keys.forEach((value, i) => {
-      const k = object(value, "key");
-      fields(k, ["id", "frame", "value", "curve"], "key");
-      unique(k.id);
-      const at = time(k.frame);
+      const keyPath = `${String(t.id)}.keys[${i}]`;
+      const k = object(value, keyPath);
+      fields(k, ["id", "frame", "value", "curve"], keyPath);
+      unique(k.id, keyPath);
+      const at = time(k.frame, `${String(k.id)}.frame`);
       if (at <= previous || (i === 0 && at !== 0))
         fail(String(k.id), "keys must start at zero and strictly increase");
       previous = at;
@@ -237,22 +223,23 @@ export function parseSequence(input: unknown): SequenceDocument {
       if ((def.kind === "boolean" || def.kind === "enum") && k.curve !== "hold")
         fail(String(k.id), "discrete properties require hold interpolation");
     });
-  }
-  for (const value of list(d.events, "events")) {
-    const e = object(value, "event");
-    fields(e, ["id", "frame", "target", "event", "payload"], "event");
-    unique(e.id);
-    time(e.frame);
-    const target = name(e.target, "event.target");
-    const event = name(e.event, "event.event");
+  });
+  list(d.events, "events").forEach((value, eventIndex) => {
+    const path = `events[${eventIndex}]`;
+    const e = object(value, path);
+    fields(e, ["id", "frame", "target", "event", "payload"], path);
+    unique(e.id, path);
+    time(e.frame, `${String(e.id)}.frame`);
+    const target = name(e.target, `${String(e.id)}.target`);
+    const event = name(e.event, `${String(e.id)}.event`);
     const defs = contracts.get(target)?.events;
     const def = defs && Object.hasOwn(defs, event) ? defs[event] : undefined;
     if (!def) fail(String(e.id), `unknown event ${target}.${event}`);
-    const payload = object(e.payload, "payload");
-    fields(payload, Object.keys(def), "payload");
+    const payload = object(e.payload, `${String(e.id)}.payload`);
+    fields(payload, Object.keys(def), `${String(e.id)}.payload`);
     for (const [key, s] of Object.entries(def))
       validateSequenceValue(payload[key], s, `${String(e.id)}.${key}`);
-  }
+  });
   const copy = JSON.parse(JSON.stringify(input)) as SequenceDocument;
   freeze(copy);
   return copy;

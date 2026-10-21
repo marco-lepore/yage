@@ -65,7 +65,7 @@ describe("hierarchy-safe sequence writes", () => {
       name: "hierarchy",
       fps: 30,
       duration: 60,
-      frame: { width: 960, height: 540 },
+      size: { width: 960, height: 540 },
       targets: {
         child: { properties, events: {} },
         parent: { properties, events: {} },
