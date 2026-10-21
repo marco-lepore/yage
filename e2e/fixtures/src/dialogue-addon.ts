@@ -25,6 +25,7 @@ import {
   RendererKey,
   CameraEntity,
   GraphicsComponent,
+  NineSliceComponent,
   SplitTextComponent,
   registerTexture,
   type GraphicsContext,
@@ -414,20 +415,33 @@ class DialogueProbe extends Component {
     return this.frameVisible("dlg-bubble");
   }
 
+  /** Whether one of the box's nine-slice frames (one child per style) shows. */
   get texturedVisible(): boolean {
-    return this.frameVisible("dlg-frame-tex");
+    return this.nineSliceChildren("dlg-frame-tex").some(
+      (slice) => slice.visible,
+    );
   }
 
+  /** Whether the bubble's body is a nine-slice child entity. */
   get bubbleTextured(): boolean {
-    return this.frameChildren("dlg-bubble") > 0;
+    return this.nineSliceChildren("dlg-bubble").length > 0;
   }
 
   /** Whether the named chrome entity's Graphics is currently visible. */
   private frameVisible(name: string): boolean {
     return (
-      this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics
-        .visible ?? false
+      this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.visible ?? false
     );
+  }
+
+  /** The nine-slice frames on the named chrome entity's children. */
+  private nineSliceChildren(name: string): NineSliceComponent[] {
+    const entity = this.scene.findEntity(name);
+    if (!entity) return [];
+    return [...entity.children.values()].flatMap((child) => {
+      const slice = child.tryGet(NineSliceComponent);
+      return slice ? [slice] : [];
+    });
   }
 
   /** The named entity's Transform Y (−1 when absent). */
@@ -438,15 +452,6 @@ class DialogueProbe extends Component {
   /** The named entity's Transform X (−1 when absent). */
   private entityX(name: string): number {
     return this.scene.findEntity(name)?.tryGet(Transform)?.position.x ?? -1;
-  }
-
-  /** Child count of the named chrome entity's Graphics (a nine-slice sprite is
-   *  parented here when the bubble body is textured). */
-  private frameChildren(name: string): number {
-    return (
-      this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics.children
-        .length ?? 0
-    );
   }
 }
 

@@ -62,6 +62,11 @@ export type {
   VisualPointerEvent,
   VisualInteractiveOptions,
 } from "./VisualComponent.js";
+export { NineSliceComponent } from "./NineSliceComponent.js";
+export type {
+  NineSliceComponentOptions,
+  NineSliceInsets,
+} from "./NineSliceComponent.js";
 export { SpriteComponent } from "./SpriteComponent.js";
 export type { SpriteComponentOptions } from "./SpriteComponent.js";
 export { GraphicsComponent } from "./GraphicsComponent.js";
@@ -195,7 +200,6 @@ export * from "./transitions/index.js";
 // Asset factories
 export {
   bitmapFont,
-  createNineSlice,
   installBitmapFont,
   measureWrappedText,
   registerTexture,
@@ -213,7 +217,6 @@ export type {
   InstallBitmapFontOptions,
   MeasuredText,
   MeasureTextOptions,
-  NineSliceOptions,
   TextureOptions,
   WebFontBakeOptions,
   WebFontOptions,

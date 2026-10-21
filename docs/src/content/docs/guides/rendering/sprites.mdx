@@ -501,6 +501,37 @@ function attack(
 calculation that automatic one-shots use, and takes the same `startFrame` and
 `speed`.
 
+## Nine-slice frames
+
+`NineSliceComponent` draws a texture stretched to any size while its corners
+keep their size: panels, signs, speech bubbles. `insets` give the border
+widths of the texture in source pixels. The entity's `Transform` places the
+frame, its top-left corner by default (`anchor` moves that point), and
+`setSize` stretches it. It takes the same `visible` / `tint` / `alpha` /
+`blendMode` / `zIndex` / `sortOffset` options as `SpriteComponent`.
+
+```typescript
+import { Entity, Transform } from "@yagejs/core";
+import { NineSliceComponent } from "@yagejs/renderer";
+
+class Signpost extends Entity {
+  setup(params: { x: number; y: number }) {
+    this.add(new Transform({ position: { x: params.x, y: params.y } }));
+    const board = this.add(
+      new NineSliceComponent({
+        texture: "panel", // a loaded or registered texture key
+        insets: { left: 8, top: 8, right: 8, bottom: 8 },
+        width: 160,
+        height: 64,
+      }),
+    );
+    board.setSize(200, 80); // corners stay 8 px; edges and centre stretch
+  }
+}
+```
+
+For a frame inside a UI layout, use `UINineSlice` from `@yagejs/ui`.
+
 ## Asset Factories
 
 YAGE provides helper functions to load and define render assets:

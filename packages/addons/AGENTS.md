@@ -344,13 +344,20 @@ import only pixi-free _values_ such as `InputManagerKey` from `@yagejs/input`.
 
 ### Pixi primitives go through `@yagejs/renderer`
 
-When a presenter needs a pixi display primitive the renderer doesn't expose, add
-it to `@yagejs/renderer`, which owns the pixi abstraction. Do not import
+When a presenter needs a visual the renderer doesn't offer, add a visual
+component to `@yagejs/renderer`, which owns the pixi abstraction. Do not import
 `pixi.js` inside the addon. A direct pixi import works, because pixi is a
 transitive dependency, but it bypasses the engine's abstraction and adds a second
-`pixi.js` peer whose version must be kept in step. `createNineSlice` (plus
-`NineSliceOptions` and a re-exported `NineSliceSprite` type) exists in renderer
-for this reason, so the addon declares no `pixi.js` peer. Don't pull
+`pixi.js` peer whose version must be kept in step. `NineSliceComponent` exists in
+renderer for this reason, so the addon declares no `pixi.js` peer.
+
+Presenters follow the game-code rule for visuals: change a visual through its
+component (`visible`, `alpha`, `tint`, `setText`, `mergeStyle`, `draw`,
+`localBounds`) and its entity's `Transform`, never through the Pixi object
+underneath (`renderObject`, `.graphics`, `.text`, `.sprite`). The component
+re-applies `visible` and `alpha`, and `DisplaySystem` writes position, rotation
+and scale, so a write on the Pixi object is lost. A task that needs the Pixi
+object is a missing renderer API: add it to the renderer. Don't pull
 `@yagejs/ui` for nine-slice either: `grep -rc "@yagejs/ui" packages/addons/dialogue`
 must return 0. The textured variants (`TexturedChrome`, `TexturedBubble`) are
 opt-in, reachable only through the `./presenters` barrel plus the optional

@@ -8,11 +8,10 @@ import { ensureInventoryLayer } from "./ensureLayer.js";
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
 import {
-  createNineSlice,
   GraphicsComponent,
+  NineSliceComponent,
   RendererKey,
   TextComponent,
-  type NineSliceSprite,
 } from "@yagejs/renderer";
 import type { InventoryChromeInfo } from "../core/session.js";
 import type { ChromePresenter } from "../adapter.js";
@@ -41,10 +40,10 @@ export interface InventoryChromeConfig extends FontConfig {
 
 export class InventoryChrome implements ChromePresenter {
   private frame?: { entity: Entity; gfx: GraphicsComponent } | undefined;
-  /** Nine-slice panel frame (only when `cfg.textured` is set): a sprite hosted
-   *  in its own GraphicsComponent, below the divider draws. */
+  /** Nine-slice panel frame (only when `cfg.textured` is set), below the
+   *  divider draws. */
   private frameTex?:
-    | { entity: Entity; host: GraphicsComponent; sprite: NineSliceSprite }
+    | { entity: Entity; transform: Transform; slice: NineSliceComponent }
     | undefined;
   private title?: TextComponent | undefined;
   private counter?: TextComponent | undefined;
@@ -70,21 +69,17 @@ export class InventoryChrome implements ChromePresenter {
     if (this.cfg.textured) {
       const panel = this.layout.panelRect();
       const texEntity = scene.spawn("inv-chrome-frame-tex");
-      texEntity.add(new Transform());
-      const host = texEntity.add(
-        new GraphicsComponent({ layer: this.cfg.layerPanel }),
+      const transform = texEntity.add(new Transform());
+      const slice = texEntity.add(
+        new NineSliceComponent({
+          texture: this.cfg.textured.texture,
+          insets: this.cfg.textured.insets,
+          width: panel.width,
+          height: panel.height,
+          layer: this.cfg.layerPanel,
+        }),
       );
-      const sprite = createNineSlice({
-        texture: this.cfg.textured.texture,
-        leftWidth: this.cfg.textured.insets.left,
-        topHeight: this.cfg.textured.insets.top,
-        rightWidth: this.cfg.textured.insets.right,
-        bottomHeight: this.cfg.textured.insets.bottom,
-        width: panel.width,
-        height: panel.height,
-      });
-      host.graphics.addChild(sprite);
-      this.frameTex = { entity: texEntity, host, sprite };
+      this.frameTex = { entity: texEntity, transform, slice };
     }
     // One entity per display component: an entity holds at most one component
     // of a class, and positions flow from each entity's Transform.
@@ -165,13 +160,11 @@ export class InventoryChrome implements ChromePresenter {
     const detail = this.layout.detailRect();
     const pad = this.layout.padding();
 
-    // A textured frame owns the background + border; the sprite stretches to
-    // the panel rect and the drawn fill+stroke are skipped (dividers stay).
+    // A textured frame owns the background + border; it stretches to the
+    // panel rect and the drawn fill+stroke are skipped (dividers stay).
     if (this.frameTex) {
-      this.frameTex.sprite.x = panel.x;
-      this.frameTex.sprite.y = panel.y;
-      this.frameTex.sprite.width = panel.width;
-      this.frameTex.sprite.height = panel.height;
+      this.frameTex.transform.setPosition(panel.x, panel.y);
+      this.frameTex.slice.setSize(panel.width, panel.height);
     }
     this.frame?.gfx.draw((g) => {
       g.clear();
@@ -222,7 +215,7 @@ export class InventoryChrome implements ChromePresenter {
 
   private applyHidden(): void {
     const visible = !this.hidden;
-    if (this.frameTex) this.frameTex.host.visible = visible;
+    if (this.frameTex) this.frameTex.slice.visible = visible;
     if (this.frame) this.frame.gfx.visible = visible;
     if (this.title) this.title.visible = visible;
     if (this.counter) this.counter.visible = visible;

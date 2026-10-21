@@ -16,7 +16,7 @@ Every exported field, parameter, and return type across `@yagejs/renderer` (and 
 | `DisplaySplitText`       | `SplitText`                                              | `SplitTextComponent.splitText` (canvas variant)                                                |
 | `DisplaySplitBitmapText` | `SplitBitmapText`                                        | `SplitTextComponent.splitText` (bitmap variant)                                                |
 | `GraphicsContext`        | `Graphics`                                               | `GraphicsComponent.graphics`, `draw((g) => ...)`, mask draw callbacks                          |
-| `NineSliceSprite`        | `NineSliceSprite`                                        | `createNineSlice()` return, `UINineSlice.container`                                            |
+| `NineSliceSprite`        | `NineSliceSprite`                                        | `NineSliceComponent.renderObject`, `UINineSlice.container`                                     |
 | `ParticleContainer`      | `ParticleContainer`                                      | `@yagejs/particles`' `ParticleEmitterComponent.container`                                      |
 | `Particle`               | `Particle`                                               | `@yagejs/particles`' `ParticlePool.acquire()`/`release()`                                      |
 | `Filter`                 | `Filter`                                                 | effects API (`Effect.filter`, `rawFilter(filter)`)                                             |
@@ -642,6 +642,32 @@ const icon = new UIImage({
   texture: resolveFrames({ atlas: "ui.json", animation: "coin" })[0]!,
 });
 ```
+
+### NineSliceComponent
+
+A texture stretched to any size with fixed-size corners (panels, signs, bubbles). Placed by the entity's `Transform` at its top-left corner by default; shares the visual options above.
+
+```ts
+import { Entity, Transform } from "@yagejs/core";
+import { NineSliceComponent } from "@yagejs/renderer";
+
+class Signpost extends Entity {
+  setup(params: { x: number; y: number }) {
+    this.add(new Transform({ position: { x: params.x, y: params.y } }));
+    const board = this.add(
+      new NineSliceComponent({
+        texture: "panel", // a loaded or registered texture key
+        insets: { left: 8, top: 8, right: 8, bottom: 8 },
+        width: 160,
+        height: 64,
+      }),
+    );
+    board.setSize(200, 80); // corners stay 8 px; edges and centre stretch
+  }
+}
+```
+
+`new NineSliceComponent({ texture: TextureInput, insets: { left, top, right, bottom }, width, height, anchor?, ...VisualComponentOptions })`; `width` / `height` getters; `setSize(width, height)`. Sizes and insets throw when negative or non-finite; an unknown texture key throws at construction. Inside a UI layout use `UINineSlice`.
 
 ### AnimationController
 

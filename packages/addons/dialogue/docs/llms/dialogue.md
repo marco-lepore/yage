@@ -1466,7 +1466,7 @@ field reaches a presenter.
   (skew + double-draw); there are no variant-atlas fields.
 - **Textured nine-slice** (opt-in): `theme.textured` is a MAP of named
   `ChromeStyle`s — `{ frame: { texture, insets }, bubble?: { texture, insets } }`
-  — drawn through renderer's `createNineSlice` (no pixi peer; `texture` is an
+  — drawn by renderer's `NineSliceComponent` (no pixi peer; `texture` is an
   asset key or `Texture`, `insets` the four nine-slice border widths). The box
   frame is chosen **per line** by its `meta.chrome` key: a named style → that
   nine-slice; the built-in `"none"` → no frame (full-bleed line); missing/unknown

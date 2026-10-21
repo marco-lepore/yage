@@ -147,41 +147,34 @@ export function resolveTextureInput(input: string): {
   return { width: 32, height: 32 };
 }
 
-/** A stand-in nine-slice sprite: a plain display object with mutable
- *  position/size, enough for the textured-frame views to place and stretch it. */
-export class NineSliceSprite {
+/** Mirrors the real `NineSliceComponent`: resolves its texture (throws on an
+ *  unseeded key) and records its size, so the textured-frame views can be
+ *  checked for what they stretch. */
+export class NineSliceComponent extends Component {
   visible = true;
-  x = 0;
-  y = 0;
   width: number;
   height: number;
   constructor(
     readonly options: {
       readonly texture: string;
+      readonly insets: {
+        readonly left: number;
+        readonly top: number;
+        readonly right: number;
+        readonly bottom: number;
+      };
       readonly width: number;
       readonly height: number;
+      readonly layer: string;
     },
   ) {
+    super();
+    resolveTextureInput(options.texture);
     this.width = options.width;
     this.height = options.height;
   }
-}
-
-/** Mirrors the real `createNineSlice`: resolves (throws on an unseeded key)
- *  then builds a sprite sized to `width`/`height`. */
-export function createNineSlice(options: {
-  readonly texture: string;
-  readonly leftWidth: number;
-  readonly topHeight: number;
-  readonly rightWidth: number;
-  readonly bottomHeight: number;
-  readonly width: number;
-  readonly height: number;
-}): NineSliceSprite {
-  resolveTextureInput(options.texture);
-  return new NineSliceSprite({
-    texture: options.texture,
-    width: options.width,
-    height: options.height,
-  });
+  setSize(width: number, height: number): void {
+    this.width = width;
+    this.height = height;
+  }
 }
