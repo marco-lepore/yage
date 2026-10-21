@@ -16,6 +16,7 @@ import {
 } from "./SortGroupComponent.js";
 import type { SortSource } from "./SortGroupComponent.js";
 import { assertFiniteNumber } from "./internal/validate.js";
+import { runAttributed } from "./internal/attribution.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { VisualModifierHost } from "./VisualModifiers.js";
 import { attachMask } from "./masks/attachMask.js";
@@ -41,6 +42,25 @@ export interface VisualInteractiveOptions {
   eventMode?: "static" | "dynamic";
   /** When `true`, claim pointer events landing on this container. Default `false`. */
   consumeOnInteraction?: boolean;
+}
+
+/** The pointer events {@link VisualComponent.onPointer} listens for. */
+export type VisualPointerEvent = "down" | "up" | "tap" | "over" | "out";
+
+const PIXI_POINTER_EVENTS = {
+  down: "pointerdown",
+  up: "pointerup",
+  tap: "pointertap",
+  over: "pointerover",
+  out: "pointerout",
+} as const;
+
+/** A visual's size and offset in its own pixels, before position, rotation and scale. */
+export interface VisualBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 /** Options shared by all five visual components. */
@@ -69,16 +89,16 @@ export interface VisualComponentOptions {
    */
   blendMode?: BlendMode;
   /**
-   * Make the container interactive. When set, Pixi `eventMode` is configured
-   * so it participates in pointer hit-testing — required for any
-   * `.on("pointerdown", ...)` listener to fire.
+   * Make the visual a pointer hit-test target. {@link VisualComponent.onPointer}
+   * does this itself, so the option matters for its `eventMode` and
+   * `consumeOnInteraction` settings.
    *
    * `consumeOnInteraction: true` additionally marks it as a UI-input surface
    * (via `@yagejs/core`'s consume registry), so a `pointerdown` landing on it
    * is auto-claimed by `@yagejs/input` — preventing the same press from also
    * firing gameplay action-map edges like `MouseLeft`. Default `false`: an
-   * interactive container still propagates the action, matching the "I want
-   * both Pixi events AND the action map" use case.
+   * interactive visual still propagates the action, so a press can reach both
+   * an `onPointer` handler and the action map.
    */
   interactive?: VisualInteractiveOptions;
   /**
@@ -342,6 +362,48 @@ export abstract class VisualComponent extends Component implements SortSource {
   /** The currently attached mask handle, if any. */
   get mask(): MaskHandle | undefined {
     return this._mask;
+  }
+
+  /**
+   * What this visual draws, in its own pixels: the box around its content
+   * before the entity's position, rotation and scale apply. `x` and `y` are
+   * the box's top-left corner relative to the anchor, so a sprite anchored at
+   * its centre reports `x = -width / 2`. A hidden visual reports its size too.
+   * Computed on each read.
+   */
+  get localBounds(): VisualBounds {
+    const bounds = this.renderObject.getLocalBounds();
+    return {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+    };
+  }
+
+  /**
+   * Call `fn` when a pointer event hits this visual: `"down"`, `"up"`,
+   * `"tap"` (down then up on the visual), `"over"` or `"out"`. The visual
+   * becomes a hit-test target if it is not one yet. A throw from `fn` is
+   * recorded on the `ErrorBoundary` and names this visual's entity.
+   *
+   * Returns a function that removes the listener. Destroying the visual
+   * removes it too, so pass the function to `addCleanup` only when the
+   * listener should end first. Read the pointer's position from
+   * `@yagejs/input`'s `InputManager`.
+   */
+  onPointer(event: VisualPointerEvent, fn: () => void): () => void {
+    const target = this.renderObject;
+    if (target.eventMode === "passive" || target.eventMode === undefined) {
+      target.eventMode = "static";
+    }
+    const pixiEvent = PIXI_POINTER_EVENTS[event];
+    const kind = `${this.constructor.name} ${event} pointer handler`;
+    const listener = (): void => runAttributed(this, kind, fn);
+    target.on(pixiEvent, listener);
+    return () => {
+      target.off(pixiEvent, listener);
+    };
   }
 
   /**

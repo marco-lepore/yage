@@ -201,7 +201,7 @@ class SplitTextShowcase extends Component {
       startY: 0,
       startRotation: 0,
     }));
-    const b = this.split.splitText.getLocalBounds();
+    const b = this.split.localBounds;
     this.cx = b.x + b.width / 2;
     this.cy = b.y + b.height / 2;
 

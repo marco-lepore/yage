@@ -58,6 +58,8 @@ export type {
 export { VisualComponent } from "./VisualComponent.js";
 export type {
   VisualComponentOptions,
+  VisualBounds,
+  VisualPointerEvent,
   VisualInteractiveOptions,
 } from "./VisualComponent.js";
 export { SpriteComponent } from "./SpriteComponent.js";
@@ -246,7 +248,8 @@ export { defineMask } from "./masks/defineMask.js";
 export type { MaskDefinition } from "./masks/defineMask.js";
 export { rectMask } from "./masks/rectMask.js";
 export type { RectMaskOptions } from "./masks/rectMask.js";
-export { spriteMask } from "./masks/spriteMask.js";
+export { textureMask } from "./masks/textureMask.js";
+export type { TextureMaskOptions } from "./masks/textureMask.js";
 export { graphicsMask } from "./masks/graphicsMask.js";
 export { syncCameraTransform } from "./cameraTransform.js";
 

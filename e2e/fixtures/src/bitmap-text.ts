@@ -37,11 +37,12 @@ class BitmapTextProbe extends Component {
 
   update(): void {
     if (this.captured) return;
-    const t = this.target.text;
-    this.pixiClass = t.constructor.name;
-    // Reading width/height forces Pixi to lay glyphs out from the atlas.
-    this.glyphWidth = Math.round(t.width);
-    this.glyphHeight = Math.round(t.height);
+    // Which Pixi class the renderer chose is the fact under test.
+    this.pixiClass = this.target.renderObject.constructor.name;
+    // Reading the bounds forces Pixi to lay glyphs out from the atlas.
+    const bounds = this.target.localBounds;
+    this.glyphWidth = Math.round(bounds.width);
+    this.glyphHeight = Math.round(bounds.height);
     this.worldScaleX = this.entity.get(Transform).worldScale.x;
     this.captured = true;
   }

@@ -143,7 +143,7 @@ export class ChoiceListPresenter implements ChoicePresenter {
       const comp = entity.add(
         new TextComponent(this.textOptions(choiceRowLabel(choice), wrapWidth)),
       );
-      const slotHeight = Math.ceil(comp.text.height) + gap;
+      const slotHeight = Math.ceil(comp.localBounds.height) + gap;
       return { entity, comp, disabled: choice.disabled ?? false, slotHeight };
     });
 
@@ -230,7 +230,7 @@ export class ChoiceListPresenter implements ChoicePresenter {
       for (const row of this.rows)
         row.comp.mergeStyle({ wordWrapWidth: wrapWidth });
       const rects = this.layout.layoutChoicePanel(
-        this.rows.map((row) => Math.ceil(row.comp.text.height) + gap),
+        this.rows.map((row) => Math.ceil(row.comp.localBounds.height) + gap),
       );
       for (let i = 0; i < this.rows.length; i++) {
         const row = this.rows[i]!;

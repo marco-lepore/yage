@@ -533,9 +533,11 @@ Two gotchas inside a `graphicsMask` closure:
    Reference the live source (`panel.width`, `this.layout.width`, a getter)
    inside the closure so each call picks up the current value.
 
-Three mask factories are built in: `rectMask`, `spriteMask`, and `graphicsMask`.
-`spriteMask` uses a caller-owned sprite, while `graphicsMask` redraws through
-your callback. Use `defineMask` for a reusable named factory.
+Three mask factories are built in: `rectMask`, `textureMask`, and
+`graphicsMask`. `textureMask("vignette", { anchor: { x: 0.5, y: 0.5 } })`
+clips to a texture's alpha channel, which suits soft or organic edges, while
+`graphicsMask` redraws through your callback. Use `defineMask` for a reusable
+named factory.
 
 ## Blend modes
 

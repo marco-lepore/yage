@@ -102,11 +102,10 @@ Properties:
 
 ```ts yage-context="entity"
 import { bloom } from "@yagejs/effects";
-import { spriteMask, type DisplaySprite } from "@yagejs/renderer";
+import { textureMask } from "@yagejs/renderer";
 import { TilemapComponent, tiledMap } from "@yagejs/tilemap";
 
 const MapData = tiledMap("assets/level.json");
-declare const maskSprite: DisplaySprite; // a sprite already in the display tree
 
 const tilemap = entity.add(
   new TilemapComponent({
@@ -121,7 +120,7 @@ tilemap.tint = 0xffffff; // clear the tint
 tilemap.blendMode = "add";
 tilemap.visible = false;
 tilemap.fx.addEffect(bloom({ bloomScale: 2 })); // component-scope effects
-tilemap.setMask(spriteMask(maskSprite));
+tilemap.setMask(textureMask("vignette", { anchor: { x: 0.5, y: 0.5 } }));
 ```
 
 `tint` and `alpha` are applied by a colour filter on the container, because the tile shader has no colour uniform. They cost nothing while tint is white and alpha is 1.

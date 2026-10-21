@@ -141,8 +141,7 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
         width: this.cfg.width + (this.cfg.gap ?? 8),
         height: Math.max(
           this.cfg.background ? this.cfg.width : 0,
-          (this.sprite?.sprite.texture.height ?? this.cfg.width) *
-            Math.abs(scale),
+          (this.sprite?.localBounds.height ?? this.cfg.width) * Math.abs(scale),
         ),
       });
     } else {
@@ -195,8 +194,7 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
     const y =
       this.cfg.align === "top"
         ? region.y +
-          (this.sprite!.sprite.texture.height * Math.abs(this.cfg.scale ?? 1)) /
-            2
+          (this.sprite!.localBounds.height * Math.abs(this.cfg.scale ?? 1)) / 2
         : region.y + region.height / 2;
     this.transform.setPosition(x, y);
     this.bgTransform?.setPosition(

@@ -137,7 +137,7 @@ export class BubbleChoicePresenter implements ChoicePresenter {
       const comp = e.add(
         new TextComponent(this.textOptions(promptStr, c.textColor, innerW)),
       );
-      promptH = Math.ceil(comp.text.height);
+      promptH = Math.ceil(comp.localBounds.height);
       this.prompt = { entity: e, comp };
     }
 

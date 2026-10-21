@@ -1,6 +1,6 @@
 /**
  * Unit tests for the low-level `attachMask` helper and the three factories
- * (`rectMask`, `spriteMask`, `graphicsMask`). Cover ownership, parenting,
+ * (`rectMask`, `textureMask`, `graphicsMask`). Cover ownership, parenting,
  * inverse toggling, redraw, and idempotent remove.
  */
 import { describe, it, expect, vi } from "vitest";
@@ -64,7 +64,32 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
-  class MockSprite extends MockContainer {}
+  class MockSprite extends MockContainer {
+    texture: unknown = null;
+    width = 0;
+    height = 0;
+    anchor = {
+      x: 0,
+      y: 0,
+      set(this: { x: number; y: number }, x: number, y: number) {
+        this.x = x;
+        this.y = y;
+      },
+    };
+    position = {
+      x: 0,
+      y: 0,
+      set(this: { x: number; y: number }, x: number, y: number) {
+        this.x = x;
+        this.y = y;
+      },
+    };
+    static from(texture: unknown): MockSprite {
+      const sprite = new MockSprite();
+      sprite.texture = texture;
+      return sprite;
+    }
+  }
 
   return { mocks: { MockContainer, MockGraphics, MockSprite } };
 });
@@ -75,9 +100,13 @@ vi.mock("pixi.js", () => ({
   Sprite: mocks.MockSprite,
 }));
 
+vi.mock("../assets.js", () => ({
+  resolveTextureInput: (key: string) => `resolved:${key}`,
+}));
+
 import { attachMask } from "./attachMask.js";
 import { rectMask } from "./rectMask.js";
-import { spriteMask } from "./spriteMask.js";
+import { textureMask } from "./textureMask.js";
 import { graphicsMask } from "./graphicsMask.js";
 import { Component, ErrorBoundaryKey } from "@yagejs/core";
 import { createMockScene } from "@yagejs/core";
@@ -173,27 +202,40 @@ describe("attachMask + rectMask", () => {
   });
 });
 
-describe("spriteMask", () => {
-  it("uses the supplied sprite without re-parenting it", () => {
+describe("textureMask", () => {
+  it("parents a sprite of the texture under the target and owns it", () => {
     const target = new mocks.MockContainer();
-    const sprite = new mocks.MockSprite();
+    const handle = attachMask(
+      target as never,
+      textureMask("vignette", {
+        x: 4,
+        y: 6,
+        width: 64,
+        height: 32,
+        anchor: { x: 0.5, y: 0.5 },
+      }),
+    );
 
-    const handle = attachMask(target as never, spriteMask(sprite as never));
-
-    // Sprite is NOT added as a child — caller retains parenting responsibility.
-    expect(target.children.length).toBe(0);
-    expect(target.mask).toBe(sprite);
-    expect(handle.inverse).toBe(false);
-  });
-
-  it("does not destroy the sprite on remove (caller-owned)", () => {
-    const target = new mocks.MockContainer();
-    const sprite = new mocks.MockSprite();
-    const handle = attachMask(target as never, spriteMask(sprite as never));
+    const sprite = target.mask as unknown as InstanceType<
+      typeof mocks.MockSprite
+    >;
+    expect(target.children).toContain(sprite);
+    expect(sprite.texture).toBe("resolved:vignette");
+    expect(sprite.anchor.x).toBe(0.5);
+    expect(sprite.anchor.y).toBe(0.5);
+    expect(sprite.position.x).toBe(4);
+    expect(sprite.position.y).toBe(6);
+    expect(sprite.width).toBe(64);
+    expect(sprite.height).toBe(32);
 
     handle.remove();
-    expect(target.mask).toBeNull();
-    expect(sprite.destroyed).toBe(false);
+    expect(sprite.destroyed).toBe(true);
+  });
+
+  it("rejects a non-finite size before building anything", () => {
+    expect(() => textureMask("vignette", { width: Number.NaN })).toThrow(
+      "textureMask: width must be finite, got NaN.",
+    );
   });
 });
 

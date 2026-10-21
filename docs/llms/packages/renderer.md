@@ -322,6 +322,11 @@ the computed render values. `interactive` is set once at construction.
 `comp.renderAboveEffects` toggles at runtime — see [Effects](#effects) for what
 it escapes.
 
+Every visual component also has:
+
+- `comp.localBounds: { x, y, width, height }` — the drawn box in the visual's own pixels, before position, rotation and scale; `x`/`y` are relative to the anchor. Works while hidden. Computed per read.
+- `comp.onPointer(event: "down" | "up" | "tap" | "over" | "out", fn: () => void): () => void` — makes the visual a hit-test target and calls `fn` through the `ErrorBoundary` (a throw names the entity). Returns the unsubscribe; destroying the visual also ends it. Read the pointer position from `InputManager`. `interactive.consumeOnInteraction` keeps the same press from firing `MouseLeft`.
+
 Every visual component also exposes `comp.modifiers: VisualModifierHost`:
 
 ```ts yage-context="entity"
@@ -1541,7 +1546,7 @@ import {
   SceneRenderTreeKey,
   SpriteComponent,
   rectMask,
-  spriteMask,
+  textureMask,
   graphicsMask,
 } from "@yagejs/renderer";
 
@@ -1562,6 +1567,9 @@ tree.setMask(
     g.circle(0, 0, 100).fill(0xffffff);
   }),
 );
+tree
+  .get("world")
+  .setMask(textureMask("vignette", { anchor: { x: 0.5, y: 0.5 } }));
 ```
 
 | Export                                  | Signature                                                               | Description                                                                                                                                                                                                                            |
@@ -1570,7 +1578,7 @@ tree.setMask(
 | `clearMask` (component / layer / scene) | `() => void`                                                            | Detach + destroy the current mask.                                                                                                                                                                                                     |
 | `MaskHandle`                            | interface                                                               | `remove()` / `setInverse(on)` / `inverse` / `redraw()`.                                                                                                                                                                                |
 | `rectMask`                              | `(opts: RectMaskOptions) => MaskFactory`                                | Static rectangle, optional `rounded` corners.                                                                                                                                                                                          |
-| `spriteMask`                            | `(sprite: Sprite) => MaskFactory`                                       | User-owned sprite as mask.                                                                                                                                                                                                             |
+| `textureMask`                           | `(texture: TextureRef, opts?: TextureMaskOptions) => MaskFactory`       | The texture's alpha channel clips. `opts`: `x`, `y`, `width`, `height`, `anchor`. The mask owns its sprite; `setMask` throws on an unknown key.                                                                                        |
 | `graphicsMask`                          | `(draw: (g: Graphics) => void) => MaskFactory`                          | Custom drawn mask; call `handle.redraw()` after dependencies change. The closure must `g.clear()` first (pixi commands accumulate) and read live state from a captured object/getter — `const` snapshots stay stale across `redraw()`. |
 | `defineMask`                            | `<O>({ name, factory: (opts: O) => Mask }) => (opts: O) => MaskFactory` | Define a reusable named mask preset.                                                                                                                                                                                                   |
 | `attachMask`                            | low-level helper                                                        | `attachMask(target, factory, owner?)` returns a `MaskHandle`. Pass the owning `Component` as `owner` so a throw from the draw callback is attributed to it in `Inspector.getErrors().callbackErrors`.                                  |
@@ -1658,7 +1666,7 @@ remove the other scene's entry. Every later lookup of that key then throws.
 | ---------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `RendererPlugin.createRenderTarget`      | `(source: DisplayContainer, options: RenderTargetOptions) => RenderTargetHandle` | Allocate the buffer. The repeatable counterpart of `createTexture`, which bakes once and never changes.                                                                                                                                                                                                  |
 | `RenderTargetOptions`                    | `{ width, height, resolutionScale?, antialias?, clearColor?, label? }`           | `width` / `height` are in source coordinates. `resolutionScale` (default `1`) multiplies the renderer's own resolution. `clearColor` defaults to transparent.                                                                                                                                            |
-| `handle.texture`                         | `TextureResource`                                                                | What the buffer draws into. Feed it to `SpriteComponent` (via `registerTexture`), `spriteMask`, or a filter uniform.                                                                                                                                                                                     |
+| `handle.texture`                         | `TextureResource`                                                                | What the buffer draws into. Feed it to `SpriteComponent` or `textureMask` (via `registerTexture`), or to a filter uniform.                                                                                                                                                                               |
 | `handle.source`                          | `DisplayContainer`                                                               | The container passed to `createRenderTarget`. `destroy()` leaves it alone — freeing it is the game's job.                                                                                                                                                                                                |
 | `handle.render()`                        | `() => void`                                                                     | Draw now and clear the pending flag.                                                                                                                                                                                                                                                                     |
 | `handle.renderIfNeeded()`                | `() => boolean`                                                                  | Draw only when pending; returns whether it drew.                                                                                                                                                                                                                                                         |

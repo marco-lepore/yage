@@ -5,7 +5,7 @@ import type { DisplayContainer as Container } from "../public-types.js";
  * serve as the mask with the metadata `attachMask` needs to wire it up
  * correctly.
  *
- * @internal — consumers use `rectMask` / `spriteMask` / `graphicsMask` and
+ * @internal — consumers use `rectMask` / `textureMask` / `graphicsMask` and
  * never construct this directly.
  */
 export interface Mask {
@@ -13,13 +13,13 @@ export interface Mask {
   readonly node: Container;
   /**
    * `true` → `attachMask` destroys `node` on `remove()`.
-   * `false` (spriteMask) → caller retains ownership; `remove()` only detaches.
+   * `false` → the caller retains ownership; `remove()` only detaches.
    */
   readonly owned: boolean;
   /**
    * `true` → `attachMask` parents `node` under the target via `addChild`
    * (Pixi requires the mask to be in the display tree).
-   * `false` (spriteMask) → assumes the caller already placed `node` somewhere
+   * `false` → assumes the caller already placed `node` somewhere
    * appropriate.
    */
   readonly attachToTarget: boolean;

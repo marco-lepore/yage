@@ -72,6 +72,47 @@ rotation carries every descendant around its own position.
 takes a `pivot` in pixels instead — see
 [Where the drawing turns](/guides/rendering/graphics/#where-the-drawing-turns).
 
+### Size and pointer events
+
+`localBounds` reports the box a visual draws in its own pixels, before the
+entity's position, rotation and scale apply. Every visual component has it,
+and it reports the size of a hidden visual too:
+
+```typescript yage-context="entity"
+import { SpriteComponent } from "@yagejs/renderer";
+
+const { width, height } = entity.get(SpriteComponent).localBounds;
+```
+
+`onPointer(event, fn)` calls `fn` when a pointer event hits the visual:
+`"down"`, `"up"`, `"tap"`, `"over"` or `"out"`. It makes the visual a
+hit-test target, and a throw from `fn` is recorded with the visual's entity.
+It returns a function that removes the listener, and the listener also ends
+when the visual is destroyed:
+
+```typescript
+import { Component } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+class Selectable extends Component {
+  private readonly card = this.sibling(SpriteComponent);
+  selected = false;
+
+  onAdd(): void {
+    // Removing Selectable alone ends the listener too.
+    this.addCleanup(this.card.onPointer("tap", () => this.toggle()));
+  }
+
+  toggle(): void {
+    this.selected = !this.selected;
+    this.card.tint = this.selected ? 0xffcc00 : 0xffffff;
+  }
+}
+```
+
+Add `interactive: { consumeOnInteraction: true }` to the visual when a press
+on it should not also fire the action map's `MouseLeft`.
+
 ### Temporary visual modifiers
 
 Every visual component has a `modifiers` host for temporary feedback that
