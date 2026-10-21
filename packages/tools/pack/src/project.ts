@@ -1,6 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
 
 /**
  * The identifiers Capacitor and the Electron shell both accept: letters and
@@ -30,6 +29,7 @@ export interface GameManifest {
   readonly devDependencies?: Record<string, string>;
   readonly peerDependencies?: Record<string, string>;
   readonly scripts?: Record<string, string>;
+  readonly workspaces?: unknown;
   readonly yage?: { readonly appId?: unknown };
 }
 
@@ -73,26 +73,30 @@ export function readIdentity(root: string, prefix: string): AppIdentity {
   return { appId, name, version };
 }
 
+/**
+ * The `node_modules` directories the game's packages can come from, nearest
+ * first: the game's own, then one per directory up to the root of the npm
+ * workspace the game belongs to. A game outside a workspace has only its own.
+ */
+export function nodeModulesChain(root: string): string[] {
+  const game = path.resolve(root);
+  const top = searchTop(game);
+  const chain: string[] = [];
+  for (let dir = game; ; dir = path.dirname(dir)) {
+    chain.push(path.join(dir, "node_modules"));
+    if (dir === top) return chain;
+  }
+}
+
 /** The manifest of a package as the game resolves it, or `undefined`. */
 export function resolvePackage(
   root: string,
   name: string,
 ): { readonly dir: string; readonly manifest: GameManifest } | undefined {
-  const require = createRequire(path.join(root, "package.json"));
-  let file: string;
-  try {
-    file = require.resolve(`${name}/package.json`);
-  } catch {
-    // A package whose `exports` hides its manifest is still found by walking
-    // the node_modules chain, which is where every install puts it.
-    const walked = walkToPackage(root, name);
-    if (walked === undefined) return undefined;
-    file = walked;
-  }
-  return {
-    dir: path.dirname(file),
-    manifest: JSON.parse(readFileSync(file, "utf8")) as GameManifest,
-  };
+  const game = path.resolve(root);
+  const dir = lookUp(game, name, searchTop(game));
+  if (dir === undefined) return undefined;
+  return { dir, manifest: readPackageManifest(dir) };
 }
 
 /** The installed version of a package, or `null` when it is not installed. */
@@ -102,15 +106,92 @@ export function installedVersion(root: string, name: string): string | null {
   return typeof version === "string" ? version : null;
 }
 
-function walkToPackage(root: string, name: string): string | undefined {
-  let dir = path.resolve(root);
-  for (;;) {
-    const candidate = path.join(dir, "node_modules", name, "package.json");
-    if (existsSync(candidate)) return candidate;
-    const parent = path.dirname(dir);
-    if (parent === dir) return undefined;
-    dir = parent;
+/** One package of a production-dependency closure. */
+export interface ClosurePackage {
+  readonly name: string;
+  /**
+   * Where the install put it, as the game's folder spells the path, with
+   * symbolic links left unresolved; `undefined` when it is not installed.
+   */
+  readonly dir: string | undefined;
+}
+
+/**
+ * The named packages and every package they load through `dependencies`, each
+ * found the way Node finds it from the package that depends on it. The
+ * Electron packager copies a symbolic link as the files it points to, so a
+ * linked package keeps the path the game's folder gives it.
+ */
+export function productionClosure(
+  root: string,
+  names: readonly string[],
+): ClosurePackage[] {
+  const game = path.resolve(root);
+  const top = searchTop(game);
+  const found: ClosurePackage[] = [];
+  const seen = new Set<string>();
+  const queue = names.map((name) => ({ name, from: game }));
+  for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+    const dir = lookUp(next.from, next.name, top);
+    const key = dir ?? `missing ${next.name}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    found.push({ name: next.name, dir });
+    if (dir === undefined) continue;
+    const dependencies = readPackageManifest(dir).dependencies ?? {};
+    for (const dependency of Object.keys(dependencies)) {
+      queue.push({ name: dependency, from: dir });
+    }
   }
+  return found;
+}
+
+/**
+ * Whether a package directory is inside the game's own `node_modules`, the
+ * only packages an Electron package carries.
+ */
+export function inGameModules(root: string, dir: string): boolean {
+  const modules = path.join(path.resolve(root), "node_modules");
+  return dir.startsWith(`${modules}${path.sep}`);
+}
+
+/**
+ * The last directory whose `node_modules` the game's packages come from: the
+ * root of the npm workspace the game belongs to, or the game itself. An
+ * ancestor is that root when its `node_modules` links the game in under the
+ * game's package name, as npm does for each workspace member, and its
+ * `package.json` declares `workspaces`.
+ */
+function searchTop(game: string): string {
+  const name = readManifest(game)?.name;
+  if (typeof name !== "string" || name.length === 0) return game;
+  const real = realpathSync(game);
+  for (let dir = path.dirname(game); ; dir = path.dirname(dir)) {
+    const link = path.join(dir, "node_modules", ...name.split("/"));
+    if (
+      existsSync(link) &&
+      realpathSync(link) === real &&
+      readManifest(dir)?.workspaces !== undefined
+    ) {
+      return dir;
+    }
+    if (path.dirname(dir) === dir) return game;
+  }
+}
+
+/** A package's directory as Node finds it from `from`, searching up to `top`. */
+function lookUp(from: string, name: string, top: string): string | undefined {
+  for (let dir = from; ; dir = path.dirname(dir)) {
+    const candidate = path.join(dir, "node_modules", ...name.split("/"));
+    if (existsSync(path.join(candidate, "package.json"))) return candidate;
+    if (dir === top || path.dirname(dir) === dir) return undefined;
+  }
+}
+
+function readPackageManifest(dir: string): GameManifest {
+  return JSON.parse(
+    readFileSync(path.join(dir, "package.json"), "utf8"),
+  ) as GameManifest;
 }
 
 /**

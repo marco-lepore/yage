@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { hashDirectory } from "./hash.js";
 import { buildRecord, writeBuildRecord } from "./record.js";
 import type { RunResult } from "./run.js";
-import { addFile, makeTree, removeTrees } from "./test/tree.js";
+import { addFile, installed, makeTree, removeTrees } from "./test/tree.js";
+import { xcodeProject } from "./test/xcode.js";
 
 const manifest = {
   productName: "My Game",
@@ -73,10 +74,40 @@ describe("buildRecord", () => {
     expect(record.artifacts[1]?.bytes).toBe("zip\n".length);
   });
 
-  it("refuses an Electron installer file it cannot classify", async () => {
+  it("records any file an Electron Forge maker wrote", async () => {
+    const root = game();
+    const files = [
+      "out/make/My Game-1.2.3-arm64.dmg",
+      "out/make/squirrel.windows/x64/RELEASES",
+      "out/make/squirrel.windows/x64/My Game-1.2.3 Setup.exe",
+      "out/make/squirrel.windows/x64/my_game-1.2.3-full.nupkg",
+    ].map((file) => addFile(root, file, `${path.basename(file)}\n`));
+    const record = await buildRecord({
+      root,
+      target: "electron",
+      profile: "release",
+      artifacts: files,
+      run: noGit,
+    });
+    expect(
+      record.artifacts.map((artifact) => [
+        artifact.kind,
+        artifact.isDirectory,
+        artifact.bytes,
+      ]),
+    ).toEqual(
+      files.map((file) => [
+        "electron-maker-file",
+        false,
+        `${path.basename(file)}\n`.length,
+      ]),
+    );
+    expect(record.artifacts[0]?.sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("refuses an Electron artifact that is not there", async () => {
     const root = game();
     const dmg = path.join(root, "out", "make", "My Game.dmg");
-    addFile(root, "out/make/My Game.dmg", "dmg\n");
     await expect(
       buildRecord({
         root,
@@ -86,7 +117,7 @@ describe("buildRecord", () => {
         run: noGit,
       }),
     ).rejects.toThrow(
-      `record: cannot tell what ${dmg} is for electron. Expected a packaged app directory or a .zip.`,
+      `record: cannot tell what ${dmg} is for electron. Expected a packaged app directory or a file an Electron Forge maker wrote.`,
     );
   });
 
@@ -204,8 +235,10 @@ describe("buildRecord", () => {
 
   it("reads the build number from each platform's project", async () => {
     const ios = game({
-      "ios/App/App.xcodeproj/project.pbxproj":
-        "buildSettings = { CURRENT_PROJECT_VERSION = 7; };\n",
+      "ios/App/App.xcodeproj/project.pbxproj": xcodeProject({
+        release: { CURRENT_PROJECT_VERSION: "7" },
+        debug: { CURRENT_PROJECT_VERSION: "6" },
+      }),
     });
     const iosRecord = await buildRecord({
       root: ios,
@@ -239,6 +272,56 @@ describe("buildRecord", () => {
       run: noGit,
     });
     expect(equalsRecord.app.build).toBe("13");
+
+    const inherited = game({
+      "ios/App/App.xcodeproj/project.pbxproj": xcodeProject({
+        release: {},
+        projectRelease: { CURRENT_PROJECT_VERSION: "7" },
+      }),
+    });
+    const inheritedRecord = await buildRecord({
+      root: inherited,
+      target: "ios",
+      profile: "release",
+      artifacts: [],
+      run: noGit,
+    });
+    expect(inheritedRecord.app.build).toBeNull();
+  });
+
+  it("reads the packages of a workspace member from the workspace root", async () => {
+    const workspace = makeTree({
+      "package.json": JSON.stringify({ private: true, workspaces: ["game"] }),
+      "game/package.json": JSON.stringify({ name: "my-game", ...manifest }),
+      "game/dist-electron/index.html": "<!doctype html>\n",
+      ...installed("@yagejs/core", { version: "0.12.0" }),
+      ...installed("@yagejs/save", { version: "0.12.0" }),
+      ...installed("pixi.js", { version: "8.22.0" }),
+      "game/node_modules/@yagejs/core/package.json": JSON.stringify({
+        name: "@yagejs/core",
+        version: "0.12.1",
+      }),
+    });
+    const root = path.join(workspace, "game");
+    const options = {
+      root,
+      target: "electron" as const,
+      profile: "release" as const,
+      artifacts: [],
+      run: noGit,
+    };
+    const outside = await buildRecord(options);
+    expect(outside.packages).toEqual({ "@yagejs/core": "0.12.1" });
+    expect(outside.dependencies).toEqual({});
+
+    // npm links each workspace member into the workspace root's node_modules.
+    symlinkSync(root, path.join(workspace, "node_modules", "my-game"));
+    const member = await buildRecord(options);
+    expect(member.packages).toEqual({
+      "@yagejs/core": "0.12.1",
+      "@yagejs/save": "0.12.0",
+    });
+    expect(member.dependencies).toEqual({ "pixi.js": "8.22.0" });
   });
 
   it("leaves the source fields empty outside a repository", async () => {

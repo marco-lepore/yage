@@ -2,8 +2,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   atLeast,
+  inGameModules,
   installedVersion,
+  nodeModulesChain,
   parseVersion,
+  productionClosure,
   readManifest,
   resolvePackage,
   satisfiesCaret,
@@ -76,6 +79,13 @@ export async function runDoctor(
       peerRule(root, target),
       pixiRule(root),
     ];
+    // Without the host package, `packages` already names what to install.
+    if (
+      target === "electron" &&
+      installedVersion(root, HOST_PACKAGE.electron) !== null
+    ) {
+      results.push(gameFolderRule(root));
+    }
     if (target === "ios") {
       const xcode = xcodeRule(env, run);
       results.push(macOsRule(platform), xcode);
@@ -215,8 +225,37 @@ function peerRule(root: string, target: Target): CheckResult {
     : fail("peer versions", `${problems.join("; ")}.`, fixes.join("\n"));
 }
 
+/**
+ * An Electron package carries the game's folder and nothing above it, so the
+ * packages the shell loads have to be installed inside it. In an npm
+ * workspace, npm installs them at the workspace root.
+ */
+function gameFolderRule(root: string): CheckResult {
+  const name = "packages in the game's folder";
+  const outside = productionClosure(root, [HOST_PACKAGE.electron]).filter(
+    (entry) => entry.dir !== undefined && !inGameModules(root, entry.dir),
+  );
+  if (outside.length === 0) {
+    return pass(
+      name,
+      `${HOST_PACKAGE.electron} and the packages it loads are in the game's node_modules.`,
+    );
+  }
+  return fail(
+    name,
+    `${outside
+      .map((entry) => `${entry.name} (${String(entry.dir)})`)
+      .join(", ")} ${outside.length === 1 ? "is" : "are"} installed outside ` +
+      "the game's node_modules, and an Electron package carries only the game's folder.",
+    `Run npm install --workspaces=false in ${root}: it installs the game's ` +
+      "packages in its own node_modules. An npm install at the workspace root moves them out again.",
+  );
+}
+
 function pixiRule(root: string): CheckResult {
-  const copies = findPixiCopies(path.join(root, "node_modules"), 0);
+  const copies = nodeModulesChain(root).flatMap((modules) =>
+    findPixiCopies(modules, 0),
+  );
   if (copies.length === 0) {
     return fail(
       "pixi.js",

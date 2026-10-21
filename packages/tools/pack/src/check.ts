@@ -80,10 +80,19 @@ export async function runCheck(options: CheckOptions): Promise<CheckReport> {
   results.push(webBuildRule(root, target));
   results.push(await serviceWorkerRule(root, target));
 
+  // The rules that read the configuration `npx cap sync` copies into the
+  // native project run only once it is there: without it they would report
+  // fixes that do not apply.
+  let synced = false;
   if (target !== "electron") {
     const project = nativeProjectRule(root, target);
     results.push(project);
     if (project.ok) {
+      const copied = copiedConfigRule(root, target);
+      results.push(copied);
+      synced = copied.ok;
+    }
+    if (synced) {
       if (known) results.push(appIdRule(root, target, identity.appId));
       results.push(yageSettingsRule(root, target));
     }
@@ -91,8 +100,10 @@ export async function runCheck(options: CheckOptions): Promise<CheckReport> {
 
   if (options.release) {
     if (target !== "electron") {
-      results.push(developmentServerRule(root, target));
-      if (target === "android") results.push(credentialsRule(root));
+      if (synced) {
+        results.push(developmentServerRule(root, target));
+        if (target === "android") results.push(credentialsRule(root));
+      }
       if (known) results.push(versionRule(root, target, identity.version));
       if (target === "ios") results.push(privacyManifestRule(root));
       if (target === "android") results.push(gameCategoryRule(root));
@@ -201,27 +212,54 @@ function nativeProjectRule(root: string, target: Target): CheckResult {
       );
 }
 
+function copiedConfigRule(root: string, target: Target): CheckResult {
+  const config = path.relative(root, nativePaths(root, target).config);
+  return existsSync(path.join(root, config))
+    ? pass("copied config", `${config} is there.`)
+    : fail(
+        "copied config",
+        `${config} is missing: npx cap sync has not copied the configuration into the ${target} project.`,
+        `npx cap sync ${target}`,
+      );
+}
+
+/** Where a check reads Xcode build settings, for a fix to name. */
+const XCODE_SOURCE =
+  "The check reads it from the App target's Release configuration in project.pbxproj.";
+
 function appIdRule(root: string, target: Target, appId: string): CheckResult {
   const copied = readCopiedConfig(root, target);
   const inConfig = at(copied, "appId");
   const project = nativePaths(root, target).project;
-  const inProject =
-    target === "ios"
-      ? xcodeSetting(project, "PRODUCT_BUNDLE_IDENTIFIER")
-      : gradleSetting(project, "applicationId");
-  const fix =
-    target === "ios"
-      ? `Set the bundle identifier of the App target in Xcode (Signing & Capabilities) to ${appId}; npx cap sync never changes it.`
-      : `Set applicationId and namespace in android/app/build.gradle to ${appId}; npx cap sync never changes it.`;
   const wrong: string[] = [];
   if (inConfig !== appId)
     wrong.push(`the copied config says ${String(inConfig)}`);
-  if (inProject !== appId) wrong.push(`the project says ${String(inProject)}`);
+  let unreadable = false;
+  if (target === "ios") {
+    const setting = xcodeSetting(project, "PRODUCT_BUNDLE_IDENTIFIER");
+    if ("unreadable" in setting) {
+      unreadable = true;
+      wrong.push(
+        `the project's PRODUCT_BUNDLE_IDENTIFIER cannot be read, because ${setting.unreadable}`,
+      );
+    } else if (setting.value !== appId) {
+      wrong.push(`the project says ${setting.value}`);
+    }
+  } else {
+    const inProject = gradleSetting(project, "applicationId");
+    if (inProject !== appId)
+      wrong.push(`the project says ${String(inProject)}`);
+  }
+  const fix =
+    target === "ios"
+      ? `Set the bundle identifier of the App target in Xcode (Signing & Capabilities) to ${appId}; npx cap sync never changes it.` +
+        (unreadable ? ` ${XCODE_SOURCE}` : "")
+      : `Set applicationId and namespace in android/app/build.gradle to ${appId}; npx cap sync never changes it.`;
   return wrong.length === 0
     ? pass("app id in the native project", `The project builds ${appId}.`)
     : fail(
         "app id in the native project",
-        `${wrong.join(" and ")}, not ${appId}.`,
+        `Expected ${appId}, but ${wrong.join(" and ")}.`,
         fix,
       );
 }
@@ -286,10 +324,20 @@ function versionRule(
   version: string,
 ): CheckResult {
   const project = nativePaths(root, target).project;
-  const found =
-    target === "ios"
-      ? xcodeSetting(project, "MARKETING_VERSION")
-      : gradleSetting(project, "versionName");
+  let found: string | undefined;
+  if (target === "ios") {
+    const setting = xcodeSetting(project, "MARKETING_VERSION");
+    if ("unreadable" in setting) {
+      return fail(
+        "version",
+        `MARKETING_VERSION cannot be read, because ${setting.unreadable}.`,
+        `Set MARKETING_VERSION of the App target in Xcode to ${version}. ${XCODE_SOURCE}`,
+      );
+    }
+    found = setting.value;
+  } else {
+    found = gradleSetting(project, "versionName");
+  }
   return found === version
     ? pass("version", `The project builds ${version}.`)
     : fail(
@@ -368,7 +416,7 @@ async function fuseRules(
   root: string,
   apps: readonly string[] | undefined,
 ): Promise<CheckResult[]> {
-  const packaged = (apps ?? defaultPackagedApps(root)).map(normalizeApp);
+  const packaged = apps ?? defaultPackagedApps(root);
   if (packaged.length === 0) {
     return [
       fail(
@@ -380,22 +428,118 @@ async function fuseRules(
   }
   const results: CheckResult[] = [];
   for (const app of packaged) {
-    results.push(await fuseRule(root, app));
-    results.push(archiveRule(app));
+    const located = locatePackage(app);
+    results.push(
+      typeof located.fuses === "string"
+        ? await fuseRule(root, located.fuses)
+        : located.fuses,
+    );
+    if (located.archives.length > 0) {
+      results.push(archiveRule(app, located.archives));
+    }
   }
   return results;
 }
 
-async function fuseRule(root: string, app: string): Promise<CheckResult> {
+/** Where the release rules read one packaged app. */
+interface LocatedPackage {
+  /** The file the fuse wire is read from, or the failure naming none. */
+  readonly fuses: string | CheckResult;
+  /**
+   * The places the package's app.asar can be; none for a path that is
+   * missing, which the fuses failure already reports.
+   */
+  readonly archives: readonly string[];
+}
+
+/**
+ * Map a packaged app to the file that holds its fuses: a macOS `.app` bundle,
+ * which the fuse reader maps to the framework binary inside it; a file named
+ * directly, such as the executable of any platform; or the one `.exe` at the
+ * top of a Windows package folder. In any other folder, such as a Linux
+ * package, nothing tells the executable apart from the other files, so the
+ * failure names the route to pass it.
+ */
+function locatePackage(app: string): LocatedPackage {
+  if (!existsSync(app)) {
+    return {
+      fuses: fail(
+        "fuses",
+        `${app} is missing.`,
+        "Point --app at a packaged app: a .app bundle, a package folder under out/, or the packaged executable.",
+      ),
+      archives: [],
+    };
+  }
+  if (statSync(app).isFile()) {
+    const dir = path.dirname(app);
+    return {
+      fuses: app,
+      // Beside a Windows or Linux executable, or in the bundle around a
+      // macOS one (Contents/MacOS/<name>).
+      archives: [
+        path.join(dir, "resources", "app.asar"),
+        path.join(dir, "..", "Resources", "app.asar"),
+      ],
+    };
+  }
+  const child = readdirSync(app).find((entry) => entry.endsWith(".app"));
+  const bundle =
+    path.extname(app) === ".app"
+      ? app
+      : child === undefined
+        ? undefined
+        : path.join(app, child);
+  if (bundle !== undefined) {
+    return {
+      fuses: bundle,
+      archives: [path.join(bundle, "Contents", "Resources", "app.asar")],
+    };
+  }
+  const archive = path.join(app, "resources", "app.asar");
+  const executables = readdirSync(app, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.exe$/i.test(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+  const only = executables.length === 1 ? executables[0] : undefined;
+  if (existsSync(archive) && only !== undefined) {
+    return { fuses: path.join(app, only), archives: [archive] };
+  }
+  const found = [
+    "no .app bundle",
+    executables.length === 0
+      ? "no .exe file at its top level"
+      : `${executables.length === 1 ? "one .exe file" : `${executables.length} .exe files`} at its top level (${executables.join(", ")})`,
+    ...(existsSync(archive) ? [] : ["no resources/app.asar"]),
+  ];
+  return {
+    fuses: fail(
+      "fuses",
+      `${app} holds ${listed(found)}. The fuses are read from a macOS .app ` +
+        "bundle, or from the one .exe beside resources/app.asar in a Windows package.",
+      "Name the executable that holds the fuses: yage-pack check --target electron --release --app <path to the executable>.",
+    ),
+    archives: [archive],
+  };
+}
+
+/** Items joined with commas and a final "and". */
+function listed(items: readonly string[]): string {
+  return items.length < 2
+    ? items.join("")
+    : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1] as string}`;
+}
+
+async function fuseRule(root: string, file: string): Promise<CheckResult> {
   const { getCurrentFuseWire, FuseV1Options, FuseState } =
     await loadFuses(root);
   let wire: Record<number, number>;
   try {
-    wire = await getCurrentFuseWire(app);
+    wire = await getCurrentFuseWire(file);
   } catch (error) {
     return fail(
       "fuses",
-      `${app} has no fuse wire: ${error instanceof Error ? error.message : String(error)}.`,
+      `${file} has no fuse wire: ${error instanceof Error ? error.message : String(error)}.`,
       "Package with electronForgeConfig(), which sets the release fuses.",
     );
   }
@@ -410,20 +554,16 @@ async function fuseRule(root: string, app: string): Promise<CheckResult> {
     }
   }
   return wrong.length === 0
-    ? pass("fuses", `${path.basename(app)} carries the release fuses.`)
+    ? pass("fuses", `${path.basename(file)} carries the release fuses.`)
     : fail(
         "fuses",
-        `${wrong.length} fuse(s) differ in ${app}.`,
+        `${wrong.length} fuse(s) differ in ${file}.`,
         wrong.join("\n"),
       );
 }
 
-function archiveRule(app: string): CheckResult {
-  const candidates = [
-    path.join(app, "Contents", "Resources", "app.asar"),
-    path.join(app, "resources", "app.asar"),
-  ];
-  return candidates.some((file) => existsSync(file))
+function archiveRule(app: string, archives: readonly string[]): CheckResult {
+  return archives.some((file) => existsSync(file))
     ? pass("archive", `${path.basename(app)} ships an archive.`)
     : fail(
         "archive",
@@ -439,14 +579,6 @@ function defaultPackagedApps(root: string): string[] {
   return readdirSync(out, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && entry.name.split("-").length >= 3)
     .map((entry) => path.join(out, entry.name));
-}
-
-/** The bundle inside a packaged output directory, where the host has one. */
-function normalizeApp(app: string): string {
-  const directory = existsSync(app) && statSync(app).isDirectory();
-  if (path.extname(app) === ".app" || !directory) return app;
-  const bundle = readdirSync(app).find((child) => child.endsWith(".app"));
-  return bundle === undefined ? app : path.join(app, bundle);
 }
 
 function previousReleaseRule(previous: string, appId: string): CheckResult {

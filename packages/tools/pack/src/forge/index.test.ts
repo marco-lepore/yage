@@ -1,4 +1,10 @@
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BuildRecord } from "../record.js";
@@ -82,6 +88,22 @@ describe("electronForgeConfig validation", () => {
         "[1]",
         "[0]",
       ),
+    );
+  });
+
+  it("names a package installed at the workspace root, outside the game's folder", () => {
+    const workspace = makeTree({
+      "package.json": JSON.stringify({ private: true, workspaces: ["game"] }),
+      ...installed("@yagejs/host-electron", { version: "0.12.0" }),
+    });
+    const root = path.join(workspace, "game");
+    addFile(workspace, "game/package.json", JSON.stringify(manifest));
+    addFile(workspace, "game/electron/main.cjs", "// shell\n");
+    mkdirSync(path.join(workspace, "node_modules"), { recursive: true });
+    symlinkSync(root, path.join(workspace, "node_modules", "my-game"));
+    expect(() => electronForgeConfig({ root })).toThrow(
+      `electronForgeConfig: @yagejs/host-electron is installed at ${path.join(workspace, "node_modules", "@yagejs", "host-electron")}, ` +
+        `outside the game's node_modules, and an Electron package carries only the game's folder. Run npm install --workspaces=false in ${root}.`,
     );
   });
 
@@ -241,6 +263,104 @@ describe("electronForgeConfig hooks", () => {
       "electron-app",
       "electron-zip",
     ]);
+  });
+
+  it("checks and records a Windows package by its executable", async () => {
+    const root = game();
+    const out = path.join(root, "out", "My Game-win32-x64");
+    addFile(root, "out/My Game-win32-x64/My Game.exe", "exe");
+    addFile(root, "out/My Game-win32-x64/resources/app.asar", "x");
+    const config = electronForgeConfig({ root });
+    await (config.hooks?.postPackage as (...a: never[]) => Promise<void>)(
+      { outDir: path.join(root, "out") } as never,
+      { platform: "win32", arch: "x64", outputPaths: [out] } as never,
+    );
+    const record = JSON.parse(
+      readFileSync(path.join(root, "out", "yage-build-electron.json"), "utf8"),
+    ) as BuildRecord;
+    expect(
+      record.artifacts.map((artifact) => [artifact.kind, artifact.path]),
+    ).toEqual([["electron-app", out]]);
+  });
+
+  it("stops a Linux package with the route to name its executable", async () => {
+    const root = game();
+    const out = path.join(root, "out", "my-game-linux-x64");
+    addFile(root, "out/my-game-linux-x64/my-game", "elf");
+    addFile(root, "out/my-game-linux-x64/resources/app.asar", "x");
+    const config = electronForgeConfig({ root });
+    const error = await (
+      config.hooks?.postPackage as (...a: never[]) => Promise<void>
+    )(
+      { outDir: path.join(root, "out") } as never,
+      { platform: "linux", arch: "x64", outputPaths: [out] } as never,
+    ).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
+    expect(error).toBeInstanceOf(Error);
+    const message = (error as Error).message;
+    expect(message).toContain(
+      "yage-pack check --target electron --release --app <path to the executable>",
+    );
+    expect(message).not.toContain("Package with electronForgeConfig()");
+    expect(existsSync(path.join(root, "out", "yage-build-electron.json"))).toBe(
+      false,
+    );
+  });
+
+  it("records every file the configured makers wrote", async () => {
+    const root = game();
+    const out = path.join(root, "out", "My Game-darwin-arm64");
+    addFile(
+      root,
+      "out/My Game-darwin-arm64/My Game.app/Contents/Resources/app.asar",
+      "x",
+    );
+    const config = electronForgeConfig({ root });
+    await (config.hooks?.postPackage as (...a: never[]) => Promise<void>)(
+      { outDir: path.join(root, "out") } as never,
+      { platform: "darwin", arch: "arm64", outputPaths: [out] } as never,
+    );
+    const makers = {
+      dmg: ["out/make/My Game-1.2.3-arm64.dmg"],
+      squirrel: [
+        "out/make/squirrel.windows/x64/RELEASES",
+        "out/make/squirrel.windows/x64/My Game-1.2.3 Setup.exe",
+        "out/make/squirrel.windows/x64/my_game-1.2.3-full.nupkg",
+      ],
+      zipWithUpdates: [
+        "out/make/zip/darwin/arm64/My Game-darwin-arm64-1.2.3.zip",
+        "out/make/zip/darwin/arm64/RELEASES.json",
+      ],
+    };
+    const kinds: Record<string, string[]> = {};
+    for (const [maker, files] of Object.entries(makers)) {
+      const artifacts = files.map((file) => addFile(root, file, "made\n"));
+      await (config.hooks?.postMake as (...a: never[]) => Promise<unknown>)(
+        {} as never,
+        [
+          { artifacts, packageJSON: {}, platform: "darwin", arch: "arm64" },
+        ] as never,
+      );
+      const record = JSON.parse(
+        readFileSync(
+          path.join(root, "out", "yage-build-electron.json"),
+          "utf8",
+        ),
+      ) as BuildRecord;
+      kinds[maker] = record.artifacts.map((artifact) => artifact.kind);
+    }
+    expect(kinds).toEqual({
+      dmg: ["electron-app", "electron-maker-file"],
+      squirrel: [
+        "electron-app",
+        "electron-maker-file",
+        "electron-maker-file",
+        "electron-maker-file",
+      ],
+      zipWithUpdates: ["electron-app", "electron-zip", "electron-maker-file"],
+    });
   });
 
   it("runs the game's hook after its own, with what its own returned", async () => {

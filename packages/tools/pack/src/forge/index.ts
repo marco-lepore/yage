@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import type {
@@ -8,7 +8,13 @@ import type {
 import { runCheck } from "../check.js";
 import { RELEASE_FUSES, type FuseName } from "../fuses.js";
 import { reportText } from "../report.js";
-import { readIdentity, readManifest, WEB_DIRS } from "../project.js";
+import {
+  inGameModules,
+  productionClosure,
+  readIdentity,
+  readManifest,
+  WEB_DIRS,
+} from "../project.js";
 import { writeBuildRecord } from "../record.js";
 import { HOST_PACKAGE } from "../types.js";
 
@@ -84,10 +90,24 @@ export function electronForgeConfig(
   });
 
   // A packaged game always carries the host package's production closure.
+  // The packager copies the game's folder and nothing above it.
   const closure = productionClosure(root, [
     HOST_PACKAGE.electron,
     ...(options.runtimeDependencies ?? []),
-  ]);
+  ]).map(({ name, dir }) => {
+    if (dir === undefined) {
+      throw new Error(
+        `electronForgeConfig: ${name} is not installed. Run npm install ${name}.`,
+      );
+    }
+    if (!inGameModules(root, dir)) {
+      throw new Error(
+        `electronForgeConfig: ${name} is installed at ${dir}, outside the game's node_modules, ` +
+          `and an Electron package carries only the game's folder. Run npm install --workspaces=false in ${root}.`,
+      );
+    }
+    return path.relative(root, dir);
+  });
 
   // A shell script at the game's root is kept by name; one in its own folder
   // keeps the folder, which is where a shell with more than one file sits.
@@ -97,7 +117,7 @@ export function electronForgeConfig(
     posix(mainDirectory === "." ? main : mainDirectory),
     `/${WEB_DIRS.electron}`,
     ...include.map((entry) => posix(entry)),
-    ...[...closure].map((name) => `/node_modules/${name}`),
+    ...closure.map((dir) => posix(dir)),
   ]);
 
   /** Forge calls this for every project path, with a leading slash. */
@@ -201,39 +221,6 @@ function fusesPlugin(
     config[FuseV1Options[name as FuseName]] = value;
   }
   return new FusesPlugin(config);
-}
-
-/**
- * The production-dependency closure of the named packages, as the game
- * installed them: what the shell loads once the app runs from its archive.
- */
-function productionClosure(
-  root: string,
-  names: readonly string[],
-): Set<string> {
-  const found = new Set<string>();
-  const queue = [...names];
-  while (queue.length > 0) {
-    const name = queue.shift() as string;
-    if (found.has(name)) continue;
-    const manifest = path.join(
-      root,
-      "node_modules",
-      ...name.split("/"),
-      "package.json",
-    );
-    if (!existsSync(manifest)) {
-      throw new Error(
-        `electronForgeConfig: ${name} is not installed. Run npm install ${name}.`,
-      );
-    }
-    found.add(name);
-    const parsed = JSON.parse(readFileSync(manifest, "utf8")) as {
-      dependencies?: Record<string, string>;
-    };
-    queue.push(...Object.keys(parsed.dependencies ?? {}));
-  }
-  return found;
 }
 
 /** A project path as Forge's ignore function spells it. */

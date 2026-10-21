@@ -12,8 +12,9 @@ and records what went into a build.
 What you get:
 
 - `npm run start:electron` — the game in a desktop window.
-- `npm run make:electron` — an installable package, plus a JSON record of
-  everything that went into it.
+- `npm run make:electron` — the packaged app and the files the configured
+  makers write from it, plus a JSON record of everything that went into
+  them.
 - `npm run sync:capacitor` — the mobile build copied into the iOS and
   Android projects, with the app's identity checked on every sync.
 - `npx yage-pack check --target <electron|ios|android> --release` — what a
@@ -167,7 +168,7 @@ Android.
 ```bash
 npm run start:electron     # unpackaged, with developer tools
 npm run package:electron   # the app directory under out/
-npm run make:electron      # the app plus a ZIP under out/make/
+npm run make:electron      # the app plus what the makers write under out/make/
 ```
 
 `init` writes `electron/main.cjs`, the shell that serves the build, and
@@ -202,10 +203,27 @@ What the configuration owns:
   and `yage.appId`.
 - **The release fuses.** A packaged app ignores `ELECTRON_RUN_AS_NODE`,
   `NODE_OPTIONS` and `--inspect`, and refuses to start when its archive has
-  been changed. A test driver cannot attach to a packaged app for the same
-  reason: run it and read what it writes.
+  been changed. No fuse covers Chromium's `--remote-debugging-port` and
+  `--remote-debugging-pipe` switches, so the shell's `startGame` refuses to
+  load the game in a packaged app started with either. A test driver cannot
+  attach to a packaged app: run it and read what it writes.
 - **The checks and the record.** Packaging runs the checks first, then
-  writes `out/yage-build-electron.json`.
+  writes `out/yage-build-electron.json`, and `make` adds every file the
+  makers write to it, from an installer to the update files beside it. The
+  release check reads the fuses from the `.app` bundle of a macOS package or
+  the `.exe` of a Windows package. A Linux package fails the check, because
+  it has no executable the check can pick out: run
+  `npx yage-pack check --target electron --release --app <path to the executable>`
+  on it yourself.
+
+**A game inside an npm workspace.** The package carries the game's folder
+and nothing above it, so the packages the shell loads have to be installed
+in the game's own `node_modules`. npm installs them at the workspace root,
+and `electronForgeConfig` then refuses to build, naming the package.
+Run `npm install --workspaces=false` in the game's folder before packaging:
+it installs the game as a project of its own. An `npm install` at the
+workspace root moves the packages out again. `npx yage-pack doctor` reports
+the same problem.
 
 A packaged app is a release and `electron-forge start` is development: the
 shell reads `app.isPackaged`, which decides the save directory and whether
@@ -248,6 +266,12 @@ differs from `package.json` is reported during the sync. `npx cap add`
 writes the identifier into the Xcode and Gradle projects once and `npx cap
 sync` never updates it, which is why the check compares them and names the
 setting to change.
+
+The check reads the configuration a sync copies into each native project,
+so on a fresh clone it asks for `npx cap sync <platform>` first. On iOS it
+reads the bundle identifier and the version from the App target's Release
+configuration. A value that comes from an xcconfig file or from the project
+level cannot be read there, and the check asks you to set it on the target.
 
 ## Before a release
 
@@ -323,4 +347,5 @@ Every refusal names the input:
   yourself if you mean to.
 - `cannot tell what … is for android` — `record` takes the artifacts that
   target produces: an `.apk` or an `.aab` here, an `.app`, `.xcarchive` or
-  `.ipa` on iOS, a packaged directory or a `.zip` on the desktop.
+  `.ipa` on iOS, a packaged directory or a file a Forge maker wrote on the
+  desktop.

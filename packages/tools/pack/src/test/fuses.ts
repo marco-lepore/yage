@@ -26,7 +26,8 @@ export function wire(
 
 /**
  * Install a stand-in for the fuse reader in a test game, so a check reads a
- * wire a test chose instead of a packaged binary.
+ * wire the test chose, with no packaged binary. Like the real reader, it
+ * reads a `.app` bundle or a file and fails on any other directory.
  */
 export function installFuseReader(
   root: string,
@@ -43,16 +44,22 @@ export function installFuseReader(
   );
   const body =
     answer === "missing"
-      ? "Promise.reject(new Error('no fuse wire'))"
-      : `Promise.resolve(${JSON.stringify(answer)})`;
+      ? "throw new Error('no fuse wire');"
+      : `return ${JSON.stringify(answer)};`;
   addFile(
     root,
     "node_modules/@electron/fuses/index.cjs",
-    `module.exports = {
+    `const { statSync } = require("node:fs");
+module.exports = {
   FuseVersion: { V1: "1" },
   FuseV1Options: ${JSON.stringify(INDEX)},
   FuseState: { DISABLE: 48, ENABLE: 49 },
-  getCurrentFuseWire: () => ${body},
+  getCurrentFuseWire: async (app) => {
+    if (!app.endsWith(".app") && statSync(app).isDirectory()) {
+      throw new Error("EISDIR: illegal operation on a directory, read");
+    }
+    ${body}
+  },
 };
 `,
   );

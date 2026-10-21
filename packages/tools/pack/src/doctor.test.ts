@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, symlinkSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runDoctor } from "./doctor.js";
 import type { RunResult } from "./run.js";
@@ -216,6 +217,71 @@ describe("runDoctor", () => {
     );
     const found = await report(root, "electron");
     expect(rule(found, "pixi.js").fix).toBe("npm install pixi.js@^8.22.0");
+  });
+
+  it("reads a workspace member's packages up to the workspace root", async () => {
+    const workspace = makeTree({
+      "package.json": JSON.stringify({ private: true, workspaces: ["game"] }),
+      "game/package.json": JSON.stringify({ name: "my-game" }),
+      ...installed("pixi.js", { version: "8.22.0" }),
+    });
+    const root = path.join(workspace, "game");
+    expect(rule(await report(root, "electron"), "pixi.js").fix).toBe(
+      "npm install pixi.js@^8.22.0",
+    );
+    // npm links each workspace member into the workspace root's node_modules.
+    symlinkSync(root, path.join(workspace, "node_modules", "my-game"));
+    expect(rule(await report(root, "electron"), "pixi.js").detail).toBe(
+      "One copy of pixi.js, 8.22.0.",
+    );
+  });
+
+  it("counts a workspace member's own copy of pixi.js once", async () => {
+    const workspace = makeTree({
+      "package.json": JSON.stringify({ private: true, workspaces: ["game"] }),
+      "game/package.json": JSON.stringify({ name: "my-game" }),
+      "game/node_modules/pixi.js/package.json": JSON.stringify({
+        name: "pixi.js",
+        version: "8.22.0",
+      }),
+    });
+    const root = path.join(workspace, "game");
+    mkdirSync(path.join(workspace, "node_modules"));
+    symlinkSync(root, path.join(workspace, "node_modules", "my-game"));
+    expect(rule(await report(root, "electron"), "pixi.js").ok).toBe(true);
+  });
+
+  it("names the packages an Electron package cannot carry from a workspace root", async () => {
+    const workspace = makeTree({
+      "package.json": JSON.stringify({ private: true, workspaces: ["game"] }),
+      "game/package.json": JSON.stringify({
+        name: "my-game",
+        dependencies: { "@yagejs/host-electron": "*" },
+      }),
+      ...installed("@yagejs/host-electron", {
+        version: "0.12.0",
+        dependencies: { "@yagejs/save": "^0.12.0" },
+      }),
+      "game/node_modules/@yagejs/save/package.json": JSON.stringify({
+        name: "@yagejs/save",
+        version: "0.12.0",
+      }),
+    });
+    const root = path.join(workspace, "game");
+    symlinkSync(root, path.join(workspace, "node_modules", "my-game"));
+    const result = rule(
+      await report(root, "electron"),
+      "packages in the game's folder",
+    );
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe(
+      `@yagejs/host-electron (${path.join(workspace, "node_modules", "@yagejs", "host-electron")}) ` +
+        "is installed outside the game's node_modules, and an Electron package carries only the game's folder.",
+    );
+    expect(result.fix).toBe(
+      `Run npm install --workspaces=false in ${root}: it installs the game's packages in its own ` +
+        "node_modules. An npm install at the workspace root moves them out again.",
+    );
   });
 
   it("passes every iOS rule when Xcode answers", async () => {

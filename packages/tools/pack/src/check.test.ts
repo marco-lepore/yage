@@ -1,9 +1,10 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCheck } from "./check.js";
 import { installFuseReader, wire } from "./test/fuses.js";
 import { addFile, makeTree, removeTrees, snapshot } from "./test/tree.js";
+import { xcodeProject } from "./test/xcode.js";
 import type { CheckReport } from "./types.js";
 
 const APP_ID = "com.example.mygame";
@@ -23,18 +24,26 @@ const copiedConfig = {
 
 /** The build-file entry Xcode writes when the App target copies the file. */
 const PRIVACY_BUILD_FILE =
-  "    1A2B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3C4D /* PrivacyInfo.xcprivacy */; };\n";
+  "\t\t1A2B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3C4D /* PrivacyInfo.xcprivacy */; };\n";
 
-const PBXPROJ = `// !$*UTF8*$!
-{
-${PRIVACY_BUILD_FILE}    3C4D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; };
-  buildSettings = {
-    CURRENT_PROJECT_VERSION = 1;
-    MARKETING_VERSION = 1.2.3;
-    PRODUCT_BUNDLE_IDENTIFIER = ${APP_ID};
-  };
+const PRIVACY_OBJECTS = `${PRIVACY_BUILD_FILE}\t\t3C4D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; };\n`;
+
+/** The App target's Release settings of a project that agrees with the game. */
+const RELEASE = {
+  CURRENT_PROJECT_VERSION: "1",
+  MARKETING_VERSION: "1.2.3",
+  PRODUCT_BUNDLE_IDENTIFIER: APP_ID,
+};
+
+/** The Xcode project of a synced game, with the App target's settings. */
+function pbxproj(
+  release: Record<string, string> = RELEASE,
+  more: Omit<Parameters<typeof xcodeProject>[0], "release"> = {},
+): string {
+  return xcodeProject({ objects: PRIVACY_OBJECTS, release, ...more });
 }
-`;
+
+const PBXPROJ = pbxproj();
 
 const BUILD_GRADLE = `android {
     namespace "${APP_ID}"
@@ -150,10 +159,10 @@ describe("runCheck contract rules", () => {
 
   it("names the setting that carries a stale bundle identifier", async () => {
     const root = game({
-      "ios/App/App.xcodeproj/project.pbxproj": PBXPROJ.replace(
-        `PRODUCT_BUNDLE_IDENTIFIER = ${APP_ID}`,
-        "PRODUCT_BUNDLE_IDENTIFIER = com.example.old",
-      ),
+      "ios/App/App.xcodeproj/project.pbxproj": pbxproj({
+        ...RELEASE,
+        PRODUCT_BUNDLE_IDENTIFIER: "com.example.old",
+      }),
     });
     const result = rule(
       await runCheck({ root, target: "ios", release: false }),
@@ -163,6 +172,90 @@ describe("runCheck contract rules", () => {
     expect(result.fix).toBe(
       `Set the bundle identifier of the App target in Xcode (Signing & Capabilities) to ${APP_ID}; npx cap sync never changes it.`,
     );
+  });
+
+  it("reads the App target's Release configuration, not a Debug-only identifier", async () => {
+    const root = game({
+      "ios/App/App.xcodeproj/project.pbxproj": pbxproj(RELEASE, {
+        debug: { ...RELEASE, PRODUCT_BUNDLE_IDENTIFIER: `${APP_ID}.dev` },
+        projectRelease: { MARKETING_VERSION: "9.9.9" },
+      }),
+    });
+    const report = await runCheck({ root, target: "ios", release: true });
+    expect(rule(report, "app id in the native project").ok).toBe(true);
+    expect(rule(report, "version").ok).toBe(true);
+  });
+
+  it("reports a bundle identifier the App target inherits as unreadable", async () => {
+    const root = game({
+      "ios/App/App.xcodeproj/project.pbxproj": pbxproj(
+        { CURRENT_PROJECT_VERSION: "1", MARKETING_VERSION: "1.2.3" },
+        {
+          projectRelease: { PRODUCT_BUNDLE_IDENTIFIER: APP_ID },
+        },
+      ),
+    });
+    const result = rule(
+      await runCheck({ root, target: "ios", release: false }),
+      "app id in the native project",
+    );
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe(
+      `Expected ${APP_ID}, but the project's PRODUCT_BUNDLE_IDENTIFIER cannot be read, ` +
+        "because the App target's Release configuration does not set it, so any value " +
+        "comes from the project or an xcconfig file.",
+    );
+    expect(result.fix).toBe(
+      `Set the bundle identifier of the App target in Xcode (Signing & Capabilities) to ${APP_ID}; ` +
+        "npx cap sync never changes it. The check reads it from the App target's Release " +
+        "configuration in project.pbxproj.",
+    );
+  });
+
+  it("reports a version built from other settings as unreadable", async () => {
+    const root = game({
+      "ios/App/App.xcodeproj/project.pbxproj": pbxproj({
+        ...RELEASE,
+        MARKETING_VERSION: '"$(APP_VERSION)"',
+      }),
+    });
+    const result = rule(
+      await runCheck({ root, target: "ios", release: true }),
+      "version",
+    );
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe(
+      "MARKETING_VERSION cannot be read, because the App target's Release configuration " +
+        "sets it to $(APP_VERSION), which refers to other settings.",
+    );
+  });
+
+  it("asks for a sync before the rules that read the copied configuration", async () => {
+    for (const target of ["ios", "android"] as const) {
+      const root = game({});
+      const copied =
+        target === "ios"
+          ? "ios/App/App/capacitor.config.json"
+          : "android/app/src/main/assets/capacitor.config.json";
+      rmSync(path.join(root, copied));
+      const report = await runCheck({ root, target, release: true });
+      expect(report.results.filter((result) => !result.ok)).toEqual([
+        rule(report, "copied config"),
+      ]);
+      expect(rule(report, "copied config").fix).toBe(`npx cap sync ${target}`);
+      const names = report.results.map((result) => result.name);
+      for (const gated of [
+        "app id in the native project",
+        "YAGE settings",
+        "no development server",
+        "no credentials in the config",
+      ]) {
+        expect([target, names]).not.toEqual([
+          target,
+          expect.arrayContaining([gated]),
+        ]);
+      }
+    }
   });
 
   it("reads a Gradle setting written with an equals sign", async () => {
@@ -323,10 +416,10 @@ describe("runCheck release rules", () => {
 
   it("names the version setting that drifted", async () => {
     const root = game({
-      "ios/App/App.xcodeproj/project.pbxproj": PBXPROJ.replace(
-        "MARKETING_VERSION = 1.2.3",
-        "MARKETING_VERSION = 1.0.0",
-      ),
+      "ios/App/App.xcodeproj/project.pbxproj": pbxproj({
+        ...RELEASE,
+        MARKETING_VERSION: "1.0.0",
+      }),
     });
     expect(
       rule(await runCheck({ root, target: "ios", release: true }), "version")
@@ -404,13 +497,104 @@ describe("runCheck release rules", () => {
   });
 
   it("asks for an archive when the package holds none", async () => {
-    const root = game({ "out/My Game-darwin-arm64/marker": "" });
+    const root = game({
+      "out/My Game-darwin-arm64/My Game.app/Contents/Info.plist": "",
+    });
     installFuseReader(root, "missing");
     const report = await runCheck({ root, target: "electron", release: true });
     expect(rule(report, "archive").fix).toBe(
       "Package with electronForgeConfig(), which sets asar: true.",
     );
     expect(rule(report, "fuses").detail).toContain("no fuse wire");
+  });
+
+  it("reads the fuses from the executable of a Windows package", async () => {
+    const root = game({
+      "out/My Game-win32-x64/My Game.exe": "exe",
+      "out/My Game-win32-x64/resources/app.asar": "x",
+      "out/My Game-win32-x64/ffmpeg.dll": "",
+      "out/My Game-win32-x64/locales/en-US.pak": "",
+    });
+    installFuseReader(root, wire());
+    const report = await runCheck({ root, target: "electron", release: true });
+    expect(report.results.filter((result) => !result.ok)).toEqual([]);
+    expect(rule(report, "fuses").detail).toBe(
+      "My Game.exe carries the release fuses.",
+    );
+  });
+
+  it("names the route to the executable for a folder it cannot read", async () => {
+    const linux = "out/my-game-linux-x64";
+    const several = "out/My Game-win32-arm64";
+    const root = game({
+      [`${linux}/my-game`]: "elf",
+      [`${linux}/resources/app.asar`]: "x",
+      [`${several}/My Game.exe`]: "exe",
+      [`${several}/Helper.exe`]: "exe",
+      [`${several}/resources/app.asar`]: "x",
+    });
+    installFuseReader(root, wire());
+    const report = await runCheck({
+      root,
+      target: "electron",
+      release: true,
+      apps: [path.join(root, linux), path.join(root, several)],
+    });
+    const fuses = report.results.filter((result) => result.name === "fuses");
+    const route =
+      "Name the executable that holds the fuses: yage-pack check --target electron --release --app <path to the executable>.";
+    const expected = [
+      "holds no .app bundle and no .exe file at its top level.",
+      "holds no .app bundle and 2 .exe files at its top level (Helper.exe, My Game.exe).",
+    ];
+    expect(
+      fuses.map((result) => [result.ok, result.fix, result.detail]),
+    ).toEqual(
+      [linux, several].map((dir, index) => [
+        false,
+        route,
+        `${path.join(root, dir)} ${expected[index] as string} The fuses are read from a macOS .app bundle, ` +
+          "or from the one .exe beside resources/app.asar in a Windows package.",
+      ]),
+    );
+    expect(
+      report.results.filter((result) => result.name === "archive"),
+    ).toEqual([
+      expect.objectContaining({ ok: true }),
+      expect.objectContaining({ ok: true }),
+    ]);
+  });
+
+  it("reads an executable passed with --app, and the archive beside it", async () => {
+    const root = game({
+      "out/my-game-linux-x64/my-game": "elf",
+      "out/my-game-linux-x64/resources/app.asar": "x",
+    });
+    installFuseReader(root, wire());
+    const report = await runCheck({
+      root,
+      target: "electron",
+      release: true,
+      apps: [path.join(root, "out", "my-game-linux-x64", "my-game")],
+    });
+    expect(report.results.filter((result) => !result.ok)).toEqual([]);
+  });
+
+  it("names an --app that is missing once", async () => {
+    const root = game();
+    installFuseReader(root, wire());
+    const app = path.join(root, "out", "My Game-darwin-arm64");
+    const report = await runCheck({
+      root,
+      target: "electron",
+      release: true,
+      apps: [app],
+    });
+    expect(
+      report.results
+        .filter((result) => !result.ok)
+        .map((result) => result.detail),
+    ).toEqual([`${app} is missing.`]);
   });
 
   it("reports an --app that is a file as a package without fuses", async () => {

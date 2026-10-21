@@ -12,7 +12,12 @@ import os from "node:os";
 import path from "node:path";
 import { hashDirectory, type HashedFile } from "./hash.js";
 import { gradleSetting, nativePaths, xcodeSetting } from "./native.js";
-import { readIdentity, WEB_DIRS } from "./project.js";
+import {
+  installedVersion,
+  nodeModulesChain,
+  readIdentity,
+  WEB_DIRS,
+} from "./project.js";
 import { run as defaultRun, javaBinary, type RunResult } from "./run.js";
 import type { Target } from "./types.js";
 
@@ -20,6 +25,7 @@ import type { Target } from "./types.js";
 export type ArtifactKind =
   | "electron-app"
   | "electron-zip"
+  | "electron-maker-file"
   | "ios-simulator-app"
   | "ios-app"
   | "ios-archive"
@@ -169,7 +175,9 @@ export async function writeBuildRecord(
 
 /** The artifact kinds a target can produce, as an error message lists them. */
 function expectedKinds(target: Target): string {
-  if (target === "electron") return "a packaged app directory or a .zip";
+  if (target === "electron") {
+    return "a packaged app directory or a file an Electron Forge maker wrote";
+  }
   if (target === "ios") return "an .app, .xcarchive or .ipa";
   return "an .apk or .aab";
 }
@@ -207,8 +215,12 @@ async function describeArtifact(
 function artifactKind(file: string, target: Target): ArtifactKind {
   const extension = path.extname(file).toLowerCase();
   if (target === "electron") {
-    if (extension === ".zip") return "electron-zip";
     if (isExistingDirectory(electronAppPath(file))) return "electron-app";
+    // A maker writes files of its own kinds: installers, archives, and the
+    // update metadata next to them (RELEASES, RELEASES.json, .nupkg).
+    if (existsSync(file) && statSync(file).isFile()) {
+      return extension === ".zip" ? "electron-zip" : "electron-maker-file";
+    }
   }
   if (target === "ios") {
     if (extension === ".xcarchive") return "ios-archive";
@@ -264,12 +276,11 @@ function readSignature(
 
 function readBuildNumber(root: string, target: Target): string | null {
   if (target === "ios") {
-    return (
-      xcodeSetting(
-        nativePaths(root, "ios").project,
-        "CURRENT_PROJECT_VERSION",
-      ) ?? null
+    const setting = xcodeSetting(
+      nativePaths(root, "ios").project,
+      "CURRENT_PROJECT_VERSION",
     );
+    return "value" in setting ? setting.value : null;
   }
   if (target === "android") {
     return (
@@ -292,19 +303,24 @@ function readSource(
   return { commit: head.stdout.trim(), dirty };
 }
 
+/** Every YAGE package the game resolves; the nearest copy of each wins. */
 function readYagePackages(root: string): Record<string, string> {
   const found: Record<string, string> = {};
-  for (const scope of ["@yagejs", "@yagejs-tools", "@yagejs-addons"]) {
-    const dir = path.join(root, "node_modules", scope);
-    if (!existsSync(dir)) continue;
-    for (const name of readdirSync(dir)) {
-      const manifest = path.join(dir, name, "package.json");
-      if (!existsSync(manifest)) continue;
-      const parsed = JSON.parse(readFileSync(manifest, "utf8")) as {
-        version?: string;
-      };
-      if (parsed.version !== undefined)
-        found[`${scope}/${name}`] = parsed.version;
+  for (const modules of nodeModulesChain(root)) {
+    for (const scope of ["@yagejs", "@yagejs-tools", "@yagejs-addons"]) {
+      const dir = path.join(modules, scope);
+      if (!existsSync(dir)) continue;
+      for (const name of readdirSync(dir)) {
+        const manifest = path.join(dir, name, "package.json");
+        if (found[`${scope}/${name}`] !== undefined || !existsSync(manifest)) {
+          continue;
+        }
+        const parsed = JSON.parse(readFileSync(manifest, "utf8")) as {
+          version?: string;
+        };
+        if (parsed.version !== undefined)
+          found[`${scope}/${name}`] = parsed.version;
+      }
     }
   }
   return found;
@@ -313,17 +329,8 @@ function readYagePackages(root: string): Record<string, string> {
 function readDependencies(root: string): Record<string, string> {
   const found: Record<string, string> = {};
   for (const name of RECORDED_DEPENDENCIES) {
-    const manifest = path.join(
-      root,
-      "node_modules",
-      ...name.split("/"),
-      "package.json",
-    );
-    if (!existsSync(manifest)) continue;
-    const parsed = JSON.parse(readFileSync(manifest, "utf8")) as {
-      version?: string;
-    };
-    if (parsed.version !== undefined) found[name] = parsed.version;
+    const version = installedVersion(root, name);
+    if (version !== null) found[name] = version;
   }
   return found;
 }

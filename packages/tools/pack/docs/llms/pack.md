@@ -175,15 +175,22 @@ It owns `packagerConfig.asar`, `packagerConfig.appBundleId` and
 `packagerConfig.ignore`, adds the fuses plugin, and adds three hooks:
 `prePackage` runs the contract check, `postPackage` runs the release check
 and writes the build record to `<outDir>/yage-build-electron.json`, and
-`postMake` adds the installer artifacts to that record. Setting an owned
-`packagerConfig` key throws at config load. Everything else passes through,
-and the game's own hooks run after YAGE's with the same arguments. `plugins`
-run after the fuses plugin. `makers` replaces the default, a ZIP maker for
-`darwin` and `win32`.
+`postMake` adds every file the configured makers wrote to that record.
+Setting an owned `packagerConfig` key throws at config load. Everything else
+passes through, and the game's own hooks run after YAGE's with the same
+arguments. `plugins` run after the fuses plugin. `makers` replaces the
+default, a ZIP maker for `darwin` and `win32`.
 
 The archive holds `package.json`, the directory of the `main` script,
 `dist-electron/`, each `include` path and the production-dependency closure
 of `@yagejs/host-electron` plus any `runtimeDependencies`. Nothing else.
+
+The packager copies the game's folder and nothing above it, so every package
+of that closure has to be installed in the game's own `node_modules`; one
+installed anywhere else throws at config load. In an npm workspace, npm
+installs them at the workspace root: run `npm install --workspaces=false` in
+the game's folder before packaging. An `npm install` at the workspace root
+moves them out again.
 
 `RELEASE_FUSES` is the set every package carries:
 
@@ -198,10 +205,12 @@ of `@yagejs/host-electron` plus any `runtimeDependencies`. Nothing else.
 | `GrantFileProtocolExtraPrivileges`      | off   |
 
 A packaged app therefore ignores `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` and
-`--inspect`, and refuses to start when its archive has changed. A test
-driver cannot attach to it: check a packaged app by running it and reading
-what it writes. `electron-forge start` runs unpackaged, with developer tools
-on.
+`--inspect`, and refuses to start when its archive has changed. No fuse
+covers Chromium's `--remote-debugging-port` and `--remote-debugging-pipe`:
+`startGame` refuses to load the game in a packaged app started with either.
+A test driver cannot attach to a packaged app: check it by running it and
+reading what it writes. `electron-forge start` runs unpackaged, with
+developer tools on.
 
 ## `capacitorConfig(overrides?)`
 
@@ -230,19 +239,27 @@ Checks what each target's build needs and installs nothing. With no
 `--target` it checks every target whose host package and platform package
 are installed.
 
-| Rule                           | Targets   | Passes when                                                                                                                        |
-| ------------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `node`                         | all       | Node 22.13.0 or later for `electron`, 22.12.0 for the mobile targets                                                               |
-| `packages`                     | all       | every package the target's build needs is installed                                                                                |
-| `host package in dependencies` | all       | the host adapter is a runtime dependency, not a development one                                                                    |
-| `peer versions`                | all       | each package the host adapter declares is installed at a version it accepts, and each Capacitor plugin is listed in `dependencies` |
-| `pixi.js`                      | all       | exactly one copy is installed, at 8.22.0 or later                                                                                  |
-| `macOS`                        | `ios`     | the machine runs macOS                                                                                                             |
-| `Xcode`                        | `ios`     | the selected developer directory is an Xcode, at 15.0 or later                                                                     |
-| `Xcode first launch`           | `ios`     | `xcodebuild -checkFirstLaunchStatus` succeeds                                                                                      |
-| `iOS simulator`                | `ios`     | an iOS runtime is available                                                                                                        |
-| `JDK`                          | `android` | Java 21 or later answers                                                                                                           |
-| `Android SDK`                  | `android` | `ANDROID_HOME` or `ANDROID_SDK_ROOT` holds the platform the project compiles against and a build-tools entry                       |
+| Rule                            | Targets    | Passes when                                                                                                                        |
+| ------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `node`                          | all        | Node 22.13.0 or later for `electron`, 22.12.0 for the mobile targets                                                               |
+| `packages`                      | all        | every package the target's build needs is installed                                                                                |
+| `host package in dependencies`  | all        | the host adapter is a runtime dependency, not a development one                                                                    |
+| `peer versions`                 | all        | each package the host adapter declares is installed at a version it accepts, and each Capacitor plugin is listed in `dependencies` |
+| `pixi.js`                       | all        | exactly one copy is installed, at 8.22.0 or later                                                                                  |
+| `packages in the game's folder` | `electron` | `@yagejs/host-electron` and every package it loads are in the game's own `node_modules`, which is all an Electron package carries  |
+| `macOS`                         | `ios`      | the machine runs macOS                                                                                                             |
+| `Xcode`                         | `ios`      | the selected developer directory is an Xcode, at 15.0 or later                                                                     |
+| `Xcode first launch`            | `ios`      | `xcodebuild -checkFirstLaunchStatus` succeeds                                                                                      |
+| `iOS simulator`                 | `ios`      | an iOS runtime is available                                                                                                        |
+| `JDK`                           | `android`  | Java 21 or later answers                                                                                                           |
+| `Android SDK`                   | `android`  | `ANDROID_HOME` or `ANDROID_SDK_ROOT` holds the platform the project compiles against and a build-tools entry                       |
+
+Packages are read from the game's own `node_modules` and, for a member of an
+npm workspace, from each `node_modules` up to the workspace root. A directory
+is the workspace root when its `package.json` declares `workspaces` and its
+`node_modules` links the game in by name, as npm does for each member.
+`packages in the game's folder` runs only when `@yagejs/host-electron` is
+installed; its fix is `npm install --workspaces=false` in the game's folder.
 
 `Xcode first launch` and `iOS simulator` run only when `Xcode` passed,
 because both go through the selected developer directory. Each failure
@@ -260,12 +277,23 @@ sync hook and every Forge package through `prePackage`.
 | `web build`                    | all              | the target's web directory holds an `index.html`                                                      |
 | `no service worker`            | all              | no file in it registers a service worker                                                              |
 | `native project`               | `ios`, `android` | `npx cap add` has generated it                                                                        |
+| `copied config`                | `ios`, `android` | `npx cap sync` has copied `capacitor.config.json` into the native project                             |
 | `app id in the native project` | `ios`, `android` | the copied config, and `PRODUCT_BUNDLE_IDENTIFIER` or `applicationId`, equal `yage.appId`             |
 | `YAGE settings`                | `ios`, `android` | the copied config has `ios.contentInset: "never"` and no `plugins.App.disableBackButtonHandler: true` |
 
 `npx cap add` writes the bundle identifier into the native project once and
 `npx cap sync` never updates it, which is why the check compares them and
 names the Xcode or Gradle setting to change.
+
+`copied config` runs once `native project` passes, and the rules that read
+the copied configuration (`app id in the native project`, `YAGE settings`,
+`no development server`, `no credentials in the config`) run once it passes.
+A fresh clone fails it until `npx cap sync <target>` runs.
+
+On iOS, `PRODUCT_BUNDLE_IDENTIFIER` and `MARKETING_VERSION` are read from
+the App target's Release configuration in `project.pbxproj`. A value the
+target inherits from the project or an xcconfig file, or builds from other
+settings such as `$(inherited)`, cannot be read there and fails the rule.
 
 Release rules run with `--release`:
 
@@ -284,6 +312,13 @@ On the Capacitor side `--release` is an explicit call before a release
 native build: no vendor hook covers an Xcode or Gradle build. On the
 Electron side it runs on every package.
 
+Without `--app`, `check --target electron --release` reads every package
+folder under `out/`. The fuses are read from the `.app` bundle of a macOS
+package, or from the one `.exe` beside `resources/app.asar` in a Windows
+package. Any other folder, such as a Linux package, fails `fuses` with the
+route: pass the packaged executable with `--app`. A file passed with `--app`
+is read directly, and its archive is looked for beside it.
+
 `check` never edits a file. Inside the Capacitor sync hook the target comes
 from `CAPACITOR_PLATFORM_NAME`; the hook also runs for the browser platform,
 which has no rules.
@@ -299,6 +334,7 @@ import type { HashedFile } from "@yagejs-tools/pack";
 type ArtifactKind =
   | "electron-app"
   | "electron-zip"
+  | "electron-maker-file"
   | "ios-simulator-app"
   | "ios-app"
   | "ios-archive"
@@ -350,9 +386,18 @@ interface BuildRecord {
 }
 ```
 
-`app.build` is `CURRENT_PROJECT_VERSION` on iOS and `versionCode` on
-Android, `null` for Electron. An `--out` that exists has to be a record of
-the same shape, so a mistyped path cannot overwrite a file the build needs.
+`electron-app` is a packaged app folder, `electron-zip` a `.zip`, and
+`electron-maker-file` any other file a Forge maker wrote: a DMG, a Squirrel
+installer with its `RELEASES` and `.nupkg` files, a `RELEASES.json`. A path
+that is not there is refused.
+
+`app.build` is `CURRENT_PROJECT_VERSION` of the App target's Release
+configuration on iOS and `versionCode` on Android. It is `null` for
+Electron, and on iOS when the project file does not hold the value.
+`packages` and `dependencies` are read the way `doctor` reads packages, up
+to the workspace root. An
+`--out` that exists has to be a record of the same shape, so a mistyped path
+cannot overwrite a file the build needs.
 
 ## `hashDirectory(dir)`
 
@@ -405,7 +450,7 @@ Every failure names the input:
   that does not match the pattern, or a missing `version`.
 - `electronForgeConfig`: an owned `packagerConfig` key, a `main` that names
   no file, an `include` path outside the game, a runtime dependency that is
-  not installed.
+  not installed or is installed outside the game's `node_modules`.
 - `capacitorConfig`: an owned key, an `ios.contentInset` other than
   `"never"`, `plugins.App.disableBackButtonHandler: true`.
 - `yage-pack init`: no `package.json`, an unknown `--target`, a missing
