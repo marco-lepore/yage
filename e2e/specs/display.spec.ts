@@ -397,7 +397,7 @@ for (const ratio of [1, 2] as const) {
   test.describe(`orientation on a phone at pixel ratio ${ratio}`, () => {
     test.use({ ...phone, deviceScaleFactor: ratio });
 
-    test("reports one change per rotation and keeps touch aligned", async ({
+    test("reports one change per rotation and keeps the pointer aligned", async ({
       page,
     }) => {
       await openFixture(page);

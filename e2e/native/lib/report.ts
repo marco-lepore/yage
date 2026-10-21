@@ -4,6 +4,7 @@ import { readFile, readdir, mkdir, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { hashDirectory } from "@yagejs-tools/pack";
 import { REPORT_PREFIX } from "./console.js";
+import { readLocalPackages } from "./localPackages.mjs";
 import { repoRoot, workDir } from "./paths.js";
 import type { BaselineProfile } from "./build.js";
 
@@ -82,21 +83,23 @@ export interface BaselineRunReport {
 /** Where the reports of every run land. */
 export const reportsDir = resolve(workDir, "reports");
 
-/** The engine commit, its uncommitted files, and every package's version. */
-export async function readEngineProvenance(
-  root = repoRoot,
-): Promise<BaselineRunReport["engine"]> {
+/**
+ * The engine commit, its uncommitted files, and the version of every package
+ * in this repository: engine packages, addons and tools.
+ */
+export async function readEngineProvenance(): Promise<
+  BaselineRunReport["engine"]
+> {
   const git = (...args: string[]): string =>
-    execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+    execFileSync("git", ["-C", repoRoot, ...args], {
+      encoding: "utf8",
+    }).trim();
   const packages: Record<string, string> = {};
-  for (const entry of await readdir(resolve(root, "packages"), {
-    withFileTypes: true,
-  })) {
-    if (!entry.isDirectory()) continue;
-    const manifest = resolve(root, "packages", entry.name, "package.json");
-    const raw = await readJsonIfPresent(manifest);
-    if (raw === null) continue;
-    packages[raw.name as string] = raw.version as string;
+  for (const [name, dir] of readLocalPackages()) {
+    const manifest = JSON.parse(
+      await readFile(resolve(repoRoot, dir, "package.json"), "utf8"),
+    ) as { version: string };
+    packages[name] = manifest.version;
   }
   return {
     commit: git("rev-parse", "HEAD"),
@@ -210,14 +213,4 @@ async function listFiles(dir: string): Promise<string[]> {
     else if (entry.isFile()) out.push(path);
   }
   return out;
-}
-
-async function readJsonIfPresent(
-  path: string,
-): Promise<Record<string, unknown> | null> {
-  try {
-    return JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
 }

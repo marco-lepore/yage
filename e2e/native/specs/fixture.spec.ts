@@ -250,7 +250,21 @@ async function browserScenario(
       windowId,
       bounds: { windowState: "minimized" },
     });
-    await page.waitForTimeout(1_000);
+    await expect
+      .poll(async () => (await readPage(page))!.host.active, {
+        timeout: 15_000,
+      })
+      .toBe(false);
+    const away = (await readPage(page))!.host;
+    record(report, {
+      name: "background: a minimised window reports the page inactive",
+      result: "passed",
+      evidence: "inspector",
+      detail: JSON.stringify({
+        active: away.active,
+        lifecycle: away.lifecycle,
+      }),
+    });
     await session.send("Browser.setWindowBounds", {
       windowId,
       bounds: { windowState: "normal" },
@@ -1066,9 +1080,10 @@ async function iosScenario(report: BaselineRunReport): Promise<void> {
     await wait(3_000);
     // Each line reaches this process through the simulator's console, so the
     // away state is read until it arrives or the deadline passes.
-    const awayLines = await waitForLifecycle(
+    const awayLines = await waitForHostLines(
       launched,
       beforeTrip,
+      lifecycleLines,
       (state) => state.activity === "inactive" && state.visibility === "hidden",
       10_000,
     );
@@ -1083,32 +1098,32 @@ async function iosScenario(report: BaselineRunReport): Promise<void> {
       detail: JSON.stringify(awayLines),
     });
     await bringToFront(device.udid);
-    const returned = await launched
-      .waitFor(
-        (line) =>
-          line.includes('"event":"host:active"') &&
-          line.includes('"active":true'),
-        10_000,
-      )
-      .then(() => true)
-      .catch(() => false);
-    const hostLines = launched.lines.filter((line) =>
-      line.includes('"event":"host:active"'),
+    // Only the lines written since the trip count, so a change the page
+    // reported at boot does not count as the return. A page that reported no
+    // change since the trip passes. A page that reported leaving passes only
+    // when its last change reports it active.
+    const activeChanges = await waitForHostLines(
+      launched,
+      beforeTrip,
+      activeLines,
+      (active) => active,
+      10_000,
     );
-    // A page that reported nothing while away, and one that reported the
-    // return, both pass. A page that reported leaving and then nothing is
-    // recorded as a reading the host did not give, not as a suite failure.
     record(report, {
       name: "after return: the page reports it is active again",
-      result: returned || hostLines.length === 0 ? "passed" : "pending",
+      result:
+        activeChanges.length === 0 || activeChanges.at(-1) === true
+          ? "passed"
+          : "failed",
       evidence: "console",
-      detail: hostLines.join("\n") || "no host line arrived",
+      detail: JSON.stringify(activeChanges),
     });
     // The app states it is active again a moment after the window is back,
     // and each line reaches this process through the simulator's console.
-    const backLines = await waitForLifecycle(
+    const backLines = await waitForHostLines(
       launched,
       beforeTrip,
+      lifecycleLines,
       (state) =>
         state.activity === "active" &&
         state.visibility === "visible" &&
@@ -1207,16 +1222,32 @@ function lifecycleLines(lines: readonly string[]): LifecycleLine[] {
   return reported;
 }
 
-/** Read the lifecycle lines since `from` until the app settles, or give up. */
-async function waitForLifecycle(
+/** The `active` value each `host:active` line among these reported. */
+function activeLines(lines: readonly string[]): boolean[] {
+  const reported: boolean[] = [];
+  for (const line of lines) {
+    const parsed = parseReportLine(line);
+    if (parsed === null || parsed["event"] !== "host:active") continue;
+    const payload = parsed["payload"] as { active: boolean };
+    reported.push(payload.active);
+  }
+  return reported;
+}
+
+/**
+ * Read what the host lines since `from` reported until the last one settles,
+ * or give up and return what arrived.
+ */
+async function waitForHostLines<T>(
   launched: LaunchedApp,
   from: number,
-  settled: (state: LifecycleLine) => boolean,
+  read: (lines: readonly string[]) => T[],
+  settled: (last: T) => boolean,
   timeoutMs: number,
-): Promise<LifecycleLine[]> {
+): Promise<T[]> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const lines = lifecycleLines(launched.lines.slice(from));
+    const lines = read(launched.lines.slice(from));
     const last = lines.at(-1);
     if ((last !== undefined && settled(last)) || Date.now() > deadline) {
       return lines;
@@ -1577,23 +1608,25 @@ async function releaseChecks(
   page: Page,
 ): Promise<void> {
   await page.waitForSelector("canvas", { timeout: 60_000 });
-  const frames = await page.evaluate(
+  // The browser runs these callbacks whether the engine draws or not, so the
+  // count shows the page is running, not that it drew anything.
+  await page.evaluate(
     () =>
-      new Promise<number>((done) => {
+      new Promise<void>((done) => {
         let count = 0;
         const step = (): void => {
           count += 1;
-          if (count >= 60) done(count);
+          if (count >= 60) done();
           else requestAnimationFrame(step);
         };
         requestAnimationFrame(step);
       }),
   );
   record(report, {
-    name: "release: the page draws and keeps animating",
-    result: frames >= 60 ? "passed" : "failed",
+    name: "release: the page holds a canvas and runs 60 animation frames",
+    result: "passed",
     evidence: "inspector",
-    detail: `${frames} frames`,
+    detail: null,
   });
   record(report, {
     name: "release: the page publishes no driver surface",

@@ -129,6 +129,8 @@ test("a run records the engine it built and the versions it resolved", async () 
   expect(engine.commit).toMatch(/^[0-9a-f]{40}$/);
   expect(Object.keys(engine.packages).length).toBeGreaterThan(10);
   expect(engine.packages["@yagejs/core"]).toMatch(/^\d+\.\d+\.\d+/);
+  expect(engine.packages["@yagejs-addons/dialogue"]).toMatch(/^\d+\.\d+\.\d+/);
+  expect(engine.packages["@yagejs-tools/pack"]).toMatch(/^\d+\.\d+\.\d+/);
 
   const dependencies = resolvedDependencies();
   for (const name of [

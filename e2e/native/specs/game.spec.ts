@@ -1,8 +1,17 @@
 import { chromium, expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { resolve } from "node:path";
 import { webDirFor } from "../lib/build.js";
 import { launchElectron, newAppDataDir } from "../lib/electron.js";
+import { workDir } from "../lib/paths.js";
 import { indexUrl, serveDirectory } from "../lib/server.js";
 import {
   installClean,
@@ -80,6 +89,63 @@ function watchPage(page: Page, report: BaselineRunReport): void {
 
 function readStorage(page: Page): Promise<Record<string, string>> {
   return page.evaluate(() => ({ ...localStorage }) as never);
+}
+
+/** The window property the init script writes its copy of the storage to. */
+const STORAGE_AT_LOAD = "__baselineStorageAtLoad__";
+
+/**
+ * Keep a copy of the page's storage from before any of its own scripts runs,
+ * on every later load of the page.
+ */
+async function keepStorageAtLoad(page: Page): Promise<void> {
+  await page.addInitScript((key) => {
+    if (window !== window.top) return;
+    (window as unknown as Record<string, unknown>)[key] = { ...localStorage };
+  }, STORAGE_AT_LOAD);
+}
+
+/** The copy `keepStorageAtLoad` took when the page last loaded. */
+function readStorageAtLoad(page: Page): Promise<Record<string, string>> {
+  return page.evaluate((key) => {
+    const kept = (window as unknown as Record<string, unknown>)[key];
+    if (kept === undefined) {
+      throw new Error(
+        "game.spec: the page loaded without the storage init script.",
+      );
+    }
+    return kept as Record<string, string>;
+  }, STORAGE_AT_LOAD);
+}
+
+/**
+ * What the shell's stored profile holds, read by a launch whose page has no
+ * script. The page has the game's origin, so it reads the game's storage
+ * before any game code runs again. An init script cannot do this in Electron:
+ * the shell opens its window as soon as Electron is ready, without waiting
+ * for the driver, so a script added after the launch can miss the first page.
+ */
+async function readElectronStorage(
+  appData: string,
+): Promise<Record<string, string>> {
+  const readerDir = resolve(workDir, "storage-reader");
+  mkdirSync(readerDir, { recursive: true });
+  writeFileSync(
+    resolve(readerDir, "index.html"),
+    "<!doctype html><title>Stored profile</title>\n",
+  );
+  const reader = await launchElectron({
+    webDir: readerDir,
+    appData,
+    profile: "test",
+  });
+  try {
+    const page = await reader.firstWindow();
+    await page.waitForURL((url) => url.protocol === "yage:");
+    return await readStorage(page);
+  } finally {
+    await reader.close();
+  }
 }
 
 function recordHealth(report: BaselineRunReport): void {
@@ -190,9 +256,10 @@ async function browserGame(
       path: await screenshotPath(report, "visual"),
       label: "visual",
     });
+    await keepStorageAtLoad(page);
     await page.reload();
     await checkGamePage(report, page);
-    recordCarryOver(report, stored, await readStorage(page));
+    recordCarryOver(report, stored, await readStorageAtLoad(page));
     recordHealth(report);
   } finally {
     await context.close();
@@ -231,6 +298,7 @@ async function electronGame(
     report.screenshots.push({ path: shot, label: "visual" });
 
     await app.close();
+    const relaunchStored = await readElectronStorage(appData);
     app = await launchElectron({
       webDir: built,
       appData,
@@ -240,7 +308,7 @@ async function electronGame(
     page = await app.firstWindow();
     watchPage(page, report);
     await checkGamePage(report, page);
-    recordCarryOver(report, stored, await readStorage(page));
+    recordCarryOver(report, stored, relaunchStored);
     recordHealth(report);
   } finally {
     await app.close().catch(() => undefined);
@@ -310,8 +378,10 @@ async function iosGame(
 }
 
 /**
- * Whether what the game stored before a relaunch is still there after it. A
- * game that stored nothing gives nothing to compare, so the check is pending.
+ * Whether what the game stored before a relaunch is still there after it.
+ * `after` is read before the game's code runs again, so a game that writes
+ * while it boots does not change it. A game that stored nothing gives
+ * nothing to compare, so the check is pending.
  */
 function recordCarryOver(
   report: BaselineRunReport,
