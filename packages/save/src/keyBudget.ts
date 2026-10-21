@@ -1,7 +1,7 @@
 /**
  * The longest adapter key, in UTF-8 bytes. `fileAdapter` stores a key this
- * long in one file name, and `Save` refuses a longer key on every adapter, so
- * a store behaves the same in a web build and a packaged one.
+ * long in one file name, and `Save` refuses to write a longer key on every
+ * adapter, so a store behaves the same in a web build and a packaged one.
  */
 export const MAX_KEY_BYTES = 96;
 

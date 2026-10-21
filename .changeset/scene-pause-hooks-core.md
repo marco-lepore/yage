@@ -4,6 +4,6 @@
 
 Fire scene `onPause` and `onResume` once for each change of `isPaused`.
 
-- `SceneManager` compares every change of a scene's effective pause against the state that scene's hooks last reported, whatever caused the change. Switching `scenes.autoPause` on inside `onEnter` while the host is inactive fires one `onPause` per scene, and one `onResume` at the return.
-- A `scene.paused` write from inside a lifecycle hook fires one hook and logs no warning. A scene that is not on the stack, such as one running its `onExit`, fires neither hook.
-- A throwing `onPause` leaves the scenes after it with neither hook, so the return fires no `onResume` on them. The scene whose `onPause` threw counts as paused, and the return fires its `onResume`.
+- A `scene.paused` write from inside a lifecycle hook, `onEnter` included, fires one hook and logs no warning.
+- A `paused` write on a scene that is not on the stack, such as one running its `onExit`, fires neither hook. The push fires `onPause` for a scene that enters paused.
+- When an `onPause` throws, the scenes after it on the stack fire no `onPause` for that change, so the end of the pause fires no `onResume` on them either. The scene whose `onPause` threw counts as paused, and the end of the pause fires its `onResume`.

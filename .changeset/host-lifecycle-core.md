@@ -9,6 +9,7 @@ Follow one host state for application activity, visibility and focus.
 - A host adapter feeds the same state through two optional members of `HostProvider`: `lifecycle`, read once at attach, and `watchLifecycle(report)`, which the adapter calls on every later change. Values arriving from a host are validated where they enter `Host`.
 - `Breaking:` `SceneManager.autoPauseOnBlur` is `SceneManager.autoPause`, and it holds the stack paused while `Host.active` is `false`, which includes an unfocused window.
 - The host pause belongs to `SceneManager`, so `Scene.paused` holds only what the game wrote: a manual pause made while the game is in the background is still in force after the return, and a scene pushed while the host is inactive enters paused.
+- A host pause fires one `onPause` on each scene it pauses, and one `onResume` when the host is active again. Switching `autoPause` on inside `onEnter` while the host is inactive fires the same single `onPause`.
 - `Inspector.getHost()` reports the host's identity, its three fields, `active` and `activeWhenUnfocused`. `snapshot()` leaves the host out.
 - `TestHostPlugin` takes a lifecycle argument and reports changes through `setLifecycle`.
 - The loop's own animation-frame driver reports at most 100 ms a frame, the bound a PixiJS ticker applies by default.

@@ -1440,11 +1440,9 @@ describe("Save — key budget", () => {
   const tenJapanese = "セーブデータ一二三四";
   const nineJapanese = "セーブデータ一二三";
 
-  it("refuses a slot name over the budget on any adapter, naming the slot", async () => {
+  it("refuses to save under a slot name over the budget on any adapter, naming the slot", async () => {
     const adapter = memoryAdapter();
-    const read = vi.spyOn(adapter, "read");
     const write = vi.spyOn(adapter, "write");
-    const remove = vi.spyOn(adapter, "delete");
     const save = createSave({ adapter });
     const message =
       `Save: the storage key for store id "saves" and slot name ` +
@@ -1456,15 +1454,24 @@ describe("Save — key budget", () => {
     await expect(save.saveSlot("saves", tenJapanese, make())).rejects.toThrow(
       message,
     );
-    await expect(save.loadSlot("saves", tenJapanese, make())).rejects.toThrow(
-      message,
-    );
-    await expect(save.deleteSlot("saves", tenJapanese)).rejects.toThrow(
-      message,
-    );
-    expect(read).not.toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
-    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("reads and deletes under a slot name over the budget", async () => {
+    const adapter = memoryAdapter();
+    const read = vi.spyOn(adapter, "read");
+    const remove = vi.spyOn(adapter, "delete");
+    const save = createSave({ adapter });
+    const key = `saves/s/${encodeURIComponent(tenJapanese)}`;
+
+    await expect(
+      save.loadSlot("saves", tenJapanese, make()),
+    ).rejects.toBeInstanceOf(SlotNotFoundError);
+    await expect(
+      save.deleteSlot("saves", tenJapanese),
+    ).resolves.toBeUndefined();
+    expect(read).toHaveBeenCalledWith(key);
+    expect(remove).toHaveBeenCalledWith(key);
   });
 
   it("takes a slot name whose key fits the budget exactly", async () => {
@@ -1482,25 +1489,66 @@ describe("Save — key budget", () => {
     ).rejects.toThrow("takes 97 bytes");
   });
 
-  it("refuses a store id over the budget at every entry", async () => {
-    const save = createSave({ adapter: memoryAdapter() });
+  it("refuses every write under a store id over the budget", async () => {
+    const adapter = memoryAdapter();
+    const write = vi.spyOn(adapter, "write");
+    const save = createSave({ adapter });
     const id = "x".repeat(95);
     const message =
       `Save: the storage key for store id ${JSON.stringify(id)} takes 97 ` +
       `bytes, over the limit of 96.`;
 
     await expect(save.persist(id, make())).rejects.toThrow(message);
-    await expect(save.restore(id, make())).rejects.toThrow(message);
-    await expect(save.listSlots(id)).rejects.toThrow(message);
     expect(() => save.autoPersist(id, make())).toThrow(message);
+    await expect(save.saveSlot(id, "a", make())).rejects.toThrow(
+      `Save: the storage key for store id ${JSON.stringify(id)} and slot ` +
+        `name "a" takes 99 bytes, over the limit of 96.`,
+    );
+    expect(write).not.toHaveBeenCalled();
     await expect(save.persist("x".repeat(94), make())).resolves.toBeUndefined();
   });
 
-  it("the upgrade leaves a slot whose name is over the budget out of the listing", async () => {
+  it("reads what an earlier release stored under a store id over the budget", async () => {
+    const adapter = memoryAdapter();
+    const id = "x".repeat(95);
+    await adapter.write(
+      `${id}/d`,
+      JSON.stringify({ version: 1, data: { v: 4 } }),
+    );
+    await adapter.write(
+      `${id}/s/a`,
+      JSON.stringify({ version: 1, data: { v: 5 } }),
+    );
+    await adapter.write(
+      `${id}/m`,
+      JSON.stringify({
+        version: 1,
+        slots: { a: { name: "a", savedAt: 100, metadata: { label: "A" } } },
+      }),
+    );
+    const save = createSave({ adapter });
+
+    const restored = make();
+    await save.restore(id, restored);
+    expect(restored.get()).toEqual({ v: 4 });
+    expect(await save.listSlots(id)).toEqual([
+      { name: "a", savedAt: 100, metadata: { label: "A" } },
+    ]);
+    expect(await adapter.read(`${id}/m`)).toBeNull();
+    const loaded = make();
+    await save.loadSlot(id, "a", loaded);
+    expect(loaded.get()).toEqual({ v: 5 });
+    await save.deleteSlot(id, "a");
+    expect(await save.listSlots(id)).toEqual([]);
+  });
+
+  it("a slot an earlier release saved under a name over the budget keeps its details, lists, loads and deletes", async () => {
     const adapter = memoryAdapter();
     const long = "a".repeat(91);
-    const earlier = JSON.stringify({ version: 1, data: { v: 1 } });
-    await adapter.write(`run/s/${long}`, earlier);
+    await adapter.write(
+      `run/s/${long}`,
+      JSON.stringify({ version: 1, data: { v: 1 } }),
+    );
     await adapter.write(
       "run/s/short",
       JSON.stringify({ version: 1, data: { v: 2 } }),
@@ -1510,27 +1558,54 @@ describe("Save — key budget", () => {
       JSON.stringify({
         version: 1,
         slots: {
-          [long]: { name: long, savedAt: 100 },
+          [long]: { name: long, savedAt: 300, metadata: { label: "long" } },
           short: { name: "short", savedAt: 200 },
         },
       }),
     );
     const save = createSave({ adapter });
 
-    expect((await save.listSlots("run")).map((x) => x.name)).toEqual(["short"]);
+    expect(await save.listSlots("run")).toEqual([
+      { name: long, savedAt: 300, metadata: { label: "long" } },
+      { name: "short", savedAt: 200 },
+    ]);
     expect(await adapter.read("run/m")).toBeNull();
-    expect(await adapter.read(`run/s/${long}`)).toBe(earlier);
+    const merged = await adapter.read(`run/s/${long}`);
+    expect(JSON.parse(merged as string)).toEqual({
+      version: 1,
+      savedAt: 300,
+      metadata: { label: "long" },
+      data: { v: 1 },
+    });
+
+    const loaded = make();
+    await save.loadSlot("run", long, loaded);
+    expect(loaded.get()).toEqual({ v: 1 });
+
+    await expect(save.saveSlot("run", long, make())).rejects.toThrow(
+      `Save: the storage key for store id "run" and slot name ` +
+        `${JSON.stringify(long)} takes 97 bytes, over the limit of 96.`,
+    );
+    expect(await adapter.read(`run/s/${long}`)).toBe(merged);
+
+    await save.deleteSlot("run", long);
+    expect(await adapter.read(`run/s/${long}`)).toBeNull();
+    expect((await save.listSlots("run")).map((x) => x.name)).toEqual(["short"]);
   });
 
-  it("listSlots leaves out a stored key over the budget", async () => {
+  it("listSlots lists a stored key over the budget", async () => {
     const adapter = memoryAdapter();
+    const long = "a".repeat(91);
     await adapter.write(
-      `run/s/${"a".repeat(91)}`,
+      `run/s/${long}`,
       JSON.stringify({ version: 1, savedAt: 5, data: { v: 1 } }),
     );
     const save = createSave({ adapter });
     await save.saveSlot("run", "good", make());
 
-    expect((await save.listSlots("run")).map((x) => x.name)).toEqual(["good"]);
+    expect((await save.listSlots("run")).map((x) => x.name)).toEqual([
+      "good",
+      long,
+    ]);
   });
 });

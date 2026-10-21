@@ -77,8 +77,8 @@ export class SlotNotFoundError extends Error {
 }
 
 /**
- * Thrown when a store id or slot name is empty, or makes a storage key longer
- * than 96 bytes.
+ * Thrown when a store id or slot name is empty, or when a write would store a
+ * key longer than 96 bytes.
  */
 export class InvalidKeyError extends Error {
   constructor(message: string) {
@@ -189,10 +189,12 @@ function validateSlotName(slot: string): void {
 }
 
 /**
- * `key` when it fits the key budget. Otherwise throws naming `source`: the
- * store id and slot name the key holds, as the game passed them.
+ * `key` when a write may store it. Otherwise throws naming `source`: the
+ * store id and slot name the key holds, as the game passed them. Only writes
+ * check the budget, so a key an earlier release stored past it still reads,
+ * lists and deletes.
  */
-function withinBudget(key: string, source: string): string {
+function writableKey(key: string, source: string): string {
   if (exceedsKeyBudget(key)) {
     throw new InvalidKeyError(
       `Save: the storage key for ${source} takes ${keyBytes(key)} bytes, ` +
@@ -207,10 +209,12 @@ function withinBudget(key: string, source: string): string {
 
 function docKey(id: string): string {
   validateStoreId(id);
-  return withinBudget(
-    `${encodeURIComponent(id)}${SEP}${DOC_TAG}`,
-    `store id ${JSON.stringify(id)}`,
-  );
+  return `${encodeURIComponent(id)}${SEP}${DOC_TAG}`;
+}
+
+/** The key `persist` writes, checked against the budget. */
+function docWriteKey(id: string): string {
+  return writableKey(docKey(id), `store id ${JSON.stringify(id)}`);
 }
 
 function slotPrefix(id: string): string {
@@ -218,26 +222,15 @@ function slotPrefix(id: string): string {
   return `${encodeURIComponent(id)}${SEP}${SLOT_TAG}${SEP}`;
 }
 
-/** The adapter key of `slot` under a store's `prefix`, of any length. */
-function slotKeyOf(prefix: string, slot: string): string {
-  return `${prefix}${encodeURIComponent(slot)}`;
-}
-
 function slotKey(id: string, slot: string): string {
   const prefix = slotPrefix(id);
   validateSlotName(slot);
-  return withinBudget(
-    slotKeyOf(prefix, slot),
-    `store id ${JSON.stringify(id)} and slot name ${JSON.stringify(slot)}`,
-  );
+  return `${prefix}${encodeURIComponent(slot)}`;
 }
 
 function manifestKey(id: string): string {
   validateStoreId(id);
-  return withinBudget(
-    `${encodeURIComponent(id)}${SEP}${MANIFEST_TAG}`,
-    `store id ${JSON.stringify(id)}`,
-  );
+  return `${encodeURIComponent(id)}${SEP}${MANIFEST_TAG}`;
 }
 
 /**
@@ -349,7 +342,11 @@ export class Save {
     this.adapter = opts.adapter;
   }
 
-  /** Persist the value as an unslotted document. */
+  /**
+   * Persist the value as an unslotted document. Throws `InvalidKeyError` when
+   * the document's storage key is longer than 96 bytes, before the adapter is
+   * called.
+   */
   async persist<T>(
     id: string,
     thing: Serializable<T>,
@@ -357,7 +354,7 @@ export class Save {
   ): Promise<void> {
     const version = opts?.version ?? 1;
     const payload = encodeEnvelope(thing, version);
-    await this.adapter.write(docKey(id), JSON.stringify(payload));
+    await this.adapter.write(docWriteKey(id), JSON.stringify(payload));
   }
 
   /**
@@ -380,6 +377,10 @@ export class Save {
    * time it was written and the optional metadata, so the save is a single
    * storage operation. The write reaches the adapter at the call, except
    * while the store's one-time upgrade runs; then it follows the upgrade.
+   *
+   * Throws `InvalidKeyError` when the slot's storage key is longer than 96
+   * bytes, before the adapter is called. A slot an earlier release saved
+   * under such a name still lists, loads and deletes.
    */
   async saveSlot<T, M = unknown>(
     id: string,
@@ -387,7 +388,10 @@ export class Save {
     thing: Serializable<T>,
     opts?: SaveSlotOptions<M>,
   ): Promise<void> {
-    const key = slotKey(id, slot);
+    const key = writableKey(
+      slotKey(id, slot),
+      `store id ${JSON.stringify(id)} and slot name ${JSON.stringify(slot)}`,
+    );
     // Encoded before the first await, so the slot holds the value as it was
     // at the call even when the caller changes it before the write runs.
     const document: SlotDocument = {
@@ -446,8 +450,6 @@ export class Save {
     const keys = await this.adapter.list(prefix);
     const wanted: Array<{ key: string; name: string }> = [];
     for (const key of keys) {
-      // `loadSlot` refuses the name of a key over the budget.
-      if (exceedsKeyBudget(key)) continue;
       let name: string;
       try {
         name = decodeURIComponent(key.slice(prefix.length));
@@ -518,7 +520,6 @@ export class Save {
 
   private async mergeSlotDetails(id: string): Promise<void> {
     const key = manifestKey(id);
-    const prefix = slotPrefix(id);
     const raw = await this.adapter.read(key);
     if (raw == null) return;
     let parsed: unknown;
@@ -539,10 +540,10 @@ export class Save {
       const details = entry as Record<string, unknown>;
       const savedAt = details["savedAt"];
       if (typeof savedAt !== "number" || !Number.isFinite(savedAt)) continue;
-      // A name over the key budget stays out of the listing: `loadSlot`
-      // refuses it.
-      const slotKeyForName = slotKeyOf(prefix, name);
-      if (exceedsKeyBudget(slotKeyForName)) continue;
+      // The merge rewrites a key that is already stored and checks no key
+      // budget, so a slot saved under a name over the budget keeps its
+      // details too.
+      const slotKeyForName = slotKey(id, name);
       const stored = await this.adapter.read(slotKeyForName);
       if (stored == null) continue;
       let document: unknown;
@@ -597,7 +598,7 @@ export class Save {
   ): () => void {
     // Throws at the call for an id every write of this subscription would
     // refuse.
-    docKey(id);
+    docWriteKey(id);
     const registration: AutoPersistRegistration = {
       id,
       chain: undefined,

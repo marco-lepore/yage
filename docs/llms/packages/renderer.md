@@ -1633,7 +1633,7 @@ world root.
 
 ## DisplaySystem
 
-Runs in `Phase.Render`. Syncs entity `Transform` to PixiJS display object positions, applying camera offset and zoom.
+Runs in `Phase.Render`. Each pass first emits the `graphics:context` events queued since the last frame (see Lost graphics context), then syncs entity `Transform` to PixiJS display object positions, applying camera offset and zoom.
 
 ## Scene Transitions
 
