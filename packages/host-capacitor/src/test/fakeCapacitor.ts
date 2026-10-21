@@ -9,12 +9,17 @@ export const shell = {
   native: true,
   platform: "ios" as string,
   plugins: new Set(["App", "Filesystem", "ScreenOrientation"]),
+  /** Whether the app is a debug build. */
+  debug: false,
 };
 
 export const Capacitor = {
   isNativePlatform: (): boolean => shell.native,
   getPlatform: (): string => shell.platform,
   isPluginAvailable: (name: string): boolean => shell.plugins.has(name),
+  get DEBUG(): boolean {
+    return shell.debug;
+  },
 };
 
 // A Capacitor app injects this object into the page before any script runs,
@@ -165,9 +170,9 @@ export interface FilesystemCall {
   options: Record<string, unknown>;
 }
 
-/** The file tree and the calls made on it. */
+/** The file tree and the calls made on it. Each file holds bytes. */
 export const files = {
-  content: new Map<string, string>(),
+  content: new Map<string, Uint8Array>(),
   directories: new Set<string>(),
   calls: [] as FilesystemCall[],
   /** The method names that reject with `failure` instead of answering. */
@@ -194,19 +199,37 @@ function parentOf(path: string): string {
   return path.slice(0, path.lastIndexOf("/"));
 }
 
+/** The text a file holds, read as UTF-8, or `undefined` when there is no file. */
+export function fileText(path: string): string | undefined {
+  const bytes = files.content.get(path);
+  return bytes === undefined ? undefined : new TextDecoder().decode(bytes);
+}
+
 export const Filesystem = {
   async readFile(options: Record<string, unknown>): Promise<{ data: unknown }> {
     record("readFile", options);
     const path = String(options["path"]);
-    const content = files.content.get(path);
-    if (content === undefined) throw missing(path);
-    return { data: files.data ?? content };
+    const bytes = files.content.get(path);
+    if (bytes === undefined) throw missing(path);
+    if (files.data !== undefined) return { data: files.data };
+    // With no encoding the plugin answers with the bytes as base64.
+    if (options["encoding"] === undefined) {
+      return { data: btoa(String.fromCharCode(...bytes)) };
+    }
+    // The plugin's UTF-8 read rejects bytes that are not UTF-8.
+    try {
+      return { data: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+    } catch {
+      throw Object.assign(new Error(`fake: ${path} is not UTF-8.`), {
+        code: "OS-PLUG-FILE-0013",
+      });
+    }
   },
   async writeFile(options: Record<string, unknown>): Promise<{ uri: string }> {
     record("writeFile", options);
     const path = String(options["path"]);
     files.directories.add(parentOf(path));
-    files.content.set(path, String(options["data"]));
+    files.content.set(path, new TextEncoder().encode(String(options["data"])));
     return { uri: `library://${path}` };
   },
   async deleteFile(options: Record<string, unknown>): Promise<void> {
@@ -256,6 +279,7 @@ export function resetCapacitor(): void {
   shell.native = true;
   shell.platform = "ios";
   shell.plugins = new Set(["App", "Filesystem", "ScreenOrientation"]);
+  shell.debug = false;
   app.info = { name: "Fake", id: "dev.yage.fake", version: "1.0", build: "1" };
   app.state = { isActive: true };
   app.removed = [];

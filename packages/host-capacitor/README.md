@@ -28,7 +28,7 @@ engine.use(new CapacitorHostPlugin());
 engine.use(new RendererPlugin({ width: 640, height: 360 }));
 engine.use(
   new SavePlugin({
-    save: createSave({ adapter: capacitorSaveAdapter({ profile: "release" }) }),
+    save: createSave({ adapter: capacitorSaveAdapter() }),
   }),
 );
 await engine.start();
@@ -38,9 +38,17 @@ This entry builds the page the app loads. A browser build has its own entry
 and installs neither the plugin nor the adapter: on a page outside an app,
 both throw an error that says to leave them out of a browser build.
 
+`capacitorSaveAdapter()` keeps the saves in a directory named after the build
+profile: `development` when the app is a debug build, which sets
+`Capacitor.DEBUG`, and `release` otherwise. Pass `{ profile }` to name the
+directory yourself.
+
 The plugin reports the app's identity, whether it is active and whether the
 player can see it to `engine.host`, and registers the orientation lock the
 renderer performs through `renderer.lockOrientation`.
+
+Every Android behaviour of this package and the default save profile follow
+from Capacitor's source code and have not been run.
 
 ## The Android Back button
 
@@ -56,8 +64,7 @@ const input = new InputPlugin({
 ```
 
 With no action bound to the key, a press moves the app to the background and
-leaves the game where it was. The Back behaviour follows from Capacitor's
-Android source code and has not been run on an Android device or emulator.
+leaves the game where it was.
 
 A `capacitor.config.ts` that exports `capacitorConfig()` from
 `@yagejs-tools/pack/capacitor` carries the settings this package needs and the

@@ -184,7 +184,7 @@ describe("CapacitorHostPlugin", () => {
     await engine.destroy();
   });
 
-  it("keeps what an event said before the app answered, except the activity", async () => {
+  it("keeps what an iOS event said before the app answered, except the activity", async () => {
     app.state = { isActive: true };
     const release = holdApp("getState");
     const plugin = new CapacitorHostPlugin();
@@ -199,6 +199,30 @@ describe("CapacitorHostPlugin", () => {
 
     expect(engine.host.lifecycle.visibility).toBe("hidden");
     expect(engine.host.lifecycle.activity).toBe("active");
+    await engine.destroy();
+  });
+
+  it("keeps an Android pause that arrived before the app answered", async () => {
+    shell.platform = "android";
+    app.state = { isActive: true };
+    const release = holdApp("getState");
+    const engine = new Engine({ debug: false });
+    engine.use(new CapacitorHostPlugin());
+    const starting = engine.start();
+    await vi.waitFor(() => expect(listenerCount("pause")).toBe(1));
+    emitApp("pause");
+    release();
+    await starting;
+
+    expect(engine.host.lifecycle.activity).toBe("inactive");
+    await engine.destroy();
+  });
+
+  it("reports the Android app's state at attach when no event came first", async () => {
+    shell.platform = "android";
+    app.state = { isActive: false };
+    const engine = await start(new CapacitorHostPlugin());
+    expect(engine.host.lifecycle.activity).toBe("inactive");
     await engine.destroy();
   });
 

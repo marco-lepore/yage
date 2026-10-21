@@ -67,7 +67,7 @@ import { boot } from "./boot.js";
 
 await boot({
   hostPlugins: [new CapacitorHostPlugin()],
-  saveAdapter: capacitorSaveAdapter({ profile: "release" }),
+  saveAdapter: capacitorSaveAdapter(),
 });
 ```
 
@@ -103,7 +103,7 @@ let saveAdapter: SaveAdapter = localStorageAdapter({ namespace: "my-game" });
 if (isCapacitorHost()) {
   const host = await import("@yagejs/host-capacitor");
   hostPlugins = [new host.CapacitorHostPlugin()];
-  saveAdapter = host.capacitorSaveAdapter({ profile: "release" });
+  saveAdapter = host.capacitorSaveAdapter();
 }
 ```
 
@@ -152,11 +152,9 @@ carries it; see
 
 ## What the game gets
 
-The iOS behaviour in this section was checked on the iOS simulator: switching
-to another app and back, one orientation lock, the save files, and stopping
-the app during a stream of saves. A call, Control Centre, a system alert or a
-permission dialog on an iPhone, and every Android behaviour on this page,
-follow from Capacitor's source code and have not been run.
+Every Android behaviour on this page, the default save profile, and the iOS
+cases that need an iPhone (a call, Control Centre, a system alert or a
+permission dialog) follow from Capacitor's source code and have not been run.
 
 ### Who is running it
 
@@ -254,13 +252,19 @@ export function letBackLeaveTheApp(manager: InputManager): void {
 
 ### Saves
 
-`capacitorSaveAdapter({ profile })` writes each key as a file under
+`capacitorSaveAdapter()` writes each key as a file under
 `Library/yage-saves/<profile>` in the app's private directory. iOS includes
 it in its backup and the Files app does not show it. The directory follows
 the app's bundle identifier, so renaming the app leaves the saves where they
-are, and builds that pass different profiles never read each other's slots.
-A Debug build and a Release build of one app install into one app container,
-so they share saves unless each passes its own profile.
+are, and builds with different profiles never read each other's slots.
+
+The profile comes from the build. The adapter reads `Capacitor.DEBUG`, which
+the app sets to `true` in an iOS build with the Debug configuration and in a
+debuggable Android build. Such a build saves under `development`, and any
+other build under `release`. A Debug build and a Release build of one app
+install into one app container, and the two profiles keep their saves apart.
+To name the directory yourself, pass a profile:
+`capacitorSaveAdapter({ profile: "beta" })`.
 
 A write that resolved is held when the system kills the app in the
 background. Neither system's write reaches the storage hardware, so the same

@@ -110,9 +110,13 @@ export class CapacitorHostPlugin implements Plugin {
     const state = await App.getState();
     if (this.destroyed) return;
 
-    // The native side answers after the events it has already sent, so its
-    // reading of the activity is the newer one.
-    this.pending.activity = state.isActive ? "active" : "inactive";
+    // The native side answers after the events it has already sent. On iOS
+    // its reading of the activity is therefore the newer one. On Android it
+    // reads a flag that a resume sets and a stop clears, which a pause leaves
+    // set, so an activity an event already reported stands.
+    if (platform === "ios" || this.pending.activity === undefined) {
+      this.pending.activity = state.isActive ? "active" : "inactive";
+    }
     const appVersion = stated(info.version);
     const appBuild = stated(info.build);
     const identity: HostInfoInput = {

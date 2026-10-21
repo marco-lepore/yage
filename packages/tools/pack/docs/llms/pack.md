@@ -381,11 +381,13 @@ symbolic link leaving the directory is refused.
 ## Profiles
 
 An Electron build takes its profile from `app.isPackaged`: a packaged app is
-a release, `electron-forge start` is development. A mobile game passes the
-profile to `capacitorSaveAdapter({ profile })` itself. The profile names the
-save directory, so builds that pass different profiles never share saves. A
-Debug build and a Release build of one mobile app install into one app
-container, so they share saves unless each passes its own profile.
+a release, `electron-forge start` is development. A mobile build takes it
+from `Capacitor.DEBUG`: `capacitorSaveAdapter()` saves under `development` in
+a Debug build and under `release` otherwise, unless the game passes a
+`profile`. The profile names the save directory, so builds with different
+profiles never share saves. A Debug build and a Release build of one mobile
+app install into one app container, and the two default profiles keep their
+saves apart.
 
 ## Upgrading
 

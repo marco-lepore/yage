@@ -15,6 +15,19 @@ function isMissing(error: unknown): boolean {
   return (error as { code?: unknown } | null)?.code === NOT_FOUND;
 }
 
+/**
+ * Replaces a byte sequence that is not UTF-8 with U+FFFD. A write cut short
+ * can end inside a multi-byte character, and the adapter above reads such a
+ * file as torn and falls back to its shadow copy.
+ */
+const decoder = new TextDecoder();
+
+/** The text of a file the plugin returned as base64. */
+function decodeFile(base64: string): string {
+  const binary = atob(base64);
+  return decoder.decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+}
+
 function checkName(method: string, name: string): void {
   if (!SAFE_NAME.test(name)) {
     throw new Error(
@@ -37,10 +50,11 @@ export function capacitorFileStore(directory: string): SaveFileStore {
       checkName("read", name);
       let result;
       try {
+        // Read as bytes: the plugin's UTF-8 read rejects a file whose last
+        // character is incomplete.
         result = await Filesystem.readFile({
           path: pathOf(name),
           directory: Directory.Library,
-          encoding: Encoding.UTF8,
         });
       } catch (error) {
         if (isMissing(error)) return null;
@@ -54,7 +68,7 @@ export function capacitorFileStore(directory: string): SaveFileStore {
             `expected a string.`,
         );
       }
-      return data;
+      return decodeFile(data);
     },
 
     async write(name: string, content: string): Promise<void> {

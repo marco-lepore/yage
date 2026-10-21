@@ -323,7 +323,7 @@ the input manager from the app's official plugins:
 | `src/lifecycle.ts`           | What one App plugin event reports, per system                                                                   |
 | `src/display.ts`             | The orientation lock and its settle bound; fullscreen on Android                                                |
 | `src/fileStore.ts`           | A `SaveFileStore` over the Filesystem plugin's Library directory                                                |
-| `src/saves.ts`               | `capacitorSaveAdapter({ profile })` — a `SaveAdapter` over that store                                           |
+| `src/saves.ts`               | `capacitorSaveAdapter(options?)` — a `SaveAdapter` over that store                                              |
 | `src/shell.ts`               | The checks every entry runs: inside an app, and the plugin it needs                                             |
 | `src/detect.ts`              | `isCapacitorHost()`, the `./detect` entry; imports nothing                                                      |
 | `src/test/fakeCapacitor.ts`  | The stand-in every unit test reads in place of the four `@capacitor/*` packages                                 |

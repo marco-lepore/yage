@@ -53,4 +53,36 @@ describe("capacitorSaveAdapter", () => {
     expect(await release.read("slot-1")).toBeNull();
     expect([...files.directories]).toEqual(["yage-saves/test"]);
   });
+
+  it("names the profile after the build when the game passes none", async () => {
+    shell.debug = true;
+    await capacitorSaveAdapter().write("slot-1", "from a debug build");
+    shell.debug = false;
+    await capacitorSaveAdapter().write("slot-1", "from a release build");
+    expect([...files.directories]).toEqual([
+      "yage-saves/development",
+      "yage-saves/release",
+    ]);
+  });
+
+  it("uses the profile the game passes in a debug build", async () => {
+    shell.debug = true;
+    await capacitorSaveAdapter({ profile: "test" }).write("slot-1", "x");
+    expect([...files.directories]).toEqual(["yage-saves/test"]);
+  });
+
+  it("reads the shadow copy when an interrupted write cut a character in two", async () => {
+    const adapter = capacitorSaveAdapter({ profile: "test" });
+    await adapter.write("slot-1", "première étape ✓");
+    const main = [...files.content.keys()][0] as string;
+    const framed = files.content.get(main) as Uint8Array;
+    // The state a write leaves when it stops inside the main file: the shadow
+    // copy complete, the main file ending in the first two bytes of "✓".
+    files.content.set(main.replace(/\.sav$/, ".new"), framed);
+    files.content.set(main, framed.slice(0, -1));
+
+    expect(await adapter.read("slot-1")).toBe("première étape ✓");
+    await adapter.write("slot-1", "deuxième étape");
+    expect(await adapter.read("slot-1")).toBe("deuxième étape");
+  });
 });

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { capacitorFileStore } from "./fileStore.js";
-import { files, resetCapacitor } from "./test/fakeCapacitor.js";
+import { fileText, files, resetCapacitor } from "./test/fakeCapacitor.js";
 
 const store = capacitorFileStore("yage-saves/test");
 
@@ -12,7 +12,7 @@ describe("capacitorFileStore", () => {
   it("reads back what it wrote", async () => {
     await store.write("k-abc.sav", "payload");
     expect(await store.read("k-abc.sav")).toBe("payload");
-    expect(files.content.get("yage-saves/test/k-abc.sav")).toBe("payload");
+    expect(fileText("yage-saves/test/k-abc.sav")).toBe("payload");
   });
 
   it("writes into the app's Library directory as text, making the path", async () => {
@@ -42,7 +42,6 @@ describe("capacitorFileStore", () => {
         options: {
           path: "yage-saves/test/k-abc.sav",
           directory: "LIBRARY",
-          encoding: "utf8",
         },
       },
       {
@@ -50,6 +49,14 @@ describe("capacitorFileStore", () => {
         options: { path: "yage-saves/test", directory: "LIBRARY" },
       },
     ]);
+  });
+
+  it("reads a file whose last character an interrupted write cut short", async () => {
+    await store.write("k-abc.sav", "café ✓");
+    const bytes = files.content.get("yage-saves/test/k-abc.sav") as Uint8Array;
+    // "✓" is three bytes in UTF-8; the file keeps the first of them.
+    files.content.set("yage-saves/test/k-abc.sav", bytes.slice(0, -2));
+    expect(await store.read("k-abc.sav")).toBe("café \uFFFD");
   });
 
   it("treats a file that was never written as absent", async () => {

@@ -73,7 +73,7 @@ import { boot } from "./boot.js";
 
 await boot({
   hostPlugins: [new CapacitorHostPlugin()],
-  saveAdapter: capacitorSaveAdapter({ profile: "release" }),
+  saveAdapter: capacitorSaveAdapter(),
 });
 ```
 
@@ -102,7 +102,7 @@ let saveAdapter: SaveAdapter = localStorageAdapter({ namespace: "my-game" });
 if (isCapacitorHost()) {
   const host = await import("@yagejs/host-capacitor");
   hostPlugins = [new host.CapacitorHostPlugin()];
-  saveAdapter = host.capacitorSaveAdapter({ profile: "release" });
+  saveAdapter = host.capacitorSaveAdapter();
 }
 ```
 
@@ -112,12 +112,9 @@ to the browser's storage.
 
 ## What the game reads
 
-Evidence: the iOS statements on this page were run on the iOS simulator (an
-app switch and the return, one orientation lock, the save files, 20 kills
-during a stream of saves). The cases that need a phone (a call, Control
-Centre, a notification banner, a system alert) and every Android statement
-on this page (lifecycle, Back, the orientation lock, fullscreen, saves) follow
-from Capacitor's source code; no run of them is recorded.
+Every Android statement on this page, the default save profile, and the iOS
+cases that need a phone (a call, Control Centre, a notification banner, a
+system alert) follow from Capacitor's source code and have not been run.
 
 `engine.host.info` reports `{ runtime: "capacitor", os, appVersion,
 appBuild }`. `os` is `"ios"` or `"android"`; `appVersion` and `appBuild` are
@@ -201,13 +198,19 @@ stays unset: with it set, no press reaches the game.
 
 ### Saves
 
-`capacitorSaveAdapter({ profile })` writes each key as a file under
-`Library/yage-saves/<profile>` in the app's private directory, which iOS
-includes in its backup and the Files app does not show. The directory follows
-the app's bundle identifier, so renaming the app leaves the saves where they
-are, and builds that pass different profiles never read each other's saves.
-A Debug build and a Release build of one app install into one app container,
-so they share saves unless each passes its own profile.
+`capacitorSaveAdapter(options?: { profile?: string })` writes each key as a
+file under `Library/yage-saves/<profile>` in the app's private directory,
+which iOS includes in its backup and the Files app does not show. The
+directory follows the app's bundle identifier, so renaming the app leaves the
+saves where they are, and builds with different profiles never read each
+other's saves.
+
+Without `profile`, the profile is `"development"` when `Capacitor.DEBUG` is
+`true` and `"release"` otherwise. The app sets `Capacitor.DEBUG` to `true` in
+an iOS build with the Debug configuration and in a debuggable Android build,
+such as the `debug` build type. A Debug build and a Release build of one app
+install into one app container, and the two default profiles keep their saves
+apart. A game that passes `profile` names the directory itself.
 
 The algorithm is `fileAdapter` from `@yagejs/save`: a shadow file and a
 checksum, so an interrupted write leaves the previous value or the new one
@@ -215,7 +218,8 @@ readable. A write that resolved is held when the system kills the app. Neither
 system's write reaches the storage hardware, so the same write is not
 guaranteed to survive a power loss. Keys are at most 96 bytes in UTF-8.
 
-`profile` matches `^[a-z][a-z0-9-]*$`; any other value throws at the call.
+A `profile` the game passes matches `^[a-z][a-z0-9-]*$`; any other value
+throws at the call.
 
 ## Settings the app has to carry
 
