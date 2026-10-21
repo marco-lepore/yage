@@ -65,25 +65,25 @@ export class LightEdgeTexture {
 
   /** Write one light or shape texel in the shared data layout. */
   pushValues(a: number, b: number, c: number, d: number): void {
-    const values = [
-      Math.fround(a),
-      Math.fround(b),
-      Math.fround(c),
-      Math.fround(d),
-    ];
-    if (!values.every(Number.isFinite)) {
+    const fa = Math.fround(a);
+    const fb = Math.fround(b);
+    const fc = Math.fround(c);
+    const fd = Math.fround(d);
+    if (
+      !Number.isFinite(fa) ||
+      !Number.isFinite(fb) ||
+      !Number.isFinite(fc) ||
+      !Number.isFinite(fd)
+    ) {
       throw new RangeError(
         `Lighting buffer: values must fit finite GPU floats, got ${a}, ${b}, ${c}, ${d}.`,
       );
     }
     const offset = this.reserve();
-    for (let i = 0; i < 4; i++) {
-      const value = values[i]!;
-      if (this.texels[offset + i] !== value) {
-        this.texels[offset + i] = value;
-        this.written = true;
-      }
-    }
+    this.write(offset, fa);
+    this.write(offset + 1, fb);
+    this.write(offset + 2, fc);
+    this.write(offset + 3, fd);
   }
 
   /** Write one occluder edge, in coordinates measured from its light. */
@@ -109,6 +109,14 @@ export class LightEdgeTexture {
 
   destroy(): void {
     this.source.destroy();
+  }
+
+  /** Store one float, and mark the frame written only when it differs. */
+  private write(index: number, value: number): void {
+    if (this.texels[index] !== value) {
+      this.texels[index] = value;
+      this.written = true;
+    }
   }
 
   /** Make room for one shape and return where its floats go. */
