@@ -591,6 +591,10 @@ schedule you control. Reach for it when several objects need to composite
 against each other before they reach the screen, or when redrawing expensive
 static content every frame is wasteful.
 
+The source is a Pixi container your code builds, moves and destroys itself:
+no visual component draws into a render target, so this is one of the few
+places a game works with Pixi objects directly.
+
 ```ts yage-group="light-buffer" yage-file="light-buffer.ts"
 import { Component } from "@yagejs/core";
 import { Container, Graphics } from "pixi.js";

@@ -191,7 +191,9 @@ drawn at those coordinates on a scene layer is invisible.
 
 To put a scoreboard or branding in letterbox bars, parent a container
 directly on the Pixi stage, above the fit transform, and position it in
-**canvas pixels**:
+**canvas pixels**. No scene layer reaches the bars, so this code builds the
+Pixi objects itself and owns them: destroy the container when the scene
+exits.
 
 ```typescript yage-context="scene-enter"
 import { Container, Graphics } from "pixi.js";

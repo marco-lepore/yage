@@ -88,7 +88,11 @@ function shallowEqualStyle(
 export class UISplitText extends UIElementBase {
   readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
-  /** The underlying Pixi `SplitText` / `SplitBitmapText`. */
+  /**
+   * The Pixi `SplitText` / `SplitBitmapText` inside {@link displayObject}.
+   * Change the text through the element; animate glyphs through
+   * {@link chars}.
+   */
   readonly splitText: DisplaySplitText | DisplaySplitBitmapText;
   /** Whether this renders with a bitmap font (`SplitBitmapText`). */
   readonly isBitmap: boolean;

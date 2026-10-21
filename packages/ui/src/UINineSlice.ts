@@ -22,6 +22,10 @@ import { warnNineSliceTooSmall } from "./internal/nine-slice-guard.js";
 
 /** Displays a nine-slice texture as a UI element. Requires explicit width/height from layout. */
 export class UINineSlice extends UIElementBase {
+  /**
+   * The same Pixi container as {@link displayObject}. Change the element
+   * through its props; see `UIElement.displayObject`.
+   */
   readonly container: NineSliceSprite;
   readonly yogaNode: YogaNode;
 

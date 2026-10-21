@@ -90,7 +90,10 @@ export interface SplitTextComponentOptions extends VisualComponentOptions {
  * differ slightly from `Text` (browser kerning is lost once glyphs are split).
  */
 export class SplitTextComponent extends VisualComponent {
-  /** The underlying Pixi `SplitText` / `SplitBitmapText` container. */
+  /**
+   * The same Pixi object as {@link renderObject}. Change the visual through
+   * the component; see `VisualComponent.renderObject`.
+   */
   readonly splitText: DisplaySplitText | DisplaySplitBitmapText;
   /** Whether this renders with a bitmap font (`SplitBitmapText`). */
   readonly isBitmap: boolean;

@@ -71,6 +71,10 @@ const PANEL_DEFAULTS: FlexContainerDefaults = {
  * optional background, and an ordered list of UIElement children.
  */
 export class UIPanel extends UIElementBase implements UIContainerElement {
+  /**
+   * The same Pixi container as {@link displayObject}. Change the element
+   * through its props; see `UIElement.displayObject`.
+   */
   readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 

@@ -22,6 +22,10 @@ export interface GraphicsComponentOptions extends VisualComponentOptions {
 
 /** Component that wraps a PixiJS Graphics object for procedural drawing. */
 export class GraphicsComponent extends VisualComponent {
+  /**
+   * The same Pixi object as {@link renderObject}. Change the visual through
+   * the component; see `VisualComponent.renderObject`.
+   */
   readonly graphics: GraphicsContext;
 
   constructor(options?: GraphicsComponentOptions) {

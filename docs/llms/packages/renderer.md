@@ -172,7 +172,7 @@ Rectangles of the visible canvas that sit **outside** the declared virtual rect 
 
 Under `expand` these are the play-adjacent strips the game is expected to draw into. The `responsive-ui` example fills each with a solid dark rect plus a short gradient along the inner edge (touching the play area) so the bars read as "not the play area, but still part of the rendered world."
 
-Under `letterbox` the same rects only report where the `backgroundColor` bars land. That mode clips every scene layer to the virtual rect, so content placed at these coordinates on a scene layer is invisible. To draw in the bars, parent a container directly on `renderer.application.stage` and position it in **canvas pixels**:
+Under `letterbox` the same rects only report where the `backgroundColor` bars land. That mode clips every scene layer to the virtual rect, so content placed at these coordinates on a scene layer is invisible. To draw in the bars, parent a container directly on `renderer.application.stage` and position it in **canvas pixels**. No scene layer reaches the bars, so this code owns raw Pixi objects: destroy the container when the scene exits.
 
 ```ts yage-context="scene-enter"
 import { Container, Graphics } from "pixi.js";
@@ -1616,6 +1616,8 @@ Mask coordinates are the masked object's own local space: world pixels on a worl
 ## Offscreen render targets
 
 `renderer.createRenderTarget(source, options)` draws a container into a texture the game owns and redraws on its own schedule. Use it when several objects must composite against each other before reaching the screen (a light buffer, a trail buffer, a downscaled blur source), or to cache expensive static content as one texture.
+
+The source is a raw Pixi container the game builds, moves and destroys: no visual component draws into a render target, so this is one of the few documented places game code handles Pixi objects.
 
 ```ts yage-context="scene-enter"
 import { Component, Transform } from "@yagejs/core";

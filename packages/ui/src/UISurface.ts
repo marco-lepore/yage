@@ -88,7 +88,10 @@ export class UISurface extends Component {
     return this._offset;
   }
 
-  /** The PixiJS Container of the root panel. */
+  /**
+   * The Pixi container of the root panel. Change the surface through its
+   * props and elements; see `UIElement.displayObject`.
+   */
   get container(): DisplayContainer {
     return this.root.container;
   }
