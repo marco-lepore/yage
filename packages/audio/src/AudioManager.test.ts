@@ -1,1162 +1,243 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { SoundLibrary, IMediaInstance } from "@pixi/sound";
-
-import {
-  easeInQuad,
-  ErrorBoundary,
-  Logger,
-  LogLevel,
-  Process,
-} from "@yagejs/core";
-import type { ScopedProcessQueue } from "@yagejs/core";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+import { ErrorBoundary, Logger } from "@yagejs/core";
 import { AudioManager } from "./AudioManager.js";
-import { sound } from "./assets.js";
-
-type MockMediaInstance = IMediaInstance & { _emit(event: string): void };
-
-function createMockInstance(id = 1): MockMediaInstance {
-  const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
-  return {
-    id,
-    progress: 0,
-    paused: false,
-    volume: 1,
-    speed: 1,
-    loop: false,
-    muted: false,
-    stop: vi.fn(() => {
-      const fns = listeners.get("stop") ?? [];
-      for (const fn of fns) fn();
-    }),
-    refresh: vi.fn(),
-    refreshPaused: vi.fn(),
-    init: vi.fn(),
-    play: vi.fn(),
-    destroy: vi.fn(),
-    toString: vi.fn(() => ""),
-    set: vi.fn(),
-    once: vi.fn((event: string, fn: (...args: unknown[]) => void) => {
-      const list = listeners.get(event) ?? [];
-      list.push(fn);
-      listeners.set(event, list);
-    }),
-    on: vi.fn(),
-    off: vi.fn(),
-    _emit(event: string) {
-      const fns = listeners.get(event) ?? [];
-      for (const fn of fns) fn();
-    },
-  } as unknown as MockMediaInstance;
-}
-
-type MockSoundLibrary = SoundLibrary & {
-  _instances: Map<string, MockMediaInstance>;
-};
-
-class TestFadeQueue implements ScopedProcessQueue {
-  readonly processes = new Set<Process>();
-
-  run(process: Process): Process {
-    this.processes.add(process);
-    return process;
-  }
-
-  cancelAll(): void {
-    for (const process of this.processes) process.cancel();
-    this.processes.clear();
-  }
-
-  advance(seconds: number): void {
-    for (const process of [...this.processes]) {
-      process._update(seconds);
-      if (process.completed) this.processes.delete(process);
-    }
-  }
-}
-
-function setAudioContextState(
-  s: SoundLibrary,
-  state: "suspended" | "running",
-): void {
-  (
-    s as unknown as { context: { audioContext: { state: string } } }
-  ).context.audioContext.state = state;
-}
-
-function createMockSoundLibrary(options?: {
-  state?: "suspended" | "running";
-  muted?: boolean;
-  autoPause?: boolean;
-  paused?: boolean;
-}): MockSoundLibrary {
-  const instances = new Map<string, MockMediaInstance>();
-  let nextId = 1;
-
-  const context = {
-    muted: options?.muted ?? false,
-    autoPause: options?.autoPause ?? true,
-    paused: options?.paused ?? false,
-    audioContext: { state: options?.state ?? "running" },
-  };
-
-  return {
-    _instances: instances,
-    context,
-    play: vi.fn((alias: string, options?: { volume?: number }) => {
-      const inst = createMockInstance(nextId++);
-      inst.volume = options?.volume ?? 1;
-      instances.set(alias, inst);
-      return inst;
-    }),
-    stop: vi.fn(),
-    muteAll: vi.fn(),
-    unmuteAll: vi.fn(),
-    close: vi.fn(),
-    exists: vi.fn(() => true),
-  } as unknown as MockSoundLibrary;
-}
-
-describe("AudioManager", () => {
-  let mockSound: MockSoundLibrary;
-  let manager: AudioManager;
-
-  beforeEach(() => {
-    mockSound = createMockSoundLibrary();
-    manager = new AudioManager(mockSound);
+import { registerSound, clearRegisteredSounds, sound } from "./assets.js";
+import { FakeAudioContext, fakeBuffer } from "./test-helpers.js";
+let context: FakeAudioContext;
+let audio: AudioManager;
+beforeEach(() => {
+  clearRegisteredSounds();
+  context = new FakeAudioContext();
+  audio = new AudioManager(context.asContext());
+  registerSound("tone", fakeBuffer());
+});
+describe("scheduled playback and mixer ownership", () => {
+  it("books precise source times, offsets and stops", () => {
+    const h = audio.play(sound("tone"), {
+      at: 1.125,
+      offset: 0.4,
+      stopAt: 1.8,
+      pan: -0.5,
+      speed: 2,
+    });
+    expect(context.sources[0]).toMatchObject({
+      startTime: 1.125,
+      offset: 0.4,
+      stopTime: 1.8,
+    });
+    expect(h.scheduled).toBe(true);
+    expect(audio.getDiagnostics().scheduledVoices).toBe(1);
   });
-
-  describe("channels", () => {
-    it("lists configured and created channels in creation order, even when silent", () => {
-      const custom = new AudioManager(mockSound, {
-        channels: { ui: { volume: 0.5 }, ambient: {} },
-      });
-      const names = custom.getChannelNames();
-      expect(names).toEqual(["ui", "ambient"]);
-
-      const handle = custom.play("voice", { channel: "voice" });
-      handle.stop();
-      custom.setChannelVolume("dialogue", 0.4);
-      custom.muteChannel("muted");
-      custom.pauseChannel("paused");
-      custom.setChannelVolume("ui", 0.2);
-
-      expect(custom.getChannelNames()).toEqual([
-        "ui",
-        "ambient",
-        "voice",
-        "dialogue",
-        "muted",
-        "paused",
-      ]);
-      expect(names).toEqual(["ui", "ambient"]);
-      // Even a caller bypassing readonly typing cannot change manager state.
-      (names as string[]).push("outside");
-      expect(custom.getChannelNames()).not.toContain("outside");
-    });
-
-    it("returns the default volume without creating an unknown channel", () => {
-      expect(manager.getChannelNames()).toEqual(["sfx", "music"]);
-      expect(manager.getChannelVolume("unknown")).toBe(1);
-      expect(manager.getChannelNames()).toEqual(["sfx", "music"]);
-    });
-
-    it("can list an empty channel configuration", () => {
-      const empty = new AudioManager(mockSound, { channels: {} });
-      expect(empty.getChannelNames()).toEqual([]);
-    });
-
-    it("creates default sfx and music channels", () => {
-      expect(manager.getChannelVolume("sfx")).toBe(1);
-      expect(manager.getChannelVolume("music")).toBe(0.7);
-    });
-
-    it("uses custom channel config", () => {
-      const custom = new AudioManager(mockSound, {
-        channels: { ui: { volume: 0.5 }, ambient: { volume: 0.3 } },
-      });
-      expect(custom.getChannelVolume("ui")).toBe(0.5);
-      expect(custom.getChannelVolume("ambient")).toBe(0.3);
-    });
-
-    it("auto-creates channels on first use", () => {
-      manager.play("test", { channel: "custom" });
-      expect(manager.getChannelVolume("custom")).toBe(1);
-    });
-
-    it("rejects an invalid configured volume", () => {
-      expect(
-        () =>
-          new AudioManager(mockSound, {
-            channels: { music: { volume: -0.1 } },
-          }),
-      ).toThrow(
-        'AudioManager: channel "music": volume must be a finite number from 0 to 1, got -0.1.',
-      );
-    });
+  it("cancels a future voice immediately and releases ownership", () => {
+    const end = vi.fn();
+    const h = audio.play("tone", { at: 10, onEnd: end });
+    h.stop();
+    expect(h.playing).toBe(false);
+    expect(context.sources[0]!.disconnected).toBe(true);
+    expect(audio.getDiagnostics().activeVoices).toBe(0);
+    expect(end).not.toHaveBeenCalled();
   });
-
-  describe("masterVolume", () => {
-    it("defaults to one and accepts an initial volume", () => {
-      expect(manager.masterVolume).toBe(1);
-      const custom = new AudioManager(mockSound, { masterVolume: 0.5 });
-      expect(custom.masterVolume).toBe(0.5);
-      custom.play("music", { channel: "music", volume: 0.8 });
-      expect(mockSound.play).toHaveBeenLastCalledWith("music", {
-        volume: 0.5 * 0.7 * 0.8,
-        loop: false,
-        speed: 1,
-      });
+  it("routes booked voices through shared channel gain and independent voice mute", () => {
+    const h = audio.play("tone", { at: 1, volume: 0.5, channel: "music" });
+    audio.setChannelVolume("music", 0.4);
+    audio.masterVolume = 0.6;
+    h.muted = true;
+    audio.muteChannel("music");
+    audio.unmuteChannel("music");
+    expect(h.muted).toBe(true);
+    expect(h.volume).toBe(0.5);
+    expect(audio.getChannelVolume("music")).toBe(0.4);
+    expect(context.gains[0]!.gain.value).toBe(0.6);
+  });
+  it("owns child channels recursively without affecting other managers", () => {
+    audio.createChannel("layer", { parent: "music" });
+    const h = audio.play("tone", { channel: "layer" });
+    const other = new AudioManager(context.asContext());
+    const separate = other.play("tone");
+    audio.removeChannel("music");
+    expect(h.playing).toBe(false);
+    expect(audio.getChannelNames()).not.toContain("layer");
+    expect(separate.playing).toBe(true);
+  });
+  it("preserves explicit voice pause across channel pause and resume", () => {
+    const h = audio.play("tone");
+    h.paused = true;
+    audio.pauseChannel("sfx");
+    audio.resumeChannel("sfx");
+    expect(h.paused).toBe(true);
+    h.paused = false;
+    expect(h.paused).toBe(false);
+  });
+  it("applies an inherited channel pause to new voices", () => {
+    audio.createChannel("layer", { parent: "music" });
+    audio.pauseChannel("music");
+    expect(audio.play("tone", { channel: "layer" }).paused).toBe(true);
+  });
+  it("keeps independent request owners and a playOnce owner", () => {
+    const a = audio.requestOnce("tone");
+    const b = audio.requestOnce("tone");
+    expect(context.sources).toHaveLength(1);
+    a.release();
+    expect(b.active).toBe(true);
+    const h = audio.playOnce("tone");
+    b.release();
+    expect(h.playing).toBe(true);
+    audio.stopAll();
+    expect(h.playing).toBe(false);
+  });
+  it("keeps the final fading request active and starts a fresh shared recording", () => {
+    const a = audio.requestOnce("tone");
+    a.release({ fadeOut: 0.5 });
+    const b = audio.requestOnce("tone");
+    expect(context.sources).toHaveLength(2);
+    expect(a.active).toBe(true);
+    context.currentTime = 0.5;
+    context.sources[0]!.end();
+    expect(a.active).toBe(false);
+    expect(b.active).toBe(true);
+  });
+  it("calls only active owners on natural completion, never explicit stop", () => {
+    const a = vi.fn();
+    const b = vi.fn();
+    audio.requestOnce("tone", { onEnd: a }).release();
+    audio.requestOnce("tone", { onEnd: b });
+    context.sources.at(-1)!.end();
+    expect(a).not.toHaveBeenCalled();
+    expect(b).toHaveBeenCalledOnce();
+  });
+  it("holds locked voices on the context clock and dispatches unlock once", () => {
+    context.state = "suspended";
+    audio.play("tone", { at: 0.2 });
+    const cb = vi.fn();
+    audio.onUnlock(cb);
+    audio._handleGesture();
+    expect(cb).not.toHaveBeenCalled();
+    context.state = "running";
+    audio._handleGesture();
+    audio._handleGesture();
+    expect(cb).toHaveBeenCalledOnce();
+    expect(context.sources[0]!.startTime).toBe(0.2);
+  });
+  it("reports and rethrows callback errors, ending fan-out", () => {
+    const boundary = new ErrorBoundary(new Logger({ output: () => {} }));
+    audio._setErrorBoundary(boundary);
+    context.state = "suspended";
+    const after = vi.fn();
+    audio.onUnlock(() => {
+      throw new Error("unlock failed");
     });
-
-    it("scales playing sounds without overwriting their channel balance or state", () => {
-      const music = manager.play("music", { channel: "music", volume: 0.8 });
-      const sfx = manager.play("sfx", { volume: 0.6 });
-      manager.muteChannel("music");
-      manager.pauseChannel("sfx");
-
-      manager.masterVolume = 0.5;
-
-      expect(mockSound._instances.get("music")?.volume).toBeCloseTo(0.28);
-      expect(mockSound._instances.get("sfx")?.volume).toBeCloseTo(0.3);
-      expect(manager.getChannelVolume("music")).toBe(0.7);
-      expect(manager.getChannelVolume("sfx")).toBe(1);
-      expect(music.volume).toBe(0.8);
-      expect(sfx.volume).toBe(0.6);
-      expect(music.muted).toBe(true);
-      expect(sfx.paused).toBe(true);
-
-      manager.masterVolume = 0;
-      expect(mockSound._instances.get("music")?.volume).toBe(0);
-      expect(music.playing).toBe(true);
-      manager.masterVolume = 1;
-      expect(mockSound._instances.get("music")?.volume).toBeCloseTo(0.56);
-      expect(music.muted).toBe(true);
+    audio.onUnlock(after);
+    context.state = "running";
+    expect(() => audio._handleGesture()).toThrow("unlock failed");
+    expect(after).not.toHaveBeenCalled();
+    expect(boundary.getCallbackErrors()[0]?.kind).toBe("Audio unlock callback");
+    expect(audio.getDiagnostics().failures[0]?.message).toBe("unlock failed");
+  });
+  it("attributes scheduler and completion failures without swallowing", () => {
+    const boundary = new ErrorBoundary(new Logger({ output: () => {} }));
+    audio._setErrorBoundary(boundary);
+    audio.addScheduler(() => {
+      throw new Error("arrangement");
     });
-
-    it("applies to future channels and subsequent channel and sound volume changes", () => {
-      manager.masterVolume = 0.5;
-      const voice = manager.play("voice", { channel: "voice", volume: 0.8 });
-      expect(mockSound.play).toHaveBeenLastCalledWith("voice", {
-        volume: 0.4,
-        loop: false,
-        speed: 1,
-      });
-      manager.setChannelVolume("voice", 0.5);
-      expect(mockSound._instances.get("voice")?.volume).toBeCloseTo(0.2);
-      voice.volume = 0.4;
-      expect(mockSound._instances.get("voice")?.volume).toBeCloseTo(0.1);
-    });
-
-    it("does not change playback owned by another manager", () => {
-      const other = new AudioManager(mockSound);
-      other.play("other");
-      manager.play("owned");
-      manager.masterVolume = 0.2;
-      expect(mockSound._instances.get("other")?.volume).toBe(1);
-      expect(mockSound._instances.get("owned")?.volume).toBe(0.2);
-    });
-
-    it.each([Number.NaN, Infinity, -Infinity, -0.1, 1.1])(
-      "rejects %s before changing volume or constructor side effects",
-      (value) => {
-        manager.masterVolume = 0.5;
-        manager.play("music", { channel: "music" });
-        expect(() => {
-          manager.masterVolume = value;
-        }).toThrow(
-          `AudioManager.masterVolume: volume must be a finite number from 0 to 1, got ${value}.`,
-        );
-        expect(manager.masterVolume).toBe(0.5);
-        expect(mockSound._instances.get("music")?.volume).toBeCloseTo(0.35);
-        expect(
-          () =>
-            new AudioManager(mockSound, {
-              masterVolume: value,
-              autoMuteOnBlur: false,
-            }),
-        ).toThrow(
-          `AudioManager.masterVolume: volume must be a finite number from 0 to 1, got ${value}.`,
-        );
-        expect(
-          (mockSound.context as unknown as { autoPause: boolean }).autoPause,
-        ).toBe(true);
+    expect(() => audio.updateSchedule()).toThrow("arrangement");
+    audio.play("tone", {
+      onEnd: () => {
+        throw new Error("end");
       },
+    });
+    expect(() => context.sources[0]!.end()).toThrow("end");
+    expect(boundary.getCallbackErrors().map((e) => e.kind)).toEqual([
+      "Audio scheduler callback",
+      "Audio onEnd callback",
+    ]);
+  });
+  it("disposes voices, pending unlock and scheduler subscriptions", () => {
+    const cb = vi.fn();
+    audio.addScheduler(cb);
+    audio.play("tone");
+    audio.dispose();
+    expect(audio.getDiagnostics().activeVoices).toBe(0);
+    expect(audio.getDiagnostics().schedulerCount).toBe(0);
+    expect(() => audio.play("tone")).toThrow("disposed");
+  });
+  it("rejects invalid inputs before creating voices or channels", () => {
+    for (const options of [
+      { volume: NaN },
+      { speed: 0 },
+      { speed: Infinity },
+      { speed: Number.MAX_VALUE },
+      { speed: Number.MIN_VALUE },
+      { pan: 2 },
+      { at: -1 },
+      { offset: 2 },
+      { loop: true, loopStart: 1, loopEnd: 0.5 },
+      { stopAt: 1, at: 2 },
+    ])
+      expect(() =>
+        audio.play("tone", { ...options, channel: "invalid" }),
+      ).toThrow();
+    expect(context.sources).toHaveLength(0);
+    expect(audio.getChannelNames()).not.toContain("invalid");
+    expect(() => audio.play("missing")).toThrow('"missing"');
+  });
+  it("validates a crossfade before changing outgoing playback", () => {
+    const h = audio.play("tone");
+    expect(() => audio.crossfade(h, "missing", { duration: 1 })).toThrow(
+      "missing",
     );
+    expect(h.volume).toBe(1);
   });
-
-  describe("play()", () => {
-    it("calls sound.play() with alias and correct options", () => {
-      manager.play("explosion", { volume: 0.8, loop: true, speed: 1.5 });
-      expect(mockSound.play).toHaveBeenCalledWith("explosion", {
-        volume: 0.8, // sfx channel volume (1) * instance volume (0.8)
-        loop: true,
-        speed: 1.5,
-      });
-    });
-
-    it("applies channel volume x instance volume", () => {
-      manager.setChannelVolume("sfx", 0.5);
-      manager.play("test", { volume: 0.6 });
-      expect(mockSound.play).toHaveBeenCalledWith("test", {
-        volume: 0.3, // 0.5 * 0.6
-        loop: false,
-        speed: 1,
-      });
-    });
-
-    it("rejects an invalid instance volume before playback", () => {
-      expect(() =>
-        manager.play("test", { volume: Number.POSITIVE_INFINITY }),
-      ).toThrow(
-        "AudioManager.play: volume must be a finite number from 0 to 1, got Infinity.",
-      );
-      expect(mockSound.play).not.toHaveBeenCalled();
-    });
-
-    it("defaults to sfx channel", () => {
-      const handle = manager.play("test");
-      expect(handle.playing).toBe(true);
-    });
-
-    it("returns a SoundHandle", () => {
-      const handle = manager.play("test");
-      expect(handle).toBeDefined();
-      expect(handle.playing).toBe(true);
-      expect(typeof handle.id).toBe("number");
-    });
-
-    it("throws if sound is not preloaded (Promise returned)", () => {
-      (mockSound.play as ReturnType<typeof vi.fn>).mockReturnValueOnce(
-        Promise.resolve(createMockInstance()),
-      );
-      expect(() => manager.play("unloaded")).toThrow("not preloaded");
-    });
-
-    it("throws naming the alias when nothing is registered under it", () => {
-      (mockSound.exists as ReturnType<typeof vi.fn>).mockReturnValue(false);
-      expect(() => manager.play("sfx/coni.wav")).toThrow(
-        'AudioManager.play: no sound registered as "sfx/coni.wav"',
-      );
-      expect(mockSound.play).not.toHaveBeenCalled();
-    });
-
-    it("accepts a sound() handle and plays the alias it registers", () => {
-      manager.play(sound("assets/coin.wav"), { volume: 0.5 });
-      expect(mockSound.play).toHaveBeenCalledWith("assets/coin.wav", {
-        volume: 0.5,
-        loop: false,
-        speed: 1,
-      });
-    });
+});
+it("rejects a past crossfade time without starting another source", () => {
+  const outgoing = audio.play("tone", { loop: true });
+  context.currentTime = 2;
+  expect(() =>
+    audio.crossfade(outgoing, "tone", { at: 1, duration: 1 }),
+  ).toThrow();
+  expect(context.sources).toHaveLength(1);
+  expect(outgoing.volume).toBe(1);
+});
+it("reports natural completion even when the ended event arrives after a later booked stop", () => {
+  const end = vi.fn();
+  audio.play("tone", { speed: 2, stopAt: 2, onEnd: end });
+  context.currentTime = 3;
+  context.sources[0]!.end();
+  expect(end).toHaveBeenCalledOnce();
+});
+it("does not report natural completion for a stop before the buffer ends", () => {
+  const end = vi.fn();
+  audio.play("tone", { speed: 0.5, stopAt: 2, onEnd: end });
+  context.currentTime = 5;
+  context.sources[0]!.end();
+  expect(end).not.toHaveBeenCalled();
+});
+it("holds channel gain automation at the paused audio position", () => {
+  audio.setChannelVolume("music", 0, { duration: 2 });
+  context.currentTime = 1;
+  audio.pauseChannel("music");
+  context.currentTime = 9;
+  expect(audio.getChannelVolume("music")).toBeCloseTo(0.35);
+  audio.setChannelVolume("music", 1, { at: 9, duration: 1 });
+  audio.resumeChannel("music");
+  context.currentTime = 9.5;
+  expect(audio.getChannelVolume("music")).toBeCloseTo(0.675);
+});
+it("does not count playback after a scheduled stop when its event is delayed", () => {
+  const end = vi.fn();
+  const voice = audio.play("tone", { stopAt: 1, onEnd: end });
+  context.currentTime = 3;
+  voice.setSpeed(2);
+  context.sources[0]!.end();
+  expect(end).not.toHaveBeenCalled();
+});
+it("accepts immediate crossfades when audio time advances during node creation", () => {
+  const outgoing = audio.play("tone", { loop: true });
+  const create = context.createGain.bind(context);
+  vi.spyOn(context, "createGain").mockImplementation(() => {
+    context.currentTime += 0.005;
+    return create();
   });
-
-  describe("hasSound()", () => {
-    it("is true for a registered alias and for a sound() handle", () => {
-      expect(manager.hasSound("explosion")).toBe(true);
-      expect(manager.hasSound(sound("assets/coin.wav"))).toBe(true);
-      expect(mockSound.exists).toHaveBeenCalledWith("assets/coin.wav");
-    });
-
-    it("is false for an alias nothing is registered under", () => {
-      (mockSound.exists as ReturnType<typeof vi.fn>).mockReturnValue(false);
-      expect(manager.hasSound("sfx/typo.wav")).toBe(false);
-    });
-
-    it("stays true while the audio context is suspended", () => {
-      setAudioContextState(mockSound, "suspended");
-      expect(manager.isUnlocked()).toBe(false);
-      expect(manager.hasSound("explosion")).toBe(true);
-    });
-  });
-
-  describe("playOnce()", () => {
-    it("reuses the handle of a sound that is still playing", () => {
-      const first = manager.playOnce("music", { channel: "music" });
-      const second = manager.playOnce("music", { channel: "music" });
-      expect(second).toBe(first);
-      expect(mockSound.play).toHaveBeenCalledTimes(1);
-    });
-
-    it("matches a sound() handle against an alias already playing", () => {
-      const first = manager.playOnce("assets/coin.wav");
-      const second = manager.playOnce(sound("assets/coin.wav"));
-      expect(second).toBe(first);
-      expect(mockSound.play).toHaveBeenCalledTimes(1);
-    });
-
-    it("throws naming the alias when nothing is registered under it", () => {
-      (mockSound.exists as ReturnType<typeof vi.fn>).mockReturnValue(false);
-      expect(() => manager.playOnce("typo")).toThrow(
-        'no sound registered as "typo"',
-      );
-    });
-
-    it("keeps an outside playOnce owner when a request releases", () => {
-      const outside = manager.playOnce("impact");
-      const request = manager.requestOnce("impact");
-
-      request.release();
-
-      expect(request.active).toBe(false);
-      expect(outside.playing).toBe(true);
-      expect(mockSound.play).toHaveBeenCalledTimes(1);
-    });
-
-    it("adds one playOnce owner when requests started the shared playback", () => {
-      const request = manager.requestOnce("impact");
-      const outside = manager.playOnce("impact");
-      const repeated = manager.playOnce("impact");
-
-      request.release();
-
-      expect(outside).toBe(repeated);
-      expect(outside.playing).toBe(true);
-      expect(mockSound.play).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe("requestOnce()", () => {
-    it("fades only the last request and keeps it active through its tail", () => {
-      const queue = new TestFadeQueue();
-      const audio = new AudioManager(mockSound, undefined, undefined, queue);
-      const first = audio.requestOnce("reel");
-      const onEnd = vi.fn();
-      const last = audio.requestOnce("reel", { onEnd });
-      const instance = mockSound._instances.get("reel")!;
-      first.release({ fadeOut: 0.2 });
-      expect(first.active).toBe(false);
-      expect(queue.processes.size).toBe(0);
-      last.release({ fadeOut: 0.2 });
-      last.release({ fadeOut: 0.2 });
-      expect(last.active).toBe(true);
-      expect(queue.processes.size).toBe(1);
-      queue.advance(0.1);
-      expect(instance.volume).toBeCloseTo(0.5);
-      queue.advance(0.1);
-      expect(instance.stop).toHaveBeenCalledOnce();
-      expect(last.active).toBe(false);
-      expect(onEnd).not.toHaveBeenCalled();
-    });
-
-    it("completes a fade even when the paused backend stop emits no event", () => {
-      const queue = new TestFadeQueue();
-      const audio = new AudioManager(mockSound, undefined, undefined, queue);
-      const request = audio.requestOnce("reel");
-      const instance = mockSound._instances.get("reel")!;
-      const backendStop = vi.mocked(instance.stop);
-      backendStop.mockImplementation(() => {});
-      Object.assign(instance, {
-        emit: (event: string) => instance._emit(event),
-      });
-      audio.pauseChannel("sfx");
-      request.release({ fadeOut: 0.2 });
-      queue.advance(0.2);
-      expect(request.active).toBe(false);
-      audio.resumeChannel("sfx");
-      expect(instance.paused).toBe(true);
-      audio.stopAll();
-      expect(backendStop).toHaveBeenCalledOnce();
-    });
-
-    it("starts a fresh shared recording while an old request fades", () => {
-      const queue = new TestFadeQueue();
-      const audio = new AudioManager(mockSound, undefined, undefined, queue);
-      const old = audio.requestOnce("reel");
-      old.release({ fadeOut: 0.2 });
-      const fresh = audio.requestOnce("reel");
-      const freshInstance = mockSound._instances.get("reel")!;
-      queue.advance(0.2);
-      const joined = audio.requestOnce("reel");
-      expect(mockSound.play).toHaveBeenCalledTimes(2);
-      expect(old.active).toBe(false);
-      expect(fresh.active).toBe(true);
-      expect(joined.active).toBe(true);
-      expect(freshInstance.stop).not.toHaveBeenCalled();
-    });
-
-    it("does not fade a playOnce owner's recording", () => {
-      const queue = new TestFadeQueue();
-      const audio = new AudioManager(mockSound, undefined, undefined, queue);
-      const owner = audio.playOnce("reel");
-      const request = audio.requestOnce("reel");
-      request.release({ fadeOut: 0.2 });
-      expect(request.active).toBe(false);
-      expect(owner.playing).toBe(true);
-      expect(queue.processes.size).toBe(0);
-    });
-
-    it("suppresses released callbacks when the recording ends during its fade", () => {
-      const queue = new TestFadeQueue();
-      const audio = new AudioManager(mockSound, undefined, undefined, queue);
-      const onEnd = vi.fn();
-      const request = audio.requestOnce("reel", { onEnd });
-      request.release({ fadeOut: 0.2 });
-      mockSound._instances.get("reel")!._emit("end");
-      queue.advance(0.2);
-      expect(request.active).toBe(false);
-      expect(onEnd).not.toHaveBeenCalled();
-      expect(mockSound._instances.get("reel")!.stop).not.toHaveBeenCalled();
-    });
-
-    it.each([-1, NaN, Infinity])(
-      "rejects fadeOut %s before releasing ownership",
-      (fadeOut) => {
-        const request = manager.requestOnce("reel");
-        expect(() => request.release({ fadeOut })).toThrow(/fadeOut/);
-        expect(request.active).toBe(true);
-        expect(mockSound._instances.get("reel")!.stop).not.toHaveBeenCalled();
-      },
-    );
-
-    it("rejects unavailable fades before releasing the last owner", () => {
-      const request = manager.requestOnce("reel");
-      expect(() => request.release({ fadeOut: 0.2 })).toThrow(/AudioPlugin/);
-      expect(request.active).toBe(true);
-      request.release();
-      expect(request.active).toBe(false);
-    });
-
-    it("throws naming the alias when nothing is registered under it", () => {
-      (mockSound.exists as ReturnType<typeof vi.fn>).mockReturnValue(false);
-
-      expect(() => manager.requestOnce("typo")).toThrow(
-        'no sound registered as "typo"',
-      );
-      expect(mockSound.play).not.toHaveBeenCalled();
-    });
-
-    it("releases independent requests without stopping another owner", () => {
-      const first = manager.requestOnce("impact");
-      const second = manager.requestOnce("impact");
-      const instance = mockSound._instances.get("impact")!;
-
-      first.release();
-      first.release();
-      expect(first.active).toBe(false);
-      expect(second.active).toBe(true);
-      expect(instance.stop).not.toHaveBeenCalled();
-
-      second.release();
-      expect(second.active).toBe(false);
-      expect(instance.stop).toHaveBeenCalledOnce();
-    });
-
-    it("calls every active request callback on natural completion", () => {
-      const firstEnd = vi.fn();
-      const secondEnd = vi.fn();
-      const first = manager.requestOnce("impact", { onEnd: firstEnd });
-      const second = manager.requestOnce("impact", { onEnd: secondEnd });
-
-      mockSound._instances.get("impact")!._emit("end");
-
-      expect(first.active).toBe(false);
-      expect(second.active).toBe(false);
-      expect(firstEnd).toHaveBeenCalledOnce();
-      expect(secondEnd).toHaveBeenCalledOnce();
-    });
-
-    it("does not call a released request's callback", () => {
-      const releasedEnd = vi.fn();
-      const activeEnd = vi.fn();
-      const released = manager.requestOnce("impact", {
-        onEnd: releasedEnd,
-      });
-      manager.requestOnce("impact", { onEnd: activeEnd });
-
-      released.release();
-      mockSound._instances.get("impact")!._emit("end");
-
-      expect(releasedEnd).not.toHaveBeenCalled();
-      expect(activeEnd).toHaveBeenCalledOnce();
-    });
-
-    it("clears every request when a channel force-stops the sound", () => {
-      const first = manager.requestOnce("impact");
-      const second = manager.requestOnce("impact");
-
-      manager.stopChannel("sfx");
-
-      expect(first.active).toBe(false);
-      expect(second.active).toBe(false);
-      manager.requestOnce("impact");
-      expect(mockSound.play).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe("playRandom()", () => {
-    it("plays one of the provided aliases", () => {
-      const aliases = ["a", "b", "c"];
-      manager.playRandom(aliases);
-      const calledAlias = (mockSound.play as ReturnType<typeof vi.fn>).mock
-        .calls[0]![0] as string;
-      expect(aliases).toContain(calledAlias);
-    });
-
-    it("accepts sound() handles", () => {
-      manager.playRandom([sound("assets/step.wav")]);
-      expect(mockSound.play).toHaveBeenCalledWith(
-        "assets/step.wav",
-        expect.anything(),
-      );
-    });
-
-    it("throws on empty aliases array", () => {
-      expect(() => manager.playRandom([])).toThrow("must not be empty");
-    });
-
-    it("throws naming the alias when nothing is registered under it", () => {
-      (mockSound.exists as ReturnType<typeof vi.fn>).mockReturnValue(false);
-      expect(() => manager.playRandom(["typo"])).toThrow(
-        'no sound registered as "typo"',
-      );
-    });
-  });
-
-  describe("stop()", () => {
-    it("stops a specific handle", () => {
-      const handle = manager.play("test");
-      manager.stop(handle);
-      expect(handle.playing).toBe(false);
-    });
-  });
-
-  describe("stopChannel()", () => {
-    it("stops all handles in a channel", () => {
-      const h1 = manager.play("a");
-      const h2 = manager.play("b");
-      manager.stopChannel("sfx");
-      expect(h1.playing).toBe(false);
-      expect(h2.playing).toBe(false);
-    });
-
-    it("does nothing for non-existent channel", () => {
-      expect(() => manager.stopChannel("nonexistent")).not.toThrow();
-    });
-  });
-
-  describe("stopAll()", () => {
-    it("stops handles across all channels", () => {
-      const h1 = manager.play("a", { channel: "sfx" });
-      const h2 = manager.play("b", { channel: "music" });
-      manager.stopAll();
-      expect(h1.playing).toBe(false);
-      expect(h2.playing).toBe(false);
-    });
-  });
-
-  describe("setChannelVolume()", () => {
-    it("recalculates media volume without changing handle volume", () => {
-      const handle = manager.play("test", { volume: 0.8 });
-      manager.setChannelVolume("sfx", 0.5);
-      expect(handle.volume).toBe(0.8);
-      expect(mockSound._instances.get("test")?.volume).toBeCloseTo(0.4);
-    });
-
-    it("preserves a handle volume changed after play", () => {
-      const handle = manager.play("test", { volume: 0.8 });
-      handle.volume = 0.25;
-
-      manager.setChannelVolume("sfx", 0.4);
-
-      expect(handle.volume).toBe(0.25);
-      expect(mockSound._instances.get("test")?.volume).toBeCloseTo(0.1);
-    });
-
-    it("rejects an invalid volume before creating a channel", () => {
-      expect(() => manager.setChannelVolume("new", Number.NaN)).toThrow(
-        "AudioManager.setChannelVolume: volume must be a finite number from 0 to 1, got NaN.",
-      );
-      expect(manager.getChannelVolume("new")).toBe(1);
-    });
-  });
-
-  describe("fades", () => {
-    let queue: TestFadeQueue;
-
-    beforeEach(() => {
-      queue = new TestFadeQueue();
-      manager = new AudioManager(mockSound, undefined, undefined, queue);
-    });
-
-    it("preserves an active fade while master and channel volumes change", () => {
-      const handle = manager.play("music", { channel: "music" });
-      const fade = handle.fadeTo(0, { duration: 2 });
-      queue.advance(0.5);
-      manager.masterVolume = 0.5;
-      manager.setChannelVolume("music", 0.4);
-      expect(handle.volume).toBeCloseTo(0.75);
-      expect(mockSound._instances.get("music")?.volume).toBeCloseTo(0.15);
-      expect(fade.completed).toBe(false);
-      queue.advance(0.5);
-      expect(handle.volume).toBeCloseTo(0.5);
-      expect(mockSound._instances.get("music")?.volume).toBeCloseTo(0.1);
-      queue.advance(1);
-      expect(fade.completed).toBe(true);
-      expect(mockSound._instances.get("music")?.volume).toBe(0);
-    });
-
-    it("fades logical volume while channel changes compose with it", () => {
-      const handle = manager.play("music", {
-        channel: "music",
-        volume: 1,
-      });
-      const instance = mockSound._instances.get("music");
-      expect(instance).toBeDefined();
-
-      handle.fadeTo(0, { duration: 2 });
-      queue.advance(1);
-      expect(handle.volume).toBeCloseTo(0.5);
-      expect(instance?.volume).toBeCloseTo(0.35);
-
-      manager.setChannelVolume("music", 0.4);
-      expect(handle.volume).toBeCloseTo(0.5);
-      expect(instance?.volume).toBeCloseTo(0.2);
-
-      queue.advance(1);
-      expect(handle.volume).toBe(0);
-      expect(instance?.volume).toBe(0);
-    });
-
-    it("cancels and replaces the current fade", () => {
-      const handle = manager.play("music");
-      const first = handle.fadeTo(0, { duration: 2 });
-      queue.advance(1);
-
-      handle.fadeTo(1, { duration: 1 });
-      expect(first.completed).toBe(true);
-      queue.advance(1);
-
-      expect(handle.volume).toBe(1);
-    });
-
-    it("captures fade options before scheduling", () => {
-      const handle = manager.play("music");
-      const options = { duration: 1, stopOnComplete: false };
-      handle.fadeTo(0.5, options);
-
-      options.duration = 2;
-      options.stopOnComplete = true;
-      queue.advance(1);
-
-      expect(handle.volume).toBe(0.5);
-      expect(handle.playing).toBe(true);
-    });
-
-    it("finishes at the exact target across fractional frame steps", () => {
-      const handle = manager.play("music");
-      const fade = handle.fadeTo(0, { duration: 0.1 });
-
-      for (let frame = 0; frame < 6; frame++) queue.advance(1 / 60);
-
-      expect(fade.completed).toBe(true);
-      expect(handle.volume).toBe(0);
-    });
-
-    it("can stop the handle after fading to zero", () => {
-      const handle = manager.play("music");
-      handle.fadeTo(0, { duration: 1, stopOnComplete: true });
-
-      queue.advance(1);
-
-      expect(handle.playing).toBe(false);
-    });
-
-    it("rejects invalid inputs before replacing the current fade", () => {
-      const handle = manager.play("music");
-      const current = handle.fadeTo(0, { duration: 2 });
-
-      expect(() => handle.fadeTo(2, { duration: 1 })).toThrow(
-        "SoundHandle.fadeTo: volume must be a finite number from 0 to 1, got 2.",
-      );
-      expect(() => handle.fadeTo(0, { duration: 0 })).toThrow(
-        "SoundHandle.fadeTo: duration must be a finite number > 0 in seconds, got 0.",
-      );
-      expect(current.completed).toBe(false);
-    });
-
-    it("rejects a non-finite easing result at the volume write", () => {
-      const handle = manager.play("music");
-      handle.fadeTo(0, { duration: 1, easing: () => Number.NaN });
-
-      expect(() => queue.advance(0.5)).toThrow(
-        "SoundHandle.fadeTo: easing must return a finite number, got NaN.",
-      );
-    });
-  });
-
-  describe("crossfade()", () => {
-    let queue: TestFadeQueue;
-
-    beforeEach(() => {
-      queue = new TestFadeQueue();
-      manager = new AudioManager(mockSound, undefined, undefined, queue);
-    });
-
-    it("fades both sounds and returns the incoming handle", () => {
-      const outgoing = manager.play("old", {
-        channel: "music",
-        volume: 0.8,
-      });
-
-      const incoming = manager.crossfade(outgoing, "new", {
-        duration: 2,
-        easing: easeInQuad,
-        loop: true,
-        volume: 0.6,
-      });
-
-      expect(incoming.channel).toBe("music");
-      expect(incoming.volume).toBe(0);
-      expect(mockSound.play).toHaveBeenLastCalledWith("new", {
-        volume: 0,
-        loop: true,
-        speed: 1,
-      });
-
-      queue.advance(1);
-      expect(outgoing.volume).toBeCloseTo(0.6);
-      expect(incoming.volume).toBeCloseTo(0.15);
-
-      queue.advance(1);
-      expect(outgoing.playing).toBe(false);
-      expect(incoming.playing).toBe(true);
-      expect(incoming.volume).toBeCloseTo(0.6);
-    });
-
-    it("uses an explicitly requested incoming channel", () => {
-      const outgoing = manager.play("old", { channel: "music" });
-
-      const incoming = manager.crossfade(outgoing, "new", {
-        duration: 1,
-        channel: "ambience",
-      });
-
-      expect(incoming.channel).toBe("ambience");
-    });
-
-    it("inherits an empty channel name", () => {
-      const outgoing = manager.play("old", { channel: "" });
-
-      const incoming = manager.crossfade(outgoing, "new", { duration: 1 });
-
-      expect(incoming.channel).toBe("");
-    });
-
-    it("validates the next sound before starting either fade", () => {
-      const outgoing = manager.play("old", { channel: "music" });
-      (mockSound.exists as ReturnType<typeof vi.fn>).mockReturnValueOnce(false);
-
-      expect(() =>
-        manager.crossfade(outgoing, "missing", { duration: 1 }),
-      ).toThrow('AudioManager.crossfade: no sound registered as "missing"');
-      expect(outgoing.volume).toBe(1);
-      expect(queue.processes.size).toBe(0);
-      expect(mockSound.play).toHaveBeenCalledTimes(1);
-    });
-
-    it("rejects a handle owned by another manager", () => {
-      const other = new AudioManager(mockSound, undefined, undefined, queue);
-      const outgoing = other.play("old");
-
-      expect(() => manager.crossfade(outgoing, "new", { duration: 1 })).toThrow(
-        "AudioManager.crossfade: outgoing handle is not playing in this manager.",
-      );
-      expect(mockSound.play).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe("muteChannel() / unmuteChannel()", () => {
-    it("mutes all handles in a channel", () => {
-      const handle = manager.play("test");
-      manager.muteChannel("sfx");
-      expect(handle.muted).toBe(true);
-    });
-
-    it("unmutes all handles in a channel", () => {
-      const handle = manager.play("test");
-      manager.muteChannel("sfx");
-      manager.unmuteChannel("sfx");
-      expect(handle.muted).toBe(false);
-    });
-  });
-
-  describe("pauseChannel() / resumeChannel()", () => {
-    it("pauses all handles in a channel", () => {
-      const handle = manager.play("test");
-      manager.pauseChannel("sfx");
-      expect(handle.paused).toBe(true);
-    });
-
-    it("resumes all handles in a channel", () => {
-      const handle = manager.play("test");
-      manager.pauseChannel("sfx");
-      manager.resumeChannel("sfx");
-      expect(handle.paused).toBe(false);
-    });
-  });
-
-  describe("muteAll() / unmuteAll()", () => {
-    it("muteAll mutes all channels and their handles", () => {
-      const h1 = manager.play("a", { channel: "sfx" });
-      const h2 = manager.play("b", { channel: "music" });
-      manager.muteAll();
-      expect(h1.muted).toBe(true);
-      expect(h2.muted).toBe(true);
-    });
-
-    it("unmuteAll unmutes all channels and their handles", () => {
-      const h1 = manager.play("a", { channel: "sfx" });
-      const h2 = manager.play("b", { channel: "music" });
-      manager.muteAll();
-      manager.unmuteAll();
-      expect(h1.muted).toBe(false);
-      expect(h2.muted).toBe(false);
-    });
-
-    it("unmuteAll does not desync with per-channel mute", () => {
-      manager.muteAll();
-      manager.unmuteAll();
-      manager.muteChannel("sfx");
-      const handle = manager.play("test", { channel: "sfx" });
-      expect(handle.muted).toBe(true);
-    });
-  });
-
-  describe("auto-cleanup", () => {
-    it("removes dead handles on end event", () => {
-      const handle = manager.play("test");
-      const inst = mockSound._instances.get("test")!;
-      inst._emit("end");
-      expect(handle.playing).toBe(false);
-    });
-  });
-
-  describe("onEnd option", () => {
-    it("calls onEnd once when the sound finishes (its end event)", () => {
-      const onEnd = vi.fn();
-      manager.play("test", { onEnd });
-      const inst = mockSound._instances.get("test")!;
-      expect(onEnd).not.toHaveBeenCalled();
-      inst._emit("end");
-      expect(onEnd).toHaveBeenCalledTimes(1);
-    });
-
-    it("does NOT call onEnd when the sound is stopped", () => {
-      const onEnd = vi.fn();
-      const handle = manager.play("test", { onEnd });
-      handle.stop(); // emits the instance's `stop` event, not `end`
-      expect(onEnd).not.toHaveBeenCalled();
-    });
-
-    it("attributes a throwing onEnd to the boundary and rethrows", () => {
-      const boundary = new ErrorBoundary(new Logger({ level: LogLevel.Debug }));
-      manager._setErrorBoundary(boundary);
-      manager.play("test", {
-        onEnd: () => {
-          throw new Error("boom");
-        },
-      });
-
-      const inst = mockSound._instances.get("test")!;
-      expect(() => inst._emit("end")).toThrow("boom");
-
-      const errors = boundary.getCallbackErrors();
-      expect(errors).toHaveLength(1);
-      expect(errors[0]).toMatchObject({
-        kind: "Audio onEnd callback",
-        error: "boom",
-      });
-    });
-
-    it("lets a throwing onEnd propagate when no boundary is wired", () => {
-      manager.play("test", {
-        onEnd: () => {
-          throw new Error("boom");
-        },
-      });
-      const inst = mockSound._instances.get("test")!;
-      expect(() => inst._emit("end")).toThrow("boom");
-    });
-  });
-
-  describe("new handle inherits channel state", () => {
-    it("applies channel mute to new handles", () => {
-      manager.muteChannel("sfx");
-      const handle = manager.play("test");
-      expect(handle.muted).toBe(true);
-    });
-
-    it("applies channel pause to new handles", () => {
-      manager.pauseChannel("sfx");
-      const handle = manager.play("test");
-      expect(handle.paused).toBe(true);
-    });
-  });
-
-  describe("isUnlocked()", () => {
-    it("returns true when AudioContext is running", () => {
-      const s = createMockSoundLibrary({ state: "running" });
-      const m = new AudioManager(s);
-      expect(m.isUnlocked()).toBe(true);
-    });
-
-    it("returns false when AudioContext is suspended", () => {
-      const s = createMockSoundLibrary({ state: "suspended" });
-      const m = new AudioManager(s);
-      expect(m.isUnlocked()).toBe(false);
-    });
-  });
-
-  describe("onUnlock()", () => {
-    it("fires synchronously if already unlocked", () => {
-      const s = createMockSoundLibrary({ state: "running" });
-      const m = new AudioManager(s);
-      const cb = vi.fn();
-      m.onUnlock(cb);
-      expect(cb).toHaveBeenCalledTimes(1);
-    });
-
-    it("queues listener while suspended and fires on gesture when state flips", () => {
-      const s = createMockSoundLibrary({ state: "suspended" });
-      const m = new AudioManager(s);
-      const cb = vi.fn();
-      m.onUnlock(cb);
-      // Gesture arrives but context is still suspended
-      m._handleGesture();
-      expect(cb).not.toHaveBeenCalled();
-      // Browser resumes context (e.g. @pixi/sound's _unlock ran)
-      setAudioContextState(s, "running");
-      m._handleGesture();
-      expect(cb).toHaveBeenCalledTimes(1);
-      // Idempotent
-      m._handleGesture();
-      expect(cb).toHaveBeenCalledTimes(1);
-    });
-
-    it("returned disposer removes a pending listener", () => {
-      const s = createMockSoundLibrary({ state: "suspended" });
-      const m = new AudioManager(s);
-      const cb = vi.fn();
-      const dispose = m.onUnlock(cb);
-      dispose();
-      setAudioContextState(s, "running");
-      m._handleGesture();
-      expect(cb).not.toHaveBeenCalled();
-    });
-
-    it("offUnlock removes a pending listener", () => {
-      const s = createMockSoundLibrary({ state: "suspended" });
-      const m = new AudioManager(s);
-      const cb = vi.fn();
-      m.onUnlock(cb);
-      m.offUnlock(cb);
-      setAudioContextState(s, "running");
-      m._handleGesture();
-      expect(cb).not.toHaveBeenCalled();
-    });
-
-    it("fires all queued listeners in order", () => {
-      const s = createMockSoundLibrary({ state: "suspended" });
-      const m = new AudioManager(s);
-      const order: number[] = [];
-      m.onUnlock(() => order.push(1));
-      m.onUnlock(() => order.push(2));
-      setAudioContextState(s, "running");
-      m._handleGesture();
-      expect(order).toEqual([1, 2]);
-    });
-
-    it("a throwing listener does not poison the rest of the queue", () => {
-      const s = createMockSoundLibrary({ state: "suspended" });
-      const m = new AudioManager(s);
-      const after = vi.fn();
-      m.onUnlock(() => {
-        throw new Error("boom");
-      });
-      m.onUnlock(after);
-      setAudioContextState(s, "running");
-      m._handleGesture();
-      expect(after).toHaveBeenCalledTimes(1);
-    });
-
-    it("sync-path (already unlocked) also swallows a throwing listener", () => {
-      const s = createMockSoundLibrary({ state: "running" });
-      const m = new AudioManager(s);
-      expect(() =>
-        m.onUnlock(() => {
-          throw new Error("boom");
-        }),
-      ).not.toThrow();
-    });
-
-    describe("with an error boundary wired", () => {
-      it("reports and rethrows a throwing queued listener, leaving the rest of the queue unrun", () => {
-        const s = createMockSoundLibrary({ state: "suspended" });
-        const m = new AudioManager(s);
-        const logger = new Logger({ level: LogLevel.Debug });
-        const boundary = new ErrorBoundary(logger);
-        m._setErrorBoundary(boundary);
-        const after = vi.fn();
-
-        m.onUnlock(() => {
-          throw new Error("boom");
-        });
-        m.onUnlock(after);
-        setAudioContextState(s, "running");
-
-        expect(() => m._handleGesture()).toThrow("boom");
-
-        expect(after).not.toHaveBeenCalled();
-        const errors = boundary.getCallbackErrors();
-        expect(errors).toHaveLength(1);
-        expect(errors[0]).toMatchObject({
-          kind: "Audio unlock callback",
-          error: "boom",
-        });
-      });
-
-      it("reports and rethrows a throwing listener on the synchronous (already-unlocked) path", () => {
-        const s = createMockSoundLibrary({ state: "running" });
-        const m = new AudioManager(s);
-        const logger = new Logger({ level: LogLevel.Debug });
-        const boundary = new ErrorBoundary(logger);
-        m._setErrorBoundary(boundary);
-
-        expect(() =>
-          m.onUnlock(() => {
-            throw new Error("boom");
-          }),
-        ).toThrow("boom");
-        expect(boundary.getCallbackErrors()).toHaveLength(1);
-      });
-    });
-  });
-
-  describe("autoMuteOnBlur", () => {
-    function getAutoPause(s: MockSoundLibrary): boolean {
-      return (s.context as unknown as { autoPause: boolean }).autoPause;
-    }
-
-    it("defaults to true", () => {
-      const s = createMockSoundLibrary();
-      const m = new AudioManager(s);
-      expect(m.autoMuteOnBlur).toBe(true);
-    });
-
-    it("propagates the initial value to context.autoPause", () => {
-      const s = createMockSoundLibrary({ autoPause: true });
-      new AudioManager(s, { autoMuteOnBlur: false });
-      expect(getAutoPause(s)).toBe(false);
-    });
-
-    it("setter writes through to context.autoPause", () => {
-      const s = createMockSoundLibrary();
-      const m = new AudioManager(s);
-      expect(getAutoPause(s)).toBe(true);
-      m.autoMuteOnBlur = false;
-      expect(getAutoPause(s)).toBe(false);
-      m.autoMuteOnBlur = true;
-      expect(getAutoPause(s)).toBe(true);
-    });
-  });
+  expect(() =>
+    audio.crossfade(outgoing, "tone", { duration: 0.1 }),
+  ).not.toThrow();
 });

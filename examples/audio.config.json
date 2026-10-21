@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "sampleRate": 44100,
+  "sounds": {
+    "keys": {
+      "sound": {
+        "instrument": "electricPiano"
+      },
+      "rootNote": 60
+    },
+    "bass": {
+      "sound": {
+        "instrument": "bass",
+        "frequency": 130.812783
+      },
+      "rootNote": 48
+    },
+    "kick": {
+      "sound": {
+        "instrument": "kick"
+      }
+    },
+    "bell": {
+      "sound": {
+        "instrument": "glassBell"
+      },
+      "rootNote": 60
+    },
+    "wind": {
+      "sound": {
+        "instrument": "brownNoise"
+      }
+    },
+    "flute": {
+      "sound": {
+        "instrument": "flute",
+        "frequency": 523.251131
+      },
+      "rootNote": 72
+    },
+    "clarinet": {
+      "sound": {
+        "instrument": "clarinet"
+      },
+      "rootNote": 60
+    },
+    "organ": {
+      "sound": {
+        "instrument": "organ"
+      },
+      "rootNote": 60
+    }
+  },
+  "include": [
+    "keys",
+    "bass",
+    "kick",
+    "bell",
+    "wind",
+    "flute",
+    "clarinet",
+    "organ"
+  ]
+}

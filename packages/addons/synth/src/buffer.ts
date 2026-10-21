@@ -1,3 +1,4 @@
+import type { SynthInstrumentBank } from "./core/instruments.js";
 import { renderSynthSound, SYNTH_SAMPLE_RATE } from "./core/render.js";
 import type { SynthSound } from "./core/types.js";
 
@@ -22,8 +23,9 @@ import type { SynthSound } from "./core/types.js";
 export function synthBuffer(
   sound: SynthSound,
   sampleRate: number = SYNTH_SAMPLE_RATE,
+  instruments: SynthInstrumentBank = {},
 ): AudioBuffer {
-  const samples = renderSynthSound(sound, sampleRate);
+  const samples = renderSynthSound(sound, sampleRate, instruments);
   const buffer = new AudioBuffer({
     numberOfChannels: 1,
     length: samples.length,

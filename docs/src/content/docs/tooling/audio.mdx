@@ -1,0 +1,150 @@
+---
+title: Audio builds
+description: Render selected instruments and sound effects during the build, then load them as ordinary game assets.
+---
+
+`@yagejs-tools/audio` turns instrument and sound-effect settings into WAV
+files. Your game loads the exported sounds through `@yagejs/audio`.
+Rendering happens during the build, so those sounds need no synthesis code
+or synthesis worker in the browser.
+
+## Install and build a bank
+
+Use Node.js 22 or newer:
+
+```sh
+npm install -D @yagejs-tools/audio
+npm install @yagejs/core @yagejs/audio
+```
+
+Create `audio.config.json`:
+
+```json
+{
+  "version": 1,
+  "sampleRate": 44100,
+  "sounds": {
+    "flute": {
+      "sound": { "instrument": "flute", "seed": 17, "volume": 0.3 },
+      "rootNote": 60
+    },
+    "kick": { "sound": { "instrument": "kick" } },
+    "organ": { "sound": { "instrument": "organ" }, "rootNote": 60 }
+  },
+  "include": ["flute", "kick"]
+}
+```
+
+`include` selects which aliases to export. Omit it to export every declared
+sound. Include sounds triggered by gameplay cues as well as song tracks.
+The tool does not inspect game code to discover references.
+
+```sh
+yage-audio instruments
+yage-audio build audio.config.json --out public/audio
+yage-audio inspect public/audio/manifest.json
+```
+
+The catalogue includes plucked strings, mallets, electric piano, percussion,
+pad, noise, and additive flute, clarinet and organ. A `sound` can also be a
+[synth patch, layered patches, or jingle](/addons/synth/).
+
+The output contains mono PCM16 WAV files and a manifest with tuning,
+sustain-loop points, sample peak and RMS. Identical audio shares one WAV.
+`rootNote` records the sample's MIDI pitch. It does not change the rendered
+pitch; set `sound.frequency` when choosing a different root.
+
+## Load and play
+
+Fetch the manifest, declare its handles, and preload them with the scene:
+
+```ts
+import { Engine, Scene } from "@yagejs/core";
+import { AudioPlugin, SoundComponent, soundBank } from "@yagejs/audio";
+
+const response = await fetch("/audio/manifest.json");
+if (!response.ok) throw new Error(`Audio bank: HTTP ${response.status}.`);
+const bank = soundBank(await response.json(), "/audio/");
+
+class InstrumentScene extends Scene {
+  readonly name = "instrument";
+  readonly preload = Object.values(bank.sounds);
+  onEnter(): void {
+    this.spawn("flute").add(new SoundComponent({
+      alias: bank.sounds.flute!.path,
+      loop: true,
+      playOnAdd: true,
+    }));
+  }
+}
+
+const engine = new Engine();
+engine.use(new AudioPlugin());
+await engine.start();
+await engine.scenes.push(new InstrumentScene());
+```
+
+The browser may wait for a click or keypress before playing audio. The
+component stops its sound when its entity is removed. Scene preloading
+retains shared assets until the last scene using them releases them.
+
+`soundBank` performs no network work. It validates the manifest and returns
+handles. Its base directory URL must end in `/`; include your application's
+deployment prefix when it runs below the site root.
+
+Bank aliases such as `flute` are local lookup keys. Pass `bank.sounds.flute`
+to `AudioManager.play` or a music track's `source`. For a music track, copy
+`bank.manifest.sounds.flute.rootNote` into `rootNote`, and use `sustain: true`
+to hold its registered loop through the note.
+
+## Rebuild while editing
+
+```sh
+yage-audio build audio.config.json --out public/audio --watch
+```
+
+Watch mode rebuilds on file changes and continues after reporting an invalid
+edit. Reload the game to load the new bank.
+
+Use a dedicated output directory. A successful build replaces the manifest
+and removes obsolete WAV files from the previous bank. Other files remain.
+A failed render leaves the previous bank intact.
+
+Add the build command before your application's normal build and development
+server commands. The tool must be available during deployment builds, so
+install development dependencies in that build environment.
+
+## Render from code
+
+Use the same presets as runtime synthesis:
+
+```ts
+import { synthPresets } from "@yagejs-addons/synth/render";
+import { buildAudioBank } from "@yagejs-tools/audio/node";
+
+await buildAudioBank({
+  version: 1,
+  sounds: { coin: { sound: synthPresets.coin() } },
+}, { outDir: "public/audio" });
+```
+
+For a preview that needs no files, `renderAudioBank(config)` from the root
+package returns the manifest and an array of `{ file, data: Uint8Array }`.
+`listAudioInstruments()` lists names. `parseAudioBankConfig(unknown)`
+validates and copies settings.
+
+## Size, memory and validation
+
+Exporting removes startup synthesis work, but adds audio downloads.
+`inspect` verifies file hashes and reports WAV bytes and estimated decoded
+float32 memory at the source sample rate. Browser resampling and decoder
+overhead affect actual memory use.
+
+Peak and RMS describe the floating-point render before PCM16 quantization.
+They do not establish musical quality or perceptual loudness. A clipped or
+non-finite render fails; reduce the source volume to resolve clipping.
+
+The configuration accepts 1–128 sounds, integer sample rates of 8000–96000,
+up to 32 patches in a layer, and up to 256 notes in a jingle. Patches support
+0.001–30 seconds of duration and 0–30 seconds of delay. A jingle must fit in
+60 seconds. Unknown fields and missing selected aliases throw before export.

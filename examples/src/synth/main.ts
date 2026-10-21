@@ -27,12 +27,12 @@ import { AudioManagerKey, AudioPlugin } from "@yagejs/audio";
 import type { SoundHandle } from "@yagejs/audio";
 import {
   renderSynthSound,
-  SynthPlugin,
   synthPresets,
   synthVariantAliases,
   type SynthSound,
   type SynthSoundEntry,
 } from "@yagejs-addons/synth";
+import { SynthPlugin } from "@yagejs-addons/synth/plugin";
 import { setupGameContainer } from "../shared/bootstrap.js";
 
 const WIDTH = 800;

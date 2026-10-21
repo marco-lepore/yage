@@ -1,205 +1,31 @@
-/**
- * @vitest-environment happy-dom
- */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-const mockSound = vi.hoisted(() => ({
-  play: vi.fn(),
-  stop: vi.fn(),
-  muteAll: vi.fn(),
-  unmuteAll: vi.fn(),
-  close: vi.fn(),
-  exists: vi.fn(() => true),
-  context: {
-    muted: false,
-    autoPause: true,
-    paused: false,
-    audioContext: { state: "running" as "suspended" | "running" },
-  },
-}));
-
-vi.mock("@pixi/sound", () => ({
-  sound: mockSound,
-}));
-
-import { EngineContext, ProcessSystem, ProcessSystemKey } from "@yagejs/core";
+import { afterEach, it, expect, vi } from "vitest";
+import { EngineContext } from "@yagejs/core";
 import { AudioPlugin } from "./AudioPlugin.js";
 import { AudioManagerKey } from "./types.js";
-import { AudioManager } from "./AudioManager.js";
-
-function createContext(): EngineContext {
-  const context = new EngineContext();
-  context.register(ProcessSystemKey, new ProcessSystem());
-  return context;
-}
-
-describe("AudioPlugin", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockSound.context.muted = false;
-    mockSound.context.autoPause = true;
-    mockSound.context.paused = false;
-    mockSound.context.audioContext.state = "running";
-  });
-
-  it("has name 'audio'", () => {
-    const plugin = new AudioPlugin();
-    expect(plugin.name).toBe("audio");
-  });
-
-  it("has no dependencies", () => {
-    const plugin = new AudioPlugin();
-    expect(
-      (plugin as unknown as Record<string, unknown>).dependencies,
-    ).toBeUndefined();
-  });
-
-  it("install() registers AudioManager on context", async () => {
-    const plugin = new AudioPlugin();
-    const context = createContext();
-    await plugin.install(context);
-
-    const manager = context.resolve(AudioManagerKey);
-    expect(manager).toBeInstanceOf(AudioManager);
-    plugin.onDestroy();
-  });
-
-  it("onDestroy() calls sound.close()", async () => {
-    const plugin = new AudioPlugin();
-    const context = createContext();
-    await plugin.install(context);
-    plugin.onDestroy();
-    expect(mockSound.close).toHaveBeenCalled();
-  });
-
-  it("registers nothing when destroyed while the library is loading", async () => {
-    const addSpy = vi.spyOn(document, "addEventListener");
-    const plugin = new AudioPlugin();
-    const context = createContext();
-
-    const installing = plugin.install(context);
-    plugin.onDestroy();
-    await installing;
-
-    expect(context.tryResolve(AudioManagerKey)).toBeUndefined();
-    expect(mockSound.close).toHaveBeenCalledTimes(1);
-    const gestureEvents = new Set(["pointerdown", "keydown", "touchstart"]);
-    expect(
-      addSpy.mock.calls.filter((args) => gestureEvents.has(args[0])),
-    ).toHaveLength(0);
-    addSpy.mockRestore();
-  });
-
-  describe("autoMuteOnBlur runtime toggle", () => {
-    function setHasFocus(value: boolean): void {
-      Object.defineProperty(document, "hasFocus", {
-        configurable: true,
-        value: () => value,
-      });
-    }
-
-    it("toggling off while window is unfocused resumes immediately", async () => {
-      mockSound.context.paused = true;
-      const plugin = new AudioPlugin();
-      const context = createContext();
-      await plugin.install(context);
-      const manager = context.resolve(AudioManagerKey);
-
-      setHasFocus(false);
-      manager.autoMuteOnBlur = false;
-      expect(mockSound.context.autoPause).toBe(false);
-      expect(mockSound.context.paused).toBe(false);
-
-      setHasFocus(true);
-      plugin.onDestroy();
-    });
-
-    it("toggling on while window is unfocused pauses immediately", async () => {
-      const plugin = new AudioPlugin({ autoMuteOnBlur: false });
-      const context = createContext();
-      await plugin.install(context);
-      const manager = context.resolve(AudioManagerKey);
-
-      setHasFocus(false);
-      manager.autoMuteOnBlur = true;
-      expect(mockSound.context.autoPause).toBe(true);
-      expect(mockSound.context.paused).toBe(true);
-
-      setHasFocus(true);
-      plugin.onDestroy();
-    });
-
-    it("toggling while focused does not touch paused state", async () => {
-      const plugin = new AudioPlugin();
-      const context = createContext();
-      await plugin.install(context);
-      const manager = context.resolve(AudioManagerKey);
-
-      setHasFocus(true);
-      manager.autoMuteOnBlur = false;
-      expect(mockSound.context.paused).toBe(false);
-
-      plugin.onDestroy();
-    });
-  });
-
-  describe("unlock gesture wiring", () => {
-    it("fires onUnlock listeners once the context reports running", async () => {
-      mockSound.context.audioContext.state = "suspended";
-      const plugin = new AudioPlugin();
-      const context = createContext();
-      await plugin.install(context);
-      const manager = context.resolve(AudioManagerKey);
-
-      const cb = vi.fn();
-      manager.onUnlock(cb);
-      expect(cb).not.toHaveBeenCalled();
-
-      // Simulate @pixi/sound's capture-phase unlock having already run by the
-      // time our bubble-phase handler sees the event.
-      mockSound.context.audioContext.state = "running";
-      document.dispatchEvent(new Event("pointerdown"));
-      expect(cb).toHaveBeenCalledTimes(1);
-
-      plugin.onDestroy();
-    });
-
-    it("skips gesture listeners if already unlocked at install", async () => {
-      mockSound.context.audioContext.state = "running";
-      const addSpy = vi.spyOn(document, "addEventListener");
-
-      const plugin = new AudioPlugin();
-      const context = createContext();
-      await plugin.install(context);
-
-      const gestureEvents = new Set(["pointerdown", "keydown", "touchstart"]);
-      const attachedGestureCalls = addSpy.mock.calls.filter((args) =>
-        gestureEvents.has(args[0] as string),
-      );
-      expect(attachedGestureCalls).toEqual([]);
-
-      addSpy.mockRestore();
-      plugin.onDestroy();
-    });
-
-    it("removes gesture listeners after first successful unlock", async () => {
-      mockSound.context.audioContext.state = "suspended";
-      const plugin = new AudioPlugin();
-      const context = createContext();
-      await plugin.install(context);
-      const manager = context.resolve(AudioManagerKey);
-
-      mockSound.context.audioContext.state = "running";
-      document.dispatchEvent(new Event("pointerdown"));
-
-      // Register a new listener after unlock — should fire synchronously,
-      // proving the state is now tracked as unlocked without needing another
-      // gesture.
-      const cb = vi.fn();
-      manager.onUnlock(cb);
-      expect(cb).toHaveBeenCalledTimes(1);
-
-      plugin.onDestroy();
-    });
-  });
+import { FakeAudioContext } from "./test-helpers.js";
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+it("owns the context and timer, and releases both on destroy", () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("AudioContext", FakeAudioContext);
+  const engine = new EngineContext();
+  const plugin = new AudioPlugin();
+  plugin.install(engine);
+  const manager = engine.resolve(AudioManagerKey);
+  const tick = vi.fn();
+  manager.addScheduler(tick);
+  vi.advanceTimersByTime(25);
+  expect(tick).toHaveBeenCalledOnce();
+  plugin.onDestroy();
+  vi.advanceTimersByTime(100);
+  expect(tick).toHaveBeenCalledOnce();
+  expect(manager.getDiagnostics().state).toBe("closed");
+});
+it("reports unsupported environments explicitly", () => {
+  vi.stubGlobal("AudioContext", undefined);
+  expect(() => new AudioPlugin().install(new EngineContext())).toThrow(
+    "unavailable",
+  );
 });

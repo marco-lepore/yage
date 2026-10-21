@@ -66,6 +66,12 @@ function shiftSound(
   factor: number,
   seedOffset: number,
 ): SynthSound {
+  if ("instrument" in sound)
+    return {
+      ...sound,
+      frequency: (sound.frequency ?? 261.625565) * factor,
+      seed: ((sound.seed ?? 1) + seedOffset) >>> 0,
+    };
   if (isPatchStack(sound)) {
     return sound.map((patch) => shiftPatch(patch, factor, seedOffset));
   }

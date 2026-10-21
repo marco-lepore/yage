@@ -1,3 +1,4 @@
+import type { SynthInstrument } from "./instruments.js";
 /** Oscillator shape. `"noise"` plays white noise and ignores `frequency`. */
 export type SynthWave = "sine" | "square" | "sawtooth" | "triangle" | "noise";
 
@@ -79,4 +80,8 @@ export interface SynthJingle {
 }
 
 /** Anything renderable: one voice, layered voices, or a note sequence. */
-export type SynthSound = SynthPatch | readonly SynthPatch[] | SynthJingle;
+export type SynthSound =
+  | SynthPatch
+  | readonly SynthPatch[]
+  | SynthJingle
+  | SynthInstrument;

@@ -22,18 +22,308 @@
   },
   "homepage": "https://yage.dev",
   "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/cjs/index.cjs",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
       "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
       },
       "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
+        "types": "./dist/cjs/index.d.cts",
+        "default": "./dist/cjs/index.cjs"
+      }
+    },
+    "./worker": {
+      "import": {
+        "types": "./dist/esm/worker.d.ts",
+        "default": "./dist/esm/worker.js"
+      },
+      "require": {
+        "types": "./dist/cjs/worker.d.cts",
+        "default": "./dist/cjs/worker.cjs"
+      }
+    },
+    "./render": {
+      "import": {
+        "types": "./dist/esm/render.d.ts",
+        "default": "./dist/esm/render.js"
+      },
+      "require": {
+        "types": "./dist/cjs/render.d.cts",
+        "default": "./dist/cjs/render.cjs"
+      }
+    },
+    "./plugin": {
+      "import": {
+        "types": "./dist/esm/plugin.d.ts",
+        "default": "./dist/esm/plugin.js"
+      },
+      "require": {
+        "types": "./dist/cjs/plugin.d.cts",
+        "default": "./dist/cjs/plugin.cjs"
+      }
+    },
+    "./instruments": {
+      "import": {
+        "types": "./dist/esm/instruments.d.ts",
+        "default": "./dist/esm/instruments.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments.d.cts",
+        "default": "./dist/cjs/instruments.cjs"
+      }
+    },
+    "./instruments/banjo": {
+      "import": {
+        "types": "./dist/esm/instruments/banjo.d.ts",
+        "default": "./dist/esm/instruments/banjo.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/banjo.d.cts",
+        "default": "./dist/cjs/instruments/banjo.cjs"
+      }
+    },
+    "./instruments/bass": {
+      "import": {
+        "types": "./dist/esm/instruments/bass.d.ts",
+        "default": "./dist/esm/instruments/bass.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/bass.d.cts",
+        "default": "./dist/cjs/instruments/bass.cjs"
+      }
+    },
+    "./instruments/uprightBass": {
+      "import": {
+        "types": "./dist/esm/instruments/uprightBass.d.ts",
+        "default": "./dist/esm/instruments/uprightBass.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/uprightBass.d.cts",
+        "default": "./dist/cjs/instruments/uprightBass.cjs"
+      }
+    },
+    "./instruments/guzheng": {
+      "import": {
+        "types": "./dist/esm/instruments/guzheng.d.ts",
+        "default": "./dist/esm/instruments/guzheng.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/guzheng.d.cts",
+        "default": "./dist/cjs/instruments/guzheng.cjs"
+      }
+    },
+    "./instruments/marimba": {
+      "import": {
+        "types": "./dist/esm/instruments/marimba.d.ts",
+        "default": "./dist/esm/instruments/marimba.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/marimba.d.cts",
+        "default": "./dist/cjs/instruments/marimba.cjs"
+      }
+    },
+    "./instruments/kalimba": {
+      "import": {
+        "types": "./dist/esm/instruments/kalimba.d.ts",
+        "default": "./dist/esm/instruments/kalimba.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/kalimba.d.cts",
+        "default": "./dist/cjs/instruments/kalimba.cjs"
+      }
+    },
+    "./instruments/glassBell": {
+      "import": {
+        "types": "./dist/esm/instruments/glassBell.d.ts",
+        "default": "./dist/esm/instruments/glassBell.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/glassBell.d.cts",
+        "default": "./dist/cjs/instruments/glassBell.cjs"
+      }
+    },
+    "./instruments/vibraphone": {
+      "import": {
+        "types": "./dist/esm/instruments/vibraphone.d.ts",
+        "default": "./dist/esm/instruments/vibraphone.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/vibraphone.d.cts",
+        "default": "./dist/cjs/instruments/vibraphone.cjs"
+      }
+    },
+    "./instruments/bell": {
+      "import": {
+        "types": "./dist/esm/instruments/bell.d.ts",
+        "default": "./dist/esm/instruments/bell.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/bell.d.cts",
+        "default": "./dist/cjs/instruments/bell.cjs"
+      }
+    },
+    "./instruments/electricPiano": {
+      "import": {
+        "types": "./dist/esm/instruments/electricPiano.d.ts",
+        "default": "./dist/esm/instruments/electricPiano.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/electricPiano.d.cts",
+        "default": "./dist/cjs/instruments/electricPiano.cjs"
+      }
+    },
+    "./instruments/pad": {
+      "import": {
+        "types": "./dist/esm/instruments/pad.d.ts",
+        "default": "./dist/esm/instruments/pad.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/pad.d.cts",
+        "default": "./dist/cjs/instruments/pad.cjs"
+      }
+    },
+    "./instruments/flute": {
+      "import": {
+        "types": "./dist/esm/instruments/flute.d.ts",
+        "default": "./dist/esm/instruments/flute.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/flute.d.cts",
+        "default": "./dist/cjs/instruments/flute.cjs"
+      }
+    },
+    "./instruments/clarinet": {
+      "import": {
+        "types": "./dist/esm/instruments/clarinet.d.ts",
+        "default": "./dist/esm/instruments/clarinet.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/clarinet.d.cts",
+        "default": "./dist/cjs/instruments/clarinet.cjs"
+      }
+    },
+    "./instruments/organ": {
+      "import": {
+        "types": "./dist/esm/instruments/organ.d.ts",
+        "default": "./dist/esm/instruments/organ.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/organ.d.cts",
+        "default": "./dist/cjs/instruments/organ.cjs"
+      }
+    },
+    "./instruments/kick": {
+      "import": {
+        "types": "./dist/esm/instruments/kick.d.ts",
+        "default": "./dist/esm/instruments/kick.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/kick.d.cts",
+        "default": "./dist/cjs/instruments/kick.cjs"
+      }
+    },
+    "./instruments/brushTap": {
+      "import": {
+        "types": "./dist/esm/instruments/brushTap.d.ts",
+        "default": "./dist/esm/instruments/brushTap.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/brushTap.d.cts",
+        "default": "./dist/cjs/instruments/brushTap.cjs"
+      }
+    },
+    "./instruments/brushSwish": {
+      "import": {
+        "types": "./dist/esm/instruments/brushSwish.d.ts",
+        "default": "./dist/esm/instruments/brushSwish.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/brushSwish.d.cts",
+        "default": "./dist/cjs/instruments/brushSwish.cjs"
+      }
+    },
+    "./instruments/shaker": {
+      "import": {
+        "types": "./dist/esm/instruments/shaker.d.ts",
+        "default": "./dist/esm/instruments/shaker.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/shaker.d.cts",
+        "default": "./dist/cjs/instruments/shaker.cjs"
+      }
+    },
+    "./instruments/rim": {
+      "import": {
+        "types": "./dist/esm/instruments/rim.d.ts",
+        "default": "./dist/esm/instruments/rim.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/rim.d.cts",
+        "default": "./dist/cjs/instruments/rim.cjs"
+      }
+    },
+    "./instruments/clap": {
+      "import": {
+        "types": "./dist/esm/instruments/clap.d.ts",
+        "default": "./dist/esm/instruments/clap.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/clap.d.cts",
+        "default": "./dist/cjs/instruments/clap.cjs"
+      }
+    },
+    "./instruments/ride": {
+      "import": {
+        "types": "./dist/esm/instruments/ride.d.ts",
+        "default": "./dist/esm/instruments/ride.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/ride.d.cts",
+        "default": "./dist/cjs/instruments/ride.cjs"
+      }
+    },
+    "./instruments/cymbal": {
+      "import": {
+        "types": "./dist/esm/instruments/cymbal.d.ts",
+        "default": "./dist/esm/instruments/cymbal.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/cymbal.d.cts",
+        "default": "./dist/cjs/instruments/cymbal.cjs"
+      }
+    },
+    "./instruments/tom": {
+      "import": {
+        "types": "./dist/esm/instruments/tom.d.ts",
+        "default": "./dist/esm/instruments/tom.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/tom.d.cts",
+        "default": "./dist/cjs/instruments/tom.cjs"
+      }
+    },
+    "./instruments/pinkNoise": {
+      "import": {
+        "types": "./dist/esm/instruments/pinkNoise.d.ts",
+        "default": "./dist/esm/instruments/pinkNoise.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/pinkNoise.d.cts",
+        "default": "./dist/cjs/instruments/pinkNoise.cjs"
+      }
+    },
+    "./instruments/brownNoise": {
+      "import": {
+        "types": "./dist/esm/instruments/brownNoise.d.ts",
+        "default": "./dist/esm/instruments/brownNoise.js"
+      },
+      "require": {
+        "types": "./dist/cjs/instruments/brownNoise.d.cts",
+        "default": "./dist/cjs/instruments/brownNoise.cjs"
       }
     }
   },
@@ -44,7 +334,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/check-bundles.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
@@ -58,6 +348,8 @@
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
     "@yagejs/audio": ">=0.12.0",
-    "@yagejs/core": ">=0.12.0"
-  }
+    "@yagejs/core": ">=0.12.0",
+    "esbuild": "^0.27.4"
+  },
+  "sideEffects": false
 }

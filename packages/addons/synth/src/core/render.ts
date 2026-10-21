@@ -1,3 +1,6 @@
+import type { SynthInstrumentBank } from "./instruments.js";
+import { createRandom } from "./random.js";
+import { renderSynthInstrument } from "./instruments.js";
 import type {
   SynthFilter,
   SynthJingle,
@@ -169,11 +172,14 @@ export function renderSynthJingle(
   return mix(parts, timeline);
 }
 
-/** Render a patch, a stack of layered patches, or a jingle. */
+/** Render a patch, layered patches, a jingle, or a supplied instrument. */
 export function renderSynthSound(
   sound: SynthSound,
   sampleRate: number = SYNTH_SAMPLE_RATE,
+  instruments: SynthInstrumentBank = {},
 ): Float32Array {
+  if ("instrument" in sound)
+    return renderSynthInstrument(sound, sampleRate, instruments).samples;
   if (isPatchStack(sound)) {
     return mix(
       sound.map((patch) => ({
@@ -285,20 +291,6 @@ function createFilter(
       : spec.type === "highpass"
         ? high
         : band;
-  };
-}
-
-/**
- * mulberry32 — a small deterministic generator, so noise is reproducible.
- * @internal Shared with preset generators that need seeded randomness.
- */
-export function createRandom(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 

@@ -1,78 +1,82 @@
-import {
-  ServiceKey,
-  type AssetHandle,
-  type EasingFunction,
-} from "@yagejs/core";
-import type { Sound } from "@pixi/sound";
+import { ServiceKey, type AssetHandle } from "@yagejs/core";
 import type { AudioManager } from "./AudioManager.js";
-
 export const AudioManagerKey = new ServiceKey<AudioManager>("audioManager");
-
-/**
- * A sound to play: the alias it is registered under, or the handle `sound()`
- * returned for it — a handle's `path` is that alias.
- */
-export type SoundRef = string | AssetHandle<Sound>;
+export type SoundRef = string | AssetHandle<AudioBuffer>;
 
 export interface AudioConfig {
-  /** Master volume multiplier. Must be finite and from 0 to 1. Default: 1. */
   masterVolume?: number;
   channels?: Record<string, ChannelConfig>;
-  /** Pause audio when the window loses focus or the tab is hidden. Default: `true`. */
+  /** Suspend the context on blur/hidden and resume it on focus. Default true. */
   autoMuteOnBlur?: boolean;
+  /** Scheduler horizon in audio seconds. Default 0.12. */
+  lookahead?: number;
+  /** Timer interval in seconds. Default 0.025; must be shorter than lookahead. */
+  tickInterval?: number;
 }
-
 export interface ChannelConfig {
-  volume?: number; // 0-1, default: 1
+  volume?: number;
+  /** Existing channel through which this channel is mixed. */
+  parent?: string;
 }
-
+export interface AudioAutomationOptions {
+  /** Absolute AudioManager.currentTime seconds. Defaults to now. */
+  at?: number;
+  /** Ramp length in audio seconds. Default 0 (a step). */
+  duration?: number;
+  curve?: "linear" | "exponential";
+}
 export interface AudioPlayOptions {
-  channel?: string; // default: "sfx"
-  volume?: number; // instance volume override, default: 1
-  loop?: boolean; // default: false
-  speed?: number; // playback rate, default: 1
-  /**
-   * Called once when the sound finishes **on its own** (its `end` event). NOT
-   * called when you `stop()` it, and never for a `loop`ing sound (it has no end).
-   * The "tell me when this clip is done" seam — e.g. gating dialogue auto-advance
-   * on a voice clip.
-   */
+  channel?: string;
+  volume?: number;
+  speed?: number;
+  pan?: number;
+  loop?: boolean;
+  /** Loop region in source seconds. Requires loop: true. */
+  loopStart?: number;
+  loopEnd?: number;
+  /** Absolute audio-clock start. Omit for immediate playback. */
+  at?: number;
+  /** Position in the recording, in source seconds. Default 0. */
+  offset?: number;
+  /** Absolute audio-clock stop. */
+  stopAt?: number;
+  /** Fires only for natural buffer completion, never for explicit stop. */
   onEnd?: () => void;
 }
-
-export interface AudioFadeOptions {
-  /** Fade duration in seconds. Must be finite and greater than zero. */
+export interface AudioFadeOptions extends AudioAutomationOptions {
   duration: number;
-  /** Volume interpolation. Default: `easeLinear`. */
-  easing?: EasingFunction;
-  /** Stop playback after fading to zero. Default: `false`. */
   stopOnComplete?: boolean;
 }
-
 export interface AudioCrossfadeOptions extends AudioPlayOptions {
-  /** Crossfade duration in seconds. Must be finite and greater than zero. */
   duration: number;
-  /** Volume interpolation for both sounds. Default: `easeLinear`. */
-  easing?: EasingFunction;
 }
-
 export interface SoundRequestReleaseOptions {
-  /** Seconds to fade the last owner's sound to silence. Finite and non-negative. Default: 0. */
   fadeOut?: number;
 }
-
-/** One ownership request for playback shared by alias and channel. */
 export interface SoundRequestHandle {
-  /** True while this request owns playback or its final fade is still playing. */
   readonly active: boolean;
-  /** Release only this request. Idempotent. A fade affects only the last owner. */
   release(options?: SoundRequestReleaseOptions): void;
 }
-
 export interface SoundComponentOptions {
   alias: string;
   channel?: string;
   playOnAdd?: boolean;
   loop?: boolean;
   volume?: number;
+}
+export interface AudioDiagnostics {
+  readonly state: AudioContextState;
+  readonly currentTime: number;
+  readonly activeVoices: number;
+  readonly scheduledVoices: number;
+  readonly schedulerCount: number;
+  readonly lateStarts: number;
+  readonly channels: readonly {
+    name: string;
+    volume: number;
+    muted: boolean;
+    paused: boolean;
+    voices: number;
+  }[];
+  readonly failures: readonly { operation: string; message: string }[];
 }

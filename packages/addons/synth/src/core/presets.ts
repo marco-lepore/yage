@@ -1,4 +1,5 @@
-import { createRandom, DEFAULT_VOLUME } from "./render.js";
+import { DEFAULT_VOLUME } from "./render.js";
+import { createRandom } from "./random.js";
 import type {
   SynthFilter,
   SynthJingle,

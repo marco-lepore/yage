@@ -14,7 +14,7 @@ npm install @yagejs-addons/synth
 npm install @yagejs/core @yagejs/audio # engine peers (single install, reused)
 ```
 
-Peers: `@yagejs/core` and `@yagejs/audio`, both required. The addon needs the
+Engine integration through `/plugin` requires `@yagejs/core` and `@yagejs/audio`. The addon needs the
 `registerSound` API from `@yagejs/audio`. No runtime deps, no `/presenters`
 subpath — there is nothing to draw.
 
@@ -23,11 +23,8 @@ subpath — there is nothing to draw.
 ```ts yage-context="engine"
 import { AudioPlugin, AudioManagerKey } from "@yagejs/audio";
 import { Component } from "@yagejs/core";
-import {
-  SynthPlugin,
-  synthPresets,
-  synthVariantAliases,
-} from "@yagejs-addons/synth";
+import { synthPresets, synthVariantAliases } from "@yagejs-addons/synth";
+import { SynthPlugin } from "@yagejs-addons/synth/plugin";
 
 engine.use(new AudioPlugin());
 engine.use(
@@ -111,3 +108,118 @@ Full reference: `docs/llms/synth.md` in this package, and
 
 Buffers are rendered once and played back; per-play variation comes from
 `variants` and the `speed` play option.
+
+## Instruments and sustain regions
+
+Import each instrument from `@yagejs-addons/synth/instruments/<name>`.
+Each definition provides `sound(options?)` for a portable descriptor and
+`render(options?, sampleRate?)` for samples with optional sustain points.
+Pass the definitions used by your sounds to `SynthPlugin.instruments`:
+
+```ts yage-context="engine"
+import { AudioPlugin } from "@yagejs/audio";
+import { SynthPlugin } from "@yagejs-addons/synth/plugin";
+import { electricPiano } from "@yagejs-addons/synth/instruments/electricPiano";
+import { bass } from "@yagejs-addons/synth/instruments/bass";
+import { flute } from "@yagejs-addons/synth/instruments/flute";
+
+engine.use(new AudioPlugin());
+engine.use(
+  new SynthPlugin({
+    instruments: { electricPiano, bass, flute },
+    sounds: {
+      keys: electricPiano.sound(),
+      bass: bass.sound({ frequency: 130.812783 }),
+      lead: flute.sound({ seed: 42, volume: 0.15 }),
+    },
+  }),
+);
+```
+
+Available names: banjo, bass, uprightBass, guzheng, marimba, kalimba,
+glassBell, vibraphone, bell, electricPiano, pad, flute, clarinet, organ,
+kick, brushTap, brushSwish, shaker, rim, clap, ride, cymbal, tom,
+pinkNoise and brownNoise. `synthInstruments` from
+`@yagejs-addons/synth/instruments` contains every definition when the
+application needs the complete catalogue.
+
+Options are `frequency` (default 261.625565 Hz), `seed` (default 1), and
+`volume` (default 0.3). Drums ignore pitch. Rendering accepts sample rates
+8000–96000 Hz, frequency 20–min(4000, sampleRate/4) Hz, volume 0–1, and
+uint32 seeds.
+
+```ts
+import { flute } from "@yagejs-addons/synth/instruments/flute";
+const sample = flute.render({ frequency: 440, seed: 17 }, 44100);
+console.log(sample.samples.length, sample.loopStart, sample.loopEnd);
+```
+
+`renderSynthSample(sound, sampleRate?, instruments?)` renders a descriptor,
+patch, patch array or jingle. The instrument set defaults to empty; an
+instrument absent from that set throws naming the instrument. The same
+third argument applies to `renderSynthInstrument`, `renderSynthSound` and
+`synthBuffer`. Patches and jingles need no instrument set.
+
+`sampleBuffer(sample)` creates an AudioBuffer. Pad, flute, clarinet, organ
+and noise samples include sustain regions in seconds, registered by
+SynthPlugin. With manual registration, pass those points to `registerSound`.
+`renderSynthSound` and `synthBuffer` omit loop metadata; use
+`renderSynthSample` when you need it. Play sustained instruments with
+`loop: true` and stop them with `handle.release(at, duration)`.
+
+## Worker rendering and readiness
+
+For a large bank, provide a dedicated module worker. Import the same
+instrument definitions in the worker and the plugin so main-thread fallback
+can render every sound. An empty set supports patches and jingles only:
+
+```ts
+import { serveSynthWorker } from "@yagejs-addons/synth/worker";
+import { flute } from "@yagejs-addons/synth/instruments/flute";
+serveSynthWorker({ flute });
+```
+
+Pass `worker: new Worker(new URL("./synth-worker.ts", import.meta.url),
+{ type: "module" })` to SynthPlugin in a bundler that supports module workers.
+The plugin owns and terminates that worker. Engine startup awaits the complete
+bank; play sources only after startup. With no worker, it renders on the main
+thread using the same seeded functions.
+
+`plugin.getDiagnostics()` reports state, mode, completed/total, fallbackReason
+and failure. Worker transport errors or inactivity (default `workerTimeout:
+5000` ms) fall back to main-thread rendering with an explicit reason. Invalid
+sound data rejects installation. Destruction cancels pending work and removes
+registered aliases. A disposed plugin cannot be installed again.
+
+## Build-time rendering and portable sound data
+
+Use `@yagejs-tools/audio` to export selected sounds as WAV files before the
+game starts. The game can then load the bank through `@yagejs/audio` without
+importing the synth catalogue. See [audio builds](https://yage.dev/tooling/audio/).
+
+The `/render` entry works in Node and browser previews without an AudioContext:
+
+```ts
+import {
+  parseSynthSound,
+  renderSynthSample,
+} from "@yagejs-addons/synth/render";
+import { flute } from "@yagejs-addons/synth/instruments/flute";
+const instruments = { flute };
+const descriptor = parseSynthSound(
+  { instrument: "flute", seed: 17 },
+  instruments,
+);
+const sample = renderSynthSample(descriptor, 44100, instruments);
+console.log(sample.samples.length, sample.loopStart, sample.loopEnd);
+```
+
+`parseSynthSound(unknown, instruments?)` validates and copies portable instrument, patch,
+layer and jingle data. Instrument names must be present in the supplied set.
+Unknown fields throw. Portable data limits duration
+and delay to 30 seconds each, layers to 32 patches, and jingles to 256 notes
+within 60 seconds. Volumes are 0–1 and seeds are uint32.
+
+Flute and clarinet combine authored harmonic spectra with breath noise and
+pitch motion. Organ combines harmonic oscillators. All three include a
+sustain region and use the package's MIT license.

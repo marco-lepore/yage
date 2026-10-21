@@ -1,6 +1,10 @@
 import { registerSound, unregisterSound } from "@yagejs/audio";
-import type { Plugin } from "@yagejs/core";
-import { synthBuffer } from "./buffer.js";
+import { ErrorBoundaryKey } from "@yagejs/core";
+import type { EngineContext, Plugin } from "@yagejs/core";
+import type { SynthInstrumentBank } from "./core/instruments.js";
+import { sampleBuffer } from "./sample.js";
+import { RenderBank, type SynthRenderDiagnostics } from "./renderBank.js";
+import type { SynthSample } from "./core/instruments.js";
 import { SYNTH_SAMPLE_RATE } from "./core/render.js";
 import { synthVariants } from "./core/variants.js";
 import type { SynthSound } from "./core/types.js";
@@ -17,10 +21,16 @@ export interface SynthVariantEntry {
 export type SynthSoundEntry = SynthSound | SynthVariantEntry;
 
 export interface SynthPluginConfig {
+  /** Instrument implementations available to this bank. Default: none. */
+  instruments?: SynthInstrumentBank;
   /** Alias → the sound to render under it. */
   sounds: Record<string, SynthSoundEntry>;
   /** Sample rate for the rendered buffers. Default 44100. */
   sampleRate?: number;
+  /** Optional dedicated module worker; the plugin owns and terminates it. */
+  worker?: Worker;
+  /** Worker inactivity timeout in milliseconds. Default 5000. */
+  workerTimeout?: number;
 }
 
 /**
@@ -45,8 +55,8 @@ export interface SynthPluginConfig {
  * audio.playRandom(synthVariantAliases("shoot", 4));
  * ```
  *
- * Rendering is synchronous and takes no `AudioContext`, so it runs before the
- * browser's first-gesture unlock. Nothing is saved: the plugin re-registers
+ * Installation awaits rendering, which needs no `AudioContext` and can finish
+ * before the browser's first-gesture unlock. Nothing is saved: the plugin re-registers
  * from its config on every boot, so a snapshot only ever holds the alias.
  */
 export class SynthPlugin implements Plugin {
@@ -56,9 +66,23 @@ export class SynthPlugin implements Plugin {
 
   private readonly _config: SynthPluginConfig;
   private readonly _aliases: string[] = [];
+  private readonly bank: RenderBank;
+  private disposed = false;
+
+  getDiagnostics(): Readonly<SynthRenderDiagnostics> {
+    return { ...this.bank.diagnostics };
+  }
 
   constructor(config: SynthPluginConfig) {
+    const timeout = config.workerTimeout ?? 5000;
+    if (!Number.isFinite(timeout) || timeout <= 0)
+      throw new Error(
+        `SynthPlugin: workerTimeout must be finite and > 0, got ${timeout}.`,
+      );
     this._config = config;
+    this.bank = new RenderBank(config.worker, timeout, {
+      ...config.instruments,
+    });
   }
 
   /** Every alias this plugin registered, variant suffixes included. */
@@ -66,7 +90,8 @@ export class SynthPlugin implements Plugin {
     return this._aliases;
   }
 
-  install(): void {
+  async install(context: EngineContext): Promise<void> {
+    if (this.disposed) throw new Error("SynthPlugin: plugin is disposed.");
     if (this._aliases.length > 0) {
       throw new Error(
         "SynthPlugin: install() called while its aliases are still registered.",
@@ -78,7 +103,7 @@ export class SynthPlugin implements Plugin {
     // registering anything: a collision (a variants entry "shoot" next to an
     // explicit "shoot.1") or a bad patch then fails with nothing registered.
     const owners = new Map<string, string>();
-    const prepared: Array<{ alias: string; buffer: AudioBuffer }> = [];
+    const prepared: Array<{ alias: string; sound: SynthSound }> = [];
     for (const [alias, entry] of Object.entries(this._config.sounds)) {
       const takes = isVariantEntry(entry)
         ? synthVariants(alias, entry.sound, entry.variants, entry.detune)
@@ -94,19 +119,46 @@ export class SynthPlugin implements Plugin {
         owners.set(take.alias, alias);
         prepared.push({
           alias: take.alias,
-          buffer: synthBuffer(take.sound, sampleRate),
+          sound: take.sound,
         });
       }
     }
 
+    let samples: SynthSample[];
+    try {
+      samples = await this.bank.render(
+        prepared.map((take) => take.sound),
+        sampleRate,
+        context.resolve(ErrorBoundaryKey),
+      );
+    } catch (error) {
+      this.bank.diagnostics.state = this.disposed ? "disposed" : "failed";
+      this.bank.diagnostics.failure =
+        error instanceof Error ? error.message : String(error);
+      throw error;
+    }
+    if (this.disposed)
+      throw new Error("SynthPlugin: disposed during rendering.");
+
     // Register as one unit: if the audio package rejects an alias (already
     // used by a loaded file asset), roll the earlier ones back.
     try {
-      for (const { alias, buffer } of prepared) {
-        registerSound(alias, buffer);
+      for (const [i, { alias }] of prepared.entries()) {
+        const sample = samples[i]!;
+        registerSound(
+          alias,
+          sampleBuffer(sample),
+          sample.loopStart === undefined
+            ? undefined
+            : { loopStart: sample.loopStart, loopEnd: sample.loopEnd! },
+        );
         this._aliases.push(alias);
       }
+      this.bank.diagnostics.state = "ready";
     } catch (error) {
+      this.bank.diagnostics.state = "failed";
+      this.bank.diagnostics.failure =
+        error instanceof Error ? error.message : String(error);
       for (const alias of this._aliases) unregisterSound(alias);
       this._aliases.length = 0;
       throw error;
@@ -114,6 +166,8 @@ export class SynthPlugin implements Plugin {
   }
 
   onDestroy(): void {
+    this.disposed = true;
+    this.bank.dispose();
     for (const alias of this._aliases) unregisterSound(alias);
     this._aliases.length = 0;
   }

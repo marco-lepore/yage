@@ -222,8 +222,9 @@ class Level1 extends Scene {
 
 The default loaders dispose appropriately: `unload(textureHandle)`
 calls Pixi's `Assets.unload(path)` so the texture can be released and
-garbage-collected; `unload(soundHandle)` calls `sound.remove(path)` to
-release the `@pixi/sound` instance.
+garbage-collected; `unload(soundHandle)` removes the sound alias and cached AudioBuffer.
+Existing voices retain their buffer until they finish; stop them explicitly
+when unloading should also silence playback.
 
 ### Waiting for cleanup
 

@@ -1,142 +1,102 @@
-import { EventEmitter } from "node:events";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { IMediaInstance } from "@pixi/sound";
-
-import { SoundHandle } from "./SoundHandle.js";
-
-type MockMediaInstance = IMediaInstance & { _emit(event: string): void };
-
-function createMockInstance(id = 1): MockMediaInstance {
-  const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
-  return {
-    id,
-    progress: 0,
-    paused: false,
-    volume: 1,
-    speed: 1,
-    loop: false,
-    muted: false,
-    stop: vi.fn(() => {
-      const fns = listeners.get("stop") ?? [];
-      for (const fn of fns) fn();
-    }),
-    refresh: vi.fn(),
-    refreshPaused: vi.fn(),
-    init: vi.fn(),
-    play: vi.fn(),
-    destroy: vi.fn(),
-    toString: vi.fn(() => ""),
-    set: vi.fn(),
-    once: vi.fn((event: string, fn: (...args: unknown[]) => void) => {
-      const list = listeners.get(event) ?? [];
-      list.push(fn);
-      listeners.set(event, list);
-    }),
-    on: vi.fn(),
-    off: vi.fn(),
-    _emit(event: string) {
-      const fns = listeners.get(event) ?? [];
-      for (const fn of fns) fn();
-    },
-  } as unknown as MockMediaInstance;
-}
-
-describe("SoundHandle", () => {
-  let instance: MockMediaInstance;
-  let handle: SoundHandle;
-
-  beforeEach(() => {
-    instance = createMockInstance(42);
-    handle = new SoundHandle(instance);
-  });
-
-  it("exposes the instance id", () => {
-    expect(handle.id).toBe(42);
-  });
-
-  it("starts as playing", () => {
-    expect(handle.playing).toBe(true);
-  });
-
-  it("defaults standalone handles to the sfx channel", () => {
-    expect(handle.channel).toBe("sfx");
-  });
-
-  it("becomes not playing on end event", () => {
-    instance._emit("end");
-    expect(handle.playing).toBe(false);
-  });
-
-  it("becomes not playing on stop event", () => {
-    instance._emit("stop");
-    expect(handle.playing).toBe(false);
-  });
-
-  it("stop() delegates to instance.stop()", () => {
-    handle.stop();
-    expect(instance.stop).toHaveBeenCalled();
-  });
-
-  it("stops a paused real WebAudio instance and emits completion once", async () => {
-    // Import the backend without initializing the browser-only sound singleton.
-    const entry = createRequire(import.meta.url).resolve("@pixi/sound");
-    const backendUrl = new URL(
-      "./webaudio/WebAudioInstance.mjs",
-      pathToFileURL(entry),
-    );
-    const { WebAudioInstance } = (await import(backendUrl.href)) as {
-      WebAudioInstance: new (media: unknown) => IMediaInstance;
-    };
-    const events = new EventEmitter();
-    const backend = new WebAudioInstance({
-      context: { events, paused: false },
-      parent: { paused: false },
-    });
-    backend.volume = 1;
-    backend.paused = true;
-    // Pixi Sound registers this cleanup before the handle's listeners.
-    backend.once("stop", () => backend.destroy());
-    const stopped = vi.fn();
-    backend.once("stop", stopped);
-    const paused = new SoundHandle(backend);
-    paused.stop();
-    paused.stop();
-    expect(paused.playing).toBe(false);
-    expect(stopped).toHaveBeenCalledOnce();
-    expect(events.listenerCount("refreshPaused")).toBe(0);
-    expect(events.listenerCount("refresh")).toBe(0);
-    expect(() => events.emit("refreshPaused")).not.toThrow();
-  });
-
-  it("volume setter delegates to instance", () => {
-    handle.volume = 0.5;
-    expect(instance.volume).toBe(0.5);
-  });
-
-  it("rejects a non-finite or out-of-range volume", () => {
-    expect(() => (handle.volume = Number.NaN)).toThrow(
-      "SoundHandle.volume: volume must be a finite number from 0 to 1, got NaN.",
-    );
-    expect(() => (handle.volume = -0.1)).toThrow(
-      "SoundHandle.volume: volume must be a finite number from 0 to 1, got -0.1.",
-    );
-  });
-
-  it("rejects fadeTo when the handle has no manager fade queue", () => {
-    expect(() => handle.fadeTo(0, { duration: 1 })).toThrow(
-      "SoundHandle.fadeTo: this handle was not created by an installed AudioManager.",
-    );
-  });
-
-  it("speed setter delegates to instance", () => {
-    handle.speed = 2;
-    expect(instance.speed).toBe(2);
-  });
-
-  it("muted setter delegates to instance", () => {
-    handle.muted = true;
-    expect(instance.muted).toBe(true);
-  });
+import { beforeEach, it, expect } from "vitest";
+import { AudioManager } from "./AudioManager.js";
+import { registerSound, clearRegisteredSounds } from "./assets.js";
+import { FakeAudioContext, fakeBuffer } from "./test-helpers.js";
+let context: FakeAudioContext;
+let audio: AudioManager;
+beforeEach(() => {
+  clearRegisteredSounds();
+  context = new FakeAudioContext();
+  audio = new AudioManager(context.asContext());
+  registerSound("tone", fakeBuffer(10));
+});
+it("replaces fades at the interpolated audio-time value", () => {
+  const h = audio.play("tone");
+  h.fadeTo(0, { duration: 2 });
+  context.currentTime = 1;
+  expect(h.volume).toBeCloseTo(0.5);
+  h.fadeTo(1, { duration: 1 });
+  context.currentTime = 1.5;
+  expect(h.volume).toBeCloseTo(0.75);
+});
+it("integrates rate automation when pausing and preserves remaining start/stop time", () => {
+  const h = audio.play("tone", { at: 1, stopAt: 5 });
+  h.setSpeed(3, { at: 1, duration: 2 });
+  context.currentTime = 2;
+  h.paused = true;
+  context.currentTime = 4;
+  h.paused = false;
+  expect(context.sources[1]!.offset).toBeCloseTo(1.5);
+  expect(context.sources[1]!.stopTime).toBe(7);
+  expect(h.speed).toBeCloseTo(2);
+});
+it("pauses a future voice without consuming its lead-in", () => {
+  const h = audio.play("tone", { at: 3 });
+  context.currentTime = 1;
+  h.paused = true;
+  context.currentTime = 5;
+  h.paused = false;
+  expect(context.sources[1]!.startTime).toBe(7);
+  expect(context.sources[1]!.offset).toBe(0);
+});
+it("wraps source offsets inside registered sustain regions on resume", () => {
+  registerSound("loop", fakeBuffer(3), { loopStart: 1, loopEnd: 2 });
+  const h = audio.play("loop", { loop: true });
+  context.currentTime = 2.5;
+  h.paused = true;
+  context.currentTime = 4;
+  h.paused = false;
+  expect(context.sources[1]!.offset).toBeCloseTo(1.5);
+  expect(context.sources[1]!.loopStart).toBe(1);
+});
+it("freezes gain automation during a voice pause", () => {
+  const h = audio.play("tone");
+  h.fadeTo(0, { duration: 2 });
+  context.currentTime = 1;
+  h.paused = true;
+  context.currentTime = 9;
+  expect(h.volume).toBeCloseTo(0.5);
+  h.paused = false;
+  context.currentTime = 9.5;
+  expect(h.volume).toBeCloseTo(0.25);
+});
+it("rejects invalid automation before replacing an existing fade", () => {
+  const h = audio.play("tone");
+  h.fadeTo(0, { duration: 2 });
+  expect(() => h.setVolume(NaN)).toThrow();
+  expect(() => h.setSpeed(-1)).toThrow();
+  expect(() => h.setSpeed(Number.MAX_VALUE)).toThrow("Web Audio precision");
+  expect(() => h.setSpeed(Number.MIN_VALUE)).toThrow("Web Audio precision");
+  expect(h.speed).toBe(1);
+  expect(() => h.setPan(Infinity)).toThrow();
+  expect(() => h.setVolume(0, { duration: 1, curve: "exponential" })).toThrow();
+  context.currentTime = 1;
+  expect(h.volume).toBeCloseTo(0.5);
+});
+it("uses absolute context times for controls written during pause", () => {
+  const h = audio.play("tone", { loop: true });
+  context.currentTime = 1;
+  h.paused = true;
+  context.currentTime = 9;
+  h.setSpeed(2, { at: 9, duration: 1 });
+  h.setPan(1, { at: 9, duration: 1 });
+  h.release(9, 1);
+  h.paused = false;
+  expect(context.sources.at(-1)!.stopTime).toBe(10);
+  context.currentTime = 9.5;
+  expect(h.volume).toBeCloseTo(0.5);
+  expect(h.speed).toBeCloseTo(1.5);
+  expect(h.pan).toBeCloseTo(0.5);
+});
+it("preserves source position while discarding old rate automation", () => {
+  const h = audio.play("tone", { loop: true });
+  for (let i = 1; i <= 10000; i++) {
+    context.currentTime = i / 10000;
+    h.setSpeed(1 + i / 10000);
+    h.setVolume(0.5);
+  }
+  h.paused = true;
+  context.currentTime = 2;
+  h.paused = false;
+  expect(context.sources.at(-1)!.offset).toBeCloseTo(1.49995, 5);
 });

@@ -1,0 +1,119 @@
+---
+title: Music
+description: Adaptive layers, musical timing, transitions and harmony-following cues
+---
+
+`@yagejs-addons/music` plays repeating patterns through YAGE's audio channels.
+A song describes notes and sources. Gameplay changes named parameters to bring
+layers in, requests transitions on bar boundaries, or schedules a cue to match
+the current harmony. Recorded samples and generated instruments use the same API.
+
+## Install and create a song
+
+```sh
+npm install @yagejs-addons/music @yagejs/audio @yagejs/core
+```
+
+Install `AudioPlugin`, then preload recordings with `sound(path)` or register
+instruments with [SynthPlugin](/addons/synth/). Add a music component to an entity:
+
+```ts yage-context="entity"
+import { MusicComponent, type MusicSong } from "@yagejs-addons/music";
+const workshop: MusicSong = {
+  id: "workshop", bpm: 108, meter: [3, 4], bars: 2, gain: 0.6,
+  swing: { subdivision: 0.5, amount: 1 / 3 },
+  tracks: {
+    keys: { source: "keys", notes: [{ beat: 0, note: 60, duration: 2 }] },
+    pulse: { source: "kick", parameter: "intensity", notes: [{ beat: 0 }, { beat: 3 }] },
+  },
+  harmony: [{ beat: 0, chord: [60, 64, 67] }],
+};
+const music = entity.add(new MusicComponent(workshop, {
+  seed: 42, humanize: 0.003, parameters: { intensity: 0.2 },
+}));
+```
+
+The component starts on enable. If the browser still requires a gesture, it
+waits for audio to run. Disabling the component stops its sounds; enabling it
+again starts the configured song from beat zero. Destroying it releases its
+channels, notes and scheduler subscription. Several music entities can coexist.
+
+## Notes, meter and swing
+
+Every beat and duration counts quarter notes. `[3, 4]` has three beats per bar;
+`[7, 8]` has three and a half. BPM always counts quarter notes. A note's `note`
+is a MIDI pitch; omit it to play a recording at its original rate. `rootNote`
+on the track is the sample's original MIDI pitch, default 60 (middle C).
+
+A pattern repeats after `bars` measures. Swing delays alternate subdivisions:
+`subdivision: 0.5` means eighth notes and `amount: 1 / 3` gives a 2:1 ratio.
+Choose subdivisions whose pairs fit the pattern length. `humanize` adds seeded
+onset variation in seconds, up to 0.02; the same seed reproduces the same timing.
+
+Track `gain`, `pan`, and note `velocity` control the mix. `sustain: true` loops
+the source's sustain region while held, then fades over `release` seconds
+(default 0.05). Without sustain, a short sample may end before the note duration.
+Song `gain` scales the whole song before the music channel's volume.
+
+## Respond to gameplay
+
+Call the player through your entity's `MusicComponent`:
+
+```ts yage-context="component"
+import { MusicComponent } from "@yagejs-addons/music";
+const music = this.entity.get(MusicComponent).player;
+music.setParameter("intensity", 0.8, { duration: 0.2 });
+music.cue("bell", { note: 74, grid: 0.5, followHarmony: true });
+```
+
+A track's `parameter` names a 0–1 value. Its optional `parameterRange` defines
+where the layer fades from silent to full track gain. For example, `[0.5, 1]`
+keeps a percussion layer silent until intensity passes halfway. Updates affect
+notes already booked as well as new notes. Unknown names and invalid inputs
+throw before changing playback.
+
+`cue` chooses the next grid line beyond the audio lookahead window. With
+`followHarmony`, the requested pitch moves to the nearest tone of the chord
+that will be active then. Author harmony entries at quarter-note positions,
+starting with beat zero. Harmony repeats with the song pattern.
+
+`music.transition(nextSong)` starts the next song at beat zero on the next bar
+boundary, with a 0.25-second crossfade. Use `{ grid: 1, fade: 0.5 }` to change
+on a quarter-note boundary with a longer fade. The return value is the absolute
+audio time of that transition. Each song keeps its own tempo and meter.
+
+## Pause and ownership
+
+Music follows the audio clock. Scene pause and game time scale leave it playing.
+Browser visibility suspension freezes audio time, including booked starts and
+fades. `music.pause()` cancels sounding and booked notes and holds the beat;
+`resume()` continues with the next note. Previously sounding notes are not
+reconstructed. Resume before requesting a cue or transition.
+
+Pausing the parent audio channel also holds the transport and parameter ramps.
+Resuming that channel keeps an independently paused player paused. Future
+parameter writes retain their scheduled time and curve across transitions.
+
+Use `stop()` to clear playback and pending unlock intent. A directly created
+`new MusicPlayer(audio, options)` has the same controls; call `dispose()` when
+its owner is finished. Keep song ids and gameplay parameters in your save root,
+then recreate playback when loading. Audio nodes and players are transient.
+
+## Inspect and measure
+
+`position()` exposes quarter-note beat, zero-based bar, beat within the bar,
+phase and BPM. `harmonyAt(time)` reads a future chord. `getDiagnostics()` adds
+state, song, parameter values, scheduled notes, missed notes and transitions.
+If the main thread misses a scheduling window, the player skips those notes
+and increments `droppedNotes` rather than producing a catch-up burst.
+
+For a reproducible mix, create a player inside `renderAudio`, call
+`play(song, { at: 0 })`, book parameter writes, then call
+`audio.updateSchedule(0, duration)`. This renders the same audio graph offline.
+Include sufficient duration for releases and use the same source bank and seed.
+See [audio measurements](/guides/audio/#offline-mix-measurements) for sample peak,
+RMS and their limits.
+
+Try the [adaptive music example](https://examples.yage.dev/adaptive-music.html)
+for a three-beat swung pattern, parameter layers, recorded accents, a continuous
+loop, transitions, independent scene pause and offline measurement.

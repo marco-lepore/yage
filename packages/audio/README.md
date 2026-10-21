@@ -8,7 +8,8 @@ Sound loading, playback, and channel mixing for the [YAGE](https://yage.dev) 2D 
 npm install @yagejs/audio
 ```
 
-Bundles [@pixi/sound](https://pixijs.io/sound/) - no separate install required.
+Uses native Web Audio for recorded and generated samples, scheduled playback,
+channel mixing, and offline rendering.
 
 ## Usage
 
@@ -40,7 +41,10 @@ entity.add(new SoundComponent({ alias: jumpSfx.path, channel: "sfx" }));
 
 - **AudioPlugin / AudioManager** - sound loading and playback
 - **SoundComponent** - attach sounds to entities with auto-cleanup
-- **Channels** - per-channel volume, mute, pause, and stop
+- **Channels** - hierarchical volume, mute, pause, and stop
+- **Audio-clock automation** - exact starts, releases, gain, pan, and playback rate
+- **soundBank** - preload exported WAV banks with sustain metadata
+- **renderAudio / measureAudio** - offline graph rendering and sample statistics
 
 ## Docs
 

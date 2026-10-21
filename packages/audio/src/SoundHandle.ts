@@ -1,166 +1,266 @@
-import type { IMediaInstance } from "@pixi/sound";
-import { easeLinear, Process } from "@yagejs/core";
-import type { ScopedProcessQueue } from "@yagejs/core";
-import type { AudioFadeOptions } from "./types.js";
-import { assertFadeDuration, assertVolume } from "./internal/validation.js";
+import type {
+  AudioAutomationOptions,
+  AudioFadeOptions,
+  AudioPlayOptions,
+} from "./types.js";
+import { AudioTimeline, automationTiming } from "./internal/Automation.js";
+import {
+  assertFadeDuration,
+  assertPan,
+  assertSpeed,
+  assertTime,
+  assertVolume,
+} from "./internal/validation.js";
 
-/** Wraps an IMediaInstance, tracking playing state via end/stop events. */
+/** One voice, including its booked start and paused source position. */
 export class SoundHandle {
-  private _playing = true;
-  private readonly _instance: IMediaInstance;
-  private _channel = "sfx";
-  private _volume: number;
-  private _applyVolume: (volume: number) => void;
-  private _fadeQueue: ScopedProcessQueue | undefined;
-  private _fade: Process | undefined;
+  private source: AudioBufferSourceNode | undefined;
+  private readonly gain: GainNode;
+  private readonly panner: StereoPannerNode;
+  private readonly muteGain: GainNode;
+  private readonly level: AudioTimeline;
+  private readonly rate: AudioTimeline;
+  private readonly stereo: AudioTimeline;
+  private active = true;
+  private ownPaused = false;
+  private channelPaused = false;
+  private pauseAt: number | undefined;
+  private isMuted = false;
+  private startAt: number;
+  private offset: number;
+  private stopAt: number | undefined;
+  private readonly listeners: Array<(natural: boolean) => void> = [];
 
-  constructor(instance: IMediaInstance) {
-    this._instance = instance;
-    this._volume = instance.volume;
-    this._applyVolume = (volume) => (instance.volume = volume);
-    instance.once("end", () => {
-      this._finishPlayback();
-    });
-    instance.once("stop", () => {
-      this._finishPlayback();
-    });
+  /** @internal Voices are constructed by AudioManager.play(). */
+  constructor(
+    readonly id: number,
+    readonly channel: string,
+    readonly alias: string,
+    private readonly context: BaseAudioContext,
+    private readonly buffer: AudioBuffer,
+    private readonly options: AudioPlayOptions,
+    output: AudioNode,
+  ) {
+    this.startAt = Math.max(
+      context.currentTime,
+      options.at ?? context.currentTime,
+    );
+    this.offset = options.offset ?? 0;
+    this.stopAt = options.stopAt;
+    this.level = new AudioTimeline(options.volume ?? 1);
+    this.rate = new AudioTimeline(options.speed ?? 1);
+    this.stereo = new AudioTimeline(options.pan ?? 0);
+    this.gain = context.createGain();
+    this.panner = context.createStereoPanner();
+    this.muteGain = context.createGain();
+    this.gain.connect(this.panner);
+    this.panner.connect(this.muteGain);
+    this.muteGain.connect(output);
+    this.startSource();
   }
-
-  get id(): number {
-    return this._instance.id;
-  }
-
   get playing(): boolean {
-    return this._playing;
+    return this.active;
   }
-
-  /** Mixer channel this sound plays through. */
-  get channel(): string {
-    return this._channel;
+  get scheduled(): boolean {
+    return this.active && this.startAt > this.context.currentTime;
   }
-
-  stop(): void {
-    if (!this._playing) return;
-    this._instance.stop();
-    if (this._playing) {
-      // Pixi's WebAudio backend emits no stop while paused. Both backends
-      // are event emitters; their stop event also releases native ownership.
-      const instance = this._instance as IMediaInstance & {
-        emit(event: "stop"): boolean;
-      };
-      instance.emit("stop");
-    }
-  }
-
-  set volume(v: number) {
-    assertVolume("SoundHandle.volume", v);
-    this._volume = v;
-    this._applyVolume(v);
-  }
-
   get volume(): number {
-    return this._volume;
+    return this.level.valueAt(this.controlTime);
   }
-
-  /**
-   * Fade the pre-channel volume on the engine-global frame clock. Starting a
-   * new fade cancels this handle's current fade.
-   */
-  fadeTo(volume: number, options: AudioFadeOptions): Process {
-    const duration = options.duration;
-    const easing = options.easing ?? easeLinear;
-    const stopOnComplete = options.stopOnComplete ?? false;
-
-    assertVolume("SoundHandle.fadeTo", volume);
-    assertFadeDuration("SoundHandle.fadeTo", duration);
-    if (!this._playing) {
-      throw new Error("SoundHandle.fadeTo: sound is not playing.");
-    }
-    if (stopOnComplete && volume !== 0) {
-      throw new Error(
-        "SoundHandle.fadeTo: stopOnComplete requires a target volume of 0.",
-      );
-    }
-    if (!this._fadeQueue) {
-      throw new Error(
-        "SoundHandle.fadeTo: this handle was not created by an installed AudioManager.",
-      );
-    }
-
-    const from = this._volume;
-    const fade = new Process({
-      duration,
-      update: (_dt, elapsed) => {
-        const progress = Math.min(1, elapsed / duration);
-        const eased = easing(progress);
-        if (!Number.isFinite(eased)) {
-          throw new Error(
-            `SoundHandle.fadeTo: easing must return a finite number, got ${eased}.`,
-          );
-        }
-        const bounded = Math.min(1, Math.max(0, eased));
-        this.volume = from + (volume - from) * bounded;
-      },
-      onComplete: () => {
-        this.volume = volume;
-        if (this._fade === fade) this._fade = undefined;
-        if (stopOnComplete) this.stop();
-      },
-      onCancel: () => {
-        if (this._fade === fade) this._fade = undefined;
-      },
-    });
-
-    this._fade?.cancel();
-    this._fade = fade;
-    return this._fadeQueue.run(fade);
+  set volume(value: number) {
+    this.setVolume(value);
   }
-
-  set speed(v: number) {
-    this._instance.speed = v;
-  }
-
   get speed(): number {
-    return this._instance.speed;
+    return this.rate.valueAt(this.controlTime);
   }
-
-  set muted(v: boolean) {
-    this._instance.muted = v;
+  set speed(value: number) {
+    this.setSpeed(value);
   }
-
+  get pan(): number {
+    return this.stereo.valueAt(this.controlTime);
+  }
+  set pan(value: number) {
+    this.setPan(value);
+  }
   get muted(): boolean {
-    return this._instance.muted;
+    return this.isMuted;
   }
-
-  set paused(v: boolean) {
-    this._instance.paused = v;
+  set muted(value: boolean) {
+    this.isMuted = value;
+    this.muteGain.gain.setValueAtTime(value ? 0 : 1, this.context.currentTime);
   }
-
   get paused(): boolean {
-    return this._instance.paused;
+    return this.pauseAt !== undefined;
+  }
+  set paused(value: boolean) {
+    this.ownPaused = value;
+    this.reconcilePause();
+  }
+  private get controlTime(): number {
+    return this.pauseAt ?? this.context.currentTime;
   }
 
-  /** Reapply logical volume after master or channel volume changes. @internal */
-  _refreshVolume(): void {
-    this._applyVolume(this._volume);
+  setVolume(value: number, options?: AudioAutomationOptions): void {
+    assertVolume("SoundHandle.setVolume", value);
+    this.automate(this.level, this.gain.gain, value, options);
+  }
+  setSpeed(value: number, options?: AudioAutomationOptions): void {
+    assertSpeed("SoundHandle.setSpeed", value);
+    this.automate(this.rate, this.source?.playbackRate, value, options);
+  }
+  setPan(value: number, options?: AudioAutomationOptions): void {
+    assertPan("SoundHandle.setPan", value);
+    this.automate(this.stereo, this.panner.pan, value, options);
+  }
+  fadeTo(value: number, options: AudioFadeOptions): void {
+    assertVolume("SoundHandle.fadeTo", value);
+    assertFadeDuration("SoundHandle.fadeTo", options.duration);
+    if (!this.active)
+      throw new Error("SoundHandle.fadeTo: sound is not playing.");
+    if (options.stopOnComplete && value !== 0)
+      throw new Error("SoundHandle.fadeTo: stopOnComplete requires volume 0.");
+    const timing = automationTiming(
+      "SoundHandle.fadeTo",
+      this.context.currentTime,
+      options,
+    );
+    this.setVolume(value, options);
+    if (options.stopOnComplete) this.stop(timing.at + timing.duration);
+  }
+  /** Schedule a release to silence, then stop. */
+  release(at = this.context.currentTime, duration = 0.05): void {
+    assertTime("SoundHandle.release.duration", duration);
+    if (duration === 0) {
+      automationTiming("SoundHandle.release", this.context.currentTime, { at });
+      this.stop(at);
+    } else this.fadeTo(0, { at, duration, stopOnComplete: true });
+  }
+  /** An omitted time cancels even a voice whose start has not arrived. */
+  stop(at?: number): void {
+    if (at !== undefined) assertTime("SoundHandle.stop.at", at);
+    if (!this.active) return;
+    const time =
+      at === undefined
+        ? this.controlTime
+        : at - (this.context.currentTime - this.controlTime);
+    if (time <= this.controlTime) {
+      this.detachSource();
+      this.finish(false);
+    } else {
+      this.stopAt = time;
+      this.source?.stop(time);
+    }
+  }
+  /** @internal */
+  _onFinish(callback: (natural: boolean) => void): void {
+    this.listeners.push(callback);
+  }
+  /** @internal */
+  _setChannelPaused(paused: boolean): void {
+    this.channelPaused = paused;
+    this.reconcilePause();
   }
 
-  /** Connect this handle to its manager's channel and fade queue. @internal */
-  _setMixer(
-    channel: string,
-    volume: number,
-    applyVolume: (volume: number) => void,
-    fadeQueue: ScopedProcessQueue | undefined,
+  private automate(
+    timeline: AudioTimeline,
+    param: AudioParam | undefined,
+    value: number,
+    options?: AudioAutomationOptions,
   ): void {
-    this._channel = channel;
-    this._volume = volume;
-    this._applyVolume = applyVolume;
-    this._fadeQueue = fadeQueue;
+    const { at, duration, curve } = automationTiming(
+      "SoundHandle automation",
+      this.context.currentTime,
+      options,
+    );
+    if (!this.active)
+      throw new Error("SoundHandle automation: sound is not playing.");
+    const effectiveAt = at - (this.context.currentTime - this.controlTime);
+    timeline.set(value, effectiveAt, duration, curve);
+    if (timeline === this.rate && !this.paused) {
+      this.capturePosition(this.controlTime);
+      this.startAt = Math.max(this.startAt, this.controlTime);
+    }
+    timeline.prune(this.controlTime);
+    if (param && !this.paused) timeline.apply(param, this.context.currentTime);
   }
-
-  private _finishPlayback(): void {
-    this._playing = false;
-    this._fade?.cancel();
-    this._fade = undefined;
+  private startSource(): void {
+    const source = this.context.createBufferSource();
+    this.source = source;
+    source.buffer = this.buffer;
+    source.loop = this.options.loop ?? false;
+    source.loopStart = this.options.loopStart ?? 0;
+    source.loopEnd = this.options.loopEnd ?? this.buffer.duration;
+    this.rate.apply(source.playbackRate, this.context.currentTime);
+    this.level.apply(this.gain.gain, this.context.currentTime);
+    this.stereo.apply(this.panner.pan, this.context.currentTime);
+    source.connect(this.gain);
+    source.onended = () => {
+      if (this.source !== source) return;
+      source.disconnect();
+      this.source = undefined;
+      this.finish(
+        this.stopAt === undefined ||
+          (!this.options.loop &&
+            this.offset +
+              this.rate.integral(
+                this.startAt,
+                Math.max(this.startAt, this.stopAt),
+              ) >=
+              this.buffer.duration - 1 / this.context.sampleRate),
+      );
+    };
+    source.start(this.startAt, this.offset);
+    if (this.stopAt !== undefined) source.stop(this.stopAt);
+  }
+  private detachSource(): void {
+    const source = this.source;
+    this.source = undefined;
+    if (source) {
+      source.onended = null;
+      source.stop();
+      source.disconnect();
+    }
+  }
+  private capturePosition(now: number): void {
+    const until = Math.min(now, this.stopAt ?? now);
+    if (until > this.startAt)
+      this.offset += this.rate.integral(this.startAt, until);
+    if (this.options.loop) {
+      const begin = this.options.loopStart ?? 0;
+      const end = this.options.loopEnd ?? this.buffer.duration;
+      if (this.offset >= end)
+        this.offset = begin + ((this.offset - begin) % (end - begin));
+    }
+  }
+  private reconcilePause(): void {
+    if (!this.active) return;
+    const paused = this.ownPaused || this.channelPaused;
+    const now = this.context.currentTime;
+    if (paused && this.pauseAt === undefined) {
+      this.capturePosition(now);
+      this.pauseAt = now;
+      this.detachSource();
+    } else if (!paused && this.pauseAt !== undefined) {
+      const previous = this.pauseAt;
+      const delta = now - previous;
+      this.startAt = Math.max(now, this.startAt + delta);
+      if (this.stopAt !== undefined) this.stopAt += delta;
+      this.level.shift(previous, delta);
+      this.rate.shift(previous, delta);
+      this.stereo.shift(previous, delta);
+      this.pauseAt = undefined;
+      if (!this.options.loop && this.offset >= this.buffer.duration)
+        this.finish(true);
+      else this.startSource();
+    }
+  }
+  private finish(natural: boolean): void {
+    if (!this.active) return;
+    this.active = false;
+    this.gain.disconnect();
+    this.panner.disconnect();
+    this.muteGain.disconnect();
+    for (const callback of this.listeners) callback(natural);
+    this.listeners.length = 0;
   }
 }

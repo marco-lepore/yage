@@ -421,17 +421,17 @@ A sound remains a zero-time sequence step. Later sequence children start
 immediately, but the overall cue stays active while its recording plays.
 `lifetime: "cue"` (default) stops the recording on release, cancellation,
 disable, or destruction. `lifetime: "sound"` lets the started recording finish
-through those events, including scene changes. Channel stops and asset unloading
-can still interrupt it. Cue lifetime suppresses `onEnd` after release or
+through those events, including scene changes. Channel stops can still interrupt it. Unloading an alias prevents new playback
+but lets existing voices finish. Cue lifetime suppresses `onEnd` after release or
 cancellation begins, including a natural end during the fade. With sound
 lifetime, `onEnd` runs on natural completion even after the cue's owner is gone.
 
 `fadeOut` fades cue-owned audio to silence and stops it on release or
 cancellation. Zero stops immediately. A positive value cannot be combined with
 `lifetime: "sound"`. Graceful release waits for the fade; cancellation ends the
-cue immediately while audio finishes fading. Fades use the engine-global frame
-clock, follow `ProcessSystem.timeScale`, and continue through scene pause and
-replacement. They are not sample-accurate audio ramps.
+cue immediately while audio finishes fading. Fades use audio time, independently
+of game time scale, scene pause and replacement. Context suspension or channel
+pause holds the fade.
 
 An alias list must be non-empty. Each sound start picks one alias from the
 scene's seeded random source, including each loop iteration. `once: true`

@@ -70,7 +70,7 @@ When modifying packages, changes flow downstream. Build and test in dependency o
   │
   ├── @yagejs/input (→ core)
   │
-  ├── @yagejs/audio (→ core, @pixi/sound)
+  ├── @yagejs/audio (→ core; native Web Audio)
   │
   ├── @yagejs/pathfinding (→ core; optional: tilemap)
   │
