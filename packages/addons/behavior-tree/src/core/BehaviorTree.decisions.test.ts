@@ -337,6 +337,19 @@ describe("behavior decisions and timing", () => {
     expect(fire).toHaveBeenCalledTimes(2);
   });
 
+  it("snapshot keeps a root cooldown whose id is __proto__", () => {
+    const definition = bt.cooldown("__proto__", 2, bt.wait("w", 0));
+    const before = new BehaviorTree(definition, context());
+    before.tick(1);
+    const saved = JSON.parse(JSON.stringify(before.snapshot())) as ReturnType<
+      typeof before.snapshot
+    >;
+    expect(Object.hasOwn(saved.cooldowns, "__proto__")).toBe(true);
+    const after = new BehaviorTree(definition, context());
+    after.restore(saved);
+    expect(after.tick(1)).toBe("failure");
+  });
+
   it("restore cancels running work, drops unknown paths and resets missing ones", () => {
     const exit = vi.fn();
     const tree = new BehaviorTree(

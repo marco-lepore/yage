@@ -202,12 +202,14 @@ export class BehaviorTree<C> {
 
   /** Armed cooldowns: the only progress that survives cancel(). */
   snapshot(): BehaviorTreeSnapshot {
-    const cooldowns: Record<string, number> = {};
-    for (const frame of this.cooldowns) {
-      if (frame.cooldownRemaining > 0)
-        cooldowns[frame.path] = frame.cooldownRemaining;
-    }
-    return { cooldowns };
+    // fromEntries defines own keys, so a root id such as "__proto__" is kept.
+    return {
+      cooldowns: Object.fromEntries(
+        this.cooldowns
+          .filter((frame) => frame.cooldownRemaining > 0)
+          .map((frame) => [frame.path, frame.cooldownRemaining]),
+      ),
+    };
   }
 
   /**
