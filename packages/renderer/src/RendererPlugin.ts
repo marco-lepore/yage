@@ -483,6 +483,15 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
+   * The graphics API drawing the canvas: `"webgl"` or `"webgpu"`, as Pixi
+   * picked it from `RendererConfig.pixi.preference` and what the browser
+   * supports.
+   */
+  get backend(): string {
+    return this._app.renderer.name;
+  }
+
+  /**
    * The container that carries the responsive-fit transform — the natural
    * parent for things that should live inside the virtual play area
    * (transition overlays scoped to the play rect, world-space HUD, etc.).

@@ -85,6 +85,19 @@ export interface LayerTransformSnapshot {
   rotation: number;
 }
 
+/**
+ * How a scene's whole render tree is drawn: the opacity, visibility and offset
+ * a scene transition or the scene stack gives it.
+ */
+export interface SceneRenderSnapshot {
+  alpha: number;
+  /** `false` while the scene stack hides the scene, or a transition does. */
+  visible: boolean;
+  /** Offset of the whole scene in virtual pixels, as a sliding transition moves it. */
+  x: number;
+  y: number;
+}
+
 export interface CameraStackSnapshot {
   scene: string;
   name: string | undefined;
@@ -105,6 +118,11 @@ export interface DebugDiagnostics {
     layerName: string,
   ): LayerTransformSnapshot | undefined;
   getCameraStack(): CameraStackSnapshot[];
+  /**
+   * How the scene named `sceneName` on the stack is drawn, or `undefined` when
+   * no such scene has a render tree.
+   */
+  getSceneRender(sceneName: string): SceneRenderSnapshot | undefined;
   /** Whether the HUD layer (text readouts) is currently visible. */
   isHudVisible(): boolean;
   /**
@@ -447,6 +465,19 @@ export class DebugPlugin implements Plugin {
           scaleX: container.scale.x,
           scaleY: container.scale.y,
           rotation: container.rotation,
+        };
+      },
+      getSceneRender: (sceneName) => {
+        const scene = this.sceneManager.all.find(
+          (candidate) => candidate.name === sceneName,
+        );
+        const root = scene && this.provider?.getTree(scene)?.root;
+        if (!root) return undefined;
+        return {
+          alpha: root.alpha,
+          visible: root.visible,
+          x: root.position.x,
+          y: root.position.y,
         };
       },
       getCameraStack: () => {

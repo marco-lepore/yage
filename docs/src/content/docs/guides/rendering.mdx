@@ -61,6 +61,13 @@ The preset composes with `pixi: {...}` — explicit options win, so
 overrides (`source.scaleMode = "linear"`) keep working too — the preset
 only changes the *default* sampling mode.
 
+### Which graphics API runs
+
+Pixi draws with WebGL unless `pixi: { preference: "webgpu" }` asks for WebGPU
+and the browser supports it. `renderer.backend` reports the one it picked,
+`"webgl"` or `"webgpu"`, for a game that adjusts its effects to it or a test
+that checks it.
+
 ## Where to go next
 
 - **[Responsive Canvas](/guides/rendering/responsive/)** — fit modes (`letterbox`, `expand`, `cover`, `stretch`), drawing into the bars, DOM-overlay positioning, HUD anchoring under `cover`.

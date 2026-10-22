@@ -476,6 +476,7 @@ import type { DebugDiagnostics } from "@yagejs/debug";
 const debug = window.__yage__.inspector.getExtension<DebugDiagnostics>("debug");
 debug?.getCameraStack(); // every CameraComponent across the scene stack
 debug?.getLayerTransform("game", "world");
+debug?.getSceneRender("game"); // { alpha, visible, x, y } of the scene's whole render tree
 debug?.isHudVisible();
 debug?.setHudVisible(false); // hide HUD text readouts (FPS, timings); world-space
 // debug graphics stay visible. Re-renders synchronously,

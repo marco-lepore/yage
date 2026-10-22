@@ -96,7 +96,7 @@ class MaterialProbe extends Component {
         this.use(SceneManagerKey).replace(new MaterialScene()),
       pushScene: () => this.use(SceneManagerKey).push(new UpperScene()),
       popScene: () => this.use(SceneManagerKey).pop(),
-      backend: () => renderer.application.renderer.name,
+      backend: () => renderer.backend,
       pixel: (x: number, y: number) => {
         const captured = renderer.captureCanvas();
         if (!(captured instanceof HTMLCanvasElement))

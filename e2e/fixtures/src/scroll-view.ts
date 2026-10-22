@@ -8,11 +8,9 @@ import { injectStyles, setupContainer } from "./shared.js";
 injectStyles();
 const container = setupContainer(360, 260);
 
-// Module refs the probe reads each frame (set in onEnter). The controls and
-// row coordinates expose both programmatic scrolling and pointer dragging.
+// Module refs the probe reads each frame (set in onEnter). The spec reads the
+// rows' and controls' screen boxes from the Inspector's UI snapshot.
 let svNode: UIScrollView | null = null;
-let scrollBtn: UIButton | null = null;
-let endBtn: UIButton | null = null;
 let orderSeq = 0;
 let orderClicks = 0;
 
@@ -37,20 +35,13 @@ function fillOrders(sv: UIScrollView, n: number): void {
 }
 
 /**
- * Mirrors ScrollView state + control-button screen positions into
- * inspectable fields. Lives on the UI entity; `Component.update()` runs each
+ * Mirrors ScrollView state into inspectable fields. Lives on the UI entity; `Component.update()` runs each
  * frame via ComponentUpdateSystem.
  */
 class ScrollProbe extends Component {
   offset = 0;
   maxScroll = 0;
   orderCount = 0;
-  scrollBtnX = 0;
-  scrollBtnY = 0;
-  endX = 0;
-  endY = 0;
-  rowX = 0;
-  rowY = 0;
   orderClicks = 0;
 
   update(): void {
@@ -58,23 +49,7 @@ class ScrollProbe extends Component {
       this.offset = svNode.scrollOffset;
       this.maxScroll = svNode.maxScroll;
       this.orderCount = svNode.children.length;
-      const first = svNode.children[0];
-      if (first) {
-        const p = first.displayObject.getGlobalPosition();
-        this.rowX = p.x;
-        this.rowY = p.y;
-      }
       this.orderClicks = orderClicks;
-    }
-    if (scrollBtn) {
-      const p = scrollBtn.displayObject.getGlobalPosition();
-      this.scrollBtnX = p.x;
-      this.scrollBtnY = p.y;
-    }
-    if (endBtn) {
-      const p = endBtn.displayObject.getGlobalPosition();
-      this.endX = p.x;
-      this.endY = p.y;
     }
   }
 }
@@ -110,7 +85,7 @@ class ScrollViewScene extends Scene {
     // scrolls (position-invariance assertion) and drive scrolling via the
     // public API on click.
     const controls = panel.panel({ direction: "row", gap: 8 });
-    scrollBtn = controls.button("Scroll", {
+    controls.button("Scroll", {
       width: CTRL_W,
       height: CTRL_H,
       onClick: () => sv.scrollBy(60),
@@ -123,7 +98,7 @@ class ScrollViewScene extends Scene {
 
     // Rebuilds children on the SAME ScrollView instance — simulates a
     // store-driven refresh; the scroll offset must survive (re-clamped).
-    endBtn = panel.button("End Day", {
+    panel.button("End Day", {
       width: CTRL_W,
       height: CTRL_H,
       onClick: () => fillOrders(sv, 8),

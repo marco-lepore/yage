@@ -57,6 +57,8 @@ engine.use(
 );
 ```
 
+`renderer.backend` reports the graphics API Pixi picked: `"webgl"`, or `"webgpu"` when `pixi: { preference: "webgpu" }` asks for it and the browser supports it.
+
 ### `pixelArtPreset`
 
 One flag for pixel-art games. When `true`, the plugin:
