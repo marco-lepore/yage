@@ -33,8 +33,8 @@ as `SpriteComponent`'s), so a raw `Text` can blend additively over what is
 beneath it, or mark itself as a pointer-consume surface without going through
 `@yagejs/ui`.
 
-Update at runtime with `setText()` / `setStyle()`, or tweak `tint` and
-`alpha` directly. Read the current string back with `content`.
+Update at runtime with `setText()` / `setStyle()`, or change `tint`, `alpha`
+and `anchor` directly. Read the current string back with `content`.
 `setStyle()` **replaces** the style — properties you don't pass fall back
 to the defaults. To change a few properties while keeping the rest, use
 `mergeStyle()`:
@@ -358,9 +358,10 @@ class TitleWave extends Component {
 entity.add(new TitleWave());
 ```
 
-`anchor` is the normalized transform origin for the whole text block. The
-component recalculates it from the current bounds after text, style, or
-manual split updates. This keeps centered labels centered when their content
+`anchor` is the normalized transform origin for the whole text block, set at
+construction or by assigning `split.anchor = { x, y }` later. The component
+recalculates it from the current bounds after text, style, or manual split
+updates. This keeps centered labels centered when their content
 changes.
 
 The segment origins — `charAnchor`, `wordAnchor`, `lineAnchor` (also

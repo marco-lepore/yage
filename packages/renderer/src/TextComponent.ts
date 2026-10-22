@@ -1,4 +1,6 @@
+import type { Vec2Like } from "@yagejs/core";
 import { BitmapText, Text } from "pixi.js";
+import { readPoint, writePoint } from "./internal/point.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
 import type {
   DisplayBitmapText,
@@ -32,8 +34,11 @@ export interface TextComponentOptions extends VisualComponentOptions {
    * fixed at font-bake time).
    */
   resolution?: number;
-  /** Anchor point (0-1). Default: { x: 0, y: 0 } (top-left). */
-  anchor?: { x: number; y: number };
+  /**
+   * Anchor point (0-1). Default: { x: 0, y: 0 } (top-left). See
+   * {@link TextComponent.anchor}.
+   */
+  anchor?: Vec2Like;
 }
 
 /** Component that displays text on a render layer. */
@@ -57,9 +62,7 @@ export class TextComponent extends VisualComponent {
     if (options.style) this._styleOptions = { ...options.style };
     if (options.bitmap !== undefined) this._bitmap = options.bitmap;
 
-    if (options.anchor) {
-      this._text.anchor.set(options.anchor.x, options.anchor.y);
-    }
+    if (options.anchor) this.anchor = options.anchor;
     this.applyVisualOptions(options);
   }
 
@@ -69,6 +72,21 @@ export class TextComponent extends VisualComponent {
    */
   get renderObject(): DisplayText | DisplayBitmapText {
     return this._text;
+  }
+
+  /**
+   * The point of the text that sits on the entity position, as a fraction of
+   * the text's size: `{ x: 0, y: 0 }` (the default) is the top-left corner
+   * and `{ x: 0.5, y: 0.5 }` the centre. The anchored point stays put when
+   * the string or style changes the size. Each read returns a new object; a
+   * non-finite coordinate throws.
+   */
+  get anchor(): Vec2Like {
+    return readPoint(this._text.anchor);
+  }
+
+  set anchor(value: Vec2Like) {
+    writePoint("TextComponent.anchor", this._text.anchor, value);
   }
 
   /** The string currently displayed. */

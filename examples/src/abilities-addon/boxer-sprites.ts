@@ -375,15 +375,9 @@ export class BoxerAnimState extends Component {
     const px = anchorAnim
       ? FOOT_ANCHOR_PX[anchorAnim]?.[this.dir - 1]?.[frame]
       : undefined;
-    // `AnimatedSpriteComponent` takes an anchor only in its constructor and
-    // has no setter, so the per-frame anchor is written to the Pixi sprite.
-    // eslint-disable-next-line no-restricted-syntax -- no component anchor setter
-    const anchor = this.sprite.renderObject.anchor;
-    if (px) {
-      anchor.set(px[1] / FRAME_W, (px[0] - GROUND_OFFSET_ROWS) / FRAME_H);
-    } else {
-      anchor.set(SPRITE_ANCHOR.x, SPRITE_ANCHOR.y);
-    }
+    this.sprite.anchor = px
+      ? { x: px[1] / FRAME_W, y: (px[0] - GROUND_OFFSET_ROWS) / FRAME_H }
+      : SPRITE_ANCHOR;
   }
 }
 

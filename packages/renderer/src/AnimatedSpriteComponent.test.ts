@@ -277,6 +277,20 @@ describe("AnimatedSpriteComponent", () => {
     expect(comp.renderObject.anchor.y).toBe(1);
   });
 
+  it("reads and writes the anchor after construction", () => {
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
+    comp.anchor = { x: 0.25, y: 0.75 };
+    expect(comp.renderObject.anchor).toMatchObject({ x: 0.25, y: 0.75 });
+    expect(comp.anchor).toEqual({ x: 0.25, y: 0.75 });
+  });
+
+  it("throws on a non-finite anchor coordinate", () => {
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
+    expect(() => {
+      comp.anchor = { x: 0, y: NaN };
+    }).toThrow("AnimatedSpriteComponent.anchor: y must be finite, got NaN.");
+  });
+
   it("applies the speed option at construction", () => {
     const comp = new AnimatedSpriteComponent({ source: SOURCE, speed: 0.25 });
     expect(comp.speed).toBe(0.25);

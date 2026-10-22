@@ -14,7 +14,11 @@ export interface AnimationDef {
   speed: number;
   /** Whether the animation loops. Default: true. */
   loop?: boolean;
-  /** Per-animation anchor override. */
+  /**
+   * Anchor written to the sprite each time this animation starts, replacing
+   * the sprite's current `anchor`. Omit to keep whatever anchor the sprite
+   * has.
+   */
   anchor?: { x: number; y: number };
 }
 
@@ -384,9 +388,7 @@ export class AnimationController<T extends string = string> extends Component {
     this._shotSpeed = options?.speed ?? 1;
     const sprite = this._sprite.renderObject;
     this._sprite._installSource(def.source);
-    if (def.anchor) {
-      sprite.anchor.set(def.anchor.x, def.anchor.y);
-    }
+    if (def.anchor) this._sprite.anchor = def.anchor;
     sprite.animationSpeed = def.speed * this._speed * this._shotSpeed;
     sprite.loop = def.loop ?? true;
     // A completion callback belongs to the play that installed it, so a

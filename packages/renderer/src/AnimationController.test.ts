@@ -349,6 +349,16 @@ describe("AnimationController", () => {
     expect(sprite.anchor.y).toBe(0.7);
   });
 
+  it("a per-animation anchor replaces one set on the sprite", () => {
+    const anims = testAnims();
+    anims.walk.anchor = { x: 0.3, y: 0.7 };
+    const { ctrl, sprite, spriteComp } = setup(anims);
+    spriteComp.anchor = { x: 0.5, y: 1 };
+    ctrl.play("walk");
+    expect(spriteComp.anchor).toEqual({ x: 0.3, y: 0.7 });
+    expect(sprite.anchor.x).toBe(0.3);
+  });
+
   it("anchor is not changed when not specified in def", () => {
     const { ctrl, sprite } = setup();
     sprite.anchor.set(0.25, 0.75);

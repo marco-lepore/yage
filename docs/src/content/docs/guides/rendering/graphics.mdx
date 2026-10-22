@@ -61,8 +61,9 @@ entity.add(
 
 `pivot` is the `GraphicsComponent` counterpart of the `anchor` that sprites and
 text take. It is in pixels rather than a 0–1 fraction, because a drawing has no
-texture size to take a fraction of. Both numbers must be finite; a `NaN` throws
-naming the component and the coordinate.
+texture size to take a fraction of. Like `anchor` it is also a property:
+assign `gfx.pivot = { x, y }` to move it later. Both numbers must be finite; a
+`NaN` throws naming the component and the coordinate.
 
 Drawing the shape around `(0, 0)` in the first place reaches the same result,
 and is the simpler choice when you control the callback. `pivot` is for the

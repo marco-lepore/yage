@@ -1,5 +1,7 @@
+import type { Vec2Like } from "@yagejs/core";
 import { SplitText, SplitBitmapText } from "pixi.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
+import { assertFiniteNumber } from "./internal/validate.js";
 import {
   initialAutoSplit,
   setSplitText,
@@ -52,9 +54,9 @@ export interface SplitTextComponentOptions extends VisualComponentOptions {
   style?: TextStyle;
   /**
    * Transform origin for the whole text block, normalized 0–1.
-   * Default: { x: 0, y: 0 } (top-left).
+   * Default: { x: 0, y: 0 } (top-left). See {@link SplitTextComponent.anchor}.
    */
-  anchor?: { x: number; y: number };
+  anchor?: Vec2Like;
   /**
    * Render the segments with a bitmap font (`SplitBitmapText`) instead of
    * canvas `Text` (`SplitText`). Pass the installed/baked font name as
@@ -94,7 +96,7 @@ export class SplitTextComponent extends VisualComponent {
   /** Whether this renders with a bitmap font (`SplitBitmapText`). */
   readonly isBitmap: boolean;
   private _bitmap?: boolean;
-  private _anchor?: { x: number; y: number };
+  private _anchor?: Vec2Like;
   private readonly _autoSplit: boolean;
 
   constructor(options: SplitTextComponentOptions) {
@@ -130,9 +132,8 @@ export class SplitTextComponent extends VisualComponent {
       : new SplitText(splitOptions);
 
     if (options.bitmap !== undefined) this._bitmap = options.bitmap;
-    if (options.anchor) this._anchor = { ...options.anchor };
-
-    this.applyBlockAnchor();
+    if (options.anchor) this.anchor = options.anchor;
+    else this.applyBlockAnchor();
     this.applyVisualOptions(options);
   }
 
@@ -203,6 +204,24 @@ export class SplitTextComponent extends VisualComponent {
    */
   resplit(): void {
     if (!splitIfNotEmpty(this._splitText)) return;
+    this.applyBlockAnchor();
+  }
+
+  /**
+   * The point of the whole text block that sits on the entity position, as a
+   * fraction of the laid-out block's size: `{ x: 0, y: 0 }` (the default) is
+   * the top-left corner and `{ x: 0.5, y: 0.5 }` the centre. A re-split
+   * measures the block again and keeps the same fraction. Each read returns a
+   * new object; a non-finite coordinate throws.
+   */
+  get anchor(): Vec2Like {
+    return this._anchor ? { ...this._anchor } : { x: 0, y: 0 };
+  }
+
+  set anchor(value: Vec2Like) {
+    assertFiniteNumber("SplitTextComponent.anchor", "x", value.x);
+    assertFiniteNumber("SplitTextComponent.anchor", "y", value.y);
+    this._anchor = { x: value.x, y: value.y };
     this.applyBlockAnchor();
   }
 

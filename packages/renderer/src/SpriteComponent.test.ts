@@ -177,6 +177,37 @@ describe("SpriteComponent", () => {
     expect(comp.renderObject.anchor.set).toHaveBeenCalledWith(0.5, 0.5);
   });
 
+  it("reads and writes the anchor after construction", () => {
+    const comp = new SpriteComponent({ texture: {} as never });
+    expect(comp.anchor).toEqual({ x: 0, y: 0 });
+
+    comp.anchor = { x: 0.5, y: 1 };
+
+    expect(comp.renderObject.anchor).toMatchObject({ x: 0.5, y: 1 });
+    expect(comp.anchor).toEqual({ x: 0.5, y: 1 });
+  });
+
+  it("returns a copy of the anchor", () => {
+    const comp = new SpriteComponent({ texture: {} as never });
+    const anchor = comp.anchor as { x: number };
+    anchor.x = 0.9;
+    expect(comp.renderObject.anchor.x).toBe(0);
+  });
+
+  it("throws on a non-finite anchor coordinate", () => {
+    const comp = new SpriteComponent({ texture: {} as never });
+    expect(() => {
+      comp.anchor = { x: NaN, y: 0 };
+    }).toThrow("SpriteComponent.anchor: x must be finite, got NaN.");
+    expect(
+      () =>
+        new SpriteComponent({
+          texture: {} as never,
+          anchor: { x: 0, y: Infinity },
+        }),
+    ).toThrow("SpriteComponent.anchor: y must be finite, got Infinity.");
+  });
+
   it("sets visibility when provided", () => {
     const comp = new SpriteComponent({ texture: {} as never, visible: false });
     expect(comp.renderObject.visible).toBe(false);

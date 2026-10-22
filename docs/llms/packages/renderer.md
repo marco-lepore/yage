@@ -376,7 +376,7 @@ import "pixi.js/advanced-blend-modes";
 
 Pixi constructs every display object at `"inherit"`, not `"normal"` — inherited blending renders as normal until an ancestor sets a mode, and the two differ under a non-normal parent. `"erase"` composites against whatever framebuffer the object lands in, so it only cuts a hole out of the darkness you intend when both are drawn into their own offscreen buffer — see [Offscreen render targets](#offscreen-render-targets).
 
-**`anchor` and `pivot`.** A visual is drawn with one point of its art on the entity's world position, and the entity's rotation and scale turn and size the art about that same point. `anchor` (`{x, y}`, a fraction of the texture) chooses which point that is: `{ x: 0.5, y: 0.5 }` turns the art about its own middle, `{ x: 0.5, y: 1 }` about its bottom edge. Sprite, AnimatedSprite, Text, and SplitText take it. Graphics has none (a raw Pixi `Container` has no anchor) and takes `pivot` (`{x, y}`) instead — the same idea in the drawing's own pixels, since a drawing has no texture size to take a fraction of. SplitText also has per-segment `charAnchor` / `wordAnchor` / `lineAnchor` values (see below). Neither option turns art about a point outside the entity: for that, parent the visual's entity under an entity placed at the turning point. A `@yagejs/ui` element places differently: layout puts its top-left corner, and its `transformOrigin` prop moves only the point its `scale` and `rotation` turn about (see `ui.md`, "Scale, rotation and draw order").
+**`anchor` and `pivot`.** A visual is drawn with one point of its art on the entity's world position, and the entity's rotation and scale turn and size the art about that same point. `anchor` (`{x, y}`, a fraction of the texture) chooses which point that is: `{ x: 0.5, y: 0.5 }` turns the art about its own middle, `{ x: 0.5, y: 1 }` about its bottom edge. Sprite, AnimatedSprite, Text, SplitText, and NineSlice take it, as an option and as a property: `sprite.anchor` returns a new `{ x, y }`, and `sprite.anchor = { x, y }` moves it at runtime (a non-finite coordinate throws). An `AnimationController` writes an animation's own `anchor`, when its definition has one, at every switch, replacing a runtime value; for an anchor that follows the frame, set it from `onFrameChange`. Graphics has none (a raw Pixi `Container` has no anchor) and takes `pivot` (`{x, y}`) instead — the same idea in the drawing's own pixels, since a drawing has no texture size to take a fraction of. SplitText also has per-segment `charAnchor` / `wordAnchor` / `lineAnchor` values (see below). Neither option turns art about a point outside the entity: for that, parent the visual's entity under an entity placed at the turning point. A `@yagejs/ui` element places differently: layout puts its top-left corner, and its `transformOrigin` prop moves only the point its `scale` and `rotation` turn about (see `ui.md`, "Scale, rotation and draw order").
 
 ### SpriteComponent
 
@@ -416,7 +416,7 @@ entity.add(
 
 Graphics and their draw callbacks are runtime resources. Save the durable game facts that determine the drawing, then call `draw()` during normal component setup.
 
-`pivot` (`{x, y}`, in the drawing's own pixels, default `{ x: 0, y: 0 }`) names the point of the drawing that sits on the entity position and that rotation and scale act about. It is the Graphics counterpart of `anchor`. Both numbers must be finite; a `NaN` throws naming `pivot.x` or `pivot.y`.
+`pivot` (`{x, y}`, in the drawing's own pixels, default `{ x: 0, y: 0 }`) names the point of the drawing that sits on the entity position and that rotation and scale act about. It is the Graphics counterpart of `anchor`, and like it is an option and a property (`gfx.pivot = { x, y }`). Both numbers must be finite; a `NaN` throws naming the coordinate.
 
 ```ts yage-context="entity"
 import { GraphicsComponent } from "@yagejs/renderer";
@@ -563,7 +563,7 @@ Tween.stagger(
 ).forEach((p) => pc.run(p));
 ```
 
-`anchor` positions the whole block around its entity Transform. It uses the current split text bounds and is recomputed after text, style, or manual split updates. `charAnchor`, `wordAnchor`, and `lineAnchor` only affect their individual segments.
+`anchor` positions the whole block around its entity Transform, as an option or a property. It uses the current split text bounds and is recomputed after text, style, or manual split updates. `charAnchor`, `wordAnchor`, and `lineAnchor` only affect their individual segments.
 
 API: `chars` / `words` / `lines` (getters), `setText(v)`, `content` (reads the current string back), `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `visible` / `tint` / `alpha`, `fx` / `setMask` / `clearMask` (same effects/mask surface as the other four components), `isBitmap`. Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).
 
@@ -681,7 +681,7 @@ class Signpost extends Entity {
 }
 ```
 
-`new NineSliceComponent({ texture: TextureInput, insets: { left, top, right, bottom }, width, height, anchor?, ...VisualComponentOptions })`; `width` / `height` getters; `setSize(width, height)`. Sizes and insets throw when negative or non-finite; an unknown texture key throws at construction. Inside a UI layout use `UINineSlice`.
+`new NineSliceComponent({ texture: TextureInput, insets: { left, top, right, bottom }, width, height, anchor?, ...VisualComponentOptions })`; `width` / `height` getters; `anchor` get/set; `setSize(width, height)`. Sizes and insets throw when negative or non-finite; an unknown texture key throws at construction. Inside a UI layout use `UINineSlice`.
 
 ### AnimationController
 

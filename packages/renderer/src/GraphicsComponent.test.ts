@@ -245,11 +245,18 @@ describe("GraphicsComponent", () => {
 
   it("throws on a non-finite pivot coordinate", () => {
     expect(() => new GraphicsComponent({ pivot: { x: 0, y: NaN } })).toThrow(
-      /pivot\.y must be finite/,
+      "GraphicsComponent.pivot: y must be finite, got NaN.",
     );
     expect(() => new GraphicsComponent({ pivot: { x: NaN, y: 0 } })).toThrow(
-      /pivot\.x must be finite/,
+      "GraphicsComponent.pivot: x must be finite, got NaN.",
     );
+  });
+
+  it("reads and writes the pivot after construction", () => {
+    const comp = new GraphicsComponent();
+    comp.pivot = { x: 16, y: -8 };
+    expect(comp.renderObject.pivot).toMatchObject({ x: 16, y: -8 });
+    expect(comp.pivot).toEqual({ x: 16, y: -8 });
   });
 
   it("applies the interactive option, defaulting eventMode to static", () => {

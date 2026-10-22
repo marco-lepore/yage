@@ -1176,6 +1176,60 @@ export function checkElementTransformCoverage(files) {
   return errors;
 }
 
+/**
+ * A visual component whose options set the point its art turns about
+ * (`anchor` as a fraction of the texture, `pivot` in pixels) also lets the game
+ * read and move that point later, so a per-frame anchor never needs the Pixi
+ * object. The check pairs each `<Name>Options` interface with the `<Name>`
+ * class declared in the same file.
+ */
+export function checkVisualOriginAccessors(files) {
+  const originOptions = ["anchor", "pivot"];
+  const errors = [];
+  for (const file of files) {
+    if (!/^packages\/(?:[^/]+\/)*src\//.test(file.path)) continue;
+    if (file.path.endsWith(".test.ts")) continue;
+    const source = sourceFile(file.path, file.code);
+    const classes = new Map();
+    const options = [];
+    ts.forEachChild(source, (node) => {
+      if (ts.isClassDeclaration(node) && node.name) {
+        classes.set(node.name.text, node);
+      }
+      if (
+        ts.isInterfaceDeclaration(node) &&
+        node.name.text.endsWith("ComponentOptions")
+      ) {
+        options.push(node);
+      }
+    });
+    for (const option of options) {
+      const owner = classes.get(option.name.text.slice(0, -"Options".length));
+      if (!owner) continue;
+      for (const member of option.members) {
+        const name = member.name?.getText(source);
+        if (!originOptions.includes(name)) continue;
+        const accessors = owner.members.filter(
+          (candidate) =>
+            (ts.isGetAccessorDeclaration(candidate) ||
+              ts.isSetAccessorDeclaration(candidate)) &&
+            candidate.name.getText(source) === name,
+        );
+        if (accessors.length === 2) continue;
+        errors.push(
+          finding(
+            "visual-origin-accessors",
+            file.path,
+            lineOf(source, member),
+            `${owner.name.text} takes a \`${name}\` option but has no \`${name}\` getter and setter, so moving it after construction needs the Pixi object.`,
+          ),
+        );
+      }
+    }
+  }
+  return errors;
+}
+
 export function checkInlineImportTypes(files) {
   function hasCircularDependencyException(file, source, node) {
     const line = lineOf(source, node) - 1;
@@ -1746,6 +1800,26 @@ export function positiveControlFailures() {
         ]).length === 0,
     },
     {
+      name: "visual-origin-accessors",
+      passed:
+        checkVisualOriginAccessors([
+          {
+            path: "packages/renderer/src/BadgeComponent.ts",
+            code:
+              "export interface BadgeComponentOptions { anchor?: Vec2Like; }\n" +
+              "export class BadgeComponent { get anchor() { return a; } }",
+          },
+        ]).length === 1 &&
+        checkVisualOriginAccessors([
+          {
+            path: "packages/renderer/src/BadgeComponent.ts",
+            code:
+              "export interface BadgeComponentOptions { pivot?: Vec2Like; }\n" +
+              "export class BadgeComponent { get pivot() { return p; } set pivot(v) {} }",
+          },
+        ]).length === 0,
+    },
+    {
       name: "inline-import-type",
       passed:
         checkInlineImportTypes([
@@ -1814,6 +1888,7 @@ export function runChecks(root = repoRoot) {
     ...checkLocalizedWidgetCoverage(sources),
     ...checkFocusWidgetCoverage(sources),
     ...checkElementTransformCoverage(sources),
+    ...checkVisualOriginAccessors(sources),
     ...checkInlineImportTypes(sources),
     ...checkVec2VoidMethods(sources),
     ...checkCoreEventBusKeys(sources),

@@ -157,6 +157,16 @@ describe("TextComponent", () => {
     expect(comp.renderObject.anchor.set).toHaveBeenCalledWith(0.5, 1);
   });
 
+  it("reads and writes the anchor after construction", () => {
+    const comp = new TextComponent({ text: "x" });
+    comp.anchor = { x: 1, y: 0.5 };
+    expect(comp.renderObject.anchor).toMatchObject({ x: 1, y: 0.5 });
+    expect(comp.anchor).toEqual({ x: 1, y: 0.5 });
+    expect(() => {
+      comp.anchor = { x: Infinity, y: 0 };
+    }).toThrow("TextComponent.anchor: x must be finite, got Infinity.");
+  });
+
   it("sets visibility, tint, and alpha when provided", () => {
     const comp = new TextComponent({
       text: "x",

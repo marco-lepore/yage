@@ -276,7 +276,7 @@ describe("SplitTextComponent", () => {
       text: "hi",
       anchor: { x: 0.5, y: 0.5 },
     });
-    const split = comp.splitText as unknown as InstanceType<
+    const split = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockSplitText
     >;
     split.boundsBox = { x: 0, y: 0, width: 80, height: 20 };
@@ -289,6 +289,23 @@ describe("SplitTextComponent", () => {
       width: 80,
       height: 20,
     });
+  });
+
+  it("reads and writes the block anchor after construction", () => {
+    const comp = new SplitTextComponent({ text: "hi" });
+    const split = comp.renderObject as unknown as InstanceType<
+      typeof mocks.MockSplitText
+    >;
+    split.boundsBox = { x: 4, y: 6, width: 80, height: 20 };
+    expect(comp.anchor).toEqual({ x: 0, y: 0 });
+
+    comp.anchor = { x: 0.5, y: 1 };
+
+    expect(split.pivot).toMatchObject({ x: 44, y: 26 });
+    expect(comp.anchor).toEqual({ x: 0.5, y: 1 });
+    expect(() => {
+      comp.anchor = { x: 0, y: NaN };
+    }).toThrow("SplitTextComponent.anchor: y must be finite, got NaN.");
   });
 
   it("recomputes the block anchor after text, style, and manual split changes", () => {

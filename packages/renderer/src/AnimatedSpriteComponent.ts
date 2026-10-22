@@ -7,6 +7,7 @@ import type { DisplayAnimatedSprite } from "./public-types.js";
 import { resolveSpriteSource } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
 import { runAttributed } from "./internal/attribution.js";
+import { readPoint, writePoint } from "./internal/point.js";
 import { assertFiniteNumber } from "./internal/validate.js";
 import { type VisualComponentOptions } from "./VisualComponent.js";
 
@@ -24,7 +25,7 @@ export interface AnimatedSpriteComponentOptions extends VisualComponentOptions {
   material?: SpriteMaterial;
   /**
    * Default sprite anchor (0,0 = top-left, 0.5,0.5 = center, 1,1 = bottom-right).
-   * Per-{@link AnimationController} `AnimationDef.anchor` overrides this when set.
+   * See {@link AnimatedSpriteComponent.anchor}.
    */
   anchor?: Vec2Like;
   /**
@@ -50,9 +51,7 @@ export class AnimatedSpriteComponent extends MaterialVisualComponent {
     this._animatedSprite = new AnimatedSprite(this.source.frames, false);
     this.initializeMaterial(this.source.maps, options.material);
 
-    if (options.anchor) {
-      this._animatedSprite.anchor.set(options.anchor.x, options.anchor.y);
-    }
+    if (options.anchor) this.anchor = options.anchor;
     if (options.speed !== undefined) {
       assertFiniteNumber(
         "AnimatedSpriteComponent.constructor",
@@ -70,6 +69,31 @@ export class AnimatedSpriteComponent extends MaterialVisualComponent {
    */
   get renderObject(): DisplayAnimatedSprite {
     return this._animatedSprite;
+  }
+
+  /**
+   * The point of the frame that sits on the entity position, as a fraction
+   * of the frame's size: `{ x: 0, y: 0 }` (the default) is the top-left
+   * corner and `{ x: 0.5, y: 0.5 }` the centre. Rotation and scale turn the
+   * sprite about it. Each read returns a new object; a non-finite coordinate
+   * throws.
+   *
+   * An {@link AnimationController} on the entity writes an animation's own
+   * `anchor`, when its definition has one, at every animation switch, which
+   * replaces a value set here. For an anchor that follows the frame, such as
+   * a foot position that moves through a walk cycle, set it from
+   * {@link onFrameChange}.
+   */
+  get anchor(): Vec2Like {
+    return readPoint(this._animatedSprite.anchor);
+  }
+
+  set anchor(value: Vec2Like) {
+    writePoint(
+      "AnimatedSpriteComponent.anchor",
+      this._animatedSprite.anchor,
+      value,
+    );
   }
 
   /**

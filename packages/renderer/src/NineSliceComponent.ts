@@ -1,4 +1,6 @@
+import type { Vec2Like } from "@yagejs/core";
 import { createNineSlice } from "./assets.js";
+import { readPoint, writePoint } from "./internal/point.js";
 import { assertFiniteNumber } from "./internal/validate.js";
 import type { NineSliceSprite, TextureInput } from "./public-types.js";
 import {
@@ -26,9 +28,9 @@ export interface NineSliceComponentOptions extends VisualComponentOptions {
   height: number;
   /**
    * Anchor point (0-1). Default `{ x: 0, y: 0 }`: the entity's position is
-   * the frame's top-left corner.
+   * the frame's top-left corner. See {@link NineSliceComponent.anchor}.
    */
-  anchor?: { x: number; y: number };
+  anchor?: Vec2Like;
 }
 
 /**
@@ -73,9 +75,7 @@ export class NineSliceComponent extends VisualComponent {
       width: options.width,
       height: options.height,
     });
-    if (options.anchor) {
-      this.slice.anchor.set(options.anchor.x, options.anchor.y);
-    }
+    if (options.anchor) this.anchor = options.anchor;
     this.applyVisualOptions(options);
   }
 
@@ -85,6 +85,21 @@ export class NineSliceComponent extends VisualComponent {
    */
   get renderObject(): NineSliceSprite {
     return this.slice;
+  }
+
+  /**
+   * The point of the frame that sits on the entity position, as a fraction
+   * of its drawn size: `{ x: 0, y: 0 }` (the default) is the top-left corner
+   * and `{ x: 0.5, y: 0.5 }` the centre. The anchored point stays put when
+   * {@link setSize} resizes the frame. Each read returns a new object; a
+   * non-finite coordinate throws.
+   */
+  get anchor(): Vec2Like {
+    return readPoint(this.slice.anchor);
+  }
+
+  set anchor(value: Vec2Like) {
+    writePoint("NineSliceComponent.anchor", this.slice.anchor, value);
   }
 
   /** Drawn width in pixels. */
