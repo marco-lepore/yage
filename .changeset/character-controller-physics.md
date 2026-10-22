@@ -1,9 +1,10 @@
 ---
-"@yagejs/physics": minor
+"@yagejs/physics": patch
 ---
 
-Add configurable character controllers with a complete dynamic platformer setup.
+Filter world queries and contact checks by what a given collider would collide with.
 
-- Add `castShape(..., { solidFor: collider })` to find surfaces permitted by both colliders' contact filters, including one-way and drop-through rules. Filters use current poses and velocities with `dt: 0`.
-- Add `contactWith(other, { solidOnly: true })` for geometry checks that respect collision groups, sensors, and both contact filters.
-- Refresh only participating colliders during filtered shape casts instead of snapshotting the whole world for each cast.
+- `raycast`, `castShape`, `queryShape`, and `queryRadius` accept `solidFor: collider`. A query reports only colliders the source collider would collide with at their current poses: not its own entity, not sensors, with compatible collision groups, and accepted by both contact filters, including one-way and drop-through rules.
+- `contactWith(other, { solidOnly: true })` measures a pair only when the two colliders would collide.
+- The shared `QueryOptions` type describes the filters all four world queries accept. Combining `solidFor` with `sensors: "only"` throws, because `solidFor` skips every sensor.
+- `RigidBodyComponent.rotationsLocked` reports whether the body's rotation is locked by `fixedRotation` or `lockRotations()`.

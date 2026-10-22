@@ -2214,9 +2214,15 @@ describe("PhysicsWorld", () => {
         rot: number,
         shape: unknown,
         callback: (c: { handle: number }) => boolean,
+        _flags?: number,
+        _groups?: number,
+        _excludeCollider?: unknown,
+        _excludeBody?: unknown,
+        predicate?: (c: { handle: number }) => boolean,
       ) => {
         captured.push({ pos, rot, shape });
         for (const handle of hitHandles) {
+          if (predicate && !predicate({ handle })) continue;
           if (!callback({ handle })) break;
         }
       }) as unknown as typeof world.intersectionsWithShape;

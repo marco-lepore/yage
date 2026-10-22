@@ -95,6 +95,136 @@ describe("shape casts with contact filters (real Rapier)", () => {
   });
 });
 
+describe("solidFor across query kinds (real Rapier)", () => {
+  const PLAYER = 1;
+  const SOLID = 2;
+  const GHOST = 4;
+
+  function spawnStatic(
+    scene: Scene,
+    name: string,
+    y: number,
+    extra: { layers?: number; sensor?: boolean; oneWay?: boolean } = {},
+  ): ColliderComponent {
+    const entity = spawnEntityInScene(scene, name);
+    entity.add(new Transform({ position: new Vec2(0, y) }));
+    entity.add(new RigidBodyComponent({ type: "static" }));
+    return entity.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 100, height: 10 },
+        layers: extra.layers ?? SOLID,
+        mask: PLAYER,
+        ...(extra.sensor ? { sensor: true } : {}),
+        ...(extra.oneWay ? { oneWay: {} } : {}),
+      }),
+    );
+  }
+
+  function spawnActor(scene: Scene, y: number): ColliderComponent {
+    const entity = spawnEntityInScene(scene, "actor");
+    entity.add(new Transform({ position: new Vec2(0, y) }));
+    entity.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        gravityScale: 0,
+        fixedRotation: true,
+      }),
+    );
+    return entity.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 16, height: 44 },
+        layers: PLAYER,
+        mask: SOLID,
+      }),
+    );
+  }
+
+  it("reports only colliders the source's groups admit, and no sensors", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    const actor = spawnActor(scene, 0);
+    const ghost = spawnStatic(scene, "ghost", 50, { layers: GHOST });
+    const trigger = spawnStatic(scene, "trigger", 70, { sensor: true });
+    const floor = spawnStatic(scene, "floor", 100);
+    const box = { type: "box", width: 10, height: 10 } as const;
+    const down = { x: 0, y: 1 };
+
+    expect(
+      physicsWorld.castShape(box, { x: 0, y: 30 }, down, 200)?.entity,
+    ).toBe(ghost.entity);
+    expect(
+      physicsWorld.castShape(box, { x: 0, y: 30 }, down, 200, {
+        solidFor: actor,
+      })?.entity,
+    ).toBe(floor.entity);
+    expect(
+      physicsWorld.raycast({ x: 0, y: 30 }, down, 200, {
+        solidFor: actor,
+        sensors: "include",
+      })?.entity,
+    ).toBe(floor.entity);
+    const tall = { type: "box", width: 10, height: 80 } as const;
+    expect(physicsWorld.queryShape(tall, { x: 0, y: 80 })).toEqual(
+      expect.arrayContaining([ghost.entity, floor.entity]),
+    );
+    expect(
+      physicsWorld.queryShape(
+        tall,
+        { x: 0, y: 80 },
+        { solidFor: actor, sensors: "include" },
+      ),
+    ).toEqual([floor.entity]);
+    expect(
+      physicsWorld.raycast({ x: 0, y: 60 }, down, 200, { sensors: "include" })
+        ?.entity,
+    ).toBe(trigger.entity);
+    expect(() =>
+      physicsWorld.queryShape(
+        tall,
+        { x: 0, y: 80 },
+        { solidFor: actor, sensors: "only" },
+      ),
+    ).toThrow(/sensors: "only"/);
+  });
+
+  it("answers a one-way platform from the source's side of it", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    const platform = spawnStatic(scene, "platform", 100, { oneWay: true });
+    const actor = spawnActor(scene, 130);
+    physicsWorld.step(DT);
+    const headroom = { type: "box", width: 12, height: 10 } as const;
+
+    // Below the platform: the space above the head overlaps it, but the
+    // actor would pass through, so a solid query reports it clear.
+    expect(physicsWorld.queryShape(headroom, { x: 0, y: 100 })).toEqual([
+      platform.entity,
+    ]);
+    expect(
+      physicsWorld.queryShape(headroom, { x: 0, y: 100 }, { solidFor: actor }),
+    ).toEqual([]);
+
+    // Above the platform: the same platform supports the actor.
+    actor.entity.get(RigidBodyComponent).setPosition(0, 72);
+    const hit = physicsWorld.castShape(
+      { type: "box", width: 16, height: 44 },
+      { x: 0, y: 72 },
+      { x: 0, y: 1 },
+      10,
+      { solidFor: actor },
+    );
+    expect(hit?.entity).toBe(platform.entity);
+    expect(hit?.distance).toBeCloseTo(1, 1);
+    expect(
+      physicsWorld.raycast({ x: 0, y: 72 }, { x: 0, y: 1 }, 40, {
+        solidFor: actor,
+      })?.entity,
+    ).toBe(platform.entity);
+  });
+});
+
 function spawnFilteredBox(
   scene: Scene,
   name: string,

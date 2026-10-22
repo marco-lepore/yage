@@ -873,10 +873,13 @@ into the initial overlap. If the move requires a clear destination, also check
 that position with `queryShape`. The option affects only the cast; body
 collisions still apply normally.
 
-To find a surface that can support a particular character, pass its
-`ColliderComponent` as `solidFor`. The cast skips surfaces rejected by either
-collider's contact filter, including one-way and drop-through rules, and
-excludes the character's own entity:
+To find only the surfaces a particular character would collide with, pass its
+`ColliderComponent` as `solidFor`. The query skips the character's own entity
+and every sensor. It keeps a collider only when the two colliders' collision
+layers admit each other and both contact filters accept the pair, including
+one-way and drop-through rules. `raycast`, `castShape`, `queryShape`, and
+`queryRadius` all accept `solidFor`. A ground check that casts as the
+character stands on one-way platforms but ignores their underside:
 
 ```typescript yage-context="component"
 import { ColliderComponent, PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
@@ -894,10 +897,12 @@ const support = world.castShape(
 ```
 
 Filters receive the colliders' current positions and velocities with `dt: 0`.
-The cast's origin and direction do not replace those values. A compound source
-permits a hit if any of its parts permits the pair. The source must have live
-colliders in this world. Layer and sensor options still apply separately.
-Without `solidFor`, a cast ignores contact filters.
+The query's position and direction do not replace those values. A compound
+source keeps a hit when any of its parts would collide with it. The source
+must have live colliders in this world, or the query throws. Since
+`solidFor` skips sensors, combining it with `sensors: "only"` throws.
+`filterGroups` and `excludeEntity` narrow the result further. Without
+`solidFor`, a query ignores contact filters.
 
 Use this to test whether a fast-falling player has a floor along its path
 this frame:
@@ -1016,6 +1021,9 @@ entity.add(rb);   // the body is created with damping and rotation locked
 
 The damping setters also work while the entity is inactive. They update the
 dormant body without enabling or waking it.
+
+`rb.rotationsLocked` reads whether rotation is locked, by `fixedRotation` in
+the config or by `lockRotations`.
 
 ## Runtime Collider Materials
 
@@ -1202,9 +1210,10 @@ Practical notes:
   below). The sweep respects one-way behavior, including drop-through.
 - `oneWay` is part of the collider config. It has no effect on `sensor: true`
   colliders, since sensors never produce solid contacts.
-- World queries test geometry by default. Use `castShape` with `solidFor`
-  to apply one-way, drop-through, and contact filters. A geometric hit alone
-  does not mean a platform supports the rider.
+- World queries test geometry by default. Pass `solidFor` to apply
+  collision layers, one-way, drop-through, and contact filters as a given
+  collider sees them. A geometric hit alone does not mean a platform
+  supports the rider.
 
 ## Contact Filters
 
@@ -1233,9 +1242,9 @@ after movement in an earlier step. If game code has since changed velocity,
 that velocity cannot reliably tell you which side the body came from. Use
 the built-in `oneWay` behavior for platforms.
 
-A `castShape` query with `solidFor` or a `contactWith` query with `solidOnly: true`
-also runs contact filters, using current
-poses and velocities with `dt: 0`. Do not run physics queries inside a filter.
+A world query with `solidFor` and a `contactWith` query with `solidOnly: true`
+also run contact filters, using current poses and velocities with `dt: 0`.
+Do not run physics queries inside a filter.
 
 A few rules to keep filters healthy:
 

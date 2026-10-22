@@ -27,6 +27,7 @@ export type {
   OneWayConfig,
   TriggerEvent,
   RaycastHit,
+  QueryOptions,
   QuerySensorMode,
 } from "./types.js";
 

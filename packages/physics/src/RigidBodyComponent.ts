@@ -464,6 +464,11 @@ export class RigidBodyComponent extends Component {
     this.physicsWorld.getBody(this._bodyHandle)?.lockRotations(locked, true);
   }
 
+  /** Whether rotation is locked, by `fixedRotation` or `lockRotations`. */
+  get rotationsLocked(): boolean {
+    return this.config.fixedRotation ?? false;
+  }
+
   /**
    * Switch the body type at runtime — a dead enemy becomes `"static"` so
    * nothing pushes it and it pushes nothing; a carried crate becomes

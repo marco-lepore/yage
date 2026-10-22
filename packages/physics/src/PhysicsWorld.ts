@@ -18,6 +18,7 @@ import type {
   JointConfig,
   JointHandle,
   JointMotorConfig,
+  QueryOptions,
   QuerySensorMode,
 } from "./types.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
@@ -1205,7 +1206,8 @@ export class PhysicsWorld {
    * e.g. `target.sub(origin)`. Throws on a zero-length direction.
    * `excludeEntity` skips every collider of that entity — pass the caster
    * when the ray starts inside its own collider. Sensors are skipped unless
-   * `sensors` says otherwise.
+   * `sensors` says otherwise. `solidFor` reports only what that collider
+   * would collide with (see `castShape`).
    *
    * Reports every live collider at its current pose, including one created,
    * re-shaped, enabled, disabled or teleported since the last step, at the
@@ -1215,24 +1217,21 @@ export class PhysicsWorld {
     origin: Vec2Like,
     direction: Vec2Like,
     maxDistance: number,
-    options?: {
-      filterGroups?: number;
-      excludeEntity?: Entity;
-      sensors?: QuerySensorMode;
-    },
+    options?: QueryOptions,
   ): RaycastHit | null {
     const length = Math.hypot(direction.x, direction.y);
     if (length === 0) {
       throw new Error("raycast direction must be a non-zero vector");
     }
+    const sources = this._solidSources("PhysicsWorld.raycast", options);
     this._refreshQueries();
+    const predicate = this._queryPredicate(options, sources);
     const ray = new RAPIER.Ray(
       { x: this.toMeters(origin.x), y: this.toMeters(origin.y) },
       { x: direction.x / length, y: direction.y / length },
     );
 
     const maxToi = this.toMeters(maxDistance);
-    const exclude = options?.excludeEntity;
     const result = this.world.castRayAndGetNormal(
       ray,
       maxToi,
@@ -1241,9 +1240,7 @@ export class PhysicsWorld {
       options?.filterGroups,
       undefined,
       undefined,
-      exclude
-        ? (collider) => this.colliderMap.get(collider.handle) !== exclude
-        : undefined,
+      predicate,
     );
 
     if (!result) return null;
@@ -1283,11 +1280,14 @@ export class PhysicsWorld {
    * collider of that entity — pass the mover when the sweep starts inside its
    * own collider. Sensors are skipped unless `sensors` says otherwise.
    *
-   * `solidFor` excludes that collider's entity and applies both sides' contact
-   * filters, including one-way/drop-through rules. Filters read current body
-   * poses and velocities with `dt: 0`, not the cast origin or swept poses.
-   * A compound source permits a hit if any part permits the pair. The source
-   * must have live colliders in this world. Layer and sensor options still apply.
+   * `solidFor` reports only what that collider would collide with at the
+   * current poses: it skips the collider's own entity and every sensor, and
+   * keeps a collider only when their collision groups admit each other and
+   * both contact filters accept the pair, including one-way and drop-through
+   * rules. Filters read current body poses and velocities with `dt: 0`, not
+   * the cast origin or swept poses. A compound source keeps a hit when any of
+   * its parts would collide with it. The source must have live colliders in
+   * this world. `filterGroups` and `excludeEntity` narrow the result further.
    * Without `solidFor`, contact filters do not affect the cast.
    *
    * Reports every live collider at its current pose, running a
@@ -1298,48 +1298,25 @@ export class PhysicsWorld {
     origin: Vec2Like,
     direction: Vec2Like,
     maxDistance: number,
-    options?: {
+    options?: QueryOptions & {
       rotation?: number;
       /** Stop at an initial overlap (default true). False allows escape. */
       stopAtPenetration?: boolean;
-      /** Apply both sides' contact filters at current poses (dt 0); exclude this entity. */
-      solidFor?: ColliderComponent;
-      filterGroups?: number;
-      excludeEntity?: Entity;
-      sensors?: QuerySensorMode;
     },
   ): RaycastHit | null {
-    const solidFor = options?.solidFor;
-    if (
-      solidFor &&
-      (solidFor._colliderHandles.length === 0 ||
-        solidFor._colliderHandles.some(
-          (handle) => this._colliderComponents.get(handle) !== solidFor,
-        ))
-    )
-      throw new Error(
-        "PhysicsWorld.castShape: solidFor must have live colliders in this world",
-      );
     const length = Math.hypot(direction.x, direction.y);
     if (length === 0) {
       throw new Error("castShape direction must be a non-zero vector");
     }
     assertColliderShape("PhysicsWorld.castShape", shape);
+    const sources = this._solidSources("PhysicsWorld.castShape", options);
     this._refreshQueries();
-    const captured = new Set<number>();
-    const capture = (handle: number) => {
-      if (captured.has(handle)) return;
-      this._captureColliderState(handle);
-      captured.add(handle);
-    };
-    if (solidFor && this._contactFiltered.size > 0)
-      this.world.propagateModifiedBodyPositionsToColliders();
+    const predicate = this._queryPredicate(options, sources);
 
     const desc = this.buildColliderDesc(shape);
     // buildColliderDesc leaves the capsule axis:"x" 90° turn to the caller.
     const axisRotation =
       shape.type === "capsule" && shape.axis === "x" ? Math.PI / 2 : 0;
-    const exclude = options?.excludeEntity;
 
     // With a unit direction as the sweep velocity, Rapier's time of impact is
     // the distance travelled in meters.
@@ -1356,31 +1333,7 @@ export class PhysicsWorld {
       options?.filterGroups,
       undefined,
       undefined,
-      exclude || solidFor
-        ? (collider) => {
-            const entity = this.colliderMap.get(collider.handle);
-            if (
-              (exclude && entity === exclude) ||
-              (solidFor && entity === solidFor.entity)
-            )
-              return false;
-            return (
-              !solidFor ||
-              solidFor._colliderHandles.some((handle) => {
-                if (
-                  !this._contactFiltered.has(handle) &&
-                  !this._contactFiltered.has(collider.handle)
-                )
-                  return true;
-                capture(handle);
-                capture(collider.handle);
-                return (
-                  this._filterContactPair(handle, collider.handle, 0) !== null
-                );
-              })
-            );
-          }
-        : undefined,
+      predicate,
     );
 
     if (!hit) return null;
@@ -1412,11 +1365,7 @@ export class PhysicsWorld {
   queryRadius(
     center: Vec2Like,
     radius: number,
-    options?: {
-      filterGroups?: number;
-      excludeEntity?: Entity;
-      sensors?: QuerySensorMode;
-    },
+    options?: QueryOptions,
   ): Entity[] {
     assertPositiveNumber("PhysicsWorld.queryRadius", "radius", radius);
     return this.queryShape({ type: "circle", radius }, center, options);
@@ -1449,26 +1398,8 @@ export class PhysicsWorld {
     const collider = this.getCollider(handle);
     const other = this.getCollider(otherHandle);
     if (!collider || !other) return undefined;
-    if (solidOnly) {
-      if (collider.isSensor() || other.isSensor()) return undefined;
-      const groups = collider.collisionGroups();
-      const otherGroups = other.collisionGroups();
-      if (
-        ((groups >>> 16) & otherGroups) === 0 ||
-        ((otherGroups >>> 16) & groups) === 0
-      )
-        return undefined;
-      this.world.propagateModifiedBodyPositionsToColliders();
-      if (
-        this._contactFiltered.has(handle) ||
-        this._contactFiltered.has(otherHandle)
-      ) {
-        this._captureColliderState(handle);
-        this._captureColliderState(otherHandle);
-        if (this._filterContactPair(handle, otherHandle, 0) === null)
-          return undefined;
-      }
-    }
+    if (solidOnly && !this._collidesNow(collider, other, this._poseCapture()))
+      return undefined;
     const contact = collider.contactCollider(other, this.toMeters(prediction));
     if (!contact) return undefined;
     return {
@@ -1489,8 +1420,10 @@ export class PhysicsWorld {
    * Return all entities with a collider overlapping `shape` placed at
    * `position` (pixels, `rotation` in radians). `excludeEntity` skips every
    * collider of that entity — pass the querying entity for "what's around
-   * me" queries. Sensors are skipped unless `sensors` says otherwise. A
-   * shape with a dimension that is not finite and above 0 throws.
+   * me" queries. Sensors are skipped unless `sensors` says otherwise.
+   * `solidFor` reports only what that collider would collide with (see
+   * `castShape`). A shape with a dimension that is not finite and above 0
+   * throws.
    *
    * Reports every live collider at its current pose, running a
    * zero-duration step first when colliders changed since the last step —
@@ -1499,17 +1432,13 @@ export class PhysicsWorld {
   queryShape(
     shape: ColliderShape,
     position: Vec2Like,
-    options?: {
-      rotation?: number;
-      filterGroups?: number;
-      excludeEntity?: Entity;
-      sensors?: QuerySensorMode;
-    },
+    options?: QueryOptions & { rotation?: number },
   ): Entity[] {
     assertColliderShape("PhysicsWorld.queryShape", shape);
+    const sources = this._solidSources("PhysicsWorld.queryShape", options);
     this._refreshQueries();
+    const predicate = this._queryPredicate(options, sources);
     const desc = this.buildColliderDesc(shape);
-    const exclude = options?.excludeEntity;
     const result: Entity[] = [];
     const seen = new Set<Entity>();
     // buildColliderDesc leaves the capsule axis:"x" 90° turn to the caller.
@@ -1521,7 +1450,7 @@ export class PhysicsWorld {
       desc.shape,
       (collider) => {
         const entity = this.colliderMap.get(collider.handle);
-        if (entity && entity !== exclude && !seen.has(entity)) {
+        if (entity && !seen.has(entity)) {
           seen.add(entity);
           result.push(entity);
         }
@@ -1529,8 +1458,111 @@ export class PhysicsWorld {
       },
       this._queryFlags(options?.sensors),
       options?.filterGroups,
+      undefined,
+      undefined,
+      predicate,
     );
     return result;
+  }
+
+  /**
+   * The live colliders of `options.solidFor`, or `undefined` without it.
+   * Validates the option before the query changes anything.
+   */
+  private _solidSources(
+    context: string,
+    options: QueryOptions | undefined,
+  ): RAPIER.Collider[] | undefined {
+    const solidFor = options?.solidFor;
+    if (!solidFor) return undefined;
+    if (options.sensors === "only")
+      throw new Error(
+        `${context}: solidFor skips every sensor, so sensors: "only" can match nothing`,
+      );
+    const sources: RAPIER.Collider[] = [];
+    for (const handle of solidFor._colliderHandles) {
+      const source =
+        this._colliderComponents.get(handle) === solidFor
+          ? this.getCollider(handle)
+          : undefined;
+      if (!source)
+        throw new Error(
+          `${context}: solidFor must have live colliders in this world`,
+        );
+      sources.push(source);
+    }
+    if (sources.length === 0)
+      throw new Error(
+        `${context}: solidFor must have live colliders in this world`,
+      );
+    return sources;
+  }
+
+  /**
+   * The Rapier predicate for `excludeEntity` and `solidFor`, or `undefined`
+   * when neither is set. `sources` comes from `_solidSources`.
+   */
+  private _queryPredicate(
+    options: QueryOptions | undefined,
+    sources: RAPIER.Collider[] | undefined,
+  ): ((collider: RAPIER.Collider) => boolean) | undefined {
+    const exclude = options?.excludeEntity;
+    const solidFor = options?.solidFor;
+    if (!solidFor || !sources)
+      return exclude
+        ? (collider) => this.colliderMap.get(collider.handle) !== exclude
+        : undefined;
+    const capture = this._poseCapture();
+    return (collider) => {
+      const entity = this.colliderMap.get(collider.handle);
+      if (entity === exclude || entity === solidFor.entity) return false;
+      return sources.some((source) =>
+        this._collidesNow(source, collider, capture),
+      );
+    };
+  }
+
+  /**
+   * Whether two live colliders would collide at their current poses: neither
+   * is a sensor, their collision groups admit each other, and both contact
+   * filters accept the pair with `dt: 0`. `capture` refreshes a collider's
+   * filter snapshot once per query.
+   */
+  private _collidesNow(
+    a: RAPIER.Collider,
+    b: RAPIER.Collider,
+    capture: (handle: number) => void,
+  ): boolean {
+    if (a.isSensor() || b.isSensor()) return false;
+    const groupsA = a.collisionGroups();
+    const groupsB = b.collisionGroups();
+    if (((groupsA >>> 16) & groupsB) === 0) return false;
+    if (((groupsB >>> 16) & groupsA) === 0) return false;
+    if (
+      !this._contactFiltered.has(a.handle) &&
+      !this._contactFiltered.has(b.handle)
+    )
+      return true;
+    capture(a.handle);
+    capture(b.handle);
+    return this._filterContactPair(a.handle, b.handle, 0) !== null;
+  }
+
+  /**
+   * A per-query snapshot refresher for contact filters run outside a step.
+   * Teleports reach collider poses before the query starts, because a Rapier
+   * query predicate cannot mutate the world. Each handle is captured at most
+   * once.
+   */
+  private _poseCapture(): (handle: number) => void {
+    if (this._contactFiltered.size > 0)
+      this.world.propagateModifiedBodyPositionsToColliders();
+    const captured = new Set<number>();
+    return (handle) => {
+      if (captured.has(handle)) return;
+      captured.add(handle);
+      this._captureColliderState(handle);
+    };
   }
 
   /**
