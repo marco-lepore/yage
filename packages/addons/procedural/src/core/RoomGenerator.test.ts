@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CatalogGenerator } from "./CatalogGenerator.js";
 import { RoomGenerator, validateRoomLayout } from "./RoomGenerator.js";
 import { isRoomLayoutWalkable, roomOpenings } from "./layout.js";
 import { crossRoom, roomDefinition } from "./test-fixtures.js";
@@ -257,20 +258,24 @@ describe("RoomGenerator", () => {
           { seed: 0 },
         ),
     ).toThrow("at most 1, but at least 4 regions must match");
-    const impossible = new RoomGenerator(
-      {
-        ...roomDefinition(),
-        rules: { forbiddenConnections: [{ from: {}, to: {} }] },
-      },
-      { seed: 0 },
-    );
+    expect(
+      () =>
+        new RoomGenerator(
+          {
+            ...roomDefinition(),
+            rules: { forbiddenConnections: [{ from: {}, to: {} }] },
+          },
+          { seed: 0 },
+        ),
+    ).toThrow("no pair of templates the forbidden-connection rules allow");
+    // Bounds that hold only the start room: every neighbour falls outside.
+    const impossible = new RoomGenerator(roomDefinition(), {
+      seed: 0,
+      bounds: { x: 0, y: 0, ...crossRoom.size },
+    });
     expect(impossible.generate()).toBeNull();
     expect(impossible.status).toBe("exhausted");
-    expect(impossible.inspect().rejections["catalog-rule"]).toBeGreaterThan(0);
-    expect(
-      impossible.inspect().diagnostics.find((d) => d.code === "catalog-rule")
-        ?.message,
-    ).toMatch(/breaks the forbidden connection \{\} to \{\} on ".+"\.$/);
+    expect(impossible.inspect().rejections["bounds"]).toBeGreaterThan(0);
     const cancelled = new RoomGenerator(roomDefinition(), { seed: 0 });
     cancelled.step(1);
     cancelled.cancel();
@@ -376,5 +381,32 @@ describe("RoomGenerator", () => {
     ];
     for (const [definition, message] of invalid)
       expect(() => new RoomGenerator(definition, { seed: 0 })).toThrow(message);
+  });
+  it("names the catalog rule that rejected candidates during the search", () => {
+    // Every connection has an allowed template pair, so the constructor
+    // accepts the rules; only the search finds that the count rule needs the
+    // pair the forbidden-connection rule rejects.
+    const definition: RoomDefinition = {
+      ...roomDefinition(),
+      rules: {
+        counts: [{ match: { templateId: "other" }, min: 4 }],
+        forbiddenConnections: [
+          { from: { templateId: "other" }, to: { templateId: "other" } },
+        ],
+      },
+    };
+    const rooms = new RoomGenerator(definition, { seed: 0 });
+    const catalog = new CatalogGenerator(definition, { seed: 0 });
+    for (const job of [rooms, catalog]) {
+      expect(job.generate()).toBeNull();
+      expect(job.status).toBe("exhausted");
+      expect(
+        job.inspect().diagnostics.find((d) => d.code === "catalog-rule")
+          ?.message,
+      ).toMatch(
+        /^A candidate for "\w+" breaks the forbidden connection \{"templateId":"other"\} to \{"templateId":"other"\} on "\w+"\.$/,
+      );
+    }
+    expect(rooms.inspect().rejections["catalog-rule"]).toBeGreaterThan(0);
   });
 });

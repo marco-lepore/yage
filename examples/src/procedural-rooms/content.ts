@@ -38,7 +38,8 @@ export class Beacon extends Entity {
 }
 
 /**
- * Prepared content keyed by template id, as `instantiateRoomLayout` expects.
+ * Prepared content keyed by template id. `MapState` hands each room its
+ * template's level through `instantiateRoomLayout`'s `levelFor`.
  * Positions are room-local pixels; the loader adds each room's offset.
  */
 export function prepareRoomContent(): Readonly<Record<string, PreparedLevel>> {

@@ -101,6 +101,8 @@ a region nor `keys` provides, and regions that key collection never reaches.
 `inspectProgression(graph, { keys?, collectKeys? })` returns
 `{ reachable, keys, unreachable }`. `collectKeys` defaults to true; set it
 false to test a fixed key set. It throws for a malformed graph.
+Catalog and room generators check only graph structure (ids and endpoints),
+not progression; validate an authored graph's progression yourself.
 
 ## Catalogs and variants
 
@@ -267,9 +269,10 @@ the operation budget, default 20,000.
 Region graph, catalog and room searches restart in a new random order when
 one attempt runs long, doubling the attempt length each time; the budget
 diagnostic counts the restarts. Caves never restart.
-A count rule no selection can meet throws in the constructor: `min` above the
-regions with a matching candidate, or `max` below the regions whose every
-candidate matches. A contradiction the search meets only after placing most
+Rules no selection can meet throw in the constructor: a count rule with `min`
+above the regions with a matching candidate or `max` below the regions whose
+every candidate matches, and a connection whose every template pair a
+forbidden-connection rule rejects. A contradiction the search meets only after placing most
 of the map usually ends `budget-exceeded`.
 A valid graph can still be impossible to place with a given catalog or bounds.
 Constructors validate and copy their inputs. Chunk size never changes the
@@ -359,13 +362,13 @@ and doors consistent with the layout.
 ```ts
 import type { Scene } from "@yagejs/core";
 import type { LevelInstance, PreparedLevel } from "@yagejs/level";
-import type { RoomLayout } from "@yagejs-addons/procedural";
+import type { RoomLayout, RoomPlacement } from "@yagejs-addons/procedural";
 
 declare function instantiateRoomLayout(
   scene: Scene,
   layout: RoomLayout,
   options: {
-    readonly levels: Readonly<Record<string, PreparedLevel>>;
+    readonly levelFor: (room: RoomPlacement) => PreparedLevel | undefined;
     readonly namespace: string;
     readonly tileWidth: number;
     readonly tileHeight: number;
@@ -373,15 +376,18 @@ declare function instantiateRoomLayout(
 ): readonly LevelInstance[];
 ```
 
-From `@yagejs-addons/procedural/level`. Loads `levels[room.templateId]` for
-every room at `room.x * tileWidth, room.y * tileHeight`, with namespace
-`<namespace>:<index>`. Returns one `LevelInstance` per room, in layout order;
-the game disposes them. It throws before loading anything when a template has
-no prepared level, a prepared level has diagnostics, the namespace is empty,
-or a tile size is not positive. When a room fails to load,
-it throws `RoomLayoutLoadError` with `roomId`, `cause` and the `instances`
-already loaded, which stay in the scene. Walls, doors and locks are game code;
-variant-specific content reads `room.metadata`.
+From `@yagejs-addons/procedural/level`. Loads `levelFor(room)` for every room
+at `room.x * tileWidth, room.y * tileHeight`, with namespace
+`<namespace>:<index>`; pick by `room.templateId`, `room.variantId` or
+metadata. Returns one `LevelInstance` per room, in layout order; the game
+disposes them. Needs `@yagejs/level` 0.12.1 or later. It throws before
+loading anything when `levelFor` returns no level, a prepared level has
+diagnostics, the namespace is empty or contains `/`, a room's scene key (from
+`levelSceneKeys` in `@yagejs/level`) is already taken, or a tile size is not
+positive. Any failure while a room loads (entity `setup`, parameter decoding,
+a key an earlier room's entity spawned) throws `RoomLayoutLoadError` with
+`roomId`, `cause` and the `instances` already loaded, which stay in the scene.
+Walls, doors and locks are game code.
 
 ## Saving
 

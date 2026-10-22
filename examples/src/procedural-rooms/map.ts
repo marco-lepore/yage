@@ -20,7 +20,7 @@ import type {
 import { instantiateRoomLayout } from "@yagejs-addons/procedural/level";
 import { KeyCollected, MapChanged, TILE_SCALE } from "./constants.js";
 import { prepareRoomContent } from "./content.js";
-import { dungeonDefinition, dungeonGraph, IMPOSSIBLE_RULES } from "./rooms.js";
+import { dungeonDefinition, dungeonGraph, IMPOSSIBLE_BOUNDS } from "./rooms.js";
 
 export type MapMode =
   | "dungeon"
@@ -177,11 +177,7 @@ export class MapState extends Component {
         maxSteps: 100_000,
       });
     } else {
-      const graph = dungeonGraph(seed);
-      this.definition =
-        mode === "impossible"
-          ? dungeonDefinition(graph, IMPOSSIBLE_RULES)
-          : dungeonDefinition(graph);
+      this.definition = dungeonDefinition(dungeonGraph(seed));
       this.job =
         mode === "catalog"
           ? new CatalogGenerator(this.definition, { seed })
@@ -189,6 +185,7 @@ export class MapState extends Component {
               seed,
               // Too small for fifteen rooms: the search stops without an answer.
               maxSteps: mode === "small-budget" ? 10 : 200_000,
+              ...(mode === "impossible" ? { bounds: IMPOSSIBLE_BOUNDS } : {}),
             });
     }
     this.entity.add(new GenerationController(this.job, 1000));
@@ -203,7 +200,7 @@ export class MapState extends Component {
       this.layout = job.result;
       if (this.layout)
         this.instances = instantiateRoomLayout(this.scene, this.layout, {
-          levels: this.content,
+          levelFor: (room) => this.content[room.templateId],
           namespace: `rooms-${++this.loads}`,
           ...TILE_SCALE,
         });

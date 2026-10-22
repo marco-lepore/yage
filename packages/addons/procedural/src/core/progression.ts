@@ -1,7 +1,8 @@
 import { fail } from "./internal.js";
 import type { Progression, ProgressionOptions, RegionGraph } from "./types.js";
 
-function structureErrors(graph: RegionGraph): string[] {
+/** @internal Duplicate ids, an unknown start, and connections with a bad endpoint. */
+export function graphStructureErrors(graph: RegionGraph): string[] {
   const errors: string[] = [];
   const regions = new Set<string>();
   for (const region of graph.regions) {
@@ -31,7 +32,7 @@ export function inspectProgression(
   graph: RegionGraph,
   options: ProgressionOptions = {},
 ): Progression {
-  const errors = structureErrors(graph);
+  const errors = graphStructureErrors(graph);
   if (errors.length) fail(errors.join(" "));
   const owned = new Set(options.keys ?? []);
   const collect = options.collectKeys ?? true;
@@ -81,7 +82,7 @@ export function validateRegionGraph(
   graph: RegionGraph,
   options: ProgressionOptions = {},
 ): readonly string[] {
-  const errors = structureErrors(graph);
+  const errors = graphStructureErrors(graph);
   if (errors.length) return errors;
   const keys = new Set([
     ...(options.keys ?? []),

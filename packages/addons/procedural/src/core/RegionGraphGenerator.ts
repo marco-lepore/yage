@@ -50,9 +50,6 @@ export class RegionGraphGenerator extends GenerationSearch<RegionGraph> {
       if (existing > count.max)
         fail(`${existing} named regions exceed ${label} max ${count.max}`);
     }
-    for (const pair of requirements.forbiddenConnections ?? [])
-      if (pair.length !== 2)
-        fail("RegionRequirements forbiddenConnections needs pairs of kinds");
     // Fill regions make up whatever the other kinds leave short of
     // minRegions, so their max can rule out every draw.
     const fill = requirements.counts?.find(

@@ -6,6 +6,7 @@ import type {
   RoomConnectionArea,
   RoomDefinition,
   RoomTemplate,
+  TileBounds,
 } from "@yagejs-addons/procedural";
 import { COLORS } from "./constants.js";
 
@@ -150,12 +151,10 @@ export const RULES: CatalogRules = {
   ],
 };
 /**
- * Forbids the entrance from connecting to any room. Every map connects the
- * entrance to something, so the search tries every candidate and fails.
+ * Bounds that hold the entrance room and nothing else. Every other room falls
+ * outside, so the search tries every candidate and fails.
  */
-export const IMPOSSIBLE_RULES: CatalogRules = {
-  forbiddenConnections: [{ from: { kind: "entrance" }, to: {} }],
-};
+export const IMPOSSIBLE_BOUNDS: TileBounds = { x: 0, y: 0, ...SMALL };
 
 /** The region graph for one seed. Graph generation is fast, so it runs in one call. */
 export function dungeonGraph(seed: number): RegionGraph {
@@ -165,9 +164,6 @@ export function dungeonGraph(seed: number): RegionGraph {
   return graph;
 }
 
-export function dungeonDefinition(
-  graph: RegionGraph,
-  rules: CatalogRules = RULES,
-): RoomDefinition {
-  return { graph, templates: TEMPLATES, rules };
+export function dungeonDefinition(graph: RegionGraph): RoomDefinition {
+  return { graph, templates: TEMPLATES, rules: RULES };
 }

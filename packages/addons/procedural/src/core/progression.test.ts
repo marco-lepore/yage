@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import { CatalogGenerator } from "./CatalogGenerator.js";
 import { RegionGraphGenerator } from "./RegionGraphGenerator.js";
 import { RoomGenerator } from "./RoomGenerator.js";
 import { inspectProgression, validateRegionGraph } from "./progression.js";
@@ -218,6 +219,18 @@ it("accepts keys the player holds before the start region", () => {
     "a",
     "b",
   ]);
+  // Catalog generation checks structure only; progression is the game's call.
+  expect(
+    new CatalogGenerator(
+      {
+        graph,
+        templates: [
+          { id: "room", kinds: ["room"], connections: [{ id: "d" }] },
+        ],
+      },
+      { seed: 0 },
+    ).generate()?.connections,
+  ).toHaveLength(1);
 });
 it("draws new counts when a ranged draw cannot be completed", () => {
   // Three of the four draws of "x" leave an x region with no allowed

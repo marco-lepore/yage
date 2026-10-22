@@ -128,8 +128,6 @@ export function validateRoomGeometry(
   assertInteger(`${label} width`, width, 3);
   assertInteger(`${label} height`, height, 3);
   for (const area of areas) {
-    if (!Object.hasOwn(direction, area.side))
-      fail(`${label} connection "${area.id}" has invalid side "${area.side}"`);
     const extent =
       area.side === "north" || area.side === "south" ? width : height;
     const openingWidth = area.width ?? 1;

@@ -1,7 +1,7 @@
 import type { RandomService } from "@yagejs/core";
 import { validateRoomGeometry } from "./geometry.js";
 import { assertInteger, assertPositive, fail } from "./internal.js";
-import { validateRegionGraph } from "./progression.js";
+import { graphStructureErrors } from "./progression.js";
 import type {
   CatalogDefinition,
   CatalogLink,
@@ -176,15 +176,24 @@ export class CatalogCandidates {
       const a = byId.get(edge.from),
         b = byId.get(edge.to);
       if (!a || !b) continue;
-      const rule = rules?.forbiddenConnections?.find(
-        (rule) =>
-          (matches(rule.from, a) && matches(rule.to, b)) ||
-          (matches(rule.to, a) && matches(rule.from, b)),
-      );
+      const rule = this.forbidding(a, b);
       if (rule)
         return `forbidden connection ${JSON.stringify(rule.from)} to ${JSON.stringify(rule.to)} on "${edge.id}"`;
     }
     return null;
+  }
+  /** The forbidden-connection rule a direct link between `a` and `b` breaks, in either direction. */
+  forbidding(
+    a: SelectedRegion,
+    b: SelectedRegion,
+  ):
+    | { readonly from: CatalogSelector; readonly to: CatalogSelector }
+    | undefined {
+    return this.definition.rules?.forbiddenConnections?.find(
+      (rule) =>
+        (matches(rule.from, a) && matches(rule.to, b)) ||
+        (matches(rule.to, a) && matches(rule.from, b)),
+    );
   }
 }
 
@@ -213,7 +222,9 @@ export function validateCatalogDefinition(
   definition: CatalogDefinition,
   rooms: boolean,
 ): CatalogCandidates {
-  const graphErrors = validateRegionGraph(definition.graph);
+  // Progression is the game's to check with validateRegionGraph: only the
+  // game knows which keys the player holds at the start.
+  const graphErrors = graphStructureErrors(definition.graph);
   if (graphErrors.length) fail(graphErrors.join(" "));
   const regionIds = new Set(definition.graph.regions.map((r) => r.id));
   const templateIds = new Set<string>();
@@ -317,6 +328,19 @@ export function validateCatalogDefinition(
       );
   const broken = candidates.brokenRule([], false);
   if (broken) fail(`no selection can meet the ${broken}`);
+  for (const edge of definition.graph.connections)
+    if (
+      !candidates
+        .forRegion(edge.from)
+        .some((a) =>
+          candidates
+            .forRegion(edge.to)
+            .some((b) => !candidates.forbidding(a.selected, b.selected)),
+        )
+    )
+      fail(
+        `connection "${edge.id}" has no pair of templates the forbidden-connection rules allow`,
+      );
   return candidates;
 }
 

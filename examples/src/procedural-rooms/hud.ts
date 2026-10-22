@@ -9,7 +9,7 @@ const TITLES: Record<MapMode, string> = {
   catalog: "CATALOG MAP",
   cave: "CAVE",
   "small-budget": "SMALL BUDGET",
-  impossible: "IMPOSSIBLE RULE",
+  impossible: "IMPOSSIBLE BOUNDS",
 };
 const DESCRIPTIONS: Record<MapMode, string> = {
   dungeon:
@@ -18,10 +18,10 @@ const DESCRIPTIONS: Record<MapMode, string> = {
     "The same graph and rules with nothing placed: the game decides where each region goes",
   cave: "A cellular cave: one connected floor area, no room catalog",
   "small-budget": "A 10-step budget for fifteen rooms",
-  impossible: "The rules forbid the entrance from connecting to any room",
+  impossible: "Bounds that hold only the entrance room, so no other room fits",
 };
 const CONTROLS = [
-  "1 dungeon · 2 catalog map · 3 cave · R new seed · B small budget · U impossible rule",
+  "1 dungeon · 2 catalog map · 3 cave · R new seed · B small budget · U impossible bounds",
   "TAB next target · SPACE walk there · ARROWS step",
 ].join("\n");
 
@@ -69,13 +69,9 @@ export class HudText extends Component {
     const { layout, selection, cave, status, diagnostics } = this.map;
     if (status !== "running" && status !== "succeeded") {
       // The last diagnostic says why the job stopped. An exhausted search
-      // also names the catalog rule that rejected the candidates.
-      const rule =
-        status === "exhausted"
-          ? diagnostics.find((d) => d.code === "catalog-rule")
-          : undefined;
-      return [rule, diagnostics.at(-1)]
-        .flatMap((d) => (d ? [d.message] : []))
+      // also keeps an example of each reason it rejected candidates.
+      return (status === "exhausted" ? diagnostics : diagnostics.slice(-1))
+        .map((d) => d.message)
         .join("\n");
     }
     const index = this.explorer.targetIndex;

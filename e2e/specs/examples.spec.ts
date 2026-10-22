@@ -1360,16 +1360,16 @@ test.describe("Examples", () => {
     // Every seed gives a different layout.
     expect(layouts.size).toBe(4);
 
-    // A budget too small for fifteen rooms stops without an answer, and an
-    // impossible rule exhausts the search.
+    // A budget too small for fifteen rooms stops without an answer, and
+    // bounds that hold only the entrance room exhaust the search.
     const budget = await press("KeyB");
     expect(budget.status).toBe("budget-exceeded");
     expect(budget.diagnostics.at(-1)?.code).toBe("budget");
     const impossible = await press("KeyU");
     expect(impossible.status).toBe("exhausted");
     expect(
-      impossible.diagnostics.find((d) => d.code === "catalog-rule")?.message,
-    ).toContain('breaks the forbidden connection {"kind":"entrance"} to {}');
+      impossible.diagnostics.find((d) => d.code === "bounds")?.message,
+    ).toContain("does not fit the bounds");
     expect(await press("KeyR")).toMatchObject({
       mode: "dungeon",
       status: "succeeded",

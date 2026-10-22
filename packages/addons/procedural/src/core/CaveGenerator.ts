@@ -26,16 +26,24 @@ export class CaveGenerator extends GenerationSearch<TileMap> {
   protected *run(): Generator<void, TileMap> {
     const { width, height } = this.options;
     const wallProbability = this.options.wallProbability ?? 0.45;
-    let cells = Array.from({ length: height }, () =>
-      Array<string>(width).fill("#"),
-    );
+    // Rows are allocated and copied one per operation, so a large cave
+    // spreads its work across steps like the rest of the generation.
+    let cells: string[][] = [];
+    for (let y = 0; y < height; y++) {
+      cells.push(Array<string>(width).fill("#"));
+      yield;
+    }
     for (let y = 1; y < height - 1; y++)
       for (let x = 1; x < width - 1; x++) {
         cells[y]![x] = this.random.float() < wallProbability ? "#" : ".";
         yield;
       }
     for (let pass = 0; pass < (this.options.iterations ?? 4); pass++) {
-      const next = cells.map((row) => [...row]);
+      const next: string[][] = [];
+      for (const row of cells) {
+        next.push([...row]);
+        yield;
+      }
       for (let y = 1; y < height - 1; y++)
         for (let x = 1; x < width - 1; x++) {
           let walls = 0;

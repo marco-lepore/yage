@@ -6,11 +6,17 @@ import {
   defineLevelProject,
   prepareLevel,
 } from "@yagejs/level";
-import type { LevelDocument } from "@yagejs/level";
+import type { LevelDocument, PreparedLevel } from "@yagejs/level";
 import { RoomGenerator } from "./core/RoomGenerator.js";
-import { roomDefinition } from "./core/test-fixtures.js";
-import type { RoomDefinition } from "./core/types.js";
+import { crossRoom, roomDefinition } from "./core/test-fixtures.js";
+import type { RoomDefinition, RoomPlacement } from "./core/types.js";
 import { instantiateRoomLayout, RoomLayoutLoadError } from "./level.js";
+/** Picks each room's level by template id. */
+function byTemplate(
+  levels: Record<string, PreparedLevel>,
+): (room: RoomPlacement) => PreparedLevel | undefined {
+  return (room) => levels[room.templateId];
+}
 class Marker extends Entity {
   static readonly level = defineLevelEntity({ id: "marker", version: 1 });
   setup(): void {
@@ -48,7 +54,7 @@ it("loads existing authored levels at room offsets and preserves per-instance ke
   }).generate()!;
   const { scene } = createMockScene();
   const options = {
-    levels: { cross: prepared, other: prepared },
+    levelFor: byTemplate({ cross: prepared, other: prepared }),
     namespace: "dungeon",
     tileWidth: 16,
     tileHeight: 32,
@@ -56,9 +62,9 @@ it("loads existing authored levels at room offsets and preserves per-instance ke
   expect(() =>
     instantiateRoomLayout(scene, layout, {
       ...options,
-      levels: { cross: prepared },
+      levelFor: byTemplate({ cross: prepared }),
     }),
-  ).toThrow('no prepared level for template "other"');
+  ).toThrow(/no prepared level for room "\w+" \(template "other"\)/);
   expect(scene.findByKey("dungeon:0/marker")).toBeUndefined();
   const refused = prepareLevel(
     {
@@ -71,9 +77,11 @@ it("loads existing authored levels at room offsets and preserves per-instance ke
   expect(() =>
     instantiateRoomLayout(scene, layout, {
       ...options,
-      levels: { cross: prepared, other: refused },
+      levelFor: byTemplate({ cross: prepared, other: refused }),
     }),
-  ).toThrow('prepared level for template "other" has');
+  ).toThrow(
+    /prepared level for room "\w+" \(template "other"\) has 1 diagnostics/,
+  );
   expect(scene.findByKey("dungeon:0/marker")).toBeUndefined();
   expect(() =>
     instantiateRoomLayout(scene, layout, { ...options, namespace: "" }),
@@ -100,7 +108,7 @@ it("loads existing authored levels at room offsets and preserves per-instance ke
   ).toBe(true);
 });
 
-it("stops at a room whose scene key is taken and hands back the rooms loaded before it", () => {
+it("loads nothing when a later room's scene key is taken", () => {
   const catalog = buildLevelCatalog(defineLevelProject({ entities: [Marker] }));
   if (!catalog.ok) throw new Error("test catalog failed");
   const prepared = prepareLevel(
@@ -133,27 +141,26 @@ it("stops at a room whose scene key is taken and hands back the rooms loaded bef
   }).generate()!;
   const { scene } = createMockScene();
   const existing = scene.spawn(Marker, { key: "dungeon:1/marker" });
-  let failure: RoomLayoutLoadError | undefined;
-  try {
+  expect(() =>
     instantiateRoomLayout(scene, layout, {
-      levels: { cross: prepared, other: prepared },
+      levelFor: () => prepared,
       namespace: "dungeon",
       tileWidth: 16,
       tileHeight: 32,
-    });
-  } catch (error) {
-    if (!(error instanceof RoomLayoutLoadError)) throw error;
-    failure = error;
-  }
-  expect(failure?.roomId).toBe(layout.regions[1]!.id);
-  expect(String((failure?.cause as Error).message)).toContain(
-    "dungeon:1/marker",
-  );
-  expect(failure?.instances).toHaveLength(1);
-  expect(scene.findByKey("dungeon:0/marker")).toBe(
-    failure!.instances[0]!.get("marker"),
-  );
+    }),
+  ).toThrow(`scene key "dungeon:1/marker" for room "${layout.regions[1]!.id}"`);
+  expect(scene.findByKey("dungeon:0/marker")).toBeUndefined();
   expect(scene.findByKey("dungeon:1/marker")).toBe(existing);
+  // A namespace the level loader refuses also stops the load up front.
+  expect(() =>
+    instantiateRoomLayout(scene, layout, {
+      levelFor: () => prepared,
+      namespace: "a/b",
+      tileWidth: 16,
+      tileHeight: 32,
+    }),
+  ).toThrow("namespace");
+  expect(scene.findByKey("a/b:0/marker")).toBeUndefined();
 });
 
 it("preserves earlier handles and stops loading when a room's setup throws", () => {
@@ -213,10 +220,10 @@ it("preserves earlier handles and stops loading when a room's setup throws", () 
   let failure: RoomLayoutLoadError | undefined;
   try {
     instantiateRoomLayout(scene, layout, {
-      levels: {
+      levelFor: byTemplate({
         cross: prepareLevel(makeDocument("marker"), catalog.catalog),
         other: prepareLevel(makeDocument("broken"), catalog.catalog),
-      },
+      }),
       namespace: "dungeon",
       tileWidth: 16,
       tileHeight: 32,
@@ -233,4 +240,55 @@ it("preserves earlier handles and stops loading when a room's setup throws", () 
   const prior = failure!.instances[0]!;
   prior.dispose();
   expect(prior.entities).toHaveLength(0);
+});
+
+it("loads each variant's own level through levelFor", () => {
+  const catalog = buildLevelCatalog(defineLevelProject({ entities: [Marker] }));
+  if (!catalog.ok) throw new Error("test catalog failed");
+  const level = (id: string): PreparedLevel =>
+    prepareLevel(
+      {
+        format: "yage-level",
+        version: 1,
+        id,
+        metadata: {},
+        extensions: {},
+        entities: [],
+      },
+      catalog.catalog,
+    );
+  const definition: RoomDefinition = {
+    ...roomDefinition(),
+    templates: [
+      {
+        ...crossRoom,
+        variants: [
+          { id: "lit", regionIds: ["start", "goal"] },
+          { id: "dark", regionIds: ["hall", "shop"] },
+        ],
+      },
+    ],
+  };
+  const layout = new RoomGenerator(definition, { seed: 0 }).generate()!;
+  const levels: Record<string, PreparedLevel> = {
+    lit: level("lit"),
+    dark: level("dark"),
+  };
+  const { scene } = createMockScene();
+  const options = { namespace: "dungeon", tileWidth: 16, tileHeight: 16 };
+  const instances = instantiateRoomLayout(scene, layout, {
+    ...options,
+    levelFor: (room) => levels[room.variantId!],
+  });
+  expect(instances.map((instance) => instance.id)).toEqual(
+    layout.regions.map((room) => room.variantId),
+  );
+  expect(() =>
+    instantiateRoomLayout(scene, layout, {
+      ...options,
+      namespace: "other",
+      levelFor: (room) =>
+        room.variantId === "lit" ? levels["lit"] : undefined,
+    }),
+  ).toThrow('(template "cross", variant "dark")');
 });

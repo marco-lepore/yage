@@ -123,6 +123,8 @@ before entering the start region. `inspectProgression(graph)` returns the reacha
 collected and the unreachable regions, collecting keys until no further
 region opens. `inspectProgression(graph, { keys, collectKeys: false })`
 tests exactly the keys you pass. Both work on any graph, generated or not.
+The catalog and room generators check only a graph's structure, not its
+progression, so call `validateRegionGraph` yourself for an authored graph.
 
 ## Author room templates
 
@@ -309,9 +311,11 @@ sees the job finish. `controller.generator` is the job, and
   have a result. Raise `maxSteps` or simplify the input.
 - `cancelled`: no result. Create a new job to retry.
 
-A count rule that no selection can meet throws in the constructor: a
-minimum larger than the number of regions with a matching candidate, or a
-maximum smaller than the number of regions whose every candidate matches.
+Rules that no selection can meet throw in the constructor: a count rule
+whose minimum is larger than the number of regions with a matching
+candidate, a count rule whose maximum is smaller than the number of regions
+whose every candidate matches, and a connection whose every pair of
+templates a forbidden-connection rule rejects.
 
 A search can lose most of its budget to one early choice that leaves no
 room for the regions after it. Region graph, catalog and room searches
@@ -331,7 +335,7 @@ candidates per reason: `socket`, `opening-used`, `alignment`, `overlap`,
 `bounds` and `catalog-rule`. Rejections also happen during searches that
 succeed. The diagnostics keep the latest example of each reason. A
 `catalog-rule` diagnostic names the broken rule, for example
-`A candidate for "shop:2" breaks the forbidden connection {"kind":"entrance"} to {} on "connection:6".`
+`A candidate for "encounter:7" breaks the count rule {"tags":["moss"]}: at least 2, but at most 1 regions can match.`
 Catalog jobs report `catalog-rule` diagnostics too.
 
 ## Navigate a layout
@@ -371,16 +375,17 @@ your collision code.
 
 ## Load authored content
 
-Install `@yagejs/level` for the `/level` adapter. Prepare one level document
-per template id; `instantiateRoomLayout` loads each room's document at the
-room's position. This continues the dungeon above and places an invisible
+Install `@yagejs/level` 0.12.1 or later for the `/level` adapter. Prepare a
+level document for each kind of room content; `instantiateRoomLayout` asks
+your `levelFor` callback for each room's level and loads it at the room's
+position. This continues the dungeon above and places an invisible
 spawn marker in each hall.
 
 ```ts yage-group="rooms"
 import { Component, Entity, Scene, Transform } from "@yagejs/core";
 import {
   buildLevelCatalog, defineLevelEntity, defineLevelProject, prepareLevel,
-  type LevelDocument, type LevelInstance,
+  type LevelDocument, type LevelInstance, type PreparedLevel,
 } from "@yagejs/level";
 import { instantiateRoomLayout } from "@yagejs-addons/procedural/level";
 
@@ -398,14 +403,16 @@ const hall: LevelDocument = {
     params: {}, extensions: {},
   }],
 };
-const preparedHall = prepareLevel(hall, catalog.catalog);
+const levels: Readonly<Record<string, PreparedLevel>> = {
+  hall: prepareLevel(hall, catalog.catalog),
+};
 
 class LoadRooms extends Component {
   private instances: readonly LevelInstance[] = [];
   onAdd(): void {
     if (!layout) throw new Error("Generate a layout before loading its content");
     this.instances = instantiateRoomLayout(this.scene, layout, {
-      levels: { hall: preparedHall },
+      levelFor: (room) => levels[room.templateId],
       namespace: "ruins",
       tileWidth: 16, tileHeight: 16,
     });
@@ -426,16 +433,18 @@ class DungeonScene extends Scene {
 Each room's content is placed at its tile position times the tile size;
 authored entities and colliders are not resized. Room `i` loads with the
 namespace `<namespace>:<i>`, so its scene keys stay separate from the other
-rooms'. Content is chosen by template id: build variant-specific content from
-`room.metadata` in your entities. Preload the documents' assets with
-`levelAssets()`.
+rooms'. `levelFor` returns each room's prepared level: look it up by
+`room.templateId`, or by `room.variantId` when a variant has its own
+footprint. Preload the documents' assets with `levelAssets()`.
 
-The adapter throws before loading anything when a template has no prepared
-level, its prepared level has diagnostics, or the namespace is empty. When one room fails to load,
-for example because a scene key is already taken, it throws
+Before the first room loads, the adapter checks every room. It throws, and
+loads nothing, when `levelFor` returns no level, a prepared level has
+diagnostics, the namespace is empty or contains `/`, or a scene key a room
+would use is already taken. A failure while a room loads throws
 `RoomLayoutLoadError` with the failing `roomId`, the original `cause`, and
-the `instances` loaded before it. Those rooms stay in the scene for your game
-to dispose.
+the `instances` loaded before it: an entity's `setup` throws, a parameter
+fails to decode, or an entity an earlier room spawned holds one of the
+room's keys. Those rooms stay in the scene for your game to dispose.
 
 ## Generate a cave
 

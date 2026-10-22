@@ -360,37 +360,53 @@ describe("CatalogGenerator", () => {
     ).toThrow(
       'no selection can meet the count rule {"tags":["missing"]}: at least 1, but at most 0 regions can match',
     );
-    // Found by the search: the entry connects to shops, which the rule forbids.
+    // Knowable before any search: the entry only ever connects to shops.
+    expect(
+      () =>
+        new CatalogGenerator(
+          {
+            ...catalog(),
+            rules: {
+              forbiddenConnections: [
+                { from: { kind: "entry" }, to: { kind: "shop" } },
+              ],
+            },
+          },
+          { seed: 0 },
+        ),
+    ).toThrow(
+      'connection "ea" has no pair of templates the forbidden-connection rules allow',
+    );
+    // Found by the search: the entry has two neighbours but one slot.
+    const base = catalog();
     const impossible = new CatalogGenerator(
       {
-        ...catalog(),
-        rules: {
-          forbiddenConnections: [
-            { from: { kind: "entry" }, to: { kind: "shop" } },
-          ],
-        },
+        ...base,
+        templates: base.templates.map((entry) =>
+          entry.id === "entry"
+            ? { ...entry, connections: [{ id: "only" }] }
+            : entry,
+        ),
       },
       { seed: 0 },
     );
     expect(impossible.generate()).toBeNull();
     expect(impossible.status).toBe("exhausted");
-    expect(impossible.inspect().diagnostics[0]?.message).toBe(
-      'A candidate for "a" breaks the forbidden connection {"kind":"entry"} to {"kind":"shop"} on "ea".',
-    );
     expect(
       validateCatalogSelection(
         {
           ...catalog(),
+          // The saved selection put the healing shop next to the entry.
           rules: {
             forbiddenConnections: [
-              { from: { kind: "shop" }, to: { kind: "forge" } },
+              { from: { tags: ["healing"] }, to: { kind: "entry" } },
             ],
           },
         },
         new CatalogGenerator(catalog(), { seed: 0 }).generate()!,
       ),
     ).toEqual([
-      'The selection breaks the forbidden connection {"kind":"shop"} to {"kind":"forge"} on "af".',
+      'The selection breaks the forbidden connection {"tags":["healing"]} to {"kind":"entry"} on "ea".',
     ]);
   });
   it.each([0, -1, NaN, Infinity])(
