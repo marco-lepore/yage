@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import type { LootResult } from "@yagejs-addons/loot";
 import type { DebugDiagnostics } from "@yagejs/debug";
 import { mkdirSync, readdirSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
@@ -678,6 +680,200 @@ test.describe("Examples", () => {
     const finalState = await state();
     expect(finalState.errors.callbackErrors).toEqual([]);
     expect(errors).toEqual([]);
+  });
+
+  test.describe("loot-addon", () => {
+    interface ChestState {
+      opened: number;
+      waitingQuantity: number;
+      waiting: { item: string; quantity: number; reason: string }[];
+    }
+    interface AdventurerState {
+      level: number;
+      misses: number;
+      found: string[];
+      backpackItems: { item: string; quantity: number }[];
+      bankedQuantity: number;
+    }
+
+    async function boot(page: Page): Promise<void> {
+      await page.goto("/loot-addon.html?test&seed=42");
+      await page.waitForFunction(
+        () =>
+          window.__yage__?.inspector.time.isFrozen() &&
+          window.__yage__.inspector.getSceneStack().at(-1)?.name ===
+            "loot-addon",
+        undefined,
+        { timeout: 10_000 },
+      );
+      await page.evaluate(() => window.__yage__!.inspector.time.step(1));
+    }
+
+    async function tap(page: Page, key: string): Promise<void> {
+      await page.evaluate(async (key) => {
+        const inspector = window.__yage__!.inspector;
+        inspector.input.keyDown(key);
+        await inspector.time.stepAsync(1);
+        inspector.input.keyUp(key);
+        await inspector.time.stepAsync(1);
+      }, key);
+    }
+
+    async function state(page: Page) {
+      return page.evaluate(() => {
+        const inspector = window.__yage__!.inspector;
+        return {
+          chest: inspector.getComponentData(
+            "ChestEntity",
+            "Chest",
+          ) as ChestState,
+          adventurer: inspector.getComponentData(
+            "AdventurerEntity",
+            "Adventurer",
+          ) as AdventurerState,
+          loot: inspector.getComponentData("ChestEntity", "LootComponent") as {
+            lastRoll: LootResult<string> | null;
+          },
+          errors: inspector.getErrors().callbackErrors,
+        };
+      });
+    }
+
+    function owned({
+      chest,
+      adventurer,
+    }: {
+      chest: ChestState;
+      adventurer: AdventurerState;
+    }): number {
+      return (
+        adventurer.bankedQuantity +
+        chest.waitingQuantity +
+        adventurer.backpackItems.reduce((sum, item) => sum + item.quantity, 0)
+      );
+    }
+
+    function candidate(roll: LootResult<string>, pool: string, entry: string) {
+      return roll.trace
+        .find((step) => step.pool === pool)
+        ?.candidates.find((c) => c.entry === entry);
+    }
+
+    test("explains seeded rewards and keeps inventory overflow", async ({
+      page,
+    }) => {
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await boot(page);
+      await tap(page, "Space");
+      const first = await state(page);
+      const roll = first.loot.lastRoll!;
+      expect(first.chest.opened).toBe(1);
+      expect(roll.rewards.map((reward) => reward.source.entry)).toEqual(
+        expect.arrayContaining(["coins", "herbs", "potion"]),
+      );
+      const total = roll.rewards.reduce(
+        (sum, reward) => sum + reward.quantity,
+        0,
+      );
+      expect(owned(first)).toBe(total);
+      expect(first.chest.waitingQuantity).toBeGreaterThan(0);
+      expect(first.chest.waiting[0]?.reason).toBe("capacity");
+      expect(candidate(roll, "treasure", "ruby")).toMatchObject({
+        status: "condition",
+        reason: "requires-level-3",
+        probability: 0,
+      });
+      expect(
+        roll.trace.some((step) =>
+          step.candidates.some((c) => c.status === "already-selected"),
+        ),
+      ).toBe(true);
+
+      // Opening again while rewards wait neither discards nor rerolls them.
+      await tap(page, "Space");
+      expect((await state(page)).chest.opened).toBe(1);
+      await tap(page, "KeyB");
+      const collected = await state(page);
+      expect(collected.chest.waitingQuantity).toBe(0);
+      expect(collected.adventurer.bankedQuantity).toBeGreaterThan(0);
+      expect(owned(collected)).toBe(total);
+
+      await tap(page, "KeyL");
+      await tap(page, "Space");
+      const high = await state(page);
+      expect(high.adventurer.level).toBe(3);
+      expect(high.chest.opened).toBe(2);
+      expect(candidate(high.loot.lastRoll!, "treasure", "ruby")).toMatchObject({
+        status: "eligible",
+        weight: 4,
+        probability: 4 / 7,
+      });
+      expect(high.errors).toEqual([]);
+
+      await boot(page);
+      await tap(page, "Space");
+      const replay = await state(page);
+      expect(replay.loot.lastRoll).toEqual(roll);
+      expect(replay.errors).toEqual([]);
+      expect(errors).toEqual([]);
+    });
+
+    test("drops the crown once, with odds that grow on every miss", async ({
+      page,
+    }) => {
+      await boot(page);
+      let crownChest = 0;
+      for (let chest = 1; chest <= 20 && crownChest === 0; chest++) {
+        const before = (await state(page)).adventurer;
+        await tap(page, "Space");
+        await tap(page, "KeyB");
+        const after = await state(page);
+        const roll = after.loot.lastRoll!;
+        expect(candidate(roll, "relic", "crown")).toMatchObject({
+          status: "eligible",
+          weight: 1 + before.misses,
+        });
+        if (roll.rewards.some((reward) => reward.item === "crown")) {
+          crownChest = chest;
+          expect(after.adventurer).toMatchObject({
+            found: ["crown"],
+            misses: 0,
+          });
+        } else {
+          expect(after.adventurer.misses).toBe(before.misses + 1);
+        }
+      }
+      expect(crownChest, "the crown drops within 20 chests").toBeGreaterThan(0);
+      // Seed 42 misses at least once, so the pity weight is exercised.
+      expect(crownChest).toBeGreaterThan(1);
+
+      await tap(page, "Space");
+      const next = (await state(page)).loot.lastRoll!;
+      expect(candidate(next, "relic", "crown")).toMatchObject({
+        status: "condition",
+        reason: "already-found",
+      });
+      expect(next.rewards.some((reward) => reward.item === "crown")).toBe(
+        false,
+      );
+      expect((await state(page)).errors).toEqual([]);
+    });
+
+    test("canvas buttons respond to pointer input", async ({ page }) => {
+      await boot(page);
+      await page.evaluate(async () => {
+        const inspector = window.__yage__!.inspector;
+        inspector.input.mouseMove(160, 600);
+        inspector.input.mouseDown(0);
+        await inspector.time.stepAsync(1);
+        inspector.input.mouseUp(0);
+        await inspector.time.stepAsync(1);
+      });
+      const clicked = await state(page);
+      expect(clicked.chest.opened).toBe(1);
+      expect(clicked.errors).toEqual([]);
+    });
   });
 });
 
