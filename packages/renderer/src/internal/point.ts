@@ -13,13 +13,17 @@ export function readPoint(point: PixiPoint): Vec2Like {
   return { x: point.x, y: point.y };
 }
 
-/** Write `value` into a Pixi point, throwing on a non-finite coordinate. */
+/**
+ * Write `value` into a Pixi point, throwing on a non-finite coordinate. The
+ * error names `context` and the coordinate as `<name>.x` or `<name>.y`.
+ */
 export function writePoint(
   context: string,
+  name: string,
   point: PixiPoint,
   value: Vec2Like,
 ): void {
-  assertFiniteNumber(context, "x", value.x);
-  assertFiniteNumber(context, "y", value.y);
+  assertFiniteNumber(context, `${name}.x`, value.x);
+  assertFiniteNumber(context, `${name}.y`, value.y);
   point.set(value.x, value.y);
 }

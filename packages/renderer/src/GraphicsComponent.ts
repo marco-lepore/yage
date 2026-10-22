@@ -27,7 +27,14 @@ export class GraphicsComponent extends VisualComponent {
   constructor(options?: GraphicsComponentOptions) {
     super(options?.layer);
     this._graphics = new Graphics();
-    if (options?.pivot) this.pivot = options.pivot;
+    if (options?.pivot) {
+      writePoint(
+        "GraphicsComponent.constructor",
+        "pivot",
+        this._graphics.pivot,
+        options.pivot,
+      );
+    }
     if (options) this.applyVisualOptions(options);
   }
 
@@ -50,7 +57,7 @@ export class GraphicsComponent extends VisualComponent {
   }
 
   set pivot(value: Vec2Like) {
-    writePoint("GraphicsComponent.pivot", this._graphics.pivot, value);
+    writePoint("GraphicsComponent.pivot", "pivot", this._graphics.pivot, value);
   }
 
   /** Execute a drawing function on the graphics object. Returns this for chaining. */

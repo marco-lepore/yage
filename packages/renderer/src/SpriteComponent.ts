@@ -36,7 +36,14 @@ export class SpriteComponent extends MaterialVisualComponent {
     const maps = resolveMaps([texture], options.maps);
     this._sprite = Sprite.from(texture);
     this.initializeMaterial(maps, options.material);
-    if (options.anchor) this.anchor = options.anchor;
+    if (options.anchor) {
+      writePoint(
+        "SpriteComponent.constructor",
+        "anchor",
+        this._sprite.anchor,
+        options.anchor,
+      );
+    }
     this.applyVisualOptions(options);
   }
 
@@ -60,7 +67,7 @@ export class SpriteComponent extends MaterialVisualComponent {
   }
 
   set anchor(value: Vec2Like) {
-    writePoint("SpriteComponent.anchor", this._sprite.anchor, value);
+    writePoint("SpriteComponent.anchor", "anchor", this._sprite.anchor, value);
   }
 
   /** Replace the sprite's texture and its whole map set. Omitted maps are cleared. */

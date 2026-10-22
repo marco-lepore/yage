@@ -84,8 +84,9 @@ export interface SplitTextComponentOptions extends VisualComponentOptions {
   /** Text style — forwards to PixiJS TextStyleOptions (CSS-like font properties). */
   style?: TextStyle;
   /**
-   * Transform origin for the whole text block, normalized 0–1.
-   * Default: { x: 0, y: 0 } (top-left). See {@link SplitTextComponent.anchor}.
+   * Transform origin for the whole text block, normalized 0–1. Omit to put
+   * the text's layout origin on the entity. See
+   * {@link SplitTextComponent.anchor}.
    */
   anchor?: Vec2Like;
   /**
@@ -127,7 +128,7 @@ export class SplitTextComponent extends VisualComponent {
   /** Whether this renders with a bitmap font (`SplitBitmapText`). */
   readonly isBitmap: boolean;
   private _bitmap?: boolean;
-  private _anchor?: Vec2Like;
+  private _anchor: Vec2Like | undefined;
   private readonly _autoSplit: boolean;
 
   constructor(options: SplitTextComponentOptions) {
@@ -163,8 +164,9 @@ export class SplitTextComponent extends VisualComponent {
       : new SplitText(splitOptions);
 
     if (options.bitmap !== undefined) this._bitmap = options.bitmap;
-    if (options.anchor) this.anchor = options.anchor;
-    else this.applyBlockAnchor();
+    if (options.anchor) {
+      this.setBlockAnchor("SplitTextComponent.constructor", options.anchor);
+    }
     this.applyVisualOptions(options);
   }
 
@@ -238,20 +240,26 @@ export class SplitTextComponent extends VisualComponent {
 
   /**
    * The point of the whole text block that sits on the entity position, as a
-   * fraction of the laid-out block's size: `{ x: 0, y: 0 }` (the default) is
-   * the top-left corner and `{ x: 0.5, y: 0.5 }` the centre. A re-split
-   * measures the block again and keeps the same fraction. Each read returns a
-   * new object; a non-finite coordinate throws.
+   * fraction of the measured block: `{ x: 0, y: 0 }` is its top-left corner
+   * and `{ x: 0.5, y: 0.5 }` its centre. A re-split measures the block again
+   * and keeps the same fraction.
+   *
+   * `undefined` (the default) puts the text's layout origin on the entity
+   * instead, which can sit a few pixels off the measured corner, so
+   * assigning `undefined` and assigning `{ x: 0, y: 0 }` differ. Each read
+   * returns a new object; a non-finite coordinate throws.
    */
-  get anchor(): Vec2Like {
-    return this._anchor ? { ...this._anchor } : { x: 0, y: 0 };
+  get anchor(): Vec2Like | undefined {
+    return this._anchor ? { ...this._anchor } : undefined;
   }
 
-  set anchor(value: Vec2Like) {
-    assertFiniteNumber("SplitTextComponent.anchor", "x", value.x);
-    assertFiniteNumber("SplitTextComponent.anchor", "y", value.y);
-    this._anchor = { x: value.x, y: value.y };
-    this.applyBlockAnchor();
+  set anchor(value: Vec2Like | undefined) {
+    if (value === undefined) {
+      this._anchor = undefined;
+      this._splitText.pivot.set(0, 0);
+      return;
+    }
+    this.setBlockAnchor("SplitTextComponent.anchor", value);
   }
 
   /** Transform origin for each character (normalized 0–1). */
@@ -276,6 +284,13 @@ export class SplitTextComponent extends VisualComponent {
   }
   get lineAnchor(): SegmentAnchor {
     return this._splitText.lineAnchor;
+  }
+
+  private setBlockAnchor(context: string, value: Vec2Like): void {
+    assertFiniteNumber(context, "anchor.x", value.x);
+    assertFiniteNumber(context, "anchor.y", value.y);
+    this._anchor = { x: value.x, y: value.y };
+    this.applyBlockAnchor();
   }
 
   private applyBlockAnchor(): void {

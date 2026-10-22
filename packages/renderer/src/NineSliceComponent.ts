@@ -75,7 +75,14 @@ export class NineSliceComponent extends VisualComponent {
       width: options.width,
       height: options.height,
     });
-    if (options.anchor) this.anchor = options.anchor;
+    if (options.anchor) {
+      writePoint(
+        "NineSliceComponent.constructor",
+        "anchor",
+        this.slice.anchor,
+        options.anchor,
+      );
+    }
     this.applyVisualOptions(options);
   }
 
@@ -99,7 +106,7 @@ export class NineSliceComponent extends VisualComponent {
   }
 
   set anchor(value: Vec2Like) {
-    writePoint("NineSliceComponent.anchor", this.slice.anchor, value);
+    writePoint("NineSliceComponent.anchor", "anchor", this.slice.anchor, value);
   }
 
   /** Drawn width in pixels. */

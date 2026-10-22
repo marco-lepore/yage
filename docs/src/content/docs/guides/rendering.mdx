@@ -63,10 +63,11 @@ only changes the *default* sampling mode.
 
 ### Which graphics API runs
 
-Pixi draws with WebGL unless `pixi: { preference: "webgpu" }` asks for WebGPU
-and the browser supports it. `renderer.backend` reports the one it picked,
-`"webgl"` or `"webgpu"`, for a game that adjusts its effects to it or a test
-that checks it.
+Pixi tries WebGL, then WebGPU, then a plain 2D canvas, and draws with the
+first one the browser supports. `pixi: { preference: "webgpu" }` moves WebGPU
+to the front of that order. `renderer.backend` reports the one it picked,
+`"webgl"`, `"webgpu"` or `"canvas"`, for a game that adjusts its effects to it
+or a test that checks it.
 
 ## Where to go next
 

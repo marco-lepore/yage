@@ -17,6 +17,9 @@ export const RendererKey = new ServiceKey<RendererPlugin>("renderer");
  */
 export type FitMode = "letterbox" | "expand" | "cover" | "stretch";
 
+/** The graphics API Pixi draws the canvas with. See `RendererPlugin.backend`. */
+export type RendererBackend = "webgl" | "webgpu" | "canvas";
+
 /** Options for the responsive-fit API. */
 export interface RendererFitOptions {
   /** Scale mode. See {@link FitMode}. */

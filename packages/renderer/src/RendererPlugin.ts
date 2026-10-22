@@ -55,7 +55,11 @@ import type {
   RenderTargetOptions,
 } from "./RenderTarget.js";
 import { RendererKey } from "./types.js";
-import type { RendererConfig, RendererFitOptions } from "./types.js";
+import type {
+  RendererBackend,
+  RendererConfig,
+  RendererFitOptions,
+} from "./types.js";
 import type { SceneRenderTreeProvider } from "./SceneRenderTree.js";
 import {
   SceneRenderTreeKey,
@@ -483,12 +487,12 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
-   * The graphics API drawing the canvas: `"webgl"` or `"webgpu"`, as Pixi
-   * picked it from `RendererConfig.pixi.preference` and what the browser
-   * supports.
+   * The graphics API drawing the canvas. Pixi tries WebGL, then WebGPU, then
+   * a 2D canvas, and the first the browser supports wins;
+   * `RendererConfig.pixi.preference` moves one of them to the front.
    */
-  get backend(): string {
-    return this._app.renderer.name;
+  get backend(): RendererBackend {
+    return this._app.renderer.name as RendererBackend;
   }
 
   /**

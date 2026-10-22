@@ -288,7 +288,9 @@ describe("AnimatedSpriteComponent", () => {
     const comp = new AnimatedSpriteComponent({ source: SOURCE });
     expect(() => {
       comp.anchor = { x: 0, y: NaN };
-    }).toThrow("AnimatedSpriteComponent.anchor: y must be finite, got NaN.");
+    }).toThrow(
+      "AnimatedSpriteComponent.anchor: anchor.y must be finite, got NaN.",
+    );
   });
 
   it("applies the speed option at construction", () => {

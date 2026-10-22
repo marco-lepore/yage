@@ -134,9 +134,8 @@ errors still fail, and every exception appears individually in the report.
 
 A fence fails when it reaches the raw Pixi object of a game object: a member
 of a visual component, a particle emitter, a sort group or a UI element whose
-type is a Pixi display object (`renderObject`, `displayObject`). Docs teach
-the component
-API instead. A fence that needs the object on purpose, such as a custom visual
+type is a Pixi display object, such as `renderObject`, `displayObject` or an
+emitter's `container`. Docs teach the component API instead. A fence that needs the object on purpose, such as a custom visual
 component reading its own container, carries `yage-raw-pixi="<reason>"` with a
 reason of at least 20 characters. The attribute fails on a fence that reaches
 no such object. Handles for code that adds its own Pixi objects to the scene,

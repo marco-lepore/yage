@@ -198,14 +198,16 @@ describe("SpriteComponent", () => {
     const comp = new SpriteComponent({ texture: {} as never });
     expect(() => {
       comp.anchor = { x: NaN, y: 0 };
-    }).toThrow("SpriteComponent.anchor: x must be finite, got NaN.");
+    }).toThrow("SpriteComponent.anchor: anchor.x must be finite, got NaN.");
     expect(
       () =>
         new SpriteComponent({
           texture: {} as never,
           anchor: { x: 0, y: Infinity },
         }),
-    ).toThrow("SpriteComponent.anchor: y must be finite, got Infinity.");
+    ).toThrow(
+      "SpriteComponent.constructor: anchor.y must be finite, got Infinity.",
+    );
   });
 
   it("sets visibility when provided", () => {

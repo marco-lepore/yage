@@ -5,6 +5,7 @@ import { resolveSpriteSource } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
 import { routeAnimationSpeedChange } from "./internal/animationSpeedGroup.js";
 import { runAttributed } from "./internal/attribution.js";
+import { assertFiniteNumber } from "./internal/validate.js";
 
 /** Definition for a single named animation. */
 export interface AnimationDef {
@@ -102,6 +103,11 @@ export class AnimationController<T extends string = string> extends Component {
     const resolved = {} as Record<T, ResolvedAnimDef>;
     for (const name of Object.keys(animations) as T[]) {
       const def = animations[name];
+      if (def.anchor) {
+        const context = "AnimationController.constructor";
+        assertFiniteNumber(context, `${name}.anchor.x`, def.anchor.x);
+        assertFiniteNumber(context, `${name}.anchor.y`, def.anchor.y);
+      }
       resolved[name] = {
         source: resolveSpriteSource(def.source),
         speed: def.speed,

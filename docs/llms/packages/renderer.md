@@ -57,7 +57,7 @@ engine.use(
 );
 ```
 
-`renderer.backend` reports the graphics API Pixi picked: `"webgl"`, or `"webgpu"` when `pixi: { preference: "webgpu" }` asks for it and the browser supports it.
+`renderer.backend: RendererBackend` reports the graphics API Pixi picked: `"webgl"`, `"webgpu"` or `"canvas"`. Pixi tries them in that order and takes the first the browser supports; `pixi: { preference }` moves one to the front.
 
 ### `pixelArtPreset`
 
@@ -568,7 +568,7 @@ Tween.stagger(
 
 `TextSegment` is `{ x, y, position, rotation, scale, alpha, tint, visible }`, where `position` and `scale` take `.set(x, y?)`. Positions are relative to the parent segment (a character within its word, a word within its line). A segment has no container API (`addChild`, `destroy`, `getBounds`): the glyph's Pixi object is reached only through `renderObject.chars`, as for any raw access.
 
-`anchor` positions the whole block around its entity Transform, as an option or a property. It uses the current split text bounds and is recomputed after text, style, or manual split updates. `charAnchor`, `wordAnchor`, and `lineAnchor` only affect their individual segments.
+`anchor` positions the whole block around its entity Transform, as an option or a property. It reads `undefined` until set, meaning the text's layout origin sits on the entity; assigning `undefined` returns to that, which can differ from `{ x: 0, y: 0 }` (the measured block's corner) by a few pixels. It uses the current split text bounds and is recomputed after text, style, or manual split updates. `charAnchor`, `wordAnchor`, and `lineAnchor` only affect their individual segments.
 
 API: `chars` / `words` / `lines` (getters), `setText(v)`, `content` (reads the current string back), `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `visible` / `tint` / `alpha`, `fx` / `setMask` / `clearMask` (same effects/mask surface as the other four components), `isBitmap`. Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).
 

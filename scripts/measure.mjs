@@ -1238,8 +1238,14 @@ export function checkVisualOriginAccessors(files) {
  * named in `allowed` are the deliberate exceptions, each with its reason.
  */
 export function checkRawHandleNames(files) {
+  // The renderer's aliases and the Pixi display classes they rename.
   const display =
-    /\b(?:Display\w+|NineSliceSprite|ParticleContainer|GraphicsContext|Container|Sprite|AnimatedSprite|Graphics|BitmapText|SplitText|SplitBitmapText)\b/;
+    /\b(?:DisplayContainer|DisplaySprite|DisplayAnimatedSprite|DisplayText|DisplayBitmapText|DisplaySplitText|DisplaySplitBitmapText|NineSliceSprite|ParticleContainer|GraphicsContext|Container|Sprite|AnimatedSprite|TilingSprite|Graphics|Text|BitmapText|HTMLText|SplitText|SplitBitmapText|Mesh)\b/;
+  const elementInterfaces = [
+    "UIElement",
+    "UIContainerElement",
+    "UIInputCaptureElement",
+  ];
   const canonical = new Set(["renderObject", "displayObject"]);
   const allowed = new Map([
     // Code that adds its own Pixi objects to a sort group parents them here.
@@ -1266,6 +1272,14 @@ export function checkRawHandleNames(files) {
       }
     });
   }
+  const implementsElement = (node) =>
+    (node.heritageClauses ?? []).some(
+      (clause) =>
+        clause.token === ts.SyntaxKind.ImplementsKeyword &&
+        clause.types.some((type) =>
+          elementInterfaces.includes(type.expression.getText()),
+        ),
+    );
   const reaches = (name) => {
     const seen = new Set();
     for (let current = name; current && !seen.has(current); ) {
@@ -1281,11 +1295,24 @@ export function checkRawHandleNames(files) {
       ts.forEachChild(node, visit);
       if (!ts.isClassDeclaration(node) || !node.name) return;
       const owner = node.name.text;
-      if (!reaches(classBaseName(node))) return;
-      for (const member of node.members) {
+      if (!reaches(classBaseName(node)) && !implementsElement(node)) return;
+      const constructor = node.members.find(ts.isConstructorDeclaration);
+      const parameterProperties = (constructor?.parameters ?? []).filter(
+        (parameter) =>
+          ts
+            .getModifiers(parameter)
+            ?.some(
+              (modifier) =>
+                modifier.kind === ts.SyntaxKind.ReadonlyKeyword ||
+                modifier.kind === ts.SyntaxKind.PublicKeyword,
+            ),
+      );
+      for (const member of [...node.members, ...parameterProperties]) {
         if (
           !ts.isPropertyDeclaration(member) &&
-          !ts.isGetAccessorDeclaration(member)
+          !ts.isGetAccessorDeclaration(member) &&
+          !ts.isMethodDeclaration(member) &&
+          !ts.isParameter(member)
         )
           continue;
         const flags = ts.getCombinedModifierFlags(member);
@@ -1294,6 +1321,7 @@ export function checkRawHandleNames(files) {
         const name = member.name.getText(source);
         if (name.startsWith("_") || name.startsWith("#")) continue;
         if (canonical.has(name) || allowed.has(`${owner}.${name}`)) continue;
+        // A getter without a return type is not checked: its type is inferred.
         const type = member.type?.getText(source);
         if (!type || !display.test(type)) continue;
         errors.push(
@@ -1925,7 +1953,19 @@ export function positiveControlFailures() {
               "  get renderObject(): DisplaySprite { return this.sprite; }\n" +
               "}",
           },
-        ]).length === 0,
+        ]).length === 0 &&
+        checkRawHandleNames([
+          {
+            path: "packages/ui/src/UIDial.ts",
+            code:
+              "class UIDial implements UIElement {\n" +
+              "  constructor(readonly knob: DisplaySprite) {}\n" +
+              "  get displayObject(): DisplayContainer { return this.knob; }\n" +
+              "  face(): Graphics { return g; }\n" +
+              "  readonly system: DisplaySystem;\n" +
+              "}",
+          },
+        ]).length === 2,
     },
     {
       name: "inline-import-type",

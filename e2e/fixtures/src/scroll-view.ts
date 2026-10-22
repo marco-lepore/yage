@@ -35,8 +35,8 @@ function fillOrders(sv: UIScrollView, n: number): void {
 }
 
 /**
- * Mirrors ScrollView state into inspectable fields. Lives on the UI entity; `Component.update()` runs each
- * frame via ComponentUpdateSystem.
+ * Mirrors ScrollView state into inspectable fields. Lives on the UI entity;
+ * `Component.update()` runs each frame via ComponentUpdateSystem.
  */
 class ScrollProbe extends Component {
   offset = 0;

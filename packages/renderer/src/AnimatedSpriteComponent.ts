@@ -51,7 +51,14 @@ export class AnimatedSpriteComponent extends MaterialVisualComponent {
     this._animatedSprite = new AnimatedSprite(this.source.frames, false);
     this.initializeMaterial(this.source.maps, options.material);
 
-    if (options.anchor) this.anchor = options.anchor;
+    if (options.anchor) {
+      writePoint(
+        "AnimatedSpriteComponent.constructor",
+        "anchor",
+        this._animatedSprite.anchor,
+        options.anchor,
+      );
+    }
     if (options.speed !== undefined) {
       assertFiniteNumber(
         "AnimatedSpriteComponent.constructor",
@@ -91,6 +98,7 @@ export class AnimatedSpriteComponent extends MaterialVisualComponent {
   set anchor(value: Vec2Like) {
     writePoint(
       "AnimatedSpriteComponent.anchor",
+      "anchor",
       this._animatedSprite.anchor,
       value,
     );

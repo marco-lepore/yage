@@ -56,7 +56,6 @@ const RAW_PIXI_OWNER_BASES = new Set([
 const RAW_PIXI_OWNERS = new Set([
   "ParticleEmitterComponent",
   "SortGroupComponent",
-  "UISurface",
 ]);
 
 function declaredInEnginePackage(declaration) {

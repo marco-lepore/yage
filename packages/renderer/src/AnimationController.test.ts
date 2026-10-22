@@ -359,6 +359,14 @@ describe("AnimationController", () => {
     expect(sprite.anchor.x).toBe(0.3);
   });
 
+  it("throws at construction on a non-finite animation anchor", () => {
+    const anims = testAnims();
+    anims.walk.anchor = { x: NaN, y: 0 };
+    expect(() => new AnimationController<TestAnim>(anims)).toThrow(
+      "AnimationController.constructor: walk.anchor.x must be finite, got NaN.",
+    );
+  });
+
   it("anchor is not changed when not specified in def", () => {
     const { ctrl, sprite } = setup();
     sprite.anchor.set(0.25, 0.75);

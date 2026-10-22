@@ -62,7 +62,14 @@ export class TextComponent extends VisualComponent {
     if (options.style) this._styleOptions = { ...options.style };
     if (options.bitmap !== undefined) this._bitmap = options.bitmap;
 
-    if (options.anchor) this.anchor = options.anchor;
+    if (options.anchor) {
+      writePoint(
+        "TextComponent.constructor",
+        "anchor",
+        this._text.anchor,
+        options.anchor,
+      );
+    }
     this.applyVisualOptions(options);
   }
 
@@ -86,7 +93,7 @@ export class TextComponent extends VisualComponent {
   }
 
   set anchor(value: Vec2Like) {
-    writePoint("TextComponent.anchor", this._text.anchor, value);
+    writePoint("TextComponent.anchor", "anchor", this._text.anchor, value);
   }
 
   /** The string currently displayed. */

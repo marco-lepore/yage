@@ -307,7 +307,7 @@ describe("SplitTextComponent", () => {
       typeof mocks.MockSplitText
     >;
     split.boundsBox = { x: 4, y: 6, width: 80, height: 20 };
-    expect(comp.anchor).toEqual({ x: 0, y: 0 });
+    expect(comp.anchor).toBeUndefined();
 
     comp.anchor = { x: 0.5, y: 1 };
 
@@ -315,7 +315,11 @@ describe("SplitTextComponent", () => {
     expect(comp.anchor).toEqual({ x: 0.5, y: 1 });
     expect(() => {
       comp.anchor = { x: 0, y: NaN };
-    }).toThrow("SplitTextComponent.anchor: y must be finite, got NaN.");
+    }).toThrow("SplitTextComponent.anchor: anchor.y must be finite, got NaN.");
+
+    comp.anchor = undefined;
+    expect(split.pivot).toMatchObject({ x: 0, y: 0 });
+    expect(comp.anchor).toBeUndefined();
   });
 
   it("recomputes the block anchor after text, style, and manual split changes", () => {

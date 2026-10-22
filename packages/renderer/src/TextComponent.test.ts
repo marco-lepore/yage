@@ -164,7 +164,7 @@ describe("TextComponent", () => {
     expect(comp.anchor).toEqual({ x: 1, y: 0.5 });
     expect(() => {
       comp.anchor = { x: Infinity, y: 0 };
-    }).toThrow("TextComponent.anchor: x must be finite, got Infinity.");
+    }).toThrow("TextComponent.anchor: anchor.x must be finite, got Infinity.");
   });
 
   it("sets visibility, tint, and alpha when provided", () => {

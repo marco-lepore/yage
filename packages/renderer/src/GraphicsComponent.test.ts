@@ -245,10 +245,10 @@ describe("GraphicsComponent", () => {
 
   it("throws on a non-finite pivot coordinate", () => {
     expect(() => new GraphicsComponent({ pivot: { x: 0, y: NaN } })).toThrow(
-      "GraphicsComponent.pivot: y must be finite, got NaN.",
+      "GraphicsComponent.constructor: pivot.y must be finite, got NaN.",
     );
     expect(() => new GraphicsComponent({ pivot: { x: NaN, y: 0 } })).toThrow(
-      "GraphicsComponent.pivot: x must be finite, got NaN.",
+      "GraphicsComponent.constructor: pivot.x must be finite, got NaN.",
     );
   });
 

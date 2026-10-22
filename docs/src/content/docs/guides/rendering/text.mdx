@@ -359,7 +359,9 @@ entity.add(new TitleWave());
 ```
 
 `anchor` is the normalized transform origin for the whole text block, set at
-construction or by assigning `split.anchor = { x, y }` later. The component
+construction or by assigning `split.anchor = { x, y }` later. Without one, the
+text's layout origin sits on the entity; assigning `undefined` returns to
+that. The component
 recalculates it from the current bounds after text, style, or manual split
 updates. This keeps centered labels centered when their content
 changes.

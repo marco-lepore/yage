@@ -151,7 +151,7 @@ describe("NineSliceComponent", () => {
     expect(frame.anchor).toEqual({ x: 0.5, y: 1 });
     expect(() => {
       frame.anchor = { x: NaN, y: 0 };
-    }).toThrow("NineSliceComponent.anchor: x must be finite, got NaN.");
+    }).toThrow("NineSliceComponent.anchor: anchor.x must be finite, got NaN.");
   });
 
   it("stretches to a new size", () => {
