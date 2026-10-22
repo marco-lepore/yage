@@ -1,5 +1,5 @@
 import { Transform } from "@yagejs/core";
-import type { Entity } from "@yagejs/core";
+import type { Scene } from "@yagejs/core";
 import {
   GraphicsComponent,
   RendererKey,
@@ -50,33 +50,41 @@ export function defaultHotbarTheme(): HotbarTheme {
   };
 }
 
-/** One row of clickable slots. Use a separate instance for each controller. */
+interface Cell {
+  readonly label: TextComponent;
+  icon: SpriteComponent | undefined;
+  iconKey: string | undefined;
+  color: number;
+}
+
+/**
+ * One row of clickable slots on a screen layer. The view spawns its own
+ * entities into the scene, so the controller's entity can move freely. Use a
+ * separate instance for each controller.
+ */
 export class HotbarView implements HotbarPresenter {
-  private root: Entity | undefined;
-  private graphics: GraphicsComponent | undefined;
-  private cells: {
-    label: TextComponent;
-    icon: SpriteComponent | undefined;
-    iconKey: string | undefined;
-    color: number;
-  }[] = [];
+  readonly theme: HotbarTheme;
+  private scene: Scene | undefined;
+  private frame: GraphicsComponent | undefined;
+  private cells: Cell[] = [];
   private visible = false;
   private x = 0;
   private y = 0;
   private state: HotbarState | undefined;
-  readonly theme: HotbarTheme;
 
-  constructor(theme: HotbarTheme = defaultHotbarTheme()) {
-    this.theme = { ...theme, keyLabels: [...theme.keyLabels] };
+  /** Fields left out keep their `defaultHotbarTheme()` values. */
+  constructor(theme: Partial<HotbarTheme> = {}) {
+    const resolved = { ...defaultHotbarTheme(), ...theme };
+    this.theme = { ...resolved, keyLabels: [...resolved.keyLabels] };
     for (const field of ["slotWidth", "slotHeight", "fontSize"] as const) {
-      if (!Number.isFinite(theme[field]) || theme[field] <= 0)
+      if (!Number.isFinite(resolved[field]) || resolved[field] <= 0)
         throw new Error(
-          `HotbarView.constructor: ${field} must be finite and positive, got ${theme[field]}`,
+          `HotbarView.constructor: ${field} must be finite and positive, got ${resolved[field]}`,
         );
     }
-    if (!Number.isFinite(theme.gap) || theme.gap < 0)
+    if (!Number.isFinite(resolved.gap) || resolved.gap < 0)
       throw new Error(
-        `HotbarView.constructor: gap must be finite and nonnegative, got ${theme.gap}`,
+        `HotbarView.constructor: gap must be finite and nonnegative, got ${resolved.gap}`,
       );
     for (const field of [
       "background",
@@ -87,100 +95,54 @@ export class HotbarView implements HotbarPresenter {
       "unavailable",
     ] as const) {
       if (
-        !Number.isInteger(theme[field]) ||
-        theme[field] < 0 ||
-        theme[field] > 0xffffff
+        !Number.isInteger(resolved[field]) ||
+        resolved[field] < 0 ||
+        resolved[field] > 0xffffff
       )
         throw new Error(
-          `HotbarView.constructor: ${field} must be a 24-bit color, got ${theme[field]}`,
+          `HotbarView.constructor: ${field} must be a 24-bit color, got ${resolved[field]}`,
         );
     }
     for (const field of ["x", "y"] as const)
-      if (theme[field] !== undefined && !Number.isFinite(theme[field]))
+      if (resolved[field] !== undefined && !Number.isFinite(resolved[field]))
         throw new Error(
-          `HotbarView.constructor: ${field} must be finite, got ${theme[field]}`,
+          `HotbarView.constructor: ${field} must be finite, got ${resolved[field]}`,
         );
   }
 
-  mount(owner: Entity): void {
-    if (this.root) throw new Error("HotbarView.mount: view already mounted");
-    owner.scene.context
+  mount(scene: Scene): void {
+    if (this.scene) throw new Error("HotbarView.mount: view already mounted");
+    scene.context
       .tryResolve(SceneRenderTreeProviderKey)
-      ?.getTree(owner.scene)
+      ?.getTree(scene)
       ?.ensureLayer({ name: this.theme.layer, order: 1070, space: "screen" });
-    this.root = owner.spawnChild("hotbar-view");
-    this.root.add(new Transform());
-    this.graphics = this.root.add(
-      new GraphicsComponent({ layer: this.theme.layer }),
-    );
-    this.graphics.visible = this.visible;
+    this.scene = scene;
+    const frame = scene.spawn("hotbar-frame");
+    frame.add(new Transform());
+    this.frame = frame.add(new GraphicsComponent({ layer: this.theme.layer }));
+    this.frame.visible = this.visible;
   }
 
   present(state: HotbarState): void {
-    const root = this.root;
-    if (!root) throw new Error("HotbarView.present: mount the view first");
+    const scene = this.scene;
+    if (!scene) throw new Error("HotbarView.present: mount the view first");
     const t = this.theme;
-    const viewport = root.scene.context.resolve(RendererKey).virtualSize;
+    const viewport = scene.context.resolve(RendererKey).virtualSize;
     const width =
       state.slots.length * t.slotWidth + (state.slots.length - 1) * t.gap;
     this.x = t.x ?? (viewport.width - width) / 2;
     this.y = t.y ?? viewport.height - t.slotHeight - 24;
     this.state = state;
-    while (this.cells.length > state.slots.length) {
-      const cell = this.cells.pop()!;
-      destroyChild(cell.label.entity);
-      if (cell.icon) destroyChild(cell.icon.entity);
-    }
+    for (const cell of this.cells.splice(state.slots.length)) destroyCell(cell);
     for (const slot of state.slots) {
-      let cell = this.cells[slot.index];
-      if (!cell) {
-        const label = root.spawnChild(`hotbar-label-${slot.index}`);
-        label.add(new Transform());
-        cell = {
-          label: label.add(
-            new TextComponent({
-              text: "",
-              layer: t.layer,
-              style: {
-                fontFamily: t.fontFamily,
-                fontSize: t.fontSize,
-                fill: t.text,
-                wordWrap: true,
-                wordWrapWidth: Math.max(1, t.slotWidth - 12),
-              },
-            }),
-          ),
-          icon: undefined,
-          iconKey: undefined,
-          color: t.text,
-        };
-        this.cells.push(cell);
-      }
+      const cell = (this.cells[slot.index] ??= this.createCell(scene));
       const x = this.x + slot.index * (t.slotWidth + t.gap);
-      if (cell.iconKey !== slot.icon) {
-        const texture = slot.icon ? resolveTextureInput(slot.icon) : undefined;
-        if (cell.icon) destroyChild(cell.icon.entity);
-        cell.icon = undefined;
-        cell.iconKey = slot.icon;
-        if (texture && slot.icon) {
-          const icon = root.spawnChild(`hotbar-icon-${slot.index}`);
-          icon.add(new Transform());
-          cell.icon = icon.add(
-            new SpriteComponent({
-              texture: slot.icon,
-              layer: t.layer,
-              anchor: { x: 0.5, y: 0.5 },
-            }),
-          );
-          const scale = Math.min(24 / texture.width, 24 / texture.height);
-          icon.get(Transform).setScale(scale, scale);
-        }
-      }
+      if (cell.iconKey !== slot.icon) this.setIcon(scene, cell, slot.icon);
       if (cell.icon) {
         cell.icon.entity
           .get(Transform)
           .setPosition(x + t.slotWidth / 2, this.y + 16);
-        cell.icon.visible = this.visible;
+        cell.icon.visible = this.visible && cell.iconKey !== undefined;
       }
       const key = t.keyLabels[slot.index];
       const hint = key ? `${key} · ` : "";
@@ -197,10 +159,10 @@ export class HotbarView implements HotbarPresenter {
       }
       cell.label.entity
         .get(Transform)
-        .setPosition(x + 6, this.y + (cell.icon ? 32 : 10));
+        .setPosition(x + 6, this.y + (cell.iconKey !== undefined ? 32 : 10));
       cell.label.visible = this.visible;
     }
-    this.graphics?.draw((g) => {
+    this.frame?.draw((g) => {
       g.clear();
       for (const slot of state.slots) {
         const x = this.x + slot.index * (t.slotWidth + t.gap);
@@ -210,12 +172,11 @@ export class HotbarView implements HotbarPresenter {
             color: slot.index === state.selected ? t.selected : t.border,
             width: 2,
           });
-        if (slot.cooldown && slot.cooldown.total > 0)
+        if (slot.cooldown && slot.cooldown.remaining > 0)
           g.rect(
             x + 4,
             this.y + t.slotHeight - 8,
-            (Math.max(0, t.slotWidth - 8) * slot.cooldown.remaining) /
-              slot.cooldown.total,
+            Math.max(0, t.slotWidth - 8) * (1 - slot.cooldown.ratio),
             4,
           ).fill(t.cooldown);
       }
@@ -241,25 +202,69 @@ export class HotbarView implements HotbarPresenter {
   }
   setVisible(visible: boolean): void {
     this.visible = visible;
-    if (this.graphics) this.graphics.visible = visible;
+    if (this.frame) this.frame.visible = visible;
     for (const cell of this.cells) {
       cell.label.visible = visible;
-      if (cell.icon) cell.icon.visible = visible;
+      if (cell.icon) cell.icon.visible = visible && cell.iconKey !== undefined;
     }
   }
   dispose(): void {
-    if (this.root) destroyChild(this.root);
-    this.root = undefined;
-    this.graphics = undefined;
+    this.frame?.entity.destroy();
+    for (const cell of this.cells) destroyCell(cell);
+    this.scene = undefined;
+    this.frame = undefined;
     this.cells = [];
     this.state = undefined;
     this.visible = false;
   }
+
+  private createCell(scene: Scene): Cell {
+    const t = this.theme;
+    const entity = scene.spawn("hotbar-label");
+    entity.add(new Transform());
+    const label = entity.add(
+      new TextComponent({
+        text: "",
+        layer: t.layer,
+        style: {
+          fontFamily: t.fontFamily,
+          fontSize: t.fontSize,
+          fill: t.text,
+          wordWrap: true,
+          wordWrapWidth: Math.max(1, t.slotWidth - 12),
+        },
+      }),
+    );
+    return { label, icon: undefined, iconKey: undefined, color: t.text };
+  }
+
+  private setIcon(scene: Scene, cell: Cell, key: string | undefined): void {
+    if (key === undefined) {
+      cell.iconKey = undefined;
+      return;
+    }
+    // Resolve before recording the key: an unregistered key throws on every
+    // frame until it is registered.
+    const texture = resolveTextureInput(key);
+    cell.iconKey = key;
+    if (cell.icon) cell.icon.setTexture(key);
+    else {
+      const entity = scene.spawn("hotbar-icon");
+      entity.add(new Transform());
+      cell.icon = entity.add(
+        new SpriteComponent({
+          texture: key,
+          layer: this.theme.layer,
+          anchor: { x: 0.5, y: 0.5 },
+        }),
+      );
+    }
+    const scale = Math.min(24 / texture.width, 24 / texture.height);
+    cell.icon.entity.get(Transform).setScale(scale, scale);
+  }
 }
 
-function destroyChild(entity: Entity): void {
-  const parent = entity.parent;
-  entity.destroy();
-  // Destruction is deferred; release the child name before another mount or icon change.
-  if (parent) parent.removeChild(entity.name);
+function destroyCell(cell: Cell): void {
+  cell.label.entity.destroy();
+  cell.icon?.entity.destroy();
 }

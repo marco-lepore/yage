@@ -1,7 +1,7 @@
 import { Component, ErrorBoundaryKey, LoggerKey } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 import type { Hotbar } from "./core/Hotbar.js";
-import type { HotbarActionResult, HotbarState } from "./core/types.js";
+import type { HotbarState } from "./core/types.js";
 import type {
   HotbarDriver,
   HotbarInputBinding,
@@ -17,38 +17,61 @@ export interface HotbarControllerOptions<TId extends string> {
   readonly input?: HotbarInputBinding | null;
 }
 
-export class HotbarController<TId extends string = string>
-  extends Component
-  implements HotbarDriver
-{
-  static inspectExclude = ["options", "binding", "model", "target"];
+/** Mounts a hotbar on an entity: device input, presentation, error attribution and entity events. */
+export class HotbarController<TId extends string = string> extends Component {
+  static inspectExclude = ["model", "presenter", "binding", "driver", "target"];
+  /** The bar's assignments and actions. Game code reads and changes the bar here. */
+  readonly model: Hotbar<TId>;
+  private readonly presenter: HotbarPresenter | undefined;
   private readonly binding: HotbarInputBinding | null;
+  private readonly driver: HotbarDriver;
+  private readonly target: Pick<HotbarPresenter, "slotAtPoint">;
   private mounted = false;
   private bindingActive = false;
   private inputEnabled = true;
-  private readonly target: Pick<HotbarPresenter, "slotAtPoint">;
 
-  constructor(private readonly options: HotbarControllerOptions<TId>) {
+  constructor(options: HotbarControllerOptions<TId>) {
     super();
+    const model = options.model;
+    const active = (): boolean => this.isInteractive();
+    this.model = model;
+    this.presenter = options.presenter;
     this.binding =
       options.input === null ? null : (options.input ?? hotbarControls());
     this.target = {
       slotAtPoint: (x, y) =>
         this.call("presenter.slotAtPoint", () =>
-          options.presenter?.slotAtPoint?.(x, y),
+          this.presenter?.slotAtPoint?.(x, y),
         ),
+    };
+    this.driver = {
+      get slotCount() {
+        return model.slotCount;
+      },
+      get selection() {
+        return model.selection;
+      },
+      isInteractive: active,
+      select: (slot) => {
+        if (active()) model.select(slot);
+      },
+      cycle: (direction) => {
+        if (active()) model.cycle(direction);
+      },
+      activate: (slot) =>
+        active() ? model.activate(slot) : { ok: false, reason: "inactive" },
+      release: (slot) => {
+        model.release(slot);
+      },
+      clear: (slot) => {
+        if (active()) model.clear(slot);
+      },
+      swap: (a, b) => {
+        if (active()) model.swap(a, b);
+      },
     };
   }
 
-  get model(): Hotbar<TId> {
-    return this.options.model;
-  }
-  get slotCount(): number {
-    return this.model.slotCount;
-  }
-  get selection(): number {
-    return this.model.selection;
-  }
   /** Inspector-readable state uses the same live reads as the view. */
   get diagnostic(): HotbarState<TId> & {
     readonly inputEnabled: boolean;
@@ -75,67 +98,39 @@ export class HotbarController<TId extends string = string>
         else this.entity.emit(HotbarActivationEvent, event.activation);
       }),
     );
-    this.call("presenter.mount", () =>
-      this.options.presenter?.mount(this.entity),
-    );
-    this.call("presenter.setVisible", () =>
-      this.options.presenter?.setVisible(false),
-    );
+    this.call("presenter.mount", () => this.presenter?.mount(this.scene));
+    this.call("presenter.setVisible", () => this.presenter?.setVisible(false));
     this.mounted = true;
   }
 
   onEnable(): void {
-    this.call("presenter.setVisible", () =>
-      this.options.presenter?.setVisible(true),
-    );
+    this.call("presenter.setVisible", () => this.presenter?.setVisible(true));
     this.present();
     this.syncInput();
   }
   onDisable(): void {
     this.stopInput();
-    this.call("presenter.setVisible", () =>
-      this.options.presenter?.setVisible(false),
-    );
+    this.call("presenter.setVisible", () => this.presenter?.setVisible(false));
   }
   onDestroy(): void {
     this.mounted = false;
     this.stopInput();
-    this.call("presenter.dispose", () => this.options.presenter?.dispose());
+    this.call("presenter.dispose", () => this.presenter?.dispose());
   }
   update(): void {
     if (this.bindingActive) this.call("input.poll", () => this.binding?.poll());
     if (this.mounted && this.effectiveEnabled) this.present();
   }
 
-  /** Device focus only. Direct model calls remain available. */
+  /** Device focus only. The model stays usable from game code. */
   setInputEnabled(enabled: boolean): void {
     this.inputEnabled = enabled;
     this.syncInput();
   }
-  isInteractive(): boolean {
+
+  private isInteractive(): boolean {
     return this.mounted && this.effectiveEnabled && !this.scene.isPaused;
   }
-  select(slot: number): void {
-    if (this.isInteractive()) this.model.select(slot);
-  }
-  cycle(direction: -1 | 1): void {
-    if (this.isInteractive()) this.model.cycle(direction);
-  }
-  assign(slot: number, id: TId): void {
-    if (this.isInteractive()) this.model.assign(slot, id);
-  }
-  clear(slot: number): void {
-    if (this.isInteractive()) this.model.clear(slot);
-  }
-  swap(a: number, b: number): void {
-    if (this.isInteractive()) this.model.swap(a, b);
-  }
-  activate(slot = this.selection): HotbarActionResult {
-    return this.isInteractive()
-      ? this.model.activate(slot)
-      : { ok: false, reason: "inactive" };
-  }
-
   private syncInput(): void {
     if (
       !this.mounted ||
@@ -162,18 +157,20 @@ export class HotbarController<TId extends string = string>
           "hotbar",
           `No hotbar actions are mapped (${names.join(", ")}). Install HOTBAR_ACTION_MAP or supply custom controls.`,
         );
-    this.call("input.bind", () => this.binding?.bind(input, this, this.target));
+    this.call("input.bind", () =>
+      this.binding?.bind(input, this.driver, this.target),
+    );
     this.bindingActive = true;
   }
   private stopInput(): void {
     if (!this.bindingActive) return;
-    this.call("input.dispose", () => this.binding?.dispose());
     this.bindingActive = false;
+    this.call("input.dispose", () => this.binding?.dispose());
   }
   private present(): void {
-    if (this.options.presenter)
+    if (this.presenter)
       this.call("presenter.present", () =>
-        this.options.presenter?.present(this.model.inspect()),
+        this.presenter?.present(this.model.inspect()),
       );
   }
   private call<T>(kind: string, fn: () => T): T {

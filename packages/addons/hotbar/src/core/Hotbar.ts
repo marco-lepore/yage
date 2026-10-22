@@ -6,6 +6,7 @@ import type {
   HotbarBinding,
   HotbarEvent,
   HotbarOptions,
+  HotbarRestoreResult,
   HotbarSlot,
   HotbarSnapshot,
   HotbarState,
@@ -17,43 +18,35 @@ export class Hotbar<TId extends string = string> {
   private slots: (TId | null)[];
   private selected: number;
   private last: HotbarActivation<TId> | null = null;
+  /** The releasable binding each slot last activated, until that slot is released. */
+  private readonly held = new Map<
+    number,
+    { readonly id: TId; readonly release: () => void }
+  >();
+  /** Slots whose binding's `activate()` is running. */
+  private readonly activating = new Set<number>();
   private readonly listeners = new Set<(event: HotbarEvent<TId>) => void>();
   private readonly standaloneBoundary: ErrorBoundary;
   private owner: object | undefined;
   private boundary: ErrorBoundary;
   private info: CallbackErrorInfo = { kind: "Hotbar" };
-  private activating = false;
 
   constructor(options: HotbarOptions<TId>) {
     const count = options.slotCount ?? 8;
-    if (!Number.isSafeInteger(count) || count < 1 || count > 1024) {
+    if (!Number.isSafeInteger(count) || count < 1)
       throw new Error(
-        `Hotbar.constructor: slotCount must be an integer from 1 to 1024, got ${count}`,
+        `Hotbar.constructor: slotCount must be a positive integer, got ${count}`,
       );
-    }
-    this.bindings = Object.fromEntries(
-      Object.entries<HotbarBinding>(options.bindings).map(([id, binding]) => {
-        if (
-          !id.trim() ||
-          !binding.label.trim() ||
-          typeof binding.activate !== "function"
-        ) {
-          throw new Error(
-            `Hotbar.constructor: binding '${id}' requires a nonempty ID, label and activate function`,
-          );
-        }
-        return [id, { ...binding }];
-      }),
-    ) as Record<TId, HotbarBinding>;
-    this.slots = Array.from({ length: count }, () => null);
+    this.bindings = { ...options.bindings };
+    const initial = options.slots ?? [];
+    if (initial.length > count)
+      throw new Error(
+        `Hotbar.constructor: ${initial.length} initial assignments exceed slotCount ${count}`,
+      );
+    for (const id of initial) if (id !== null) this.binding(id);
+    this.slots = Array.from({ length: count }, (_, i) => initial[i] ?? null);
     this.selected = options.selected ?? 0;
-    this.index(this.selected, "constructor");
-    if ((options.slots?.length ?? 0) > count)
-      throw new Error("Hotbar.constructor: assignments exceed slotCount");
-    options.slots?.forEach((id, i) => {
-      if (id !== null) this.binding(id);
-      this.slots[i] = id;
-    });
+    this.slotIndex(this.selected, "constructor");
     this.standaloneBoundary =
       options.errorBoundary ?? new ErrorBoundary(new Logger());
     this.boundary = this.standaloneBoundary;
@@ -69,11 +62,11 @@ export class Hotbar<TId extends string = string> {
     return Object.keys(this.bindings) as TId[];
   }
   get lastActivation(): HotbarActivation<TId> | null {
-    return this.last ? { ...this.last, result: { ...this.last.result } } : null;
+    return this.last;
   }
 
   assign(slot: number, id: TId): void {
-    this.index(slot, "assign");
+    this.slotIndex(slot, "assign");
     this.binding(id);
     if (this.slots[slot] === id) return;
     this.slots[slot] = id;
@@ -81,7 +74,7 @@ export class Hotbar<TId extends string = string> {
   }
 
   clear(slot: number): void {
-    this.index(slot, "clear");
+    this.slotIndex(slot, "clear");
     if (this.slots[slot] === null) return;
     this.slots[slot] = null;
     this.changed();
@@ -89,33 +82,31 @@ export class Hotbar<TId extends string = string> {
 
   /** Exchange assignments, including an empty destination. Selection stays at its index. */
   swap(a: number, b: number): void {
-    this.index(a, "swap");
-    this.index(b, "swap");
-    if (this.slots[a] === this.slots[b]) return;
-    const before = this.slots[a]!;
-    this.slots[a] = this.slots[b]!;
-    this.slots[b] = before;
+    this.slotIndex(a, "swap");
+    this.slotIndex(b, "swap");
+    const first = this.assigned(a);
+    const second = this.assigned(b);
+    if (first === second) return;
+    this.slots[a] = second;
+    this.slots[b] = first;
     this.changed();
   }
 
   select(slot: number): void {
-    this.index(slot, "select");
+    this.slotIndex(slot, "select");
     if (this.selected === slot) return;
     this.selected = slot;
     this.changed();
   }
 
+  /** Move the selection one slot, wrapping at either end. */
   cycle(direction: -1 | 1): void {
-    if (direction !== -1 && direction !== 1)
-      throw new Error(
-        `Hotbar.cycle: direction must be -1 or 1, got ${direction}`,
-      );
     this.select((this.selected + direction + this.slotCount) % this.slotCount);
   }
 
   read(slot: number): HotbarSlot<TId> {
-    this.index(slot, "read");
-    const id = this.slots[slot]!;
+    this.slotIndex(slot, "read");
+    const id = this.assigned(slot);
     if (id === null)
       return {
         index: slot,
@@ -129,33 +120,22 @@ export class Hotbar<TId extends string = string> {
     const binding = this.binding(id);
     const state = this.call(`read '${id}'`, () => {
       const value = binding.read?.() ?? {};
-      if (typeof value !== "object" || "then" in value)
-        throw new Error(
-          `Hotbar.read: '${id}' must return a synchronous state object`,
-        );
-      if (value.available !== undefined && typeof value.available !== "boolean")
-        throw new Error(`Hotbar.read: '${id}' available must be a boolean`);
-      if (
-        value.reason !== undefined &&
-        (typeof value.reason !== "string" || !value.reason.trim())
-      )
-        throw new Error(
-          `Hotbar.read: '${id}' reason must be a nonempty string`,
-        );
-      if (value.count !== undefined)
-        nonnegative(value.count, `read '${id}' count`);
+      if (value.count !== undefined) nonnegative(value.count, `'${id}' count`);
       if (value.cooldown) {
-        nonnegative(value.cooldown.remaining, `read '${id}' remaining`);
-        nonnegative(value.cooldown.total, `read '${id}' total`);
-        if (value.cooldown.remaining > value.cooldown.total)
-          throw new Error(`Hotbar.read: '${id}' remaining exceeds total`);
+        nonnegative(value.cooldown.remaining, `'${id}' cooldown.remaining`);
+        const ratio = value.cooldown.ratio;
+        if (!(ratio >= 0 && ratio <= 1))
+          throw new Error(
+            `Hotbar.read: '${id}' cooldown.ratio must be from 0 to 1, got ${ratio}`,
+          );
       }
       return value;
     });
+    const cooling = (state.cooldown?.remaining ?? 0) > 0;
     const reason =
       state.available === false
-        ? (state.reason ?? "unavailable")
-        : (state.cooldown?.remaining ?? 0) > 0
+        ? (state.reason ?? (cooling ? "cooldown" : "unavailable"))
+        : cooling
           ? "cooldown"
           : null;
     return {
@@ -174,70 +154,111 @@ export class Hotbar<TId extends string = string> {
     return {
       slots: this.slots.map((_, i) => this.read(i)),
       selected: this.selected,
-      lastActivation: this.lastActivation,
+      lastActivation: this.last,
     };
   }
 
   /** Rechecks availability; the owner can still reject the activation request. */
   activate(slot = this.selected): HotbarActionResult {
-    this.index(slot, "activate");
-    if (this.activating)
-      throw new Error("Hotbar.activate: recursive activation is not supported");
-    this.activating = true;
-    let activation: HotbarActivation<TId>;
-    try {
-      const state = this.read(slot);
-      const result: HotbarActionResult =
-        state.available && state.bindingId !== null
-          ? this.call(`activate '${state.bindingId}'`, () => {
-              const value = this.binding(state.bindingId!).activate();
-              if (
-                !value ||
-                typeof value.ok !== "boolean" ||
-                (!value.ok &&
-                  (typeof value.reason !== "string" || !value.reason.trim()))
-              ) {
-                throw new Error(
-                  `Hotbar.activate: '${state.bindingId}' must return a synchronous { ok } result with a reason on rejection`,
-                );
-              }
-              return value.ok
-                ? { ok: true }
-                : { ok: false, reason: value.reason };
-            })
-          : { ok: false, reason: state.reason ?? "unavailable" };
-      activation = { slot, bindingId: state.bindingId, result };
-      this.last = { ...activation, result: { ...activation.result } };
-    } finally {
-      // Only the reentrancy flag is released; no callbacks or gameplay steps run here.
-      this.activating = false;
+    this.slotIndex(slot, "activate");
+    if (this.activating.has(slot))
+      throw new Error(
+        `Hotbar.activate: slot ${slot} was activated again while its activate() was running`,
+      );
+    const state = this.read(slot);
+    const id = state.bindingId;
+    let result: HotbarActionResult;
+    if (id === null || state.reason !== null) {
+      result = { ok: false, reason: state.reason ?? "unavailable" };
+    } else {
+      const binding = this.binding(id);
+      // A slot holds one action: the earlier hold ends before the new request.
+      const earlier = this.held.get(slot);
+      if (earlier) {
+        this.held.delete(slot);
+        this.call(`release '${earlier.id}'`, earlier.release);
+      }
+      this.activating.add(slot);
+      try {
+        result = this.call(`activate '${id}'`, () => {
+          const value = binding.activate();
+          if ("then" in value)
+            throw new Error(
+              `Hotbar.activate: '${id}' must return a synchronous result, got a Promise`,
+            );
+          return value.ok ? { ok: true } : { ok: false, reason: value.reason };
+        });
+      } finally {
+        // Only the guard is reset; no callbacks or gameplay steps run here.
+        this.activating.delete(slot);
+      }
+      if (result.ok && binding.release)
+        this.held.set(slot, { id, release: binding.release });
     }
-    this.emit({ type: "activation", activation });
-    return { ...activation.result };
+    this.last = { slot, bindingId: id, result };
+    this.emit({ type: "activation", activation: this.last });
+    return result;
+  }
+
+  /**
+   * End the held action this slot activated. Calls the `release` of the
+   * binding that was activated, even if the slot was reassigned since. No-op
+   * when the slot holds nothing releasable. A slot holds one action at a
+   * time: activating it again, once `read()` reports it available, ends the
+   * earlier hold before the binding's `activate()` runs.
+   */
+  release(slot: number): void {
+    this.slotIndex(slot, "release");
+    const held = this.held.get(slot);
+    if (!held) return;
+    this.held.delete(slot);
+    this.call(`release '${held.id}'`, held.release);
   }
 
   snapshot(): HotbarSnapshot<TId> {
     return { version: 1, slots: [...this.slots], selected: this.selected };
   }
 
-  restore(snapshot: HotbarSnapshot): void {
-    if (
-      snapshot.version !== 1 ||
-      !Array.isArray(snapshot.slots) ||
-      snapshot.slots.length !== this.slotCount
-    )
+  /**
+   * Replace assignments and selection with a saved snapshot. Entries past the
+   * slot count or naming a binding this bar does not declare are left empty
+   * and returned in `dropped`. An out-of-range selection resets to slot 0.
+   * Throws, before changing anything, for another version or for slots that
+   * are not an array of binding IDs and nulls.
+   */
+  restore(snapshot: HotbarSnapshot): HotbarRestoreResult {
+    if (snapshot.version !== 1)
       throw new Error(
-        "Hotbar.restore: expected version 1 and matching slot count",
+        `Hotbar.restore: expected a version 1 snapshot, got version ${snapshot.version}`,
       );
-    this.index(snapshot.selected, "restore");
-    const slots = Array.from(snapshot.slots, (id) => {
-      if (id !== null) this.binding(id as TId);
-      return id as TId | null;
+    if (!Array.isArray(snapshot.slots))
+      throw new Error(
+        `Hotbar.restore: slots must be an array, got ${String(snapshot.slots)}`,
+      );
+    const dropped: { slot: number; bindingId: string }[] = [];
+    const slots: (TId | null)[] = Array.from(
+      { length: this.slotCount },
+      () => null,
+    );
+    snapshot.slots.forEach((id, slot) => {
+      if (id === null) return;
+      if (typeof id !== "string")
+        throw new Error(
+          `Hotbar.restore: slot ${slot} must hold a binding ID or null, got ${String(id)}`,
+        );
+      if (slot < slots.length && Object.hasOwn(this.bindings, id))
+        slots[slot] = id as TId;
+      else dropped.push({ slot, bindingId: id });
     });
+    const selected = snapshot.selected;
     this.slots = slots;
-    this.selected = snapshot.selected;
+    this.selected =
+      Number.isInteger(selected) && selected >= 0 && selected < slots.length
+        ? selected
+        : 0;
     this.last = null;
     this.changed();
+    return { dropped };
   }
 
   on(listener: (event: HotbarEvent<TId>) => void): () => void {
@@ -267,12 +288,15 @@ export class Hotbar<TId extends string = string> {
     };
   }
 
+  private assigned(slot: number): TId | null {
+    return this.slots[slot] ?? null;
+  }
   private binding(id: TId): HotbarBinding {
     if (!Object.hasOwn(this.bindings, id))
       throw new Error(`Hotbar: unknown binding '${id}'`);
     return this.bindings[id];
   }
-  private index(slot: number, method: string): void {
+  private slotIndex(slot: number, method: string): void {
     if (!Number.isInteger(slot) || slot < 0 || slot >= this.slotCount)
       throw new Error(
         `Hotbar.${method}: slot must be an integer from 0 to ${this.slotCount - 1}, got ${slot}`,
@@ -300,6 +324,6 @@ export class Hotbar<TId extends string = string> {
 function nonnegative(value: number, field: string): void {
   if (!Number.isFinite(value) || value < 0)
     throw new Error(
-      `Hotbar.${field}: expected a finite nonnegative number, got ${value}`,
+      `Hotbar.read: ${field} must be finite and nonnegative, got ${value}`,
     );
 }

@@ -87,16 +87,6 @@ export interface Example {
 export const EXAMPLES: readonly Example[] = [
   // Start here
   {
-    slug: "hotbar",
-    title: "Hotbar",
-    summary:
-      "Bind an ability and consumables to numbered slots, swap assignments, inspect cooldowns and save the layout.",
-    section: "gameplay",
-    packages: ["input"],
-    addons: ["hotbar", "abilities", "inventory"],
-    guide: "/addons/hotbar/",
-  },
-  {
     slug: "hello-world",
     title: "Hello World",
     summary:
@@ -543,6 +533,16 @@ export const EXAMPLES: readonly Example[] = [
     packages: ["physics", "input", "audio", "particles"],
     addons: ["abilities"],
     guide: "/addons/abilities/",
+  },
+  {
+    slug: "hotbar",
+    title: "Hotbar Addon",
+    summary:
+      "One bar over abilities, potions and a custom action: cooldowns, a hold-to-charge beam, an edit mode with drag to swap, and a saved layout.",
+    section: "gameplay",
+    packages: ["input"],
+    addons: ["hotbar", "abilities", "inventory"],
+    guide: "/addons/hotbar/",
   },
   {
     slug: "i18n",

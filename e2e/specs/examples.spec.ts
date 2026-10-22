@@ -365,6 +365,138 @@ test.describe("Examples", () => {
     expect(result.errors.callbackErrors).toEqual([]);
   });
 
+  test("hotbar drives abilities, a held beam and inventory items", async ({
+    page,
+  }) => {
+    await page.goto("/hotbar.html?test");
+    await page.waitForFunction(
+      () =>
+        window.__yage__?.inspector?.getSceneStack().at(-1)?.name === "hotbar",
+      undefined,
+      { timeout: 10_000 },
+    );
+
+    // Hold a key for `frames`, let go, wait `after` frames, then read the
+    // state the assertions need. One evaluate per press keeps each page
+    // promise short.
+    const press = (code: string, frames = 1, after = 2) =>
+      page.evaluate(
+        async ({ code, frames, after }) => {
+          const inspector = window.__yage__!.inspector;
+          inspector.input.keyDown(code);
+          await inspector.time.stepAsync(frames);
+          inspector.input.keyUp(code);
+          await inspector.time.stepAsync(after);
+          const read = <T>(entity: string, component: string) =>
+            inspector.getComponentData(entity, component) as T;
+          return {
+            result: read<{
+              diagnostic: { lastActivation: { result: unknown } | null };
+            }>("PlayerEntity", "HotbarController").diagnostic.lastActivation
+              ?.result,
+            damage: read<{ damageTaken: number }>("TargetEntity", "Dummy")
+              .damageTaken,
+            potions: read<{ potions: number }>("PlayerEntity", "Backpack")
+              .potions,
+            x: inspector.getEntityPosition("PlayerEntity")!.x,
+            errors: inspector.getErrors().callbackErrors,
+          };
+        },
+        { code, frames, after },
+      );
+
+    const zap = await press("Digit1");
+    // Wait out Zap's 0.3 s run so the beam finds the lane free.
+    const retry = await press("Digit1", 1, 20);
+    // Hold the beam for one second: base 10 plus 30 per charged second.
+    const beam = await press("Digit2", 60, 10);
+    const walk = await press("KeyD", 30);
+    const potion = await press("Digit3");
+
+    expect(zap.damage).toBe(15);
+    expect(retry.result).toEqual({ ok: false, reason: "cooldown" });
+    expect(beam.damage - zap.damage).toBeGreaterThanOrEqual(39);
+    expect(beam.damage - zap.damage).toBeLessThanOrEqual(41);
+    expect(walk.x - beam.x).toBeGreaterThan(100);
+    // Health starts below full, so the bag offers "drink".
+    expect(potion.result).toEqual({ ok: true });
+    expect(walk.potions - potion.potions).toBe(1);
+    expect(potion.errors).toEqual([]);
+  });
+
+  test("hotbar holds a slot by pointer and swaps slots in edit mode", async ({
+    page,
+  }) => {
+    await page.goto("/hotbar.html?test");
+    await page.waitForFunction(
+      () =>
+        window.__yage__?.inspector?.getSceneStack().at(-1)?.name === "hotbar",
+      undefined,
+      { timeout: 10_000 },
+    );
+
+    // Slot centers on the 800×500 canvas: five 130 px slots with 8 px gaps,
+    // centered, 24 px above the bottom edge.
+    const slotX = (slot: number) => 59 + slot * 138 + 65;
+    const slotY = 426;
+    type Step =
+      | { move: [number, number] }
+      | { down: true }
+      | { up: true }
+      | { key: string }
+      | { frames: number };
+    const run = (steps: Step[]) =>
+      page.evaluate(async (steps) => {
+        const inspector = window.__yage__!.inspector;
+        for (const step of steps) {
+          if ("move" in step) inspector.input.pointerMove(...step.move);
+          else if ("down" in step) inspector.input.pointerDown(0);
+          else if ("up" in step) inspector.input.pointerUp(0);
+          else if ("key" in step) await inspector.input.tap(step.key);
+          else await inspector.time.stepAsync(step.frames);
+        }
+        const read = <T>(entity: string, component: string) =>
+          inspector.getComponentData(entity, component) as T;
+        return {
+          damage: read<{ damageTaken: number }>("TargetEntity", "Dummy")
+            .damageTaken,
+          slots: read<{
+            diagnostic: { slots: { bindingId: string | null }[] };
+          }>("PlayerEntity", "HotbarController").diagnostic.slots.map(
+            (slot) => slot.bindingId,
+          ),
+          errors: inspector.getErrors().callbackErrors,
+        };
+      }, steps);
+
+    // Play mode: pressing the Beam slot charges it until the pointer lifts.
+    const held = await run([
+      { move: [slotX(1), slotY] },
+      { down: true },
+      { frames: 60 },
+      { up: true },
+      { frames: 10 },
+    ]);
+    expect(held.damage).toBeGreaterThanOrEqual(39);
+    expect(held.damage).toBeLessThanOrEqual(41);
+
+    // Edit mode: dragging Zap onto Beam swaps them and activates nothing.
+    const swapped = await run([
+      { key: "KeyE" },
+      { frames: 2 },
+      { move: [slotX(0), slotY] },
+      { down: true },
+      { frames: 1 },
+      { move: [slotX(1), slotY] },
+      { frames: 1 },
+      { up: true },
+      { frames: 2 },
+    ]);
+    expect(swapped.slots.slice(0, 2)).toEqual(["beam", "zap"]);
+    expect(swapped.damage).toBe(held.damage);
+    expect(swapped.errors).toEqual([]);
+  });
+
   test("yarn-dialogue plays a Yarn project, switches language, and runs commands", async ({
     page,
   }) => {

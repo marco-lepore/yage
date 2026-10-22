@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMockScene, Transform } from "@yagejs/core";
+import { createMockScene } from "@yagejs/core";
 import { RendererKey, SceneRenderTreeProviderKey } from "@yagejs/renderer";
 import type { RendererPlugin, SceneRenderTreeProvider } from "@yagejs/renderer";
 import { Hotbar } from "../core/Hotbar.js";
@@ -10,6 +10,7 @@ const recorded = vi.hoisted(() => ({
   operations: [] as unknown[][],
   texts: [] as { text: string; style: object; visible: boolean }[],
   styleChanges: 0,
+  sprites: [] as { texture: string; visible: boolean }[],
 }));
 vi.mock("@yagejs/renderer", async () => {
   const { Component, ServiceKey } = await import("@yagejs/core");
@@ -61,19 +62,32 @@ vi.mock("@yagejs/renderer", async () => {
   }
   class SpriteComponent extends Component {
     visible = true;
+    texture: string;
+    constructor(options: { texture: string }) {
+      super();
+      this.texture = options.texture;
+      recorded.sprites.push(this);
+    }
+    setTexture(texture: string): void {
+      this.texture = texture;
+    }
   }
   return {
     GraphicsComponent,
     TextComponent,
     SpriteComponent,
-    resolveTextureInput: () => ({ width: 16, height: 16 }),
+    resolveTextureInput: (key: string) => {
+      if (key === "missing") throw new Error(`texture '${key}' not found`);
+      return { width: 16, height: 16 };
+    },
     RendererKey: new ServiceKey("renderer"),
     SceneRenderTreeProviderKey: new ServiceKey("sceneRenderTreeProvider"),
   };
 });
 
-function mount(theme = defaultHotbarTheme()) {
+function mount(theme: Partial<HotbarTheme> = {}) {
   recorded.texts.length = 0;
+  recorded.sprites.length = 0;
   recorded.styleChanges = 0;
   const { scene, context } = createMockScene();
   const ensureLayer = vi.fn();
@@ -83,24 +97,25 @@ function mount(theme = defaultHotbarTheme()) {
   context.register(SceneRenderTreeProviderKey, {
     getTree: () => ({ ensureLayer }),
   } as unknown as SceneRenderTreeProvider);
-  const owner = scene.spawn("hud");
-  owner.add(new Transform());
   const view = new HotbarView(theme);
-  view.mount(owner);
+  view.mount(scene);
   const model = new Hotbar({
     bindings: {
       a: {
         label: "Spell",
-        read: () => ({ cooldown: { remaining: 1, total: 2 }, count: 3 }),
+        read: () => ({ cooldown: { remaining: 1, ratio: 0.5 }, count: 3 }),
         activate: () => ({ ok: true }),
       },
+      b: { label: "Bomb", icon: "bomb", activate: () => ({ ok: true }) },
+      c: { label: "Cake", icon: "cake", activate: () => ({ ok: true }) },
+      d: { label: "Dud", icon: "missing", activate: () => ({ ok: true }) },
     },
     slots: ["a", "a"],
     slotCount: 2,
   });
   view.setVisible(true);
   view.present(model.inspect());
-  return { owner, view, model, ensureLayer };
+  return { scene, view, model, ensureLayer };
 }
 
 describe("HotbarView", () => {
@@ -181,14 +196,57 @@ describe("HotbarView", () => {
     expect(view.slotAtPoint(158, 40)).toBe(1);
   });
 
-  it("destroys its child entities and allows a fresh mount", () => {
-    const { owner, view, model } = mount();
+  it("destroys its entities and allows a fresh mount", () => {
+    const { scene, view, model } = mount();
+    const spawned = [...scene.getEntities()];
     view.dispose();
-    view.mount(owner);
+    expect(spawned.every((entity) => entity.isDestroyed)).toBe(true);
+    view.mount(scene);
     view.setVisible(true);
     view.present(model.inspect());
     expect(view.slotAtPoint(320, 390)).toBe(0);
-    expect(() => view.mount(owner)).toThrow("already mounted");
+    expect(() => view.mount(scene)).toThrow("already mounted");
+  });
+
+  it("spawns scene-level entities that no host transform moves", () => {
+    const { scene } = mount();
+    const spawned = [...scene.getEntities()];
+    expect(spawned.length).toBeGreaterThan(0);
+    expect(spawned.every((entity) => entity.parent === null)).toBe(true);
+  });
+
+  it("reuses one icon sprite per slot and hides it when the icon goes away", () => {
+    const { view, model } = mount();
+    model.assign(0, "b");
+    view.present(model.inspect());
+    model.assign(0, "c");
+    view.present(model.inspect());
+    expect(recorded.sprites).toHaveLength(1);
+    expect(recorded.sprites[0]).toMatchObject({
+      texture: "cake",
+      visible: true,
+    });
+    model.assign(0, "a");
+    view.present(model.inspect());
+    expect(recorded.sprites[0]?.visible).toBe(false);
+  });
+
+  it("throws for an unregistered icon key on every frame", () => {
+    const { view, model } = mount();
+    model.assign(0, "d");
+    expect(() => view.present(model.inspect())).toThrow("missing");
+    expect(() => view.present(model.inspect())).toThrow("missing");
+    expect(recorded.sprites).toHaveLength(0);
+  });
+
+  it("fills the cooldown bar by the remaining fraction", () => {
+    mount({ x: 0, y: 0 });
+    expect(recorded.operations).toContainEqual(["rect", 4, 92, 36, 4]);
+  });
+
+  it("keeps defaults for theme fields left out", () => {
+    const view = new HotbarView({ slotWidth: 96 });
+    expect(view.theme).toEqual({ ...defaultHotbarTheme(), slotWidth: 96 });
   });
 
   it("changes text styles only when slot availability changes", () => {
@@ -208,11 +266,7 @@ describe("HotbarView", () => {
   });
 
   it("rejects nonfinite geometry and colors at construction", () => {
-    expect(() => new HotbarView({ ...defaultHotbarTheme(), gap: NaN })).toThrow(
-      "gap",
-    );
-    expect(
-      () => new HotbarView({ ...defaultHotbarTheme(), text: Infinity }),
-    ).toThrow("color");
+    expect(() => new HotbarView({ gap: NaN })).toThrow("gap");
+    expect(() => new HotbarView({ text: Infinity })).toThrow("color");
   });
 });

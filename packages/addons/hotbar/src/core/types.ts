@@ -4,15 +4,20 @@ export type HotbarActionResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: string };
 
-/** Live values owned by the action's source. Durations are in seconds. */
+/** A running cooldown, read from the timer that owns it. */
+export interface HotbarCooldown {
+  /** Seconds until the action is ready. */
+  readonly remaining: number;
+  /** Elapsed fraction from 0 to 1, where 1 means ready. Same scale as `ProcessSlot.ratio`. */
+  readonly ratio: number;
+}
+
+/** Live values owned by the action's source. */
 export interface HotbarBindingState {
   readonly available?: boolean;
   readonly reason?: string;
   readonly count?: number;
-  readonly cooldown?: {
-    readonly remaining: number;
-    readonly total: number;
-  };
+  readonly cooldown?: HotbarCooldown;
 }
 
 export interface HotbarBinding {
@@ -23,6 +28,8 @@ export interface HotbarBinding {
   readonly read?: () => HotbarBindingState;
   /** Request activation from the authoritative owner. Must be synchronous. */
   readonly activate: () => HotbarActionResult;
+  /** Ends a held action when the input that activated it is released. Omit for press-only actions. */
+  readonly release?: () => void;
 }
 
 export interface HotbarOptions<TId extends string> {
@@ -44,10 +51,7 @@ export interface HotbarSlot<TId extends string = string> {
   readonly available: boolean;
   readonly reason: string | null;
   readonly count: number | null;
-  readonly cooldown: {
-    readonly remaining: number;
-    readonly total: number;
-  } | null;
+  readonly cooldown: HotbarCooldown | null;
 }
 
 export interface HotbarActivation<TId extends string = string> {
@@ -60,6 +64,14 @@ export interface HotbarSnapshot<TId extends string = string> {
   readonly version: 1;
   readonly slots: readonly (TId | null)[];
   readonly selected: number;
+}
+
+/** Snapshot entries `restore()` could not apply to the current bar. */
+export interface HotbarRestoreResult {
+  readonly dropped: readonly {
+    readonly slot: number;
+    readonly bindingId: string;
+  }[];
 }
 
 export type HotbarEvent<TId extends string = string> =
