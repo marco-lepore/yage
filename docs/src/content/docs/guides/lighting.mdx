@@ -680,12 +680,12 @@ the query applies, or the drawn light and the queried light disagree.
 The `bounce` the factory receives is what this scene resolved to: its own
 setting, or the plugin's, or `null`. Hand it to `LightingComposite`, the step
 `overlayLighting()` and `shaderLighting()` finish with, to give a custom renderer
-the same multiply composite and bounced light. Pass the `world` as well: it is
-where the lighting diagnostics read the blend the composite drew. The
-composite also draws a requested `"max"` blend as `"mix"` where the context
-has no min/max blending, reads that again on a context that replaces a lost
-one, and keeps its buffers at the display's pixel ratio. `surfaceLighting()`
-does not use this composite:
+the same multiply composite and bounced light. `surfaceLighting()` does not use
+this composite. Pass the `world` as well: it is where the lighting diagnostics
+read the blend the composite drew. The composite also draws a requested
+`"max"` blend as `"mix"` where the context has no min/max blending, reads that
+again on a context that replaces a lost one, and keeps its buffers at the
+display's pixel ratio:
 
 ```typescript
 import { Container } from "pixi.js";
