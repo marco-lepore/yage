@@ -63,7 +63,7 @@ export type {
   PreparedPlacement,
 } from "./prepare/types.js";
 
-export { instantiateLevel } from "./runtime/instantiate.js";
+export { instantiateLevel, levelSceneKeys } from "./runtime/instantiate.js";
 export { LevelInstance } from "./runtime/LevelInstance.js";
 export { LevelLoadError } from "./runtime/errors.js";
 export type {

@@ -747,6 +747,24 @@ level.entities; // parent before child
 level.dispose(); // destroys this instance's entities and nothing else
 ```
 
+When several levels must load together or not at all, `levelSceneKeys` lists
+the scene keys a load would claim without loading anything. Check every
+level's keys first, then load:
+
+```typescript yage-group="project" yage-file="instances.ts" yage-context="scene"
+import { levelSceneKeys } from "@yagejs/level";
+
+// Two more copies, north and south: both load, or neither does.
+const wing = ["room-north", "room-south"];
+const taken = wing
+  .flatMap((namespace) => levelSceneKeys(room, namespace))
+  .filter((key) => scene.findByKey(key));
+if (taken.length) throw new Error(`Scene keys in use: ${taken.join(", ")}`);
+for (const namespace of wing) instantiateLevel(scene, room, { namespace });
+```
+
+It throws `LevelLoadError` for a namespace `instantiateLevel` refuses.
+
 ## Choosing what draws on top
 
 Inside one render layer, what a level lists later draws over what it lists
