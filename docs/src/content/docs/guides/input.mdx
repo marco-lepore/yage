@@ -783,16 +783,40 @@ by their source until it releases them.
 If your component tracks gestures or pending input, subscribe to `onReset` to
 discard that state when the game calls `clearAll()`:
 
-```typescript yage-context="context"
+```typescript
+import { Component } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 
-declare function discardPendingGestures(): void;
-const input = context.resolve(InputManagerKey);
-const disposeReset = input.onReset(discardPendingGestures);
+/** Records where each touch started. A reset discards the recorded touches. */
+class TouchStarts extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly starts = new Map<number, { x: number; y: number }>();
+  private unsubscribe: (() => void) | undefined;
+
+  onEnable(): void {
+    const disposeDown = this.input.onPointerDown((pointer) => {
+      this.starts.set(pointer.id, {
+        x: pointer.screenPos.x,
+        y: pointer.screenPos.y,
+      });
+    });
+    const disposeReset = this.input.onReset(() => this.starts.clear());
+    this.unsubscribe = () => {
+      disposeDown();
+      disposeReset();
+    };
+  }
+
+  onDisable(): void {
+    this.unsubscribe?.();
+    this.unsubscribe = undefined;
+  }
+}
 ```
 
 The callback runs after input state has been cleared. Subscription does not
-call it immediately; use the returned disposer when the component is disabled.
+call it immediately. Call the returned disposer when the component is
+disabled, as `onDisable` does above.
 This notification belongs to `clearAll()`, not individual releases or window
 blur. A throwing reset callback is reported through the error boundary and
 stops later reset listeners.
