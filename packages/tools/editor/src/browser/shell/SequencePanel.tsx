@@ -902,9 +902,11 @@ export function SequencePanel({
                         s.target === selectedTrack.target &&
                         s.property === selectedTrack.property,
                     )!.value;
+                  // A key already at the cursor keeps its id and its easing.
                   editKey({
                     ...selectedKey,
                     id: prior?.id ?? crypto.randomUUID(),
+                    curve: prior?.curve ?? selectedKey.curve,
                     frame,
                     value: selectedTrack.position
                       ? sampler.unmapPosition(

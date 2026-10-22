@@ -66,7 +66,7 @@ async function clip(page: Page) {
       id: string;
       target: string;
       property: string;
-      keys: { id: string; frame: number; value: unknown }[];
+      keys: { id: string; frame: number; value: unknown; curve: unknown }[];
     }[];
     events: unknown[];
     targets: Record<string, unknown>;
@@ -239,6 +239,24 @@ test("anchored key insertion preserves the preview and discrete tracks have vali
       (t) => t.target === "actorB" && t.property === "visible",
     )?.keys[0]?.value,
   ).toBe(true);
+});
+test("adding a key where one exists keeps that key's easing", async ({
+  page,
+}) => {
+  await boot(page);
+  // The key at frame 90 is linear; the key at frame 45 holds.
+  await page
+    .getByRole("button", { name: "actorA position frame 90", exact: true })
+    .click();
+  await frame(page, 45);
+  await page
+    .getByRole("button", { name: "Add key at cursor", exact: true })
+    .click();
+  const keys = (await clip(page)).tracks.find(
+    (t) => t.target === "actorA" && t.property === "position",
+  )?.keys;
+  expect(keys?.find((k) => k.frame === 45)?.curve).toBe("hold");
+  expect(keys?.find((k) => k.frame === 90)?.curve).toBe("linear");
 });
 test("authors typed values, Bezier easing and contract properties without JSON", async ({
   page,

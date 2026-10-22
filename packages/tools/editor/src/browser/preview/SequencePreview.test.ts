@@ -80,6 +80,19 @@ describe("dormant sequence playback", () => {
       "middle",
     ]);
   });
+  it("starts from a cursor moved with no update between the seek and Play", () => {
+    const { store, preview } = harness();
+    store.dispatch({ type: "sequence-view", patch: { playing: true } });
+    preview.advance(0.1);
+    expect(store.getState().sequence?.frame).toBe(1);
+    store.dispatch({
+      type: "sequence-view",
+      patch: { frame: 7, playing: false },
+    });
+    store.dispatch({ type: "sequence-view", patch: { playing: true } });
+    preview.advance(0.1);
+    expect(store.getState().sequence?.frame).toBe(8);
+  });
   it("replays a completed sequence from zero and logs every loop boundary", () => {
     const { store, preview } = harness();
     store.dispatch({

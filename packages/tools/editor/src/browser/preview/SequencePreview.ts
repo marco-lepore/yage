@@ -14,6 +14,10 @@ import type { EditorStore } from "../store/index.js";
 export class SequencePreview {
   private player: SequencePlayer | undefined;
   private source: SequenceDocument | undefined;
+  /** The cursor frame this preview last wrote to the view. */
+  private frame: number | undefined;
+  /** The view settings the current player started with. */
+  private settings = "";
   constructor(
     private readonly store: EditorStore,
     private readonly boundary: ErrorBoundary,
@@ -22,6 +26,7 @@ export class SequencePreview {
     this.player?.cancel("retain");
     this.player = undefined;
     this.source = undefined;
+    this.frame = undefined;
   }
   advance(dt: number): void {
     const state = this.store.getState(),
@@ -35,9 +40,23 @@ export class SequencePreview {
       this.stop();
       return;
     }
-    if (this.source !== doc.sequence) {
+    const settings = JSON.stringify([
+      view.loop,
+      view.speed,
+      view.width,
+      view.height,
+      view.fit,
+    ]);
+    // A cursor or setting changed outside this preview, even with no update
+    // in between, starts a new player there.
+    if (
+      this.source !== doc.sequence ||
+      view.frame !== this.frame ||
+      settings !== this.settings
+    ) {
       this.stop();
       this.source = doc.sequence;
+      this.settings = settings;
       this.player = new SequencePlayer(this.boundary);
       let dispatchEvents =
         view.frame === 0 || view.frame >= doc.sequence.duration;
@@ -91,10 +110,11 @@ export class SequencePreview {
       dispatchEvents = true;
     }
     this.player!.advance(dt);
+    this.frame = this.player!.frame;
     this.store.dispatch({
       type: "sequence-view",
       patch: {
-        frame: this.player!.frame,
+        frame: this.frame,
         playing: this.player!.state === "playing",
       },
     });
