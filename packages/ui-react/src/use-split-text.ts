@@ -17,11 +17,11 @@ export interface SplitRunHandle {
  * across re-splits (a `text` change destroys and recreates `chars`).
  */
 export interface SplitTextControls {
-  /** Live per-glyph display objects, in reading order. */
+  /** Live character segments, in reading order. */
   readonly chars: TextSegments["chars"];
-  /** Live word-group containers. */
+  /** Live word segments. */
   readonly words: TextSegments["words"];
-  /** Live line-group containers. */
+  /** Live line segments. */
   readonly lines: TextSegments["lines"];
   /** Live `chars` / `words` / `lines` as one object. */
   readonly segments: TextSegments;

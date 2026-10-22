@@ -366,11 +366,13 @@ changes.
 
 The segment origins — `charAnchor`, `wordAnchor`, `lineAnchor` (also
 normalized 0–1, settable at construction or at runtime) — control the pivot
-each segment rotates and scales about. `chars` are `Text` / `BitmapText`;
-`words` and `lines` are containers grouping them.
+each segment rotates and scales about. Every entry of `chars`, `words` and
+`lines` is a `TextSegment`: a character, a word or a line you can move, turn,
+scale, fade, tint or hide. A word's position is relative to its line, and a
+character's to its word, so moving a word moves its characters.
 
-The engine writes none of a segment's `x`, `y`, `rotation`, `scale`,
-`alpha`, `tint` or `visible`, so those are yours to animate. A `setText`,
+The engine writes none of a segment's `x`, `y`, `position`, `rotation`,
+`scale`, `alpha`, `tint` or `visible`, so those are yours to animate. A `setText`,
 `setStyle` or `resplit()` replaces every segment, so read `chars` again
 after one instead of keeping the old array.
 

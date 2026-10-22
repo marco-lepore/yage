@@ -14,7 +14,7 @@ import {
   SplitTextComponent,
   TextComponent,
 } from "@yagejs/renderer";
-import type { DisplayBitmapText, DisplayText } from "@yagejs/renderer";
+import type { TextSegment } from "@yagejs/renderer";
 import {
   installDebugFromUrl,
   setupGameContainer,
@@ -70,7 +70,7 @@ const GLITCH_TINTS = [0xffffff, 0x00ffff, 0xff3df0, 0xfff04d];
  * physics effects, start pose for Assemble).
  */
 interface Glyph {
-  readonly char: DisplayText | DisplayBitmapText;
+  readonly char: TextSegment;
   readonly homeX: number;
   readonly homeY: number;
   vx: number;

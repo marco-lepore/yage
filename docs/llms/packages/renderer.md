@@ -11,8 +11,8 @@ Every exported field, parameter, and return type across `@yagejs/renderer` (and 
 | `DisplayContainer`       | `Container`                                              | `renderObject` getters, `RenderLayer.container`, UI element `displayObject` fields |
 | `DisplaySprite`          | `Sprite`                                                 | `SpriteComponent.renderObject`                                                     |
 | `DisplayAnimatedSprite`  | `AnimatedSprite`                                         | `AnimatedSpriteComponent.renderObject`                                             |
-| `DisplayText`            | `Text`                                                   | `TextComponent.renderObject` (canvas variant), `SplitTextComponent.chars`          |
-| `DisplayBitmapText`      | `BitmapText`                                             | `TextComponent.renderObject` (bitmap variant), `SplitTextComponent.chars`          |
+| `DisplayText`            | `Text`                                                   | `TextComponent.renderObject` (canvas variant)                                      |
+| `DisplayBitmapText`      | `BitmapText`                                             | `TextComponent.renderObject` (bitmap variant)                                      |
 | `DisplaySplitText`       | `SplitText`                                              | `SplitTextComponent.renderObject` (canvas variant)                                 |
 | `DisplaySplitBitmapText` | `SplitBitmapText`                                        | `SplitTextComponent.renderObject` (bitmap variant)                                 |
 | `GraphicsContext`        | `Graphics`                                               | `GraphicsComponent.renderObject`, `draw((g) => ...)`, mask draw callbacks          |
@@ -530,7 +530,7 @@ new TextComponent({ text: "HUD", resolution: window.devicePixelRatio });
 
 ### SplitTextComponent
 
-Per-glyph / animated text — typewriter reveals, per-letter colour/wave, staggered line entrances. Wraps Pixi v8's **experimental** `SplitText` / `SplitBitmapText`; exposes the text as arrays of individually transformable display objects. Transform-synced and layer-attached like `TextComponent`.
+Per-glyph / animated text — typewriter reveals, per-letter colour/wave, staggered line entrances. Wraps Pixi v8's **experimental** `SplitText` / `SplitBitmapText`; exposes the text as arrays of `TextSegment`s, one per character, word and line, each transformable on its own. Transform-synced and layer-attached like `TextComponent`.
 
 ```ts yage-context="entity"
 import { SplitTextComponent } from "@yagejs/renderer";
@@ -547,11 +547,12 @@ const title = entity.add(
   }),
 );
 
-title.chars; // (Text | BitmapText)[] — one per glyph
-title.words; // Container[] — word groups
-title.lines; // Container[] — line groups
-// Glyph x / y / rotation / scale / alpha / tint / visible are yours: the engine
-// writes none. setText / setStyle / resplit() replace every segment — re-read.
+title.chars; // readonly TextSegment[] — one per glyph, whitespace excluded
+title.words; // readonly TextSegment[] — word groups
+title.lines; // readonly TextSegment[] — line groups
+// A segment's x / y / position / rotation / scale / alpha / tint / visible are
+// yours: the engine writes none. setText / setStyle / resplit() replace every
+// segment — re-read.
 
 // Typewriter: stagger each glyph's fade-in (0.05s apart) via a ProcessComponent.
 title.chars.forEach((c) => (c.alpha = 0));
@@ -562,6 +563,8 @@ Tween.stagger(
   0.05,
 ).forEach((p) => pc.run(p));
 ```
+
+`TextSegment` is `{ x, y, position, rotation, scale, alpha, tint, visible }`, where `position` and `scale` take `.set(x, y?)`. Positions are relative to the parent segment (a character within its word, a word within its line). A segment has no container API (`addChild`, `destroy`, `getBounds`): the glyph's Pixi object is reached only through `renderObject.chars`, as for any raw access.
 
 `anchor` positions the whole block around its entity Transform, as an option or a property. It uses the current split text bounds and is recomputed after text, style, or manual split updates. `charAnchor`, `wordAnchor`, and `lineAnchor` only affect their individual segments.
 

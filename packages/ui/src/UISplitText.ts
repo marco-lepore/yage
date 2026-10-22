@@ -5,12 +5,11 @@ import {
   splitIfNotEmpty,
 } from "@yagejs/renderer";
 import type {
-  DisplayBitmapText,
   DisplayContainer,
   DisplaySplitBitmapText,
   DisplaySplitText,
-  DisplayText,
   SegmentAnchor,
+  TextSegment,
   TextStyle,
 } from "@yagejs/renderer";
 import {
@@ -37,12 +36,12 @@ import { runUICallback } from "./error-boundary.js";
 
 /** The per-character / per-word / per-line segments of a split text. */
 export interface TextSegments {
-  /** Per-glyph display objects (`Text` / `BitmapText`), in reading order. */
-  readonly chars: (DisplayText | DisplayBitmapText)[];
-  /** Word-group containers, each holding its character segments. */
-  readonly words: DisplayContainer[];
-  /** Line-group containers, each holding its word containers. */
-  readonly lines: DisplayContainer[];
+  /** The character segments, in reading order. Whitespace has no segment. */
+  readonly chars: readonly TextSegment[];
+  /** The word segments, each moving its characters with it. */
+  readonly words: readonly TextSegment[];
+  /** The line segments, each moving its words with it. */
+  readonly lines: readonly TextSegment[];
 }
 
 /** Listener invoked after the text (re)splits into fresh segments. */
@@ -189,22 +188,21 @@ export class UISplitText extends UIElementBase {
   }
 
   /**
-   * Per-glyph display objects, in reading order, for animating `x`, `y`,
-   * `rotation`, `scale`, `alpha`, `tint` and `visible`; the element writes
-   * none of these on a glyph. A re-split replaces the glyphs, so read this
-   * again after `setText`, `setStyle` or `resplit`.
+   * The character segments, in reading order, for per-glyph animation; the
+   * element writes none of a segment's properties. A re-split replaces the
+   * segments, so read this again after `setText`, `setStyle` or `resplit`.
    */
-  get chars(): (DisplayText | DisplayBitmapText)[] {
+  get chars(): readonly TextSegment[] {
     return this._splitText.chars;
   }
 
-  /** Word-group containers. Replaced by a re-split, like {@link chars}. */
-  get words(): DisplayContainer[] {
+  /** The word segments. Replaced by a re-split, like {@link chars}. */
+  get words(): readonly TextSegment[] {
     return this._splitText.words;
   }
 
-  /** Line-group containers. Replaced by a re-split, like {@link chars}. */
-  get lines(): DisplayContainer[] {
+  /** The line segments. Replaced by a re-split, like {@link chars}. */
+  get lines(): readonly TextSegment[] {
     return this._splitText.lines;
   }
 

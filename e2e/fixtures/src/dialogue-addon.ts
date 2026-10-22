@@ -326,7 +326,7 @@ class DialogueProbe extends Component {
     if (!caret?.visible || !text) return false;
     // Glyph boxes have no Inspector field, so both boxes come from Pixi.
     const c = caret.renderObject.getBounds();
-    return text.chars.some((char) => {
+    return text.renderObject.chars.some((char) => {
       const b = char.getBounds();
       return (
         char.visible &&

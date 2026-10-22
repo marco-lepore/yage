@@ -79,6 +79,8 @@ export type {
   SegmentAnchor,
   SplitTextRenderFacet,
   SplitTextRenderFacetExtras,
+  TextSegment,
+  TextSegmentPoint,
 } from "./SplitTextComponent.js";
 export {
   SortGroupComponent,

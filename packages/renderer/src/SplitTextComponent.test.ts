@@ -291,6 +291,16 @@ describe("SplitTextComponent", () => {
     });
   });
 
+  it("hands out segments without the Pixi container API", () => {
+    const comp = new SplitTextComponent({ text: "hi" });
+    expect(comp.chars).toBe(comp.renderObject.chars);
+    expect(comp.words).toBe(comp.renderObject.words);
+    expect(comp.lines).toBe(comp.renderObject.lines);
+    const segment = comp.chars[0];
+    // @ts-expect-error -- a segment is not a container
+    void segment?.addChild;
+  });
+
   it("reads and writes the block anchor after construction", () => {
     const comp = new SplitTextComponent({ text: "hi" });
     const split = comp.renderObject as unknown as InstanceType<

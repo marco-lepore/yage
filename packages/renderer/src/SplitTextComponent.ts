@@ -8,12 +8,10 @@ import {
   splitIfNotEmpty,
 } from "./internal/split-text-guard.js";
 import type {
+  ColorValue,
   DestroyOptions,
-  DisplayBitmapText,
-  DisplayContainer,
   DisplaySplitBitmapText,
   DisplaySplitText,
-  DisplayText,
   TextStyle,
 } from "./public-types.js";
 import type { RenderFacetSnapshot } from "./internal/renderFacet.js";
@@ -45,6 +43,39 @@ export type SplitTextRenderFacet =
  * is center, `1` is bottom-right. A single number applies to both axes.
  */
 export type SegmentAnchor = number | { x: number; y: number };
+
+/** A point on a {@link TextSegment}: its position or its scale. */
+export interface TextSegmentPoint {
+  x: number;
+  y: number;
+  /** Set both axes; `set(v)` sets both to `v`. */
+  set(x: number, y?: number): void;
+}
+
+/**
+ * One piece of a split text, a character, a word or a line, as the split-text
+ * visuals hand it out for animation. The component writes none of these, so
+ * they are the game's to animate. A `setText`, `setStyle` or `resplit`
+ * replaces every segment, so read the segments again after one.
+ */
+export interface TextSegment {
+  /** Position within the parent segment (a character within its word, a word within its line), in pixels. */
+  x: number;
+  y: number;
+  /** The same position as {@link x} and {@link y}, settable in one call. */
+  readonly position: TextSegmentPoint;
+  /** Rotation in radians, about the segment's anchor (`charAnchor`, `wordAnchor`, `lineAnchor`). */
+  rotation: number;
+  /** Scale about the segment's anchor. */
+  readonly scale: TextSegmentPoint;
+  /** Opacity, multiplied with the parent segments' and the component's. */
+  alpha: number;
+  /** Tint, multiplied with the parent segments' and the component's. */
+  get tint(): number;
+  set tint(value: ColorValue);
+  /** Whether the segment draws. A hidden word hides its characters. */
+  visible: boolean;
+}
 
 /** Options for creating a {@link SplitTextComponent}. */
 export interface SplitTextComponentOptions extends VisualComponentOptions {
@@ -146,29 +177,27 @@ export class SplitTextComponent extends VisualComponent {
   }
 
   /**
-   * Individual character segments (`Text` or `BitmapText`), in reading order,
-   * for per-glyph animation of `x`, `y`, `rotation`, `scale`, `alpha`, `tint`
-   * and `visible`; the component writes none of these on a segment. A
-   * `setText`, `setStyle` or `resplit` replaces the segments, so read this
-   * again after one.
+   * The character segments, in reading order, for per-glyph animation.
+   * Whitespace has no segment. A `setText`, `setStyle` or `resplit` replaces
+   * the segments, so read this again after one.
    */
-  get chars(): (DisplayText | DisplayBitmapText)[] {
+  get chars(): readonly TextSegment[] {
     return this._splitText.chars;
   }
 
   /**
-   * Word-group containers, each holding its character segments. Replaced by a
+   * The word segments, each moving its characters with it. Replaced by a
    * `setText`, `setStyle` or `resplit`, like {@link chars}.
    */
-  get words(): DisplayContainer[] {
+  get words(): readonly TextSegment[] {
     return this._splitText.words;
   }
 
   /**
-   * Line-group containers, each holding its word containers. Replaced by a
+   * The line segments, each moving its words with it. Replaced by a
    * `setText`, `setStyle` or `resplit`, like {@link chars}.
    */
-  get lines(): DisplayContainer[] {
+  get lines(): readonly TextSegment[] {
     return this._splitText.lines;
   }
 

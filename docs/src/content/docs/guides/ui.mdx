@@ -456,7 +456,7 @@ For typewriter reveals, per-letter colour / wave, or staggered line
 entrances inside a panel, use `UISplitText` — the UI sibling of
 `@yagejs/renderer`'s `SplitTextComponent`. It lays the block out as one
 Yoga element and exposes `chars` / `words` / `lines` (per-glyph,
-per-word, per-line display objects) for you to animate. You drive those
+per-word and per-line `TextSegment`s) for you to animate. You drive those
 with the engine's `Tween` / `Process` — it deliberately doesn't ship its
 own animation API.
 
@@ -493,8 +493,8 @@ Imperatively (no React), `new UISplitText({ children, charAnchor, … })`
 exposes the same `chars` / `words` / `lines` and an `onSplit(cb)`
 subscription that fires after each re-split.
 
-The engine writes none of a segment's `x`, `y`, `rotation`, `scale`,
-`alpha`, `tint` or `visible`, so those are yours to animate. A `setText`,
+The engine writes none of a segment's `x`, `y`, `position`, `rotation`,
+`scale`, `alpha`, `tint` or `visible`, so those are yours to animate. A `setText`,
 `setStyle` or `resplit()` replaces every segment, so read `chars` again
 after one instead of keeping the old array.
 
