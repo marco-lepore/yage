@@ -85,3 +85,9 @@ export interface SequenceSampleOptions {
   readonly rect?: SequenceRect;
   readonly fit?: "stretch" | "contain";
 }
+
+/**
+ * The `format` of a sequence workspace file, which the editor's Sequence mode
+ * saves. Its runtime clip is the `sequence` field.
+ */
+export const SEQUENCE_WORKSPACE_FORMAT = "yage-sequence-workspace";

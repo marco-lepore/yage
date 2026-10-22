@@ -1,4 +1,8 @@
-import { SEQUENCE_CURVE_NAMES, SEQUENCE_PROPERTY_KINDS } from "./types.js";
+import {
+  SEQUENCE_CURVE_NAMES,
+  SEQUENCE_PROPERTY_KINDS,
+  SEQUENCE_WORKSPACE_FORMAT,
+} from "./types.js";
 import type {
   SequenceDocument,
   SequenceProperty,
@@ -243,4 +247,19 @@ export function parseSequence(input: unknown): SequenceDocument {
   const copy = JSON.parse(JSON.stringify(input)) as SequenceDocument;
   freeze(copy);
   return copy;
+}
+
+/**
+ * Parse a saved sequence file: a workspace the editor saved, whose runtime
+ * clip is its `sequence` field, or an exported runtime clip.
+ */
+export function parseSequenceFile(input: unknown): SequenceDocument {
+  const workspace =
+    typeof input === "object" &&
+    input !== null &&
+    !Array.isArray(input) &&
+    (input as { format?: unknown }).format === SEQUENCE_WORKSPACE_FORMAT;
+  return parseSequence(
+    workspace ? (input as { sequence?: unknown }).sequence : input,
+  );
 }

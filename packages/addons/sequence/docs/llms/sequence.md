@@ -12,9 +12,10 @@ binds the same clip to preview entities.
   `transformSequenceTarget`, `combineSequenceTargets`, `SEQUENCE_EASINGS` (the
   frozen easing function of each named curve), everything `/document` exports,
   and the `Sequence*` types.
-- `/renderer`: `visualSequenceTarget(visual: VisualComponent): SequenceTarget`.
-  Needs the optional `@yagejs/renderer` peer.
-- `/document`: `parseSequence`, `SEQUENCE_TRANSFORM_PROPERTIES`,
+- `/renderer`: `visualSequenceTarget(visual: VisualComponent): SequenceTarget`
+  and `SEQUENCE_VISUAL_ACCESSORS`, the `get(visual)` / `set(visual, value)`
+  table the target binds. Needs the optional `@yagejs/renderer` peer.
+- `/document`: `parseSequence`, `parseSequenceFile`, `SEQUENCE_TRANSFORM_PROPERTIES`,
   `SEQUENCE_VISUAL_PROPERTIES`, `SEQUENCE_PROPERTY_KINDS`,
   `SEQUENCE_CURVE_NAMES`, and the document types (`Point`,
   `PositionMapping`, `SequenceDocument`, ...), with no engine imports. Use it
@@ -56,7 +57,9 @@ advance that player by hand. Standalone use is
 ## Document
 
 `parseSequence(input: unknown): SequenceDocument` returns a detached, deeply
-frozen document. `new SequenceClip(input: unknown)` validates and compiles it;
+frozen document. `parseSequenceFile(input: unknown): SequenceDocument` parses a
+saved file: a workspace's `sequence` field, or an exported runtime clip.
+`new SequenceClip(input: unknown)` validates and compiles its input;
 `clip.document` is the parsed document.
 
 - `format: "yage-sequence"`, `version: 1`, nonempty `name`.
@@ -109,7 +112,8 @@ Position tracks require one mapping:
 
 Mapping changes position only. It does not scale actors. Positions outside
 `rect` are valid; clipping belongs to the host. `rect` dimensions must be
-positive and finite. The player copies `rect` at play; restart to change it.
+positive and finite. The player reads the fields of `rect` at play, so a
+`DOMRect` works; restart to change it.
 
 ## Binding and playback
 
@@ -194,8 +198,9 @@ snapshot. Store the clip or its ID in controlled save state.
   positions are written before children regardless of track order. Restore uses
   the same order.
 - `visualSequenceTarget(visual)` provides `SEQUENCE_VISUAL_PROPERTIES`:
-  `opacity`, `visible` and `tint`, through the component's setters. Opacity is
-  clamped to `0..1`, so an overshooting curve holds at the limit.
+  `opacity`, `visible` and `tint`, through `SEQUENCE_VISUAL_ACCESSORS`. Opacity
+  is clamped to `0..1`, so an overshooting curve holds at the limit. A host
+  that previews clips on visuals writes through the same table.
 - Both expire when their entity or component is removed.
 - `combineSequenceTargets(...targets)` merges targets and throws on a duplicate
   property or event name.

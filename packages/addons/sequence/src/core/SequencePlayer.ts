@@ -172,10 +172,27 @@ export class SequencePlayer {
         enumerable: true,
       });
     }
+    // Read the rectangle's fields now: a DOMRect or another class keeps them
+    // as getters, which a spread would not copy.
+    const rect = options.rect;
+    const played: SequencePlayOptions = {
+      ...options,
+      targets,
+      ...(rect
+        ? {
+            rect: {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+            },
+          }
+        : {}),
+    };
     const preparationRevision = this.revision;
     if (!this.checkTargets(targets, preparationRevision)) return;
     // Validate mapping and every captured value before the first property write.
-    clip.sample(0, options);
+    clip.sample(0, played);
     const captured: Captured[] = [];
     for (const track of clip.document.tracks) {
       const binding = targets[track.target]!.properties[track.property]!;
@@ -190,11 +207,7 @@ export class SequencePlayer {
       captured.push({ binding, value: cloneValue(value), label });
     }
     this.clip = clip;
-    this.options = {
-      ...options,
-      targets,
-      ...(options.rect ? { rect: { ...options.rect } } : {}),
-    };
+    this.options = played;
     this.captured = captured;
     this.markers = [...clip.document.events].sort((a, b) => a.frame - b.frame);
     this.cursor = 0;

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ErrorBoundary, Logger, LogLevel } from "@yagejs/core";
 import { SequenceClip } from "./evaluate.js";
-import { parseSequence } from "./validate.js";
+import { parseSequence, parseSequenceFile } from "./validate.js";
 import { SequencePlayer, sequenceProperty } from "./SequencePlayer.js";
 import type { SequenceDocument, SequenceCurve } from "./types.js";
 
@@ -215,6 +215,15 @@ describe("sequence contract", () => {
     expect(clip.document.name).toBe("entrance");
     expect(Object.isFrozen(clip.document.tracks[0]!.keys)).toBe(true);
   });
+  it("reads a saved workspace's clip or a runtime clip", () => {
+    const clip = document();
+    const workspace = { format: "yage-sequence-workspace", sequence: clip };
+    expect(parseSequenceFile(workspace)).toEqual(clip);
+    expect(parseSequenceFile(clip)).toEqual(clip);
+    expect(() =>
+      parseSequenceFile({ format: "yage-sequence-workspace" }),
+    ).toThrow("Sequence: document");
+  });
   it.each([
     { fps: 0 },
     { duration: Infinity },
@@ -422,6 +431,30 @@ describe("sequence playback", () => {
     expect(() =>
       s.player.play(new SequenceClip(document()), { targets: s.targets }),
     ).toThrow("active playback");
+  });
+  it("reads a rectangle whose fields are getters, as a DOMRect's are", () => {
+    const s = setup();
+    class Box {
+      get x(): number {
+        return 0;
+      }
+      get y(): number {
+        return 0;
+      }
+      get width(): number {
+        return 1600;
+      }
+      get height(): number {
+        return 900;
+      }
+    }
+    s.player.play(new SequenceClip(document()), {
+      targets: s.targets,
+      rect: new Box(),
+    });
+    s.player.advance(1);
+    expect(s.state.position.x).toBe(800);
+    expect(s.player.state).toBe("playing");
   });
 });
 

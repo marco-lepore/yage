@@ -12,6 +12,7 @@
  */
 import { Engine } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
+import { parseSequenceFile } from "@yagejs-addons/sequence";
 import {
   installDebugFromUrl,
   setupGameContainer,
@@ -60,17 +61,7 @@ file.addEventListener("change", () => {
  */
 function playFile(text: string): void {
   try {
-    const data: unknown = JSON.parse(text);
-    // A workspace file holds the runtime clip in its `sequence` field.
-    director.play(
-      typeof data === "object" &&
-        data !== null &&
-        "format" in data &&
-        data.format === "yage-sequence-workspace" &&
-        "sequence" in data
-        ? data.sequence
-        : data,
-    );
+    director.play(parseSequenceFile(JSON.parse(text)));
     status.textContent = "Sequence loaded with runtime actor bindings";
   } catch (error) {
     status.textContent = String(error);
