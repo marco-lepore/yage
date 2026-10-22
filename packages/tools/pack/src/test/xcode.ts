@@ -6,8 +6,43 @@ export interface XcodeProjectOptions {
   readonly debug?: Readonly<Record<string, string>>;
   /** Build settings of the project's own Release configuration. */
   readonly projectRelease?: Readonly<Record<string, string>>;
-  /** Extra object entries, such as a file the App target copies. */
+  /** Files the App target's Resources build phase copies into the app. */
+  readonly resources?: readonly string[];
+  /** Extra object entries, such as another target or a file no target copies. */
   readonly objects?: string;
+}
+
+/** The id of the App target's Resources build phase. */
+const RESOURCES_PHASE = "504EC3021FED79650016851F";
+
+/**
+ * The file reference and build file Xcode writes for each file a target
+ * copies, and the Resources build phase that lists the build files.
+ */
+function resources(files: readonly string[]): string {
+  const ids = files.map((file, index) => ({
+    file,
+    reference: `A1${String(index).padStart(22, "0")}`,
+    build: `B1${String(index).padStart(22, "0")}`,
+  }));
+  const entries = ids
+    .map(
+      ({ file, reference, build }) =>
+        `\t\t${build} /* ${file} in Resources */ = {isa = PBXBuildFile; fileRef = ${reference} /* ${file} */; };\n` +
+        `\t\t${reference} /* ${file} */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = ${file}; sourceTree = "<group>"; };\n`,
+    )
+    .join("");
+  const listed = ids
+    .map(({ file, build }) => `\t\t\t\t${build} /* ${file} in Resources */,\n`)
+    .join("");
+  return `${entries}\t\t${RESOURCES_PHASE} /* Resources */ = {
+\t\t\tisa = PBXResourcesBuildPhase;
+\t\t\tbuildActionMask = 2147483647;
+\t\t\tfiles = (
+${listed}\t\t\t);
+\t\t\trunOnlyForDeploymentPostprocessing = 0;
+\t\t};
+`;
 }
 
 function settings(values: Readonly<Record<string, string>>): string {
@@ -32,8 +67,9 @@ ${settings(values)}\t\t\t};
 
 /**
  * A `project.pbxproj` shaped like the one `npx cap add ios` writes: a project
- * with Debug and Release configurations and an App target with its own. The
- * Debug entries come first, as Xcode writes them.
+ * with Debug and Release configurations and an App target with its own and
+ * with a Resources build phase. The Debug entries come first, as Xcode writes
+ * them.
  */
 export function xcodeProject(options: XcodeProjectOptions): string {
   return `// !$*UTF8*$!
@@ -44,10 +80,11 @@ export function xcodeProject(options: XcodeProjectOptions): string {
 \tobjectVersion = 60;
 \tobjects = {
 
-${options.objects ?? ""}\t\t504EC3031FED79650016851F /* App */ = {
+${options.objects ?? ""}${resources(options.resources ?? [])}\t\t504EC3031FED79650016851F /* App */ = {
 \t\t\tisa = PBXNativeTarget;
 \t\t\tbuildConfigurationList = 504EC3161FED79650016851F /* Build configuration list for PBXNativeTarget "App" */;
 \t\t\tbuildPhases = (
+\t\t\t\t${RESOURCES_PHASE} /* Resources */,
 \t\t\t);
 \t\t\tname = App;
 \t\t\tproductName = App;

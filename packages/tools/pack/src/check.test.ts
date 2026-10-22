@@ -22,12 +22,6 @@ const copiedConfig = {
   ios: { contentInset: "never" },
 };
 
-/** The build-file entry Xcode writes when the App target copies the file. */
-const PRIVACY_BUILD_FILE =
-  "\t\t1A2B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3C4D /* PrivacyInfo.xcprivacy */; };\n";
-
-const PRIVACY_OBJECTS = `${PRIVACY_BUILD_FILE}\t\t3C4D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; };\n`;
-
 /** The App target's Release settings of a project that agrees with the game. */
 const RELEASE = {
   CURRENT_PROJECT_VERSION: "1",
@@ -40,7 +34,11 @@ function pbxproj(
   release: Record<string, string> = RELEASE,
   more: Omit<Parameters<typeof xcodeProject>[0], "release"> = {},
 ): string {
-  return xcodeProject({ objects: PRIVACY_OBJECTS, release, ...more });
+  return xcodeProject({
+    resources: ["PrivacyInfo.xcprivacy"],
+    release,
+    ...more,
+  });
 }
 
 const PBXPROJ = pbxproj();
@@ -297,6 +295,18 @@ describe("runCheck contract rules", () => {
     expect(rule(report, "version").ok).toBe(true);
   });
 
+  it("reads a Gradle setting written in single quotes", async () => {
+    const root = game({
+      "android/app/build.gradle": BUILD_GRADLE.replace(
+        `applicationId "${APP_ID}"`,
+        `applicationId '${APP_ID}'`,
+      ).replace('versionName "1.2.3"', "versionName '1.2.3'"),
+    });
+    const report = await runCheck({ root, target: "android", release: true });
+    expect(rule(report, "app id in the native project").ok).toBe(true);
+    expect(rule(report, "version").ok).toBe(true);
+  });
+
   it("names the Gradle setting on Android", async () => {
     const root = game({
       "android/app/build.gradle": BUILD_GRADLE.replace(
@@ -468,10 +478,11 @@ describe("runCheck release rules", () => {
     // A file added to the project with the target unticked keeps its file
     // reference and has no Resources entry.
     const withoutReference = game({
-      "ios/App/App.xcodeproj/project.pbxproj": PBXPROJ.replace(
-        PRIVACY_BUILD_FILE,
-        "",
-      ),
+      "ios/App/App.xcodeproj/project.pbxproj": pbxproj(RELEASE, {
+        resources: [],
+        objects:
+          '\t\t3C4D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };\n',
+      }),
     });
     const result = rule(
       await runCheck({ root: withoutReference, target: "ios", release: true }),

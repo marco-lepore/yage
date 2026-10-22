@@ -95,27 +95,13 @@ export function xcodeSetting(
   configuration: XcodeConfiguration,
   name: string,
 ): XcodeSetting {
-  if (!existsSync(projectFile)) {
-    return { unreadable: "project.pbxproj is missing" };
-  }
-  let parsed: PlistValue;
-  try {
-    parsed = parsePlist(readFileSync(projectFile, "utf8"));
-  } catch {
-    return { unreadable: "project.pbxproj cannot be parsed" };
-  }
-  const objects = asDict(asDict(parsed)?.objects) ?? {};
-  const target = Object.values(objects)
-    .map(asDict)
-    .find((entry) => entry?.isa === "PBXNativeTarget" && entry.name === "App");
-  const listId = target?.buildConfigurationList;
-  const list = typeof listId === "string" ? asDict(objects[listId]) : undefined;
-  const ids = Array.isArray(list?.buildConfigurations)
-    ? list.buildConfigurations
-    : [];
-  const found = ids
-    .map((id) => (typeof id === "string" ? asDict(objects[id]) : undefined))
-    .find((entry) => entry?.name === configuration);
+  const project = readXcodeProject(projectFile);
+  if ("unreadable" in project) return project;
+  const { objects, target } = project;
+  const list = objectAt(objects, target?.buildConfigurationList);
+  const found = objectsAt(objects, list?.buildConfigurations).find(
+    (entry) => entry.name === configuration,
+  );
   if (found === undefined) {
     return {
       unreadable: `the project has no App target with a ${configuration} configuration`,
@@ -135,17 +121,57 @@ export function xcodeSetting(
   return { value };
 }
 
-type PlistValue =
-  | string
-  | readonly PlistValue[]
-  | { readonly [key: string]: PlistValue };
+type PlistValue = string | readonly PlistValue[] | PlistDict;
 
-function asDict(
-  value: PlistValue | undefined,
-): { readonly [key: string]: PlistValue } | undefined {
+type PlistDict = { readonly [key: string]: PlistValue };
+
+function asDict(value: PlistValue | undefined): PlistDict | undefined {
   return typeof value === "object" && !Array.isArray(value)
-    ? (value as { readonly [key: string]: PlistValue })
+    ? (value as PlistDict)
     : undefined;
+}
+
+/** The objects of an Xcode project and its App target, or why it cannot be read. */
+type XcodeProject =
+  | { readonly objects: PlistDict; readonly target: PlistDict | undefined }
+  | { readonly unreadable: string };
+
+function readXcodeProject(projectFile: string): XcodeProject {
+  if (!existsSync(projectFile)) {
+    return { unreadable: "project.pbxproj is missing" };
+  }
+  let parsed: PlistValue;
+  try {
+    parsed = parsePlist(readFileSync(projectFile, "utf8"));
+  } catch {
+    return { unreadable: "project.pbxproj cannot be parsed" };
+  }
+  const objects = asDict(asDict(parsed)?.objects) ?? {};
+  const target = Object.values(objects)
+    .map(asDict)
+    .find((entry) => entry?.isa === "PBXNativeTarget" && entry.name === "App");
+  return { objects, target };
+}
+
+/** The project object an id names, or `undefined` for an id it does not hold. */
+function objectAt(
+  objects: PlistDict,
+  id: PlistValue | undefined,
+): PlistDict | undefined {
+  return typeof id === "string" ? asDict(objects[id]) : undefined;
+}
+
+/** The project objects a list of ids names, leaving out ids it does not hold. */
+function objectsAt(
+  objects: PlistDict,
+  ids: PlistValue | undefined,
+): PlistDict[] {
+  return (Array.isArray(ids) ? ids : []).flatMap(
+    (id: PlistValue): PlistDict[] => {
+      const found = objectAt(objects, id);
+      return found === undefined ? [] : [found];
+    },
+  );
 }
 
 /**
@@ -228,33 +254,53 @@ function parsePlist(source: string): PlistValue {
 }
 
 /**
- * Whether a target of the Xcode project copies a file into the app. Xcode
- * writes a `<file> in Resources` build-file entry for each file a target
- * copies, and only a file reference for a file no target copies.
+ * Whether the App target of the Xcode project copies a file into the app: one
+ * of the build files in the target's Resources build phase refers to a file
+ * reference whose `path` or `name` is the file. The answer is `false` for a
+ * project file that is missing or cannot be parsed.
  */
 export function xcodeCopiesResource(
   projectFile: string,
   file: string,
 ): boolean {
-  if (!existsSync(projectFile)) return false;
-  return readFileSync(projectFile, "utf8").includes(
-    `/* ${file} in Resources */`,
-  );
+  const project = readXcodeProject(projectFile);
+  if ("unreadable" in project) return false;
+  const { objects, target } = project;
+  return objectsAt(objects, target?.buildPhases)
+    .filter((phase) => phase.isa === "PBXResourcesBuildPhase")
+    .flatMap((phase) => objectsAt(objects, phase.files))
+    .map((buildFile) => objectAt(objects, buildFile.fileRef))
+    .some(
+      (reference) =>
+        reference?.isa === "PBXFileReference" &&
+        (reference.path === file || reference.name === file),
+    );
 }
 
 /**
+ * The string literals and comments of a Gradle file. A string is matched
+ * first, so a `//` or `/*` inside one does not start a comment.
+ */
+const GRADLE_STRINGS_AND_COMMENTS =
+  /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g;
+
+/**
  * A property of the app module's Gradle file, such as `applicationId`, in
- * Groovy's `name value` form or the `name = value` form.
+ * Groovy's `name value` form or the `name = value` form. The value is
+ * double-quoted, single-quoted or bare. Comments are skipped, and the first
+ * line that sets the property gives its value.
  */
 export function gradleSetting(
   gradleFile: string,
   name: string,
 ): string | undefined {
   if (!existsSync(gradleFile)) return undefined;
-  const source = readFileSync(gradleFile, "utf8");
+  const source = readFileSync(gradleFile, "utf8").replace(
+    GRADLE_STRINGS_AND_COMMENTS,
+    (token) => (token.startsWith("/") ? token.replace(/[^\n]/g, " ") : token),
+  );
   const match = new RegExp(
-    `\\b${name}(?:\\s*=\\s*|\\s+)("?)([^"\\n]+)\\1`,
+    `\\b${name}(?:\\s*=\\s*|\\s+)(?:"([^"\\n]*)"|'([^'\\n]*)'|([^\\s;{}"'=]+))`,
   ).exec(source);
-  if (match === null) return undefined;
-  return match[2]?.trim();
+  return match === null ? undefined : (match[1] ?? match[2] ?? match[3]);
 }
