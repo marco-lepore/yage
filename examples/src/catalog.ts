@@ -514,7 +514,7 @@ export const EXAMPLES: readonly Example[] = [
     slug: "character-controller",
     title: "Character Controller",
     summary:
-      "A platformer playground with jumps, dashes, slopes, moving platforms, and switchable movement tuning.",
+      "A platformer playground with jumps, dashes, wall jumps, slopes, one-way and moving platforms, a ledge climb, and switchable movement tuning.",
     section: "gameplay",
     packages: ["physics", "input"],
     addons: ["character-controller"],

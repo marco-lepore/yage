@@ -50,6 +50,17 @@ export const EXAMPLE_SCRIPTS: Record<string, ExampleScript> = {
     ],
   },
 
+  // Run right, jump, then dash. Exercises the character-controller addon's
+  // default input binding, moves, and motion arbitration.
+  "character-controller": {
+    warmup: 10,
+    actions: [
+      { hold: "KeyD", frames: 30 },
+      { tap: "Space", frames: 30 },
+      { tap: "ShiftLeft", frames: 20 },
+    ],
+  },
+
   // Move right, then fire. Exercises movement + the shoot cooldown / spawn.
   shooter: {
     warmup: 10,

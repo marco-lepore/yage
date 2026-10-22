@@ -1,51 +1,93 @@
 import { Entity, Transform, Vec2 } from "@yagejs/core";
-import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
+import {
+  GraphicsComponent,
+  TextComponent,
+  type ColorValue,
+} from "@yagejs/renderer";
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
-import { MovingSurface } from "@yagejs-addons/character-controller/platformer";
-import { COLORS, ONE_WAY, PLAYER, SOLID } from "./constants.js";
+import { MovingSurface } from "@yagejs-addons/character-controller";
+import { COLORS, FLOOR_Y } from "./constants.js";
 
-export class Platform extends Entity {
+interface SlabParams {
+  x: number;
+  y: number;
+  width: number;
+  height?: number;
+}
+
+/** A filled box with a lighter top edge, centred on the entity. */
+function slab(
+  width: number,
+  height: number,
+  fill: ColorValue,
+  edge: ColorValue,
+): GraphicsComponent {
+  return new GraphicsComponent().draw((g) => {
+    g.rect(-width / 2, -height / 2, width, height).fill({ color: fill });
+    g.rect(-width / 2, -height / 2, width, 3).fill({ color: edge });
+  });
+}
+
+/** Solid terrain: ground, walls, and blocks. */
+export class PlatformEntity extends Entity {
+  setup({ x, y, width, height = 16 }: SlabParams): void {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new RigidBodyComponent({ type: "static" }));
+    this.add(
+      new ColliderComponent({
+        shape: { type: "box", width, height },
+        friction: 0,
+      }),
+    );
+    this.add(slab(width, height, COLORS.solid, COLORS.edge));
+  }
+}
+
+/** A platform the player jumps up through and lands on. Down plus jump drops through it. */
+export class OneWayPlatformEntity extends Entity {
+  setup({ x, y, width, height = 16 }: SlabParams): void {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new RigidBodyComponent({ type: "static" }));
+    this.add(
+      new ColliderComponent({
+        shape: { type: "box", width, height },
+        friction: 0,
+        oneWay: {},
+      }),
+    );
+    this.add(slab(width, height, COLORS.oneWay, COLORS.oneWay));
+  }
+}
+
+/**
+ * A one-way platform that travels back and forth between two points and
+ * carries the player standing on it. Spawn it before the player, so its
+ * velocity for the step is known before the player reads it.
+ */
+export class MovingPlatformEntity extends Entity {
   setup({
     x,
     y,
     width,
     height = 16,
-    oneWay = false,
     to,
-  }: {
-    x: number;
-    y: number;
-    width: number;
-    height?: number;
-    oneWay?: boolean;
-    to?: { x: number; y: number };
-  }): void {
-    const color = to ? COLORS.moving : oneWay ? COLORS.oneWay : COLORS.solid;
+  }: SlabParams & { to: { x: number; y: number } }): void {
     this.add(new Transform({ position: new Vec2(x, y) }));
-    this.add(new RigidBodyComponent({ type: to ? "kinematic" : "static" }));
+    this.add(new RigidBodyComponent({ type: "kinematic" }));
     this.add(
       new ColliderComponent({
         shape: { type: "box", width, height },
-        layers: oneWay ? ONE_WAY : SOLID,
-        mask: PLAYER,
         friction: 0,
-        ...(oneWay ? { oneWay: {} } : {}),
+        oneWay: {},
       }),
     );
-    this.add(
-      new GraphicsComponent().draw((g) => {
-        g.rect(-width / 2, -height / 2, width, height).fill({ color });
-        g.rect(-width / 2, -height / 2, width, 3).fill({
-          color: oneWay || to ? color : COLORS.edge,
-        });
-      }),
-    );
-    if (to) this.add(new MovingSurface({ from: { x, y }, to, speed: 65 }));
+    this.add(slab(width, height, COLORS.moving, COLORS.moving));
+    this.add(new MovingSurface({ from: { x, y }, to, speed: 65 }));
   }
 }
 
-/** A solid ramp between two surface heights, with a shared floor baseline. */
-export class Ramp extends Entity {
+/** A solid ramp from `left` px above the floor to `right` px above it. */
+export class RampEntity extends Entity {
   setup({
     x,
     width,
@@ -57,7 +99,7 @@ export class Ramp extends Entity {
     left: number;
     right: number;
   }): void {
-    this.add(new Transform({ position: new Vec2(x, 540) }));
+    this.add(new Transform({ position: new Vec2(x, FLOOR_Y) }));
     const vertices = [
       { x: 0, y: -left },
       { x: width, y: -right },
@@ -68,8 +110,6 @@ export class Ramp extends Entity {
     this.add(
       new ColliderComponent({
         shape: { type: "polygon", vertices },
-        layers: SOLID,
-        mask: PLAYER,
         friction: 0,
       }),
     );
@@ -86,17 +126,18 @@ export class Ramp extends Entity {
   }
 }
 
-export class Sign extends Entity {
+/** A centred instruction in the world. */
+export class SignEntity extends Entity {
   setup({
     x,
     y,
     text,
-    color = 0x94a3b8,
+    color = COLORS.sign,
   }: {
     x: number;
     y: number;
     text: string;
-    color?: number;
+    color?: ColorValue;
   }): void {
     this.add(new Transform({ position: new Vec2(x, y) }));
     this.add(

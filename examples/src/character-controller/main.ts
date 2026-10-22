@@ -2,7 +2,7 @@ import { Engine, InspectorPlugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { InputPlugin } from "@yagejs/input";
-import { platformerControls } from "@yagejs-addons/character-controller/input";
+import { platformerControls } from "@yagejs-addons/character-controller";
 import {
   installDebugFromUrl,
   setupGameContainer,
@@ -31,8 +31,6 @@ async function main(): Promise<void> {
         policy: ["KeyF"],
         refill: ["KeyC"],
         reset: ["KeyR"],
-        drop: ["KeyE"],
-        ledge: ["KeyG"],
         next: ["BracketRight"],
         previous: ["BracketLeft"],
       },

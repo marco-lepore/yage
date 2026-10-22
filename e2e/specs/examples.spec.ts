@@ -185,6 +185,110 @@ test.describe("Examples", () => {
     expect(result.errors.callbackErrors).toEqual([]);
   });
 
+  test("character-controller drops through a one-way platform", async ({
+    page,
+  }) => {
+    await page.goto("/character-controller.html?test");
+    await page.waitForFunction(
+      () =>
+        window.__yage__?.inspector?.getSceneStack().at(-1)?.name ===
+        "character-controller",
+      undefined,
+      { timeout: 10_000 },
+    );
+
+    const result = await page.evaluate(async () => {
+      const inspector = window.__yage__!.inspector;
+      const feetY = () => inspector.getEntityPosition("PlayerEntity")!.y;
+      await inspector.time.stepAsync(60);
+      const floorY = feetY();
+      // Run right and jump onto the first one-way platform.
+      inspector.input.keyDown("KeyD");
+      await inspector.time.stepAsync(20);
+      inspector.input.keyDown("Space");
+      await inspector.time.stepAsync(30);
+      inspector.input.keyUp("Space");
+      await inspector.time.stepAsync(5);
+      inspector.input.keyUp("KeyD");
+      await inspector.time.stepAsync(40);
+      const platformY = feetY();
+      // Down plus jump drops through it.
+      inspector.input.keyDown("KeyS");
+      inspector.input.keyDown("Space");
+      await inspector.time.stepAsync(2);
+      inspector.input.keyUp("Space");
+      inspector.input.keyUp("KeyS");
+      await inspector.time.stepAsync(40);
+      return {
+        floorY,
+        platformY,
+        droppedY: feetY(),
+        errors: inspector.getErrors(),
+      };
+    });
+
+    // The first one-way platform's top is 96 px above the floor.
+    expect(result.floorY - result.platformY).toBeCloseTo(96, 0);
+    expect(result.droppedY).toBeCloseTo(result.floorY, 0);
+    expect(result.errors.callbackErrors).toEqual([]);
+  });
+
+  test("character-controller catches and climbs a ledge", async ({ page }) => {
+    await page.goto("/character-controller.html?test");
+    await page.waitForFunction(
+      () =>
+        window.__yage__?.inspector?.getSceneStack().at(-1)?.name ===
+        "character-controller",
+      undefined,
+      { timeout: 10_000 },
+    );
+
+    const result = await page.evaluate(async () => {
+      const inspector = window.__yage__!.inspector;
+      const position = () => inspector.getEntityPosition("PlayerEntity")!;
+      const hanging = () =>
+        (
+          inspector.getComponentData("PlayerEntity", "LedgeClimb") as {
+            hanging: boolean;
+          }
+        ).hanging;
+      // "]" respawns the player at the next zone; zone 6 is the ledge.
+      for (let zone = 1; zone < 6; zone++) {
+        await inspector.input.tap("BracketRight");
+        await inspector.time.stepAsync(1);
+      }
+      await inspector.time.stepAsync(30);
+      // Run toward the block, jump, and keep holding toward it.
+      inspector.input.keyDown("KeyD");
+      await inspector.time.stepUntil(() => position().x >= 3555, {
+        maxFrames: 120,
+      });
+      inspector.input.keyDown("Space");
+      await inspector.time.stepUntil(hanging, { maxFrames: 60 });
+      inspector.input.keyUp("Space");
+      const hang = { ...position(), hanging: hanging() };
+      await inspector.time.stepAsync(20);
+      const stillHanging = hanging();
+      // Jump climbs onto the block.
+      await inspector.input.tap("Space");
+      await inspector.time.stepAsync(40);
+      inspector.input.keyUp("KeyD");
+      return {
+        hang,
+        stillHanging,
+        end: position(),
+        errors: inspector.getErrors(),
+      };
+    });
+
+    // The block's top is 130 px above the floor, at y = 410.
+    expect(result.hang.hanging).toBe(true);
+    expect(result.stillHanging).toBe(true);
+    expect(result.end.y).toBeCloseTo(409.5, 0);
+    expect(result.end.x).toBeGreaterThan(3620);
+    expect(result.errors.callbackErrors).toEqual([]);
+  });
+
   test("loading-scene hands off to the game once its assets load", async ({
     page,
   }) => {
