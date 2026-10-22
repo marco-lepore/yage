@@ -22,4 +22,28 @@ describe("sequence workspace files", () => {
       readEditorDocument({ ...doc, bindings: { missing: "actor" } }).ok,
     ).toBe(false);
   });
+  it("refuses a bound actor whose previewed property has another kind", () => {
+    const doc = emptySequenceWorkspace("entrance");
+    const sequence = {
+      ...doc.sequence,
+      targets: {
+        hero: { properties: { opacity: { kind: "color" } }, events: {} },
+      },
+    };
+    expect(
+      readEditorDocument({ ...doc, sequence, bindings: { hero: "a" } }),
+    ).toEqual({
+      ok: false,
+      errors: [
+        {
+          path: "sequence",
+          message:
+            "hero.opacity is declared as color, but the transform and " +
+            "visual targets provide it as number",
+        },
+      ],
+    });
+    // An unbound slot has no preview, so its contract is the game's to bind.
+    expect(readEditorDocument({ ...doc, sequence }).ok).toBe(true);
+  });
 });

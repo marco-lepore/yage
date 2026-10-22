@@ -62,7 +62,7 @@ available for direct editing.
 ## Animate in the preview and timeline
 
 Drag the ruler or empty track space to scrub continuously. Scrubbing is silent.
-Use **Fit frame** to show the whole rectangle. Use Move, Rotate, Scale or
+Use **Fit rectangle** to show the whole rectangle. Use Move, Rotate, Scale or
 Transform on an actor, or edit the transform numbers above the preview. An edit
 updates the key at the rounded cursor frame, or creates one there. Its existing
 outgoing easing is preserved. The actor's preview parameters remain independent
@@ -86,8 +86,12 @@ later frames. With timeline focus, Left/Right steps one frame (Shift steps ten);
 Delete removes selected keys or the selected marker.
 
 Use **Add property track** for a declared property without a track. A new
-actor starts with tracks for every declared property except tint. The preview applies standard transform and renderer channels
-only with their matching kinds. Custom properties remain available to game
+actor starts with tracks for every declared property except `tint`. The preview
+writes `opacity`, `visible` and `tint` through the addon's
+`SEQUENCE_VISUAL_ACCESSORS`, and places `position`, `rotation` and `scale` by
+the transform target's rules. A bound actor that declares one of those six
+properties with another kind is refused with an error, as the game's standard
+targets refuse it. Custom properties remain available to game
 targets but have no visual effect in the editor. New transform tracks start from
 the current preview pose; boolean and enum tracks start with hold interpolation.
 Choose a declared **Event type**, then **Add event at cursor**. Select a marker
@@ -110,8 +114,8 @@ preview rectangle. Editing the anchor itself changes the path.
 
 ## Import and export
 
-**Files → Import clip** accepts runtime sequence JSON or the `sequence` field
-from a workspace JSON. It replaces animation data in one undo step. Matching
+**Files → Import clip** accepts an exported runtime clip or a saved workspace
+file, whose runtime clip it reads. It replaces animation data in one undo step. Matching
 runtime slots keep their preview bindings; the current preview placements stay
 in the workspace. Missing slots appear in the actor panel, where you can assign
 an unbound existing preview or create a placeholder. Unbound placements remain
@@ -138,17 +142,19 @@ import type { Entity } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import {
   SequenceClip,
+  parseSequenceFile,
   combineSequenceTargets,
   transformSequenceTarget,
 } from "@yagejs-addons/sequence";
 import type { SequencePlayer } from "@yagejs-addons/sequence";
 import { visualSequenceTarget } from "@yagejs-addons/sequence/renderer";
 
-declare const savedWorkspace: { sequence: unknown };
+/** The parsed JSON of a saved workspace or an exported runtime clip. */
+declare const file: unknown;
 declare const player: SequencePlayer;
 declare const actor: Entity;
 
-player.play(new SequenceClip(savedWorkspace.sequence), {
+player.play(new SequenceClip(parseSequenceFile(file)), {
   targets: {
     hero: combineSequenceTargets(
       transformSequenceTarget(actor),

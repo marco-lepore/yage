@@ -6,10 +6,10 @@ import { emptySequenceWorkspace } from "../../shared/document/index.js";
 import { reduceCommand } from "../../shared/commands/index.js";
 import type { DocumentCommand } from "../../shared/commands/index.js";
 import type { EditorDocument } from "../../shared/document/index.js";
-function harness() {
+function harness(initial: EditorDocument = emptySequenceWorkspace("test")) {
   const gates: (() => void)[] = [];
   let hold = false;
-  let document: EditorDocument = emptySequenceWorkspace("test"),
+  let document: EditorDocument = initial,
     revision = 0;
   const sent: DocumentCommand[] = [];
   const snapshot = () => ({
@@ -66,6 +66,45 @@ function harness() {
   };
 }
 describe("sequence file import", () => {
+  it("throws a refused import's reason and leaves the document unchanged", async () => {
+    const base = emptySequenceWorkspace("test");
+    const h = harness({
+      ...base,
+      entities: [
+        {
+          id: "a",
+          type: "test.actor",
+          typeVersion: 1,
+          name: "A",
+          active: true,
+          transform: {
+            position: { x: 0, y: 0 },
+            rotation: 0,
+            scale: { x: 1, y: 1 },
+          },
+          params: {},
+          extensions: {},
+        },
+      ],
+      sequence: {
+        ...base.sequence,
+        targets: { hero: { properties: {}, events: {} } },
+      },
+      bindings: { hero: "a" },
+    });
+    const before = h.store.getState().document;
+    const clip = {
+      ...base.sequence,
+      targets: {
+        hero: { properties: { opacity: { kind: "color" } }, events: {} },
+      },
+    };
+    await expect(
+      h.commands.importSequence(() => Promise.resolve(JSON.stringify(clip))),
+    ).rejects.toThrow("hero.opacity is declared as color");
+    expect(h.store.getState().document).toBe(before);
+    expect(h.sent).toHaveLength(0);
+  });
   it("validates before mutation and imports workspace clip data through one command", async () => {
     const h = harness();
     const before = h.store.getState().document;

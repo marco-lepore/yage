@@ -306,7 +306,7 @@ badge, Save, Play, and Run.
 path, which follows the name until it is typed over. New writes an empty level
 there. Duplicate writes a copy of the open level's file on disk, without its
 unsaved edits. Either one opens the level it wrote. The server refuses a path
-the `levels` globs do not cover and a path a file already holds. **Delete** asks
+the `levels` and `sequences` globs do not cover and a path a file already holds. **Delete** asks
 first, then removes the open level's file with its draft and undo history, and
 opens the level that takes its place in the list. Undo does not bring the file
 back.

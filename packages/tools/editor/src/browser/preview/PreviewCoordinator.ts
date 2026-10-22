@@ -109,8 +109,19 @@ import {
   OVERLAY_LAYER_NAME,
   OVERLAY_LAYER_ORDER,
 } from "./EditPreviewScene.js";
+import { SEQUENCE_VISUAL_ACCESSORS } from "@yagejs-addons/sequence/renderer";
+import type { SequenceVisualAccessor } from "@yagejs-addons/sequence/renderer";
+import type { SequenceValue } from "@yagejs-addons/sequence/document";
 import { buildBestEffort, type ProjectionOutcome } from "./projection.js";
 import { RebuildQueue } from "./RebuildQueue.js";
+
+/**
+ * The addon's visual accessors, read by name. The workspace reader guarantees
+ * a bound actor's visual properties have each accessor's kind.
+ */
+const VISUAL_ACCESSORS: Readonly<
+  Record<string, SequenceVisualAccessor<SequenceValue>>
+> = SEQUENCE_VISUAL_ACCESSORS;
 
 /**
  * The project's engine and plugin factory, in the shape a lab harness has, so
@@ -231,9 +242,10 @@ export class PreviewCoordinator {
   private canvas: CanvasSize | undefined;
   private resize: ResizeObserver | undefined;
   private sequencePlayback: SequencePreview | undefined;
+  /** Each visual's appearance before any sample; every sample starts from it. */
   private readonly appearance = new WeakMap<
     VisualComponent,
-    { alpha: number; visible: boolean; tint: VisualComponent["tint"] }
+    Readonly<Record<string, SequenceValue>>
   >();
 
   constructor(options: PreviewCoordinatorOptions) {
@@ -780,27 +792,22 @@ export class PreviewCoordinator {
         if (!(visual instanceof VisualComponent)) continue;
         let base = this.appearance.get(visual);
         if (!base) {
-          base = {
-            alpha: visual.alpha,
-            visible: visual.visible,
-            tint: visual.tint,
-          };
+          base = Object.fromEntries(
+            Object.entries(VISUAL_ACCESSORS).map(([name, accessor]) => [
+              name,
+              accessor.get(visual),
+            ]),
+          );
           this.appearance.set(visual, base);
         }
-        visual.alpha = base.alpha;
-        visual.visible = base.visible;
-        visual.tint = base.tint;
+        for (const [name, value] of Object.entries(base))
+          VISUAL_ACCESSORS[name]!.set(visual, value);
+        // A bound actor's visual properties have the accessors' kinds: the
+        // workspace refuses any other.
         for (const sample of samples) {
           if (doc.bindings[sample.target] !== placement.id) continue;
-          const kind =
-            doc.sequence.targets[sample.target]?.properties[sample.property]
-              ?.kind;
-          if (sample.property === "opacity" && kind === "number")
-            visual.alpha = Math.max(0, Math.min(1, sample.value as number));
-          else if (sample.property === "visible" && kind === "boolean")
-            visual.visible = sample.value as boolean;
-          else if (sample.property === "tint" && kind === "color")
-            visual.tint = sample.value as number;
+          if (Object.hasOwn(VISUAL_ACCESSORS, sample.property))
+            VISUAL_ACCESSORS[sample.property]!.set(visual, sample.value);
         }
       }
     }

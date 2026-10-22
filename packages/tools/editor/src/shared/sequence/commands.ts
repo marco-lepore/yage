@@ -14,6 +14,7 @@ export type SequenceCommand =
       readonly tracks: readonly SequenceTrack[];
     }
   | { readonly kind: "remove-actor"; readonly id: string }
+  | { readonly kind: "rename-actor"; readonly id: string; readonly to: string }
   | {
       readonly kind: "set-settings";
       readonly settings: Partial<
@@ -73,6 +74,27 @@ export function reduceSequenceCommand(
         ),
         tracks: document.tracks.filter((t) => t.target !== command.id),
         events: document.events.filter((e) => e.target !== command.id),
+      };
+      break;
+    case "rename-actor":
+      if (!Object.hasOwn(document.targets, command.id))
+        throw new Error(`Unknown actor ${command.id}`);
+      if (!command.to.trim() || Object.hasOwn(document.targets, command.to))
+        throw new Error("Choose a unique nonempty actor slot");
+      next = {
+        ...document,
+        targets: Object.fromEntries(
+          Object.entries(document.targets).map(([id, contract]) => [
+            id === command.id ? command.to : id,
+            contract,
+          ]),
+        ),
+        tracks: document.tracks.map((t) =>
+          t.target === command.id ? { ...t, target: command.to } : t,
+        ),
+        events: document.events.map((e) =>
+          e.target === command.id ? { ...e, target: command.to } : e,
+        ),
       };
       break;
     case "set-settings":

@@ -1,8 +1,23 @@
+import {
+  SEQUENCE_TRANSFORM_PROPERTIES,
+  SEQUENCE_VISUAL_PROPERTIES,
+} from "@yagejs-addons/sequence/document";
 import type {
   SequenceProperty,
   SequenceValue,
   SequenceTrack,
 } from "@yagejs-addons/sequence/document";
+
+/**
+ * The properties the editor previews on a bound actor: what the sequence
+ * addon's transform and visual targets provide. A new actor's contract
+ * declares exactly these.
+ */
+export const PREVIEWED_PROPERTIES: Readonly<Record<string, SequenceProperty>> =
+  Object.freeze({
+    ...SEQUENCE_TRANSFORM_PROPERTIES,
+    ...SEQUENCE_VISUAL_PROPERTIES,
+  });
 /** An editable initial value for a declared property or event payload field. */
 export function defaultSequenceValue(
   definition: SequenceProperty,

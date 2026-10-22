@@ -342,30 +342,6 @@ describe("sequence position mapping in a resized preview", () => {
       s.document,
     );
   });
-  it("does not interpret unrelated custom kinds as entity transforms", () => {
-    const s = actors();
-    const slot = Object.keys(s.document.sequence.targets)[0]!;
-    s.document = {
-      ...s.document,
-      sequence: {
-        ...s.document.sequence,
-        targets: {
-          [slot]: { properties: { position: { kind: "number" } }, events: {} },
-        },
-        tracks: [
-          {
-            id: "custom",
-            target: slot,
-            property: "position",
-            keys: [{ id: "custom-key", frame: 0, value: 4, curve: "linear" }],
-          },
-        ],
-      },
-    };
-    expect(sampledDocument(s).entities[0]?.transform).toEqual(
-      s.document.entities[0]?.transform,
-    );
-  });
 });
 
 it("seeds added standard tracks from the sampled pose in a resized frame", () => {

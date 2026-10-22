@@ -1,4 +1,4 @@
-import { parseSequence } from "@yagejs-addons/sequence/document";
+import { parseSequenceFile } from "@yagejs-addons/sequence/document";
 import {
   sequenceChange,
   sequenceIntent,
@@ -201,6 +201,14 @@ export class CommandController {
   private submit(command: DocumentCommand): void {
     this.store.submit(sequenceIntent(this.store.getState(), command));
   }
+  /**
+   * Submit an edit a sequence control made. A refusal throws, so the control
+   * shows the reason where the edit was made.
+   */
+  private submitSequenceEdit(command: DocumentCommand): void {
+    const refused = this.store.submit(command);
+    if (refused !== undefined) throw new Error(refused);
+  }
   bindSequenceActor(slot: string, placement: string): void {
     this.settleTimeline();
     const doc = this.store.getState().document;
@@ -217,7 +225,7 @@ export class CommandController {
       )
     )
       throw new Error("That preview already belongs to another actor");
-    this.store.submit(
+    this.submitSequenceEdit(
       sequenceChange(doc, doc.sequence, { ...doc.bindings, [slot]: placement }),
     );
   }
@@ -230,30 +238,19 @@ export class CommandController {
       name === slot
     )
       return;
-    if (!name.trim() || Object.hasOwn(doc.sequence.targets, name))
-      throw new Error("Choose a unique nonempty actor slot");
-    const sequence = {
-      ...doc.sequence,
-      targets: Object.fromEntries(
-        Object.entries(doc.sequence.targets).map(([id, c]) => [
-          id === slot ? name : id,
-          c,
-        ]),
-      ),
-      tracks: doc.sequence.tracks.map((t) =>
-        t.target === slot ? { ...t, target: name } : t,
-      ),
-      events: doc.sequence.events.map((e) =>
-        e.target === slot ? { ...e, target: name } : e,
-      ),
-    };
+    const sequence = reduceSequenceCommand(doc.sequence, {
+      kind: "rename-actor",
+      id: slot,
+      to: name,
+    });
+    // The preview binding is the workspace's, outside the clip.
     const bindings = Object.fromEntries(
       Object.entries(doc.bindings).map(([id, p]) => [
         id === slot ? name : id,
         p,
       ]),
     );
-    this.store.submit(sequenceChange(doc, sequence, bindings));
+    this.submitSequenceEdit(sequenceChange(doc, sequence, bindings));
   }
   changePreviewType(id: string, type: string): void {
     const placement = this.store
@@ -334,16 +331,7 @@ export class CommandController {
       throw new Error(
         "The workspace changed while reading the file. Import it again.",
       );
-    const input: unknown = JSON.parse(text);
-    const clip = parseSequence(
-      typeof input === "object" &&
-        input !== null &&
-        "format" in input &&
-        input.format === "yage-sequence-workspace" &&
-        "sequence" in input
-        ? input.sequence
-        : input,
-    );
+    const clip = parseSequenceFile(JSON.parse(text));
     this.editSequence({ kind: "replace", document: clip });
   }
   setSequencePositionMode(
@@ -388,7 +376,7 @@ export class CommandController {
         Object.hasOwn(next.targets, slot),
       ),
     );
-    this.store.submit(sequenceChange(doc, next, bindings));
+    this.submitSequenceEdit(sequenceChange(doc, next, bindings));
     const frame = this.store.getState().sequence?.frame ?? 0;
     if (frame > next.duration) this.seekSequence(next.duration);
   }
@@ -476,7 +464,7 @@ export class CommandController {
     if (existingSlot && doc.format === "yage-sequence-workspace") {
       if (!Object.hasOwn(doc.sequence.targets, existingSlot))
         throw new Error(`Unknown actor slot ${existingSlot}`);
-      this.store.submit({
+      this.submitSequenceEdit({
         kind: "transaction",
         commandId: this.newId(),
         commands: [

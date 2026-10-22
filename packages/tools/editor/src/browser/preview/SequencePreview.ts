@@ -1,5 +1,5 @@
 import type { ErrorBoundary } from "@yagejs/core";
-import { SequenceClip, SequencePlayer } from "@yagejs-addons/sequence";
+import { SequencePlayer } from "@yagejs-addons/sequence";
 import type { SequenceTargets } from "@yagejs-addons/sequence";
 import type {
   SequenceDocument,
@@ -7,6 +7,7 @@ import type {
   SequenceMarker,
 } from "@yagejs-addons/sequence/document";
 import { defaultSequenceValue } from "../../shared/sequence/defaults.js";
+import { sequenceClipOf } from "../store/index.js";
 import type { EditorStore } from "../store/index.js";
 
 /** The preview coordinator's marker traversal; callbacks never reach game code. */
@@ -78,7 +79,7 @@ export class SequencePreview {
           },
         ]),
       );
-      this.player.play(new SequenceClip(doc.sequence), {
+      this.player.play(sequenceClipOf(doc.sequence), {
         targets,
         loop: view.loop,
         speed: view.speed,

@@ -243,11 +243,13 @@ export class EditorStore {
    *
    * Refused while writes are locked, and refused when the command cannot apply
    * to the current document — a placement deleted underneath it, for example.
+   * A refusal for that reason is reported, and its message is returned so the
+   * control that made the edit can show it too.
    */
-  submit(command: DocumentCommand): void {
-    if (!this.writable) return;
+  submit(command: DocumentCommand): string | undefined {
+    if (!this.writable) return undefined;
     const path = this.state.file?.path;
-    if (path === undefined) return;
+    if (path === undefined) return undefined;
     let affected: readonly string[];
     let impact: PreviewImpact;
     try {
@@ -261,10 +263,11 @@ export class EditorStore {
         message: error.message,
         revision: this.state.committed.draftRevision,
       });
-      return;
+      return error.message;
     }
     this.dispatch({ type: "command-applied", command, affected, impact });
     void this.send(path, command);
+    return undefined;
   }
 
   /**

@@ -1,8 +1,4 @@
 import { SequenceClip } from "@yagejs-addons/sequence";
-import {
-  SEQUENCE_TRANSFORM_PROPERTIES,
-  SEQUENCE_VISUAL_PROPERTIES,
-} from "@yagejs-addons/sequence/document";
 import type {
   SequenceContract,
   SequenceDocument,
@@ -19,16 +15,20 @@ import {
   placementWorld,
 } from "../../shared/document/pose.js";
 import { reduceSequenceCommand } from "../../shared/sequence/commands.js";
-import { initialSequenceTrack } from "../../shared/sequence/defaults.js";
+import {
+  initialSequenceTrack,
+  PREVIEWED_PROPERTIES,
+} from "../../shared/sequence/defaults.js";
 import { withDescendants } from "./graph.js";
-import { sampledDocument, type EditorState } from "../store/index.js";
+import {
+  sampledDocument,
+  sequenceClipOf,
+  type EditorState,
+} from "../store/index.js";
 
 /** A new actor's contract: exactly what the addon's transform and visual targets provide. */
 export const ACTOR_CONTRACT: SequenceContract = {
-  properties: {
-    ...SEQUENCE_TRANSFORM_PROPERTIES,
-    ...SEQUENCE_VISUAL_PROPERTIES,
-  },
+  properties: PREVIEWED_PROPERTIES,
   events: {},
 };
 export function sequenceChange(
@@ -124,11 +124,9 @@ export function sequenceIntent(
           JSON.stringify(pose.transform[property])
         )
           continue;
-        if (
-          sequence.targets[slot]?.properties[property]?.kind !==
-          SEQUENCE_TRANSFORM_PROPERTIES[property].kind
-        )
-          continue;
+        // An undeclared property is not keyed. A declared one has the
+        // transform target's kind: the workspace refuses any other.
+        if (!sequence.targets[slot]?.properties[property]) continue;
         const existing = sequence.tracks.find(
           (t) => t.target === slot && t.property === property,
         );
@@ -386,7 +384,7 @@ export function cloneSequenceActors(
     ...sampled,
     entities: [...sampled.entities, ...command.inserts.map((i) => i.placement)],
   };
-  const clip = new SequenceClip(doc.sequence);
+  const clip = sequenceClipOf(doc.sequence);
   for (const [index, insert] of command.inserts.entries()) {
     const sourceId = sourceIds[index];
     const source = doc.entities.find((p) => p.id === sourceId);
@@ -462,7 +460,7 @@ export function remapSequenceTrack(
     throw new Error("No sequence workspace");
   const track = doc.sequence.tracks.find((t) => t.id === id);
   if (!track?.position) throw new Error("Choose a position track");
-  const before = new SequenceClip(doc.sequence);
+  const before = sequenceClipOf(doc.sequence);
   const next = { ...track, position };
   const after = new SequenceClip({
     ...doc.sequence,

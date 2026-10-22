@@ -4,15 +4,22 @@ import {
   readLevel,
 } from "@yagejs/level/document";
 import type { LevelDocument, StructuralError } from "@yagejs/level/document";
-import { parseSequence } from "@yagejs-addons/sequence/document";
-import type { SequenceDocument } from "@yagejs-addons/sequence/document";
+import {
+  parseSequence,
+  SEQUENCE_WORKSPACE_FORMAT,
+} from "@yagejs-addons/sequence/document";
+import type {
+  SequenceContract,
+  SequenceDocument,
+} from "@yagejs-addons/sequence/document";
+import { PREVIEWED_PROPERTIES } from "../sequence/defaults.js";
 
 /** A clip and its authored preview placements; games consume `sequence` alone. */
 export interface SequenceWorkspaceDocument extends Omit<
   LevelDocument,
   "format"
 > {
-  readonly format: "yage-sequence-workspace";
+  readonly format: typeof SEQUENCE_WORKSPACE_FORMAT;
   readonly sequence: SequenceDocument;
   readonly bindings: Readonly<Record<string, string>>;
 }
@@ -45,7 +52,7 @@ export function readEditorDocument(input: unknown): EditorStructuralResult {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw))
     return readLevel(raw);
   const record = raw as Record<string, unknown>;
-  if (record.format !== "yage-sequence-workspace") return readLevel(raw);
+  if (record.format !== SEQUENCE_WORKSPACE_FORMAT) return readLevel(raw);
   const { sequence, bindings, ...fields } = record;
   const level = readLevel({ ...fields, format: "yage-level" });
   if (!level.ok) return level;
@@ -67,12 +74,13 @@ export function readEditorDocument(input: unknown): EditorStructuralResult {
       if (used.has(id))
         throw new Error(`Preview placement ${id} is bound more than once`);
       used.add(id);
+      checkPreviewedKinds(slot, clip.targets[slot]!);
     }
     return {
       ok: true,
       document: {
         ...level.document,
-        format: "yage-sequence-workspace",
+        format: SEQUENCE_WORKSPACE_FORMAT,
         sequence: clip,
         bindings: Object.fromEntries(entries) as Readonly<
           Record<string, string>
@@ -89,6 +97,25 @@ export function readEditorDocument(input: unknown): EditorStructuralResult {
         },
       ],
     };
+  }
+}
+
+/**
+ * The preview writes a bound actor's previewed properties as the sequence
+ * addon's transform and visual targets do, and those targets refuse a property
+ * declared with another kind. The workspace refuses it the same way, naming
+ * the property.
+ */
+function checkPreviewedKinds(slot: string, contract: SequenceContract): void {
+  for (const [name, definition] of Object.entries(contract.properties)) {
+    const previewed = Object.hasOwn(PREVIEWED_PROPERTIES, name)
+      ? PREVIEWED_PROPERTIES[name]!
+      : undefined;
+    if (previewed && previewed.kind !== definition.kind)
+      throw new Error(
+        `${slot}.${name} is declared as ${definition.kind}, but the ` +
+          `transform and visual targets provide it as ${previewed.kind}`,
+      );
   }
 }
 
@@ -129,7 +156,7 @@ function canonical(value: unknown): unknown {
 export function emptySequenceWorkspace(id: string): SequenceWorkspaceDocument {
   return {
     ...emptyLevelDocument(id),
-    format: "yage-sequence-workspace",
+    format: SEQUENCE_WORKSPACE_FORMAT,
     bindings: {},
     sequence: {
       format: "yage-sequence",

@@ -348,6 +348,14 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
       <div className="ye-bar">
         <Button
           pressed={!sequenceMode}
+          // A project with no level glob can neither open nor create a level.
+          disabled={
+            props.levelDirectories.length === 0 &&
+            !levels.some(
+              (l) => !l.path.endsWith(".yage-sequence-workspace.json"),
+            )
+          }
+          title="Open or create a level"
           onClick={() => {
             const path = store
               .getState()
@@ -362,6 +370,13 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
         </Button>
         <Button
           pressed={sequenceMode}
+          disabled={
+            props.sequenceDirectories.length === 0 &&
+            !levels.some((l) =>
+              l.path.endsWith(".yage-sequence-workspace.json"),
+            )
+          }
+          title="Open or create a sequence workspace"
           onClick={() => {
             const path = store
               .getState()

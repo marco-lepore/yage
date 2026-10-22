@@ -428,7 +428,7 @@ export class DraftService {
       return {
         rejection: this.reject(
           "structurally-invalid",
-          `"${path}" is not a valid level file: ${describe(read.structural.errors)}`,
+          `"${path}" is not a valid level or sequence file: ${describe(read.structural.errors)}`,
         ),
       };
     }

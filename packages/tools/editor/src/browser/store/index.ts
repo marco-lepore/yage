@@ -52,4 +52,8 @@ export {
   snappedValue,
 } from "./snap.js";
 export type { ViewStorage } from "./view.js";
-export { sampledDocument, sequenceSamples } from "./sequence.js";
+export {
+  sampledDocument,
+  sequenceClipOf,
+  sequenceSamples,
+} from "./sequence.js";

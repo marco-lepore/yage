@@ -319,7 +319,7 @@ export function SequencePanel({
             })
           }
         >
-          Fit frame
+          Fit rectangle
         </button>
         <Button
           ariaLabel="Previous frame"
@@ -515,7 +515,7 @@ export function SequencePanel({
               />
             </label>
             <select
-              aria-label="Frame fit"
+              aria-label="Position fit"
               value={view.fit}
               onChange={(e) =>
                 store.dispatch({
