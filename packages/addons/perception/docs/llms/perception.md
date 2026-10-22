@@ -137,7 +137,9 @@ throwing listener stops the remaining events, queued ones included.
 Disable, host deactivation and component removal clear with reason
 `disabled`. Memory times use `SceneTime.elapsed`: scene pause holds them,
 entity time scale does not change them. Expiry is checked during samples:
-an observation is forgotten when `now - lastSeenAt >= memoryDuration`.
+an observation is forgotten when `now - lastSeenAt >= memoryDuration`. A
+successful sample of an expired, lost observation emits forgotten, then
+detected for a new observation with `firstSeenAt` set to the sample time.
 
 ## Physics occlusion
 

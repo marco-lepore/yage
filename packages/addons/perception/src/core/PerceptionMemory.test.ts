@@ -40,6 +40,30 @@ describe("PerceptionMemory", () => {
     ]);
     expect(memory.observations).toEqual([]);
   });
+  it("forgets an expired observation before a new sighting starts a fresh one", () => {
+    const memory = new PerceptionMemory<string>(3);
+    memory.update(0, [sample()]);
+    memory.update(1, [sample("target", "occluded")]);
+    const transitions = memory.update(5, [sample()]);
+    expect(transitions.map((event) => event.type)).toEqual([
+      "forgotten",
+      "detected",
+    ]);
+    expect(transitions[0]?.observation).toMatchObject({
+      reason: "occluded",
+      firstSeenAt: 0,
+    });
+    expect(memory.get("target")).toMatchObject({
+      firstSeenAt: 5,
+      lastSeenAt: 5,
+      visible: true,
+    });
+    memory.update(6, [sample("target", "occluded")]);
+    expect(memory.update(7.9, [sample()]).map((event) => event.type)).toEqual([
+      "detected",
+    ]);
+    expect(memory.get("target")?.firstSeenAt).toBe(5);
+  });
   it("does not remember rejected targets and reacquires lost targets", () => {
     const memory = new PerceptionMemory<string>();
     expect(memory.update(0, [sample("a", "out-of-range")])).toEqual([]);

@@ -77,6 +77,12 @@ export class PerceptionMemory<T> {
         transitions.push({ type: "forgotten", observation });
         old = undefined;
       }
+      // A remembered observation past its deadline is forgotten before a new
+      // sighting, even when no sample in between could expire it.
+      if (old && !old.visible && now - old.lastSeenAt >= this.memoryDuration) {
+        transitions.push({ type: "forgotten", observation: old });
+        old = undefined;
+      }
       if (sample.reason === null) {
         const observation = Object.freeze({
           id: sample.id,

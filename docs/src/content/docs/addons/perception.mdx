@@ -323,8 +323,10 @@ you call it, as long as the sensor is enabled and its entity is active.
 
 Times come from the scene clock. Pausing the scene pauses memory, so a target
 is never forgotten during a pause. Forgetting happens during a sample: a
-sensor that stops sampling keeps its last results. `sampledAt` holds the scene
-time of the latest sample.
+sensor that stops sampling keeps its last results. When a sample sees a target
+whose memory has already run out, it forgets the old observation and starts a
+new one, so listeners receive the forgotten event before the detected one.
+`sampledAt` holds the scene time of the latest sample.
 
 Disabling the sensor, deactivating its entity, or removing the component
 clears every observation and emits loss and forgetting with the reason
