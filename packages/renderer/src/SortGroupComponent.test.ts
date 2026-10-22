@@ -140,19 +140,19 @@ describe("SortGroupComponent", () => {
 
     // Body + weapon live inside the group; the group + the loose sprite are
     // the only direct children of the layer.
-    expect(group.children).toEqual([body.sprite, weapon.sprite]);
+    expect(group.children).toEqual([body.renderObject, weapon.renderObject]);
     expect(layer.children).toContain(group);
-    expect(layer.children).toContain(between.sprite);
-    expect(layer.children).not.toContain(body.sprite);
-    expect(layer.children).not.toContain(weapon.sprite);
+    expect(layer.children).toContain(between.renderObject);
+    expect(layer.children).not.toContain(body.renderObject);
+    expect(layer.children).not.toContain(weapon.renderObject);
 
     // The group sorts as one unit at the body's depth; the loose sprite at 104
     // resolves entirely in front of it rather than between its parts.
     expect(group.zIndex).toBe(100);
-    expect(between.sprite.zIndex).toBe(104);
+    expect(between.renderObject.zIndex).toBe(104);
 
     layer.sortChildren();
-    expect(layer.children).toEqual([group, between.sprite]);
+    expect(layer.children).toEqual([group, between.renderObject]);
   });
 
   it("keeps member insertion order and honours member zIndex by default", () => {
@@ -177,10 +177,10 @@ describe("SortGroupComponent", () => {
 
     const group = knight.get(SortGroupComponent).container;
     // No innerSort → member zIndex untouched; the cape's -1 stands.
-    expect(cape.sprite.zIndex).toBe(-1);
-    expect(body.sprite.zIndex).toBe(0);
+    expect(cape.renderObject.zIndex).toBe(-1);
+    expect(body.renderObject.zIndex).toBe(0);
     group.sortChildren();
-    expect(group.children).toEqual([cape.sprite, body.sprite]);
+    expect(group.children).toEqual([cape.renderObject, body.renderObject]);
   });
 
   it("orders members by innerSort when provided", () => {
@@ -202,8 +202,8 @@ describe("SortGroupComponent", () => {
     system.update();
 
     // Members re-keyed by their own world Y while the group stays one unit.
-    expect(body.sprite.zIndex).toBe(100);
-    expect(plume.sprite.zIndex).toBe(108);
+    expect(body.renderObject.zIndex).toBe(100);
+    expect(plume.renderObject.zIndex).toBe(108);
   });
 
   it("keys a sprite-less group off the owning entity's Transform", () => {
@@ -256,10 +256,10 @@ describe("SortGroupComponent", () => {
       new SpriteComponent({ texture: {} as never, layer: "world", zIndex: 1 }),
     );
     system.update();
-    expect(body.sprite.zIndex).toBe(100); // the layer's depth key
+    expect(body.renderObject.zIndex).toBe(100); // the layer's depth key
 
     knight.add(new SortGroupComponent({ layer: "world" }));
-    expect(body.sprite.zIndex).toBe(1);
+    expect(body.renderObject.zIndex).toBe(1);
   });
 
   it("restores member zIndex when the group is removed", () => {
@@ -273,11 +273,11 @@ describe("SortGroupComponent", () => {
       new SpriteComponent({ texture: {} as never, layer: "world", zIndex: 2 }),
     );
     system.update();
-    expect(body.sprite.zIndex).toBe(100); // innerSort's key
+    expect(body.renderObject.zIndex).toBe(100); // innerSort's key
 
     knight.remove(SortGroupComponent);
-    expect(tree.get("world").container.children).toContain(body.sprite);
-    expect(body.sprite.zIndex).toBe(2);
+    expect(tree.get("world").container.children).toContain(body.renderObject);
+    expect(body.renderObject.zIndex).toBe(2);
   });
 
   it("leaves visuals on a different layer outside the group", () => {
@@ -300,8 +300,8 @@ describe("SortGroupComponent", () => {
     system.update();
 
     const group = knight.get(SortGroupComponent).container;
-    expect(ground.children).toContain(shadow.sprite);
-    expect(group.children).not.toContain(shadow.sprite);
+    expect(ground.children).toContain(shadow.renderObject);
+    expect(group.children).not.toContain(shadow.renderObject);
   });
 
   it("re-homes already-added subtree visuals when added late", () => {
@@ -320,15 +320,15 @@ describe("SortGroupComponent", () => {
     const arm = armEntity.add(
       new SpriteComponent({ texture: {} as never, layer: "world" }),
     );
-    expect(layer.children).toContain(body.sprite); // currently flat
+    expect(layer.children).toContain(body.renderObject); // currently flat
 
     // Adding the group now pulls the whole subtree in.
     knight.add(new SortGroupComponent({ layer: "world" }));
     const group = knight.get(SortGroupComponent).container;
 
-    expect(group.children).toEqual([body.sprite, arm.sprite]);
-    expect(layer.children).not.toContain(body.sprite);
-    expect(layer.children).not.toContain(arm.sprite);
+    expect(group.children).toEqual([body.renderObject, arm.renderObject]);
+    expect(layer.children).not.toContain(body.renderObject);
+    expect(layer.children).not.toContain(arm.renderObject);
 
     system.update();
     expect(group.zIndex).toBe(100);
@@ -346,17 +346,17 @@ describe("SortGroupComponent", () => {
       new SpriteComponent({ texture: {} as never, layer: "world" }),
     );
     const group = knight.get(SortGroupComponent).container;
-    expect(group.children).toContain(body.sprite);
+    expect(group.children).toContain(body.renderObject);
 
     knight.remove(SortGroupComponent);
 
     // The wrapper is gone; the sprite is back as a direct layer child.
     expect(layer.children).not.toContain(group);
-    expect(layer.children).toContain(body.sprite);
+    expect(layer.children).toContain(body.renderObject);
 
     // And it still sorts normally afterwards.
     system.update();
-    expect(body.sprite.zIndex).toBe(100);
+    expect(body.renderObject.zIndex).toBe(100);
   });
 
   it("lets a custom LayerRenderable join a group via resolveRenderParent", () => {
@@ -410,7 +410,7 @@ describe("SortGroupComponent", () => {
       system.update();
 
       const defaultContainer = tree.defaultLayer.container;
-      expect(defaultContainer.children).toContain(graphics.sprite);
+      expect(defaultContainer.children).toContain(graphics.renderObject);
 
       expect(warn).toHaveBeenCalledTimes(1);
       const message = warn.mock.calls[0]![0] as string;
@@ -456,7 +456,7 @@ describe("SortGroupComponent", () => {
       system.update();
 
       const group = knight.get(SortGroupComponent).container;
-      expect(group.children).toContain(body.sprite);
+      expect(group.children).toContain(body.renderObject);
       expect(warn).not.toHaveBeenCalled();
       warn.mockRestore();
     });

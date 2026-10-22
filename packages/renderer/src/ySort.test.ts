@@ -114,9 +114,9 @@ describe("DisplaySystem layer sort", () => {
     const a = spawnSpriteAt(scene, "a", 30);
     const b = spawnSpriteAt(scene, "b", 10);
     const c = spawnSpriteAt(scene, "c", 20);
-    layer.addChild(a.sprite);
-    layer.addChild(b.sprite);
-    layer.addChild(c.sprite);
+    layer.addChild(a.renderObject);
+    layer.addChild(b.renderObject);
+    layer.addChild(c.renderObject);
 
     system.update();
 
@@ -124,12 +124,16 @@ describe("DisplaySystem layer sort", () => {
     // pipeline will then sort by zIndex; we verify the contract by
     // invoking sortChildren manually (mirrors the mock's pixi-render
     // behavior).
-    expect(a.sprite.zIndex).toBe(30);
-    expect(b.sprite.zIndex).toBe(10);
-    expect(c.sprite.zIndex).toBe(20);
+    expect(a.renderObject.zIndex).toBe(30);
+    expect(b.renderObject.zIndex).toBe(10);
+    expect(c.renderObject.zIndex).toBe(20);
 
     layer.sortChildren();
-    expect(layer.children).toEqual([b.sprite, c.sprite, a.sprite]);
+    expect(layer.children).toEqual([
+      b.renderObject,
+      c.renderObject,
+      a.renderObject,
+    ]);
   });
 
   it("re-writes zIndex when positions change between frames", () => {
@@ -139,19 +143,19 @@ describe("DisplaySystem layer sort", () => {
 
     const a = spawnSpriteAt(scene, "a", 10);
     const b = spawnSpriteAt(scene, "b", 20);
-    layer.addChild(a.sprite);
-    layer.addChild(b.sprite);
+    layer.addChild(a.renderObject);
+    layer.addChild(b.renderObject);
 
     system.update();
-    expect(a.sprite.zIndex).toBe(10);
-    expect(b.sprite.zIndex).toBe(20);
+    expect(a.renderObject.zIndex).toBe(10);
+    expect(b.renderObject.zIndex).toBe(20);
 
     // a walks south past b.
     scene.findEntity("a")!.get(Transform).setPosition(0, 50);
 
     system.update();
-    expect(a.sprite.zIndex).toBe(50);
-    expect(b.sprite.zIndex).toBe(20);
+    expect(a.renderObject.zIndex).toBe(50);
+    expect(b.renderObject.zIndex).toBe(20);
   });
 
   it("does not touch zIndex on layers without a sort fn", () => {
@@ -160,11 +164,11 @@ describe("DisplaySystem layer sort", () => {
     const layer = tree.get("characters").container;
 
     const a = spawnSpriteAt(scene, "a", 30);
-    layer.addChild(a.sprite);
+    layer.addChild(a.renderObject);
     a.zIndex = 999;
 
     system.update();
-    expect(a.sprite.zIndex).toBe(999);
+    expect(a.renderObject.zIndex).toBe(999);
     expect(a.zIndex).toBe(999);
   });
 
@@ -178,8 +182,8 @@ describe("DisplaySystem layer sort", () => {
     tree1.sortOffset = 96;
 
     system.update();
-    expect(tree1.sprite.zIndex).toBe(106);
-    expect(hero.sprite.zIndex).toBe(40);
+    expect(tree1.renderObject.zIndex).toBe(106);
+    expect(hero.renderObject.zIndex).toBe(40);
   });
 
   it("hands a custom depth key the entity that draws the child", () => {
@@ -207,10 +211,10 @@ describe("DisplaySystem layer sort", () => {
     const a = spawnSpriteAt(scene, "a", 300);
     a.setLayer("characters");
     system.update();
-    expect(a.sprite.zIndex).toBe(300);
+    expect(a.renderObject.zIndex).toBe(300);
 
     a.setLayer("props");
-    expect(a.sprite.zIndex).toBe(0);
+    expect(a.renderObject.zIndex).toBe(0);
   });
 
   it("gives visuals back their zIndex when the layer stops sorting", () => {
@@ -219,10 +223,10 @@ describe("DisplaySystem layer sort", () => {
     const a = spawnSpriteAt(scene, "a", 300);
     a.setLayer("characters");
     system.update();
-    expect(a.sprite.zIndex).toBe(300);
+    expect(a.renderObject.zIndex).toBe(300);
 
     tree.get("characters").setSort(undefined);
-    expect(a.sprite.zIndex).toBe(0);
+    expect(a.renderObject.zIndex).toBe(0);
   });
 
   it("warns once when zIndex is set on a sorted layer", () => {

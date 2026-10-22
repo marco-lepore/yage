@@ -28,9 +28,9 @@ function visualTarget(): VisualComponent {
 function createRenderedHost() {
   const setup = createMockEntity();
   const root = new GraphicsComponent();
-  const layers = new RenderLayerManager(root.graphics);
+  const layers = new RenderLayerManager(root.renderObject);
   const tree: SceneRenderTree = {
-    root: root.graphics,
+    root: root.renderObject,
     get: (name) => layers.get(name),
     tryGet: (name) => layers.tryGet(name),
     getAll: () => layers.getAll(),

@@ -42,16 +42,10 @@ const ENGINE_TIME_SYNTAX = [
 
 // Game-facing code (examples, addon source) changes a visual through its
 // component, never the Pixi object underneath, which the engine overwrites.
-// Only these member names are unambiguous: `sprite`, `graphics`, `text` and
-// `container` are also ordinary component field names, which an untyped rule
-// cannot tell apart from the raw handles. Docs fences get a typed check in
+// Visual components and UI elements hand out that object only as
+// `renderObject` and `displayObject`. Docs fences get a typed check in
 // docs/scripts/check-snippets.mjs.
-const RAW_PIXI_SYNTAX = [
-  "animatedSprite",
-  "renderObject",
-  "splitText",
-  "displayObject",
-].map((name) => ({
+const RAW_PIXI_SYNTAX = ["renderObject", "displayObject"].map((name) => ({
   selector: `MemberExpression[property.name='${name}']`,
   message: `\`${name}\` is the Pixi object the engine overwrites. Change the visual through its component; a task that needs the object is a missing renderer API.`,
 }));

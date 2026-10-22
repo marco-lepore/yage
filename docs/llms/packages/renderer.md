@@ -6,30 +6,30 @@ Depends on `@yagejs/core`, `pixi.js`. PixiJS v8 rendering behind the YAGE plugin
 
 Every exported field, parameter, and return type across `@yagejs/renderer` (and its downstream consumers — `@yagejs/ui`, `@yagejs/particles`, `@yagejs/tilemap`) uses this package's own alias names instead of a direct `pixi.js` type import, so consumer code never has to import `pixi.js` for types:
 
-| Alias                    | Underlying Pixi type                                     | Where it shows up                                                                              |
-| ------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `DisplayContainer`       | `Container`                                              | `renderObject` getters, `RenderLayer.container`, UI element `container`/`displayObject` fields |
-| `DisplaySprite`          | `Sprite`                                                 | `SpriteComponent.sprite`                                                                       |
-| `DisplayAnimatedSprite`  | `AnimatedSprite`                                         | `AnimatedSpriteComponent.animatedSprite`                                                       |
-| `DisplayText`            | `Text`                                                   | `TextComponent.text` (canvas variant)                                                          |
-| `DisplayBitmapText`      | `BitmapText`                                             | `TextComponent.text` (bitmap variant)                                                          |
-| `DisplaySplitText`       | `SplitText`                                              | `SplitTextComponent.splitText` (canvas variant)                                                |
-| `DisplaySplitBitmapText` | `SplitBitmapText`                                        | `SplitTextComponent.splitText` (bitmap variant)                                                |
-| `GraphicsContext`        | `Graphics`                                               | `GraphicsComponent.graphics`, `draw((g) => ...)`, mask draw callbacks                          |
-| `NineSliceSprite`        | `NineSliceSprite`                                        | `NineSliceComponent.renderObject`, `UINineSlice.container`                                     |
-| `ParticleContainer`      | `ParticleContainer`                                      | `@yagejs/particles`' `ParticleEmitterComponent.container`                                      |
-| `Particle`               | `Particle`                                               | `@yagejs/particles`' `ParticlePool.acquire()`/`release()`                                      |
-| `Filter`                 | `Filter`                                                 | effects API (`Effect.filter`, `rawFilter(filter)`)                                             |
-| `Application`            | `Application`                                            | `RendererPlugin.application`                                                                   |
-| `ApplicationOptions`     | `ApplicationOptions`                                     | `RendererConfig.pixi`                                                                          |
-| `DestroyOptions`         | `DestroyOptions`                                         | visual components' `destroyOptions()` override hook                                            |
-| `ColorValue`             | `ColorSource`                                            | every `tint` option/accessor                                                                   |
-| `BlendMode`              | `BLEND_MODES`                                            | every visual component's `blendMode` option/accessor                                           |
-| `PointLike`              | `PointData`                                              | point-shaped callbacks/options                                                                 |
-| `TextStyle`              | `TextStyleOptions`                                       | every `style` option                                                                           |
-| `TextureRef`             | none — `string \| TextureHandle`, a key/handle reference | `SpriteComponent.texture`, `setTexture()`                                                      |
+| Alias                    | Underlying Pixi type                                     | Where it shows up                                                                  |
+| ------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `DisplayContainer`       | `Container`                                              | `renderObject` getters, `RenderLayer.container`, UI element `displayObject` fields |
+| `DisplaySprite`          | `Sprite`                                                 | `SpriteComponent.renderObject`                                                     |
+| `DisplayAnimatedSprite`  | `AnimatedSprite`                                         | `AnimatedSpriteComponent.renderObject`                                             |
+| `DisplayText`            | `Text`                                                   | `TextComponent.renderObject` (canvas variant), `SplitTextComponent.chars`          |
+| `DisplayBitmapText`      | `BitmapText`                                             | `TextComponent.renderObject` (bitmap variant), `SplitTextComponent.chars`          |
+| `DisplaySplitText`       | `SplitText`                                              | `SplitTextComponent.renderObject` (canvas variant)                                 |
+| `DisplaySplitBitmapText` | `SplitBitmapText`                                        | `SplitTextComponent.renderObject` (bitmap variant)                                 |
+| `GraphicsContext`        | `Graphics`                                               | `GraphicsComponent.renderObject`, `draw((g) => ...)`, mask draw callbacks          |
+| `NineSliceSprite`        | `NineSliceSprite`                                        | `NineSliceComponent.renderObject`                                                  |
+| `ParticleContainer`      | `ParticleContainer`                                      | `@yagejs/particles`' `ParticleEmitterComponent.container`                          |
+| `Particle`               | `Particle`                                               | `@yagejs/particles`' `ParticlePool.acquire()`/`release()`                          |
+| `Filter`                 | `Filter`                                                 | effects API (`Effect.filter`, `rawFilter(filter)`)                                 |
+| `Application`            | `Application`                                            | `RendererPlugin.application`                                                       |
+| `ApplicationOptions`     | `ApplicationOptions`                                     | `RendererConfig.pixi`                                                              |
+| `DestroyOptions`         | `DestroyOptions`                                         | visual components' `destroyOptions()` override hook                                |
+| `ColorValue`             | `ColorSource`                                            | every `tint` option/accessor                                                       |
+| `BlendMode`              | `BLEND_MODES`                                            | every visual component's `blendMode` option/accessor                               |
+| `PointLike`              | `PointData`                                              | point-shaped callbacks/options                                                     |
+| `TextStyle`              | `TextStyleOptions`                                       | every `style` option                                                               |
+| `TextureRef`             | none — `string \| TextureHandle`, a key/handle reference | `SpriteComponent.texture`, `setTexture()`                                          |
 
-The aliases are transparent (`type DisplayContainer = Container`) and provide no encapsulation: `RendererPlugin.application`, every `renderObject` getter and the class fields (`.sprite`/`.graphics`/`.text`/`.splitText`/`.animatedSprite`) return the real Pixi object. Game code never writes to it. `DisplaySystem` writes position, rotation and scale from the entity's `Transform` every frame, and the component re-applies its own `visible` and `alpha` on every change, on activation and on every modifier change, so a write on the Pixi object is lost. Change a visual through its component; a task that needs the Pixi object is a missing component API.
+The aliases are transparent (`type DisplayContainer = Container`) and provide no encapsulation: `RendererPlugin.application` and every `renderObject` getter return the real Pixi object. Game code never writes to it. `DisplaySystem` writes position, rotation and scale from the entity's `Transform` every frame, and the component re-applies its own `visible` and `alpha` on every change, on activation and on every modifier change, so a write on the Pixi object is lost. Change a visual through its component; a task that needs the Pixi object is a missing component API.
 
 A `GraphicsContext` therefore carries Pixi's graphics transform stack —
 `translateTransform`, `scaleTransform`, `rotateTransform`, `setTransform`,
@@ -485,7 +485,7 @@ entity.add(
 );
 ```
 
-**Thin wrapper:** `style` forwards as-is to pixi `TextStyleOptions` (CSS-style font properties — `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `fill`, `letterSpacing`, `lineHeight`, etc.). `.text` is the underlying pixi `Text` (or `BitmapText` when `bitmap` is set). See [pixi Text docs](https://pixijs.com/8.x/guides/components/scene-objects/text/) and [pixi TextStyle reference](https://pixijs.com/8.x/guides/components/scene-objects/text/style).
+**Thin wrapper:** `style` forwards as-is to pixi `TextStyleOptions` (CSS-style font properties — `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `fill`, `letterSpacing`, `lineHeight`, etc.). `renderObject` is the underlying pixi `Text` (or `BitmapText` when `bitmap` is set). See [pixi Text docs](https://pixijs.com/8.x/guides/components/scene-objects/text/) and [pixi TextStyle reference](https://pixijs.com/8.x/guides/components/scene-objects/text/style).
 
 **Pixel-art text — `bitmap`.** Canvas-rasterised `Text` is bilinear-sampled by the GPU, so it goes blurry at non-integer scale (camera zoom, pixel-art upscaling) on non-Retina displays. Set `bitmap` to draw pre-baked glyph quads instead:
 
@@ -510,7 +510,7 @@ new TextComponent({
 
 `bitmap` (boolean) and `resolution` are construction options. Yoga/layout behaviour is unchanged.
 
-**`setText` writes, `content` reads.** `setText(value)` replaces the displayed string; `content` reads it back. (`.text` is the pixi display object, not the string.) `content` is also what the Inspector reports for a `TextComponent`, so an e2e assertion on rendered copy reads `getComponentData(entity, "TextComponent").content`.
+**`setText` writes, `content` reads.** `setText(value)` replaces the displayed string; `content` reads it back. `content` is also what the Inspector reports for a `TextComponent`, so an e2e assertion on rendered copy reads `getComponentData(entity, "TextComponent").content`.
 
 **`setStyle` replaces, `mergeStyle` patches.** `setStyle(style)` assigns a fresh style — properties you omit fall back to the defaults. `mergeStyle(style)` merges over the properties already set, so an imperative recolour (`mergeStyle({ fill })`) keeps the current font, size, weight, etc. The React reconciler uses `setStyle` (declarative: the full style is passed every render).
 
@@ -565,7 +565,7 @@ Tween.stagger(
 
 `anchor` positions the whole block around its entity Transform. It uses the current split text bounds and is recomputed after text, style, or manual split updates. `charAnchor`, `wordAnchor`, and `lineAnchor` only affect their individual segments.
 
-API: `chars` / `words` / `lines` (getters), `setText(v)`, `content` (reads the current string back), `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `visible` / `tint` / `alpha`, `fx` / `setMask` / `clearMask` (same effects/mask surface as the other four components), `splitText` (underlying Pixi object), `isBitmap`. Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).
+API: `chars` / `words` / `lines` (getters), `setText(v)`, `content` (reads the current string back), `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `visible` / `tint` / `alpha`, `fx` / `setMask` / `clearMask` (same effects/mask surface as the other four components), `isBitmap`. Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).
 
 ### AnimatedSpriteComponent
 
@@ -615,7 +615,7 @@ The `speed` construction option sets the rate the first `play()` runs at, so a c
 
 `speed` (get/set) is the live playback rate, and the same number `play({ speed })` writes: frames advanced per tick at 60 fps, default `1`. Writing it retimes a running clip without restarting it. `0` holds the current frame while `isPlaying` stays `true`, and a negative value plays backwards. A non-finite value throws from the property and from `play({ speed })` alike. With an `AnimationController` on the entity, `speed` reads the composed rate: the animation definition's `speed` times `controller.speed` times the `playOneShot({ speed })` factor. The controller writes the rate again at its next animation switch and whenever `controller.speed` is written, so set `AnimationController.speed` to retime every animation and the component's `speed` to retime only the clip on screen. The component's `speed` does not retime a running one-shot's lock: the lock keeps the duration computed when the one-shot started, so the clip and the lock can end at different times.
 
-`onFrameChange(listener)` subscribes to frame changes and returns an unsubscribe function, so `this.addCleanup(sprite.onFrameChange(fn))` drops the listener with the component. Any number of listeners can subscribe; each receives the new frame index. Pixi delivers a frame change on play, on every advance, and on the frame reset an animation switch performs, so a listener sees controller switches too. Assigning `animatedSprite.onFrameChange` directly replaces the engine's dispatcher and silences every subscriber.
+`onFrameChange(listener)` subscribes to frame changes and returns an unsubscribe function, so `this.addCleanup(sprite.onFrameChange(fn))` drops the listener with the component. Any number of listeners can subscribe; each receives the new frame index. Pixi delivers a frame change on play, on every advance, and on the frame reset an animation switch performs, so a listener sees controller switches too. Assigning `renderObject.onFrameChange` directly replaces the engine's dispatcher and silences every subscriber.
 
 ```ts
 import { Component } from "@yagejs/core";

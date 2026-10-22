@@ -90,11 +90,7 @@ export interface SplitTextComponentOptions extends VisualComponentOptions {
  * differ slightly from `Text` (browser kerning is lost once glyphs are split).
  */
 export class SplitTextComponent extends VisualComponent {
-  /**
-   * The same Pixi object as {@link renderObject}. Change the visual through
-   * the component; see `VisualComponent.renderObject`.
-   */
-  readonly splitText: DisplaySplitText | DisplaySplitBitmapText;
+  private readonly _splitText: DisplaySplitText | DisplaySplitBitmapText;
   /** Whether this renders with a bitmap font (`SplitBitmapText`). */
   readonly isBitmap: boolean;
   private _bitmap?: boolean;
@@ -129,7 +125,7 @@ export class SplitTextComponent extends VisualComponent {
       // Never hand Pixi's split an empty string; see `setSplitText`.
       autoSplit: initialAutoSplit(this._autoSplit, options.text),
     };
-    this.splitText = bitmap
+    this._splitText = bitmap
       ? new SplitBitmapText(splitOptions)
       : new SplitText(splitOptions);
 
@@ -145,7 +141,7 @@ export class SplitTextComponent extends VisualComponent {
    * component; see {@link VisualComponent.renderObject}.
    */
   get renderObject(): DisplaySplitText | DisplaySplitBitmapText {
-    return this.splitText;
+    return this._splitText;
   }
 
   /**
@@ -156,7 +152,7 @@ export class SplitTextComponent extends VisualComponent {
    * again after one.
    */
   get chars(): (DisplayText | DisplayBitmapText)[] {
-    return this.splitText.chars;
+    return this._splitText.chars;
   }
 
   /**
@@ -164,7 +160,7 @@ export class SplitTextComponent extends VisualComponent {
    * `setText`, `setStyle` or `resplit`, like {@link chars}.
    */
   get words(): DisplayContainer[] {
-    return this.splitText.words;
+    return this._splitText.words;
   }
 
   /**
@@ -172,7 +168,7 @@ export class SplitTextComponent extends VisualComponent {
    * `setText`, `setStyle` or `resplit`, like {@link chars}.
    */
   get lines(): DisplayContainer[] {
-    return this.splitText.lines;
+    return this._splitText.lines;
   }
 
   /**
@@ -180,29 +176,24 @@ export class SplitTextComponent extends VisualComponent {
    * string renders nothing and leaves the segments empty.
    */
   setText(value: string): void {
-    setSplitText(this.splitText, value, this._autoSplit);
+    setSplitText(this._splitText, value, this._autoSplit);
     this.applyBlockAnchor();
   }
 
-  /**
-   * The string currently displayed. {@link splitText} is the Pixi display
-   * object, so this is the way to read the rendered string back — including
-   * from the Inspector, which reflects public getters but skips display
-   * objects.
-   */
+  /** The string currently displayed. */
   get content(): string {
-    return this.splitText.text;
+    return this._splitText.text;
   }
 
   /** Replace the text style (re-splits when `autoSplit` is on). */
   setStyle(style: TextStyle): void {
     const { options } = buildTextOptions(
-      this.splitText.text,
+      this._splitText.text,
       style,
       this._bitmap,
       undefined,
     );
-    this.splitText.style = options.style ?? style;
+    this._splitText.style = options.style ?? style;
     this.applyBlockAnchor();
   }
 
@@ -211,38 +202,38 @@ export class SplitTextComponent extends VisualComponent {
    * `setText` / `setStyle`, call this to apply the change in one pass.
    */
   resplit(): void {
-    if (!splitIfNotEmpty(this.splitText)) return;
+    if (!splitIfNotEmpty(this._splitText)) return;
     this.applyBlockAnchor();
   }
 
   /** Transform origin for each character (normalized 0–1). */
   set charAnchor(anchor: SegmentAnchor) {
-    this.splitText.charAnchor = anchor;
+    this._splitText.charAnchor = anchor;
   }
   get charAnchor(): SegmentAnchor {
-    return this.splitText.charAnchor;
+    return this._splitText.charAnchor;
   }
 
   /** Transform origin for each word (normalized 0–1). */
   set wordAnchor(anchor: SegmentAnchor) {
-    this.splitText.wordAnchor = anchor;
+    this._splitText.wordAnchor = anchor;
   }
   get wordAnchor(): SegmentAnchor {
-    return this.splitText.wordAnchor;
+    return this._splitText.wordAnchor;
   }
 
   /** Transform origin for each line (normalized 0–1). */
   set lineAnchor(anchor: SegmentAnchor) {
-    this.splitText.lineAnchor = anchor;
+    this._splitText.lineAnchor = anchor;
   }
   get lineAnchor(): SegmentAnchor {
-    return this.splitText.lineAnchor;
+    return this._splitText.lineAnchor;
   }
 
   private applyBlockAnchor(): void {
     if (!this._anchor) return;
-    const bounds = this.splitText.getLocalBounds();
-    this.splitText.pivot.set(
+    const bounds = this._splitText.getLocalBounds();
+    this._splitText.pivot.set(
       bounds.x + bounds.width * this._anchor.x,
       bounds.y + bounds.height * this._anchor.y,
     );
@@ -265,7 +256,7 @@ export class SplitTextComponent extends VisualComponent {
    */
   inspectRender(): SplitTextRenderFacet {
     const facet = super.inspectRender();
-    const chars = this.splitText.chars;
+    const chars = this._splitText.chars;
     const glyphs = chars.map((char) => ({ visible: char.visible }));
     const visibleText = chars
       .filter((char) => char.visible)

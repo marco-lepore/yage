@@ -17,9 +17,9 @@ import {
 function createRenderedHost() {
   const setup = createMockEntity();
   const root = new GraphicsComponent();
-  const layers = new RenderLayerManager(root.graphics);
+  const layers = new RenderLayerManager(root.renderObject);
   const tree: SceneRenderTree = {
-    root: root.graphics,
+    root: root.renderObject,
     get: (name) => layers.get(name),
     tryGet: (name) => layers.tryGet(name),
     getAll: () => layers.getAll(),
@@ -64,7 +64,7 @@ describe("Feel transient visuals", () => {
     const spawned = scene.findEntity("feel:floating-text");
     const transform = spawned?.get(Transform);
     const text = spawned?.get(TextComponent);
-    expect(text?.text.text).toBe("Level up!");
+    expect(text?.renderObject.text).toBe("Level up!");
     expect(transform?.position.x).toBe(100);
     expect(transform?.position.y).toBe(80);
 
@@ -104,7 +104,7 @@ describe("Feel transient visuals", () => {
       .findEntities()
       .filter((candidate) => candidate.name === "feel:floating-text");
     expect(spawned).toHaveLength(2);
-    expect(spawned[0]?.get(TextComponent).text.text).toBe("-99");
+    expect(spawned[0]?.get(TextComponent).renderObject.text).toBe("-99");
 
     first?.stop();
     expect(spawned[0]?.isDestroyed).toBe(true);

@@ -201,7 +201,9 @@ describe("focus with no outline", () => {
 
     getFocusState(panel)?._setFocused(true);
 
-    const drawn = (panel.container as unknown as MockContainer).children.filter(
+    const drawn = (
+      panel.displayObject as unknown as MockContainer
+    ).children.filter(
       (child): child is MockGraphics => child instanceof MockGraphics,
     );
     expect(drawn).toHaveLength(1);

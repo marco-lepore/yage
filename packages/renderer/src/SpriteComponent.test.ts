@@ -156,7 +156,7 @@ describe("SpriteComponent", () => {
     const tex = { label: "test" };
     const comp = new SpriteComponent({ texture: tex as never });
     expect(mocks.MockSprite.from).toHaveBeenCalledWith(tex);
-    expect(comp.sprite).toBeDefined();
+    expect(comp.renderObject).toBeDefined();
   });
 
   it("defaults to 'default' layer", () => {
@@ -174,22 +174,22 @@ describe("SpriteComponent", () => {
       texture: {} as never,
       anchor: { x: 0.5, y: 0.5 },
     });
-    expect(comp.sprite.anchor.set).toHaveBeenCalledWith(0.5, 0.5);
+    expect(comp.renderObject.anchor.set).toHaveBeenCalledWith(0.5, 0.5);
   });
 
   it("sets visibility when provided", () => {
     const comp = new SpriteComponent({ texture: {} as never, visible: false });
-    expect(comp.sprite.visible).toBe(false);
+    expect(comp.renderObject.visible).toBe(false);
   });
 
   it("sets tint when provided", () => {
     const comp = new SpriteComponent({ texture: {} as never, tint: 0xff0000 });
-    expect(comp.sprite.tint).toBe(0xff0000);
+    expect(comp.renderObject.tint).toBe(0xff0000);
   });
 
   it("sets alpha when provided", () => {
     const comp = new SpriteComponent({ texture: {} as never, alpha: 0.5 });
-    expect(comp.sprite.alpha).toBe(0.5);
+    expect(comp.renderObject.alpha).toBe(0.5);
   });
 
   it("applies the interactive option, defaulting eventMode to static", () => {
@@ -197,7 +197,7 @@ describe("SpriteComponent", () => {
       texture: {} as never,
       interactive: {},
     });
-    expect(comp.sprite.eventMode).toBe("static");
+    expect(comp.renderObject.eventMode).toBe("static");
   });
 
   it("onAdd adds sprite to correct layer container", () => {
@@ -208,7 +208,7 @@ describe("SpriteComponent", () => {
 
     const layerContainer = layerManager.defaultLayer
       .container as unknown as InstanceType<typeof mocks.MockContainer>;
-    expect(layerContainer.children).toContain(comp.sprite);
+    expect(layerContainer.children).toContain(comp.renderObject);
   });
 
   it("setTexture replaces the sprite texture via a registered key", () => {
@@ -216,7 +216,7 @@ describe("SpriteComponent", () => {
     const next = registerFakeTexture("new-texture");
     comp.setTexture("new-texture");
     expect(mocks.MockTexture.from).toHaveBeenCalledWith("new-texture");
-    expect(comp.sprite.texture).toBe(next);
+    expect(comp.renderObject.texture).toBe(next);
   });
 
   it("throws on an unresolvable texture key, naming the key", () => {
@@ -228,14 +228,14 @@ describe("SpriteComponent", () => {
   it("tint setter updates sprite tint", () => {
     const comp = new SpriteComponent({ texture: {} as never });
     comp.tint = 0x00ff00;
-    expect(comp.sprite.tint).toBe(0x00ff00);
+    expect(comp.renderObject.tint).toBe(0x00ff00);
     expect(comp.tint).toBe(0x00ff00);
   });
 
   it("alpha setter updates sprite alpha", () => {
     const comp = new SpriteComponent({ texture: {} as never });
     comp.alpha = 0.3;
-    expect(comp.sprite.alpha).toBe(0.3);
+    expect(comp.renderObject.alpha).toBe(0.3);
     expect(comp.alpha).toBe(0.3);
   });
 
@@ -245,15 +245,15 @@ describe("SpriteComponent", () => {
     const second = comp.modifiers.addOpacity(0.25);
 
     expect(comp.alpha).toBe(0.8);
-    expect(comp.sprite.alpha).toBeCloseTo(0.1);
+    expect(comp.renderObject.alpha).toBeCloseTo(0.1);
 
     comp.alpha = 0.4;
-    expect(comp.sprite.alpha).toBeCloseTo(0.05);
+    expect(comp.renderObject.alpha).toBeCloseTo(0.05);
 
     first.remove();
-    expect(comp.sprite.alpha).toBeCloseTo(0.1);
+    expect(comp.renderObject.alpha).toBeCloseTo(0.1);
     second.remove();
-    expect(comp.sprite.alpha).toBe(0.4);
+    expect(comp.renderObject.alpha).toBe(0.4);
   });
 
   it("keeps base visibility separate from visibility modifiers", () => {
@@ -265,16 +265,16 @@ describe("SpriteComponent", () => {
     const second = comp.modifiers.addVisibility(true);
 
     expect(comp.visible).toBe(true);
-    expect(comp.sprite.visible).toBe(false);
+    expect(comp.renderObject.visible).toBe(false);
 
     comp.visible = false;
     first.remove();
     second.remove();
     expect(comp.visible).toBe(false);
-    expect(comp.sprite.visible).toBe(false);
+    expect(comp.renderObject.visible).toBe(false);
 
     comp.visible = true;
-    expect(comp.sprite.visible).toBe(true);
+    expect(comp.renderObject.visible).toBe(true);
   });
 
   it("onDestroy removes sprite from parent and destroys it", () => {
@@ -283,7 +283,7 @@ describe("SpriteComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new SpriteComponent({ texture: {} as never }));
 
-    const sprite = comp.sprite as unknown as InstanceType<
+    const sprite = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(sprite.parent).not.toBeNull();
@@ -299,7 +299,7 @@ describe("SpriteComponent", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
       const comp = entity.add(new SpriteComponent({ texture: {} as never }));
-      const sprite = comp.sprite as unknown as InstanceType<
+      const sprite = comp.renderObject as unknown as InstanceType<
         typeof mocks.MockContainer
       >;
       sprite.boundsBox = { x: 4, y: 8, width: 16, height: 16 };
@@ -314,11 +314,11 @@ describe("SpriteComponent", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
       const comp = entity.add(new SpriteComponent({ texture: {} as never }));
-      const sprite = comp.sprite as unknown as InstanceType<
+      const sprite = comp.renderObject as unknown as InstanceType<
         typeof mocks.MockContainer
       >;
       sprite.boundsBox = { x: 0, y: 0, width: 10, height: 10 };
-      comp.sprite.visible = false;
+      comp.renderObject.visible = false;
 
       const facet = comp.inspectRender();
       expect(facet.visible).toBe(false);

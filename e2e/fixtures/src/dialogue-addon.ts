@@ -321,10 +321,11 @@ class DialogueProbe extends Component {
   get caretOverlapsText(): boolean {
     const caret = this.scene
       .findEntity("dlg-indicator")
-      ?.tryGet(GraphicsComponent)?.graphics;
+      ?.tryGet(GraphicsComponent);
     const text = this.scene.findEntity("dlg-line")?.tryGet(SplitTextComponent);
     if (!caret?.visible || !text) return false;
-    const c = caret.getBounds();
+    // Glyph boxes have no Inspector field, so both boxes come from Pixi.
+    const c = caret.renderObject.getBounds();
     return text.chars.some((char) => {
       const b = char.getBounds();
       return (

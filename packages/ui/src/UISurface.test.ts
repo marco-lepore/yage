@@ -245,7 +245,7 @@ describe("UISurface", () => {
 
   it("creates a panel with default options", () => {
     const panel = new UISurface();
-    expect(panel.container).toBeDefined();
+    expect(panel.root.displayObject).toBeDefined();
     expect(panel.visible).toBe(true);
   });
 
@@ -349,7 +349,7 @@ describe("UISurface", () => {
 
     it("container is the root panel's container", () => {
       const surface = new UISurface();
-      expect(surface.container).toBe(surface.root.container);
+      expect(surface.root.displayObject).toBe(surface.root.displayObject);
     });
   });
 
@@ -694,7 +694,7 @@ describe("UISurface", () => {
       // The container must NOT carry a hitArea — it would prune descendants
       // that render outside the box.
       expect(
-        (panel.container as unknown as { hitArea?: unknown }).hitArea,
+        (panel.root.displayObject as unknown as { hitArea?: unknown }).hitArea,
       ).toBeUndefined();
 
       const catcher = (
@@ -980,7 +980,7 @@ describe("UISurface", () => {
   describe("overflow mask redraw gating", () => {
     /** The Graphics an `overflow: "hidden"` panel clips with. */
     function clipMask(panel: UIPanel): InstanceType<typeof mocks.MockGraphics> {
-      const mask = (panel.container as unknown as { mask: unknown }).mask;
+      const mask = (panel.displayObject as unknown as { mask: unknown }).mask;
       expect(mask).toBeTruthy();
       return mask as InstanceType<typeof mocks.MockGraphics>;
     }

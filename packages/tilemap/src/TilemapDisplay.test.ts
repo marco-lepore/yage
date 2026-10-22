@@ -242,7 +242,7 @@ describe("tilemap rendering through DisplaySystem", () => {
 
     system.update();
 
-    const container = comp.container as unknown as InstanceType<
+    const container = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.position.x).toBe(50);
@@ -273,7 +273,7 @@ describe("tilemap rendering through DisplaySystem", () => {
 
     system.update();
 
-    const container = comp.container as unknown as InstanceType<
+    const container = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.position.x).toBe(54);
@@ -304,7 +304,7 @@ describe("tilemap rendering through DisplaySystem", () => {
 
     system.update();
 
-    const container = comp.container as unknown as InstanceType<
+    const container = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.position.x).toBe(0); // Not synced
@@ -324,7 +324,7 @@ describe("tilemap rendering through DisplaySystem", () => {
 
     system.update();
 
-    const container = comp.container as unknown as InstanceType<
+    const container = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.zIndex).toBe(100);

@@ -204,7 +204,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const sprite = spriteComp.sprite as unknown as InstanceType<
+    const sprite = spriteComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(sprite.position.x).toBe(transform.position.x);
@@ -221,7 +221,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const sprite = spriteComp.sprite as unknown as InstanceType<
+    const sprite = spriteComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(sprite.rotation).toBe(1.5);
@@ -237,7 +237,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const sprite = spriteComp.sprite as unknown as InstanceType<
+    const sprite = spriteComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(sprite.scale.x).toBe(2);
@@ -262,7 +262,7 @@ describe("DisplaySystem", () => {
     });
 
     system.update();
-    const sprite = visual.sprite as unknown as InstanceType<
+    const sprite = visual.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(sprite.position).toMatchObject({ x: 14, y: 18 });
@@ -292,7 +292,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const gfx = gfxComp.graphics as unknown as InstanceType<
+    const gfx = gfxComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(gfx.position.x).toBe(50);
@@ -311,7 +311,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const anim = animComp.animatedSprite as unknown as InstanceType<
+    const anim = animComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(anim.position.x).toBe(30);
@@ -326,7 +326,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const txt = textComp.text as unknown as InstanceType<
+    const txt = textComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(txt.position.x).toBe(12);
@@ -344,7 +344,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const sprite = spriteComp.sprite as unknown as InstanceType<
+    const sprite = spriteComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(sprite.position.x).toBe(0);
@@ -878,11 +878,11 @@ describe("DisplaySystem", () => {
     system.update();
 
     expect(
-      (s1.sprite as unknown as InstanceType<typeof mocks.MockContainer>)
+      (s1.renderObject as unknown as InstanceType<typeof mocks.MockContainer>)
         .position.x,
     ).toBe(10);
     expect(
-      (s2.sprite as unknown as InstanceType<typeof mocks.MockContainer>)
+      (s2.renderObject as unknown as InstanceType<typeof mocks.MockContainer>)
         .position.x,
     ).toBe(30);
   });
@@ -904,7 +904,7 @@ describe("DisplaySystem", () => {
         new SpriteComponent({ texture: {} as never }),
       );
 
-      const sprite = spriteComp.sprite as unknown as InstanceType<
+      const sprite = spriteComp.renderObject as unknown as InstanceType<
         typeof mocks.MockContainer
       >;
       sprite.position.set(10, 20);
@@ -931,7 +931,7 @@ describe("DisplaySystem", () => {
       const dormantSprite = dormant.add(
         new SpriteComponent({ texture: {} as never }),
       );
-      const written = dormantSprite.sprite as unknown as InstanceType<
+      const written = dormantSprite.renderObject as unknown as InstanceType<
         typeof mocks.MockContainer
       >;
       written.position.set(10, 20);
@@ -945,7 +945,7 @@ describe("DisplaySystem", () => {
       expect(written.position).toMatchObject({ x: 10, y: 20 });
       expect(
         (
-          overlayGfx.graphics as unknown as InstanceType<
+          overlayGfx.renderObject as unknown as InstanceType<
             typeof mocks.MockContainer
           >
         ).position,

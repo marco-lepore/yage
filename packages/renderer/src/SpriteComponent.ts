@@ -26,23 +26,26 @@ export interface SpriteComponentOptions extends VisualComponentOptions {
 
 /** Component that displays a PixiJS Sprite. */
 export class SpriteComponent extends MaterialVisualComponent {
-  readonly sprite: DisplaySprite;
+  private readonly _sprite: DisplaySprite;
 
   constructor(options: SpriteComponentOptions) {
     super(options.layer);
     const texture = resolveTextureInput(options.texture);
     const maps = resolveMaps([texture], options.maps);
-    this.sprite = Sprite.from(texture);
+    this._sprite = Sprite.from(texture);
     this.initializeMaterial(maps, options.material);
     if (options.anchor) {
-      this.sprite.anchor.set(options.anchor.x, options.anchor.y);
+      this._sprite.anchor.set(options.anchor.x, options.anchor.y);
     }
     this.applyVisualOptions(options);
   }
 
-  /** The underlying Pixi display object. */
+  /**
+   * The Pixi object this component draws with. Change the visual through the
+   * component; see `VisualComponent.renderObject`.
+   */
   get renderObject(): DisplaySprite {
-    return this.sprite;
+    return this._sprite;
   }
 
   /** Replace the sprite's texture and its whole map set. Omitted maps are cleared. */
@@ -50,6 +53,6 @@ export class SpriteComponent extends MaterialVisualComponent {
     const resolved = resolveTextureInput(texture);
     const companions = resolveMaps([resolved], maps);
     this.binding.setMaps(companions, this.layerName);
-    this.sprite.texture = resolved;
+    this._sprite.texture = resolved;
   }
 }

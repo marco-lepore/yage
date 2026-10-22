@@ -71,15 +71,11 @@ const PANEL_DEFAULTS: FlexContainerDefaults = {
  * optional background, and an ordered list of UIElement children.
  */
 export class UIPanel extends UIElementBase implements UIContainerElement {
-  /**
-   * The same Pixi container as {@link displayObject}. Change the element
-   * through its props; see `UIElement.displayObject`.
-   */
-  readonly container: DisplayContainer;
+  private readonly _container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
   get displayObject(): DisplayContainer {
-    return this.container;
+    return this._container;
   }
 
   private bgRenderer: BackgroundRenderer | undefined;
@@ -122,28 +118,28 @@ export class UIPanel extends UIElementBase implements UIContainerElement {
 
   constructor(opts: UIPanelProps) {
     super();
-    this.container = new Container();
+    this._container = new Container();
     this.yogaNode = createYogaNode();
     this._hitCatcher = new Container();
     this._hitCatcher.zIndex = BELOW_ELEMENTS;
     this._hitCatcher.eventMode = "static";
     this._hitCatcher.hitArea = this._hitArea;
-    this.container.addChild(this._hitCatcher);
-    applyConsumeInput(this.container, opts.consumeInput);
-    this.pointerEvents = new PointerEvents(this.container, opts);
+    this._container.addChild(this._hitCatcher);
+    applyConsumeInput(this._container, opts.consumeInput);
+    this.pointerEvents = new PointerEvents(this._container, opts);
     // A focusable row takes focus from the pointer the way a button does.
     // Pixi dispatches pointer events along the whole composed path, so a
     // button inside this row asks too; the deepest request of a tick wins.
-    this.container.on("pointerover", () => {
+    this._container.on("pointerover", () => {
       requestHoverFocus(this);
     });
-    this.container.on("pointerdown", () => {
+    this._container.on("pointerdown", () => {
       requestPressFocus(this);
     });
     // Built before the props: `_applyProps` refreshes the outline when it
     // takes a background.
     this._focusOutline = new FocusOutline({
-      container: this.container,
+      container: this._container,
       box: () => layoutBox(this.yogaNode, this._bgRadius()),
     });
     this._applyProps({ direction: "column", ...opts });
@@ -186,7 +182,7 @@ export class UIPanel extends UIElementBase implements UIContainerElement {
     addChild(
       {
         children: this._children,
-        container: this.container,
+        container: this._container,
         yogaNode: this.yogaNode,
       },
       child,
@@ -199,7 +195,7 @@ export class UIPanel extends UIElementBase implements UIContainerElement {
     const removed = removeChild(
       {
         children: this._children,
-        container: this.container,
+        container: this._container,
         yogaNode: this.yogaNode,
       },
       child,
@@ -211,7 +207,7 @@ export class UIPanel extends UIElementBase implements UIContainerElement {
     insertChildBefore(
       {
         children: this._children,
-        container: this.container,
+        container: this._container,
         yogaNode: this.yogaNode,
       },
       child,
@@ -293,11 +289,11 @@ export class UIPanel extends UIElementBase implements UIContainerElement {
   // ---------------------------------------------------------------------------
 
   get visible(): boolean {
-    return this.container.visible;
+    return this._container.visible;
   }
 
   set visible(v: boolean) {
-    this.container.visible = v;
+    this._container.visible = v;
     this.yogaNode.setDisplay(v ? Display.Flex : Display.None);
   }
 
@@ -403,7 +399,7 @@ export class UIPanel extends UIElementBase implements UIContainerElement {
         this._maskWidth = Number.NaN;
         this._maskHeight = Number.NaN;
         this.maskHandle = attachMask(
-          this.container,
+          this._container,
           graphicsMask((g) => {
             const w = this.yogaNode.getComputedWidth();
             const h = this.yogaNode.getComputedHeight();
@@ -434,7 +430,7 @@ export class UIPanel extends UIElementBase implements UIContainerElement {
       this._syncFocusScope();
     }
 
-    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
+    if ("consumeInput" in p) applyConsumeInput(this._container, p.consumeInput);
 
     applyLayoutProps(this.yogaNode, p);
     this.applyTransformProps(p);
@@ -479,7 +475,7 @@ export class UIPanel extends UIElementBase implements UIContainerElement {
       return;
     }
     const renderer = (this.bgRenderer ??= new BackgroundRenderer());
-    renderer.set(painted, this.container, 0);
+    renderer.set(painted, this._container, 0);
     const w = this.yogaNode.getComputedWidth();
     const h = this.yogaNode.getComputedHeight();
     if (Number.isFinite(w) && Number.isFinite(h)) renderer.resize(w, h);
@@ -509,7 +505,7 @@ export class UIPanel extends UIElementBase implements UIContainerElement {
     if (context === undefined) return;
     const scope = new UIFocusScope(
       {
-        displayObject: this.container,
+        displayObject: this._container,
         roots: () => this._children,
       },
       options,
@@ -557,7 +553,7 @@ export class UIPanel extends UIElementBase implements UIContainerElement {
     this._detachFromTree();
     this._focus.destroy();
     this._focusOutline.destroy();
-    clearConsumeInput(this.container);
+    clearConsumeInput(this._container);
     for (const child of this._children) {
       child.destroy();
     }
@@ -566,6 +562,6 @@ export class UIPanel extends UIElementBase implements UIContainerElement {
     this._hitCatcher.destroy();
     this.maskHandle?.remove();
     this.yogaNode.free();
-    this.container.destroy();
+    this._container.destroy();
   }
 }

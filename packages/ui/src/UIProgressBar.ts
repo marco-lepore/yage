@@ -21,15 +21,11 @@ const DEFAULT_FILL: BackgroundOptions = { color: 0x44aa44, alpha: 1 };
 
 /** A progress bar with track and fill backgrounds. */
 export class UIProgressBar extends UIElementBase {
-  /**
-   * The same Pixi container as {@link displayObject}. Change the element
-   * through its props; see `UIElement.displayObject`.
-   */
-  readonly container: DisplayContainer;
+  private readonly _container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
   get displayObject(): DisplayContainer {
-    return this.container;
+    return this._container;
   }
 
   private trackRenderer: BackgroundRenderer;
@@ -46,16 +42,16 @@ export class UIProgressBar extends UIElementBase {
   constructor(props: UIProgressBarProps) {
     super();
     this.yogaNode = createYogaNode();
-    this.container = new Container();
-    applyConsumeInput(this.container, props.consumeInput);
-    this.pointerEvents = new PointerEvents(this.container, props);
+    this._container = new Container();
+    applyConsumeInput(this._container, props.consumeInput);
+    this.pointerEvents = new PointerEvents(this._container, props);
 
     // Out of focus navigation until a game asks for it with `focusable`.
     // Asked for, the bar is outlined like every other focusable element; the
     // pointer still moves focus here, which keeps the mouse and the keyboard
     // on the same element.
     this._focusOutline = new FocusOutline({
-      container: this.container,
+      container: this._container,
       box: () => layoutBox(this.yogaNode),
     });
     this._focusOutline.set(props);
@@ -63,10 +59,10 @@ export class UIProgressBar extends UIElementBase {
       focusableByDefault: false,
       paint: (focused) => this._focusOutline.setFocused(focused),
     });
-    this.container.on("pointerover", () => {
+    this._container.on("pointerover", () => {
       requestHoverFocus(this);
     });
-    this.container.on("pointerdown", () => {
+    this._container.on("pointerdown", () => {
       requestPressFocus(this);
     });
 
@@ -77,7 +73,7 @@ export class UIProgressBar extends UIElementBase {
     this.trackRenderer = new BackgroundRenderer();
     this.trackRenderer.set(
       props.trackBackground ?? DEFAULT_TRACK,
-      this.container,
+      this._container,
       0,
     );
 
@@ -85,7 +81,7 @@ export class UIProgressBar extends UIElementBase {
     this.fillRenderer = new BackgroundRenderer();
     this.fillRenderer.set(
       props.fillBackground ?? DEFAULT_FILL,
-      this.container,
+      this._container,
       1,
     );
 
@@ -93,7 +89,7 @@ export class UIProgressBar extends UIElementBase {
     this.applyTransformProps(props);
 
     if (props.visible === false) {
-      this.container.visible = false;
+      this._container.visible = false;
       this.yogaNode.setDisplay(Display.None);
     }
   }
@@ -119,11 +115,11 @@ export class UIProgressBar extends UIElementBase {
   }
 
   get visible(): boolean {
-    return this.container.visible;
+    return this._container.visible;
   }
 
   set visible(v: boolean) {
-    this.container.visible = v;
+    this._container.visible = v;
     this.yogaNode.setDisplay(v ? Display.Flex : Display.None);
   }
 
@@ -139,7 +135,7 @@ export class UIProgressBar extends UIElementBase {
     if ("trackBackground" in p) {
       this.trackRenderer.set(
         p.trackBackground ?? DEFAULT_TRACK,
-        this.container,
+        this._container,
         0,
       );
     }
@@ -147,12 +143,12 @@ export class UIProgressBar extends UIElementBase {
     if ("fillBackground" in p) {
       this.fillRenderer.set(
         p.fillBackground ?? DEFAULT_FILL,
-        this.container,
+        this._container,
         1,
       );
     }
 
-    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
+    if ("consumeInput" in p) applyConsumeInput(this._container, p.consumeInput);
     this.pointerEvents.set(p);
     this._focus.set(p);
     this._focusOutline.set(p);
@@ -186,11 +182,11 @@ export class UIProgressBar extends UIElementBase {
     this._destroyed = true;
     this._focus.destroy();
     this._focusOutline.destroy();
-    clearConsumeInput(this.container);
+    clearConsumeInput(this._container);
     this.yogaNode.free();
     this.trackRenderer.destroy();
     this.fillRenderer.destroy();
-    this.container.destroy();
+    this._container.destroy();
   }
 
   private resizeFill(): void {

@@ -121,7 +121,7 @@ export class AnimationController<T extends string = string> extends Component {
 
   /** Current frame index of the underlying AnimatedSprite. */
   get frame(): number {
-    return this._sprite.animatedSprite.currentFrame;
+    return this._sprite.frame;
   }
 
   /**
@@ -154,7 +154,7 @@ export class AnimationController<T extends string = string> extends Component {
         : 0;
     this._speed = value;
     if (!this._current) return;
-    this._sprite.animatedSprite.animationSpeed =
+    this._sprite.speed =
       this._anims[this._current].speed * value * this._shotSpeed;
     if (nextLockDuration !== null) {
       this._lockDuration = nextLockDuration;
@@ -200,7 +200,7 @@ export class AnimationController<T extends string = string> extends Component {
 
     const cancelled = this._onCancel;
     this._apply(name, def, { startFrame, speed: shotSpeed });
-    this._sprite.animatedSprite.loop = false;
+    this._sprite.renderObject.loop = false;
     this._locked = true;
     this._lockTimer = 0;
     this._lockDuration = duration;
@@ -382,7 +382,7 @@ export class AnimationController<T extends string = string> extends Component {
   ): void {
     this._current = name;
     this._shotSpeed = options?.speed ?? 1;
-    const sprite = this._sprite.animatedSprite;
+    const sprite = this._sprite.renderObject;
     this._sprite._installSource(def.source);
     if (def.anchor) {
       sprite.anchor.set(def.anchor.x, def.anchor.y);

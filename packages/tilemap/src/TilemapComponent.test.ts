@@ -400,10 +400,10 @@ describe("TilemapComponent", () => {
 
     const layerContainer = layerManager.defaultLayer
       .container as unknown as InstanceType<typeof mocks.MockContainer>;
-    expect(layerContainer.children).toContain(comp.container);
+    expect(layerContainer.children).toContain(comp.renderObject);
     // createTilemapLayers mock returns 2 children
     expect(
-      (comp.container as unknown as InstanceType<typeof mocks.MockContainer>)
+      (comp.renderObject as unknown as InstanceType<typeof mocks.MockContainer>)
         .children,
     ).toHaveLength(2);
   });
@@ -415,7 +415,7 @@ describe("TilemapComponent", () => {
     const comp = entity.add(new TilemapComponent({ map: testMap }));
     comp.tint = 0xff0000;
 
-    const container = comp.container as unknown as InstanceType<
+    const container = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     const filter = container.filters?.[0] as InstanceType<
@@ -628,8 +628,8 @@ describe("TilemapComponent", () => {
     it("adds one tint filter and removes it when tint returns to white", () => {
       const comp = new TilemapComponent({ map: testMap });
       comp.tint = 0xff0000;
-      expect(comp.container.filters).toHaveLength(1);
-      const filter = comp.container.filters?.[0] as unknown as InstanceType<
+      expect(comp.renderObject.filters).toHaveLength(1);
+      const filter = comp.renderObject.filters?.[0] as unknown as InstanceType<
         typeof mocks.MockColorMatrixFilter
       >;
       expect(filter.matrix[0]).toBe(1);
@@ -637,37 +637,37 @@ describe("TilemapComponent", () => {
       expect(filter.matrix[12]).toBe(0);
 
       comp.tint = 0x00ff00;
-      expect(comp.container.filters).toHaveLength(1);
+      expect(comp.renderObject.filters).toHaveLength(1);
 
       comp.tint = 0xffffff;
-      expect(comp.container.filters).toBeNull();
+      expect(comp.renderObject.filters).toBeNull();
       expect(filter.destroyed).toBe(true);
     });
 
     it("adds the color filter while alpha is below one", () => {
       const comp = new TilemapComponent({ map: testMap });
       comp.alpha = 0.5;
-      expect(comp.container.filters).toHaveLength(1);
-      const filter = comp.container.filters?.[0] as unknown as InstanceType<
+      expect(comp.renderObject.filters).toHaveLength(1);
+      const filter = comp.renderObject.filters?.[0] as unknown as InstanceType<
         typeof mocks.MockColorMatrixFilter
       >;
       expect(filter.matrix[18]).toBe(0.5);
 
       comp.alpha = 1;
-      expect(comp.container.filters).toBeNull();
+      expect(comp.renderObject.filters).toBeNull();
     });
 
     it("preserves separately added filters and tints ahead of them", () => {
       const comp = new TilemapComponent({ map: testMap });
       const external = { label: "external filter" };
-      comp.container.filters = [external as never];
+      comp.renderObject.filters = [external as never];
 
       comp.tint = 0x336699;
-      expect(comp.container.filters).toHaveLength(2);
-      expect(comp.container.filters?.[1]).toBe(external);
+      expect(comp.renderObject.filters).toHaveLength(2);
+      expect(comp.renderObject.filters?.[1]).toBe(external);
 
       comp.tint = 0xffffff;
-      expect(comp.container.filters).toEqual([external]);
+      expect(comp.renderObject.filters).toEqual([external]);
     });
   });
 
@@ -729,7 +729,7 @@ describe("TilemapComponent", () => {
       expect(comp.tint).toBe(0x336699);
       expect(comp.alpha).toBe(0.4);
       expect(comp.layerName).toBe("background");
-      expect(comp.container.filters).toHaveLength(1);
+      expect(comp.renderObject.filters).toHaveLength(1);
       mocks.mockAssetsGet.mockReset();
     });
 
@@ -742,10 +742,10 @@ describe("TilemapComponent", () => {
       const modifier = comp.modifiers.addOpacity(0.5);
 
       expect(comp.alpha).toBe(0.4);
-      expect(comp.container.alpha).toBe(0.2);
+      expect(comp.renderObject.alpha).toBe(0.2);
 
       modifier.remove();
-      expect(comp.container.alpha).toBe(0.4);
+      expect(comp.renderObject.alpha).toBe(0.4);
       mocks.mockAssetsGet.mockReset();
     });
 
@@ -907,7 +907,7 @@ describe("TilemapComponent", () => {
       comp.update(0.05);
 
       const layers = (
-        comp.container as unknown as InstanceType<typeof mocks.MockContainer>
+        comp.renderObject as unknown as InstanceType<typeof mocks.MockContainer>
       ).children;
       expect(layers).toHaveLength(2);
       for (const layer of layers) {
@@ -924,7 +924,7 @@ describe("TilemapComponent", () => {
       comp.update(0.5);
 
       const layers = (
-        comp.container as unknown as InstanceType<typeof mocks.MockContainer>
+        comp.renderObject as unknown as InstanceType<typeof mocks.MockContainer>
       ).children;
       for (const layer of layers) {
         expect(layer.tileAnim).toEqual([0, 0]);
@@ -942,7 +942,7 @@ describe("TilemapComponent", () => {
       comp.update(0.1);
 
       const layers = (
-        comp.container as unknown as InstanceType<typeof mocks.MockContainer>
+        comp.renderObject as unknown as InstanceType<typeof mocks.MockContainer>
       ).children;
       expect(layers[0]?.tileAnim).toEqual([100, 100]);
     });

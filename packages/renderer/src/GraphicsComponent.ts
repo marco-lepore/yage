@@ -22,20 +22,16 @@ export interface GraphicsComponentOptions extends VisualComponentOptions {
 
 /** Component that wraps a PixiJS Graphics object for procedural drawing. */
 export class GraphicsComponent extends VisualComponent {
-  /**
-   * The same Pixi object as {@link renderObject}. Change the visual through
-   * the component; see `VisualComponent.renderObject`.
-   */
-  readonly graphics: GraphicsContext;
+  private readonly _graphics: GraphicsContext;
 
   constructor(options?: GraphicsComponentOptions) {
     super(options?.layer);
-    this.graphics = new Graphics();
+    this._graphics = new Graphics();
     if (options?.pivot) {
       const { x, y } = options.pivot;
       assertFiniteNumber("GraphicsComponent.constructor", "pivot.x", x);
       assertFiniteNumber("GraphicsComponent.constructor", "pivot.y", y);
-      this.graphics.pivot.set(x, y);
+      this._graphics.pivot.set(x, y);
     }
     if (options) this.applyVisualOptions(options);
   }
@@ -45,12 +41,12 @@ export class GraphicsComponent extends VisualComponent {
    * component; see {@link VisualComponent.renderObject}.
    */
   get renderObject(): GraphicsContext {
-    return this.graphics;
+    return this._graphics;
   }
 
   /** Execute a drawing function on the graphics object. Returns this for chaining. */
   draw(fn: (g: GraphicsContext) => void): this {
-    fn(this.graphics);
+    fn(this._graphics);
     return this;
   }
 }

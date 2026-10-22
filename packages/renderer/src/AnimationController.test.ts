@@ -160,7 +160,7 @@ function setup(anims?: Record<TestAnim, AnimationDef>) {
   const ctrl = entity.add(
     new AnimationController<TestAnim>(anims ?? testAnims()),
   );
-  const sprite = spriteComp.animatedSprite as unknown as MockSprite;
+  const sprite = spriteComp.renderObject as unknown as MockSprite;
   return { entity, scene, context, ctrl, sprite, spriteComp };
 }
 

@@ -20,9 +20,9 @@ afterEach(() => unregisterTexture(SOURCE_TEXTURE));
 function createRenderedHost() {
   const setup = createMockEntity();
   const root = new GraphicsComponent();
-  const layers = new RenderLayerManager(root.graphics);
+  const layers = new RenderLayerManager(root.renderObject);
   const tree: SceneRenderTree = {
-    root: root.graphics,
+    root: root.renderObject,
     get: (name) => layers.get(name),
     tryGet: (name) => layers.tryGet(name),
     getAll: () => layers.getAll(),
@@ -85,9 +85,9 @@ describe("feelAfterimage", () => {
     expect(copies[0]?.get(Transform).rotation).toBeCloseTo(0.1);
     expect(copies[0]?.get(Transform).scale).toEqual(new Vec2(1.2, 1.2));
     const firstVisual = copies[0]?.get(SpriteComponent);
-    expect(firstVisual?.sprite.texture).toBe(visual.sprite.texture);
-    expect(firstVisual?.sprite.anchor.x).toBe(0.5);
-    expect(firstVisual?.sprite.anchor.y).toBe(0.75);
+    expect(firstVisual?.renderObject.texture).toBe(visual.renderObject.texture);
+    expect(firstVisual?.renderObject.anchor.x).toBe(0.5);
+    expect(firstVisual?.renderObject.anchor.y).toBe(0.75);
     expect(firstVisual?.tint).toBe(0x123456);
 
     sourceTransform.setPosition(130, 90);

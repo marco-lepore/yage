@@ -228,7 +228,7 @@ export class UIScrollView extends UIElementBase implements UIContainerElement {
       this.bgRenderer.set(props.background, this.viewport, 0);
     }
 
-    this.viewport.addChild(this.content.container);
+    this.viewport.addChild(this.content.displayObject);
 
     this.maskHandle = attachMask(
       this.viewport,
@@ -399,7 +399,7 @@ export class UIScrollView extends UIElementBase implements UIContainerElement {
     const display = element.displayObject;
     corner.x = display.position.x - display.pivot.x;
     corner.y = display.position.y - display.pivot.y;
-    const p = this.content.container.toLocal(
+    const p = this.content.displayObject.toLocal(
       corner,
       display.parent ?? undefined,
       projected,
@@ -454,7 +454,7 @@ export class UIScrollView extends UIElementBase implements UIContainerElement {
   private _contains(element: UIElement): boolean {
     let node: DisplayContainer | null = element.displayObject.parent;
     while (node !== null) {
-      if (node === this.content.container) return true;
+      if (node === this.content.displayObject) return true;
       node = node.parent;
     }
     return false;
@@ -501,12 +501,12 @@ export class UIScrollView extends UIElementBase implements UIContainerElement {
 
   private _positionContent(): void {
     if (this.vertical) {
-      this.content.container.position.set(
+      this.content.displayObject.position.set(
         this._contentLeft,
         this._contentTop - this._offset,
       );
     } else {
-      this.content.container.position.set(
+      this.content.displayObject.position.set(
         this._contentLeft - this._offset,
         this._contentTop,
       );

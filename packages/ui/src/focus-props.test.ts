@@ -72,7 +72,9 @@ function outlineOf(element: UIElement): MockGraphics | undefined {
 function emitOn(element: UIElement, event: string): void {
   // A picture listens on its sprite, which is what the pointer hits.
   const target =
-    element instanceof UIImage ? element.sprite : element.displayObject;
+    element instanceof UIImage
+      ? element.displayObject.children[0]!
+      : element.displayObject;
   // A scroll view's drag listener reads the pointer position off the event.
   (target as unknown as MockContainer).emit(event, {
     global: { x: 0, y: 0 },
@@ -420,7 +422,7 @@ describe("UIImage focus outline", () => {
     // own container, where the outline is drawn unscaled: 240 px across, with
     // a 2 px stroke on both axes.
     const ring = outlineOf(img);
-    const sprite = img.sprite.scale;
+    const sprite = img.displayObject.children[0]!.scale;
     expect([sprite.x, sprite.y]).toEqual([2, 1.5]);
     expect(ring?.lastStroke).toEqual({ color: 0xffffff, width: 2 });
     expect((ring?.lastRect?.width ?? 0) + 2).toBeCloseTo(240);

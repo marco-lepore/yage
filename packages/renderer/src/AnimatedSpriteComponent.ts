@@ -40,18 +40,18 @@ export interface AnimatedSpriteComponentOptions extends VisualComponentOptions {
 /** Component that displays a PixiJS AnimatedSprite. */
 export class AnimatedSpriteComponent extends MaterialVisualComponent {
   private source: ResolvedSpriteSource;
-  readonly animatedSprite: DisplayAnimatedSprite;
+  private readonly _animatedSprite: DisplayAnimatedSprite;
 
   private readonly _frameListeners: ((frame: number) => void)[] = [];
 
   constructor(options: AnimatedSpriteComponentOptions) {
     super(options.layer);
     this.source = resolveSpriteSource(options.source);
-    this.animatedSprite = new AnimatedSprite(this.source.frames, false);
+    this._animatedSprite = new AnimatedSprite(this.source.frames, false);
     this.initializeMaterial(this.source.maps, options.material);
 
     if (options.anchor) {
-      this.animatedSprite.anchor.set(options.anchor.x, options.anchor.y);
+      this._animatedSprite.anchor.set(options.anchor.x, options.anchor.y);
     }
     if (options.speed !== undefined) {
       assertFiniteNumber(
@@ -59,14 +59,17 @@ export class AnimatedSpriteComponent extends MaterialVisualComponent {
         "speed",
         options.speed,
       );
-      this.animatedSprite.animationSpeed = options.speed;
+      this._animatedSprite.animationSpeed = options.speed;
     }
     this.applyVisualOptions(options);
   }
 
-  /** The underlying Pixi display object. */
+  /**
+   * The Pixi object this component draws with. Change the visual through the
+   * component; see `VisualComponent.renderObject`.
+   */
   get renderObject(): DisplayAnimatedSprite {
-    return this.animatedSprite;
+    return this._animatedSprite;
   }
 
   /**
@@ -91,8 +94,8 @@ export class AnimatedSpriteComponent extends MaterialVisualComponent {
     source.retain();
     const previous = this.source;
     this.source = source;
-    delete this.animatedSprite.onComplete;
-    this.animatedSprite.textures = source.frames;
+    delete this._animatedSprite.onComplete;
+    this._animatedSprite.textures = source.frames;
     previous.release();
   }
 
@@ -128,22 +131,22 @@ export class AnimatedSpriteComponent extends MaterialVisualComponent {
         "speed",
         options.speed,
       );
-      this.animatedSprite.animationSpeed = options.speed;
+      this._animatedSprite.animationSpeed = options.speed;
     }
     if (options?.loop !== undefined) {
-      this.animatedSprite.loop = options.loop;
+      this._animatedSprite.loop = options.loop;
     }
     const onComplete = options?.onComplete;
     if (onComplete) {
-      this.animatedSprite.onComplete = () =>
+      this._animatedSprite.onComplete = () =>
         runAttributed(this, "Animation onComplete", onComplete);
     } else {
-      delete this.animatedSprite.onComplete;
+      delete this._animatedSprite.onComplete;
     }
     if (options?.fromStart) {
-      this.animatedSprite.gotoAndPlay(0);
+      this._animatedSprite.gotoAndPlay(0);
     } else {
-      this.animatedSprite.play();
+      this._animatedSprite.play();
     }
   }
 
@@ -154,12 +157,12 @@ export class AnimatedSpriteComponent extends MaterialVisualComponent {
    *
    * Pixi delivers a frame change on `play`, on a frame advance, and on the
    * frame reset an animation switch performs, so a listener sees controller
-   * switches too. Assigning `animatedSprite.onFrameChange` directly replaces
+   * switches too. Assigning `renderObject.onFrameChange` directly replaces
    * the dispatcher this installs and silences every subscriber.
    */
   onFrameChange(listener: (frame: number) => void): () => void {
     if (this._frameListeners.length === 0) {
-      this.animatedSprite.onFrameChange = (frame: number) => {
+      this._animatedSprite.onFrameChange = (frame: number) => {
         // Copy: a listener that unsubscribes itself mid-dispatch would
         // otherwise shift the next one past the iterator.
         for (const l of [...this._frameListeners]) {
@@ -176,28 +179,28 @@ export class AnimatedSpriteComponent extends MaterialVisualComponent {
 
   /** Stop the animation. */
   stop(): void {
-    this.animatedSprite.stop();
+    this._animatedSprite.stop();
   }
 
   /** Stop playback and hold `index` as a static pose. */
   gotoFrame(index: number): void {
-    const last = this.animatedSprite.textures.length - 1;
+    const last = this._animatedSprite.textures.length - 1;
     if (index < 0 || index > last) {
       throw new Error(
         `AnimatedSpriteComponent.gotoFrame: frame ${index} is out of range (0-${last})`,
       );
     }
-    this.animatedSprite.gotoAndStop(index);
+    this._animatedSprite.gotoAndStop(index);
   }
 
   /** Current frame index of the underlying AnimatedSprite. */
   get frame(): number {
-    return this.animatedSprite.currentFrame;
+    return this._animatedSprite.currentFrame;
   }
 
   /** Whether the animation is currently playing. */
   get isPlaying(): boolean {
-    return this.animatedSprite.playing;
+    return this._animatedSprite.playing;
   }
 
   /**
@@ -222,12 +225,12 @@ export class AnimatedSpriteComponent extends MaterialVisualComponent {
    * times.
    */
   get speed(): number {
-    return this.animatedSprite.animationSpeed;
+    return this._animatedSprite.animationSpeed;
   }
 
   set speed(value: number) {
     assertFiniteNumber("AnimatedSpriteComponent.speed", "speed", value);
-    this.animatedSprite.animationSpeed = value;
+    this._animatedSprite.animationSpeed = value;
   }
 
   /** Advance playback using engine-scaled time. */
@@ -235,6 +238,6 @@ export class AnimatedSpriteComponent extends MaterialVisualComponent {
     if (dt === 0) return;
     const ticker = (animationTicker ??= new Ticker());
     ticker.deltaTime = dt * 1000 * Ticker.targetFPMS;
-    this.animatedSprite.update(ticker);
+    this._animatedSprite.update(ticker);
   }
 }

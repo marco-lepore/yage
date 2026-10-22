@@ -83,13 +83,15 @@ describe("VisualComponent.setLayer", () => {
     const sprite = entity.add(
       new SpriteComponent({ texture: {} as never, layer: "bg" }),
     );
-    expect(tree.get("bg").container.children).toContain(sprite.sprite);
+    expect(tree.get("bg").container.children).toContain(sprite.renderObject);
 
     sprite.setLayer("props");
 
     expect(sprite.layerName).toBe("props");
-    expect(tree.get("bg").container.children).not.toContain(sprite.sprite);
-    expect(tree.get("props").container.children).toContain(sprite.sprite);
+    expect(tree.get("bg").container.children).not.toContain(
+      sprite.renderObject,
+    );
+    expect(tree.get("props").container.children).toContain(sprite.renderObject);
   });
 
   it("records the name and moves nothing while the object is out of the tree", () => {
@@ -101,10 +103,10 @@ describe("VisualComponent.setLayer", () => {
 
     sprite.setLayer("props");
     expect(sprite.layerName).toBe("props");
-    expect(sprite.sprite.parent).toBeNull();
+    expect(sprite.renderObject.parent).toBeNull();
 
     entity.add(sprite);
-    expect(tree.get("props").container.children).toContain(sprite.sprite);
+    expect(tree.get("props").container.children).toContain(sprite.renderObject);
   });
 
   it("re-resolves through the sort group that owns the new layer", () => {
@@ -114,13 +116,15 @@ describe("VisualComponent.setLayer", () => {
     knight.add(new Transform({ position: new Vec2(0, 0) }));
     knight.add(new SortGroupComponent({ layer: "props" }));
     const sprite = knight.add(new SpriteComponent({ texture: {} as never }));
-    expect(tree.defaultLayer.container.children).toContain(sprite.sprite);
+    expect(tree.defaultLayer.container.children).toContain(sprite.renderObject);
 
     sprite.setLayer("props");
 
     const group = knight.get(SortGroupComponent).container;
-    expect(group.children).toContain(sprite.sprite);
-    expect(tree.get("props").container.children).not.toContain(sprite.sprite);
+    expect(group.children).toContain(sprite.renderObject);
+    expect(tree.get("props").container.children).not.toContain(
+      sprite.renderObject,
+    );
   });
 
   it("does nothing when the name is the one it already has", () => {
@@ -133,16 +137,18 @@ describe("VisualComponent.setLayer", () => {
     const later = spawnEntityInScene(scene, "barrel");
     later.add(new Transform({ position: new Vec2(0, 0) }));
     later.add(new SpriteComponent({ texture: {} as never }));
-    const before = tree.defaultLayer.container.children.indexOf(sprite.sprite);
+    const before = tree.defaultLayer.container.children.indexOf(
+      sprite.renderObject,
+    );
     expect(before).toBe(0);
 
     sprite.setLayer("default");
 
     // Re-adding would put it last, which on a layer with no sort is a change
     // of draw order.
-    expect(tree.defaultLayer.container.children.indexOf(sprite.sprite)).toBe(
-      before,
-    );
+    expect(
+      tree.defaultLayer.container.children.indexOf(sprite.renderObject),
+    ).toBe(before);
   });
 });
 
@@ -160,7 +166,9 @@ describe("VisualComponent.renderAboveEffects", () => {
     );
 
     expect(sprite.renderAboveEffects).toBe(true);
-    expect(provider.aboveNodesFor(scene)).toContain(sprite.sprite as never);
+    expect(provider.aboveNodesFor(scene)).toContain(
+      sprite.renderObject as never,
+    );
   });
 
   it("records the flag out of the tree and applies it on add", () => {
@@ -173,7 +181,9 @@ describe("VisualComponent.renderAboveEffects", () => {
     expect(provider.aboveNodesFor(scene).size).toBe(0);
 
     entity.add(sprite);
-    expect(provider.aboveNodesFor(scene)).toContain(sprite.sprite as never);
+    expect(provider.aboveNodesFor(scene)).toContain(
+      sprite.renderObject as never,
+    );
   });
 
   it("toggles a live component both ways", () => {
@@ -184,7 +194,9 @@ describe("VisualComponent.renderAboveEffects", () => {
     expect(provider.aboveNodesFor(scene).size).toBe(0);
 
     sprite.renderAboveEffects = true;
-    expect(provider.aboveNodesFor(scene)).toContain(sprite.sprite as never);
+    expect(provider.aboveNodesFor(scene)).toContain(
+      sprite.renderObject as never,
+    );
 
     sprite.renderAboveEffects = false;
     expect(provider.aboveNodesFor(scene).size).toBe(0);

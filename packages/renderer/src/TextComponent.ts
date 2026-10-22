@@ -38,11 +38,7 @@ export interface TextComponentOptions extends VisualComponentOptions {
 
 /** Component that displays text on a render layer. */
 export class TextComponent extends VisualComponent {
-  /**
-   * The Pixi text object, the same one as {@link renderObject}. Change the visual through
-   * the component; see `VisualComponent.renderObject`.
-   */
-  readonly text: DisplayText | DisplayBitmapText;
+  private readonly _text: DisplayText | DisplayBitmapText;
   // Raw style options are kept so mergeStyle can preserve prior values.
   private _styleOptions?: TextStyle;
   // The bitmap choice is needed when a later style update rebuilds options.
@@ -56,13 +52,13 @@ export class TextComponent extends VisualComponent {
       options.bitmap,
       options.resolution,
     );
-    this.text = bitmap ? new BitmapText(textOptions) : new Text(textOptions);
+    this._text = bitmap ? new BitmapText(textOptions) : new Text(textOptions);
     // Shallow-clone so external mutation does not affect later mergeStyle calls.
     if (options.style) this._styleOptions = { ...options.style };
     if (options.bitmap !== undefined) this._bitmap = options.bitmap;
 
     if (options.anchor) {
-      this.text.anchor.set(options.anchor.x, options.anchor.y);
+      this._text.anchor.set(options.anchor.x, options.anchor.y);
     }
     this.applyVisualOptions(options);
   }
@@ -72,21 +68,17 @@ export class TextComponent extends VisualComponent {
    * component; see {@link VisualComponent.renderObject}.
    */
   get renderObject(): DisplayText | DisplayBitmapText {
-    return this.text;
+    return this._text;
   }
 
-  /**
-   * The string currently displayed. {@link text} is the Pixi display object,
-   * so this is the way to read the rendered string back — including from the
-   * Inspector, which reflects public getters but skips the display object.
-   */
+  /** The string currently displayed. */
   get content(): string {
-    return this.text.text;
+    return this._text.text;
   }
 
   /** Replace the displayed string. */
   setText(value: string): void {
-    this.text.text = value;
+    this._text.text = value;
   }
 
   /**
@@ -100,12 +92,12 @@ export class TextComponent extends VisualComponent {
     // calling resolveTextStyle directly would let `fontWeight`/`fontStyle`
     // changes silently land on the base atlas on a `bitmap: true` text.
     const { options } = buildTextOptions(
-      this.text.text,
+      this._text.text,
       style,
       this._bitmap,
       undefined,
     );
-    this.text.style = options.style ?? style;
+    this._text.style = options.style ?? style;
     this._styleOptions = { ...style };
   }
 
