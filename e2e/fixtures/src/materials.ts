@@ -111,8 +111,8 @@ class MaterialProbe extends Component {
         return Array.from(ctx.getImageData(x, y, 1, 1).data);
       },
       realSprites: () => [
-        this.left.sprite instanceof Sprite,
-        this.animated.animatedSprite instanceof AnimatedSprite,
+        this.left.renderObject instanceof Sprite,
+        this.animated.renderObject instanceof AnimatedSprite,
       ],
       atlas: () =>
         this.animated.setSource({
@@ -231,7 +231,7 @@ class MaterialProbe extends Component {
       },
       plainUnlit: () => this.plain?.setMaterial(unlitMaterial()),
       reverseOrder: () => {
-        this.left.sprite.zIndex = 1;
+        this.left.zIndex = 1;
       },
       aboveEffects: () => {
         const filter = new ColorMatrixFilter();
