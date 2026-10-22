@@ -1,6 +1,12 @@
 import { finite } from "../core/validate.js";
 import { CrushProbe } from "./CrushProbe.js";
-import { Component, GameLoopKey, Transform, type Vec2Like } from "@yagejs/core";
+import {
+  Component,
+  GameLoopKey,
+  SceneTimeKey,
+  Transform,
+  type Vec2Like,
+} from "@yagejs/core";
 import {
   ColliderComponent,
   PhysicsWorldKey,
@@ -67,11 +73,13 @@ export class MovingSurface extends Component {
     const fraction = Math.min(this.travel, 2 * length - this.travel) / length;
     const x = from.x + (to.x - from.x) * fraction;
     const y = from.y + (to.y - from.y) * fraction;
-    // Kinematic targets are consumed over one physics step, independent of
-    // the entity's component clock.
-    const physicsDt = this.use(GameLoopKey).fixedTimestep;
-    const vx = (x - this.body.positionX) / physicsDt;
-    const vy = (y - this.body.positionY) / physicsDt;
+    // The body reaches this target in the next physics step. Above time scale
+    // 1 the scene runs about that many steps per update, and riders move in
+    // every one of them, so the carry speed covers all of them.
+    const steps = Math.max(1, this.use(SceneTimeKey).effectiveScale);
+    const physicsTime = this.use(GameLoopKey).fixedTimestep * steps;
+    const vx = (x - this.body.positionX) / physicsTime;
+    const vy = (y - this.body.positionY) / physicsTime;
     this.nextVelocity.x = vx;
     this.nextVelocity.y = vy;
     // Broad phase only: the receiver checks its actual stance and escape path.

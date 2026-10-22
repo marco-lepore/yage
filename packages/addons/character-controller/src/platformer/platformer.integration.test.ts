@@ -199,6 +199,31 @@ describe("default platformer with real physics", () => {
     tick(3);
     expect(entity.get(Stance).crouched).toBe(false);
   });
+  it("stays crouched under a ceiling over the edge of its body", async () => {
+    const { scene, entity, input, tick } = await setup();
+    input.setDown(true);
+    tick();
+    // The body spans x -8..8; the ceiling starts 1.5 px inside its right edge,
+    // above the crouched height and below the standing height.
+    scene.spawn(Floor, { x: 56.5, y: 48, width: 100, height: 16 });
+    input.setDown(false);
+    tick(3);
+    expect(entity.get(Stance).crouched).toBe(true);
+  });
+  it("stands up while pressed against a wall", async () => {
+    const { scene, entity, controller, input, tick } = await setup();
+    // The wall's left face touches the body's right edge at x = 8.
+    scene.spawn(Floor, { x: 18, y: 45, width: 20, height: 90 });
+    input.setDirection(1);
+    tick(20);
+    expect(controller.wallSide).toBe(1);
+    input.setDown(true);
+    tick(3);
+    expect(entity.get(Stance).crouched).toBe(true);
+    input.setDown(false);
+    tick(3);
+    expect(entity.get(Stance).crouched).toBe(false);
+  });
   it("freezes pending jump commands and clears them on deactivation", async () => {
     const { scene, entity, body, input, tick } = await setup();
     scene.timeScale = 0;
@@ -1045,6 +1070,47 @@ it.each(["tall riser", "low ceiling"])(
     tick(70);
     expect(body.positionX).toBeLessThan(33);
     expect(body.positionY).toBeGreaterThan(89);
+  },
+);
+
+it.each([0.5, 1.5, 2])(
+  "keeps riders on a horizontal platform with scene timeScale %s",
+  async (scale) => {
+    const { scene, floor, body, tick } = await setup();
+    const platformBody = floor.get(RigidBodyComponent);
+    platformBody.setType("kinematic");
+    floor.add(
+      new MovingSurface({
+        from: { x: 0, y: 100 },
+        to: { x: 1000, y: 100 },
+        speed: 60,
+      }),
+    );
+    scene.timeScale = scale;
+    tick(60);
+    expect(Math.abs(body.positionX - platformBody.positionX)).toBeLessThan(2);
+  },
+);
+
+it.each([0.5, 1.5, 2])(
+  "keeps riders on a rising platform with scene timeScale %s",
+  async (scale) => {
+    const { scene, floor, body, controller, tick } = await setup();
+    const platformBody = floor.get(RigidBodyComponent);
+    platformBody.setType("kinematic");
+    floor.add(
+      new MovingSurface({
+        from: { x: 0, y: 100 },
+        to: { x: 0, y: -200 },
+        speed: 30,
+      }),
+    );
+    scene.timeScale = scale;
+    tick(60);
+    expect(controller.grounded).toBe(true);
+    expect(Math.abs(body.positionY - platformBody.positionY + 10)).toBeLessThan(
+      1.5,
+    );
   },
 );
 

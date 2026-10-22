@@ -359,6 +359,7 @@ emits no event; call it once per departure.
 and forth between two world points. Spawn it before riders. Upward support
 velocity adds to jump height; downward does not reduce it. Entity time scale
 changes path speed and carry velocity together; time scale 0 stops both.
+Riders keep pace with the platform at any scene time scale.
 
 `CrushProbe` (`crush: true`) emits `PlatformerCrushedEvent` when a translating
 box pushes the character into a fixed opposing face. Pushes respect collision

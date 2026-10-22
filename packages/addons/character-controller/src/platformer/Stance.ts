@@ -8,7 +8,12 @@ import {
   type PhysicsWorld,
 } from "@yagejs/physics";
 
-const HEADROOM_INSET = 2;
+/**
+ * How far in from each side the headroom check starts, px. A wall the body
+ * rests against sits inside this margin, so it does not block standing; a
+ * ceiling over any wider part of the body does.
+ */
+const HEADROOM_INSET = 0.25;
 
 export interface StanceTuning {
   /** Collider height while crouched, px. */
