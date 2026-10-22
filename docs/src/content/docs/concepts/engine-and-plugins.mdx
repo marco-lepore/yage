@@ -322,7 +322,9 @@ it, so with `scenes.autoPause` on it holds there, audio included; set
 
 Two events carry the state to game code. `host:active` fires when
 `engine.host.active` flips; `host:lifecycle` fires on every change of the three
-states, for a game that wants the detail.
+states, for a game that wants the detail. When a handler changes the host
+state, for example by setting `engine.host.activeWhenUnfocused`, every handler
+receives the current change first and the new one after it.
 
 ```typescript
 import { Component } from "@yagejs/core";

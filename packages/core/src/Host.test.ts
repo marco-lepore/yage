@@ -579,7 +579,7 @@ describe("Host lifecycle", () => {
     });
   });
 
-  it("reports each change with its own state when a handler changes the host again", () => {
+  it("delivers a change a handler makes after the change it handles", () => {
     const page = stubPage();
     const host = new Host();
     const { bus } = connect(host);
@@ -597,13 +597,84 @@ describe("Host lifecycle", () => {
     page.hide(true);
 
     expect(seen).toEqual([
-      "hidden/focused to hidden/unfocused",
       "visible/focused to hidden/focused",
+      "hidden/focused to hidden/unfocused",
     ]);
     expect(host.lifecycle).toMatchObject({
       visibility: "hidden",
       focus: "unfocused",
     });
+  });
+
+  it("delivers a change an observer makes to every consumer after the change it observes", () => {
+    const page = stubPage();
+    const host = new Host();
+    const { bus } = connect(host);
+    const seen: string[] = [];
+    // An engine package whose observer runs game code that keeps the game
+    // running behind another window.
+    host._observe(({ active }) => {
+      if (!active) host.activeWhenUnfocused = true;
+    });
+    host._observe(({ active }) => seen.push(`observer:${String(active)}`));
+    bus.on("host:active", ({ active }) => seen.push(`event:${String(active)}`));
+
+    page.blur();
+
+    expect(seen).toEqual([
+      "observer:false",
+      "event:false",
+      "observer:true",
+      "event:true",
+    ]);
+    expect(host.active).toBe(true);
+  });
+
+  it("drops a change made during a dispatch that throws and dispatches the next change", () => {
+    const host = new Host();
+    const { log } = connect(host);
+    const adapter = lifecycleProvider({ focus: "focused" });
+    host.attach(adapter.provider);
+    log.length = 0;
+    host._observe(({ active }) => {
+      if (!active) host.activeWhenUnfocused = true;
+    });
+    let thrown = false;
+    host._observe(() => {
+      if (thrown) return;
+      thrown = true;
+      throw new Error("observer failed");
+    });
+    const later = vi.fn();
+    host._observe(later);
+
+    expect(() => adapter.report({ focus: "unfocused" })).toThrow(
+      "observer failed",
+    );
+
+    expect(host.activeWhenUnfocused).toBe(true);
+    expect(host.active).toBe(false);
+    expect(later).not.toHaveBeenCalled();
+    expect(log).toEqual([]);
+
+    adapter.report({ activity: "active" });
+    expect(host.active).toBe(true);
+    expect(later).toHaveBeenCalledOnce();
+    expect(later).toHaveBeenCalledWith({
+      lifecycle: {
+        activity: "active",
+        visibility: "unknown",
+        focus: "unfocused",
+      },
+      previous: {
+        activity: "unknown",
+        visibility: "unknown",
+        focus: "unfocused",
+      },
+      active: true,
+      wasActive: false,
+    } satisfies HostChange);
+    expect(log).toEqual(["active:true", "lifecycle:active/unknown/unfocused"]);
   });
 
   it("takes the adapter's fields and leaves the page the rest", () => {

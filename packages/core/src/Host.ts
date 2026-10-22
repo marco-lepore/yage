@@ -271,6 +271,10 @@ export class Host {
   private readonly domCleanup: Array<() => void> = [];
   private stopWatching: (() => void) | undefined;
   private disposed = false;
+  /** Set while observers, scenes and event handlers receive a change. */
+  private dispatching = false;
+  /** Set when `apply` is called during a dispatch. */
+  private changedDuringDispatch = false;
 
   /** The attached provider's info, or the browser defaults. */
   get info(): HostInfo {
@@ -403,8 +407,10 @@ export class Host {
 
   /**
    * Observe every change of host state, ahead of the scene pause and the two
-   * events. Engine packages register here; game code uses `host:active` and
-   * `host:lifecycle`. Returns the function that removes the observer.
+   * events. A change made while one is being dispatched is delivered after the
+   * current dispatch completes. Engine packages register here; game code uses
+   * `host:active` and `host:lifecycle`. Returns the function that removes the
+   * observer.
    * @internal
    */
   _observe(observer: (change: HostChange) => void): () => void {
@@ -448,11 +454,31 @@ export class Host {
 
   /**
    * Combine the page's and the adapter's values into one state, and dispatch
-   * the change when there is one. A throwing step ends the sequence with the
-   * new state already stored, so the consumers that read it match it again at
-   * the next change.
+   * the change when there is one. A call made during a dispatch runs after it,
+   * so every observer and handler receives the changes in order. A throwing
+   * step ends the sequence with the new state already stored and drops the
+   * deferred call, so the consumers that read it match it again at the next
+   * change.
    */
   private apply(): void {
+    if (this.dispatching) {
+      this.changedDuringDispatch = true;
+      return;
+    }
+    this.dispatching = true;
+    try {
+      do {
+        this.changedDuringDispatch = false;
+        this.dispatchChange();
+      } while (this.changedDuringDispatch);
+    } finally {
+      this.dispatching = false;
+      this.changedDuringDispatch = false;
+    }
+  }
+
+  /** One pass of `apply`: store the combined state and dispatch its change. */
+  private dispatchChange(): void {
     const previous = this.state;
     const wasActive = this.activeFlag;
     const next: HostLifecycle = {

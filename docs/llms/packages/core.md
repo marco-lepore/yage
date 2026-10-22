@@ -1465,7 +1465,7 @@ A page with no adapter reports `activity: "unknown"`, `visibility` from `documen
 
 An adapter owns every field it reports: for that field the adapter's value is the state and the page's is ignored, including when the adapter reports `"unknown"`. A field the adapter never reports comes from the page, and a detach hands every field back to it. `lifecycle` is the adapter's state at attach; `watchLifecycle(report)` is called once, and the adapter calls `report` with a partial update on every later change and returns the function that stops the reports.
 
-Two events carry the state to game code. `host:active` is emitted when `host.active` flips, before the more detailed `host:lifecycle`, which is emitted on every change of the three fields. Scene `onPause` and `onResume` run before both. A repeated or duplicate signal changes nothing, so neither event fires twice for one real change.
+Two events carry the state to game code. `host:active` is emitted when `host.active` flips, before the more detailed `host:lifecycle`, which is emitted on every change of the three fields. Scene `onPause` and `onResume` run before both. A repeated or duplicate signal changes nothing, so neither event fires twice for one real change. A change made during a dispatch, for example by a handler that sets `host.activeWhenUnfocused`, is delivered after the current change has reached every engine package, scene and handler, so every handler receives the changes in order.
 
 A host adapter is a `Plugin` named `"host"` that attaches in `install` and detaches in `onDestroy`. `Engine.use` refuses a second plugin with that name. A plugin that reads `host.info` without depending on the adapter reads it in `onStart`, by which point every `install` has finished.
 
