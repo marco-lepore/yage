@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Hotbar Addon</title>
+    <link rel="stylesheet" href="/shared.css" />
+  </head>
+  <body>
+    <a class="back-link" href="/#hotbar">&larr; All Examples</a>
+    <h1>Hotbar Addon</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span
+        ><kbd>1</kbd> Zap · hold <kbd>2</kbd> to charge Beam, release to fire ·
+        <kbd>3</kbd> Potion · <kbd>4</kbd> Restock</span
+      >
+      <span
+        ><kbd>← →</kbd> select · <kbd>Enter</kbd> use the selected slot ·
+        <kbd>Delete</kbd> clear it · <kbd>P</kbd> put the next action in
+        it</span
+      >
+      <span
+        >Press or hold a slot to use it. <kbd>E</kbd> edit mode: drag between
+        slots to swap them. <kbd>S</kbd> save the layout · <kbd>L</kbd> restore
+        it · <kbd>A</kbd> <kbd>D</kbd> walk</span
+      >
+      <span>Gamepad: LB/RB select, A use, Y clear.</span>
+    </div>
+    <script type="module" src="/src/hotbar/main.ts"></script>
+  </body>
+</html>

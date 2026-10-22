@@ -1,0 +1,292 @@
+---
+title: Hotbar
+description: Bind abilities, consumables and game actions to slots with live availability, cooldowns and held actions.
+---
+
+A hotbar gives players numbered shortcuts to abilities, consumables and other game actions. `@yagejs-addons/hotbar` handles assignments, selection, input and display. Your game keeps ownership of each action's effects, quantities and cooldowns, and the bar reads them live.
+
+Try the [Hotbar example](https://examples.yage.dev/hotbar.html): cast an ability with a cooldown, charge a beam by holding its key, drink potions from an inventory, drag slots to swap them in an edit mode and restore a saved layout.
+
+## Install and show a bar
+
+```bash
+npm install @yagejs-addons/hotbar @yagejs/core @yagejs/input @yagejs/renderer
+```
+
+Install `RendererPlugin` and `InputPlugin` before mounting the controller. Merge `HOTBAR_ACTION_MAP` into the input plugin's `actions` for the default keys. The renderer is only needed for the default view.
+
+```ts
+import { Component, Entity } from "@yagejs/core";
+import { InputPlugin } from "@yagejs/input";
+import { HOTBAR_ACTION_MAP, Hotbar, HotbarController } from "@yagejs-addons/hotbar";
+import { HotbarView } from "@yagejs-addons/hotbar/presenters";
+
+export const inputPlugin = new InputPlugin({ actions: HOTBAR_ACTION_MAP });
+
+class Lantern extends Component {
+  lit = false;
+  toggle() { this.lit = !this.lit; }
+}
+
+export class PlayerEntity extends Entity {
+  setup() {
+    const lantern = this.add(new Lantern());
+    const model = new Hotbar({
+      bindings: {
+        lantern: {
+          label: "Lantern",
+          activate: () => { lantern.toggle(); return { ok: true }; },
+        },
+      },
+      slots: ["lantern"],
+    });
+    this.add(new HotbarController({ model, presenter: new HotbarView() }));
+  }
+}
+```
+
+The default bar has eight slots. Assignments start empty unless you list them in `slots`. The view draws on its own screen layer, so the bar stays at the bottom of the screen when the entity that owns it moves.
+
+The default controls:
+
+- Number keys activate the first ten slots. Letting go of the key releases a held action.
+- Arrow keys or gamepad LB/RB select a slot. Enter or gamepad A activates the selected slot. Delete or gamepad Y clears it.
+- A mouse or touch press on a slot activates it, and lifting the pointer releases a held action. Dragging slots to swap them is off by default. [Drag slots in an edit mode](#drag-slots-in-an-edit-mode) shows how to turn it on.
+
+## Bind abilities and items
+
+`hotbarAbility()` and `hotbarItem()` build a binding from an existing owner, so the bar shows that owner's state without copying it.
+
+```ts
+import { Entity, ProcessComponent, Transform } from "@yagejs/core";
+import { Abilities } from "@yagejs-addons/abilities";
+import { Inventory, defineItems } from "@yagejs-addons/inventory";
+import { Hotbar, HotbarController, hotbarAbility, hotbarItem } from "@yagejs-addons/hotbar";
+import { HotbarView } from "@yagejs-addons/hotbar/presenters";
+
+const items = defineItems({ potion: { name: "Potion", maxStack: 9 } });
+
+export class PlayerEntity extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new ProcessComponent());
+    const abilities = this.add(
+      new Abilities([{ id: "fireball", duration: 0.4, cooldown: 2, timeline: [] }]),
+    );
+    const bag = new Inventory({
+      catalog: items,
+      actions: [{ id: "drink", label: "Drink", consumes: true }],
+    });
+    bag.add("potion", 3);
+    const model = new Hotbar({
+      bindings: {
+        fireball: hotbarAbility(abilities, "fireball", { label: "Fireball" }),
+        potion: hotbarItem(bag, "potion", { action: "drink" }),
+      },
+      slots: ["fireball", "potion"],
+    });
+    this.add(new HotbarController({ model, presenter: new HotbarView() }));
+  }
+}
+```
+
+`hotbarAbility(abilities, id, { label, icon })` binds an ability by its def id:
+
+- The slot is available when `abilities.canSend(id, { interrupts: true })` is true.
+- The cooldown display reads `cooldownRemaining(id)` and `cooldownRatio(id)`. A cooldown that a stat shortens shows correctly, because the bar never stores a duration.
+- The cooldown shows only while the ability cannot be sent. A combo step or linger window that `send` accepts during the cooldown keeps the slot usable.
+- A blocked slot reports `"cooldown"` while the cooldown runs and `"busy"` otherwise.
+- Activation calls `send(id)`. Releasing the input calls `release(id)`, which ends a hold phase and does nothing for other abilities.
+
+`hotbarItem(inventory, itemId, { action, label, icon })` binds an item kind to one of the inventory's item actions:
+
+- The label and icon default to the item's catalog `name` and `icon`.
+- The count badge shows every unit of the item across all stacks.
+- The slot is available while the inventory offers `action` for the item's first stack. The action's own `available` check applies, so a potion can be unavailable while the player is at full health.
+- Activation calls `invokeAction(action, slot)`. The inventory removes a unit when the action `consumes`, and your game applies the effect from the inventory's `"action"` event, the same way it handles an action chosen from an inventory panel.
+- An item with no units reports `"empty"` and stays assigned, so it becomes usable again when the player picks more up.
+
+Neither helper adds a package dependency. They accept any object with the methods they call, and `Abilities` and `Inventory` match those shapes.
+
+## Write your own binding
+
+Any game action can be a binding. A binding has a `label`, an optional registered texture key in `icon`, an optional `read()` query, an `activate()` callback and an optional `release()` callback.
+
+`read()` is a pure synchronous query. Presentation, activation and inspection can each call it several times per frame. It returns:
+
+- `available: false` and a `reason` when the owner cannot accept activation. Leaving out `available` means available.
+- `cooldown: { remaining, ratio }`. `remaining` is in seconds. `ratio` is the elapsed fraction from 0 to 1, the same scale as `ProcessSlot.ratio` and `Abilities.cooldownRatio()`. A positive `remaining` blocks activation. The reason is `"cooldown"` unless `read()` also returns `available: false` with its own `reason`.
+- `count` for a quantity badge. A count of zero does not block activation by itself, because the owner decides availability.
+
+Counts and remaining time must be finite and nonnegative, and the ratio must be between 0 and 1. A value outside those ranges throws. The hotbar never advances a cooldown clock.
+
+`activate()` returns `{ ok: true }` or `{ ok: false, reason: "..." }`. The hotbar checks `read()` again before calling it. The owner still applies its own rules, because its state can change between the check and the request. Success means the owner accepted the request: a running ability can still complete or fail later. `activate()` must return its result synchronously.
+
+A binding's `activate()` can activate other slots, for example to fire several actions from one slot. Activating a slot again while that slot's activation is still running throws an error that names the slot. The activation includes the `release()` of the slot's earlier held action, which runs first. The rule covers a slot that activates itself, a cycle such as slot 0 activating slot 1, which activates slot 0, and a `release()` that activates the slot being replaced. A `release()` that runs outside an activation, such as when the player lets go, can activate its own slot.
+
+```ts
+import { Component, Entity } from "@yagejs/core";
+import { Hotbar, HotbarController } from "@yagejs-addons/hotbar";
+import { HotbarView } from "@yagejs-addons/hotbar/presenters";
+
+class Wallet extends Component {
+  gold = 30;
+  potions = 0;
+  buyPotion(): boolean {
+    if (this.gold < 10) return false;
+    this.gold -= 10;
+    this.potions += 1;
+    return true;
+  }
+}
+
+export class PlayerEntity extends Entity {
+  setup() {
+    const wallet = this.add(new Wallet());
+    const model = new Hotbar({
+      bindings: {
+        buy: {
+          label: "Buy potion",
+          read: () => ({ available: wallet.gold >= 10, reason: "no gold" }),
+          activate: () =>
+            wallet.buyPotion() ? { ok: true } : { ok: false, reason: "no gold" },
+        },
+      },
+      slots: ["buy"],
+    });
+    this.add(new HotbarController({ model, presenter: new HotbarView() }));
+  }
+}
+```
+
+### Held actions
+
+Add `release()` for an action that lasts while the player holds its input, such as a charged attack. The default controls call it when the number key or the activate key that started the action goes up, and when the controller loses input.
+
+A mouse or touch press holds a slot the same way. Lifting or cancelling the pointer releases the action, and a quick tap activates and releases at once. With drag-to-swap on, pointers use taps only, so a held action gets no hold time from a pointer.
+
+`model.release(slot)` releases what that slot activated. It calls the `release()` of the binding that was activated, even if the slot was reassigned in between. It does nothing when the activation was rejected or the binding has no `release()`.
+
+A slot holds one action at a time. When a slot that holds an action is activated again and `read()` reports it available, the earlier action is released before the binding's `activate()` runs. A slot that `read()` reports unavailable, for example during a cooldown, keeps its hold.
+
+With the default controls, the input that activated the slot last owns the hold, and letting go of it releases the action. The controls release the slot whoever activated it last, so an activation from game code on a held slot ends when the player lets go.
+
+## Assign, clear and reorder
+
+Game code changes the bar through the model. On a mounted controller it is `controller.model`.
+
+```ts
+import { Component } from "@yagejs/core";
+import { HotbarController } from "@yagejs-addons/hotbar";
+
+/** Runs on the entity that holds the controller. */
+export class Loadout extends Component {
+  arrange(): void {
+    const bar = this.entity.get(HotbarController).model;
+    bar.assign(0, "zap");
+    bar.assign(1, "potion");
+    bar.swap(0, 1);
+    bar.clear(2);
+    bar.select(0);
+    bar.activate();
+  }
+}
+```
+
+Slots use zero-based indexes. A `Hotbar` built directly infers its binding IDs from the keys of `bindings`, and TypeScript checks them in `assign()` and the initial `slots`. An invalid index or unknown binding ID throws before anything changes. Assigning replaces the previous binding, and a binding can sit in several slots. Swapping exchanges two assignments, including empty slots. Clearing or moving a slot never moves an inventory item, consumes it or restarts an ability.
+
+`cycle(-1)` and `cycle(1)` move the selection with wraparound. The selection stays at its slot index when assignments move. The default controls have no picker: your game calls `assign()` when the player chooses an action or item.
+
+### Drag slots in an edit mode
+
+The default controls can swap slots when the player drags from one slot to another. Drag-to-swap is off by default, because the same pointer press holds a slot's action. Turn it on with `hotbarControls({ dragToSwap: true })`, or switch it while the game runs with `setDragToSwap(enabled)`. Keep the controls object to call it, and pass it to the controller as `input`. Each controller needs its own controls object. Binding one object to a second controller throws.
+
+```ts
+import { Component, Entity } from "@yagejs/core";
+import { InputManagerKey, InputPlugin } from "@yagejs/input";
+import {
+  HOTBAR_ACTION_MAP,
+  Hotbar,
+  HotbarController,
+  hotbarControls,
+} from "@yagejs-addons/hotbar";
+import type { HotbarControls } from "@yagejs-addons/hotbar";
+import { HotbarView } from "@yagejs-addons/hotbar/presenters";
+
+export const inputPlugin = new InputPlugin({
+  actions: { ...HOTBAR_ACTION_MAP, "edit-bar": ["KeyE"] },
+});
+
+/** E switches between using the bar and rearranging it. */
+class EditModeKey extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly controls: HotbarControls;
+
+  constructor(controls: HotbarControls) {
+    super();
+    this.controls = controls;
+  }
+
+  update(): void {
+    if (this.input.isJustPressed("edit-bar"))
+      this.controls.setDragToSwap(!this.controls.dragToSwap);
+  }
+}
+
+export class PlayerEntity extends Entity {
+  setup() {
+    const model = new Hotbar({
+      bindings: {
+        lantern: { label: "Lantern", activate: () => ({ ok: true }) },
+        map: { label: "Map", activate: () => ({ ok: true }) },
+      },
+      slots: ["lantern", "map"],
+    });
+    const controls = hotbarControls();
+    this.add(
+      new HotbarController({ model, presenter: new HotbarView(), input: controls }),
+    );
+    this.add(new EditModeKey(controls));
+  }
+}
+```
+
+With drag-to-swap on:
+
+- Dragging from one slot to another swaps their assignments. A drag that ends outside the bar, or that the player cancels, does nothing.
+- A pointer tap activates and releases at once. A held action gets no hold time from a pointer, and keys still hold actions.
+- A switch applies from the next pointer press. A press already in progress keeps the mode it started with.
+
+## Customize input and presentation
+
+Pass `input: null` to the controller for no device input, then call the model yourself. Pass a `HotbarInputBinding` to replace the default controls. `hotbarControls({ actions, dragToSwap, dragThreshold })` renames the actions, turns on drag-to-swap, or sets the distance in virtual pixels a pointer moves before a press counts as a drag, which defaults to 6. `InputPlugin` keeps owning the action map.
+
+`controller.setInputEnabled(false)` releases the device listeners and any held actions while the bar stays visible. Use it to give one bar focus when several are visible. Keyboard and gamepad action reads do not consume the input, so two focused bars with the same actions both respond. Pointer gestures use the input manager's pointer claims.
+
+Disabling the controller or its entity hides the view and releases input. Enabling it again restores both. A paused scene ignores the bar's device input. Calls on the model work whatever the controller's state. Removing the controller disposes its view and listeners, and the model keeps its assignments. A model can have one mounted controller at a time.
+
+```ts
+import { HotbarView } from "@yagejs-addons/hotbar/presenters";
+
+export const view = new HotbarView({
+  slotWidth: 96,
+  selected: 0xffcc66,
+  fontFamily: "monospace",
+});
+```
+
+Theme fields you leave out keep their `defaultHotbarTheme()` values. The default view uses canvas text, registered icons and a cooldown bar. It centers itself and sits 24 pixels above the bottom of the virtual viewport. Set `x` and `y` to place it yourself, and choose dimensions that fit your viewport. Set `keyLabels` to match custom key bindings, or to an empty array to hide the hints. The view creates a `hotbar` screen layer with order 1070 when the scene has none. A layer that already exists keeps its order.
+
+To replace the view, implement `HotbarPresenter`: `mount(scene)`, `present(state)`, `setVisible(visible)` and `dispose()`. The optional `slotAtPoint(x, y)` hit-tests pointers in virtual screen coordinates. Without it, keyboard, gamepad and model calls still work. Each controller needs its own presenter instance.
+
+## Save and inspect
+
+`model.snapshot()` returns a versioned plain object with every assignment and the selected index. Put it in your game's save root, and save item quantities and ability state with their owners. `restore(snapshot)` applies a snapshot and returns `{ dropped }`. An entry is dropped and its slot left empty when it names a binding the bar does not declare, or when it sits past the slot count, for example after a game update removed an ability or shrank the bar. A selection outside the bar resets to slot 0. A snapshot with another version, or with `slots` that are not an array of binding IDs and nulls, throws without changing the bar.
+
+`model.inspect()` returns plain slot records with IDs, display data, availability, reasons, quantities and cooldowns, plus the selection and the last activation result. `model.read(index)` reads one slot. `controller.diagnostic` adds input focus and whether the controller is active, and `Inspector.getComponentData(entityId, "HotbarController")` reads it.
+
+`HotbarChangedEvent` carries the complete assignment and selection snapshot. `HotbarActivationEvent` carries the slot, the binding ID and the result. Both are entity events, so they bubble to the scene and the Inspector event log can record them. Without a controller, subscribe with `model.on(listener)` and keep the unsubscribe function it returns.
+
+The view shows what `read()` predicts. Handle `HotbarActivationEvent` to show outcomes, including an owner rejection such as `"out of range"` that `read()` could not predict. The example prints the latest outcome at the top of the screen.
+
+Errors thrown by `read()`, `activate()`, `release()` and event listeners are recorded on the scene's `ErrorBoundary` with the binding ID, then rethrown. A throwing callback stops the current operation. It is not turned into a rejection.

@@ -1,0 +1,76 @@
+{
+  "name": "@yagejs-addons/hotbar",
+  "version": "0.0.0",
+  "description": "Typed action hotbars with live availability, device controls and a default view for YAGE",
+  "keywords": [
+    "yage",
+    "yage-addon",
+    "hotbar",
+    "action-bar",
+    "typescript"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/addons/hotbar"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./presenters": {
+      "import": {
+        "types": "./dist/presenters.d.ts",
+        "default": "./dist/presenters.js"
+      },
+      "require": {
+        "types": "./dist/presenters.d.cts",
+        "default": "./dist/presenters.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@yagejs/core": ">=0.12.0 <0.13.0",
+    "@yagejs/input": ">=0.12.0 <0.13.0",
+    "@yagejs/renderer": ">=0.12.0 <0.13.0"
+  },
+  "peerDependenciesMeta": {
+    "@yagejs/renderer": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
+    "@yagejs/core": ">=0.12.0",
+    "@yagejs/input": ">=0.12.0",
+    "@yagejs/renderer": ">=0.12.0"
+  }
+}
