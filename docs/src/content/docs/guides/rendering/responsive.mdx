@@ -195,20 +195,32 @@ directly on the Pixi stage, above the fit transform, and position it in
 Pixi objects itself and owns them: destroy the container when the scene
 exits.
 
-```typescript yage-context="scene-enter"
+```typescript
+import { Scene } from "@yagejs/core";
 import { Container, Graphics } from "pixi.js";
 import { RendererKey } from "@yagejs/renderer";
 
-const renderer = this.use(RendererKey);
-const bars = new Container();
-renderer.application.stage.addChild(bars);
+class BrandedScene extends Scene {
+  readonly name = "branded";
+  private bars: Container | undefined;
 
-const { width } = renderer.canvasSize; // CSS px
-const play = renderer.virtualCanvasRect; // play area, in canvas px
+  onEnter(): void {
+    const renderer = this.use(RendererKey);
+    this.bars = new Container();
+    renderer.application.stage.addChild(this.bars); // canvas px, above the fit transform
 
-const branding = new Graphics();
-branding.rect(0, 0, width, play.y).fill({ color: 0x0f172a });
-bars.addChild(branding);
+    const { width } = renderer.canvasSize; // CSS px
+    const play = renderer.virtualCanvasRect; // play area, in canvas px
+    const branding = new Graphics();
+    branding.rect(0, 0, width, play.y).fill({ color: 0x0f172a }); // top bar
+    this.bars.addChild(branding);
+  }
+
+  onExit(): void {
+    // The stage outlives the scene, so the scene destroys what it added.
+    this.bars?.destroy({ children: true });
+  }
+}
 ```
 
 ## Reasoning about the cropped region under `cover`

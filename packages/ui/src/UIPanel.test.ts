@@ -13,7 +13,13 @@ vi.mock("pixi.js", async () => (await import("./test-pixi.js")).pixiMock);
 import Yoga, { Direction } from "yoga-layout";
 import type { Node as YogaNode } from "yoga-layout";
 import { Container } from "pixi.js";
-import { isPointerConsumeContainer } from "@yagejs/core";
+import {
+  ErrorBoundary,
+  isPointerConsumeContainer,
+  Logger,
+  LogLevel,
+} from "@yagejs/core";
+import { bindUIErrorBoundary } from "./error-boundary.js";
 import type { DisplayContainer } from "@yagejs/renderer";
 import { createYogaNode, setYoga } from "./yoga-helpers.js";
 import { MockContainer, MockGraphics } from "./test-pixi.js";
@@ -574,6 +580,22 @@ describe("UIElementBase.onDestroy", () => {
     panel.destroy();
 
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a throwing listener on the tree's error boundary", () => {
+    const boundary = new ErrorBoundary(new Logger({ level: LogLevel.None }));
+    const root = new UIPanel({});
+    const child = new UIPanel({});
+    root.addElement(child);
+    bindUIErrorBoundary(root.container, boundary);
+    child.onDestroy(() => {
+      throw new Error("listener failed");
+    });
+
+    expect(() => root.destroy()).toThrow("listener failed");
+    expect(boundary.getCallbackErrors()).toEqual([
+      { kind: "UI destroy listener", error: "listener failed" },
+    ]);
   });
 
   it("does not call a listener removed before destroy", () => {

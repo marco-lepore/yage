@@ -20,8 +20,8 @@ export interface SortItem {
    */
   readonly sortOffset: number;
   /**
-   * The entity whose component draws the child. `undefined` for a container a
-   * rendering extension added to the layer directly.
+   * The entity whose component draws the child. `undefined` for a container
+   * added to the layer without a component.
    */
   readonly entity: Entity | undefined;
 }

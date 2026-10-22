@@ -53,18 +53,8 @@ export class RecordingContext {
   }
 }
 
-/** A minimal Pixi-Container stand-in: records added children (nine-slice
- *  sprites) so tests can assert a textured frame was parented. */
-export class StubContainer {
-  readonly children: unknown[] = [];
-  addChild(child: unknown): void {
-    this.children.push(child);
-  }
-}
-
 export class GraphicsComponent extends Component {
   visible = true;
-  readonly graphics = new StubContainer();
   /** Every `draw()` call's recorded ops, latest last. */
   readonly draws: RecordingContext[] = [];
   constructor(readonly options: { readonly layer: string }) {

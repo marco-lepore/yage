@@ -63,7 +63,7 @@ export interface VisualBounds {
   readonly height: number;
 }
 
-/** Options shared by all five visual components. */
+/** Options shared by every visual component. */
 export interface VisualComponentOptions {
   /** Render layer name. Default: "default". */
   layer?: string;
@@ -110,8 +110,9 @@ export interface VisualComponentOptions {
 }
 
 /**
- * Shared base for the renderer's five visual components (Sprite,
- * AnimatedSprite, Graphics, Text, SplitText). Carries the render-layer field,
+ * Shared base for the renderer's visual components (Sprite,
+ * AnimatedSprite, Graphics, Text, SplitText, NineSlice) and
+ * `@yagejs/tilemap`'s `TilemapComponent`. Carries the render-layer field,
  * lazy effects host, mask lifecycle, scene-tree parenting, and the generic
  * visible/tint/alpha/interactive vocabulary — every underlying Pixi display
  * object supports all four directly on `Container`, so this operates on
@@ -474,9 +475,10 @@ export abstract class VisualComponent extends Component implements SortSource {
     if (group instanceof SortGroupComponent) {
       if (group.innerSort) where = "a SortGroupComponent with innerSort";
     } else {
-      const tree = this.use(SceneRenderTreeKey);
-      const layer = tree.tryGet(this._layerName) ?? tree.defaultLayer;
-      if (layer.sort) where = `layer "${layer.name}", which has a sort`;
+      const layer = this.use(SceneRenderTreeKey)
+        .getAll()
+        .find((candidate) => candidate.container === parent);
+      if (layer?.sort) where = `layer "${layer.name}", which has a sort`;
     }
     if (where === undefined) return;
     this._warnedZIndex = true;

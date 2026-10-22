@@ -70,6 +70,7 @@ export class MockContainer {
     if (index !== -1) {
       this.children.splice(index, 1);
       child.parent = null;
+      child.emit("removed", this);
     }
     return child;
   }

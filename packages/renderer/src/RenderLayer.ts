@@ -62,10 +62,10 @@ export class RenderLayer {
   readonly name: string;
   readonly order: number;
   /**
-   * The layer's Pixi container. For rendering extensions (a custom visual
-   * component, a lighting renderer); game code puts a visual on the layer
-   * with the component's `layer` option and changes the layer through
-   * `fx`, `setSort` and `setMask`.
+   * The layer's Pixi container, for code that adds its own Pixi objects to
+   * the layer, such as a custom visual component or a lighting renderer.
+   * Game code puts a visual on the layer with the component's `layer`
+   * option and changes the layer through `fx`, `setSort` and `setMask`.
    */
   readonly container: DisplayContainer;
   /** Coordinate space — see `CreateLayerOptions.space`. */
@@ -126,6 +126,11 @@ export class RenderLayer {
     this.container.sortableChildren = sort !== undefined;
     if (sort === undefined) {
       for (const child of this.container.children) restoreZIndex(child);
+      // Pixi turns sorting on only when a zIndex changes; one that matched
+      // its last depth key changed nothing.
+      this.container.sortableChildren = this.container.children.some(
+        (child) => child.zIndex !== 0,
+      );
     }
   }
 
@@ -264,7 +269,7 @@ export class RenderLayerManager {
     return [...this.layers.values()].sort((a, b) => a.order - b.order);
   }
 
-  /** The root container holding all layers. For rendering extensions. */
+  /** The root container holding all layers, for code that adds its own Pixi objects. */
   get root(): DisplayContainer {
     return this.rootContainer;
   }

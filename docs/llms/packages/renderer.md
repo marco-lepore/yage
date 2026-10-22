@@ -174,18 +174,32 @@ Under `expand` these are the play-adjacent strips the game is expected to draw i
 
 Under `letterbox` the same rects only report where the `backgroundColor` bars land. That mode clips every scene layer to the virtual rect, so content placed at these coordinates on a scene layer is invisible. To draw in the bars, parent a container directly on `renderer.application.stage` and position it in **canvas pixels**. No scene layer reaches the bars, so this code owns raw Pixi objects: destroy the container when the scene exits.
 
-```ts yage-context="scene-enter"
+```ts
+import { Scene } from "@yagejs/core";
 import { Container, Graphics } from "pixi.js";
 import { RendererKey } from "@yagejs/renderer";
 
-const renderer = this.use(RendererKey);
-const bars = new Container();
-renderer.application.stage.addChild(bars); // canvas px, above the fit transform
-const { width } = renderer.canvasSize;
-const play = renderer.virtualCanvasRect; // play area, in canvas px
-const branding = new Graphics();
-branding.rect(0, 0, width, play.y).fill({ color: 0x0f172a }); // top bar
-bars.addChild(branding);
+class BrandedScene extends Scene {
+  readonly name = "branded";
+  private bars: Container | undefined;
+
+  onEnter(): void {
+    const renderer = this.use(RendererKey);
+    this.bars = new Container();
+    renderer.application.stage.addChild(this.bars); // canvas px, above the fit transform
+
+    const { width } = renderer.canvasSize; // CSS px
+    const play = renderer.virtualCanvasRect; // play area, in canvas px
+    const branding = new Graphics();
+    branding.rect(0, 0, width, play.y).fill({ color: 0x0f172a }); // top bar
+    this.bars.addChild(branding);
+  }
+
+  onExit(): void {
+    // The stage outlives the scene, so the scene destroys what it added.
+    this.bars?.destroy({ children: true });
+  }
+}
 ```
 
 Note: "screen" in the engine (UI `LayerSpace: "screen"`, `Camera.screenToWorld`) means _virtual viewport space_. The `canvasToVirtual` method is named after its inputs (DOM CSS pixels on the canvas) to avoid that collision.
@@ -292,7 +306,7 @@ For procedural shapes plus a label, use a parent entity with `GraphicsComponent`
 
 ### Shared options vocabulary
 
-All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitText) accept the same `visible` / `tint` / `alpha` / `blendMode` / `zIndex` / `sortOffset` / `interactive` options, with runtime accessors for all but `interactive`. The behavior is identical across every component:
+Every visual component below (Sprite, AnimatedSprite, Graphics, Text, SplitText, NineSlice) accepts the same `visible` / `tint` / `alpha` / `blendMode` / `zIndex` / `sortOffset` / `interactive` options, with runtime accessors for all but `interactive`. The behavior is identical across every component:
 
 ```ts
 import type {
@@ -332,7 +346,7 @@ Every visual component also exposes `comp.modifiers: VisualModifierHost`:
 ```ts yage-context="entity"
 import { SpriteComponent } from "@yagejs/renderer";
 
-const comp = entity.get(SpriteComponent); // any of the five visual components
+const comp = entity.get(SpriteComponent); // any visual component
 
 const motion = comp.modifiers.addTransform({
   position: { x: 0, y: -4 }, // Vec2Like offset
@@ -1185,7 +1199,7 @@ interface SortItem {
   readonly x: number; // child's position in its layer, px
   readonly y: number;
   readonly sortOffset: number; // owning component's sortOffset; 0 for an unowned container
-  readonly entity: Entity | undefined; // undefined for a container a rendering extension added
+  readonly entity: Entity | undefined; // undefined for a container added without a component
 }
 type LayerSortFn = (item: SortItem) => number;
 ```

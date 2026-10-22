@@ -1,5 +1,6 @@
 import {
   Component,
+  devWarn,
   RandomKey,
   Transform,
   Vec2Buffer,
@@ -120,6 +121,8 @@ export class ParticleEmitterComponent extends Component implements SortSource {
   private _visibleWhenActive = true;
   private _zIndex = 0;
   private _sortOffset = 0;
+  /** Whether the ignored-`zIndex` development warning has fired. */
+  private _warnedZIndex = false;
   /** @internal */ readonly _pool: ParticlePool;
   /** @internal */ readonly _active: ParticleState[] = [];
   /** @internal */ _accumulator = 0;
@@ -334,8 +337,9 @@ export class ParticleEmitterComponent extends Component implements SortSource {
 
   /**
    * Draw order among the visuals on the emitter's layer: higher values draw on
-   * top. Default `0`. On a layer with `sort` the depth key decides the order
-   * instead; see `VisualComponent.zIndex`.
+   * top. Default `0`. On a layer with `sort` the depth key decides the order,
+   * so a non-zero `zIndex` there logs one development warning; see
+   * `VisualComponent.zIndex`.
    */
   get zIndex(): number {
     return this._zIndex;
@@ -349,6 +353,7 @@ export class ParticleEmitterComponent extends Component implements SortSource {
     }
     this._zIndex = value;
     this.container.zIndex = value;
+    this.warnIfZIndexIgnored();
   }
 
   /**
@@ -372,9 +377,26 @@ export class ParticleEmitterComponent extends Component implements SortSource {
     const layer = this.use(SceneRenderTreeKey).get(this.config.layer);
     layer.container.addChild(this.container);
     setSortSource(this.container, this);
+    this.warnIfZIndexIgnored();
     // A component is never effectively enabled during `onAdd` — `onEnable`
     // runs right after, and only for an active entity.
     this.container.visible = false;
+  }
+
+  /** Warn once when the emitter's layer sorts, which ignores `zIndex`. */
+  private warnIfZIndexIgnored(): void {
+    if (this._zIndex === 0 || this._warnedZIndex || !this.container.parent) {
+      return;
+    }
+    const layer = this.use(SceneRenderTreeKey).tryGet(this.config.layer);
+    if (!layer?.sort) return;
+    this._warnedZIndex = true;
+    devWarn(
+      `ParticleEmitterComponent on entity "${this.entity.name}": zIndex ` +
+        `${this._zIndex} has no effect on layer "${layer.name}", which has a ` +
+        `sort, because the depth key orders the children every frame. Shift ` +
+        `the key with sortOffset, or emit on a layer without sort.`,
+    );
   }
 
   /**

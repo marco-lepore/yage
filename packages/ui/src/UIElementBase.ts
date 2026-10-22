@@ -34,11 +34,22 @@ export abstract class UIElementBase implements UIElement {
    */
   onDestroy(fn: () => void): () => void {
     const display = this.displayObject;
-    const listener = (): void =>
-      runUICallback(display, "UI destroy listener", fn);
-    display.once("destroyed", listener);
+    // Pixi removes a container from its parent before it emits "destroyed",
+    // so the throw is attributed through the parent it was last removed
+    // from, whose chain still reaches the tree's error boundary.
+    let formerParent: DisplayContainer | undefined;
+    const removed = (parent: DisplayContainer): void => {
+      formerParent = parent;
+    };
+    const destroyed = (): void => {
+      display.off("removed", removed);
+      runUICallback(formerParent ?? display, "UI destroy listener", fn);
+    };
+    display.on("removed", removed);
+    display.once("destroyed", destroyed);
     return () => {
-      display.off("destroyed", listener);
+      display.off("removed", removed);
+      display.off("destroyed", destroyed);
     };
   }
 

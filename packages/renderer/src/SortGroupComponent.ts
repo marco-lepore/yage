@@ -9,16 +9,16 @@ import type { SortItemBuffer } from "./internal/sortItem.js";
 
 /**
  * Contract a single-display-object visual component satisfies: a layer name
- * plus the Pixi object it renders. All five built-in visual components
- * (`SpriteComponent`, `GraphicsComponent`, `AnimatedSpriteComponent`,
- * `TextComponent`, `SplitTextComponent`) expose it through their `renderObject`
- * getter, and `SortGroupComponent` uses it to gather a subtree's visuals
- * without importing the concrete classes (which would create an import cycle).
+ * plus the Pixi object it renders. Every built-in visual component exposes
+ * it through its `renderObject` getter, and `SortGroupComponent` uses it to
+ * gather a subtree's visuals without importing the concrete classes (which
+ * would create an import cycle).
  *
  * It's also the extension point for custom visual components: implement
  * `renderObject` + `layerName`, and route through {@link resolveRenderParent}
- * in `onAdd`, and the component takes part in sort groups exactly like the
- * built-ins.
+ * in `onAdd`, and a sort group gathers the component like the built-ins. A
+ * layer's depth key sees its `sortOffset` and `entity`, and a move between
+ * parents keeps its `zIndex`, only when it extends `VisualComponent`.
  */
 export interface LayerRenderable {
   /** Name of the layer this component renders into. */
@@ -30,7 +30,7 @@ export interface LayerRenderable {
 /**
  * Duck-typed check for {@link LayerRenderable}. Visual components expose a
  * `renderObject` getter; nothing else in the engine does, so a positive match
- * is reliable without an `instanceof` against five concrete classes.
+ * is reliable without an `instanceof` against every concrete class.
  */
 function isLayerRenderable(
   component: Component,

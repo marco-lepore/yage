@@ -89,7 +89,7 @@ export class UISplitText extends UIElementBase {
   readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
   /**
-   * The Pixi `SplitText` / `SplitBitmapText` inside {@link displayObject}.
+   * The same Pixi `SplitText` / `SplitBitmapText` as {@link displayObject}.
    * Change the text through the element; animate glyphs through
    * {@link chars}.
    */

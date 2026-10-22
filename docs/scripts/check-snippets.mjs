@@ -45,9 +45,9 @@ const keys = new Set([
 
 // Game objects whose raw Pixi handle a fence must not reach: visual
 // components, particle emitters, sort groups and UI elements. A member
-// counts when its declared type is a Pixi display object. Handles meant for
-// rendering extensions (a layer's container, the scene tree's root, the
-// plugin's application) are left out.
+// counts when its declared type is a Pixi display object. Handles for code
+// that adds its own Pixi objects to the scene (a layer's container, the scene
+// tree's root, the plugin's application) are left out.
 const RAW_PIXI_OWNER_BASES = new Set([
   "VisualComponent",
   "UIElementBase",

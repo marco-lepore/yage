@@ -1211,6 +1211,22 @@ describe("ParticleEmitterComponent", () => {
       expect(emitter.container.zIndex).toBe(307);
     });
 
+    it("warns once when zIndex is set on a sorted layer", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const emitter = createEmitter();
+      const { layerManager } = setupEntity(emitter);
+      layerManager.defaultLayer.setSort(ySort);
+
+      emitter.zIndex = 4;
+      emitter.zIndex = 5;
+
+      const zIndexWarnings = warn.mock.calls.filter((call) =>
+        String(call[0]).includes("zIndex"),
+      );
+      expect(zIndexWarnings).toHaveLength(1);
+      warn.mockRestore();
+    });
+
     it("orders by its zIndex on a layer without sort", () => {
       const emitter = createEmitter();
       setupEntity(emitter);

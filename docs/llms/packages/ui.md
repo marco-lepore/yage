@@ -1016,7 +1016,7 @@ const fieldBg = entity.scene
     width: 220,
     height: 40,
   });
-registerTexture("field-bg", fieldBg);
+registerTexture("field-bg", fieldBg); // when the menu goes: unregisterTexture("field-bg"); fieldBg.destroy();
 
 const nameField = new PixiInput({ bg: "field-bg", placeholder: "Save name" });
 const displaySelect = new PixiSelect({

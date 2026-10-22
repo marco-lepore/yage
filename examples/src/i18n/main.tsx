@@ -32,7 +32,9 @@ import {
   RendererKey,
   RendererPlugin,
   registerTexture,
+  unregisterTexture,
   type LayerDef,
+  type TextureResource,
 } from "@yagejs/renderer";
 import { Anchor, UIPlugin } from "@yagejs/ui";
 import { Button, Panel, Text, UIRoot, UIReactPlugin } from "@yagejs/ui-react";
@@ -204,19 +206,31 @@ const SCRIPT = defineScript({
 const SELECT_CLOSED_BG = "i18n/select-closed";
 const SELECT_OPEN_BG = "i18n/select-open";
 
-/** Bake a rounded select background and register it under `key`. */
-function registerSelectBackground(
-  renderer: RendererPlugin,
-  key: string,
-  color: number,
-): void {
-  registerTexture(
-    key,
-    renderer.createTexture(
+/** Bakes the dropdown's backgrounds under their keys while its entity lives,
+ *  then unregisters and frees them. */
+class SelectBackgrounds extends Component {
+  private readonly baked: [key: string, texture: TextureResource][] = [];
+
+  onAdd(): void {
+    this.bake(SELECT_CLOSED_BG, 0x44475a);
+    this.bake(SELECT_OPEN_BG, 0x282a36);
+  }
+
+  onDestroy(): void {
+    for (const [key, texture] of this.baked) {
+      unregisterTexture(key);
+      texture.destroy();
+    }
+  }
+
+  private bake(key: string, color: number): void {
+    const texture = this.use(RendererKey).createTexture(
       (g) => g.roundRect(0, 0, 180, 34, 6).fill({ color }),
       { width: 180, height: 34 },
-    ),
-  );
+    );
+    registerTexture(key, texture);
+    this.baked.push([key, texture]);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -455,9 +469,8 @@ class LocalizationScene extends Scene {
   // The scene only assembles the page. The controllers, DemoControls and the
   // probe hold the rules and the counts.
   onEnter(): void {
-    const plugin = this.use(RendererKey);
-    registerSelectBackground(plugin, SELECT_CLOSED_BG, 0x44475a);
-    registerSelectBackground(plugin, SELECT_OPEN_BG, 0x282a36);
+    // Before the React UI below, whose dropdown draws these keys.
+    this.spawn("select-backgrounds").add(new SelectBackgrounds());
 
     const renderer = this.spawn("renderer-localized");
     renderer.add(new Transform({ position: { x: 24, y: 24 } }));

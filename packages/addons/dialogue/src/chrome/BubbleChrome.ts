@@ -59,7 +59,7 @@ export class BubbleChrome implements ChromePresenter {
   private root?: Entity | undefined;
   private gfx?: GraphicsComponent | undefined;
   private transform?: Transform | undefined;
-  /** Nine-slice body sprite (child of {@link gfx}) when textured; resized per
+  /** Nine-slice body on a child entity when textured; resized and placed per
    *  line. The tail stays a drawn triangle on {@link gfx}. */
   private bubbleSlice?:
     | { readonly transform: Transform; readonly slice: NineSliceComponent }

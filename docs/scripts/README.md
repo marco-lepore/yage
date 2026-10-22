@@ -139,6 +139,6 @@ type is a Pixi display object (`renderObject`, `.sprite`, `.graphics`,
 API instead. A fence that needs the object on purpose, such as a custom visual
 component reading its own container, carries `yage-raw-pixi="<reason>"` with a
 reason of at least 20 characters. The attribute fails on a fence that reaches
-no such object. Handles meant for rendering extensions, such as a layer's
-`container`, the scene tree's `root` and the renderer's `application`, are not
-checked.
+no such object. Handles for code that adds its own Pixi objects to the scene,
+such as a layer's `container`, the scene tree's `root` and the renderer's
+`application`, are not checked.
