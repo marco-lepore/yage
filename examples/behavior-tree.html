@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Behavior Trees</title>
+    <link rel="stylesheet" href="/shared.css" />
+  </head>
+  <body>
+    <a class="back-link" href="/#behavior-tree">&larr; All Examples</a>
+    <h1>Behavior Trees</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span
+        >Two guards share one tree. Each walks to the gate at the end of its
+        lane, waits a random reaction time, attacks, and recovers. The gate
+        flashes on every strike, orange for a heavy one.</span
+      >
+      <span
+        >A weighted choice picks a normal or heavy attack. Heavy attacks also
+        pass a chance check and have a four-second cooldown.</span
+      >
+      <span
+        >Low health interrupts whatever the guard is doing. It runs back to the
+        green circle while calling for help, rests, heals, and returns. Damage
+        hits A during an attack and B during its approach at the start.</span
+      >
+      <span
+        >Each panel shows the running branch, the heavy-attack cooldown, and the
+        last interrupted action.</span
+      >
+      <span
+        ><kbd>1</kbd>/<kbd>2</kbd> damage a guard · <kbd>Space</kbd> disable or
+        restart A's tree</span
+      >
+    </div>
+    <script type="module" src="/src/behavior-tree/main.ts"></script>
+  </body>
+</html>

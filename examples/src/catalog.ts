@@ -49,6 +49,7 @@ export type PackageId = (typeof PACKAGES)[number];
 /** Addon packages, published as `@yagejs-addons/<id>`. */
 export const ADDONS = [
   "abilities",
+  "behavior-tree",
   "dialogue",
   "feel",
   "hotbar",
@@ -462,6 +463,16 @@ export const EXAMPLES: readonly Example[] = [
     packages: ["physics", "input"],
     addons: ["steering"],
     guide: "/addons/steering/",
+  },
+  {
+    slug: "behavior-tree",
+    title: "Behavior Trees",
+    summary:
+      "Two guards share a behavior tree: weighted attacks, cooldowns, and a retreat that interrupts combat and calls for help in parallel.",
+    section: "world",
+    packages: ["input"],
+    addons: ["behavior-tree", "steering"],
+    guide: "/addons/behavior-tree/",
   },
 
   // Gameplay addons

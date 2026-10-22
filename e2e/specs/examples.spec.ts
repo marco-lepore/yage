@@ -1007,6 +1007,188 @@ test.describe("Examples", () => {
       expect(clicked.errors).toEqual([]);
     });
   });
+
+  test("behavior-tree: interrupts owned work and keeps shared definitions independent", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto("/behavior-tree.html?test");
+    await page.waitForFunction(
+      () =>
+        window.__yage__?.inspector.time.isFrozen() === true &&
+        window.__yage__.inspector.getSceneStack().length > 0,
+    );
+    const result = await page.evaluate(() => {
+      const inspector = window.__yage__!.inspector;
+      const first = inspector
+        .snapshot()
+        .scenes.flatMap((scene) => scene.entities)
+        .find((entity) => entity.key === "guard-a")!.id;
+      const second = inspector
+        .snapshot()
+        .scenes.flatMap((scene) => scene.entities)
+        .find((entity) => entity.key === "guard-b")!.id;
+      const state = (id: string) =>
+        inspector.getComponentData(id, "GuardState") as {
+          phase: string;
+          health: number;
+          attacks: number;
+          heavyAttacks: number;
+          calls: number;
+          interruptions: number;
+          lastInterruption: string;
+        };
+      const brain = (id: string) =>
+        inspector.getComponentData(id, "BehaviorTreeAgent") as {
+          enabled: boolean;
+          status: string;
+          execution: {
+            activePaths: string[];
+            nodes: Array<{
+              id: string;
+              kind: string;
+              durationSeconds: number | null;
+              remainingSeconds: number | null;
+              selectedChild: string | null;
+              remainingWeights: number[] | null;
+            }>;
+            transitions: Array<{
+              path: string;
+              reason: string;
+              by: string | null;
+            }>;
+          };
+        };
+      inspector.time.step(90);
+      const before = [state(first), state(second)];
+      const decisions = brain(first).execution.nodes;
+      inspector.time.step(25);
+      const interrupted = {
+        first: state(first),
+        second: state(second),
+        activePaths: brain(first).execution.activePaths,
+        trace: brain(first).execution.transitions,
+      };
+      inspector.time.step(65);
+      const both = [state(first), state(second)];
+      // Larger rendered frames still drive the guards through fixed simulation steps.
+      inspector.time.setDelta(100);
+      inspector.time.step(240);
+      inspector.time.setDelta(1000 / 60);
+      const completed = [state(first), state(second)];
+      const heavyCooldown = (id: string) =>
+        brain(id).execution.nodes.find((node) => node.id === "heavy-ready")!
+          .remainingSeconds ?? 0;
+      // Disable right after a heavy attack, so the cooldown has time left.
+      for (let frame = 0; frame < 1200 && heavyCooldown(first) === 0; frame++) {
+        inspector.time.step(1);
+      }
+      inspector.input.tap("Space");
+      const disabled = brain(first);
+      const cooldownAtDisable = heavyCooldown(first);
+      inspector.time.step(90);
+      const cooldownWhileDisabled = heavyCooldown(first);
+      inspector.input.tap("Space");
+      inspector.time.step(1);
+      const restarted = brain(first);
+      // Disabling mid-retreat ends the retreat action, which stops steering.
+      inspector.input.tap("Digit1");
+      inspector.time.step(20);
+      const retreatPhase = state(first).phase;
+      const retreatFrom = inspector.getEntityPosition(first);
+      inspector.time.step(1);
+      const retreatTo = inspector.getEntityPosition(first);
+      inspector.input.tap("Space");
+      const position = inspector.getEntityPosition(first);
+      inspector.time.step(90);
+      const stoppedPosition = inspector.getEntityPosition(first);
+      return {
+        before,
+        decisions,
+        interrupted,
+        both,
+        completed,
+        disabled,
+        cooldownAtDisable,
+        cooldownWhileDisabled,
+        restarted,
+        retreatPhase,
+        retreatFrom,
+        retreatTo,
+        position,
+        stoppedPosition,
+        callbackErrors: inspector.getErrors().callbackErrors,
+      };
+    });
+    expect(result.before.map((state) => state.phase)).toEqual([
+      "attack",
+      "approach",
+    ]);
+    const reaction = result.decisions.find((node) => node.id === "reaction")!;
+    expect(reaction.durationSeconds).toBeGreaterThanOrEqual(0.1);
+    expect(reaction.durationSeconds).toBeLessThan(0.3);
+    expect(result.decisions.find((node) => node.id === "tactic")).toMatchObject(
+      {
+        kind: "weightedSelector",
+        selectedChild: expect.any(String),
+        remainingWeights: expect.any(Array),
+      },
+    );
+    expect(result.interrupted.first).toMatchObject({
+      phase: "retreat",
+      attacks: 0,
+      interruptions: 1,
+      lastInterruption: "attack: branch-changed",
+    });
+    expect(result.interrupted.first.calls).toBeGreaterThan(0);
+    expect(result.interrupted.second).toMatchObject({
+      phase: "approach",
+      interruptions: 0,
+    });
+    // The parallel keeps the retreat and the calls for help running together.
+    expect(result.interrupted.activePaths).toContain(
+      "guard/low-health/safety/flee/retreat",
+    );
+    expect(result.interrupted.activePaths).toContainEqual(
+      expect.stringMatching(/^guard\/low-health\/safety\/flee\/calling\//),
+    );
+    expect(result.interrupted.trace).toContainEqual(
+      expect.objectContaining({
+        path: expect.stringMatching(
+          /^guard\/combat\/attack-cycle\/tactic\/.*attack$/,
+        ),
+        reason: "branch-changed",
+        by: "guard/low-health/safety/flee/retreat",
+      }),
+    );
+    expect(result.both[1]).toMatchObject({
+      phase: "retreat",
+      lastInterruption: "approach: branch-changed",
+    });
+    for (const state of result.completed) {
+      expect(state.health).toBe(100);
+      expect(state.attacks).toBeGreaterThan(0);
+      expect(state.calls).toBeGreaterThan(0);
+    }
+    expect(
+      result.completed.reduce((sum, state) => sum + state.heavyAttacks, 0),
+    ).toBeGreaterThan(0);
+    expect(result.disabled).toMatchObject({ enabled: false, status: "idle" });
+    // A disabled agent's clock stops, so its cooldown keeps its remaining time.
+    expect(result.cooldownAtDisable).toBeGreaterThan(0);
+    expect(result.cooldownWhileDisabled).toBe(result.cooldownAtDisable);
+    expect(result.restarted).toMatchObject({
+      enabled: true,
+      status: "running",
+    });
+    expect(result.retreatPhase).toBe("retreat");
+    expect(result.retreatTo).not.toEqual(result.retreatFrom);
+    expect(result.stoppedPosition).toEqual(result.position);
+    expect(result.callbackErrors).toEqual([]);
+    expect(errors).toEqual([]);
+  });
 });
 
 // The index page (examples/index.html): a sidebar of every example and a

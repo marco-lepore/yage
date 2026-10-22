@@ -183,6 +183,7 @@ export default defineConfig({
             { label: "Abilities", slug: "addons/abilities" },
             { label: "Hotbar", slug: "addons/hotbar" },
             { label: "Stats", slug: "addons/stats" },
+            { label: "Behavior Trees", slug: "addons/behavior-tree" },
             { label: "Steering", slug: "addons/steering" },
             { label: "Synth", slug: "addons/synth" },
             { label: "Feel", slug: "addons/feel" },
