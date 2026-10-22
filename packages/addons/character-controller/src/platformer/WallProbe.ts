@@ -1,6 +1,7 @@
-import { interactionGroup, tuningNumbers } from "../core/validate.js";
+import { tuningNumbers } from "../core/validate.js";
 import { Component } from "@yagejs/core";
 import {
+  ColliderComponent,
   PhysicsWorldKey,
   RigidBodyComponent,
   type PhysicsWorld,
@@ -22,27 +23,32 @@ export interface WallProbeTuning {
   readonly centreY: number;
   /** How far to each side it looks, px. */
   readonly distance: number;
-  /** Which colliders count as wall, as an interaction group. See `GroundProbe`. */
-  readonly filterGroups: number;
 }
 
+/**
+ * Reports a wall beside the body each fixed step. Casts as the character's
+ * own collider, so a one-way platform's side or a surface outside the
+ * character's collision mask is not a wall.
+ */
 export class WallProbe extends Component {
+  static override updatePriority = -40;
+
   private readonly tuning: WallProbeTuning;
   private world!: PhysicsWorld;
   private body!: RigidBodyComponent;
+  private collider!: ColliderComponent;
   private _side: -1 | 0 | 1 = 0;
 
   constructor(params: { tuning: WallProbeTuning }) {
     super();
-    const { filterGroups, ...numbers } = params.tuning;
-    tuningNumbers("WallProbe", numbers);
-    interactionGroup("WallProbe", "filterGroups", filterGroups);
+    tuningNumbers("WallProbe", params.tuning);
     this.tuning = Object.freeze({ ...params.tuning });
   }
 
   onAdd(): void {
     this.world = this.use(PhysicsWorldKey);
     this.body = this.entity.get(RigidBodyComponent);
+    this.collider = this.entity.get(ColliderComponent);
   }
 
   get side(): -1 | 0 | 1 {
@@ -71,7 +77,7 @@ export class WallProbe extends Component {
       { x, y },
       { x: towards, y: 0 },
       this.tuning.distance,
-      { filterGroups: this.tuning.filterGroups, excludeEntity: this.entity },
+      { solidFor: this.collider },
     );
     // A wall faces sideways. A body resting on the floor starts the cast close
     // enough to it that a shallow slope would answer, and anything shallower

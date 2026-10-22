@@ -1,4 +1,5 @@
 import { Component, defineEvent } from "@yagejs/core";
+import { ColliderComponent } from "@yagejs/physics";
 import type {
   DurableIntentHandle,
   MotionIntentHandle,
@@ -18,6 +19,10 @@ export const PlatformerDashedEvent = defineEvent<{ direction: -1 | 1 }>(
 export const PlatformerSlidEvent = defineEvent(
   "character-controller:platformer:slid",
 );
+/** The character started falling through the one-way platform it stood on. */
+export const PlatformerDroppedEvent = defineEvent(
+  "character-controller:platformer:dropped",
+);
 
 export interface PlatformerMoveOptions {
   readonly motion: MotionReconciler;
@@ -29,12 +34,17 @@ export interface PlatformerMoveOptions {
   readonly dash?: boolean;
   readonly wallJump?: boolean;
   readonly slide?: boolean;
+  /** A jump press with down held on a one-way platform drops through it. Default true. */
+  readonly dropThrough?: boolean;
 }
 
 /** Buffered standard moves. Every movement goes through the shared reconciler. */
 export class PlatformerMoves extends Component {
+  static override updatePriority = -10;
+
   private jumpBuffer = -1;
   private dashBuffer = -1;
+  private dropBuffer = -1;
   private heldJump = false;
   private holdLeft = 0;
   private cooldown = 0;
@@ -42,6 +52,7 @@ export class PlatformerMoves extends Component {
   private wallLeft = 0;
   private holds: DurableIntentHandle[] = [];
   private commands: MotionIntentHandle[] = [];
+  private collider!: ColliderComponent;
   private readonly priority: number;
   private readonly tuning: PlatformerMoveOptions["tuning"];
 
@@ -51,6 +62,10 @@ export class PlatformerMoves extends Component {
     tuningNumbers("PlatformerMoves", this.tuning);
     this.priority = options.priority ?? 10;
     finite("PlatformerMoves", "priority", this.priority, Number.MIN_VALUE);
+  }
+
+  onAdd(): void {
+    this.collider = this.entity.get(ColliderComponent);
   }
 
   get dashing(): boolean {
@@ -69,20 +84,39 @@ export class PlatformerMoves extends Component {
     );
   }
 
-  /** Queue a press for the next advancing step, including through a freeze. */
+  /**
+   * Queue a jump press for the next advancing step, including through a
+   * freeze. With down held on a one-way platform, the press drops through it.
+   */
   jump(): void {
     if (this.effectiveEnabled) this.jumpBuffer = this.tuning.pressBufferWindow;
   }
   dash(): void {
     if (this.effectiveEnabled) this.dashBuffer = this.tuning.pressBufferWindow;
   }
+  /** Queue a drop through the current one-way platform, for a dedicated drop binding. */
+  drop(): void {
+    if (this.effectiveEnabled) this.dropBuffer = this.tuning.pressBufferWindow;
+  }
   setJumpHeld(held: boolean): void {
     this.heldJump = held;
   }
 
+  /**
+   * Take a buffered jump press for a game-owned move, such as climbing from a
+   * ledge hold. Returns whether a press was waiting, and removes it so the
+   * standard moves do not also act on it. Presses from every input binding
+   * and from a scripted `jump()` wait in the same buffer.
+   */
+  consumeJumpPress(): boolean {
+    const pressed = this.jumpBuffer >= 0;
+    this.jumpBuffer = -1;
+    return pressed;
+  }
+
   /** Discard buffered presses and release jump input without stopping active moves. */
   resetInput(): void {
-    this.jumpBuffer = this.dashBuffer = -1;
+    this.jumpBuffer = this.dashBuffer = this.dropBuffer = -1;
     this.heldJump = false;
   }
 
@@ -101,8 +135,7 @@ export class PlatformerMoves extends Component {
   }
 
   fixedUpdate(dt: number): void {
-    finite("PlatformerMoves.fixedUpdate", "dt", dt, 0);
-    if (!this.effectiveEnabled || dt === 0) return;
+    if (dt === 0) return;
     const { motion, admission, controller } = this.options;
     if (motion.solverOwned) {
       this.cancel();
@@ -113,6 +146,16 @@ export class PlatformerMoves extends Component {
     this.dashLeft = Math.max(0, this.dashLeft - dt);
     this.wallLeft = Math.max(0, this.wallLeft - dt);
     if (this.dashLeft === 0 && this.wallLeft === 0) this.endHolds();
+    const dropRequested =
+      this.dropBuffer >= 0 || (this.jumpBuffer >= 0 && controller.down);
+    if (
+      dropRequested &&
+      this.options.dropThrough !== false &&
+      admission.canDropThrough
+    ) {
+      this.startDrop();
+      if (!this.effectiveEnabled || this.entity.isDestroyed) return;
+    }
     let jumped = false;
     if (this.jumpBuffer >= 0) {
       const kind = admission.canGroundJump
@@ -212,6 +255,17 @@ export class PlatformerMoves extends Component {
     }
     this.jumpBuffer = Math.max(-1, this.jumpBuffer - dt);
     this.dashBuffer = Math.max(-1, this.dashBuffer - dt);
+    this.dropBuffer = Math.max(-1, this.dropBuffer - dt);
+  }
+
+  /** Spends the ground jump, ends active moves, and opens the collider's drop window. */
+  private startDrop(): void {
+    this.options.admission.spendDropThrough();
+    this.endHolds();
+    this.dashLeft = this.wallLeft = this.holdLeft = 0;
+    this.jumpBuffer = this.dropBuffer = -1;
+    this.collider.dropThrough(this.tuning.dropThroughTime);
+    this.entity.emit(PlatformerDroppedEvent);
   }
 
   private command(

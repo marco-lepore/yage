@@ -1,14 +1,10 @@
 import { finite, tuningNumbers } from "../core/validate.js";
-import { Component, ErrorBoundaryKey, defineEvent } from "@yagejs/core";
+import { Component, defineEvent } from "@yagejs/core";
 
 import type { GroundProbe } from "./GroundProbe.js";
 import { CHARACTER_CONTROLLER_PRIORITY } from "../core/MotionIntent.js";
-import type {
-  FallHoldView,
-  PlatformerDemand,
-  SpeedLimitView,
-} from "./controllerViews.js";
 import type { MotionReconciler } from "./MotionReconciler.js";
+import type { PlatformerInput } from "./input.js";
 import type { PlatformerTuning } from "./PlatformerTuning.js";
 import type { Stance } from "./Stance.js";
 import type { WallProbe } from "./WallProbe.js";
@@ -27,23 +23,28 @@ export const PlatformerLandedEvent = defineEvent(
 
 export type PlatformerMode = "grounded" | "airborne";
 
+/**
+ * Classifies ground contact, settles the stance, and submits running,
+ * gravity, and wall-slide intents at priority 0 each fixed step. Reads held
+ * direction and crouch from `PlatformerInput`.
+ */
 export class PlatformerController extends Component {
+  static override updatePriority = -20;
+
   private readonly motion: MotionReconciler;
   private readonly ground: GroundProbe;
   private readonly stance: Stance;
   private readonly wall: WallProbe;
+  private readonly input: PlatformerInput;
   private readonly tuning: PlatformerTuning;
-  private readonly demand: PlatformerDemand;
-  private readonly limit: SpeedLimitView;
-  private readonly fall: FallHoldView;
 
-  private speedScale = 1;
-  private holdingFall = false;
-  private fallHoldRate = 0;
-  private wallClingAllowed = true;
+  private _speedScale = 1;
+  /** Whether falling against a held-toward wall slides at `wallSlideSpeed`. */
+  wallClingEnabled = true;
 
   private _mode: PlatformerMode = "airborne";
   private _direction = 0;
+  private _down = false;
   private _facing: 1 | -1 = 1;
   private _blocked = false;
   private _crouchBegan = false;
@@ -54,9 +55,7 @@ export class PlatformerController extends Component {
     ground: GroundProbe;
     stance: Stance;
     wall: WallProbe;
-    demand: PlatformerDemand;
-    limit: SpeedLimitView;
-    fall: FallHoldView;
+    input: PlatformerInput;
     tuning: PlatformerTuning;
   }) {
     super();
@@ -64,11 +63,18 @@ export class PlatformerController extends Component {
     this.ground = params.ground;
     this.stance = params.stance;
     this.wall = params.wall;
-    this.demand = params.demand;
-    this.limit = params.limit;
-    this.fall = params.fall;
+    this.input = params.input;
     tuningNumbers("PlatformerController", params.tuning);
     this.tuning = Object.freeze({ ...params.tuning });
+  }
+
+  /** Multiplies run speed, for water, slowing effects, or carried weight. Default 1. */
+  get speedScale(): number {
+    return this._speedScale;
+  }
+  set speedScale(scale: number) {
+    finite("PlatformerController.speedScale", "speedScale", scale, 0);
+    this._speedScale = scale;
   }
 
   get grounded(): boolean {
@@ -80,8 +86,14 @@ export class PlatformerController extends Component {
     return this.grounded && this.ground.supportOneWay;
   }
 
+  /** The held direction read this step, -1 through 1. */
   get direction(): number {
     return this._direction;
+  }
+
+  /** Whether down was held this step. */
+  get down(): boolean {
+    return this._down;
   }
 
   /** The last direction actually asked for, held through a stop. */
@@ -97,10 +109,10 @@ export class PlatformerController extends Component {
     return this._wallSide;
   }
 
-  /** Airborne and falling against a wall the body is asking for. Shared with presentation. */
+  /** Airborne and falling against a wall the player holds toward. Read it for a wall-slide animation. */
   get clinging(): boolean {
     return (
-      this.wallClingAllowed &&
+      this.wallClingEnabled &&
       !this.grounded &&
       this._wallSide !== 0 &&
       this.motion.velocityY > 0
@@ -120,51 +132,20 @@ export class PlatformerController extends Component {
   private supportNormal = { x: 0, y: -1 };
 
   fixedUpdate(dt: number): void {
-    finite("PlatformerController.fixedUpdate", "dt", dt, 0);
     if (dt <= 0) return;
     // The direction and the crouch are read as held state, so they answer the
     // same whatever number of fixed steps a frame carries.
-    let down = false;
-    const read = () => {
-      const direction = this.demand.direction;
-      const scale = this.limit.speedScale;
-      const holding = this.fall.holdingFall;
-      const rate = holding ? this.fall.fallHoldRate : 0;
-      finite("PlatformerController", "direction", direction);
-      if (Math.abs(direction) > 1)
-        throw new Error(
-          `PlatformerController: direction must be in [-1, 1], got ${direction}`,
-        );
-      finite("PlatformerController", "speedScale", scale, 0);
-      finite("PlatformerController", "fallHoldRate", rate, 0);
-      down = this.demand.down;
-      this.wallClingAllowed = this.demand.wallClingAllowed !== false;
-      this._direction = direction;
-      this.speedScale = scale;
-      this.holdingFall = holding;
-      this.fallHoldRate = rate;
-    };
-    const boundary = this.context.tryResolve(ErrorBoundaryKey);
-    if (boundary)
-      boundary.wrapCallback(read, {
-        kind: "Platformer movement policy",
-        entity: this.entity.name,
-        scene: this.scene.name,
-      });
-    else read();
+    this._direction = this.input.direction;
+    this._down = this.input.down;
     if (this._direction !== 0) this._facing = this._direction > 0 ? 1 : -1;
 
-    // Standing on something while rising is not standing. A body that landed
-    // fast is still sinking out of the floor when the next jump takes off, so
-    // the probe keeps reporting ground for a step or two afterwards — long
-    // enough for the ground press below to cancel the jump outright, and for
-    // the landing to hand back a second jump that was already spent.
-    //
-    // The tolerance is what separates a jump from a body at rest. A resting
-    // body is never quite still: the solver pushes it back out of the floor
-    // every step, so its speed crosses zero constantly. Testing the sign alone
-    // makes a standing player flicker between the two modes.
-    // The last supported tangent distinguishes crest travel from takeoff.
+    // A body moving away from its support faster than groundedRiseTolerance
+    // is airborne even while the probe still reports ground, as it does for a
+    // step or two after a jump. Counting those steps as ground would cancel
+    // the jump with the ground press and restore a spent air jump. The
+    // tolerance keeps a resting body grounded: the solver pushes it out of
+    // the floor every step, so its vertical speed crosses zero constantly.
+    // The last supported normal tells travel over a crest from a takeoff.
     const normal = this.grounded ? this.supportNormal : this.ground.normal;
     const currentNormal = this.ground.normal;
     const supportVelocity = this.ground.actualSupportVelocity;
@@ -200,7 +181,8 @@ export class PlatformerController extends Component {
     // that stood up under a ceiling would be inside it.
     const wasCrouched = this.stance.crouched;
     const room = !wasCrouched || this.stance.canStand;
-    if (down && (mode === "grounded" || wasCrouched)) this.stance.crouch();
+    if (this._down && (mode === "grounded" || wasCrouched))
+      this.stance.crouch();
     else if (wasCrouched && room) this.stance.stand();
     this._blocked = this.stance.crouched && !room;
     this._crouchBegan = !wasCrouched && this.stance.crouched;
@@ -212,7 +194,7 @@ export class PlatformerController extends Component {
       this.motion.submitTerrain({
         grounded: this.grounded,
         direction: this._direction,
-        allowStep: !this.stance.crouched && !this.holdingFall,
+        allowStep: !this.stance.crouched,
       });
     if (mode === "grounded") this.submitGrounded();
     else this.submitAirborne();
@@ -228,7 +210,7 @@ export class PlatformerController extends Component {
     // A small downward press, so the solver keeps the body seated on the floor.
     this.motion.submit({
       source: SOURCE,
-      frame: this.grounded ? "surface" : "world",
+      frame: "surface",
       axis: "y",
       target: this.tuning.groundPressSpeed,
       acceleration: Infinity,
@@ -238,19 +220,14 @@ export class PlatformerController extends Component {
 
   private submitAirborne(): void {
     this.submitSteering(this.tuning.airAcceleration, this.tuning.airShed);
-    const holding = this.holdingFall && this.motion.velocityY >= 0;
     this.motion.submit({
       source: SOURCE,
-      frame: this.grounded ? "surface" : "world",
+      frame: "world",
       axis: "y",
-      target: holding
-        ? 0
-        : this.clinging
-          ? this.tuning.wallSlideSpeed
-          : this.tuning.terminalFallSpeed,
-      acceleration: holding
-        ? this.fallHoldRate
-        : this.tuning.gravity * this.gravityMultiplier(),
+      target: this.clinging
+        ? this.tuning.wallSlideSpeed
+        : this.tuning.terminalFallSpeed,
+      acceleration: this.tuning.gravity * this.gravityMultiplier(),
       priority: CHARACTER_CONTROLLER_PRIORITY,
     });
   }
@@ -263,7 +240,7 @@ export class PlatformerController extends Component {
     const fast = Math.abs(speed) > cap;
     this.motion.submit({
       source: SOURCE,
-      frame: this.grounded ? "surface" : "world",
+      frame: "surface",
       axis: "x",
       target: fast ? Math.sign(speed) * cap : target,
       acceleration: fast ? Infinity : this.tuning.crouchAcceleration,
@@ -276,7 +253,7 @@ export class PlatformerController extends Component {
       source: SOURCE,
       frame: this.grounded ? "surface" : "world",
       axis: "x",
-      target: this._direction * this.tuning.runSpeed * this.speedScale,
+      target: this._direction * this.tuning.runSpeed * this._speedScale,
       acceleration,
       shed,
       priority: CHARACTER_CONTROLLER_PRIORITY,

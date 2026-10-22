@@ -31,26 +31,6 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
-    },
-    "./platformer": {
-      "import": {
-        "types": "./dist/platformer.d.ts",
-        "default": "./dist/platformer.js"
-      },
-      "require": {
-        "types": "./dist/platformer.d.cts",
-        "default": "./dist/platformer.cjs"
-      }
-    },
-    "./input": {
-      "import": {
-        "types": "./dist/input.d.ts",
-        "default": "./dist/input.js"
-      },
-      "require": {
-        "types": "./dist/input.d.cts",
-        "default": "./dist/input.cjs"
-      }
     }
   },
   "files": [
@@ -71,14 +51,6 @@
     "@yagejs/core": ">=0.11.0 <0.12.0",
     "@yagejs/physics": ">=0.11.0 <0.12.0",
     "@yagejs/input": ">=0.11.0 <0.12.0"
-  },
-  "peerDependenciesMeta": {
-    "@yagejs/physics": {
-      "optional": true
-    },
-    "@yagejs/input": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",

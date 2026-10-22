@@ -19,7 +19,6 @@ import type { Engine } from "@yagejs/core";
 import { InputManagerKey, InputManager } from "@yagejs/input";
 import {
   ColliderComponent,
-  CollisionLayers,
   PhysicsPlugin,
   RigidBodyComponent,
 } from "@yagejs/physics";
@@ -77,12 +76,11 @@ import {
   PlatformerMoves,
   PlatformerJumpedEvent,
   PlatformerDashedEvent,
+  PlatformerDroppedEvent,
 } from "./PlatformerMoves.js";
 import { MotionReconciler } from "./MotionReconciler.js";
 import { LedgeProbe } from "./LedgeProbe.js";
 import { Stance } from "./Stance.js";
-import { installPlatformer } from "./installPlatformer.js";
-import { defaultPlatformerTuning } from "./defaults.js";
 import { Component, SceneTimeKey } from "@yagejs/core";
 import { GroundProbe } from "./GroundProbe.js";
 
@@ -436,50 +434,43 @@ it("accepts a custom headless resolver through the default assembly", async () =
   tick(30);
   expect(body.velocityX).toBeCloseTo(75, 0);
 });
-it("attributes a throwing movement policy and stops the update", async () => {
-  const state = { broken: false };
-  const { tick } = await setup({
-    limit: {
-      get speedScale() {
-        if (state.broken) throw new Error("speed policy failed");
-        return 1;
-      },
-    },
-  });
-  state.broken = true;
-  const log = vi.spyOn(console, "error").mockImplementation(() => {});
-  expect(() => tick()).toThrow("speed policy failed");
-  expect(
-    engine?.context.resolve(ErrorBoundaryKey).getCallbackErrors(),
-  ).toContainEqual(
-    expect.objectContaining({
-      kind: "Platformer movement policy",
-      error: "speed policy failed",
-    }),
-  );
-  log.mockRestore();
+it("scales run speed and rejects an invalid scale at the write", async () => {
+  const { input, body, controller, tick } = await setup();
+  controller.speedScale = 0.5;
+  input.setDirection(1);
+  tick(30);
+  expect(body.velocityX).toBeCloseTo(95, 0);
+  expect(() => {
+    controller.speedScale = NaN;
+  }).toThrow(/speedScale/);
+  expect(() => {
+    controller.speedScale = -1;
+  }).toThrow(/speedScale/);
+  expect(controller.speedScale).toBe(0.5);
 });
 
-it("brakes a fall with the current policy rate and attributes invalid rates", async () => {
-  const fall = { holdingFall: true, fallHoldRate: 600 };
-  const { floor, body, tick } = await setup({ fall });
+it("arrests a fall with a game intent that outranks gravity", async () => {
+  class Glide extends Component {
+    fixedUpdate(): void {
+      const motion = this.entity.get(MotionReconciler);
+      if (motion.velocityY < 0) return;
+      motion.submit({
+        source: "glide",
+        axis: "y",
+        target: 0,
+        acceleration: 600,
+        priority: 5,
+      });
+    }
+  }
+  const { entity, floor, body, tick } = await setup();
+  entity.add(new Glide());
   floor.destroy();
   body.setVelocity({ x: 0, y: 100 });
   tick();
   expect(body.velocityY).toBeCloseTo(90, 1);
-  fall.fallHoldRate = 1200;
   tick();
-  expect(body.velocityY).toBeCloseTo(70, 1);
-  fall.fallHoldRate = NaN;
-  const log = vi.spyOn(console, "error").mockImplementation(() => {});
-  expect(() => tick()).toThrow(/fallHoldRate/);
-  expect(
-    engine?.context.resolve(ErrorBoundaryKey).getCallbackErrors(),
-  ).toContainEqual(
-    expect.objectContaining({ kind: "Platformer movement policy" }),
-  );
-  expect(body.velocityY).toBeCloseTo(70, 1);
-  log.mockRestore();
+  expect(body.velocityY).toBeCloseTo(80, 1);
 });
 
 it("stops carrying riders when only the platform freezes and resumes together", async () => {
@@ -993,13 +984,10 @@ it("keeps the actor out of ledge clearance queries when excluding the support", 
   const probe = entity.add(
     new LedgeProbe({
       tuning: {
-        bodyWidth: 16,
         ledgeHandHeight: 32,
         ledgeGrabReach: 10,
         ledgeGrabTolerance: 12,
       },
-      grab: 0xffffffff,
-      volume: 0xffffffff,
     }),
   );
   const contact = probe.find(1);
@@ -1018,11 +1006,10 @@ it("keeps the actor out of ledge clearance queries when excluding the support", 
   expect(probe.clearStep(from, to, contact, 1 / 60)).toBe(false);
 });
 
-it("applies packed collision membership and filters to the character body", async () => {
-  const groups = (1 << 16) | 2;
+it("applies collision layers and mask to the created collider", async () => {
   const { scene, body, input, tick } = await setup({
-    collisionGroups: groups,
-    collision: { solid: groups, volume: groups, wall: groups },
+    layers: 1,
+    mask: 2 | 0x8000,
   });
   scene.spawn(Floor, {
     x: 80,
@@ -1138,30 +1125,34 @@ it.each([
   expect(crushed).not.toHaveBeenCalled();
 });
 
-it.each([false, true])(
-  "accepts high-bit packed groups with unsigned=%s",
-  async (unsigned) => {
-    const signed = CollisionLayers.interactionGroups(0x8000, 0xffff);
-    const groups = unsigned ? signed >>> 0 : signed;
-    const { controller, input, body, tick } = await setup({
-      collisionGroups: groups,
-      collision: { solid: groups, volume: groups, wall: groups },
-      crush: true,
-    });
-    expect(controller.grounded).toBe(true);
-    input.jump();
-    tick();
-    expect(body.velocityY).toBeLessThan(0);
-  },
-);
+it("stands on the high membership bit of a layer mask", async () => {
+  const { scene, floor, controller, input, body, tick } = await setup({
+    layers: 0x8000,
+    mask: 0x8000,
+    crush: true,
+  });
+  floor.destroy();
+  scene.spawn(Floor, { layers: 0x8000, mask: 0x8000 });
+  tick(5);
+  expect(controller.grounded).toBe(true);
+  input.jump();
+  tick();
+  expect(body.velocityY).toBeLessThan(0);
+});
 
 it.each(["airJumps", "airDashes"] as const)(
-  "rejects invalid %s before staged installation mutates the entity",
+  "rejects invalid %s on an existing body before adding components",
   async (key) => {
     const { scene } = await setup();
     const actor = scene.spawn("custom-actor");
     actor.add(new Transform());
-    actor.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
+    actor.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        gravityScale: 0,
+        fixedRotation: true,
+      }),
+    );
     actor.add(
       new ColliderComponent({
         shape: { type: "box", width: 16, height: 44 },
@@ -1171,21 +1162,12 @@ it.each(["airJumps", "airDashes"] as const)(
     const before = [...actor.getAll(Component)];
     for (const value of [0.5, -1, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
       expect(() =>
-        installPlatformer(actor, {
-          tuning: defaultPlatformerTuning(),
-          collision: { solid: -1, volume: -1, wall: -1 },
-          admission: { ...defaultPlatformerTuning(), [key]: value },
-        }),
+        createPlatformer(actor, { input: null, tuning: { [key]: value } }),
       ).toThrow(key);
       expect(actor.getAll(Component)).toEqual(before);
     }
-    const installed = installPlatformer(actor, {
-      tuning: defaultPlatformerTuning(),
-      collision: { solid: -1, volume: -1, wall: -1 },
-      admission: defaultPlatformerTuning(),
-    });
-    installed.startController({ demand: { direction: 0, down: false } });
-    installed.finish();
+    createPlatformer(actor, { input: null });
+    expect(actor.get(PlatformerController)).toBeDefined();
   },
 );
 
@@ -1206,5 +1188,231 @@ it("keeps a rider grounded on an entity-slowed rising platform", async () => {
   expect(controller.grounded).toBe(true);
   expect(Math.abs(body.positionY - platformBody.positionY + 10)).toBeLessThan(
     1,
+  );
+});
+
+describe("drop-through move", () => {
+  async function onOneWay(options: CreatePlatformerOptions = {}) {
+    const context = await setup(options);
+    context.floor.destroy();
+    const platform = context.scene.spawn(Floor, { oneWay: true });
+    context.scene.spawn(Floor, { y: 300 });
+    context.tick(5);
+    expect(context.controller.grounded).toBe(true);
+    const dropped = vi.fn();
+    const jumped = vi.fn();
+    context.entity.on(PlatformerDroppedEvent, dropped);
+    context.entity.on(PlatformerJumpedEvent, jumped);
+    return { ...context, platform, dropped, jumped };
+  }
+
+  it("drops through a one-way platform on down plus jump", async () => {
+    const { entity, input, body, controller, dropped, jumped, tick } =
+      await onOneWay();
+    input.setDown(true);
+    input.jump();
+    tick();
+    expect(dropped).toHaveBeenCalledTimes(1);
+    expect(jumped).not.toHaveBeenCalled();
+    expect(entity.get(MoveAdmission).jumpsTaken).toBe(0);
+    input.setDown(false);
+    tick(20);
+    expect(controller.grounded).toBe(false);
+    expect(body.positionY).toBeGreaterThan(110);
+  });
+
+  it("jumps instead on solid ground and when drops are disabled", async () => {
+    const solid = await setup();
+    const droppedOnSolid = vi.fn();
+    solid.entity.on(PlatformerDroppedEvent, droppedOnSolid);
+    solid.input.setDown(true);
+    solid.input.jump();
+    solid.tick();
+    expect(droppedOnSolid).not.toHaveBeenCalled();
+    expect(solid.body.velocityY).toBeLessThan(-400);
+    engine?.destroy();
+
+    const disabled = await onOneWay({ dropThrough: false });
+    disabled.input.setDown(true);
+    disabled.input.jump();
+    disabled.tick();
+    expect(disabled.dropped).not.toHaveBeenCalled();
+    expect(disabled.jumped).toHaveBeenCalledWith({ kind: "ground" });
+  });
+
+  it("drops on a dedicated press and on a buffered press that lands", async () => {
+    const { input, scene, body, dropped, jumped, tick } = await onOneWay();
+    input.drop();
+    tick();
+    expect(dropped).toHaveBeenCalledTimes(1);
+    tick(60);
+    // Falling toward a second one-way platform with down held: a jump
+    // pressed just before landing drops through it on contact.
+    scene.spawn(Floor, { y: 250, oneWay: true });
+    body.setPosition(0, 200);
+    body.setVelocity({ x: 0, y: 200 });
+    input.setDown(true);
+    tick(10);
+    input.jump();
+    tick(8);
+    expect(dropped).toHaveBeenCalledTimes(2);
+    expect(jumped).not.toHaveBeenCalled();
+  });
+});
+
+describe("assembly", () => {
+  it("uses an existing feet-origin body and takes its size from the collider", async () => {
+    const { scene, tick } = await setup();
+    const actor = scene.spawn("existing");
+    actor.add(new Transform({ position: new Vec2(100, 0) }));
+    const body = actor.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        gravityScale: 0,
+        fixedRotation: true,
+      }),
+    );
+    const collider = actor.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 20, height: 40 },
+        offset: { x: 0, y: -20 },
+        friction: 0,
+      }),
+    );
+    expect(() => createPlatformer(actor, { input: null, layers: 2 })).toThrow(
+      /layers/,
+    );
+    expect(() =>
+      createPlatformer(actor, { input: null, tuning: { bodyWidth: 16 } }),
+    ).toThrow(/bodyWidth/);
+    const character = createPlatformer(actor, { input: null });
+    expect(character.body).toBe(body);
+    expect(character.collider).toBe(collider);
+    tick(60);
+    expect(character.controller.grounded).toBe(true);
+    expect(Math.abs(body.positionY - 90)).toBeLessThan(1);
+  });
+
+  it("requires PlatformerMoves before PlatformerInput", async () => {
+    const { scene } = await setup();
+    const actor = scene.spawn("input-only");
+    expect(() => actor.add(new PlatformerInput(null))).toThrow(
+      /add PlatformerMoves to the entity before PlatformerInput/,
+    );
+  });
+
+  it("rejects an existing body that can rotate", async () => {
+    const { scene } = await setup();
+    const actor = scene.spawn("spinning");
+    actor.add(new Transform());
+    actor.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
+    actor.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 16, height: 44 },
+        offset: { x: 0, y: -22 },
+      }),
+    );
+    expect(() => createPlatformer(actor, { input: null })).toThrow(
+      /fixed rotation/,
+    );
+  });
+
+  it("names an existing character before checking its collider", async () => {
+    const { entity, input, tick } = await setup();
+    input.setDown(true);
+    tick(2);
+    expect(entity.get(Stance).crouched).toBe(true);
+    expect(() => createPlatformer(entity, { input: null })).toThrow(
+      /already a character/,
+    );
+  });
+
+  it("lets an active dash finish when input is disabled", async () => {
+    const { entity, input, tick } = await setup();
+    const moves = entity.get(PlatformerMoves);
+    const jumped = vi.fn();
+    entity.on(PlatformerJumpedEvent, jumped);
+    input.dash();
+    tick();
+    expect(moves.dashing).toBe(true);
+    input.setDirection(1);
+    input.jump();
+    input.enabled = false;
+    tick();
+    // The buffered jump is discarded rather than interrupting the dash.
+    expect(jumped).not.toHaveBeenCalled();
+    expect(moves.dashing).toBe(true);
+    expect(input.direction).toBe(0);
+  });
+
+  it("consumes a buffered jump press for a game-owned move", async () => {
+    const { entity, input, body, tick } = await setup();
+    const moves = entity.get(PlatformerMoves);
+    expect(moves.consumeJumpPress()).toBe(false);
+    input.jump();
+    expect(moves.consumeJumpPress()).toBe(true);
+    expect(moves.consumeJumpPress()).toBe(false);
+    tick();
+    expect(body.velocityY).toBeGreaterThan(-100);
+  });
+
+  it("rejects an existing body that is not a feet-origin box", async () => {
+    const { scene } = await setup();
+    const actor = scene.spawn("centred");
+    actor.add(new Transform());
+    actor.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        gravityScale: 0,
+        fixedRotation: true,
+      }),
+    );
+    actor.add(
+      new ColliderComponent({ shape: { type: "box", width: 16, height: 44 } }),
+    );
+    const before = [...actor.getAll(Component)];
+    expect(() => createPlatformer(actor, { input: null })).toThrow(/offset/);
+    expect(actor.getAll(Component)).toEqual(before);
+  });
+
+  it("does not stand on a floor outside its collision mask", async () => {
+    const { scene, floor, controller, body, tick } = await setup({
+      layers: 1,
+      mask: 2,
+    });
+    floor.destroy();
+    scene.spawn(Floor, { layers: 4, mask: 0xffff });
+    body.setPosition(0, 85);
+    tick(20);
+    expect(controller.grounded).toBe(false);
+    expect(body.positionY).toBeGreaterThan(120);
+  });
+
+  it.each(["before", "after"])(
+    "applies a game intent the same step when its component is added %s the character",
+    async (when) => {
+      class Push extends Component {
+        fixedUpdate(): void {
+          this.entity.get(MotionReconciler).submit({
+            source: "push",
+            axis: "x",
+            target: 123,
+            acceleration: Infinity,
+            priority: 5,
+          });
+        }
+      }
+      engine = await createTestEngine({}, [new PhysicsPlugin()]);
+      const scene = new TestScene();
+      await engine.scenes.push(scene);
+      scene.spawn(Floor, {});
+      const actor = scene.spawn("pushed");
+      actor.add(new Transform());
+      if (when === "before") actor.add(new Push());
+      const character = createPlatformer(actor, { input: null });
+      if (when === "after") actor.add(new Push());
+      advanceFrames(engine, 1);
+      expect(character.body.velocityX).toBeCloseTo(123, 5);
+    },
   );
 });

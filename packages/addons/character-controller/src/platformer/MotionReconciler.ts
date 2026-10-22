@@ -16,7 +16,15 @@ import {
 import type { TerrainAssist, TerrainRequest } from "./TerrainAssist.js";
 import { MotionQueue } from "../core/MotionQueue.js";
 
+/**
+ * Resolves every submitted motion intent once per fixed step and writes the
+ * body's velocity. Runs after the controller, its standard moves, and game
+ * components at the default update priority, so their intents count in the
+ * same step.
+ */
 export class MotionReconciler extends Component {
+  static override updatePriority = 100;
+
   private readonly queue = new MotionQueue();
   private body!: RigidBodyComponent;
   private refused: readonly RefusedIntent[] = [];
@@ -106,10 +114,8 @@ export class MotionReconciler extends Component {
     this.body.setGravityScale(this.tookGravity);
     if (at !== undefined) {
       this.body.setPosition(at.x, at.y);
-      // Cleared rather than carried through the jump. It survives no steps —
-      // this component resolves a fresh velocity lower down the same pass — but
-      // what it resolves against is this rather than the speed the body had
-      // somewhere else.
+      // The velocity this step resolves from is zero, not the speed the body
+      // had before the teleport.
       this.body.setVelocity({ x: 0, y: 0 });
     }
   }
@@ -168,7 +174,6 @@ export class MotionReconciler extends Component {
   }
 
   fixedUpdate(dt: number): void {
-    finite("MotionReconciler.fixedUpdate", "dt", dt, 0);
     const terrainRequest = this.terrainRequest;
     this.terrainRequest = undefined;
     if (this.yielded) {
@@ -199,7 +204,7 @@ export class MotionReconciler extends Component {
     else resolve();
     if (!result)
       throw new Error(
-        "MotionReconciler: resolver must return a MotionResolution synchronously",
+        "MotionReconciler: resolver must return a MotionResolution",
       );
     const resolved = result;
     finite("MotionReconciler", "resolved.x", resolved.x);
@@ -236,7 +241,7 @@ export class MotionReconciler extends Component {
         { source: "terrain", axis: owner.axis, outrankedBy: owner.source },
       ];
     const assisted =
-      this.terrain && terrainRequest && dt > 0 && !refusedTerrain
+      this.terrain && terrainRequest && !refusedTerrain
         ? this.terrain.correct(
             {
               ...terrainRequest,
@@ -262,17 +267,5 @@ export class MotionReconciler extends Component {
           }
         : { x: resolved.x, y: resolved.y },
     );
-  }
-
-  serialize(): {
-    velocityX: number;
-    velocityY: number;
-    refused: readonly RefusedIntent[];
-  } {
-    return {
-      velocityX: this.velocityX,
-      velocityY: this.velocityY,
-      refused: this.refused,
-    };
   }
 }

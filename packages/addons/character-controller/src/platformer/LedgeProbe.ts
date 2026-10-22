@@ -1,4 +1,4 @@
-import { interactionGroup, tuningNumbers } from "../core/validate.js";
+import { tuningNumbers } from "../core/validate.js";
 import { Component, type Entity, type Vec2Like } from "@yagejs/core";
 import {
   ColliderComponent,
@@ -9,9 +9,11 @@ import {
 import { MovingSurface } from "./MovingSurface.js";
 
 export interface LedgeTuning {
-  readonly bodyWidth: number;
+  /** Height of the hands above the feet while hanging, px. */
   readonly ledgeHandHeight: number;
+  /** How far past the body's side a ledge can be caught, px. */
   readonly ledgeGrabReach: number;
+  /** How far above or below the hands the ledge top may be, px. */
   readonly ledgeGrabTolerance: number;
 }
 
@@ -23,37 +25,48 @@ export interface LedgeContact {
   readonly localY: number;
 }
 
-/** Measures a flat top, its outside face, and the full standing body's clearance. */
+/** Feet positions for each stage of a climb: hanging, raised to the top, standing on it. */
+export interface LedgePoints {
+  readonly hang: Vec2Like;
+  readonly raised: Vec2Like;
+  readonly stand: Vec2Like;
+}
+
+/**
+ * Measures a flat ledge top, its outside face, and the standing body's
+ * clearance along a climb. Every query is made as the character's own
+ * collider, so a ledge is something the character would collide with. The
+ * standing collider must be a box.
+ */
 export class LedgeProbe extends Component {
+  private readonly tuning: LedgeTuning;
   private world!: PhysicsWorld;
   private body!: RigidBodyComponent;
   private collider!: ColliderComponent;
+  private halfWidth = 0;
 
-  constructor(
-    private readonly params: {
-      tuning: LedgeTuning;
-      grab: number;
-      volume: number;
-    },
-  ) {
+  constructor(params: { tuning: LedgeTuning }) {
     super();
     tuningNumbers("LedgeProbe", params.tuning);
-    interactionGroup("LedgeProbe", "grab", params.grab);
-    interactionGroup("LedgeProbe", "volume", params.volume);
-    this.params = { ...params, tuning: Object.freeze({ ...params.tuning }) };
+    this.tuning = Object.freeze({ ...params.tuning });
   }
 
   onAdd(): void {
     this.world = this.use(PhysicsWorldKey);
     this.body = this.entity.get(RigidBodyComponent);
     this.collider = this.entity.get(ColliderComponent);
+    const shape = this.collider.config.shape;
+    if (shape?.type !== "box")
+      throw new Error("LedgeProbe needs the standing collider to be a box.");
+    this.halfWidth = shape.width / 2;
   }
 
+  /** A reachable ledge on `side` with a clear climb, or `undefined`. */
   find(side: -1 | 1): LedgeContact | undefined {
-    const { tuning, grab } = this.params;
-    const reach = tuning.bodyWidth / 2 + tuning.ledgeGrabReach;
+    const tuning = this.tuning;
+    const reach = this.halfWidth + tuning.ledgeGrabReach;
     const handY = this.body.positionY - tuning.ledgeHandHeight;
-    const options = { filterGroups: grab, excludeEntity: this.entity };
+    const options = { solidFor: this.collider };
     const top = this.world.raycast(
       {
         x: this.body.positionX + side * reach,
@@ -97,7 +110,8 @@ export class LedgeProbe extends Component {
     return contact;
   }
 
-  points(contact: LedgeContact, dt = 0) {
+  /** The climb points for `contact`, predicted `dt` seconds ahead on a moving ledge. */
+  points(contact: LedgeContact, dt = 0): LedgePoints {
     const surface = contact.entity.tryGet(MovingSurface);
     const x =
       contact.body.positionX +
@@ -107,17 +121,18 @@ export class LedgeProbe extends Component {
       contact.body.positionY +
       contact.localY +
       (surface?.velocity.y ?? contact.body.velocityY) * dt;
-    const outside = x - contact.side * (this.params.tuning.bodyWidth / 2 + 1);
+    const outside = x - contact.side * (this.halfWidth + 1);
     return {
-      hang: { x: outside, y: y + this.params.tuning.ledgeHandHeight },
+      hang: { x: outside, y: y + this.tuning.ledgeHandHeight },
       raised: { x: outside, y: y - 0.75 },
       stand: {
-        x: x + contact.side * (this.params.tuning.bodyWidth / 2 + 2),
+        x: x + contact.side * (this.halfWidth + 2),
         y: y - 0.75,
       },
     };
   }
 
+  /** Whether one climb step from `from` to `to` stays clear while the ledge moves for `dt`. */
   clearStep(
     from: Vec2Like,
     to: Vec2Like,
@@ -137,21 +152,21 @@ export class LedgeProbe extends Component {
     );
   }
 
-  /** Feet positions in simulation space. Every directed step retains solid collision. */
-  clear(from: Vec2Like, to: Vec2Like, exclude = this.entity): boolean {
+  /**
+   * Whether the standing body fits at `to` and can sweep there from `from`.
+   * Feet positions in simulation space. `ignore` skips one entity, such as
+   * the ledge the body is following.
+   */
+  clear(from: Vec2Like, to: Vec2Like, ignore?: Entity): boolean {
     const shape = this.collider.config.shape;
     if (!shape) return false;
     const offset = this.collider.config.offset ?? { x: 0, y: 0 };
     const destination = { x: to.x + offset.x, y: to.y + offset.y };
     const options = {
-      filterGroups: this.params.volume,
-      excludeEntity: exclude,
+      solidFor: this.collider,
+      ...(ignore ? { excludeEntity: ignore } : {}),
     };
-    if (
-      this.world
-        .queryShape(shape, destination, options)
-        .some((entity) => entity !== this.entity)
-    )
+    if (this.world.queryShape(shape, destination, options).length > 0)
       return false;
     const dx = to.x - from.x,
       dy = to.y - from.y;
@@ -163,7 +178,7 @@ export class LedgeProbe extends Component {
         { x: from.x + offset.x, y: from.y + offset.y },
         { x: dx / length, y: dy / length },
         length,
-        { ...options, solidFor: this.collider, stopAtPenetration: false },
+        { ...options, stopAtPenetration: false },
       )
     );
   }

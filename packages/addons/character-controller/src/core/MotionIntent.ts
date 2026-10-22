@@ -63,18 +63,16 @@ export interface MotionResolution {
  *   to whoever claimed it.
  * - On each axis the highest priority takes it. Every other intent on that axis
  *   is refused, and named in the result rather than dropped.
- * - Two intents tied at the highest priority on an axis is a contract breach and
- *   throws, because which one takes the axis would then be ordering luck, and
- *   that is the failure this whole arrangement exists to prevent. A tie below
- *   the winner is not a breach: both are refused either way.
+ * - Two intents tied at the highest priority on an axis throw, because the
+ *   winner would then depend on submission order. A tie below the winner is
+ *   allowed: both are refused either way.
  * - An axis nothing claimed keeps the speed it already had.
  * - The winner moves the current speed toward its target by at most one rate
  *   times `dt`: its `shed` rate when the axis already moves the target's way
  *   and faster than it, its `acceleration` otherwise. Released, so that the
  *   target is zero, and held against the current speed are both the second
  *   case; only holding toward speed above the target is the first.
- *
- * Only override intents are supported.
+ * - Intents never add together: the winner alone sets the axis.
  */
 export function resolveMotion(
   intents: readonly MotionIntent[],

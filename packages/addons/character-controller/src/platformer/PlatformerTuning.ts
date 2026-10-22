@@ -13,7 +13,7 @@ export interface PlatformerTuning {
   readonly crouchAcceleration: number;
   /** The one speed a slide runs at, px/s. Faster speed brought into a crouch is cut to it. */
   readonly slideSpeed: number;
-
+  /** Speed a crouched body crawls at while a low ceiling keeps it from standing, px/s. */
   readonly slideExitSpeed: number;
   /** Base downward acceleration, px/s². The three multipliers below scale it. */
   readonly gravity: number;

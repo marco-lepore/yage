@@ -3,15 +3,10 @@ import {
   ErrorBoundaryKey,
   LoggerKey,
   RendererAdapterKey,
-  ServiceKey,
 } from "@yagejs/core";
-import type { InputManager } from "@yagejs/input";
+import { InputManagerKey, type InputManager } from "@yagejs/input";
 import { finite } from "../core/validate.js";
-import type { PlatformerDemand } from "./controllerViews.js";
-import type { PlatformerMoves } from "./PlatformerMoves.js";
-
-// @yagejs/input owns this key; the adapter has no runtime import of the optional peer.
-const INPUT_KEY = new ServiceKey<InputManager>("inputManager");
+import { PlatformerMoves } from "./PlatformerMoves.js";
 
 export interface PlatformerInputTarget {
   setDirection(direction: number): void;
@@ -19,6 +14,8 @@ export interface PlatformerInputTarget {
   setJumpHeld(held: boolean): void;
   jump(): void;
   dash(): void;
+  /** Drop through the current one-way platform. Down plus jump does the same. */
+  drop(): void;
 }
 
 export interface InputBinding {
@@ -156,14 +153,20 @@ export class PlatformerInputBinding implements InputBinding {
   }
 }
 
-/** Mutable input intent for device bindings, AI and scripted movement. */
+/**
+ * Mutable input intent for device bindings, AI and scripted movement. The
+ * controller reads the held direction and crouch each fixed step; presses go
+ * to the entity's `PlatformerMoves`, which must be added first.
+ */
 export class PlatformerInput
   extends Component
-  implements PlatformerDemand, PlatformerInputTarget
+  implements PlatformerInputTarget
 {
+  static override updatePriority = -30;
+
   private _direction = 0;
   private _down = false;
-  private moves: PlatformerMoves | undefined;
+  private moves!: PlatformerMoves;
   private binding: InputBinding | null;
   private resetSubscription: (() => void) | undefined;
 
@@ -173,12 +176,16 @@ export class PlatformerInput
       binding === undefined
         ? new PlatformerInputBinding(DEFAULT_PLATFORMER_ACTIONS, () => {
             const renderer = this.context.tryResolve(RendererAdapterKey);
-            return (
-              renderer?.visibleVirtualRect ??
-              (renderer
-                ? { x: 0, width: renderer.canvas.clientWidth }
-                : undefined)
-            );
+            if (!renderer) return undefined;
+            if (renderer.visibleVirtualRect) return renderer.visibleVirtualRect;
+            // Pointer positions are virtual pixels; map the canvas edges.
+            const width = renderer.canvas.clientWidth;
+            if (!renderer.canvasToVirtual) return { x: 0, width };
+            const left = renderer.canvasToVirtual(0, 0).x;
+            return {
+              x: left,
+              width: renderer.canvasToVirtual(width, 0).x - left,
+            };
           })
         : binding;
   }
@@ -188,9 +195,6 @@ export class PlatformerInput
   }
   get down(): boolean {
     return this._down;
-  }
-  connect(moves: PlatformerMoves): void {
-    this.moves = moves;
   }
   setDirection(direction: number): void {
     finite("PlatformerInput.setDirection", "direction", direction);
@@ -204,24 +208,40 @@ export class PlatformerInput
     this._down = down;
   }
   setJumpHeld(held: boolean): void {
-    this.moves?.setJumpHeld(held);
+    this.moves.setJumpHeld(held);
   }
   jump(): void {
-    this.moves?.jump();
+    this.moves.jump();
   }
   dash(): void {
-    this.moves?.dash();
+    this.moves.dash();
+  }
+  drop(): void {
+    this.moves.drop();
+  }
+
+  onAdd(): void {
+    const moves = this.entity.tryGet(PlatformerMoves);
+    if (!moves)
+      throw new Error(
+        "PlatformerInput: add PlatformerMoves to the entity before PlatformerInput",
+      );
+    this.moves = moves;
   }
 
   onEnable(): void {
     const binding = this.binding;
     if (!binding) return;
-    const input = this.context.resolve(INPUT_KEY);
+    const input = this.context.tryResolve(InputManagerKey);
+    if (!input)
+      throw new Error(
+        "PlatformerInput: install InputPlugin or construct it with a null binding",
+      );
     this.invoke("bind", () => binding.bind(input, this));
     this.resetSubscription = input.onReset(() => {
       this._direction = 0;
       this._down = false;
-      this.moves?.resetInput();
+      this.moves.resetInput();
     });
     this.invoke("actionNames", () => {
       const missing =
@@ -236,19 +256,19 @@ export class PlatformerInput
     });
   }
 
-  fixedUpdate(dt: number): void {
-    finite("input.fixedUpdate", "dt", dt, 0);
-    if (this.effectiveEnabled && this.binding)
-      this.invoke("poll", () => this.binding?.poll());
+  fixedUpdate(): void {
+    const binding = this.binding;
+    if (binding) this.invoke("poll", () => binding.poll());
   }
 
   onDisable(): void {
-    if (this.binding) this.invoke("dispose", () => this.binding?.dispose());
+    const binding = this.binding;
+    if (binding) this.invoke("dispose", () => binding.dispose());
     this.resetSubscription?.();
     this.resetSubscription = undefined;
     this._direction = 0;
     this._down = false;
-    this.moves?.cancel();
+    this.moves.resetInput();
   }
 
   private invoke(kind: string, callback: () => void): void {

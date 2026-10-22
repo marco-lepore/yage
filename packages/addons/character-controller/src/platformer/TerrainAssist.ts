@@ -1,4 +1,4 @@
-import { interactionGroup, tuningNumbers } from "../core/validate.js";
+import { tuningNumbers } from "../core/validate.js";
 import { Component, type Vec2Like } from "@yagejs/core";
 import {
   ColliderComponent,
@@ -15,14 +15,23 @@ export interface TerrainRequest {
 }
 
 export interface TerrainTuning {
+  /** How far below the feet a walkable surface still holds a grounded body, px. */
   readonly groundSnapDistance: number;
+  /** Tallest step climbed without a jump, px. 0 turns step assistance off. */
   readonly ledgeStepHeight: number;
+  /** Narrowest step top a body steps onto, px. */
   readonly ledgeMinWidth: number;
+  /** Downward speed held while standing, so the solver keeps the body seated, px/s. */
   readonly groundPressSpeed: number;
+  /** How fast the body may rise and still count as standing, px/s. */
   readonly groundedRiseTolerance: number;
 }
 
-/** Geometry only. MotionReconciler owns application and movement-claim arbitration. */
+/**
+ * Slope, step, and ground-snap geometry. Every cast is made as the
+ * character's own collider, so one-way platforms and collision groups apply.
+ * MotionReconciler owns application and movement-claim arbitration.
+ */
 export class TerrainAssist extends Component {
   private world!: PhysicsWorld;
   private body!: RigidBodyComponent;
@@ -32,14 +41,10 @@ export class TerrainAssist extends Component {
     private readonly params: {
       ground: GroundProbe;
       tuning: TerrainTuning;
-      solid: number;
-      volume: number;
     },
   ) {
     super();
     tuningNumbers("TerrainAssist", params.tuning);
-    interactionGroup("TerrainAssist", "solid", params.solid);
-    interactionGroup("TerrainAssist", "volume", params.volume);
     this.params = { ...params, tuning: Object.freeze({ ...params.tuning }) };
   }
 
@@ -79,7 +84,6 @@ export class TerrainAssist extends Component {
       origin,
       { x: Math.sign(dx) || 1, y: 0 },
       Math.abs(dx),
-      this.params.volume,
     );
     if (
       barrier &&
@@ -98,12 +102,7 @@ export class TerrainAssist extends Component {
       x: velocity.x - normal.x * tuning.groundPressSpeed,
       y: tangentY - normal.y * tuning.groundPressSpeed,
     };
-    const down = this.cast(
-      origin,
-      { x: 0, y: 1 },
-      tuning.groundSnapDistance,
-      this.params.solid,
-    );
+    const down = this.cast(origin, { x: 0, y: 1 }, tuning.groundSnapDistance);
     // Never pull a jump down: request.grounded has already classified departure,
     // and each winning move must explicitly permit ground following.
     if (
@@ -115,10 +114,7 @@ export class TerrainAssist extends Component {
       // catch an adjoining vertical face. Downward press would consume that gap.
       if (Math.abs(down.normal.x) < 0.001) {
         const correction = down.distance - 0.5;
-        if (
-          correction >= 0 ||
-          !this.cast(origin, { x: 0, y: -1 }, -correction, this.params.volume)
-        )
+        if (correction >= 0 || !this.cast(origin, { x: 0, y: -1 }, -correction))
           return {
             velocity: { x: velocity.x, y: 0 },
             ...(Math.abs(correction) > 0.01
@@ -142,10 +138,10 @@ export class TerrainAssist extends Component {
 
   /** Rapier's autostep sequence: obstruction, up clearance, forward clearance, down support. */
   private step(origin: Vec2Like, dx: number): Vec2Like | undefined {
-    const { tuning, volume } = this.params;
+    const { tuning } = this.params;
     if (tuning.ledgeStepHeight <= 0 || tuning.ledgeMinWidth <= 0) return;
     const direction = { x: Math.sign(dx), y: 0 };
-    const obstruction = this.cast(origin, direction, Math.abs(dx), volume);
+    const obstruction = this.cast(origin, direction, Math.abs(dx));
     // A touching ramp corner may report the slope normal even when CCD
     // blocks its adjoining face. The clearance sequence also handles that lip.
     if (
@@ -157,14 +153,14 @@ export class TerrainAssist extends Component {
     // A dynamic body may rest slightly inside support. This geometric margin
     // covers solver penetration, not an extra authored step height.
     const height = tuning.ledgeStepHeight + 0.5;
-    if (this.cast(origin, { x: 0, y: -1 }, height, volume)) return;
+    if (this.cast(origin, { x: 0, y: -1 }, height)) return;
     const raised = { x: origin.x, y: origin.y - height };
     const width = Math.max(tuning.ledgeMinWidth, Math.abs(dx));
-    if (this.cast(raised, direction, width, volume)) return;
+    if (this.cast(raised, direction, width)) return;
     const ahead = { x: raised.x + direction.x * width, y: raised.y };
-    // Volume excludes one-way platforms: an airborne player below one must
-    // pass through, never get hauled onto its top by assistance.
-    const landing = this.cast(ahead, { x: 0, y: 1 }, height, volume);
+    // One-way rules apply as for the body itself: a player below a one-way
+    // platform passes through it and is never lifted onto its top.
+    const landing = this.cast(ahead, { x: 0, y: 1 }, height);
     if (!landing || !this.walkable(landing.normal)) return;
     const lift = height - landing.distance;
     if (lift < -0.05 || lift > height) return;
@@ -176,7 +172,6 @@ export class TerrainAssist extends Component {
         { x: destination.x, y: raised.y },
         { x: 0, y: 1 },
         landing.distance - 0.05,
-        volume,
       )
     )
       return;
@@ -188,17 +183,10 @@ export class TerrainAssist extends Component {
     return this.params.ground.isWalkable(normal);
   }
 
-  private cast(
-    origin: Vec2Like,
-    direction: Vec2Like,
-    distance: number,
-    filterGroups: number,
-  ) {
+  private cast(origin: Vec2Like, direction: Vec2Like, distance: number) {
     const shape = this.collider.config.shape;
     if (!shape || distance <= 0) return null;
     return this.world.castShape(shape, origin, direction, distance, {
-      filterGroups,
-      excludeEntity: this.entity,
       solidFor: this.collider,
       stopAtPenetration: false,
     });

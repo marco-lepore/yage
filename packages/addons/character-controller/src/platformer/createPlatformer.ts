@@ -1,8 +1,7 @@
 import type { MotionResolver } from "../core/MotionIntent.js";
-import type { InputManager } from "@yagejs/input";
-import { interactionGroup } from "../core/validate.js";
-import { ServiceKey, Transform } from "@yagejs/core";
-import type { Entity } from "@yagejs/core";
+import { Transform } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+import type { Component, Entity } from "@yagejs/core";
 import {
   ColliderComponent,
   PhysicsWorldKey,
@@ -10,44 +9,91 @@ import {
 } from "@yagejs/physics";
 import { defaultPlatformerTuning } from "./defaults.js";
 import type { PlatformerConfig } from "./defaults.js";
-import { installPlatformer } from "./installPlatformer.js";
-import type { PlatformerSetup } from "./installPlatformer.js";
+import { CrushProbe } from "./CrushProbe.js";
+import { GroundProbe } from "./GroundProbe.js";
+import { MotionReconciler } from "./MotionReconciler.js";
+import { MoveAdmission } from "./MoveAdmission.js";
+import type { MoveAdmissionPolicies } from "./MoveAdmission.js";
+import { PlatformerController } from "./PlatformerController.js";
 import { PlatformerMoves } from "./PlatformerMoves.js";
+import { Stance } from "./Stance.js";
+import { TerrainAssist } from "./TerrainAssist.js";
+import { WallProbe } from "./WallProbe.js";
 import { PlatformerInput } from "./input.js";
 import type { InputBinding } from "./input.js";
-import type { FallHoldView, SpeedLimitView } from "./controllerViews.js";
-import type { MoveAdmissionPolicies } from "./MoveAdmission.js";
-
-// @yagejs/input owns this id; the input peer is optional for manual characters.
-const INPUT_KEY = new ServiceKey<InputManager>("inputManager");
 
 export interface CreatePlatformerOptions {
-  readonly admissionPolicies?: MoveAdmissionPolicies;
-  readonly resolveMotion?: MotionResolver;
   readonly tuning?: Partial<PlatformerConfig>;
   /** Omit for keyboard/gamepad and pointer zones; null gives manual control. */
   readonly input?: InputBinding | null;
-  /** Query groups. Include one-way platforms only in solid. Default all groups. */
-  readonly collision?: Partial<PlatformerSetup["collision"]>;
-  readonly collisionGroups?: number;
+  /** Collision layer membership of the created collider. */
+  readonly layers?: number;
+  /** Collision layers the created collider interacts with. */
+  readonly mask?: number;
+  readonly admissionPolicies?: MoveAdmissionPolicies;
+  /** Replace the headless arbitration model; defaults to `resolveMotion`. */
+  readonly resolveMotion?: MotionResolver;
+  /** Slope, step, and ground-snap assistance. Default true. */
   readonly terrain?: boolean;
+  /** Report `PlatformerCrushedEvent` when a moving box pushes the body into a wall. Default false. */
   readonly crush?: boolean;
   readonly dash?: boolean;
   readonly wallJump?: boolean;
   readonly slide?: boolean;
-  readonly limit?: SpeedLimitView;
-  readonly fall?: FallHoldView;
+  /** Down plus jump on a one-way platform drops through it. Default true. */
+  readonly dropThrough?: boolean;
+}
+
+/** The components `createPlatformer` added, for reading state and custom moves. */
+export interface PlatformerCharacter {
+  readonly body: RigidBodyComponent;
+  readonly collider: ColliderComponent;
+  readonly input: PlatformerInput;
+  readonly controller: PlatformerController;
+  readonly admission: MoveAdmission;
+  readonly moves: PlatformerMoves;
+  readonly motion: MotionReconciler;
+  readonly ground: GroundProbe;
+  readonly wall: WallProbe;
+  readonly stance: Stance;
 }
 
 /**
- * Add a complete feet-origin dynamic character to an entity with a Transform.
- * Use installPlatformer for an existing body or custom movement producers.
+ * Turn an entity with a Transform into a feet-origin dynamic platformer
+ * character. Creates the body and a box collider from `tuning.bodyWidth` and
+ * `tuning.bodyHeight`, or uses the entity's existing body and collider: a
+ * dynamic body with gravityScale 0 and fixed rotation, and one box whose
+ * bottom edge sits on the origin. Every input is validated before the entity
+ * changes.
  */
 export function createPlatformer(
   entity: Entity,
   options: CreatePlatformerOptions = {},
-) {
-  const tuning = defaultPlatformerTuning(options.tuning);
+): PlatformerCharacter {
+  if (entity.tryGet(MotionReconciler))
+    throw new Error("createPlatformer: the entity is already a character");
+  const existingBody = entity.tryGet(RigidBodyComponent);
+  const existingCollider = entity.tryGet(ColliderComponent);
+  let size: Partial<PlatformerConfig> = {};
+  if (existingBody || existingCollider) {
+    if (!existingBody || !existingCollider)
+      throw new Error(
+        "createPlatformer: an existing body needs both a RigidBodyComponent and a ColliderComponent",
+      );
+    for (const name of ["layers", "mask"] as const)
+      if (options[name] !== undefined)
+        throw new Error(
+          `createPlatformer: ${name} configures a created collider; set it on the existing ColliderComponent`,
+        );
+    for (const name of ["bodyWidth", "bodyHeight"] as const)
+      if (options.tuning?.[name] !== undefined)
+        throw new Error(
+          `createPlatformer: ${name} comes from the existing collider; remove it from tuning`,
+        );
+    size = existingBox(existingBody, existingCollider);
+  }
+  const tuning = defaultPlatformerTuning({ ...options.tuning, ...size });
+
   const transform = entity.get(Transform);
   if (
     transform.worldRotation !== 0 ||
@@ -57,98 +103,157 @@ export function createPlatformer(
     throw new Error(
       "createPlatformer: require an upright Transform with world scale 1; scale or flip a visual child instead",
     );
-  if (options.input !== null && !entity.scene.context.tryResolve(INPUT_KEY))
+  if (
+    options.input !== null &&
+    !entity.scene.context.tryResolve(InputManagerKey)
+  )
     throw new Error(
       "createPlatformer: install InputPlugin or pass input: null",
     );
-  for (const [name, group] of Object.entries({
-    ...options.collision,
-    collisionGroups: options.collisionGroups,
-  })) {
-    if (group === undefined) continue;
-    interactionGroup("createPlatformer", name, group);
-  }
-  if (!entity.scene._resolveScoped(PhysicsWorldKey))
+  if (!entity.scene.tryResolveScoped(PhysicsWorldKey))
     throw new Error(
       "createPlatformer: install PhysicsPlugin before spawning characters",
     );
-  if (entity.tryGet(RigidBodyComponent) || entity.tryGet(ColliderComponent))
-    throw new Error(
-      "createPlatformer: entity already has a physics body; use installPlatformer for custom assembly",
-    );
-  const body = entity.add(
-    new RigidBodyComponent({
-      type: "dynamic",
-      gravityScale: 0,
-      fixedRotation: true,
-      ccd: true,
-    }),
-  );
-  const collider = entity.add(
-    new ColliderComponent({
-      shape: {
-        type: "box",
-        width: tuning.bodyWidth,
-        height: tuning.bodyHeight,
-      },
-      offset: { x: 0, y: -tuning.bodyHeight / 2 },
-      friction: 0,
-      restitution: 0,
-      ...(options.collisionGroups !== undefined
-        ? {
-            layers: options.collisionGroups >>> 16,
-            mask: options.collisionGroups & 0xffff,
-          }
-        : {}),
-    }),
-  );
-  const installation = installPlatformer(entity, {
-    tuning,
-    collision: {
-      solid: 0xffffffff,
-      volume: 0xffffffff,
-      wall: 0xffffffff,
-      ...options.collision,
+
+  // Every constructor validates its own numbers, so nothing is added to the
+  // entity until all of them have succeeded.
+  const ground = new GroundProbe({
+    tuning: {
+      width: tuning.bodyWidth - 2 * tuning.groundProbeInset,
+      distance: tuning.groundProbeDistance,
+      ...(options.terrain === false
+        ? {}
+        : {
+            snapDistance: tuning.groundSnapDistance,
+            maxSlopeAngle: tuning.maxSlopeAngle,
+          }),
     },
-    admission: tuning,
+  });
+  const stance = new Stance({
+    tuning: { crouchedHeight: tuning.crouchHeight },
+  });
+  const wall = new WallProbe({
+    tuning: {
+      halfWidth: tuning.bodyWidth / 2,
+      height: tuning.wallProbeHeight,
+      centreY: tuning.wallProbeCentreY,
+      distance: tuning.wallProbeDistance,
+    },
+  });
+  const terrain =
+    options.terrain === false
+      ? undefined
+      : new TerrainAssist({ ground, tuning });
+  const motion = new MotionReconciler(terrain, options.resolveMotion);
+  const input = new PlatformerInput(options.input);
+  const controller = new PlatformerController({
+    motion,
+    ground,
+    stance,
+    wall,
+    input,
+    tuning,
+  });
+  const admission = new MoveAdmission({
+    controller,
+    stance,
+    motion,
+    tuning,
     ...(options.admissionPolicies
-      ? { admissionPolicies: options.admissionPolicies }
+      ? { policies: options.admissionPolicies }
       : {}),
-    ...(options.resolveMotion ? { resolveMotion: options.resolveMotion } : {}),
-    ...(options.terrain !== undefined ? { terrain: options.terrain } : {}),
-    ...(options.crush !== undefined ? { crush: options.crush } : {}),
   });
-  const input = entity.add(new PlatformerInput(options.input));
-  const controller = installation.startController({
-    demand: input,
-    ...(options.limit ? { limit: options.limit } : {}),
-    ...(options.fall ? { fall: options.fall } : {}),
+  const moves = new PlatformerMoves({
+    motion,
+    controller,
+    admission,
+    tuning,
+    ...(options.dash !== undefined ? { dash: options.dash } : {}),
+    ...(options.wallJump !== undefined ? { wallJump: options.wallJump } : {}),
+    ...(options.slide !== undefined ? { slide: options.slide } : {}),
+    ...(options.dropThrough !== undefined
+      ? { dropThrough: options.dropThrough }
+      : {}),
   });
-  const moves = entity.add(
-    new PlatformerMoves({
-      motion: installation.motion,
-      controller,
-      admission: installation.admission,
-      tuning,
-      ...(options.dash !== undefined ? { dash: options.dash } : {}),
-      ...(options.wallJump !== undefined ? { wallJump: options.wallJump } : {}),
-      ...(options.slide !== undefined ? { slide: options.slide } : {}),
-    }),
-  );
-  input.connect(moves);
-  installation.finish();
+
+  const body =
+    existingBody ??
+    entity.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        gravityScale: 0,
+        fixedRotation: true,
+        ccd: true,
+      }),
+    );
+  const collider =
+    existingCollider ??
+    entity.add(
+      new ColliderComponent({
+        shape: {
+          type: "box",
+          width: tuning.bodyWidth,
+          height: tuning.bodyHeight,
+        },
+        offset: { x: 0, y: -tuning.bodyHeight / 2 },
+        friction: 0,
+        restitution: 0,
+        ...(options.layers !== undefined ? { layers: options.layers } : {}),
+        ...(options.mask !== undefined ? { mask: options.mask } : {}),
+      }),
+    );
+  // Each component's static updatePriority orders the fixed step. The add
+  // order matters only for PlatformerInput, which finds PlatformerMoves when
+  // it is added.
+  const components: Component[] = [
+    ground,
+    stance,
+    wall,
+    ...(terrain ? [terrain] : []),
+    controller,
+    admission,
+    moves,
+    input,
+    motion,
+    ...(options.crush ? [new CrushProbe()] : []),
+  ];
+  for (const component of components) entity.add(component);
   return {
     body,
     collider,
     input,
     controller,
+    admission,
     moves,
-    motion: installation.motion,
-    ground: installation.ground,
-    wall: installation.wall,
-    stance: installation.stance,
-    admission: installation.admission,
+    motion,
+    ground,
+    wall,
+    stance,
   };
 }
 
-export type PlatformerCharacter = ReturnType<typeof createPlatformer>;
+/** The size of a valid existing character collider, or an error naming the mismatch. */
+function existingBox(
+  body: RigidBodyComponent,
+  collider: ColliderComponent,
+): { bodyWidth: number; bodyHeight: number } {
+  if (
+    body.type !== "dynamic" ||
+    body.gravityScale !== 0 ||
+    !body.rotationsLocked
+  )
+    throw new Error(
+      "createPlatformer: an existing body must be dynamic with gravityScale 0 and fixed rotation",
+    );
+  const shape = collider.config.shape;
+  if (
+    shape?.type !== "box" ||
+    collider.colliderCount > 1 ||
+    (collider.config.offset?.x ?? 0) !== 0 ||
+    collider.config.offset?.y !== -shape.height / 2
+  )
+    throw new Error(
+      "createPlatformer: an existing collider must be one box with offset { x: 0, y: -height / 2 }",
+    );
+  return { bodyWidth: shape.width, bodyHeight: shape.height };
+}

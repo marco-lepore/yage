@@ -2,11 +2,12 @@
 
 Character movement for YAGE. The platformer controller provides running,
 coyote time, buffered jumps, short hops, air jumps, dashes, wall jumps,
-crouching, slides, slopes, small steps, and moving-platform support.
+crouching, slides, dropping through one-way platforms, slopes, small steps,
+and moving-platform support.
 
 ```ts
 import { Entity, Transform } from "@yagejs/core";
-import { createPlatformer } from "@yagejs-addons/character-controller/platformer";
+import { createPlatformer } from "@yagejs-addons/character-controller";
 
 class Player extends Entity {
   setup(): void {
@@ -17,28 +18,25 @@ class Player extends Entity {
 ```
 
 Install `PhysicsPlugin` and `InputPlugin({ actions: platformerControls() })`
-before spawning the player. Import `platformerControls` from
-`@yagejs-addons/character-controller/input`. Add your own sprite or animation
-on a visual child; the character's origin is at its feet.
+before spawning the player. The character's origin is at its feet. Draw it
+with a sprite or graphics on the same entity or on a child.
 
-Pass `input: null` to drive the returned `input` handle from AI or scripts.
-Use `installPlatformer` to assemble the individual components around your own
-physics body and movement producers.
+Pass `input: null` to drive the returned `input` component from AI or
+scripts. Add your own `RigidBodyComponent` and box `ColliderComponent` before
+`createPlatformer` to use your own body. Every component is also
+constructible on its own, and each declares its update order.
 
 Use `admissionPolicies.canStartMove` for stamina checks or move unlocks and
 `admissionPolicies.landingCharges` to choose how landing restores air moves.
 Read `admission.airCharges`, set selected counts with `setAirCharges`, or
-restore tuned counts with `refillAirCharges()` for pickups and scripted effects.
+restore tuned counts with `refillAirCharges()` for pickups and scripted
+effects. Submit your own motion requests to `MotionReconciler` for glides,
+knockback, or a ledge climb built on `LedgeProbe`.
 
-- Root: engine-independent motion requests, arbitration, and request lifetimes.
-- `/platformer`: dynamic physics controller, standard moves, probes, stance,
-  moving surfaces, crush events, and assembly helpers.
-- `/input`: keyboard, gamepad, mouse, and touch bindings and an action-map preset.
-
-The platformer needs `@yagejs/core` and `@yagejs/physics`. Device control also
-needs `@yagejs/input`. No entry imports a renderer. Controller types have their
-own subpaths; platformer assumptions stay inside `/platformer`.
+Install `@yagejs/core`, `@yagejs/physics`, and `@yagejs/input` beside the
+addon. A character created with `input: null` needs no `InputPlugin`. The
+addon imports no renderer.
 
 See the [usage guide](https://yage.dev/addons/character-controller/) or the
-[LLM reference](docs/llms/character-controller.md) for defaults, customization,
-component ordering, events, and terrain limitations.
+[LLM reference](docs/llms/character-controller.md) for defaults,
+customization, update order, events, and terrain limits.

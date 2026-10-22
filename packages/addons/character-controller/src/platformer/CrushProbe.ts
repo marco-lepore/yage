@@ -1,4 +1,4 @@
-import { finite, interactionGroup } from "../core/validate.js";
+import { finite } from "../core/validate.js";
 import {
   Component,
   defineEvent,
@@ -20,17 +20,19 @@ export const PlatformerCrushedEvent = defineEvent<{
 /** Numerical overlap below this depth is ordinary resting contact, not a crush. */
 const CONTACT_SLOP = 0.5;
 
-/** Tests mandatory platform pushes after stance and movement resolve. Never writes a body. */
+/**
+ * Tests mandatory platform pushes after stance and movement resolve. Never
+ * writes a body. Pushes and obstructions count only when the character would
+ * collide with them.
+ */
 export class CrushProbe extends Component {
+  static override updatePriority = 110;
+
   private world!: PhysicsWorld;
   private collider!: ColliderComponent;
   private body!: RigidBodyComponent;
   private pending: { surface: ColliderComponent; delta: Vec2Like }[] = [];
 
-  constructor(private readonly filterGroups: number) {
-    super();
-    interactionGroup("CrushProbe", "filterGroups", filterGroups);
-  }
   onAdd(): void {
     this.world = this.use(PhysicsWorldKey);
     this.collider = this.entity.get(ColliderComponent);
@@ -46,7 +48,6 @@ export class CrushProbe extends Component {
     this.pending = [];
   }
   fixedUpdate(dt: number): void {
-    finite("CrushProbe.fixedUpdate", "dt", dt, 0);
     const pending = this.pending;
     this.pending = [];
     const shape = this.collider.config.shape;
@@ -77,7 +78,6 @@ export class CrushProbe extends Component {
       };
       const tangentLength = Math.hypot(tangent.x, tangent.y);
       const options = {
-        filterGroups: this.filterGroups,
         solidFor: this.collider,
         excludeEntity: surface.entity,
         stopAtPenetration: false,

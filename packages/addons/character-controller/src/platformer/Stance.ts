@@ -1,4 +1,4 @@
-import { interactionGroup, tuningNumbers } from "../core/validate.js";
+import { tuningNumbers } from "../core/validate.js";
 import { Component } from "@yagejs/core";
 import {
   ColliderComponent,
@@ -13,10 +13,13 @@ const HEADROOM_INSET = 2;
 export interface StanceTuning {
   /** Collider height while crouched, px. */
   readonly crouchedHeight: number;
-  /** Which colliders block standing up, as an interaction group. */
-  readonly filterGroups: number;
 }
 
+/**
+ * Switches the collider between the standing box and a crouched box of the
+ * same width and feet. Headroom counts only what the character would collide
+ * with, so a one-way platform overhead does not keep it crouched.
+ */
 export class Stance extends Component {
   private readonly tuning: StanceTuning;
   private world!: PhysicsWorld;
@@ -29,9 +32,7 @@ export class Stance extends Component {
 
   constructor(params: { tuning: StanceTuning }) {
     super();
-    const { filterGroups, ...numbers } = params.tuning;
-    tuningNumbers("Stance", numbers);
-    interactionGroup("Stance", "filterGroups", filterGroups);
+    tuningNumbers("Stance", params.tuning);
     this.tuning = Object.freeze({ ...params.tuning });
   }
 
@@ -82,7 +83,7 @@ export class Stance extends Component {
     const hits = this.world.queryShape(
       this.headroom.shape,
       { x: this.body.positionX, y: this.body.positionY - this.headroom.above },
-      { filterGroups: this.tuning.filterGroups, excludeEntity: this.entity },
+      { solidFor: this.collider },
     );
     return hits.length === 0;
   }

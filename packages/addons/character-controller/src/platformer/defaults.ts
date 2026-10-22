@@ -1,26 +1,63 @@
 import type { MoveAdmissionTuning } from "./MoveAdmission.js";
-import type { PlatformerSetup } from "./installPlatformer.js";
+import type { PlatformerTuning } from "./PlatformerTuning.js";
+import type { TerrainTuning } from "./TerrainAssist.js";
 import { count, tuningNumbers } from "../core/validate.js";
 
 export interface PlatformerMoveTuning {
+  /** Upward speed a ground jump starts at, px/s. */
   readonly jumpSpeed: number;
+  /** How long after a ground jump releasing jump still cuts the rise, seconds. */
   readonly jumpHoldWindow: number;
+  /** Upward speed a released jump is cut to, px/s. */
   readonly jumpCutSpeed: number;
+  /** Upward speed an air jump starts at, px/s. */
   readonly doubleJumpSpeed: number;
+  /** How long a jump, dash, or drop press waits for the move to become available, seconds. */
   readonly pressBufferWindow: number;
+  /** Horizontal dash speed, px/s. */
   readonly dashSpeed: number;
+  /** How long a dash holds its speed, seconds. */
   readonly dashDuration: number;
+  /** How long after a dash starts the next one may start, seconds. */
   readonly dashCooldown: number;
+  /** Horizontal speed away from the wall at a wall jump, px/s. */
   readonly wallJumpSpeedX: number;
+  /** Upward speed of a wall jump, px/s. */
   readonly wallJumpSpeedY: number;
+  /** How long a wall jump holds its horizontal speed against steering, seconds. */
   readonly wallJumpLockout: number;
+  /** How long a drop lets the body pass through one-way platforms, seconds. */
+  readonly dropThroughTime: number;
 }
 
-export type PlatformerConfig = PlatformerSetup["tuning"] &
+/** Body size and the probes measured from it. */
+export interface PlatformerBodyTuning {
+  /** Width of a created collider, px. An existing collider sets it instead. */
+  readonly bodyWidth: number;
+  /** Height of a created collider, px. An existing collider sets it instead. */
+  readonly bodyHeight: number;
+  /** Collider height while crouched, px. */
+  readonly crouchHeight: number;
+  /** How far in from each side the ground probe starts, px. */
+  readonly groundProbeInset: number;
+  /** How far below the feet ground still counts as contact, px. */
+  readonly groundProbeDistance: number;
+  /** Height of the band that detects walls, px. */
+  readonly wallProbeHeight: number;
+  /** Height of that band's centre above the feet, px. */
+  readonly wallProbeCentreY: number;
+  /** How far beside the body a wall still counts as contact, px. */
+  readonly wallProbeDistance: number;
+  /** Steepest walkable slope, degrees. Must be below 90. */
+  readonly maxSlopeAngle: number;
+}
+
+/** Every number `createPlatformer` uses. Pixels, seconds, px/s, and px/s². */
+export type PlatformerConfig = PlatformerTuning &
+  TerrainTuning &
   MoveAdmissionTuning &
-  PlatformerMoveTuning & {
-    readonly bodyHeight: number;
-  };
+  PlatformerMoveTuning &
+  PlatformerBodyTuning;
 
 /** Pixels, seconds and pixels/second. Suitable for a 16px tile world. */
 export const DEFAULT_PLATFORMER_TUNING: Readonly<PlatformerConfig> =
@@ -49,6 +86,7 @@ export const DEFAULT_PLATFORMER_TUNING: Readonly<PlatformerConfig> =
     dashDuration: 0.27,
     dashCooldown: 0.6,
     airDashes: 1,
+    dropThroughTime: 0.25,
     crouchHeight: 30,
     crouchAcceleration: 575,
     slideExitSpeed: 190,

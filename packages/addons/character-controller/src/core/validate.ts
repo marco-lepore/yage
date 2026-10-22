@@ -17,18 +17,6 @@ export function tuningNumbers(context: string, tuning: object): void {
   }
 }
 
-/** Packed physics groups may be expressed as signed or unsigned 32-bit integers. */
-export function interactionGroup(
-  context: string,
-  name: string,
-  value: number,
-): void {
-  if (!Number.isInteger(value) || value < -0x80000000 || value > 0xffffffff)
-    throw new Error(
-      `${context}: ${name} must be a signed or unsigned 32-bit integer, got ${value}`,
-    );
-}
-
 export function count(context: string, name: string, value: number): void {
   if (!Number.isSafeInteger(value) || value < 0)
     throw new Error(

@@ -1,4 +1,4 @@
-import { count, finite, tuningNumbers } from "../core/validate.js";
+import { count, tuningNumbers } from "../core/validate.js";
 import { Component, ErrorBoundaryKey } from "@yagejs/core";
 
 import type { MotionReconciler } from "./MotionReconciler.js";
@@ -54,7 +54,15 @@ export interface MoveAdmissionTuning {
   readonly wallCoyoteTime: number;
 }
 
+/**
+ * Decides which moves may start: contact and coyote windows, air charges,
+ * wall-jump eligibility, and the game's `MoveAdmissionPolicies`. Producers
+ * check a `can*` getter and call the matching `spend*` method when the move
+ * starts.
+ */
 export class MoveAdmission extends Component {
+  static override updatePriority = -15;
+
   private readonly controller: PlatformerController;
   private readonly stance: Stance;
   private readonly motion: MotionReconciler;
@@ -237,7 +245,6 @@ export class MoveAdmission extends Component {
   }
 
   fixedUpdate(dt: number): void {
-    finite("MoveAdmission.fixedUpdate", "dt", dt, 0);
     if (dt <= 0) return;
     const grounded = this.controller.grounded;
     // Landing is what restores the charges, so it is read as the transition
@@ -268,14 +275,12 @@ export class MoveAdmission extends Component {
       this.uprightFor >= this.tuning.slideRestTime;
     if (!this.stance.crouched) this.uprightFor += dt;
 
-    // Reaching a wall is what buys a wall jump, so the latch clears on the step
-    // contact begins and not on the step it ends. Ending it is the first thing
-    // a wall jump does — the outward claim clears the probe's reach within one
-    // step — so clearing on that would hand back the jump it just spent, and
-    // the coyote window would be all that stood in the way of a second.
+    // Wall-jump eligibility returns on the step wall contact begins. A wall
+    // jump moves the body off the wall within one step, so restoring it when
+    // contact ends would allow a second wall jump in the wall coyote window.
     //
-    // The side is remembered rather than read at the press, so a jump taken
-    // inside the coyote window leaves the wall the body actually touched.
+    // The side is remembered, so a jump inside the coyote window pushes away
+    // from the wall the body last touched.
     const side = this.controller.wallSide;
     if (side !== 0) {
       if (!this.wasOnWall) this.wallJumpSpent = false;
@@ -312,14 +317,8 @@ export class MoveAdmission extends Component {
   }
 
   private validateCharges(context: string, charges: AirMoveCharges): void {
-    for (const key of ["jumps", "dashes"] as const) {
-      const value = charges?.[key];
-      finite(context, key, value, 0);
-      if (!Number.isSafeInteger(value))
-        throw new Error(
-          `${context}: ${key} must be a safe integer, got ${value}`,
-        );
-    }
+    count(context, "jumps", charges.jumps);
+    count(context, "dashes", charges.dashes);
   }
 
   private invoke<T>(name: string, read: () => T): T {

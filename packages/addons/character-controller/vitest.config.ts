@@ -8,12 +8,6 @@ export default defineConfig({
       legacy: true,
     },
   },
-  resolve: {
-    alias: {
-      "@yagejs/physics": new URL("../../physics/src/index.ts", import.meta.url)
-        .pathname,
-    },
-  },
   test: {
     coverage: {
       provider: "v8",

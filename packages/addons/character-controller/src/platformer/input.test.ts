@@ -1,4 +1,9 @@
 import { expect, it, vi } from "vitest";
+vi.mock("@dimforge/rapier2d", async () => {
+  const { default: rapier } = await import("@dimforge/rapier2d-compat");
+  await rapier.init();
+  return { default: rapier };
+});
 import { InputManager } from "@yagejs/input";
 import { PlatformerInputBinding, platformerControls } from "./input.js";
 function setup() {
@@ -10,6 +15,7 @@ function setup() {
     setJumpHeld: vi.fn(),
     jump: vi.fn(),
     dash: vi.fn(),
+    drop: vi.fn(),
   };
   const binding = new PlatformerInputBinding(undefined, () => ({
     x: 0,
@@ -57,6 +63,7 @@ it("skips UI-owned pointers and removes subscriptions on dispose", () => {
     setJumpHeld: vi.fn(),
     jump: vi.fn(),
     dash: vi.fn(),
+    drop: vi.fn(),
   };
   const binding = new PlatformerInputBinding(undefined, () => ({
     x: 0,

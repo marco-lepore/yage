@@ -1,4 +1,4 @@
-import { interactionGroup, tuningNumbers } from "../core/validate.js";
+import { tuningNumbers } from "../core/validate.js";
 import { Component, type Vec2Like } from "@yagejs/core";
 import {
   ColliderComponent,
@@ -21,11 +21,17 @@ export interface GroundProbeTuning {
   /** Extra support reach for bounded ground retention. Absent on unassisted bodies. */
   readonly snapDistance?: number;
   readonly maxSlopeAngle?: number;
-  /** Packed physics groups for ground queries. Sensors are excluded. */
-  readonly filterGroups: number;
 }
 
+/**
+ * Samples the support under the feet each fixed step. Casts as the
+ * character's own collider, so only surfaces it would collide with count:
+ * collision groups, sensors, and contact filters such as one-way platforms
+ * apply.
+ */
 export class GroundProbe extends Component {
+  static override updatePriority = -40;
+
   private readonly tuning: GroundProbeTuning;
   private world!: PhysicsWorld;
   private body!: RigidBodyComponent;
@@ -70,9 +76,7 @@ export class GroundProbe extends Component {
 
   constructor(params: { tuning: GroundProbeTuning }) {
     super();
-    const { filterGroups, ...numbers } = params.tuning;
-    tuningNumbers("GroundProbe", numbers);
-    interactionGroup("GroundProbe", "filterGroups", filterGroups);
+    tuningNumbers("GroundProbe", params.tuning);
     this.tuning = Object.freeze({ ...params.tuning });
     if (this.tuning.width <= 0 || (this.tuning.maxSlopeAngle ?? 45) >= 90)
       throw new Error(
@@ -104,6 +108,8 @@ export class GroundProbe extends Component {
     // Unassisted bodies retain the foot strip; both origins are simulation poses.
     const shape = this.assisted ? this.collider.config.shape : undefined;
     const offset = this.collider.config.offset;
+    const reach = Math.max(this.tuning.distance, this.tuning.snapDistance ?? 0);
+    const options = { solidFor: this.collider };
     let hit = this.world.castShape(
       shape ?? {
         type: "box",
@@ -120,12 +126,8 @@ export class GroundProbe extends Component {
             y: this.body.positionY - PROBE_THICKNESS / 2,
           },
       DOWN,
-      Math.max(this.tuning.distance, this.tuning.snapDistance ?? 0),
-      {
-        filterGroups: this.tuning.filterGroups,
-        excludeEntity: this.entity,
-        solidFor: this.collider,
-      },
+      reach,
+      options,
     );
     // A steep face can be closer to the full body than its floor contact.
     // Only contacts near the feet support the body. Full-body overlap with a
@@ -143,12 +145,8 @@ export class GroundProbe extends Component {
           y: this.body.positionY - PROBE_THICKNESS / 2,
         },
         DOWN,
-        Math.max(this.tuning.distance, this.tuning.snapDistance ?? 0),
-        {
-          filterGroups: this.tuning.filterGroups,
-          excludeEntity: this.entity,
-          solidFor: this.collider,
-        },
+        reach,
+        options,
       );
     const walkable = hit !== null && this.isWalkable(hit.normal);
     this._support =

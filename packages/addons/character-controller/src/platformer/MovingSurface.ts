@@ -55,7 +55,6 @@ export class MovingSurface extends Component {
   }
 
   fixedUpdate(dt: number): void {
-    finite("MovingSurface.fixedUpdate", "dt", dt, 0);
     if (dt <= 0) {
       this.nextVelocity.x = 0;
       this.nextVelocity.y = 0;
@@ -64,9 +63,7 @@ export class MovingSurface extends Component {
     const { from, to, speed } = this.path;
     const length = Math.hypot(to.x - from.x, to.y - from.y);
     if (length === 0) return;
-    const travel = this.travel + speed * dt;
-    finite("MovingSurface.fixedUpdate", "travel", travel, 0);
-    this.travel = travel % (2 * length);
+    this.travel = (this.travel + speed * dt) % (2 * length);
     const fraction = Math.min(this.travel, 2 * length - this.travel) / length;
     const x = from.x + (to.x - from.x) * fraction;
     const y = from.y + (to.y - from.y) * fraction;
@@ -75,8 +72,6 @@ export class MovingSurface extends Component {
     const physicsDt = this.use(GameLoopKey).fixedTimestep;
     const vx = (x - this.body.positionX) / physicsDt;
     const vy = (y - this.body.positionY) / physicsDt;
-    finite("MovingSurface.fixedUpdate", "velocity.x", vx);
-    finite("MovingSurface.fixedUpdate", "velocity.y", vy);
     this.nextVelocity.x = vx;
     this.nextVelocity.y = vy;
     // Broad phase only: the receiver checks its actual stance and escape path.
