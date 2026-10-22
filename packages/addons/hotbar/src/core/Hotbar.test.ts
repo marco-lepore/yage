@@ -342,7 +342,7 @@ describe("Hotbar", () => {
       slots: ["macro", "other"],
     });
     expect(() => model.activate(0)).toThrow(
-      "slot 0 was activated again while its activate() was running",
+      "slot 0 was activated again while its activation was running",
     );
     expect(boundary.getCallbackErrors()[0]?.kind).toBe(
       "Hotbar activate 'macro'",
@@ -350,6 +350,52 @@ describe("Hotbar", () => {
     target = 1;
     expect(model.activate(0)).toEqual({ ok: true });
     expect(other.activate).toHaveBeenCalledOnce();
+  });
+
+  it("throws when an earlier hold's release() activates the slot being replaced", () => {
+    const boundary = new ErrorBoundary(new Logger({ output: () => {} }));
+    const followUp = { ...action(), release: vi.fn() };
+    const model = new Hotbar({
+      errorBoundary: boundary,
+      bindings: {
+        charge: {
+          ...action(),
+          release: (): void => {
+            model.assign(0, "followUp");
+            model.activate(0);
+          },
+        },
+        followUp,
+      },
+      slots: ["charge"],
+    });
+    model.activate(0);
+    expect(() => model.activate(0)).toThrow(
+      "slot 0 was activated again while its activation was running",
+    );
+    expect(followUp.activate).not.toHaveBeenCalled();
+  });
+
+  it("lets a release() outside an activation activate the same slot", () => {
+    const followUp = { ...action(), release: vi.fn() };
+    const model = new Hotbar({
+      bindings: {
+        charge: {
+          ...action(),
+          release: (): void => {
+            model.assign(0, "followUp");
+            model.activate(0);
+          },
+        },
+        followUp,
+      },
+      slots: ["charge"],
+    });
+    model.activate(0);
+    model.release(0);
+    expect(followUp.activate).toHaveBeenCalledOnce();
+    model.release(0);
+    expect(followUp.release).toHaveBeenCalledOnce();
   });
 
   it("rejects an asynchronous activation result", () => {

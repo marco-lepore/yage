@@ -23,7 +23,7 @@ export class Hotbar<TId extends string = string> {
     number,
     { readonly id: TId; readonly release: () => void }
   >();
-  /** Slots whose binding's `activate()` is running. */
+  /** Slots being activated: the earlier hold's `release()` and the binding's `activate()`. */
   private readonly activating = new Set<number>();
   private readonly listeners = new Set<(event: HotbarEvent<TId>) => void>();
   private readonly standaloneBoundary: ErrorBoundary;
@@ -163,7 +163,7 @@ export class Hotbar<TId extends string = string> {
     this.slotIndex(slot, "activate");
     if (this.activating.has(slot))
       throw new Error(
-        `Hotbar.activate: slot ${slot} was activated again while its activate() was running`,
+        `Hotbar.activate: slot ${slot} was activated again while its activation was running`,
       );
     const state = this.read(slot);
     const id = state.bindingId;
@@ -172,14 +172,14 @@ export class Hotbar<TId extends string = string> {
       result = { ok: false, reason: state.reason ?? "unavailable" };
     } else {
       const binding = this.binding(id);
-      // A slot holds one action: the earlier hold ends before the new request.
-      const earlier = this.held.get(slot);
-      if (earlier) {
-        this.held.delete(slot);
-        this.call(`release '${earlier.id}'`, earlier.release);
-      }
       this.activating.add(slot);
       try {
+        // A slot holds one action: the earlier hold ends before the new request.
+        const earlier = this.held.get(slot);
+        if (earlier) {
+          this.held.delete(slot);
+          this.call(`release '${earlier.id}'`, earlier.release);
+        }
         result = this.call(`activate '${id}'`, () => {
           const value = binding.activate();
           if ("then" in value)

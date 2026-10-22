@@ -28,6 +28,8 @@ export class HotbarController<TId extends string = string> extends Component {
   private readonly target: Pick<HotbarPresenter, "slotAtPoint">;
   private mounted = false;
   private bindingActive = false;
+  /** True while `bind()` runs. A focus change made then applies once it returns. */
+  private bindingPending = false;
   private inputEnabled = true;
 
   constructor(options: HotbarControllerOptions<TId>) {
@@ -131,17 +133,20 @@ export class HotbarController<TId extends string = string> extends Component {
   private isInteractive(): boolean {
     return this.mounted && this.effectiveEnabled && !this.scene.isPaused;
   }
+  private wantsInput(): boolean {
+    return (
+      this.mounted &&
+      this.effectiveEnabled &&
+      this.inputEnabled &&
+      this.binding !== null
+    );
+  }
   private syncInput(): void {
-    if (
-      !this.mounted ||
-      !this.effectiveEnabled ||
-      !this.inputEnabled ||
-      !this.binding
-    ) {
+    if (!this.wantsInput()) {
       this.stopInput();
       return;
     }
-    if (this.bindingActive) return;
+    if (this.bindingActive || this.bindingPending) return;
     const input = this.use(InputManagerKey);
     const names = this.call(
       "input.actionNames",
@@ -157,10 +162,17 @@ export class HotbarController<TId extends string = string> extends Component {
           "hotbar",
           `No hotbar actions are mapped (${names.join(", ")}). Install HOTBAR_ACTION_MAP or supply custom controls.`,
         );
-    this.call("input.bind", () =>
-      this.binding?.bind(input, this.driver, this.target),
-    );
+    this.bindingPending = true;
+    try {
+      this.call("input.bind", () =>
+        this.binding?.bind(input, this.driver, this.target),
+      );
+    } finally {
+      // Only the in-progress flag is reset; no callbacks run here.
+      this.bindingPending = false;
+    }
     this.bindingActive = true;
+    if (!this.wantsInput()) this.stopInput();
   }
   private stopInput(): void {
     if (!this.bindingActive) return;

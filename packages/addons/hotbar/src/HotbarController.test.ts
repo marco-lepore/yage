@@ -457,4 +457,29 @@ describe("HotbarController", () => {
     controller.setInputEnabled(false);
     expect(release).toHaveBeenCalledTimes(2);
   });
+
+  it("applies a focus loss made during bind() once bind() returns", () => {
+    const binding: HotbarInputBinding = {
+      bind: vi.fn((_input, driver) => driver.select(1)),
+      poll: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const { scene, context } = createMockScene();
+    context.register(InputManagerKey, new InputManager());
+    const model = new Hotbar({
+      bindings: { a: { label: "A", activate: () => ({ ok: true }) } },
+      slots: ["a"],
+      slotCount: 2,
+    });
+    const controller = new HotbarController({ model, input: binding });
+    const host = scene.spawn("hotbar");
+    host.on(HotbarChangedEvent, () => controller.setInputEnabled(false));
+    host.add(controller);
+    controller.update();
+    expect(model.selection).toBe(1);
+    expect(binding.dispose).toHaveBeenCalledOnce();
+    expect(binding.poll).not.toHaveBeenCalled();
+    controller.setInputEnabled(true);
+    expect(binding.bind).toHaveBeenCalledTimes(2);
+  });
 });

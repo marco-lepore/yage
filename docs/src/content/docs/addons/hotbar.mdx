@@ -122,7 +122,7 @@ Counts and remaining time must be finite and nonnegative, and the ratio must be 
 
 `activate()` returns `{ ok: true }` or `{ ok: false, reason: "..." }`. The hotbar checks `read()` again before calling it. The owner still applies its own rules, because its state can change between the check and the request. Success means the owner accepted the request: a running ability can still complete or fail later. `activate()` must return its result synchronously.
 
-A binding's `activate()` can activate other slots, for example to fire several actions from one slot. Activating a slot again while that slot's `activate()` is still running throws an error that names the slot. The rule covers a slot that activates itself and a cycle such as slot 0 activating slot 1, which activates slot 0.
+A binding's `activate()` can activate other slots, for example to fire several actions from one slot. Activating a slot again while that slot's activation is still running throws an error that names the slot. The activation includes the `release()` of the slot's earlier held action, which runs first. The rule covers a slot that activates itself, a cycle such as slot 0 activating slot 1, which activates slot 0, and a `release()` that activates the slot being replaced. A `release()` that runs outside an activation, such as when the player lets go, can activate its own slot.
 
 ```ts
 import { Component, Entity } from "@yagejs/core";
