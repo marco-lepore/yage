@@ -36,5 +36,4 @@ Inspector-readable results. The package has no renderer or inventory dependency.
 
 - [Human guide](https://yage.dev/addons/loot/)
 - [API and behavior reference](docs/llms/loot.md)
-- [Runnable chest example](../../../examples/src/loot-addon/main.ts)
-- [Research and scope](RESEARCH.md)
+- [Runnable chest example](../../../examples/src/loot-addon/)

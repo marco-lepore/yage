@@ -5,6 +5,7 @@ import {
   ErrorBoundaryKey,
   InspectorKey,
   InspectorPlugin,
+  RandomKey,
   Scene,
 } from "@yagejs/core";
 import { LootTables } from "./core/LootTables.js";
@@ -21,36 +22,45 @@ const model = () =>
 
 describe("LootComponent", () => {
   it("uses scene randomness and emits after publishing the completed result", () => {
-    const { entity } = createMockEntity();
-    const loot = entity.add(new LootComponent(model()));
+    const { entity, scene } = createMockEntity();
+    const float = vi.spyOn(scene._resolveScoped(RandomKey)!, "float");
+    const loot = entity.add(new LootComponent({ model: model() }));
     const listener = vi.fn(() =>
       expect(loot.lastRoll?.rewards[0]?.item).toBe("coin"),
     );
     entity.on(LootRolledEvent, listener);
     const result = loot.roll("chest");
     expect(result).toBe(loot.lastRoll);
-    expect(listener).toHaveBeenCalledWith({ table: "chest", rewardCount: 1 });
+    expect(float).toHaveBeenCalledTimes(result.randomDraws);
+    expect(listener).toHaveBeenCalledWith({
+      table: "chest",
+      rewards: result.rewards,
+    });
   });
 
   it("rejects unattached, disabled, inactive, removed and destroyed hosts", () => {
-    expect(() => new LootComponent(model()).roll("chest")).toThrow(/attached/);
+    const refused =
+      "LootComponent.roll: component must be attached and enabled on a live scene entity";
+    expect(() => new LootComponent({ model: model() }).roll("chest")).toThrow(
+      refused,
+    );
     const { entity } = createMockEntity();
-    const loot = entity.add(new LootComponent(model()));
+    const loot = entity.add(new LootComponent({ model: model() }));
     loot.enabled = false;
-    expect(() => loot.roll("chest")).toThrow(/enabled/);
+    expect(() => loot.roll("chest")).toThrow(refused);
     loot.enabled = true;
     entity.setActive(false);
-    expect(() => loot.roll("chest")).toThrow(/enabled/);
+    expect(() => loot.roll("chest")).toThrow(refused);
     entity.setActive(true);
     expect(loot.roll("chest").rewards).toHaveLength(1);
     loot.destroy();
-    expect(() => loot.roll("chest")).toThrow(/enabled/);
-    const other = entity.add(new LootComponent(model()));
+    expect(() => loot.roll("chest")).toThrow(refused);
+    const other = entity.add(new LootComponent({ model: model() }));
     entity.destroy();
-    expect(() => other.roll("chest")).toThrow(/live/);
+    expect(() => other.roll("chest")).toThrow(refused);
   });
 
-  it("shares models without changing their boundary and attributes policy errors to the engine", () => {
+  it("shares one model and records policy errors on the engine boundary", () => {
     const { entity, scene, context } = createMockEntity();
     const tables = new LootTables<string, boolean>({
       chest: {
@@ -72,14 +82,13 @@ describe("LootComponent", () => {
         ],
       },
     });
-    const boundary = tables.errorBoundary;
-    const loot = entity.add(new LootComponent(tables));
-    const other = scene.spawn("other").add(new LootComponent(tables));
+    const loot = entity.add(new LootComponent({ model: tables }));
+    const other = scene
+      .spawn("other")
+      .add(new LootComponent({ model: tables }));
     const previous = loot.roll("chest", true);
     expect(() => loot.roll("chest", false)).toThrow("broken");
     expect(loot.lastRoll).toBe(previous);
-    expect(tables.errorBoundary).toBe(boundary);
-    expect(boundary.getCallbackErrors()).toEqual([]);
     expect(context.resolve(ErrorBoundaryKey).getCallbackErrors()).toMatchObject(
       [
         {
@@ -91,69 +100,69 @@ describe("LootComponent", () => {
       ],
     );
     expect(other.roll("chest", true).rewards).toHaveLength(1);
+    // A component found by class has unknown types and accepts any context.
+    expect(entity.get(LootComponent).roll("chest", true).rewards).toHaveLength(
+      1,
+    );
   });
 
-  it("accepts a custom model and explicit RNG without a registry", () => {
+  it("passes an explicit random source to a custom model", () => {
     const { entity } = createMockEntity();
     const random = { float: () => 0 };
     const result = { table: "custom", rewards: [], trace: [], randomDraws: 0 };
     const roll = vi.fn(() => result);
-    const loot = entity.add(
-      new LootComponent({ tableIds: ["custom"], roll }, random),
-    );
+    const loot = entity.add(new LootComponent({ model: { roll }, random }));
     expect(loot.roll("custom")).toBe(result);
-    expect(roll.mock.calls[0]).toBeDefined();
+    expect(roll).toHaveBeenCalledWith(
+      "custom",
+      expect.objectContaining({ random }),
+    );
   });
 
-  it("keeps Inspector explanations readable for opaque non-JSON rewards", async () => {
+  it("shows the last roll, items included, through the Inspector", async () => {
     class LootScene extends Scene {
       readonly name = "loot";
     }
     const engine = await createTestEngine(undefined, [new InspectorPlugin()]);
-    const scene = new LootScene();
-    await engine.scenes.push(scene);
-    const cyclic: { self?: unknown } = {};
-    cyclic.self = cyclic;
-    const toJSON = vi.fn(() => {
-      throw new Error("item must remain opaque");
-    });
     try {
-      for (const item of [cyclic, 42n, { toJSON }]) {
-        const entity = scene.spawn("chest");
-        const loot = entity.add(
-          new LootComponent(
-            new LootTables({
-              chest: {
-                pools: [
-                  {
-                    id: "reward",
-                    entries: [
-                      { id: "opaque", kind: "item", item, quantity: 2 },
-                    ],
-                  },
-                ],
-              },
-            }),
-          ),
-        );
-        expect(loot.diagnostics).toBeNull();
-        const result = loot.roll("chest");
-        expect(loot.lastRoll?.rewards[0]?.item).toBe(item);
-        const data = engine.context
-          .resolve(InspectorKey)
-          .getComponentData(entity.id, "LootComponent");
-        expect(data).toMatchObject({
-          diagnostics: {
-            table: "chest",
-            randomDraws: 1,
-            rewards: [{ quantity: 2, source: { entry: "opaque" } }],
-            trace: result.trace,
-          },
-        });
-        expect(data).not.toHaveProperty("lastRoll");
-        expect(data).not.toHaveProperty("diagnostics.rewards.0.item");
-      }
-      expect(toJSON).not.toHaveBeenCalled();
+      const scene = new LootScene();
+      await engine.scenes.push(scene);
+      const entity = scene.spawn("chest");
+      const loot = entity.add(
+        new LootComponent({
+          model: new LootTables({
+            chest: {
+              pools: [
+                {
+                  id: "reward",
+                  entries: [
+                    {
+                      id: "sword",
+                      kind: "item",
+                      item: { name: "sword", damage: 3 },
+                      quantity: 2,
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+        }),
+      );
+      const inspector = engine.context.resolve(InspectorKey);
+      expect(
+        inspector.getComponentData(entity.id, "LootComponent"),
+      ).toMatchObject({ lastRoll: null });
+      const result = loot.roll("chest");
+      const data = inspector.getComponentData(entity.id, "LootComponent");
+      expect(data).toEqual({
+        enabled: true,
+        effectiveEnabled: true,
+        lastRoll: JSON.parse(JSON.stringify(result)),
+      });
+      expect(data).toMatchObject({
+        lastRoll: { rewards: [{ item: { name: "sword" }, quantity: 2 }] },
+      });
     } finally {
       engine.destroy();
     }

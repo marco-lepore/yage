@@ -14,18 +14,14 @@ export default defineConfig({
     // Hand-written deterministic fixtures (e2e/fixtures), served on :5200.
     {
       name: "fixtures",
-      testIgnore: [
-        "**/examples.spec.ts",
-        "**/loot-addon.spec.ts",
-        "**/level-editor.spec.ts",
-      ],
+      testIgnore: ["**/examples.spec.ts", "**/level-editor.spec.ts"],
       use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5200" },
     },
     // The shipped examples (examples/*.html), served on :5199 and driven
     // through the deterministic `?test` harness by examples.spec.ts.
     {
       name: "examples",
-      testMatch: ["**/examples.spec.ts", "**/loot-addon.spec.ts"],
+      testMatch: "**/examples.spec.ts",
       use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5199" },
     },
     // The level editor over e2e/editor-project, served on :5201 by

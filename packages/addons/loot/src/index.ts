@@ -1,10 +1,10 @@
 export { LootTables } from "./core/LootTables.js";
 export { LootComponent, LootRolledEvent } from "./LootComponent.js";
+export type { LootComponentOptions } from "./LootComponent.js";
 export type {
   LootCandidate,
   LootCondition,
   LootCount,
-  LootDiagnostics,
   LootEntry,
   LootModel,
   LootPool,
@@ -14,6 +14,5 @@ export type {
   LootRollOptions,
   LootSource,
   LootTable,
-  LootTablesOptions,
   LootTrace,
 } from "./core/types.js";

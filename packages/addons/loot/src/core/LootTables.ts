@@ -1,5 +1,6 @@
 import { ErrorBoundary, Logger } from "@yagejs/core";
 import { definitions, fail, weight } from "./definitions.js";
+import type { CompiledTables } from "./definitions.js";
 import type {
   LootCandidate,
   LootCondition,
@@ -10,7 +11,6 @@ import type {
   LootRollOptions,
   LootSource,
   LootTable,
-  LootTablesOptions,
   LootTrace,
 } from "./types.js";
 
@@ -20,44 +20,17 @@ export class LootTables<
   C = void,
   K extends string = string,
 > implements LootModel<T, C, K> {
-  readonly tableIds: readonly K[];
-  readonly errorBoundary: ErrorBoundary;
-  readonly maxWork: number;
-  private readonly tables: ReadonlyMap<K, LootTable<T, C, K>>;
-  private readonly work: ReadonlyMap<K, number>;
+  private readonly tables: CompiledTables<T, C, K>;
+  /** For a roll that passes no boundary: logs failures in development builds. */
+  private readonly defaultBoundary = new ErrorBoundary(new Logger());
 
-  constructor(
-    catalog: Readonly<Record<K, LootTable<T, C, NoInfer<K>>>>,
-    options: LootTablesOptions = {},
-  ) {
-    this.maxWork = options.maxWork ?? 100000;
-    if (
-      !Number.isSafeInteger(this.maxWork) ||
-      this.maxWork < 1 ||
-      this.maxWork >= Number.MAX_SAFE_INTEGER
-    )
-      fail(
-        "constructor",
-        `maxWork must be a positive safe integer below ${Number.MAX_SAFE_INTEGER}, got ${this.maxWork}`,
-      );
-    const compiled = definitions(catalog, this.maxWork);
-    this.tables = compiled.tables;
-    this.work = compiled.work;
-    this.tableIds = Object.freeze([...this.tables.keys()]);
-    this.errorBoundary =
-      options.errorBoundary ?? new ErrorBoundary(new Logger());
+  constructor(catalog: Readonly<Record<K, LootTable<T, C, NoInfer<K>>>>) {
+    this.tables = definitions(catalog);
   }
 
   roll(table: K, options: LootRollOptions<C>): LootResult<T> {
     if (!this.tables.has(table)) fail("roll", `unknown table ${table}`);
-    if (this.work.get(table)! > this.maxWork)
-      fail(
-        "roll",
-        `${table} exceeds maxWork ${this.maxWork}; reduce rolls or nesting, or raise maxWork`,
-      );
-    if (!options?.random || typeof options.random.float !== "function")
-      fail("roll", "random.float must be a function");
-    const boundary = options.errorBoundary ?? this.errorBoundary;
+    const boundary = options.errorBoundary ?? this.defaultBoundary;
     const context = options.context as C;
     const rewards: LootReward<T>[] = [];
     const trace: LootTrace[] = [];
@@ -131,7 +104,7 @@ export class LootTables<
           );
           continue;
         }
-        const rolls = sample(pool.rolls ?? 1, `${path}.rolls`);
+        const rolls = sample(pool.rolls, `${path}.rolls`);
         if (rolls === 0) {
           trace.push(
             Object.freeze({
@@ -161,7 +134,7 @@ export class LootTables<
               ? invoke("weight", location, () =>
                   weight(evaluate(context), location),
                 )
-              : (evaluate ?? 1);
+              : evaluate;
           return {
             entry: entry.id,
             weight: value,
@@ -171,15 +144,13 @@ export class LootTables<
         });
         const used = new Set<string>();
         for (let roll = 0; roll < rolls; roll++) {
-          const available = candidates.map((candidate) =>
-            used.has(candidate.entry)
-              ? {
-                  ...candidate,
-                  status: "already-selected" as const,
-                  probability: 0,
-                }
-              : { ...candidate },
+          const available = candidates.map(
+            (candidate): LootCandidate =>
+              candidate.status === "eligible" && used.has(candidate.entry)
+                ? { ...candidate, status: "already-selected" }
+                : candidate,
           );
+          // Scale by the largest weight so a sum of finite weights cannot overflow.
           let max = 0;
           for (const candidate of available)
             if (candidate.status === "eligible")
@@ -188,11 +159,17 @@ export class LootTables<
           for (const candidate of available)
             if (candidate.status === "eligible")
               total += candidate.weight / max;
-          for (const candidate of available)
-            if (candidate.status === "eligible")
-              candidate.probability = candidate.weight / max / total;
           const explanation = Object.freeze(
-            available.map((candidate) => Object.freeze(candidate)),
+            available.map((candidate) =>
+              Object.freeze(
+                candidate.status === "eligible"
+                  ? {
+                      ...candidate,
+                      probability: candidate.weight / max / total,
+                    }
+                  : candidate,
+              ),
+            ),
           );
           if (total === 0) {
             trace.push(
@@ -205,11 +182,10 @@ export class LootTables<
             );
             break;
           }
-          // Scale by the largest weight so a sum of finite weights cannot overflow.
           let threshold = random(`${path}[${roll}]`) * total;
           let selected = -1;
-          for (let i = 0; i < available.length; i++) {
-            const candidate = available[i]!;
+          for (let i = 0; i < explanation.length; i++) {
+            const candidate = explanation[i]!;
             if (candidate.status !== "eligible" || candidate.probability === 0)
               continue;
             selected = i;
@@ -225,26 +201,25 @@ export class LootTables<
             roll,
             entry: entry.id,
           });
-          const quantity =
-            entry.kind === "item"
-              ? sample(entry.quantity ?? 1, `${path}/${entry.id}.quantity`)
-              : undefined;
-          trace.push(
-            Object.freeze({
-              ...base,
-              roll,
-              status: "selected",
-              candidates: explanation,
-              entry: entry.id,
-              kind: entry.kind,
-              ...(quantity !== undefined && { quantity }),
-            }),
+          const selection = {
+            ...base,
+            roll,
+            status: "selected",
+            candidates: explanation,
+            entry: entry.id,
+          } as const;
+          if (entry.kind !== "item") {
+            trace.push(Object.freeze({ ...selection, kind: entry.kind }));
+            if (entry.kind === "table") run(entry.table, source);
+            continue;
+          }
+          const quantity = sample(
+            entry.quantity,
+            `${path}/${entry.id}.quantity`,
           );
-          if (entry.kind === "table") run(entry.table, source);
-          else if (entry.kind === "item" && quantity! > 0)
-            rewards.push(
-              Object.freeze({ item: entry.item, quantity: quantity!, source }),
-            );
+          trace.push(Object.freeze({ ...selection, kind: "item", quantity }));
+          if (quantity > 0)
+            rewards.push(Object.freeze({ item: entry.item, quantity, source }));
         }
       }
     };

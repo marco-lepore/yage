@@ -1,4 +1,27 @@
-import type { LootCount, LootEntry, LootTable } from "./types.js";
+import type { LootCount, LootEntry, LootPool, LootTable } from "./types.js";
+
+/** @internal A validated entry with its weight and item quantity filled in. */
+export type CompiledEntry<T, C, K extends string> = (
+  | Exclude<LootEntry<T, C, K>, { readonly kind: "item" }>
+  | (Extract<LootEntry<T, C, K>, { readonly kind: "item" }> & {
+      readonly quantity: LootCount;
+    })
+) & { readonly weight: number | ((context: C) => number) };
+
+/** @internal A validated pool with its roll count filled in. */
+export interface CompiledPool<T, C, K extends string> extends Omit<
+  LootPool<T, C, K>,
+  "rolls" | "entries"
+> {
+  readonly rolls: LootCount;
+  readonly entries: readonly CompiledEntry<T, C, K>[];
+}
+
+/** @internal */
+export type CompiledTables<T, C, K extends string> = ReadonlyMap<
+  K,
+  { readonly pools: readonly CompiledPool<T, C, K>[] }
+>;
 
 /** @internal */
 export function fail(path: string, message: string): never {
@@ -43,14 +66,10 @@ function condition(value: unknown, path: string): void {
 /** @internal */
 export function definitions<T, C, K extends string>(
   input: Readonly<Record<K, LootTable<T, C, K>>>,
-  maxWork: number,
-): {
-  tables: ReadonlyMap<K, LootTable<T, C, K>>;
-  work: ReadonlyMap<K, number>;
-} {
+): CompiledTables<T, C, K> {
   if (!input || typeof input !== "object" || Array.isArray(input))
     fail("constructor", "catalog must be an object");
-  const tables = new Map<K, LootTable<T, C, K>>();
+  const tables = new Map<K, { pools: readonly CompiledPool<T, C, K>[] }>();
   const ids = new Set<string>();
   for (const key of Object.keys(input) as K[]) {
     id(key, ids, "constructor");
@@ -62,7 +81,7 @@ export function definitions<T, C, K extends string>(
       key,
       Object.freeze({
         pools: Object.freeze(
-          Array.from(table.pools, (pool) => {
+          Array.from(table.pools, (pool): CompiledPool<T, C, K> => {
             if (!pool) fail(key, "pool must be an object");
             id(pool.id, pools, key);
             const path = `${key}/${pool.id}`;
@@ -79,22 +98,25 @@ export function definitions<T, C, K extends string>(
                 `${path}.rolls`,
               ),
               entries: Object.freeze(
-                Array.from(pool.entries, (entry): LootEntry<T, C, K> => {
+                Array.from(pool.entries, (entry): CompiledEntry<T, C, K> => {
                   if (!entry) fail(path, "entry must be an object");
                   id(entry.id, entries, path);
                   const location = `${path}/${entry.id}`;
                   condition(entry.when, location);
-                  if (typeof entry.weight !== "function")
-                    weight(
-                      entry.weight === undefined ? 1 : entry.weight,
-                      location,
-                    );
+                  const entryWeight =
+                    typeof entry.weight === "function"
+                      ? entry.weight
+                      : weight(
+                          entry.weight === undefined ? 1 : entry.weight,
+                          location,
+                        );
                   switch (entry.kind) {
                     case "item":
                       if (!("item" in entry))
                         fail(location, "item must be present");
                       return Object.freeze({
                         ...entry,
+                        weight: entryWeight,
                         quantity: count(
                           entry.quantity === undefined ? 1 : entry.quantity,
                           `${location}.quantity`,
@@ -106,9 +128,9 @@ export function definitions<T, C, K extends string>(
                         !Object.hasOwn(input, entry.table)
                       )
                         fail(location, `unknown table ${entry.table}`);
-                      return Object.freeze({ ...entry });
+                      return Object.freeze({ ...entry, weight: entryWeight });
                     case "empty":
-                      return Object.freeze({ ...entry });
+                      return Object.freeze({ ...entry, weight: entryWeight });
                     default:
                       return fail(
                         location,
@@ -123,41 +145,20 @@ export function definitions<T, C, K extends string>(
       }),
     );
   }
-  // Bound both recursion depth and fan-out before any RNG or policy call.
-  const work = new Map<K, number>();
-  const depths = new Map<K, number>();
+  // A cycle would expand forever on the first roll that reaches it.
+  const checked = new Set<K>();
   const path: K[] = [];
-  const visit = (key: K): number => {
+  const visit = (key: K): void => {
     if (path.includes(key))
       fail("constructor", `cycle ${[...path, key].join(" -> ")}`);
-    if (path.length >= 64) fail(key, "nested tables exceed depth 64");
-    if (work.has(key)) return work.get(key)!;
+    if (checked.has(key)) return;
     path.push(key);
-    let cost = 1;
-    let depth = 1;
-    for (const pool of tables.get(key)!.pools) {
-      let nested = 0;
-      for (const entry of pool.entries) {
-        if (entry.kind !== "table") continue;
-        nested = Math.max(nested, visit(entry.table));
-        depth = Math.max(depth, 1 + depths.get(entry.table)!);
-      }
-      const rolls = pool.rolls === undefined ? 1 : pool.rolls;
-      const maxRolls = typeof rolls === "number" ? rolls : rolls.max;
-      cost = Math.min(
-        maxWork + 1,
-        cost +
-          pool.entries.length +
-          1 +
-          maxRolls * (pool.entries.length + 1 + nested),
-      );
-    }
-    if (depth > 64) fail(key, "nested tables exceed depth 64");
+    for (const pool of tables.get(key)!.pools)
+      for (const entry of pool.entries)
+        if (entry.kind === "table") visit(entry.table);
     path.pop();
-    work.set(key, cost);
-    depths.set(key, depth);
-    return cost;
+    checked.add(key);
   };
   for (const key of tables.keys()) visit(key);
-  return { tables, work };
+  return tables;
 }

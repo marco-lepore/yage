@@ -5,56 +5,56 @@ import {
   defineEvent,
 } from "@yagejs/core";
 import type {
-  LootDiagnostics,
   LootModel,
   LootRandom,
   LootResult,
+  LootReward,
   LootRollOptions,
 } from "./core/types.js";
 
-/** A roll completed. Rewards are available through the component or return value. */
+/**
+ * A roll completed on this entity. Item values are the game's own type; the
+ * event token is shared by every loot component, so they arrive as `unknown`.
+ */
 export const LootRolledEvent = defineEvent<{
   table: string;
-  rewardCount: number;
+  rewards: readonly LootReward<unknown>[];
 }>("loot:rolled");
 
-/** Optional entity host. No frame updates or durable state. */
+export interface LootComponentOptions<
+  T,
+  C = unknown,
+  K extends string = string,
+> {
+  readonly model: LootModel<T, C, K>;
+  /** Default: the scene's random generator (`RandomKey`). */
+  readonly random?: LootRandom;
+}
+
+/**
+ * Optional entity host. No frame updates or durable state. The type
+ * parameters come from the model; a component found with `entity.get` has
+ * unknown items and accepts any context.
+ */
 export class LootComponent<
   T = unknown,
-  C = void,
+  C = unknown,
   K extends string = string,
 > extends Component {
-  static inspectExclude = ["model", "random", "result", "lastRoll"];
+  static inspectExclude = ["model", "random", "result"];
+  readonly model: LootModel<T, C, K>;
+  private readonly random: LootRandom | undefined;
   private result: LootResult<T> | null = null;
 
-  constructor(
-    readonly model: LootModel<T, C, K>,
-    private readonly random?: LootRandom,
-  ) {
+  constructor(options: LootComponentOptions<T, C, K>) {
     super();
+    this.model = options.model;
+    this.random = options.random;
   }
 
-  get tableIds(): readonly K[] {
-    return this.model.tableIds;
-  }
   /** Last completed roll. A failing roll leaves this reading unchanged. */
   get lastRoll(): LootResult<T> | null {
     return this.result;
-  }
-
-  /** Derived explanation that Inspector can read regardless of the item type. */
-  get diagnostics(): LootDiagnostics | null {
-    if (!this.result) return null;
-    return Object.freeze({
-      table: this.result.table,
-      randomDraws: this.result.randomDraws,
-      trace: this.result.trace,
-      rewards: Object.freeze(
-        this.result.rewards.map(({ quantity, source }) =>
-          Object.freeze({ quantity, source }),
-        ),
-      ),
-    });
   }
 
   roll(
@@ -90,7 +90,7 @@ export class LootComponent<
     this.result = result;
     this.entity.emit(LootRolledEvent, {
       table: result.table,
-      rewardCount: result.rewards.length,
+      rewards: result.rewards,
     });
     return result;
   }

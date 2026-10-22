@@ -33,9 +33,10 @@ Every pool selects one entry per roll. An omitted weight is 1, so this pool
 chooses coins three times as often as a ruby. Quantities default to 1. A quantity
 range includes both endpoints. Every roll requires an explicit random source.
 
-Try the [chest example](/examples/loot-addon.html). Open a chest, bank the backpack
-contents, and change the player level. The canvas shows why the ruby was excluded
-and which rewards the two-slot backpack could not accept.
+Try the [chest example](https://examples.yage.dev/loot-addon.html). Open chests, bank the backpack
+contents, and change the adventurer's level. The canvas shows why each reward was
+selected or excluded, which rewards the two-slot backpack could not accept, and
+how a once-only crown becomes more likely with every chest that misses it.
 
 ## Compose guaranteed and optional rewards
 
@@ -66,15 +67,19 @@ const result = loot.roll("chest", { random: createRandomService(42) });
 console.log(result.rewards);
 ```
 
+Table ids are inferred from the catalog keys, so a misspelled table name is a
+compile error. When you name the item or context type explicitly, also name the
+table ids, as above. Otherwise any string is accepted as a table name.
+
 Pools run in definition order. A selected table expands immediately. Each nested
 table starts a new invocation; the trace links it to the parent selection.
 
 `unique: true` removes a selected **entry id** for that pool invocation. The same
 item can appear through different entries or other pools. Empty entries and
 nested-table entries also count as selections. Uniqueness resets for the next
-invocation and the next call; it does not mean “once per player.” When the pool
-runs out of eligible entries, its remaining draws stop with `no-eligible` in the
-trace.
+invocation and the next call. For a reward a player can find only once, see
+[Rules your game owns](#rules-your-game-owns). When the pool runs out of eligible
+entries, its remaining draws stop with `no-eligible` in the trace.
 
 `rolls` accepts a fixed count or an inclusive range, and defaults to 1. Zero rolls
 skip the pool. Zero item quantity consumes a draw but yields no reward. An empty
@@ -131,37 +136,46 @@ import { LootComponent, LootRolledEvent, LootTables } from "@yagejs-addons/loot"
 const tables = new LootTables({ chest: { pools: [{ id: "coins", entries: [
   { id: "coins", kind: "item", item: "coin", quantity: 5 },
 ] }] } });
-const loot = entity.add(new LootComponent(tables));
-entity.on(LootRolledEvent, ({ table, rewardCount }) => console.log(table, rewardCount));
+const loot = entity.add(new LootComponent({ model: tables }));
+entity.on(LootRolledEvent, ({ table, rewards }) => console.log(table, rewards));
 const result = loot.roll("chest");
 console.log(result.rewards);
 ```
 
 `LootComponent` supplies the scene's `RandomKey` and the engine's error boundary.
 Its `roll(table, context?)` method returns typed rewards. It also stores `lastRoll`
-and emits `LootRolledEvent` after completing the roll. The event's `rewardCount`
-is the number of reward stacks, not the sum of item quantities. `lastRoll` is
+and emits `LootRolledEvent` after completing the roll. The event carries the
+table id and the rewards, and bubbles from the entity to the scene. One event
+token serves every loot component, so listeners receive the items as `unknown`.
+Compare them with your item values or narrow them before use. `lastRoll` is
 initially null and remains the previous completed result if a later roll fails.
 
 The component must be attached and enabled on an active, live scene entity. Its
-`model` stays public, so headless calls are available separately. You can provide
-a custom implementation of `LootModel` or pass a dedicated random generator as
-the constructor's second argument. The standard stateless model can be shared
-by several components. There is no update loop or plugin to install.
+`model` is public, so you can also roll it headlessly. Pass
+`random` in the constructor options to use a dedicated generator, or pass any
+object that implements `LootModel` as the model. The standard stateless model
+can be shared by several components. There is no update loop or plugin to install.
+
+A component found with `entity.get(LootComponent)` does not know your item and
+context types: it accepts any context and returns `unknown` items. Keep the
+reference that `entity.add` returns when you want the typed version.
 
 ## Inspect and reproduce a roll
 
 `result.trace` records each pool and selection, its candidates, effective weights,
-probabilities and exclusion reasons. Reward `source` records identify the table,
-pool, table invocation, draw and entry. Nested traces include the parent source.
-Rewards remain separate even when they contain the same item.
+probabilities and exclusion reasons. Each trace record and candidate has a
+`status`. TypeScript narrows on it: a `selected` record has `entry` and `kind`,
+an `item` selection has `quantity`, and a `condition` record or candidate has
+`reason`. Reward `source` records identify the table, pool, table invocation,
+draw and entry. Nested traces include the parent source. Rewards remain separate
+even when they contain the same item.
 
 With `debug: true` and an installed `InspectorPlugin` or `DebugPlugin`, read
-`inspector.getComponentData(entityName, "LootComponent")`. Its `diagnostics` field
-contains the trace, random draw count, reward quantities and source ids. It leaves
-out item values, so cyclic objects or custom serialization cannot hide the
-explanation. Read `loot.lastRoll` directly when you need the original items. Both
-readings are initially null. Roll events appear in the Inspector event log.
+`inspector.getComponentData(entityName, "LootComponent")`. Its `lastRoll` field
+holds the last result, and roll events appear in the Inspector event log. Items
+that are plain data appear as written; a class instance appears as its type
+name. The Inspector leaves out `lastRoll` when an item value cannot be written
+as JSON, such as an object with a cycle or a `bigint`.
 
 Use the same seed, definitions, context and call order to reproduce a sequence.
 A scene generator shares its sequence with other game systems. For an independent
@@ -179,43 +193,98 @@ value. A custom source only needs `float(): number`, returning a finite value in
 Construction rejects malformed definitions, duplicate ids, unknown nested tables
 and cycles, even in unused or disabled entries. Counts and range endpoints must
 be nonnegative safe integers; the inclusive range size must also be safe.
-Nesting is limited to 64 tables.
 
-The optional constructor setting `maxWork` defaults to 100000. It bounds candidate
-visits and nested rolls using maximum roll counts and the most expensive nested
-branch. The bound is conservative: conditions and uniqueness do not reduce it.
-A roll that exceeds the bound throws before callbacks or randomness. Reduce the
-definition's work or explicitly raise the limit to a positive safe integer below
-`Number.MAX_SAFE_INTEGER`.
-
-A throwing callback or invalid callback result stops the roll. Conditions, weight
-callbacks and random calls are recorded through `ErrorBoundary.wrapCallback` with
-the definition path. Component calls also record the entity and scene names.
+A throwing callback or invalid callback result stops the roll. The failure is
+recorded with the definition path of the condition, weight or random call that
+failed. Component calls also record the entity and scene names.
 Headless callers can supply those names through `errorContext: { entity?, scene? }`
 in roll options. Read the component's engine errors through
-`inspector.getErrors().callbackErrors`. Headless models expose `errorBoundary` and
-accept a boundary in constructor options or per-roll options.
+`inspector.getErrors().callbackErrors`. A headless roll records failures on the
+`errorBoundary` passed in its options. Without one, the failure is logged in
+development builds only, then the roll throws.
 
 Already consumed random values are not rolled back after a failure. The result
 is published before the entity event; a throwing listener stops later listeners
 but leaves the completed result available.
 
-## Grant rewards and save progress
+## Rules your game owns
 
-When the item values are inventory ids, grant them through the existing inventory
-API. A partial add is a normal outcome:
+The addon keeps no state between rolls. Rules that depend on earlier rolls read
+game state through the context, and the game updates that state from the result.
+
+A reward a player can find only once uses a condition on a set of found items.
+A pity rule raises a weight with the number of misses:
 
 ```ts
-import { Inventory, defineItems } from "@yagejs-addons/inventory";
+import { createRandomService } from "@yagejs/core";
+import { LootTables } from "@yagejs-addons/loot";
+
+interface BossContext {
+  readonly misses: number;
+  readonly found: ReadonlySet<string>;
+}
+const loot = new LootTables<"crown" | "coin", BossContext, "boss">({
+  boss: { pools: [{ id: "relic", entries: [
+    { id: "crown", kind: "item", item: "crown",
+      when: ({ found }) => !found.has("crown") || "already-found",
+      weight: ({ misses }) => 1 + misses },
+    { id: "coins", kind: "item", item: "coin", quantity: 5, weight: 6 },
+  ] }] },
+});
+
+const random = createRandomService(7);
+const found = new Set<string>();
+let misses = 0;
+for (let fight = 0; fight < 3; fight++) {
+  const { rewards } = loot.roll("boss", { random, context: { misses, found } });
+  if (rewards.some((reward) => reward.item === "crown")) found.add("crown");
+  else misses++;
+}
+```
+
+In a game, keep `found` and `misses` in a component on the player's entity and
+include them in your save data. The chest example keeps both on its adventurer
+and updates them from `LootRolledEvent`.
+
+Rewards are not merged. When a HUD should show one line per item, sum the
+quantities yourself:
+
+```ts
 import type { LootReward } from "@yagejs-addons/loot";
 
-const bag = new Inventory({ catalog: defineItems({ coin: { name: "Coin", maxStack: 10 } }), capacity: 2 });
-function collect(reward: LootReward<"coin">) {
-  const result = bag.add(reward.item, reward.quantity);
-  // Keep this quantity available for another pickup attempt.
-  return { item: reward.item, quantity: result.rejected, reason: result.reason };
+export function totals<T>(rewards: readonly LootReward<T>[]): Map<T, number> {
+  const sums = new Map<T, number>();
+  for (const { item, quantity } of rewards)
+    sums.set(item, (sums.get(item) ?? 0) + quantity);
+  return sums;
 }
-console.log(collect);
+```
+
+## Grant rewards and save progress
+
+When the item values are inventory ids, grant them through the inventory API. A partial add is a normal outcome. Keep the refused quantity so the player
+can collect it later:
+
+```ts
+import { createRandomService } from "@yagejs/core";
+import { Inventory, defineItems } from "@yagejs-addons/inventory";
+import { LootTables } from "@yagejs-addons/loot";
+
+const items = defineItems({ coin: { name: "Coin", maxStack: 10 } });
+const bag = new Inventory({ catalog: items, capacity: 2 });
+const loot = new LootTables<"coin", void, "chest">({
+  chest: { pools: [{ id: "coins", entries: [
+    { id: "coins", kind: "item", item: "coin", quantity: { min: 20, max: 40 } },
+  ] }] },
+});
+
+const waiting = loot
+  .roll("chest", { random: createRandomService(42) })
+  .rewards.flatMap(({ item, quantity }) => {
+    const { rejected, reason } = bag.add(item, quantity);
+    return rejected > 0 ? [{ item, quantity: rejected, reason }] : [];
+  });
+console.log(waiting); // What did not fit, for a later pickup attempt.
 ```
 
 Use inventory's `transfer` to move accepted items to another inventory. Your game
@@ -223,8 +292,8 @@ can instead spawn pickups or grant a different reward type. Rolling alone does
 not claim a chest or guarantee inventory acceptance.
 
 The addon owns no durable progress, so it has no snapshot or restore methods.
-Store opened-chest flags, unclaimed rewards, pity counters or permanent unique
-rewards in your game's controlled save root. Save granted inventory through its
-own snapshot. For reproducible independent chests, save a per-chest seed and its
+Store opened-chest flags, unclaimed rewards, pity counters and found items in
+your game's controlled save root. Save granted inventory through its own
+snapshot. For reproducible independent chests, save a per-chest seed and its
 claimed state: a generator's seed alone does not capture its current position.
 Item values must be serializable if you store rolled rewards directly.

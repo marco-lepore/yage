@@ -43,15 +43,9 @@ export interface LootTable<T, C = void, K extends string = string> {
   readonly pools: readonly LootPool<T, C, K>[];
 }
 
-export interface LootTablesOptions {
-  /** Default 100000. Conservative bound on candidate visits and nested rolls. */
-  readonly maxWork?: number;
-  /** Used headlessly when a roll does not supply its host's boundary. */
-  readonly errorBoundary?: ErrorBoundary;
-}
-
 export type LootRollOptions<C = void> = {
   readonly random: LootRandom;
+  /** Records callback failures. Default: logs them in development builds only. */
   readonly errorBoundary?: ErrorBoundary;
   /** Host names attached to callback failures; supplied by LootComponent. */
   readonly errorContext?: Readonly<Pick<CallbackErrorInfo, "entity" | "scene">>;
@@ -74,52 +68,77 @@ export interface LootReward<T> {
   readonly source: LootSource;
 }
 
-export interface LootCandidate {
+interface LootCandidateBase {
   readonly entry: string;
+  /** Effective weight; zero for an entry its condition refused. */
   readonly weight: number;
   /** Conditional probability for this draw, after filtering. */
   readonly probability: number;
-  readonly status:
-    | "eligible"
-    | "condition"
-    | "zero-weight"
-    | "already-selected";
-  readonly reason?: string;
 }
 
-export interface LootTrace {
+/** One entry's standing in one draw. Only `eligible` entries can be selected. */
+export type LootCandidate =
+  | (LootCandidateBase & {
+      readonly status: "eligible" | "zero-weight" | "already-selected";
+    })
+  | (LootCandidateBase & {
+      readonly status: "condition";
+      /** `condition-failed`, or the string the condition returned. */
+      readonly reason: string;
+    });
+
+interface LootTraceBase {
   readonly table: string;
   readonly pool: string;
+  /** Table invocation within this roll, starting at zero. */
   readonly invocation: number;
-  /** Null for a skipped pool; otherwise a zero-based draw index. */
-  readonly roll: number | null;
-  readonly status: "selected" | "no-eligible" | "condition" | "zero-rolls";
+  /** Empty for a skipped pool. */
   readonly candidates: readonly LootCandidate[];
-  readonly entry?: string;
-  readonly kind?: "item" | "table" | "empty";
-  readonly quantity?: number;
-  readonly reason?: string;
   /** Parent table selection, for a nested invocation. */
   readonly parent?: LootSource;
 }
+
+/** One pool decision: a draw, or the reason the pool did not draw. */
+export type LootTrace =
+  | (LootTraceBase & {
+      readonly status: "selected";
+      /** Zero-based draw index. */
+      readonly roll: number;
+      readonly entry: string;
+      readonly kind: "item";
+      readonly quantity: number;
+    })
+  | (LootTraceBase & {
+      readonly status: "selected";
+      readonly roll: number;
+      readonly entry: string;
+      readonly kind: "table" | "empty";
+    })
+  | (LootTraceBase & {
+      /** Every candidate is excluded; the pool's remaining draws stop. */
+      readonly status: "no-eligible";
+      readonly roll: number;
+    })
+  | (LootTraceBase & {
+      /** The pool's condition refused it. */
+      readonly status: "condition";
+      readonly roll: null;
+      readonly reason: string;
+    })
+  | (LootTraceBase & {
+      readonly status: "zero-rolls";
+      readonly roll: null;
+    });
 
 export interface LootResult<T> {
   readonly table: string;
   readonly rewards: readonly LootReward<T>[];
   readonly trace: readonly LootTrace[];
-  readonly randomDraws: number;
-}
-
-/** Selection details without opaque item values, for Inspector and logging. */
-export interface LootDiagnostics {
-  readonly table: string;
-  readonly rewards: readonly Omit<LootReward<never>, "item">[];
-  readonly trace: readonly LootTrace[];
+  /** Values read from the random source during this roll. */
   readonly randomDraws: number;
 }
 
 /** Replaceable headless contract consumed by LootComponent. */
 export interface LootModel<T, C = void, K extends string = string> {
-  readonly tableIds: readonly K[];
   roll(table: K, options: LootRollOptions<C>): LootResult<T>;
 }

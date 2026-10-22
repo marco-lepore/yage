@@ -468,7 +468,7 @@ export const EXAMPLES: readonly Example[] = [
     slug: "loot-addon",
     title: "Loot Tables",
     summary:
-      "Seeded chest rewards, unique supplies, level conditions, and inventory overflow with a selection explanation.",
+      "Seeded chest rewards with a selection explanation: unique supplies, a level-gated ruby, a once-only crown with pity odds, and inventory overflow.",
     section: "gameplay",
     packages: ["input"],
     addons: ["loot", "inventory", "stats"],

@@ -338,60 +338,50 @@ describe("LootTables", () => {
     ]);
   });
 
-  it("rejects excessive work before consuming randomness or evaluating policies", () => {
-    const when = vi.fn(() => true);
-    const random = { float: vi.fn(() => 0) };
-    const model = new LootTables({
-      a: { pools: [{ id: "p", rolls: 1000000, when, entries: [item("a")] }] },
-    });
-    expect(() => model.roll("a", { random })).toThrow(/exceeds maxWork/);
-    expect(when).not.toHaveBeenCalled();
-    expect(random.float).not.toHaveBeenCalled();
-  });
-
-  it("rejects excessive nesting without a native stack overflow", () => {
+  it("expands a long chain of nested tables", () => {
     const tables: Record<string, LootTable<string>> = {};
-    for (let i = 0; i < 65; i++)
+    for (let i = 0; i < 200; i++)
       tables[String(i)] = {
         pools: [
           {
             id: "p",
             entries:
-              i === 64
-                ? []
+              i === 199
+                ? [item("end")]
                 : [{ id: "next", kind: "table", table: String(i + 1) }],
           },
         ],
       };
-    expect(() => new LootTables(tables)).toThrow(/exceed depth 64/);
+    const result = new LootTables(tables).roll("0", { random: fixed(0) });
+    expect(result.trace).toHaveLength(200);
+    expect(result.rewards[0]?.source.invocation).toBe(199);
   });
 
   it("attributes throwing/invalid policy and random callbacks and stops subsequent work", () => {
     const boundary = quiet();
     const later = vi.fn(() => true);
     const error = new Error("bad predicate");
-    const model = new LootTables(
-      {
-        a: {
-          pools: [
-            {
-              id: "p",
-              entries: [
-                {
-                  ...item("bad"),
-                  when: () => {
-                    throw error;
-                  },
+    const model = new LootTables({
+      a: {
+        pools: [
+          {
+            id: "p",
+            entries: [
+              {
+                ...item("bad"),
+                when: () => {
+                  throw error;
                 },
-              ],
-            },
-            { id: "later", entries: [item("a")], when: later },
-          ],
-        },
+              },
+            ],
+          },
+          { id: "later", entries: [item("a")], when: later },
+        ],
       },
-      { errorBoundary: boundary },
-    );
-    expect(() => model.roll("a", { random: fixed(0) })).toThrow(error);
+    });
+    expect(() =>
+      model.roll("a", { random: fixed(0), errorBoundary: boundary }),
+    ).toThrow(error);
     expect(later).not.toHaveBeenCalled();
     expect(boundary.getCallbackErrors()).toMatchObject([
       { kind: "Loot condition", event: "a/p/bad", error: "bad predicate" },
@@ -411,6 +401,34 @@ describe("LootTables", () => {
     expect(boundary.getCallbackErrors().at(-1)?.kind).toBe("Loot weight");
   });
 
+  it("logs a callback failure with its path when a roll passes no boundary", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const error = new Error("bad predicate");
+      const model = new LootTables({
+        a: {
+          pools: [
+            {
+              id: "p",
+              entries: [
+                {
+                  ...item("bad"),
+                  when: () => {
+                    throw error;
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      });
+      expect(() => model.roll("a", { random: fixed(0) })).toThrow(error);
+      expect(log.mock.calls.flat().join(" ")).toContain("a/p/bad");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("matches weighted frequencies over a deterministic sample", () => {
     const model = make([
       item("common", 7),
@@ -421,8 +439,9 @@ describe("LootTables", () => {
     const counts = { common: 0, rare: 0, none: 0 };
     for (let i = 0; i < 20000; i++) {
       const result = model.roll("chest", { random: rng });
-      const selected = result.trace[0]?.entry as keyof typeof counts;
-      counts[selected]++;
+      const trace = result.trace[0];
+      if (trace?.status !== "selected") throw new Error("expected a draw");
+      counts[trace.entry as keyof typeof counts]++;
       expect(result.rewards.length).toBeLessThanOrEqual(1);
     }
     expect(counts.common / 20000).toBeCloseTo(0.7, 1);

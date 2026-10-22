@@ -6,18 +6,23 @@ export const ITEMS = defineItems({
   herb: { name: "Herbs", maxStack: 3 },
   potion: { name: "Potions", maxStack: 2 },
   ruby: { name: "Ruby", maxStack: 1 },
+  crown: { name: "Crown", maxStack: 1 },
 });
-export type ItemId = "coin" | "herb" | "potion" | "ruby";
+export type ItemId = (typeof ITEMS.ids)[number];
+
+/** What the chest rules read about the adventurer opening it. */
 export interface ChestContext {
-  level: number;
-  luck: number;
+  readonly level: number;
+  readonly luck: number;
+  /** Chests opened without finding the crown. */
+  readonly misses: number;
+  /** Once-per-adventurer rewards already found. */
+  readonly found: ReadonlySet<ItemId>;
 }
 
-export const TABLES = new LootTables<
-  ItemId,
-  ChestContext,
-  "chest" | "supplies"
->({
+export type ChestTable = "chest" | "supplies";
+
+export const TABLES = new LootTables<ItemId, ChestContext, ChestTable>({
   chest: {
     pools: [
       {
@@ -46,6 +51,20 @@ export const TABLES = new LootTables<
             weight: ({ luck }) => luck,
           },
           { id: "nothing", kind: "empty", weight: 3 },
+        ],
+      },
+      {
+        // Once per adventurer, with a pity weight that grows on every miss.
+        id: "relic",
+        entries: [
+          {
+            id: "crown",
+            kind: "item",
+            item: "crown",
+            when: ({ found }) => !found.has("crown") || "already-found",
+            weight: ({ misses }) => 1 + misses,
+          },
+          { id: "nothing", kind: "empty", weight: 6 },
         ],
       },
     ],
