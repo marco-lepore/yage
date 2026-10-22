@@ -89,16 +89,6 @@ export interface Example {
 
 /** Every example, grouped by section in display order. */
 export const EXAMPLES: readonly Example[] = [
-  {
-    slug: "perception",
-    title: "Perception",
-    summary:
-      "Sight, physics occlusion, last-seen memory, and configurable reactions.",
-    section: "world",
-    packages: ["physics", "input"],
-    addons: ["perception"],
-    guide: "/addons/perception/",
-  },
   // Start here
   {
     slug: "hello-world",
@@ -496,6 +486,16 @@ export const EXAMPLES: readonly Example[] = [
     packages: ["input"],
     addons: ["behavior-tree", "steering"],
     guide: "/addons/behavior-tree/",
+  },
+  {
+    slug: "perception",
+    title: "Perception Addon",
+    summary:
+      "A guard that loses sight of you behind a wall, remembers where you were, and forgets after three seconds.",
+    section: "world",
+    packages: ["physics", "pathfinding", "input"],
+    addons: ["perception"],
+    guide: "/addons/perception/",
   },
 
   // Gameplay addons

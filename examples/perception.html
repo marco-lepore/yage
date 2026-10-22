@@ -12,16 +12,19 @@
     <div id="game-container"></div>
     <div class="controls">
       <span
-        ><kbd>WASD</kbd> move the blue target · <kbd>R</kbd> change reaction ·
-        <kbd>C</kbd> toggle concealment</span
+        ><kbd>WASD</kbd> move the blue player · <kbd>1</kbd> open sight ·
+        <kbd>2</kbd> behind the wall · <kbd>3</kbd> beyond range ·
+        <kbd>4</kbd> behind the guard · <kbd>5</kbd> in the shadow</span
       >
       <span
-        ><kbd>1</kbd> open sight · <kbd>2</kbd> behind cover ·
-        <kbd>3</kbd> beyond range · <kbd>4</kbd> behind observer</span
+        >Stay in sight for a second and the guard turns red and turns to follow
+        you. Break line of sight and it walks around the wall to the amber ring,
+        where it last saw you, searches, then returns. It forgets you after
+        three seconds out of sight. It ignores the green ally.</span
       >
       <span
-        >The wall blocks sight. The target can pass through it. An amber ring
-        marks the last known position for three seconds.</span
+        >Sight checks one point, the center of each circle: half behind the wall
+        still counts as hidden.</span
       >
     </div>
     <script type="module" src="/src/perception/main.ts"></script>

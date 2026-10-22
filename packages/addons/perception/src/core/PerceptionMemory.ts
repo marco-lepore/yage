@@ -5,7 +5,7 @@ import type {
   PerceptionSnapshot,
   PerceptionTransition,
 } from "./types.js";
-import { finite, identifier, point } from "./validation.js";
+import { finite, nonempty, point } from "./validation.js";
 
 /** Headless observation storage. The caller supplies monotonic simulation time. */
 export class PerceptionMemory<T> {
@@ -45,17 +45,12 @@ export class PerceptionMemory<T> {
     this.validateTime(now, "update");
     const ids = new Set<string>();
     const checked = samples.map((sample) => {
-      identifier(sample.id, "PerceptionMemory.update");
+      nonempty(sample.id, "PerceptionMemory.update id");
       if (ids.has(sample.id))
         throw new Error(`PerceptionMemory.update: duplicate id ${sample.id}`);
       ids.add(sample.id);
-      if (
-        sample.reason !== null &&
-        (typeof sample.reason !== "string" || sample.reason.length === 0)
-      )
-        throw new Error(
-          "PerceptionMemory.update: rejection reason must be nonempty or null",
-        );
+      if (sample.reason !== null)
+        nonempty(sample.reason, "PerceptionMemory.update reason");
       return {
         ...sample,
         position: point(sample.position, "PerceptionMemory.update.position"),
@@ -113,7 +108,7 @@ export class PerceptionMemory<T> {
   /** Clear all observations. The caller dispatches the returned transitions. */
   clear(now: number, reason = "cleared"): readonly PerceptionTransition<T>[] {
     this.validateTime(now, "clear");
-    identifier(reason, "PerceptionMemory.clear reason");
+    nonempty(reason, "PerceptionMemory.clear reason");
     const transitions: PerceptionTransition<T>[] = [];
     for (const old of this.entries.values()) {
       const observation = Object.freeze({
@@ -146,51 +141,35 @@ export class PerceptionMemory<T> {
     };
   }
 
-  /** Replace memory silently. Bindings explicitly reconnect saved ids to runtime targets. Unbound ids are omitted. */
+  /**
+   * Replace memory silently with remembered, not visible, observations.
+   * `resolve` maps each saved id to its runtime target; records it cannot
+   * resolve and records already past `memoryDuration` are omitted.
+   */
   restore(
     snapshot: PerceptionSnapshot,
     now: number,
-    bindings: readonly { id: string; target: T }[],
+    resolve: (id: string) => T | undefined,
   ): void {
     finite(now, "PerceptionMemory.restore time", 0);
     const prepared = prepareSnapshot(snapshot);
-    const targets = new Map<string, T>();
-    for (const binding of bindings) {
-      identifier(binding.id, "PerceptionMemory.restore binding");
-      if (targets.has(binding.id))
-        throw new Error(
-          `PerceptionMemory.restore: duplicate binding ${binding.id}`,
-        );
-      targets.set(binding.id, binding.target);
-    }
     const next = new Map<string, PerceptionObservation<T>>();
     for (const record of prepared.records) {
-      const {
-        firstSeenAge: firstAge,
-        lastSeenAge: lastAge,
-        lastPosition: position,
-        visibility,
-      } = record;
-      const lostAge = record.lostAge ?? 0;
-      if (!targets.has(record.id) || lastAge >= this.memoryDuration) continue;
+      if (record.lastSeenAge >= this.memoryDuration) continue;
+      const target = resolve(record.id);
+      if (target === undefined) continue;
       next.set(
         record.id,
         Object.freeze({
           id: record.id,
-          target: targets.get(record.id) as T,
+          target,
           visible: false,
           reason: "restored",
-          firstSeenAt: finite(
-            now - firstAge,
-            "PerceptionMemory.restore firstSeenAt",
-          ),
-          lastSeenAt: finite(
-            now - lastAge,
-            "PerceptionMemory.restore lastSeenAt",
-          ),
-          lostAt: finite(now - lostAge, "PerceptionMemory.restore lostAt"),
-          lastPosition: position,
-          visibility,
+          firstSeenAt: now - record.firstSeenAge,
+          lastSeenAt: now - record.lastSeenAge,
+          lostAt: now - (record.lostAge ?? 0),
+          lastPosition: record.lastPosition,
+          visibility: record.visibility,
         }),
       );
     }

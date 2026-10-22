@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PerceptionMemory } from "./PerceptionMemory.js";
 import type { PerceptionSample } from "./types.js";
 
@@ -104,7 +104,7 @@ describe("PerceptionMemory", () => {
     expect(Object.isFrozen(record)).toBe(true);
     expect(Object.isFrozen(record.lastPosition)).toBe(true);
   });
-  it("round-trips data only, rebases all ages, and requires explicit target bindings", () => {
+  it("round-trips data only, rebases all ages, and resolves targets explicitly", () => {
     const memory = new PerceptionMemory<string>(5);
     memory.update(10, [sample()]);
     memory.update(11, [sample()]);
@@ -113,7 +113,9 @@ describe("PerceptionMemory", () => {
       JSON.stringify(memory.snapshot(13)),
     ) as ReturnType<typeof memory.snapshot>;
     const restored = new PerceptionMemory<string>(5);
-    restored.restore(snapshot, 0, [{ id: "target", target: "reconnected" }]);
+    restored.restore(snapshot, 0, (id) =>
+      id === "target" ? "reconnected" : undefined,
+    );
     expect(restored.get("target")).toMatchObject({
       target: "reconnected",
       visible: false,
@@ -126,24 +128,26 @@ describe("PerceptionMemory", () => {
     expect(restored.update(3, []).map((event) => event.type)).toEqual([
       "forgotten",
     ]);
-    restored.restore(snapshot, 0, []);
+    restored.restore(snapshot, 0, () => undefined);
     expect(restored.observations).toEqual([]);
   });
-  it("validates restored records even without bindings and leaves old state on failure", () => {
+  it("validates restored records before resolving and leaves old state on failure", () => {
     const memory = new PerceptionMemory<string>();
     memory.update(0, [sample()]);
     const snapshot = memory.snapshot();
     const record = snapshot.records[0]!;
+    const resolve = vi.fn(() => "target");
     expect(() =>
       memory.restore(
         { version: 1, records: [{ ...record, firstSeenAge: NaN }] },
         0,
-        [],
+        resolve,
       ),
     ).toThrow("firstSeenAge");
     expect(memory.snapshot()).toEqual(snapshot);
     expect(() =>
-      memory.restore({ version: 1, records: [record, record] }, 0, []),
+      memory.restore({ version: 1, records: [record, record] }, 0, resolve),
     ).toThrow("duplicate id");
+    expect(resolve).not.toHaveBeenCalled();
   });
 });

@@ -1561,7 +1561,7 @@ test.describe("Examples index", () => {
   });
 });
 
-test("perception explains sight loss, remembers positions, and allows a separate reaction", async ({
+test("perception explains each failed check, remembers the last position, and drives a separate guard reaction", async ({
   page,
 }) => {
   await page.goto("/perception.html?test");
@@ -1571,31 +1571,36 @@ test("perception explains sight loss, remembers positions, and allows a separate
   );
   const result = await page.evaluate(async () => {
     const inspector = window.__yage__!.inspector;
-    const read = () =>
-      inspector.getComponentData("Observer", "PerceptionSensor");
-    await inspector.time.stepAsync(3);
-    const initial = read();
-    inspector.input.tap("Digit2");
-    await inspector.time.stepAsync(3);
-    const cover = read();
-    await inspector.time.stepAsync(190);
-    const expired = read();
-    inspector.input.tap("Digit1");
-    await inspector.time.stepAsync(3);
-    const reacquired = read();
-    inspector.input.tap("Digit3");
-    await inspector.time.stepAsync(3);
-    const range = read();
-    inspector.input.tap("Digit4");
-    await inspector.time.stepAsync(3);
-    const fov = read();
-    inspector.input.tap("Digit1");
-    await inspector.time.stepAsync(3);
-    inspector.input.tap("KeyC");
-    await inspector.time.stepAsync(3);
-    const concealed = read();
-    inspector.input.tap("KeyR");
-    await inspector.time.stepAsync(3);
+    const sensor = () =>
+      inspector.getComponentData("GuardEntity", "PerceptionSensor");
+    const brain = () => inspector.getComponentData("GuardEntity", "GuardBrain");
+    // The assertions read component state, so only the last frame is drawn.
+    const wait = (frames: number) =>
+      inspector.time.stepAsync(frames, { render: "last" });
+    const moveTo = async (key: string, frames = 3) => {
+      inspector.input.tap(key);
+      await wait(frames);
+    };
+    await wait(3);
+    const initial = sensor();
+    await moveTo("Digit2");
+    const cover = sensor();
+    await wait(190);
+    const expired = sensor();
+    await moveTo("Digit1");
+    const reacquired = sensor();
+    await moveTo("Digit3");
+    const range = sensor();
+    await moveTo("Digit4");
+    const fov = sensor();
+    await moveTo("Digit5");
+    const shadow = sensor();
+    // Stay in sight until the guard is fully aware, then break line of sight.
+    await moveTo("Digit1", 90);
+    const alerted = brain();
+    await moveTo("Digit2");
+    const investigating = brain();
+    await wait(400);
     return {
       initial,
       cover,
@@ -1603,29 +1608,47 @@ test("perception explains sight loss, remembers positions, and allows a separate
       reacquired,
       range,
       fov,
-      concealed,
-      reaction: inspector.getComponentData("Observer", "ObserverReaction"),
+      shadow,
+      alerted,
+      investigating,
+      returned: brain(),
+      forgotten: sensor(),
       errors: inspector.getErrors(),
     };
   });
+  const near = (x: number, y: number) => ({
+    x: expect.closeTo(x, 0),
+    y: expect.closeTo(y, 0),
+  });
+  // Candidates are evaluated in spawn order: the ally, then the player.
   expect(result.initial).toMatchObject({
-    diagnostics: [{ visible: true, lastPosition: { x: 300, y: 310 } }],
+    evaluations: [{ reason: "ally" }, { reason: null }],
+    diagnostics: [{ visible: true, lastPosition: near(300, 310) }],
   });
   expect(result.cover).toMatchObject({
-    evaluations: [{ reason: "occluded" }],
-    diagnostics: [{ visible: false, lastPosition: { x: 300, y: 310 } }],
+    evaluations: [{ reason: "ally" }, { reason: "occluded" }],
+    diagnostics: [{ visible: false, lastPosition: near(300, 310) }],
   });
   expect(result.expired).toMatchObject({ diagnostics: [] });
   expect(result.reacquired).toMatchObject({ diagnostics: [{ visible: true }] });
   expect(result.range).toMatchObject({
-    evaluations: [{ reason: "out-of-range" }],
+    evaluations: [{}, { reason: "out-of-range" }],
   });
   expect(result.fov).toMatchObject({
-    evaluations: [{ reason: "outside-field-of-view" }],
+    evaluations: [{}, { reason: "outside-field-of-view" }],
   });
-  expect(result.concealed).toMatchObject({
-    evaluations: [{ reason: "below-visibility-threshold" }],
+  expect(result.shadow).toMatchObject({
+    evaluations: [{}, { reason: "below-visibility-threshold" }],
   });
-  expect(result.reaction).toMatchObject({ tracking: true, forgotten: 1 });
+  expect(result.alerted).toMatchObject({ state: "alerted" });
+  expect(result.investigating).toMatchObject({
+    state: "investigating",
+    investigations: 1,
+  });
+  expect(result.returned).toMatchObject({
+    state: "watching",
+    investigations: 1,
+  });
+  expect(result.forgotten).toMatchObject({ diagnostics: [] });
   expect(result.errors.callbackErrors).toEqual([]);
 });

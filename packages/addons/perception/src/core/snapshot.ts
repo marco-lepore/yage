@@ -1,7 +1,7 @@
 import type { PerceptionSnapshot } from "./types.js";
-import { finite, identifier, point } from "./validation.js";
+import { finite, nonempty, point } from "./validation.js";
 
-/** Validate and copy before any target resolver can mutate the caller's data. */
+/** Validate and copy saved data before any target is resolved. */
 export function prepareSnapshot(
   snapshot: PerceptionSnapshot,
 ): PerceptionSnapshot {
@@ -17,7 +17,7 @@ export function prepareSnapshot(
       throw new Error(
         "PerceptionMemory.restore: each record must be an object",
       );
-    identifier(record.id, "PerceptionMemory.restore");
+    nonempty(record.id, "PerceptionMemory.restore id");
     if (ids.has(record.id))
       throw new Error(`PerceptionMemory.restore: duplicate id ${record.id}`);
     ids.add(record.id);

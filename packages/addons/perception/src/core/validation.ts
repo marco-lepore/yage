@@ -14,16 +14,20 @@ export function finite(
   }
   return value;
 }
+
 export function point(value: Vec2Like, context: string): Readonly<Vec2Like> {
   return Object.freeze({
     x: finite(value.x, `${context}.x`),
     y: finite(value.y, `${context}.y`),
   });
 }
-export function identifier(id: string, context: string): void {
-  if (typeof id !== "string" || id.length === 0)
-    throw new Error(`${context}: expected a nonempty id, got ${id}`);
+
+export function nonempty(value: string, context: string): string {
+  if (typeof value !== "string" || value.length === 0)
+    throw new Error(`${context}: expected a nonempty string, got ${value}`);
+  return value;
 }
+
 export function resolveConfig(
   config: PerceptionConfig,
 ): ResolvedPerceptionConfig {

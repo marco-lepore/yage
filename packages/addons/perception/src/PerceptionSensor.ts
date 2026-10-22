@@ -1,15 +1,14 @@
-import { prepareSnapshot } from "./core/snapshot.js";
 import {
   Component,
   ErrorBoundaryKey,
   SceneTimeKey,
   Transform,
-  defineEvent,
 } from "@yagejs/core";
 import type { Entity, EntityHandle, Vec2Like } from "@yagejs/core";
 import { PerceptionMemory } from "./core/PerceptionMemory.js";
 import { perceptionGeometry } from "./core/geometry.js";
-import { finite, identifier, point, resolveConfig } from "./core/validation.js";
+import { prepareSnapshot } from "./core/snapshot.js";
+import { finite, nonempty, point, resolveConfig } from "./core/validation.js";
 import type {
   PerceptionConfig,
   PerceptionObservation,
@@ -18,77 +17,91 @@ import type {
   PerceptionTransition,
   ResolvedPerceptionConfig,
 } from "./core/types.js";
+import {
+  PerceptionDetectedEvent,
+  PerceptionForgottenEvent,
+  PerceptionLostEvent,
+} from "./events.js";
 
+/** Tag the default candidate query looks for on targets. */
+export const PERCEPTIBLE_TAG = "perceptible";
+
+/** What `eligible`, `lineOfSight` and `visibility` receive for one observer-target pair. */
 export interface PerceptionContext {
   readonly observer: Entity;
   readonly target: Entity;
+  /** Observer world position. */
   readonly origin: Readonly<Vec2Like>;
+  /** Sampled target world position. */
   readonly position: Readonly<Vec2Like>;
   readonly distance: number;
+  /** Absolute angle between the facing direction and the target, 0 to π. */
   readonly angle: number;
 }
+
 export interface PerceptionSensorOptions extends PerceptionConfig {
-  /** Default: active entities tagged "perceptible" in the observer's scene. */
+  /** Targets to evaluate. Default: active scene entities tagged `PERCEPTIBLE_TAG`. */
   candidates?: (observer: Entity) => Iterable<Entity>;
-  /** Stable save identity when needed. Default: runtime id and life generation. */
-  identify?: (target: Entity) => string;
-  /** World-pixel sample point. Default: target Transform.worldPosition. */
+  /** World-pixel sample point. Default: the target's Transform world position. */
   position?: (target: Entity) => Vec2Like;
-  /** null accepts; a nonempty string explains rejection. Default accepts all. */
+  /** World angle in radians the observer looks along. Default: its Transform world rotation. */
+  facing?: (observer: Entity) => number;
+  /** null accepts; a nonempty string rejects with that reason. Default accepts all. */
   eligible?: (context: PerceptionContext) => string | null;
-  /** True when unobstructed. Omit to sense through walls. */
+  /** True when the path is clear. Omit to sense through walls. */
   lineOfSight?: (context: PerceptionContext) => boolean;
   /** Visibility in [0, 1], e.g. camouflage or lighting. Default 1. */
   visibility?: (context: PerceptionContext) => number;
-  /** Default true. False lets the host call sense() on its own schedule. */
+  /** Default true. False leaves sampling to explicit `sense()` calls. */
   autoUpdate?: boolean;
   enabled?: boolean;
-  /** A custom memory implementation can subclass the headless model. Its duration takes precedence. */
+  /** Model to host instead of a new one. Set its duration through its constructor, not `memoryDuration`. */
   memory?: PerceptionMemory<EntityHandle>;
 }
 
+/** One candidate from the latest sample, including rejected ones. */
 export interface PerceptionEvaluation {
   readonly id: string;
   readonly entityId: number;
   readonly entityName: string;
   readonly distance: number;
   readonly angle: number;
+  /** 0 when an earlier check rejected the target before the visibility check ran. */
   readonly visibility: number;
   readonly reason: string | null;
 }
-export interface PerceptionEvent {
-  readonly sensor: PerceptionSensor;
-  readonly observation: PerceptionObservation<EntityHandle>;
-}
-export const PerceptionDetectedEvent = defineEvent<PerceptionEvent>(
-  "perception:detected",
-);
-export const PerceptionLostEvent =
-  defineEvent<PerceptionEvent>("perception:lost");
-export const PerceptionForgottenEvent = defineEvent<PerceptionEvent>(
-  "perception:forgotten",
-);
 
-/** Per-observer sight and memory. Forward follows world rotation; no plugin is required. */
+const EVENTS = {
+  detected: PerceptionDetectedEvent,
+  lost: PerceptionLostEvent,
+  forgotten: PerceptionForgottenEvent,
+} as const;
+
+/** Memory id for one life of an entity; a pooled entity's next life gets a new id. */
+function lifeId(entity: Entity): string {
+  return `${entity.id}:${entity.generation}`;
+}
+
+/** Per-observer sight and last-seen memory. No plugin is required. */
 export class PerceptionSensor extends Component {
-  static inspectExclude = [
-    "memory",
-    "options",
-    "transform",
-    "observations",
-    "detected",
-  ];
+  static inspectExclude = ["memory", "options", "observations", "detected"];
   readonly config: ResolvedPerceptionConfig;
   readonly memory: PerceptionMemory<EntityHandle>;
   readonly autoUpdate: boolean;
   private readonly options: Readonly<PerceptionSensorOptions>;
   private readonly transform = this.sibling(Transform);
+  private readonly boundary = this.service(ErrorBoundaryKey);
   private _evaluations: readonly PerceptionEvaluation[] = [];
-  private _sensing = false;
-  private _restoring = false;
+  private _sampling = false;
+  /** Delivery queue of the batch in progress, including transitions listeners add; null between batches. */
+  private _queued: PerceptionTransition<EntityHandle>[] | null = null;
 
   constructor(options: PerceptionSensorOptions = {}) {
     super();
+    if (options.memory && options.memoryDuration !== undefined)
+      throw new Error(
+        "PerceptionSensor: pass memoryDuration to the PerceptionMemory constructor when supplying memory",
+      );
     const config = resolveConfig(options);
     this.memory = options.memory ?? new PerceptionMemory(config.memoryDuration);
     this.config = Object.freeze({
@@ -99,24 +112,28 @@ export class PerceptionSensor extends Component {
     this.autoUpdate = options.autoUpdate ?? true;
     this.enabled = options.enabled ?? true;
   }
+
+  /** Every retained observation, visible or remembered. */
   get observations(): readonly PerceptionObservation<EntityHandle>[] {
     return this.memory.observations;
   }
-  /** Last sampled detections whose entity life is still active. */
+  /** Visible observations from the latest sample whose target is still active. */
   get detected(): readonly PerceptionObservation<EntityHandle>[] {
     return this.memory.detected.filter(
       (observation) => observation.target.current?.isActive,
     );
   }
+  /** Every candidate from the latest sample, with its rejection reason. */
   get evaluations(): readonly PerceptionEvaluation[] {
     return this._evaluations;
   }
+  /** Scene time of the latest sample, clear, or restore. */
   get sampledAt(): number {
     return this.memory.sampledAt;
   }
-  /** Inspector-readable data derived from the same observations game code reads. */
+  /** Inspector-readable copy of `observations`, with ages and target liveness. */
   get diagnostics() {
-    const now = this.entity?.tryScene ? this.now() : this.sampledAt;
+    const now = this.now();
     return this.observations.map((observation) => ({
       id: observation.id,
       entityId: observation.target.current?.id ?? null,
@@ -132,6 +149,14 @@ export class PerceptionSensor extends Component {
       visibility: observation.visibility,
     }));
   }
+
+  /** The observation of `target`'s current life, visible or remembered. */
+  observationOf(
+    target: Entity,
+  ): PerceptionObservation<EntityHandle> | undefined {
+    return this.memory.get(lifeId(target));
+  }
+
   onAdd(): void {
     if (!this.entity.has(Transform))
       throw new Error(
@@ -145,222 +170,253 @@ export class PerceptionSensor extends Component {
     this.clear("disabled");
   }
 
-  /** Sample once, atomically install facts, then emit transitions. Does nothing while disabled. */
+  /** Sample every candidate, install the results, then emit transitions. Does nothing while disabled. */
   sense(): void {
     if (!this.effectiveEnabled) return;
-    if (this._sensing || this._restoring)
+    if (this._sampling)
       throw new Error(
-        "PerceptionSensor.sense: recursive sampling is not supported",
+        "PerceptionSensor.sense: called from a sensor callback; callbacks must only read state",
       );
-    this._sensing = true;
+    const now = this.now();
+    const version = this.memory.version;
+    let results: readonly {
+      sample: PerceptionSample<EntityHandle>;
+      evaluation: PerceptionEvaluation;
+    }[];
+    this._sampling = true;
     try {
-      const now = this.now();
-      const version = this.memory.version;
-      const origin = point(
-        this.transform.worldPosition,
-        "PerceptionSensor.sense origin",
-      );
-      const rotation = this.transform.worldRotation;
-      const candidates = this.invoke("candidates", () => [
-        ...(this.options.candidates?.(this.entity) ??
-          this.scene.findEntitiesByTag("perceptible")),
-      ]);
-      const samples: PerceptionSample<EntityHandle>[] = [];
-      const evaluations: PerceptionEvaluation[] = [];
-      const visited = new Set<Entity>();
-      for (const target of candidates) {
-        if (target === this.entity || visited.has(target)) continue;
-        visited.add(target);
-        if (!target.isActive || target.tryScene !== this.scene) continue;
-        if (!target.has(Transform) && !this.options.position) continue;
-        const handle = target.handle();
-        const id = this.identify(target);
-        const position = point(
-          this.invoke(
-            "position",
-            () =>
-              this.options.position?.(target) ??
-              target.get(Transform).worldPosition,
-          ),
-          "PerceptionSensor.position",
-        );
-        const geometry = perceptionGeometry(origin, rotation, position);
-        finite(geometry.distance, "PerceptionSensor.sense distance", 0);
-        finite(geometry.angle, "PerceptionSensor.sense angle", 0, Math.PI);
-        const context: PerceptionContext = Object.freeze({
-          observer: this.entity,
-          target,
-          origin,
-          position,
-          ...geometry,
-        });
-        const old = this.memory.get(id);
-        const sameLife = old?.target.current === target;
-        let reason = this.invoke(
-          "eligible",
-          () => this.options.eligible?.(context) ?? null,
-        );
-        if (reason !== null)
-          identifier(reason, "PerceptionSensor.eligible reason");
-        const range =
-          sameLife && old.visible ? this.config.loseRange : this.config.range;
-        if (reason === null && geometry.distance > range)
-          reason = "out-of-range";
-        if (reason === null && geometry.angle > this.config.fieldOfView / 2)
-          reason = "outside-field-of-view";
-        if (
-          reason === null &&
-          !this.invoke(
-            "lineOfSight",
-            () => this.options.lineOfSight?.(context) ?? true,
-          )
-        )
-          reason = "occluded";
-        let visibility = 0;
-        if (reason === null) {
-          visibility = finite(
-            this.invoke(
-              "visibility",
-              () => this.options.visibility?.(context) ?? 1,
-            ),
-            "PerceptionSensor.visibility",
-            0,
-            1,
-          );
-          if (visibility < this.config.visibilityThreshold)
-            reason = "below-visibility-threshold";
-        }
-        // Policies may deactivate a host or target synchronously.
-        if (!this.effectiveEnabled || version !== this.memory.version) return;
-        if (handle.current !== target) continue;
-        if (!target.isActive || target.tryScene !== this.scene) continue;
-        samples.push({
-          id,
-          target: sameLife ? old.target : handle,
-          position,
-          visibility,
-          reason,
-        });
-        evaluations.push(
-          Object.freeze({
-            id,
-            entityId: target.id,
-            entityName: target.name,
-            ...geometry,
-            visibility,
-            reason,
-          }),
-        );
-      }
-      if (!this.effectiveEnabled || version !== this.memory.version) return;
-      const live = samples.filter((sample) => {
-        const target = sample.target.current;
-        return target?.isActive && target.tryScene === this.scene;
-      });
-      const transitions = this.memory.update(now, live);
-      this._evaluations = Object.freeze(evaluations);
-      this.emit(transitions);
+      results = this.evaluateCandidates();
     } finally {
-      // Only the recursion guard is released; failed callbacks stop the operation.
-      this._sensing = false;
+      // Releases only the recursion guard; a throwing callback still ends the sample.
+      this._sampling = false;
     }
+    if (this.memory.version !== version)
+      throw new Error(
+        "PerceptionSensor.sense: memory changed while sensor callbacks ran; callbacks must only read state",
+      );
+    const transitions = this.memory.update(
+      now,
+      results.map((result) => result.sample),
+    );
+    this._evaluations = Object.freeze(
+      results.map((result) => result.evaluation),
+    );
+    this.emit(transitions);
   }
 
+  /** Drop every observation, emitting loss and forgetting with `reason`. */
   clear(reason = "cleared"): void {
     const transitions = this.memory.clear(this.now(), reason);
     this._evaluations = [];
     this.emit(transitions);
   }
+
+  /** Data-only memory of targets spawned with a key, recorded under that key. */
   snapshot(): PerceptionSnapshot {
-    return this.memory.snapshot(this.now());
+    const saved = this.memory.snapshot(this.now());
+    return {
+      version: 1,
+      records: saved.records.flatMap((record) => {
+        const key = this.memory.get(record.id)?.target.current?.key;
+        return key === undefined ? [] : [{ ...record, id: key }];
+      }),
+    };
   }
 
-  /** Restore data as remembered observations. Resolver must return current, same-scene entities with matching ids. */
-  restore(
-    snapshot: PerceptionSnapshot,
-    resolve: (id: string) => Entity | undefined,
-  ): void {
+  /**
+   * Replace memory with saved observations, finding each target by entity key
+   * in this scene. Restored observations are remembered, not visible; missing
+   * or inactive targets are omitted. Emits no events.
+   */
+  restore(snapshot: PerceptionSnapshot): void {
     if (!this.effectiveEnabled)
       throw new Error(
         "PerceptionSensor.restore: sensor must be enabled and attached",
       );
-    if (this._restoring)
-      throw new Error(
-        "PerceptionSensor.restore: recursive restoration is not supported",
-      );
     const prepared = prepareSnapshot(snapshot);
-    const version = this.memory.version;
-    const bindings: { id: string; target: EntityHandle }[] = [];
-    this._restoring = true;
-    try {
-      for (const record of prepared.records) {
-        const target = this.invoke("restore.resolve", () => resolve(record.id));
-        if (!this.effectiveEnabled || this.memory.version !== version) return;
-        if (!target || !target.isActive || target.tryScene !== this.scene)
-          continue;
-        const handle = target.handle();
-        if (this.identify(target) !== record.id)
-          throw new Error(
-            `PerceptionSensor.restore: resolver identity does not match ${record.id}`,
-          );
-        if (!this.effectiveEnabled || this.memory.version !== version) return;
-        bindings.push({ id: record.id, target: handle });
-      }
-      const live = bindings.filter((binding) => {
-        const target = binding.target.current;
-        return target?.isActive && target.tryScene === this.scene;
-      });
-      this.memory.restore(prepared, this.now(), live);
-      this._evaluations = [];
-    } finally {
-      this._restoring = false;
+    const targets = new Map<string, EntityHandle>();
+    const records: PerceptionSnapshot["records"][number][] = [];
+    for (const record of prepared.records) {
+      const target = this.scene.findByKey(record.id);
+      if (!target?.isActive || target === this.entity) continue;
+      const id = lifeId(target);
+      targets.set(id, target.handle());
+      records.push({ ...record, id });
     }
+    this.memory.restore({ version: 1, records }, this.now(), (id) =>
+      targets.get(id),
+    );
+    this._evaluations = [];
   }
 
-  private identify(target: Entity): string {
-    const id = this.invoke(
-      "identify",
-      () =>
-        this.options.identify?.(target) ?? `${target.id}:${target.generation}`,
-    );
-    identifier(id, "PerceptionSensor.identify");
-    return id;
+  private evaluateCandidates(): {
+    sample: PerceptionSample<EntityHandle>;
+    evaluation: PerceptionEvaluation;
+  }[] {
+    const origin = this.transform.worldPosition;
+    const facing = this.facing();
+    const visited = new Set<Entity>();
+    const results = [];
+    for (const target of this.candidates()) {
+      if (target === this.entity || visited.has(target)) continue;
+      visited.add(target);
+      if (!target.isActive || target.tryScene !== this.scene) continue;
+      results.push(this.evaluate(target, origin, facing));
+    }
+    return results;
   }
+
+  private evaluate(
+    target: Entity,
+    origin: Readonly<Vec2Like>,
+    facing: number,
+  ): {
+    sample: PerceptionSample<EntityHandle>;
+    evaluation: PerceptionEvaluation;
+  } {
+    const id = lifeId(target);
+    const position = this.targetPosition(target);
+    const geometry = perceptionGeometry(origin, facing, position);
+    const context: PerceptionContext = Object.freeze({
+      observer: this.entity,
+      target,
+      origin,
+      position,
+      ...geometry,
+    });
+    const previous = this.memory.get(id);
+    const { reason, visibility } = this.check(
+      context,
+      previous?.visible ?? false,
+    );
+    return {
+      sample: {
+        id,
+        target: previous?.target ?? target.handle(),
+        position,
+        visibility,
+        reason,
+      },
+      evaluation: Object.freeze({
+        id,
+        entityId: target.id,
+        entityName: target.name,
+        ...geometry,
+        visibility,
+        reason,
+      }),
+    };
+  }
+
+  /** Eligibility, range, field of view, line of sight, then visibility; the first failure wins. */
+  private check(
+    context: PerceptionContext,
+    visible: boolean,
+  ): { reason: string | null; visibility: number } {
+    const { eligible, lineOfSight, visibility } = this.options;
+    if (eligible) {
+      const reason = this.call("eligible", () => eligible(context));
+      if (reason !== null)
+        return {
+          reason: nonempty(reason, "PerceptionSensor.eligible"),
+          visibility: 0,
+        };
+    }
+    const range = visible ? this.config.loseRange : this.config.range;
+    if (context.distance > range)
+      return { reason: "out-of-range", visibility: 0 };
+    if (context.angle > this.config.fieldOfView / 2)
+      return { reason: "outside-field-of-view", visibility: 0 };
+    if (lineOfSight && !this.call("lineOfSight", () => lineOfSight(context)))
+      return { reason: "occluded", visibility: 0 };
+    const score = visibility
+      ? finite(
+          this.call("visibility", () => visibility(context)),
+          "PerceptionSensor.visibility",
+          0,
+          1,
+        )
+      : 1;
+    return {
+      reason:
+        score < this.config.visibilityThreshold
+          ? "below-visibility-threshold"
+          : null,
+      visibility: score,
+    };
+  }
+
+  private candidates(): readonly Entity[] {
+    const candidates = this.options.candidates;
+    if (!candidates) return this.scene.findEntitiesByTag(PERCEPTIBLE_TAG);
+    return this.call("candidates", () => [...candidates(this.entity)]);
+  }
+
+  private facing(): number {
+    const facing = this.options.facing;
+    if (!facing) return this.transform.worldRotation;
+    return finite(
+      this.call("facing", () => facing(this.entity)),
+      "PerceptionSensor.facing",
+    );
+  }
+
+  private targetPosition(target: Entity): Readonly<Vec2Like> {
+    const position = this.options.position;
+    if (position)
+      return point(
+        this.call("position", () => position(target)),
+        "PerceptionSensor.position",
+      );
+    const transform = target.tryGet(Transform);
+    if (!transform)
+      throw new Error(
+        `PerceptionSensor.sense: target "${target.name}" has no Transform; add one or pass a position option`,
+      );
+    return transform.worldPosition;
+  }
+
   private now(): number {
     return this.use(SceneTimeKey).elapsed;
   }
-  private invoke<T>(name: string, callback: () => T): T {
-    const boundary = this.context.tryResolve(ErrorBoundaryKey);
-    if (!boundary) return callback();
-    let value!: T;
-    boundary.wrapCallback(
+
+  /** Run one option callback under the ErrorBoundary so a throw names the option. */
+  private call<T>(option: string, callback: () => T): T {
+    let result!: T;
+    this.boundary.wrapCallback(
       () => {
-        value = callback();
+        result = callback();
       },
       {
-        kind: `PerceptionSensor.${name}`,
+        kind: `PerceptionSensor.${option}`,
         entity: this.entity.name,
         scene: this.scene.name,
       },
     );
-    return value;
+    return result;
   }
+
+  /**
+   * Deliver transitions in order. Transitions from a listener that clears,
+   * samples, or disables the sensor wait behind the batch being delivered.
+   */
   private emit(
     transitions: readonly PerceptionTransition<EntityHandle>[],
   ): void {
-    const version = this.memory.version;
-    for (const transition of transitions) {
-      if (version !== this.memory.version) return;
-      const token =
-        transition.type === "detected"
-          ? PerceptionDetectedEvent
-          : transition.type === "lost"
-            ? PerceptionLostEvent
-            : PerceptionForgottenEvent;
-      this.entity.emit(token, {
-        sensor: this,
-        observation: transition.observation,
-      });
+    if (this._queued) {
+      this._queued.push(...transitions);
+      return;
+    }
+    const queue = [...transitions];
+    this._queued = queue;
+    try {
+      // for-of also visits transitions pushed during delivery.
+      for (const { type, observation } of queue) {
+        this.entity.emit(EVENTS[type], { sensor: this, observation });
+      }
+    } finally {
+      // Releases only the queue; a throwing listener still ends delivery.
+      this._queued = null;
     }
   }
 }

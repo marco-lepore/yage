@@ -39,6 +39,7 @@
     "@yagejs-addons/inventory": "^0.4.0",
     "@yagejs-addons/loot": "^0.0.0",
     "@yagejs-addons/interaction": "^0.4.0",
+    "@yagejs-addons/perception": "^0.0.0",
     "@yagejs-addons/quests": "^0.4.0",
     "@yagejs-addons/sequence": "^0.0.0",
     "@yagejs-addons/stats": "^0.1.0",
@@ -59,7 +60,6 @@
     "@yagejs/ui-react": "^0.12.0",
     "react": "^19.0.0",
     "@yagejs-addons/procedural": "^0.0.0",
-    "@yagejs/level": "^0.12.0",
-    "@yagejs-addons/perception": "^0.0.0"
+    "@yagejs/level": "^0.12.0"
   }
 }

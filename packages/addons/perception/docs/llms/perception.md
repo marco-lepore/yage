@@ -1,19 +1,30 @@
 # @yagejs-addons/perception
 
-`PerceptionSensor(options?: PerceptionSensorOptions)` extends `Component`.
-`PerceptionMemory<T>(memoryDuration = 3)` is independently usable headless state.
-`perceptionGeometry(origin, rotation, target)` returns `{ distance, angle }`.
+2D sight and last-seen memory for one observer entity.
+
+- `PerceptionSensor(options?: PerceptionSensorOptions)` extends `Component`.
+- `PERCEPTIBLE_TAG = "perceptible"`: the tag the default candidate query reads.
+- `PerceptionMemory<T>(memoryDuration = 3)`: the headless memory model.
+- `perceptionRaycast(options?)` from `@yagejs-addons/perception/physics`: a
+  physics line-of-sight check.
+- Events on the observer: `PerceptionDetectedEvent`, `PerceptionLostEvent`,
+  `PerceptionForgottenEvent`, each `{ sensor, observation }`.
+
+Required peer: `@yagejs/core`. Optional peer: `@yagejs/physics`, only for the
+`/physics` subpath. No plugin. Distances in world pixels, angles in radians,
+times in scene seconds.
 
 ## Setup
 
 ```ts
 import { Engine, Entity, Scene, Transform, Vec2 } from "@yagejs/core";
 import {
-  PerceptionSensor,
+  PERCEPTIBLE_TAG,
   PerceptionDetectedEvent,
+  PerceptionSensor,
 } from "@yagejs-addons/perception";
 
-class Observer extends Entity {
+class Guard extends Entity {
   setup() {
     this.add(new Transform());
     this.add(new PerceptionSensor({ range: 300, fieldOfView: Math.PI }));
@@ -23,183 +34,153 @@ class Observer extends Entity {
     });
   }
 }
-class Target extends Entity {
+class Player extends Entity {
   setup() {
-    this.tags.add("perceptible");
+    this.tags.add(PERCEPTIBLE_TAG);
     this.add(new Transform({ position: new Vec2(100, 0) }));
-  }
-}
-class PerceptionScene extends Scene {
-  readonly name = "perception";
-  onEnter() {
-    this.spawn(Observer);
-    this.spawn(Target);
-  }
-}
-
-const engine = new Engine();
-await engine.start();
-await engine.scenes.push(new PerceptionScene());
-```
-
-Required peer: `@yagejs/core`. Optional peer: `@yagejs/physics`, used through
-`@yagejs-addons/perception/physics`. No perception plugin, renderer, input, lighting,
-steering, or behavior-tree dependency.
-
-## Options
-
-| Option                 | Default                             | Contract                                                                                      |
-| ---------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------- |
-| `range`                | 256                                 | Acquisition radius in world pixels, finite and >= 0                                           |
-| `loseRange`            | `range`                             | Retention radius while visible, finite and >= range                                           |
-| `fieldOfView`          | `2 * Math.PI`                       | Full angle, radians, 0 through 2π; forward is observer Transform world rotation, +X at zero   |
-| `memoryDuration`       | 3                                   | Finite seconds >= 0 since last successful observation; 0 forgets immediately on loss          |
-| `visibilityThreshold`  | 0.01                                | In (0, 1]; visibility equal to the threshold passes                                           |
-| `autoUpdate`           | true                                | Samples on each positive-dt component update; false requires `sense()`                        |
-| `enabled`              | true                                | Standard Component lifecycle toggle                                                           |
-| `candidates(observer)` | scene entities tagged `perceptible` | Iterable of entities; duplicates of the same entity are ignored                               |
-| `identify(target)`     | runtime entity id + generation      | Unique nonempty string; use stable entity keys to persist observations                        |
-| `position(target)`     | target Transform world position     | Finite world-pixel point; supplies a sample point for targets without Transform               |
-| `eligible(context)`    | null                                | null accepts; a nonempty reason string rejects                                                |
-| `lineOfSight(context)` | true                                | Boolean unobstructed result; omission sees through walls                                      |
-| `visibility(context)`  | 1                                   | Finite score in [0, 1], for game-specific camouflage, lighting, etc.                          |
-| `memory`               | new PerceptionMemory                | Optional model instance/subclass; its memoryDuration takes precedence; one owner per instance |
-
-Policies receive `PerceptionContext`: observer, target, origin, position, distance,
-angle. Angle is the absolute offset from forward. Configuration is copied and
-frozen at construction. Policies can read changing game state through closures.
-Policies are synchronous and should only read state. Exceptions propagate and are
-attributed as `PerceptionSensor.<policy>` by ErrorBoundary. Candidate iterator
-exceptions use the candidates attribution too.
-
-The observer requires Transform. Candidates must be active, alive, in the same
-scene, distinct from the observer, and have Transform or a position policy.
-Range and FOV boundaries are inclusive; coincident points have angle zero.
-Rejection order: eligibility, range, FOV, LOS, visibility threshold. Later
-policies are skipped after rejection. Built-in reasons are `out-of-range`,
-`outside-field-of-view`, `occluded`, and `below-visibility-threshold`.
-
-## Read and react
-
-- `sensor.detected`: last sampled visible observations whose entity life is still active.
-- `sensor.observations`: all retained observations, including lost targets.
-- `sensor.evaluations`: every evaluated candidate in the latest sample, including failures. Fields: id, entityId, entityName, distance, angle, visibility, reason. Visibility is 0 when rejected before that policy runs.
-- `sensor.sampledAt`: latest memory operation's scene timestamp.
-- `sensor.diagnostics`: JSON-compatible observations for Inspector, with id, entityId, visible, alive, active, reason, firstSeenAt, lastSeenAt, lostAt, age, lastPosition, visibility.
-- `sensor.config`, `sensor.autoUpdate`, `sensor.memory`: readable configuration and model.
-
-`PerceptionObservation<T>` has id, target, visible, reason, firstSeenAt,
-lastSeenAt, lostAt, lastPosition and visibility. A sensor's target is an
-`EntityHandle`. Always resolve `.current` before using it. The last position and
-visibility update only on success. An unseen target never acquires a memory
-record from rejection alone. Absent/inactive/destroyed targets become
-`unavailable` on the next sample. Memory expires on sampling when
-`now - lastSeenAt >= memoryDuration`; success at that sample refreshes it.
-
-`PerceptionDetectedEvent`, `PerceptionLostEvent`, `PerceptionForgottenEvent`
-carry `{ sensor, observation }` and fire on the observer. Loss and forgetting
-can occur in the same sample, in that order. All facts are installed before
-handlers run. A throwing handler stops dispatch. A handler that clears or
-restores memory stops the superseded transition batch. No per-frame event fires
-for a continuously detected target; read the observation when needed.
-
-`clear(reason = "cleared")` empties state and emits loss/forgotten transitions.
-Disable, host deactivation and component removal clear with reason `disabled`.
-The engine suppresses events emitted by an already destroyed host. Re-enable
-starts fresh next update. `sense()` does nothing while disabled. Recursive
-sampling from a policy or handler throws.
-
-Sampling uses `SceneTime.elapsed`. Scene pause/freeze holds memory time; no browser
-clock runs. Entity-local time scaling affects updates, while memory age remains
-scene-relative. A manual sensor retains its last sample until `sense()` is called;
-its diagnostic age continues to reflect scene time. Read `sampledAt`, `alive`
-and `active` alongside `visible`. Selection, ranking, hearing propagation,
-awareness accumulation and game reactions belong to game code.
-
-## Physics occlusion
-
-```ts
-import { Engine, Entity, Scene, Transform } from "@yagejs/core";
-import type { PhysicsWorld } from "@yagejs/physics";
-import { PhysicsPlugin, PhysicsWorldKey } from "@yagejs/physics";
-import { PerceptionSensor } from "@yagejs-addons/perception";
-import { perceptionRaycast } from "@yagejs-addons/perception/physics";
-
-class Observer extends Entity {
-  setup(world: PhysicsWorld) {
-    this.add(new Transform());
-    this.add(
-      new PerceptionSensor({
-        lineOfSight: perceptionRaycast(world),
-      }),
-    );
   }
 }
 class GuardScene extends Scene {
   readonly name = "guards";
   onEnter() {
-    this.spawn(Observer, this.use(PhysicsWorldKey));
+    this.spawn(Guard);
+    this.spawn(Player, { key: "player" });
   }
 }
 
 const engine = new Engine();
-engine.use(new PhysicsPlugin());
 await engine.start();
 await engine.scenes.push(new GuardScene());
 ```
 
-Spawn targets and walls in `GuardScene.onEnter()` alongside the observer.
-`perceptionRaycast(world, options?)`
-returns a LOS policy. Options: `filterGroups?: number`,
-`sensors?: QuerySensorMode` (default excludes sensor colliders). It excludes
-all colliders on the observer. No hit or a first hit on the target passes.
-A different entity blocks, including a child collider; choose collision groups
-or a custom LOS policy for compound targets. Coincident points pass without a
-raycast. One ray targets one point; partial visibility/multiple sample points
-require a custom policy. Existing physics query refresh costs apply per ray.
+The observer requires a `Transform` (`onAdd` throws without one). The sensor
+samples on each component update with `dt > 0`.
 
-## Headless memory and controlled persistence
+## Options
 
-`memory.update(now, samples)` accepts the complete set of `PerceptionSample<T>`
-objects: `{ id, target, position, visibility, reason }`. null reason means
-success; a nonempty string means failure. Missing ids are unavailable.
-The method validates inputs before mutation and returns detected/lost/forgotten
-transitions without dispatching callbacks. Keep target identity stable between
-updates; replacing a target under the same id ends the old observation with
-reason `replaced` and begins a new one. `get(id)`, `observations`, `detected`,
-`sampledAt`, and the mutation counter `version` are readable. Observations and
-positions are frozen. Arrays returned from memory getters are independent copies.
-`clear(now, reason?)` returns transitions. Time must be finite, nonnegative and
-monotonic until restore. Direct model mutations do not emit sensor events.
+| Option                 | Default                                | Contract                                                              |
+| ---------------------- | -------------------------------------- | --------------------------------------------------------------------- |
+| `range`                | 256                                    | Acquisition radius, finite, >= 0                                      |
+| `loseRange`            | `range`                                | Radius while visible, finite, >= `range`                              |
+| `fieldOfView`          | `2 * Math.PI`                          | Full angle, 0 to 2π, centered on `facing`                             |
+| `memoryDuration`       | 3                                      | Seconds since the last sighting before forgetting, finite, >= 0       |
+| `visibilityThreshold`  | 0.01                                   | In (0, 1]; a score equal to the threshold passes                      |
+| `candidates(observer)` | active scene entities with the tag     | Iterable of entities; skips self, duplicates, inactive, other scenes  |
+| `position(target)`     | target `Transform.worldPosition`       | Finite world point; a candidate without Transform throws when omitted |
+| `facing(observer)`     | observer `Transform.worldRotation`     | Finite world angle the field of view is centered on                   |
+| `eligible(context)`    | accepts all                            | `null` accepts; a nonempty string rejects with that reason            |
+| `lineOfSight(context)` | `true` (sees through walls)            | `false` rejects with `occluded`                                       |
+| `visibility(context)`  | 1                                      | Finite score in [0, 1]                                                |
+| `autoUpdate`           | `true`                                 | `false` samples only on `sense()`                                     |
+| `enabled`              | `true`                                 | Standard Component toggle                                             |
+| `memory`               | `new PerceptionMemory(memoryDuration)` | A model instance; passing `memoryDuration` too throws                 |
 
-`memory.snapshot(now = sampledAt)` and `sensor.snapshot()` produce
-`PerceptionSnapshot`: version 1 plus records containing id, firstSeenAge,
-lastSeenAge, lostAge, lastPosition, visibility. No Entity, callback, or handle is
-serialized. Age values refer to capture time. Configuration is supplied by the
-new instance, not saved.
+`PerceptionContext`: `observer`, `target`, `origin` (observer world position),
+`position` (sampled point), `distance`, `angle` (0 to π from `facing`).
+Options are copied at construction; closures may read changing game state.
+Option callbacks must only read state: `sense()` throws when a callback calls
+`sense()` or changes the sensor's memory. Each callback runs through
+`ErrorBoundary.wrapCallback` as `PerceptionSensor.<option>`; a throw stops the
+sample and keeps the previous results.
 
-`memory.restore(snapshot, now, bindings)` accepts explicit `{ id, target }`
-bindings. `sensor.restore(snapshot, resolve)` calls a supplied
-`(id: string) => Entity | undefined` resolver. Missing, dormant and dead entities
-are omitted. Returned entities must belong to the same scene and match the
-configured identifier. Invalid data throws before memory is replaced.
+Check order, first failure wins:
 
-Restore replaces state silently, rebases every saved age, and marks all restored
-records lost with reason `restored`. A previously visible record gets lostAt at
-restore time. Expired records are omitted. Fresh sensing must establish current
-visibility. No acquisition/loss events fire during restore. Save the returned
-data in an explicit game-owned Serializable root; the addon registers no save
-root or slot.
+1. `eligible` → its string.
+2. `range` (`loseRange` while visible) → `out-of-range`.
+3. `fieldOfView` → `outside-field-of-view`. Boundaries are inclusive; a target
+   at the origin has angle 0.
+4. `lineOfSight` → `occluded`.
+5. `visibility < visibilityThreshold` → `below-visibility-threshold`.
+
+## Read
+
+- `sensor.observationOf(entity)`: the observation of the entity's current
+  life, visible or remembered, else `undefined`.
+- `sensor.detected`: visible observations whose target is active.
+- `sensor.observations`: all retained observations.
+- `sensor.evaluations`: every candidate of the latest sample:
+  `{ id, entityId, entityName, distance, angle, visibility, reason }`.
+  `visibility` is 0 when an earlier check failed.
+- `sensor.sampledAt`: scene time of the latest sample, clear or restore.
+- `sensor.diagnostics`: JSON-safe observations for the Inspector, adding
+  `entityId`, `alive`, `active` and `age`.
+- `sensor.config`, `sensor.memory`, `sensor.autoUpdate`.
+
+`PerceptionObservation<T>`: `id`, `target`, `visible`, `reason`,
+`firstSeenAt`, `lastSeenAt`, `lostAt` (`null` while visible), `lastPosition`,
+`visibility`. For the sensor, `target` is an `EntityHandle`; read
+`.current`. `lastPosition` and `visibility` change only on a successful
+sighting. A target never seen gets no observation. A target that stops being
+a candidate gets the reason `unavailable` on the next sample. Observations are
+frozen.
+
+Events fire on the observer after memory is updated. Detected fires when a
+target comes into sight. Lost fires when a visible target fails a check or
+stops being a candidate (reason `unavailable`), and for each visible target on
+`clear` or a disable.
+Forgotten fires when an observation is dropped (expiry, `clear`, or a
+disable). Loss and forgetting can fire in the same sample, in that order. A
+continuously visible target emits nothing further. Events from a listener's
+`clear()`, `sense()` or disable are queued and delivered after the current
+batch. Listeners read current memory, which can be past their event: after a
+clear, `observationOf` returns `undefined` during a pending detection. A
+throwing listener stops the remaining events, queued ones included.
+
+## Methods and lifecycle
+
+- `sense()`: sample now. Does nothing while the sensor is disabled or its
+  entity is inactive.
+- `clear(reason = "cleared")`: drop every observation, emitting loss and
+  forgetting.
+- `snapshot(): PerceptionSnapshot` and `restore(snapshot)`: see Save.
+
+Disable, host deactivation and component removal clear with reason
+`disabled`. Memory times use `SceneTime.elapsed`: scene pause holds them,
+entity time scale does not change them. Expiry is checked during samples:
+an observation is forgotten when `now - lastSeenAt >= memoryDuration`.
+
+## Physics occlusion
+
+```ts
+import { Entity, Transform } from "@yagejs/core";
+import { PerceptionSensor } from "@yagejs-addons/perception";
+import { perceptionRaycast } from "@yagejs-addons/perception/physics";
+
+class Guard extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new PerceptionSensor({ lineOfSight: perceptionRaycast() }));
+  }
+}
+```
+
+Requires `PhysicsPlugin`. `perceptionRaycast(options?)` resolves the
+observer scene's `PhysicsWorldKey` on each call and casts one ray from the
+observer to the sampled point. Options: `filterGroups?: number`,
+`sensors?: QuerySensorMode` (default `"exclude"`). The observer's own
+colliders are skipped. No hit, or a first hit on the target entity, passes.
+Any other entity blocks, including a child entity of the target. A target at
+the origin passes without a ray.
+
+## Save
+
+`sensor.snapshot()` records observations of targets with an entity key, under
+that key, as ages relative to capture time. Targets without a key are omitted.
+`sensor.restore(snapshot)` resolves each key with `scene.findByKey`, skips
+missing and inactive entities, the observer itself, and records with
+`lastSeenAge >= memoryDuration`, rebases ages to the current scene time, and
+replaces memory silently. Restored observations have `visible: false` and
+reason `restored`. Invalid data throws before memory changes. Restoring throws
+while the sensor is disabled or its entity is inactive. The addon registers no save slot; store the snapshot
+in a game-owned save root.
 
 ```ts
 import { Entity, Transform } from "@yagejs/core";
 import { PerceptionSensor } from "@yagejs-addons/perception";
 import type { PerceptionSnapshot } from "@yagejs-addons/perception";
 
-class PersistentObserver extends Entity {
-  private readonly sensor = new PerceptionSensor({
-    identify: (target) => target.requireKey(),
-  });
+class PersistentGuard extends Entity {
+  private readonly sensor = new PerceptionSensor();
 
   setup() {
     this.add(new Transform());
@@ -211,20 +192,42 @@ class PersistentObserver extends Entity {
   }
 
   restoreMemory(saved: PerceptionSnapshot): void {
-    this.sensor.restore(saved, (id) => this.scene.findByKey(id));
+    this.sensor.restore(saved);
   }
 }
 ```
 
-Use `PersistentObserver` in the scene above and spawn targets with stable keys,
-for example `this.spawn(Target, { key: "player" })`. Capture memory while the
-observer is attached. Restore it after the scene has spawned the saved targets.
+`PerceptionSnapshot`: `{ version: 1, records: { id, firstSeenAge,
+lastSeenAge, lostAge, lastPosition, visibility }[] }`.
 
-Spawn all saveable targets with stable keys. Default runtime identifiers are
-appropriate for transient perception, not saving across reconstructed scenes.
+## Headless memory
 
-Inspector: `inspector.getComponentData("Observer", "PerceptionSensor")` includes
-config, evaluations, sampledAt and diagnostics. Use existing Inspector events
-and ErrorBoundary callbackErrors for transitions and failures. No separate
-inspection plugin is required. The [example](https://examples.yage.dev/perception.html)
-demonstrates loss behind a physics wall, expiry, visibility policy and reactions.
+- `memory.update(now, samples)`: `samples` is the complete candidate set,
+  each `PerceptionSample<T>`: `{ id, target, position, visibility, reason }`.
+  `reason: null` is a success. An id missing from the set is rejected as
+  `unavailable`. Returns `PerceptionTransition<T>[]`
+  (`{ type: "detected" | "lost" | "forgotten", observation }`) and dispatches
+  nothing. Validates every sample before changing state. A different `target`
+  under a known id ends the old observation with reason `replaced`.
+- `memory.clear(now, reason?)`: returns loss and forgetting transitions.
+- `memory.snapshot(now = sampledAt)`.
+- `memory.restore(snapshot, now, resolve: (id) => T | undefined)`: omits
+  unresolved and expired records.
+- `get(id)`, `observations`, `detected`, `sampledAt`, `memoryDuration`, and
+  `version` (a counter that increments on every change).
+
+`now` must be finite, >= 0, and not lower than the previous call, except on
+`restore`. Direct model calls emit no sensor events.
+
+## Limits
+
+- One sample point per target. A target half behind a wall is hidden. Use
+  `position` for another point or a custom `lineOfSight` with several rays.
+- Gradual awareness, target ranking and hearing are game code. Read
+  `observationOf(target)` each frame and accumulate in a game component.
+- Walking to `lastPosition` is game code. A straight walk can cut a wall
+  corner even when the sight ray was clear; route with `GridGraph` from
+  `@yagejs/pathfinding`.
+- Example: https://examples.yage.dev/perception.html shows occlusion, memory
+  expiry, an ignored ally, a visibility threshold, gradual awareness and a
+  search reaction.

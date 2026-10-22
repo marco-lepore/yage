@@ -5,7 +5,7 @@ export interface PerceptionConfig {
   range?: number;
   /** Retention distance while visible. Must be >= range. Default range. */
   loseRange?: number;
-  /** Full angle in radians, from 0 to 2π. Default 2π. Forward is +X. */
+  /** Full angle in radians, from 0 to 2π, centered on the facing direction. Default 2π. */
   fieldOfView?: number;
   /** Seconds since last success before forgetting a lost target. Default 3. */
   memoryDuration?: number;
@@ -49,7 +49,11 @@ export interface PerceptionTransition<T> {
   readonly observation: PerceptionObservation<T>;
 }
 
-/** Data only; ages are rebased to the clock supplied to restore. */
+/**
+ * Data only; ages are relative to capture time and rebased to the clock
+ * supplied to restore. `PerceptionSensor.snapshot()` writes each target's
+ * entity key as the record id.
+ */
 export interface PerceptionSnapshot {
   readonly version: 1;
   readonly records: readonly {

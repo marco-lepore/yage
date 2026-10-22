@@ -2,20 +2,20 @@ import type { Vec2Like } from "@yagejs/core";
 
 export interface PerceptionGeometry {
   readonly distance: number;
-  /** Absolute angle from the observer's forward direction, in radians. */
+  /** Absolute angle from the facing direction, in radians from 0 to π. */
   readonly angle: number;
 }
 
-/** World-pixel geometry; coincident points have angle 0. Undefined for non-finite inputs. */
+/** World-pixel distance and facing offset; coincident points have angle 0. */
 export function perceptionGeometry(
   origin: Vec2Like,
-  rotation: number,
+  facing: number,
   target: Vec2Like,
 ): PerceptionGeometry {
   const x = target.x - origin.x;
   const y = target.y - origin.y;
   const distance = Math.hypot(x, y);
-  const difference = Math.atan2(y, x) - (rotation % (Math.PI * 2));
+  const difference = Math.atan2(y, x) - facing;
   return {
     distance,
     angle:

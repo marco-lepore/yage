@@ -1,6 +1,4 @@
 export { PerceptionMemory } from "./core/PerceptionMemory.js";
-export { perceptionGeometry } from "./core/geometry.js";
-export type { PerceptionGeometry } from "./core/geometry.js";
 export type {
   PerceptionConfig,
   ResolvedPerceptionConfig,
@@ -9,15 +7,15 @@ export type {
   PerceptionTransition,
   PerceptionSnapshot,
 } from "./core/types.js";
-export {
-  PerceptionSensor,
-  PerceptionDetectedEvent,
-  PerceptionLostEvent,
-  PerceptionForgottenEvent,
-} from "./PerceptionSensor.js";
+export { PerceptionSensor, PERCEPTIBLE_TAG } from "./PerceptionSensor.js";
 export type {
   PerceptionContext,
   PerceptionSensorOptions,
   PerceptionEvaluation,
-  PerceptionEvent,
 } from "./PerceptionSensor.js";
+export {
+  PerceptionDetectedEvent,
+  PerceptionLostEvent,
+  PerceptionForgottenEvent,
+} from "./events.js";
+export type { PerceptionEvent } from "./events.js";
