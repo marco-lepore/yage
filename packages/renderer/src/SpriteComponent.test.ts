@@ -208,6 +208,13 @@ describe("SpriteComponent", () => {
     ).toThrow(
       "SpriteComponent.constructor: anchor.y must be finite, got Infinity.",
     );
+    expect(
+      () =>
+        new SpriteComponent({
+          texture: {} as never,
+          anchor: { x: NaN, y: 0 },
+        }),
+    ).toThrow("SpriteComponent.constructor: anchor.x must be finite, got NaN.");
   });
 
   it("sets visibility when provided", () => {

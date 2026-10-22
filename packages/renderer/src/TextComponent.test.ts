@@ -167,6 +167,17 @@ describe("TextComponent", () => {
     }).toThrow("TextComponent.anchor: anchor.x must be finite, got Infinity.");
   });
 
+  it("throws on a non-finite anchor option, naming the coordinate", () => {
+    expect(
+      () => new TextComponent({ text: "x", anchor: { x: NaN, y: 0 } }),
+    ).toThrow("TextComponent.constructor: anchor.x must be finite, got NaN.");
+    expect(
+      () => new TextComponent({ text: "x", anchor: { x: 0, y: -Infinity } }),
+    ).toThrow(
+      "TextComponent.constructor: anchor.y must be finite, got -Infinity.",
+    );
+  });
+
   it("sets visibility, tint, and alpha when provided", () => {
     const comp = new TextComponent({
       text: "x",

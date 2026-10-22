@@ -320,6 +320,12 @@ describe("SplitTextComponent", () => {
     comp.anchor = undefined;
     expect(split.pivot).toMatchObject({ x: 0, y: 0 });
     expect(comp.anchor).toBeUndefined();
+
+    expect(
+      () => new SplitTextComponent({ text: "hi", anchor: { x: NaN, y: 0 } }),
+    ).toThrow(
+      "SplitTextComponent.constructor: anchor.x must be finite, got NaN.",
+    );
   });
 
   it("recomputes the block anchor after text, style, and manual split changes", () => {

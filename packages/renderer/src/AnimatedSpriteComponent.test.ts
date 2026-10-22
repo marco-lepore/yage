@@ -293,6 +293,27 @@ describe("AnimatedSpriteComponent", () => {
     );
   });
 
+  it("throws on a non-finite anchor option, naming the coordinate", () => {
+    expect(
+      () =>
+        new AnimatedSpriteComponent({
+          source: SOURCE,
+          anchor: { x: NaN, y: 0 },
+        }),
+    ).toThrow(
+      "AnimatedSpriteComponent.constructor: anchor.x must be finite, got NaN.",
+    );
+    expect(
+      () =>
+        new AnimatedSpriteComponent({
+          source: SOURCE,
+          anchor: { x: 0, y: Infinity },
+        }),
+    ).toThrow(
+      "AnimatedSpriteComponent.constructor: anchor.y must be finite, got Infinity.",
+    );
+  });
+
   it("applies the speed option at construction", () => {
     const comp = new AnimatedSpriteComponent({ source: SOURCE, speed: 0.25 });
     expect(comp.speed).toBe(0.25);
