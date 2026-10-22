@@ -52,9 +52,7 @@ function surfaceScene(): ReturnType<typeof createRendererTestContext> {
 }
 function useWebGL2(scene: Scene): void {
   Object.assign(scene.context.resolve(RendererKey), {
-    application: {
-      renderer: { name: "webgl", context: { webGLVersion: 2 } },
-    },
+    capabilities: { backend: "webgl2" },
   });
 }
 
@@ -260,6 +258,22 @@ describe("sprite materials", () => {
     );
     expect(sprite.material).toBeUndefined();
     expect(sprite.renderObject.renderPipeId).toBe("sprite");
+  });
+
+  it("rejects a material on a WebGL1 context before changing the sprite", () => {
+    registerTexture("material-color", image());
+    const { scene } = createRendererTestContext();
+    Object.assign(scene.context.resolve(RendererKey), {
+      capabilities: { backend: "webgl1" },
+    });
+    const sprite = spawnEntityInScene(scene).add(
+      new SpriteComponent({ texture: "material-color" }),
+    );
+    expect(() => sprite.setMaterial(unlitMaterial())).toThrow(
+      /WebGL2 or WebGPU/,
+    );
+    expect(sprite.material).toBeUndefined();
+    expect(sprite.sprite.renderPipeId).toBe("sprite");
   });
 
   it("rejects a screen-space layer before moving a lit sprite", () => {

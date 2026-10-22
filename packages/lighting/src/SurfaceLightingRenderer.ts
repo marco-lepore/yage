@@ -1,4 +1,4 @@
-import { RendererType, UniformGroup } from "pixi.js";
+import { UniformGroup } from "pixi.js";
 import { SpriteLightingKey } from "@yagejs/renderer/api";
 import { LightEdgeTexture } from "./light-edges.js";
 import { OccluderWatch } from "./occlusion.js";
@@ -42,14 +42,10 @@ class SurfaceLightingRenderer implements LightingRenderer {
       throw new Error(
         "surfaceLighting: bounce is not supported. Set the scene's lighting.bounce to null.",
       );
-    const renderer = context.renderer.application.renderer;
-    if (
-      renderer.name === "canvas" ||
-      ("context" in renderer && renderer.context.webGLVersion === 1)
-    ) {
+    const backend = context.renderer.capabilities.backend;
+    if (backend === "webgl1")
       throw new Error("surfaceLighting: WebGL2 or WebGPU is required.");
-    }
-    this.uniforms.isStatic = renderer.type === RendererType.WEBGPU;
+    this.uniforms.isStatic = backend === "webgpu";
     this.edges = new LightEdgeTexture(`surface-edges:${context.scene.name}`);
     this.lights = new LightEdgeTexture(`surface-lights:${context.scene.name}`);
     context.scene.registerScoped(SpriteLightingKey, {
