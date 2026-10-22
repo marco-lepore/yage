@@ -8,3 +8,4 @@ Filter world queries and contact checks by what a given collider would collide w
 - `contactWith(other, { solidOnly: true })` measures a pair only when the two colliders would collide.
 - The shared `QueryOptions` type describes the filters all four world queries accept. Combining `solidFor` with `sensors: "only"` throws, because `solidFor` skips every sensor.
 - `RigidBodyComponent.rotationsLocked` reports whether the body's rotation is locked by `fixedRotation` or `lockRotations()`.
+- `MAX_PHYSICS_STEPS_PER_UPDATE` (8) is the most physics steps a scene runs per fixed update. Above that time scale, physics advances more slowly than the scene clock.

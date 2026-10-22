@@ -9,6 +9,7 @@ import {
 } from "@yagejs/core";
 import {
   ColliderComponent,
+  MAX_PHYSICS_STEPS_PER_UPDATE,
   PhysicsWorldKey,
   RigidBodyComponent,
 } from "@yagejs/physics";
@@ -74,9 +75,13 @@ export class MovingSurface extends Component {
     const x = from.x + (to.x - from.x) * fraction;
     const y = from.y + (to.y - from.y) * fraction;
     // The body reaches this target in the next physics step. Above time scale
-    // 1 the scene runs about that many steps per update, and riders move in
-    // every one of them, so the carry speed covers all of them.
-    const steps = Math.max(1, this.use(SceneTimeKey).effectiveScale);
+    // 1 the scene runs about that many steps per update, up to the physics
+    // limit, and riders move in every one of them, so the carry speed covers
+    // all of them.
+    const steps = Math.min(
+      Math.max(1, this.use(SceneTimeKey).effectiveScale),
+      MAX_PHYSICS_STEPS_PER_UPDATE,
+    );
     const physicsTime = this.use(GameLoopKey).fixedTimestep * steps;
     const vx = (x - this.body.positionX) / physicsTime;
     const vy = (y - this.body.positionY) / physicsTime;

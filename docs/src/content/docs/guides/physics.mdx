@@ -600,6 +600,15 @@ angular inertia scales with `pixelsPerMeter`⁻⁴, so the same torque spins a b
 spring stiffness.
 :::
 
+### Physics steps while the scene is sped up
+
+A scene running above time scale 1 runs about that many physics steps per
+fixed update, up to `MAX_PHYSICS_STEPS_PER_UPDATE` (8). Above time scale 8 it
+runs 8 steps per update, so the world moves more slowly than the scene clock
+that component updates receive. A kinematic body moved through its Transform
+reaches the new position in the first step of an update and holds still for
+the remaining steps.
+
 ### Velocity while the scene is slowed
 
 Physics runs at the scene's effective time scale. An entity excluded from a

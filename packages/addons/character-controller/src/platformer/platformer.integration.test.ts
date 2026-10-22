@@ -1073,7 +1073,7 @@ it.each(["tall riser", "low ceiling"])(
   },
 );
 
-it.each([0.5, 1.5, 2])(
+it.each([0.5, 1.5, 2, 10, 16])(
   "keeps riders on a horizontal platform with scene timeScale %s",
   async (scale) => {
     const { scene, floor, body, tick } = await setup();
@@ -1092,7 +1092,7 @@ it.each([0.5, 1.5, 2])(
   },
 );
 
-it.each([0.5, 1.5, 2])(
+it.each([0.5, 1.5])(
   "keeps riders on a rising platform with scene timeScale %s",
   async (scale) => {
     const { scene, floor, body, controller, tick } = await setup();
@@ -1101,16 +1101,18 @@ it.each([0.5, 1.5, 2])(
     floor.add(
       new MovingSurface({
         from: { x: 0, y: 100 },
-        to: { x: 0, y: -200 },
+        to: { x: 0, y: -2000 },
         speed: 30,
       }),
     );
     scene.timeScale = scale;
-    tick(60);
-    expect(controller.grounded).toBe(true);
-    expect(Math.abs(body.positionY - platformBody.positionY + 10)).toBeLessThan(
-      1.5,
-    );
+    for (let i = 0; i < 60; i++) {
+      tick();
+      expect(controller.grounded).toBe(true);
+      expect(
+        Math.abs(body.positionY - platformBody.positionY + 10),
+      ).toBeLessThan(1);
+    }
   },
 );
 

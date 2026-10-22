@@ -41,7 +41,10 @@ export { RigidBodyComponent } from "./RigidBodyComponent.js";
 
 export { ColliderComponent } from "./ColliderComponent.js";
 
-export { PhysicsSystem } from "./PhysicsSystem.js";
+export {
+  PhysicsSystem,
+  MAX_PHYSICS_STEPS_PER_UPDATE,
+} from "./PhysicsSystem.js";
 
 export { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
 

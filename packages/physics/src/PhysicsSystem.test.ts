@@ -248,7 +248,10 @@ vi.mock("@dimforge/rapier2d", () => ({
 
 import { Transform, Vec2, Phase, SceneTime, SceneTimeKey } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
-import { PhysicsSystem } from "./PhysicsSystem.js";
+import {
+  MAX_PHYSICS_STEPS_PER_UPDATE,
+  PhysicsSystem,
+} from "./PhysicsSystem.js";
 import {
   createPhysicsTestContext,
   createTestScene,
@@ -748,6 +751,26 @@ describe("PhysicsSystem", () => {
         // maxSteps = ceil(5) + 1 = 6, but accumulator is capped,
         // so we should never see more than 6 steps per frame
         expect(world.stepSpy.mock.calls.length).toBeLessThanOrEqual(6);
+      }
+    });
+
+    it("runs MAX_PHYSICS_STEPS_PER_UPDATE steps per update above that time scale", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+      const world = (
+        physicsWorld as unknown as {
+          world: InstanceType<typeof mocks.MockWorld>;
+        }
+      ).world;
+
+      scene.timeScale = MAX_PHYSICS_STEPS_PER_UPDATE * 2;
+      for (let i = 0; i < 3; i++) {
+        world.stepSpy.mockClear();
+        system.update(16.67);
+        expect(world.stepSpy).toHaveBeenCalledTimes(
+          MAX_PHYSICS_STEPS_PER_UPDATE,
+        );
       }
     });
 

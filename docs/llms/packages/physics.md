@@ -124,6 +124,10 @@ For every body type, a position or rotation written to the `Transform` while the
 
 An active static body does not follow `Transform` writes; `rb.setPosition` / `rb.setRotation` move body and `Transform` together (`setRotation` updates the `Transform` only with `syncRotation: true`). A pool member's `onAcquire` runs after activation: use these body methods there to place static or dynamic members immediately.
 
+### Physics steps while the scene is sped up
+
+Above time scale 1 a scene runs about that many physics steps per fixed update, capped at the exported `MAX_PHYSICS_STEPS_PER_UPDATE` (8); above time scale 8 physics advances more slowly than the scene clock components receive. A kinematic body moved through its Transform reaches the new position in the first step of an update and holds still for the remaining steps.
+
 ### Velocity while the scene is slowed
 
 Physics runs at the scene's effective time scale, and an entity excluded from a slow-motion effect still has its velocity integrated at the slowed rate. Scale velocity writes by the ratio of the two rates:

@@ -18,6 +18,13 @@ import type { PhysicsWorld } from "./PhysicsWorld.js";
 import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 
 /**
+ * The most physics steps a scene runs per fixed update. Above this time
+ * scale, physics advances this many steps per update, more slowly than the
+ * scene clock that component updates receive.
+ */
+export const MAX_PHYSICS_STEPS_PER_UPDATE = 8;
+
+/**
  * Steps per-scene physics worlds and synchronises Rapier ↔ Transform.
  *
  * Runs in FixedUpdate at priority 0, before ComponentFixedUpdateSystem (priority 1000).
@@ -64,7 +71,10 @@ export class PhysicsSystem extends System {
   private stepScene(dt: number, scene: Scene, ctx: ScenePhysicsContext): void {
     const timeScale =
       scene.tryResolveScoped(SceneTimeKey)?.effectiveScale ?? scene.timeScale;
-    const maxSteps = Math.min(Math.ceil(timeScale) + 1, 8);
+    const maxSteps = Math.min(
+      Math.ceil(timeScale) + 1,
+      MAX_PHYSICS_STEPS_PER_UPDATE,
+    );
     ctx.accumulator += dt * timeScale;
 
     // Cap accumulator to prevent unbounded growth at high timeScale

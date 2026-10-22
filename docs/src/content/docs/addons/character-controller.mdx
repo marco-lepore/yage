@@ -454,8 +454,10 @@ characters that ride them, so each platform's velocity for the step is known
 when a rider reads it. Upward platform velocity adds to jump height. Downward
 platform velocity does not reduce a jump. Changing a platform entity's time
 scale changes its path speed and the speed it carries riders at together.
-Time scale zero stops the platform, and a rider on it stops too. Riders stay
-with the platform at any scene time scale.
+Time scale zero stops the platform, and a rider on it stops too. A rider
+keeps pace with a platform moving sideways at any scene time scale. From
+scene time scale 2, a rising platform covers each update's distance in its
+first physics step, so a rider bounces on it.
 
 Set `crush: true` to receive `PlatformerCrushedEvent` when a moving box pushes
 the character into a fixed opposing face. The event names the pushing
