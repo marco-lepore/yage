@@ -1247,34 +1247,45 @@ test.describe("Examples", () => {
       keys: string[];
       visited: number;
     }
+    // Each page call runs as an Inspector drive with drawing off: the test
+    // steps thousands of frames, and drawing each one would cost more than
+    // the game does.
     // Taps a key, steps until the map's generation job finishes, and reads
     // the map. The job runs inside a GenerationController, a bounded number
     // of operations per frame.
-    const press = (code: string): Promise<MapView> =>
-      page.evaluate((code) => {
+    const press = async (code: string): Promise<MapView> => {
+      const run = await page.evaluate(async (code) => {
         const insp = window.__yage__!.inspector;
         const map = () =>
           insp.getComponentData("MapHost", "MapState") as Omit<
             MapView,
             "generation"
           >;
-        insp.input.tap(code);
-        for (let frame = 0; frame < 600 && map().status === "running"; frame++)
-          insp.time.step(1);
-        return {
-          ...map(),
-          generation: (
-            insp.getComponentData("MapHost", "GenerationController") as {
-              generation: MapView["generation"];
-            }
-          ).generation,
-        };
+        const result = await insp.drive(
+          async ({ input, until }) => {
+            await input.tap(code);
+            await until(() => map().status !== "running", { maxFrames: 600 });
+            return {
+              ...map(),
+              generation: (
+                insp.getComponentData("MapHost", "GenerationController") as {
+                  generation: MapView["generation"];
+                }
+              ).generation,
+            };
+          },
+          { render: "none" },
+        );
+        return result.ok ? result.value : result.error;
       }, code);
+      if (typeof run === "string") throw new Error(run);
+      return run;
+    };
     // Walks to each room in turn, in one page call. Tab cycles the target
     // through the map's regions; `null` keeps the current target. Space
     // walks the route there, and the frames step until the walk ends.
-    const tour = (rooms: readonly (string | null)[]): Promise<Stop[]> =>
-      page.evaluate((rooms) => {
+    const tour = async (rooms: readonly (string | null)[]): Promise<Stop[]> => {
+      const run = await page.evaluate(async (rooms) => {
         const insp = window.__yage__!.inspector;
         const explorer = () =>
           (
@@ -1287,22 +1298,36 @@ test.describe("Examples", () => {
             MapView,
             "summary"
           >;
-        return rooms.map((room) => {
-          for (let i = 0; i < 20 && room && explorer().targetRoom !== room; i++)
-            insp.input.tap("Tab");
-          insp.input.tap("Space");
-          const started = explorer().walking;
-          for (let frame = 0; frame < 3000 && explorer().walking; frame++)
-            insp.time.step(1);
-          const { keys, visited } = map().summary;
-          return {
-            ...explorer(),
-            started,
-            keys: [...keys].sort(),
-            visited: visited.length,
-          };
-        });
+        const result = await insp.drive(
+          async ({ input, until }) => {
+            const stops: Stop[] = [];
+            for (const room of rooms) {
+              for (
+                let i = 0;
+                i < 20 && room && explorer().targetRoom !== room;
+                i++
+              )
+                await input.tap("Tab");
+              await input.tap("Space");
+              const started = explorer().walking;
+              await until(() => !explorer().walking, { maxFrames: 3000 });
+              const { keys, visited } = map().summary;
+              stops.push({
+                ...explorer(),
+                started,
+                keys: [...keys].sort(),
+                visited: visited.length,
+              });
+            }
+            return stops;
+          },
+          { render: "none", maxFrames: 20_000 },
+        );
+        return result.ok ? result.value : result.error;
       }, rooms);
+      if (typeof run === "string") throw new Error(run);
+      return run;
+    };
 
     // Seeds come from the scene's random service, which `?test` makes
     // deterministic, so this run always sees the same dungeon.
