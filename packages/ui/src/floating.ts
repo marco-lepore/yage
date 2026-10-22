@@ -38,8 +38,8 @@ export interface FloatingHandle {
   readonly container: DisplayContainer;
   /**
    * Show `element` as the float's content, laid out shrink-to-content. A
-   * previous content element is destroyed, and `release()` destroys the
-   * current one.
+   * previous content element is destroyed. `release()` destroys the current
+   * one, and so does the scene's exit if the float is still held.
    */
   setContent(element: UIElement): void;
   setReference(get: () => UIElement | null): void;
@@ -68,6 +68,8 @@ export interface FloatingHandle {
 
 interface Entry {
   container: DisplayContainer;
+  /** The element handed to `setContent`, destroyed with the entry. */
+  content: UIElement | undefined;
   getReference: () => UIElement | null;
   config: FloatConfig;
   layout: (maxWidth: number | undefined) => Dimensions;
@@ -82,6 +84,15 @@ interface Entry {
 const OVERLAY_LAYER = "ui-overlay";
 const OVERLAY_LAYER_ORDER = 1_000_000;
 const EMPTY_SIZE: Dimensions = { width: 0, height: 0 };
+
+/** Destroy an entry's content element, then its container. */
+function disposeEntry(entry: Entry): void {
+  const content = entry.content;
+  entry.content = undefined;
+  content?.destroy();
+  entry.container.removeFromParent();
+  entry.container.destroy({ children: true });
+}
 
 function sameRect(a: Rect | null, b: Rect): boolean {
   return (
@@ -137,6 +148,7 @@ export class FloatingOverlay {
     container.visible = false;
     const entry: Entry = {
       container,
+      content: undefined,
       getReference: () => null,
       config: {},
       layout: () => EMPTY_SIZE,
@@ -149,13 +161,12 @@ export class FloatingOverlay {
     };
     this.entries.add(entry);
     if (this.layer) this.layer.addChild(container);
-    let content: UIElement | undefined;
 
     return {
       container,
       setContent: (element) => {
-        if (content && content !== element) content.destroy();
-        content = element;
+        if (entry.content && entry.content !== element) entry.content.destroy();
+        entry.content = element;
         container.addChild(element.displayObject);
         entry.layout = (mw) => layoutFloat([element], mw);
         entry.dirty = true;
@@ -186,10 +197,7 @@ export class FloatingOverlay {
       },
       release: () => {
         this.entries.delete(entry);
-        content?.destroy();
-        content = undefined;
-        container.removeFromParent();
-        container.destroy({ children: true });
+        disposeEntry(entry);
       },
     };
   }
@@ -254,10 +262,7 @@ export class FloatingOverlay {
   }
 
   destroy(): void {
-    for (const e of this.entries) {
-      e.container.removeFromParent();
-      e.container.destroy({ children: true });
-    }
+    for (const e of this.entries) disposeEntry(e);
     this.entries.clear();
     this.layer = null;
   }

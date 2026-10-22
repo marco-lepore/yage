@@ -350,7 +350,8 @@ with `scene.use(FloatingOverlayKey).acquire()` for a
 `FloatingHandle`, hand it a UI element with `handle.setContent(panel)`, and
 position with the pure `computePosition()` engine
 (`offset → flip → shift → size`). `setContent` lays the element out
-shrink-to-content, and `release()` destroys it. The React `<Tooltip>` / `useFloating`
+shrink-to-content. `release()` destroys the element, and so does the scene's
+exit if you still hold the handle. The React `<Tooltip>` / `useFloating`
 build on this exact overlay — see the
 [React UI guide](/guides/ui-react/).
 

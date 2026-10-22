@@ -306,6 +306,21 @@ describe("attachTooltip", () => {
     expect(second._destroyed).toBe(true);
   });
 
+  it("destroying the overlay destroys content still on a float", () => {
+    makeScene(overlay);
+    const handle = overlay.acquire();
+    const content = makeContent(80, 24) as UIElement & { _destroyed: boolean };
+    handle.setContent(content);
+
+    overlay.destroy();
+    expect(content._destroyed).toBe(true);
+
+    // A late release from the float's owner leaves the content alone.
+    const destroy = vi.spyOn(content, "destroy");
+    handle.release();
+    expect(destroy).not.toHaveBeenCalled();
+  });
+
   it("wires no input on the anchor — activation is the caller's", () => {
     const { scene } = makeScene(overlay);
     const anchor = makeAnchor();

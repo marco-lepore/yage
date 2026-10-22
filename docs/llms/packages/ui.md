@@ -1150,8 +1150,8 @@ For custom popovers / menus, use the lower-level pieces directly:
 
 - `scene.use(FloatingOverlayKey).acquire()` → a
   `FloatingHandle` with `setContent(element)` (shows a `UIElement`, lays it
-  out shrink-to-content, destroys a replaced one; `release()` destroys the
-  current one), `setReference(get)`, `setConfig(FloatConfig)`,
+  out shrink-to-content, destroys a replaced one; `release()` or the scene's
+  exit destroys the current one), `setReference(get)`, `setConfig(FloatConfig)`,
   `setLayout(fn)`, `invalidateLayout()`, `setActive(bool)`,
   `bringToFront()` and `release()`. Its `container` is for a renderer that
   builds content outside `@yagejs/ui` elements (the React layer portals
