@@ -598,6 +598,24 @@ describe("UIElementBase.onDestroy", () => {
     ]);
   });
 
+  it("records a throwing listener on a tree root's own error boundary", () => {
+    const boundary = new ErrorBoundary(new Logger({ level: LogLevel.None }));
+    const layer = new Container();
+    const root = new UIPanel({});
+    layer.addChild(root.container);
+    bindUIErrorBoundary(root.container, boundary);
+    root.onDestroy(() => {
+      throw new Error("listener failed");
+    });
+
+    // A surface takes its root off the layer before destroying it.
+    root.container.removeFromParent();
+    expect(() => root.destroy()).toThrow("listener failed");
+    expect(boundary.getCallbackErrors()).toEqual([
+      { kind: "UI destroy listener", error: "listener failed" },
+    ]);
+  });
+
   it("does not call a listener removed before destroy", () => {
     const panel = new UIPanel({});
     const fn = vi.fn();
