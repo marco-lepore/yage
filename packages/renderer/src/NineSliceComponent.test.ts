@@ -174,6 +174,21 @@ describe("NineSliceComponent", () => {
     );
   });
 
+  it("rejects a non-finite anchor before drawing", () => {
+    expect(
+      () =>
+        new NineSliceComponent({
+          texture: "panel",
+          insets: INSETS,
+          width: 10,
+          height: 10,
+          anchor: { x: Infinity, y: 0 },
+        }),
+    ).toThrow(
+      "NineSliceComponent.constructor: anchor.x must be finite, got Infinity.",
+    );
+  });
+
   it("throws naming an unknown texture key", () => {
     expect(
       () =>

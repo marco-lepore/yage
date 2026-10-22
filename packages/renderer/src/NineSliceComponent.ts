@@ -60,6 +60,10 @@ export class NineSliceComponent extends VisualComponent {
     for (const edge of ["left", "top", "right", "bottom"] as const) {
       assertFiniteNumber(context, `insets.${edge}`, options.insets[edge], 0);
     }
+    if (options.anchor) {
+      assertFiniteNumber(context, "anchor.x", options.anchor.x);
+      assertFiniteNumber(context, "anchor.y", options.anchor.y);
+    }
     this.slice = createNineSlice({
       texture: options.texture,
       leftWidth: options.insets.left,

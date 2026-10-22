@@ -42,6 +42,10 @@ export function textureMask(
     const value = options[key];
     if (value !== undefined) assertFiniteNumber("textureMask", key, value);
   }
+  if (options.anchor) {
+    assertFiniteNumber("textureMask", "anchor.x", options.anchor.x);
+    assertFiniteNumber("textureMask", "anchor.y", options.anchor.y);
+  }
   return () => {
     const sprite = Sprite.from(resolveTextureInput(texture));
     if (options.anchor) sprite.anchor.set(options.anchor.x, options.anchor.y);

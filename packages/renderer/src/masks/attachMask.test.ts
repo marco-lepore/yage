@@ -237,6 +237,12 @@ describe("textureMask", () => {
       "textureMask: width must be finite, got NaN.",
     );
   });
+
+  it("rejects a non-finite anchor before building anything", () => {
+    expect(() =>
+      textureMask("vignette", { anchor: { x: 0.5, y: Number.NaN } }),
+    ).toThrow("textureMask: anchor.y must be finite, got NaN.");
+  });
 });
 
 describe("graphicsMask", () => {
