@@ -1,7 +1,7 @@
 import type { RandomService } from "@yagejs/core";
 import { validateRoomGeometry } from "./geometry.js";
 import { assertInteger, assertPositive, fail } from "./internal.js";
-import { graphStructureErrors } from "./progression.js";
+import { disconnectedRegions, graphStructureErrors } from "./progression.js";
 import type {
   CatalogDefinition,
   CatalogLink,
@@ -223,9 +223,15 @@ export function validateCatalogDefinition(
   rooms: boolean,
 ): CatalogCandidates {
   // Progression is the game's to check with validateRegionGraph: only the
-  // game knows which keys the player holds at the start.
+  // game knows which keys the player holds at the start. The search grows
+  // outwards from the start, so every region needs a connection path to it.
   const graphErrors = graphStructureErrors(definition.graph);
   if (graphErrors.length) fail(graphErrors.join(" "));
+  const disconnected = disconnectedRegions(definition.graph);
+  if (disconnected.length)
+    fail(
+      `${disconnected.map((id) => `region "${id}"`).join(", ")} has no connection path to start region "${definition.graph.start}"`,
+    );
   const regionIds = new Set(definition.graph.regions.map((r) => r.id));
   const templateIds = new Set<string>();
   for (const template of definition.templates as readonly AnyTemplate[]) {

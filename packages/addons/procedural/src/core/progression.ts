@@ -24,6 +24,26 @@ export function graphStructureErrors(graph: RegionGraph): string[] {
   return errors;
 }
 
+/** @internal Regions no chain of connections joins to the start, keys aside. */
+export function disconnectedRegions(graph: RegionGraph): string[] {
+  const joined = new Set([graph.start]);
+  const queue = [graph.start];
+  for (let i = 0; i < queue.length; i++)
+    for (const edge of graph.connections) {
+      const other =
+        edge.from === queue[i]
+          ? edge.to
+          : edge.to === queue[i]
+            ? edge.from
+            : undefined;
+      if (other !== undefined && !joined.has(other)) {
+        joined.add(other);
+        queue.push(other);
+      }
+    }
+  return graph.regions.filter((r) => !joined.has(r.id)).map((r) => r.id);
+}
+
 /**
  * Regions reachable from the start with permanent, reusable keys. Collection
  * repeats until no further region opens. Throws for a malformed graph.

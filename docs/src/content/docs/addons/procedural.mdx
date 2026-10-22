@@ -123,8 +123,10 @@ before entering the start region. `inspectProgression(graph)` returns the reacha
 collected and the unreachable regions, collecting keys until no further
 region opens. `inspectProgression(graph, { keys, collectKeys: false })`
 tests exactly the keys you pass. Both work on any graph, generated or not.
-The catalog and room generators check only a graph's structure, not its
-progression, so call `validateRegionGraph` yourself for an authored graph.
+The catalog and room generators check a graph's structure: unique ids, known
+endpoints, and a chain of connections from the start to every region, with
+keys ignored. They do not check progression, so call `validateRegionGraph`
+yourself for an authored graph.
 
 ## Author room templates
 

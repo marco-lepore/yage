@@ -101,8 +101,10 @@ a region nor `keys` provides, and regions that key collection never reaches.
 `inspectProgression(graph, { keys?, collectKeys? })` returns
 `{ reachable, keys, unreachable }`. `collectKeys` defaults to true; set it
 false to test a fixed key set. It throws for a malformed graph.
-Catalog and room generators check only graph structure (ids and endpoints),
-not progression; validate an authored graph's progression yourself.
+Catalog and room generators check graph structure (unique ids, known
+endpoints, a connection path from the start to every region, keys ignored)
+and throw otherwise; they do not check progression, so validate an authored
+graph's progression yourself.
 
 ## Catalogs and variants
 

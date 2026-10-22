@@ -265,3 +265,29 @@ it("draws new counts when a ranged draw cannot be completed", () => {
       ),
   ).toThrow('needs at least 9 "room" regions, over its max of 2');
 });
+
+it("rejects a catalog graph with a region no connection reaches", () => {
+  const graph: RegionGraph = {
+    start: "a",
+    regions: [
+      { id: "a", kind: "room" },
+      { id: "b", kind: "room" },
+      { id: "c", kind: "room" },
+    ],
+    connections: [{ id: "ab", from: "a", to: "b" }],
+  };
+  const definition = {
+    graph,
+    templates: [{ id: "room", kinds: ["room"], connections: [{ id: "d" }] }],
+  };
+  expect(() => new CatalogGenerator(definition, { seed: 0 })).toThrow(
+    'region "c" has no connection path to start region "a"',
+  );
+  expect(
+    () =>
+      new RoomGenerator(
+        { graph, templates: [{ ...crossRoom, kinds: ["room"] }] },
+        { seed: 0 },
+      ),
+  ).toThrow('region "c" has no connection path to start region "a"');
+});
