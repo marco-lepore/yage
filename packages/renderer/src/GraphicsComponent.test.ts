@@ -227,6 +227,15 @@ describe("GraphicsComponent", () => {
     expect(comp.graphics.pivot).toMatchObject({ x: 0, y: -24 });
   });
 
+  it("reports localBounds relative to the entity's position, after the pivot", () => {
+    const comp = new GraphicsComponent({ pivot: { x: 10, y: 4 } });
+    (
+      comp.graphics as unknown as InstanceType<typeof mocks.MockGraphics>
+    ).boundsBox = { x: 0, y: 0, width: 20, height: 8 };
+
+    expect(comp.localBounds).toEqual({ x: -10, y: -4, width: 20, height: 8 });
+  });
+
   it("leaves the pivot at the drawing origin when the option is absent", () => {
     expect(new GraphicsComponent().graphics.pivot).toMatchObject({
       x: 0,

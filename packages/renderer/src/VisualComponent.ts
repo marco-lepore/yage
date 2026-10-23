@@ -368,15 +368,17 @@ export abstract class VisualComponent extends Component implements SortSource {
   /**
    * What this visual draws, in its own pixels: the box around its content
    * before the entity's position, rotation and scale apply. `x` and `y` are
-   * the box's top-left corner relative to the anchor, so a sprite anchored at
-   * its centre reports `x = -width / 2`. A hidden visual reports its size too.
-   * Computed on each read.
+   * the box's top-left corner relative to the entity's position, so a sprite
+   * or split text anchored at its centre reports `x = -width / 2`, and a
+   * graphics `pivot` of `(px, py)` moves the box by `(-px, -py)`. A hidden
+   * visual reports its size too. Computed on each read.
    */
   get localBounds(): VisualBounds {
-    const bounds = this.renderObject.getLocalBounds();
+    const object = this.renderObject;
+    const bounds = object.getLocalBounds();
     return {
-      x: bounds.x,
-      y: bounds.y,
+      x: bounds.x - object.pivot.x,
+      y: bounds.y - object.pivot.y,
       width: bounds.width,
       height: bounds.height,
     };

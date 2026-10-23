@@ -13,6 +13,7 @@ const { mocks } = vi.hoisted(() => {
     visible = true;
     destroyed = false;
     eventMode = "passive";
+    pivot = { x: 0, y: 0 };
     localBounds = { x: 0, y: 0, width: 0, height: 0 };
     listeners = new Map<string, Set<() => void>>();
 

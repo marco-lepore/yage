@@ -75,8 +75,11 @@ takes a `pivot` in pixels instead — see
 ### Size and pointer events
 
 `localBounds` reports the box a visual draws in its own pixels, before the
-entity's position, rotation and scale apply. Every visual component has it,
-and it reports the size of a hidden visual too:
+entity's position, rotation and scale apply. Its `x` and `y` are the box's
+top-left corner relative to the entity's position, so a visual anchored at its
+centre reports `x = -width / 2`. A `GraphicsComponent` pivot moves the box the
+same way it moves the drawing. Every visual component has `localBounds`, and it
+reports the size of a hidden visual too:
 
 ```typescript yage-context="entity"
 import { SpriteComponent } from "@yagejs/renderer";
