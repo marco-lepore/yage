@@ -277,8 +277,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   private _inspector: { removeExtension(namespace: string): void } | null =
     null;
   /**
-   * Render targets and `createTexture` bakes that follow the renderer, from
-   * creation until the game destroys them.
+   * Render targets, render-target layers and `createTexture` bakes that
+   * follow the renderer, from creation until they are destroyed. Scene exit
+   * destroys a layer's target; the game destroys the others.
    */
   private readonly _renderTargets = new Set<{ release(): void }>();
 
@@ -441,6 +442,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
             stage: this._app.stage,
             isEnabled: () => this.drawingEnabled,
             refresh: options.refresh ?? "every-frame",
+            live: this._renderTargets,
           },
         ),
     );

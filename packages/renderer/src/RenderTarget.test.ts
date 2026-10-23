@@ -411,7 +411,7 @@ describe("render-target layer drawing", () => {
       renderer,
       source,
       { width: 10, height: 10 },
-      { stage, isEnabled: () => true, refresh },
+      { stage, isEnabled: () => true, refresh, live: new Set() },
     );
     return { calls, prerender, stage, source, target };
   }
