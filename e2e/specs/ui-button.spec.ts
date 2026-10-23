@@ -14,7 +14,9 @@ test.describe("UI button fixture", () => {
   test("clicking the button triggers its callback", async ({ page }) => {
     await gotoFixture(page, "/ui-button.html");
     await waitForClock(page);
-    await stepFrames(page, 1);
+    // Pointer dispatch needs a drawn frame, and the fixture can freeze
+    // before drawing one.
+    await stepFrames(page, 1, { render: "last" });
 
     const canvas = page.locator("canvas");
     await canvas.click({

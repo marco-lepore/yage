@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import type { InspectorRenderMode } from "@yagejs/core";
 
 export interface EntitySnapshot {
   id: number;
@@ -78,13 +79,25 @@ export async function stepFrame(page: Page, dtMs?: number): Promise<void> {
   }, dtMs);
 }
 
+export interface StepFramesOptions {
+  /** Sets the clock's per-frame delta before stepping; later steps keep it. */
+  dtMs?: number;
+  /**
+   * Drawing for the stepped frames, `"none"` by default. Under the software
+   * WebGL the suite runs on, a drawn frame costs far more than the simulation
+   * step, and most tests assert through the Inspector. `"last"` draws the
+   * final frame once, which pointer dispatch needs before its first event.
+   */
+  render?: InspectorRenderMode;
+}
+
 export async function stepFrames(
   page: Page,
   count: number,
-  dtMs?: number,
+  opts: StepFramesOptions = {},
 ): Promise<void> {
   await page.evaluate(
-    async ({ frames, dt }) => {
+    async ({ frames, dt, render }) => {
       const inspector = window.__yage__?.inspector;
       if (!inspector) {
         throw new Error("__yage__.inspector is not available.");
@@ -92,9 +105,9 @@ export async function stepFrames(
       if (dt !== undefined) {
         inspector.time.setDelta(dt);
       }
-      await inspector.time.stepAsync(frames);
+      await inspector.time.stepAsync(frames, { render });
     },
-    { frames: count, dt: dtMs },
+    { frames: count, dt: opts.dtMs, render: opts.render ?? "none" },
   );
 }
 

@@ -47,16 +47,22 @@ jobs:
       - run: npx turbo test --concurrency=50%
       - run: node --test scripts/clamp-package-versions.test.mjs
 
-  # The Playwright suite runs on one worker per runner, so it is split into
-  # three shards that run in parallel. Each shard builds the packages itself.
-  e2e-shard:
-    name: E2E shard ${{ matrix.shard }}/3
+  # The Playwright suite runs on one worker per runner, so its projects are
+  # split across jobs that run in parallel. The level editor's tests form one
+  # serial group, so the two editors get a job of their own. Each job builds
+  # the packages itself.
+  e2e-suite:
+    name: E2E ${{ matrix.suite }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        include:
+          - suite: engine and examples
+            projects: --project=fixtures --project=examples
+          - suite: editors
+            projects: --project=editor --project=sequence
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -88,26 +94,39 @@ jobs:
           exit 1
       # On a cache hit the browser binary is already present, but the OS-level
       # system libraries it links against are not cached — install just those.
+      # apt can stall like the download, so it gets the same timeout and
+      # retries.
       - name: Install Playwright OS dependencies
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-      - run: npx turbo e2e -- --shard=${{ matrix.shard }}/3
+        run: |
+          for i in 1 2 3; do
+            timeout 180 npx playwright install-deps chromium && exit 0
+            if [ "$i" -lt 3 ]; then
+              echo "::warning::playwright install-deps attempt $i stalled or failed; retrying"
+            fi
+          done
+          echo "::error::playwright install-deps failed after 3 attempts"
+          exit 1
+      # `--only` runs the e2e task alone, on the packages built above. Turbo
+      # hands the arguments after `--` to every task in the graph, so without
+      # it each package build would hash differently and rebuild.
+      - run: npx turbo e2e --only -- ${{ matrix.projects }}
 
   # The main-branch ruleset requires a check named E2E. This job reports the
-  # shards' combined result under that name.
+  # suite jobs' combined result under that name.
   e2e:
     name: E2E
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [e2e-shard]
+    needs: [e2e-suite]
     if: "!cancelled()"
     steps:
-      - name: Require every shard to pass
+      - name: Require every suite job to pass
         env:
-          RESULT: ${{ needs.e2e-shard.result }}
+          RESULT: ${{ needs.e2e-suite.result }}
         run: |
           if [ "$RESULT" != "success" ]; then
-            echo "::error::E2E shards finished with result: $RESULT"
+            echo "::error::E2E suite jobs finished with result: $RESULT"
             exit 1
           fi
 

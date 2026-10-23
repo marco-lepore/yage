@@ -72,9 +72,9 @@ async function tap(
       const seen: string[] = [];
       for (let i = 0; i < n; i++) {
         press(true);
-        await inspector.time.stepAsync(1);
+        await inspector.time.stepAsync(1, { render: "none" });
         press(false);
-        await inspector.time.stepAsync(1);
+        await inspector.time.stepAsync(1, { render: "none" });
         seen.push(read());
       }
       return seen;
@@ -87,7 +87,9 @@ async function tap(
 async function openMenu(page: Page): Promise<void> {
   await gotoFixture(page, "/ui-focus.html");
   await waitForClock(page);
-  await stepFrames(page, 2, FRAME_MS);
+  // Pointer dispatch needs a drawn frame, and the fixture can freeze before
+  // drawing one.
+  await stepFrames(page, 2, { dtMs: FRAME_MS, render: "last" });
   await tap(page, "Enter");
 }
 
@@ -232,17 +234,17 @@ test.describe("UI focus fixture", () => {
 
     // The pointer passing over a row leaves focus where the keys put it.
     expect(await pointerTo(page, `${root}/${QUIT_ROW}`)).toContain("UIButton");
-    await stepFrames(page, 1, FRAME_MS);
+    await stepFrames(page, 1, { dtMs: FRAME_MS });
     expect((await probe(page)).focusedLabel).toBe("Resume");
 
     expect(await pointerPress(page, `${root}/${QUIT_ROW}`)).toContain(
       "UIButton",
     );
-    await stepFrames(page, 1, FRAME_MS);
+    await stepFrames(page, 1, { dtMs: FRAME_MS });
     expect((await probe(page)).focusedLabel).toBe("Quit");
 
     await pointerTo(page, { x: 4, y: 4 });
-    await stepFrames(page, 1, FRAME_MS);
+    await stepFrames(page, 1, { dtMs: FRAME_MS });
     expect((await probe(page)).focusedLabel).toBe("Quit");
   });
 
@@ -295,7 +297,7 @@ test.describe("UI focus fixture", () => {
       inspector.input.keyUp("Enter");
       await inspector.time.stepAsync(1);
     }, FRAME_MS);
-    await stepFrames(page, 1, FRAME_MS);
+    await stepFrames(page, 1, { dtMs: FRAME_MS });
 
     const shown = await probe(page);
     expect(shown.dialogVisible).toBe(true);
@@ -312,7 +314,7 @@ test.describe("UI focus fixture", () => {
     expect(await tap(page, "ArrowDown")).toEqual(["Delete"]);
 
     await tap(page, "Escape");
-    await stepFrames(page, 1, FRAME_MS);
+    await stepFrames(page, 1, { dtMs: FRAME_MS });
 
     const closed = await probe(page);
     expect(closed.dialogVisible).toBe(false);

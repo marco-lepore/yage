@@ -63,7 +63,9 @@ test.describe("UI element transform", () => {
     page,
   }) => {
     await gotoFixture(page, "/ui-transform.html");
-    await stepFrames(page, 1);
+    // Pointer dispatch needs a drawn frame, and the fixture can freeze
+    // before drawing one.
+    await stepFrames(page, 1, { render: "last" });
     const spin = await spinButton(page);
 
     // An 80 x 30 box turned an eighth covers (80 + 30) / √2 on both axes,

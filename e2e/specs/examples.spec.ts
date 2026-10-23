@@ -73,35 +73,43 @@ test.describe("Examples", () => {
         { timeout: 10_000 },
       );
 
-      // Replay the script in-page against the inspector.
-      await page.evaluate(
-        ({ warmup, actions }) => {
-          const insp = window.__yage__!.inspector;
-          if (warmup > 0) insp.time.step(warmup);
-          for (const a of actions as AtlasAction[]) {
-            if ("step" in a) insp.time.step(a.step);
-            else if ("tap" in a) insp.input.tap(a.tap, a.frames ?? 1);
-            else if ("hold" in a) insp.input.hold(a.hold, a.frames);
-            else if ("keyDown" in a) insp.input.keyDown(a.keyDown);
-            else if ("keyUp" in a) insp.input.keyUp(a.keyUp);
-            else if ("action" in a)
-              insp.input.fireAction(a.action, a.frames ?? 1);
-            else if ("pointerMove" in a)
-              insp.input.pointerMove(a.pointerMove[0], a.pointerMove[1]);
-            else if ("click" in a) {
-              insp.input.mouseMove(a.click[0], a.click[1]);
-              insp.input.mouseDown(a.button ?? 0);
-              insp.time.step(1);
-              insp.input.mouseUp(a.button ?? 0);
-              insp.time.step(1);
-            }
-          }
+      // Replay the script in-page as one drive. Only its final frame is
+      // drawn: the snapshot reads engine state, and the one draw still runs
+      // the render path and gives dump mode its screenshot.
+      const replay = await page.evaluate(
+        async ({ warmup, actions }) => {
+          const run = await window.__yage__!.inspector.drive(
+            async ({ step, input }) => {
+              if (warmup > 0) await step(warmup);
+              for (const a of actions as AtlasAction[]) {
+                if ("step" in a) await step(a.step);
+                else if ("tap" in a) await input.tap(a.tap, a.frames ?? 1);
+                else if ("hold" in a) await input.hold(a.hold, a.frames);
+                else if ("keyDown" in a) input.keyDown(a.keyDown);
+                else if ("keyUp" in a) input.keyUp(a.keyUp);
+                else if ("action" in a)
+                  await input.fireAction(a.action, a.frames ?? 1);
+                else if ("pointerMove" in a)
+                  input.pointerMove(a.pointerMove[0], a.pointerMove[1]);
+                else if ("click" in a) {
+                  input.mouseMove(a.click[0], a.click[1]);
+                  input.mouseDown(a.button ?? 0);
+                  await step(1);
+                  input.mouseUp(a.button ?? 0);
+                  await step(1);
+                }
+              }
+            },
+            { render: "last" },
+          );
+          return run.ok ? null : run.error;
         },
         {
           warmup: script.warmup ?? DEFAULT_WARMUP,
           actions: script.actions ?? [],
         },
       );
+      expect(replay, `replay of ${slug}`).toBeNull();
 
       const json = await page.evaluate(() =>
         window.__yage__!.inspector.snapshotJSON(),
@@ -165,15 +173,15 @@ test.describe("Examples", () => {
     const result = await page.evaluate(async () => {
       const inspector = window.__yage__!.inspector;
       // Let the player fall from the spawn point and land.
-      await inspector.time.stepAsync(90);
+      await inspector.time.stepAsync(90, { render: "none" });
       const groundY = inspector.getEntityPosition("PlayerEntity")!.y;
 
       inspector.input.keyDown("Space");
-      await inspector.time.stepAsync(1);
+      await inspector.time.stepAsync(1, { render: "none" });
       inspector.input.keyUp("Space");
       let apexY = groundY;
       for (let frame = 0; frame < 60; frame++) {
-        await inspector.time.stepAsync(1);
+        await inspector.time.stepAsync(1, { render: "none" });
         apexY = Math.min(apexY, inspector.getEntityPosition("PlayerEntity")!.y);
       }
 
@@ -200,25 +208,25 @@ test.describe("Examples", () => {
     const result = await page.evaluate(async () => {
       const inspector = window.__yage__!.inspector;
       const feetY = () => inspector.getEntityPosition("PlayerEntity")!.y;
-      await inspector.time.stepAsync(60);
+      await inspector.time.stepAsync(60, { render: "none" });
       const floorY = feetY();
       // Run right and jump onto the first one-way platform.
       inspector.input.keyDown("KeyD");
-      await inspector.time.stepAsync(20);
+      await inspector.time.stepAsync(20, { render: "none" });
       inspector.input.keyDown("Space");
-      await inspector.time.stepAsync(30);
+      await inspector.time.stepAsync(30, { render: "none" });
       inspector.input.keyUp("Space");
-      await inspector.time.stepAsync(5);
+      await inspector.time.stepAsync(5, { render: "none" });
       inspector.input.keyUp("KeyD");
-      await inspector.time.stepAsync(40);
+      await inspector.time.stepAsync(40, { render: "none" });
       const platformY = feetY();
       // Down plus jump drops through it.
       inspector.input.keyDown("KeyS");
       inspector.input.keyDown("Space");
-      await inspector.time.stepAsync(2);
+      await inspector.time.stepAsync(2, { render: "none" });
       inspector.input.keyUp("Space");
       inspector.input.keyUp("KeyS");
-      await inspector.time.stepAsync(40);
+      await inspector.time.stepAsync(40, { render: "none" });
       return {
         floorY,
         platformY,
@@ -255,23 +263,27 @@ test.describe("Examples", () => {
       // "]" respawns the player at the next zone; zone 6 is the ledge.
       for (let zone = 1; zone < 6; zone++) {
         await inspector.input.tap("BracketRight");
-        await inspector.time.stepAsync(1);
+        await inspector.time.stepAsync(1, { render: "none" });
       }
-      await inspector.time.stepAsync(30);
+      await inspector.time.stepAsync(30, { render: "none" });
       // Run toward the block, jump, and keep holding toward it.
       inspector.input.keyDown("KeyD");
       await inspector.time.stepUntil(() => position().x >= 3555, {
         maxFrames: 120,
+        render: "none",
       });
       inspector.input.keyDown("Space");
-      await inspector.time.stepUntil(hanging, { maxFrames: 60 });
+      await inspector.time.stepUntil(hanging, {
+        maxFrames: 60,
+        render: "none",
+      });
       inspector.input.keyUp("Space");
       const hang = { ...position(), hanging: hanging() };
-      await inspector.time.stepAsync(20);
+      await inspector.time.stepAsync(20, { render: "none" });
       const stillHanging = hanging();
       // Jump climbs onto the block.
       await inspector.input.tap("Space");
-      await inspector.time.stepAsync(40);
+      await inspector.time.stepAsync(40, { render: "none" });
       inspector.input.keyUp("KeyD");
       return {
         hang,
@@ -309,7 +321,7 @@ test.describe("Examples", () => {
           const stack = inspector.getSceneStack();
           return stack.length === 1 && stack[0]?.name === "game";
         },
-        { maxFrames: 300 },
+        { maxFrames: 300, render: "none" },
       );
       return { frames, errors: inspector.getErrors() };
     });
@@ -343,9 +355,9 @@ test.describe("Examples", () => {
       const inspector = window.__yage__!.inspector;
       inspector.events.clearLog();
       inspector.input.keyDown("ShiftLeft");
-      await inspector.time.stepAsync(1);
+      await inspector.time.stepAsync(1, { render: "none" });
       inspector.input.keyUp("ShiftLeft");
-      await inspector.time.stepAsync(1);
+      await inspector.time.stepAsync(1, { render: "none" });
     });
 
     const activeDash = await page.evaluate(
@@ -362,9 +374,9 @@ test.describe("Examples", () => {
         const inspector = window.__yage__!.inspector;
         const baseline = inspector.time.getFrame();
         inspector.input.keyDown("KeyE");
-        await inspector.time.stepAsync(1);
+        await inspector.time.stepAsync(1, { render: "none" });
         inspector.input.keyUp("KeyE");
-        await inspector.time.stepAsync(1);
+        await inspector.time.stepAsync(1, { render: "none" });
         return baseline;
       });
     const hudText = (): Promise<string> =>
@@ -422,12 +434,12 @@ test.describe("Examples", () => {
 
     const result = await page.evaluate(async () => {
       const inspector = window.__yage__!.inspector;
-      await inspector.time.stepAsync(1);
+      await inspector.time.stepAsync(1, { render: "none" });
       const start = inspector.getEntityPosition("PlayerEntity")!;
 
       inspector.input.keyDown("KeyD");
       inspector.input.keyDown("ShiftLeft");
-      await inspector.time.stepAsync(30);
+      await inspector.time.stepAsync(30, { render: "none" });
       const runEnd = inspector.getEntityPosition("PlayerEntity")!;
       const runAnimation = (
         inspector.getComponentData("PlayerEntity", "AnimationController") as {
@@ -436,7 +448,7 @@ test.describe("Examples", () => {
       ).current;
       inspector.input.keyUp("ShiftLeft");
       inspector.input.keyUp("KeyD");
-      await inspector.time.stepAsync(2);
+      await inspector.time.stepAsync(2, { render: "none" });
       const heldDashCooldown = (
         inspector.getComponentData("hotbar-dash-time", "TextComponent") as {
           content: string;
@@ -444,9 +456,9 @@ test.describe("Examples", () => {
       ).content;
 
       inspector.input.keyDown("ShiftLeft");
-      await inspector.time.stepAsync(1);
+      await inspector.time.stepAsync(1, { render: "none" });
       inspector.input.keyUp("ShiftLeft");
-      await inspector.time.stepAsync(2);
+      await inspector.time.stepAsync(2, { render: "none" });
       const tappedDashCooldown = (
         inspector.getComponentData("hotbar-dash-time", "TextComponent") as {
           content: string;
@@ -488,9 +500,9 @@ test.describe("Examples", () => {
         async ({ code, frames, after }) => {
           const inspector = window.__yage__!.inspector;
           inspector.input.keyDown(code);
-          await inspector.time.stepAsync(frames);
+          await inspector.time.stepAsync(frames, { render: "none" });
           inspector.input.keyUp(code);
-          await inspector.time.stepAsync(after);
+          await inspector.time.stepAsync(after, { render: "none" });
           const read = <T>(entity: string, component: string) =>
             inspector.getComponentData(entity, component) as T;
           return {
@@ -557,7 +569,7 @@ test.describe("Examples", () => {
           else if ("down" in step) inspector.input.pointerDown(0);
           else if ("up" in step) inspector.input.pointerUp(0);
           else if ("key" in step) await inspector.input.tap(step.key);
-          else await inspector.time.stepAsync(step.frames);
+          else await inspector.time.stepAsync(step.frames, { render: "none" });
         }
         const read = <T>(entity: string, component: string) =>
           inspector.getComponentData(entity, component) as T;
@@ -640,10 +652,12 @@ test.describe("Examples", () => {
           ) as Probe,
       );
     const tap = (code: string) =>
-      page.evaluate((code) => {
+      page.evaluate(async (code) => {
         const insp = window.__yage__!.inspector;
-        insp.input.tap(code, 1);
-        insp.time.step(3);
+        insp.input.keyDown(code);
+        await insp.time.stepAsync(1, { render: "none" });
+        insp.input.keyUp(code);
+        await insp.time.stepAsync(3, { render: "none" });
       }, code);
     const until = (check: string) =>
       page.waitForFunction((check) => {
@@ -654,7 +668,9 @@ test.describe("Examples", () => {
         return new Function("p", `return ${check}`)(p) === true;
       }, check);
 
-    await page.evaluate(() => window.__yage__!.inspector.time.step(5));
+    await page.evaluate(() =>
+      window.__yage__!.inspector.time.stepAsync(5, { render: "none" }),
+    );
     const first = await probe();
     expect(first.locale).toBe("en");
     expect(first.coins).toBe(7);
@@ -681,11 +697,19 @@ test.describe("Examples", () => {
     );
     expect((await probe()).coins).toBe(4);
 
-    // Past the ale and its one-second `<<wait>>`, back to the menu.
+    // Past the ale and its one-second `<<wait>>`, back to the menu. The steps
+    // stop as the menu line starts, so the next Enter completes its reveal.
     await tap("Enter");
     await tap("Enter");
-    await page.evaluate(() => window.__yage__!.inspector.time.step(90));
-    await until('p.lastLine === "Barkeep: Cosa ti porto?"');
+    await page.evaluate(async () => {
+      const insp = window.__yage__!.inspector;
+      await insp.time.stepUntil(
+        () =>
+          (insp.getComponentData("tavern-probe", "TavernProbe") as Probe)
+            .lastLine === "Barkeep: Cosa ti porto?",
+        { maxFrames: 120, render: "none" },
+      );
+    });
     await tap("Enter");
     await tap("Enter");
     await until("p.choosing === true");
@@ -792,10 +816,12 @@ test.describe("Examples", () => {
     // Tap a key for one frozen-clock frame, then let a few frames run so the
     // controllers' bindings and the dialogue's async line steps settle.
     const tap = (code: string) =>
-      page.evaluate((code) => {
+      page.evaluate(async (code) => {
         const insp = window.__yage__!.inspector;
-        insp.input.tap(code, 1);
-        insp.time.step(3);
+        insp.input.keyDown(code);
+        await insp.time.stepAsync(1, { render: "none" });
+        insp.input.keyUp(code);
+        await insp.time.stepAsync(3, { render: "none" });
       }, code);
     const probeFlag = (flag: keyof Probe, expected: boolean) =>
       page.waitForFunction(
@@ -816,7 +842,9 @@ test.describe("Examples", () => {
       inventoryActions: probe.inventoryActions,
     });
 
-    await page.evaluate(() => window.__yage__!.inspector.time.step(5));
+    await page.evaluate(() =>
+      window.__yage__!.inspector.time.stepAsync(5, { render: "none" }),
+    );
     const initial = await state();
     expect(initial.probe.locale).toBe("en");
     expect(initial.probe.dialogueActive).toBe(true);
@@ -942,16 +970,18 @@ test.describe("Examples", () => {
         undefined,
         { timeout: 10_000 },
       );
-      await page.evaluate(() => window.__yage__!.inspector.time.step(1));
+      await page.evaluate(() =>
+        window.__yage__!.inspector.time.stepAsync(1, { render: "none" }),
+      );
     }
 
     async function tap(page: Page, key: string): Promise<void> {
       await page.evaluate(async (key) => {
         const inspector = window.__yage__!.inspector;
         inspector.input.keyDown(key);
-        await inspector.time.stepAsync(1);
+        await inspector.time.stepAsync(1, { render: "none" });
         inspector.input.keyUp(key);
-        await inspector.time.stepAsync(1);
+        await inspector.time.stepAsync(1, { render: "none" });
       }, key);
     }
 
@@ -1102,9 +1132,9 @@ test.describe("Examples", () => {
         const inspector = window.__yage__!.inspector;
         inspector.input.mouseMove(160, 600);
         inspector.input.mouseDown(0);
-        await inspector.time.stepAsync(1);
+        await inspector.time.stepAsync(1, { render: "none" });
         inspector.input.mouseUp(0);
-        await inspector.time.stepAsync(1);
+        await inspector.time.stepAsync(1, { render: "none" });
       });
       const clicked = await state(page);
       expect(clicked.chest.opened).toBe(1);
@@ -1124,7 +1154,7 @@ test.describe("Examples", () => {
         window.__yage__?.inspector.time.isFrozen() === true &&
         window.__yage__.inspector.getSceneStack().length > 0,
     );
-    const result = await page.evaluate(() => {
+    const result = await page.evaluate(async () => {
       const inspector = window.__yage__!.inspector;
       const first = inspector
         .snapshot()
@@ -1165,21 +1195,21 @@ test.describe("Examples", () => {
             }>;
           };
         };
-      inspector.time.step(90);
+      await inspector.time.stepAsync(90, { render: "none" });
       const before = [state(first), state(second)];
       const decisions = brain(first).execution.nodes;
-      inspector.time.step(25);
+      await inspector.time.stepAsync(25, { render: "none" });
       const interrupted = {
         first: state(first),
         second: state(second),
         activePaths: brain(first).execution.activePaths,
         trace: brain(first).execution.transitions,
       };
-      inspector.time.step(65);
+      await inspector.time.stepAsync(65, { render: "none" });
       const both = [state(first), state(second)];
       // Larger rendered frames still drive the guards through fixed simulation steps.
       inspector.time.setDelta(100);
-      inspector.time.step(240);
+      await inspector.time.stepAsync(240, { render: "none" });
       inspector.time.setDelta(1000 / 60);
       const completed = [state(first), state(second)];
       const heavyCooldown = (id: string) =>
@@ -1187,26 +1217,26 @@ test.describe("Examples", () => {
           .remainingSeconds ?? 0;
       // Disable right after a heavy attack, so the cooldown has time left.
       for (let frame = 0; frame < 1200 && heavyCooldown(first) === 0; frame++) {
-        inspector.time.step(1);
+        await inspector.time.stepAsync(1, { render: "none" });
       }
       inspector.input.tap("Space");
       const disabled = brain(first);
       const cooldownAtDisable = heavyCooldown(first);
-      inspector.time.step(90);
+      await inspector.time.stepAsync(90, { render: "none" });
       const cooldownWhileDisabled = heavyCooldown(first);
       inspector.input.tap("Space");
-      inspector.time.step(1);
+      await inspector.time.stepAsync(1, { render: "none" });
       const restarted = brain(first);
       // Disabling mid-retreat ends the retreat action, which stops steering.
       inspector.input.tap("Digit1");
-      inspector.time.step(20);
+      await inspector.time.stepAsync(20, { render: "none" });
       const retreatPhase = state(first).phase;
       const retreatFrom = inspector.getEntityPosition(first);
-      inspector.time.step(1);
+      await inspector.time.stepAsync(1, { render: "none" });
       const retreatTo = inspector.getEntityPosition(first);
       inspector.input.tap("Space");
       const position = inspector.getEntityPosition(first);
-      inspector.time.step(90);
+      await inspector.time.stepAsync(90, { render: "none" });
       const stoppedPosition = inspector.getEntityPosition(first);
       return {
         before,

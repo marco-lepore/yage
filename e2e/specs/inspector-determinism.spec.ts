@@ -30,9 +30,15 @@ test.describe("Inspector determinism", () => {
         inspector.setSeed(42);
         inspector.input.clearAll();
 
-        inspector.input.hold("ArrowRight", 30);
-        inspector.input.fireAction("jump", 1);
-        inspector.time.step(60);
+        const run = await inspector.drive(
+          async ({ step, input }) => {
+            await input.hold("ArrowRight", 30);
+            await input.fireAction("jump", 1);
+            await step(60);
+          },
+          { render: "none" },
+        );
+        if (!run.ok) throw new Error(run.error);
 
         return inspector.snapshotJSON();
       });
