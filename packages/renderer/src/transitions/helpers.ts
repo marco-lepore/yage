@@ -1,37 +1,28 @@
 import type { Scene, SceneTransitionContext } from "@yagejs/core";
-import type { DisplayContainer } from "../public-types.js";
+import type { SceneRenderTree } from "../SceneRenderTree.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
 import { RendererKey } from "../types.js";
 
 /**
- * Resolve the root container for a scene that participates in a transition.
- * Returns `undefined` if `scene` is undefined or its tree hasn't been
- * materialized. Intended for use inside `SceneTransition.begin/tick/end`
- * so custom transitions can manipulate per-scene containers without
- * boilerplate.
+ * The render tree of a scene that takes part in a transition, or `undefined`
+ * when `scene` is undefined or has no tree yet. A transition fades, hides,
+ * slides and masks the scene through it: `alpha`, `visible`, `setOffset`,
+ * `fx` and `setMask`. Call it inside `SceneTransition.begin`, `tick` or
+ * `end`.
  */
-export function getSceneContainer(
+export function getSceneRenderTree(
   ctx: SceneTransitionContext,
   scene: Scene | undefined,
-): DisplayContainer | undefined {
+): SceneRenderTree | undefined {
   if (!scene) return undefined;
-  return ctx.engineContext.resolve(SceneRenderTreeProviderKey).getTree(scene)
-    ?.root;
+  return ctx.engineContext.resolve(SceneRenderTreeProviderKey).getTree(scene);
 }
 
 /**
  * Bounds of the declared virtual play area — equivalent to
- * `renderer.virtualSize`. Use this to size masks, translations, or
- * geometry that's scoped to a single scene's content (e.g. a per-cell
- * mask painted onto a scene root). Children of scene roots and of
- * `_worldRoot` operate in virtual pixels.
- *
- * For full-screen overlays parented to `renderer.worldRoot`, prefer
- * `renderer.visibleCanvasRect` — it equals the virtual rect under
- * `letterbox` (clipped) but extends into the bars under `expand`, which
- * is usually what an obscuring overlay wants. For overlays that must
- * also paint over letterbox bars, parent on `app.stage` and size in
- * canvas pixels via `app.screen.width / .height`.
+ * `renderer.virtualSize`. Use this to size a scene mask or a slide, which
+ * act in a scene's virtual pixels. A transition overlay reports the region
+ * it covers as `TransitionOverlay.area` instead.
  */
 export function getVirtualBounds(ctx: SceneTransitionContext): {
   width: number;

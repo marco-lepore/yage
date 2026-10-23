@@ -26,10 +26,10 @@ function makeCtx(opts: {
           return {
             getTree: (s: Scene) => {
               if (s === opts.fromScene && opts.fromContainer) {
-                return { root: opts.fromContainer };
+                return opts.fromContainer;
               }
               if (s === opts.toScene && opts.toContainer) {
-                return { root: opts.toContainer };
+                return opts.toContainer;
               }
               return undefined;
             },

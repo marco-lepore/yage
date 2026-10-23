@@ -13,6 +13,16 @@ interface MovableContainer {
   y: number;
 }
 
+/** A scene tree whose offset lands on `container`. */
+function asTree(container: MovableContainer) {
+  return {
+    setOffset: (x: number, y: number) => {
+      container.x = x;
+      container.y = y;
+    },
+  };
+}
+
 function makeCtx(opts: {
   elapsed: number;
   kind: SceneTransitionKind;
@@ -49,10 +59,10 @@ function makeCtx(opts: {
           return {
             getTree: (s: Scene) => {
               if (s === opts.toScene && opts.toContainer) {
-                return { root: opts.toContainer };
+                return asTree(opts.toContainer);
               }
               if (s === opts.fromScene && opts.fromContainer) {
-                return { root: opts.fromContainer };
+                return asTree(opts.fromContainer);
               }
               return undefined;
             },

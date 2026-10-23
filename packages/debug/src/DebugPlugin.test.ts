@@ -244,6 +244,12 @@ function createContext() {
   const provider: SceneRenderTreeProvider = {
     createForScene: (): SceneRenderTree => ({
       root: new mocks.MockContainer() as never,
+      alpha: 1,
+      visible: true,
+      offset: { x: 0, y: 0 },
+      setOffset(x, y) {
+        Object.assign(this.offset, { x, y });
+      },
       get: () =>
         ({
           name: "default",
@@ -591,14 +597,10 @@ describe("DebugPlugin", () => {
 
     const scene = new VectorScene();
     await sceneManager.push(scene);
-    const root = scene._resolveScoped(SceneRenderTreeKey)!.root as unknown as {
-      alpha: number;
-      visible: boolean;
-      position: { set(x: number, y: number): void };
-    };
-    root.alpha = 0.25;
-    root.visible = false;
-    root.position.set(40, -8);
+    const tree = scene._resolveScoped(SceneRenderTreeKey)!;
+    tree.alpha = 0.25;
+    tree.visible = false;
+    tree.setOffset(40, -8);
 
     const diagnostics = context
       .resolve(InspectorKey)

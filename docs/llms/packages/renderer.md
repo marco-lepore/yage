@@ -1506,14 +1506,15 @@ await engine.scenes.replace(new Level(), {
 });
 ```
 
-| Export              | Signature                                                                            | Description                                                                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `fade`              | `(opts?: { duration?: number; color?: number }) => SceneTransition`                  | Fade to color and back (triangle alpha ramp). Incoming scene hidden until mid-point. Default: 0.3s, black.                        |
-| `flash`             | `(opts?: { duration?: number; color?: number }) => SceneTransition`                  | Flash overlay decaying from full to zero alpha. Incoming scene revealed under the bright part of the flash. Default: 0.2s, white. |
-| `crossFade`         | `(opts?: { duration?: number }) => SceneTransition`                                  | Cross-dissolve between scenes (outgoing alpha 1→0 while incoming alpha 0→1). Default: 0.4s.                                       |
-| `getSceneContainer` | `(ctx: SceneTransitionContext, scene: Scene \| undefined) => Container \| undefined` | Helper for custom transitions — resolves a scene's PIXI root container.                                                           |
+| Export                    | Signature                                                                                  | Description                                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `fade`                    | `(opts?: { duration?: number; color?: number }) => SceneTransition`                        | Fade to color and back (triangle alpha ramp). Incoming scene hidden until mid-point. Default: 0.3s, black.                        |
+| `flash`                   | `(opts?: { duration?: number; color?: number }) => SceneTransition`                        | Flash overlay decaying from full to zero alpha. Incoming scene revealed under the bright part of the flash. Default: 0.2s, white. |
+| `crossFade`               | `(opts?: { duration?: number }) => SceneTransition`                                        | Cross-dissolve between scenes (outgoing alpha 1→0 while incoming alpha 0→1). Default: 0.4s.                                       |
+| `getSceneRenderTree`      | `(ctx: SceneTransitionContext, scene: Scene \| undefined) => SceneRenderTree \| undefined` | Helper for custom transitions — the scene's render tree, for `alpha`, `visible`, `setOffset` and masks.                           |
+| `createTransitionOverlay` | `(ctx: SceneTransitionContext, opts?: { coverScreen?: boolean }) => TransitionOverlay`     | Helper for custom transitions — a drawing above every scene, to cover the swap. Destroy it in `end()`.                            |
 
-`fade` and `flash` add a stage-level `Graphics` overlay during the transition and clean up on `end()`. `crossFade` manipulates per-scene containers directly via `getSceneContainer`.
+`fade` and `flash` cover the swap with a transition overlay and destroy it in `end()`. `crossFade` fades each scene through its render tree's `alpha`. Writing a custom transition: [Scene Transitions](../scene-transitions.md#custom-transitions).
 
 ## Effects
 

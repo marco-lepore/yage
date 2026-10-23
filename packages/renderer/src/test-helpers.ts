@@ -183,8 +183,29 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
     // Stand-in for the production Pixi `RenderLayer`: the mock containers
     // have no renderer, so membership is all a test can observe.
     const aboveNodes = new Set<MockContainer>();
+    const offset = { x: 0, y: 0 };
     const tree: SceneRenderTree = {
       root: root as never,
+      get alpha() {
+        return root.alpha;
+      },
+      set alpha(value: number) {
+        root.alpha = value;
+      },
+      get visible() {
+        return root.visible;
+      },
+      set visible(value: boolean) {
+        root.visible = value;
+      },
+      get offset() {
+        return { ...offset };
+      },
+      setOffset(x: number, y: number) {
+        offset.x = x;
+        offset.y = y;
+        root.position.set(x, y);
+      },
       get: (name) => manager.get(name),
       tryGet: (name) => manager.tryGet(name),
       getAll: () => manager.getAll(),

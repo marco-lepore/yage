@@ -17,6 +17,7 @@ import { attachMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
 import type { DisplayContainer } from "./public-types.js";
+import { assertFiniteNumber } from "./internal/validate.js";
 
 interface SceneEntry {
   root: DisplayContainer;
@@ -29,6 +30,7 @@ interface SceneEntry {
 class SceneRenderTreeImpl implements SceneRenderTree {
   readonly fx: EffectsHost;
   private _mask: MaskHandle | undefined;
+  private readonly _offset = { x: 0, y: 0 };
   private readonly warnedOrders = new Map<string, Set<number>>();
   /**
    * Pixi render layer holding the nodes drawn after this scene's layers.
@@ -50,8 +52,48 @@ class SceneRenderTreeImpl implements SceneRenderTree {
     private readonly manager: RenderLayerManager,
     queueFactory?: EffectQueueFactory,
     private readonly canvasRoot?: DisplayContainer,
+    /** Virtual-to-canvas scale, for moving the canvas root by a virtual offset. */
+    private readonly fitScale?: () => {
+      readonly x: number;
+      readonly y: number;
+    },
   ) {
     this.fx = new EffectsHost(() => this.root, "scene", queueFactory);
+  }
+
+  get alpha(): number {
+    return this.root.alpha;
+  }
+
+  set alpha(value: number) {
+    assertFiniteNumber("SceneRenderTree.alpha", "value", value);
+    this.root.alpha = value;
+    if (this.canvasRoot) this.canvasRoot.alpha = value;
+  }
+
+  get visible(): boolean {
+    return this.root.visible;
+  }
+
+  set visible(value: boolean) {
+    this.root.visible = value;
+    if (this.canvasRoot) this.canvasRoot.visible = value;
+  }
+
+  get offset(): Readonly<{ x: number; y: number }> {
+    return { x: this._offset.x, y: this._offset.y };
+  }
+
+  setOffset(x: number, y: number): void {
+    assertFiniteNumber("SceneRenderTree.setOffset", "x", x);
+    assertFiniteNumber("SceneRenderTree.setOffset", "y", y);
+    this._offset.x = x;
+    this._offset.y = y;
+    this.root.position.set(x, y);
+    if (this.canvasRoot) {
+      const scale = this.fitScale?.() ?? { x: 1, y: 1 };
+      this.canvasRoot.position.set(x * scale.x, y * scale.y);
+    }
   }
 
   get(name: string): RenderLayer {
@@ -304,6 +346,7 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
       manager,
       queueFactory,
       canvasRoot,
+      () => this.stage.scale,
     );
     this.entries.set(scene, { root, canvasRoot, manager, tree });
     return tree;
@@ -369,7 +412,7 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
     for (let i = stack.length - 1; i >= 0; i--) {
       const scene = stack[i]!;
       const entry = this.entries.get(scene);
-      if (entry) setRootsVisible(entry, visible);
+      if (entry) entry.tree.visible = visible;
       if (!scene.transparentBelow) visible = false;
     }
   }
@@ -387,7 +430,7 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
   resetVisibility(stack: readonly Scene[]): void {
     for (const scene of stack) {
       const entry = this.entries.get(scene);
-      if (entry) setRootsVisible(entry, true);
+      if (entry) entry.tree.visible = true;
     }
   }
 
@@ -397,12 +440,6 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
       this.destroyForScene(scene);
     }
   }
-}
-
-/** Show or hide a scene's root and its canvas root together. */
-function setRootsVisible(entry: SceneEntry, visible: boolean): void {
-  entry.root.visible = visible;
-  if (entry.canvasRoot) entry.canvasRoot.visible = visible;
 }
 
 // String-duplicated from @yagejs/ui's `UI_DEFAULT_LAYER` ("ui") to avoid a

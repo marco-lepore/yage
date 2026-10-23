@@ -111,6 +111,10 @@ export function createParticlesTestContext(): ParticlesTestContext {
   const layerManager = new RenderLayerManager(root as never);
   const tree: SceneRenderTree = {
     root: root as never,
+    alpha: 1,
+    visible: true,
+    offset: { x: 0, y: 0 },
+    setOffset: () => {},
     get: (name) => layerManager.get(name),
     tryGet: (name) => layerManager.tryGet(name),
     getAll: () => layerManager.getAll(),

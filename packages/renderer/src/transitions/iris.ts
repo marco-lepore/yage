@@ -1,7 +1,12 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
-import { Container, Graphics } from "pixi.js";
+import type { DrawContext } from "../DrawContext.js";
+import { graphicsMask } from "../masks/graphicsMask.js";
+import type { MaskHandle } from "../masks/MaskHandle.js";
+import type { SceneRenderTree } from "../SceneRenderTree.js";
 import { RendererKey } from "../types.js";
-import { getSceneContainer, getVirtualBounds } from "./helpers.js";
+import { getSceneRenderTree, getVirtualBounds } from "./helpers.js";
+import { createTransitionOverlay } from "./overlay.js";
+import type { TransitionOverlay } from "./overlay.js";
 
 export interface IrisOptions {
   /** Iris duration in seconds. Default: 0.6. */
@@ -48,110 +53,85 @@ export function iris(opts: IrisOptions = {}): SceneTransition {
   const color = opts.color ?? 0x000000;
   const coverScreen = opts.coverScreen ?? false;
 
-  let overlay: Container | undefined;
-  let maskGfx: Graphics | undefined;
+  let overlay: TransitionOverlay | undefined;
+  let mask: MaskHandle | undefined;
   let cx = 0;
   let cy = 0;
+  let radius = 0;
   let maxRadius = 0;
-  let toContainer: Container | undefined;
-  let fromContainer: Container | undefined;
+  let toTree: SceneRenderTree | undefined;
+  let fromTree: SceneRenderTree | undefined;
   let crossedHalfway = false;
 
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      const renderer = ctx.engineContext.resolve(RendererKey);
       const virtual = getVirtualBounds(ctx);
       const cxv = opts.center?.x ?? virtual.width / 2;
       const cyv = opts.center?.y ?? virtual.height / 2;
-
-      let rx: number;
-      let ry: number;
-      let rw: number;
-      let rh: number;
+      overlay = createTransitionOverlay(ctx, { coverScreen });
+      const { x, y, width, height } = overlay.area;
       if (coverScreen) {
-        // Overlay covers the canvas including bars; sized + positioned in
-        // canvas pixels. Convert the virtual-px center through the fit
-        // transform so callers stay in game coords either way.
-        const screen = renderer.application.screen;
-        rx = 0;
-        ry = 0;
-        rw = screen.width;
-        rh = screen.height;
-        const canvasCenter = renderer.virtualToCanvas(cxv, cyv);
+        // The overlay is in canvas pixels; the center stays in game coords.
+        const canvasCenter = ctx.engineContext
+          .resolve(RendererKey)
+          .virtualToCanvas(cxv, cyv);
         cx = canvasCenter.x;
         cy = canvasCenter.y;
       } else {
-        // Overlay scoped to the on-screen canvas extent in virtual pixels.
-        // Under letterbox the worldRoot mask clips overshoot back to
-        // virtual; under expand the overlay paints into the bars too.
-        const r = renderer.visibleCanvasRect;
-        rx = r.x;
-        ry = r.y;
-        rw = r.width;
-        rh = r.height;
         cx = cxv;
         cy = cyv;
       }
-      const farX = Math.max(cx - rx, rx + rw - cx);
-      const farY = Math.max(cy - ry, ry + rh - cy);
+      const farX = Math.max(cx - x, x + width - cx);
+      const farY = Math.max(cy - y, y + height - cy);
       maxRadius = Math.hypot(farX, farY);
+      radius = maxRadius;
 
-      // Pixi v8: Graphics is no longer a Container — children must live on
-      // a real Container. The overlay holds the color fill + mask geometry.
-      overlay = new Container();
-      const fill = new Graphics();
-      fill.rect(rx, ry, rw, rh).fill({ color, alpha: 1 });
-      maskGfx = new Graphics();
-      drawCircleMask(maskGfx, cx, cy, maxRadius);
-      overlay.addChild(fill);
-      overlay.addChild(maskGfx);
-      overlay.setMask({ mask: maskGfx, inverse: true });
-      if (coverScreen) {
-        renderer.application.stage.addChild(overlay);
-      } else {
-        renderer.worldRoot.addChild(overlay);
-      }
+      overlay.draw((g) => g.rect(x, y, width, height).fill({ color }));
+      // The inverse mask keeps the colour outside the circle, so the scene
+      // shows through the hole.
+      mask = overlay.setMask(
+        graphicsMask((g) => drawCircleMask(g, cx, cy, radius)),
+      );
+      mask.setInverse(true);
 
       crossedHalfway = false;
       if (ctx.kind === "pop") {
-        fromContainer = getSceneContainer(ctx, ctx.fromScene);
+        fromTree = getSceneRenderTree(ctx, ctx.fromScene);
       } else {
-        toContainer = getSceneContainer(ctx, ctx.toScene);
-        if (toContainer) toContainer.visible = false;
+        toTree = getSceneRenderTree(ctx, ctx.toScene);
+        if (toTree) toTree.visible = false;
       }
     },
     tick(_dt: number, ctx: SceneTransitionContext) {
-      if (!maskGfx) return;
+      if (!mask) return;
       const t = Math.min(ctx.elapsed / duration, 1);
-      const r = Math.abs(1 - t * 2) * maxRadius;
-      drawCircleMask(maskGfx, cx, cy, r);
+      radius = Math.abs(1 - t * 2) * maxRadius;
+      mask.redraw();
       if (!crossedHalfway && t >= 0.5) {
-        if (toContainer) toContainer.visible = true;
-        if (fromContainer) fromContainer.visible = false;
+        if (toTree) toTree.visible = true;
+        if (fromTree) fromTree.visible = false;
         crossedHalfway = true;
       }
     },
     end() {
-      if (overlay) {
-        overlay.destroy({ children: true });
-        overlay = undefined;
-      }
-      maskGfx = undefined;
+      overlay?.destroy();
+      overlay = undefined;
+      mask = undefined;
       // Restore visibility on the incoming scene as a `clear()`-mid-run
-      // safety net. Deliberately do NOT restore `fromContainer`: on
+      // safety net. Deliberately do NOT restore the outgoing scene: on
       // pop/replace it's about to be destroyed but `end()` fires inside
       // the tick's update phase before PIXI renders, so restoring would
       // paint the outgoing scene for one last frame.
-      if (toContainer) toContainer.visible = true;
-      toContainer = undefined;
-      fromContainer = undefined;
+      if (toTree) toTree.visible = true;
+      toTree = undefined;
+      fromTree = undefined;
       crossedHalfway = false;
     },
   };
 }
 
-function drawCircleMask(g: Graphics, x: number, y: number, r: number): void {
+function drawCircleMask(g: DrawContext, x: number, y: number, r: number): void {
   g.clear();
   // A zero-radius circle would still register as a draw command; skip so
   // the inverse mask cleanly degrades to "fully covered" at the midpoint.

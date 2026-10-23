@@ -38,6 +38,7 @@ function makeCtx(opts: {
               x: x * 2,
               y: y * 2,
             }),
+            canvasSize: { width: 800, height: 600 },
             application: {
               screen: { width: 800, height: 600 },
               stage: { addChild: () => {} },
@@ -48,10 +49,10 @@ function makeCtx(opts: {
           return {
             getTree: (s: Scene) => {
               if (s === opts.toScene && opts.toContainer) {
-                return { root: opts.toContainer };
+                return opts.toContainer;
               }
               if (s === opts.fromScene && opts.fromContainer) {
-                return { root: opts.fromContainer };
+                return opts.fromContainer;
               }
               return undefined;
             },

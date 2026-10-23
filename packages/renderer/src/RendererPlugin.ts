@@ -507,16 +507,14 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
-   * The container that carries the responsive-fit transform — the natural
-   * parent for things that should live inside the virtual play area
-   * (transition overlays scoped to the play rect, world-space HUD, etc.).
-   * Children operate in virtual-space pixels.
+   * The container that carries the responsive-fit transform. Its children
+   * are in virtual pixels, and under `letterbox` they are clipped to the
+   * play area.
    *
-   * Use `app.stage` instead when the geometry must cover the canvas
-   * including letterbox / expand bars (full-screen dip-to-color overlays).
-   *
-   * For code that adds its own Pixi objects here, such as a custom scene
-   * transition. Game code draws through visual components on scene layers.
+   * For code that adds its own Pixi objects inside the fit, such as a
+   * rendering tool. Game code draws through visual components on scene
+   * layers, and a custom scene transition covers the swap with
+   * `createTransitionOverlay`.
    */
   get worldRoot(): DisplayContainer {
     return this._worldRoot;

@@ -146,6 +146,10 @@ class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
     const manager = new RenderLayerManager(root as never);
     const tree: SceneRenderTree = {
       root: root as never,
+      alpha: 1,
+      visible: true,
+      offset: { x: 0, y: 0 },
+      setOffset: () => {},
       get: (name) => manager.get(name),
       tryGet: (name) => manager.tryGet(name),
       getAll: () => manager.getAll(),

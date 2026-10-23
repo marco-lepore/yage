@@ -471,13 +471,13 @@ export class DebugPlugin implements Plugin {
         const scene = this.sceneManager.all.find(
           (candidate) => candidate.name === sceneName,
         );
-        const root = scene && this.provider?.getTree(scene)?.root;
-        if (!root) return undefined;
+        const tree = scene && this.provider?.getTree(scene);
+        if (!tree) return undefined;
         return {
-          alpha: root.alpha,
-          visible: root.visible,
-          x: root.position.x,
-          y: root.position.y,
+          alpha: tree.alpha,
+          visible: tree.visible,
+          x: tree.offset.x,
+          y: tree.offset.y,
         };
       },
       getCameraStack: () => {

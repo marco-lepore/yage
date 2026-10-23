@@ -23,6 +23,10 @@ function createRenderedHost() {
   const layers = new RenderLayerManager(root.renderObject);
   const tree: SceneRenderTree = {
     root: root.renderObject,
+    alpha: 1,
+    visible: true,
+    offset: { x: 0, y: 0 },
+    setOffset: () => {},
     get: (name) => layers.get(name),
     tryGet: (name) => layers.tryGet(name),
     getAll: () => layers.getAll(),

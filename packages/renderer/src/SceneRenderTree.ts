@@ -24,11 +24,33 @@ export type EnsureLayerOptions = Pick<
  * enters. Scoped DI: components resolve via `this.use(SceneRenderTreeKey)`.
  */
 export interface SceneRenderTree {
-  /** The single root container for the scene. Lives under the renderer's
-   * world-root container (which sits under `app.stage` and holds the fit
-   * transform). For code that adds its own Pixi objects to the scene; game
-   * code changes the scene's look through `fx` and `setMask`. */
+  /** The single root container for the scene's world and screen layers.
+   * Lives under the renderer's world-root container (which sits under
+   * `app.stage` and holds the fit transform). For code that adds its own
+   * Pixi objects to the scene; game code changes the scene's look through
+   * `alpha`, `visible`, `setOffset`, `fx` and `setMask`. */
   readonly root: DisplayContainer;
+  /**
+   * Opacity of the whole scene, canvas layers included, multiplied into
+   * every layer's own. Default `1`. A scene transition fades a scene through
+   * it, and a scene can fade its own content in. A non-finite value throws.
+   */
+  alpha: number;
+  /**
+   * Whether the scene draws, canvas layers included. The scene stack writes
+   * it too: it hides a scene under one whose `transparentBelow` is `false`,
+   * shows every scene while a transition runs, and applies that rule again
+   * when the transition ends, replacing a value set here.
+   */
+  visible: boolean;
+  /** The scene's offset in virtual pixels, as {@link setOffset} set it. Default `(0, 0)`. */
+  readonly offset: Readonly<{ x: number; y: number }>;
+  /**
+   * Draw the whole scene shifted by `(x, y)` virtual pixels, canvas layers
+   * included. A sliding scene transition moves a scene through it. Throws on
+   * a non-finite value.
+   */
+  setOffset(x: number, y: number): void;
   /** Get a layer by name. Throws if not found. */
   get(name: string): RenderLayer;
   /** Get a layer by name, or undefined if not found. */

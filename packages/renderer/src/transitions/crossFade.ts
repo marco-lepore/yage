@@ -1,6 +1,6 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
-import type { Container } from "pixi.js";
-import { getSceneContainer } from "./helpers.js";
+import type { SceneRenderTree } from "../SceneRenderTree.js";
+import { getSceneRenderTree } from "./helpers.js";
 
 export interface CrossFadeOptions {
   /** Duration in seconds. Default: 0.4. */
@@ -16,21 +16,21 @@ export interface CrossFadeOptions {
 export function crossFade(opts: CrossFadeOptions = {}): SceneTransition {
   const duration = opts.duration ?? 0.4;
 
-  let fromContainer: Container | undefined;
-  let toContainer: Container | undefined;
+  let fromTree: SceneRenderTree | undefined;
+  let toTree: SceneRenderTree | undefined;
 
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      fromContainer = getSceneContainer(ctx, ctx.fromScene);
-      toContainer = getSceneContainer(ctx, ctx.toScene);
-      if (fromContainer) fromContainer.alpha = 1;
-      if (toContainer) toContainer.alpha = 0;
+      fromTree = getSceneRenderTree(ctx, ctx.fromScene);
+      toTree = getSceneRenderTree(ctx, ctx.toScene);
+      if (fromTree) fromTree.alpha = 1;
+      if (toTree) toTree.alpha = 0;
     },
     tick(_dt: number, ctx: SceneTransitionContext) {
       const t = Math.min(ctx.elapsed / duration, 1);
-      if (fromContainer) fromContainer.alpha = 1 - t;
-      if (toContainer) toContainer.alpha = t;
+      if (fromTree) fromTree.alpha = 1 - t;
+      if (toTree) toTree.alpha = t;
     },
     end(ctx: SceneTransitionContext) {
       // Only restore the outgoing alpha when the outgoing scene survives
@@ -39,10 +39,10 @@ export function crossFade(opts: CrossFadeOptions = {}): SceneTransition {
       // a one-frame flash because end() fires during the tick phase,
       // before the same rAF's render runs, while the actual removal waits
       // on a microtask.
-      if (fromContainer && ctx.kind === "push") fromContainer.alpha = 1;
-      if (toContainer) toContainer.alpha = 1;
-      fromContainer = undefined;
-      toContainer = undefined;
+      if (fromTree && ctx.kind === "push") fromTree.alpha = 1;
+      if (toTree) toTree.alpha = 1;
+      fromTree = undefined;
+      toTree = undefined;
     },
   };
 }

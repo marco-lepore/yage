@@ -3,8 +3,22 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const { MockContainer, MockRenderLayer } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
-    position = { x: 0, y: 0 };
-    scale = { x: 1, y: 1 };
+    position = {
+      x: 0,
+      y: 0,
+      set(this: { x: number; y: number }, x: number, y: number) {
+        this.x = x;
+        this.y = y;
+      },
+    };
+    scale = {
+      x: 1,
+      y: 1,
+      set(this: { x: number; y: number }, x: number, y: number) {
+        this.x = x;
+        this.y = y;
+      },
+    };
     rotation = 0;
     visible = true;
     alpha = 1;
@@ -713,6 +727,62 @@ describe("canvas layers", () => {
       provider.createForScene(makeFakeScene("plain", [BARS])),
     ).toThrow(
       'RenderLayer "bars": this render tree has no canvas root, so it cannot hold a "canvas" layer.',
+    );
+  });
+});
+
+describe("scene alpha, visibility and offset", () => {
+  function setup() {
+    const stage = new MockContainer();
+    const canvasStage = new MockContainer();
+    const provider = new SceneRenderTreeProviderImpl(
+      stage as never,
+      undefined,
+      canvasStage as never,
+    );
+    const tree = provider.createForScene(
+      makeFakeScene("scene", [{ name: "bars", order: 0, space: "canvas" }]),
+    );
+    const canvasRoot = canvasStage.children[0]!;
+    return { stage, tree, canvasRoot };
+  }
+
+  it("fades the scene root and its canvas root together", () => {
+    const { tree, canvasRoot } = setup();
+    tree.alpha = 0.25;
+    expect(tree.alpha).toBe(0.25);
+    expect(
+      (tree.root as unknown as InstanceType<typeof MockContainer>).alpha,
+    ).toBe(0.25);
+    expect(canvasRoot.alpha).toBe(0.25);
+    expect(() => {
+      tree.alpha = NaN;
+    }).toThrow("SceneRenderTree.alpha: value must be finite, got NaN.");
+  });
+
+  it("hides the scene root and its canvas root together", () => {
+    const { tree, canvasRoot } = setup();
+    tree.visible = false;
+    expect(tree.visible).toBe(false);
+    expect(canvasRoot.visible).toBe(false);
+  });
+
+  it("offsets the scene in virtual pixels and the canvas root in canvas pixels", () => {
+    const { stage, tree, canvasRoot } = setup();
+    stage.scale.set(2, 2);
+
+    tree.setOffset(30, -10);
+
+    expect(tree.offset).toEqual({ x: 30, y: -10 });
+    expect(
+      (tree.root as unknown as InstanceType<typeof MockContainer>).position,
+    ).toMatchObject({
+      x: 30,
+      y: -10,
+    });
+    expect(canvasRoot.position).toMatchObject({ x: 60, y: -20 });
+    expect(() => tree.setOffset(Infinity, 0)).toThrow(
+      "SceneRenderTree.setOffset: x must be finite, got Infinity.",
     );
   });
 });

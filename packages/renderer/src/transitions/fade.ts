@@ -1,8 +1,8 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
-import { Graphics } from "pixi.js";
-import type { Container } from "pixi.js";
-import { RendererKey } from "../types.js";
-import { getSceneContainer } from "./helpers.js";
+import type { SceneRenderTree } from "../SceneRenderTree.js";
+import { getSceneRenderTree } from "./helpers.js";
+import { createTransitionOverlay } from "./overlay.js";
+import type { TransitionOverlay } from "./overlay.js";
 
 export interface FadeOptions {
   /** Fade duration in seconds. Default: 0.3. */
@@ -34,40 +34,25 @@ export function fade(opts: FadeOptions = {}): SceneTransition {
   const color = opts.color ?? 0x000000;
   const coverScreen = opts.coverScreen ?? false;
 
-  let overlay: Graphics | undefined;
-  let toContainer: Container | undefined;
-  let fromContainer: Container | undefined;
+  let overlay: TransitionOverlay | undefined;
+  let toTree: SceneRenderTree | undefined;
+  let fromTree: SceneRenderTree | undefined;
   let crossedHalfway = false;
 
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      const renderer = ctx.engineContext.resolve(RendererKey);
-      overlay = new Graphics();
-      if (coverScreen) {
-        // `app.stage` sits at identity, so its children operate in canvas
-        // pixels — sized to cover the bars too.
-        const { width, height } = renderer.application.screen;
-        overlay.rect(0, 0, width, height);
-        renderer.application.stage.addChild(overlay);
-      } else {
-        // Size against `visibleCanvasRect` (canvas extent in virtual-px
-        // coords). Under letterbox the worldRoot mask clips the overshoot
-        // back to virtual; under expand there's no mask, so the overlay
-        // paints into the bars too — exactly what `expand` games want.
-        const r = renderer.visibleCanvasRect;
-        overlay.rect(r.x, r.y, r.width, r.height);
-        renderer.worldRoot.addChild(overlay);
-      }
-      overlay.fill({ color, alpha: 1 });
+      overlay = createTransitionOverlay(ctx, { coverScreen });
+      const { x, y, width, height } = overlay.area;
+      overlay.draw((g) => g.rect(x, y, width, height).fill({ color }));
       overlay.alpha = 0;
 
       crossedHalfway = false;
       if (ctx.kind === "pop") {
-        fromContainer = getSceneContainer(ctx, ctx.fromScene);
+        fromTree = getSceneRenderTree(ctx, ctx.fromScene);
       } else {
-        toContainer = getSceneContainer(ctx, ctx.toScene);
-        if (toContainer) toContainer.visible = false;
+        toTree = getSceneRenderTree(ctx, ctx.toScene);
+        if (toTree) toTree.visible = false;
       }
     },
     tick(_dt: number, ctx: SceneTransitionContext) {
@@ -75,26 +60,24 @@ export function fade(opts: FadeOptions = {}): SceneTransition {
       const t = ctx.elapsed / duration;
       overlay.alpha = t < 0.5 ? t * 2 : (1 - t) * 2;
       if (!crossedHalfway && t >= 0.5) {
-        if (toContainer) toContainer.visible = true;
-        if (fromContainer) fromContainer.visible = false;
+        if (toTree) toTree.visible = true;
+        if (fromTree) fromTree.visible = false;
         crossedHalfway = true;
       }
     },
     end() {
-      if (overlay) {
-        overlay.destroy();
-        overlay = undefined;
-      }
+      overlay?.destroy();
+      overlay = undefined;
       // Restore visibility on the incoming scene as a `clear()`-mid-run
       // safety net — the scene lives on and leaving it hidden would
-      // corrupt state. Deliberately do NOT restore `fromContainer`: on
+      // corrupt state. Deliberately do NOT restore the outgoing scene: on
       // pop/replace it's about to be destroyed, but `end()` fires inside
       // the tick's update phase before PIXI renders — restoring visible
       // here would paint the outgoing scene for one last frame before
       // teardown, producing a visible "pop".
-      if (toContainer) toContainer.visible = true;
-      toContainer = undefined;
-      fromContainer = undefined;
+      if (toTree) toTree.visible = true;
+      toTree = undefined;
+      fromTree = undefined;
       crossedHalfway = false;
     },
   };

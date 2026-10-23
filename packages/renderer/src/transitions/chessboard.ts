@@ -1,8 +1,10 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
-import { Graphics } from "pixi.js";
-import type { Container } from "pixi.js";
+import type { DrawContext } from "../DrawContext.js";
+import { graphicsMask } from "../masks/graphicsMask.js";
+import type { MaskHandle } from "../masks/MaskHandle.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
-import { getSceneContainer, getVirtualBounds } from "./helpers.js";
+import type { SceneRenderTree } from "../SceneRenderTree.js";
+import { getSceneRenderTree, getVirtualBounds } from "./helpers.js";
 
 export interface ChessboardOptions {
   /** Total duration in seconds. Default: 0.7. */
@@ -39,8 +41,9 @@ export function chessboard(opts: ChessboardOptions = {}): SceneTransition {
   const rows = Math.max(1, Math.floor(opts.rows ?? 6));
   const cols = Math.max(1, Math.floor(opts.cols ?? 10));
 
-  let toContainer: Container | undefined;
-  let maskGfx: Graphics | undefined;
+  let toTree: SceneRenderTree | undefined;
+  let mask: MaskHandle | undefined;
+  let progress = 0;
 
   return {
     duration,
@@ -51,38 +54,34 @@ export function chessboard(opts: ChessboardOptions = {}): SceneTransition {
       // No-op for push/replace where the new scene is already topmost.
       if (ctx.toScene) provider.bringSceneToFront?.(ctx.toScene);
 
-      toContainer = getSceneContainer(ctx, ctx.toScene);
-      if (!toContainer) return;
-      const { width, height } = getVirtualBounds(ctx);
-      maskGfx = new Graphics();
-      toContainer.addChild(maskGfx);
-      toContainer.setMask({ mask: maskGfx, inverse: false });
-      drawCells(maskGfx, width, height, rows, cols, 0);
+      toTree = getSceneRenderTree(ctx, ctx.toScene);
+      if (!toTree) return;
+      progress = 0;
+      // The scene mask replaces any mask the scene set for itself until
+      // `end()` clears it. The cells read the virtual size on every redraw,
+      // so a resize mid-transition still covers the play area.
+      mask = toTree.setMask(
+        graphicsMask((g) => {
+          const { width, height } = getVirtualBounds(ctx);
+          drawCells(g, width, height, rows, cols, progress);
+        }),
+      );
     },
     tick(_dt: number, ctx: SceneTransitionContext) {
-      if (!maskGfx) return;
-      const t = Math.min(ctx.elapsed / duration, 1);
-      const { width, height } = getVirtualBounds(ctx);
-      drawCells(maskGfx, width, height, rows, cols, t);
+      if (!mask) return;
+      progress = Math.min(ctx.elapsed / duration, 1);
+      mask.redraw();
     },
     end() {
-      // Direct assignment instead of `setMask({ mask: null })` — pixi v8's
-      // setMask with null only updates the cached options and leaves the
-      // live effect dangling on a destroyed mask. Same gotcha attachMask
-      // documents at length.
-      if (toContainer) toContainer.mask = null;
-      if (maskGfx) {
-        maskGfx.removeFromParent();
-        maskGfx.destroy();
-        maskGfx = undefined;
-      }
-      toContainer = undefined;
+      if (mask) toTree?.clearMask();
+      mask = undefined;
+      toTree = undefined;
     },
   };
 }
 
 function drawCells(
-  g: Graphics,
+  g: DrawContext,
   width: number,
   height: number,
   rows: number,
