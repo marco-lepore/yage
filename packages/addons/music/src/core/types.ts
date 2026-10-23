@@ -18,7 +18,8 @@ export interface MusicTrack {
   notes: readonly MusicNote[];
   /**
    * MIDI pitch the source sounds at its original rate. Default: the root note
-   * registered with the sound (a synth instrument or a bank entry), else 60.
+   * registered with the sound (a synth instrument, or `sound(path, { rootNote })`),
+   * else 60.
    */
   rootNote?: number;
   /** Linear gain, 0..1. Default 1. */

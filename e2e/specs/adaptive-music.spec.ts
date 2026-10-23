@@ -1,11 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { AudioDiagnostics, AudioMeasurements } from "@yagejs/audio";
+import type {
+  AudioDiagnostics,
+  AudioMeasurements,
+  SoundMetadata,
+} from "@yagejs/audio";
 import type { MusicDiagnostics } from "@yagejs-addons/music";
 
 interface MusicProbe {
   music: MusicDiagnostics;
   mixer: AudioDiagnostics;
-  bankSize: { sounds: number; files: number };
+  soundMetadata: Record<string, SoundMetadata | null>;
   paused: boolean;
   offlineMix: AudioMeasurements | null;
   measuring: boolean;
@@ -45,9 +49,16 @@ test("adaptive music follows gameplay, holds its beat while paused, and stops wi
       ) !== undefined,
   );
 
-  // The build-time bank holds nine distinct files, one of them rendered from
-  // the example's own instrument module.
-  expect((await probe(page)).bankSize).toEqual({ sounds: 9, files: 9 });
+  // SynthPlugin registered every sound with the root note of its pitch and,
+  // for sustained sounds, the loop the music player holds.
+  const sounds = (await probe(page)).soundMetadata;
+  expect(Object.keys(sounds)).toHaveLength(9);
+  expect(sounds["bass"]!.rootNote).toBeCloseTo(48, 3);
+  expect(sounds["flute"]!.rootNote).toBeCloseTo(72, 3);
+  expect(sounds["keys"]!.rootNote).toBeCloseTo(60, 3);
+  // The example's own hi-hat ignores pitch, so it has no root note.
+  expect(sounds["hat"]).toEqual({});
+  expect(sounds["wind"]!.loopEnd).toBeGreaterThan(sounds["wind"]!.loopStart!);
 
   // A trusted click resumes the audio context and starts the song.
   await page.locator("canvas").click();

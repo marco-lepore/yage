@@ -7,9 +7,8 @@ import {
 } from "@yagejs-addons/synth/render";
 
 /**
- * A custom instrument: a closed hi-hat. `npm run audio:build` passes this
- * module to `yage-audio build --instruments`, so `audio.config.json` can name
- * `hat` beside the built-in instruments.
+ * A custom instrument: a closed hi-hat. `SynthPlugin` renders it at boot
+ * beside the built-in instruments.
  */
 export const hat = defineInstrument(
   "hat",

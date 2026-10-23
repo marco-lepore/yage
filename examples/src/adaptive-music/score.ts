@@ -1,6 +1,16 @@
-import type { AssetHandle } from "@yagejs/core";
-import { sound, type AudioConfig, type SoundBank } from "@yagejs/audio";
+import { sound, type AudioConfig } from "@yagejs/audio";
 import type { MusicNote, MusicSong } from "@yagejs-addons/music";
+import {
+  bass,
+  brownNoise,
+  clarinet,
+  electricPiano,
+  flute,
+  glassBell,
+  kick,
+  organ,
+} from "@yagejs-addons/synth/instruments";
+import { hat } from "./instruments.js";
 
 // ---------------------------------------------------------------------------
 // Mix and sources
@@ -17,30 +27,52 @@ export const AUDIO_MIX: AudioConfig = {
 /** A recorded file layered into both songs as a high-intensity accent. */
 export const RecordedAccent = sound("/assets/laser_gun_shot.wav");
 
-/** Lead instruments exported in the build-time bank (`audio.config.json`). */
-export const LEADS = ["keys", "flute", "clarinet", "organ"] as const;
-export type Lead = (typeof LEADS)[number];
+/**
+ * Instruments `SynthPlugin` renders when the game starts. `hat` is the
+ * example's own instrument, defined in `instruments.ts`.
+ */
+export const INSTRUMENTS = {
+  electricPiano,
+  bass,
+  kick,
+  hat,
+  glassBell,
+  brownNoise,
+  flute,
+  clarinet,
+  organ,
+};
 
-/** `hat` is the custom instrument in `instruments.ts`. */
-export type BankSound = Lead | "bass" | "kick" | "hat" | "bell" | "wind";
+/**
+ * The sounds the songs and the director play, by alias. `SynthPlugin`
+ * registers each one with its sustain loop and root note, so the music player
+ * transposes notes without a `rootNote` in the song. Bass and flute render at
+ * C3 and C5; the other pitched instruments at middle C.
+ */
+export const SOUNDS = {
+  keys: electricPiano.sound(),
+  bass: bass.sound({ frequency: 130.812783 }),
+  kick: kick.sound(),
+  hat: hat.sound(),
+  bell: glassBell.sound(),
+  wind: brownNoise.sound(),
+  flute: flute.sound({ frequency: 523.251131 }),
+  clarinet: clarinet.sound(),
+  organ: organ.sound(),
+};
+export type SoundName = keyof typeof SOUNDS;
+
+/** The sounds that can play the melody. */
+export const LEADS = [
+  "keys",
+  "flute",
+  "clarinet",
+  "organ",
+] as const satisfies readonly SoundName[];
+export type Lead = (typeof LEADS)[number];
 
 /** The gameplay parameter that brings the rhythm and accent layers in. */
 export const INTENSITY = "intensity";
-
-/**
- * The handle of a bank sound. Pitched instruments carry the root note the
- * build tool derived from their frequency, so the music player transposes
- * notes without a `rootNote` in the song.
- */
-export function bankSound(
-  bank: SoundBank,
-  name: BankSound,
-): AssetHandle<AudioBuffer> {
-  const source = bank.sounds[name];
-  if (!source)
-    throw new Error(`Music bank: missing "${name}". Run npm run audio:build.`);
-  return source;
-}
 
 // ---------------------------------------------------------------------------
 // Songs
@@ -76,11 +108,7 @@ const MELODY: Record<SongName, MusicNote[]> = {
  * melody. Bass, kick, hi-hat and the recorded accent follow the intensity
  * parameter.
  */
-export function createSong(
-  bank: SoundBank,
-  name: SongName,
-  lead: Lead,
-): MusicSong {
+export function createSong(name: SongName, lead: Lead): MusicSong {
   const waltz = name === "waltz";
   return {
     id: waltz ? "Waltz" : "Straight four",
@@ -95,7 +123,7 @@ export function createSong(
     ],
     tracks: {
       lead: {
-        source: bankSound(bank, lead),
+        source: lead,
         gain: 0.65,
         // Keys decay on their own; the wind instruments hold their sustain
         // loop for the note's duration.
@@ -103,7 +131,7 @@ export function createSong(
         notes: MELODY[name],
       },
       bass: {
-        source: bankSound(bank, "bass"),
+        source: "bass" satisfies SoundName,
         gain: 0.55,
         parameter: INTENSITY,
         notes: [
@@ -112,13 +140,13 @@ export function createSong(
         ],
       },
       kick: {
-        source: bankSound(bank, "kick"),
+        source: "kick" satisfies SoundName,
         gain: 0.6,
         parameter: INTENSITY,
         notes: [{ beat: 0 }, { beat: 2 }, { beat: 3 }, { beat: 5 }],
       },
       hat: {
-        source: bankSound(bank, "hat"),
+        source: "hat" satisfies SoundName,
         gain: 0.25,
         parameter: INTENSITY,
         // Every off-beat of both bars; the waltz's swing delays them.

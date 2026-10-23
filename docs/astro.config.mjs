@@ -204,7 +204,6 @@ export default defineConfig({
             { label: "Scenario Lab", slug: "tooling/scenario-lab" },
             { label: "Sequence Mode", slug: "tooling/sequence-editor" },
             { label: "Level Editor", slug: "tooling/level-editor" },
-            { label: "Audio Builds", slug: "tooling/audio" },
             { label: "Runtime Feedback", slug: "tooling/feedback" },
             { label: "Local Engine Checkout", slug: "tooling/local-engine" },
           ],

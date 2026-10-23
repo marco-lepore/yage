@@ -440,6 +440,8 @@ metadata with the buffer. The loop points become the sustain loop that
 `loop: true` plays. `rootNote` is the MIDI pitch the recording sounds at its
 original rate. The [music addon](/addons/music/) transposes notes against it.
 `audio.getSoundMetadata(ref)` returns a copy of both.
+`sound(path, { loopStart, loopEnd, rootNote })` sets the same metadata for a
+recorded file. Handles for one file must agree on their metadata.
 
 An automation time already in the past begins now. `crossfade` requires an
 explicit start time to be at or after the current audio time.
@@ -502,36 +504,3 @@ exponential ramps, for a sequencer's own control values such as a layer
 parameter. `set(value, at, duration?, curve?)` replaces the automation from
 `at`, `valueAt(time)` reads it, and `shift(from, delta)` moves the remaining
 points after a pause.
-
-## Banks rendered during the build
-
-The [audio build tool](/tooling/audio/) exports selected synth sounds as WAV
-files with tuning and sustain metadata. `soundBank(manifest, "/audio/")`
-validates that manifest and declares asset handles. Fetch or import the
-manifest first, then add `Object.values(bank.sounds)` to the scene's preload
-list and pass those handles to playback. Each handle carries its entry's loop
-points and `rootNote`.
-
-Bank names such as `flute` are local lookup keys; `bank.sounds.flute` is the
-playable handle. The base directory URL must end in `/` and include your
-application's deployment prefix. Preloaded sounds stay loaded until code
-unloads their handles.
-
-A manifest entry needs only `file`, a WAV filename in the bank directory.
-`rootNote` and a `loopStart`/`loopEnd` pair are optional, so a bank of
-recordings can be written by hand:
-
-```json
-{
-  "version": 1,
-  "sampleRate": 44100,
-  "sounds": {
-    "hit": { "file": "hit.wav" },
-    "pad": { "file": "pad.wav", "rootNote": 57, "loopStart": 0.5, "loopEnd": 1.5 }
-  }
-}
-```
-
-For individually authored files, `sound(path, { loopStart, loopEnd, rootNote })`
-sets the same metadata. Loop points are seconds and apply when playback uses
-`loop: true`. Handles for one file must agree on their metadata.

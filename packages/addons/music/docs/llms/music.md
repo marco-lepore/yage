@@ -115,6 +115,18 @@ Sources must already be registered. Book parameter writes/transitions before
 you want their full tails. Use `measureAudio` for sample metrics; see the audio
 reference for measurement limits.
 
+A fixed loop for a game without adaptive music: after `await engine.start()`
+(SynthPlugin has registered its sounds), render one pass of the song with
+`renderAudio({ duration: seconds, mix: { channels: { music: { volume: 1 } } } },
+...)`, where `seconds = bars * musicBeatsPerBar(meter) * 60 / bpm`
+(`musicBeatsPerBar(meter = [4, 4])` is exported). The full-level music channel
+keeps the live `music` channel volume from applying twice. Then
+`registerSound("theme", buffer)` and play it from a scene through an owner,
+`new SoundComponent({ alias: "theme", channel: "music", loop: true, playOnAdd:
+true })`. A main-thread stall cannot skip its notes. Notes ringing at the end of
+the pass are cut where the loop restarts, and the loop has no parameters,
+transitions or cues. Render time grows with the song's length.
+
 Playback is transient. Keep the desired song id and parameter values in the
 game's explicit save root, then recreate playback from that data. Do not save a
 player, component, channel, SoundHandle or AudioBuffer.

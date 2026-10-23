@@ -32,8 +32,6 @@ export type { OfflineAudioOptions, AudioMeasurements } from "./offline.js";
 export type { AudioAutomationOptions, AudioDiagnostics } from "./types.js";
 
 export type { SoundMetadata } from "./assets.js";
-export { soundBank, parseSoundBankManifest } from "./bank.js";
-export type { SoundBank, SoundBankManifest, SoundBankEntry } from "./bank.js";
 
 export { AudioTimeline } from "./AudioTimeline.js";
 export type { AudioAutomationPoint } from "./AudioTimeline.js";

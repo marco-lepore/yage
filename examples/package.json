@@ -11,10 +11,7 @@
     "lab:test": "yage-lab test",
     "lint": "eslint src e2e lab",
     "typecheck": "tsc --noEmit",
-    "sequence:edit": "yage-editor dev --config editor.sequence.config.ts",
-    "audio:build": "node ../packages/tools/audio/dist/cli.js build audio.config.json --out public/generated/audio --instruments src/adaptive-music/instruments.ts",
-    "predev": "npm run audio:build",
-    "prebuild": "npm run audio:build"
+    "sequence:edit": "yage-editor dev --config editor.sequence.config.ts"
   },
   "yage-lab": {
     "scenarios": [
@@ -26,8 +23,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "@yagejs-tools/editor": "^0.2.0",
     "vite": "^8.0.0",
-    "vite-plugin-wasm": "^3.6.0",
-    "@yagejs-tools/audio": "^0.0.0"
+    "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
     "@yagejs-tools/lab": "^0.3.0",

@@ -310,26 +310,11 @@ to)`, and `events(from)` query its value, area and detached future points.
 finite times; results outside retained history are undefined. This planner does
 not create an audio context or timer.
 
-## Exported sound banks
+## Recorded sound metadata and shared files
 
 - `sound(path, metadata?: SoundMetadata): AssetHandle<AudioBuffer>` accepts
   paired `loopStart`/`loopEnd` in seconds and `rootNote` (MIDI 0–127). The
   metadata follows the handle through preloading into the registry.
-- `parseSoundBankManifest(unknown): SoundBankManifest` validates version 1,
-  WAV filenames, loop regions and root notes; returns a copy. An entry requires
-  only `file`. `rootNote` and the loop pair are optional. The build
-  diagnostics `frames`, `bytes`, `samplePeak`, `rms` and `clippedSamples` are
-  optional and checked when present; without `frames` the loop is checked
-  against the decoded file. Entries naming the same file must agree on
-  frames, bytes, loop points and rootNote.
-- `soundBank(unknownManifest, baseDirectoryUrl): SoundBank` returns
-  `{ manifest, sounds: Record<string, AssetHandle<AudioBuffer>> }`. No I/O.
-  Base URL must end in `/`. Put `Object.values(bank.sounds)` in Scene.preload.
-- Bank keys are local names, not registered aliases. Pass the handles to
-  playback. Each handle carries its entry's loop points and `rootNote`; music
-  tracks read the root note from the sound. It does not retune audio.
-- `@yagejs-tools/audio` produces the manifest and WAVs. See
-  [audio builds](../tools/audio.md) for build and complete playback setup.
 - The sound loader and AssetManager own decoding, reference counting and
   unload. Handles for the same file must agree on their metadata.
 - Engines on one page share a decoded file by path. Each engine's load adds

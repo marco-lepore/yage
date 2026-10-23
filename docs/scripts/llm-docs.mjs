@@ -46,7 +46,6 @@ const EXPLICIT = {
   "tooling/scenario-lab": "/llms/tools/lab.md",
   "tooling/sequence-editor": "/llms/tools/sequence-editor.md",
   "tooling/level-editor": "/llms/tools/editor.md",
-  "tooling/audio": "/llms/tools/audio.md",
   "tooling/feedback": "/llms/tools/feedback.md",
   "tooling/local-engine": "/llms/local-engine.md",
 };

@@ -4,7 +4,6 @@ import {
   measureAudio,
   renderAudio,
   type AudioMeasurements,
-  type SoundBank,
   type SoundHandle,
 } from "@yagejs/audio";
 import {
@@ -17,10 +16,11 @@ import {
   AUDIO_MIX,
   INTENSITY,
   LEADS,
-  bankSound,
+  SOUNDS,
   createSong,
   type Lead,
   type SongName,
+  type SoundName,
 } from "./score.js";
 
 /** Wind loop level, speed and pan for an intensity from 0 to 1. */
@@ -56,10 +56,7 @@ export class MusicDirector extends Component {
   private _offlineMix: AudioMeasurements | null = null;
   private _measuring = false;
 
-  constructor(
-    private readonly bank: SoundBank,
-    intensity: number,
-  ) {
+  constructor(intensity: number) {
     super();
     this._intensity = intensity;
   }
@@ -90,7 +87,7 @@ export class MusicDirector extends Component {
   onAdd(): void {
     this.music = this.entity.get(MusicComponent);
     // Booked on the audio clock, so the loop starts once audio unlocks.
-    this.wind = this.audio.play(bankSound(this.bank, "wind"), {
+    this.wind = this.audio.play("wind" satisfies SoundName, {
       channel: AMBIENCE,
       loop: true,
       ...windAt(this._intensity),
@@ -113,14 +110,14 @@ export class MusicDirector extends Component {
 
   /** Swap the melody instrument on the next bar. */
   setLead(lead: Lead): void {
-    this.player.transition(createSong(this.bank, this._song, lead));
+    this.player.transition(createSong(this._song, lead));
     this._lead = lead;
   }
 
   /** Move between the waltz and the straight song on the next bar. */
   changeSong(): void {
     const song = this._song === "waltz" ? "straight" : "waltz";
-    this.player.transition(createSong(this.bank, song, this._lead));
+    this.player.transition(createSong(song, this._lead));
     this._song = song;
   }
 
@@ -128,7 +125,7 @@ export class MusicDirector extends Component {
   playReward(): void {
     // Before the first gesture unlocks audio there is no song to join.
     if (this.player.getDiagnostics().state !== "playing") return;
-    this.player.cue(bankSound(this.bank, "bell"), {
+    this.player.cue("bell" satisfies SoundName, {
       grid: 0.5,
       note: 74,
       followHarmony: true,
@@ -161,7 +158,6 @@ export class MusicDirector extends Component {
     // the rejection reaches the caller.
     try {
       const song = this.currentSong();
-      const wind = bankSound(this.bank, "wind");
       const buffer = await renderAudio(
         { duration: 5, mix: AUDIO_MIX },
         (audio) => {
@@ -172,7 +168,12 @@ export class MusicDirector extends Component {
           player.play(song, { at: 0.1 });
           player.setParameter(INTENSITY, 1, { at: 2, duration: 0.4 });
           audio
-            .play(wind, { channel: AMBIENCE, at: 0, loop: true, volume: 0.08 })
+            .play("wind" satisfies SoundName, {
+              channel: AMBIENCE,
+              at: 0,
+              loop: true,
+              volume: 0.08,
+            })
             .setSpeed(1.3, { at: 2, duration: 1 });
           audio.updateSchedule(0, 5);
         },
@@ -189,7 +190,7 @@ export class MusicDirector extends Component {
   }
 
   private currentSong(): MusicSong {
-    return createSong(this.bank, this._song, this._lead);
+    return createSong(this._song, this._lead);
   }
 }
 
@@ -265,10 +266,7 @@ class MusicControls extends Component {
 class MusicProbe extends Component {
   private readonly audio = this.service(AudioManagerKey);
 
-  constructor(
-    private readonly director: MusicDirector,
-    private readonly bank: SoundBank,
-  ) {
+  constructor(private readonly director: MusicDirector) {
     super();
   }
 
@@ -278,12 +276,14 @@ class MusicProbe extends Component {
   get mixer() {
     return this.audio.getDiagnostics();
   }
-  get bankSize() {
-    const entries = Object.values(this.bank.manifest.sounds);
-    return {
-      sounds: entries.length,
-      files: new Set(entries.map((entry) => entry.file)).size,
-    };
+  /** What `SynthPlugin` registered with each sound: root note and loop. */
+  get soundMetadata() {
+    return Object.fromEntries(
+      Object.keys(SOUNDS).map((name) => [
+        name,
+        this.audio.getSoundMetadata(name) ?? null,
+      ]),
+    );
   }
   get paused(): boolean {
     return this.director.paused;
@@ -310,16 +310,16 @@ export const MUSIC_KEY = "music";
 export class MusicHostEntity extends Entity {
   director!: MusicDirector;
 
-  setup(bank: SoundBank): void {
+  setup(): void {
     const intensity = 0.25;
     this.add(
-      new MusicComponent(createSong(bank, "waltz", "keys"), {
+      new MusicComponent(createSong("waltz", "keys"), {
         seed: 17,
         parameters: { [INTENSITY]: intensity },
       }),
     );
-    this.director = this.add(new MusicDirector(bank, intensity));
+    this.director = this.add(new MusicDirector(intensity));
     this.add(new MusicControls(this.director));
-    this.add(new MusicProbe(this.director, bank));
+    this.add(new MusicProbe(this.director));
   }
 }

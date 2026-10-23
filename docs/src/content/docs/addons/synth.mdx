@@ -370,8 +370,8 @@ pass them to `registerSound(alias, buffer, { loopStart, loopEnd, rootNote })`.
 
 An instrument is a function that renders one note. `defineInstrument` gives it
 a name, and the result works everywhere a built-in instrument does: in
-`SynthPlugin`, in a worker, as a [music](/addons/music/) track source and in
-the [audio build tool](/tooling/audio/). Keep instruments in their own module
+`SynthPlugin`, in a worker and as a [music](/addons/music/) track source.
+Keep instruments in their own module
 and import from `@yagejs-addons/synth/render`, which loads in the browser, in a
 module worker and in Node:
 
@@ -488,7 +488,7 @@ that yields numbers in [0, 1).
 
 ## Worker rendering and readiness
 
-For a large bank, provide a dedicated module worker. Import the same
+For many sounds, provide a dedicated module worker. Import the same
 instrument definitions in the worker and the plugin so main-thread fallback
 can render every sound. An empty set supports patches and jingles only:
 
@@ -500,8 +500,8 @@ serveSynthWorker({ flute });
 ```
 
 Pass `worker: new Worker(new URL("./synth-worker.ts", import.meta.url), { type: "module" })` to SynthPlugin in a bundler that supports module workers.
-The plugin owns and terminates that worker. Engine startup awaits the complete
-bank; play sources only after startup. With no worker, it renders on the main
+The plugin owns and terminates that worker. Engine startup awaits every sound;
+play sources only after startup. With no worker, it renders on the main
 thread using the same seeded functions.
 
 `plugin.getDiagnostics()` reports state, mode, completed/total, fallbackReason
@@ -509,11 +509,7 @@ and failure. Worker transport errors or inactivity (default `workerTimeout: 5000
 sound data rejects installation. Destruction cancels pending work and removes
 registered aliases. A disposed plugin cannot be installed again.
 
-## Build-time rendering and portable sound data
-
-Use `@yagejs-tools/audio` to export selected sounds as WAV files before the
-game starts. The game can then load the bank through `@yagejs/audio` without
-importing the synth catalogue. See [audio builds](https://yage.dev/tooling/audio/).
+## Portable sound data
 
 The `/render` entry works in Node and browser previews without an AudioContext:
 

@@ -43,7 +43,6 @@ entity.add(new SoundComponent({ alias: jumpSfx.path, channel: "sfx" }));
 - **SoundComponent** - attach sounds to entities with auto-cleanup
 - **Channels** - hierarchical volume, mute, pause, and stop
 - **Audio-clock automation** - exact starts, releases, gain, pan, and playback rate
-- **soundBank** - preload exported WAV banks with sustain metadata
 - **renderAudio / measureAudio** - offline graph rendering and sample statistics
 
 ## Docs

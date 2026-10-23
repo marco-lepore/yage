@@ -9,7 +9,7 @@ import {
 /**
  * A custom instrument: a bright harp string plucked near the middle. It
  * imports only from `@yagejs-addons/synth/render`, so the same module also
- * loads in a worker or in the audio build tool.
+ * loads in a worker or in Node.
  */
 export const harp = defineInstrument("harp", (frequency, sampleRate, seed) => {
   const t60 = Math.min(3, Math.max(1, 3 - (frequency - 200) / 500));

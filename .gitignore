@@ -50,5 +50,3 @@ output/playwright/
 # Local feedback evidence
 .yage/feedback/
 
-# Generated instrument bank (examples audio:build)
-examples/public/generated/audio/

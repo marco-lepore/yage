@@ -1,7 +1,7 @@
 /**
  * A seeded random generator returning numbers in [0, 1). The same seed gives
  * the same sequence on every platform, so an instrument renders the same
- * samples in the browser, a worker and the build tool. (mulberry32.)
+ * samples in the browser, a worker and Node. (mulberry32.)
  */
 export function seededRandom(seed: number): () => number {
   let a = seed >>> 0;

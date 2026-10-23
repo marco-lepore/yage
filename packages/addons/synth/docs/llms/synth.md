@@ -415,7 +415,7 @@ pass them to `registerSound(alias, buffer, { loopStart, loopEnd, rootNote })`.
 
 Import the authoring API from `@yagejs-addons/synth/render`; an instrument
 module that imports only from there loads in the browser, a module worker and
-Node (the audio build tool).
+Node.
 
 ```ts
 import type {
@@ -511,7 +511,7 @@ export const harp = defineInstrument("harp", (frequency, sampleRate, seed) =>
 
 ## Worker rendering and readiness
 
-For a large bank, provide a dedicated module worker. Import the same
+For many sounds, provide a dedicated module worker. Import the same
 instrument definitions in the worker and the plugin so main-thread fallback
 can render every sound. An empty set supports patches and jingles only:
 
@@ -523,8 +523,8 @@ serveSynthWorker({ flute });
 
 Pass `worker: new Worker(new URL("./synth-worker.ts", import.meta.url),
 { type: "module" })` to SynthPlugin in a bundler that supports module workers.
-The plugin owns and terminates that worker. Engine startup awaits the complete
-bank; play sources only after startup. With no worker, it renders on the main
+The plugin owns and terminates that worker. Engine startup awaits every sound;
+play sources only after startup. With no worker, it renders on the main
 thread using the same seeded functions.
 
 `plugin.getDiagnostics()` reports state, mode, completed/total, fallbackReason
@@ -533,11 +533,7 @@ and failure. Worker transport errors or inactivity (default `workerTimeout:
 sound data rejects installation. Destruction cancels pending work and removes
 registered aliases. A disposed plugin cannot be installed again.
 
-## Build-time rendering and portable sound data
-
-Use `@yagejs-tools/audio` to export selected sounds as WAV files before the
-game starts. The game can then load the bank through `@yagejs/audio` without
-importing the synth catalogue. See [audio builds](https://yage.dev/tooling/audio/).
+## Portable sound data
 
 The `/render` entry works in Node and browser previews without an AudioContext:
 

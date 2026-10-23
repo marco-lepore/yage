@@ -180,8 +180,8 @@ pass them to `registerSound(alias, buffer, { loopStart, loopEnd, rootNote })`.
 ## Custom instruments
 
 `defineInstrument` from `@yagejs-addons/synth/render` turns a render function
-into an instrument that works in `SynthPlugin`, a worker, music tracks and the
-audio build tool. The same entry exports DSP building blocks
+into an instrument that works in `SynthPlugin`, a worker and music tracks.
+The same entry exports DSP building blocks
 (`renderString`, `renderModal`, `renderAdditive`, `renderMetal`,
 `renderNoise`, filters and level tools):
 
@@ -218,7 +218,7 @@ contract.
 
 ## Worker rendering and readiness
 
-For a large bank, provide a dedicated module worker. Import the same
+For many sounds, provide a dedicated module worker. Import the same
 instrument definitions in the worker and the plugin so main-thread fallback
 can render every sound. An empty set supports patches and jingles only:
 
@@ -230,8 +230,8 @@ serveSynthWorker({ flute });
 
 Pass `worker: new Worker(new URL("./synth-worker.ts", import.meta.url),
 { type: "module" })` to SynthPlugin in a bundler that supports module workers.
-The plugin owns and terminates that worker. Engine startup awaits the complete
-bank; play sources only after startup. With no worker, it renders on the main
+The plugin owns and terminates that worker. Engine startup awaits every sound;
+play sources only after startup. With no worker, it renders on the main
 thread using the same seeded functions.
 
 `plugin.getDiagnostics()` reports state, mode, completed/total, fallbackReason
@@ -240,11 +240,7 @@ and failure. Worker transport errors or inactivity (default `workerTimeout:
 sound data rejects installation. Destruction cancels pending work and removes
 registered aliases. A disposed plugin cannot be installed again.
 
-## Build-time rendering and portable sound data
-
-Use `@yagejs-tools/audio` to export selected sounds as WAV files before the
-game starts. The game can then load the bank through `@yagejs/audio` without
-importing the synth catalogue. See [audio builds](https://yage.dev/tooling/audio/).
+## Portable sound data
 
 The `/render` entry works in Node and browser previews without an AudioContext:
 

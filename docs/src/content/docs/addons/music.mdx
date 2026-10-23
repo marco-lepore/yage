@@ -45,8 +45,7 @@ Every beat and duration counts quarter notes. `[3, 4]` has three beats per bar;
 `[7, 8]` has three and a half. BPM always counts quarter notes. A note's `note`
 is a MIDI pitch; omit it to play a recording at its original rate. The player
 transposes against the source's root note, the MIDI pitch it sounds at its
-original rate. Synth instruments and banks from the
-[audio build tool](/tooling/audio/) register that pitch with the sound, so a
+original rate. Synth instruments register that pitch with the sound, so a
 song needs no tuning data. For other recordings, register it with
 `sound(path, { rootNote })` or set `rootNote` on the track. Without either it is
 60 (middle C).
@@ -122,7 +121,7 @@ and increments `droppedNotes` rather than producing a catch-up burst.
 For a reproducible mix, create a player inside `renderAudio`, call
 `play(song, { at: 0 })`, book parameter writes, then call
 `audio.updateSchedule(0, duration)`. This renders the same audio graph offline.
-Include sufficient duration for releases and use the same source bank and seed.
+Include sufficient duration for releases and use the same sources and seed.
 See [audio measurements](/guides/audio/#offline-mix-measurements) for sample peak,
 RMS and their limits.
 
@@ -130,4 +129,68 @@ The [adaptive music example](https://examples.yage.dev/adaptive-music.html)
 puts the rules in one component on a host entity. A danger control raises the
 intensity layers, a reward plays a cue in the current chord, a new area changes
 song on the next bar, and pausing the game pauses the music channel with the
-scene. Its sounds come from a bank rendered during the build.
+scene. `SynthPlugin` renders its instruments when the page loads.
+
+## Play a song as a fixed loop
+
+A game that wants background music without adaptive changes can render a song
+once and loop the result. The rendered loop plays on the `music` channel like
+any sound, and a long main-thread stall cannot make it skip notes, as it can
+for a live player.
+
+```ts yage-context="async"
+import { Engine, Scene } from "@yagejs/core";
+import {
+  AudioPlugin, SoundComponent, registerSound, renderAudio,
+} from "@yagejs/audio";
+import { MusicPlayer, musicBeatsPerBar, type MusicSong } from "@yagejs-addons/music";
+import { SynthPlugin } from "@yagejs-addons/synth";
+import { electricPiano } from "@yagejs-addons/synth/instruments";
+
+const theme = {
+  id: "theme", bpm: 100, meter: [4, 4], bars: 4,
+  tracks: {
+    keys: { source: "keys", notes: [
+      { beat: 0, note: 60, duration: 4 }, { beat: 8, note: 57, duration: 4 },
+    ] },
+  },
+} satisfies MusicSong;
+
+class TitleScene extends Scene {
+  readonly name = "title";
+  onEnter(): void {
+    // The component stops the loop when its entity or the scene goes.
+    this.spawn("theme").add(new SoundComponent({
+      alias: "theme", channel: "music", loop: true, playOnAdd: true,
+    }));
+  }
+}
+
+const engine = new Engine();
+engine.use(new AudioPlugin());
+engine.use(new SynthPlugin({
+  instruments: { electricPiano },
+  sounds: { keys: electricPiano.sound() },
+}));
+await engine.start();
+
+// One pass of the song: its bars, times beats per bar, at its tempo.
+const seconds = (theme.bars * musicBeatsPerBar(theme.meter) * 60) / theme.bpm;
+const buffer = await renderAudio(
+  // The live music channel applies its volume when the loop plays, so the
+  // render leaves the song at full level.
+  { duration: seconds, mix: { channels: { music: { volume: 1 } } } },
+  (offline) => {
+    new MusicPlayer(offline, { seed: 1 }).play(theme, { at: 0 });
+    offline.updateSchedule(0, seconds);
+  },
+);
+registerSound("theme", buffer);
+await engine.scenes.push(new TitleScene());
+```
+
+Render after `engine.start()`, once `SynthPlugin` has registered the song's
+sources, and before the scene that plays the loop. Rendering takes time in
+proportion to the song's length. Notes that still ring at the end of the pass
+are cut where the loop restarts; a live player lets them carry into the next
+repeat. The loop has no parameters, transitions or cues.

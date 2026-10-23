@@ -18,11 +18,9 @@ it.each(Object.keys(synthInstruments) as Array<keyof typeof synthInstruments>)(
     );
     expect(a.samples).toEqual(b.samples);
     expect(a).toEqual(synthInstruments[name].render({ seed: 24 }, 16000));
+    expect(a.samples.every(Number.isFinite)).toBe(true);
     let peak = 0;
-    for (const v of a.samples) {
-      expect(Number.isFinite(v)).toBe(true);
-      peak = Math.max(peak, Math.abs(v));
-    }
+    for (const v of a.samples) peak = Math.max(peak, Math.abs(v));
     expect(peak).toBeGreaterThan(0.01);
     expect(peak).toBeLessThanOrEqual(0.31);
     if (a.loopStart !== undefined) {
