@@ -50,11 +50,12 @@ class Cave extends Scene {
 }
 ```
 
-Two renderers ship with the package. `overlayLighting()`, the default, draws
+Three renderers ship with the package. `overlayLighting()`, the default, draws
 coloured light over an ambient floor with one hard edge per shadow.
 `shaderLighting()` draws the same lights with shadow borders that widen with
-the distance from the blocker and with a spotlight edge that fades. A scene
-picks one by name.
+the distance from the blocker and with a spotlight edge that fades.
+`surfaceLighting()` lights each sprite on a world layer individually, with its
+normal map, specular highlights, and emission. A scene picks one by name.
 
 Use the scene-scoped `LightingWorldKey` for gameplay queries:
 
@@ -69,9 +70,9 @@ class LightSensor extends Component {
 ```
 
 `levelAt()` adds the ambient level and every light contribution, then clamps
-the result to `0..1`. A `LightOccluder` blocks light in the query and in both
-built-in renderers alike, so a wall casts a shadow in the picture and in the
-answer. Occluder data is renderer-neutral and available to custom renderers.
+the result to `0..1`. A `LightOccluder` blocks light in the query and in
+`overlayLighting()`, `shaderLighting()`, and `surfaceLighting()` alike, so a
+wall casts a shadow in the picture and in the answer. Occluder data is renderer-neutral and available to custom renderers.
 
 See [yage.dev/guides/lighting](https://yage.dev/guides/lighting) for setup,
 configuration, and custom renderer details.
