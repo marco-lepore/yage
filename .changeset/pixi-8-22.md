@@ -6,13 +6,9 @@
 "@yagejs/debug": minor
 "@yagejs/effects": minor
 "@yagejs-tools/editor": minor
-"@yagejs-addons/dialogue": minor
-"@yagejs-addons/i18n": minor
-"@yagejs-addons/inventory": minor
-"@yagejs-addons/virtual-controls": minor
 ---
 
-Raise the PixiJS peer floor from `^8.8.0` to `^8.22.0`.
+Raise the PixiJS peer or dependency range from `^8.8.0` to `^8.22.0`.
 
 **Breaking:** a game on PixiJS 8.8 to 8.21 must upgrade to 8.22 or newer.
 
