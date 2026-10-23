@@ -446,6 +446,19 @@ describe("levelDirectories", () => {
     // directly in it matches nothing.
     expect(files.levelDirectories()).toEqual(["src/levels"]);
   });
+
+  it("answers sequence directories from the globs that match workspace files", async () => {
+    const root = await makeProject();
+    const files = await createLevelFileService({
+      root,
+      levels: [{ glob: "src/sequences/*.yage-sequence-workspace.json" }],
+      assets: [],
+    });
+
+    expect(files.levelDirectories("sequence")).toEqual(["src/sequences"]);
+    // A project that lists only sequences has nowhere to create a level.
+    expect(files.levelDirectories()).toEqual([]);
+  });
 });
 
 describe("createLevel", () => {

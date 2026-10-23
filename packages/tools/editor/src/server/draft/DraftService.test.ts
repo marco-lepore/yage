@@ -1239,3 +1239,83 @@ describe("level files", () => {
     expect(outcome.snapshot.dirty).toBe(false);
   });
 });
+
+describe("sequence workspaces in the shared draft pipeline", () => {
+  it("saves the complete workspace, preserves it through undo, and refuses stale timeline edits", async () => {
+    const { emptySequenceWorkspace, formatEditorDocument, readEditorDocument } =
+      await import("../../shared/document/index.js");
+    const file = "src/levels/demo.yage-sequence-workspace.json";
+    const initial = emptySequenceWorkspace("demo");
+    const f = await fixture({
+      levels: { [file]: formatEditorDocument(initial) },
+    });
+    const files = await createLevelFileService({
+      root: f.root,
+      levels: [{ glob: "src/levels/*.yage-sequence-workspace.json" }],
+      assets: [],
+    });
+    const draft = new DraftService({
+      files,
+      projectId: "sequence",
+      epoch: EPOCH,
+    });
+    const opened = snapshotOf(await draft.snapshot(file));
+    const next = { ...initial.sequence, name: "Edited clip" };
+    const command: DocumentCommand = {
+      kind: "set-sequence",
+      commandId: "clip",
+      before: { sequence: initial.sequence, bindings: {} },
+      after: { sequence: next, bindings: {} },
+    };
+    const edited = snapshotOf(
+      await draft.command(file, {
+        epoch: EPOCH,
+        expectedDraftRevision: 0,
+        command,
+      }),
+    );
+    expect(edited.document).toMatchObject({
+      format: "yage-sequence-workspace",
+      sequence: { name: "Edited clip" },
+    });
+    expect(
+      (
+        await draft.command(file, {
+          epoch: EPOCH,
+          expectedDraftRevision: 0,
+          command: { ...command, commandId: "stale" },
+        })
+      ).status,
+    ).toBe("stale");
+    const saved = await draft.save(file, {
+      epoch: EPOCH,
+      expectedDraftRevision: 1,
+      expectedDiskRevision: opened.diskRevision,
+    });
+    expect(saved.status).toBe("accepted");
+    expect(
+      readEditorDocument(await readFile(path.join(f.root, file), "utf8")),
+    ).toEqual({ ok: true, document: { ...initial, sequence: next } });
+    expect(
+      snapshotOf(
+        await draft.undo(file, { epoch: EPOCH, expectedDraftRevision: 1 }),
+      ).document,
+    ).toEqual(initial);
+    expect(
+      snapshotOf(
+        await draft.redo(file, { epoch: EPOCH, expectedDraftRevision: 2 }),
+      ).document,
+    ).toEqual({ ...initial, sequence: next });
+    await writeFile(
+      path.join(f.root, file),
+      formatEditorDocument({ ...initial, id: "external" }),
+    );
+    expect(
+      await draft.save(file, {
+        epoch: EPOCH,
+        expectedDraftRevision: 3,
+        expectedDiskRevision: snapshotOf(saved).diskRevision,
+      }),
+    ).toMatchObject({ status: "rejected", code: "stale-disk" });
+  });
+});

@@ -65,9 +65,14 @@ export async function loadEditorConfig(
     ...(config.tiled === undefined ? {} : { tiled: config.tiled }),
     projectId: readProjectId(options.cwd, root),
     modules: resolveModules(config.modules, configDir, root, configFile),
-    levels: config.levels.map((entry) =>
-      resolveLevelGlob(entry, configDir, root, configFile),
-    ),
+    levels: [
+      ...config.levels.map((entry) =>
+        resolveLevelGlob(entry, "levels", configDir, root, configFile),
+      ),
+      ...config.sequences.map((entry) =>
+        resolveLevelGlob(entry, "sequences", configDir, root, configFile),
+      ),
+    ],
     assets: config.assets.map((glob) =>
       checkPattern(glob, "assets", configFile),
     ),
@@ -92,29 +97,35 @@ function findConfigFile(cwd: string, declared: string | undefined): string {
 }
 
 /**
- * A validated config with the optional pattern list settled, so everything
- * after this reads one shape. A project that named no assets gets an empty
- * list rather than an absent field.
+ * A validated config with the optional pattern lists settled, so everything
+ * after this reads one shape. A list the project left out is empty rather
+ * than absent.
  */
-type CheckedEditorConfig = Omit<EditorConfig, "assets"> & {
+type CheckedEditorConfig = Omit<
+  EditorConfig,
+  "assets" | "levels" | "sequences"
+> & {
+  readonly levels: readonly (string | EditorLevelGlob)[];
+  readonly sequences: readonly (string | EditorLevelGlob)[];
   readonly assets: readonly string[];
 };
 
 /**
- * Turn one `levels` entry into its glob and, when it named one, the URL the
- * generated entry imports the layers module by.
+ * Turn one `levels` or `sequences` entry into its glob and, when it named
+ * one, the URL the generated entry imports the layers module by.
  */
 function resolveLevelGlob(
   entry: string | EditorLevelGlob,
+  field: "levels" | "sequences",
   configDir: string,
   root: string,
   configFile: string,
 ): ResolvedLevelGlob {
   if (typeof entry === "string") {
-    return { glob: checkPattern(entry, "levels", configFile) };
+    return { glob: checkPattern(entry, field, configFile) };
   }
   return {
-    glob: checkPattern(entry.glob, "levels", configFile),
+    glob: checkPattern(entry.glob, field, configFile),
     layers: toRootUrl(entry.layers, configDir, root, configFile),
   };
 }
@@ -135,10 +146,19 @@ function asEditorConfig(
   const tiled = asTiled(value["tiled"], configFile);
   const gamePage = asGamePage(value["gamePage"], configFile);
 
+  const levels = asLevelList(value["levels"], "levels", configFile);
+  const sequences = asLevelList(value["sequences"], "sequences", configFile);
+  if (levels.length === 0 && sequences.length === 0) {
+    throw new Error(
+      `${configFile}: "levels" or "sequences" must list at least one pattern.`,
+    );
+  }
+
   return {
     modules: { project, harness },
     ...(tiled === undefined ? {} : { tiled }),
-    levels: asLevelList(value["levels"], configFile),
+    levels,
+    sequences,
     assets:
       value["assets"] === undefined
         ? []
@@ -206,12 +226,12 @@ function asModulePath(value: unknown, key: string, configFile: string): string {
  */
 function asLevelList(
   value: unknown,
+  field: "levels" | "sequences",
   configFile: string,
 ): readonly (string | EditorLevelGlob)[] {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw new Error(
-      `${configFile}: "levels" must be a non-empty array of patterns.`,
-    );
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(`${configFile}: "${field}" must be an array of patterns.`);
   }
   return value.map((entry: unknown) => {
     if (typeof entry === "string" && entry !== "") return entry;
@@ -225,7 +245,7 @@ function asLevelList(
       return { glob: entry["glob"], layers: entry["layers"] };
     }
     throw new Error(
-      `${configFile}: every "levels" entry must be a pattern or ` +
+      `${configFile}: every "${field}" entry must be a pattern or ` +
         `{ glob, layers }, where "layers" is the path of a module exporting ` +
         `the scene's LayerDef[].`,
     );

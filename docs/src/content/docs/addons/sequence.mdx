@@ -1,0 +1,178 @@
+---
+title: Sequences
+description: Animate replaceable actors with keyframes, rectangle mapping and event markers
+---
+
+A sequence animates several objects together. Author positions, rotation,
+opacity and timed events once, then supply the actors when playback starts.
+The same clip drives preview entities in the editor's
+[Sequence mode](/tooling/sequence-editor/) and real game entities during play.
+
+Try the [two-actor playback example](https://examples.yage.dev/sequence.html).
+Aster's positions scale with the stage rectangle. Ember keeps fixed offsets
+from the rectangle's bottom-right corner. In Sequence mode, change the preview
+rectangle to see the difference while both actors keep their size. When an
+actor says hello, the example pauses the clip for 0.75 seconds, as a cutscene
+does while a line of dialogue is on screen.
+
+## Play a clip
+
+Install `@yagejs-addons/sequence` alongside `@yagejs/core`. Install
+`@yagejs/renderer` when you use the visual target. Save a workspace in Sequence
+mode, or export a runtime clip, and read either file with `parseSequenceFile`.
+A workspace's runtime clip is its `sequence` field.
+
+```ts
+import { Component, Entity } from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+import {
+  SequenceClip, SequenceComponent, transformSequenceTarget,
+  combineSequenceTargets, parseSequenceFile,
+} from "@yagejs-addons/sequence";
+import { visualSequenceTarget } from "@yagejs-addons/sequence/renderer";
+
+class Entrance extends Component {
+  private readonly sequence = this.sibling(SequenceComponent);
+
+  /** `file` is the parsed JSON of a saved workspace or runtime clip. */
+  play(file: unknown, actor: Entity): void {
+    this.sequence.player.play(new SequenceClip(parseSequenceFile(file)), {
+      targets: {
+        actor: combineSequenceTargets(
+          transformSequenceTarget(actor),
+          visualSequenceTarget(actor.get(GraphicsComponent)),
+        ),
+      },
+      rect: { x: 20, y: 20, width: 800, height: 450 },
+    });
+  }
+}
+```
+
+Add `SequenceComponent` and `Entrance` to a host entity in your scene. The actor
+needs a `Transform` and a `GraphicsComponent`. `actor` is the clip's target
+slot, the name the editor shows as **Runtime slot**. `rect` is where the clip's
+authored rectangle lands on screen.
+
+An actor the editor creates declares the six properties these two targets
+provide: position, rotation, scale, opacity, visibility and tint. The pair
+above satisfies it exactly. The player throws when a target lacks a property or
+event the clip declares, even one without keys.
+
+`SequenceComponent` advances playback with scene time. For another host, create
+`SequencePlayer` with the engine's `ErrorBoundary` and call `advance(seconds)`
+yourself. Do not advance a component-owned player as well.
+
+## Bind your own objects and events
+
+A clip can declare custom properties and events for a slot. Bind a property
+with `sequenceProperty(definition, get, set)` and an event with
+`sequenceEvent(payload, dispatch)`. Both are typed from the definition you
+pass, which must match the clip's. A clean way to reach game logic is to emit
+an entity event from the event callback:
+
+```ts
+import { Entity, defineEvent } from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+import {
+  combineSequenceTargets,
+  sequenceEvent,
+  transformSequenceTarget,
+} from "@yagejs-addons/sequence";
+import type { SequenceTarget } from "@yagejs-addons/sequence";
+import { visualSequenceTarget } from "@yagejs-addons/sequence/renderer";
+
+const Gesture = defineEvent<{ name: "hello" | "ready" }>("game:gesture");
+
+class Actor extends Entity {
+  sequenceTarget(): SequenceTarget {
+    return combineSequenceTargets(
+      transformSequenceTarget(this),
+      visualSequenceTarget(this.get(GraphicsComponent)),
+      {
+        properties: {},
+        events: {
+          gesture: sequenceEvent(
+            { name: { kind: "enum", values: ["hello", "ready"] } },
+            ({ name }) => this.emit(Gesture, { name }),
+          ),
+        },
+      },
+    );
+  }
+}
+```
+
+`combineSequenceTargets` merges targets and throws on a duplicate name.
+`validateSequenceTargets(clip, targets)` runs the same contract check as `play`
+without reading or writing anything.
+
+Contracts support numbers, vectors, positions, RGB colors, booleans and enums.
+The transform target writes world position, local rotation in radians and
+local scale. When several bound entities share a hierarchy, it writes ancestor
+transforms before child world positions, whatever the track order. The visual
+target writes opacity, clamped to 0 to 1, visibility and tint.
+
+## Map positions into a rectangle
+
+The clip records its authored `size` in pixels. Each position track chooses how
+its points map into the `rect` passed to `play`:
+
+| Mode | Result |
+| --- | --- |
+| Proportional | Points scale with the rectangle. `fit: "stretch"` scales each axis independently; `fit: "contain"` keeps the authored aspect ratio and centers it. |
+| Anchor plus offset | A normalized anchor selects a point in the rectangle. Key values add fixed pixel offsets to that point. |
+
+For a bottom-right anchor, `{x: -40, y: -20}` stays 40 pixels from the right and
+20 pixels from the bottom at any rectangle size. Proportional points keep their
+relative position instead. Neither mode changes entity scale.
+
+The transform target places the entity origin by default. Its optional second
+argument shifts the placement point by a fixed world-pixel offset, which does
+not rotate or scale with the entity. Positions may lie outside the rectangle;
+clipping is up to you. A player reads the fields of `rect` when it starts, so
+a `DOMRect` works and a new rectangle needs a new play.
+
+`clip.sample(frame, { rect, fit })` returns the values at a frame without
+touching objects or firing events. `clip.unmapPosition(trackId, point, { rect,
+fit })` converts a position on screen back into a key value for that track.
+
+## Curves
+
+Every track starts with a key at frame 0 and holds its last value through the
+end. The curve on a key shapes the segment leaving it: linear, hold, quadratic
+ease-in or ease-out, cubic ease-in-out, back overshoot, or a cubic Bézier. A
+curve changes timing along a straight segment; it does not bend the path.
+Booleans and enums switch at their keys and require hold curves.
+
+## Events and playback controls
+
+The player applies the exact pose at a marker's frame before it dispatches the
+marker. Markers at the same frame follow document order, including when one
+update crosses several. Frame-0 markers run at play and at the start of each
+loop; markers at the end run before the next loop starts.
+
+Call `pause()` and `resume()` for a dialogue or another interruption. Calling
+`pause`, `cancel` or `seek` from a binding callback stops the current update
+before any further write or event. `seek(frame)` changes the pose without
+firing events.
+
+`play` options include a positive `speed`, `loop`, and `finish` and `cancel`
+policies. Both policies keep the last values by default; `"restore"` returns
+tracked properties to the values they had when playback started. A player
+rejects a second play while it is playing or paused, so cancel it first.
+
+## Limits
+
+- Gameplay must leave animated properties alone during playback. Two players do
+  not blend or arbitrate writes to the same property.
+- A target whose entity or component was removed throws before the next pose.
+  A custom target can supply `isAlive()`.
+- A throwing binding callback is reported through the engine's error boundary
+  and stops the current update. Earlier writes are not rolled back.
+- Destroying the `SequenceComponent` keeps the current values, so teardown does
+  not write to other entities being destroyed.
+- Playback has no save snapshot. Save the clip's ID and your game's progress.
+
+To validate clip JSON in a Node tool without loading engine code, import
+`parseSequence` and the document types from `@yagejs-addons/sequence/document`.

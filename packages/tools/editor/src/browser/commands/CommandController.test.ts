@@ -20,7 +20,8 @@ import {
   CommandController,
   type GestureModifiers,
 } from "./CommandController.js";
-import { axisOf, diagonalOf, parentWorld, toWorld, TURN_STEP } from "./pose.js";
+import { parentWorld, toWorld } from "../../shared/document/pose.js";
+import { axisOf, diagonalOf, TURN_STEP } from "./pose.js";
 import {
   ARM_PIXELS,
   HANDLE_PIXELS,

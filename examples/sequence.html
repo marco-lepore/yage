@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Sequence Addon</title>
+    <link rel="stylesheet" href="/shared.css" />
+  </head>
+  <body>
+    <a class="back-link" href="/#sequence">&larr; All Examples</a>
+    <h1>Sequence Addon</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <p class="explain">
+        One clip from <code>@yagejs-addons/sequence</code> animates two actors.
+        Aster's positions scale with the stage rectangle. Ember keeps fixed
+        offsets from the rectangle's bottom-right corner. At each event marker
+        the actor makes a gesture, which the game receives as an entity event.
+        When an actor says hello, the game pauses the clip for 0.75 seconds, the
+        way a cutscene waits while a line of dialogue is on screen. The line
+        under the stage shows the playback state.
+      </p>
+      <p class="explain">
+        Edit the clip in the editor's Sequence mode, then play the saved
+        workspace or an exported runtime clip here. The game refuses a clip that
+        names an actor slot it does not have, or a property or event its actors
+        do not provide. The error appears below, and the current clip keeps
+        playing.
+      </p>
+      <div class="row">
+        <button id="sequence-replay">Replay</button>
+        <label>
+          Play a saved clip or sequence workspace
+          <input
+            id="sequence-file"
+            type="file"
+            accept=".json"
+            aria-label="Play saved sequence"
+          />
+        </label>
+      </div>
+      <p id="sequence-status" role="alert"></p>
+    </div>
+    <script type="module" src="/src/sequence/main.ts"></script>
+  </body>
+</html>

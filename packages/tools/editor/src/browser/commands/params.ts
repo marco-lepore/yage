@@ -1,3 +1,4 @@
+import type { EditorDocument } from "../../shared/document/index.js";
 import {
   describeParams,
   type LevelCatalog,
@@ -6,12 +7,12 @@ import {
 import type {
   JsonObject,
   JsonValue,
-  LevelDocument,
   LevelPlacement,
   LevelPoint,
 } from "@yagejs/level/document";
 import { MISSING_VALUE, valueAtPath } from "../../shared/commands/index.js";
-import { authoredPoint, placementWorld, pointToWorld } from "./pose.js";
+import { placementWorld, pointToWorld } from "../../shared/document/pose.js";
+import { authoredPoint } from "./pose.js";
 
 /**
  * The value at `path` inside an authored parameter object, or nothing when the
@@ -117,7 +118,7 @@ export interface PointHandle {
  * a press on it moves cannot disagree.
  */
 export function pointHandles(
-  document: LevelDocument,
+  document: EditorDocument,
   placement: LevelPlacement,
   fields: readonly PointField[],
 ): readonly PointHandle[] {

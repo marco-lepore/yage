@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import { previewLevel } from "../../shared/document/index.js";
 import type * as LevelApi from "@yagejs/level";
 import type { LevelCatalog } from "@yagejs/level";
 import {
@@ -136,12 +138,30 @@ async function collect(
   // that made it, and a second copy of `@yagejs/level` would reject every
   // declaration the project wrote.
   const api = (await server.ssrLoadModule(LEVEL_PACKAGE)) as typeof LevelApi;
-  // No contribution is loaded: the packages a project gets placeable types
-  // from are discovered by the editor's Vite plugin, which serves the editor
-  // page. A successful assembly therefore has nothing to report.
+  // No package contribution is loaded: the packages a project gets placeable
+  // types from are discovered by the editor's Vite plugin, which serves the
+  // editor page. The editor's own placeholder entity is the exception, so a
+  // sequence workspace that previews one validates. It loads through the same
+  // graph as the project, for the `param.*` identity above. Run from source
+  // (the tests), the module is the source file; built, it is the bundle tsup
+  // emits beside this CLI.
+  const builtinPath = fileURLToPath(
+    new URL(
+      import.meta.url.endsWith(".ts")
+        ? "../../entities/SequencePlaceholder.ts"
+        : "./sequenceEntities.js",
+      import.meta.url,
+    ),
+  );
+  const builtin = await server.ssrLoadModule(builtinPath);
   const assembled = assembleProject({
     project: await importProject(server, projectModule),
-    contributions: [],
+    contributions: [
+      {
+        packageName: "@yagejs-tools/editor",
+        entities: [builtin["SequencePlaceholder"]],
+      },
+    ],
   });
   if (!assembled.ok) {
     return {
@@ -231,7 +251,7 @@ async function checkFile(
     }));
   }
   return api
-    .validateLevel(result.structural.document, catalog)
+    .validateLevel(previewLevel(result.structural.document), catalog)
     .map((diagnostic) => ({
       subject: diagnostic.placementId,
       path: diagnostic.path.join(".") || ABSENT,

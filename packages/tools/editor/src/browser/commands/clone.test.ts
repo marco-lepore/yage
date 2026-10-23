@@ -6,7 +6,7 @@ import type {
 import { readLevel } from "@yagejs/level/document";
 import { describe, expect, it } from "vitest";
 import { clonePlacements } from "./clone.js";
-import { parentWorld, toWorld } from "./pose.js";
+import { parentWorld, toWorld } from "../../shared/document/pose.js";
 
 function transform(
   x: number,

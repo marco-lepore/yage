@@ -188,6 +188,50 @@ describe("loadEditorConfig", () => {
     await expect(load(root)).rejects.toThrow(/non-empty array of patterns/);
   });
 
+  it("accepts sequence globs without level globs and lists them after levels", async () => {
+    const sequencesOnly = await makeProject(
+      VALID_CONFIG.replace(
+        'levels: ["src/levels/**/*.yage-level.json"]',
+        'sequences: ["src/cutscenes/*.yage-sequence-workspace.json"]',
+      ),
+    );
+    expect((await load(sequencesOnly)).levels).toEqual([
+      { glob: "src/cutscenes/*.yage-sequence-workspace.json" },
+    ]);
+
+    const both = await makeProject(
+      VALID_CONFIG.replace(
+        "levels:",
+        'sequences: ["src/cutscenes/*.yage-sequence-workspace.json"],\n  levels:',
+      ),
+    );
+    expect((await load(both)).levels).toEqual([
+      { glob: "src/levels/**/*.yage-level.json" },
+      { glob: "src/cutscenes/*.yage-sequence-workspace.json" },
+    ]);
+  });
+
+  it("refuses a config with neither level nor sequence globs", async () => {
+    const root = await makeProject(
+      VALID_CONFIG.replace(
+        'levels: ["src/levels/**/*.yage-level.json"]',
+        "levels: []",
+      ),
+    );
+
+    await expect(load(root)).rejects.toThrow(
+      /"levels" or "sequences" must list at least one pattern/,
+    );
+  });
+
+  it("names the sequences list when one of its entries is invalid", async () => {
+    const root = await makeProject(
+      VALID_CONFIG.replace("levels:", "sequences: [1],\n  levels:"),
+    );
+
+    await expect(load(root)).rejects.toThrow(/every "sequences" entry/);
+  });
+
   it("refuses a config that exports no editor config", async () => {
     const root = await makeProject("export const config = {};\n");
 

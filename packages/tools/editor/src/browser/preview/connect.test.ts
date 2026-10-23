@@ -117,6 +117,7 @@ function createHarness(withCatalog = true, using: LevelCatalog = catalog) {
       requestRebuild: (request) => rebuilds.push(request),
       applyPoseDraft: (poses) => drafts.push([...poses]),
       applyView: (view) => views.push(view),
+      applySequenceSample: () => undefined,
     },
     () => LAYERS,
   );

@@ -229,7 +229,7 @@ export { Tween } from "./Tween.js";
 export { interpolate } from "./interpolate.js";
 export type { Interpolatable } from "./interpolate.js";
 
-export { createKeyframeTrack } from "./KeyframeTrack.js";
+export { createKeyframeTrack, sampleKeyframes } from "./KeyframeTrack.js";
 export type { Keyframe, KeyframeTrackOptions } from "./KeyframeTrack.js";
 
 export { KeyframeAnimator } from "./KeyframeAnimator.js";
@@ -280,6 +280,9 @@ export {
 
 /** @internal - exposed for sibling @yagejs packages, not for public consumption. */
 export { isDev, devWarn } from "./internal/dev.js";
+
+/** @internal - exposed for sibling @yagejs packages, not for public consumption. */
+export { durationReached } from "./internal/duration.js";
 
 /** @internal - exposed for sibling @yagejs packages, not for public consumption. */
 export {

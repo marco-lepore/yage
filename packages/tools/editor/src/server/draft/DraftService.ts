@@ -1,5 +1,6 @@
-import { readLevel } from "@yagejs/level/document";
-import type { LevelDocument, StructuralError } from "@yagejs/level/document";
+import type { StructuralError } from "@yagejs/level/document";
+import { readEditorDocument } from "../../shared/document/index.js";
+import type { EditorDocument } from "../../shared/document/index.js";
 import {
   CommandPreconditionError,
   reduceCommand,
@@ -39,7 +40,7 @@ export interface DraftServiceOptions {
 /** One level's unsaved work, owned entirely by this service. */
 interface LevelState {
   readonly path: string;
-  document: LevelDocument;
+  document: EditorDocument;
   /** Hash of the canonical draft, kept beside the document it describes. */
   contentHash: string;
   draftRevision: number;
@@ -47,13 +48,13 @@ interface LevelState {
   diskRevision: string;
   savedContentHash: string;
   /** Recent accepted revisions, oldest first, so a save can address one. */
-  readonly retained: Map<number, LevelDocument>;
+  readonly retained: Map<number, EditorDocument>;
   history: DraftHistory;
 }
 
 /** A reduction that has not been committed to a level's state yet. */
 interface Applied {
-  readonly document: LevelDocument;
+  readonly document: EditorDocument;
   readonly contentHash: string;
   readonly inverse: DocumentCommand;
 }
@@ -105,6 +106,7 @@ export class DraftService {
       epoch: this.epoch,
       levels: await this.files.listLevels(),
       levelDirectories: this.files.levelDirectories(),
+      sequenceDirectories: this.files.levelDirectories("sequence"),
     };
   }
 
@@ -312,7 +314,7 @@ export class DraftService {
       throw error;
     }
 
-    const structural = readLevel(reduced.document);
+    const structural = readEditorDocument(reduced.document);
     if (!structural.ok) {
       return {
         rejection: this.reject(
@@ -426,7 +428,7 @@ export class DraftService {
       return {
         rejection: this.reject(
           "structurally-invalid",
-          `"${path}" is not a valid level file: ${describe(read.structural.errors)}`,
+          `"${path}" is not a valid level or sequence file: ${describe(read.structural.errors)}`,
         ),
       };
     }

@@ -59,6 +59,7 @@ export const ADDONS = [
   "loot",
   "stats",
   "quests",
+  "sequence",
   "steering",
   "synth",
   "virtual-controls",
@@ -564,5 +565,15 @@ export const EXAMPLES: readonly Example[] = [
     packages: ["ui", "ui-react", "input"],
     addons: ["i18n", "dialogue", "inventory", "quests"],
     guide: "/addons/i18n/",
+  },
+  {
+    slug: "sequence",
+    title: "Sequence Addon",
+    summary:
+      "Two actors play one authored clip: proportional and anchored movement, easing, opacity, and timed events that pause playback.",
+    section: "gameplay",
+    packages: [],
+    addons: ["sequence"],
+    guide: "/addons/sequence/",
   },
 ];

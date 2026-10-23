@@ -17,6 +17,7 @@ export function isValueEditPath(path: readonly string[]): boolean {
     return (
       path[0] === "params" ||
       path[0] === "typeVersion" ||
+      path[0] === "type" ||
       // Required and always a boolean, so it is not an optional field: `null`
       // has no meaning at it and a document never leaves it out.
       path[0] === "active" ||

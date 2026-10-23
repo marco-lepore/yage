@@ -35,6 +35,7 @@
     "@yagejs-addons/inventory": "^0.4.0",
     "@yagejs-addons/loot": "^0.0.0",
     "@yagejs-addons/quests": "^0.4.0",
+    "@yagejs-addons/sequence": "^0.0.0",
     "@yagejs-addons/stats": "^0.1.0",
     "@yagejs-addons/steering": "^0.5.0",
     "@yagejs-addons/synth": "^0.3.0",

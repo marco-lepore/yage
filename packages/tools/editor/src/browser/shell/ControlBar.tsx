@@ -5,10 +5,11 @@ import {
   poseNumber,
   sharedParent,
 } from "../commands/index.js";
-import type {
-  EditorState,
-  EditorStore,
-  PoseComponent,
+import {
+  sampledDocument,
+  type EditorState,
+  type EditorStore,
+  type PoseComponent,
 } from "../store/index.js";
 import {
   MIXED_LABEL,
@@ -64,7 +65,7 @@ export interface ControlBarProps {
  */
 export function ControlBar(props: ControlBarProps): React.JSX.Element {
   const state = useEditorState(props.store);
-  const byId = placementById(state.document);
+  const byId = placementById(sampledDocument(state));
   const selected = [...state.selection];
   const placements = selected
     .map((id) => byId.get(id))

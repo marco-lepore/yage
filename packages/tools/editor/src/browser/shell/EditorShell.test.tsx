@@ -257,6 +257,7 @@ function createHarness(
           Promise.resolve({ paths: [...assetPaths], truncated: false })
         }
         levelDirectories={[...directories]}
+        sequenceDirectories={[]}
       />,
     );
   });
