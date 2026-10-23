@@ -27,6 +27,7 @@ export type {
   OneWayConfig,
   TriggerEvent,
   RaycastHit,
+  QueryOptions,
   QuerySensorMode,
 } from "./types.js";
 
@@ -41,6 +42,7 @@ export { RigidBodyComponent } from "./RigidBodyComponent.js";
 export { ColliderComponent } from "./ColliderComponent.js";
 
 export { PhysicsSystem } from "./PhysicsSystem.js";
+export { MAX_PHYSICS_STEPS_PER_UPDATE } from "./stepSchedule.js";
 
 export { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
 

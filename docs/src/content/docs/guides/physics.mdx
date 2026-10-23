@@ -45,10 +45,10 @@ entity.add(new RigidBodyComponent({
 - **`kinematic`** — moved programmatically, not by forces. Use for moving
   platforms, elevators, and doors. **Move kinematic bodies by setting the
   `Transform` position** (e.g. `transform.setPosition(x, y)` or
-  `transform.translate(dx, dy)`), preferably in `fixedUpdate` — the body
-  reaches the written pose on the next physics step and is drawn
-  interpolated, so the drawn gap to a dynamic body riding it stays
-  constant. `rb.setPosition` is the teleport for any body type: use it to
+  `transform.translate(dx, dy)`), preferably in `fixedUpdate` — physics
+  moves the body to the written pose at a steady speed and writes the
+  interpolated pose for drawing, so the drawn gap to a dynamic body riding
+  it stays constant. `rb.setPosition` is the teleport for any body type: use it to
   move a platform across the map with no in-between frames.
 
 `rb.setType(type)` switches the type at runtime: a dead enemy becomes
@@ -318,8 +318,10 @@ warning when you add it.
 Events are collected after every physics step and delivered after that step.
 A scene running above `timeScale` 1 steps more than once per tick and receives
 every transition, in order, each with its own step's contact data. Handlers
-see Transforms synced to the step that produced the contact, and a handler's
-`setVelocity` or `destroy` takes effect before the next step of the same tick.
+see dynamic bodies' Transforms synced to the step that produced the contact.
+A kinematic body's Transform keeps the position the game wrote, and
+`rb.position` reads where the body is at that step. A handler's `setVelocity`
+or `destroy` takes effect before the next step of the same tick.
 
 ```typescript yage-context="entity" yage-group="sensor"
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
@@ -524,6 +526,12 @@ closest pair among all its parts. `prediction` (pixels, default 0) also
 reports pairs separated by up to that distance; further apart, or when either
 component has no live collider, the result is `undefined`.
 
+Pass `contactWith(other, { solidOnly: true })` when pass-through surfaces must
+not count as contact. It excludes sensors and pairs rejected by either
+collider's collision mask or contact filter. Filters use current positions and
+velocities with `dt: 0`. For compound colliders, the result is the closest
+permitted part pair. Without this option, the query measures geometry only.
+
 ## Velocity and Forces
 
 Prefer `setVelocity` for direct control. Use `applyImpulse` or `applyForce`
@@ -543,8 +551,8 @@ rb.setVelocityY(-300);    // set Y, keep X
 // Read velocity
 const vel = rb.getVelocity(); // Vec2 in px/s
 
-// Reading a single axis or the magnitude — these read numbers straight from
-// Rapier without allocating a Vec2, so prefer them on a per-frame read path.
+// Reading a single axis or the magnitude — these read numbers without
+// allocating a Vec2, so prefer them on a per-frame read path.
 rb.velocityX;      // number, px/s
 rb.velocityY;      // number, px/s
 rb.speed;          // number, px/s — velocity magnitude
@@ -573,9 +581,15 @@ rb.getVelocityInto(velocity);      // writes x and y in pixels per second
 ```
 
 `getVelocityInto` overwrites and returns the same buffer without constructing
-a `Vec2`. Both coordinates come from one Rapier read. Read again to refresh
+a `Vec2`. Both coordinates come from one read. Read again to refresh
 the buffer; its values do not follow later changes to the body. Without a
 live body, the method writes `(0, 0)`.
+
+A kinematic body reports the velocity of its last physics step: its travel
+over that step divided by the step's length. `getAngularVelocity()` reports
+its turn the same way. The value holds on updates that run no physics step,
+such as every other update at time scale 0.5. A teleport (`rb.setPosition`,
+`rb.setRotation` or `rb.setType`) sets it to zero until the next step.
 
 Rapier limits how fast a body can move. Linear speed stops at 400 meters per
 second, which is `400 × pixelsPerMeter` px/s: 20,000 px/s at the default 50.
@@ -593,6 +607,54 @@ angular inertia scales with `pixelsPerMeter`⁻⁴, so the same torque spins a b
 16× faster at 100 px/m than at 50. Retune after changing the scale, as with
 spring stiffness.
 :::
+
+### Physics steps while the scene is sped up
+
+A scene running above time scale 1 runs about that many physics steps per
+fixed update, up to `MAX_PHYSICS_STEPS_PER_UPDATE` (8). Above time scale 8 it
+runs 8 steps per update, so the world moves more slowly than the scene clock
+that component updates receive.
+
+### Kinematic speed at any time scale
+
+A kinematic body moved through its Transform travels to the new position at a
+steady speed at any time scale. `world.nextUpdateTime` is the scene time, in
+seconds, that the scene's next fixed update has to simulate: what earlier
+updates left over plus the next update's share at the current time scale, up
+to `MAX_PHYSICS_STEPS_PER_UPDATE` steps. The body spreads its move over that
+time, so its speed during the next update is the distance to the new position
+divided by `nextUpdateTime`.
+
+When that time is not a whole number of steps, the body ends the update short
+of the position and continues in the next update. The Transform keeps the
+position the game wrote, so code that adds to it each update builds on its own
+last write. While the scene's time scale is 0 the world does not advance, and
+`nextUpdateTime` is 0.
+
+Read it after writing the new position, for example to carry what stands on a
+lift at the lift's speed:
+
+```typescript
+import { Component, Transform } from "@yagejs/core";
+import { PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
+
+class Lift extends Component {
+  private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly transform = this.sibling(Transform);
+  /** How fast the lift rises during the next update, in px/s. */
+  riseSpeed = 0;
+
+  fixedUpdate(dt: number): void {
+    this.transform.translate(0, -60 * dt);
+    const time = this.use(PhysicsWorldKey).nextUpdateTime;
+    this.riseSpeed =
+      time > 0 ? (this.rb.positionY - this.transform.position.y) / time : 0;
+  }
+}
+```
+
+Reading `nextUpdateTime` on a `PhysicsWorld` that no scene steps throws. Read
+it from the world `PhysicsWorldKey` resolves.
 
 ### Velocity while the scene is slowed
 
@@ -629,9 +691,9 @@ rb.setRotation(Math.PI / 2); // radians
 ```
 
 On a kinematic body, `rb.setPosition` and `transform.setPosition` do
-different things: the first is an instant jump, the second a smooth move the
-body completes over one physics step. Pick by whether the player should see
-the travel.
+different things: the first is an instant jump, the second a smooth move over
+the physics steps that follow. Pick by whether the player should see the
+travel.
 
 On a static body, `rb.setPosition` and `rb.setRotation` move the `Transform`
 with the body, so the sprite follows the teleport. Nothing else writes a static
@@ -867,6 +929,37 @@ into the initial overlap. If the move requires a clear destination, also check
 that position with `queryShape`. The option affects only the cast; body
 collisions still apply normally.
 
+To find only the surfaces a particular character would collide with, pass its
+`ColliderComponent` as `solidFor`. The query skips the character's own entity
+and every sensor. It keeps a collider only when the two colliders' collision
+layers admit each other and both contact filters accept the pair, including
+one-way and drop-through rules. `raycast`, `castShape`, `queryShape`, and
+`queryRadius` all accept `solidFor`. A ground check that casts as the
+character stands on one-way platforms but ignores their underside:
+
+```typescript yage-context="component"
+import { ColliderComponent, PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
+
+const world = this.use(PhysicsWorldKey);
+const body = this.entity.get(RigidBodyComponent);
+const collider = this.entity.get(ColliderComponent);
+const support = world.castShape(
+  { type: "box", width: 20, height: 2 },
+  body.position,
+  { x: 0, y: 1 },
+  6,
+  { solidFor: collider },
+);
+```
+
+Filters receive the colliders' current positions and velocities with `dt: 0`.
+The query's position and direction do not replace those values. A compound
+source keeps a hit when any of its parts would collide with it. The source
+must have live colliders in this world, or the query throws. Since
+`solidFor` skips sensors, combining it with `sensors: "only"` throws.
+`filterGroups` and `excludeEntity` narrow the result further. Without
+`solidFor`, a query ignores contact filters.
+
 Use this to test whether a fast-falling player has a floor along its path
 this frame:
 
@@ -984,6 +1077,9 @@ entity.add(rb);   // the body is created with damping and rotation locked
 
 The damping setters also work while the entity is inactive. They update the
 dormant body without enabling or waking it.
+
+`rb.rotationsLocked` reads whether rotation is locked, by `fixedRotation` in
+the config or by `lockRotations`.
 
 ## Runtime Collider Materials
 
@@ -1170,9 +1266,10 @@ Practical notes:
   below). The sweep respects one-way behavior, including drop-through.
 - `oneWay` is part of the collider config. It has no effect on `sensor: true`
   colliders, since sensors never produce solid contacts.
-- World queries (`raycast`, `castShape`, `queryShape`, and `queryRadius`)
-  test geometry. They do not apply `oneWay`, `dropThrough`, or contact
-  filters, so a query hit alone does not mean a platform supports the rider.
+- World queries test geometry by default. Pass `solidFor` to apply
+  collision layers, one-way, drop-through, and contact filters as a given
+  collider sees them. A geometric hit alone does not mean a platform
+  supports the rider.
 
 ## Contact Filters
 
@@ -1200,6 +1297,10 @@ the start of the current step. A pair can already overlap when first detected
 after movement in an earlier step. If game code has since changed velocity,
 that velocity cannot reliably tell you which side the body came from. Use
 the built-in `oneWay` behavior for platforms.
+
+A world query with `solidFor` and a `contactWith` query with `solidOnly: true`
+also run contact filters, using current poses and velocities with `dt: 0`.
+Do not run physics queries inside a filter.
 
 A few rules to keep filters healthy:
 

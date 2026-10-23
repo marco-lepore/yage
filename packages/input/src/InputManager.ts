@@ -323,6 +323,7 @@ export class InputManager {
   private pointerDownListeners: Array<(info: PointerInfo) => void> = [];
   private pointerUpListeners: Array<(info: PointerInfo) => void> = [];
   private pointerMoveListeners: Array<(info: PointerInfo) => void> = [];
+  private resetListeners: Array<() => void> = [];
   private keyDownListenersAny: Array<(code: string) => void> = [];
   private keyUpListenersAny: Array<(code: string) => void> = [];
   private keyDownListeners = new Map<string, Array<(code: string) => void>>();
@@ -2218,7 +2219,16 @@ export class InputManager {
     this.sourceCodes.delete(sourceId);
   }
 
-  /** Release all synthetic and physical input state. */
+  /** Subscribe to completed clearAll resets. Returns a disposer; does not replay. */
+  onReset(fn: () => void): () => void {
+    this.resetListeners.push(fn);
+    return () => {
+      const index = this.resetListeners.indexOf(fn);
+      if (index !== -1) this.resetListeners.splice(index, 1);
+    };
+  }
+
+  /** Release all synthetic and physical input state, then notify reset listeners. */
   clearAll(): void {
     for (const code of [...this.pressedKeys]) {
       this.applyCodeUp(code, !this.syntheticCodes.has(code), "engine");
@@ -2264,6 +2274,12 @@ export class InputManager {
     this.gamepadAxisState.clear();
     this.syntheticAxisState.clear();
     this.lastPadActivity.clear();
+    this._callListeners(
+      this.resetListeners,
+      (fn) => fn(),
+      "Input reset listener",
+      "clearAll",
+    );
   }
 
   /**

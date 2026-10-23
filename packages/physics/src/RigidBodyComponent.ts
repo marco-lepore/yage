@@ -81,6 +81,7 @@ export class RigidBodyComponent extends Component {
   private readonly transform = this.sibling(Transform);
   private physicsWorld!: PhysicsWorld;
   private readonly positionScratch = new Vec2Buffer();
+  private readonly velocityScratch = new Vec2Buffer();
 
   constructor(config: RigidBodyConfig) {
     super();
@@ -278,38 +279,35 @@ export class RigidBodyComponent extends Component {
     body.setLinvel({ x: velocity.x, y: this.physicsWorld.toMeters(vy) }, true);
   }
 
-  /** Get linear velocity in pixels/s. */
+  /**
+   * Get linear velocity in pixels/s. A kinematic body reports its travel
+   * over the last physics step, and keeps reporting it on updates that run
+   * no step. A teleport sets it to zero until the next step.
+   */
   getVelocity(): Vec2 {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return Vec2.ZERO;
-    const v = body.linvel();
-    return new Vec2(
-      this.physicsWorld.toPixels(v.x),
-      this.physicsWorld.toPixels(v.y),
-    );
+    const velocity = this.velocityInto(body, this.velocityScratch);
+    return new Vec2(velocity.x, velocity.y);
   }
 
   /** Copy linear velocity in pixels/s into caller-owned scratch. */
   getVelocityInto(out: Vec2Buffer): Vec2Buffer {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return out.set(0, 0);
-    const velocity = body.linvel();
-    return out.set(
-      this.physicsWorld.toPixels(velocity.x),
-      this.physicsWorld.toPixels(velocity.y),
-    );
+    return this.velocityInto(body, out);
   }
 
   /**
    * X component of linear velocity in pixels/s. Avoids the `Vec2`
    * allocation of `getVelocity()` — prefer this and `velocityY` on a
-   * per-frame read path. Reading both components calls into Rapier twice;
+   * per-frame read path. Reading both components reads the velocity twice;
    * use `getVelocityInto()` to copy both coordinates with one read.
    */
   get velocityX(): number {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return 0;
-    return this.physicsWorld.toPixels(body.linvel().x);
+    return this.velocityInto(body, this.velocityScratch).x;
   }
 
   /**
@@ -319,7 +317,7 @@ export class RigidBodyComponent extends Component {
   get velocityY(): number {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return 0;
-    return this.physicsWorld.toPixels(body.linvel().y);
+    return this.velocityInto(body, this.velocityScratch).y;
   }
 
   /** Speed (velocity magnitude) in pixels/s. No `Vec2` allocation. */
@@ -334,10 +332,30 @@ export class RigidBodyComponent extends Component {
   get speedSquared(): number {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return 0;
-    const v = body.linvel();
-    const vx = this.physicsWorld.toPixels(v.x);
-    const vy = this.physicsWorld.toPixels(v.y);
-    return vx * vx + vy * vy;
+    const velocity = this.velocityInto(body, this.velocityScratch);
+    return velocity.x * velocity.x + velocity.y * velocity.y;
+  }
+
+  /**
+   * Linear velocity in pixels/s. Rapier computes a kinematic body's velocity
+   * only inside a step, and sets it to zero in the zero-length step that
+   * rebuilds the query index between steps, so a kinematic body reports
+   * its travel over the last physics step instead.
+   */
+  private velocityInto(body: RAPIER.RigidBody, out: Vec2Buffer): Vec2Buffer {
+    if (body.isKinematic()) {
+      const time = this.physicsWorld._lastStepTime;
+      if (time === 0) return out.set(0, 0);
+      return out.set(
+        (this._currPositionX - this._prevPositionX) / time,
+        (this._currPositionY - this._prevPositionY) / time,
+      );
+    }
+    const velocity = body.linvel();
+    return out.set(
+      this.physicsWorld.toPixels(velocity.x),
+      this.physicsWorld.toPixels(velocity.y),
+    );
   }
 
   /**
@@ -362,10 +380,21 @@ export class RigidBodyComponent extends Component {
     body.setAngvel(v, true);
   }
 
-  /** Get angular velocity in radians/s. */
+  /**
+   * Get angular velocity in radians/s. A kinematic body reports its turn
+   * over the last physics step, as `getVelocity` reports its travel.
+   */
   getAngularVelocity(): number {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return 0;
+    if (body.isKinematic()) {
+      const time = this.physicsWorld._lastStepTime;
+      if (time === 0) return 0;
+      return (
+        MathUtils.shortestAngleBetween(this._prevRotation, this._currRotation) /
+        time
+      );
+    }
     return body.angvel();
   }
 
@@ -464,6 +493,11 @@ export class RigidBodyComponent extends Component {
     this.physicsWorld.getBody(this._bodyHandle)?.lockRotations(locked, true);
   }
 
+  /** Whether rotation is locked, by `fixedRotation` or `lockRotations`. */
+  get rotationsLocked(): boolean {
+    return this.config.fixedRotation ?? false;
+  }
+
   /**
    * Switch the body type at runtime — a dead enemy becomes `"static"` so
    * nothing pushes it and it pushes nothing; a carried crate becomes
@@ -516,9 +550,11 @@ export class RigidBodyComponent extends Component {
   }
 
   /**
-   * Body position in pixels — the exact simulated pose. A dynamic or
-   * kinematic body's `Transform` holds the interpolated pose that gets
-   * drawn: smooth, and at most one fixed step behind this value.
+   * Body position in pixels — the exact simulated pose. A dynamic body's
+   * `Transform` holds the interpolated pose that gets drawn: smooth, and at
+   * most one fixed step behind this value. A kinematic body's `Transform`
+   * holds the position the game wrote during fixed updates, which can run
+   * ahead of this value, and the interpolated pose in `update()`.
    *
    * Falls back to the entity's world position when no Rapier body exists
    * (e.g. after teardown has destroyed it).
@@ -568,9 +604,11 @@ export class RigidBodyComponent extends Component {
   }
 
   /**
-   * Body rotation in radians — the exact simulated pose. A dynamic or
-   * kinematic body's `Transform` holds the interpolated rotation that gets
-   * drawn: smooth, and at most one fixed step behind this value.
+   * Body rotation in radians — the exact simulated pose. A dynamic body's
+   * `Transform` holds the interpolated rotation that gets drawn: smooth, and
+   * at most one fixed step behind this value. A kinematic body's `Transform`
+   * holds the rotation the game wrote during fixed updates, which can run
+   * ahead of this value, and the interpolated rotation in `update()`.
    *
    * Falls back to the entity's world rotation when no Rapier body exists.
    */
@@ -583,8 +621,8 @@ export class RigidBodyComponent extends Component {
   /**
    * Teleport to a position in pixels — no interpolation, no smoothing, for
    * any body type. On a kinematic body, `transform.setPosition()` instead
-   * moves it there smoothly over one step. A static body's Transform moves
-   * with it (no system writes one otherwise).
+   * moves it there smoothly over the physics steps that follow. A static
+   * body's Transform moves with it (no system writes one otherwise).
    */
   setPosition(x: number, y: number): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);

@@ -163,16 +163,20 @@ the same clock.
 `PhysicsSystem` steps the world in `Phase.FixedUpdate` at priority 0 and
 writes each dynamic body's end-of-step pose to `Transform`;
 `ComponentFixedUpdateSystem` runs in the same phase at priority 1000, so an
-agent reads simulated poses. A kinematic body gets the same write, skipped
-when the game has moved that `Transform` since the last step — the pose the
-game wrote is the body's next step target. The previous/current blend
-`PhysicsInterpolationSystem` writes in `Phase.Update` at priority -100 is the
-pose the frame draws, which the simulation never occupied. Which pose the
-agent reads affects `arrive` radii, `followPath`'s `waypointRadius`, the
-`separation`/`alignment`/`cohesion` ranges, and the origin of the
-`avoidColliders` raycast. Under a scene time scale below 1 the physics system
-steps less often than the fixed clock ticks, and on a tick with no step the
-`Transform` still holds the blend the last frame drew.
+agent reads simulated poses of dynamic bodies. A kinematic body's `Transform`
+holds the position the game wrote, its target: `PhysicsSystem` writes the
+target back after each step and on a tick with no step, unless the game has
+moved that `Transform` since. At a scene time scale that is not a whole
+number, a kinematic body can end a tick short of its target, so its
+`Transform` is ahead of the simulated pose `rb.position` reads. The
+previous/current blend `PhysicsInterpolationSystem` writes in `Phase.Update`
+at priority -100 is the pose the frame draws, which the simulation never
+occupied. Which pose the agent reads affects `arrive` radii, `followPath`'s
+`waypointRadius`, the `separation`/`alignment`/`cohesion` ranges, and the
+origin of the `avoidColliders` raycast. Under a scene time scale below 1 the
+physics system steps less often than the fixed clock ticks, and on a tick
+with no step a dynamic body's `Transform` still holds the blend the last frame
+drew.
 
 Nothing in the engine interpolates a `Transform` that no rigid body drives,
 so a bodyless agent's drawn position changes once per fixed step; above 60 Hz

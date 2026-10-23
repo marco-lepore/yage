@@ -50,6 +50,7 @@ export type PackageId = (typeof PACKAGES)[number];
 export const ADDONS = [
   "abilities",
   "behavior-tree",
+  "character-controller",
   "dialogue",
   "feel",
   "hotbar",
@@ -508,6 +509,16 @@ export const EXAMPLES: readonly Example[] = [
     packages: ["input"],
     addons: ["loot", "inventory", "stats"],
     guide: "/addons/loot/",
+  },
+  {
+    slug: "character-controller",
+    title: "Character Controller",
+    summary:
+      "A platformer playground with jumps, dashes, wall jumps, slopes, one-way and moving platforms, a ledge climb, and switchable movement tuning.",
+    section: "gameplay",
+    packages: ["physics", "input"],
+    addons: ["character-controller"],
+    guide: "/addons/character-controller/",
   },
   {
     slug: "dialogue-addon",

@@ -746,6 +746,19 @@ describe("RigidBodyComponent", () => {
       });
       expect(world._lastDesc?._rotationsLocked).toBe(true);
     });
+
+    it("reports the rotation lock from config and from lockRotations", () => {
+      expect(new RigidBodyComponent({ type: "dynamic" }).rotationsLocked).toBe(
+        false,
+      );
+      const locked = new RigidBodyComponent({
+        type: "dynamic",
+        fixedRotation: true,
+      });
+      expect(locked.rotationsLocked).toBe(true);
+      locked.lockRotations(false);
+      expect(locked.rotationsLocked).toBe(false);
+    });
   });
 
   describe("setType", () => {

@@ -547,6 +547,12 @@ describe("PhysicsWorld", () => {
         "PhysicsWorld: gravity.y must be finite, got NaN.",
       );
     });
+
+    it("has no next update time without a scene that steps it", () => {
+      expect(() => new PhysicsWorld().nextUpdateTime).toThrow(
+        "PhysicsWorld.nextUpdateTime: no scene steps this world",
+      );
+    });
   });
 
   describe("addJoint", () => {
@@ -1946,7 +1952,7 @@ describe("PhysicsWorld", () => {
         400,
       );
 
-      expect(captured).toHaveLength(1);
+      expect(captured).toHaveLength(2);
       const [pos, , vel, , targetDistance, maxToi] = captured[0]!;
       expect(pos).toEqual({ x: 4, y: 2 }); // 200px, 100px at 50px/m
       expect(vel).toEqual({ x: 0, y: 1 });
@@ -1980,6 +1986,10 @@ describe("PhysicsWorld", () => {
         true,
         true,
         true,
+        true,
+        true,
+        true,
+        false,
         false,
       ]);
     });
@@ -1993,7 +2003,7 @@ describe("PhysicsWorld", () => {
       const long = pw.castShape(shape, new Vec2(0, 0), new Vec2(300, 400), 400);
 
       expect(captured[0]![2]).toEqual({ x: 0.6, y: 0.8 });
-      expect(captured[1]![2]).toEqual({ x: 0.6, y: 0.8 });
+      expect(captured[2]![2]).toEqual({ x: 0.6, y: 0.8 });
       expect(short?.distance).toBeCloseTo(180);
       expect(long?.distance).toBeCloseTo(180);
     });
@@ -2210,9 +2220,15 @@ describe("PhysicsWorld", () => {
         rot: number,
         shape: unknown,
         callback: (c: { handle: number }) => boolean,
+        _flags?: number,
+        _groups?: number,
+        _excludeCollider?: unknown,
+        _excludeBody?: unknown,
+        predicate?: (c: { handle: number }) => boolean,
       ) => {
         captured.push({ pos, rot, shape });
         for (const handle of hitHandles) {
+          if (predicate && !predicate({ handle })) continue;
           if (!callback({ handle })) break;
         }
       }) as unknown as typeof world.intersectionsWithShape;
@@ -2444,7 +2460,7 @@ describe("PhysicsWorld", () => {
       pw.queryRadius(origin, 5, { sensors: "only" });
 
       expect(rayFlags).toEqual([8, undefined, 16]);
-      expect(castFlags).toEqual([8, undefined, 16]);
+      expect(castFlags).toEqual([8, 8, undefined, undefined, 16, 16]);
       expect(shapeFlags).toEqual([8, undefined, 16]);
     });
 

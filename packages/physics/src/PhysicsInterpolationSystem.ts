@@ -1,15 +1,9 @@
-import {
-  System,
-  Phase,
-  Transform,
-  GameLoopKey,
-  MathUtils,
-  SceneTimeKey,
-} from "@yagejs/core";
+import { System, Phase, Transform, GameLoopKey, MathUtils } from "@yagejs/core";
 import type { GameLoop } from "@yagejs/core";
 import { PhysicsWorldManagerKey } from "./types.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
+import { sceneTimeScale } from "./stepSchedule.js";
 
 /**
  * Computes each scene's interpolation alpha, then blends previous and current
@@ -52,8 +46,7 @@ export class PhysicsInterpolationSystem extends System {
     }
 
     for (const [scene, ctx] of this.manager.getAllContexts()) {
-      const timeScale =
-        scene.tryResolveScoped(SceneTimeKey)?.effectiveScale ?? scene.timeScale;
+      const timeScale = sceneTimeScale(scene);
       if (!scene.isPaused && timeScale > 0) {
         ctx.alphaRef.value = Math.min(
           1,

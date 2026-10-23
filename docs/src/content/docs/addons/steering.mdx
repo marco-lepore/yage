@@ -160,16 +160,22 @@ reads the result.
 Which pose the behaviors measure follows from when the agent runs. The
 physics system writes each dynamic body's end-of-step pose into its
 `Transform` during the fixed step, before component `fixedUpdate` runs. A
-kinematic body gets the same write, skipped when the game has moved that
-`Transform` since the last step, because the pose the game wrote is the
-body's next step target. The interpolation system writes a blend of the
+kinematic body's `Transform` holds the position the game wrote, which is the
+body's target: the physics system writes that target back after each step
+and on a tick with no step, unless the game has moved the `Transform` since.
+At a scene time scale that is not a whole number, a kinematic body can end a
+tick short of its target, so its `Transform` is ahead of the simulated pose
+that `rb.position` reads. The interpolation system writes a blend of the
 previous and current poses during the update phase, for the frame to draw;
-that blended pose sits between two steps. An agent that seeks or avoids
-physics bodies therefore measures against simulated positions — which is what
-`arrive` radii, `followPath`'s `waypointRadius`, the `separation`,
-`alignment` and `cohesion` ranges, and the origin of the `avoidColliders`
-raycast all depend on. Under a scene time scale below 1 the physics system
-steps less often than the fixed clock ticks, and on a tick with no step the
+that blended pose sits between two steps.
+
+An agent that seeks or avoids dynamic bodies therefore measures against
+simulated positions, and one that seeks or avoids kinematic bodies measures
+against the positions those bodies are moving to. The `arrive` radii,
+`followPath`'s `waypointRadius`, the `separation`, `alignment` and
+`cohesion` ranges, and the origin of the `avoidColliders` raycast all depend
+on that pose. Under a scene time scale below 1 the physics system steps less
+often than the fixed clock ticks, and on a tick with no step a dynamic body's
 `Transform` still holds the blend the last frame drew.
 
 A bodyless agent's drawn position changes once per fixed step, 1/60 s by

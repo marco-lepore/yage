@@ -162,6 +162,23 @@ export interface JointHandle {
  */
 export type QuerySensorMode = "exclude" | "include" | "only";
 
+/** Filters shared by `raycast`, `castShape`, `queryShape`, and `queryRadius`. */
+export interface QueryOptions {
+  /** Packed collision groups a reported collider must be compatible with. */
+  filterGroups?: number;
+  /** Skip every collider of this entity. */
+  excludeEntity?: Entity;
+  /** Which colliders count: solid (default), sensors too, or sensors only. */
+  sensors?: QuerySensorMode;
+  /**
+   * Report only what this collider would collide with at the current poses:
+   * not its own entity, no sensors, compatible collision groups, and accepted
+   * by both contact filters (one-way and drop-through rules included).
+   * Combining it with `sensors: "only"` throws.
+   */
+  solidFor?: ColliderComponent;
+}
+
 /**
  * Discriminated union for collider shapes. All dimensions in pixels. Every
  * entry that takes a shape (`ColliderComponent`, `setShape`, `castShape`,
@@ -307,6 +324,9 @@ export type ColliderConfig = ColliderSharedConfig &
  * All values are from the start of the physics step being computed, before
  * this step's movement is applied — for a body that crossed a surface
  * mid-step, they tell you which side it came from.
+ * A query with `solidFor`, or `contactWith` with `solidOnly`, supplies
+ * current poses and velocities with `dt: 0` instead, regardless of the query
+ * shape's position or direction.
  *
  * The same object instance is reused for every filter call; read what you
  * need inside the filter and do not hold a reference to it.
@@ -320,7 +340,7 @@ export interface ContactCandidate {
   readonly selfShapeIndex: number;
   /** Index of the other participating shape in its collider component. */
   readonly otherShapeIndex: number;
-  /** Duration of the physics step being computed, in seconds. */
+  /** Duration of the physics step in seconds; 0 outside a step (`solidFor`, `solidOnly`). */
   readonly dt: number;
   /** Own collider's world X position in pixels. */
   readonly selfX: number;
@@ -354,6 +374,9 @@ export interface ContactCandidate {
  * entities, bodies, or colliders from inside it. When both colliders in a
  * pair have filters, both run for every candidate pair and the pair is
  * solid only if both return `true`.
+ * Also runs, with `dt: 0`, for queries that specify `solidFor` and for
+ * `contactWith` with `solidOnly`.
+ * Do not run physics queries from inside a filter.
  */
 export type ContactFilter = (contact: ContactCandidate) => boolean;
 

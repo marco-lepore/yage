@@ -469,6 +469,41 @@ describe("spatial queries (real Rapier)", () => {
       expect(platform.rb.position.x).toBeCloseTo(200);
     });
 
+    it("keeps a moving kinematic body's velocity", async () => {
+      const ctx = await createPhysicsTestContext();
+      const { scene, physicsWorld } = ctx;
+      const { tick } = systemsFor(ctx);
+      const entity = spawnEntityInScene(scene, "platform");
+      const transform = entity.add(
+        new Transform({ position: new Vec2(100, 100) }),
+      );
+      const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+      entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 40, height: 10 },
+        }),
+      );
+      tick(1);
+      transform.setPosition(102, 100);
+      transform.setRotation(0.1);
+      tick(1);
+      expect(rb.velocityX).toBeCloseTo(120);
+      expect(rb.getAngularVelocity()).toBeCloseTo(6);
+
+      spawnStaticBox(scene, "wall", 900, 900);
+      physicsWorld.queryShape(PROBE, { x: 900, y: 900 });
+
+      expect(rb.velocityX).toBeCloseTo(120);
+      expect(rb.getVelocity().x).toBeCloseTo(120);
+      expect(rb.speed).toBeCloseTo(120);
+      expect(rb.getAngularVelocity()).toBeCloseTo(6);
+      const snapshot = physicsWorld
+        .snapshot()
+        .bodies.find((body) => body.entityId === String(entity.id));
+      expect(snapshot?.linvel.x).toBeCloseTo(120);
+      expect(snapshot?.angvel).toBeCloseTo(6);
+    });
+
     it("keeps a one-way rider supported across a query", async () => {
       const ctx = await createPhysicsTestContext();
       const { scene, physicsWorld } = ctx;

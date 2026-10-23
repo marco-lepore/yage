@@ -183,6 +183,10 @@ export default defineConfig({
             { label: "Loot Tables", slug: "addons/loot" },
             { label: "Abilities", slug: "addons/abilities" },
             { label: "Hotbar", slug: "addons/hotbar" },
+            {
+              label: "Character Controller",
+              slug: "addons/character-controller",
+            },
             { label: "Stats", slug: "addons/stats" },
             { label: "Behavior Trees", slug: "addons/behavior-tree" },
             { label: "Procedural Maps", slug: "addons/procedural" },
