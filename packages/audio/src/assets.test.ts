@@ -32,6 +32,20 @@ it("keeps loaded and runtime ownership disjoint", () => {
   unloadSound("file");
   expect(getSound("file")).toBe(a);
 });
+it("shares a loaded file between engines until each releases it", () => {
+  const first = fakeBuffer();
+  expect(registerLoadedSound("file", first, { rootNote: 60 })).toBe(first);
+  expect(registerLoadedSound("file", fakeBuffer(), { rootNote: 60 })).toBe(
+    first,
+  );
+  expect(() =>
+    registerLoadedSound("file", fakeBuffer(), { rootNote: 62 }),
+  ).toThrow('Audio asset "file": another engine loaded this file');
+  unloadSound("file");
+  expect(getSound("file")).toBe(first);
+  unloadSound("file");
+  expect(getSound("file")).toBeUndefined();
+});
 it("rejects corrupt samples and invalid sustain regions", () => {
   const b = fakeBuffer();
   b.getChannelData(0)[5] = NaN;

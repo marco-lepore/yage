@@ -3,8 +3,10 @@
 Procedural sound effects for YAGE: a sound is a plain parameter object,
 rendered to samples and registered with `@yagejs/audio` under an alias, so it
 plays through the engine's channels, mute, and blur auto-pause like a
-preloaded file. No audio assets, no `AudioContext`. The `/render` entry provides pure rendering and `/worker` serves a worker.
-There is no `/presenters` subpath.
+preloaded file. No audio assets, no `AudioContext`. Entries: the root
+(rendering, presets, `SynthPlugin`), `/instruments` (instrument definitions),
+`/render` (rendering with no engine import, for Node and workers) and
+`/worker`. There is no `/presenters` subpath.
 
 ## Install
 
@@ -12,15 +14,18 @@ There is no `/presenters` subpath.
 npm install @yagejs-addons/synth @yagejs/core @yagejs/audio
 ```
 
-Engine integration through `/plugin` requires `@yagejs/core` and `@yagejs/audio`.
+Peers: `@yagejs/core` and `@yagejs/audio`, both required.
 
 ## Zero-config
 
 ```ts yage-context="engine"
 import { AudioPlugin, AudioManagerKey } from "@yagejs/audio";
 import { Component } from "@yagejs/core";
-import { synthPresets, synthVariantAliases } from "@yagejs-addons/synth";
-import { SynthPlugin } from "@yagejs-addons/synth/plugin";
+import {
+  SynthPlugin,
+  synthPresets,
+  synthVariantAliases,
+} from "@yagejs-addons/synth";
 
 engine.use(new AudioPlugin());
 engine.use(
@@ -135,12 +140,13 @@ const levelUp: SynthJingle = {
 
 A note with `frequency: 0` is a rest.
 
-`type SynthSound = SynthPatch | readonly SynthPatch[] | SynthJingle | SynthInstrument`.
+`type SynthSound<Name extends string = string> = SynthPatch | readonly SynthPatch[] | SynthJingle | SynthInstrument<Name>`.
 
 ## Rendering (headless)
 
 ```ts
 import type {
+  SynthBankNames,
   SynthJingle,
   SynthPatch,
   SynthSound,
@@ -155,15 +161,19 @@ declare function renderSynthJingle(
   jingle: SynthJingle,
   sampleRate?: number,
 ): Float32Array;
-declare function renderSynthSound(
-  sound: SynthSound,
+declare function renderSynthSound<
+  Bank extends SynthInstrumentBank = SynthInstrumentBank,
+>(
+  sound: SynthSound<SynthBankNames<Bank>>,
   sampleRate?: number,
-  instruments?: SynthInstrumentBank,
+  instruments?: Bank,
 ): Float32Array;
-declare function synthBuffer(
-  sound: SynthSound,
+declare function synthBuffer<
+  Bank extends SynthInstrumentBank = SynthInstrumentBank,
+>(
+  sound: SynthSound<SynthBankNames<Bank>>,
   sampleRate?: number,
-  instruments?: SynthInstrumentBank,
+  instruments?: Bank,
 ): AudioBuffer;
 declare const SYNTH_SAMPLE_RATE = 44100;
 ```
@@ -221,8 +231,7 @@ voice's own `seed` still means its noise seed); give each character its own
 `frequency`/`phraseSeed`:
 
 ```ts yage-context="engine"
-import { synthPresets } from "@yagejs-addons/synth";
-import { SynthPlugin } from "@yagejs-addons/synth/plugin";
+import { SynthPlugin, synthPresets } from "@yagejs-addons/synth";
 
 engine.use(
   new SynthPlugin({
@@ -253,12 +262,12 @@ A baked buffer sounds identical every play. Two ways to break that up:
 
 ```ts yage-context="engine"
 import {
+  SynthPlugin,
   synthBuffer,
   synthPresets,
   synthVariantAliases,
   synthVariants,
 } from "@yagejs-addons/synth";
-import { SynthPlugin } from "@yagejs-addons/synth/plugin";
 
 // 1. Several takes, spread in pitch, picked at random per play.
 engine.use(
@@ -308,8 +317,7 @@ the buffer loops without a click. The result is up to 50 ms shorter than
 `duration`.
 
 ```ts yage-context="engine"
-import { synthPresets } from "@yagejs-addons/synth";
-import { SynthPlugin } from "@yagejs-addons/synth/plugin";
+import { SynthPlugin, synthPresets } from "@yagejs-addons/synth";
 
 engine.use(
   new SynthPlugin({
@@ -340,17 +348,18 @@ what it registered — `plugin.aliases` lists them.
 
 ## Instruments and sustain regions
 
-Import each instrument from `@yagejs-addons/synth/instruments/<name>`.
+Import instruments by name from `@yagejs-addons/synth/instruments`. An
+ESM bundle keeps only the instruments it imports. A `require()` of
+`@yagejs-addons/synth/instruments` loads all 25 instruments, because
+CommonJS cannot drop unused exports.
 Each definition provides `sound(options?)` for a portable descriptor and
 `render(options?, sampleRate?)` for samples with optional sustain points.
 Pass the definitions used by your sounds to `SynthPlugin.instruments`:
 
 ```ts yage-context="engine"
 import { AudioPlugin } from "@yagejs/audio";
-import { SynthPlugin } from "@yagejs-addons/synth/plugin";
-import { electricPiano } from "@yagejs-addons/synth/instruments/electricPiano";
-import { bass } from "@yagejs-addons/synth/instruments/bass";
-import { flute } from "@yagejs-addons/synth/instruments/flute";
+import { SynthPlugin } from "@yagejs-addons/synth";
+import { bass, electricPiano, flute } from "@yagejs-addons/synth/instruments";
 
 engine.use(new AudioPlugin());
 engine.use(
@@ -373,14 +382,18 @@ pinkNoise and brownNoise. `synthInstruments` from
 application needs the complete catalogue.
 
 Options are `frequency` (default 261.625565 Hz), `seed` (default 1), and
-`volume` (default 0.3). Drums ignore pitch. Rendering accepts sample rates
+`volume` (default 0.3). Drums and noise ignore pitch, and their definitions
+have `pitched: false`. A pitched instrument's sample reports `rootNote`, the
+MIDI pitch of its frequency (440 Hz is 69). The tom sounds at a fixed pitch and
+reports `rootNote` 43. Rendering accepts sample rates
 8000–96000 Hz, frequency 20–min(4000, sampleRate/4) Hz, volume 0–1, and
 uint32 seeds.
 
 ```ts
-import { flute } from "@yagejs-addons/synth/instruments/flute";
+import { flute } from "@yagejs-addons/synth/instruments";
 const sample = flute.render({ frequency: 440, seed: 17 }, 44100);
 console.log(sample.samples.length, sample.loopStart, sample.loopEnd);
+console.log(sample.rootNote); // 69
 ```
 
 `renderSynthSample(sound, sampleRate?, instruments?)` renders a descriptor,
@@ -390,11 +403,111 @@ third argument applies to `renderSynthInstrument`, `renderSynthSound` and
 `synthBuffer`. Patches and jingles need no instrument set.
 
 `sampleBuffer(sample)` creates an AudioBuffer. Pad, flute, clarinet, organ
-and noise samples include sustain regions in seconds, registered by
-SynthPlugin. With manual registration, pass those points to `registerSound`.
+and noise samples include sustain regions in seconds. SynthPlugin registers
+each sample's sustain region and root note with its alias, so the music addon
+transposes notes without a `rootNote` in the song. With manual registration,
+pass them to `registerSound(alias, buffer, { loopStart, loopEnd, rootNote })`.
 `renderSynthSound` and `synthBuffer` omit loop metadata; use
 `renderSynthSample` when you need it. Play sustained instruments with
-`loop: true` and stop them with `handle.release(at, duration)`.
+`loop: true` and stop them with `handle.release({ at, duration })`.
+
+## Custom instruments
+
+Import the authoring API from `@yagejs-addons/synth/render`; an instrument
+module that imports only from there loads in the browser, a module worker and
+Node (the audio build tool).
+
+```ts
+import type {
+  SynthInstrumentDefinition,
+  SynthRenderResult,
+} from "@yagejs-addons/synth/render";
+
+declare function defineInstrument<Name extends string>(
+  name: Name,
+  render: (
+    frequency: number,
+    sampleRate: number,
+    seed: number,
+  ) => SynthRenderResult, // Float32Array | { samples, loopStart, loopEnd } (sample indices)
+  // pitched defaults to true; false for drums and noise. rootNote (MIDI 0-127)
+  // is for a pitched: false instrument that sounds at a fixed pitch.
+  options?: { pitched?: boolean; rootNote?: number },
+): SynthInstrumentDefinition<Name>;
+```
+
+- The definition validates sampleRate 8000–96000, frequency 20–min(4000,
+  sampleRate/4), uint32 seed and volume 0–1, and checks a returned loop is
+  `0 <= loopStart < loopEnd <= samples.length`. It multiplies the samples by
+  volume (default 0.3), converts the loop to seconds and sets `rootNote =
+69 + 12·log2(Hz/440)` when pitched, else the `rootNote` option. End a render
+  function with `limit(normalize(out, 0.9))` like the built-ins, a peak of
+  about 0.87.
+- `def.sound(options)` is `SynthInstrument<Name>`. A bank
+  (`SynthInstrumentBank = Readonly<Record<string, SynthInstrumentDefinition>>`)
+  resolves a descriptor by the definition's `name`, not the key; two
+  definitions with one name throw. `SynthBankNames<Bank>` is the bank's names.
+- `SynthPlugin`, `parseSynthSound`, `renderSynthSample`, `renderSynthSound`,
+  `renderSynthInstrument` and `synthBuffer` are generic over the bank: an
+  inline bank makes a descriptor naming another instrument a type error. A
+  bank typed as `SynthInstrumentBank` accepts any name and fails at install or
+  render. `serveSynthWorker(instruments)` takes the same definitions.
+
+Building blocks on `/render` (the `render…` functions allocate and throw when
+the sample rate, the duration or a top-level frequency, t60 or frequencyScale
+option is zero, negative or not finite; filters and level functions work in
+place and return the buffer; lengths in samples):
+
+- `renderString({ frequency, duration, t60, brightness, pickPosition, seed,
+twangCents?, twangTime?, vibrato?, thump? }, sampleRate)`: Karplus–Strong
+  pluck, not normalised.
+- `renderModal({ frequency, duration, partials: { ratio, amp, t60, cents? }[],
+attack, strike, strikeFrequency, strikeTime?, seed }, sampleRate)`: decaying
+  partials plus a strike click, not normalised.
+- `renderAdditive({ frequency, seed, harmonics, breath }, sampleRate)`:
+  `{ samples, loopStart, loopEnd }`, two seconds, normalised to 0.9; throws outside
+  the instrument ranges (sampleRate 8000–96000, frequency 20–min(4000, sampleRate/4)).
+- `renderMetal({ duration, t60, frequencyScale, seed, noise?, squares?,
+attack? }, sampleRate)`: six detuned squares plus noise, not normalised.
+- `renderNoise({ color: "white" | "pink" | "brown", duration, seed, loop? },
+sampleRate)`. With `loop`, the whole buffer loops; return
+  `{ samples, loopStart: 0, loopEnd: samples.length }`.
+- `biquad(buffer, type: SynthBiquadType, frequency, q, sampleRate, gainDb?)`;
+  `svf(buffer, mode: SynthSvfMode, frequency | (seconds) => frequency, q,
+sampleRate)`.
+- `normalize(buffer, target = 0.9)`, `limit(buffer, ceiling = 0.97)`,
+  `saturate(buffer, drive)`, `dcBlock(buffer, sampleRate)`,
+  `fadeIn(buffer, samples)`, `fadeOut(buffer, samples)`.
+- `prepareTonalLoop(buffer, sampleRate, loopStart, approxEnd, frequency,
+crossfade): loopEnd` (all sample indices).
+- `seededRandom(seed): () => number`, in [0, 1).
+
+```ts
+import {
+  defineInstrument,
+  limit,
+  normalize,
+  renderString,
+} from "@yagejs-addons/synth/render";
+
+export const harp = defineInstrument("harp", (frequency, sampleRate, seed) =>
+  limit(
+    normalize(
+      renderString(
+        {
+          frequency,
+          duration: 1.2,
+          t60: 1,
+          brightness: 0.7,
+          pickPosition: 0.4,
+          seed,
+        },
+        sampleRate,
+      ),
+    ),
+  ),
+);
+```
 
 ## Worker rendering and readiness
 
@@ -404,7 +517,7 @@ can render every sound. An empty set supports patches and jingles only:
 
 ```ts
 import { serveSynthWorker } from "@yagejs-addons/synth/worker";
-import { flute } from "@yagejs-addons/synth/instruments/flute";
+import { flute } from "@yagejs-addons/synth/instruments";
 serveSynthWorker({ flute });
 ```
 
@@ -433,7 +546,7 @@ import {
   parseSynthSound,
   renderSynthSample,
 } from "@yagejs-addons/synth/render";
-import { flute } from "@yagejs-addons/synth/instruments/flute";
+import { flute } from "@yagejs-addons/synth/instruments";
 const instruments = { flute };
 const descriptor = parseSynthSound(
   { instrument: "flute", seed: 17 },

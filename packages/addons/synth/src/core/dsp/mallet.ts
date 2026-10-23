@@ -8,7 +8,7 @@
  * (anvil, clank, coins).
  */
 import { biquad } from "./filters.js";
-import { Rng } from "./rng.js";
+import { seededRandom } from "../random.js";
 import {
   TWO_PI,
   dcBlock,
@@ -17,9 +17,10 @@ import {
   normalize,
   samples,
   sinCycles,
+  requirePositive,
 } from "./util.js";
 
-export interface ModalPartial {
+export interface SynthModalPartial {
   /** Frequency ratio to the fundamental. */
   readonly ratio: number;
   /** Relative amplitude. */
@@ -30,33 +31,37 @@ export interface ModalPartial {
   readonly cents?: number;
 }
 
-export interface ModalOptions {
-  readonly freq: number;
+export interface SynthModalOptions {
+  /** Fundamental in Hz; partial ratios multiply it. */
+  readonly frequency: number;
   readonly duration: number;
-  readonly partials: readonly ModalPartial[];
+  readonly partials: readonly SynthModalPartial[];
   /** Attack ramp in seconds (soft mallet ~3 ms, hard ~0.3 ms). */
   readonly attack: number;
   /** Strike noise level relative to the partial sum. */
   readonly strike: number;
   /** Centre frequency of the strike click (Hz). */
-  readonly strikeFreq: number;
+  readonly strikeFrequency: number;
   /** Strike click duration in seconds. */
   readonly strikeTime?: number;
   readonly seed: number;
 }
 
-/** Raw modal render (not normalised). Partials above 0.45·sr are skipped. */
-export function renderModal(
-  o: ModalOptions,
-  sr: number,
-  out = new Float32Array(samples(o.duration, sr)),
-  offset = 0,
-): Float32Array {
-  const n = out.length - offset;
-  if (n <= 0) return out;
+/**
+ * Struck-object tone from decaying partials plus a short strike click: bells,
+ * mallets, gongs. Not normalised. Partials above 0.45 × sampleRate are skipped.
+ */
+export function renderModal(o: SynthModalOptions, sr: number): Float32Array {
+  requirePositive("renderModal", {
+    sampleRate: sr,
+    frequency: o.frequency,
+    duration: o.duration,
+  });
+  const out = new Float32Array(samples(o.duration, sr));
+  const n = out.length;
   const attackN = Math.max(1, o.attack * sr);
   for (const p of o.partials) {
-    const f = o.freq * p.ratio * Math.pow(2, (p.cents ?? 0) / 1200);
+    const f = o.frequency * p.ratio * Math.pow(2, (p.cents ?? 0) / 1200);
     if (f >= sr * 0.45 || p.amp <= 0) continue;
     const w = (TWO_PI * f) / sr;
     const d = Math.pow(0.001, 1 / Math.max(1e-4, p.t60 * sr));
@@ -69,7 +74,7 @@ export function renderModal(
     const stop = Math.min(n, Math.ceil(p.t60 * (80 / 60) * sr));
     for (let i = 0; i < stop; i++) {
       const a = i < attackN ? 0.5 - 0.5 * Math.cos((Math.PI * i) / attackN) : 1;
-      out[offset + i] = out[offset + i]! + im * amp * a;
+      out[i] = out[i]! + im * amp * a;
       const nr = re * cw - im * sw;
       im = re * sw + im * cw;
       re = nr;
@@ -85,17 +90,17 @@ export function renderModal(
     }
   }
   if (o.strike > 0) {
-    const rng = new Rng(o.seed);
+    const rng = seededRandom(o.seed);
     const len = Math.min(n, samples(o.strikeTime ?? 0.006, sr));
     const click = new Float32Array(len);
     for (let i = 0; i < len; i++)
-      click[i] = (rng.next() * 2 - 1) * Math.exp((-5 * i) / len);
-    biquad(click, "bandpass", o.strikeFreq, 1.2, sr);
+      click[i] = (rng() * 2 - 1) * Math.exp((-5 * i) / len);
+    biquad(click, "bandpass", o.strikeFrequency, 1.2, sr);
     // Match the click's level to the partial sum so `strike` is relative.
     let sum = 0;
     for (const p of o.partials) sum += p.amp;
     for (let i = 0; i < len; i++)
-      out[offset + i] = out[offset + i]! + click[i]! * o.strike * sum * 3;
+      out[i] = out[i]! + click[i]! * o.strike * sum * 3;
   }
   return out;
 }
@@ -115,7 +120,7 @@ export function renderMarimba(
   const t60 = Math.min(1.6, Math.max(0.45, 1.7 - (freq - 130) / 700));
   const out = renderModal(
     {
-      freq,
+      frequency: freq,
       duration: Math.min(1.4, t60 + 0.15),
       partials: [
         { ratio: 1, amp: 1, t60 },
@@ -125,7 +130,7 @@ export function renderMarimba(
       ],
       attack: 0.0025,
       strike: 0.045,
-      strikeFreq: 2200,
+      strikeFrequency: 2200,
       strikeTime: 0.008,
       seed,
     },
@@ -145,7 +150,7 @@ export function renderKalimba(
   const t60 = Math.min(2.2, Math.max(0.9, 2.3 - (freq - 260) / 900));
   const out = renderModal(
     {
-      freq,
+      frequency: freq,
       duration: Math.min(1.8, t60 * 0.8 + 0.2, maxDuration),
       partials: [
         { ratio: 1, amp: 1, t60 },
@@ -156,7 +161,7 @@ export function renderKalimba(
       ],
       attack: 0.0008,
       strike: 0.05,
-      strikeFreq: 3800,
+      strikeFrequency: 3800,
       strikeTime: 0.004,
       seed,
     },
@@ -181,7 +186,7 @@ export function renderGlassBell(
   const t60 = Math.min(3.4, Math.max(1.6, 3.6 - (freq - 400) / 700));
   const out = renderModal(
     {
-      freq,
+      frequency: freq,
       duration: Math.min(3.0, t60 * 0.85, maxDuration),
       partials: [
         { ratio: 1, amp: 1, t60 },
@@ -193,7 +198,7 @@ export function renderGlassBell(
       ],
       attack: 0.0006,
       strike: 0.025,
-      strikeFreq: 6000,
+      strikeFrequency: 6000,
       strikeTime: 0.003,
       seed,
     },
@@ -222,24 +227,24 @@ export function renderVibraphone(
   motorHz = 0,
   maxDuration = Infinity,
 ): Float32Array {
-  const rng = new Rng(seed);
+  const rng = seededRandom(seed);
   const t60 = vibraphoneT60(freq);
   const duration = Math.min(maxDuration, 3.6, 0.55 * t60 + 0.35);
   const body = renderModal(
     {
-      freq,
+      frequency: freq,
       duration,
       partials: [{ ratio: 1, amp: 1, t60 }],
       attack: 0.0035,
       strike: 0,
-      strikeFreq: 1000,
+      strikeFrequency: 1000,
       seed,
     },
     sr,
   );
   if (motorHz > 0) {
     // The discs open and close the tubes: the resonated fundamental swells and fades.
-    const phase = rng.next();
+    const phase = rng();
     for (let i = 0; i < body.length; i++) {
       body[i] =
         body[i]! *
@@ -248,7 +253,7 @@ export function renderVibraphone(
   }
   const out = renderModal(
     {
-      freq,
+      frequency: freq,
       duration,
       partials: [
         { ratio: 4, amp: 0.2, t60: t60 * 0.22 },
@@ -256,7 +261,7 @@ export function renderVibraphone(
       ],
       attack: 0.0015,
       strike: 0.12,
-      strikeFreq: Math.min(sr * 0.4, 3000),
+      strikeFrequency: Math.min(sr * 0.4, 3000),
       strikeTime: 0.004,
       seed: seed + 1,
     },
@@ -287,7 +292,7 @@ export function renderBell(
   const t60 = bellT60(freq);
   const out = renderModal(
     {
-      freq,
+      frequency: freq,
       duration: Math.min(maxDuration, 4, 0.8 * t60 + 0.2),
       partials: [
         { ratio: 0.5, amp: 0.2, t60: t60 * 1.2 },
@@ -303,7 +308,7 @@ export function renderBell(
       ],
       attack: 0.0005,
       strike: 0.05,
-      strikeFreq: Math.min(sr * 0.4, freq * 5),
+      strikeFrequency: Math.min(sr * 0.4, freq * 5),
       strikeTime: 0.003,
       seed,
     },

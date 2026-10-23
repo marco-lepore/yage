@@ -1,13 +1,11 @@
 ---
-"@yagejs-addons/synth": minor
+"@yagejs-addons/synth": patch
 ---
 
-Add scheduled playback, procedural instruments, and adaptive music through one audio path.
+Schedule sounds and music on the audio clock, and render synth instruments in the game or during the build.
 
-- Add 25 seeded instrument and noise descriptors, including plucked strings, mallets, electric piano, sustained pad, additive flute, clarinet, organ, and percussion. Export sample rendering with sustain-loop metadata alongside the existing patch and jingle APIs.
-- Allow a dedicated worker to render the bank with explicit readiness, cancellation, error and fallback diagnostics. Engine startup awaits registration; worker transport failure or timeout reports its reason before using the main thread.
-
-- Expose pure rendering and validated portable sound data through `/render` for build tools and previews.
-
-- Keep basic synthesis separate from the instrument catalogue. Import individual definitions from `/instruments/<name>` and supply them through `instruments` to the plugin, worker and generic renderers. The complete catalogue is available from `/instruments`.
-- Move `SynthPlugin` to `/plugin`; update imports from the package root. Basic rendering imports no engine integration or instrument implementations.
+- Add 25 seeded instruments and noise sources: plucked strings, mallets, bells, electric piano, pad, flute, clarinet, organ, drums and percussion. Import them by name from `@yagejs-addons/synth/instruments`; an ESM bundle keeps only the instruments it imports. A `require()` of `@yagejs-addons/synth/instruments` loads all 25 instruments, because CommonJS cannot drop unused exports. Each definition has `sound(options)` for a portable descriptor and `render(options, sampleRate)` for samples with sustain loop points. A pitched instrument's sample reports `rootNote`, the MIDI pitch of its frequency; drums and noise have `pitched: false`, and the tuned tom reports the fixed pitch it sounds at.
+- `SynthPlugin` takes the definitions its sounds use through `instruments` and registers each alias with its sustain loop and root note. Installation awaits rendering. An optional module `worker` renders the bank off the main thread, with a timeout, a main-thread fallback and `getDiagnostics()`.
+- `@yagejs-addons/synth/render` renders sounds without importing the engine, for Node tools and previews. `parseSynthSound` validates portable sound data. `@yagejs-addons/synth/worker` serves render requests inside a worker.
+- `defineInstrument(name, render, { pitched, rootNote })` on `@yagejs-addons/synth/render` makes a game's own instrument, usable in `SynthPlugin`, a worker, music tracks and `@yagejs-tools/audio`. The same entry exports the DSP building blocks: `renderString`, `renderModal`, `renderAdditive`, `renderMetal`, `renderNoise`, `biquad`, `svf`, `normalize`, `limit`, `saturate`, `dcBlock`, `fadeIn`, `fadeOut`, `prepareTonalLoop` and `seededRandom`.
+- Instrument names are type parameters: `harp.sound()` is a `SynthInstrument<"harp">`, and with an inline `instruments` set, `SynthPlugin` and the render and parse functions reject a descriptor naming another instrument at compile time. A set resolves descriptors by each definition's `name`.

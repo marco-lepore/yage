@@ -120,12 +120,15 @@ Automation options: `{ at?: number; duration?: number; curve?: "linear" | "expon
 `at` is absolute audio-context seconds; omitted or past automation times mean
 now. Duration defaults to 0. An explicit past `crossfade` start throws.
 Exponential ramps require positive endpoints. `fadeTo` requires duration and
-optionally `stopOnComplete` (only with target 0); it returns void.
+optionally `stopOnComplete` (only with target 0); it returns void. A later
+volume write (`volume`, `setVolume`, `fadeTo`) that starts before that fade
+ends replaces it and cancels its stop. `stop(at)` replaces only the fade's
+stop; the ramp continues.
 
 `AudioConfig.masterVolume?: number` sets the initial master volume (default 1).
 `AudioManager.masterVolume` accepts finite values from 0 to 1 and throws before
-changing state for invalid inputs. Playback volume is `masterVolume × channel
-volume × SoundHandle.volume`. Master volume affects this manager's playing and
+changing state for invalid inputs. Playback volume is `masterVolume × every
+ancestor channel volume × channel volume × SoundHandle.volume`. Master volume affects this manager's playing and
 future sounds, including channels created later. It preserves channel and
 sound volumes, active fades, and mute/pause state. It does not control external
 audio contexts or playback outside this manager.
@@ -239,23 +242,28 @@ sc.volume;
 - `handle.scheduled`: active start lies in the future; `playing` includes paused
   and booked voices. `handle.setVolume`, `setSpeed`, `setPan` accept automation
   options. Speed must remain finite and positive at Web Audio's 32-bit float
-  precision. `release(at?, duration = 0.05)` fades
-  to zero and stops. `stop(at?)` can book a stop.
+  precision. `release({ at?, duration? }?)` (`SoundReleaseOptions`; `at`
+  defaults to now, `duration` to 0.05 s) fades to zero and stops; duration 0
+  stops at `at`. `stop(at?)` can book a stop.
 - `createChannel(name, { parent?, volume? })`: unique named channel; parent must
   already exist. `removeChannel(name)` stops and removes descendants.
 - Parent gain/mute changes affect booked voices. Parent pause/stop propagates.
   Configured channels augment defaults `sfx: 1`, `music: 0.7`.
 - `setChannelVolume(name, volume, automation?)`: gain automation on all voices.
-- `registerSound(alias, buffer, { loopStart, loopEnd }?)`: default sustain region
-  used when `play` sets `loop: true`; play options can override the region.
+- `registerSound(alias, buffer, metadata?: SoundMetadata)`: `{ loopStart?,
+loopEnd?, rootNote? }`. The loop pair is the default sustain region used when
+  `play` sets `loop: true` (play options override it). `rootNote` is the MIDI
+  pitch at the original rate; the music addon transposes against it.
+- `getSoundMetadata(ref): SoundMetadata | undefined`: copy of the registered
+  loop points and root note; `undefined` for an unregistered alias.
 - `addScheduler((now, horizon) => void): () => void`: independent of scene time.
   Defaults: `AudioConfig.lookahead = 0.12`, `tickInterval = 0.025` seconds;
   both positive finite, interval < lookahead. The plugin owns timer cleanup.
 - `updateSchedule(now?, horizon?)`: explicitly book work, including offline plans.
 - `getDiagnostics()`: state/time, active/scheduled voices, schedulerCount,
   lateStarts, channels and recent callback failures. Inspector extension `audio`
-  exposes `getDiagnostics`. `invoke(operation, callback)` attributes higher-layer
-  callbacks through ErrorBoundary. Unlock/scheduler/onEnd callbacks also use it.
+  exposes `getDiagnostics`. Unlock, scheduler, channel-pause and `onEnd`
+  callbacks run through the engine's ErrorBoundary.
 - `dispose()` stops voices and releases nodes, subscribers and pending unlocks.
 
 ## Offline graph rendering
@@ -267,7 +275,7 @@ const buffer = await renderAudio(
   (audio) => {
     const voice = audio.play("loop", { loop: true, volume: 0.2 });
     voice.setSpeed(1.5, { at: 1, duration: 0.5 });
-    voice.release(2.5, 0.2);
+    voice.release({ at: 2.5, duration: 0.2 });
   },
 );
 const metrics = measureAudio(
@@ -304,17 +312,28 @@ not create an audio context or timer.
 
 ## Exported sound banks
 
-- `sound(path, loop?: SoundLoop): AssetHandle<AudioBuffer>` accepts paired
-  `loopStart`/`loopEnd` in seconds. Loop defaults follow the handle through
-  preloading and apply when playback sets `loop: true`.
+- `sound(path, metadata?: SoundMetadata): AssetHandle<AudioBuffer>` accepts
+  paired `loopStart`/`loopEnd` in seconds and `rootNote` (MIDI 0–127). The
+  metadata follows the handle through preloading into the registry.
 - `parseSoundBankManifest(unknown): SoundBankManifest` validates version 1,
-  numeric metadata, WAV filenames and loop regions; returns a copy.
+  WAV filenames, loop regions and root notes; returns a copy. An entry requires
+  only `file`. `rootNote` and the loop pair are optional. The build
+  diagnostics `frames`, `bytes`, `samplePeak`, `rms` and `clippedSamples` are
+  optional and checked when present; without `frames` the loop is checked
+  against the decoded file. Entries naming the same file must agree on
+  frames, bytes, loop points and rootNote.
 - `soundBank(unknownManifest, baseDirectoryUrl): SoundBank` returns
   `{ manifest, sounds: Record<string, AssetHandle<AudioBuffer>> }`. No I/O.
   Base URL must end in `/`. Put `Object.values(bank.sounds)` in Scene.preload.
 - Bank keys are local names, not registered aliases. Pass the handles to
-  playback. Use entry `rootNote` for music track tuning; it does not retune audio.
+  playback. Each handle carries its entry's loop points and `rootNote`; music
+  tracks read the root note from the sound. It does not retune audio.
 - `@yagejs-tools/audio` produces the manifest and WAVs. See
   [audio builds](../tools/audio.md) for build and complete playback setup.
 - The sound loader and AssetManager own decoding, reference counting and
-  unload. Handles for the same file must agree on loop metadata.
+  unload. Handles for the same file must agree on their metadata.
+- Engines on one page share a decoded file by path. Each engine's load adds
+  one hold and plays the first decode. Each engine's unload or `AudioPlugin`
+  destroy releases one, and the file is removed when none remain. A load of
+  the same path with different metadata throws `Audio asset "<path>": another
+engine loaded this file with metadata ...`.

@@ -3,6 +3,8 @@ import { mkdtemp, readFile, writeFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildAudioBank, inspectAudioBank } from "./node.js";
+import { synthInstruments } from "@yagejs-addons/synth/instruments";
+import { defineInstrument, renderNoise } from "@yagejs-addons/synth/render";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -55,5 +57,33 @@ it("detects missing or modified exported bytes", async () => {
   await writeFile(path, bytes);
   await expect(inspectAudioBank(join(outDir, "manifest.json"))).rejects.toThrow(
     "corrupt",
+  );
+});
+it("names a leftover lock file instead of overwriting the bank", async () => {
+  const outDir = await directory();
+  await writeFile(join(outDir, ".yage-audio.lock"), "");
+  await expect(buildAudioBank(config, { outDir })).rejects.toThrow(
+    "delete the lock file once no build is running",
+  );
+});
+it("builds a bank with a custom instrument supplied as an option", async () => {
+  const outDir = await directory();
+  const hiss = defineInstrument(
+    "hiss",
+    (_frequency, sampleRate, seed) =>
+      renderNoise({ color: "pink", duration: 0.2, seed }, sampleRate),
+    { pitched: false },
+  );
+  const manifest = await buildAudioBank(
+    {
+      version: 1,
+      sampleRate: 8000,
+      sounds: { air: { sound: { instrument: "hiss" } } },
+    },
+    { outDir, instruments: { ...synthInstruments, hiss } },
+  );
+  expect(manifest.sounds.air?.frames).toBe(1600);
+  expect((await inspectAudioBank(join(outDir, "manifest.json"))).aliases).toBe(
+    1,
   );
 });

@@ -45,38 +45,37 @@
           <option value="organ">Organ</option>
         </select></label
       >
-      <button id="start">Start audio</button><button id="cue">Chord cue</button
-      ><button id="transition">Change song</button
-      ><button id="pause">Pause / resume music</button
-      ><button id="scene-pause">Pause / resume scene</button
-      ><button id="channel-pause">Pause / resume music channel</button
-      ><button id="recording">Recorded accent</button
-      ><button id="loop">Wind loop</button
-      ><button id="measure">Measure offline mix</button
-      ><button id="remove-owner">Remove audio owner</button
-      ><label
-        >Intensity
+      <label
+        >Danger
         <input
-          id="intensity"
+          id="danger"
           type="range"
           min="0"
           max="1"
           step="0.01"
           value="0.25"
       /></label>
+      <button id="reward">Collect reward</button
+      ><button id="song">Enter new area</button
+      ><button id="pause">Pause game</button
+      ><button id="measure">Measure offline mix</button
+      ><button id="remove">Remove music entity</button>
     </div>
     <p class="controls">
-      Choose a lead instrument. Sounds are rendered during the build and loaded
-      as files. Raise intensity to add bass, percussion, and a recorded accent.
-      Change between a swung waltz and straight four-beat music. The chord cue
-      joins on the next eighth-note grid line. Wind follows the same intensity
-      control.
+      Click the page or press a key to start audio. Every sound is a synth
+      instrument rendered to a WAV file during the build, plus one recorded
+      file. The hi-hat is a custom instrument the game defines. Raise danger to
+      bring in bass, kick, hi-hat, and the recorded accent; the wind follows the
+      same control. A reward plays a bell on the next eighth note, moved into
+      the current chord. A new area switches between the swung waltz and
+      straight four-beat music on the next bar, and a new lead instrument also
+      waits for the bar.
     </p>
     <p class="controls">
-      Offline statistics measure a five-second mix of music, a changing layer,
-      and wind. Peak and RMS do not establish musical quality. Removing the
-      audio owner stops its sounds and controls; reload the page to create it
-      again.
+      Pausing the game pauses the scene and the music and ambience channels, so
+      the music resumes on the beat where it stopped. Measuring renders five
+      seconds of the current song offline and reports its sample peak and RMS.
+      Removing the music entity stops its song and wind.
     </p>
     <script type="module" src="/src/adaptive-music/main.ts"></script>
   </body>

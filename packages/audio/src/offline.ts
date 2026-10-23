@@ -2,17 +2,25 @@ import { AudioManager } from "./AudioManager.js";
 import type { AudioConfig } from "./types.js";
 import { assertPositive } from "./internal/validation.js";
 
+/** Sample statistics of a rendered buffer. */
 export interface AudioMeasurements {
   readonly duration: number;
+  /** Largest absolute sample value. */
   readonly samplePeak: number;
   readonly rms: number;
+  /** Samples with an absolute value of 1 or more. */
   readonly clippedSamples: number;
   readonly nonFiniteSamples: number;
 }
+/** Options for `renderAudio`. */
 export interface OfflineAudioOptions {
+  /** Seconds to render. */
   duration: number;
+  /** Default 44100. */
   sampleRate?: number;
+  /** Output channels, 1–32. Default 2. */
   channels?: number;
+  /** Master and channel levels; use the live configuration to match the game. */
   mix?: AudioConfig;
 }
 /** Render the same voice/channel graph as live audio. The plan books every operation before rendering. */
@@ -35,7 +43,7 @@ export async function renderAudio(
   );
   const audio = new AudioManager(context, options.mix);
   // No interval, unlock or browser listeners are installed in an offline render.
-  audio.invoke("Offline audio plan", () => plan(audio));
+  plan(audio);
   const buffer = await context.startRendering();
   audio.dispose();
   return buffer;

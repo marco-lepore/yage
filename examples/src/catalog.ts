@@ -614,7 +614,7 @@ export const EXAMPLES: readonly Example[] = [
     slug: "adaptive-music",
     title: "Adaptive Music",
     summary:
-      "Seeded instruments, a recorded accent, parameter-driven layers, beat-aligned cues, and offline mix measurements.",
+      "Music that follows gameplay: danger-driven layers, chord-aware reward cues, song changes on the bar, and a pause that holds the beat.",
     section: "audio",
     packages: ["audio"],
     addons: ["music", "synth"],

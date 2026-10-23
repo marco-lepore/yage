@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { AudioTimeline } from "./Automation.js";
+import { AudioTimeline } from "./AudioTimeline.js";
 it("preserves earlier ramps when a later ramp starts exactly at their endpoint", () => {
   const timeline = new AudioTimeline(1);
   timeline.set(0, 0, 1);

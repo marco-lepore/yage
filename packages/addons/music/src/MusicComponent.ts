@@ -11,6 +11,7 @@ export class MusicComponent extends Component {
   ) {
     super();
   }
+  /** The player for this entity's music. Throws before the component is added. */
   get player(): MusicPlayer {
     if (!this.transport)
       throw new Error("MusicComponent: component is not attached.");
@@ -23,9 +24,10 @@ export class MusicComponent extends Component {
     this.player.play(this.song);
   }
   onDisable(): void {
-    this.transport?.stop();
+    this.player.stop();
   }
   onDestroy(): void {
+    // Absent when onAdd threw; the entity still destroys the component.
     this.transport?.dispose();
     this.transport = undefined;
   }

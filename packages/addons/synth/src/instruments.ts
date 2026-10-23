@@ -24,6 +24,36 @@ import { tom } from "./instruments/tom.js";
 import { pinkNoise } from "./instruments/pinkNoise.js";
 import { brownNoise } from "./instruments/brownNoise.js";
 
+// Each definition is a pure constant, so a bundle keeps only the instruments
+// it imports by name. `scripts/check-bundles.mjs` asserts this after build.
+export {
+  banjo,
+  bass,
+  uprightBass,
+  guzheng,
+  marimba,
+  kalimba,
+  glassBell,
+  vibraphone,
+  bell,
+  electricPiano,
+  pad,
+  flute,
+  clarinet,
+  organ,
+  kick,
+  brushTap,
+  brushSwish,
+  shaker,
+  rim,
+  clap,
+  ride,
+  cymbal,
+  tom,
+  pinkNoise,
+  brownNoise,
+};
+
 /** Full built-in catalogue for authoring tools and complete-bank previews. */
 export const synthInstruments = {
   banjo,

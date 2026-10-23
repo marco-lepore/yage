@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { serveSynthWorker } from "./worker.js";
 import { flute } from "./instruments/flute.js";
+import { hat } from "./test-helpers.js";
 
 const post = vi.fn();
 afterEach(() => vi.unstubAllGlobals());
@@ -30,4 +31,20 @@ it("reports an instrument missing from the worker's set", () => {
     id: 7,
     error: 'renderSynthInstrument: instrument "banjo" is not registered.',
   });
+});
+it("renders a custom instrument the worker was given", () => {
+  vi.stubGlobal("postMessage", post);
+  vi.stubGlobal("onmessage", null);
+  post.mockClear();
+  serveSynthWorker({ hat });
+  const handler: (event: MessageEvent) => void = globalThis.onmessage!;
+  handler(
+    new MessageEvent("message", {
+      data: { id: 3, sampleRate: 8000, sound: hat.sound({ seed: 5 }) },
+    }),
+  );
+  expect(post).toHaveBeenCalledWith(
+    { id: 3, sample: hat.render({ seed: 5 }, 8000) },
+    [expect.any(ArrayBuffer)],
+  );
 });

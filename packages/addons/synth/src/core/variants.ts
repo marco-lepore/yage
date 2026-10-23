@@ -1,4 +1,4 @@
-import { isPatchStack } from "./render.js";
+import { isPatchStack, isSynthInstrument } from "./render.js";
 import type { SynthPatch, SynthSound } from "./types.js";
 
 /** Pitch spread `synthVariants` uses when the caller doesn't pick one: ±6%. */
@@ -66,7 +66,7 @@ function shiftSound(
   factor: number,
   seedOffset: number,
 ): SynthSound {
-  if ("instrument" in sound)
+  if (isSynthInstrument(sound))
     return {
       ...sound,
       frequency: (sound.frequency ?? 261.625565) * factor,

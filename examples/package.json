@@ -12,7 +12,7 @@
     "lint": "eslint src e2e lab",
     "typecheck": "tsc --noEmit",
     "sequence:edit": "yage-editor dev --config editor.sequence.config.ts",
-    "audio:build": "node ../packages/tools/audio/dist/cli.js build audio.config.json --out public/generated/audio",
+    "audio:build": "node ../packages/tools/audio/dist/cli.js build audio.config.json --out public/generated/audio --instruments src/adaptive-music/instruments.ts",
     "predev": "npm run audio:build",
     "prebuild": "npm run audio:build"
   },

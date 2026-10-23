@@ -1,5 +1,5 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
-import { ErrorBoundary, Logger } from "@yagejs/core";
+import { ErrorBoundary, Logger, createRandomService } from "@yagejs/core";
 import { AudioManager } from "./AudioManager.js";
 import { registerSound, clearRegisteredSounds, sound } from "./assets.js";
 import { FakeAudioContext, fakeBuffer } from "./test-helpers.js";
@@ -240,4 +240,40 @@ it("accepts immediate crossfades when audio time advances during node creation",
   expect(() =>
     audio.crossfade(outgoing, "tone", { duration: 0.1 }),
   ).not.toThrow();
+});
+describe("lookup, random choice and global mute", () => {
+  it("reports registration for aliases and handles alike", () => {
+    expect(audio.hasSound("tone")).toBe(true);
+    expect(audio.hasSound(sound("tone"))).toBe(true);
+    expect(audio.hasSound("missing")).toBe(false);
+    registerSound("pitched", fakeBuffer(), { rootNote: 57 });
+    expect(audio.getSoundMetadata("pitched")).toEqual({ rootNote: 57 });
+    expect(audio.getSoundMetadata("missing")).toBeUndefined();
+  });
+  it("picks a random alias with the injected generator and rejects an empty list", () => {
+    registerSound("other", fakeBuffer());
+    const picks = (seed: number): string[] => {
+      const manager = new AudioManager(
+        new FakeAudioContext().asContext(),
+        {},
+        createRandomService(seed),
+      );
+      return Array.from(
+        { length: 8 },
+        () => manager.playRandom(["tone", "other"]).alias,
+      );
+    };
+    expect(picks(7)).toEqual(picks(7));
+    expect(new Set(picks(7))).toEqual(new Set(["tone", "other"]));
+    expect(() => audio.playRandom([])).toThrow("must not be empty");
+  });
+  it("mutes and unmutes every channel without touching its volume", () => {
+    audio.setChannelVolume("music", 0.4);
+    audio.muteAll();
+    expect(audio.getDiagnostics().channels.every((c) => c.muted)).toBe(true);
+    audio.unmuteAll();
+    const channels = audio.getDiagnostics().channels;
+    expect(channels.some((c) => c.muted)).toBe(false);
+    expect(channels.find((c) => c.name === "music")?.volume).toBe(0.4);
+  });
 });

@@ -1,22 +1,26 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { AudioDiagnostics, AudioMeasurements } from "@yagejs/audio";
 import type { MusicDiagnostics } from "@yagejs-addons/music";
-interface Lab {
-  diagnostics: MusicDiagnostics;
-  audio: AudioDiagnostics;
-  loading: { mode: string; aliases: number; files: number };
-  offline: AudioMeasurements | null;
+
+interface MusicProbe {
+  music: MusicDiagnostics;
+  mixer: AudioDiagnostics;
+  bankSize: { sounds: number; files: number };
+  paused: boolean;
+  offlineMix: AudioMeasurements | null;
   measuring: boolean;
 }
-const lab = (page: Page): Promise<Lab> =>
+
+const probe = (page: Page): Promise<MusicProbe> =>
   page.evaluate(
     () =>
       window.__yage__!.inspector.getComponentData(
-        "MusicLabEntity",
-        "MusicLab",
-      ) as Lab,
+        "MusicHostEntity",
+        "MusicProbe",
+      ) as MusicProbe,
   );
-const audio = (page: Page): Promise<AudioDiagnostics> =>
+// Reads the mixer through the inspector extension, which outlives the host.
+const mixer = (page: Page): Promise<AudioDiagnostics> =>
   page.evaluate(() =>
     window
       .__yage__!.inspector.getExtension<{
@@ -24,7 +28,10 @@ const audio = (page: Page): Promise<AudioDiagnostics> =>
       }>("audio")!
       .getDiagnostics(),
   );
-test("trusted gesture, independent clocks, deterministic mix and owner teardown", async ({
+const click = (page: Page, name: string): Promise<void> =>
+  page.getByRole("button", { name, exact: true }).click();
+
+test("adaptive music follows gameplay, holds its beat while paused, and stops with its entity", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -33,115 +40,99 @@ test("trusted gesture, independent clocks, deterministic mix and owner teardown"
   await page.waitForFunction(
     () =>
       window.__yage__?.inspector?.getComponentData(
-        "MusicLabEntity",
-        "MusicLab",
+        "MusicHostEntity",
+        "MusicProbe",
       ) !== undefined,
   );
-  expect((await lab(page)).loading).toMatchObject({
-    mode: "files",
-    aliases: 8,
-    files: 8,
-  });
-  await page.getByRole("button", { name: "Start audio", exact: true }).click();
-  await expect.poll(async () => (await audio(page)).state).toBe("running");
+
+  // The build-time bank holds nine distinct files, one of them rendered from
+  // the example's own instrument module.
+  expect((await probe(page)).bankSize).toEqual({ sounds: 9, files: 9 });
+
+  // A trusted click resumes the audio context and starts the song.
+  await page.locator("canvas").click();
+  await expect.poll(async () => (await mixer(page)).state).toBe("running");
   await expect
-    .poll(async () => (await lab(page)).diagnostics.scheduledNotes)
+    .poll(async () => (await probe(page)).music.scheduledNotes)
     .toBeGreaterThan(0);
+
   await page.getByRole("combobox", { name: "Lead" }).selectOption("flute");
-  await page.getByRole("slider", { name: "Intensity" }).fill("0.85");
+  await expect.poll(async () => (await probe(page)).music.transitions).toBe(1);
+  await page.getByRole("slider", { name: "Danger" }).fill("0.85");
   await expect
-    .poll(async () => (await lab(page)).diagnostics.parameters["intensity"])
+    .poll(async () => (await probe(page)).music.parameters["intensity"])
     .toBe(0.85);
-  await page.getByRole("button", { name: "Wind loop", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Recorded accent", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Chord cue", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Pause / resume scene", exact: true })
-    .click();
-  const before = (await lab(page)).diagnostics.position!.beat;
-  await expect
-    .poll(async () => (await lab(page)).diagnostics.position!.beat)
-    .toBeGreaterThan(before + 0.5);
+  await click(page, "Collect reward");
+
+  // Pausing the game holds the beat while audio time keeps running.
+  await click(page, "Pause game");
+  const paused = await probe(page);
+  expect(paused.paused).toBe(true);
+  expect(paused.music.state).toBe("paused");
   expect(
     await page.evaluate(
       () => window.__yage__!.inspector.getSceneStack().at(-1)!.paused,
     ),
   ).toBe(true);
-  await page
-    .getByRole("button", { name: "Pause / resume scene", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Pause / resume music", exact: true })
-    .click();
-  const paused = await lab(page);
+  // A paused player rejects cues and transitions, so their controls wait.
+  await expect(page.getByRole("combobox", { name: "Lead" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Enter new area", exact: true }),
+  ).toBeDisabled();
   await expect
-    .poll(async () => (await audio(page)).currentTime)
-    .toBeGreaterThan(paused.audio.currentTime + 0.3);
-  expect((await lab(page)).diagnostics.position!.beat).toBe(
-    paused.diagnostics.position!.beat,
+    .poll(async () => (await mixer(page)).currentTime)
+    .toBeGreaterThan(paused.mixer.currentTime + 0.5);
+  expect((await probe(page)).music.position!.beat).toBe(
+    paused.music.position!.beat,
   );
-  await page
-    .getByRole("button", { name: "Pause / resume music", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Change song", exact: true }).click();
+  // The music player stops its notes; the paused wind loop keeps its voice.
+  expect(
+    (await mixer(page)).channels
+      .filter((c) => c.name !== "sfx" && c.name !== "ambience")
+      .every((c) => c.voices === 0),
+  ).toBe(true);
+  await click(page, "Resume game");
+  expect((await probe(page)).music.state).toBe("playing");
   await expect
-    .poll(async () => (await lab(page)).diagnostics.song, { timeout: 6000 })
+    .poll(async () => (await probe(page)).music.position!.beat)
+    .toBeGreaterThan(paused.music.position!.beat);
+
+  await click(page, "Enter new area");
+  await expect
+    .poll(async () => (await probe(page)).music.song, { timeout: 6000 })
     .toBe("Straight four");
-  await page
-    .getByRole("button", { name: "Measure offline mix", exact: true })
-    .click();
-  await expect.poll(async () => (await lab(page)).offline).not.toBeNull();
-  const first = (await lab(page)).offline!;
+
+  // The offline render is reproducible and stays below clipping.
+  await click(page, "Measure offline mix");
+  await expect.poll(async () => (await probe(page)).offlineMix).not.toBeNull();
+  const first = (await probe(page)).offlineMix!;
   expect(first.duration).toBe(5);
   expect(first.samplePeak).toBeGreaterThan(0.01);
   expect(first.samplePeak).toBeLessThan(1);
   expect(first.rms).toBeGreaterThan(0);
   expect(first.clippedSamples).toBe(0);
   expect(first.nonFiniteSamples).toBe(0);
-  await page
-    .getByRole("button", { name: "Measure offline mix", exact: true })
-    .click();
-  await expect.poll(async () => (await lab(page)).measuring).toBe(false);
-  const second = (await lab(page)).offline!;
+  await click(page, "Measure offline mix");
+  await expect.poll(async () => (await probe(page)).measuring).toBe(false);
+  const second = (await probe(page)).offlineMix!;
   expect(second.samplePeak).toBeCloseTo(first.samplePeak, 7);
   expect(second.rms).toBeCloseTo(first.rms, 7);
-  expect(second.clippedSamples).toBe(0);
-  expect(second.nonFiniteSamples).toBe(0);
-  await page
-    .getByRole("button", { name: "Pause / resume music channel", exact: true })
-    .click();
-  const channelPaused = await lab(page);
-  await expect
-    .poll(async () => (await audio(page)).currentTime)
-    .toBeGreaterThan(channelPaused.audio.currentTime + 0.5);
-  expect((await lab(page)).diagnostics.position!.beat).toBe(
-    channelPaused.diagnostics.position!.beat,
-  );
-  expect(
-    (await audio(page)).channels
-      .filter((c) => c.name !== "sfx")
-      .every((c) => c.voices === 0),
-  ).toBe(true);
-  await page
-    .getByRole("button", { name: "Pause / resume music channel", exact: true })
-    .click();
-  expect((await lab(page)).diagnostics.state).toBe("playing");
-  expect((await audio(page)).failures).toEqual([]);
+
+  expect((await mixer(page)).failures).toEqual([]);
   expect(
     await page.evaluate(
       () => window.__yage__!.inspector.getErrors().callbackErrors,
     ),
   ).toEqual([]);
-  await page
-    .getByRole("button", { name: "Remove audio owner", exact: true })
-    .click();
-  await expect.poll(async () => (await audio(page)).activeVoices).toBe(0);
-  await expect.poll(async () => (await audio(page)).schedulerCount).toBe(0);
-  expect((await audio(page)).channels.map((c) => c.name)).toEqual([
+
+  // Destroying the music host stops its song, its wind and its scheduler.
+  await click(page, "Remove music entity");
+  await expect.poll(async () => (await mixer(page)).activeVoices).toBe(0);
+  await expect.poll(async () => (await mixer(page)).schedulerCount).toBe(0);
+  expect((await mixer(page)).channels.map((c) => c.name)).toEqual([
     "sfx",
     "music",
+    "ambience",
   ]);
   expect(errors).toEqual([]);
 });

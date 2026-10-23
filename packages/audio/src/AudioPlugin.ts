@@ -1,7 +1,11 @@
 import { AssetManagerKey, ErrorBoundaryKey, InspectorKey } from "@yagejs/core";
 import type { EngineContext, Plugin, Inspector } from "@yagejs/core";
 import { AudioManager } from "./AudioManager.js";
-import { registerLoadedSound, unloadSound, parseSoundLoop } from "./assets.js";
+import {
+  parseSoundMetadata,
+  registerLoadedSound,
+  unloadSound,
+} from "./assets.js";
 import { AudioManagerKey, type AudioConfig } from "./types.js";
 
 const GESTURES = ["pointerdown", "keydown", "touchend"] as const;
@@ -19,6 +23,8 @@ export class AudioPlugin implements Plugin {
   private destroyed = false;
   private unlocked = false;
   private resumePending: Promise<void> | undefined;
+  /** Aliases this plugin's loader registered; released on destroy. */
+  private readonly loaded = new Set<string>();
 
   constructor(private readonly config: AudioConfig = {}) {}
   install(context: EngineContext): void {
@@ -35,7 +41,7 @@ export class AudioPlugin implements Plugin {
     context.register(AudioManagerKey, manager);
     context.tryResolve(AssetManagerKey)?.registerLoader("sound", {
       load: async (path: string, data?: unknown) => {
-        const loop = parseSoundLoop(data);
+        const metadata = parseSoundMetadata(data);
         const response = await fetch(path);
         if (!response.ok)
           throw new Error(`Audio asset "${path}": HTTP ${response.status}.`);
@@ -46,15 +52,19 @@ export class AudioPlugin implements Plugin {
           throw new Error(
             `Audio asset "${path}": plugin was destroyed during load.`,
           );
-        registerLoadedSound(path, buffer, loop);
-        return buffer;
+        const shared = registerLoadedSound(path, buffer, metadata);
+        this.loaded.add(path);
+        return shared;
       },
-      unload: (path: string) => unloadSound(path),
+      unload: (path: string) => {
+        this.loaded.delete(path);
+        unloadSound(path);
+      },
     });
     this.unlocked = manager.isUnlocked();
     if (typeof document !== "undefined") {
       const gesture = (): void => {
-        void this.resume();
+        void this.resume(audioContext, manager);
       };
       const visibility = (): void => {
         if (!manager.autoMuteOnBlur) return;
@@ -63,7 +73,7 @@ export class AudioPlugin implements Plugin {
             manager._reportFailure("Audio suspend", error);
             throw error;
           });
-        } else if (this.unlocked) void this.resume();
+        } else if (this.unlocked) void this.resume(audioContext, manager);
       };
       for (const type of GESTURES)
         document.addEventListener(type, gesture, {
@@ -96,12 +106,8 @@ export class AudioPlugin implements Plugin {
       getDiagnostics: () => this.manager!.getDiagnostics(),
     });
   }
-  private resume(): Promise<void> {
-    if (this.destroyed || !this.audioContext || !this.manager)
-      return Promise.resolve();
+  private resume(context: AudioContext, manager: AudioManager): Promise<void> {
     if (this.resumePending) return this.resumePending;
-    const context = this.audioContext;
-    const manager = this.manager;
     this.resumePending = context.resume().then(
       () => {
         this.resumePending = undefined;
@@ -124,6 +130,13 @@ export class AudioPlugin implements Plugin {
     if (this.timer !== undefined) clearInterval(this.timer);
     this.inspector?.removeExtension("audio");
     this.manager?.dispose();
+    // Workaround: Engine.destroy does not unload the AssetManager's assets,
+    // and the sound registry outlives the engine. Release this engine's hold
+    // on the files its loader registered, so each file goes once no engine
+    // holds it. Unloading every asset on engine destroy would remove the need
+    // for it.
+    for (const alias of this.loaded) unloadSound(alias);
+    this.loaded.clear();
     if (this.audioContext && this.audioContext.state !== "closed") {
       void this.audioContext.close().catch((error: unknown) => {
         this.manager?._reportFailure("Audio close", error);

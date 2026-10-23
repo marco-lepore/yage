@@ -65,6 +65,12 @@ export class MusicPlayer {
       this.tick(now, horizon),
     );
   }
+  /**
+   * Replace playback with `song` from beat zero. Without `at` it starts 30 ms
+   * after audio unlocks; an explicit `at` is an absolute audio time. While the
+   * player or its channel is paused, the song waits for resume. Throws for a
+   * missing source or invalid song data before changing playback.
+   */
   play(song: MusicSong, options: MusicPlayOptions = {}): void {
     this.assertActive();
     const score = this.prepare(song);
@@ -72,14 +78,31 @@ export class MusicPlayer {
       finite("MusicPlayer.play.at", options.at, this.audio.currentTime);
     finite("MusicPlayer.play.fade", options.fade ?? 0, 0, 30);
     this.stop();
-    this.pending = { score, options: { ...options } };
+    const pending = { ...options };
+    // Resume shifts a pending start by the whole pause, so count `at` from
+    // the paused position, as setParameter does.
+    if (pending.at !== undefined)
+      pending.at -= this.audio.currentTime - this.controlTime;
+    this.pending = { score, options: pending };
     this.reconcilePause();
     if (
       this.pauseTime === undefined &&
       (this.audio.isUnlocked() || options.at !== undefined)
-    )
-      this.startPending(this.audio.currentTime);
+    ) {
+      const now = this.audio.currentTime;
+      this.startPending(now);
+      // Book the first window now. A main-thread stall right after this call,
+      // such as a scene's first render, would otherwise skip the opening notes.
+      this.tick(now, now + this.audio.lookahead);
+    }
   }
+  /**
+   * Start `song` at beat zero on the next bar (or `grid` beats) beyond the
+   * lookahead, crossfading over `fade` seconds (default 0.25). Returns the
+   * audio time of the change. With no song playing it starts `song` like
+   * `play()`, without a fade, and returns the current audio time. Throws
+   * while paused.
+   */
   transition(song: MusicSong, options: MusicTransitionOptions = {}): number {
     this.assertActive();
     if (this.pauseTime !== undefined)
@@ -114,6 +137,11 @@ export class MusicPlayer {
     this.transitionCount++;
     return at;
   }
+  /**
+   * Set a named 0–1 parameter, ramping over `duration` seconds (default 0.05).
+   * Layers mapped to it, including notes already booked, follow the ramp.
+   * Throws for a name no song or option declares.
+   */
   setParameter(
     name: string,
     value: number,
@@ -127,6 +155,7 @@ export class MusicPlayer {
     finite("MusicPlayer.setParameter.at", at, now);
     finite("MusicPlayer.setParameter.duration", duration, 0, 30);
     const known =
+      this.parameters.has(name) ||
       this.sessions.some((s) =>
         Object.values(s.score.song.tracks).some((t) => t.parameter === name),
       ) ||
@@ -221,6 +250,11 @@ export class MusicPlayer {
       options.grid ?? 0.5,
       this.audio.currentTime + this.audio.lookahead,
     );
+    const owner = this.current(at) ?? this.sessions.at(-1);
+    if (!owner)
+      throw new Error(
+        "MusicPlayer.cue: start and unlock music before scheduling a cue.",
+      );
     let note = options.note;
     if (options.followHarmony) {
       if (note === undefined)
@@ -242,19 +276,17 @@ export class MusicPlayer {
       }
       note = best;
     }
-    const owner = this.current(at) ?? this.sessions.at(-1);
-    if (!owner)
-      throw new Error(
-        "MusicPlayer.cue: start and unlock music before scheduling a cue.",
-      );
     return this.audio.play(source, {
       channel: owner.channel,
       at,
       volume: options.volume ?? 1,
       speed:
-        note === undefined ? 1 : 2 ** ((note - (options.rootNote ?? 60)) / 12),
+        note === undefined
+          ? 1
+          : 2 ** ((note - this.rootNoteOf(source, options.rootNote)) / 12),
     });
   }
+  /** The first grid line, `grid` quarter-note beats apart, at or after `time`. */
   quantize(grid = 1, time = this.audio.currentTime): number {
     const session = this.current(time) ?? this.sessions[0];
     if (!session) return time;
@@ -264,6 +296,7 @@ export class MusicPlayer {
       Math.max(0, Math.ceil((time - session.start) / step - 1e-9)) * step
     );
   }
+  /** Musical position at `time`, or null before a song starts. Frozen while paused. */
   position(time = this.audio.currentTime): MusicPosition | null {
     const t = this.pauseTime ?? time;
     const session = this.current(t);
@@ -273,10 +306,12 @@ export class MusicPlayer {
       beat,
       bar: Math.floor(beat / session.score.beatsPerBar),
       beatInBar: beat % session.score.beatsPerBar,
+      beatsPerBar: session.score.beatsPerBar,
       phase: beat % 1,
       bpm: session.score.bpm,
     };
   }
+  /** The authored chord at `time`, as MIDI pitches. Empty without harmony. */
   harmonyAt(time = this.audio.currentTime): readonly number[] {
     const session = this.current(time) ?? this.sessions[0];
     if (!session) return [];
@@ -289,10 +324,12 @@ export class MusicPlayer {
         .at(-1)?.chord ?? []),
     ];
   }
+  /** Stop the sounding and booked notes and hold the beat until `resume()`. */
   pause(): void {
     this.ownPaused = true;
     this.reconcilePause();
   }
+  /** Continue from the held beat with the next note. A channel pause still holds. */
   resume(): void {
     this.ownPaused = false;
     this.reconcilePause();
@@ -321,14 +358,17 @@ export class MusicPlayer {
       this.pauseTime = undefined;
     }
   }
+  /**
+   * Stop every note and forget the song, including one waiting for unlock.
+   * An explicit `pause()` stays in force: a later `play()` waits for `resume()`.
+   */
   stop(): void {
     for (const session of this.sessions)
       this.audio.removeChannel(session.channel);
     this.sessions.length = 0;
     this.pending = undefined;
-    this.pauseTime = undefined;
-    this.ownPaused = false;
   }
+  /** Stop playback and release the scheduler and pause subscriptions. */
   dispose(): void {
     if (this.disposed) return;
     this.stop();
@@ -336,6 +376,7 @@ export class MusicPlayer {
     this.unsubscribePause();
     this.disposed = true;
   }
+  /** State, song id, position, parameters and note counters for inspection. */
   getDiagnostics(): MusicDiagnostics {
     return {
       state: this.disposed
@@ -364,12 +405,22 @@ export class MusicPlayer {
   }
   private prepare(song: MusicSong): CompiledSong {
     const score = compileSong(song);
-    for (const [name, track] of Object.entries(score.song.tracks))
+    const tracks: Record<string, MusicTrack> = {};
+    for (const [name, track] of Object.entries(score.song.tracks)) {
       if (!this.audio.hasSound(track.source))
         throw new Error(
           `MusicTrack ${name}: missing sound "${typeof track.source === "string" ? track.source : track.source.path}".`,
         );
-    return score;
+      tracks[name] = {
+        ...track,
+        rootNote: this.rootNoteOf(track.source, track.rootNote),
+      };
+    }
+    return { ...score, song: { ...score.song, tracks } };
+  }
+  /** The authored root note, else the sound's registered one, else middle C. */
+  private rootNoteOf(source: SoundRef, authored: number | undefined): number {
+    return authored ?? this.audio.getSoundMetadata(source)?.rootNote ?? 60;
   }
   private begin(score: CompiledSong, start: number, fade: number): void {
     const parent = this.options.channel ?? "music";
@@ -457,7 +508,8 @@ export class MusicPlayer {
         );
         if (at >= Math.min(horizon, session.end)) {
           if (nominal >= session.end) break;
-          /* A later tick owns this note. */ if (at >= horizon) break;
+          // A later tick owns this note.
+          if (at >= horizon) break;
         }
         session.cursor++;
         if (at < now - 1e-6) {
@@ -475,11 +527,11 @@ export class MusicPlayer {
           speed:
             note.note === undefined
               ? 1
-              : 2 ** ((note.note - (track.rootNote ?? 60)) / 12),
+              : 2 ** ((note.note - track.rootNote!) / 12),
           loop: track.sustain ?? false,
         });
         const releaseAt = at + ((note.duration ?? 1) * 60) / score.bpm;
-        handle.release(releaseAt, track.release ?? 0.05);
+        handle.release({ at: releaseAt, duration: track.release ?? 0.05 });
         if (session.removeAt !== Infinity)
           handle.stop(
             Math.min(session.removeAt, releaseAt + (track.release ?? 0.05)),

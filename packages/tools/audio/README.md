@@ -24,11 +24,10 @@ Create `audio.config.json`:
   "sampleRate": 44100,
   "sounds": {
     "flute": {
-      "sound": { "instrument": "flute", "seed": 17, "volume": 0.3 },
-      "rootNote": 60
+      "sound": { "instrument": "flute", "seed": 17, "volume": 0.3 }
     },
     "kick": { "sound": { "instrument": "kick" } },
-    "organ": { "sound": { "instrument": "organ" }, "rootNote": 60 }
+    "organ": { "sound": { "instrument": "organ" } }
   },
   "include": ["flute", "kick"]
 }
@@ -39,8 +38,13 @@ instruments used by gameplay cues as well as song tracks. The tool does not
 analyze game source to discover references.
 
 Each `sound` accepts a synth instrument, patch, array of patches, or jingle.
-`rootNote` describes the rendered sample's MIDI pitch; it does not retune the
-sample. Set the instrument's `frequency` when rendering a different root pitch.
+The manifest records a pitched instrument's MIDI pitch as `rootNote`, derived
+from its `frequency` (default middle C, 60). Drums and noise have none, except
+the tom, which records its fixed pitch, 43. A
+`rootNote` in the config overrides the derived value, for example for a patch;
+it describes the sample and does not retune it. Aliases that render the same
+audio share one file and must agree on `rootNote`. Set the instrument's
+`frequency` to render a different root pitch.
 
 The output contains mono PCM16 WAV files and `manifest.json`. Identical
 resources share one file. Filenames contain a hash of the WAV bytes.
@@ -58,8 +62,30 @@ yage-audio build audio.config.json --out public/audio --watch
 ```
 
 Watch mode rebuilds when the JSON file changes, including atomic file saves.
-After a failed rebuild it reports the error and continues watching.
+After a failed build, including the first one, it reports the error and
+continues watching.
 Reload the game to load a rebuilt bank.
+
+## Custom instruments
+
+A config can name an instrument the game defines with `defineInstrument` from
+`@yagejs-addons/synth/render`. Pass the module that exports it:
+
+```sh
+npm install -D vite
+yage-audio build audio.config.json --out public/audio --instruments src/audio/instruments.ts
+yage-audio instruments --instruments src/audio/instruments.ts
+```
+
+The tool imports the module through the project's Vite, with the Vite config
+in the working directory, so aliases, extensionless imports and modules split
+across files resolve as they do in the game. `vite` is an optional peer
+dependency; without it, `--instruments` fails with an error that names the
+fix. The module runs in Node, so it must not use browser globals such as
+`window` when it is imported. Every exported instrument definition joins the
+25 built-ins, and an
+export named like a built-in replaces it. With `--watch`, an edit to the
+module or to a file it imports also rebuilds the bank.
 
 `inspect` checks resource hashes, WAV metadata and missing files. It reports
 alias count, unique files, WAV bytes and estimated decoded float32 bytes at
@@ -87,7 +113,9 @@ await buildAudioBank(
 `renderAudioBank(config)` returns `{ manifest, files }`; each file has a
 `file` name and `Uint8Array` data. `parseAudioBankConfig(unknown)` validates
 and copies configuration. `listAudioInstruments()` returns the shared
-instrument names.
+instrument names. Each takes an instrument set, such as
+`{ ...synthInstruments, hat }`, for a game's own instruments, and
+`buildAudioBank` takes it as `instruments`.
 
 Configuration accepts 1–128 sounds, integer sample rates from 8000 to 96000,
 up to 32 patches per layered sound, and up to 256 jingle notes. Patches allow

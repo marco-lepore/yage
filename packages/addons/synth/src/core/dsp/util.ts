@@ -4,14 +4,6 @@
  * on plain Float32Arrays and never touches WebAudio, so it runs in Node.
  */
 
-/** A rendered mono sample, optionally with a seamless sustain loop (sample indices). */
-export interface Rendered {
-  readonly data: Float32Array;
-  readonly sampleRate: number;
-  readonly loopStart?: number;
-  readonly loopEnd?: number;
-}
-
 export const TWO_PI = Math.PI * 2;
 
 const SINE_BITS = 12;
@@ -33,6 +25,18 @@ export function sinCycles(phase: number): number {
   const a = SINE_TABLE[i & SINE_MASK]!;
   const b = SINE_TABLE[(i & SINE_MASK) + 1]!;
   return a + (b - a) * f;
+}
+
+/** Throws unless every named value is a positive finite number. */
+export function requirePositive(
+  method: string,
+  values: Readonly<Record<string, number>>,
+): void {
+  for (const [name, value] of Object.entries(values))
+    if (!(Number.isFinite(value) && value > 0))
+      throw new Error(
+        `${method}: ${name} must be a positive finite number, got ${value}`,
+      );
 }
 
 export function samples(seconds: number, sr: number): number {
@@ -63,7 +67,7 @@ export function normalize(buf: Float32Array, target = 0.9): Float32Array {
 
 /**
  * Transparent below `ceiling * 0.7`, then a smooth knee that never exceeds
- * `ceiling`. Used as the last stage of every renderer.
+ * `ceiling`. A peak of 0.9 comes out at about 0.87.
  */
 export function limit(buf: Float32Array, ceiling = 0.97): Float32Array {
   const knee = ceiling * 0.7;
@@ -88,6 +92,7 @@ export function saturate(buf: Float32Array, drive: number): Float32Array {
   return buf;
 }
 
+/** Linear fade from silence over the first `n` samples. */
 export function fadeIn(buf: Float32Array, n: number): Float32Array {
   const len = Math.min(n, buf.length);
   for (let i = 0; i < len; i++) buf[i] = buf[i]! * (i / len);

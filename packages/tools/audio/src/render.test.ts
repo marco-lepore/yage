@@ -2,15 +2,22 @@ import { synthInstruments } from "@yagejs-addons/synth/instruments";
 import { it, expect } from "vitest";
 import { renderAudioBank, listAudioInstruments } from "./render.js";
 import { parseAudioBankConfig } from "./config.js";
-import { renderSynthSample } from "@yagejs-addons/synth/render";
+import {
+  defineInstrument,
+  limit,
+  normalize,
+  renderMetal,
+  renderSynthSample,
+  renderString,
+} from "@yagejs-addons/synth/render";
 
 const sound = { instrument: "flute" as const, seed: 17 };
 const config = {
   version: 1,
   sampleRate: 8000,
   sounds: {
-    lead: { sound, rootNote: 60 },
-    same: { sound, rootNote: 72 },
+    lead: { sound },
+    same: { sound },
     unused: { sound: { instrument: "organ" } },
   },
   include: ["lead", "same"],
@@ -20,7 +27,9 @@ it("exports only selected sounds, deduplicates audio and preserves tuning and su
   expect(Object.keys(bank.manifest.sounds)).toEqual(["lead", "same"]);
   expect(bank.files).toHaveLength(1);
   expect(bank.manifest.sounds.lead?.file).toBe(bank.manifest.sounds.same?.file);
-  expect(bank.manifest.sounds.same?.rootNote).toBe(72);
+  // The flute renders at middle C.
+  expect(bank.manifest.sounds.lead?.rootNote).toBe(60);
+  expect(bank.manifest.sounds.same?.rootNote).toBe(60);
   const original = renderSynthSample(sound, 8000, synthInstruments);
   expect(bank.manifest.sounds.lead?.loopStart).toBe(original.loopStart);
   expect(bank.manifest.sounds.lead?.loopEnd).toBe(original.loopEnd);
@@ -43,7 +52,7 @@ it("produces identical files across builds and config key order", async () => {
     include: ["same", "lead"],
     sounds: {
       ...config.sounds,
-      same: { sound: { seed: 17, instrument: "flute" }, rootNote: 72 },
+      same: { sound: { seed: 17, instrument: "flute" } },
     },
   });
   expect(a).toEqual(b);
@@ -82,4 +91,83 @@ it("rejects clipping instead of silently changing the authored gain", async () =
       },
     }),
   ).rejects.toThrow("clipped");
+});
+it("derives root notes from instrument frequencies and leaves drums unpitched", async () => {
+  const bank = await renderAudioBank({
+    version: 1,
+    sampleRate: 8000,
+    sounds: {
+      bass: { sound: { instrument: "bass", frequency: 130.812783 } },
+      kick: { sound: { instrument: "kick" } },
+    },
+  });
+  expect(bank.manifest.sounds.bass?.rootNote).toBe(48);
+  expect(bank.manifest.sounds.kick?.rootNote).toBeUndefined();
+});
+it("lets a config rootNote override the derived pitch but not split one file", async () => {
+  const bank = await renderAudioBank({
+    version: 1,
+    sampleRate: 8000,
+    sounds: { lead: { sound, rootNote: 72 } },
+  });
+  expect(bank.manifest.sounds.lead?.rootNote).toBe(72);
+  await expect(
+    renderAudioBank({
+      version: 1,
+      sampleRate: 8000,
+      sounds: { lead: { sound }, same: { sound, rootNote: 72 } },
+    }),
+  ).rejects.toThrow('renders the same audio as "lead"');
+});
+
+const harp = defineInstrument("harp", (frequency, sampleRate, seed) =>
+  limit(
+    normalize(
+      renderString(
+        {
+          frequency,
+          duration: 0.4,
+          t60: 0.3,
+          brightness: 0.6,
+          pickPosition: 0.3,
+          seed,
+        },
+        sampleRate,
+      ),
+    ),
+  ),
+);
+const hat = defineInstrument(
+  "hat",
+  (_frequency, sampleRate, seed) =>
+    limit(
+      normalize(
+        renderMetal(
+          { duration: 0.1, t60: 0.04, frequencyScale: 1.9, seed },
+          sampleRate,
+        ),
+      ),
+    ),
+  { pitched: false },
+);
+it("exports custom instruments from a supplied bank", async () => {
+  const instruments = { ...synthInstruments, harp, hat };
+  const custom = {
+    version: 1,
+    sampleRate: 8000,
+    sounds: {
+      pluck: { sound: { instrument: "harp", frequency: 220 } },
+      tick: { sound: { instrument: "hat" } },
+      flute: { sound: { instrument: "flute" } },
+    },
+  };
+  const bank = await renderAudioBank(custom, { instruments });
+  expect(bank.manifest.sounds.pluck?.rootNote).toBe(57);
+  expect(bank.manifest.sounds.tick?.rootNote).toBeUndefined();
+  expect(bank.manifest.sounds.flute?.rootNote).toBe(60);
+  expect(listAudioInstruments(instruments)).toEqual(
+    expect.arrayContaining(["flute", "harp", "hat"]),
+  );
+  // Without the bank, the config names an unknown instrument.
+  await expect(renderAudioBank(custom)).rejects.toThrow("pluck");
 });

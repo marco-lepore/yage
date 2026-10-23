@@ -8,7 +8,7 @@
  * the felt hammer a soft knock, and the speaker rolls off the top.
  */
 import { biquad, onePoleLP } from "./filters.js";
-import { Rng } from "./rng.js";
+import { seededRandom } from "../random.js";
 import {
   TWO_PI,
   dcBlock,
@@ -44,7 +44,7 @@ export function renderElectricPiano(
   seed: number,
   o: ElectricPianoOptions = {},
 ): Float32Array {
-  const rng = new Rng(seed);
+  const rng = seededRandom(seed);
   const t60 = electricPianoT60(freq);
   const duration = Math.min(o.maxDuration ?? Infinity, 3.4, 0.45 * t60 + 0.6);
   const n = samples(duration, sr);
@@ -66,13 +66,13 @@ export function renderElectricPiano(
   const attackN = Math.max(1, Math.round(0.0015 * sr));
   const wobRate = o.wobble ? o.wobble[0] / sr : 0;
   const wobCents = o.wobble ? o.wobble[1] : 0;
-  const wobPhase = rng.next();
+  const wobPhase = rng();
 
   let slow = 1;
   let fast = 1;
   let index = 1;
   let ding = 1;
-  let p = rng.next();
+  let p = rng();
   for (let i = 0; i < n; i++) {
     const a = i < attackN ? 0.5 - 0.5 * Math.cos((Math.PI * i) / attackN) : 1;
     const body = sinCycles(
@@ -98,7 +98,7 @@ export function renderElectricPiano(
   const knockN = Math.min(n, samples(0.008, sr));
   const knock = new Float32Array(knockN);
   for (let i = 0; i < knockN; i++)
-    knock[i] = (rng.next() * 2 - 1) * Math.exp((-5 * i) / knockN);
+    knock[i] = (rng() * 2 - 1) * Math.exp((-5 * i) / knockN);
   onePoleLP(knock, Math.min(2400, freq * 6), sr);
   for (let i = 0; i < knockN; i++) out[i] = out[i]! + 0.2 * knock[i]!;
 
@@ -110,7 +110,7 @@ export function renderElectricPiano(
 
   if (o.tremolo) {
     const [hz, depth] = o.tremolo;
-    const ph = rng.next();
+    const ph = rng();
     for (let i = 0; i < n; i++)
       out[i] =
         out[i]! * (1 - depth * (0.5 + 0.5 * sinCycles((hz * i) / sr + ph)));

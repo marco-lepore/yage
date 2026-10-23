@@ -3,8 +3,6 @@ import { renderShaker } from "../core/dsp/drums.js";
 
 export const shaker = /* @__PURE__ */ defineInstrument(
   "shaker",
-  (_frequency, sampleRate, seed) => ({
-    data: renderShaker(sampleRate, seed),
-    sampleRate,
-  }),
+  (_frequency, sampleRate, seed) => renderShaker(sampleRate, seed),
+  { pitched: false },
 );

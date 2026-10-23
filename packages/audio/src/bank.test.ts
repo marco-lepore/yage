@@ -2,7 +2,7 @@ import { beforeEach, it, expect, vi, afterEach } from "vitest";
 import { AssetManager, AssetManagerKey, EngineContext } from "@yagejs/core";
 import { soundBank, parseSoundBankManifest } from "./bank.js";
 import { AudioPlugin } from "./AudioPlugin.js";
-import { getSound, getSoundLoop, clearRegisteredSounds } from "./assets.js";
+import { getSound, getSoundMetadata, clearRegisteredSounds } from "./assets.js";
 import { fakeBuffer, FakeAudioContext } from "./test-helpers.js";
 
 const manifest = {
@@ -51,9 +51,10 @@ it("loads loop metadata through the shared asset loader and retains it until the
   await assets.loadAll(handles);
   await assets.loadAll(handles);
   expect(decode).toHaveBeenCalledOnce();
-  expect(getSoundLoop("/music/flute.wav")).toEqual({
+  expect(getSoundMetadata("/music/flute.wav")).toEqual({
     loopStart: 0.6,
     loopEnd: 1.8,
+    rootNote: 60,
   });
   await assets.unload(handles[0]!);
   expect(getSound("/music/flute.wav")).toBeDefined();
@@ -79,4 +80,41 @@ it("copies metadata and rejects invalid loops or paths before loading", () => {
         },
       }),
     ).toThrow();
+});
+it("accepts a hand-written manifest that lists only files, loops and root notes", () => {
+  const bank = soundBank(
+    {
+      version: 1,
+      sampleRate: 44100,
+      sounds: {
+        hit: { file: "hit.wav" },
+        pad: { file: "pad.wav", rootNote: 57, loopStart: 0.5, loopEnd: 1.5 },
+      },
+    },
+    "/sfx/",
+  );
+  expect(bank.sounds.hit!.path).toBe("/sfx/hit.wav");
+  expect(bank.sounds.pad!.data).toEqual({
+    loopStart: 0.5,
+    loopEnd: 1.5,
+    rootNote: 57,
+  });
+  expect(() =>
+    parseSoundBankManifest({
+      version: 1,
+      sampleRate: 44100,
+      sounds: { pad: { file: "pad.wav", loopStart: 1 } },
+    }),
+  ).toThrow("loopEnd");
+  // One file loads once, so two entries cannot give it two root notes.
+  expect(() =>
+    parseSoundBankManifest({
+      version: 1,
+      sampleRate: 44100,
+      sounds: {
+        low: { file: "pad.wav", rootNote: 57 },
+        high: { file: "pad.wav", rootNote: 69 },
+      },
+    }),
+  ).toThrow("conflicting metadata");
 });

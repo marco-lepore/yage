@@ -7,7 +7,7 @@ import type {
   ChannelConfig,
 } from "@yagejs/audio";
 import { AudioTimeline } from "@yagejs/audio";
-import type { AudioAutomationOptions } from "@yagejs/audio";
+import type { AudioAutomationOptions, SoundMetadata } from "@yagejs/audio";
 import { MusicPlayer } from "./MusicPlayer.js";
 import { compileSong, musicSwingBeat, musicBeatsPerBar } from "./core/score.js";
 import type { MusicSong } from "./core/types.js";
@@ -38,8 +38,12 @@ class AudioPort {
   stopChannel = vi.fn();
   pauseChannel = vi.fn();
   resumeChannel = vi.fn();
+  metadata = new Map<SoundRef, SoundMetadata>();
   hasSound(source: SoundRef): boolean {
     return source !== "missing";
+  }
+  getSoundMetadata(source: SoundRef): SoundMetadata | undefined {
+    return this.metadata.get(source);
   }
   isUnlocked(): boolean {
     return this.unlocked;
@@ -113,7 +117,12 @@ it("uses actual three-beat measures and eighth-note swing", () => {
   p.play(song, { at: 0 });
   audio.tick(0, 1.6);
   expect(audio.notes.map((n) => n.options.at)).toEqual([0, 1 / 3, 1, 1.5]);
-  expect(p.position(1.5)).toMatchObject({ bar: 1, beatInBar: 0, bpm: 120 });
+  expect(p.position(1.5)).toMatchObject({
+    bar: 1,
+    beatInBar: 0,
+    beatsPerBar: 3,
+    bpm: 120,
+  });
 });
 it("waits for unlock, lets the latest play request replace pending intent, and cancels it on stop", () => {
   audio.unlocked = false;
@@ -139,13 +148,80 @@ it("maps named parameters to layer gains and rejects unknown names before mutati
   audio.currentTime = 0.05;
   expect(p.getDiagnostics().parameters).toEqual({ intensity: 0.6 });
 });
+it("accepts a configured parameter while stopped", () => {
+  const p = new MusicPlayer(audio.asManager(), {
+    parameters: { intensity: 0.2 },
+  });
+  p.setParameter("intensity", 0.9, { duration: 0 });
+  expect(p.getDiagnostics().parameters).toEqual({ intensity: 0.9 });
+  expect(() => p.setParameter("typo", 0.5)).toThrow("typo");
+});
+it("reports a cue before the song starts as missing music", () => {
+  audio.unlocked = false;
+  const p = new MusicPlayer(audio.asManager());
+  p.play(song);
+  expect(() => p.cue("keys", { note: 64, followHarmony: true })).toThrow(
+    "start and unlock music",
+  );
+});
+it("books the opening notes when play starts", () => {
+  const p = new MusicPlayer(audio.asManager());
+  p.play(song);
+  // No scheduler tick has run; the first note is already booked.
+  expect(audio.notes.map((n) => n.options.at)).toEqual([0.03]);
+  audio.tick(0.05, 0.6);
+  expect(audio.notes.map((n) => n.options.at)).toEqual([0.03, 0.03 + 1 / 3]);
+  expect(p.getDiagnostics().droppedNotes).toBe(0);
+});
+it("tunes tracks and cues from the sound's registered root note", () => {
+  audio.metadata.set("keys", { rootNote: 48 });
+  const p = new MusicPlayer(audio.asManager());
+  p.play(song, { at: 0 });
+  audio.tick(0, 0.1);
+  // Note 60 on a sample pitched at 48 plays an octave up.
+  expect(audio.notes[0]?.options.speed).toBeCloseTo(2);
+  audio.currentTime = 0.9;
+  p.cue("keys", { note: 48 });
+  expect(audio.notes.at(-1)?.options.speed).toBeCloseTo(1);
+  p.cue("keys", { note: 48, rootNote: 60 });
+  expect(audio.notes.at(-1)?.options.speed).toBeCloseTo(0.5);
+});
+it("keeps an explicit pause when a new song is requested", () => {
+  const p = new MusicPlayer(audio.asManager());
+  p.play(song, { at: 0 });
+  audio.tick(0, 0.1);
+  const booked = audio.notes.length;
+  p.pause();
+  p.play({ ...song, id: "next" });
+  audio.tick(0.5, 0.7);
+  expect(audio.notes.length).toBe(booked);
+  expect(p.getDiagnostics()).toMatchObject({ state: "paused", song: "next" });
+  expect(() => p.transition(song)).toThrow("resume");
+  p.resume();
+  audio.tick(0.6, 0.8);
+  expect(audio.notes.length).toBeGreaterThan(booked);
+  expect(p.getDiagnostics()).toMatchObject({ state: "playing", song: "next" });
+});
+it("keeps an explicit start time relative to the request when paused", () => {
+  const p = new MusicPlayer(audio.asManager());
+  p.play(song, { at: 0 });
+  p.pause();
+  audio.currentTime = 10;
+  p.play({ ...song, id: "next" }, { at: 12 });
+  audio.currentTime = 11;
+  const booked = audio.notes.length;
+  p.resume();
+  audio.tick(11, 14);
+  // Two seconds after the request, counted in unpaused time: 11 + 2.
+  expect(audio.notes.slice(booked)[0]?.options.at).toBe(13);
+});
 it("quantizes cues and follows the harmony at their future time", () => {
   const p = new MusicPlayer(audio.asManager());
   p.play(song, { at: 0 });
   audio.currentTime = 0.9;
   p.cue("keys", { note: 64, followHarmony: true });
-  expect(audio.notes[0]?.options.at).toBe(1.25);
-  expect(audio.notes[0]?.options.speed).toBeCloseTo(2 ** (5 / 12));
+  expect(audio.notes.at(-1)?.options.at).toBe(1.25);
+  expect(audio.notes.at(-1)?.options.speed).toBeCloseTo(2 ** (5 / 12));
 });
 it("transitions at the bar boundary and starts the destination at beat zero", () => {
   const p = new MusicPlayer(audio.asManager());
@@ -170,10 +246,10 @@ it("reproduces humanization and retains event identity after dropped notes", () 
 it("reports missed notes without playing a catch-up burst", () => {
   const p = new MusicPlayer(audio.asManager());
   p.play(song, { at: 0 });
+  // play() books the opening note; the late tick skips the 29 notes after it.
   audio.tick(15, 15.1);
-  expect(audio.notes).toHaveLength(1);
-  expect(audio.notes[0]?.options.at).toBe(15);
-  expect(p.getDiagnostics().droppedNotes).toBe(30);
+  expect(audio.notes.map((n) => n.options.at)).toEqual([0, 15]);
+  expect(p.getDiagnostics().droppedNotes).toBe(29);
 });
 it("pauses at the same beat and cancels booked voices before resuming", () => {
   const p = new MusicPlayer(audio.asManager());

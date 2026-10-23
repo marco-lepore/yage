@@ -1,14 +1,20 @@
-import type { SynthInstrumentBank } from "./instruments.js";
-import { renderSynthSound } from "./render.js";
+import type { SynthBankNames, SynthInstrumentBank } from "./instruments.js";
+import { isSynthInstrument, renderSynthSound } from "./render.js";
 import { renderSynthInstrument, type SynthSample } from "./instruments.js";
 import type { SynthSound } from "./types.js";
 
-export function renderSynthSample(
-  sound: SynthSound,
+/**
+ * Render any sound to a sample. Instruments keep their sustain loop and root
+ * note; patches and jingles carry only samples.
+ */
+export function renderSynthSample<
+  Bank extends SynthInstrumentBank = SynthInstrumentBank,
+>(
+  sound: SynthSound<SynthBankNames<Bank>>,
   sampleRate = 44100,
-  instruments: SynthInstrumentBank = {},
+  instruments?: Bank,
 ): SynthSample {
-  return "instrument" in sound
+  return isSynthInstrument(sound)
     ? renderSynthInstrument(sound, sampleRate, instruments)
     : { samples: renderSynthSound(sound, sampleRate, instruments), sampleRate };
 }

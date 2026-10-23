@@ -1,35 +1,59 @@
 import { synthInstruments } from "@yagejs-addons/synth/instruments";
 import { renderSynthSample } from "@yagejs-addons/synth/render";
 import type {
-  SynthInstrumentName,
+  SynthInstrumentBank,
   SynthSample,
 } from "@yagejs-addons/synth/render";
-import { measureAudio, parseSoundBankManifest } from "@yagejs/audio";
-import type { SoundBankManifest, SoundBankEntry } from "@yagejs/audio";
+import { measureAudio } from "@yagejs/audio";
 import { parseAudioBankConfig } from "./config.js";
+import {
+  parseExportedManifest,
+  type ExportedSoundBankEntry,
+  type ExportedSoundBankManifest,
+} from "./manifest.js";
 import { encodeWav } from "./wav.js";
 
+/** One encoded WAV file of a rendered bank. */
 export interface AudioBankFile {
+  /** Content-hash filename, the same name the manifest lists. */
   readonly file: string;
   readonly data: Uint8Array;
 }
+/** A bank rendered in memory: the manifest plus each distinct WAV file. */
 export interface RenderedAudioBank {
-  readonly manifest: SoundBankManifest;
+  readonly manifest: ExportedSoundBankManifest;
   readonly files: readonly AudioBankFile[];
 }
-/** Catalogue names come from the same presets used by runtime rendering. */
-export function listAudioInstruments(): readonly SynthInstrumentName[] {
-  return Object.keys(synthInstruments) as SynthInstrumentName[];
+/** Options for `renderAudioBank` and `buildAudioBank`. */
+export interface AudioBankRenderOptions {
+  /** The instruments sounds may name. Default: the 25 built-in instruments. */
+  instruments?: SynthInstrumentBank;
+}
+/** The instrument names a config may use with `instruments`, sorted. */
+export function listAudioInstruments(
+  instruments: SynthInstrumentBank = synthInstruments,
+): readonly string[] {
+  return Object.values(instruments)
+    .map((definition) => definition.name)
+    .sort();
 }
 /** Render a bank in memory for export or preview. No filesystem or AudioContext. */
 export async function renderAudioBank(
   input: unknown,
+  options: AudioBankRenderOptions = {},
 ): Promise<RenderedAudioBank> {
-  const config = parseAudioBankConfig(input);
+  const instruments: SynthInstrumentBank =
+    options.instruments ?? synthInstruments;
+  const config = parseAudioBankConfig(input, instruments);
   const sampleRate = config.sampleRate!;
-  const sounds: Record<string, SoundBankEntry> = {};
+  const sounds: Record<string, ExportedSoundBankEntry> = {};
   const files = new Map<string, AudioBankFile>();
-  const rendered = new Map<string, SoundBankEntry>();
+  const rendered = new Map<string, ExportedSoundBankEntry>();
+  // A file loads once per path, so every alias of one file shares its metadata.
+  const roots = new Map<
+    string,
+    { alias: string; rootNote: number | undefined }
+  >();
   for (const alias of [
     ...(config.include ?? Object.keys(config.sounds)),
   ].sort()) {
@@ -38,11 +62,7 @@ export async function renderAudioBank(
     let entry = rendered.get(key);
     if (!entry) {
       try {
-        const sample = renderSynthSample(
-          spec.sound,
-          sampleRate,
-          synthInstruments,
-        );
+        const sample = renderSynthSample(spec.sound, sampleRate, instruments);
         entry = await exportSample(sample, files);
       } catch (error) {
         throw new Error(
@@ -52,25 +72,30 @@ export async function renderAudioBank(
       }
       rendered.set(key, entry);
     }
+    // An explicit config value overrides the instrument's own pitch.
+    const rootNote = spec.rootNote ?? entry.rootNote;
+    const shared = roots.get(entry.file);
+    if (shared && shared.rootNote !== rootNote)
+      throw new Error(
+        `AudioBank ${alias}: renders the same audio as "${shared.alias}" with a different rootNote (${String(rootNote)}, not ${String(shared.rootNote)}). Give one of them a different sound or the same rootNote.`,
+      );
+    roots.set(entry.file, { alias, rootNote });
     Object.defineProperty(sounds, alias, {
       enumerable: true,
       configurable: true,
       writable: true,
-      value: {
-        ...entry,
-        ...(spec.rootNote === undefined ? {} : { rootNote: spec.rootNote }),
-      },
+      value: rootNote === undefined ? { ...entry } : { ...entry, rootNote },
     });
   }
   return {
-    manifest: parseSoundBankManifest({ version: 1, sampleRate, sounds }),
+    manifest: parseExportedManifest({ version: 1, sampleRate, sounds }),
     files: [...files.values()].sort((a, b) => a.file.localeCompare(b.file)),
   };
 }
 async function exportSample(
   sample: SynthSample,
   files: Map<string, AudioBankFile>,
-): Promise<SoundBankEntry> {
+): Promise<ExportedSoundBankEntry> {
   const metrics = measureAudio([sample.samples], sample.sampleRate);
   if (metrics.nonFiniteSamples || metrics.clippedSamples)
     throw new Error(
@@ -90,6 +115,7 @@ async function exportSample(
     samplePeak: metrics.samplePeak,
     rms: metrics.rms,
     clippedSamples: metrics.clippedSamples,
+    ...(sample.rootNote === undefined ? {} : { rootNote: sample.rootNote }),
     ...(sample.loopStart === undefined
       ? {}
       : { loopStart: sample.loopStart, loopEnd: sample.loopEnd! }),

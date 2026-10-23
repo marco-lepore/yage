@@ -1,6 +1,6 @@
-import { Rng } from "./rng.js";
+import { seededRandom } from "../random.js";
 import { sinCycles, normalize, prepareTonalLoop } from "./util.js";
-import type { Rendered } from "./util.js";
+import type { SynthRenderLoop } from "../defineInstrument.js";
 
 interface AdditiveNote {
   readonly frequency: number;
@@ -44,9 +44,11 @@ function renderAdditiveNote({
     seed < 0 ||
     seed > 0xffffffff
   ) {
-    throw new Error("renderAdditiveNote: invalid note parameters");
+    throw new Error(
+      `renderAdditive: expected sampleRate 8000–96000, frequency 20–min(4000, sampleRate/4) and a uint32 seed, got sampleRate ${sampleRate}, frequency ${frequency}, seed ${seed}.`,
+    );
   }
-  const rng = new Rng(seed);
+  const rng = seededRandom(seed);
   const output = new Float32Array(Math.round(duration * sampleRate));
   const harmonics = harmonicWeights
     .map((weight, i) => ({
@@ -57,10 +59,10 @@ function renderAdditiveNote({
     .filter(({ order }) => order * frequency < sampleRate * 0.45);
   const attack = 0.045 - 0.018 * velocity;
   const release = Math.min(0.1, duration / 4);
-  const vibratoPhase = rng.next();
+  const vibratoPhase = rng();
   const wanderSpan = Math.max(1, Math.round(sampleRate * 0.09));
-  let previousWander = rng.next() * 2 - 1;
-  let nextWander = rng.next() * 2 - 1;
+  let previousWander = rng() * 2 - 1;
+  let nextWander = rng() * 2 - 1;
   let phase = 0;
 
   // Difference of two moving averages gives finite-duration noise filtering.
@@ -75,7 +77,7 @@ function renderAdditiveNote({
     const t = i / sampleRate;
     if (i > 0 && i % wanderSpan === 0) {
       previousWander = nextWander;
-      nextWander = rng.next() * 2 - 1;
+      nextWander = rng() * 2 - 1;
     }
     const wander =
       previousWander +
@@ -97,7 +99,7 @@ function renderAdditiveNote({
         weight * partialAttack * partialBrightness * sinCycles(order * phase);
     }
 
-    const noise = rng.next() * 2 - 1;
+    const noise = rng() * 2 - 1;
     const fastRead = (write - fastLength + slowLength) % slowLength;
     fastSum += noise - noiseHistory[fastRead]!;
     slowSum += noise - noiseHistory[write]!;
@@ -127,14 +129,25 @@ function renderAdditiveNote({
   return output;
 }
 
-/** A two-second sample with a sustain region, in sample indices. */
-export function renderAdditiveInstrument(
-  harmonics: readonly number[],
-  breath: boolean,
-  frequency: number,
+/** Options for `renderAdditive`. */
+export interface SynthAdditiveOptions {
+  /** Fundamental in Hz. */
+  readonly frequency: number;
+  readonly seed: number;
+  /** Relative amplitude of harmonic 1, 2, 3, … */
+  readonly harmonics: readonly number[];
+  /** Breath noise, vibrato and pitch wander, as in a wind instrument. False for an organ. */
+  readonly breath: boolean;
+}
+
+/**
+ * A two-second sustained note built from harmonics, with a phase-matched
+ * sustain loop in sample indices. Normalised to 0.9.
+ */
+export function renderAdditive(
+  { frequency, seed, harmonics, breath }: SynthAdditiveOptions,
   sampleRate: number,
-  seed: number,
-): Rendered {
+): SynthRenderLoop {
   const data = renderAdditiveNote({
     harmonics,
     breath,
@@ -153,5 +166,5 @@ export function renderAdditiveInstrument(
     Math.round(0.04 * sampleRate),
   );
   normalize(data, 0.9);
-  return { data, sampleRate, loopStart, loopEnd };
+  return { samples: data, loopStart, loopEnd };
 }

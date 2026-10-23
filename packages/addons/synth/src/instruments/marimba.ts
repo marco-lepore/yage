@@ -3,8 +3,5 @@ import { renderMarimba } from "../core/dsp/mallet.js";
 
 export const marimba = /* @__PURE__ */ defineInstrument(
   "marimba",
-  (frequency, sampleRate, seed) => ({
-    data: renderMarimba(frequency, sampleRate, seed),
-    sampleRate,
-  }),
+  (frequency, sampleRate, seed) => renderMarimba(frequency, sampleRate, seed),
 );

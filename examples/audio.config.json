@@ -5,26 +5,28 @@
     "keys": {
       "sound": {
         "instrument": "electricPiano"
-      },
-      "rootNote": 60
+      }
     },
     "bass": {
       "sound": {
         "instrument": "bass",
         "frequency": 130.812783
-      },
-      "rootNote": 48
+      }
     },
     "kick": {
       "sound": {
         "instrument": "kick"
       }
     },
+    "hat": {
+      "sound": {
+        "instrument": "hat"
+      }
+    },
     "bell": {
       "sound": {
         "instrument": "glassBell"
-      },
-      "rootNote": 60
+      }
     },
     "wind": {
       "sound": {
@@ -35,26 +37,24 @@
       "sound": {
         "instrument": "flute",
         "frequency": 523.251131
-      },
-      "rootNote": 72
+      }
     },
     "clarinet": {
       "sound": {
         "instrument": "clarinet"
-      },
-      "rootNote": 60
+      }
     },
     "organ": {
       "sound": {
         "instrument": "organ"
-      },
-      "rootNote": 60
+      }
     }
   },
   "include": [
     "keys",
     "bass",
     "kick",
+    "hat",
     "bell",
     "wind",
     "flute",

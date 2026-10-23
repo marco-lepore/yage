@@ -1,4 +1,4 @@
-import type { SynthInstrumentBank } from "./instruments.js";
+import type { SynthBankNames, SynthInstrumentBank } from "./instruments.js";
 import type { SynthSound } from "./types.js";
 
 type Fields = Readonly<Record<string, (value: unknown, path: string) => void>>;
@@ -72,11 +72,13 @@ const patch: Fields = {
   seamless: choice([true, false]),
 };
 
-/** Parse portable sound data. Limits keep an individual preview bounded. */
-export function parseSynthSound(
-  value: unknown,
-  instruments: SynthInstrumentBank = {},
-): SynthSound {
+/**
+ * Parse portable sound data. An instrument descriptor must name a definition
+ * in `instruments`. Limits keep an individual preview bounded.
+ */
+export function parseSynthSound<
+  Bank extends SynthInstrumentBank = SynthInstrumentBank,
+>(value: unknown, instruments?: Bank): SynthSound<SynthBankNames<Bank>> {
   const path = "parseSynthSound";
   if (Array.isArray(value)) {
     if (!value.length || value.length > 32)
@@ -86,7 +88,9 @@ export function parseSynthSound(
     object(
       value,
       {
-        instrument: choice(Object.keys(instruments)),
+        instrument: choice(
+          Object.values(instruments ?? {}).map((definition) => definition.name),
+        ),
         frequency: number(20, 4000),
         seed,
         volume: number(0, 1),
@@ -136,5 +140,5 @@ export function parseSynthSound(
     if (duration > 60)
       throw new Error(`${path}: jingles must fit within 60 seconds.`);
   } else object(value, patch, path);
-  return structuredClone(value) as SynthSound;
+  return structuredClone(value) as SynthSound<SynthBankNames<Bank>>;
 }

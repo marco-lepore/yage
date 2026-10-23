@@ -4,10 +4,10 @@
  * low-pass, with a slow swell and a drifting chorus. The render holds the
  * swell and a seamless sustain loop.
  */
+import type { SynthRenderLoop } from "../defineInstrument.js";
 import { biquad } from "./filters.js";
-import { Rng } from "./rng.js";
+import { seededRandom } from "../random.js";
 import {
-  type Rendered,
   dcBlock,
   limit,
   normalize,
@@ -20,20 +20,24 @@ import {
 /** ln(2)/1200: small cent offsets as a linear frequency factor. */
 const CENT = Math.LN2 / 1200;
 
-export function renderPad(freq: number, sr: number, seed: number): Rendered {
+export function renderPad(
+  freq: number,
+  sr: number,
+  seed: number,
+): SynthRenderLoop {
   const loopStart = 1.0;
   const loopEnd = 3.4;
   const n = samples(loopEnd + 0.08, sr);
   const out = new Float32Array(n);
-  const rng = new Rng(seed);
+  const rng = seededRandom(seed);
   const sines = [
     { h: 1, a: 1 },
     { h: 2, a: 0.3 },
     { h: 3, a: 0.1 },
   ].filter((s) => freq * s.h < sr * 0.45);
-  const sinePhase = sines.map(() => rng.next());
+  const sinePhase = sines.map(() => rng());
   const sawDetune = [-7, 6];
-  const sawPhase = sawDetune.map(() => rng.next());
+  const sawPhase = sawDetune.map(() => rng());
   const attack = 0.5 * sr;
   const driftRate = 0.23 / sr;
   const driftDepth = 2.5 * CENT;
@@ -76,5 +80,5 @@ export function renderPad(freq: number, sr: number, seed: number): Rendered {
     samples(0.3, sr),
   );
   limit(out, 0.97);
-  return { data: out, sampleRate: sr, loopStart: ls, loopEnd: le };
+  return { samples: out, loopStart: ls, loopEnd: le };
 }

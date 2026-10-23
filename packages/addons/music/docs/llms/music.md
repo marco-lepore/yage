@@ -45,7 +45,8 @@ player, child channels, booked voices and scheduler subscription.
 - Swing `{ subdivision, amount }`: subdivision in quarter beats, amount 0–0.75.
   Delay the second subdivision by amount × subdivision. Eighth swing uses 0.5;
   amount 1/3 gives 2:1. Pattern length must contain whole subdivision pairs.
-- Track: source, notes, rootNote (MIDI 60), gain (1), pan (0), sustain (false),
+- Track: source, notes, rootNote (default: the sound's registered root note
+  from `getSoundMetadata`, else MIDI 60), gain (1), pan (0), sustain (false),
   release (0.05 seconds), parameter?, parameterRange? ([0,1]). The parameter
   maps linearly from silence to track gain, clamped at its endpoints.
 - Note: beat, optional MIDI note (omit for original sample rate), duration (1),
@@ -63,21 +64,27 @@ player, child channels, booked voices and scheduler subscription.
 No separate audio context, timer or music service is created.
 
 - `play(song, { at?, fade? }?)`: replace playback; omitted at starts after unlock
-  with a 30 ms lead. Explicit at is absolute audio time at or after now.
+  with a 30 ms lead. Explicit at is absolute audio time at or after now. When
+  it starts at once, it books the first lookahead window immediately. While the
+  player or its channel is paused, the new song waits for resume.
 - `transition(song, { grid?: number | "bar", fade?: number }?): number`:
   return scheduled time; default next bar beyond audio lookahead, fade 0.25 s.
   Destination starts at beat zero. Both songs retain their own meter and tempo.
+  With no song playing it behaves like `play(song)` without a fade and returns
+  the current audio time.
 - `setParameter(name, value, { at?, duration? }?)`: named layer gain update;
   default duration 0.05 s. It affects voices already booked on that layer.
 - `cue(source, { grid?, note?, rootNote?, volume?, followHarmony? }?)` returns
-  a SoundHandle. Default grid 0.5 quarter beats, rootNote 60, volume 1. With
+  a SoundHandle. Default grid 0.5 quarter beats, rootNote the source's
+  registered root note else 60, volume 1. With
   followHarmony, note is required and snaps to the nearest chord tone at the
   future cue time. Cue belongs to that song and stops with it.
 - `pause()` cancels sounding/booked notes and holds the beat. `resume()` resumes
   with the next note; it does not reconstruct notes that were already sounding.
-  Cue and transition reject while paused. `stop()` also clears pending intent.
-- `position(time?)`: beat, zero-based bar, beatInBar, phase, bpm, or null before
-  start. `harmonyAt(time?)` gives MIDI chord tones. `quantize(grid?, time?)`
+  Cue and transition reject while paused. `stop()` clears playback and pending
+  intent and keeps an explicit pause.
+- `position(time?)`: beat, zero-based bar, beatInBar, beatsPerBar, phase, bpm,
+  or null before start. `harmonyAt(time?)` gives MIDI chord tones. `quantize(grid?, time?)`
   returns an absolute audio time. These read-only queries expect valid times.
 - `getDiagnostics()`: state, song, position, parameters, scheduledNotes,
   droppedNotes, transitions. Seeded jitter stays reproducible after missed notes.

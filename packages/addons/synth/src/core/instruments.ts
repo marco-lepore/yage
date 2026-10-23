@@ -1,29 +1,3 @@
-export type SynthInstrumentName =
-  | "banjo"
-  | "bass"
-  | "uprightBass"
-  | "guzheng"
-  | "marimba"
-  | "kalimba"
-  | "glassBell"
-  | "vibraphone"
-  | "bell"
-  | "electricPiano"
-  | "pad"
-  | "flute"
-  | "clarinet"
-  | "organ"
-  | "kick"
-  | "brushTap"
-  | "brushSwish"
-  | "shaker"
-  | "rim"
-  | "clap"
-  | "ride"
-  | "cymbal"
-  | "tom"
-  | "pinkNoise"
-  | "brownNoise";
 export interface SynthInstrumentOptions {
   /** Root pitch in Hz. Default middle C; drums ignore pitch. */
   frequency?: number;
@@ -32,44 +6,79 @@ export interface SynthInstrumentOptions {
   /** Output multiplier, 0..1. Default 0.3. */
   volume?: number;
 }
-export interface SynthInstrument extends SynthInstrumentOptions {
-  instrument: SynthInstrumentName;
+/** Portable data naming an instrument; a bank resolves it to a definition. */
+export interface SynthInstrument<
+  Name extends string = string,
+> extends SynthInstrumentOptions {
+  instrument: Name;
 }
 export interface SynthSample {
   readonly samples: Float32Array;
   readonly sampleRate: number;
+  /**
+   * MIDI note of a pitched instrument's frequency, or the fixed pitch an
+   * unpitched instrument declares, such as the tom's 43. Absent otherwise.
+   */
+  readonly rootNote?: number;
   /** Sustain region in seconds. */
   readonly loopStart?: number;
   readonly loopEnd?: number;
 }
-export interface SynthInstrumentDefinition {
-  readonly name: SynthInstrumentName;
-  sound(options?: SynthInstrumentOptions): SynthInstrument;
+/** An instrument made with `defineInstrument`: a name plus a seeded renderer. */
+export interface SynthInstrumentDefinition<Name extends string = string> {
+  readonly name: Name;
+  /** False for drums and noise, which ignore `frequency`. */
+  readonly pitched: boolean;
+  /** Portable descriptor for this instrument, for plugin config, workers and build files. */
+  sound(options?: SynthInstrumentOptions): SynthInstrument<Name>;
+  /** Render one sample. Throws for out-of-range options. */
   render(options?: SynthInstrumentOptions, sampleRate?: number): SynthSample;
 }
-/** Only the instruments explicitly available to this renderer. */
+/**
+ * The instrument definitions a renderer may use. Keys are free: a descriptor
+ * resolves to the definition whose `name` equals its `instrument`.
+ */
 export type SynthInstrumentBank = Readonly<
-  Partial<Record<SynthInstrumentName, SynthInstrumentDefinition>>
+  Record<string, SynthInstrumentDefinition>
 >;
+/** The names a bank's definitions declare. `string` for a bank typed as `SynthInstrumentBank`. */
+export type SynthBankNames<Bank extends SynthInstrumentBank> =
+  Bank[keyof Bank]["name"];
 
 /** Resolve a descriptor using the caller's instrument set. */
 export function resolveSynthInstrument(
   sound: SynthInstrument,
   instruments: SynthInstrumentBank,
 ): SynthInstrumentDefinition {
-  const definition = Object.hasOwn(instruments, sound.instrument)
-    ? instruments[sound.instrument]
-    : undefined;
-  if (!definition || definition.name !== sound.instrument)
+  const matches = new Set(
+    Object.values(instruments).filter(
+      (definition) => definition.name === sound.instrument,
+    ),
+  );
+  if (matches.size > 1)
+    throw new Error(
+      `renderSynthInstrument: the instrument set has two definitions named "${sound.instrument}".`,
+    );
+  const [definition] = matches;
+  if (!definition)
     throw new Error(
       `renderSynthInstrument: instrument "${String(sound.instrument)}" is not registered.`,
     );
   return definition;
 }
-export function renderSynthInstrument(
-  sound: SynthInstrument,
+/**
+ * Render an instrument descriptor with a definition from `instruments`.
+ * Passing the bank as a literal checks the descriptor's name at compile time.
+ */
+export function renderSynthInstrument<
+  Bank extends SynthInstrumentBank = SynthInstrumentBank,
+>(
+  sound: SynthInstrument<SynthBankNames<Bank>>,
   sampleRate = 44100,
-  instruments: SynthInstrumentBank = {},
+  instruments?: Bank,
 ): SynthSample {
-  return resolveSynthInstrument(sound, instruments).render(sound, sampleRate);
+  return resolveSynthInstrument(sound, instruments ?? {}).render(
+    sound,
+    sampleRate,
+  );
 }

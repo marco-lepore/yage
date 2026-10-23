@@ -41,24 +41,25 @@ export type {
   SynthWave,
 } from "./core/types.js";
 
-// --- YAGE integration (L2) ---
-export { synthBuffer } from "./buffer.js";
-export type {
-  SynthPluginConfig,
-  SynthSoundEntry,
-  SynthVariantEntry,
-} from "./SynthPlugin.js";
-
 export { renderSynthInstrument } from "./core/instruments.js";
 export type {
+  SynthBankNames,
   SynthInstrument,
-  SynthInstrumentName,
   SynthInstrumentOptions,
   SynthInstrumentDefinition,
   SynthInstrumentBank,
   SynthSample,
 } from "./core/instruments.js";
-export { sampleBuffer } from "./sample.js";
 export { renderSynthSample } from "./core/sample.js";
 export { parseSynthSound } from "./core/parse.js";
+
+// --- YAGE integration (L2) ---
+export { synthBuffer } from "./buffer.js";
+export { sampleBuffer } from "./sample.js";
+export { SynthPlugin } from "./SynthPlugin.js";
+export type {
+  SynthPluginConfig,
+  SynthSoundEntry,
+  SynthVariantEntry,
+} from "./SynthPlugin.js";
 export type { SynthRenderDiagnostics } from "./renderBank.js";

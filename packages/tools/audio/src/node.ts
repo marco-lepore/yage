@@ -8,15 +8,19 @@ import {
 } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
-import { parseSoundBankManifest } from "@yagejs/audio";
-import type { SoundBankManifest } from "@yagejs/audio";
-import { renderAudioBank } from "./render.js";
+import {
+  parseExportedManifest,
+  type ExportedSoundBankManifest,
+} from "./manifest.js";
+import { renderAudioBank, type AudioBankRenderOptions } from "./render.js";
 
-export interface AudioBankBuildOptions {
+/** Options for `buildAudioBank`. */
+export interface AudioBankBuildOptions extends AudioBankRenderOptions {
+  /** Directory for the WAV files and `manifest.json`. */
   outDir: string;
 }
 export interface AudioBankInspection {
-  manifest: SoundBankManifest;
+  manifest: ExportedSoundBankManifest;
   aliases: number;
   files: number;
   wavBytes: number;
@@ -27,13 +31,19 @@ export interface AudioBankInspection {
 export async function buildAudioBank(
   input: unknown,
   options: AudioBankBuildOptions,
-): Promise<SoundBankManifest> {
+): Promise<ExportedSoundBankManifest> {
   if (!options.outDir.trim())
     throw new Error("buildAudioBank: outDir must not be empty.");
-  const bank = await renderAudioBank(input);
+  const bank = await renderAudioBank(input, options);
   await mkdir(options.outDir, { recursive: true });
   const lockPath = join(options.outDir, ".yage-audio.lock");
-  const lock = await open(lockPath, "wx");
+  const lock = await open(lockPath, "wx").catch((error: unknown) => {
+    if (!hasCode(error, "EEXIST")) throw error;
+    throw new Error(
+      `AudioBank: ${lockPath} exists. Another build is writing this directory, or an earlier build was interrupted; delete the lock file once no build is running.`,
+      { cause: error },
+    );
+  });
   const manifestPath = join(options.outDir, "manifest.json");
   const temporary = join(options.outDir, `.manifest-${randomUUID()}.json`);
   try {
@@ -43,15 +53,7 @@ export async function buildAudioBank(
       try {
         await writeFile(path, file.data, { flag: "wx" });
       } catch (error) {
-        if (
-          !(
-            error &&
-            typeof error === "object" &&
-            "code" in error &&
-            error.code === "EEXIST"
-          )
-        )
-          throw error;
+        if (!hasCode(error, "EEXIST")) throw error;
         if (!(await readFile(path)).equals(file.data))
           throw new Error(
             `AudioBank: existing resource ${file.file} is corrupt.`,
@@ -79,7 +81,7 @@ export async function buildAudioBank(
 export async function inspectAudioBank(
   manifestPath: string,
 ): Promise<AudioBankInspection> {
-  const manifest = parseSoundBankManifest(
+  const manifest = parseExportedManifest(
     JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
   );
   const files = new Map<string, { frames: number; bytes: number }>();
@@ -120,7 +122,7 @@ export async function inspectAudioBank(
 }
 async function readManifestIfPresent(
   path: string,
-): Promise<SoundBankManifest | undefined> {
+): Promise<ExportedSoundBankManifest | undefined> {
   let text: string;
   try {
     text = await readFile(path, "utf8");
@@ -128,16 +130,16 @@ async function readManifestIfPresent(
     ignoreMissing(error);
     return undefined;
   }
-  return parseSoundBankManifest(JSON.parse(text) as unknown);
+  return parseExportedManifest(JSON.parse(text) as unknown);
 }
 function ignoreMissing(error: unknown): void {
-  if (
-    !(
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "ENOENT"
-    )
-  )
-    throw error;
+  if (!hasCode(error, "ENOENT")) throw error;
+}
+function hasCode(error: unknown, code: string): boolean {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === code
+  );
 }

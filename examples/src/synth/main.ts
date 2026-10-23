@@ -27,17 +27,23 @@ import { AudioManagerKey, AudioPlugin } from "@yagejs/audio";
 import type { SoundHandle } from "@yagejs/audio";
 import {
   renderSynthSound,
+  SynthPlugin,
   synthPresets,
   synthVariantAliases,
+  type SynthInstrumentBank,
   type SynthSound,
   type SynthSoundEntry,
 } from "@yagejs-addons/synth";
-import { SynthPlugin } from "@yagejs-addons/synth/plugin";
 import { setupGameContainer } from "../shared/bootstrap.js";
+import { harp } from "./instruments.js";
 
 const WIDTH = 800;
 const HEIGHT = 300;
 const VARIANTS = 4;
+
+// Typed as a plain set because `pluginSounds()` builds the sounds from data;
+// the plugin checks the names when it installs.
+const INSTRUMENTS: SynthInstrumentBank = { harp };
 
 interface Pad {
   alias: string;
@@ -131,6 +137,12 @@ const PADS: Pad[] = [
       },
     ],
   },
+  // A game-defined instrument (see instruments.ts), played at G3.
+  {
+    alias: "harp",
+    label: "Harp (custom instrument)",
+    sound: harp.sound({ frequency: 196 }),
+  },
 ];
 
 function pluginSounds(): Record<string, SynthSoundEntry> {
@@ -207,7 +219,10 @@ class SynthBench extends Component {
   }
 
   onAdd(): void {
-    drawWaveform(this.waveform, renderSynthSound(PADS[0]?.sound ?? {}));
+    drawWaveform(
+      this.waveform,
+      renderSynthSound(PADS[0]?.sound ?? {}, undefined, INSTRUMENTS),
+    );
     this.addCleanup(() => {
       for (const handle of this.loops.values()) this.audio.stop(handle);
       this.loops.clear();
@@ -226,7 +241,10 @@ class SynthBench extends Component {
   }
 
   private play(pad: Pad, button: HTMLButtonElement): void {
-    drawWaveform(this.waveform, renderSynthSound(pad.sound));
+    drawWaveform(
+      this.waveform,
+      renderSynthSound(pad.sound, undefined, INSTRUMENTS),
+    );
     this.caption.setText(`${pad.label} — ${describe(pad)}`);
     if (pad.loop) {
       this.toggleLoop(pad, button);
@@ -311,7 +329,9 @@ async function main(): Promise<void> {
     }),
   );
   engine.use(new AudioPlugin());
-  engine.use(new SynthPlugin({ sounds: pluginSounds() }));
+  engine.use(
+    new SynthPlugin({ instruments: INSTRUMENTS, sounds: pluginSounds() }),
+  );
 
   await engine.start();
   await engine.scenes.push(new SynthScene());

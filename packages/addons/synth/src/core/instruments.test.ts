@@ -55,3 +55,12 @@ it("uses the supplied instrument set for parsing and generic sample rendering", 
   expect(() => renderSynthSample(sound)).toThrow('"flute" is not registered');
   expect(() => parseSynthSound({ instrument: "banjo" }, { flute })).toThrow();
 });
+
+it("reports the root note of pitched instruments only", () => {
+  expect(synthInstruments.flute.render({}, 8000).rootNote).toBe(60);
+  expect(
+    synthInstruments.bass.render({ frequency: 130.812783 }, 8000).rootNote,
+  ).toBe(48);
+  expect(synthInstruments.kick.render({}, 8000).rootNote).toBeUndefined();
+  expect(synthInstruments.kick.pitched).toBe(false);
+});

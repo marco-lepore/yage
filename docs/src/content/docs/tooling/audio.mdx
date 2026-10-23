@@ -25,11 +25,10 @@ Create `audio.config.json`:
   "sampleRate": 44100,
   "sounds": {
     "flute": {
-      "sound": { "instrument": "flute", "seed": 17, "volume": 0.3 },
-      "rootNote": 60
+      "sound": { "instrument": "flute", "seed": 17, "volume": 0.3 }
     },
     "kick": { "sound": { "instrument": "kick" } },
-    "organ": { "sound": { "instrument": "organ" }, "rootNote": 60 }
+    "organ": { "sound": { "instrument": "organ" } }
   },
   "include": ["flute", "kick"]
 }
@@ -51,8 +50,14 @@ pad, noise, and additive flute, clarinet and organ. A `sound` can also be a
 
 The output contains mono PCM16 WAV files and a manifest with tuning,
 sustain-loop points, sample peak and RMS. Identical audio shares one WAV.
-`rootNote` records the sample's MIDI pitch. It does not change the rendered
-pitch; set `sound.frequency` when choosing a different root.
+For a pitched instrument the manifest's `rootNote` is the MIDI pitch of its
+`frequency`: the default middle C is 60, and 523.25 Hz is 72. Drums and noise
+have no root note, except the tom, which records its fixed pitch, 43. A
+`rootNote` next to `sound` in the config overrides the derived value, for
+example for a patch. Aliases that render the same audio
+share one file, so they must agree on `rootNote`; the build fails otherwise.
+`rootNote` describes the sample and does not change the rendered pitch; set
+`sound.frequency` to render a different root.
 
 ## Load and play
 
@@ -85,17 +90,19 @@ await engine.scenes.push(new InstrumentScene());
 ```
 
 The browser may wait for a click or keypress before playing audio. The
-component stops its sound when its entity is removed. Scene preloading
-retains shared assets until the last scene using them releases them.
+component stops its sound when its entity is removed. Preloaded sounds stay
+loaded until code unloads their handles, as described in the
+[assets guide](/guides/assets/).
 
 `soundBank` performs no network work. It validates the manifest and returns
 handles. Its base directory URL must end in `/`; include your application's
 deployment prefix when it runs below the site root.
 
 Bank aliases such as `flute` are local lookup keys. Pass `bank.sounds.flute`
-to `AudioManager.play` or a music track's `source`. For a music track, copy
-`bank.manifest.sounds.flute.rootNote` into `rootNote`, and use `sustain: true`
-to hold its registered loop through the note.
+to `AudioManager.play` or a music track's `source`. The handle carries the
+entry's root note and sustain loop, so a music track transposes the flute
+without a `rootNote` of its own. Use `sustain: true` on the track to hold the
+loop through each note.
 
 ## Rebuild while editing
 
@@ -103,12 +110,17 @@ to hold its registered loop through the note.
 yage-audio build audio.config.json --out public/audio --watch
 ```
 
-Watch mode rebuilds on file changes and continues after reporting an invalid
-edit. Reload the game to load the new bank.
+Watch mode rebuilds when the config file changes and continues after reporting
+an invalid edit, including a first build that fails. With `--instruments`, it also rebuilds when the instrument
+module or a file it imports changes. Reload the game to load the new bank.
 
 Use a dedicated output directory. A successful build replaces the manifest
 and removes obsolete WAV files from the previous bank. Other files remain.
 A failed render leaves the previous bank intact.
+
+A build holds a `.yage-audio.lock` file in the output directory while it
+writes. A second build into the same directory fails and names that file. If a
+build was killed, delete the lock file once no build is running.
 
 Add the build command before your application's normal build and development
 server commands. The tool must be available during deployment builds, so
@@ -132,6 +144,97 @@ For a preview that needs no files, `renderAudioBank(config)` from the root
 package returns the manifest and an array of `{ file, data: Uint8Array }`.
 `listAudioInstruments()` lists names. `parseAudioBankConfig(unknown)`
 validates and copies settings.
+
+## Custom instruments in the bank
+
+A sound can name an instrument the game defined with
+[`defineInstrument`](/addons/synth/#writing-your-own-instrument). Pass the
+module that exports it to the build:
+
+```sh
+npm install -D vite
+yage-audio build audio.config.json --out public/audio --instruments src/audio/instruments.ts
+```
+
+`src/audio/instruments.ts` exports a closed hi-hat:
+
+```ts yage-group="custom-bank" yage-file="src/audio/instruments.ts"
+import {
+  defineInstrument,
+  limit,
+  normalize,
+  renderMetal,
+} from "@yagejs-addons/synth/render";
+
+export const hat = defineInstrument(
+  "hat",
+  (_frequency, sampleRate, seed) =>
+    limit(
+      normalize(
+        renderMetal(
+          { duration: 0.12, t60: 0.05, frequencyScale: 1.9, seed },
+          sampleRate,
+        ),
+      ),
+    ),
+  { pitched: false },
+);
+```
+
+The config names it like a built-in:
+
+```json
+{
+  "version": 1,
+  "sounds": {
+    "hat": { "sound": { "instrument": "hat" } },
+    "flute": { "sound": { "instrument": "flute", "seed": 17 } }
+  }
+}
+```
+
+The build imports the module through your project's Vite, with the Vite
+config in the working directory. Imports in the module resolve the way your
+game's do: aliases, extensionless imports and modules split across files all
+work. The tool declares `vite` as an optional peer dependency, and
+`--instruments` fails with an error that names the fix when it is missing.
+The module runs in Node, so it must not use browser globals such as `window`
+when it is imported.
+
+Every export that is an instrument definition joins the 25 built-ins. An
+export named like a built-in replaces it, so the module may also re-export the
+built-ins your game uses. Two different definitions with one name, or a module
+that exports none, fail the build. List the names a config can use with:
+
+```sh
+yage-audio instruments --instruments src/audio/instruments.ts
+```
+
+A build script that imports the module itself needs no Vite in the tool. It
+passes the instrument set, with the built-ins it should also know. Run it with
+a TypeScript runner such as `tsx`, which resolves the `.js` import to the
+`.ts` file; Node alone does not:
+
+```ts yage-group="custom-bank"
+import { synthInstruments } from "@yagejs-addons/synth/instruments";
+import { buildAudioBank } from "@yagejs-tools/audio/node";
+import { hat } from "./src/audio/instruments.js";
+
+await buildAudioBank(
+  {
+    version: 1,
+    sounds: {
+      hat: { sound: { instrument: "hat" } },
+      flute: { sound: { instrument: "flute", seed: 17 } },
+    },
+  },
+  { outDir: "public/audio", instruments: { ...synthInstruments, hat } },
+);
+```
+
+`renderAudioBank(config, { instruments })` and
+`listAudioInstruments(instruments)` take the same set. Without one, they use
+the 25 built-ins.
 
 ## Size, memory and validation
 

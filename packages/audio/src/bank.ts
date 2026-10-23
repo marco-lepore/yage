@@ -1,25 +1,38 @@
 import type { AssetHandle } from "@yagejs/core";
 import { sound } from "./assets.js";
 
+/**
+ * One sound in a bank manifest. The runtime reads `file`, the loop points and
+ * `rootNote`. The other fields are build diagnostics that `@yagejs-tools/audio`
+ * writes; a hand-written manifest can leave them out.
+ */
 export interface SoundBankEntry {
+  /** WAV filename inside the bank directory. */
   file: string;
-  frames: number;
-  bytes: number;
-  samplePeak: number;
-  rms: number;
-  clippedSamples: number;
+  /** Sample frames in the file. */
+  frames?: number;
+  /** File size in bytes. */
+  bytes?: number;
+  /** Largest absolute sample value before PCM16 encoding. */
+  samplePeak?: number;
+  rms?: number;
+  clippedSamples?: number;
+  /** MIDI pitch the recording sounds at its original rate. */
   rootNote?: number;
+  /** Sustain loop start in seconds. Set together with `loopEnd`. */
   loopStart?: number;
   loopEnd?: number;
 }
-/** Mono PCM16 WAV resources. Loop points are seconds, independent of decode rate. */
+/** WAV files in one directory, listed by bank name. Loop points are seconds, independent of decode rate. */
 export interface SoundBankManifest {
   version: 1;
   sampleRate: number;
   sounds: Record<string, SoundBankEntry>;
 }
+/** Asset handles for every sound in a bank, plus the manifest they came from. */
 export interface SoundBank {
   readonly manifest: SoundBankManifest;
+  /** Bank name → preloadable handle. Pass these to `Scene.preload` and playback. */
   readonly sounds: Readonly<Record<string, AssetHandle<AudioBuffer>>>;
 }
 
@@ -42,40 +55,36 @@ export function parseSoundBankManifest(value: unknown): SoundBankManifest {
       throw new Error(
         `SoundBank ${alias}.file: expected a WAV filename without directories.`,
       );
-    finite(`${alias}.frames`, entry.frames, 1, 0x7fffffff, true);
-    finite(`${alias}.bytes`, entry.bytes, 46, 0xffffffff, true);
-    finite(`${alias}.samplePeak`, entry.samplePeak, 0, Number.MAX_VALUE);
-    finite(`${alias}.rms`, entry.rms, 0, Number.MAX_VALUE);
-    finite(
+    optional(`${alias}.frames`, entry.frames, 1, 0x7fffffff, true);
+    optional(`${alias}.bytes`, entry.bytes, 46, 0xffffffff, true);
+    optional(`${alias}.samplePeak`, entry.samplePeak, 0, Number.MAX_VALUE);
+    optional(`${alias}.rms`, entry.rms, 0, Number.MAX_VALUE);
+    optional(
       `${alias}.clippedSamples`,
       entry.clippedSamples,
       0,
-      entry.frames as number,
+      (entry.frames as number | undefined) ?? 0x7fffffff,
       true,
     );
-    if (entry.rootNote !== undefined)
-      finite(`${alias}.rootNote`, entry.rootNote, 0, 127);
+    optional(`${alias}.rootNote`, entry.rootNote, 0, 127);
     if (entry.loopStart !== undefined || entry.loopEnd !== undefined) {
-      finite(
-        `${alias}.loopStart`,
-        entry.loopStart,
-        0,
-        (entry.frames as number) / sampleRate,
-      );
-      finite(
-        `${alias}.loopEnd`,
-        entry.loopEnd,
-        0,
-        (entry.frames as number) / sampleRate,
-      );
+      // Without a frame count the decoder checks the loop against the file.
+      const seconds =
+        entry.frames === undefined
+          ? Number.MAX_VALUE
+          : (entry.frames as number) / sampleRate;
+      finite(`${alias}.loopStart`, entry.loopStart, 0, seconds);
+      finite(`${alias}.loopEnd`, entry.loopEnd, 0, seconds);
       if ((entry.loopEnd as number) <= (entry.loopStart as number))
         throw new Error(`SoundBank ${alias}: loopEnd must follow loopStart.`);
     }
+    // One file loads once, so every entry naming it must agree.
     const metadata = JSON.stringify([
       entry.frames,
       entry.bytes,
       entry.loopStart,
       entry.loopEnd,
+      entry.rootNote,
     ]);
     const previous = resources.get(entry.file);
     if (previous !== undefined && previous !== metadata)
@@ -97,15 +106,8 @@ export function soundBank(value: unknown, basePath: string): SoundBank {
   const sounds = Object.fromEntries(
     Object.entries(manifest.sounds).map(([alias, entry]) => [
       alias,
-      sound(
-        `${basePath}${entry.file}`,
-        entry.loopStart === undefined
-          ? undefined
-          : {
-              loopStart: entry.loopStart,
-              loopEnd: entry.loopEnd!,
-            },
-      ),
+      // sound() keeps only the loop points and rootNote.
+      sound(`${basePath}${entry.file}`, entry),
     ]),
   );
   return { manifest, sounds };
@@ -136,4 +138,13 @@ function finite(
     throw new Error(
       `SoundBank ${name}: expected ${integer ? "an integer" : "a finite number"} from ${min} to ${max}, got ${String(value)}.`,
     );
+}
+function optional(
+  name: string,
+  value: unknown,
+  min: number,
+  max: number,
+  integer = false,
+): void {
+  if (value !== undefined) finite(name, value, min, max, integer);
 }

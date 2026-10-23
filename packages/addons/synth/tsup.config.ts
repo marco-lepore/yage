@@ -4,11 +4,9 @@ const isWatch = process.argv.includes("--watch");
 const shared = {
   entry: [
     "src/index.ts",
-    "src/plugin.ts",
     "src/worker.ts",
     "src/render.ts",
     "src/instruments.ts",
-    "src/instruments/*.ts",
   ],
   dts: !isWatch,
   clean: !isWatch,

@@ -6,6 +6,7 @@ import type { SynthInstrumentBank } from "./core/instruments.js";
 import type { SynthSample } from "./core/instruments.js";
 import type { SynthSound } from "./core/types.js";
 import { renderSynthSample } from "./core/sample.js";
+import { isSynthInstrument } from "./core/render.js";
 import type { SynthWorkerResponse } from "./worker.js";
 
 export interface SynthRenderDiagnostics {
@@ -38,7 +39,7 @@ export class RenderBank {
     boundary?: ErrorBoundary,
   ): Promise<SynthSample[]> {
     for (const sound of sounds)
-      if ("instrument" in sound)
+      if (isSynthInstrument(sound))
         resolveSynthInstrument(sound, this.instruments);
     this.diagnostics.state = "rendering";
     this.diagnostics.total = sounds.length;
@@ -54,7 +55,7 @@ export class RenderBank {
       const render = (): void => {
         sample = renderSynthSample(sound, sampleRate, this.instruments);
       };
-      if (boundary && "instrument" in sound)
+      if (boundary && isSynthInstrument(sound))
         boundary.wrapCallback(render, {
           kind: "Synth instrument renderer",
           event: sound.instrument,

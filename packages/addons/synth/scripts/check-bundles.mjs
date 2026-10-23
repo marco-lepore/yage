@@ -43,10 +43,18 @@ function assertInstruments(code, expected, label) {
     );
   }
 }
+function record(label, code) {
+  rows.push({
+    import: label,
+    bytes: Buffer.byteLength(code),
+    gzip: gzipSync(code).length,
+  });
+}
+
+// Node tools and workers load these entries without a bundler, in either
+// module format, so they must stay free of engine imports and instruments.
 for (const format of ["esm", "cjs"]) {
   for (const [path, symbol] of [
-    ["@yagejs-addons/synth", "renderSynthPatch"],
-    ["@yagejs-addons/synth", "synthBuffer"],
     ["@yagejs-addons/synth/render", "renderSynthSample"],
     ["@yagejs-addons/synth/worker", "serveSynthWorker"],
   ]) {
@@ -54,56 +62,60 @@ for (const format of ["esm", "cjs"]) {
     const { code, meta } = await bundle(path, symbol, format);
     assertPure(meta, label);
     assertInstruments(code, [], label);
-    rows.push({
-      import: label,
-      bytes: Buffer.byteLength(code),
-      gzip: gzipSync(code).length,
-    });
+    record(label, code);
   }
-  for (const name of names) {
-    const label = `${format} ${name}`;
-    const { code, meta } = await bundle(
-      `@yagejs-addons/synth/instruments/${name}`,
-      name,
-      format,
-    );
-    assertPure(meta, label);
-    assertInstruments(code, [name], label);
-    const readable = await bundle(
-      `@yagejs-addons/synth/instruments/${name}`,
-      name,
-      format,
-      false,
-    );
-    for (const other of names) {
-      if (other === name || ["flute", "clarinet", "organ"].includes(other))
-        continue;
-      const renderer =
-        other === "tom"
-          ? "renderLowTom"
-          : other.endsWith("Noise")
-            ? other
-            : `render${other[0].toUpperCase()}${other.slice(1)}`;
-      assert.equal(
-        new RegExp(`function ${renderer}\\b`).test(readable.code),
-        false,
-        `${label} retains ${renderer}`,
-      );
-    }
+}
 
-    if (["flute", "banjo"].includes(name))
-      rows.push({
-        import: label,
-        bytes: Buffer.byteLength(code),
-        gzip: gzipSync(code).length,
-      });
-  }
-  const plugin = await bundle(
-    "@yagejs-addons/synth/plugin",
-    "SynthPlugin",
-    format,
+// The root entry imports the engine peers for SynthPlugin and contains no
+// instrument code.
+for (const symbol of [
+  "renderSynthPatch",
+  "synthBuffer",
+  "synthPresets",
+  "SynthPlugin",
+]) {
+  const label = `esm ${symbol}`;
+  const { code } = await bundle("@yagejs-addons/synth", symbol, "esm");
+  assertInstruments(code, [], label);
+  record(label, code);
+}
+
+// A named import from the instrument barrel keeps that instrument's renderer
+// and drops every other one.
+for (const name of names) {
+  const label = `esm ${name}`;
+  const { code, meta } = await bundle(
+    "@yagejs-addons/synth/instruments",
+    name,
+    "esm",
   );
-  assertInstruments(plugin.code, [], `${format} plugin`);
+  assertPure(meta, label);
+  assertInstruments(code, [name], label);
+  const readable = await bundle(
+    "@yagejs-addons/synth/instruments",
+    name,
+    "esm",
+    false,
+  );
+  for (const other of names) {
+    if (other === name || ["flute", "clarinet", "organ"].includes(other))
+      continue;
+    const renderer =
+      other === "tom"
+        ? "renderLowTom"
+        : other.endsWith("Noise")
+          ? other
+          : `render${other[0].toUpperCase()}${other.slice(1)}`;
+    assert.equal(
+      new RegExp(`function ${renderer}\\b`).test(readable.code),
+      false,
+      `${label} retains ${renderer}`,
+    );
+  }
+  if (["flute", "banjo"].includes(name)) record(label, code);
+}
+
+for (const format of ["esm", "cjs"]) {
   const catalogue = await bundle(
     "@yagejs-addons/synth/instruments",
     "synthInstruments",
@@ -111,5 +123,6 @@ for (const format of ["esm", "cjs"]) {
   );
   assertPure(catalogue.meta, `${format} catalogue`);
   assertInstruments(catalogue.code, names, `${format} catalogue`);
+  record(`${format} synthInstruments`, catalogue.code);
 }
 console.table(rows);

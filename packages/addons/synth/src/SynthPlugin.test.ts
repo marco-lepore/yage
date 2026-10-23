@@ -6,6 +6,7 @@ import {
   LogLevel,
 } from "@yagejs/core";
 import { flute } from "./instruments/flute.js";
+import { harp, hat, reed } from "./test-helpers.js";
 const context = new EngineContext();
 const boundary = new ErrorBoundary(new Logger({ level: LogLevel.None }));
 context.register(ErrorBoundaryKey, boundary);
@@ -176,22 +177,72 @@ describe("SynthPlugin", () => {
   });
 });
 
-it("registers only supplied instruments with their sustain metadata", async () => {
+it("registers only supplied instruments with their sustain and pitch metadata", async () => {
   const plugin = new SynthPlugin({
     instruments: { flute },
-    sounds: { lead: flute.sound({ seed: 9 }) },
+    sounds: { lead: flute.sound({ seed: 9, frequency: 440 }) },
     sampleRate: 8000,
   });
   await plugin.install(context);
-  const sample = flute.render({ seed: 9 }, 8000);
+  const sample = flute.render({ seed: 9, frequency: 440 }, 8000);
   expect(audio.registered.get("lead")?.getChannelData(0)).toEqual(
     sample.samples,
   );
   expect(audio.registerSound).toHaveBeenCalledWith(
     "lead",
     expect.any(FakeAudioBuffer),
-    { loopStart: sample.loopStart, loopEnd: sample.loopEnd },
+    expect.objectContaining({
+      loopStart: sample.loopStart,
+      loopEnd: sample.loopEnd,
+      rootNote: 69,
+    }),
   );
+});
+it("registers custom instruments with their pitch, and leaves unpitched ones without one", async () => {
+  const plugin = new SynthPlugin({
+    instruments: { harp, hat },
+    sounds: {
+      pluck: harp.sound({ frequency: 220 }),
+      tick: hat.sound(),
+      // @ts-expect-error not an instrument of this literal bank
+      typo: { instrument: "harpp" },
+    },
+    sampleRate: 8000,
+  });
+  // The typo above also fails at install, before anything is registered.
+  await expect(plugin.install(context)).rejects.toThrow('"harpp"');
+  expect(audio.registerSound).not.toHaveBeenCalled();
+
+  const valid = new SynthPlugin({
+    instruments: { harp, hat, reed },
+    sounds: {
+      pluck: harp.sound({ frequency: 220 }),
+      tick: hat.sound(),
+      hold: reed.sound(),
+    },
+    sampleRate: 8000,
+  });
+  await valid.install(context);
+  const sustained = reed.render({}, 8000);
+  expect(audio.registerSound).toHaveBeenCalledWith(
+    "hold",
+    expect.any(FakeAudioBuffer),
+    expect.objectContaining({
+      loopStart: sustained.loopStart,
+      loopEnd: sustained.loopEnd,
+      rootNote: 60,
+    }),
+  );
+  expect(audio.registerSound).toHaveBeenCalledWith(
+    "pluck",
+    expect.any(FakeAudioBuffer),
+    expect.objectContaining({ rootNote: 57 }),
+  );
+  const [, , tick] = audio.registerSound.mock.calls.find(
+    ([alias]) => alias === "tick",
+  )!;
+  expect((tick as { rootNote?: number }).rootNote).toBeUndefined();
+  valid.onDestroy();
 });
 it("rejects a missing instrument before registering any sounds", async () => {
   const plugin = new SynthPlugin({

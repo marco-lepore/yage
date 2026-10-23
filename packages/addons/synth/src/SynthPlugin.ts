@@ -1,7 +1,10 @@
 import { registerSound, unregisterSound } from "@yagejs/audio";
 import { ErrorBoundaryKey } from "@yagejs/core";
 import type { EngineContext, Plugin } from "@yagejs/core";
-import type { SynthInstrumentBank } from "./core/instruments.js";
+import type {
+  SynthBankNames,
+  SynthInstrumentBank,
+} from "./core/instruments.js";
 import { sampleBuffer } from "./sample.js";
 import { RenderBank, type SynthRenderDiagnostics } from "./renderBank.js";
 import type { SynthSample } from "./core/instruments.js";
@@ -10,21 +13,29 @@ import { synthVariants } from "./core/variants.js";
 import type { SynthSound } from "./core/types.js";
 
 /** A sound registered as several detuned takes instead of one buffer. */
-export interface SynthVariantEntry {
-  sound: SynthSound;
+export interface SynthVariantEntry<Name extends string = string> {
+  sound: SynthSound<Name>;
   /** How many takes to render, under `alias.1` … `alias.n`. */
   variants: number;
   /** Pitch spread across the takes, as a fraction. Default 0.06 (±6%). */
   detune?: number;
 }
 
-export type SynthSoundEntry = SynthSound | SynthVariantEntry;
+export type SynthSoundEntry<Name extends string = string> =
+  | SynthSound<Name>
+  | SynthVariantEntry<Name>;
 
-export interface SynthPluginConfig {
-  /** Instrument implementations available to this bank. Default: none. */
-  instruments?: SynthInstrumentBank;
+/**
+ * `SynthPlugin` configuration. Passing `instruments` as a literal checks every
+ * instrument descriptor in `sounds` against it at compile time.
+ */
+export interface SynthPluginConfig<
+  Bank extends SynthInstrumentBank = SynthInstrumentBank,
+> {
+  /** Instrument definitions the sounds may name. Default: none. */
+  instruments?: Bank;
   /** Alias → the sound to render under it. */
-  sounds: Record<string, SynthSoundEntry>;
+  sounds: Record<string, SynthSoundEntry<SynthBankNames<Bank>>>;
   /** Sample rate for the rendered buffers. Default 44100. */
   sampleRate?: number;
   /** Optional dedicated module worker; the plugin owns and terminates it. */
@@ -59,12 +70,14 @@ export interface SynthPluginConfig {
  * before the browser's first-gesture unlock. Nothing is saved: the plugin re-registers
  * from its config on every boot, so a snapshot only ever holds the alias.
  */
-export class SynthPlugin implements Plugin {
+export class SynthPlugin<
+  Bank extends SynthInstrumentBank = SynthInstrumentBank,
+> implements Plugin {
   readonly name = "synth";
   readonly version = "0.1.0";
   readonly dependencies = ["audio"] as const;
 
-  private readonly _config: SynthPluginConfig;
+  private readonly _config: SynthPluginConfig<Bank>;
   private readonly _aliases: string[] = [];
   private readonly bank: RenderBank;
   private disposed = false;
@@ -73,7 +86,7 @@ export class SynthPlugin implements Plugin {
     return { ...this.bank.diagnostics };
   }
 
-  constructor(config: SynthPluginConfig) {
+  constructor(config: SynthPluginConfig<Bank>) {
     const timeout = config.workerTimeout ?? 5000;
     if (!Number.isFinite(timeout) || timeout <= 0)
       throw new Error(
@@ -145,13 +158,8 @@ export class SynthPlugin implements Plugin {
     try {
       for (const [i, { alias }] of prepared.entries()) {
         const sample = samples[i]!;
-        registerSound(
-          alias,
-          sampleBuffer(sample),
-          sample.loopStart === undefined
-            ? undefined
-            : { loopStart: sample.loopStart, loopEnd: sample.loopEnd! },
-        );
+        // registerSound keeps only the loop points and rootNote.
+        registerSound(alias, sampleBuffer(sample), sample);
         this._aliases.push(alias);
       }
       this.bank.diagnostics.state = "ready";

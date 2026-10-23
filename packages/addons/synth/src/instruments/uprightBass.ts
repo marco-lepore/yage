@@ -3,8 +3,6 @@ import { renderUprightBass } from "../core/dsp/pluck.js";
 
 export const uprightBass = /* @__PURE__ */ defineInstrument(
   "uprightBass",
-  (frequency, sampleRate, seed) => ({
-    data: renderUprightBass(frequency, sampleRate, seed),
-    sampleRate,
-  }),
+  (frequency, sampleRate, seed) =>
+    renderUprightBass(frequency, sampleRate, seed),
 );

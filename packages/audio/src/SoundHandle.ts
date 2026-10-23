@@ -2,8 +2,10 @@ import type {
   AudioAutomationOptions,
   AudioFadeOptions,
   AudioPlayOptions,
+  SoundReleaseOptions,
 } from "./types.js";
-import { AudioTimeline, automationTiming } from "./internal/Automation.js";
+import { AudioTimeline } from "./AudioTimeline.js";
+import { automationTiming } from "./internal/Automation.js";
 import {
   assertFadeDuration,
   assertPan,
@@ -29,6 +31,10 @@ export class SoundHandle {
   private startAt: number;
   private offset: number;
   private stopAt: number | undefined;
+  /** True while `stopAt` is the end of a `stopOnComplete` fade. */
+  private fadeOwnsStop = false;
+  /** The stop that fade replaced, restored when a volume write replaces the fade. */
+  private stopBeforeFade: number | undefined;
   private readonly listeners: Array<(natural: boolean) => void> = [];
 
   /** @internal Voices are constructed by AudioManager.play(). */
@@ -58,30 +64,39 @@ export class SoundHandle {
     this.muteGain.connect(output);
     this.startSource();
   }
+  /** True until the sound ends or stops, including while booked or paused. */
   get playing(): boolean {
     return this.active;
   }
+  /** True while the sound's booked start is still in the future. */
   get scheduled(): boolean {
     return this.active && this.startAt > this.context.currentTime;
   }
+  /**
+   * Per-sound volume 0–1, before channel and master volume. Writing it steps
+   * to the value now and replaces any fade.
+   */
   get volume(): number {
     return this.level.valueAt(this.controlTime);
   }
   set volume(value: number) {
     this.setVolume(value);
   }
+  /** Playback rate; 2 plays an octave up and twice as fast. */
   get speed(): number {
     return this.rate.valueAt(this.controlTime);
   }
   set speed(value: number) {
     this.setSpeed(value);
   }
+  /** Stereo position from -1 (left) to 1 (right). */
   get pan(): number {
     return this.stereo.valueAt(this.controlTime);
   }
   set pan(value: number) {
     this.setPan(value);
   }
+  /** Silence this sound without changing its volume. */
   get muted(): boolean {
     return this.isMuted;
   }
@@ -89,6 +104,10 @@ export class SoundHandle {
     this.isMuted = value;
     this.muteGain.gain.setValueAtTime(value ? 0 : 1, this.context.currentTime);
   }
+  /**
+   * True while this sound or its channel is paused. Writing pauses or resumes
+   * the sound itself; the position and remaining automation are kept.
+   */
   get paused(): boolean {
     return this.pauseAt !== undefined;
   }
@@ -100,18 +119,29 @@ export class SoundHandle {
     return this.pauseAt ?? this.context.currentTime;
   }
 
+  /**
+   * Set the volume at `options.at` (default now), ramping over `options.duration`.
+   * Replaces the automation from that time onward.
+   */
   setVolume(value: number, options?: AudioAutomationOptions): void {
     assertVolume("SoundHandle.setVolume", value);
     this.automate(this.level, this.gain.gain, value, options);
   }
+  /** Set the playback rate, with the same timing options as `setVolume`. */
   setSpeed(value: number, options?: AudioAutomationOptions): void {
     assertSpeed("SoundHandle.setSpeed", value);
     this.automate(this.rate, this.source?.playbackRate, value, options);
   }
+  /** Set the stereo position, with the same timing options as `setVolume`. */
   setPan(value: number, options?: AudioAutomationOptions): void {
     assertPan("SoundHandle.setPan", value);
     this.automate(this.stereo, this.panner.pan, value, options);
   }
+  /**
+   * Ramp the volume to `value` over `options.duration` seconds on the audio
+   * clock. With `stopOnComplete` (target 0 only) the sound stops at the end,
+   * unless a later volume write that starts before the end replaces the fade.
+   */
   fadeTo(value: number, options: AudioFadeOptions): void {
     assertVolume("SoundHandle.fadeTo", value);
     assertFadeDuration("SoundHandle.fadeTo", options.duration);
@@ -125,20 +155,34 @@ export class SoundHandle {
       options,
     );
     this.setVolume(value, options);
-    if (options.stopOnComplete) this.stop(timing.at + timing.duration);
+    if (!options.stopOnComplete) return;
+    const before = this.stopAt;
+    this.stop(timing.at + timing.duration);
+    if (!this.active) return;
+    this.fadeOwnsStop = true;
+    this.stopBeforeFade = before;
   }
-  /** Schedule a release to silence, then stop. */
-  release(at = this.context.currentTime, duration = 0.05): void {
+  /**
+   * Fade to silence over `duration` seconds (default 0.05) starting at `at`
+   * (default now), then stop. A zero duration stops at `at`.
+   */
+  release(options: SoundReleaseOptions = {}): void {
+    const at = options.at ?? this.context.currentTime;
+    const duration = options.duration ?? 0.05;
     assertTime("SoundHandle.release.duration", duration);
     if (duration === 0) {
       automationTiming("SoundHandle.release", this.context.currentTime, { at });
       this.stop(at);
     } else this.fadeTo(0, { at, duration, stopOnComplete: true });
   }
-  /** An omitted time cancels even a voice whose start has not arrived. */
+  /**
+   * Stop at audio time `at`, or now. Stopping now also cancels a booked start
+   * that has not arrived.
+   */
   stop(at?: number): void {
     if (at !== undefined) assertTime("SoundHandle.stop.at", at);
     if (!this.active) return;
+    this.fadeOwnsStop = false;
     const time =
       at === undefined
         ? this.controlTime
@@ -182,6 +226,30 @@ export class SoundHandle {
     }
     timeline.prune(this.controlTime);
     if (param && !this.paused) timeline.apply(param, this.context.currentTime);
+    if (
+      timeline === this.level &&
+      this.fadeOwnsStop &&
+      effectiveAt < this.stopAt!
+    )
+      this.cancelFadeStop();
+  }
+  /** The fade that booked `stopAt` was replaced, so its stop goes too. */
+  private cancelFadeStop(): void {
+    this.fadeOwnsStop = false;
+    this.stopAt = this.stopBeforeFade;
+    this.stopBeforeFade = undefined;
+    if (this.stopAt !== undefined && this.stopAt <= this.controlTime) {
+      this.detachSource();
+      this.finish(false);
+      return;
+    }
+    if (this.paused) return;
+    // A source's booked stop cannot be withdrawn: continue on a new source.
+    const now = this.context.currentTime;
+    this.capturePosition(now);
+    this.startAt = Math.max(this.startAt, now);
+    this.detachSource();
+    this.startSource();
   }
   private startSource(): void {
     const source = this.context.createBufferSource();
@@ -245,6 +313,7 @@ export class SoundHandle {
       const delta = now - previous;
       this.startAt = Math.max(now, this.startAt + delta);
       if (this.stopAt !== undefined) this.stopAt += delta;
+      if (this.stopBeforeFade !== undefined) this.stopBeforeFade += delta;
       this.level.shift(previous, delta);
       this.rate.shift(previous, delta);
       this.stereo.shift(previous, delta);

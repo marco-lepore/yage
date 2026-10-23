@@ -1,4 +1,5 @@
 import { synthInstruments } from "@yagejs-addons/synth/instruments";
+import type { SynthInstrumentBank } from "@yagejs-addons/synth/render";
 import { parseSynthSound } from "@yagejs-addons/synth/render";
 import type { SynthSound } from "@yagejs-addons/synth/render";
 
@@ -16,7 +17,10 @@ export interface AudioBankConfig {
 }
 
 /** Parse portable configuration before rendering or writing any files. */
-export function parseAudioBankConfig(value: unknown): AudioBankConfig {
+export function parseAudioBankConfig(
+  value: unknown,
+  instruments: SynthInstrumentBank = synthInstruments,
+): AudioBankConfig {
   const config = record(value, "AudioBank");
   keys(config, ["version", "sampleRate", "sounds", "include"], "AudioBank");
   if (config.version !== 1) throw new Error("AudioBank.version: expected 1.");
@@ -53,7 +57,7 @@ export function parseAudioBankConfig(value: unknown): AudioBankConfig {
         );
       let sound: SynthSound;
       try {
-        sound = parseSynthSound(entry.sound, synthInstruments);
+        sound = parseSynthSound(entry.sound, instruments);
       } catch (error) {
         throw new Error(
           `AudioBank ${alias}: ${error instanceof Error ? error.message : String(error)}`,

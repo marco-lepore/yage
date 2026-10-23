@@ -80,7 +80,7 @@ it("uses absolute context times for controls written during pause", () => {
   context.currentTime = 9;
   h.setSpeed(2, { at: 9, duration: 1 });
   h.setPan(1, { at: 9, duration: 1 });
-  h.release(9, 1);
+  h.release({ at: 9, duration: 1 });
   h.paused = false;
   expect(context.sources.at(-1)!.stopTime).toBe(10);
   context.currentTime = 9.5;
@@ -99,4 +99,41 @@ it("preserves source position while discarding old rate automation", () => {
   context.currentTime = 2;
   h.paused = false;
   expect(context.sources.at(-1)!.offset).toBeCloseTo(1.49995, 5);
+});
+it("cancels the stop of a fade that a later volume write replaces", () => {
+  const h = audio.play("tone", { loop: true });
+  h.fadeTo(0, { duration: 2, stopOnComplete: true });
+  expect(context.sources.at(-1)!.stopTime).toBe(2);
+  context.currentTime = 1;
+  h.volume = 1;
+  expect(context.sources).toHaveLength(2);
+  const source = context.sources.at(-1)!;
+  expect(source.stopTime).toBeUndefined();
+  expect(source.startTime).toBe(1);
+  expect(source.offset).toBeCloseTo(1);
+  context.currentTime = 3;
+  expect(h.playing).toBe(true);
+  expect(h.volume).toBe(1);
+});
+it("restores the stop a cancelled fade replaced and keeps an explicit stop", () => {
+  const h = audio.play("tone", { stopAt: 5 });
+  h.fadeTo(0, { duration: 2, stopOnComplete: true });
+  context.currentTime = 1;
+  h.setVolume(0.5);
+  expect(context.sources.at(-1)!.stopTime).toBe(5);
+
+  const other = audio.play("tone");
+  other.fadeTo(0, { duration: 2, stopOnComplete: true });
+  other.stop(1.5);
+  const sources = context.sources.length;
+  other.volume = 1;
+  expect(context.sources).toHaveLength(sources);
+  expect(context.sources.at(-1)!.stopTime).toBe(1.5);
+});
+it("keeps a fade's stop when the volume write starts after the fade ends", () => {
+  const h = audio.play("tone");
+  h.fadeTo(0, { duration: 2, stopOnComplete: true });
+  h.setVolume(1, { at: 3 });
+  expect(context.sources).toHaveLength(1);
+  expect(context.sources[0]!.stopTime).toBe(2);
 });

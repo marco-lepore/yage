@@ -4,8 +4,13 @@ import {
   type ErrorBoundary,
 } from "@yagejs/core";
 import { SoundHandle } from "./SoundHandle.js";
-import { getSound, getSoundLoop } from "./assets.js";
-import { AudioTimeline, automationTiming } from "./internal/Automation.js";
+import {
+  getSound,
+  getSoundMetadata as registeredMetadata,
+  type SoundMetadata,
+} from "./assets.js";
+import { AudioTimeline } from "./AudioTimeline.js";
+import { automationTiming } from "./internal/Automation.js";
 import {
   assertFadeDuration,
   assertPan,
@@ -38,7 +43,6 @@ interface SharedPlaybackState {
   playOnceOnEnd: (() => void) | undefined;
 }
 interface ChannelState {
-  volume: number;
   muted: boolean;
   paused: boolean;
   pauseAt: number | undefined;
@@ -53,6 +57,11 @@ interface ChannelState {
 const aliasOf = (ref: SoundRef): string =>
   typeof ref === "string" ? ref : ref.path;
 
+/**
+ * Plays sounds through named channels on one Web Audio context. `AudioPlugin`
+ * creates the live manager; resolve it with `this.use(AudioManagerKey)`.
+ * `renderAudio` creates one over an offline context.
+ */
 export class AudioManager {
   private readonly _channels = new Map<string, ChannelState>();
   private readonly _random: RandomService;
@@ -68,7 +77,9 @@ export class AudioManager {
   private disposed = false;
   private lateStarts = 0;
   private readonly failures: Array<{ operation: string; message: string }> = [];
+  /** Seconds ahead of `currentTime` that schedulers book sounds. Default 0.12. */
   readonly lookahead: number;
+  /** Seconds between scheduler ticks. Default 0.025. */
   readonly tickInterval: number;
 
   constructor(
@@ -101,12 +112,15 @@ export class AudioManager {
     for (const [name, definition] of Object.entries(definitions))
       this.createChannel(name, definition);
   }
+  /** The audio clock in seconds. It stops while the context is suspended. */
   get currentTime(): number {
     return this.context.currentTime;
   }
+  /** Output samples per second of the audio context. */
   get sampleRate(): number {
     return this.context.sampleRate;
   }
+  /** Volume multiplier for all playback owned by this manager. Default: 1. */
   get masterVolume(): number {
     return this._masterVolume;
   }
@@ -115,32 +129,63 @@ export class AudioManager {
     this._masterVolume = volume;
     this.master.gain.setValueAtTime(volume, this.currentTime);
   }
+  /** Suspend audio when the window loses focus or the tab is hidden. Default: `true`. */
   get autoMuteOnBlur(): boolean {
     return this._autoMuteOnBlur;
   }
   set autoMuteOnBlur(value: boolean) {
     this._autoMuteOnBlur = value;
   }
+  /**
+   * Whether the audio context is running. Browsers suspend it until a user
+   * gesture, and `AudioPlugin` suspends it while the tab is hidden.
+   */
   isUnlocked(): boolean {
     return this.context.state === "running";
   }
+  /**
+   * Whether a sound is registered under `ref`'s alias, preloaded with
+   * `sound(...)` or added with `registerSound()`. `play` throws on the same
+   * check, so this is the guard for an alias the game assembles at runtime.
+   * It reports nothing about whether audio can be heard.
+   */
   hasSound(ref: SoundRef): boolean {
     return getSound(aliasOf(ref)) !== undefined;
   }
+  /**
+   * A copy of the loop points and root note registered with a sound, or
+   * `undefined` when nothing is registered under its alias.
+   */
+  getSoundMetadata(ref: SoundRef): SoundMetadata | undefined {
+    return registeredMetadata(aliasOf(ref));
+  }
 
+  /**
+   * Play a preloaded or registered sound. Accepts the alias or the handle
+   * `sound()` returned. Throws when the alias resolves to nothing, which is a
+   * typo or playback before the asset was preloaded.
+   */
   play(ref: SoundRef, options: AudioPlayOptions = {}): SoundHandle {
     return this._startPlayback(ref, options, true).handle;
   }
+  /** Play one of `aliases`, picked with the manager's random service. */
   playRandom(aliases: SoundRef[], options?: AudioPlayOptions): SoundHandle {
     if (!aliases.length)
       throw new Error("AudioManager.playRandom: aliases must not be empty.");
     return this.play(this._random.pick(aliases), options);
   }
+  /**
+   * Start `next` at zero volume and fade it to `options.volume` (default 1)
+   * while `outgoing` fades to zero and stops. Both fades are linear and share
+   * `options.at`. Returns the incoming handle.
+   */
   crossfade(
     outgoing: SoundHandle,
     next: SoundRef,
     options: AudioCrossfadeOptions,
   ): SoundHandle {
+    if (!outgoing.playing)
+      throw new Error("AudioManager.crossfade: outgoing sound has finished.");
     if (!this._channels.get(outgoing.channel)?.handles.has(outgoing))
       throw new Error(
         "AudioManager.crossfade: outgoing handle does not belong to this manager.",
@@ -167,21 +212,29 @@ export class AudioManager {
     });
     return incoming;
   }
+  /** Stop one sound now. */
   stop(handle: SoundHandle): void {
     handle.stop();
   }
+  /** Stop every sound in a channel and its child channels, now or at audio time `at`. */
   stopChannel(channel: string, at?: number): void {
     if (at !== undefined) assertTime("AudioManager.stopChannel.at", at);
     for (const state of this.descendants(channel))
       for (const handle of [...state.handles]) handle.stop(at);
   }
+  /** Stop every sound of this manager. */
   stopAll(): void {
     for (const channel of this._channels.values())
       for (const handle of [...channel.handles]) handle.stop();
   }
+  /** Fresh snapshot of configured and created channels, in creation order. */
   getChannelNames(): readonly string[] {
     return [...this._channels.keys()];
   }
+  /**
+   * Add a channel, optionally mixed through an existing `parent` channel.
+   * Throws for an empty or existing name or an unknown parent.
+   */
   createChannel(name: string, config: ChannelConfig = {}): void {
     this.assertActive();
     if (!name.trim() || this._channels.has(name))
@@ -204,7 +257,6 @@ export class AudioManager {
     node.connect(mute);
     mute.connect(parent?.node ?? this.master);
     this._channels.set(name, {
-      volume,
       parent: config.parent,
       node,
       mute,
@@ -241,6 +293,10 @@ export class AudioManager {
         this._channels.delete(key);
       }
   }
+  /**
+   * Set a channel's volume now or ramp it with automation options. Creates an
+   * unknown channel. A paused channel keeps the ramp for when it resumes.
+   */
   setChannelVolume(
     name: string,
     volume: number,
@@ -261,42 +317,56 @@ export class AudioManager {
     state.automation.prune(state.pauseAt ?? this.currentTime);
     if (state.pauseAt === undefined)
       state.automation.apply(state.node.gain, this.currentTime);
-    state.volume = volume;
   }
+  /** The channel's current volume. Unknown channels report 1; reading does not create them. */
   getChannelVolume(name: string): number {
     const state = this._channels.get(name);
     return state?.automation.valueAt(state.pauseAt ?? this.currentTime) ?? 1;
   }
+  /** Silence a channel without changing its volume. */
   muteChannel(name: string): void {
     const state = this._ensureChannel(name);
     state.muted = true;
     state.mute.gain.setValueAtTime(0, this.currentTime);
   }
+  /** Undo `muteChannel`. */
   unmuteChannel(name: string): void {
     const state = this._ensureChannel(name);
     state.muted = false;
     state.mute.gain.setValueAtTime(1, this.currentTime);
   }
+  /**
+   * Pause a channel and its children. Sounds keep their position and remaining
+   * fades, and pause-aware sequencers such as the music addon hold their beat.
+   */
   pauseChannel(name: string): void {
     this._ensureChannel(name).paused = true;
     this.reconcilePauses();
   }
+  /** Undo `pauseChannel`. A child stays paused while its own pause or a parent's holds. */
   resumeChannel(name: string): void {
     this._ensureChannel(name).paused = false;
     this.reconcilePauses();
   }
+  /** Mute every channel. */
   muteAll(): void {
     for (const name of this._channels.keys()) this.muteChannel(name);
   }
+  /** Unmute every channel. */
   unmuteAll(): void {
     for (const name of this._channels.keys()) this.unmuteChannel(name);
   }
 
+  /**
+   * Call `callback` once audio is running: now if it already is, otherwise on
+   * the next gesture that resumes the context. Returns a disposer.
+   */
   onUnlock(callback: () => void): () => void {
     if (this.isUnlocked()) this._runCallback(callback, "Audio unlock callback");
     else this.unlockListeners.add(callback);
     return () => this.unlockListeners.delete(callback);
   }
+  /** Remove a listener registered with `onUnlock`. */
   offUnlock(callback: () => void): void {
     this.unlockListeners.delete(callback);
   }
@@ -319,6 +389,11 @@ export class AudioManager {
         "Audio scheduler callback",
       );
   }
+  /**
+   * Context state, clock, voice counts, scheduler count, late starts, channels
+   * and the most recent callback failures. The Inspector `audio` extension
+   * returns the same data.
+   */
   getDiagnostics(): AudioDiagnostics {
     const channels = [...this._channels];
     const handles = channels.flatMap(([, c]) => [...c.handles]);
@@ -351,14 +426,6 @@ export class AudioManager {
   _setErrorBoundary(boundary: ErrorBoundary | undefined): void {
     this._errorBoundary = boundary;
   }
-  /** Attribute callbacks supplied by higher audio layers. */
-  invoke<T>(operation: string, callback: () => T): T {
-    let result!: T;
-    this._runCallback(() => {
-      return (result = callback());
-    }, operation);
-    return result;
-  }
   /** @internal */
   _reportFailure(operation: string, error: unknown): void {
     this.failures.push({
@@ -368,6 +435,7 @@ export class AudioManager {
     if (this.failures.length > 50) this.failures.shift();
     this._errorBoundary?.reportLifecycleError(error, { kind: operation });
   }
+  /** Stop every sound and disconnect every node. `AudioPlugin` calls it on destroy. */
   dispose(): void {
     if (this.disposed) return;
     this.stopAll();
@@ -462,9 +530,11 @@ export class AudioManager {
       throw new Error(
         `AudioManager.play: no sound registered as "${alias}". Preload sound(...) or registerSound().`,
       );
-    options = options.loop
-      ? { ...getSoundLoop(alias), ...options }
-      : { ...options };
+    const { loopStart, loopEnd } = registeredMetadata(alias)!;
+    options =
+      options.loop && loopStart !== undefined && loopEnd !== undefined
+        ? { loopStart, loopEnd, ...options }
+        : { ...options };
     validatePlay(options, buffer.duration);
     const channelName = options.channel ?? "sfx";
     const channel = this._ensureChannel(channelName);

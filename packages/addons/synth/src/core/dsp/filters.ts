@@ -4,7 +4,7 @@
  */
 import { TWO_PI } from "./util.js";
 
-export type BiquadType =
+export type SynthBiquadType =
   | "lowpass"
   | "highpass"
   | "bandpass"
@@ -23,7 +23,7 @@ export interface BiquadCoefs {
 
 /** RBJ cookbook coefficients, normalised by a0. `gainDb` is for peaking/shelves. */
 export function biquadCoefs(
-  type: BiquadType,
+  type: SynthBiquadType,
   freq: number,
   q: number,
   sr: number,
@@ -109,7 +109,7 @@ export function biquadCoefs(
 /** Run a biquad over `buf` in place (transposed direct form II). */
 export function biquad(
   buf: Float32Array,
-  type: BiquadType,
+  type: SynthBiquadType,
   freq: number,
   q: number,
   sr: number,
@@ -143,7 +143,7 @@ export function onePoleLP(
   return buf;
 }
 
-export type SvfMode = "low" | "band" | "high" | "notch";
+export type SynthSvfMode = "low" | "band" | "high" | "notch";
 
 /**
  * Zero-delay-feedback state-variable filter with a cutoff that can change
@@ -152,7 +152,7 @@ export type SvfMode = "low" | "band" | "high" | "notch";
  */
 export function svf(
   buf: Float32Array,
-  mode: SvfMode,
+  mode: SynthSvfMode,
   freq: number | ((t: number) => number),
   q: number,
   sr: number,

@@ -1,6 +1,8 @@
 import { kick } from "./instruments/kick.js";
 import { pad } from "./instruments/pad.js";
-const instruments = { kick, pad };
+import type { SynthInstrumentBank } from "./core/instruments.js";
+// Typed as a plain bank: the tests render sounds typed as any SynthSound.
+const instruments: SynthInstrumentBank = { kick, pad };
 import { afterEach, expect, it, vi } from "vitest";
 import { RenderBank } from "./renderBank.js";
 import { renderSynthSample } from "./core/sample.js";

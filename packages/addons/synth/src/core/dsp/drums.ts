@@ -5,7 +5,7 @@
 import { biquad, svf } from "./filters.js";
 import { renderModal } from "./mallet.js";
 import { whiteNoise } from "./noise.js";
-import { Rng } from "./rng.js";
+import { seededRandom } from "../random.js";
 import {
   dcBlock,
   fadeOut,
@@ -16,9 +16,10 @@ import {
   saturate,
   sinCycles,
   t60Coef,
+  requirePositive,
 } from "./util.js";
 
-/** Reference pitches (MIDI) of the pitched drums: a note of this pitch plays at rate 1. */
+/** MIDI pitch the low tom sounds at; `tom` registers it as its root note. */
 export const LOW_TOM_ROOT = 43;
 
 function finish(out: Float32Array, sr: number, tail = 0.02): Float32Array {
@@ -138,16 +139,16 @@ function membrane(
 
 /** Felt-beater bass drum: round sine thump with a soft beater click. */
 export function renderKick(sr: number, seed: number): Float32Array {
-  const rng = new Rng(seed);
+  const rng = seededRandom(seed);
   const n = samples(0.5, sr);
   const out = new Float32Array(n);
   sweptSine(
     out,
     sr,
-    96 * (1 + 0.04 * (rng.next() - 0.5)),
+    96 * (1 + 0.04 * (rng() - 0.5)),
     50,
     0.03,
-    0.42 + 0.06 * rng.next(),
+    0.42 + 0.06 * rng(),
     1,
     0.0015,
   );
@@ -164,16 +165,16 @@ export function renderBrushTap(
   seed: number,
   ghost: boolean,
 ): Float32Array {
-  const rng = new Rng(seed);
+  const rng = seededRandom(seed);
   const n = samples(ghost ? 0.16 : 0.32, sr);
   const hiss = decayingNoise(
     n,
     sr,
     seed,
     0.002,
-    ghost ? 0.08 : 0.2 + 0.04 * rng.next(),
+    ghost ? 0.08 : 0.2 + 0.04 * rng(),
   );
-  biquad(hiss, "bandpass", ghost ? 3600 : 4400 + 600 * rng.next(), 0.7, sr);
+  biquad(hiss, "bandpass", ghost ? 3600 : 4400 + 600 * rng(), 0.7, sr);
   biquad(hiss, "highpass", 1400, 0.7, sr);
   const wires = decayingNoise(n, sr, seed + 7, 0.001, ghost ? 0.06 : 0.12);
   biquad(wires, "bandpass", 7500, 1.2, sr);
@@ -203,10 +204,10 @@ export function renderBrushSwish(sr: number, seed: number): Float32Array {
 
 /** Cross-stick rim click: a woody knock and a bright rim ping. */
 export function renderRim(sr: number, seed: number): Float32Array {
-  const rng = new Rng(seed);
+  const rng = seededRandom(seed);
   const out = renderModal(
     {
-      freq: 420 * (1 + 0.03 * (rng.next() - 0.5)),
+      frequency: 420 * (1 + 0.03 * (rng() - 0.5)),
       duration: 0.14,
       partials: [
         { ratio: 1, amp: 0.8, t60: 0.07 },
@@ -215,7 +216,7 @@ export function renderRim(sr: number, seed: number): Float32Array {
       ],
       attack: 0.0003,
       strike: 0.3,
-      strikeFreq: 2600,
+      strikeFrequency: 2600,
       strikeTime: 0.003,
       seed,
     },
@@ -226,13 +227,13 @@ export function renderRim(sr: number, seed: number): Float32Array {
 
 /** Egg shaker: grainy high noise with a short roll-in. */
 export function renderShaker(sr: number, seed: number): Float32Array {
-  const rng = new Rng(seed);
+  const rng = seededRandom(seed);
   const n = samples(0.14, sr);
   const out = whiteNoise(n, seed);
-  const attack = 0.008 + 0.008 * rng.next();
+  const attack = 0.008 + 0.008 * rng();
   for (let i = 0; i < n; i++) {
     const t = i / sr;
-    const grain = rng.next() < 0.35 ? 1 : 0.45;
+    const grain = rng() < 0.35 ? 1 : 0.45;
     out[i] =
       out[i]! *
       grain *
@@ -246,16 +247,16 @@ export function renderShaker(sr: number, seed: number): Float32Array {
 
 /** Hand clap: a few players (each 3 quick bursts then a short tail). */
 export function renderClap(sr: number, seed: number): Float32Array {
-  const rng = new Rng(seed);
+  const rng = seededRandom(seed);
   const n = samples(0.34, sr);
   const out = new Float32Array(n);
   const players = 3;
   for (let p = 0; p < players; p++) {
-    const offset = p === 0 ? 0 : 0.004 + 0.012 * rng.next();
-    const centre = 1100 + 900 * rng.next();
+    const offset = p === 0 ? 0 : 0.004 + 0.012 * rng();
+    const centre = 1100 + 900 * rng();
     const layer = new Float32Array(n);
     const noise = whiteNoise(n, seed + 31 * (p + 1));
-    const bursts = [0, 0.008 + 0.003 * rng.next(), 0.018 + 0.004 * rng.next()];
+    const bursts = [0, 0.008 + 0.003 * rng(), 0.018 + 0.004 * rng()];
     for (let i = 0; i < n; i++) {
       const t = i / sr - offset;
       if (t < 0) continue;
@@ -294,38 +295,47 @@ export function renderLowTom(sr: number, seed: number): Float32Array {
   return finish(out, sr, 0.05);
 }
 
-/** How `metalNoise` mixes its parts (the defaults are the cymbal's). */
-export interface MetalMix {
-  /** White noise level (default 0.6). */
+/** Options for `renderMetal`. The optional levels default to the cymbal's mix. */
+export interface SynthMetalOptions {
+  /** Seconds. */
+  readonly duration: number;
+  /** Seconds to decay by 60 dB. */
+  readonly t60: number;
+  /** Multiplier on the six square-wave frequencies. The cymbal uses 1.7, the ride 1.3. */
+  readonly frequencyScale: number;
+  readonly seed: number;
+  /** White noise level. Default 0.6. */
   readonly noise?: number;
-  /** Level of the six squares (default 0.12). */
+  /** Level of the six squares. Default 0.12. */
   readonly squares?: number;
-  /** Attack ramp in seconds (default 1 ms). */
+  /** Attack ramp in seconds. Default 0.001. */
   readonly attack?: number;
 }
 
 /**
- * Metallic noise: six detuned band-limited squares (the 808's 205.3 … 800 Hz
- * × `freqScale`) plus white noise, decaying (cymbals, hi-hats).
+ * Metallic noise: six detuned band-limited squares (205.3 … 800 Hz ×
+ * `frequencyScale`) plus white noise, decaying. Cymbals and hi-hats. Not
+ * normalised.
  */
-export function metalNoise(
-  sr: number,
-  seed: number,
-  duration: number,
-  t60: number,
-  freqScale: number,
-  mix: MetalMix = {},
-): Float32Array {
-  const noiseLevel = mix.noise ?? 0.6;
-  const squareLevel = mix.squares ?? 0.12;
-  const attackN = (mix.attack ?? 0.001) * sr;
+export function renderMetal(o: SynthMetalOptions, sr: number): Float32Array {
+  requirePositive("renderMetal", {
+    sampleRate: sr,
+    duration: o.duration,
+    t60: o.t60,
+    frequencyScale: o.frequencyScale,
+  });
+  const { duration, t60, seed } = o;
+  const freqScale = o.frequencyScale;
+  const noiseLevel = o.noise ?? 0.6;
+  const squareLevel = o.squares ?? 0.12;
+  const attackN = (o.attack ?? 0.001) * sr;
   const n = samples(duration, sr);
   const out = whiteNoise(n, seed);
-  const rng = new Rng(seed);
+  const rng = seededRandom(seed);
   const freqs = [205.3, 304.4, 369.6, 522.7, 540, 800].map(
-    (f) => f * freqScale * (1 + 0.01 * (rng.next() - 0.5)),
+    (f) => f * freqScale * (1 + 0.01 * (rng() - 0.5)),
   );
-  const phases = freqs.map(() => rng.next());
+  const phases = freqs.map(() => rng());
   const decayK = t60Coef(t60, sr);
   let decay = 1;
   for (let i = 0; i < n; i++) {
@@ -356,7 +366,7 @@ export function renderCymbal(
   duration = 2,
   t60 = 1.6,
 ): Float32Array {
-  const out = metalNoise(sr, seed, duration, t60, 1.7);
+  const out = renderMetal({ duration, t60, frequencyScale: 1.7, seed }, sr);
   biquad(out, "highpass", 5200, 0.7, sr);
   biquad(out, "peaking", 9000, 0.8, sr, 3);
   return finish(out, sr, 0.1);
@@ -371,14 +381,17 @@ export function renderRide(
   seed: number,
   duration = 2.4,
 ): Float32Array {
-  const rng = new Rng(seed);
-  const wash = metalNoise(sr, seed, duration, 4.5, 1.3);
+  const rng = seededRandom(seed);
+  const wash = renderMetal(
+    { duration, t60: 4.5, frequencyScale: 1.3, seed },
+    sr,
+  );
   biquad(wash, "highpass", 2400, 0.7, sr);
   biquad(wash, "peaking", 5200, 0.8, sr, 2);
   biquad(wash, "lowpass", Math.min(11000, sr * 0.45), 0.7, sr);
   const ping = renderModal(
     {
-      freq: 2950 * (1 + 0.02 * (rng.next() - 0.5)),
+      frequency: 2950 * (1 + 0.02 * (rng() - 0.5)),
       duration,
       partials: [
         { ratio: 1, amp: 1, t60: 0.6 },
@@ -389,7 +402,7 @@ export function renderRide(
       ],
       attack: 0.0004,
       strike: 0.3,
-      strikeFreq: Math.min(sr * 0.4, 8000),
+      strikeFrequency: Math.min(sr * 0.4, 8000),
       strikeTime: 0.002,
       seed: seed + 3,
     },

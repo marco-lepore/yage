@@ -1,5 +1,9 @@
-import type { SynthInstrumentBank } from "./instruments.js";
-import { createRandom } from "./random.js";
+import type {
+  SynthBankNames,
+  SynthInstrument,
+  SynthInstrumentBank,
+} from "./instruments.js";
+import { seededRandom } from "./random.js";
 import { renderSynthInstrument } from "./instruments.js";
 import type {
   SynthFilter,
@@ -85,7 +89,7 @@ export function renderSynthPatch(
   const attackSamples = Math.min(Math.round(attack * sampleRate), voiceLength);
   const glide = wave === "noise" ? 1 : endFreq / startFreq;
 
-  const random = createRandom(patch.seed ?? 1);
+  const random = seededRandom(patch.seed ?? 1);
   const filter = patch.filter ? createFilter(patch.filter, sampleRate) : null;
 
   let phase = 0;
@@ -173,12 +177,14 @@ export function renderSynthJingle(
 }
 
 /** Render a patch, layered patches, a jingle, or a supplied instrument. */
-export function renderSynthSound(
-  sound: SynthSound,
+export function renderSynthSound<
+  Bank extends SynthInstrumentBank = SynthInstrumentBank,
+>(
+  sound: SynthSound<SynthBankNames<Bank>>,
   sampleRate: number = SYNTH_SAMPLE_RATE,
-  instruments: SynthInstrumentBank = {},
+  instruments?: Bank,
 ): Float32Array {
-  if ("instrument" in sound)
+  if (isSynthInstrument(sound))
     return renderSynthInstrument(sound, sampleRate, instruments).samples;
   if (isPatchStack(sound)) {
     return mix(
@@ -190,6 +196,13 @@ export function renderSynthSound(
   }
   if ("notes" in sound) return renderSynthJingle(sound, sampleRate);
   return renderSynthPatch(sound, sampleRate);
+}
+
+/** @internal True for an instrument descriptor. */
+export function isSynthInstrument<Name extends string>(
+  sound: SynthSound<Name>,
+): sound is SynthInstrument<Name> {
+  return "instrument" in sound;
 }
 
 /**

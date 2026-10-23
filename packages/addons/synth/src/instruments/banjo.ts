@@ -3,8 +3,5 @@ import { renderBanjo } from "../core/dsp/pluck.js";
 
 export const banjo = /* @__PURE__ */ defineInstrument(
   "banjo",
-  (frequency, sampleRate, seed) => ({
-    data: renderBanjo(frequency, sampleRate, seed),
-    sampleRate,
-  }),
+  (frequency, sampleRate, seed) => renderBanjo(frequency, sampleRate, seed),
 );

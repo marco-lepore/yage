@@ -7,7 +7,7 @@
  * (a festival zither) and a warm plucked bass.
  */
 import { biquad, onePoleLP } from "./filters.js";
-import { Rng } from "./rng.js";
+import { seededRandom } from "../random.js";
 import {
   dcBlock,
   fadeIn,
@@ -17,10 +17,12 @@ import {
   normalize,
   samples,
   sinCycles,
+  requirePositive,
 } from "./util.js";
 
-export interface PluckOptions {
-  readonly freq: number;
+export interface SynthStringOptions {
+  /** Fundamental in Hz. */
+  readonly frequency: number;
   readonly duration: number;
   /** Seconds for the fundamental to decay by 60 dB. */
   readonly t60: number;
@@ -47,21 +49,27 @@ export interface PluckOptions {
 }
 
 /** Raw Karplus–Strong string, not normalised. */
-export function renderString(o: PluckOptions, sr: number): Float32Array {
+export function renderString(o: SynthStringOptions, sr: number): Float32Array {
+  requirePositive("renderString", {
+    sampleRate: sr,
+    frequency: o.frequency,
+    duration: o.duration,
+    t60: o.t60,
+  });
   const n = samples(o.duration, sr);
   const out = new Float32Array(n);
-  const period = sr / o.freq;
+  const period = sr / o.frequency;
   const bright = Math.min(1, Math.max(0, o.brightness));
   // Two-tap loop filter: s = 0.5 is the classic average (dark), s → 0 is bright.
   const s = 0.5 - 0.42 * bright;
   // Loop loss so the fundamental reaches −60 dB after t60.
-  const loss = Math.pow(0.001, 1 / (o.freq * Math.max(0.05, o.t60)));
+  const loss = Math.pow(0.001, 1 / (o.frequency * Math.max(0.05, o.t60)));
 
   // Excitation: one period of noise, low-passed by brightness, comb-filtered by pick position.
-  const rng = new Rng(o.seed);
+  const rng = seededRandom(o.seed);
   const exLen = Math.max(4, Math.round(period));
   const ex = new Float32Array(exLen);
-  for (let i = 0; i < exLen; i++) ex[i] = rng.next() * 2 - 1;
+  for (let i = 0; i < exLen; i++) ex[i] = rng() * 2 - 1;
   onePoleLP(ex, 600 + 9000 * bright * bright, sr);
   const pick = Math.max(
     1,
@@ -106,7 +114,7 @@ export function renderString(o: PluckOptions, sr: number): Float32Array {
       out[i] =
         out[i]! +
         thump *
-          sinCycles((i * o.freq) / sr) *
+          sinCycles((i * o.frequency) / sr) *
           Math.exp(-i / tau) *
           Math.min(1, i / (0.002 * sr));
     }
@@ -128,7 +136,7 @@ export function renderBanjo(
   const t60 = Math.min(1.5, Math.max(0.55, 1.5 - (freq - 150) / 900));
   const out = renderString(
     {
-      freq,
+      frequency: freq,
       duration: 1.5,
       t60,
       brightness: 0.82,
@@ -161,7 +169,7 @@ export function renderUprightBass(
   const t60 = Math.min(2.4, Math.max(1.2, 2.6 - freq / 150));
   const out = renderString(
     {
-      freq,
+      frequency: freq,
       duration: 2,
       t60,
       brightness: 0.18,
@@ -202,7 +210,7 @@ export function renderGuzheng(
   const duration = Math.min(3, t60 * 0.75 + 0.3, maxDuration);
   const out = renderString(
     {
-      freq,
+      frequency: freq,
       duration,
       t60,
       brightness: 0.86,
@@ -215,11 +223,11 @@ export function renderGuzheng(
     sr,
   );
   // Plectrum zing: a few milliseconds of bright noise on the attack.
-  const rng = new Rng(seed ^ 0x5a5a);
+  const rng = seededRandom(seed ^ 0x5a5a);
   const zingN = Math.min(out.length, samples(0.006, sr));
   const zing = new Float32Array(zingN);
   for (let i = 0; i < zingN; i++)
-    zing[i] = (rng.next() * 2 - 1) * Math.exp((-4 * i) / zingN);
+    zing[i] = (rng() * 2 - 1) * Math.exp((-4 * i) / zingN);
   biquad(zing, "bandpass", Math.min(sr * 0.4, 5200), 1.3, sr);
   for (let i = 0; i < zingN; i++) out[i] = out[i]! + zing[i]! * 0.9;
   biquad(out, "highpass", 80, 0.7, sr);
@@ -245,7 +253,7 @@ export function renderBass(
   const t60 = Math.min(2.4, Math.max(1.2, 2.6 - freq / 150));
   const out = renderString(
     {
-      freq,
+      frequency: freq,
       duration: 2,
       t60,
       brightness: 0.14,

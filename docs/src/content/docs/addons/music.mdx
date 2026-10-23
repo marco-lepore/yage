@@ -33,8 +33,9 @@ const music = entity.add(new MusicComponent(workshop, {
 }));
 ```
 
-The component starts on enable. If the browser still requires a gesture, it
-waits for audio to run. Disabling the component stops its sounds; enabling it
+The component starts on enable, and a slow first frame does not skip the
+song's opening notes. If the browser still requires a gesture, it waits for
+audio to run. Disabling the component stops its sounds; enabling it
 again starts the configured song from beat zero. Destroying it releases its
 channels, notes and scheduler subscription. Several music entities can coexist.
 
@@ -42,8 +43,13 @@ channels, notes and scheduler subscription. Several music entities can coexist.
 
 Every beat and duration counts quarter notes. `[3, 4]` has three beats per bar;
 `[7, 8]` has three and a half. BPM always counts quarter notes. A note's `note`
-is a MIDI pitch; omit it to play a recording at its original rate. `rootNote`
-on the track is the sample's original MIDI pitch, default 60 (middle C).
+is a MIDI pitch; omit it to play a recording at its original rate. The player
+transposes against the source's root note, the MIDI pitch it sounds at its
+original rate. Synth instruments and banks from the
+[audio build tool](/tooling/audio/) register that pitch with the sound, so a
+song needs no tuning data. For other recordings, register it with
+`sound(path, { rootNote })` or set `rootNote` on the track. Without either it is
+60 (middle C).
 
 A pattern repeats after `bars` measures. Swing delays alternate subdivisions:
 `subdivision: 0.5` means eighth notes and `amount: 1 / 3` gives a 2:1 ratio.
@@ -80,7 +86,9 @@ starting with beat zero. Harmony repeats with the song pattern.
 `music.transition(nextSong)` starts the next song at beat zero on the next bar
 boundary, with a 0.25-second crossfade. Use `{ grid: 1, fade: 0.5 }` to change
 on a quarter-note boundary with a longer fade. The return value is the absolute
-audio time of that transition. Each song keeps its own tempo and meter.
+audio time of that transition. With no song playing, `transition` starts the
+song the way `play` does, without a fade, and returns the current audio time.
+Each song keeps its own tempo and meter.
 
 ## Pause and ownership
 
@@ -88,13 +96,16 @@ Music follows the audio clock. Scene pause and game time scale leave it playing.
 Browser visibility suspension freezes audio time, including booked starts and
 fades. `music.pause()` cancels sounding and booked notes and holds the beat;
 `resume()` continues with the next note. Previously sounding notes are not
-reconstructed. Resume before requesting a cue or transition.
+reconstructed. Resume before requesting a cue or transition. A `play()` call
+while paused replaces the song but waits: the new song starts after
+`resume()`.
 
 Pausing the parent audio channel also holds the transport and parameter ramps.
 Resuming that channel keeps an independently paused player paused. Future
 parameter writes retain their scheduled time and curve across transitions.
 
-Use `stop()` to clear playback and pending unlock intent. A directly created
+Use `stop()` to clear playback and a song waiting for unlock. An explicit pause
+stays in force after `stop()`. A directly created
 `new MusicPlayer(audio, options)` has the same controls; call `dispose()` when
 its owner is finished. Keep song ids and gameplay parameters in your save root,
 then recreate playback when loading. Audio nodes and players are transient.
@@ -102,7 +113,8 @@ then recreate playback when loading. Audio nodes and players are transient.
 ## Inspect and measure
 
 `position()` exposes quarter-note beat, zero-based bar, beat within the bar,
-phase and BPM. `harmonyAt(time)` reads a future chord. `getDiagnostics()` adds
+beats per bar, phase and BPM. A beat display or a rhythm check reads it every
+frame. `harmonyAt(time)` reads a future chord. `getDiagnostics()` adds
 state, song, parameter values, scheduled notes, missed notes and transitions.
 If the main thread misses a scheduling window, the player skips those notes
 and increments `droppedNotes` rather than producing a catch-up burst.
@@ -114,6 +126,8 @@ Include sufficient duration for releases and use the same source bank and seed.
 See [audio measurements](/guides/audio/#offline-mix-measurements) for sample peak,
 RMS and their limits.
 
-Try the [adaptive music example](https://examples.yage.dev/adaptive-music.html)
-for a three-beat swung pattern, parameter layers, recorded accents, a continuous
-loop, transitions, independent scene pause and offline measurement.
+The [adaptive music example](https://examples.yage.dev/adaptive-music.html)
+puts the rules in one component on a host entity. A danger control raises the
+intensity layers, a reward plays a cue in the current chord, a new area changes
+song on the next bar, and pausing the game pauses the music channel with the
+scene. Its sounds come from a bank rendered during the build.

@@ -1,8 +1,9 @@
 /**
- * mulberry32 — a small deterministic generator, so noise is reproducible.
- * @internal Shared with preset generators that need seeded randomness.
+ * A seeded random generator returning numbers in [0, 1). The same seed gives
+ * the same sequence on every platform, so an instrument renders the same
+ * samples in the browser, a worker and the build tool. (mulberry32.)
  */
-export function createRandom(seed: number): () => number {
+export function seededRandom(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
