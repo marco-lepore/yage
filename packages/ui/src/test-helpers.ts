@@ -146,6 +146,10 @@ class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
     const manager = new RenderLayerManager(root as never);
     const tree: SceneRenderTree = {
       root: root as never,
+      alpha: 1,
+      visible: true,
+      offset: { x: 0, y: 0 },
+      setOffset: () => {},
       get: (name) => manager.get(name),
       tryGet: (name) => manager.tryGet(name),
       getAll: () => manager.getAll(),
@@ -171,6 +175,11 @@ class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
         throw new Error("UI test-helpers tree does not support setMask.");
       },
       clearMask: () => undefined,
+      setTransitionMask: () => {
+        throw new Error(
+          "UI test-helpers tree does not support setTransitionMask.",
+        );
+      },
       renderAboveEffects: () => {
         throw new Error(
           "UI test-helpers tree does not support renderAboveEffects.",

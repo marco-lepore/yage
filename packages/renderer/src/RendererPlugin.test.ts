@@ -87,6 +87,7 @@ const { mocks } = vi.hoisted(() => {
     };
     initOptions: Record<string, unknown> = {};
     renderer = {
+      name: "webgl",
       width: 800,
       height: 600,
       resize(this: { width: number; height: number }, w: number, h: number) {
@@ -457,6 +458,14 @@ describe("RendererPlugin", () => {
       await plugin.install(context);
 
       expect(plugin.canvas).toBeDefined();
+    });
+
+    it("reports the graphics API Pixi picked", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+
+      expect(plugin.backend).toBe("webgl");
     });
 
     it("passes canvas option to PixiJS when provided", async () => {

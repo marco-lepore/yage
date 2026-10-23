@@ -35,7 +35,9 @@ Built-in presenters ensure their configured layers before drawing, including
 when mounted standalone. Use the shared renderer `ensureLayer` contract. An
 existing host layer keeps its order. In development a mismatch logs one warning
 per tree, layer name, and requested order. Do not add a separate warning
-registry in an addon.
+registry in an addon. A presenter that adds a layer to a given scene resolves
+that scene's tree through `SceneRenderTreeProviderKey`; examples and game code
+use `SceneRenderTreeKey`, and lint rejects the provider key in examples only.
 
 | Use                                    | Default order range |
 | -------------------------------------- | ------------------- |
@@ -354,13 +356,12 @@ renderer for this reason, so the addon declares no `pixi.js` peer.
 Presenters follow the game-code rule for visuals: change a visual through its
 component (`visible`, `alpha`, `tint`, `setText`, `mergeStyle`, `draw`,
 `localBounds`) and its entity's `Transform`, never through the Pixi object
-underneath (`renderObject`, `.graphics`, `.text`, `.sprite`). The component
-re-applies `visible` and `alpha`, and `DisplaySystem` writes position, rotation
-and scale, so a write on the Pixi object is lost. A task that needs the Pixi
-object is a missing renderer API: add it to the renderer. Lint rejects
-`pixi.js` imports and the `renderObject`, `displayObject`, `animatedSprite`
-and `splitText` members in addon source; a deliberate use carries an
-`eslint-disable-next-line` comment with its reason. Don't pull
+underneath (`renderObject`). The component re-applies `visible` and `alpha`,
+and `DisplaySystem` writes position, rotation and scale, so a write on the
+Pixi object is lost. A task that needs the Pixi object is a missing renderer
+API: add it to the renderer. Lint rejects `pixi.js` imports and the
+`renderObject` and `displayObject` members in addon source; a deliberate use
+carries an `eslint-disable-next-line` comment with its reason. Don't pull
 `@yagejs/ui` for nine-slice either: `grep -rc "@yagejs/ui" packages/addons/dialogue`
 must return 0. The textured variants (`TexturedChrome`, `TexturedBubble`) are
 opt-in, reachable only through the `./presenters` barrel plus the optional

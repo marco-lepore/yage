@@ -7,19 +7,36 @@ import type {
 import { irisReveal } from "./irisReveal.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
 import { RendererKey } from "../types.js";
+import type { MaskFactory } from "../masks/MaskFactory.js";
+import type { MaskHandle } from "../masks/MaskHandle.js";
 
+/** A scene tree that records the transition mask a transition sets and removes. */
 interface MaskableContainer {
-  mask: unknown;
-  addChild: (child: unknown) => void;
-  setMask: (opts: { mask: unknown; inverse: boolean }) => void;
+  setTransitionMask: (factory: MaskFactory) => MaskHandle;
+  /** The mask the last `setTransitionMask` factory built. */
+  built: ReturnType<MaskFactory> | undefined;
+  /** How many times the transition mask's handle was removed. */
+  removed: number;
 }
 
 function makeMaskableContainer(): MaskableContainer {
-  return {
-    mask: null,
-    addChild: () => {},
-    setMask: () => {},
+  const tree: MaskableContainer = {
+    built: undefined,
+    removed: 0,
+    setTransitionMask: (factory) => {
+      const built = factory();
+      tree.built = built;
+      return {
+        remove: () => {
+          tree.removed++;
+        },
+        setInverse: () => {},
+        inverse: built.inverse,
+        redraw: () => built.redraw?.(),
+      };
+    },
   };
+  return tree;
 }
 
 function makeCtx(opts: {
@@ -54,7 +71,7 @@ function makeCtx(opts: {
           return {
             getTree: (s: Scene) => {
               if (s === opts.toScene && opts.toContainer) {
-                return { root: opts.toContainer };
+                return opts.toContainer;
               }
               return undefined;
             },
@@ -98,15 +115,14 @@ describe("irisReveal", () => {
     const t = irisReveal({ duration: 100 });
     const toScene = { name: "to" } as Scene;
     const toContainer = makeMaskableContainer();
-    const setMask = vi.spyOn(toContainer, "setMask");
+    const setTransitionMask = vi.spyOn(toContainer, "setTransitionMask");
 
     t.begin!(makeCtx({ elapsed: 0, kind: "push", toScene, toContainer }));
-    expect(setMask).toHaveBeenCalledTimes(1);
-    expect(setMask.mock.calls[0]?.[0]?.inverse).toBe(false);
+    expect(setTransitionMask).toHaveBeenCalledTimes(1);
+    expect(toContainer.built?.inverse).toBe(false);
 
-    toContainer.mask = "still-here";
     t.end!(makeCtx({ elapsed: 100, kind: "push", toScene, toContainer }));
-    expect(toContainer.mask).toBeNull();
+    expect(toContainer.removed).toBe(1);
   });
 
   it("tolerates an undefined toScene container", () => {

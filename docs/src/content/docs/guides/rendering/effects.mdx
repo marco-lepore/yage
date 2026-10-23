@@ -69,7 +69,7 @@ import {
 
 const sprite = entity.get(SpriteComponent);
 
-// 1. Component scope — sprite / graphics / text / animatedSprite.
+// 1. Component scope — any visual component.
 sprite.fx.addEffect(hitFlash({ /* ... */ }));
 
 // 2. Layer scope — every entity in this layer.
@@ -581,152 +581,168 @@ means whatever is already in the framebuffer being drawn to. Put an `erase`
 object straight into a scene layer and it erases the whole world behind it,
 not just the shape you meant to cut. To cut a hole in one thing, draw both
 into an [offscreen render target](#offscreen-render-targets) so the erase
-only reaches that buffer.
+only reaches that texture.
 :::
 
 ## Offscreen render targets
 
-`createRenderTarget` draws a container into a texture your game owns, on a
-schedule you control. Reach for it when several objects need to composite
-against each other before they reach the screen, or when redrawing expensive
-static content every frame is wasteful.
+A layer declared with `renderTarget` draws into a texture, not the
+screen. Visuals join it with `layer: name` like any other layer and follow
+their entity's `Transform`. Another layer shows the texture through a
+`SpriteComponent`. Reach for it when several objects must composite against
+each other before they reach the screen, when one drawing shows in several
+places, such as a radar on two monitors, or when static content is too
+expensive to redraw every frame.
 
-The source is a Pixi container your code builds, moves and destroys itself:
-no visual component draws into a render target, so this is one of the few
-places a game works with Pixi objects directly.
+Here a lamp cuts a lit spot out of a dark overlay. The overlay and the lamp
+draw into the `"lighting"` texture, and a sprite on the `"overlay"` layer
+shows it over the world:
 
-```ts yage-group="light-buffer" yage-file="light-buffer.ts"
-import { Component } from "@yagejs/core";
-import { Container, Graphics } from "pixi.js";
-import { RendererKey, registerTexture, unregisterTexture } from "@yagejs/renderer";
-import type { RenderTargetHandle } from "@yagejs/renderer";
+```ts
+import { Component, Entity, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  GraphicsComponent,
+  SceneRenderTreeKey,
+  SpriteComponent,
+} from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
 
-export class LightBuffer extends Component {
-  private readonly source = new Container();
-  private readonly lamp = new Graphics().circle(0, 0, 120).fill(0xffffff);
-  private target!: RenderTargetHandle;
+const LIGHTING = "arena:lighting";
 
-  /** Registered keys are engine-global, so give each buffer its own. */
-  constructor(private readonly key: string) {
-    super();
+class Darkness extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(
+      new GraphicsComponent({ layer: "lighting" }).draw((g) =>
+        g.rect(0, 0, 1280, 720).fill({ color: 0x05060a, alpha: 0.85 }),
+      ),
+    );
   }
+}
 
-  onAdd(): void {
-    const darkness = new Graphics()
-      .rect(0, 0, 1280, 720)
-      .fill({ color: 0x05060a, alpha: 0.85 });
-    // `erase` only reaches `darkness`, because both live in the buffer.
-    this.lamp.blendMode = "erase";
-    this.source.addChild(darkness, this.lamp);
+/** Moves the lit spot. Positions are texture pixels. */
+class LampControl extends Component {
+  private readonly transform = this.sibling(Transform);
 
-    this.target = this.use(RendererKey).createRenderTarget(this.source, {
-      width: 1280,
-      height: 720,
-      resolutionScale: 0.5, // a quarter of the texels — invisible on a soft gradient
-    });
-    registerTexture(this.key, this.target.texture);
+  moveTo(x: number, y: number): void {
+    this.transform.setPosition(x, y);
+    // The layer redraws on demand, so a change asks for a redraw.
+    this.use(SceneRenderTreeKey).get("lighting").renderTarget?.invalidate();
   }
+}
 
-  /** Move the lit spot. Coordinates are buffer pixels, not world pixels. */
-  moveLamp(x: number, y: number): void {
-    this.lamp.position.set(x, y);
-    this.target.invalidate(); // the content changed
+class Lamp extends Entity {
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(640, 360) }));
+    // `erase` reaches only the darkness, because both draw into the texture.
+    this.add(
+      new GraphicsComponent({ layer: "lighting", blendMode: "erase" }).draw(
+        (g) => g.circle(0, 0, 120).fill(0xffffff),
+      ),
+    );
+    this.add(new LampControl());
   }
+}
 
-  update(): void {
-    this.target.renderIfNeeded(); // draws only when a redraw is pending
-  }
+class ArenaScene extends Scene {
+  readonly name = "arena";
+  readonly layers: readonly LayerDef[] = [
+    {
+      name: "lighting",
+      order: 0,
+      renderTarget: {
+        width: 1280,
+        height: 720,
+        texture: LIGHTING,
+        refresh: "on-demand",
+        resolutionScale: 0.5, // a quarter of the texels, invisible on a soft edge
+      },
+    },
+    { name: "world", order: 0 },
+    { name: "overlay", order: 10 },
+  ];
 
-  onDestroy(): void {
-    unregisterTexture(this.key);
-    this.target.destroy();
-    this.source.destroy({ children: true });
+  onEnter(): void {
+    this.spawn(Darkness);
+    this.spawn(Lamp);
+    const overlay = this.spawn("lighting-overlay");
+    overlay.add(new Transform());
+    overlay.add(new SpriteComponent({ texture: LIGHTING, layer: "overlay" }));
   }
 }
 ```
 
-The buffer starts out needing a draw and is redrawn only when you ask.
-`moveLamp` calls `invalidate()` from the event that changed the content and
-`update` leaves the drawing to `renderIfNeeded()` — the right shape for a
-baked background or a fog-of-war map revealed on discovery. For content that
-moves every frame, call `render()` directly and use `resolutionScale` to keep
-the cost down.
+The `texture` key is registered when the scene enters, so a sprite can name
+it in `onEnter`. `layer.renderTarget` also holds the texture itself, and is
+`undefined` on a layer that draws on screen.
 
-Add the owner before anything that shows the texture, so the key already
-resolves:
+### When the texture redraws
 
-```ts yage-group="light-buffer" yage-context="scene-enter"
-import { Transform } from "@yagejs/core";
-import { SpriteComponent } from "@yagejs/renderer";
-import { LightBuffer } from "./light-buffer.js";
+- **`refresh: "every-frame"`** (the default) redraws the texture each frame,
+  just before the frame is drawn. Every visual on the layer has already taken
+  its entity's `Transform` by then, so the texture never shows the previous
+  frame. Use it for content that moves every frame. It keeps redrawing while
+  its scene is hidden under another, because another scene can show the
+  texture through its key. Use `"on-demand"` for a texture nobody looks at
+  most of the time.
+- **`refresh: "on-demand"`** redraws only on the frame after
+  `layer.renderTarget.invalidate()`, and after `resize()`. Use it for a baked
+  background, a fog-of-war map revealed on discovery, or a lamp that moves on
+  events.
 
-const LIGHTING = "arena:lighting";
+With `renderer.drawingEnabled` set to `false`, nothing draws. A pending
+redraw waits for the next `renderer.render()` or `captureCanvas()`.
 
-const lights = this.spawn("lights");
-lights.add(new Transform());
-lights.add(new LightBuffer(LIGHTING));
-lights.add(new SpriteComponent({ texture: LIGHTING, layer: "overlay" }));
-```
+### Where things land inside the texture
 
-A render target is three resources, and one object should free all three: the
-texture (`handle.destroy()`), the source container
-(`source.destroy({ children: true })`, which `handle.destroy()` does not touch)
-and the registered key (`unregisterTexture(key)`, or the key keeps resolving a
-destroyed texture). A component's `onDestroy` runs when its entity is
-destroyed or when the scene tears down, so it covers both exits. Own
-the buffer on a scene's `onEnter` / `onExit` pair instead when its lifetime is
-exactly the scene's.
-
-:::caution[Give each buffer its own key]
-Registrations are engine-global, and a `replace` transition keeps both scenes
-alive at once. If two scenes register the same `"lighting"` key, the outgoing
-scene's `unregisterTexture` removes the incoming scene's entry, and every later
-lookup of that key throws. Derive the key from the owner, as `"arena:lighting"`
-does here.
-:::
-
-### Where things land inside the buffer
-
-Content is drawn in the source container's **own** coordinate space. A child
-at local `(100, 50)` lands at texture pixel `(100, 50)`. Ancestor transforms
-never reach the buffer, so neither the camera nor the responsive `fit` scale
-moves or resizes what you draw. Two consequences:
-
-- **To follow the camera, move the children yourself.** Run the world point
-  through `camera.worldToScreen(x, y)` and place the child at the result —
-  reading `camera.position` alone drifts as soon as zoom, rotation, or shake
-  are in play. Or size the buffer to
-  `renderer.visibleVirtualRect` and place content in that rectangle.
-- **The source's own transform still applies.** Setting `source.position`
-  shifts everything inside the texture. Leave the source untransformed
-  unless you want that.
+The layer's pixels are the texture's pixels: a visual at `(100, 50)` on the
+layer lands at texture pixel `(100, 50)`. No camera binds the layer and the
+responsive `fit` does not reach it. To follow the camera, move the entities
+yourself. Run the world point through `camera.worldToScreen(x, y)` and place
+the entity at the result, since reading `camera.position` alone drifts as
+soon as zoom, rotation, or shake are in play. Or size the texture to
+`renderer.visibleVirtualRect` and place content in that rectangle.
 
 ### Rules worth knowing
 
-- **Keep the source out of the scene render tree.** PixiJS promotes a
-  rendered container to a render group, changing how it batches wherever it
-  is parented, and buffer content is normally shown through the texture
-  rather than drawn twice.
-- **A hidden source draws nothing.** PixiJS skips a container whose
-  `visible` is `false`. The pending draw is kept — and set, if you forced
-  one — so the buffer catches up the first time the source is shown.
-- **A destroyed source throws.** Once the source container is destroyed the
-  buffer can never draw again, so `render()` and `renderIfNeeded()` raise a
-  named error instead of leaving a permanently stale texture. Destroy the
-  target alongside its source.
+- **The layer never draws on screen.** `onPointer` never fires for its
+  visuals, the bounds they report are in texture pixels, and
+  `renderAboveEffects` leaves them in the texture.
+- **No camera binds it.** Naming the layer in a camera's `bindings` throws.
+- **It takes no `space`, and `"default"` cannot be one.** Both throw when
+  the scene enters, as does a size that is not positive. The scene's layers
+  are all checked before any of them is created.
+- **Scene-wide effects and masks do not reach it.** The scene's `fx` and
+  `setMask` cover what is on screen. The layer's own `fx` and `setMask` apply
+  inside the texture.
+- **The scene owns the texture.** Scene exit destroys it and unregisters its
+  key. When two live scenes register the same key, as a `replace` to a fresh
+  copy of the same scene does, the key resolves the later scene's texture.
+  When the later scene exits first, the key goes back to the earlier one.
+- **Declare a texture's layer before the layer that shows it.** Render-target
+  layers redraw in declaration order, so a render-target layer that shows
+  another's texture comes after it.
 - **`resolutionScale` costs sharpness, not layout.** Only the texel count
   changes. The exception is rounding: PixiJS stores whole texels, so a size
   that lands between them is rounded up and the measured size grows to
   match. Good for gradients and glows, bad for text and pixel art.
 - **`resize()` keeps the density you asked for.** Omit the third argument
-  and the buffer re-derives its resolution from the renderer's current one
+  and the texture re-derives its resolution from the renderer's current one
   using the configured `resolutionScale`; pass one to replace that scale.
-- **`destroy()` frees the texture only.** The source container and any
-  registered key are still yours to release — see the owner component above.
-  Nothing is reclaimed automatically.
 - **WebGPU is unverified.** PixiJS tries WebGL first unless you pass
   `pixi: { preference: "webgpu" }`, and blend behaviour inside a render
   target has only been checked on WebGL.
+
+### Render targets for rendering tools
+
+`renderer.createRenderTarget(source, options)` draws a Pixi container the
+caller builds and owns into a texture. It is for rendering tools that manage
+their own Pixi objects, such as a lighting renderer. The caller redraws the
+texture with `render()` or `renderIfNeeded()` after `invalidate()`, and frees
+three things when done: the texture with `destroy()`, the source container
+with `source.destroy({ children: true })`, and any registered key with
+`unregisterTexture(key)`. Keep the source out of the scene's render tree, so
+it is not drawn twice.
 
 ## Save / load
 

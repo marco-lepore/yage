@@ -61,6 +61,14 @@ The preset composes with `pixi: {...}` — explicit options win, so
 overrides (`source.scaleMode = "linear"`) keep working too — the preset
 only changes the *default* sampling mode.
 
+### Which graphics API runs
+
+Pixi tries WebGL, then WebGPU, then a plain 2D canvas, and draws with the
+first one the browser supports. `pixi: { preference: "webgpu" }` moves WebGPU
+to the front of that order. `renderer.backend` reports the one it picked,
+`"webgl"`, `"webgpu"` or `"canvas"`, for a game that adjusts its effects to it
+or a test that checks it.
+
 ## Where to go next
 
 - **[Responsive Canvas](/guides/rendering/responsive/)** — fit modes (`letterbox`, `expand`, `cover`, `stretch`), drawing into the bars, DOM-overlay positioning, HUD anchoring under `cover`.
@@ -89,8 +97,13 @@ object:
 - **Type aliases, not raw pixi types.** Every exported field, parameter, and
   return type (`VisualComponent.renderObject`, `RenderLayer.container`, ...)
   is typed through `@yagejs/renderer`'s own alias names (`DisplaySprite`,
-  `DisplayContainer`, `GraphicsContext`, `ColorValue`, ...), so your code
+  `DisplayContainer`, `DrawContext`, `ColorValue`, ...), so your code
   never imports `pixi.js` to name a type. `DisplaySprite` is pixi's `Sprite`
   under another name; the alias changes only the import.
+- **An inactive entity draws nothing.** `DisplaySystem` skips it and its
+  visuals stay hidden. A tool that shows inactive entities anyway, such as a
+  level editor's preview, calls `visual.drawInactive(shown)` once per frame:
+  it places the visual at its `Transform` pose and shows it when `shown` is
+  `true` and the visual's own `enabled` and `visible` allow it.
 
 Each section links to the relevant pixi v8 docs.

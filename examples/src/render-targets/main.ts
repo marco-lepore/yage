@@ -1,20 +1,18 @@
 /**
  * Offscreen render targets and blend modes.
  *
- * A radar display is drawn into an offscreen texture, then the same live
+ * The radar is a layer declared with `renderTarget`, so it draws into a
+ * texture, not the screen. Its grid, sweep and contacts are ordinary
+ * entities on that layer, moved through their `Transform`. The same live
  * texture is shown on a large wall monitor and a smaller console display.
- * The source container never joins the scene graph. It is built from Pixi
- * objects directly, because no visual component draws into a render target.
  *
  * R cycles `resolutionScale`. Both screens keep the same layout while the
- * texture gets sharper or chunkier. Space pauses the radar; once nothing
- * changes, `renderIfNeeded()` stops redrawing the buffer.
+ * texture gets sharper or chunkier. Space pauses the radar. The layer
+ * redraws on demand, so once nothing moves the texture stops redrawing.
  *
  * The strip along the bottom demonstrates component `blendMode` without a
  * render target.
  */
-// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- no visual component draws into a render target
-import { Container, Graphics } from "pixi.js";
 import {
   Component,
   Engine,
@@ -28,14 +26,12 @@ import {
 import type { ProcessSlot } from "@yagejs/core";
 import {
   GraphicsComponent,
-  RendererKey,
   RendererPlugin,
+  SceneRenderTreeKey,
   SpriteComponent,
   TextComponent,
-  registerTexture,
-  unregisterTexture,
 } from "@yagejs/renderer";
-import type { LayerDef, RenderTargetHandle } from "@yagejs/renderer";
+import type { LayerDef, LayerRenderTarget } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import {
   installDebugFromUrl,
@@ -49,6 +45,8 @@ const WIDTH = 800;
 const HEIGHT = 600;
 const RADAR_WIDTH = 320;
 const RADAR_HEIGHT = 220;
+const RADAR_CENTER = new Vec2(RADAR_WIDTH / 2, RADAR_HEIGHT / 2);
+const RADAR_LAYER = "radar";
 const RADAR_TEXTURE = "render-target-radar";
 /** The `resolutionScale` values R cycles through. */
 const SCALES = [1, 0.5, 0.25, 0.1];
@@ -57,167 +55,166 @@ const SAMPLE_SECONDS = 0.5;
 const BLEND_MODES = ["normal", "add", "multiply", "screen"] as const;
 
 // ---------------------------------------------------------------------------
-// RadarSource — the offscreen Pixi container the render target draws
+// Radar — entities on the render-target layer
 // ---------------------------------------------------------------------------
-class RadarSource {
-  readonly container = new Container();
 
-  private readonly contacts = new Graphics();
-  private readonly sweep = new Graphics();
-  private elapsed = 0;
+/** How one contact drifts around the radar centre. */
+interface ContactPath {
+  radius: Vec2;
+  speed: Vec2;
+  phase: number;
+}
 
-  constructor() {
-    this.container.label = "offscreen-radar-source";
+const CONTACT_PATHS: readonly ContactPath[] = [
+  { radius: new Vec2(112, 72), speed: new Vec2(0.8, 1.1), phase: 0 },
+  { radius: new Vec2(78, 90), speed: new Vec2(-0.55, 0.7), phase: 2 },
+  { radius: new Vec2(130, 58), speed: new Vec2(0.35, -0.6), phase: 4 },
+];
 
-    const background = new Graphics();
-    background.rect(0, 0, RADAR_WIDTH, RADAR_HEIGHT).fill(0x06131c);
+/** Places a contact on its path at a given radar time. */
+class ContactMotion extends Component {
+  private readonly transform = this.sibling(Transform);
 
-    const grid = new Graphics();
-    grid.rect(1, 1, RADAR_WIDTH - 2, RADAR_HEIGHT - 2).stroke({
-      color: 0x4fe3b2,
-      width: 2,
-      alpha: 0.7,
-    });
-    for (let x = 40; x < RADAR_WIDTH; x += 40) {
-      grid.moveTo(x, 0).lineTo(x, RADAR_HEIGHT).stroke({
-        color: 0x2a8f76,
-        width: 1,
-        alpha: 0.35,
-      });
-    }
-    for (let y = 40; y < RADAR_HEIGHT; y += 40) {
-      grid.moveTo(0, y).lineTo(RADAR_WIDTH, y).stroke({
-        color: 0x2a8f76,
-        width: 1,
-        alpha: 0.35,
-      });
-    }
-    grid
-      .circle(RADAR_WIDTH / 2, RADAR_HEIGHT / 2, 42)
-      .stroke({ color: 0x4fe3b2, width: 1, alpha: 0.45 });
-    grid
-      .circle(RADAR_WIDTH / 2, RADAR_HEIGHT / 2, 84)
-      .stroke({ color: 0x4fe3b2, width: 1, alpha: 0.3 });
-
-    this.container.addChild(background, grid, this.contacts, this.sweep);
-    this.advance(0);
+  constructor(private readonly path: ContactPath) {
+    super();
   }
 
-  advance(dt: number): void {
-    this.elapsed += dt;
-
-    const centerX = RADAR_WIDTH / 2;
-    const centerY = RADAR_HEIGHT / 2;
-    const angle = this.elapsed * 1.4;
-    const sweepX = centerX + Math.cos(angle) * 104;
-    const sweepY = centerY + Math.sin(angle) * 104;
-    this.sweep
-      .clear()
-      .moveTo(centerX, centerY)
-      .lineTo(sweepX, sweepY)
-      .stroke({ color: 0x86ffd6, width: 3, alpha: 0.7 });
-
-    this.contacts.clear();
-    const movingContacts = [
-      {
-        x: centerX + Math.cos(this.elapsed * 0.8) * 112,
-        y: centerY + Math.sin(this.elapsed * 1.1) * 72,
-      },
-      {
-        x: centerX + Math.cos(this.elapsed * -0.55 + 2) * 78,
-        y: centerY + Math.sin(this.elapsed * 0.7 + 2) * 90,
-      },
-      {
-        x: centerX + Math.cos(this.elapsed * 0.35 + 4) * 130,
-        y: centerY + Math.sin(this.elapsed * -0.6 + 4) * 58,
-      },
-    ];
-    for (const contact of movingContacts) {
-      this.contacts.circle(contact.x, contact.y, 5).fill(0xffcf5a);
-      this.contacts.circle(contact.x, contact.y, 9).stroke({
-        color: 0xffcf5a,
-        width: 1,
-        alpha: 0.45,
-      });
-    }
-  }
-
-  destroy(): void {
-    this.container.destroy({ children: true });
+  moveTo(elapsed: number): void {
+    const { radius, speed, phase } = this.path;
+    this.transform.setPosition(
+      RADAR_CENTER.x + Math.cos(elapsed * speed.x + phase) * radius.x,
+      RADAR_CENTER.y + Math.sin(elapsed * speed.y + phase) * radius.y,
+    );
   }
 }
 
-// ---------------------------------------------------------------------------
-// RadarFeed — the render target, its controls, and its redraw count
-// ---------------------------------------------------------------------------
+class ContactEntity extends Entity {
+  motion!: ContactMotion;
+
+  setup(params: { path: ContactPath }): void {
+    this.add(new Transform());
+    this.add(
+      new GraphicsComponent({ layer: RADAR_LAYER }).draw((g) => {
+        g.circle(0, 0, 5).fill(0xffcf5a);
+        g.circle(0, 0, 9).stroke({ color: 0xffcf5a, width: 1, alpha: 0.45 });
+      }),
+    );
+    this.motion = this.add(new ContactMotion(params.path));
+  }
+}
 
 /**
- * Owns the radar source and the render target it draws into, and registers
- * the target's texture as `RADAR_TEXTURE` for the monitors to show. R cycles
- * the buffer's resolution; Space pauses the radar. The texture is
- * unregistered and freed when the component is destroyed.
+ * Runs the radar: turns the sweep, moves the contacts, and asks the layer's
+ * texture to redraw. R cycles the texture's resolution; Space pauses the
+ * radar, which stops the redraws.
  */
-class RadarFeed extends Component {
+class RadarScan extends Component {
   private readonly input = this.service(InputManagerKey);
-  private readonly source = new RadarSource();
-  private buffer!: RenderTargetHandle;
+  private _target!: LayerRenderTarget;
+  private elapsed = 0;
   private scaleIndex = 0;
   paused = false;
-  /** Times the buffer was redrawn since the scene started. */
+  /** Redraws asked of the texture since the scene started. */
   redraws = 0;
 
-  get target(): RenderTargetHandle {
-    return this.buffer;
+  constructor(
+    private readonly sweep: Transform,
+    private readonly contacts: readonly ContactMotion[],
+  ) {
+    super();
   }
 
-  get resolutionScale(): number {
-    return SCALES[this.scaleIndex] ?? 1;
+  get target(): LayerRenderTarget {
+    return this._target;
   }
 
   onAdd(): void {
-    this.buffer = this.use(RendererKey).createRenderTarget(
-      this.source.container,
-      {
-        width: RADAR_WIDTH,
-        height: RADAR_HEIGHT,
-        resolutionScale: this.resolutionScale,
-        antialias: true,
-        clearColor: 0x06131c,
-        label: "radar-feed",
-      },
-    );
-    this.buffer.render();
-    registerTexture(RADAR_TEXTURE, this.buffer.texture);
+    const target = this.use(SceneRenderTreeKey).get(RADAR_LAYER).renderTarget;
+    if (!target) {
+      throw new Error(`RadarScan: layer "${RADAR_LAYER}" has no renderTarget.`);
+    }
+    this._target = target;
+    this.place();
   }
 
   update(dt: number): void {
     if (this.input.isJustPressed("cycleResolution")) this.cycleResolution();
     if (this.input.isJustPressed("pauseRadar")) this.paused = !this.paused;
+    if (this.paused) return;
 
-    if (!this.paused) {
-      this.source.advance(dt);
-      this.buffer.invalidate();
-    }
-    if (this.buffer.renderIfNeeded()) this.redraws++;
+    this.elapsed += dt;
+    this.place();
+    this._target.invalidate();
+    this.redraws++;
   }
 
-  onDestroy(): void {
-    unregisterTexture(RADAR_TEXTURE);
-    this.buffer.destroy();
-    this.source.destroy();
+  private place(): void {
+    this.sweep.setRotation(this.elapsed * 1.4);
+    for (const contact of this.contacts) contact.moveTo(this.elapsed);
   }
 
   private cycleResolution(): void {
     this.scaleIndex = (this.scaleIndex + 1) % SCALES.length;
-    this.buffer.resize(RADAR_WIDTH, RADAR_HEIGHT, this.resolutionScale);
+    // A resize redraws the texture once, paused or not.
+    this._target.resize(RADAR_WIDTH, RADAR_HEIGHT, SCALES[this.scaleIndex]);
+    this.redraws++;
   }
 }
 
 class RadarEntity extends Entity {
-  feed!: RadarFeed;
+  scan!: RadarScan;
 
   setup(): void {
-    this.feed = this.add(new RadarFeed());
+    this.add(new Transform());
+
+    const grid = this.spawnChild("grid");
+    grid.add(new Transform());
+    grid.add(
+      new GraphicsComponent({ layer: RADAR_LAYER }).draw((g) => {
+        g.rect(1, 1, RADAR_WIDTH - 2, RADAR_HEIGHT - 2).stroke({
+          color: 0x4fe3b2,
+          width: 2,
+          alpha: 0.7,
+        });
+        for (let x = 40; x < RADAR_WIDTH; x += 40) {
+          g.moveTo(x, 0)
+            .lineTo(x, RADAR_HEIGHT)
+            .stroke({ color: 0x2a8f76, width: 1, alpha: 0.35 });
+        }
+        for (let y = 40; y < RADAR_HEIGHT; y += 40) {
+          g.moveTo(0, y)
+            .lineTo(RADAR_WIDTH, y)
+            .stroke({ color: 0x2a8f76, width: 1, alpha: 0.35 });
+        }
+        g.circle(RADAR_CENTER.x, RADAR_CENTER.y, 42).stroke({
+          color: 0x4fe3b2,
+          width: 1,
+          alpha: 0.45,
+        });
+        g.circle(RADAR_CENTER.x, RADAR_CENTER.y, 84).stroke({
+          color: 0x4fe3b2,
+          width: 1,
+          alpha: 0.3,
+        });
+      }),
+    );
+
+    const contacts = CONTACT_PATHS.map(
+      (path, index) =>
+        this.spawnChild(`contact-${index}`, ContactEntity, { path }).motion,
+    );
+
+    const sweep = this.spawnChild("sweep");
+    const sweepTransform = sweep.add(new Transform({ position: RADAR_CENTER }));
+    sweep.add(
+      new GraphicsComponent({ layer: RADAR_LAYER }).draw((g) => {
+        g.moveTo(0, 0)
+          .lineTo(104, 0)
+          .stroke({ color: 0x86ffd6, width: 3, alpha: 0.7 });
+      }),
+    );
+
+    this.scan = this.add(new RadarScan(sweepTransform, contacts));
   }
 }
 
@@ -232,7 +229,7 @@ class Readout extends Component {
   private lastRedraws = 0;
   redrawsPerSecond = 0;
 
-  constructor(private readonly feed: RadarFeed) {
+  constructor(private readonly scan: RadarScan) {
     super();
   }
 
@@ -243,7 +240,7 @@ class Readout extends Component {
   }
 
   update(): void {
-    const target = this.feed.target;
+    const target = this.scan.target;
     const scale = target.resolution / window.devicePixelRatio;
     const texelWidth = Math.round(target.width * scale);
     const texelHeight = Math.round(target.height * scale);
@@ -252,22 +249,22 @@ class Readout extends Component {
         `buffer ${target.width}x${target.height} @ ${scale.toFixed(2)}x ` +
         `(${texelWidth}x${texelHeight} texels)\n` +
         `redraws/sec ${this.redrawsPerSecond}` +
-        (this.feed.paused ? " — radar paused" : ""),
+        (this.scan.paused ? " — radar paused" : ""),
     );
   }
 
   /** Redraws per second over the window that just ended. */
   private measure(): void {
     this.redrawsPerSecond = Math.round(
-      (this.feed.redraws - this.lastRedraws) / this.measuring.elapsed,
+      (this.scan.redraws - this.lastRedraws) / this.measuring.elapsed,
     );
-    this.lastRedraws = this.feed.redraws;
+    this.lastRedraws = this.scan.redraws;
     this.measuring.start();
   }
 }
 
 class ReadoutEntity extends Entity {
-  setup(params: { feed: RadarFeed }): void {
+  setup(params: { scan: RadarScan }): void {
     this.add(new Transform({ position: new Vec2(470, 320) }));
     this.add(
       new TextComponent({
@@ -282,7 +279,7 @@ class ReadoutEntity extends Entity {
       }),
     );
     this.add(new ProcessComponent());
-    this.add(new Readout(params.feed));
+    this.add(new Readout(params.scan));
   }
 }
 
@@ -341,6 +338,19 @@ class BlendSwatchEntity extends Entity {
 class RenderTargetScene extends Scene {
   readonly name = "render-targets";
   readonly layers: readonly LayerDef[] = [
+    {
+      name: RADAR_LAYER,
+      order: 0,
+      renderTarget: {
+        width: RADAR_WIDTH,
+        height: RADAR_HEIGHT,
+        texture: RADAR_TEXTURE,
+        refresh: "on-demand",
+        antialias: true,
+        clearColor: 0x06131c,
+        label: "radar-feed",
+      },
+    },
     { name: "world", order: 0 },
     { name: "screens", order: 10 },
     { name: "blend-demo", order: 20 },
@@ -350,11 +360,10 @@ class RenderTargetScene extends Scene {
   onEnter(): void {
     this.drawConsole();
 
-    // The feed registers the texture the monitors show, so it spawns first.
     const radar = this.spawn(RadarEntity);
     this.spawn(MonitorEntity, { position: new Vec2(250, 200), scale: 1 });
     this.spawn(MonitorEntity, { position: new Vec2(640, 178.5), scale: 0.55 });
-    this.spawn(ReadoutEntity, { feed: radar.feed });
+    this.spawn(ReadoutEntity, { scan: radar.scan });
 
     const caption = this.spawn("radar-caption");
     caption.add(new Transform({ position: new Vec2(84, 332) }));

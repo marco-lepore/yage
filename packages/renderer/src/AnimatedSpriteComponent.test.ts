@@ -236,7 +236,7 @@ function setupPlayback() {
   const component = entity.add(
     new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE }),
   );
-  const sprite = component.animatedSprite as unknown as MockSprite;
+  const sprite = component.renderObject as unknown as MockSprite;
   return { scene, entity, component, sprite, updateSystem };
 }
 
@@ -247,15 +247,15 @@ describe("AnimatedSpriteComponent", () => {
 
   it("creates an animated sprite from a frame source", () => {
     const comp = new AnimatedSpriteComponent({ source: SOURCE });
-    expect(comp.animatedSprite).toBeDefined();
+    expect(comp.renderObject).toBeDefined();
     expect(
       (
-        comp.animatedSprite as unknown as InstanceType<
+        comp.renderObject as unknown as InstanceType<
           typeof mocks.MockAnimatedSprite
         >
       ).textures,
     ).toHaveLength(2);
-    expect(comp.animatedSprite.autoUpdate).toBe(false);
+    expect(comp.renderObject.autoUpdate).toBe(false);
   });
 
   it("defaults to 'default' layer", () => {
@@ -273,14 +273,51 @@ describe("AnimatedSpriteComponent", () => {
       source: SOURCE,
       anchor: { x: 0.5, y: 1 },
     });
-    expect(comp.animatedSprite.anchor.x).toBe(0.5);
-    expect(comp.animatedSprite.anchor.y).toBe(1);
+    expect(comp.renderObject.anchor.x).toBe(0.5);
+    expect(comp.renderObject.anchor.y).toBe(1);
+  });
+
+  it("reads and writes the anchor after construction", () => {
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
+    comp.anchor = { x: 0.25, y: 0.75 };
+    expect(comp.renderObject.anchor).toMatchObject({ x: 0.25, y: 0.75 });
+    expect(comp.anchor).toEqual({ x: 0.25, y: 0.75 });
+  });
+
+  it("throws on a non-finite anchor coordinate", () => {
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
+    expect(() => {
+      comp.anchor = { x: 0, y: NaN };
+    }).toThrow(
+      "AnimatedSpriteComponent.anchor: anchor.y must be finite, got NaN.",
+    );
+  });
+
+  it("throws on a non-finite anchor option, naming the coordinate", () => {
+    expect(
+      () =>
+        new AnimatedSpriteComponent({
+          source: SOURCE,
+          anchor: { x: NaN, y: 0 },
+        }),
+    ).toThrow(
+      "AnimatedSpriteComponent.constructor: anchor.x must be finite, got NaN.",
+    );
+    expect(
+      () =>
+        new AnimatedSpriteComponent({
+          source: SOURCE,
+          anchor: { x: 0, y: Infinity },
+        }),
+    ).toThrow(
+      "AnimatedSpriteComponent.constructor: anchor.y must be finite, got Infinity.",
+    );
   });
 
   it("applies the speed option at construction", () => {
     const comp = new AnimatedSpriteComponent({ source: SOURCE, speed: 0.25 });
     expect(comp.speed).toBe(0.25);
-    expect(comp.animatedSprite.animationSpeed).toBe(0.25);
+    expect(comp.renderObject.animationSpeed).toBe(0.25);
   });
 
   it("keeps the default speed when the option is omitted", () => {
@@ -296,13 +333,13 @@ describe("AnimatedSpriteComponent", () => {
 
   it("applies tint when provided (numeric and string)", () => {
     const num = new AnimatedSpriteComponent({ source: SOURCE, tint: 0xff0000 });
-    expect(num.animatedSprite.tint).toBe(0xff0000);
+    expect(num.renderObject.tint).toBe(0xff0000);
 
     const str = new AnimatedSpriteComponent({
       source: SOURCE,
       tint: "#00ff00",
     });
-    expect(str.animatedSprite.tint).toBe("#00ff00");
+    expect(str.renderObject.tint).toBe("#00ff00");
   });
 
   it("applies visible and alpha options, with runtime accessors", () => {
@@ -311,18 +348,18 @@ describe("AnimatedSpriteComponent", () => {
       visible: false,
       alpha: 0.5,
     });
-    expect(comp.animatedSprite.visible).toBe(false);
-    expect(comp.animatedSprite.alpha).toBe(0.5);
+    expect(comp.renderObject.visible).toBe(false);
+    expect(comp.renderObject.alpha).toBe(0.5);
     expect(comp.visible).toBe(false);
     expect(comp.alpha).toBe(0.5);
 
     comp.visible = true;
     comp.alpha = 1;
     expect(comp.visible).toBe(true);
-    expect(comp.animatedSprite.alpha).toBe(1);
+    expect(comp.renderObject.alpha).toBe(1);
     // The Pixi flag is `visible && effectiveEnabled`, and this component was
     // never added to an entity, so it stays hidden.
-    expect(comp.animatedSprite.visible).toBe(false);
+    expect(comp.renderObject.visible).toBe(false);
   });
 
   it("play() starts the animation", () => {
@@ -334,7 +371,7 @@ describe("AnimatedSpriteComponent", () => {
   it("play() sets speed when provided", () => {
     const comp = new AnimatedSpriteComponent({ source: SOURCE });
     comp.play({ speed: 0.5 });
-    expect(comp.animatedSprite.animationSpeed).toBe(0.5);
+    expect(comp.renderObject.animationSpeed).toBe(0.5);
   });
 
   it("speed reads and writes the sprite's playback rate", () => {
@@ -344,7 +381,7 @@ describe("AnimatedSpriteComponent", () => {
     comp.speed = 0.5;
 
     expect(comp.speed).toBe(0.5);
-    expect(comp.animatedSprite.animationSpeed).toBe(0.5);
+    expect(comp.renderObject.animationSpeed).toBe(0.5);
   });
 
   it("play({ speed }) and the speed property write the same value", () => {
@@ -354,7 +391,7 @@ describe("AnimatedSpriteComponent", () => {
 
     comp.speed = 2;
 
-    expect(comp.animatedSprite.animationSpeed).toBe(2);
+    expect(comp.renderObject.animationSpeed).toBe(2);
     expect(comp.isPlaying).toBe(true);
   });
 
@@ -386,14 +423,14 @@ describe("AnimatedSpriteComponent", () => {
   it("play() sets loop when provided", () => {
     const comp = new AnimatedSpriteComponent({ source: SOURCE });
     comp.play({ loop: false });
-    expect(comp.animatedSprite.loop).toBe(false);
+    expect(comp.renderObject.loop).toBe(false);
   });
 
   it("play() sets onComplete when provided", () => {
     const comp = new AnimatedSpriteComponent({ source: SOURCE });
     const cb = vi.fn();
     comp.play({ onComplete: cb });
-    comp.animatedSprite.onComplete?.();
+    comp.renderObject.onComplete?.();
     expect(cb).toHaveBeenCalledOnce();
   });
 
@@ -402,7 +439,7 @@ describe("AnimatedSpriteComponent", () => {
     const cb = vi.fn();
     comp.play({ onComplete: cb });
     comp.play({ loop: false });
-    expect(comp.animatedSprite.onComplete).toBeUndefined();
+    expect(comp.renderObject.onComplete).toBeUndefined();
   });
 
   it("an animation switch through the controller clears a pending onComplete", () => {
@@ -420,7 +457,7 @@ describe("AnimatedSpriteComponent", () => {
 
     entity.get(AnimationController).play("walk");
 
-    expect(comp.animatedSprite.onComplete).toBeUndefined();
+    expect(comp.renderObject.onComplete).toBeUndefined();
   });
 
   it("a controller switch replaces a component-level speed", () => {
@@ -455,12 +492,12 @@ describe("AnimatedSpriteComponent", () => {
     const dropFirst = comp.onFrameChange(first);
     comp.onFrameChange(second);
 
-    comp.animatedSprite.gotoAndPlay(1);
+    comp.renderObject.gotoAndPlay(1);
     expect(first).toHaveBeenCalledWith(1);
     expect(second).toHaveBeenCalledWith(1);
 
     dropFirst();
-    comp.animatedSprite.gotoAndPlay(0);
+    comp.renderObject.gotoAndPlay(0);
     expect(first).toHaveBeenCalledOnce();
     expect(second).toHaveBeenCalledTimes(2);
     expect(second).toHaveBeenLastCalledWith(0);
@@ -477,7 +514,7 @@ describe("AnimatedSpriteComponent", () => {
         walk: { source: PLAYBACK_SOURCE, speed: 0.2 },
       }),
     );
-    comp.animatedSprite.gotoAndPlay(1);
+    comp.renderObject.gotoAndPlay(1);
     const seen = vi.fn();
     comp.onFrameChange(seen);
 
@@ -528,7 +565,7 @@ describe("AnimatedSpriteComponent", () => {
   describe("engine-scaled playback", () => {
     it("matches the shared ticker rate at scale 1", () => {
       const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
-      const sprite = comp.animatedSprite as unknown as MockSprite;
+      const sprite = comp.renderObject as unknown as MockSprite;
       comp.play();
 
       comp.update(1 / 60);
@@ -539,7 +576,7 @@ describe("AnimatedSpriteComponent", () => {
 
     it("does not advance for update(0)", () => {
       const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
-      const sprite = comp.animatedSprite as unknown as MockSprite;
+      const sprite = comp.renderObject as unknown as MockSprite;
       comp.play();
 
       comp.update(0);
@@ -595,7 +632,7 @@ describe("AnimatedSpriteComponent", () => {
 
     it("composes animationSpeed with scaled time", () => {
       const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
-      const sprite = comp.animatedSprite as unknown as MockSprite;
+      const sprite = comp.renderObject as unknown as MockSprite;
       comp.play({ speed: 0.5 });
 
       comp.update(1 / 60);
@@ -682,15 +719,15 @@ describe("AnimatedSpriteComponent", () => {
       component.play({ fromStart: true, speed: 2, loop: false });
 
       expect(component.frame).toBe(0);
-      expect(component.animatedSprite.animationSpeed).toBe(2);
-      expect(component.animatedSprite.loop).toBe(false);
+      expect(component.renderObject.animationSpeed).toBe(2);
+      expect(component.renderObject.loop).toBe(false);
       updateSystem.update(1 / 60);
       expect(component.frame).toBe(2);
     });
 
     it("keeps gotoAndPlay, onLoop, and onFrameChange behavior", () => {
       const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
-      const sprite = comp.animatedSprite as unknown as MockSprite;
+      const sprite = comp.renderObject as unknown as MockSprite;
       const onLoop = vi.fn();
       const onFrameChange = vi.fn();
       sprite.onLoop = onLoop;
@@ -707,7 +744,7 @@ describe("AnimatedSpriteComponent", () => {
 
     it("fires onComplete when a non-looping animation ends", () => {
       const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
-      const sprite = comp.animatedSprite as unknown as MockSprite;
+      const sprite = comp.renderObject as unknown as MockSprite;
       const onComplete = vi.fn();
       comp.play({ loop: false, onComplete });
 
@@ -727,7 +764,7 @@ describe("AnimatedSpriteComponent", () => {
 
     const layerContainer = layerManager.defaultLayer
       .container as unknown as InstanceType<typeof mocks.MockContainer>;
-    expect(layerContainer.children).toContain(comp.animatedSprite);
+    expect(layerContainer.children).toContain(comp.renderObject);
   });
 
   it("onDestroy removes animated sprite from parent and destroys it", () => {
@@ -736,7 +773,7 @@ describe("AnimatedSpriteComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new AnimatedSpriteComponent({ source: SOURCE }));
 
-    const anim = comp.animatedSprite as unknown as InstanceType<
+    const anim = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(anim.parent).not.toBeNull();
@@ -752,7 +789,7 @@ describe("AnimatedSpriteComponent", () => {
         source: SOURCE,
         interactive: {},
       });
-      expect(comp.animatedSprite.eventMode).toBe("static");
+      expect(comp.renderObject.eventMode).toBe("static");
     });
   });
 
@@ -762,7 +799,7 @@ describe("AnimatedSpriteComponent", () => {
         source: { sheet: "player.png", frameWidth: 48 },
       });
       // sliceSheet(player.png, 48) → mock texture width=96 / 48 = 2 frames
-      expect(comp.animatedSprite.textures).toHaveLength(2);
+      expect(comp.renderObject.textures).toHaveLength(2);
     });
   });
 
@@ -772,7 +809,7 @@ describe("AnimatedSpriteComponent", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
       const comp = entity.add(new AnimatedSpriteComponent({ source: SOURCE }));
-      const sprite = comp.animatedSprite as unknown as InstanceType<
+      const sprite = comp.renderObject as unknown as InstanceType<
         typeof mocks.MockAnimatedSprite
       >;
       sprite.boundsBox = { x: 1, y: 2, width: 96, height: 48 };
@@ -787,11 +824,11 @@ describe("AnimatedSpriteComponent", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
       const comp = entity.add(new AnimatedSpriteComponent({ source: SOURCE }));
-      const sprite = comp.animatedSprite as unknown as InstanceType<
+      const sprite = comp.renderObject as unknown as InstanceType<
         typeof mocks.MockAnimatedSprite
       >;
       sprite.boundsBox = { x: 0, y: 0, width: 10, height: 10 };
-      comp.animatedSprite.visible = false;
+      comp.renderObject.visible = false;
 
       const facet = comp.inspectRender();
       expect(facet.visible).toBe(false);

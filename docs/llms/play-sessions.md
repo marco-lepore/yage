@@ -433,7 +433,10 @@ const canvas = renderer.captureCanvas(); // capture once; drawingEnabled stays f
 stage. `captureCanvas()` returns an HTML canvas. Setting `drawingEnabled` back
 to `true` resumes automatic drawing.
 
-Targets created through `renderer.createRenderTarget()` follow this policy.
+A layer declared with `renderTarget` redraws only when the stage draws, so
+with drawing off its texture waits for the next `render()` or
+`captureCanvas()`. Targets created through `renderer.createRenderTarget()`
+follow this policy too.
 Keep calling `render()` or `renderIfNeeded()` when the target needs drawing;
 a suppressed request stays pending and `renderIfNeeded()` returns `false`.
 Deferred targets draw in creation order. Create a source target before any

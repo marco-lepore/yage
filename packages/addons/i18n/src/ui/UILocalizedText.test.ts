@@ -249,10 +249,12 @@ describe("UILocalizedSplitText", () => {
       message: msg("line", "One two"),
       autoSplit: false,
     });
-    expect(split.splitText.text).toBe("One two");
+    const pixiText = () =>
+      (split.displayObject as unknown as { text: string }).text;
+    expect(pixiText()).toBe("One two");
 
     split.relocalize((m) => `it:${m.key}`);
-    expect(split.splitText.text).toBe("it:line");
+    expect(pixiText()).toBe("it:line");
   });
 });
 

@@ -25,15 +25,11 @@ const LABEL_GAP = 6;
 
 /** Interactive checkbox with optional label. */
 export class UICheckbox extends UIElementBase {
-  /**
-   * The same Pixi container as {@link displayObject}. Change the element
-   * through its props; see `UIElement.displayObject`.
-   */
-  readonly container: DisplayContainer;
+  private readonly _container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
   get displayObject(): DisplayContainer {
-    return this.container;
+    return this._container;
   }
 
   private box: Graphics;
@@ -60,10 +56,10 @@ export class UICheckbox extends UIElementBase {
   constructor(props: UICheckboxProps) {
     super();
     this.yogaNode = createYogaNode();
-    this.container = new Container();
-    this.container.eventMode = "static";
-    this.container.cursor = "pointer";
-    applyConsumeInput(this.container, props.consumeInput);
+    this._container = new Container();
+    this._container.eventMode = "static";
+    this._container.cursor = "pointer";
+    applyConsumeInput(this._container, props.consumeInput);
 
     this._checked = props.checked ?? false;
     this._size = props.size ?? DEFAULT_SIZE;
@@ -73,12 +69,12 @@ export class UICheckbox extends UIElementBase {
 
     // Box background
     this.box = new Graphics();
-    this.container.addChild(this.box);
+    this._container.addChild(this.box);
     this.drawBox();
 
     // Checkmark
     this.checkmark = new Graphics();
-    this.container.addChild(this.checkmark);
+    this._container.addChild(this.checkmark);
     this.drawCheckmark();
 
     // Optional label
@@ -109,23 +105,23 @@ export class UICheckbox extends UIElementBase {
     // Every listener writes the pointer's own press flag and repaints from
     // both flags. Hover only hovers the row; a press asks a focus scope to
     // bring focus here.
-    this.container.on("pointerover", () => {
+    this._container.on("pointerover", () => {
       if (this._disabled) return;
       requestHoverFocus(this);
     });
-    this.container.on("pointerout", () => {
+    this._container.on("pointerout", () => {
       if (this._disabled) return;
       this._pointerPressed = false;
       this.repaintPress();
     });
-    this.container.on("pointerdown", () => {
+    this._container.on("pointerdown", () => {
       if (this._disabled) return;
       this._pressStartedHere = true;
       requestPressFocus(this);
       this._pointerPressed = true;
       this.repaintPress();
     });
-    this.container.on("pointerup", () => {
+    this._container.on("pointerup", () => {
       // A press that began elsewhere must not toggle this box.
       const shouldToggle = !this._disabled && this._pressStartedHere;
       this._pressStartedHere = false;
@@ -133,7 +129,7 @@ export class UICheckbox extends UIElementBase {
       this.repaintPress();
       if (shouldToggle) this.activate();
     });
-    this.container.on("pointerupoutside", () => {
+    this._container.on("pointerupoutside", () => {
       this._pressStartedHere = false;
       this._pointerPressed = false;
       this.repaintPress();
@@ -141,13 +137,13 @@ export class UICheckbox extends UIElementBase {
 
     // Hover callbacks are suppressed while the checkbox is disabled.
     this.pointerEvents = new PointerEvents(
-      this.container,
+      this._container,
       props,
       () => this._disabled,
     );
 
     this._focusOutline = new FocusOutline({
-      container: this.container,
+      container: this._container,
       box: () => layoutBox(this.yogaNode),
     });
     this._focusOutline.set(props);
@@ -169,7 +165,7 @@ export class UICheckbox extends UIElementBase {
     if (props.disabled) this.setDisabled(true);
 
     if (props.visible === false) {
-      this.container.visible = false;
+      this._container.visible = false;
       this.yogaNode.setDisplay(Display.None);
     }
   }
@@ -184,7 +180,7 @@ export class UICheckbox extends UIElementBase {
     this._checked = !this._checked;
     this.drawCheckmark();
     if (this.onChange) {
-      runUICallback(this.container, "UI onChange", () =>
+      runUICallback(this._container, "UI onChange", () =>
         this.onChange?.(this._checked),
       );
     }
@@ -204,11 +200,11 @@ export class UICheckbox extends UIElementBase {
   }
 
   get visible(): boolean {
-    return this.container.visible;
+    return this._container.visible;
   }
 
   set visible(v: boolean) {
-    this.container.visible = v;
+    this._container.visible = v;
     this.yogaNode.setDisplay(v ? Display.Flex : Display.None);
   }
 
@@ -241,9 +237,9 @@ export class UICheckbox extends UIElementBase {
       this._focusPressed = false;
       this.repaintPress();
     }
-    this.container.eventMode = v ? "none" : "static";
-    this.container.cursor = v ? "default" : "pointer";
-    this.container.alpha = v ? 0.5 : 1;
+    this._container.eventMode = v ? "none" : "static";
+    this._container.cursor = v ? "default" : "pointer";
+    this._container.alpha = v ? 0.5 : 1;
   }
 
   update(p: Partial<UICheckboxProps>): void {
@@ -259,7 +255,7 @@ export class UICheckbox extends UIElementBase {
     this._focus.set(p);
     this._focusOutline.set(p);
     if ("disabled" in p) this.setDisabled(p.disabled ?? false);
-    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
+    if ("consumeInput" in p) applyConsumeInput(this._container, p.consumeInput);
 
     if ("size" in p) {
       const size = p.size ?? DEFAULT_SIZE;
@@ -344,12 +340,12 @@ export class UICheckbox extends UIElementBase {
     this._destroyed = true;
     this._focus.destroy();
     this._focusOutline.destroy();
-    clearConsumeInput(this.container);
+    clearConsumeInput(this._container);
     this.yogaNode.free();
     this.box.destroy();
     this.checkmark.destroy();
     this.label?.destroy();
-    this.container.destroy();
+    this._container.destroy();
   }
 
   private createLabel(
@@ -365,7 +361,7 @@ export class UICheckbox extends UIElementBase {
     );
     this.label = new Text(options);
     this.positionLabel();
-    this.container.addChild(this.label);
+    this._container.addChild(this.label);
   }
 
   private positionLabel(): void {

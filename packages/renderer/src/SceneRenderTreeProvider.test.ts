@@ -3,8 +3,22 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const { MockContainer, MockRenderLayer } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
-    position = { x: 0, y: 0 };
-    scale = { x: 1, y: 1 };
+    position = {
+      x: 0,
+      y: 0,
+      set(this: { x: number; y: number }, x: number, y: number) {
+        this.x = x;
+        this.y = y;
+      },
+    };
+    scale = {
+      x: 1,
+      y: 1,
+      set(this: { x: number; y: number }, x: number, y: number) {
+        this.x = x;
+        this.y = y;
+      },
+    };
     rotation = 0;
     visible = true;
     alpha = 1;
@@ -22,6 +36,11 @@ const { MockContainer, MockRenderLayer } = vi.hoisted(() => {
     label = "";
     eventMode = "passive";
     destroyed = false;
+    /** The node `setMask` installed, as Pixi's `mask` reads it back. */
+    mask: unknown = null;
+    setMask(options: { mask: unknown }): void {
+      this.mask = options.mask;
+    }
     /** Set by `MockRenderLayer.attach`, mirroring Pixi's own field. */
     parentRenderLayer: MockRenderLayer | null = null;
     private listeners = new Map<string, Set<() => void>>();
@@ -117,13 +136,24 @@ const { MockContainer, MockRenderLayer } = vi.hoisted(() => {
 vi.mock("pixi.js", () => ({
   Container: MockContainer,
   RenderLayer: MockRenderLayer,
+  // `registerTexture` keeps its keys in Pixi's asset cache.
+  Assets: {
+    cache: Object.assign(new Map<string, unknown>(), {
+      remove(this: Map<string, unknown>, key: string) {
+        this.delete(key);
+      },
+    }),
+  },
 }));
 
 import { ProcessSystem, Scene } from "@yagejs/core";
 import type { LayerDef } from "./LayerDef.js";
 import type { SceneRenderTree } from "./SceneRenderTree.js";
 import type { EffectFactory } from "./effects/Effect.js";
+import type { MaskFactory } from "./masks/MaskFactory.js";
 import { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
+import type { LayerTargetFactory, RenderTargetHandle } from "./RenderTarget.js";
+import { Assets } from "pixi.js";
 
 function makeFakeScene(name: string, layers?: LayerDef[]): Scene {
   return { name, layers } as unknown as Scene;
@@ -611,5 +641,458 @@ describe("renderAboveEffects", () => {
     expect(layer.destroyed).toBe(true);
     expect(layer.renderLayerChildren).toEqual([]);
     expect(stage.children).toEqual([]);
+  });
+});
+
+describe("canvas layers", () => {
+  function setup(layers: LayerDef[]) {
+    const stage = new MockContainer();
+    const canvasStage = new MockContainer();
+    const provider = new SceneRenderTreeProviderImpl(
+      stage as never,
+      undefined,
+      canvasStage as never,
+    );
+    const scene = makeFakeScene("branded", layers);
+    const tree = provider.createForScene(scene);
+    return { stage, canvasStage, provider, scene, tree };
+  }
+
+  const BARS: LayerDef = { name: "bars", order: 5, space: "canvas" };
+
+  it("parents a canvas layer on the scene's canvas root, outside the scene root", () => {
+    const { stage, canvasStage, tree } = setup([
+      { name: "world", order: 0 },
+      BARS,
+    ]);
+    const bars = tree.get("bars");
+    const canvasRoot = canvasStage.children[0]!;
+
+    expect(bars.space).toBe("canvas");
+    expect(bars.container.parent).toBe(canvasRoot);
+    expect(tree.root.children).not.toContain(bars.container);
+    expect(tree.get("world").container.parent).toBe(tree.root);
+    expect(stage.children).toEqual([tree.root]);
+  });
+
+  it("orders canvas layers among themselves by order", () => {
+    const { canvasStage, tree } = setup([
+      BARS,
+      { name: "score", order: 1, space: "canvas" },
+    ]);
+    const canvasRoot = canvasStage.children[0]!;
+    expect(canvasRoot.children).toEqual([
+      tree.get("score").container,
+      tree.get("bars").container,
+    ]);
+  });
+
+  it("hides, shows and reorders the canvas root with the scene", () => {
+    const stage = new MockContainer();
+    const canvasStage = new MockContainer();
+    const provider = new SceneRenderTreeProviderImpl(
+      stage as never,
+      undefined,
+      canvasStage as never,
+    );
+    const below = makeFakeScene("below", [BARS]);
+    const above = makeFakeScene("above", [BARS]);
+    (above as unknown as { transparentBelow: boolean }).transparentBelow =
+      false;
+    provider.createForScene(below);
+    provider.createForScene(above);
+    const [belowCanvas, aboveCanvas] = canvasStage.children;
+
+    provider.applyTransparentBelow([below, above]);
+    expect(belowCanvas!.visible).toBe(false);
+    expect(aboveCanvas!.visible).toBe(true);
+
+    provider.resetVisibility([below, above]);
+    expect(belowCanvas!.visible).toBe(true);
+
+    provider.bringSceneToFront(below);
+    expect(canvasStage.children.at(-1)).toBe(belowCanvas);
+  });
+
+  it("destroys the canvas root with the scene", () => {
+    const { canvasStage, provider, scene } = setup([BARS]);
+    const canvasRoot = canvasStage.children[0]!;
+
+    provider.destroyForScene(scene);
+
+    expect(canvasRoot.destroyed).toBe(true);
+    expect(canvasStage.children).toEqual([]);
+  });
+
+  it("leaves a canvas-layer node out of renderAboveEffects", () => {
+    const { stage, tree } = setup([BARS]);
+    const node = new MockContainer();
+    tree.get("bars").container.addChild(node as never);
+
+    tree.renderAboveEffects(node as never);
+
+    expect(stage.children).toEqual([tree.root]);
+    expect(node.parentRenderLayer).toBeNull();
+  });
+
+  it("refuses a canvas layer in a tree without a canvas root", () => {
+    const provider = new SceneRenderTreeProviderImpl(
+      new MockContainer() as never,
+    );
+    expect(() =>
+      provider.createForScene(makeFakeScene("plain", [BARS])),
+    ).toThrow(
+      'RenderLayer "bars": this render tree has no canvas root, so it cannot hold a "canvas" layer.',
+    );
+  });
+});
+
+describe("transition masks", () => {
+  /** A mask factory whose node the test can find on the root. */
+  function maskOf(label: string): {
+    node: InstanceType<typeof MockContainer>;
+    factory: MaskFactory;
+  } {
+    const node = new MockContainer();
+    node.label = label;
+    return {
+      node,
+      factory: () => ({
+        node: node as never,
+        owned: true,
+        attachToTarget: true,
+        inverse: false,
+      }),
+    };
+  }
+
+  function setup() {
+    const provider = new SceneRenderTreeProviderImpl(
+      new MockContainer() as never,
+    );
+    const scene = makeFakeScene("masked");
+    const tree = provider.createForScene(scene);
+    const root = tree.root as unknown as InstanceType<typeof MockContainer>;
+    return { provider, scene, tree, root };
+  }
+
+  it("sets the scene's own mask aside and puts it back on remove", () => {
+    const { tree, root } = setup();
+    const own = maskOf("own");
+    const reveal = maskOf("reveal");
+    tree.setMask(own.factory);
+
+    const handle = tree.setTransitionMask(reveal.factory);
+    expect(root.mask).toBe(reveal.node);
+    expect(root.children).not.toContain(own.node);
+    expect(own.node.destroyed).toBe(false);
+
+    handle.remove();
+    expect(root.mask).toBe(own.node);
+    expect(root.children).toContain(own.node);
+    expect(reveal.node.destroyed).toBe(true);
+  });
+
+  it("holds a mask set during the transition until the transition mask goes", () => {
+    const { tree, root } = setup();
+    const reveal = maskOf("reveal");
+    const own = maskOf("own");
+    const handle = tree.setTransitionMask(reveal.factory);
+
+    tree.setMask(own.factory);
+    expect(root.mask).toBe(reveal.node);
+
+    handle.remove();
+    expect(root.mask).toBe(own.node);
+  });
+
+  it("destroys both masks with the scene", () => {
+    const { provider, scene, tree } = setup();
+    const own = maskOf("own");
+    const reveal = maskOf("reveal");
+    tree.setMask(own.factory);
+    tree.setTransitionMask(reveal.factory);
+
+    provider.destroyForScene(scene);
+
+    expect(own.node.destroyed).toBe(true);
+    expect(reveal.node.destroyed).toBe(true);
+  });
+});
+
+describe("render-target layers", () => {
+  /** Records each target built and the order of teardown steps. */
+  function setup() {
+    const steps: string[] = [];
+    const built: { source: unknown; handle: RenderTargetHandle }[] = [];
+    const factory: LayerTargetFactory = (source) => {
+      const texture = { label: `texture:${built.length}` };
+      const handle = {
+        texture,
+        destroy: () => steps.push(`destroy ${texture.label}`),
+      } as unknown as RenderTargetHandle;
+      built.push({ source, handle });
+      return handle;
+    };
+    const stage = new MockContainer();
+    const provider = new SceneRenderTreeProviderImpl(
+      stage as never,
+      undefined,
+      undefined,
+      factory,
+    );
+    return { steps, built, stage, provider };
+  }
+
+  const RADAR: LayerDef = {
+    name: "radar",
+    order: 0,
+    renderTarget: { width: 64, height: 32, texture: "radar-feed" },
+  };
+
+  beforeEach(() => {
+    (Assets.cache as unknown as Map<string, unknown>).clear();
+  });
+
+  it("keeps the layer out of the scene's display tree and draws it into its target", () => {
+    const { built, provider } = setup();
+    const tree = provider.createForScene(
+      makeFakeScene("radar", [{ name: "world", order: 1 }, RADAR]),
+    );
+    const radar = tree.get("radar");
+
+    expect(built).toHaveLength(1);
+    expect(built[0]!.source).toBe(radar.container);
+    expect(radar.renderTarget).toBe(built[0]!.handle);
+    expect(
+      (radar.container as unknown as InstanceType<typeof MockContainer>).parent,
+    ).toBeNull();
+    expect(tree.root.children).toEqual([
+      tree.get("default").container,
+      tree.get("world").container,
+    ]);
+    expect(tree.get("world").renderTarget).toBeUndefined();
+  });
+
+  it("registers the texture key while the scene lives and releases it on exit", () => {
+    const { steps, built, provider } = setup();
+    const scene = makeFakeScene("radar", [RADAR]);
+    const tree = provider.createForScene(scene);
+    const container = tree.get("radar").container as unknown as InstanceType<
+      typeof MockContainer
+    >;
+    const destroyContainer = container.destroy.bind(container);
+    container.destroy = () => {
+      steps.push("destroy container");
+      destroyContainer();
+    };
+    expect(Assets.cache.get("radar-feed")).toBe(built[0]!.handle.texture);
+
+    provider.destroyForScene(scene);
+
+    expect(Assets.cache.has("radar-feed")).toBe(false);
+    expect(steps).toEqual(["destroy texture:0", "destroy container"]);
+    expect(container.destroyed).toBe(true);
+  });
+
+  it("gives the key back to the earlier scene when the later one exits first", () => {
+    const { built, provider } = setup();
+    provider.createForScene(makeFakeScene("first", [RADAR]));
+    const second = makeFakeScene("second", [RADAR]);
+    provider.createForScene(second);
+    expect(Assets.cache.get("radar-feed")).toBe(built[1]!.handle.texture);
+
+    provider.destroyForScene(second);
+
+    expect(Assets.cache.get("radar-feed")).toBe(built[0]!.handle.texture);
+  });
+
+  it("keeps a later scene's texture under the key when the earlier scene exits", () => {
+    const { built, provider } = setup();
+    const first = makeFakeScene("first", [RADAR]);
+    provider.createForScene(first);
+    provider.createForScene(makeFakeScene("second", [RADAR]));
+
+    provider.destroyForScene(first);
+
+    expect(Assets.cache.get("radar-feed")).toBe(built[1]!.handle.texture);
+  });
+
+  it("leaves a render-target node out of renderAboveEffects", () => {
+    const { stage, provider } = setup();
+    const tree = provider.createForScene(makeFakeScene("radar", [RADAR]));
+    const node = new MockContainer();
+    tree.get("radar").container.addChild(node as never);
+
+    tree.renderAboveEffects(node as never);
+
+    expect(stage.children).toEqual([tree.root]);
+    expect(node.parentRenderLayer).toBeNull();
+  });
+
+  it("lifts a visual moved off a render-target layer, and leaves it on one", () => {
+    const { stage, provider } = setup();
+    const tree = provider.createForScene(
+      makeFakeScene("radar", [{ name: "world", order: 1 }, RADAR]),
+    );
+    const radar = tree.get("radar").container as unknown as InstanceType<
+      typeof MockContainer
+    >;
+    const world = tree.get("world").container as unknown as InstanceType<
+      typeof MockContainer
+    >;
+    const node = new MockContainer();
+    radar.addChild(node);
+    tree.renderAboveEffects(node as never);
+    expect(node.parentRenderLayer).toBeNull();
+
+    world.addChild(node);
+    expect(node.parentRenderLayer).toBe(stage.children[1]);
+
+    radar.addChild(node);
+    expect(node.parentRenderLayer).toBeNull();
+  });
+
+  it("checks every declared layer before allocating or attaching anything", () => {
+    const { built, stage, provider } = setup();
+    (Assets.cache as unknown as Map<string, unknown>).set("hero.png", {});
+    const scene = makeFakeScene("radar", [
+      RADAR,
+      {
+        name: "map",
+        order: 1,
+        renderTarget: { width: 8, height: 8, texture: "hero.png" },
+      },
+    ]);
+
+    expect(() => provider.createForScene(scene)).toThrow(
+      'RenderLayer "map".renderTarget.texture "hero.png": the key is already used by a loaded asset',
+    );
+    expect(built).toEqual([]);
+    expect(stage.children).toEqual([]);
+    expect(Assets.cache.has("radar-feed")).toBe(false);
+    expect(provider.getTree(scene)).toBeUndefined();
+  });
+
+  it("refuses two layers of one scene that register the same texture key", () => {
+    const { provider } = setup();
+    expect(() =>
+      provider.createForScene(
+        makeFakeScene("radar", [RADAR, { ...RADAR, name: "copy" }]),
+      ),
+    ).toThrow(
+      'RenderLayer "copy": another layer of this scene already registers its texture as "radar-feed".',
+    );
+  });
+
+  it("refuses a render target with a non-positive size", () => {
+    const { provider } = setup();
+    expect(() =>
+      provider.createForScene(
+        makeFakeScene("radar", [
+          { name: "radar", order: 0, renderTarget: { width: 0, height: 8 } },
+        ]),
+      ),
+    ).toThrow(
+      'RenderLayer "radar".renderTarget: width must be finite and > 0, got 0.',
+    );
+  });
+
+  it("refuses a render target on the default layer, with a space, or without a factory", () => {
+    const { provider } = setup();
+    const target = { width: 8, height: 8 };
+    expect(() =>
+      provider.createForScene(
+        makeFakeScene("a", [
+          { name: "default", order: 0, renderTarget: target },
+        ]),
+      ),
+    ).toThrow(
+      'RenderLayer "default": the default layer cannot draw into a texture. Declare the render target on a layer of its own.',
+    );
+    expect(() =>
+      provider.createForScene(
+        makeFakeScene("b", [
+          { name: "radar", order: 0, space: "screen", renderTarget: target },
+        ]),
+      ),
+    ).toThrow(
+      'RenderLayer "radar": a render-target layer draws only into its texture, so it takes no space, got "screen".',
+    );
+    expect(() =>
+      new SceneRenderTreeProviderImpl(
+        new MockContainer() as never,
+      ).createForScene(makeFakeScene("c", [RADAR])),
+    ).toThrow(
+      'RenderLayer "radar": this render tree cannot draw a layer into a texture.',
+    );
+  });
+});
+
+describe("scene alpha, visibility and offset", () => {
+  function setup() {
+    const stage = new MockContainer();
+    const canvasStage = new MockContainer();
+    const provider = new SceneRenderTreeProviderImpl(
+      stage as never,
+      undefined,
+      canvasStage as never,
+    );
+    const tree = provider.createForScene(
+      makeFakeScene("scene", [{ name: "bars", order: 0, space: "canvas" }]),
+    );
+    const canvasRoot = canvasStage.children[0]!;
+    return { stage, tree, canvasRoot, provider };
+  }
+
+  it("fades the scene root and its canvas root together", () => {
+    const { tree, canvasRoot } = setup();
+    tree.alpha = 0.25;
+    expect(tree.alpha).toBe(0.25);
+    expect(
+      (tree.root as unknown as InstanceType<typeof MockContainer>).alpha,
+    ).toBe(0.25);
+    expect(canvasRoot.alpha).toBe(0.25);
+    expect(() => {
+      tree.alpha = NaN;
+    }).toThrow("SceneRenderTree.alpha: value must be finite, got NaN.");
+  });
+
+  it("hides the scene root and its canvas root together", () => {
+    const { tree, canvasRoot } = setup();
+    tree.visible = false;
+    expect(tree.visible).toBe(false);
+    expect(canvasRoot.visible).toBe(false);
+  });
+
+  it("offsets the scene in virtual pixels and the canvas root in canvas pixels", () => {
+    const { stage, tree, canvasRoot } = setup();
+    stage.scale.set(2, 2);
+
+    tree.setOffset(30, -10);
+
+    expect(tree.offset).toEqual({ x: 30, y: -10 });
+    expect(
+      (tree.root as unknown as InstanceType<typeof MockContainer>).position,
+    ).toMatchObject({
+      x: 30,
+      y: -10,
+    });
+    expect(canvasRoot.position).toMatchObject({ x: 60, y: -20 });
+    expect(() => tree.setOffset(Infinity, 0)).toThrow(
+      "SceneRenderTree.setOffset: x must be finite, got Infinity.",
+    );
+  });
+
+  it("keeps the canvas layers on a held offset when the fit scale changes", () => {
+    const { stage, tree, canvasRoot, provider } = setup();
+    stage.scale.set(2, 2);
+    tree.setOffset(30, -10);
+
+    stage.scale.set(3, 3);
+    provider.reapplyOffsets();
+
+    expect(canvasRoot.position).toMatchObject({ x: 90, y: -30 });
+    expect(tree.offset).toEqual({ x: 30, y: -10 });
   });
 });

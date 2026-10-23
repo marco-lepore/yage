@@ -5,6 +5,7 @@ import { resolveSpriteSource } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
 import { routeAnimationSpeedChange } from "./internal/animationSpeedGroup.js";
 import { runAttributed } from "./internal/attribution.js";
+import { assertFiniteNumber } from "./internal/validate.js";
 
 /** Definition for a single named animation. */
 export interface AnimationDef {
@@ -14,7 +15,11 @@ export interface AnimationDef {
   speed: number;
   /** Whether the animation loops. Default: true. */
   loop?: boolean;
-  /** Per-animation anchor override. */
+  /**
+   * Anchor written to the sprite each time this animation starts, replacing
+   * the sprite's current `anchor`. Omit to keep whatever anchor the sprite
+   * has.
+   */
   anchor?: { x: number; y: number };
 }
 
@@ -98,6 +103,11 @@ export class AnimationController<T extends string = string> extends Component {
     const resolved = {} as Record<T, ResolvedAnimDef>;
     for (const name of Object.keys(animations) as T[]) {
       const def = animations[name];
+      if (def.anchor) {
+        const context = "AnimationController.constructor";
+        assertFiniteNumber(context, `${name}.anchor.x`, def.anchor.x);
+        assertFiniteNumber(context, `${name}.anchor.y`, def.anchor.y);
+      }
       resolved[name] = {
         source: resolveSpriteSource(def.source),
         speed: def.speed,
@@ -121,7 +131,7 @@ export class AnimationController<T extends string = string> extends Component {
 
   /** Current frame index of the underlying AnimatedSprite. */
   get frame(): number {
-    return this._sprite.animatedSprite.currentFrame;
+    return this._sprite.frame;
   }
 
   /**
@@ -154,7 +164,7 @@ export class AnimationController<T extends string = string> extends Component {
         : 0;
     this._speed = value;
     if (!this._current) return;
-    this._sprite.animatedSprite.animationSpeed =
+    this._sprite.speed =
       this._anims[this._current].speed * value * this._shotSpeed;
     if (nextLockDuration !== null) {
       this._lockDuration = nextLockDuration;
@@ -200,7 +210,7 @@ export class AnimationController<T extends string = string> extends Component {
 
     const cancelled = this._onCancel;
     this._apply(name, def, { startFrame, speed: shotSpeed });
-    this._sprite.animatedSprite.loop = false;
+    this._sprite.renderObject.loop = false;
     this._locked = true;
     this._lockTimer = 0;
     this._lockDuration = duration;
@@ -382,11 +392,9 @@ export class AnimationController<T extends string = string> extends Component {
   ): void {
     this._current = name;
     this._shotSpeed = options?.speed ?? 1;
-    const sprite = this._sprite.animatedSprite;
+    const sprite = this._sprite.renderObject;
     this._sprite._installSource(def.source);
-    if (def.anchor) {
-      sprite.anchor.set(def.anchor.x, def.anchor.y);
-    }
+    if (def.anchor) this._sprite.anchor = def.anchor;
     sprite.animationSpeed = def.speed * this._speed * this._shotSpeed;
     sprite.loop = def.loop ?? true;
     // A completion callback belongs to the play that installed it, so a

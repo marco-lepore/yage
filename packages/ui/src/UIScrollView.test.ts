@@ -275,7 +275,7 @@ describe("UIScrollView", () => {
 
     sv.scrollBy(20);
     expect(sv.scrollOffset).toBe(20);
-    expect(content.container.position.y).toBe(-20);
+    expect(content.displayObject.position.y).toBe(-20);
 
     sv.scrollBy(1000);
     expect(sv.scrollOffset).toBe(50); // clamped to maxScroll
@@ -393,8 +393,8 @@ describe("UIScrollView", () => {
 
     sv.scrollBy(40);
     expect(sv.scrollOffset).toBe(40);
-    expect(content.container.position.x).toBe(-40);
-    expect(content.container.position.y).toBe(0);
+    expect(content.displayObject.position.x).toBe(-40);
+    expect(content.displayObject.position.y).toBe(0);
   });
 
   it("notifies onScroll(0) when a direction flip resets the offset", () => {
@@ -659,7 +659,7 @@ describe("UIScrollView", () => {
       sv.scrollIntoView(colsArr[4]!);
       expect(sv.scrollOffset).toBe(50);
       const content = (sv as unknown as { content: UIPanel }).content;
-      expect(content.container.position.x).toBe(-50);
+      expect(content.displayObject.position.x).toBe(-50);
       sv.destroy();
     });
 
@@ -893,7 +893,7 @@ describe("UIScrollView focus", () => {
     host.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     host.applyLayout();
     const scope = new UIFocusScope(
-      { displayObject: host.container, roots: () => host.children },
+      { displayObject: host.displayObject, roots: () => host.children },
       {},
     );
 

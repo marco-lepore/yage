@@ -138,6 +138,37 @@ describe("NineSliceComponent", () => {
     expect(tree.get("ui").container.children).toContain(slice);
   });
 
+  it("reads and writes the anchor after construction", () => {
+    const frame = new NineSliceComponent({
+      texture: "panel",
+      insets: INSETS,
+      width: 120,
+      height: 40,
+    });
+    expect(frame.anchor).toEqual({ x: 0, y: 0 });
+    frame.anchor = { x: 0.5, y: 1 };
+    expect(frame.renderObject.anchor).toMatchObject({ x: 0.5, y: 1 });
+    expect(frame.anchor).toEqual({ x: 0.5, y: 1 });
+    expect(() => {
+      frame.anchor = { x: NaN, y: 0 };
+    }).toThrow("NineSliceComponent.anchor: anchor.x must be finite, got NaN.");
+  });
+
+  it("throws on a non-finite anchor option, naming the coordinate", () => {
+    expect(
+      () =>
+        new NineSliceComponent({
+          texture: "panel",
+          insets: INSETS,
+          width: 120,
+          height: 40,
+          anchor: { x: 0, y: NaN },
+        }),
+    ).toThrow(
+      "NineSliceComponent.constructor: anchor.y must be finite, got NaN.",
+    );
+  });
+
   it("stretches to a new size", () => {
     const frame = new NineSliceComponent({
       texture: "panel",

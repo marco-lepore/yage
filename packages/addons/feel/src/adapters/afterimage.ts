@@ -8,6 +8,7 @@ import {
   type ColorValue,
   type DisplayAnimatedSprite,
   type DisplaySprite,
+  type TextureResource,
   type VisualOpacityModifierHandle,
   type VisualTransformModifierHandle,
 } from "@yagejs/renderer";
@@ -71,7 +72,7 @@ export function feelAfterimage(options: FeelAfterimageOptions): FeelNode {
 
     const emit = (createdAt: number): void => {
       const target = resolveTarget(options.target, context);
-      const display = getDisplay(target);
+      const texture = currentFrameTexture(target);
       const transform = target.entity.tryGet(Transform);
       if (!transform) {
         throw new Error(
@@ -83,7 +84,7 @@ export function feelAfterimage(options: FeelAfterimageOptions): FeelNode {
       let registered = false;
       let entity: Entity | undefined;
       try {
-        registerTexture(textureKey, display.texture);
+        registerTexture(textureKey, texture);
         registered = true;
         entity = context.entity.scene.spawn("feel:afterimage");
         const position = transform.worldPosition.add(
@@ -99,7 +100,7 @@ export function feelAfterimage(options: FeelAfterimageOptions): FeelNode {
         const visual = entity.add(
           new SpriteComponent({
             texture: textureKey,
-            anchor: { x: display.anchor.x, y: display.anchor.y },
+            anchor: target.anchor,
             layer: options.layer ?? target.layerName,
             tint: options.tint ?? 0x1e3a8a,
             alpha: Math.max(
@@ -117,7 +118,7 @@ export function feelAfterimage(options: FeelAfterimageOptions): FeelNode {
           }),
         );
         // eslint-disable-next-line no-restricted-syntax -- no component API places one visual directly behind another
-        moveBehindSource(visual.sprite, target.renderObject);
+        moveBehindSource(visual.renderObject, target.renderObject);
         active.push({
           entity,
           opacity: visual.modifiers.addOpacity(),
@@ -194,12 +195,9 @@ function resolveTarget(
   return target;
 }
 
-function getDisplay(
-  target: FeelAfterimageVisual,
-): DisplaySprite | DisplayAnimatedSprite {
-  if (target instanceof SpriteComponent) return target.sprite;
-  // eslint-disable-next-line no-restricted-syntax -- the copied frame's texture and anchor have no component getter
-  return target.animatedSprite;
+function currentFrameTexture(target: FeelAfterimageVisual): TextureResource {
+  // eslint-disable-next-line no-restricted-syntax -- no component getter hands out the frame on screen
+  return target.renderObject.texture;
 }
 
 function moveBehindSource(

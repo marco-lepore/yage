@@ -186,42 +186,46 @@ hud.setPosition(cornerTL.x + 16, cornerTL.y + 16);
 
 `extendedVirtualRects` is populated under `letterbox` too, geometrically
 identical to `expand`, but under that mode it only reports where the bars
-are. `letterbox` clips every scene layer to the virtual rect, so anything
-drawn at those coordinates on a scene layer is invisible.
+are. `letterbox` clips every world and screen layer to the virtual rect, so
+anything drawn at those coordinates on such a layer is invisible.
 
-To put a scoreboard or branding in letterbox bars, parent a container
-directly on the Pixi stage, above the fit transform, and position it in
-**canvas pixels**. No scene layer reaches the bars, so this code builds the
-Pixi objects itself and owns them: destroy the container when the scene
-exits.
+To put a scoreboard or branding in letterbox bars, declare a layer with
+`space: "canvas"`. A canvas layer is drawn in **canvas pixels**, outside the
+fit scale and the letterbox clip, so it reaches the bars. It draws above every
+scene's other layers and ends with its scene, like any layer.
 
 ```typescript
-import { Scene } from "@yagejs/core";
-import { Container, Graphics } from "pixi.js";
-import { RendererKey } from "@yagejs/renderer";
+import { Scene, Transform } from "@yagejs/core";
+import { GraphicsComponent, RendererKey } from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
 
 class BrandedScene extends Scene {
   readonly name = "branded";
-  private bars: Container | undefined;
+  readonly layers: readonly LayerDef[] = [
+    { name: "bars", order: 0, space: "canvas" },
+  ];
 
   onEnter(): void {
     const renderer = this.use(RendererKey);
-    this.bars = new Container();
-    renderer.application.stage.addChild(this.bars); // canvas px, above the fit transform
-
     const { width } = renderer.canvasSize; // CSS px
     const play = renderer.virtualCanvasRect; // play area, in canvas px
-    const branding = new Graphics();
-    branding.rect(0, 0, width, play.y).fill({ color: 0x0f172a }); // top bar
-    this.bars.addChild(branding);
-  }
 
-  onExit(): void {
-    // The stage outlives the scene, so the scene destroys what it added.
-    this.bars?.destroy({ children: true });
+    const branding = this.spawn("branding");
+    branding.add(new Transform()); // (0, 0) is the canvas's top-left corner
+    branding.add(new GraphicsComponent({ layer: "bars" })).draw((g) => {
+      g.rect(0, 0, width, play.y).fill({ color: 0x0f172a }); // top bar
+    });
   }
 }
 ```
+
+A canvas layer's coordinates do not follow a resize, so redraw its content
+from the new `canvasSize` and `virtualCanvasRect` when the canvas changes
+size. No camera binds a canvas layer, and a camera whose `bindings` names one
+throws when it is added. The scene's own `fx` and `setMask` do not cover it;
+the renderer's screen-scope `fx` does. A scene transition draws its overlay
+under canvas layers, so `fade`, `flash` and `iris` leave them in view unless
+you pass `coverScreen: true`.
 
 ## Reasoning about the cropped region under `cover`
 

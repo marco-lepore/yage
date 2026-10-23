@@ -28,9 +28,13 @@ function visualTarget(): VisualComponent {
 function createRenderedHost() {
   const setup = createMockEntity();
   const root = new GraphicsComponent();
-  const layers = new RenderLayerManager(root.graphics);
+  const layers = new RenderLayerManager(root.renderObject);
   const tree: SceneRenderTree = {
-    root: root.graphics,
+    root: root.renderObject,
+    alpha: 1,
+    visible: true,
+    offset: { x: 0, y: 0 },
+    setOffset: () => {},
     get: (name) => layers.get(name),
     tryGet: (name) => layers.tryGet(name),
     getAll: () => layers.getAll(),
@@ -47,6 +51,9 @@ function createRenderedHost() {
       throw new Error("Masks are not used by this test.");
     },
     clearMask: () => {},
+    setTransitionMask: () => {
+      throw new Error("Masks are not used by this test.");
+    },
     renderAboveEffects: () => {
       throw new Error("This test tree does not support renderAboveEffects.");
     },

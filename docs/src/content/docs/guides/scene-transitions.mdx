@@ -38,7 +38,7 @@ it with `this.use(SceneManagerKey)` and pass the same options.
 **`fade({ duration?, color?, coverScreen? })`** — Fades to a solid color and
 back. The first half fades out, the second half fades in. Defaults to 0.3s,
 black, play-area-only. Pass `coverScreen: true` to also obscure letterbox bars
-(see the caution block below).
+and the scene's `"canvas"` layers (see the caution block below).
 
 ```typescript
 import { fade } from "@yagejs/renderer";
@@ -88,13 +88,13 @@ iris({ coverScreen: true }) // also obscure the letterbox bars
 ```
 
 `iris.center` and `irisReveal.center` are both in **virtual pixels** —
-the same coords your game logic uses. `coverScreen: true` re-parents the
-overlay to `app.stage` so it covers the canvas including letterbox /
-expand bars; the center is converted internally. See the caution block
-below for the underlying rule.
+the same coords your game logic uses. With `coverScreen: true` the
+overlay covers the whole canvas, letterbox bars included, and the center
+is converted for you. The caution block under Custom Transitions explains
+what each option covers.
 
 **`irisReveal({ duration?, center?, easing? })`** — One-way iris that
-masks the incoming scene's container with an expanding circle, so the
+masks the incoming scene with an expanding circle, so the
 new scene "blooms" over the previous one from the chosen point. No
 color overlay and no dip-to-black mid-point — the previous scene stays
 visible outside the circle until the iris covers it. Reach for
@@ -114,7 +114,7 @@ irisReveal({
 ```
 
 **`chessboard({ duration?, rows?, cols? })`** — Staggered checkerboard
-mask painted directly onto the incoming scene's container. Even-parity
+mask on the incoming scene. Even-parity
 cells grow over `[0, 0.7]` of the duration, odd-parity over `[0.3, 1]`
 (0.4-wide overlap, smoothstep-eased), so the new scene "paints in"
 cell-by-cell on top of the previous one — no blackout, no color overlay.
@@ -219,44 +219,80 @@ engine.events.on("scene:transition:ended", ({ kind }) => {
 
 ## Custom Transitions
 
-Implement the `SceneTransition` interface to create your own. Two helpers
-from `@yagejs/renderer` cover most cases:
+Implement the `SceneTransition` interface to create your own. Three helpers
+from `@yagejs/renderer` cover what a transition changes, and the built-in
+transitions use the same three:
 
-- `getSceneContainer(ctx, scene)` — returns the scene's root
-  `DisplayContainer` so you can manipulate its `alpha`, `visible`,
-  `position`, or `filters` directly.
-- `getVirtualBounds(ctx)` — returns `{ width, height }` of the
-  scene-root coordinate space. Use it to size masks, translations, or
-  geometry parented to a scene root (or any descendant of `_worldRoot`,
-  which carries the responsive-fit transform).
+- `getSceneRenderTree(ctx, scene)` returns the scene's render tree. Fade the
+  whole scene with `tree.alpha`, hide it with `tree.visible`, slide it with
+  `tree.setOffset(x, y)` in virtual pixels, and mask it with
+  `tree.setTransitionMask(...)`. The alpha, visibility and offset also apply to the
+  scene's `"canvas"` layers. The mask and `tree.fx` do not.
+- `createTransitionOverlay(ctx, options)` creates a drawing above every
+  scene, for covering the swap with a colour, a flash or an iris.
+- `getVirtualBounds(ctx)` returns `{ width, height }` of a scene's virtual
+  space, for sizing a slide or a scene mask.
+
+A slide moves the incoming scene in from the right:
 
 ```typescript
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
-import {
-  getSceneContainer,
-  getVirtualBounds,
-  type DisplayContainer,
-} from "@yagejs/renderer";
+import { getSceneRenderTree, getVirtualBounds } from "@yagejs/renderer";
+import type { SceneRenderTree } from "@yagejs/renderer";
 
 function slideIn(duration: number): SceneTransition {
-  let toRoot: DisplayContainer | undefined;
+  let to: SceneRenderTree | undefined;
   let width = 0;
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      toRoot = getSceneContainer(ctx, ctx.toScene);
+      to = getSceneRenderTree(ctx, ctx.toScene);
       width = getVirtualBounds(ctx).width;
-      if (toRoot) toRoot.x = width;
+      to?.setOffset(width, 0);
     },
     tick(_dt: number, ctx: SceneTransitionContext) {
-      if (!toRoot) return;
       const t = Math.min(ctx.elapsed / duration, 1);
       const eased = 1 - Math.pow(1 - t, 3);
-      toRoot.x = width * (1 - eased);
+      to?.setOffset(width * (1 - eased), 0);
     },
     end() {
-      if (toRoot) toRoot.x = 0;
-      toRoot = undefined;
+      to?.setOffset(0, 0);
+      to = undefined;
+    },
+  };
+}
+```
+
+A dip to black draws an overlay and swaps the scenes while it is opaque:
+
+```typescript
+import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
+import { createTransitionOverlay, getSceneRenderTree } from "@yagejs/renderer";
+import type { SceneRenderTree, TransitionOverlay } from "@yagejs/renderer";
+
+function dip(duration: number): SceneTransition {
+  let overlay: TransitionOverlay | undefined;
+  let to: SceneRenderTree | undefined;
+  return {
+    duration,
+    begin(ctx: SceneTransitionContext) {
+      overlay = createTransitionOverlay(ctx);
+      const { x, y, width, height } = overlay.area;
+      overlay.draw((g) => g.rect(x, y, width, height).fill(0x000000));
+      overlay.alpha = 0;
+      to = getSceneRenderTree(ctx, ctx.toScene);
+      if (to) to.visible = false;
+    },
+    tick(_dt: number, ctx: SceneTransitionContext) {
+      const t = Math.min(ctx.elapsed / duration, 1);
+      if (overlay) overlay.alpha = t < 0.5 ? t * 2 : (1 - t) * 2;
+      if (to && t >= 0.5) to.visible = true;
+    },
+    end() {
+      overlay?.destroy();
+      overlay = undefined;
+      if (to) to.visible = true;
+      to = undefined;
     },
   };
 }
@@ -268,28 +304,30 @@ The `SceneTransitionContext` gives you:
 - `engineContext` — DI container for resolving services
 - `fromScene` / `toScene` — the scenes involved
 
-:::caution[Pick the parent for what you need to cover]
-The fit transform lives on `_worldRoot`, not on `app.stage`. Pick the
-parent and size source by what the transition has to obscure:
+A few rules hold for every custom transition:
 
-| Parent                  | Coord space     | Size source                        | Covers                                                         |
-| ----------------------- | --------------- | ---------------------------------- | -------------------------------------------------------------- |
-| Scene root              | virtual pixels  | `getVirtualBounds(ctx)`            | one scene only (clipped to virtual)                            |
-| `renderer.worldRoot`    | virtual pixels  | `renderer.visibleCanvasRect`       | play area under letterbox; play area + bars under expand       |
-| `app.stage` (direct)    | canvas / CSS px | `app.screen.width / .height`       | full canvas including letterbox bars                           |
+- **The scene stack owns visibility after the transition.** It shows every
+  scene while a transition runs and hides the scenes under an opaque one
+  again when it ends, replacing what the transition set.
+- **Mask with `tree.setTransitionMask`.** It sets the scene's own mask
+  aside and puts it back when you call `remove()` on the handle it returns.
+  Call it in `end()`.
+- **Leave an outgoing scene alone in `end()` on pop and replace.** `end()`
+  runs before the frame renders, so restoring its alpha or offset draws it
+  for one last frame before it is removed.
 
-`worldRoot` is the saner default for full-screen effects: under
-`letterbox` the worldRoot mask clips overshoot back to the virtual rect
-(bars stay visible), and under `expand` the overlay paints into the
-bars (which the game treats as part of its play area). Reach for
-`app.stage` only when you also need to obscure letterbox bars — e.g.,
-the host page background is jarring during a dip-to-black. The built-in
-`fade` / `flash` / `iris` expose that via `coverScreen?: boolean`.
+:::caution[Pick what the overlay covers]
+Without options, an overlay sits inside the responsive fit. Its `area` is
+in virtual pixels: the play area under `letterbox`, and the play area plus
+the bars under `expand`, which the game treats as part of its play area.
+A scene's `"canvas"` layers draw above it, and `fade`, `flash` and `iris`
+do not fade them.
 
-Under `expand` mode `coverScreen: true` is mostly redundant — the
-default `worldRoot` overlay already paints into the bars. Reach for it
-under `letterbox` (or `cover`) where the bars would otherwise stay
-visible behind a dip-to-black.
+With `coverScreen: true`, the overlay covers the whole canvas, letterbox
+bars and canvas layers included, and its `area` is in canvas pixels. Convert
+a point from game coordinates with `renderer.virtualToCanvas(x, y)`. Reach
+for it when the bars would otherwise stay visible behind a dip to black. The
+built-in `fade`, `flash` and `iris` take the same `coverScreen` option.
 :::
 
 ## Composition with Loading Scenes
@@ -324,7 +362,7 @@ await engine.scenes.replace(new Boot(), {
 When replacing with a transition:
 1. The new scene is pushed first (`onEnter` fires)
 2. `transition.begin()` runs synchronously after mount/`onEnter` and before
-   the first frame is rendered — safe to reach `toScene`'s container here
+   the first frame is rendered — safe to reach `toScene`'s render tree here
 3. Both scenes coexist during the transition (`tick` per frame)
 4. `transition.end()` fires (can still reference both scenes)
 5. The old scene is removed (`onExit`, entity destruction)

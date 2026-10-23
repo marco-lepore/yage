@@ -185,14 +185,14 @@ describe("SplitTextComponent", () => {
 
   it("constructs a canvas SplitText by default", () => {
     const comp = new SplitTextComponent({ text: "hi there" });
-    expect(comp.splitText).toBeInstanceOf(mocks.MockSplitText);
-    expect(comp.splitText).not.toBeInstanceOf(mocks.MockSplitBitmapText);
+    expect(comp.renderObject).toBeInstanceOf(mocks.MockSplitText);
+    expect(comp.renderObject).not.toBeInstanceOf(mocks.MockSplitBitmapText);
     expect(comp.isBitmap).toBe(false);
   });
 
   it("constructs a SplitBitmapText when bitmap is set", () => {
     const comp = new SplitTextComponent({ text: "hi", bitmap: true });
-    expect(comp.splitText).toBeInstanceOf(mocks.MockSplitBitmapText);
+    expect(comp.renderObject).toBeInstanceOf(mocks.MockSplitBitmapText);
     expect(comp.isBitmap).toBe(true);
   });
 
@@ -202,7 +202,7 @@ describe("SplitTextComponent", () => {
       bitmap: true,
       style: { fill: 0xff0000, fontFamily: "PressStart", fontSize: 8 },
     });
-    expect(comp.splitText.style).toMatchObject({
+    expect(comp.renderObject.style).toMatchObject({
       fill: 0xff0000,
       fontFamily: "PressStart",
       fontSize: 8,
@@ -237,7 +237,7 @@ describe("SplitTextComponent", () => {
       style: { fontFamily: "PressStart", fontSize: 8, fill: 0xffcc00 },
     });
     comp.setStyle({ fontFamily: "PressStart", fontSize: 8, fill: 0xff0000 });
-    expect(comp.splitText.style).toMatchObject({
+    expect(comp.renderObject.style).toMatchObject({
       fill: 0xff0000,
       fontFamily: "PressStart",
       fontSize: 8,
@@ -253,7 +253,7 @@ describe("SplitTextComponent", () => {
     expect(comp.charAnchor).toBe(0.5);
     expect(comp.lineAnchor).toEqual({ x: 1, y: 0 });
     comp.wordAnchor = { x: 0, y: 1 };
-    expect(comp.splitText.wordAnchor).toEqual({ x: 0, y: 1 });
+    expect(comp.renderObject.wordAnchor).toEqual({ x: 0, y: 1 });
   });
 
   it("anchors the whole text block from its local bounds", () => {
@@ -261,7 +261,7 @@ describe("SplitTextComponent", () => {
       text: "hi",
       anchor: { x: 0.5, y: 1 },
     });
-    const split = comp.splitText as unknown as InstanceType<
+    const split = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockSplitText
     >;
     split.boundsBox = { x: 4, y: 6, width: 80, height: 20 };
@@ -276,7 +276,7 @@ describe("SplitTextComponent", () => {
       text: "hi",
       anchor: { x: 0.5, y: 0.5 },
     });
-    const split = comp.splitText as unknown as InstanceType<
+    const split = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockSplitText
     >;
     split.boundsBox = { x: 0, y: 0, width: 80, height: 20 };
@@ -291,12 +291,49 @@ describe("SplitTextComponent", () => {
     });
   });
 
+  it("hands out segments without the Pixi container API", () => {
+    const comp = new SplitTextComponent({ text: "hi" });
+    expect(comp.chars).toBe(comp.renderObject.chars);
+    expect(comp.words).toBe(comp.renderObject.words);
+    expect(comp.lines).toBe(comp.renderObject.lines);
+    const segment = comp.chars[0];
+    // @ts-expect-error -- a segment is not a container
+    void segment?.addChild;
+  });
+
+  it("reads and writes the block anchor after construction", () => {
+    const comp = new SplitTextComponent({ text: "hi" });
+    const split = comp.renderObject as unknown as InstanceType<
+      typeof mocks.MockSplitText
+    >;
+    split.boundsBox = { x: 4, y: 6, width: 80, height: 20 };
+    expect(comp.anchor).toBeUndefined();
+
+    comp.anchor = { x: 0.5, y: 1 };
+
+    expect(split.pivot).toMatchObject({ x: 44, y: 26 });
+    expect(comp.anchor).toEqual({ x: 0.5, y: 1 });
+    expect(() => {
+      comp.anchor = { x: 0, y: NaN };
+    }).toThrow("SplitTextComponent.anchor: anchor.y must be finite, got NaN.");
+
+    comp.anchor = undefined;
+    expect(split.pivot).toMatchObject({ x: 0, y: 0 });
+    expect(comp.anchor).toBeUndefined();
+
+    expect(
+      () => new SplitTextComponent({ text: "hi", anchor: { x: NaN, y: 0 } }),
+    ).toThrow(
+      "SplitTextComponent.constructor: anchor.x must be finite, got NaN.",
+    );
+  });
+
   it("recomputes the block anchor after text, style, and manual split changes", () => {
     const comp = new SplitTextComponent({
       text: "hi",
       anchor: { x: 1, y: 0.5 },
     });
-    const split = comp.splitText as unknown as InstanceType<
+    const split = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockSplitText
     >;
 
@@ -320,14 +357,14 @@ describe("SplitTextComponent", () => {
       tint: 0x00ff00,
       alpha: 0.25,
     });
-    expect(comp.splitText.visible).toBe(false);
+    expect(comp.renderObject.visible).toBe(false);
     expect(comp.tint).toBe(0x00ff00);
     expect(comp.alpha).toBe(0.25);
   });
 
   it("applies the interactive option, defaulting eventMode to static", () => {
     const comp = new SplitTextComponent({ text: "x", interactive: {} });
-    expect(comp.splitText.eventMode).toBe("static");
+    expect(comp.renderObject.eventMode).toBe("static");
   });
 
   it("supports the shared mask/effects surface", () => {
@@ -370,7 +407,7 @@ describe("SplitTextComponent", () => {
 
   it("resplit() calls the underlying split()", () => {
     const comp = new SplitTextComponent({ text: "hi", autoSplit: false });
-    const split = comp.splitText as unknown as InstanceType<
+    const split = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockSplitText
     >;
     const before = split.splitCalls;
@@ -386,7 +423,7 @@ describe("SplitTextComponent", () => {
 
     const layerContainer = layerManager.defaultLayer
       .container as unknown as InstanceType<typeof mocks.MockContainer>;
-    expect(layerContainer.children).toContain(comp.splitText);
+    expect(layerContainer.children).toContain(comp.renderObject);
   });
 
   it("onDestroy removes the split text from its parent and destroys it", () => {
@@ -395,7 +432,7 @@ describe("SplitTextComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new SplitTextComponent({ text: "x" }));
 
-    const obj = comp.splitText as unknown as InstanceType<
+    const obj = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(obj.parent).not.toBeNull();
@@ -411,7 +448,7 @@ describe("SplitTextComponent", () => {
   describe("inspectRender", () => {
     it("reports world-space bounds, visibility, and per-glyph state", () => {
       const comp = new SplitTextComponent({ text: "abc" });
-      const split = comp.splitText as unknown as InstanceType<
+      const split = comp.renderObject as unknown as InstanceType<
         typeof mocks.MockSplitText
       >;
       split.boundsBox = { x: 10, y: 20, width: 30, height: 12 };

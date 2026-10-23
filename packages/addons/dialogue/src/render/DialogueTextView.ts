@@ -89,8 +89,12 @@ const ITALIC_SKEW = -0.21;
 /** Faux-bold: horizontal offset (px) of the double-draw overlay glyph. */
 const BOLD_OFFSET = 0.6;
 
-/** One per-glyph display object from the split (a `Text` or `BitmapText`). */
-type CharNode = SplitTextComponent["chars"][number];
+/**
+ * One per-glyph Pixi object from the split (a `Text` or `BitmapText`). The
+ * component hands out glyphs as `TextSegment`s; faux bold, italic skew and the
+ * parent walk below need the Pixi object itself.
+ */
+type CharNode = SplitTextComponent["renderObject"]["chars"][number];
 
 /** Per-frame animation bookkeeping for one EFFECT-BEARING glyph (static glyphs
  *  need none — their tint/weight are applied once at build). */
@@ -357,9 +361,9 @@ export class DialogueTextView implements TextPresenter {
     const comp = entity.add(
       new SplitTextComponent(this.lineSplitOptions(text)),
     );
-    const chars = comp.chars;
-    // eslint-disable-next-line no-restricted-syntax -- per-glyph effects walk up to the split root
-    const root = comp.splitText;
+    // eslint-disable-next-line no-restricted-syntax -- faux bold, italic skew and the glyph parent walk need the Pixi glyphs
+    const root = comp.renderObject;
+    const chars = root.chars;
 
     // One run-style per non-space glyph, in reading order (1:1 with `chars`).
     const styles = this.buildRevealTables(parsed);

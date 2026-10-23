@@ -10,7 +10,7 @@ import {
 } from "@yagejs/core";
 import {
   GraphicsComponent,
-  type GraphicsContext,
+  type DrawContext,
   RendererPlugin,
   TextComponent,
   type TextComponentOptions,
@@ -194,7 +194,7 @@ class GamepadHud extends Component {
 }
 
 function drawStick(
-  g: GraphicsContext,
+  g: DrawContext,
   cx: number,
   cy: number,
   radius: number,
@@ -220,7 +220,7 @@ function drawStick(
 }
 
 function drawTriggerBar(
-  g: GraphicsContext,
+  g: DrawContext,
   x: number,
   yTop: number,
   value: number,

@@ -39,11 +39,8 @@ function isSizedDimension(value: { readonly unit: Unit }): boolean {
  * inside it, so the element's `scale` and `rotation` stay the game's.
  */
 export class UIImage extends UIElementBase {
-  /**
-   * The sprite drawing the texture, stretched to the layout box. Layout writes
-   * its size and position; change the picture through {@link update}.
-   */
-  readonly sprite: DisplaySprite;
+  /** The sprite drawing the texture, stretched to the layout box. */
+  private readonly _sprite: DisplaySprite;
   readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
 
@@ -60,11 +57,11 @@ export class UIImage extends UIElementBase {
 
     const texture = resolveTextureInput(this.textureInput);
     this.displayObject = new Container();
-    this.sprite = new Sprite(texture);
-    this.displayObject.addChild(this.sprite);
+    this._sprite = new Sprite(texture);
+    this.displayObject.addChild(this._sprite);
     // Pointer handlers and the consume mark sit on the sprite the pointer hits.
-    applyConsumeInput(this.sprite, props.consumeInput);
-    this.pointerEvents = new PointerEvents(this.sprite, props);
+    applyConsumeInput(this._sprite, props.consumeInput);
+    this.pointerEvents = new PointerEvents(this._sprite, props);
 
     // Out of focus navigation until a game asks for it with `focusable` —
     // which is what an inventory grid of picture cells does. Asked for, the
@@ -79,18 +76,18 @@ export class UIImage extends UIElementBase {
       focusableByDefault: false,
       paint: (focused) => this._focusOutline.setFocused(focused),
     });
-    this.sprite.on("pointerover", () => {
+    this._sprite.on("pointerover", () => {
       requestHoverFocus(this);
     });
-    this.sprite.on("pointerdown", () => {
+    this._sprite.on("pointerdown", () => {
       requestPressFocus(this);
     });
 
-    if (props.tint !== undefined) this.sprite.tint = props.tint;
-    if (props.alpha !== undefined) this.sprite.alpha = props.alpha;
+    if (props.tint !== undefined) this._sprite.tint = props.tint;
+    if (props.alpha !== undefined) this._sprite.alpha = props.alpha;
 
     // Yoga measure function — returns texture natural dimensions
-    const sprite = this.sprite;
+    const sprite = this._sprite;
     this.yogaNode.setMeasureFunc((width, widthMode, height, heightMode) => {
       const texW = sprite.texture.width;
       const texH = sprite.texture.height;
@@ -130,8 +127,8 @@ export class UIImage extends UIElementBase {
   applyLayout(): void {
     const w = this.yogaNode.getComputedWidth();
     const h = this.yogaNode.getComputedHeight();
-    this.sprite.width = w;
-    this.sprite.height = h;
+    this._sprite.width = w;
+    this._sprite.height = h;
     this._focusOutline.refresh();
   }
 
@@ -146,7 +143,7 @@ export class UIImage extends UIElementBase {
    * axis discards the dimension the caller did set.
    */
   private syncAspectRatio(): void {
-    const { width: texW, height: texH } = this.sprite.texture;
+    const { width: texW, height: texH } = this._sprite.texture;
     const widthSized = isSizedDimension(this.yogaNode.getWidth());
     const heightSized = isSizedDimension(this.yogaNode.getHeight());
     const flexSized =
@@ -169,13 +166,13 @@ export class UIImage extends UIElementBase {
   update(p: Partial<UIImageProps>): void {
     if (p.texture !== undefined && p.texture !== this.textureInput) {
       this.textureInput = p.texture;
-      this.sprite.texture = resolveTextureInput(p.texture);
+      this._sprite.texture = resolveTextureInput(p.texture);
       this.yogaNode.markDirty();
     }
 
-    if ("tint" in p) this.sprite.tint = p.tint ?? 0xffffff;
-    if ("alpha" in p) this.sprite.alpha = p.alpha ?? 1;
-    if ("consumeInput" in p) applyConsumeInput(this.sprite, p.consumeInput);
+    if ("tint" in p) this._sprite.tint = p.tint ?? 0xffffff;
+    if ("alpha" in p) this._sprite.alpha = p.alpha ?? 1;
+    if ("consumeInput" in p) applyConsumeInput(this._sprite, p.consumeInput);
     this.pointerEvents.set(p);
     this._focus.set(p);
     this._focusOutline.set(p);
@@ -205,9 +202,9 @@ export class UIImage extends UIElementBase {
     this._destroyed = true;
     this._focus.destroy();
     this._focusOutline.destroy();
-    clearConsumeInput(this.sprite);
+    clearConsumeInput(this._sprite);
     this.yogaNode.free();
-    this.sprite.destroy();
+    this._sprite.destroy();
     this.displayObject.destroy();
   }
 }

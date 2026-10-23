@@ -1,7 +1,8 @@
 import type { Vec2Like } from "@yagejs/core";
 import { Graphics } from "pixi.js";
-import { assertFiniteNumber } from "./internal/validate.js";
-import type { GraphicsContext } from "./public-types.js";
+import { readPoint, writePoint } from "./internal/point.js";
+import type { DrawContext } from "./DrawContext.js";
+import type { DisplayGraphics } from "./public-types.js";
 import {
   VisualComponent,
   type VisualComponentOptions,
@@ -15,27 +16,25 @@ export interface GraphicsComponentOptions extends VisualComponentOptions {
    * Default `{ x: 0, y: 0 }`, the origin the `draw` callback draws around.
    * The other visual components take `anchor` for the same purpose, as a
    * fraction of the texture; a drawing has no texture size to take a fraction
-   * of, so this is in pixels.
+   * of, so this is in pixels. See {@link GraphicsComponent.pivot}.
    */
   pivot?: Vec2Like;
 }
 
 /** Component that wraps a PixiJS Graphics object for procedural drawing. */
 export class GraphicsComponent extends VisualComponent {
-  /**
-   * The same Pixi object as {@link renderObject}. Change the visual through
-   * the component; see `VisualComponent.renderObject`.
-   */
-  readonly graphics: GraphicsContext;
+  private readonly _graphics: DisplayGraphics;
 
   constructor(options?: GraphicsComponentOptions) {
     super(options?.layer);
-    this.graphics = new Graphics();
+    this._graphics = new Graphics();
     if (options?.pivot) {
-      const { x, y } = options.pivot;
-      assertFiniteNumber("GraphicsComponent.constructor", "pivot.x", x);
-      assertFiniteNumber("GraphicsComponent.constructor", "pivot.y", y);
-      this.graphics.pivot.set(x, y);
+      writePoint(
+        "GraphicsComponent.constructor",
+        "pivot",
+        this._graphics.pivot,
+        options.pivot,
+      );
     }
     if (options) this.applyVisualOptions(options);
   }
@@ -44,13 +43,30 @@ export class GraphicsComponent extends VisualComponent {
    * The Pixi object this component draws with. Change the visual through the
    * component; see {@link VisualComponent.renderObject}.
    */
-  get renderObject(): GraphicsContext {
-    return this.graphics;
+  get renderObject(): DisplayGraphics {
+    return this._graphics;
   }
 
-  /** Execute a drawing function on the graphics object. Returns this for chaining. */
-  draw(fn: (g: GraphicsContext) => void): this {
-    fn(this.graphics);
+  /**
+   * The point of the drawing that sits on the entity position, in the
+   * drawing's own pixels. Rotation and scale turn the drawing about it.
+   * Default `{ x: 0, y: 0 }`. Each read returns a new object; a non-finite
+   * coordinate throws.
+   */
+  get pivot(): Vec2Like {
+    return readPoint(this._graphics.pivot);
+  }
+
+  set pivot(value: Vec2Like) {
+    writePoint("GraphicsComponent.pivot", "pivot", this._graphics.pivot, value);
+  }
+
+  /**
+   * Run a drawing callback on this visual's drawing. Shapes accumulate, so a
+   * callback that redraws starts with `g.clear()`. Returns this for chaining.
+   */
+  draw(fn: (g: DrawContext) => void): this {
+    fn(this._graphics);
     return this;
   }
 }

@@ -181,7 +181,7 @@ describe("Phase 1b — broader scopes", () => {
       tree.defaultLayer.fx.addEffect(rawFilter(lFilter as never));
       tree.fx.addEffect(rawFilter(sFilter as never));
 
-      const spriteAsContainer = sprite.sprite as never as InstanceType<
+      const spriteAsContainer = sprite.renderObject as never as InstanceType<
         typeof mocks.MockContainer
       >;
       const layerContainer = layerManager.defaultLayer
@@ -251,7 +251,7 @@ describe("Phase 1b — broader scopes", () => {
       tree.defaultLayer.fx.addEffect(rawFilter(lFilter as never));
       tree.fx.addEffect(rawFilter(sFilter as never));
 
-      const spriteAsContainer = sprite.sprite as never as InstanceType<
+      const spriteAsContainer = sprite.renderObject as never as InstanceType<
         typeof mocks.MockContainer
       >;
       const layerContainer = layerManager.defaultLayer

@@ -1,17 +1,17 @@
+import type { Vec2Like } from "@yagejs/core";
 import { SplitText, SplitBitmapText } from "pixi.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
+import { assertFiniteNumber } from "./internal/validate.js";
 import {
   initialAutoSplit,
   setSplitText,
   splitIfNotEmpty,
 } from "./internal/split-text-guard.js";
 import type {
+  ColorValue,
   DestroyOptions,
-  DisplayBitmapText,
-  DisplayContainer,
   DisplaySplitBitmapText,
   DisplaySplitText,
-  DisplayText,
   TextStyle,
 } from "./public-types.js";
 import type { RenderFacetSnapshot } from "./internal/renderFacet.js";
@@ -44,6 +44,39 @@ export type SplitTextRenderFacet =
  */
 export type SegmentAnchor = number | { x: number; y: number };
 
+/** A point on a {@link TextSegment}: its position or its scale. */
+export interface TextSegmentPoint {
+  x: number;
+  y: number;
+  /** Set both axes; `set(v)` sets both to `v`. */
+  set(x: number, y?: number): void;
+}
+
+/**
+ * One piece of a split text, a character, a word or a line, as the split-text
+ * visuals hand it out for animation. The component writes none of these, so
+ * they are the game's to animate. A `setText`, `setStyle` or `resplit`
+ * replaces every segment, so read the segments again after one.
+ */
+export interface TextSegment {
+  /** Position within the parent segment (a character within its word, a word within its line), in pixels. */
+  x: number;
+  y: number;
+  /** The same position as {@link x} and {@link y}, settable in one call. */
+  readonly position: TextSegmentPoint;
+  /** Rotation in radians, about the segment's anchor (`charAnchor`, `wordAnchor`, `lineAnchor`). */
+  rotation: number;
+  /** Scale about the segment's anchor. */
+  readonly scale: TextSegmentPoint;
+  /** Opacity, multiplied with the parent segments' and the component's. */
+  alpha: number;
+  /** Tint, multiplied with the parent segments' and the component's. */
+  get tint(): number;
+  set tint(value: ColorValue);
+  /** Whether the segment draws. A hidden word hides its characters. */
+  visible: boolean;
+}
+
 /** Options for creating a {@link SplitTextComponent}. */
 export interface SplitTextComponentOptions extends VisualComponentOptions {
   /** The text string to render and segment. */
@@ -51,10 +84,11 @@ export interface SplitTextComponentOptions extends VisualComponentOptions {
   /** Text style — forwards to PixiJS TextStyleOptions (CSS-like font properties). */
   style?: TextStyle;
   /**
-   * Transform origin for the whole text block, normalized 0–1.
-   * Default: { x: 0, y: 0 } (top-left).
+   * Transform origin for the whole text block, normalized 0–1. Omit to put
+   * the text's layout origin on the entity. See
+   * {@link SplitTextComponent.anchor}.
    */
-  anchor?: { x: number; y: number };
+  anchor?: Vec2Like;
   /**
    * Render the segments with a bitmap font (`SplitBitmapText`) instead of
    * canvas `Text` (`SplitText`). Pass the installed/baked font name as
@@ -90,15 +124,11 @@ export interface SplitTextComponentOptions extends VisualComponentOptions {
  * differ slightly from `Text` (browser kerning is lost once glyphs are split).
  */
 export class SplitTextComponent extends VisualComponent {
-  /**
-   * The same Pixi object as {@link renderObject}. Change the visual through
-   * the component; see `VisualComponent.renderObject`.
-   */
-  readonly splitText: DisplaySplitText | DisplaySplitBitmapText;
+  private readonly _splitText: DisplaySplitText | DisplaySplitBitmapText;
   /** Whether this renders with a bitmap font (`SplitBitmapText`). */
   readonly isBitmap: boolean;
   private _bitmap?: boolean;
-  private _anchor?: { x: number; y: number };
+  private _anchor: Vec2Like | undefined;
   private readonly _autoSplit: boolean;
 
   constructor(options: SplitTextComponentOptions) {
@@ -129,14 +159,14 @@ export class SplitTextComponent extends VisualComponent {
       // Never hand Pixi's split an empty string; see `setSplitText`.
       autoSplit: initialAutoSplit(this._autoSplit, options.text),
     };
-    this.splitText = bitmap
+    this._splitText = bitmap
       ? new SplitBitmapText(splitOptions)
       : new SplitText(splitOptions);
 
     if (options.bitmap !== undefined) this._bitmap = options.bitmap;
-    if (options.anchor) this._anchor = { ...options.anchor };
-
-    this.applyBlockAnchor();
+    if (options.anchor) {
+      this.setBlockAnchor("SplitTextComponent.constructor", options.anchor);
+    }
     this.applyVisualOptions(options);
   }
 
@@ -145,34 +175,32 @@ export class SplitTextComponent extends VisualComponent {
    * component; see {@link VisualComponent.renderObject}.
    */
   get renderObject(): DisplaySplitText | DisplaySplitBitmapText {
-    return this.splitText;
+    return this._splitText;
   }
 
   /**
-   * Individual character segments (`Text` or `BitmapText`), in reading order,
-   * for per-glyph animation of `x`, `y`, `rotation`, `scale`, `alpha`, `tint`
-   * and `visible`; the component writes none of these on a segment. A
-   * `setText`, `setStyle` or `resplit` replaces the segments, so read this
-   * again after one.
+   * The character segments, in reading order, for per-glyph animation.
+   * Whitespace has no segment. A `setText`, `setStyle` or `resplit` replaces
+   * the segments, so read this again after one.
    */
-  get chars(): (DisplayText | DisplayBitmapText)[] {
-    return this.splitText.chars;
+  get chars(): readonly TextSegment[] {
+    return this._splitText.chars;
   }
 
   /**
-   * Word-group containers, each holding its character segments. Replaced by a
+   * The word segments, each moving its characters with it. Replaced by a
    * `setText`, `setStyle` or `resplit`, like {@link chars}.
    */
-  get words(): DisplayContainer[] {
-    return this.splitText.words;
+  get words(): readonly TextSegment[] {
+    return this._splitText.words;
   }
 
   /**
-   * Line-group containers, each holding its word containers. Replaced by a
+   * The line segments, each moving its words with it. Replaced by a
    * `setText`, `setStyle` or `resplit`, like {@link chars}.
    */
-  get lines(): DisplayContainer[] {
-    return this.splitText.lines;
+  get lines(): readonly TextSegment[] {
+    return this._splitText.lines;
   }
 
   /**
@@ -180,29 +208,24 @@ export class SplitTextComponent extends VisualComponent {
    * string renders nothing and leaves the segments empty.
    */
   setText(value: string): void {
-    setSplitText(this.splitText, value, this._autoSplit);
+    setSplitText(this._splitText, value, this._autoSplit);
     this.applyBlockAnchor();
   }
 
-  /**
-   * The string currently displayed. {@link splitText} is the Pixi display
-   * object, so this is the way to read the rendered string back — including
-   * from the Inspector, which reflects public getters but skips display
-   * objects.
-   */
+  /** The string currently displayed. */
   get content(): string {
-    return this.splitText.text;
+    return this._splitText.text;
   }
 
   /** Replace the text style (re-splits when `autoSplit` is on). */
   setStyle(style: TextStyle): void {
     const { options } = buildTextOptions(
-      this.splitText.text,
+      this._splitText.text,
       style,
       this._bitmap,
       undefined,
     );
-    this.splitText.style = options.style ?? style;
+    this._splitText.style = options.style ?? style;
     this.applyBlockAnchor();
   }
 
@@ -211,38 +234,69 @@ export class SplitTextComponent extends VisualComponent {
    * `setText` / `setStyle`, call this to apply the change in one pass.
    */
   resplit(): void {
-    if (!splitIfNotEmpty(this.splitText)) return;
+    if (!splitIfNotEmpty(this._splitText)) return;
     this.applyBlockAnchor();
+  }
+
+  /**
+   * The point of the whole text block that sits on the entity position, as a
+   * fraction of the measured block: `{ x: 0, y: 0 }` is its top-left corner
+   * and `{ x: 0.5, y: 0.5 }` its centre. A re-split measures the block again
+   * and keeps the same fraction.
+   *
+   * `undefined` (the default) puts the text's layout origin on the entity
+   * instead, which can sit a few pixels off the measured corner, so
+   * assigning `undefined` and assigning `{ x: 0, y: 0 }` differ. Each read
+   * returns a new object; a non-finite coordinate throws.
+   */
+  get anchor(): Vec2Like | undefined {
+    return this._anchor ? { ...this._anchor } : undefined;
+  }
+
+  set anchor(value: Vec2Like | undefined) {
+    if (value === undefined) {
+      this._anchor = undefined;
+      this._splitText.pivot.set(0, 0);
+      return;
+    }
+    this.setBlockAnchor("SplitTextComponent.anchor", value);
   }
 
   /** Transform origin for each character (normalized 0–1). */
   set charAnchor(anchor: SegmentAnchor) {
-    this.splitText.charAnchor = anchor;
+    this._splitText.charAnchor = anchor;
   }
   get charAnchor(): SegmentAnchor {
-    return this.splitText.charAnchor;
+    return this._splitText.charAnchor;
   }
 
   /** Transform origin for each word (normalized 0–1). */
   set wordAnchor(anchor: SegmentAnchor) {
-    this.splitText.wordAnchor = anchor;
+    this._splitText.wordAnchor = anchor;
   }
   get wordAnchor(): SegmentAnchor {
-    return this.splitText.wordAnchor;
+    return this._splitText.wordAnchor;
   }
 
   /** Transform origin for each line (normalized 0–1). */
   set lineAnchor(anchor: SegmentAnchor) {
-    this.splitText.lineAnchor = anchor;
+    this._splitText.lineAnchor = anchor;
   }
   get lineAnchor(): SegmentAnchor {
-    return this.splitText.lineAnchor;
+    return this._splitText.lineAnchor;
+  }
+
+  private setBlockAnchor(context: string, value: Vec2Like): void {
+    assertFiniteNumber(context, "anchor.x", value.x);
+    assertFiniteNumber(context, "anchor.y", value.y);
+    this._anchor = { x: value.x, y: value.y };
+    this.applyBlockAnchor();
   }
 
   private applyBlockAnchor(): void {
     if (!this._anchor) return;
-    const bounds = this.splitText.getLocalBounds();
-    this.splitText.pivot.set(
+    const bounds = this._splitText.getLocalBounds();
+    this._splitText.pivot.set(
       bounds.x + bounds.width * this._anchor.x,
       bounds.y + bounds.height * this._anchor.y,
     );
@@ -265,7 +319,7 @@ export class SplitTextComponent extends VisualComponent {
    */
   inspectRender(): SplitTextRenderFacet {
     const facet = super.inspectRender();
-    const chars = this.splitText.chars;
+    const chars = this._splitText.chars;
     const glyphs = chars.map((char) => ({ visible: char.visible }));
     const visibleText = chars
       .filter((char) => char.visible)

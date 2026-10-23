@@ -265,7 +265,7 @@ describe("UIPanel pointer ownership", () => {
     panel.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     stack._observe();
     stack._drive(null);
-    const children = (panel.container as unknown as MockContainer).children;
+    const children = (panel.displayObject as unknown as MockContainer).children;
     return { panel, stack, row, children };
   }
 
@@ -327,7 +327,7 @@ describe("UIPanel pointer ownership", () => {
       height: 100,
     });
     panel.addElement(new FocusProbe());
-    stage.addChild(panel.container as never);
+    stage.addChild(panel.displayObject as never);
     panel._attachToTree(mountedContext(stack));
     panel.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     stack._observe();
@@ -342,7 +342,7 @@ describe("UIPanel pointer ownership", () => {
   ): MockContainer[] {
     return stage.children.filter(
       (child) =>
-        child !== (panel.container as never) &&
+        child !== (panel.displayObject as never) &&
         isPointerConsumeContainer(child),
     );
   }
@@ -352,13 +352,13 @@ describe("UIPanel pointer ownership", () => {
 
     // The panel's mask prunes its whole subtree for a point outside its box.
     const inside = (
-      panel.container as unknown as MockContainer
+      panel.displayObject as unknown as MockContainer
     ).children.filter((child) => isPointerConsumeContainer(child));
     expect(inside).toEqual([]);
     // Directly under the panel, so the panel's own rows answer first.
     const blocker = blockersBeside(stage, panel)[0];
     expect(stage.children.indexOf(blocker!)).toBe(
-      stage.children.indexOf(panel.container as never) - 1,
+      stage.children.indexOf(panel.displayObject as never) - 1,
     );
   });
 
@@ -374,7 +374,7 @@ describe("UIPanel pointer ownership", () => {
     menu.addElement(new FocusProbe());
     const dialog = menu.panel({ focus: true, width: 100, height: 50 });
     dialog.addElement(new FocusProbe());
-    stage.addChild(menu.container as never);
+    stage.addChild(menu.displayObject as never);
     menu._attachToTree(mountedContext(stack));
     menu.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     stack._observe();
@@ -382,7 +382,8 @@ describe("UIPanel pointer ownership", () => {
 
     // The menu's mask bounds its rows exactly as it bounds the dialog.
     expect(blockersBeside(stage, menu)).toEqual([]);
-    const children = (dialog.container as unknown as MockContainer).children;
+    const children = (dialog.displayObject as unknown as MockContainer)
+      .children;
     const blockers = children.filter((child) =>
       isPointerConsumeContainer(child),
     );
@@ -420,7 +421,7 @@ describe("UIPanel focus paint", () => {
 
   /** Every Graphics the panel keeps, in z-order. */
   function graphicsOf(panel: UIPanel): MockGraphics[] {
-    const children = (panel.container as unknown as MockContainer).children;
+    const children = (panel.displayObject as unknown as MockContainer).children;
     return children.filter(
       (child): child is MockGraphics => child instanceof MockGraphics,
     );
@@ -526,14 +527,14 @@ describe("UIPanel focus paint", () => {
 describe("UIPanel pointer focus", () => {
   /** What Pixi dispatches on the panel's container as the pointer enters. */
   function hover(panel: UIPanel): void {
-    (panel.container as unknown as { emit(event: string): void }).emit(
+    (panel.displayObject as unknown as { emit(event: string): void }).emit(
       "pointerover",
     );
   }
 
   /** What it dispatches as the pointer goes down on the panel. */
   function press(panel: UIPanel): void {
-    (panel.container as unknown as { emit(event: string): void }).emit(
+    (panel.displayObject as unknown as { emit(event: string): void }).emit(
       "pointerdown",
     );
   }
@@ -587,7 +588,7 @@ describe("UIElementBase.onDestroy", () => {
     const root = new UIPanel({});
     const child = new UIPanel({});
     root.addElement(child);
-    bindUIErrorBoundary(root.container, boundary);
+    bindUIErrorBoundary(root.displayObject, boundary);
     child.onDestroy(() => {
       throw new Error("listener failed");
     });
@@ -602,14 +603,14 @@ describe("UIElementBase.onDestroy", () => {
     const boundary = new ErrorBoundary(new Logger({ level: LogLevel.None }));
     const layer = new Container();
     const root = new UIPanel({});
-    layer.addChild(root.container);
-    bindUIErrorBoundary(root.container, boundary);
+    layer.addChild(root.displayObject);
+    bindUIErrorBoundary(root.displayObject, boundary);
     root.onDestroy(() => {
       throw new Error("listener failed");
     });
 
     // A surface takes its root off the layer before destroying it.
-    root.container.removeFromParent();
+    root.displayObject.removeFromParent();
     expect(() => root.destroy()).toThrow("listener failed");
     expect(boundary.getCallbackErrors()).toEqual([
       { kind: "UI destroy listener", error: "listener failed" },

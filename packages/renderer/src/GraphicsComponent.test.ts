@@ -130,7 +130,7 @@ describe("GraphicsComponent", () => {
 
   it("creates a graphics object", () => {
     const comp = new GraphicsComponent();
-    expect(comp.graphics).toBeDefined();
+    expect(comp.renderObject).toBeDefined();
   });
 
   it("defaults to 'default' layer", () => {
@@ -150,7 +150,7 @@ describe("GraphicsComponent", () => {
     });
     expect(result).toBe(comp);
     expect(
-      (comp.graphics as unknown as InstanceType<typeof mocks.MockGraphics>)
+      (comp.renderObject as unknown as InstanceType<typeof mocks.MockGraphics>)
         ._drawCalls,
     ).toContain("circle");
   });
@@ -163,7 +163,7 @@ describe("GraphicsComponent", () => {
 
     const layerContainer = layerManager.defaultLayer
       .container as unknown as InstanceType<typeof mocks.MockContainer>;
-    expect(layerContainer.children).toContain(comp.graphics);
+    expect(layerContainer.children).toContain(comp.renderObject);
   });
 
   it("onDestroy removes graphics from parent and destroys it", () => {
@@ -172,7 +172,7 @@ describe("GraphicsComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new GraphicsComponent());
 
-    const gfx = comp.graphics as unknown as InstanceType<
+    const gfx = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(gfx.parent).not.toBeNull();
@@ -188,9 +188,9 @@ describe("GraphicsComponent", () => {
       tint: 0x00ff00,
       alpha: 0.25,
     });
-    expect(comp.graphics.visible).toBe(false);
-    expect(comp.graphics.tint).toBe(0x00ff00);
-    expect(comp.graphics.alpha).toBe(0.25);
+    expect(comp.renderObject.visible).toBe(false);
+    expect(comp.renderObject.tint).toBe(0x00ff00);
+    expect(comp.renderObject.alpha).toBe(0.25);
   });
 
   it("visible, tint, and alpha setters update the underlying Graphics", () => {
@@ -198,9 +198,9 @@ describe("GraphicsComponent", () => {
     comp.visible = false;
     comp.tint = 0xabcdef;
     comp.alpha = 0.5;
-    expect(comp.graphics.visible).toBe(false);
-    expect(comp.graphics.tint).toBe(0xabcdef);
-    expect(comp.graphics.alpha).toBe(0.5);
+    expect(comp.renderObject.visible).toBe(false);
+    expect(comp.renderObject.tint).toBe(0xabcdef);
+    expect(comp.renderObject.alpha).toBe(0.5);
     expect(comp.visible).toBe(false);
     expect(comp.tint).toBe(0xabcdef);
     expect(comp.alpha).toBe(0.5);
@@ -208,11 +208,11 @@ describe("GraphicsComponent", () => {
 
   it("applies the blendMode option and exposes it as an accessor", () => {
     const comp = new GraphicsComponent({ blendMode: "add" });
-    expect(comp.graphics.blendMode).toBe("add");
+    expect(comp.renderObject.blendMode).toBe("add");
     expect(comp.blendMode).toBe("add");
 
     comp.blendMode = "erase";
-    expect(comp.graphics.blendMode).toBe("erase");
+    expect(comp.renderObject.blendMode).toBe("erase");
     expect(comp.blendMode).toBe("erase");
   });
 
@@ -224,20 +224,20 @@ describe("GraphicsComponent", () => {
 
   it("puts the pivot option on the graphics object", () => {
     const comp = new GraphicsComponent({ pivot: { x: 0, y: -24 } });
-    expect(comp.graphics.pivot).toMatchObject({ x: 0, y: -24 });
+    expect(comp.renderObject.pivot).toMatchObject({ x: 0, y: -24 });
   });
 
   it("reports localBounds relative to the entity's position, after the pivot", () => {
     const comp = new GraphicsComponent({ pivot: { x: 10, y: 4 } });
     (
-      comp.graphics as unknown as InstanceType<typeof mocks.MockGraphics>
+      comp.renderObject as unknown as InstanceType<typeof mocks.MockGraphics>
     ).boundsBox = { x: 0, y: 0, width: 20, height: 8 };
 
     expect(comp.localBounds).toEqual({ x: -10, y: -4, width: 20, height: 8 });
   });
 
   it("leaves the pivot at the drawing origin when the option is absent", () => {
-    expect(new GraphicsComponent().graphics.pivot).toMatchObject({
+    expect(new GraphicsComponent().renderObject.pivot).toMatchObject({
       x: 0,
       y: 0,
     });
@@ -245,16 +245,23 @@ describe("GraphicsComponent", () => {
 
   it("throws on a non-finite pivot coordinate", () => {
     expect(() => new GraphicsComponent({ pivot: { x: 0, y: NaN } })).toThrow(
-      /pivot\.y must be finite/,
+      "GraphicsComponent.constructor: pivot.y must be finite, got NaN.",
     );
     expect(() => new GraphicsComponent({ pivot: { x: NaN, y: 0 } })).toThrow(
-      /pivot\.x must be finite/,
+      "GraphicsComponent.constructor: pivot.x must be finite, got NaN.",
     );
+  });
+
+  it("reads and writes the pivot after construction", () => {
+    const comp = new GraphicsComponent();
+    comp.pivot = { x: 16, y: -8 };
+    expect(comp.renderObject.pivot).toMatchObject({ x: 16, y: -8 });
+    expect(comp.pivot).toEqual({ x: 16, y: -8 });
   });
 
   it("applies the interactive option, defaulting eventMode to static", () => {
     const comp = new GraphicsComponent({ interactive: {} });
-    expect(comp.graphics.eventMode).toBe("static");
+    expect(comp.renderObject.eventMode).toBe("static");
   });
 
   describe("inspectRender", () => {
@@ -263,7 +270,7 @@ describe("GraphicsComponent", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
       const comp = entity.add(new GraphicsComponent());
-      const gfx = comp.graphics as unknown as InstanceType<
+      const gfx = comp.renderObject as unknown as InstanceType<
         typeof mocks.MockContainer
       >;
       gfx.boundsBox = { x: 0, y: 0, width: 40, height: 25 };
@@ -286,15 +293,15 @@ describe("GraphicsComponent activeness", () => {
     const entity = spawnEntityInScene(scene);
     entity.add(new Transform());
     const gfx = entity.add(new GraphicsComponent());
-    expect(gfx.graphics.visible).toBe(true);
+    expect(gfx.renderObject.visible).toBe(true);
 
     entity.setActive(false);
-    expect(gfx.graphics.visible).toBe(false);
+    expect(gfx.renderObject.visible).toBe(false);
     // The game's own value is untouched, so it reads back unchanged.
     expect(gfx.visible).toBe(true);
 
     entity.setActive(true);
-    expect(gfx.graphics.visible).toBe(true);
+    expect(gfx.renderObject.visible).toBe(true);
   });
 
   it("keeps a hand-hidden component hidden across an activeness cycle", () => {
@@ -307,7 +314,7 @@ describe("GraphicsComponent activeness", () => {
     entity.setActive(false);
     entity.setActive(true);
     expect(gfx.visible).toBe(false);
-    expect(gfx.graphics.visible).toBe(false);
+    expect(gfx.renderObject.visible).toBe(false);
   });
 
   it("stays hidden when added to an already-dormant entity", () => {
@@ -316,10 +323,10 @@ describe("GraphicsComponent activeness", () => {
     entity.add(new Transform());
     entity.setActive(false);
     const gfx = entity.add(new GraphicsComponent());
-    expect(gfx.graphics.visible).toBe(false);
+    expect(gfx.renderObject.visible).toBe(false);
 
     entity.setActive(true);
-    expect(gfx.graphics.visible).toBe(true);
+    expect(gfx.renderObject.visible).toBe(true);
   });
 
   it("drops out of the DisplaySystem query while dormant", () => {

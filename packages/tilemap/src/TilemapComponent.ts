@@ -58,11 +58,7 @@ export class TilemapComponent extends VisualComponent {
   // copy on every Inspector snapshot.
   static inspectExclude = ["data"];
 
-  /**
-   * The same Pixi object as {@link renderObject}. Change the visual through
-   * the component; see `VisualComponent.renderObject`.
-   */
-  readonly container: DisplayContainer;
+  private readonly _container: DisplayContainer;
   readonly data: TilemapData;
   /** Asset path of this map, or `null` if constructed from a raw `TiledMapData` without one. */
   readonly mapKey: string | null;
@@ -118,7 +114,7 @@ export class TilemapComponent extends VisualComponent {
     this.data = toTilemapData(this._tiledMap);
     this.layerNames = options.layers;
     this.keyPrefix = options.keyPrefix ?? this.mapKey;
-    this.container = new Container();
+    this._container = new Container();
 
     if (this.data.diagnostics.length > 0) {
       const mapLabel = this.mapKey ?? "<inline map>";
@@ -140,22 +136,22 @@ export class TilemapComponent extends VisualComponent {
    * component; see {@link VisualComponent.renderObject}.
    */
   get renderObject(): DisplayContainer {
-    return this.container;
+    return this._container;
   }
 
   // The tilemap shader has no color uniform, so a filter applies tint and
   // alpha to the rendered tilemap texture.
   override set tint(color: ColorValue) {
-    this.container.tint = color;
+    this._container.tint = color;
     this.syncColorFilter();
   }
 
   override get tint(): number {
-    return this.container.tint;
+    return this._container.tint;
   }
 
   protected override applyEffectiveAlpha(alpha: number): void {
-    this.container.alpha = alpha;
+    this._container.alpha = alpha;
     this.syncColorFilter();
   }
 
@@ -167,7 +163,7 @@ export class TilemapComponent extends VisualComponent {
       _tilemapLayerHasAnimation,
     );
     for (const layer of this._tilemapLayers) {
-      this.container.addChild(layer);
+      this._container.addChild(layer);
     }
     super.onAdd();
   }
@@ -428,7 +424,7 @@ export class TilemapComponent extends VisualComponent {
   }
 
   private currentFilters(): Filter[] {
-    const filters = this.container.filters as
+    const filters = this._container.filters as
       | Filter
       | readonly Filter[]
       | null
@@ -438,8 +434,8 @@ export class TilemapComponent extends VisualComponent {
   }
 
   private syncColorFilter(): void {
-    const tint = this.container.tint;
-    const alpha = this.container.alpha;
+    const tint = this._container.tint;
+    const alpha = this._container.alpha;
     if (tint === 0xffffff && alpha === 1) {
       this.removeColorFilter();
       return;
@@ -479,7 +475,7 @@ export class TilemapComponent extends VisualComponent {
     // keeps the order the same however the two are interleaved.
     const filters = this.currentFilters();
     if (!filters.includes(filter)) {
-      this.container.filters = [filter, ...filters];
+      this._container.filters = [filter, ...filters];
     }
   }
 
@@ -487,7 +483,7 @@ export class TilemapComponent extends VisualComponent {
     const filter = this._colorFilter;
     if (!filter) return;
     const filters = this.currentFilters().filter((entry) => entry !== filter);
-    this.container.filters = filters.length > 0 ? filters : null;
+    this._container.filters = filters.length > 0 ? filters : null;
     filter.destroy();
     this._colorFilter = undefined;
   }

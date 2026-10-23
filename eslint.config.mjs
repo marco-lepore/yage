@@ -42,23 +42,34 @@ const ENGINE_TIME_SYNTAX = [
 
 // Game-facing code (examples, addon source) changes a visual through its
 // component, never the Pixi object underneath, which the engine overwrites.
-// Only these member names are unambiguous: `sprite`, `graphics`, `text` and
-// `container` are also ordinary component field names, which an untyped rule
-// cannot tell apart from the raw handles. Docs fences get a typed check in
+// Visual components and UI elements hand out that object only as
+// `renderObject` and `displayObject`. Content drawn into a texture goes on a
+// layer declared with `renderTarget`; `createRenderTarget` draws a Pixi
+// container the caller builds. Docs fences get a typed check in
 // docs/scripts/check-snippets.mjs.
 const RAW_PIXI_SYNTAX = [
-  "animatedSprite",
-  "renderObject",
-  "splitText",
-  "displayObject",
-].map((name) => ({
-  selector: `MemberExpression[property.name='${name}']`,
-  message: `\`${name}\` is the Pixi object the engine overwrites. Change the visual through its component; a task that needs the object is a missing renderer API.`,
-}));
+  ...["renderObject", "displayObject"].map((name) => ({
+    selector: `MemberExpression[property.name='${name}']`,
+    message: `\`${name}\` is the Pixi object the engine overwrites. Change the visual through its component; a task that needs the object is a missing renderer API.`,
+  })),
+  {
+    selector: "CallExpression[callee.property.name='createRenderTarget']",
+    message:
+      "`createRenderTarget` draws a Pixi container the caller builds. Declare a layer with `renderTarget` and put the visuals on it.",
+  },
+];
 const NO_PIXI_IMPORT = {
   name: "pixi.js",
   message:
     "Reach Pixi through @yagejs/renderer's components and type aliases, not pixi.js.",
+};
+// The provider hands out every scene's tree and its Pixi root, for tools and
+// addon presenters that add a layer to a given scene.
+const NO_TREE_PROVIDER = {
+  name: "@yagejs/renderer",
+  importNames: ["SceneRenderTreeProviderKey"],
+  message:
+    "Resolve the current scene's tree with SceneRenderTreeKey, or a transition's scenes with getSceneRenderTree.",
 };
 
 // Directory groups name the bare specifier as well as the paths under it:
@@ -261,6 +272,7 @@ export default tseslint.config(
                 "Blueprints are deprecated; define an Entity subclass with setup().",
             },
             NO_PIXI_IMPORT,
+            NO_TREE_PROVIDER,
           ],
         },
       ],

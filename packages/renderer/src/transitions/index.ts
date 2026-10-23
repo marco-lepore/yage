@@ -12,4 +12,6 @@ export { chessboard } from "./chessboard.js";
 export type { ChessboardOptions } from "./chessboard.js";
 export { slidePush } from "./slidePush.js";
 export type { SlideDirection, SlidePushOptions } from "./slidePush.js";
-export { getSceneContainer, getVirtualBounds } from "./helpers.js";
+export { getSceneRenderTree, getVirtualBounds } from "./helpers.js";
+export { createTransitionOverlay } from "./overlay.js";
+export type { TransitionOverlay, TransitionOverlayOptions } from "./overlay.js";

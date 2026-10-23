@@ -4,6 +4,7 @@ export type {
   DebugDiagnostics,
   LayerTransformSnapshot,
   CameraStackSnapshot,
+  SceneRenderSnapshot,
 } from "./DebugPlugin.js";
 // Mirrored from the ./api subpath, which stays the import to reach for in game
 // code — it carries the same surface without pulling in pixi.js.

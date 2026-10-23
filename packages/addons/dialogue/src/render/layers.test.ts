@@ -19,7 +19,7 @@ describe("dialogue presenter layers", () => {
   it("provisions custom screen and bubble world layers on standalone mount", () => {
     const { scene, context } = createMockScene();
     const root = new GraphicsComponent();
-    const provider = new SceneRenderTreeProviderImpl(root.graphics);
+    const provider = new SceneRenderTreeProviderImpl(root.renderObject);
     const tree = provider.createForScene(scene);
     const ensureLayer = vi.spyOn(tree, "ensureLayer");
     context.register(SceneRenderTreeProviderKey, provider);
@@ -99,7 +99,7 @@ describe("configured dialogue layer orders", () => {
     for (const mixed of [false, true]) {
       const { scene, context } = createMockScene();
       const provider = new SceneRenderTreeProviderImpl(
-        new GraphicsComponent().graphics,
+        new GraphicsComponent().renderObject,
       );
       const tree = provider.createForScene(scene);
       context.register(SceneRenderTreeProviderKey, provider);

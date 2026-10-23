@@ -34,6 +34,67 @@ export interface RenderTargetOptions {
   dependsOn?: readonly RenderTargetHandle[];
 }
 
+/** How often a render-target layer redraws its texture. */
+export type LayerRenderRefresh = "every-frame" | "on-demand";
+
+/**
+ * Options for a layer that draws into a texture, set as `LayerDef.renderTarget`.
+ */
+export interface LayerRenderTargetOptions extends Pick<
+  RenderTargetOptions,
+  "resolutionScale" | "antialias" | "clearColor" | "label"
+> {
+  /** Texture width, in the layer's pixels. */
+  width: number;
+  /** Texture height, in the layer's pixels. */
+  height: number;
+  /**
+   * Register the texture under this key while the scene lives, so a
+   * `SpriteComponent` shows it with `texture: key`. Scene exit unregisters it.
+   * When two live scenes register the same key, the key resolves the later
+   * scene's texture, and goes back to the earlier one's when the later scene
+   * exits. A key used by a loaded asset throws when the scene enters.
+   */
+  texture?: string;
+  /**
+   * `"every-frame"` (the default) redraws the texture each frame, also
+   * while the scene is hidden under another, since another scene can show
+   * the texture by key.
+   * `"on-demand"` redraws it only on the frame after
+   * `layer.renderTarget.invalidate()`, for content that changes rarely.
+   */
+  refresh?: LayerRenderRefresh;
+}
+
+/**
+ * The texture a render-target layer draws into, on `RenderLayer.renderTarget`.
+ * The scene owns it: scene exit destroys it with the layer.
+ *
+ * The texture is redrawn just before the frame is drawn, after every visual
+ * on the layer has taken its entity's `Transform`, so it never shows the
+ * previous frame. The layer's own pixels are the texture's pixels: a visual
+ * at `(100, 50)` on the layer lands at texture pixel `(100, 50)`.
+ */
+export interface LayerRenderTarget {
+  /** The texture the layer draws into. Show it with a `SpriteComponent`, a mask, or a filter. */
+  readonly texture: TextureResource;
+  /** Texture width in the layer's pixels. */
+  readonly width: number;
+  /** Texture height in the layer's pixels. */
+  readonly height: number;
+  /** Texels per layer pixel actually allocated: the renderer's resolution times `resolutionScale`. */
+  readonly resolution: number;
+  /** Whether a redraw is pending for the next frame. */
+  readonly needsRender: boolean;
+  /** Redraw the texture on the next frame. Needed only with `refresh: "on-demand"`. */
+  invalidate(): void;
+  /**
+   * Resize the texture and redraw it on the next frame. Anything already
+   * showing the texture picks up the new size on its next draw.
+   */
+  resize(width: number, height: number, resolutionScale?: number): void;
+}
+
 /**
  * An offscreen texture the game draws into on its own schedule, returned by
  * `RendererPlugin.createRenderTarget`.
@@ -107,9 +168,14 @@ export interface RenderTargetHandle {
 export interface RenderTargetDrawing {
   readonly stage: DisplayContainer;
   isEnabled(): boolean;
+  /**
+   * Set for a render-target layer: draw before each stage render, every
+   * time or only while a render is pending.
+   */
+  readonly refresh?: LayerRenderRefresh;
 }
 
-class RenderTargetImpl implements RenderTargetHandle {
+class RenderTargetImpl implements RenderTargetHandle, LayerRenderTarget {
   readonly source: DisplayContainer;
   private readonly _renderer: Renderer;
   private readonly _texture: RenderTexture;
@@ -169,10 +235,10 @@ class RenderTargetImpl implements RenderTargetHandle {
 
   /** Pixi's existing pre-render dispatch flushes targets in creation order. */
   prerender(options: { container: DisplayContainer }): void {
-    if (
-      options.container === this.drawing?.stage &&
-      this._state === "deferred"
-    ) {
+    if (options.container !== this.drawing?.stage) return;
+    const refresh = this.drawing.refresh;
+    if (refresh === "every-frame") this.invalidate();
+    if (refresh ? this._state !== "clean" : this._state === "deferred") {
       this.draw(true);
     }
   }
@@ -309,3 +375,13 @@ export function createRenderTarget(
 ): RenderTargetHandle {
   return new RenderTargetImpl(renderer, source, options, drawing);
 }
+
+/**
+ * Builds the target a render-target layer draws into. The renderer plugin
+ * passes `SceneRenderTreeProviderImpl` one bound to the live renderer; a
+ * render tree without one cannot hold a render-target layer.
+ */
+export type LayerTargetFactory = (
+  source: DisplayContainer,
+  options: LayerRenderTargetOptions,
+) => RenderTargetHandle;

@@ -5,7 +5,12 @@ import "./internal/duplicateModuleGuard.js";
 
 // Service keys & config
 export { RendererKey } from "./types.js";
-export type { RendererConfig, FitMode, RendererFitOptions } from "./types.js";
+export type {
+  RendererConfig,
+  FitMode,
+  RendererBackend,
+  RendererFitOptions,
+} from "./types.js";
 export type { CanvasRect, VirtualRect } from "./Fit.js";
 export type {
   Application,
@@ -18,13 +23,18 @@ export type {
   DisplayAnimatedSprite,
   DisplayBitmapText,
   DisplayContainer,
+  DisplayGraphics,
   DisplaySplitBitmapText,
   DisplaySplitText,
   DisplaySprite,
   DisplayText,
+  DrawFill,
+  DrawMatrix,
+  DrawPath,
+  DrawRoundedPoint,
+  DrawStroke,
   Filter,
   GradientFill,
-  GraphicsContext,
   NineSliceSprite,
   Particle,
   ParticleContainer,
@@ -39,6 +49,7 @@ export type {
   WebFontHandle,
   WebFontResource,
 } from "./public-types.js";
+export type { DrawContext } from "./DrawContext.js";
 
 // Plugin
 export { RendererPlugin } from "./RendererPlugin.js";
@@ -79,6 +90,8 @@ export type {
   SegmentAnchor,
   SplitTextRenderFacet,
   SplitTextRenderFacetExtras,
+  TextSegment,
+  TextSegmentPoint,
 } from "./SplitTextComponent.js";
 export {
   SortGroupComponent,
@@ -180,6 +193,7 @@ export type {
   LayerDef,
   LayerSortFn,
   LayerSpace,
+  RenderLayerSpace,
   SortItem,
 } from "./LayerDef.js";
 export { ySort } from "./ySort.js";
@@ -239,6 +253,10 @@ export type { RawFilterOptions } from "./effects/rawFilter.js";
 
 // Offscreen buffers
 export type {
+  LayerRenderRefresh,
+  LayerRenderTarget,
+  LayerRenderTargetOptions,
+  LayerTargetFactory,
   RenderTargetHandle,
   RenderTargetOptions,
 } from "./RenderTarget.js";

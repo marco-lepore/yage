@@ -147,6 +147,7 @@ vi.mock("./spritesheet.js", () => ({
 }));
 
 import { Transform, Vec2, ErrorBoundaryKey } from "@yagejs/core";
+import type { Scene } from "@yagejs/core";
 import { Graphics } from "pixi.js";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { CameraComponent } from "./CameraComponent.js";
@@ -157,6 +158,7 @@ import { TextComponent } from "./TextComponent.js";
 import { SortGroupComponent } from "./SortGroupComponent.js";
 import { VisualComponent } from "./VisualComponent.js";
 import type { DisplayContainer } from "./public-types.js";
+import type { SceneRenderTree } from "./SceneRenderTree.js";
 import { ySort } from "./ySort.js";
 import {
   createRendererTestContext,
@@ -204,7 +206,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const sprite = spriteComp.sprite as unknown as InstanceType<
+    const sprite = spriteComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(sprite.position.x).toBe(transform.position.x);
@@ -221,7 +223,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const sprite = spriteComp.sprite as unknown as InstanceType<
+    const sprite = spriteComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(sprite.rotation).toBe(1.5);
@@ -237,7 +239,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const sprite = spriteComp.sprite as unknown as InstanceType<
+    const sprite = spriteComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(sprite.scale.x).toBe(2);
@@ -262,7 +264,7 @@ describe("DisplaySystem", () => {
     });
 
     system.update();
-    const sprite = visual.sprite as unknown as InstanceType<
+    const sprite = visual.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(sprite.position).toMatchObject({ x: 14, y: 18 });
@@ -292,7 +294,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const gfx = gfxComp.graphics as unknown as InstanceType<
+    const gfx = gfxComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(gfx.position.x).toBe(50);
@@ -311,7 +313,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const anim = animComp.animatedSprite as unknown as InstanceType<
+    const anim = animComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(anim.position.x).toBe(30);
@@ -326,7 +328,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const txt = textComp.text as unknown as InstanceType<
+    const txt = textComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(txt.position.x).toBe(12);
@@ -344,7 +346,7 @@ describe("DisplaySystem", () => {
 
     system.update();
 
-    const sprite = spriteComp.sprite as unknown as InstanceType<
+    const sprite = spriteComp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(sprite.position.x).toBe(0);
@@ -494,6 +496,67 @@ describe("DisplaySystem", () => {
     // camHigh wins: position.x = 800/2 - 300*2*1 = -200, scale = 2
     expect(world.scale.x).toBe(2);
     expect(world.position.x).toBe(-200);
+  });
+
+  it("refuses, when the camera is added, a binding that names a canvas layer", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "bars", order: 1, space: "canvas" });
+    const entity = spawnEntityInScene(scene, "camera");
+
+    expect(() =>
+      entity.add(
+        new CameraComponent({ name: "main", bindings: [{ layer: "bars" }] }),
+      ),
+    ).toThrow(
+      'CameraComponent.bindings: camera "main" names layer "bars", a "canvas" layer, which no camera binds.',
+    );
+  });
+
+  it("refuses, when the camera is added, a binding that names a render-target layer", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({
+      name: "radar",
+      order: 1,
+      renderTarget: { width: 8, height: 8 },
+    });
+    const entity = spawnEntityInScene(scene, "camera");
+
+    expect(() =>
+      entity.add(new CameraComponent({ bindings: [{ layer: "radar" }] })),
+    ).toThrow(
+      'CameraComponent.bindings: camera "camera" names layer "radar", a layer that draws into a texture, which no camera binds.',
+    );
+  });
+
+  it("skips a binding to a canvas layer created after the camera", () => {
+    const { scene, tree } = setup();
+    const camera = spawnEntityInScene(scene, "camera").add(
+      new CameraComponent({
+        bindings: [{ layer: "bars" }, { layer: "world" }],
+      }),
+    );
+    tree.ensureLayer({ name: "bars", order: 1, space: "canvas" });
+
+    expect(() => system.update()).not.toThrow();
+    expect(
+      camera.getResolvedBindings(tree).map((binding) => binding.layer),
+    ).not.toContain("bars");
+  });
+
+  it("never auto-binds a render-target layer", () => {
+    const camera = new CameraComponent();
+    const layers = [
+      { name: "world", space: "world" },
+      { name: "radar", space: "texture" },
+    ];
+    const tree = {
+      getAll: () => layers,
+      tryGet: (name: string) => layers.find((layer) => layer.name === name),
+    } as unknown as SceneRenderTree;
+
+    expect(camera.getResolvedBindings(tree)).toEqual([
+      { layer: "world", translateRatio: 1 },
+    ]);
   });
 
   it("rotateRatio=0 keeps a bound layer upright while the camera rotates", () => {
@@ -878,63 +941,101 @@ describe("DisplaySystem", () => {
     system.update();
 
     expect(
-      (s1.sprite as unknown as InstanceType<typeof mocks.MockContainer>)
+      (s1.renderObject as unknown as InstanceType<typeof mocks.MockContainer>)
         .position.x,
     ).toBe(10);
     expect(
-      (s2.sprite as unknown as InstanceType<typeof mocks.MockContainer>)
+      (s2.renderObject as unknown as InstanceType<typeof mocks.MockContainer>)
         .position.x,
     ).toBe(30);
   });
 
   /**
-   * A dormant entity is drawn by writing its pose and visibility straight onto
-   * the render object, which works only because this pass never touches one —
-   * the queries exclude a dormant entity. These cases pin that outcome, so a
-   * change to how the pass selects entities fails here.
+   * This pass skips a dormant entity: the queries exclude it. A tool that
+   * shows dormant entities draws them with `VisualComponent.drawInactive`
+   * after this pass, so these cases pin both halves.
    */
   describe("dormant entities", () => {
-    it("leaves an externally written pose, visibility and opacity alone", () => {
-      const { scene } = setup();
+    function dormantSprite(scene: Scene, position = new Vec2(100, 200)) {
       const entity = scene.spawn("dormant", { active: false });
-      // Deliberately unlike the pose written below: a pass that synced dormant
-      // entities would overwrite the written one with this.
-      entity.add(new Transform({ position: new Vec2(100, 200) }));
-      const spriteComp = entity.add(
-        new SpriteComponent({ texture: {} as never }),
-      );
-
-      const sprite = spriteComp.sprite as unknown as InstanceType<
+      const transform = entity.add(new Transform({ position }));
+      const visual = entity.add(new SpriteComponent({ texture: {} as never }));
+      const sprite = visual.renderObject as unknown as InstanceType<
         typeof mocks.MockContainer
       >;
-      sprite.position.set(10, 20);
-      sprite.rotation = 0.5;
-      sprite.scale.set(2, 3);
-      sprite.visible = true;
-      sprite.alpha = 0.25;
+      return { entity, transform, visual, sprite };
+    }
+
+    it("leaves a dormant visual where drawInactive put it", () => {
+      const { scene } = setup();
+      const { entity, transform, visual, sprite } = dormantSprite(scene);
+      visual.drawInactive(true);
+      // A pass that synced dormant entities would write this pose instead.
+      transform.setPosition(500, 600);
 
       system.update();
 
-      expect(sprite.position).toMatchObject({ x: 10, y: 20 });
+      expect(sprite.position).toMatchObject({ x: 100, y: 200 });
+      expect(sprite.visible).toBe(true);
+      expect(entity.isActive).toBe(false);
+    });
+
+    it("draws a dormant visual at its Transform pose and modifiers", () => {
+      const { scene } = setup();
+      const { transform, visual, sprite } = dormantSprite(scene);
+      transform.setRotation(0.5);
+      transform.setScale(2, 3);
+      visual.modifiers.addTransform({ position: new Vec2(4, -8) });
+
+      visual.drawInactive(true);
+
+      expect(sprite.position).toMatchObject({ x: 104, y: 192 });
       expect(sprite.rotation).toBe(0.5);
       expect(sprite.scale).toMatchObject({ x: 2, y: 3 });
       expect(sprite.visible).toBe(true);
-      expect(sprite.alpha).toBe(0.25);
-      expect(entity.isActive).toBe(false);
+    });
+
+    it("hides a dormant visual the caller, the game or its modifiers hide", () => {
+      const { scene } = setup();
+      const { visual, sprite } = dormantSprite(scene);
+
+      visual.drawInactive(false);
+      expect(sprite.visible).toBe(false);
+
+      visual.visible = false;
+      visual.drawInactive(true);
+      expect(sprite.visible).toBe(false);
+
+      visual.visible = true;
+      visual.enabled = false;
+      visual.drawInactive(true);
+      expect(sprite.visible).toBe(false);
+
+      visual.enabled = true;
+      const hidden = visual.modifiers.addVisibility(false);
+      visual.drawInactive(true);
+      expect(sprite.visible).toBe(false);
+      hidden.remove();
+      visual.drawInactive(true);
+      expect(sprite.visible).toBe(true);
+    });
+
+    it("refuses an active entity, which this pass already draws", () => {
+      const { scene } = setup();
+      const entity = spawnEntityInScene(scene, "live");
+      entity.add(new Transform());
+      const visual = entity.add(new SpriteComponent({ texture: {} as never }));
+
+      expect(() => visual.drawInactive(true)).toThrow(
+        'SpriteComponent.drawInactive: entity "live" is active, and DisplaySystem already draws it.',
+      );
     });
 
     it("syncs an active entity in the same pass", () => {
       const { scene } = setup();
 
-      const dormant = scene.spawn("dormant", { active: false });
-      dormant.add(new Transform({ position: new Vec2(100, 200) }));
-      const dormantSprite = dormant.add(
-        new SpriteComponent({ texture: {} as never }),
-      );
-      const written = dormantSprite.sprite as unknown as InstanceType<
-        typeof mocks.MockContainer
-      >;
-      written.position.set(10, 20);
+      const { visual: dormant, sprite: written } = dormantSprite(scene);
+      dormant.drawInactive(true);
 
       const overlay = spawnEntityInScene(scene, "overlay");
       overlay.add(new Transform({ position: new Vec2(30, 40) }));
@@ -942,10 +1043,10 @@ describe("DisplaySystem", () => {
 
       system.update();
 
-      expect(written.position).toMatchObject({ x: 10, y: 20 });
+      expect(written.position).toMatchObject({ x: 100, y: 200 });
       expect(
         (
-          overlayGfx.graphics as unknown as InstanceType<
+          overlayGfx.renderObject as unknown as InstanceType<
             typeof mocks.MockContainer
           >
         ).position,

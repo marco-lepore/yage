@@ -150,7 +150,7 @@ describe("Mask scopes — end-to-end", () => {
       const handle = sprite.setMask(
         rectMask({ x: 0, y: 0, width: 32, height: 32 }),
       );
-      const spriteAsContainer = sprite.sprite as never as InstanceType<
+      const spriteAsContainer = sprite.renderObject as never as InstanceType<
         typeof mocks.MockContainer
       >;
       expect(spriteAsContainer.mask).not.toBeNull();
@@ -162,7 +162,7 @@ describe("Mask scopes — end-to-end", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
       const sprite = entity.add(new SpriteComponent({ texture: {} as never }));
-      const spriteAsContainer = sprite.sprite as never as InstanceType<
+      const spriteAsContainer = sprite.renderObject as never as InstanceType<
         typeof mocks.MockContainer
       >;
 
@@ -182,7 +182,7 @@ describe("Mask scopes — end-to-end", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
       const sprite = entity.add(new SpriteComponent({ texture: {} as never }));
-      const spriteAsContainer = sprite.sprite as never as InstanceType<
+      const spriteAsContainer = sprite.renderObject as never as InstanceType<
         typeof mocks.MockContainer
       >;
 
@@ -197,7 +197,7 @@ describe("Mask scopes — end-to-end", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
       const sprite = entity.add(new SpriteComponent({ texture: {} as never }));
-      const spriteAsContainer = sprite.sprite as never as InstanceType<
+      const spriteAsContainer = sprite.renderObject as never as InstanceType<
         typeof mocks.MockContainer
       >;
 
@@ -211,7 +211,7 @@ describe("Mask scopes — end-to-end", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
       const text = entity.add(new TextComponent({ text: "hello" }));
-      const textAsContainer = text.text as never as InstanceType<
+      const textAsContainer = text.renderObject as never as InstanceType<
         typeof mocks.MockContainer
       >;
 
@@ -294,7 +294,7 @@ describe("Mask scopes — end-to-end", () => {
       );
       tree.setMask(rectMask({ x: 0, y: 0, width: 800, height: 600 }));
 
-      const spriteAsContainer = sprite.sprite as never as InstanceType<
+      const spriteAsContainer = sprite.renderObject as never as InstanceType<
         typeof mocks.MockContainer
       >;
       const layerContainer = layerManager.defaultLayer
@@ -319,7 +319,7 @@ describe("Mask scopes — end-to-end", () => {
       );
       tree.setMask(rectMask({ x: 0, y: 0, width: 800, height: 600 }));
 
-      const spriteAsContainer = sprite.sprite as never as InstanceType<
+      const spriteAsContainer = sprite.renderObject as never as InstanceType<
         typeof mocks.MockContainer
       >;
       const layerContainer = layerManager.defaultLayer

@@ -172,8 +172,8 @@ describe("UILayoutSystem", () => {
 
       system.update(16);
 
-      expect(panel.container.position.x).toBe(0);
-      expect(panel.container.position.y).toBe(0);
+      expect(panel.root.displayObject.position.x).toBe(0);
+      expect(panel.root.displayObject.position.y).toBe(0);
     });
 
     it("positions panel at Center", () => {
@@ -187,8 +187,8 @@ describe("UILayoutSystem", () => {
       // Panel size = 100x30, virtual = 800x600
       // x = (800 - 100) / 2 = 350
       // y = (600 - 30) / 2 = 285
-      expect(panel.container.position.x).toBe(350);
-      expect(panel.container.position.y).toBe(285);
+      expect(panel.root.displayObject.position.x).toBe(350);
+      expect(panel.root.displayObject.position.y).toBe(285);
     });
 
     it("positions panel at BottomRight", () => {
@@ -199,8 +199,8 @@ describe("UILayoutSystem", () => {
 
       system.update(16);
 
-      expect(panel.container.position.x).toBe(700); // 800 - 100
-      expect(panel.container.position.y).toBe(570); // 600 - 30
+      expect(panel.root.displayObject.position.x).toBe(700); // 800 - 100
+      expect(panel.root.displayObject.position.y).toBe(570); // 600 - 30
     });
 
     it("positions panel at TopCenter", () => {
@@ -211,8 +211,8 @@ describe("UILayoutSystem", () => {
 
       system.update(16);
 
-      expect(panel.container.position.x).toBe(350);
-      expect(panel.container.position.y).toBe(0);
+      expect(panel.root.displayObject.position.x).toBe(350);
+      expect(panel.root.displayObject.position.y).toBe(0);
     });
 
     it("positions panel at BottomCenter", () => {
@@ -223,8 +223,8 @@ describe("UILayoutSystem", () => {
 
       system.update(16);
 
-      expect(panel.container.position.x).toBe(350);
-      expect(panel.container.position.y).toBe(570);
+      expect(panel.root.displayObject.position.x).toBe(350);
+      expect(panel.root.displayObject.position.y).toBe(570);
     });
 
     it("positions panel at CenterLeft", () => {
@@ -235,8 +235,8 @@ describe("UILayoutSystem", () => {
 
       system.update(16);
 
-      expect(panel.container.position.x).toBe(0);
-      expect(panel.container.position.y).toBe(285);
+      expect(panel.root.displayObject.position.x).toBe(0);
+      expect(panel.root.displayObject.position.y).toBe(285);
     });
 
     it("positions panel at CenterRight", () => {
@@ -247,8 +247,8 @@ describe("UILayoutSystem", () => {
 
       system.update(16);
 
-      expect(panel.container.position.x).toBe(700);
-      expect(panel.container.position.y).toBe(285);
+      expect(panel.root.displayObject.position.x).toBe(700);
+      expect(panel.root.displayObject.position.y).toBe(285);
     });
 
     it("positions panel at TopRight", () => {
@@ -259,8 +259,8 @@ describe("UILayoutSystem", () => {
 
       system.update(16);
 
-      expect(panel.container.position.x).toBe(700);
-      expect(panel.container.position.y).toBe(0);
+      expect(panel.root.displayObject.position.x).toBe(700);
+      expect(panel.root.displayObject.position.y).toBe(0);
     });
 
     it("positions panel at BottomLeft", () => {
@@ -271,8 +271,8 @@ describe("UILayoutSystem", () => {
 
       system.update(16);
 
-      expect(panel.container.position.x).toBe(0);
-      expect(panel.container.position.y).toBe(570);
+      expect(panel.root.displayObject.position.x).toBe(0);
+      expect(panel.root.displayObject.position.y).toBe(570);
     });
   });
 
@@ -286,8 +286,8 @@ describe("UILayoutSystem", () => {
 
     system.update(16);
 
-    expect(panel.container.position.x).toBe(10);
-    expect(panel.container.position.y).toBe(20);
+    expect(panel.root.displayObject.position.x).toBe(10);
+    expect(panel.root.displayObject.position.y).toBe(20);
   });
 
   it("uses offset as position when no anchor specified", () => {
@@ -298,8 +298,8 @@ describe("UILayoutSystem", () => {
 
     system.update(16);
 
-    expect(panel.container.position.x).toBe(50);
-    expect(panel.container.position.y).toBe(100);
+    expect(panel.root.displayObject.position.x).toBe(50);
+    expect(panel.root.displayObject.position.y).toBe(100);
   });
 
   it("skips disabled panels", () => {
@@ -312,8 +312,8 @@ describe("UILayoutSystem", () => {
     system.update(16);
 
     // Position should remain at default (0, 0)
-    expect(panel.container.position.x).toBe(0);
-    expect(panel.container.position.y).toBe(0);
+    expect(panel.root.displayObject.position.x).toBe(0);
+    expect(panel.root.displayObject.position.y).toBe(0);
   });
 
   it("skips hidden panels", () => {
@@ -326,8 +326,8 @@ describe("UILayoutSystem", () => {
 
     system.update(16);
 
-    expect(panel.container.position.x).toBe(0);
-    expect(panel.container.position.y).toBe(0);
+    expect(panel.root.displayObject.position.x).toBe(0);
+    expect(panel.root.displayObject.position.y).toBe(0);
   });
 
   it("handles multiple panels", () => {
@@ -342,10 +342,10 @@ describe("UILayoutSystem", () => {
 
     system.update(16);
 
-    expect(p1.container.position.x).toBe(0);
-    expect(p1.container.position.y).toBe(0);
-    expect(p2.container.position.x).toBe(720); // 800 - 80
-    expect(p2.container.position.y).toBe(575); // 600 - 25
+    expect(p1.root.displayObject.position.x).toBe(0);
+    expect(p1.root.displayObject.position.y).toBe(0);
+    expect(p2.root.displayObject.position.x).toBe(720); // 800 - 80
+    expect(p2.root.displayObject.position.y).toBe(575); // 600 - 25
   });
 
   describe("the pass after focus", () => {
@@ -450,8 +450,8 @@ describe("UILayoutSystem", () => {
 
         pass.update(16);
 
-        expect(panel.container.pivot).toMatchObject(pivot);
-        expect(panel.container.position).toMatchObject(position);
+        expect(panel.root.displayObject.pivot).toMatchObject(pivot);
+        expect(panel.root.displayObject.position).toMatchObject(position);
       },
     );
   });
@@ -469,8 +469,8 @@ describe("UILayoutSystem", () => {
       system.update(16);
 
       // Panel 100×30, center pivot → top-left = (500 - 50, 300 - 15) = (450, 285)
-      expect(panel.container.position.x).toBe(450);
-      expect(panel.container.position.y).toBe(285);
+      expect(panel.root.displayObject.position.x).toBe(450);
+      expect(panel.root.displayObject.position.y).toBe(285);
     });
 
     it("anchors panel's bottom-center at the Transform (health-bar primitive)", () => {
@@ -488,8 +488,8 @@ describe("UILayoutSystem", () => {
       system.update(16);
 
       // Panel 60×8, bottom-center pivot → top-left = (200 - 30, 150 - 8) = (170, 142)
-      expect(panel.container.position.x).toBe(170);
-      expect(panel.container.position.y).toBe(142);
+      expect(panel.root.displayObject.position.x).toBe(170);
+      expect(panel.root.displayObject.position.y).toBe(142);
     });
 
     it("adds offset on top of the Transform-anchored position", () => {
@@ -508,8 +508,8 @@ describe("UILayoutSystem", () => {
       system.update(16);
 
       // (100 - 20, 100 - 6) + (0, -8) = (80, 86)
-      expect(panel.container.position.x).toBe(80);
-      expect(panel.container.position.y).toBe(86);
+      expect(panel.root.displayObject.position.x).toBe(80);
+      expect(panel.root.displayObject.position.y).toBe(86);
     });
 
     it("uses offset alone when no anchor is specified", () => {
@@ -523,8 +523,8 @@ describe("UILayoutSystem", () => {
 
       system.update(16);
 
-      expect(panel.container.position.x).toBe(55);
-      expect(panel.container.position.y).toBe(80);
+      expect(panel.root.displayObject.position.x).toBe(55);
+      expect(panel.root.displayObject.position.y).toBe(80);
     });
 
     it("follows parent Transform via Entity.addChild composition", () => {
@@ -547,8 +547,8 @@ describe("UILayoutSystem", () => {
 
       // parent world = (400, 200); child world = (400, 176)
       // bottom-center pivot → (400 - 20, 176 - 6) = (380, 170)
-      expect(panel.container.position.x).toBe(380);
-      expect(panel.container.position.y).toBe(170);
+      expect(panel.root.displayObject.position.x).toBe(380);
+      expect(panel.root.displayObject.position.y).toBe(170);
     });
 
     it("throws at add time when positioning: 'transform' and no Transform", () => {
@@ -576,8 +576,8 @@ describe("UILayoutSystem", () => {
 
       // Default positioning is "anchor" — viewport math applies
       // regardless of the layer's `space`.
-      expect(panel.container.position.x).toBe(350);
-      expect(panel.container.position.y).toBe(285);
+      expect(panel.root.displayObject.position.x).toBe(350);
+      expect(panel.root.displayObject.position.y).toBe(285);
     });
   });
 });

@@ -93,15 +93,11 @@ function isExplicitSize(v: LayoutValue | undefined): boolean {
  * them to let Yoga shrink-to-fit the content.
  */
 export class UIButton extends UIElementBase implements UIContainerElement {
-  /**
-   * The same Pixi container as {@link displayObject}. Change the element
-   * through its props; see `UIElement.displayObject`.
-   */
-  readonly container: DisplayContainer;
+  private readonly _container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
   get displayObject(): DisplayContainer {
-    return this.container;
+    return this._container;
   }
 
   private bgRenderer: BackgroundRenderer;
@@ -163,14 +159,14 @@ export class UIButton extends UIElementBase implements UIContainerElement {
     this.pressBgOpts = this._resolveStateBg(this.pressBgOverride, PRESS_FACTOR);
     this.focusBgOpts = this._resolveFocusBg();
 
-    this.container = new Container();
-    this.container.eventMode = "static";
-    this.container.cursor = "pointer";
-    applyConsumeInput(this.container, p.consumeInput);
+    this._container = new Container();
+    this._container.eventMode = "static";
+    this._container.cursor = "pointer";
+    applyConsumeInput(this._container, p.consumeInput);
     this.applyTransformProps(p);
 
     this.bgRenderer = new BackgroundRenderer();
-    this.bgRenderer.set(this.bgOpts, this.container, 0);
+    this.bgRenderer.set(this.bgOpts, this._container, 0);
 
     applyLayoutProps(this.yogaNode, p);
     this._applyProps({
@@ -199,26 +195,26 @@ export class UIButton extends UIElementBase implements UIContainerElement {
     //
     // Hovered and focused are separate states: hover tints the button, and a
     // press asks a focus scope to bring focus here.
-    this.container.on("pointerover", () => {
+    this._container.on("pointerover", () => {
       if (this._disabled) return;
       this._isHovered = true;
       requestHoverFocus(this);
       this.applyCurrentBg();
     });
-    this.container.on("pointerout", () => {
+    this._container.on("pointerout", () => {
       if (this._disabled) return;
       this._isHovered = false;
       this._pointerPressed = false;
       this.applyCurrentBg();
     });
-    this.container.on("pointerdown", () => {
+    this._container.on("pointerdown", () => {
       if (this._disabled) return;
       this._pressStartedHere = true;
       this._pointerPressed = true;
       requestPressFocus(this);
       this.applyCurrentBg();
     });
-    this.container.on("pointerup", () => {
+    this._container.on("pointerup", () => {
       if (this._disabled) return;
       // A press that began elsewhere must not fire this button.
       const shouldClick = this._pressStartedHere;
@@ -227,7 +223,7 @@ export class UIButton extends UIElementBase implements UIContainerElement {
       this.applyCurrentBg();
       if (shouldClick) this.activate();
     });
-    this.container.on("pointerupoutside", () => {
+    this._container.on("pointerupoutside", () => {
       this._pressStartedHere = false;
       this._pointerPressed = false;
       this.applyCurrentBg();
@@ -236,13 +232,13 @@ export class UIButton extends UIElementBase implements UIContainerElement {
     // Hover callbacks fan out alongside the bg-swap above (separate listener
     // pair). Suppressed while disabled, mirroring the bg-swap guards.
     this.pointerEvents = new PointerEvents(
-      this.container,
+      this._container,
       p,
       () => this._disabled,
     );
 
     this._focusOutline = new FocusOutline({
-      container: this.container,
+      container: this._container,
       box: () => layoutBox(this.yogaNode, this._bgRadius()),
     });
     this._focusOutline.set(p);
@@ -278,7 +274,7 @@ export class UIButton extends UIElementBase implements UIContainerElement {
   activate(): void {
     if (this._disabled) return;
     if (this.onClick) {
-      runUICallback(this.container, "UI onClick", this.onClick);
+      runUICallback(this._container, "UI onClick", this.onClick);
     }
   }
 
@@ -300,7 +296,7 @@ export class UIButton extends UIElementBase implements UIContainerElement {
     addChild(
       {
         children: this._children,
-        container: this.container,
+        container: this._container,
         yogaNode: this.yogaNode,
       },
       child,
@@ -314,7 +310,7 @@ export class UIButton extends UIElementBase implements UIContainerElement {
       removeChild(
         {
           children: this._children,
-          container: this.container,
+          container: this._container,
           yogaNode: this.yogaNode,
         },
         child,
@@ -329,7 +325,7 @@ export class UIButton extends UIElementBase implements UIContainerElement {
     insertChildBefore(
       {
         children: this._children,
-        container: this.container,
+        container: this._container,
         yogaNode: this.yogaNode,
       },
       child,
@@ -457,7 +453,7 @@ export class UIButton extends UIElementBase implements UIContainerElement {
   }
 
   private applyBg(opts: BackgroundOptions): void {
-    this.bgRenderer.set(opts, this.container, 0);
+    this.bgRenderer.set(opts, this._container, 0);
     if (this._computedWidth > 0 || this._computedHeight > 0) {
       this.bgRenderer.resize(this._computedWidth, this._computedHeight);
     }
@@ -513,9 +509,9 @@ export class UIButton extends UIElementBase implements UIContainerElement {
 
   setDisabled(v: boolean): void {
     this._disabled = v;
-    this.container.eventMode = v ? "none" : "static";
-    this.container.cursor = v ? "default" : "pointer";
-    this.container.alpha = v ? 0.5 : 1;
+    this._container.eventMode = v ? "none" : "static";
+    this._container.cursor = v ? "default" : "pointer";
+    this._container.alpha = v ? 0.5 : 1;
     // A disabled button ends both presses, so neither springs back when it is
     // enabled again.
     if (v) {
@@ -531,11 +527,11 @@ export class UIButton extends UIElementBase implements UIContainerElement {
   }
 
   get visible(): boolean {
-    return this.container.visible;
+    return this._container.visible;
   }
 
   set visible(v: boolean) {
-    this.container.visible = v;
+    this._container.visible = v;
     this.yogaNode.setDisplay(v ? Display.Flex : Display.None);
   }
 
@@ -614,7 +610,7 @@ export class UIButton extends UIElementBase implements UIContainerElement {
     }
 
     if ("disabled" in p) this.setDisabled(p.disabled ?? false);
-    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
+    if ("consumeInput" in p) applyConsumeInput(this._container, p.consumeInput);
 
     if ("width" in p) this._hasExplicitWidth = isExplicitSize(p.width);
     if ("height" in p) this._hasExplicitHeight = isExplicitSize(p.height);
@@ -652,7 +648,7 @@ export class UIButton extends UIElementBase implements UIContainerElement {
     this._focus.destroy();
     this._focusOutline.destroy();
     this._detachFromTree();
-    clearConsumeInput(this.container);
+    clearConsumeInput(this._container);
     for (const child of this._children) {
       child.destroy();
     }
@@ -660,6 +656,6 @@ export class UIButton extends UIElementBase implements UIContainerElement {
     this._label = undefined;
     this.yogaNode.free();
     this.bgRenderer.destroy();
-    this.container.destroy();
+    this._container.destroy();
   }
 }

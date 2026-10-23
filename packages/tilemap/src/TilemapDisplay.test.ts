@@ -163,6 +163,10 @@ function createTestContext() {
   const layerManager = new RenderLayerManager(root as never);
   const tree: SceneRenderTree = {
     root: root as never,
+    alpha: 1,
+    visible: true,
+    offset: { x: 0, y: 0 },
+    setOffset: () => {},
     get: (n) => layerManager.get(n),
     tryGet: (n) => layerManager.tryGet(n),
     getAll: () => layerManager.getAll(),
@@ -184,6 +188,9 @@ function createTestContext() {
       throw new Error("Tilemap test tree does not support setMask.");
     },
     clearMask: () => undefined,
+    setTransitionMask: () => {
+      throw new Error("Tilemap test tree does not support setTransitionMask.");
+    },
     renderAboveEffects: () => {
       throw new Error("Tilemap test tree does not support renderAboveEffects.");
     },
@@ -242,7 +249,7 @@ describe("tilemap rendering through DisplaySystem", () => {
 
     system.update();
 
-    const container = comp.container as unknown as InstanceType<
+    const container = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.position.x).toBe(50);
@@ -273,7 +280,7 @@ describe("tilemap rendering through DisplaySystem", () => {
 
     system.update();
 
-    const container = comp.container as unknown as InstanceType<
+    const container = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.position.x).toBe(54);
@@ -304,7 +311,7 @@ describe("tilemap rendering through DisplaySystem", () => {
 
     system.update();
 
-    const container = comp.container as unknown as InstanceType<
+    const container = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.position.x).toBe(0); // Not synced
@@ -324,7 +331,7 @@ describe("tilemap rendering through DisplaySystem", () => {
 
     system.update();
 
-    const container = comp.container as unknown as InstanceType<
+    const container = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.zIndex).toBe(100);

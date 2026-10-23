@@ -5,8 +5,8 @@ import type {
   SceneTransitionContext,
 } from "@yagejs/core";
 import { attributed } from "../internal/attribution.js";
-import type { Container } from "pixi.js";
-import { getSceneContainer, getVirtualBounds } from "./helpers.js";
+import type { SceneRenderTree } from "../SceneRenderTree.js";
+import { getSceneRenderTree, getVirtualBounds } from "./helpers.js";
 
 /** Direction the outgoing scene exits the frame in. */
 export type SlideDirection = "left" | "right" | "up" | "down";
@@ -37,7 +37,7 @@ export interface SlidePushOptions {
  * pace, locked together as a single horizontal/vertical translation.
  * Ideal for menu carousels, level-to-level book turns, or wizard flows.
  *
- * Unlike a pure `slideIn`, this transition translates BOTH containers,
+ * Unlike a pure `slideIn`, this transition moves BOTH scenes,
  * giving the visual impression that the new scene is physically pushing
  * the old one off the screen.
  *
@@ -50,8 +50,8 @@ export function slidePush(opts: SlidePushOptions = {}): SceneTransition {
   const reverseOnPop = opts.reverseOnPop ?? true;
   const easing = opts.easing ?? easeOutCubic;
 
-  let toContainer: Container | undefined;
-  let fromContainer: Container | undefined;
+  let toTree: SceneRenderTree | undefined;
+  let fromTree: SceneRenderTree | undefined;
   let dx = 0;
   let dy = 0;
 
@@ -65,17 +65,10 @@ export function slidePush(opts: SlidePushOptions = {}): SceneTransition {
       dx = off.dx;
       dy = off.dy;
 
-      fromContainer = getSceneContainer(ctx, ctx.fromScene);
-      toContainer = getSceneContainer(ctx, ctx.toScene);
-
-      if (toContainer) {
-        toContainer.x = -dx;
-        toContainer.y = -dy;
-      }
-      if (fromContainer) {
-        fromContainer.x = 0;
-        fromContainer.y = 0;
-      }
+      fromTree = getSceneRenderTree(ctx, ctx.fromScene);
+      toTree = getSceneRenderTree(ctx, ctx.toScene);
+      toTree?.setOffset(-dx, -dy);
+      fromTree?.setOffset(0, 0);
     },
     tick(_dt: number, ctx: SceneTransitionContext) {
       const t = attributed(
@@ -83,30 +76,18 @@ export function slidePush(opts: SlidePushOptions = {}): SceneTransition {
         { kind: "Scene transition easing", event: "slidePush" },
         () => easing(Math.min(ctx.elapsed / duration, 1)),
       );
-      if (toContainer) {
-        toContainer.x = -dx * (1 - t);
-        toContainer.y = -dy * (1 - t);
-      }
-      if (fromContainer) {
-        fromContainer.x = dx * t;
-        fromContainer.y = dy * t;
-      }
+      toTree?.setOffset(-dx * (1 - t), -dy * (1 - t));
+      fromTree?.setOffset(dx * t, dy * t);
     },
     end(ctx: SceneTransitionContext) {
-      if (toContainer) {
-        toContainer.x = 0;
-        toContainer.y = 0;
-      }
+      toTree?.setOffset(0, 0);
       // Only reset the outgoing scene when it survives (push). On pop /
       // replace it's about to be destroyed and a one-frame snap back to
       // origin would flash before teardown — same hazard `crossFade`
       // documents at end().
-      if (fromContainer && ctx.kind === "push") {
-        fromContainer.x = 0;
-        fromContainer.y = 0;
-      }
-      toContainer = undefined;
-      fromContainer = undefined;
+      if (ctx.kind === "push") fromTree?.setOffset(0, 0);
+      toTree = undefined;
+      fromTree = undefined;
     },
   };
 }

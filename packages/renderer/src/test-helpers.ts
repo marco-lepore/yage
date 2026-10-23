@@ -176,6 +176,11 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       root as never,
       undefined,
       queueFactory,
+      undefined,
+      // Holds the scene's canvas layers, off the stage.
+      new MockContainer() as never,
+      // A render-target layer gets a target that never draws.
+      () => ({ texture: {}, destroy: () => {} }) as never,
     );
 
     const sceneFx = new EffectsHost(() => root as never, "scene", queueFactory);
@@ -183,8 +188,29 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
     // Stand-in for the production Pixi `RenderLayer`: the mock containers
     // have no renderer, so membership is all a test can observe.
     const aboveNodes = new Set<MockContainer>();
+    const offset = { x: 0, y: 0 };
     const tree: SceneRenderTree = {
       root: root as never,
+      get alpha() {
+        return root.alpha;
+      },
+      set alpha(value: number) {
+        root.alpha = value;
+      },
+      get visible() {
+        return root.visible;
+      },
+      set visible(value: boolean) {
+        root.visible = value;
+      },
+      get offset() {
+        return { ...offset };
+      },
+      setOffset(x: number, y: number) {
+        offset.x = x;
+        offset.y = y;
+        root.position.set(x, y);
+      },
       get: (name) => manager.get(name),
       tryGet: (name) => manager.tryGet(name),
       getAll: () => manager.getAll(),
@@ -210,6 +236,9 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       clearMask(): void {
         sceneMask?.remove();
         sceneMask = undefined;
+      },
+      setTransitionMask(factory: MaskFactory): MaskHandle {
+        return attachMask(root as never, factory);
       },
       renderAboveEffects(node): void {
         aboveNodes.add(node as never);

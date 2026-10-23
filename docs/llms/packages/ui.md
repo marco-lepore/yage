@@ -310,14 +310,14 @@ const title = new UISplitText({
 });
 panel.addElement(title);
 
-title.chars; // (Text | BitmapText)[]   title.words / title.lines: Container[]
+title.chars; // readonly TextSegment[]   title.words / title.lines: the same type
 title.onSplit((seg) => {
   /* rebind animations — fires after each re-split */
 });
 title.setText("YOU WIN"); // destroys + recreates chars, then onSplit
 ```
 
-API: `chars` / `words` / `lines` getters, `segments`, `setText`, `setStyle`, `resplit()`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `onSplit(cb) → unsubscribe`. Animate the segments with the engine's `Tween` / `Process` — the element doesn't impose an animation API. Segment `x` / `y` / `rotation` / `scale` / `alpha` / `tint` / `visible` are the game's: the engine writes none of them. Every re-split replaces the segment objects, so re-read `chars` after `setText` / `setStyle` / `resplit()`.
+API: `chars` / `words` / `lines` getters, `segments`, `setText`, `setStyle`, `resplit()`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `onSplit(cb) → unsubscribe`. Animate the segments with the engine's `Tween` / `Process` — the element doesn't impose an animation API. Each segment is a `TextSegment` (see `renderer.md`, SplitTextComponent): its `x` / `y` / `position` / `rotation` / `scale` / `alpha` / `tint` / `visible` are the game's, and the engine writes none of them. Every re-split replaces the segment objects, so re-read `chars` after `setText` / `setStyle` / `resplit()`.
 
 **React:** `<SplitText>` (props mirror `<Text>` minus `truncate`, plus the three anchors + `autoSplit`) and the `useSplitText()` hook. The hook returns a `[ref, controls]` tuple — `controls` has live `chars` / `words` / `lines` / `segments` getters, `resplit()`, and `run(process | process[])`. `run` enqueues on a scene-scoped process queue (pauses with the scene; cancelled on unmount and on re-split, so a tween never writes to a destroyed glyph) and returns `{ cancel() }` for that batch. Animate imperatively from any handler — pair `run` with `Tween.stagger(items, factory, stepSeconds)` to cascade a tween across the segments.
 

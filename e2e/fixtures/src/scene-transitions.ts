@@ -2,7 +2,6 @@ import { Engine, Scene, Transform, Vec2, InspectorKey } from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
-  SceneRenderTreeProviderKey,
   crossFade,
   fade,
   flash,
@@ -118,7 +117,6 @@ interface SceneTransitionTestApi {
   resetEvents(): void;
   getIsTransitioning(): boolean;
   getStackNames(): string[];
-  getSceneAlpha(sceneIndex: number): number | null;
   clearAll(): void;
 }
 
@@ -144,13 +142,6 @@ interface SceneTransitionTestApi {
   },
   getIsTransitioning: () => engine.scenes.isTransitioning,
   getStackNames: () => engine.scenes.all.map((s) => s.name),
-  getSceneAlpha: (sceneIndex: number): number | null => {
-    const scene = engine.scenes.all[sceneIndex];
-    if (!scene) return null;
-    const provider = engine.context.resolve(SceneRenderTreeProviderKey);
-    const tree = provider.getTree(scene);
-    return tree ? tree.root.alpha : null;
-  },
   clearAll: () => {
     // Fire-and-forget — popAll is queued. Awaiting would deadlock because
     // Playwright can't step frames while blocked inside evaluate().

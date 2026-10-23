@@ -157,7 +157,7 @@ describe("UIProgressBar", () => {
     expect(bar.displayObject).toBeDefined();
     expect(bar.visible).toBe(true);
     // Should have 2 children (track + fill)
-    const container = bar.container as unknown as InstanceType<
+    const container = bar.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.children.length).toBe(2);
@@ -169,7 +169,7 @@ describe("UIProgressBar", () => {
     bar.applyLayout();
     // Fill should not exceed track width
     const fill = (
-      bar.container as unknown as InstanceType<typeof mocks.MockContainer>
+      bar.displayObject as unknown as InstanceType<typeof mocks.MockContainer>
     ).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
     expect(fill.lastWidth).toBe(200); // clamped to 1.0 * 200
   });
@@ -179,7 +179,7 @@ describe("UIProgressBar", () => {
     bar.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     bar.applyLayout();
     const fill = (
-      bar.container as unknown as InstanceType<typeof mocks.MockContainer>
+      bar.displayObject as unknown as InstanceType<typeof mocks.MockContainer>
     ).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
     expect(fill.lastWidth).toBe(0);
   });
@@ -190,10 +190,10 @@ describe("UIProgressBar", () => {
     bar.applyLayout();
 
     const track = (
-      bar.container as unknown as InstanceType<typeof mocks.MockContainer>
+      bar.displayObject as unknown as InstanceType<typeof mocks.MockContainer>
     ).children[0] as unknown as InstanceType<typeof mocks.MockGraphics>;
     const fill = (
-      bar.container as unknown as InstanceType<typeof mocks.MockContainer>
+      bar.displayObject as unknown as InstanceType<typeof mocks.MockContainer>
     ).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
     expect(track.lastWidth).toBe(200);
     expect(track.lastHeight).toBe(20);
@@ -212,7 +212,7 @@ describe("UIProgressBar", () => {
     bar.applyLayout();
 
     const fill = (
-      bar.container as unknown as InstanceType<typeof mocks.MockContainer>
+      bar.displayObject as unknown as InstanceType<typeof mocks.MockContainer>
     ).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
     expect(fill.lastWidth).toBe(20);
     expect(fill.lastHeight).toBe(150); // 0.75 * 200
@@ -225,7 +225,7 @@ describe("UIProgressBar", () => {
 
     bar.update({ value: 0.25 });
     const fill = (
-      bar.container as unknown as InstanceType<typeof mocks.MockContainer>
+      bar.displayObject as unknown as InstanceType<typeof mocks.MockContainer>
     ).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
     expect(fill.lastWidth).toBe(50); // 0.25 * 200
   });
@@ -241,7 +241,7 @@ describe("UIProgressBar", () => {
   it("destroy cleans up", () => {
     const bar = new UIProgressBar({ value: 0.5, width: 100, height: 10 });
     bar.destroy();
-    const container = bar.container as unknown as InstanceType<
+    const container = bar.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.destroyed).toBe(true);

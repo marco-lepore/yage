@@ -353,8 +353,14 @@ import type { DebugDiagnostics } from "@yagejs/debug";
 const debug = window.__yage__.inspector.getExtension<DebugDiagnostics>("debug");
 debug?.getCameraStack?.();
 debug?.getLayerTransform?.("game", "world");
+debug?.getSceneRender?.("game");
 debug?.setHudVisible?.(false);
 ```
+
+`getSceneRender(sceneName)` reports how a scene's whole render tree is drawn:
+its `alpha`, whether it is `visible`, and its `x` / `y` offset. A test reads
+it to check a scene transition partway through, such as both scenes at half
+opacity in the middle of a cross-fade.
 
 `setHudVisible(false)` hides only the HUD text readouts (FPS, system timings,
 entity counts) — world-space debug graphics such as collider outlines stay

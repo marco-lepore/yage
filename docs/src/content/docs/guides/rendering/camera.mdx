@@ -272,7 +272,9 @@ this.spawn(CameraEntity, {
 
 Every other world layer — `"world"`, and any world-space layer a plugin
 or a later `ensureLayer` call adds — keeps following at full strength. An entry
-naming a `space: "screen"` layer adds it to the set.
+naming a `space: "screen"` layer adds it to the set. A camera never binds a
+`"canvas"` layer or a layer that draws into a texture, and an entry naming one
+throws.
 
 Pass `autoBind: false` to drop the auto-bound set, so the camera drives
 exactly the layers you name:

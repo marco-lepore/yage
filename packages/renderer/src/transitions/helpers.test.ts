@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Scene, SceneTransitionContext } from "@yagejs/core";
-import { getSceneContainer, getVirtualBounds } from "./helpers.js";
+import { getSceneRenderTree, getVirtualBounds } from "./helpers.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
 import { RendererKey } from "../types.js";
 
@@ -33,22 +33,22 @@ function makeRendererCtx(virtualSize: {
   } as unknown as SceneTransitionContext;
 }
 
-describe("getSceneContainer", () => {
+describe("getSceneRenderTree", () => {
   it("returns undefined when scene is undefined", () => {
     const provider = { getTree: vi.fn() };
     const ctx = makeCtx(provider);
-    expect(getSceneContainer(ctx, undefined)).toBeUndefined();
+    expect(getSceneRenderTree(ctx, undefined)).toBeUndefined();
     expect(provider.getTree).not.toHaveBeenCalled();
   });
 
-  it("returns the tree's root container when the scene has a tree", () => {
-    const root = { label: "scene-root" };
+  it("returns the scene's render tree when the scene has one", () => {
+    const tree = { alpha: 1 };
     const provider = {
-      getTree: vi.fn(() => ({ root })),
+      getTree: vi.fn(() => tree),
     };
     const ctx = makeCtx(provider);
     const scene = { name: "s" } as Scene;
-    expect(getSceneContainer(ctx, scene)).toBe(root);
+    expect(getSceneRenderTree(ctx, scene)).toBe(tree);
     expect(provider.getTree).toHaveBeenCalledWith(scene);
   });
 
@@ -56,7 +56,7 @@ describe("getSceneContainer", () => {
     const provider = { getTree: vi.fn(() => undefined) };
     const ctx = makeCtx(provider);
     const scene = { name: "s" } as Scene;
-    expect(getSceneContainer(ctx, scene)).toBeUndefined();
+    expect(getSceneRenderTree(ctx, scene)).toBeUndefined();
   });
 });
 

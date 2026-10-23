@@ -188,7 +188,7 @@ describe("UICheckbox", () => {
   it("toggles checked on pointerup", () => {
     const onChange = vi.fn();
     const cb = new UICheckbox({ onChange });
-    const container = cb.container as unknown as InstanceType<
+    const container = cb.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
 
@@ -206,7 +206,7 @@ describe("UICheckbox", () => {
   it("does not toggle when disabled", () => {
     const onChange = vi.fn();
     const cb = new UICheckbox({ onChange, disabled: true });
-    const container = cb.container as unknown as InstanceType<
+    const container = cb.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
 
@@ -218,7 +218,7 @@ describe("UICheckbox", () => {
 
   it("disabled state changes cursor and alpha", () => {
     const cb = new UICheckbox({});
-    const container = cb.container as unknown as InstanceType<
+    const container = cb.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.cursor).toBe("pointer");
@@ -236,7 +236,7 @@ describe("UICheckbox", () => {
 
   it("creates a label when provided", () => {
     const cb = new UICheckbox({ label: "Accept" });
-    const container = cb.container as unknown as InstanceType<
+    const container = cb.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     // Should have box + checkmark + label = 3 children
@@ -255,7 +255,7 @@ describe("UICheckbox", () => {
     const onChange2 = vi.fn();
     const cb = new UICheckbox({ onChange: onChange1 });
     cb.update({ onChange: onChange2 });
-    const container = cb.container as unknown as InstanceType<
+    const container = cb.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     container.emit("pointerdown");
@@ -267,7 +267,7 @@ describe("UICheckbox", () => {
   it("does not toggle when the press started outside the checkbox", () => {
     const onChange = vi.fn();
     const cb = new UICheckbox({ onChange });
-    const container = cb.container as unknown as InstanceType<
+    const container = cb.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
 
@@ -288,7 +288,7 @@ describe("UICheckbox", () => {
   it("destroy cleans up", () => {
     const cb = new UICheckbox({});
     cb.destroy();
-    const container = cb.container as unknown as InstanceType<
+    const container = cb.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.destroyed).toBe(true);
@@ -308,7 +308,9 @@ describe("UICheckbox", () => {
   function containerOf(
     cb: UICheckbox,
   ): InstanceType<typeof mocks.MockContainer> {
-    return cb.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    return cb.displayObject as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
   }
 
   describe("hover callbacks", () => {

@@ -124,6 +124,7 @@ import type {
   SceneRenderTreeProvider,
 } from "@yagejs/renderer";
 import { DebugPlugin } from "./DebugPlugin.js";
+import type { DebugDiagnostics } from "./DebugPlugin.js";
 import type { DebugRegistryImpl } from "./DebugRegistryImpl.js";
 import { DebugRegistryKey } from "./types.js";
 
@@ -243,6 +244,12 @@ function createContext() {
   const provider: SceneRenderTreeProvider = {
     createForScene: (): SceneRenderTree => ({
       root: new mocks.MockContainer() as never,
+      alpha: 1,
+      visible: true,
+      offset: { x: 0, y: 0 },
+      setOffset(x, y) {
+        Object.assign(this.offset, { x, y });
+      },
       get: () =>
         ({
           name: "default",
@@ -268,6 +275,7 @@ function createContext() {
       addLayerEffect: vi.fn(() => ({}) as never),
       setMask: vi.fn(() => ({}) as never),
       clearMask: vi.fn(),
+      setTransitionMask: vi.fn(() => ({}) as never),
       renderAboveEffects: vi.fn(),
       renderWithEffects: vi.fn(),
     }),
@@ -579,6 +587,34 @@ describe("DebugPlugin", () => {
     plugin.onDestroy();
 
     expect(inspector.getExtension("debug")).toBeUndefined();
+  });
+
+  it("reports how a scene's render tree is drawn", async () => {
+    const { context, scheduler, sceneManager } = createContext();
+    const plugin = new DebugPlugin();
+    plugin.install(context);
+    plugin.registerSystems(scheduler);
+    await plugin.onStart();
+
+    const scene = new VectorScene();
+    await sceneManager.push(scene);
+    const tree = scene._resolveScoped(SceneRenderTreeKey)!;
+    tree.alpha = 0.25;
+    tree.visible = false;
+    tree.setOffset(40, -8);
+
+    const diagnostics = context
+      .resolve(InspectorKey)
+      .getExtension<DebugDiagnostics>("debug")!;
+    expect(diagnostics.getSceneRender("vectors")).toEqual({
+      alpha: 0.25,
+      visible: false,
+      x: 40,
+      y: -8,
+    });
+    expect(diagnostics.getSceneRender("missing")).toBeUndefined();
+
+    plugin.onDestroy();
   });
 
   it("never reads a drawVector provider while the overlay is off", async () => {

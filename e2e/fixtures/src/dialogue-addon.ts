@@ -28,7 +28,7 @@ import {
   NineSliceComponent,
   SplitTextComponent,
   registerTexture,
-  type GraphicsContext,
+  type DrawContext,
 } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
@@ -70,7 +70,7 @@ const FRAME_KEY = "e2e/frame";
  *  art. */
 const PORTRAIT_KEY = "e2e/portrait";
 
-function drawFrame(g: GraphicsContext): void {
+function drawFrame(g: DrawContext): void {
   g.rect(0, 0, 48, 48).fill(0xb89a5e); // border
   g.rect(8, 8, 32, 32).fill(0x2a2418); // center
 }
@@ -321,11 +321,12 @@ class DialogueProbe extends Component {
   get caretOverlapsText(): boolean {
     const caret = this.scene
       .findEntity("dlg-indicator")
-      ?.tryGet(GraphicsComponent)?.graphics;
+      ?.tryGet(GraphicsComponent);
     const text = this.scene.findEntity("dlg-line")?.tryGet(SplitTextComponent);
     if (!caret?.visible || !text) return false;
-    const c = caret.getBounds();
-    return text.chars.some((char) => {
+    // Glyph boxes have no Inspector field, so both boxes come from Pixi.
+    const c = caret.renderObject.getBounds();
+    return text.renderObject.chars.some((char) => {
       const b = char.getBounds();
       return (
         char.visible &&

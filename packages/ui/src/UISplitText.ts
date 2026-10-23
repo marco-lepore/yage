@@ -5,12 +5,11 @@ import {
   splitIfNotEmpty,
 } from "@yagejs/renderer";
 import type {
-  DisplayBitmapText,
   DisplayContainer,
   DisplaySplitBitmapText,
   DisplaySplitText,
-  DisplayText,
   SegmentAnchor,
+  TextSegment,
   TextStyle,
 } from "@yagejs/renderer";
 import {
@@ -37,12 +36,12 @@ import { runUICallback } from "./error-boundary.js";
 
 /** The per-character / per-word / per-line segments of a split text. */
 export interface TextSegments {
-  /** Per-glyph display objects (`Text` / `BitmapText`), in reading order. */
-  readonly chars: (DisplayText | DisplayBitmapText)[];
-  /** Word-group containers, each holding its character segments. */
-  readonly words: DisplayContainer[];
-  /** Line-group containers, each holding its word containers. */
-  readonly lines: DisplayContainer[];
+  /** The character segments, in reading order. Whitespace has no segment. */
+  readonly chars: readonly TextSegment[];
+  /** The word segments, each moving its characters with it. */
+  readonly words: readonly TextSegment[];
+  /** The line segments, each moving its words with it. */
+  readonly lines: readonly TextSegment[];
 }
 
 /** Listener invoked after the text (re)splits into fresh segments. */
@@ -88,12 +87,7 @@ function shallowEqualStyle(
 export class UISplitText extends UIElementBase {
   readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
-  /**
-   * The same Pixi `SplitText` / `SplitBitmapText` as {@link displayObject}.
-   * Change the text through the element; animate glyphs through
-   * {@link chars}.
-   */
-  readonly splitText: DisplaySplitText | DisplaySplitBitmapText;
+  private readonly _splitText: DisplaySplitText | DisplaySplitBitmapText;
   /** Whether this renders with a bitmap font (`SplitBitmapText`). */
   readonly isBitmap: boolean;
   /** Source string — measured for layout independent of per-glyph animation. */
@@ -145,24 +139,24 @@ export class UISplitText extends UIElementBase {
       // Never hand Pixi's split an empty string; see `setSplitText`.
       autoSplit: initialAutoSplit(this._autoSplit, this._source),
     };
-    this.splitText = bitmap
+    this._splitText = bitmap
       ? new SplitBitmapText(splitOptions)
       : new SplitText(splitOptions);
 
     applyLayoutProps(this.yogaNode, props);
-    if (props.visible === false) this.splitText.visible = false;
+    if (props.visible === false) this._splitText.visible = false;
 
-    this.displayObject = this.splitText;
+    this.displayObject = this._splitText;
     this.applyTransformProps(props);
-    applyConsumeInput(this.splitText, props.consumeInput);
-    this.pointerEvents = new PointerEvents(this.splitText, props);
+    applyConsumeInput(this._splitText, props.consumeInput);
+    this.pointerEvents = new PointerEvents(this._splitText, props);
 
     // Out of focus navigation until a game asks for it with `focusable`.
     // Asked for, the block is outlined like every other focusable element;
     // the pointer still moves focus here, which keeps the mouse and the
     // keyboard on the same element.
     this._focusOutline = new FocusOutline({
-      container: this.splitText,
+      container: this._splitText,
       box: () => layoutBox(this.yogaNode),
     });
     this._focusOutline.set(props);
@@ -170,10 +164,10 @@ export class UISplitText extends UIElementBase {
       focusableByDefault: false,
       paint: (focused) => this._focusOutline.setFocused(focused),
     });
-    this.splitText.on("pointerover", () => {
+    this._splitText.on("pointerover", () => {
       requestHoverFocus(this);
     });
-    this.splitText.on("pointerdown", () => {
+    this._splitText.on("pointerdown", () => {
       requestPressFocus(this);
     });
 
@@ -194,31 +188,30 @@ export class UISplitText extends UIElementBase {
   }
 
   /**
-   * Per-glyph display objects, in reading order, for animating `x`, `y`,
-   * `rotation`, `scale`, `alpha`, `tint` and `visible`; the element writes
-   * none of these on a glyph. A re-split replaces the glyphs, so read this
-   * again after `setText`, `setStyle` or `resplit`.
+   * The character segments, in reading order, for per-glyph animation; the
+   * element writes none of a segment's properties. A re-split replaces the
+   * segments, so read this again after `setText`, `setStyle` or `resplit`.
    */
-  get chars(): (DisplayText | DisplayBitmapText)[] {
-    return this.splitText.chars;
+  get chars(): readonly TextSegment[] {
+    return this._splitText.chars;
   }
 
-  /** Word-group containers. Replaced by a re-split, like {@link chars}. */
-  get words(): DisplayContainer[] {
-    return this.splitText.words;
+  /** The word segments. Replaced by a re-split, like {@link chars}. */
+  get words(): readonly TextSegment[] {
+    return this._splitText.words;
   }
 
-  /** Line-group containers. Replaced by a re-split, like {@link chars}. */
-  get lines(): DisplayContainer[] {
-    return this.splitText.lines;
+  /** The line segments. Replaced by a re-split, like {@link chars}. */
+  get lines(): readonly TextSegment[] {
+    return this._splitText.lines;
   }
 
   /** The current segments as one object — handy for `onSplit` callbacks. */
   get segments(): TextSegments {
     return {
-      chars: this.splitText.chars,
-      words: this.splitText.words,
-      lines: this.splitText.lines,
+      chars: this._splitText.chars,
+      words: this._splitText.words,
+      lines: this._splitText.lines,
     };
   }
 
@@ -247,7 +240,7 @@ export class UISplitText extends UIElementBase {
 
   setText(s?: string): void {
     this._source = s ?? "";
-    setSplitText(this.splitText, this._source, this._autoSplit);
+    setSplitText(this._splitText, this._source, this._autoSplit);
     this.yogaNode.markDirty();
     // With autoSplit off, Pixi cleared the segments without rebuilding — the
     // real split is deferred to resplit(), which emits then. Emitting now would
@@ -263,7 +256,7 @@ export class UISplitText extends UIElementBase {
       undefined,
       getUIDefaultTextStyle(),
     );
-    this.splitText.style = options.style ?? style;
+    this._splitText.style = options.style ?? style;
     this._appliedStyle = style;
     this.yogaNode.markDirty();
     if (this._autoSplit) this.emitSplit();
@@ -274,33 +267,33 @@ export class UISplitText extends UIElementBase {
    * empty text has nothing to split and leaves the segments empty.
    */
   resplit(): void {
-    splitIfNotEmpty(this.splitText);
+    splitIfNotEmpty(this._splitText);
     this.yogaNode.markDirty();
     this.emitSplit();
   }
 
   /** Transform origin (0–1) each character rotates / scales about. */
   set charAnchor(anchor: SegmentAnchor) {
-    this.splitText.charAnchor = anchor;
+    this._splitText.charAnchor = anchor;
   }
   get charAnchor(): SegmentAnchor {
-    return this.splitText.charAnchor;
+    return this._splitText.charAnchor;
   }
 
   /** Transform origin (0–1) each word rotates / scales about. */
   set wordAnchor(anchor: SegmentAnchor) {
-    this.splitText.wordAnchor = anchor;
+    this._splitText.wordAnchor = anchor;
   }
   get wordAnchor(): SegmentAnchor {
-    return this.splitText.wordAnchor;
+    return this._splitText.wordAnchor;
   }
 
   /** Transform origin (0–1) each line rotates / scales about. */
   set lineAnchor(anchor: SegmentAnchor) {
-    this.splitText.lineAnchor = anchor;
+    this._splitText.lineAnchor = anchor;
   }
   get lineAnchor(): SegmentAnchor {
-    return this.splitText.lineAnchor;
+    return this._splitText.lineAnchor;
   }
 
   /** Follow the box layout gave this block, which is what the outline rings. */
@@ -336,7 +329,7 @@ export class UISplitText extends UIElementBase {
     if ("wordAnchor" in p) this.wordAnchor = p.wordAnchor ?? 0;
     if ("lineAnchor" in p) this.lineAnchor = p.lineAnchor ?? 0;
     if ("consumeInput" in p) {
-      applyConsumeInput(this.splitText, p.consumeInput);
+      applyConsumeInput(this._splitText, p.consumeInput);
     }
     this.pointerEvents.set(p);
     this._focus.set(p);
@@ -363,12 +356,12 @@ export class UISplitText extends UIElementBase {
     this._focus.destroy();
     this._focusOutline.destroy();
     this._splitListeners.clear();
-    clearConsumeInput(this.splitText);
+    clearConsumeInput(this._splitText);
     this.yogaNode.free();
     // `{ children: true }` so the per-line / word / char display objects that
     // `split()` parented are destroyed too — they're real children, not freed
     // by the default leaf destroy.
-    this.splitText.destroy({ children: true });
+    this._splitText.destroy({ children: true });
   }
 
   /**
@@ -377,7 +370,7 @@ export class UISplitText extends UIElementBase {
    */
   private measureNatural(): { width: number; height: number } {
     if (this._source === "") return { width: 0, height: 0 };
-    const style = this.splitText.style;
+    const style = this._splitText.style;
     const m = this.isBitmap
       ? BitmapFontManager.measureText(this._source, style)
       : CanvasTextMetrics.measureText(this._source, style);

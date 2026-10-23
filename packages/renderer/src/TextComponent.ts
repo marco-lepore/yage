@@ -1,4 +1,6 @@
+import type { Vec2Like } from "@yagejs/core";
 import { BitmapText, Text } from "pixi.js";
+import { readPoint, writePoint } from "./internal/point.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
 import type {
   DisplayBitmapText,
@@ -32,17 +34,16 @@ export interface TextComponentOptions extends VisualComponentOptions {
    * fixed at font-bake time).
    */
   resolution?: number;
-  /** Anchor point (0-1). Default: { x: 0, y: 0 } (top-left). */
-  anchor?: { x: number; y: number };
+  /**
+   * Anchor point (0-1). Default: { x: 0, y: 0 } (top-left). See
+   * {@link TextComponent.anchor}.
+   */
+  anchor?: Vec2Like;
 }
 
 /** Component that displays text on a render layer. */
 export class TextComponent extends VisualComponent {
-  /**
-   * The Pixi text object, the same one as {@link renderObject}. Change the visual through
-   * the component; see `VisualComponent.renderObject`.
-   */
-  readonly text: DisplayText | DisplayBitmapText;
+  private readonly _text: DisplayText | DisplayBitmapText;
   // Raw style options are kept so mergeStyle can preserve prior values.
   private _styleOptions?: TextStyle;
   // The bitmap choice is needed when a later style update rebuilds options.
@@ -56,13 +57,18 @@ export class TextComponent extends VisualComponent {
       options.bitmap,
       options.resolution,
     );
-    this.text = bitmap ? new BitmapText(textOptions) : new Text(textOptions);
+    this._text = bitmap ? new BitmapText(textOptions) : new Text(textOptions);
     // Shallow-clone so external mutation does not affect later mergeStyle calls.
     if (options.style) this._styleOptions = { ...options.style };
     if (options.bitmap !== undefined) this._bitmap = options.bitmap;
 
     if (options.anchor) {
-      this.text.anchor.set(options.anchor.x, options.anchor.y);
+      writePoint(
+        "TextComponent.constructor",
+        "anchor",
+        this._text.anchor,
+        options.anchor,
+      );
     }
     this.applyVisualOptions(options);
   }
@@ -72,21 +78,32 @@ export class TextComponent extends VisualComponent {
    * component; see {@link VisualComponent.renderObject}.
    */
   get renderObject(): DisplayText | DisplayBitmapText {
-    return this.text;
+    return this._text;
   }
 
   /**
-   * The string currently displayed. {@link text} is the Pixi display object,
-   * so this is the way to read the rendered string back — including from the
-   * Inspector, which reflects public getters but skips the display object.
+   * The point of the text that sits on the entity position, as a fraction of
+   * the text's size: `{ x: 0, y: 0 }` (the default) is the top-left corner
+   * and `{ x: 0.5, y: 0.5 }` the centre. The anchored point stays put when
+   * the string or style changes the size. Each read returns a new object; a
+   * non-finite coordinate throws.
    */
+  get anchor(): Vec2Like {
+    return readPoint(this._text.anchor);
+  }
+
+  set anchor(value: Vec2Like) {
+    writePoint("TextComponent.anchor", "anchor", this._text.anchor, value);
+  }
+
+  /** The string currently displayed. */
   get content(): string {
-    return this.text.text;
+    return this._text.text;
   }
 
   /** Replace the displayed string. */
   setText(value: string): void {
-    this.text.text = value;
+    this._text.text = value;
   }
 
   /**
@@ -100,12 +117,12 @@ export class TextComponent extends VisualComponent {
     // calling resolveTextStyle directly would let `fontWeight`/`fontStyle`
     // changes silently land on the base atlas on a `bitmap: true` text.
     const { options } = buildTextOptions(
-      this.text.text,
+      this._text.text,
       style,
       this._bitmap,
       undefined,
     );
-    this.text.style = options.style ?? style;
+    this._text.style = options.style ?? style;
     this._styleOptions = { ...style };
   }
 

@@ -1,12 +1,29 @@
 import { Container } from "pixi.js";
 import type { EventMode } from "pixi.js";
 import type { ScopedProcessQueue } from "@yagejs/core";
-import type { LayerDef, LayerSortFn, LayerSpace } from "./LayerDef.js";
+import type {
+  LayerDef,
+  LayerSortFn,
+  LayerSpace,
+  RenderLayerSpace,
+} from "./LayerDef.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { attachMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
-import type { DisplayContainer } from "./public-types.js";
+import type { DisplayContainer, TextureResource } from "./public-types.js";
+import type {
+  LayerRenderTarget,
+  LayerRenderTargetOptions,
+  LayerTargetFactory,
+  RenderTargetHandle,
+} from "./RenderTarget.js";
+import {
+  assertTextureKeyFree,
+  registerTexture,
+  releaseTexture,
+} from "./assets.js";
+import { assertPositiveNumber } from "./internal/validate.js";
 import { restoreZIndex } from "./SortGroupComponent.js";
 
 /**
@@ -22,8 +39,9 @@ export interface CreateLayerOptions {
   /**
    * Coordinate space. `"world"` (default) layers are auto-bound by every
    * camera unless it sets `autoBind: false`; `"screen"` layers are skipped
-   * so they stay fixed to the viewport. Cameras can still explicitly bind screen-space layers by
-   * naming them in `bindings`.
+   * so they stay fixed to the viewport. Cameras can still explicitly bind
+   * screen-space layers by naming them in `bindings`. `"canvas"` layers draw
+   * in canvas pixels outside the responsive fit; see `LayerDef.space`.
    */
   space?: LayerSpace;
   /**
@@ -38,11 +56,13 @@ export interface CreateLayerOptions {
    * order. Default: undefined (insertion order).
    */
   sort?: LayerSortFn;
+  /** Draw the layer into a texture. See `LayerDef.renderTarget`. */
+  renderTarget?: LayerRenderTargetOptions;
 }
 
 /**
  * Derive `CreateLayerOptions` from a declarative `LayerDef`. Fields set on
- * the def (`space`, `isRenderGroup`, `sort`) take precedence over `base` so
+ * the def (`space`, `isRenderGroup`, `sort`, `renderTarget`) take precedence over `base` so
  * a scene's declaration stays authoritative; `base` carries plugin-side
  * defaults for fields the def leaves unset.
  */
@@ -54,6 +74,7 @@ export function layerDefToOptions(
   if (def.space !== undefined) merged.space = def.space;
   if (def.isRenderGroup !== undefined) merged.isRenderGroup = def.isRenderGroup;
   if (def.sort !== undefined) merged.sort = def.sort;
+  if (def.renderTarget !== undefined) merged.renderTarget = def.renderTarget;
   return merged;
 }
 
@@ -68,8 +89,16 @@ export class RenderLayer {
    * option and changes the layer through `fx`, `setSort` and `setMask`.
    */
   readonly container: DisplayContainer;
-  /** Coordinate space — see `CreateLayerOptions.space`. */
-  readonly space: LayerSpace;
+  /**
+   * Coordinate space: the declared `space`, or `"texture"` for a layer
+   * declared with `renderTarget`.
+   */
+  readonly space: RenderLayerSpace;
+  /**
+   * The texture this layer draws into, for a layer declared with
+   * `renderTarget`; `undefined` for a layer that draws on screen.
+   */
+  readonly renderTarget: LayerRenderTarget | undefined;
   private _sort: LayerSortFn | undefined;
   /**
    * Layer-scope effects host. `.fx.addEffect(...)` applies a filter to every
@@ -86,14 +115,16 @@ export class RenderLayer {
     name: string,
     order: number,
     container: DisplayContainer,
-    space: LayerSpace = "world",
+    space: RenderLayerSpace = "world",
     queueFactory?: EffectQueueFactory,
     sort?: LayerSortFn,
+    renderTarget?: LayerRenderTarget,
   ) {
     this.name = name;
     this.order = order;
     this.container = container;
     this.space = space;
+    this.renderTarget = renderTarget;
     this._sort = sort;
     if (sort) container.sortableChildren = true;
     this.fx = new EffectsHost(() => this.container, "layer", queueFactory);
@@ -164,13 +195,21 @@ export class RenderLayer {
 }
 
 /**
- * Manages named render layers for a single scene. All layers are children
- * of a single root container. Camera transforms are applied per-layer
- * by the DisplaySystem based on CameraEntity bindings.
+ * Manages named render layers for a single scene. World and screen layers
+ * are children of the scene's root container, canvas layers of its canvas
+ * root, and a render-target layer's container belongs to no parent. Camera
+ * transforms are applied per-layer by the DisplaySystem based on
+ * CameraEntity bindings.
  */
 export class RenderLayerManager {
   private layers = new Map<string, RenderLayer>();
+  /** Each render-target layer's target and the texture key it registered. */
+  private readonly targets = new Map<
+    RenderLayer,
+    { handle: RenderTargetHandle; key: string | undefined }
+  >();
   private readonly rootContainer: DisplayContainer;
+  private readonly canvasRoot: DisplayContainer | undefined;
   private readonly _defaultLayer: RenderLayer;
   private readonly _defaultEventMode: EventMode | undefined;
   private readonly _queueFactory: EffectQueueFactory | undefined;
@@ -186,11 +225,38 @@ export class RenderLayerManager {
      * no-op. The provider derives this from the matching `LayerDef`.
      */
     defaultLayerOptions?: CreateLayerOptions,
+    /** Parent of the scene's `"canvas"` layers, outside the fit transform. */
+    canvasRoot?: DisplayContainer,
+    /** Builds the texture of a layer declared with `renderTarget`. */
+    private readonly renderTargets?: LayerTargetFactory,
   ) {
     this.rootContainer = root;
+    this.canvasRoot = canvasRoot;
     this._defaultEventMode = defaultEventMode;
     this._queueFactory = queueFactory;
     this._defaultLayer = this.create("default", 0, defaultLayerOptions);
+  }
+
+  /**
+   * Throw for the first of `defs` this manager cannot create, before any of
+   * them is created. A scene's declared layers are checked together, so a
+   * bad declaration leaves no texture allocated or key registered.
+   */
+  assertCanCreate(defs: readonly LayerDef[]): void {
+    const keys = new Set<string>();
+    for (const def of defs) {
+      if (this.layers.has(def.name)) continue;
+      this.assertCreatable(def.name, layerDefToOptions(def));
+      const key = def.renderTarget?.texture;
+      if (key === undefined) continue;
+      if (keys.has(key)) {
+        throw new Error(
+          `RenderLayer "${def.name}": another layer of this scene already ` +
+            `registers its texture as "${key}".`,
+        );
+      }
+      keys.add(key);
+    }
   }
 
   /** Create a new named layer. Throws if `name` already exists. */
@@ -198,8 +264,14 @@ export class RenderLayerManager {
     if (this.layers.has(name)) {
       throw new Error(`RenderLayer "${name}" already exists.`);
     }
+    this.assertCreatable(name, opts);
+    const targetOptions = opts?.renderTarget;
+    const space: RenderLayerSpace = targetOptions
+      ? "texture"
+      : (opts?.space ?? "world");
     const container = new Container();
     container.label = name;
+    const target = targetOptions && this.createTarget(container, targetOptions);
 
     const eventMode = opts?.eventMode ?? this._defaultEventMode;
     if (eventMode) container.eventMode = eventMode;
@@ -213,16 +285,89 @@ export class RenderLayerManager {
       name,
       order,
       container,
-      opts?.space ?? "world",
+      space,
       this._queueFactory,
       opts?.sort,
+      target,
     );
     this.layers.set(name, layer);
-
-    this.rootContainer.addChild(container);
+    // A render-target layer stays out of the scene's display tree: it draws
+    // only into its texture, which another layer shows.
+    if (target) {
+      this.targets.set(layer, { handle: target, key: targetOptions?.texture });
+    } else if (space === "canvas") {
+      this.canvasRoot?.addChild(container);
+    } else {
+      this.rootContainer.addChild(container);
+    }
     this.sortLayers();
 
     return layer;
+  }
+
+  /** Throw when a layer named `name` with `opts` cannot be created here. */
+  private assertCreatable(name: string, opts: CreateLayerOptions | undefined) {
+    if (opts?.space === "canvas" && !this.canvasRoot) {
+      throw new Error(
+        `RenderLayer "${name}": this render tree has no canvas root, so it ` +
+          `cannot hold a "canvas" layer.`,
+      );
+    }
+    const target = opts?.renderTarget;
+    if (!target) return;
+    if (name === "default") {
+      throw new Error(
+        `RenderLayer "default": the default layer cannot draw into a texture. ` +
+          `Declare the render target on a layer of its own.`,
+      );
+    }
+    if (opts.space !== undefined) {
+      throw new Error(
+        `RenderLayer "${name}": a render-target layer draws only into its ` +
+          `texture, so it takes no space, got "${opts.space}".`,
+      );
+    }
+    if (!this.renderTargets) {
+      throw new Error(
+        `RenderLayer "${name}": this render tree cannot draw a layer into a texture.`,
+      );
+    }
+    const context = `RenderLayer "${name}".renderTarget`;
+    assertPositiveNumber(context, "width", target.width);
+    assertPositiveNumber(context, "height", target.height);
+    if (target.resolutionScale !== undefined) {
+      assertPositiveNumber(context, "resolutionScale", target.resolutionScale);
+    }
+    if (target.texture !== undefined) {
+      assertTextureKeyFree(
+        `${context}.texture "${target.texture}"`,
+        target.texture,
+      );
+    }
+  }
+
+  /**
+   * Build the texture a layer declared with `renderTarget` draws into, and
+   * register it under its texture key.
+   */
+  private createTarget(
+    container: DisplayContainer,
+    options: LayerRenderTargetOptions,
+  ): RenderTargetHandle {
+    // `assertCreatable` has checked that the factory exists.
+    const target = this.renderTargets!(container, options);
+    if (options.texture !== undefined) {
+      registerTexture(options.texture, target.texture);
+    }
+    return target;
+  }
+
+  /** The texture this manager's layers registered under `key`, if any. */
+  textureFor(key: string): TextureResource | undefined {
+    for (const { handle, key: owned } of this.targets.values()) {
+      if (owned === key) return handle.texture;
+    }
+    return undefined;
   }
 
   /**
@@ -269,7 +414,10 @@ export class RenderLayerManager {
     return [...this.layers.values()].sort((a, b) => a.order - b.order);
   }
 
-  /** The root container holding all layers, for code that adds its own Pixi objects. */
+  /**
+   * The root container holding the world and screen layers, for code that
+   * adds its own Pixi objects.
+   */
   get root(): DisplayContainer {
     return this.rootContainer;
   }
@@ -296,6 +444,25 @@ export class RenderLayerManager {
     }
   }
 
+  /**
+   * Destroy every render-target layer's texture, unregister its texture key,
+   * and destroy the layer's container, which sits outside the root. Call
+   * after {@link destroyEffects} and {@link destroyMasks}. Returns the keys
+   * it unregistered; a key a later scene registered stays with that scene.
+   */
+  destroyRenderTargets(): string[] {
+    const released: string[] = [];
+    for (const [layer, { handle, key }] of this.targets) {
+      if (key !== undefined && releaseTexture(key, handle.texture)) {
+        released.push(key);
+      }
+      handle.destroy();
+      layer.container.destroy({ children: true });
+    }
+    this.targets.clear();
+    return released;
+  }
+
   /** Clear internal state. Call after the root container has been destroyed. */
   destroy(): void {
     this.layers.clear();
@@ -305,7 +472,10 @@ export class RenderLayerManager {
     for (const layer of this.layers.values()) {
       layer.container.zIndex = layer.order;
     }
-    this.rootContainer.sortableChildren = true;
-    this.rootContainer.sortChildren();
+    for (const root of [this.rootContainer, this.canvasRoot]) {
+      if (!root) continue;
+      root.sortableChildren = true;
+      root.sortChildren();
+    }
   }
 }

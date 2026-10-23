@@ -67,9 +67,13 @@ different point is out of reach. For that, parent the sprite's entity under an
 entity placed at the turning point and rotate the parent — an entity's
 rotation carries every descendant around its own position.
 
-`AnimatedSpriteComponent`, `TextComponent` and `SplitTextComponent` take
-`anchor` too. `GraphicsComponent` has no texture to take a fraction of, and
-takes a `pivot` in pixels instead — see
+`anchor` is also a property. Reading it returns a new `{ x, y }`, and
+assigning one moves the anchor while the game runs. A coordinate that is not a
+finite number throws.
+
+`AnimatedSpriteComponent`, `TextComponent`, `SplitTextComponent` and
+`NineSliceComponent` take `anchor` too. `GraphicsComponent` has no texture to
+take a fraction of, and takes a `pivot` in pixels instead — see
 [Where the drawing turns](/guides/rendering/graphics/#where-the-drawing-turns).
 
 ### Size and pointer events
@@ -374,6 +378,34 @@ class Footsteps extends Component {
 Any number of listeners can subscribe. A listener also sees the frame reset an
 `AnimationController` switch performs, so it can react to the first frame of a
 new animation.
+
+An anchor that follows the art, such as a foot that moves through a walk cycle,
+is set from the same listener:
+
+```typescript
+import { Component } from "@yagejs/core";
+import { AnimatedSpriteComponent } from "@yagejs/renderer";
+
+/** Where the foot meets the ground in each walk frame, as a fraction of the frame. */
+const FOOT_Y = [0.92, 0.95, 0.97, 0.95];
+
+class PlantedFeet extends Component {
+  onAdd() {
+    const sprite = this.entity.get(AnimatedSpriteComponent);
+
+    this.addCleanup(
+      sprite.onFrameChange((frame) => {
+        sprite.anchor = { x: 0.5, y: FOOT_Y[frame] ?? 1 };
+      }),
+    );
+  }
+}
+```
+
+An `AnimationController` writes an animation's own `anchor`, when its
+definition has one, each time that animation starts. That replaces whatever
+anchor the sprite had, so give such animations no `anchor` when a listener
+sets it per frame.
 
 A `play({ onComplete })` owns its callback: a later `play()` without one
 clears it, and an `AnimationController` animation switch clears it too, so a

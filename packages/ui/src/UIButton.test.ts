@@ -278,7 +278,7 @@ describe("UIButton", () => {
       height: 30,
       onClick,
     });
-    const container = btn.container as unknown as InstanceType<
+    const container = btn.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     container.emit("pointerdown");
@@ -295,7 +295,7 @@ describe("UIButton", () => {
       onClick,
     });
     btn.setDisabled(true);
-    const container = btn.container as unknown as InstanceType<
+    const container = btn.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     container.emit("pointerdown");
@@ -305,7 +305,7 @@ describe("UIButton", () => {
 
   it("disabled state changes cursor and alpha", () => {
     const btn = new UIButton({ children: "Test", width: 100, height: 30 });
-    const container = btn.container as unknown as InstanceType<
+    const container = btn.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.cursor).toBe("pointer");
@@ -489,7 +489,7 @@ describe("UIButton", () => {
 
     /** The colour the background Graphics was last filled with. */
     function paintedColor(btn: UIButton): number | undefined {
-      const container = btn.container as unknown as InstanceType<
+      const container = btn.displayObject as unknown as InstanceType<
         typeof mocks.MockContainer
       >;
       const g = container.children[0] as InstanceType<
@@ -516,7 +516,7 @@ describe("UIButton", () => {
       btn.update({ disabled: true, background: { color: 0x991111 } });
 
       expect(paintedColor(btn)).toBe(0x991111);
-      const container = btn.container as unknown as InstanceType<
+      const container = btn.displayObject as unknown as InstanceType<
         typeof mocks.MockContainer
       >;
       expect(container.alpha).toBe(0.5);
@@ -646,7 +646,7 @@ describe("UIButton", () => {
 
   it("hover state changes background", () => {
     const btn = new UIButton({ children: "Test", width: 100, height: 30 });
-    const container = btn.container as unknown as InstanceType<
+    const container = btn.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     // Should not throw on hover/out events
@@ -656,7 +656,7 @@ describe("UIButton", () => {
 
   it("press state changes background", () => {
     const btn = new UIButton({ children: "Test", width: 100, height: 30 });
-    const container = btn.container as unknown as InstanceType<
+    const container = btn.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     // Should not throw on down event
@@ -666,7 +666,7 @@ describe("UIButton", () => {
   it("destroy cleans up", () => {
     const btn = new UIButton({ children: "Test", width: 100, height: 30 });
     btn.destroy();
-    const container = btn.container as unknown as InstanceType<
+    const container = btn.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.destroyed).toBe(true);
@@ -680,7 +680,7 @@ describe("UIButton", () => {
       background: { color: 0x444444 },
       hoverBackground: { color: 0xff0000 },
     });
-    const container = btn.container as unknown as InstanceType<
+    const container = btn.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
 
@@ -711,7 +711,7 @@ describe("UIButton", () => {
     });
     btn.update({ onClick: onClick2 });
 
-    const container = btn.container as unknown as InstanceType<
+    const container = btn.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     container.emit("pointerdown");
@@ -723,7 +723,7 @@ describe("UIButton", () => {
   it("does not click when the press started outside the button", () => {
     const onClick = vi.fn();
     const btn = new UIButton({ onClick });
-    const container = btn.container as unknown as InstanceType<
+    const container = btn.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
 
@@ -740,10 +740,10 @@ describe("UIButton", () => {
         throw error;
       },
     });
-    const container = btn.container as unknown as InstanceType<
+    const container = btn.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
-    bindUIErrorBoundary(btn.container, boundary);
+    bindUIErrorBoundary(btn.displayObject, boundary);
 
     container.emit("pointerdown");
     expect(() => container.emit("pointerup")).toThrow(error);
@@ -756,7 +756,7 @@ describe("UIButton", () => {
     const onHover = vi.fn();
     const onPointerOver = vi.fn();
     const btn = new UIButton({ children: "Hi", onHover, onPointerOver });
-    const container = btn.container as unknown as InstanceType<
+    const container = btn.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
 
@@ -771,7 +771,7 @@ describe("UIButton", () => {
     const onHover = vi.fn();
     const btn = new UIButton({ children: "Hi", onHover });
     btn.setDisabled(true);
-    const container = btn.container as unknown as InstanceType<
+    const container = btn.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
 
@@ -784,7 +784,7 @@ describe("UIButton", () => {
     const second = vi.fn();
     const btn = new UIButton({ children: "Hi", onHover: first });
     btn.update({ onHover: second });
-    const container = btn.container as unknown as InstanceType<
+    const container = btn.displayObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
 
@@ -1002,7 +1002,7 @@ describe("UIButton", () => {
     function containerOf(
       btn: UIButton,
     ): InstanceType<typeof mocks.MockContainer> {
-      return btn.container as unknown as InstanceType<
+      return btn.displayObject as unknown as InstanceType<
         typeof mocks.MockContainer
       >;
     }

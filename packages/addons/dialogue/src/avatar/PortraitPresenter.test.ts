@@ -22,7 +22,7 @@ describe("portrait mirroring", () => {
     Assets.cache.set(KEY, Texture.WHITE);
     const { scene, context } = createMockScene();
     const provider = new SceneRenderTreeProviderImpl(
-      new GraphicsComponent().graphics,
+      new GraphicsComponent().renderObject,
     );
     scene._registerScoped(SceneRenderTreeKey, provider.createForScene(scene));
     context.register(SceneRenderTreeProviderKey, provider);
@@ -62,7 +62,7 @@ describe("portrait mirroring", () => {
     Assets.cache.set(KEY, Texture.WHITE);
     const { scene, context } = createMockScene();
     const provider = new SceneRenderTreeProviderImpl(
-      new GraphicsComponent().graphics,
+      new GraphicsComponent().renderObject,
     );
     scene._registerScoped(SceneRenderTreeKey, provider.createForScene(scene));
     context.register(SceneRenderTreeProviderKey, provider);
@@ -106,7 +106,7 @@ describe("portrait mirroring", () => {
     Assets.cache.set(KEY, Texture.WHITE);
     const { scene, context } = createMockScene();
     const provider = new SceneRenderTreeProviderImpl(
-      new GraphicsComponent().graphics,
+      new GraphicsComponent().renderObject,
     );
     scene._registerScoped(SceneRenderTreeKey, provider.createForScene(scene));
     context.register(SceneRenderTreeProviderKey, provider);

@@ -1,10 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 
 const { MockContainer, MockSprite } = vi.hoisted(() => {
+  class Point {
+    constructor(
+      public x = 0,
+      public y = 0,
+    ) {}
+
+    set(x: number, y = x): void {
+      this.x = x;
+      this.y = y;
+    }
+  }
+
   class Container {
     children: Container[] = [];
-    position = { x: 0, y: 0 };
-    scale = { x: 1, y: 1 };
+    position = new Point();
+    scale = new Point(1, 1);
     rotation = 0;
     visible = true;
     alpha = 1;
@@ -57,28 +69,37 @@ vi.mock("pixi.js", () => ({
 }));
 
 import { Transform, Vec2, type Component, type Entity } from "@yagejs/core";
-import { SpriteComponent } from "@yagejs/renderer";
+import { SpriteComponent, VisualComponent } from "@yagejs/renderer";
 import { synchronizeDormantVisuals } from "./dormant.js";
 
 /** Nothing faded, which is every case but the ones about the fade. */
 const NONE: ReadonlySet<string> = new Set<string>();
 
 /**
- * An entity stands in for the three members the pass reads. Composition
- * through a live parent chain is pinned where it belongs, on
- * `DisplaySystem`'s own contract test in the renderer package; what is under
- * test here is which components are written and when they are shown.
+ * A dormant entity stands in for the members the pass and
+ * `VisualComponent.drawInactive` read, and is wired to its components the way
+ * `Entity.add` would. Composition through a live parent chain is pinned where
+ * it belongs, on `DisplaySystem`'s own contract test in the renderer package;
+ * what is under test here is which components are drawn and when they are
+ * shown.
  */
 function entityWith(
   components: readonly Component[],
   parent: Entity | null = null,
 ): Entity {
-  return {
+  const entity = {
+    name: "placement",
+    isActive: false,
     get: (Type: abstract new (...args: never[]) => Component) =>
       components.find((component) => component instanceof Type),
     getAll: () => components,
     parent,
   } as unknown as Entity;
+  // Only the visuals: a Transform left unwired composes no parent chain.
+  for (const component of components) {
+    if (component instanceof VisualComponent) component.entity = entity;
+  }
+  return entity;
 }
 
 function sprite(): SpriteComponent {

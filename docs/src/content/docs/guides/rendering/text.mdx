@@ -33,8 +33,8 @@ as `SpriteComponent`'s), so a raw `Text` can blend additively over what is
 beneath it, or mark itself as a pointer-consume surface without going through
 `@yagejs/ui`.
 
-Update at runtime with `setText()` / `setStyle()`, or tweak `tint` and
-`alpha` directly. Read the current string back with `content`.
+Update at runtime with `setText()` / `setStyle()`, or change `tint`, `alpha`
+and `anchor` directly. Read the current string back with `content`.
 `setStyle()` **replaces** the style — properties you don't pass fall back
 to the defaults. To change a few properties while keeping the rest, use
 `mergeStyle()`:
@@ -70,7 +70,7 @@ Specifically:
 **Thin wrapper:** the `style` option forwards as-is to pixi's
 `TextStyleOptions` — full set of CSS-style font properties available
 (`fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `fill`,
-`letterSpacing`, `lineHeight`, `dropShadow`, etc.). `.text` is the
+`letterSpacing`, `lineHeight`, `dropShadow`, etc.). `renderObject` is the
 underlying pixi `Text` instance (or `BitmapText` when `bitmap` is set).
 See the [pixi Text guide](https://pixijs.com/8.x/guides/components/scene-objects/text/)
 and [TextStyle reference](https://pixijs.com/8.x/guides/components/scene-objects/text/style)
@@ -358,18 +358,23 @@ class TitleWave extends Component {
 entity.add(new TitleWave());
 ```
 
-`anchor` is the normalized transform origin for the whole text block. The
-component recalculates it from the current bounds after text, style, or
-manual split updates. This keeps centered labels centered when their content
+`anchor` is the normalized transform origin for the whole text block, set at
+construction or by assigning `split.anchor = { x, y }` later. Without one, the
+text's layout origin sits on the entity; assigning `undefined` returns to
+that. The component
+recalculates it from the current bounds after text, style, or manual split
+updates. This keeps centered labels centered when their content
 changes.
 
 The segment origins — `charAnchor`, `wordAnchor`, `lineAnchor` (also
 normalized 0–1, settable at construction or at runtime) — control the pivot
-each segment rotates and scales about. `chars` are `Text` / `BitmapText`;
-`words` and `lines` are containers grouping them.
+each segment rotates and scales about. Every entry of `chars`, `words` and
+`lines` is a `TextSegment`: a character, a word or a line you can move, turn,
+scale, fade, tint or hide. A word's position is relative to its line, and a
+character's to its word, so moving a word moves its characters.
 
-The engine writes none of a segment's `x`, `y`, `rotation`, `scale`,
-`alpha`, `tint` or `visible`, so those are yours to animate. A `setText`,
+The engine writes none of a segment's `x`, `y`, `position`, `rotation`,
+`scale`, `alpha`, `tint` or `visible`, so those are yours to animate. A `setText`,
 `setStyle` or `resplit()` replaces every segment, so read `chars` again
 after one instead of keeping the old array.
 

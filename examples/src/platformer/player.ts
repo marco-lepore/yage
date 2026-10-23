@@ -9,7 +9,7 @@ import {
 import {
   GraphicsComponent,
   type CameraEntity,
-  type GraphicsContext,
+  type DrawContext,
 } from "@yagejs/renderer";
 import {
   RigidBodyComponent,
@@ -240,7 +240,7 @@ class PlayerController extends Component {
   }
 }
 
-function drawPlayerGraphics(g: GraphicsContext, airborne: boolean): void {
+function drawPlayerGraphics(g: DrawContext, airborne: boolean): void {
   const bodyColor = airborne ? 0x38bdf8 : 0x22c55e;
   const outlineColor = airborne ? 0x0ea5e9 : 0x16a34a;
   // Body

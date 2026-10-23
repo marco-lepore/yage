@@ -20,9 +20,13 @@ import { feelFlightLines, feelMotionTrail } from "./trails.js";
 function createRenderedHost() {
   const setup = createMockEntity();
   const root = new GraphicsComponent();
-  const layers = new RenderLayerManager(root.graphics);
+  const layers = new RenderLayerManager(root.renderObject);
   const tree: SceneRenderTree = {
-    root: root.graphics,
+    root: root.renderObject,
+    alpha: 1,
+    visible: true,
+    offset: { x: 0, y: 0 },
+    setOffset: () => {},
     get: (name) => layers.get(name),
     tryGet: (name) => layers.tryGet(name),
     getAll: () => layers.getAll(),
@@ -39,6 +43,9 @@ function createRenderedHost() {
       throw new Error("Masks are not used by this test.");
     },
     clearMask: () => {},
+    setTransitionMask: () => {
+      throw new Error("Masks are not used by this test.");
+    },
     renderAboveEffects: () => {
       throw new Error("This test tree does not support renderAboveEffects.");
     },
@@ -70,7 +77,9 @@ describe("Feel flight lines and trails", () => {
     const transform = spawned?.get(Transform);
     const graphics = spawned?.get(GraphicsComponent);
     expect(transform?.position).toEqual(new Vec2(100, 80));
-    expect(graphics?.graphics.context.instructions.length).toBeGreaterThan(0);
+    expect(graphics?.renderObject.context.instructions.length).toBeGreaterThan(
+      0,
+    );
 
     feel.update(0.5);
     expect(transform?.position).toEqual(new Vec2(100, 80));
@@ -287,7 +296,9 @@ describe("Feel flight lines and trails", () => {
     const graphics = spawned?.get(GraphicsComponent);
     ownerTransform.position = new Vec2(120, 80);
     feel.update(0.1);
-    expect(graphics?.graphics.context.instructions.length).toBeGreaterThan(0);
+    expect(graphics?.renderObject.context.instructions.length).toBeGreaterThan(
+      0,
+    );
 
     ownerTransform.position = new Vec2(140, 80);
     feel.update(0.1);

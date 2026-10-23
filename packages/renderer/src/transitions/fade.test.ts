@@ -22,6 +22,7 @@ function makeCtx(opts: {
     fromScene: opts.fromScene,
     toScene: opts.toScene,
     engineContext: {
+      tryResolve: () => undefined,
       resolve: (key: unknown) => {
         if (key === RendererKey) {
           // virtualSize and screen are intentionally distinct so any
@@ -30,6 +31,7 @@ function makeCtx(opts: {
             virtualSize: { width: 400, height: 300 },
             visibleCanvasRect: { x: 0, y: 0, width: 400, height: 300 },
             worldRoot: { addChild: () => {} },
+            canvasSize: { width: 800, height: 600 },
             application: {
               screen: { width: 800, height: 600 },
               stage: { addChild: () => {} },
@@ -40,10 +42,10 @@ function makeCtx(opts: {
           return {
             getTree: (s: Scene) => {
               if (s === opts.toScene && opts.toContainer) {
-                return { root: opts.toContainer };
+                return opts.toContainer;
               }
               if (s === opts.fromScene && opts.fromContainer) {
-                return { root: opts.fromContainer };
+                return opts.fromContainer;
               }
               return undefined;
             },

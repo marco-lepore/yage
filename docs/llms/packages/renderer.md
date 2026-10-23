@@ -6,35 +6,34 @@ Depends on `@yagejs/core`, `pixi.js`. PixiJS v8 rendering behind the YAGE plugin
 
 Every exported field, parameter, and return type across `@yagejs/renderer` (and its downstream consumers — `@yagejs/ui`, `@yagejs/particles`, `@yagejs/tilemap`) uses this package's own alias names instead of a direct `pixi.js` type import, so consumer code never has to import `pixi.js` for types:
 
-| Alias                    | Underlying Pixi type                                     | Where it shows up                                                                              |
-| ------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `DisplayContainer`       | `Container`                                              | `renderObject` getters, `RenderLayer.container`, UI element `container`/`displayObject` fields |
-| `DisplaySprite`          | `Sprite`                                                 | `SpriteComponent.sprite`                                                                       |
-| `DisplayAnimatedSprite`  | `AnimatedSprite`                                         | `AnimatedSpriteComponent.animatedSprite`                                                       |
-| `DisplayText`            | `Text`                                                   | `TextComponent.text` (canvas variant)                                                          |
-| `DisplayBitmapText`      | `BitmapText`                                             | `TextComponent.text` (bitmap variant)                                                          |
-| `DisplaySplitText`       | `SplitText`                                              | `SplitTextComponent.splitText` (canvas variant)                                                |
-| `DisplaySplitBitmapText` | `SplitBitmapText`                                        | `SplitTextComponent.splitText` (bitmap variant)                                                |
-| `GraphicsContext`        | `Graphics`                                               | `GraphicsComponent.graphics`, `draw((g) => ...)`, mask draw callbacks                          |
-| `NineSliceSprite`        | `NineSliceSprite`                                        | `NineSliceComponent.renderObject`, `UINineSlice.container`                                     |
-| `ParticleContainer`      | `ParticleContainer`                                      | `@yagejs/particles`' `ParticleEmitterComponent.container`                                      |
-| `Particle`               | `Particle`                                               | `@yagejs/particles`' `ParticlePool.acquire()`/`release()`                                      |
-| `Filter`                 | `Filter`                                                 | effects API (`Effect.filter`, `rawFilter(filter)`)                                             |
-| `Application`            | `Application`                                            | `RendererPlugin.application`                                                                   |
-| `ApplicationOptions`     | `ApplicationOptions`                                     | `RendererConfig.pixi`                                                                          |
-| `DestroyOptions`         | `DestroyOptions`                                         | visual components' `destroyOptions()` override hook                                            |
-| `ColorValue`             | `ColorSource`                                            | every `tint` option/accessor                                                                   |
-| `BlendMode`              | `BLEND_MODES`                                            | every visual component's `blendMode` option/accessor                                           |
-| `PointLike`              | `PointData`                                              | point-shaped callbacks/options                                                                 |
-| `TextStyle`              | `TextStyleOptions`                                       | every `style` option                                                                           |
-| `TextureRef`             | none — `string \| TextureHandle`, a key/handle reference | `SpriteComponent.texture`, `setTexture()`                                                      |
+| Alias                                          | Underlying Pixi type                                     | Where it shows up                                                                  |
+| ---------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `DisplayContainer`                             | `Container`                                              | `renderObject` getters, `RenderLayer.container`, UI element `displayObject` fields |
+| `DisplaySprite`                                | `Sprite`                                                 | `SpriteComponent.renderObject`                                                     |
+| `DisplayAnimatedSprite`                        | `AnimatedSprite`                                         | `AnimatedSpriteComponent.renderObject`                                             |
+| `DisplayText`                                  | `Text`                                                   | `TextComponent.renderObject` (canvas variant)                                      |
+| `DisplayBitmapText`                            | `BitmapText`                                             | `TextComponent.renderObject` (bitmap variant)                                      |
+| `DisplaySplitText`                             | `SplitText`                                              | `SplitTextComponent.renderObject` (canvas variant)                                 |
+| `DisplaySplitBitmapText`                       | `SplitBitmapText`                                        | `SplitTextComponent.renderObject` (bitmap variant)                                 |
+| `DisplayGraphics`                              | `Graphics`                                               | `GraphicsComponent.renderObject`                                                   |
+| `DrawFill` / `DrawStroke`                      | `FillInput` / `StrokeInput`                              | `DrawContext.fill()` / `stroke()`                                                  |
+| `DrawPath` / `DrawMatrix` / `DrawRoundedPoint` | `GraphicsPath` / `Matrix` / `RoundedPoint`               | `DrawContext.path()`, the transform stack, `roundShape()`                          |
+| `NineSliceSprite`                              | `NineSliceSprite`                                        | `NineSliceComponent.renderObject`                                                  |
+| `ParticleContainer`                            | `ParticleContainer`                                      | `@yagejs/particles`' `ParticleEmitterComponent.container`                          |
+| `Particle`                                     | `Particle`                                               | `@yagejs/particles`' `ParticlePool.acquire()`/`release()`                          |
+| `Filter`                                       | `Filter`                                                 | effects API (`Effect.filter`, `rawFilter(filter)`)                                 |
+| `Application`                                  | `Application`                                            | `RendererPlugin.application`                                                       |
+| `ApplicationOptions`                           | `ApplicationOptions`                                     | `RendererConfig.pixi`                                                              |
+| `DestroyOptions`                               | `DestroyOptions`                                         | visual components' `destroyOptions()` override hook                                |
+| `ColorValue`                                   | `ColorSource`                                            | every `tint` option/accessor                                                       |
+| `BlendMode`                                    | `BLEND_MODES`                                            | every visual component's `blendMode` option/accessor                               |
+| `PointLike`                                    | `PointData`                                              | point-shaped callbacks/options                                                     |
+| `TextStyle`                                    | `TextStyleOptions`                                       | every `style` option                                                               |
+| `TextureRef`                                   | none — `string \| TextureHandle`, a key/handle reference | `SpriteComponent.texture`, `setTexture()`                                          |
 
-The aliases are transparent (`type DisplayContainer = Container`) and provide no encapsulation: `RendererPlugin.application`, every `renderObject` getter and the class fields (`.sprite`/`.graphics`/`.text`/`.splitText`/`.animatedSprite`) return the real Pixi object. Game code never writes to it. `DisplaySystem` writes position, rotation and scale from the entity's `Transform` every frame, and the component re-applies its own `visible` and `alpha` on every change, on activation and on every modifier change, so a write on the Pixi object is lost. Change a visual through its component; a task that needs the Pixi object is a missing component API.
+The aliases are transparent (`type DisplayContainer = Container`) and provide no encapsulation: `RendererPlugin.application` and every `renderObject` getter return the real Pixi object. Game code never writes to it. `DisplaySystem` writes position, rotation and scale from the entity's `Transform` every frame, and the component re-applies its own `visible` and `alpha` on every change, on activation and on every modifier change, so a write on the Pixi object is lost. Change a visual through its component; a task that needs the Pixi object is a missing component API.
 
-A `GraphicsContext` therefore carries Pixi's graphics transform stack —
-`translateTransform`, `scaleTransform`, `rotateTransform`, `setTransform`,
-`resetTransform`, and the `save` / `restore` pair. See `GraphicsComponent`
-below.
+A drawing callback (`GraphicsComponent.draw`, `createTexture`, `graphicsMask`) receives a `DrawContext`, not the Pixi object: Pixi's drawing vocabulary only (shapes, paths, `fill` / `stroke` with colours, gradients and textures, `texture`, `cut`, `clear`, the transform stack `translateTransform` / `scaleTransform` / `rotateTransform` / `setTransform` / `transform` / `resetTransform` / `getTransform`, and `save` / `restore`). Every call returns the context. It has no `addChild`, `position`, `alpha`, `visible` or `destroy`: those belong to the component and its `Transform`. The Pixi `Graphics` itself is passed, so nothing is wrapped. See `GraphicsComponent` below.
 
 ## Setup
 
@@ -56,6 +55,8 @@ engine.use(
   }),
 );
 ```
+
+`renderer.backend: RendererBackend` reports the graphics API Pixi picked: `"webgl"`, `"webgpu"` or `"canvas"`. Pixi tries them in that order and takes the first the browser supports; `pixi: { preference }` moves one to the front.
 
 ### `pixelArtPreset`
 
@@ -172,35 +173,33 @@ Rectangles of the visible canvas that sit **outside** the declared virtual rect 
 
 Under `expand` these are the play-adjacent strips the game is expected to draw into. The `responsive-ui` example fills each with a solid dark rect plus a short gradient along the inner edge (touching the play area) so the bars read as "not the play area, but still part of the rendered world."
 
-Under `letterbox` the same rects only report where the `backgroundColor` bars land. That mode clips every scene layer to the virtual rect, so content placed at these coordinates on a scene layer is invisible. To draw in the bars, parent a container directly on `renderer.application.stage` and position it in **canvas pixels**. No scene layer reaches the bars, so this code owns raw Pixi objects: destroy the container when the scene exits.
+Under `letterbox` the same rects only report where the `backgroundColor` bars land. That mode clips every world and screen layer to the virtual rect, so content placed at these coordinates on such a layer is invisible. To draw in the bars, declare a layer with `space: "canvas"`: it draws in **canvas CSS pixels**, outside the fit scale and the letterbox clip, above every scene's other layers, and ends with the scene like any layer.
 
 ```ts
-import { Scene } from "@yagejs/core";
-import { Container, Graphics } from "pixi.js";
-import { RendererKey } from "@yagejs/renderer";
+import { Scene, Transform } from "@yagejs/core";
+import { GraphicsComponent, RendererKey } from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
 
 class BrandedScene extends Scene {
   readonly name = "branded";
-  private bars: Container | undefined;
+  readonly layers: readonly LayerDef[] = [
+    { name: "bars", order: 0, space: "canvas" },
+  ];
 
   onEnter(): void {
     const renderer = this.use(RendererKey);
-    this.bars = new Container();
-    renderer.application.stage.addChild(this.bars); // canvas px, above the fit transform
-
     const { width } = renderer.canvasSize; // CSS px
     const play = renderer.virtualCanvasRect; // play area, in canvas px
-    const branding = new Graphics();
-    branding.rect(0, 0, width, play.y).fill({ color: 0x0f172a }); // top bar
-    this.bars.addChild(branding);
-  }
-
-  onExit(): void {
-    // The stage outlives the scene, so the scene destroys what it added.
-    this.bars?.destroy({ children: true });
+    const branding = this.spawn("branding");
+    branding.add(new Transform()); // canvas px: (0, 0) is the canvas corner
+    branding.add(new GraphicsComponent({ layer: "bars" })).draw((g) => {
+      g.rect(0, 0, width, play.y).fill({ color: 0x0f172a }); // top bar
+    });
   }
 }
 ```
+
+A canvas layer keeps its canvas-pixel coordinates when the canvas resizes, so redraw it from the new `canvasSize` / `virtualCanvasRect` after a resize. Cameras never bind it (a camera whose `bindings` names it throws when the camera is added), and scene-scope `fx` / `setMask` do not cover it; screen-scope `renderer.fx` does. A scene transition's overlay draws under canvas layers and `fade` / `flash` / `iris` do not fade them, unless the transition is created with `coverScreen: true`.
 
 Note: "screen" in the engine (UI `LayerSpace: "screen"`, `Camera.screenToWorld`) means _virtual viewport space_. The `canvasToVirtual` method is named after its inputs (DOM CSS pixels on the canvas) to avoid that collision.
 
@@ -339,6 +338,7 @@ it escapes.
 Every visual component also has:
 
 - `comp.localBounds: { x, y, width, height }` — the drawn box in the visual's own pixels, before position, rotation and scale; `x`/`y` are the top-left corner relative to the entity's position, after any anchor or `GraphicsComponent` pivot (centre-anchored → `x = -width / 2`; pivot `(px, py)` → box moved by `(-px, -py)`). Works while hidden. Computed per read.
+- `comp.drawInactive(shown: boolean): void` — draws the visual of an inactive entity, which `DisplaySystem` skips: places it at the pose its `Transform` composes, with its transform modifiers, and shows it when `shown` and the component's own `enabled` and `visible` allow it. For tools that show dormant entities (a level editor's preview); call it once per frame after the Render-phase `DisplaySystem`, and after any modifier change, which hides the dormant visual again. Throws for an active entity.
 - `comp.onPointer(event: "down" | "up" | "tap" | "over" | "out", fn: () => void): () => void` — makes the visual a hit-test target and calls `fn` through the `ErrorBoundary` (a throw names the entity). Returns the unsubscribe; destroying the visual also ends it. Read the pointer position from `InputManager`. `interactive.consumeOnInteraction` keeps the same press from firing `MouseLeft`.
 
 Every visual component also exposes `comp.modifiers: VisualModifierHost`:
@@ -376,7 +376,7 @@ import "pixi.js/advanced-blend-modes";
 
 Pixi constructs every display object at `"inherit"`, not `"normal"` — inherited blending renders as normal until an ancestor sets a mode, and the two differ under a non-normal parent. `"erase"` composites against whatever framebuffer the object lands in, so it only cuts a hole out of the darkness you intend when both are drawn into their own offscreen buffer — see [Offscreen render targets](#offscreen-render-targets).
 
-**`anchor` and `pivot`.** A visual is drawn with one point of its art on the entity's world position, and the entity's rotation and scale turn and size the art about that same point. `anchor` (`{x, y}`, a fraction of the texture) chooses which point that is: `{ x: 0.5, y: 0.5 }` turns the art about its own middle, `{ x: 0.5, y: 1 }` about its bottom edge. Sprite, AnimatedSprite, Text, and SplitText take it. Graphics has none (a raw Pixi `Container` has no anchor) and takes `pivot` (`{x, y}`) instead — the same idea in the drawing's own pixels, since a drawing has no texture size to take a fraction of. SplitText also has per-segment `charAnchor` / `wordAnchor` / `lineAnchor` values (see below). Neither option turns art about a point outside the entity: for that, parent the visual's entity under an entity placed at the turning point. A `@yagejs/ui` element places differently: layout puts its top-left corner, and its `transformOrigin` prop moves only the point its `scale` and `rotation` turn about (see `ui.md`, "Scale, rotation and draw order").
+**`anchor` and `pivot`.** A visual is drawn with one point of its art on the entity's world position, and the entity's rotation and scale turn and size the art about that same point. `anchor` (`{x, y}`, a fraction of the texture) chooses which point that is: `{ x: 0.5, y: 0.5 }` turns the art about its own middle, `{ x: 0.5, y: 1 }` about its bottom edge. Sprite, AnimatedSprite, Text, SplitText, and NineSlice take it, as an option and as a property: `sprite.anchor` returns a new `{ x, y }`, and `sprite.anchor = { x, y }` moves it at runtime (a non-finite coordinate throws). An `AnimationController` writes an animation's own `anchor`, when its definition has one, at every switch, replacing a runtime value; for an anchor that follows the frame, set it from `onFrameChange`. Graphics has none (a raw Pixi `Container` has no anchor) and takes `pivot` (`{x, y}`) instead — the same idea in the drawing's own pixels, since a drawing has no texture size to take a fraction of. SplitText also has per-segment `charAnchor` / `wordAnchor` / `lineAnchor` values (see below). Neither option turns art about a point outside the entity: for that, parent the visual's entity under an entity placed at the turning point. A `@yagejs/ui` element places differently: layout puts its top-left corner, and its `transformOrigin` prop moves only the point its `scale` and `rotation` turn about (see `ui.md`, "Scale, rotation and draw order").
 
 ### SpriteComponent
 
@@ -402,7 +402,7 @@ Tint, alpha, visibility and blend mode live on the component: `sprite.tint = 0xf
 
 ### GraphicsComponent
 
-Procedural drawing via PixiJS Graphics API:
+Procedural drawing through a `DrawContext` (Pixi's `Graphics` drawing methods, see Type vocabulary):
 
 ```ts yage-context="entity"
 import { GraphicsComponent } from "@yagejs/renderer";
@@ -416,7 +416,7 @@ entity.add(
 
 Graphics and their draw callbacks are runtime resources. Save the durable game facts that determine the drawing, then call `draw()` during normal component setup.
 
-`pivot` (`{x, y}`, in the drawing's own pixels, default `{ x: 0, y: 0 }`) names the point of the drawing that sits on the entity position and that rotation and scale act about. It is the Graphics counterpart of `anchor`. Both numbers must be finite; a `NaN` throws naming `pivot.x` or `pivot.y`.
+`pivot` (`{x, y}`, in the drawing's own pixels, default `{ x: 0, y: 0 }`) names the point of the drawing that sits on the entity position and that rotation and scale act about. It is the Graphics counterpart of `anchor`, and like it is an option and a property (`gfx.pivot = { x, y }`). Both numbers must be finite; a `NaN` throws naming the coordinate.
 
 ```ts yage-context="entity"
 import { GraphicsComponent } from "@yagejs/renderer";
@@ -485,7 +485,7 @@ entity.add(
 );
 ```
 
-**Thin wrapper:** `style` forwards as-is to pixi `TextStyleOptions` (CSS-style font properties — `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `fill`, `letterSpacing`, `lineHeight`, etc.). `.text` is the underlying pixi `Text` (or `BitmapText` when `bitmap` is set). See [pixi Text docs](https://pixijs.com/8.x/guides/components/scene-objects/text/) and [pixi TextStyle reference](https://pixijs.com/8.x/guides/components/scene-objects/text/style).
+**Thin wrapper:** `style` forwards as-is to pixi `TextStyleOptions` (CSS-style font properties — `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `fill`, `letterSpacing`, `lineHeight`, etc.). `renderObject` is the underlying pixi `Text` (or `BitmapText` when `bitmap` is set). See [pixi Text docs](https://pixijs.com/8.x/guides/components/scene-objects/text/) and [pixi TextStyle reference](https://pixijs.com/8.x/guides/components/scene-objects/text/style).
 
 **Pixel-art text — `bitmap`.** Canvas-rasterised `Text` is bilinear-sampled by the GPU, so it goes blurry at non-integer scale (camera zoom, pixel-art upscaling) on non-Retina displays. Set `bitmap` to draw pre-baked glyph quads instead:
 
@@ -510,7 +510,7 @@ new TextComponent({
 
 `bitmap` (boolean) and `resolution` are construction options. Yoga/layout behaviour is unchanged.
 
-**`setText` writes, `content` reads.** `setText(value)` replaces the displayed string; `content` reads it back. (`.text` is the pixi display object, not the string.) `content` is also what the Inspector reports for a `TextComponent`, so an e2e assertion on rendered copy reads `getComponentData(entity, "TextComponent").content`.
+**`setText` writes, `content` reads.** `setText(value)` replaces the displayed string; `content` reads it back. `content` is also what the Inspector reports for a `TextComponent`, so an e2e assertion on rendered copy reads `getComponentData(entity, "TextComponent").content`.
 
 **`setStyle` replaces, `mergeStyle` patches.** `setStyle(style)` assigns a fresh style — properties you omit fall back to the defaults. `mergeStyle(style)` merges over the properties already set, so an imperative recolour (`mergeStyle({ fill })`) keeps the current font, size, weight, etc. The React reconciler uses `setStyle` (declarative: the full style is passed every render).
 
@@ -530,7 +530,7 @@ new TextComponent({ text: "HUD", resolution: window.devicePixelRatio });
 
 ### SplitTextComponent
 
-Per-glyph / animated text — typewriter reveals, per-letter colour/wave, staggered line entrances. Wraps Pixi v8's **experimental** `SplitText` / `SplitBitmapText`; exposes the text as arrays of individually transformable display objects. Transform-synced and layer-attached like `TextComponent`.
+Per-glyph / animated text — typewriter reveals, per-letter colour/wave, staggered line entrances. Wraps Pixi v8's **experimental** `SplitText` / `SplitBitmapText`; exposes the text as arrays of `TextSegment`s, one per character, word and line, each transformable on its own. Transform-synced and layer-attached like `TextComponent`.
 
 ```ts yage-context="entity"
 import { SplitTextComponent } from "@yagejs/renderer";
@@ -547,11 +547,12 @@ const title = entity.add(
   }),
 );
 
-title.chars; // (Text | BitmapText)[] — one per glyph
-title.words; // Container[] — word groups
-title.lines; // Container[] — line groups
-// Glyph x / y / rotation / scale / alpha / tint / visible are yours: the engine
-// writes none. setText / setStyle / resplit() replace every segment — re-read.
+title.chars; // readonly TextSegment[] — one per glyph, whitespace excluded
+title.words; // readonly TextSegment[] — word groups
+title.lines; // readonly TextSegment[] — line groups
+// A segment's x / y / position / rotation / scale / alpha / tint / visible are
+// yours: the engine writes none. setText / setStyle / resplit() replace every
+// segment — re-read.
 
 // Typewriter: stagger each glyph's fade-in (0.05s apart) via a ProcessComponent.
 title.chars.forEach((c) => (c.alpha = 0));
@@ -563,9 +564,11 @@ Tween.stagger(
 ).forEach((p) => pc.run(p));
 ```
 
-`anchor` positions the whole block around its entity Transform. It uses the current split text bounds and is recomputed after text, style, or manual split updates. `charAnchor`, `wordAnchor`, and `lineAnchor` only affect their individual segments.
+`TextSegment` is `{ x, y, position, rotation, scale, alpha, tint, visible }`, where `position` and `scale` take `.set(x, y?)`. Positions are relative to the parent segment (a character within its word, a word within its line). A segment has no container API (`addChild`, `destroy`, `getBounds`): the glyph's Pixi object is reached only through `renderObject.chars`, as for any raw access.
 
-API: `chars` / `words` / `lines` (getters), `setText(v)`, `content` (reads the current string back), `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `visible` / `tint` / `alpha`, `fx` / `setMask` / `clearMask` (same effects/mask surface as the other four components), `splitText` (underlying Pixi object), `isBitmap`. Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).
+`anchor` positions the whole block around its entity Transform, as an option or a property. It reads `undefined` until set, meaning the text's layout origin sits on the entity; assigning `undefined` returns to that, which can differ from `{ x: 0, y: 0 }` (the measured block's corner) by a few pixels. It uses the current split text bounds and is recomputed after text, style, or manual split updates. `charAnchor`, `wordAnchor`, and `lineAnchor` only affect their individual segments.
+
+API: `chars` / `words` / `lines` (getters), `setText(v)`, `content` (reads the current string back), `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `visible` / `tint` / `alpha`, `fx` / `setMask` / `clearMask` (same effects/mask surface as the other four components), `isBitmap`. Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).
 
 ### AnimatedSpriteComponent
 
@@ -615,7 +618,7 @@ The `speed` construction option sets the rate the first `play()` runs at, so a c
 
 `speed` (get/set) is the live playback rate, and the same number `play({ speed })` writes: frames advanced per tick at 60 fps, default `1`. Writing it retimes a running clip without restarting it. `0` holds the current frame while `isPlaying` stays `true`, and a negative value plays backwards. A non-finite value throws from the property and from `play({ speed })` alike. With an `AnimationController` on the entity, `speed` reads the composed rate: the animation definition's `speed` times `controller.speed` times the `playOneShot({ speed })` factor. The controller writes the rate again at its next animation switch and whenever `controller.speed` is written, so set `AnimationController.speed` to retime every animation and the component's `speed` to retime only the clip on screen. The component's `speed` does not retime a running one-shot's lock: the lock keeps the duration computed when the one-shot started, so the clip and the lock can end at different times.
 
-`onFrameChange(listener)` subscribes to frame changes and returns an unsubscribe function, so `this.addCleanup(sprite.onFrameChange(fn))` drops the listener with the component. Any number of listeners can subscribe; each receives the new frame index. Pixi delivers a frame change on play, on every advance, and on the frame reset an animation switch performs, so a listener sees controller switches too. Assigning `animatedSprite.onFrameChange` directly replaces the engine's dispatcher and silences every subscriber.
+`onFrameChange(listener)` subscribes to frame changes and returns an unsubscribe function, so `this.addCleanup(sprite.onFrameChange(fn))` drops the listener with the component. Any number of listeners can subscribe; each receives the new frame index. Pixi delivers a frame change on play, on every advance, and on the frame reset an animation switch performs, so a listener sees controller switches too. Assigning `renderObject.onFrameChange` directly replaces the engine's dispatcher and silences every subscriber.
 
 ```ts
 import { Component } from "@yagejs/core";
@@ -681,7 +684,7 @@ class Signpost extends Entity {
 }
 ```
 
-`new NineSliceComponent({ texture: TextureInput, insets: { left, top, right, bottom }, width, height, anchor?, ...VisualComponentOptions })`; `width` / `height` getters; `setSize(width, height)`. Sizes and insets throw when negative or non-finite; an unknown texture key throws at construction. Inside a UI layout use `UINineSlice`.
+`new NineSliceComponent({ texture: TextureInput, insets: { left, top, right, bottom }, width, height, anchor?, ...VisualComponentOptions })`; `width` / `height` getters; `anchor` get/set; `setSize(width, height)`. Sizes and insets throw when negative or non-finite; an unknown texture key throws at construction. Inside a UI layout use `UINineSlice`.
 
 ### AnimationController
 
@@ -1118,6 +1121,8 @@ class GameScene extends Scene {
 
 **Undeclared `layer` name.** A visual component (`SpriteComponent`, `GraphicsComponent`, etc.) whose `layer` names a layer the scene never declared emits a dev-mode `[yage]` warning (naming the entity, the missing layer, and the scene) and falls back to the `"default"` layer — the visual still renders, just on the wrong layer. The fix is to add `{ name: "<layer>", order: N }` to the scene's `layers`.
 
+**Render-target layers.** A `LayerDef` with `renderTarget: { width, height, texture?, refresh? }` draws into a texture, not the screen. It takes no `space`, and cameras never bind it. See [Offscreen render targets](#offscreen-render-targets).
+
 ### Ensuring a layer
 
 `tree.ensureLayer(def, options?)` creates a missing layer and otherwise returns
@@ -1131,7 +1136,9 @@ their configured layer names.
 A `CameraEntity` auto-binds every world-space layer in the scene tree
 (`LayerDef.space === "world"`, the default), including layers created after
 the camera spawned. Declare a layer with `space: "screen"` to keep it fixed
-to the viewport — cameras skip it on auto-bind.
+to the viewport — cameras skip it on auto-bind. A `space: "canvas"` layer
+(content in the letterbox bars, see Responsive canvas) is never bound, and a
+binding that names one throws.
 
 ```ts
 import { Scene } from "@yagejs/core";
@@ -1463,9 +1470,10 @@ class MyScene extends Scene {
 }
 ```
 
-Don't use `SceneRenderTreeProviderKey` from game code — it's tooling-only
-(Inspector/debug tools enumerate trees across scenes). Resolve the tree for
-the current scene with `this.use(SceneRenderTreeKey)`.
+Don't use `SceneRenderTreeProviderKey` from game code. It is for tools that
+enumerate trees across scenes (Inspector, debug) and for addon presenters that
+add a layer to a given scene; lint rejects it in examples only. Resolve the tree
+for the current scene with `this.use(SceneRenderTreeKey)`.
 
 `SpriteComponent`/`GraphicsComponent`/etc. take a `layer` option and add
 their Pixi object to that layer themselves; game code never adds Pixi objects
@@ -1501,14 +1509,15 @@ await engine.scenes.replace(new Level(), {
 });
 ```
 
-| Export              | Signature                                                                            | Description                                                                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `fade`              | `(opts?: { duration?: number; color?: number }) => SceneTransition`                  | Fade to color and back (triangle alpha ramp). Incoming scene hidden until mid-point. Default: 0.3s, black.                        |
-| `flash`             | `(opts?: { duration?: number; color?: number }) => SceneTransition`                  | Flash overlay decaying from full to zero alpha. Incoming scene revealed under the bright part of the flash. Default: 0.2s, white. |
-| `crossFade`         | `(opts?: { duration?: number }) => SceneTransition`                                  | Cross-dissolve between scenes (outgoing alpha 1→0 while incoming alpha 0→1). Default: 0.4s.                                       |
-| `getSceneContainer` | `(ctx: SceneTransitionContext, scene: Scene \| undefined) => Container \| undefined` | Helper for custom transitions — resolves a scene's PIXI root container.                                                           |
+| Export                    | Signature                                                                                  | Description                                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `fade`                    | `(opts?: { duration?: number; color?: number }) => SceneTransition`                        | Fade to color and back (triangle alpha ramp). Incoming scene hidden until mid-point. Default: 0.3s, black.                        |
+| `flash`                   | `(opts?: { duration?: number; color?: number }) => SceneTransition`                        | Flash overlay decaying from full to zero alpha. Incoming scene revealed under the bright part of the flash. Default: 0.2s, white. |
+| `crossFade`               | `(opts?: { duration?: number }) => SceneTransition`                                        | Cross-dissolve between scenes (outgoing alpha 1→0 while incoming alpha 0→1). Default: 0.4s.                                       |
+| `getSceneRenderTree`      | `(ctx: SceneTransitionContext, scene: Scene \| undefined) => SceneRenderTree \| undefined` | Helper for custom transitions — the scene's render tree, for `alpha`, `visible`, `setOffset` and masks.                           |
+| `createTransitionOverlay` | `(ctx: SceneTransitionContext, opts?: { coverScreen?: boolean }) => TransitionOverlay`     | Helper for custom transitions — a drawing above every scene's world and screen layers, to cover the swap. Destroy it in `end()`.  |
 
-`fade` and `flash` add a stage-level `Graphics` overlay during the transition and clean up on `end()`. `crossFade` manipulates per-scene containers directly via `getSceneContainer`.
+`fade` and `flash` cover the swap with a transition overlay and destroy it in `end()`. `crossFade` fades each scene through its render tree's `alpha`. Writing a custom transition: [Scene Transitions](../scene-transitions.md#custom-transitions).
 
 ## Effects
 
@@ -1557,17 +1566,20 @@ grade.fadeOut(1); // fans out to all three
 sprite.renderAboveEffects = true;
 ```
 
-| Export                     | Signature                                                                            | Description                                                                                                                                                                                                                                                                                                                                                                                      |
-| -------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `.fx` (on every scope)     | `EffectsHost`                                                                        | Per-scope holder. `addEffect(factory)`, `findEffect(definition)`, `destroy()`, `size`. The underlying `EffectStack` is built lazily on first attach.                                                                                                                                                                                                                                             |
-| `EffectsHost`              | class                                                                                | Constructor: `(getContainer: () => Container, scope: EffectScope, makeQueue: (() => ScopedProcessQueue) \| undefined)`. Auto-built on each scope's host object — components, layers, scenes, the renderer.                                                                                                                                                                                       |
-| `EffectHandle`             | interface                                                                            | `remove()` / `setEnabled(on)` / `enabled` / `setIntensity(value)` / `fadeIn(duration): Process` / `fadeOut(duration): Process` / `run(p: Process): Process`. `setIntensity` clamps to 0–1 and controls the effect's primary intensity. `run` schedules a `Process` scoped to the effect's lifetime — pauses with the owning scene, time-scales with it, auto-cancels when the effect is removed. |
-| `Effect.onActivate?(base)` | optional factory hook                                                                | Runs once after `buildExtras` has merged its keys onto the handle. Use to self-schedule per-effect tickers via `base.run(...)` so callers don't have to call `step(dt)` themselves (e.g. CRT noise animator). `buildExtras` itself stays pure — no side effects there.                                                                                                                           |
-| `defineEffect`             | `<H, O>({ name, factory: (opts: O) => Effect<H> }) => (opts: O) => EffectFactory<H>` | Define a reusable named preset with typed options.                                                                                                                                                                                                                                                                                                                                               |
-| `rawFilter`                | `(filter: Filter, opts?: { intensity?: { get, set } }) => EffectFactory`             | Escape hatch for any pixi `Filter`. Without `intensity`, fade calls no-op + warn once.                                                                                                                                                                                                                                                                                                           |
-| `EffectStack`              | class                                                                                | Internal stack owned by `EffectsHost`.                                                                                                                                                                                                                                                                                                                                                           |
-| `tree.addLayerEffect`      | `<H>(factory: EffectFactory<H>, layers: readonly string[]) => H`                     | One effect over several layers, controlled through one handle. The factory runs once per layer, so this is one filter pass per listed layer — for a single layer use `tree.get(name).fx.addEffect`. Handle methods fan out; values (`enabled`, an extra's return value) come from the first listed layer. Throws on an empty list or an unknown layer name, before attaching anything.           |
-| `tree.renderAboveEffects`  | `(node: DisplayContainer) => void`                                                   | Draw `node` after the scene's layers, outside every layer- and scene-scope effect and mask, keeping its logical parent. `tree.renderWithEffects(node)` undoes it. Visual components expose the same thing as the `renderAboveEffects` option; use these for a display object the game parents in itself.                                                                                         |
+| Export                                 | Signature                                                                            | Description                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `.fx` (on every scope)                 | `EffectsHost`                                                                        | Per-scope holder. `addEffect(factory)`, `findEffect(definition)`, `destroy()`, `size`. The underlying `EffectStack` is built lazily on first attach.                                                                                                                                                                                                                                             |
+| `EffectsHost`                          | class                                                                                | Constructor: `(getContainer: () => Container, scope: EffectScope, makeQueue: (() => ScopedProcessQueue) \| undefined)`. Auto-built on each scope's host object — components, layers, scenes, the renderer.                                                                                                                                                                                       |
+| `EffectHandle`                         | interface                                                                            | `remove()` / `setEnabled(on)` / `enabled` / `setIntensity(value)` / `fadeIn(duration): Process` / `fadeOut(duration): Process` / `run(p: Process): Process`. `setIntensity` clamps to 0–1 and controls the effect's primary intensity. `run` schedules a `Process` scoped to the effect's lifetime — pauses with the owning scene, time-scales with it, auto-cancels when the effect is removed. |
+| `Effect.onActivate?(base)`             | optional factory hook                                                                | Runs once after `buildExtras` has merged its keys onto the handle. Use to self-schedule per-effect tickers via `base.run(...)` so callers don't have to call `step(dt)` themselves (e.g. CRT noise animator). `buildExtras` itself stays pure — no side effects there.                                                                                                                           |
+| `defineEffect`                         | `<H, O>({ name, factory: (opts: O) => Effect<H> }) => (opts: O) => EffectFactory<H>` | Define a reusable named preset with typed options.                                                                                                                                                                                                                                                                                                                                               |
+| `rawFilter`                            | `(filter: Filter, opts?: { intensity?: { get, set } }) => EffectFactory`             | Escape hatch for any pixi `Filter`. Without `intensity`, fade calls no-op + warn once.                                                                                                                                                                                                                                                                                                           |
+| `EffectStack`                          | class                                                                                | Internal stack owned by `EffectsHost`.                                                                                                                                                                                                                                                                                                                                                           |
+| `tree.addLayerEffect`                  | `<H>(factory: EffectFactory<H>, layers: readonly string[]) => H`                     | One effect over several layers, controlled through one handle. The factory runs once per layer, so this is one filter pass per listed layer — for a single layer use `tree.get(name).fx.addEffect`. Handle methods fan out; values (`enabled`, an extra's return value) come from the first listed layer. Throws on an empty list or an unknown layer name, before attaching anything.           |
+| `tree.renderAboveEffects`              | `(node: DisplayContainer) => void`                                                   | Draw `node` after the scene's layers, outside every layer- and scene-scope effect and mask, keeping its logical parent. `tree.renderWithEffects(node)` undoes it. Visual components expose the same thing as the `renderAboveEffects` option; use these for a display object the game parents in itself.                                                                                         |
+| `tree.alpha` / `tree.visible`          | `number` / `boolean`                                                                 | Opacity and visibility of the whole scene, canvas layers included. The scene stack writes `visible` too: it hides scenes under an opaque one, and shows every scene during a transition. A non-finite `alpha` throws.                                                                                                                                                                            |
+| `tree.setOffset(x, y)` / `tree.offset` | `(number, number) => void` / `{ x, y }`                                              | Draw the whole scene shifted by a virtual-pixel offset, canvas layers included. A sliding transition moves a scene with it.                                                                                                                                                                                                                                                                      |
+| `tree.setTransitionMask`               | `(factory: MaskFactory) => MaskHandle`                                               | Mask the scene for a transition. The scene's own `setMask` mask is set aside, not destroyed, and comes back when the handle's `remove()` runs; a `setMask` call meanwhile waits for it.                                                                                                                                                                                                          |
 
 **Filter ordering:** pixi processes filters bottom-up the display tree — component → layer → scene → screen. Each outer scope sees the previous scope's rasterized output, so screen-scope `pixelate` will pixelate already-bloomed gameplay.
 
@@ -1629,89 +1641,113 @@ Mask coordinates are the masked object's own local space: world pixels on a worl
 
 ## Offscreen render targets
 
-`renderer.createRenderTarget(source, options)` draws a container into a texture the game owns and redraws on its own schedule. Use it when several objects must composite against each other before reaching the screen (a light buffer, a trail buffer, a downscaled blur source), or to cache expensive static content as one texture.
+A layer declared with `renderTarget` draws into a texture, not the screen. Visuals join it with `layer: name` and follow their entity's `Transform`; another layer shows the texture through a `SpriteComponent`. Use it when several objects must composite against each other before reaching the screen (a light buffer, an `erase` cut-out), when one drawing shows in several places (a radar on two monitors), or for static content too expensive to redraw every frame.
 
-The source is a raw Pixi container the game builds, moves and destroys: no visual component draws into a render target, so this is one of the few documented places game code handles Pixi objects.
-
-```ts yage-context="scene-enter"
-import { Component, Transform } from "@yagejs/core";
-import { Container, Graphics } from "pixi.js";
+```ts
+import { Component, Entity, Scene, Transform, Vec2 } from "@yagejs/core";
 import {
-  RendererKey,
+  GraphicsComponent,
+  SceneRenderTreeKey,
   SpriteComponent,
-  registerTexture,
-  unregisterTexture,
 } from "@yagejs/renderer";
-import type { RenderTargetHandle } from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
 
-// One component owns all three resources — the source container, the buffer
-// and the registered key — and frees them in onDestroy.
-class LightBuffer extends Component {
-  private readonly source = new Container();
-  private readonly hole = new Graphics().circle(0, 0, 120).fill(0xffffff);
-  private target!: RenderTargetHandle;
+const LIGHTING = "arena:lighting";
 
-  /** Registered keys are engine-global, so give each buffer its own. */
-  constructor(private readonly key: string) {
-    super();
-  }
-
-  onAdd(): void {
-    const darkness = new Graphics()
-      .rect(0, 0, 1280, 720)
-      .fill({ color: 0x05060a, alpha: 0.85 });
-    this.hole.blendMode = "erase"; // cuts the darkness INSIDE the buffer
-    this.source.addChild(darkness, this.hole); // never added to the scene tree
-
-    this.target = this.use(RendererKey).createRenderTarget(this.source, {
-      width: 1280,
-      height: 720,
-      resolutionScale: 0.5, // quarter the texels; invisible on soft gradients
-    });
-    registerTexture(this.key, this.target.texture);
-  }
-
-  /** Move the lit spot. Coordinates are buffer pixels, not world pixels. */
-  moveLight(x: number, y: number): void {
-    this.hole.position.set(x, y);
-    this.target.invalidate();
-  }
-
-  update(): void {
-    this.target.renderIfNeeded(); // draws only when a redraw is pending
-  }
-
-  onDestroy(): void {
-    unregisterTexture(this.key); // the key outlives the texture
-    this.target.destroy(); // frees the buffer's GPU memory
-    this.source.destroy({ children: true }); // frees the offscreen content
+class Darkness extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(
+      new GraphicsComponent({ layer: "lighting" }).draw((g) =>
+        g.rect(0, 0, 1280, 720).fill({ color: 0x05060a, alpha: 0.85 }),
+      ),
+    );
   }
 }
 
-// In a Scene. The owner is added first, so the key resolves for the sprite.
-const LIGHTING = "arena:lighting";
+class LampControl extends Component {
+  private readonly transform = this.sibling(Transform);
 
-const lights = this.spawn("lights");
-lights.add(new Transform());
-lights.add(new LightBuffer(LIGHTING));
-lights.add(new SpriteComponent({ texture: LIGHTING, layer: "overlay" }));
+  /** Texture pixels, not world pixels. */
+  moveTo(x: number, y: number): void {
+    this.transform.setPosition(x, y);
+    this.use(SceneRenderTreeKey).get("lighting").renderTarget?.invalidate(); // on-demand layer
+  }
+}
+
+class Lamp extends Entity {
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(640, 360) }));
+    // `erase` cuts the darkness INSIDE the texture only.
+    this.add(
+      new GraphicsComponent({ layer: "lighting", blendMode: "erase" }).draw(
+        (g) => g.circle(0, 0, 120).fill(0xffffff),
+      ),
+    );
+    this.add(new LampControl());
+  }
+}
+
+class ArenaScene extends Scene {
+  readonly name = "arena";
+  readonly layers: readonly LayerDef[] = [
+    {
+      name: "lighting",
+      order: 0,
+      renderTarget: {
+        width: 1280,
+        height: 720,
+        texture: LIGHTING, // registered on scene enter, unregistered on exit
+        refresh: "on-demand",
+        resolutionScale: 0.5,
+      },
+    },
+    { name: "world", order: 0 },
+    { name: "overlay", order: 10 },
+  ];
+
+  onEnter(): void {
+    this.spawn(Darkness);
+    this.spawn(Lamp);
+    const overlay = this.spawn("lighting-overlay");
+    overlay.add(new Transform());
+    overlay.add(new SpriteComponent({ texture: LIGHTING, layer: "overlay" }));
+  }
+}
 ```
 
-Destroying that entity runs `onDestroy` and releases all three; so does
-exiting the scene, which destroys its entities. Own the buffer on a scene's
-`onEnter` / `onExit` pair instead when its lifetime is exactly the scene's.
+| Member                                        | Signature                                                                                  | Description                                                                                                                                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LayerDef.renderTarget`                       | `LayerRenderTargetOptions`                                                                 | Draw the layer into a texture.                                                                                                                                                                        |
+| `LayerRenderTargetOptions`                    | `{ width, height, texture?, refresh?, resolutionScale?, antialias?, clearColor?, label? }` | `width` / `height` in layer pixels. `texture` registers the texture under that key while the scene lives. `refresh` is `"every-frame"` (default) or `"on-demand"`. The rest as `RenderTargetOptions`. |
+| `RenderLayer.renderTarget`                    | `LayerRenderTarget \| undefined`                                                           | The layer's texture; `undefined` on a layer that draws on screen.                                                                                                                                     |
+| `RenderLayer.space`                           | `RenderLayerSpace`                                                                         | `"texture"` on a render-target layer, so a check for `"world"` leaves it out.                                                                                                                         |
+| `layerTarget.texture`                         | `TextureResource`                                                                          | What the layer draws into.                                                                                                                                                                            |
+| `layerTarget.invalidate()`                    | `() => void`                                                                               | Redraw on the next frame. Needed only with `refresh: "on-demand"`.                                                                                                                                    |
+| `layerTarget.needsRender`                     | `boolean`                                                                                  | Whether a redraw is pending.                                                                                                                                                                          |
+| `layerTarget.resize(w, h, scale?)`            | `(number, number, number?) => void`                                                        | Resize and redraw on the next frame. Omitting `scale` keeps the configured `resolutionScale`.                                                                                                         |
+| `layerTarget.width` / `height` / `resolution` | `number`                                                                                   | Size in layer pixels, and the texels per pixel actually allocated.                                                                                                                                    |
 
-Give each buffer its own key rather than a shared constant. Registrations are
-engine-global, and a `replace` transition keeps both scenes alive at once, so
-two scenes registering `"lighting"` leave one `unregisterTexture` call to
-remove the other scene's entry. Every later lookup of that key then throws.
+Semantics:
+
+- **Redraw timing.** The texture redraws just before the frame is drawn, after `DisplaySystem` has written every visual's pose, so it never lags a frame. `"every-frame"` redraws each frame, also while the scene is hidden under another (another scene can show the texture by key); `"on-demand"` only after `invalidate()` or `resize()`. With `renderer.drawingEnabled = false` nothing draws until `renderer.render()` / `captureCanvas()`.
+- **Coordinate space.** Layer pixels are texture pixels: a visual at `(100, 50)` lands at texture pixel `(100, 50)`. No camera binds the layer and the responsive `fit` does not reach it. To follow the camera, place entities at `camera.worldToScreen(x, y)`.
+- **Off screen.** The layer's container is never in the scene's display tree. `onPointer` never fires for its visuals, their bounds are in texture pixels, and `renderAboveEffects` leaves them in the texture.
+- **Validation.** A render-target layer takes no `space`, `"default"` cannot be one, and its size must be positive; the scene's declared layers are all checked when it enters, before any is created. A camera whose `bindings` names a render-target layer throws when it resolves its bindings.
+- **Effects.** Scene `fx` / `setMask` do not reach it; the layer's own `fx` / `setMask` apply inside the texture.
+- **Lifetime.** The scene owns the texture: scene exit destroys it and unregisters the key. When two live scenes register the same key, it resolves the later scene's texture, and goes back to the earlier scene's when the later one exits.
+- **Order.** Render-target layers redraw in declaration order; declare a layer before a render-target layer that shows its texture.
+
+### `createRenderTarget` for rendering tools
+
+`renderer.createRenderTarget(source, options)` draws a Pixi container the caller builds and owns into a texture. It is for rendering tools that manage their own Pixi objects (the lighting renderers use it). Game content goes on a render-target layer instead.
 
 | Member                                   | Signature                                                                        | Description                                                                                                                                                                                                                                                                                              |
 | ---------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `RendererPlugin.createRenderTarget`      | `(source: DisplayContainer, options: RenderTargetOptions) => RenderTargetHandle` | Allocate the buffer. The repeatable counterpart of `createTexture`, which bakes once and never changes.                                                                                                                                                                                                  |
 | `RenderTargetOptions`                    | `{ width, height, resolutionScale?, antialias?, clearColor?, label? }`           | `width` / `height` are in source coordinates. `resolutionScale` (default `1`) multiplies the renderer's own resolution. `clearColor` defaults to transparent.                                                                                                                                            |
 | `handle.texture`                         | `TextureResource`                                                                | What the buffer draws into. Feed it to `SpriteComponent` or `textureMask` (via `registerTexture`), or to a filter uniform.                                                                                                                                                                               |
-| `handle.source`                          | `DisplayContainer`                                                               | The container passed to `createRenderTarget`. `destroy()` leaves it alone — freeing it is the game's job.                                                                                                                                                                                                |
+| `handle.source`                          | `DisplayContainer`                                                               | The container passed to `createRenderTarget`. `destroy()` leaves it alone — freeing it is the caller's job.                                                                                                                                                                                              |
 | `handle.render()`                        | `() => void`                                                                     | Draw now and clear the pending flag.                                                                                                                                                                                                                                                                     |
 | `handle.renderIfNeeded()`                | `() => boolean`                                                                  | Draw only when pending; returns whether it drew.                                                                                                                                                                                                                                                         |
 | `handle.invalidate()`                    | `() => void`                                                                     | Mark the buffer stale.                                                                                                                                                                                                                                                                                   |
@@ -1720,7 +1756,7 @@ remove the other scene's entry. Every later lookup of that key then throws.
 | `handle.width` / `height` / `resolution` | `number`                                                                         | Measured size in source coordinates, and the texels-per-pixel actually allocated.                                                                                                                                                                                                                        |
 | `handle.destroy()`                       | `() => void`                                                                     | Free the texture's GPU memory. Repeatable. The source container is untouched — destroy that as well. Afterwards `texture`, `width`, `height`, `resolution`, `render()` and `resize()` throw `RenderTargetHandle.<member>: the handle is destroyed.`; so does `renderIfNeeded()` while a draw is pending. |
 
-Semantics:
+Semantics of a handle from `createRenderTarget`:
 
 - **Coordinate space.** The buffer is drawn in the source container's OWN space: a child at local `(100, 50)` lands at texture pixel `(100, 50)`. Ancestor transforms never reach it, so neither the camera nor the responsive `fit` scale moves or resizes the content. To follow the camera, move the source's children yourself. `camera.position` alone is not enough once zoom, rotation, or shake are in play — run the world point through `camera.worldToScreen(x, y)` and place the child at the result, or size the buffer to `renderer.visibleVirtualRect`.
 - **The source's own transform DOES apply.** Setting `source.position` or `source.scale` shifts everything inside the texture. Leave the source untransformed unless that is what you want.

@@ -19,12 +19,12 @@ import {
 import {
   RendererPlugin,
   GraphicsComponent,
-  type DisplayContainer,
-  SceneRenderTreeProviderKey,
+  type SceneRenderTree,
   chessboard,
   crossFade,
   fade,
   flash,
+  getSceneRenderTree,
   iris,
   irisReveal,
   slidePush,
@@ -45,26 +45,22 @@ const WIDTH = 640;
 const HEIGHT = 360;
 
 // ----- Custom slideIn transition --------------------------------------------
-// Slides the incoming scene's root container in from the right.
+// Slides the incoming scene in from the right through its render tree.
 function slideIn(duration: number): SceneTransition {
-  let toRoot: DisplayContainer | undefined;
+  let to: SceneRenderTree | undefined;
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      if (!ctx.toScene) return;
-      const provider = ctx.engineContext.resolve(SceneRenderTreeProviderKey);
-      toRoot = provider.getTree(ctx.toScene)?.root;
-      if (toRoot) toRoot.x = WIDTH;
+      to = getSceneRenderTree(ctx, ctx.toScene);
+      to?.setOffset(WIDTH, 0);
     },
     tick(_dt, ctx) {
-      if (!toRoot) return;
       const t = Math.min(ctx.elapsed / duration, 1);
-      const eased = easeOutCubic(t);
-      toRoot.x = WIDTH * (1 - eased);
+      to?.setOffset(WIDTH * (1 - easeOutCubic(t)), 0);
     },
     end() {
-      if (toRoot) toRoot.x = 0;
-      toRoot = undefined;
+      to?.setOffset(0, 0);
+      to = undefined;
     },
   };
 }

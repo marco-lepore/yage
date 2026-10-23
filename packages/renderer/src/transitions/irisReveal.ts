@@ -4,11 +4,12 @@ import type {
   SceneTransition,
   SceneTransitionContext,
 } from "@yagejs/core";
+import type { DrawContext } from "../DrawContext.js";
 import { attributed } from "../internal/attribution.js";
-import { Graphics } from "pixi.js";
-import type { Container } from "pixi.js";
+import { graphicsMask } from "../masks/graphicsMask.js";
+import type { MaskHandle } from "../masks/MaskHandle.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
-import { getSceneContainer, getVirtualBounds } from "./helpers.js";
+import { getSceneRenderTree, getVirtualBounds } from "./helpers.js";
 
 export interface IrisRevealOptions {
   /** Iris duration in seconds. Default: 0.6. */
@@ -26,7 +27,7 @@ export interface IrisRevealOptions {
 
 /**
  * Reveal the destination scene through an expanding circular mask. The
- * incoming scene's container is masked by a circle that grows from
+ * incoming scene is masked by a circle that grows from
  * radius 0 to a radius covering the canvas, so the new scene "blooms"
  * over the previous one from the chosen center point. The previous
  * scene stays visible outside the iris until the circle fully covers
@@ -44,10 +45,10 @@ export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
   const duration = opts.duration ?? 0.6;
   const easing = opts.easing ?? easeLinear;
 
-  let toContainer: Container | undefined;
-  let maskGfx: Graphics | undefined;
+  let mask: MaskHandle | undefined;
   let cx = 0;
   let cy = 0;
+  let radius = 0;
   let maxRadius = 0;
 
   return {
@@ -56,8 +57,8 @@ export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
       const provider = ctx.engineContext.resolve(SceneRenderTreeProviderKey);
       if (ctx.toScene) provider.bringSceneToFront?.(ctx.toScene);
 
-      toContainer = getSceneContainer(ctx, ctx.toScene);
-      if (!toContainer) return;
+      const toTree = getSceneRenderTree(ctx, ctx.toScene);
+      if (!toTree) return;
 
       const { width: w, height: h } = getVirtualBounds(ctx);
       cx = opts.center?.x ?? w / 2;
@@ -66,37 +67,32 @@ export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
       const farY = Math.max(cy, h - cy);
       maxRadius = Math.hypot(farX, farY);
 
-      maskGfx = new Graphics();
-      toContainer.addChild(maskGfx);
-      toContainer.setMask({ mask: maskGfx, inverse: false });
-      drawCircleMask(maskGfx, cx, cy, 0);
+      radius = 0;
+      // The transition mask sets aside any mask the scene set for itself,
+      // and removing it in `end()` puts that mask back.
+      mask = toTree.setTransitionMask(
+        graphicsMask((g) => drawCircleMask(g, cx, cy, radius)),
+      );
     },
     tick(_dt: number, ctx: SceneTransitionContext) {
-      if (!maskGfx) return;
+      if (!mask) return;
       const t = Math.min(ctx.elapsed / duration, 1);
-      const r =
+      radius =
         attributed(
           ctx.engineContext.tryResolve(ErrorBoundaryKey),
           { kind: "Scene transition easing", event: "irisReveal" },
           () => easing(t),
         ) * maxRadius;
-      drawCircleMask(maskGfx, cx, cy, r);
+      mask.redraw();
     },
     end() {
-      // Direct assignment — see `chessboard.end()` and `attachMask` for the
-      // pixi v8 setMask({ mask: null }) hazard.
-      if (toContainer) toContainer.mask = null;
-      if (maskGfx) {
-        maskGfx.removeFromParent();
-        maskGfx.destroy();
-        maskGfx = undefined;
-      }
-      toContainer = undefined;
+      mask?.remove();
+      mask = undefined;
     },
   };
 }
 
-function drawCircleMask(g: Graphics, x: number, y: number, r: number): void {
+function drawCircleMask(g: DrawContext, x: number, y: number, r: number): void {
   g.clear();
   if (r > 0) g.circle(x, y, r).fill({ color: 0xffffff });
 }

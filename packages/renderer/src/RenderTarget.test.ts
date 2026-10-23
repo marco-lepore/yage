@@ -380,3 +380,53 @@ describe("deferred target drawing", () => {
     expect(prerender.items).toHaveLength(0);
   });
 });
+
+describe("render-target layer drawing", () => {
+  function layerTarget(refresh: "every-frame" | "on-demand") {
+    const { renderer, calls } = fakeRenderer();
+    const prerender = new WebGLRenderer().runners.prerender;
+    Object.assign(renderer, { runners: { prerender } });
+    const stage = new Container();
+    const source = new Container();
+    const target = createRenderTarget(
+      renderer,
+      source,
+      { width: 10, height: 10 },
+      { stage, isEnabled: () => true, refresh },
+    );
+    return { calls, prerender, stage, source, target };
+  }
+
+  it("redraws an every-frame target before each stage render", () => {
+    const { calls, prerender, stage, source, target } =
+      layerTarget("every-frame");
+    prerender.emit({ container: stage });
+    prerender.emit({ container: stage });
+    expect(calls.map((call) => call.container)).toEqual([source, source]);
+    expect(target.needsRender).toBe(false);
+    target.destroy();
+  });
+
+  it("ignores renders of anything but the stage", () => {
+    const { calls, prerender, source, target } = layerTarget("every-frame");
+    prerender.emit({ container: source });
+    expect(calls).toHaveLength(0);
+    target.destroy();
+  });
+
+  it("redraws an on-demand target only after invalidate or resize", () => {
+    const { calls, prerender, stage, target } = layerTarget("on-demand");
+    prerender.emit({ container: stage });
+    prerender.emit({ container: stage });
+    expect(calls).toHaveLength(1);
+    target.invalidate();
+    expect(target.needsRender).toBe(true);
+    prerender.emit({ container: stage });
+    expect(calls).toHaveLength(2);
+    target.resize(20, 20);
+    prerender.emit({ container: stage });
+    prerender.emit({ container: stage });
+    expect(calls).toHaveLength(3);
+    target.destroy();
+  });
+});

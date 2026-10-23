@@ -160,7 +160,7 @@ function setup(anims?: Record<TestAnim, AnimationDef>) {
   const ctrl = entity.add(
     new AnimationController<TestAnim>(anims ?? testAnims()),
   );
-  const sprite = spriteComp.animatedSprite as unknown as MockSprite;
+  const sprite = spriteComp.renderObject as unknown as MockSprite;
   return { entity, scene, context, ctrl, sprite, spriteComp };
 }
 
@@ -347,6 +347,24 @@ describe("AnimationController", () => {
     ctrl.play("walk");
     expect(sprite.anchor.x).toBe(0.3);
     expect(sprite.anchor.y).toBe(0.7);
+  });
+
+  it("a per-animation anchor replaces one set on the sprite", () => {
+    const anims = testAnims();
+    anims.walk.anchor = { x: 0.3, y: 0.7 };
+    const { ctrl, sprite, spriteComp } = setup(anims);
+    spriteComp.anchor = { x: 0.5, y: 1 };
+    ctrl.play("walk");
+    expect(spriteComp.anchor).toEqual({ x: 0.3, y: 0.7 });
+    expect(sprite.anchor.x).toBe(0.3);
+  });
+
+  it("throws at construction on a non-finite animation anchor", () => {
+    const anims = testAnims();
+    anims.walk.anchor = { x: NaN, y: 0 };
+    expect(() => new AnimationController<TestAnim>(anims)).toThrow(
+      "AnimationController.constructor: walk.anchor.x must be finite, got NaN.",
+    );
   });
 
   it("anchor is not changed when not specified in def", () => {

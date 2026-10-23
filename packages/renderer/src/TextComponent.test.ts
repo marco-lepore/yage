@@ -127,8 +127,8 @@ describe("TextComponent", () => {
 
   it("creates a pixi Text with the supplied content", () => {
     const comp = new TextComponent({ text: "hello" });
-    expect(comp.text).toBeDefined();
-    expect(comp.text.text).toBe("hello");
+    expect(comp.renderObject).toBeDefined();
+    expect(comp.renderObject.text).toBe("hello");
   });
 
   it("defaults to 'default' layer", () => {
@@ -146,7 +146,7 @@ describe("TextComponent", () => {
       text: "x",
       style: { fontSize: 14, fill: 0xff0000 },
     });
-    expect(comp.text.style).toEqual({ fontSize: 14, fill: 0xff0000 });
+    expect(comp.renderObject.style).toEqual({ fontSize: 14, fill: 0xff0000 });
   });
 
   it("sets anchor when provided", () => {
@@ -154,7 +154,28 @@ describe("TextComponent", () => {
       text: "x",
       anchor: { x: 0.5, y: 1 },
     });
-    expect(comp.text.anchor.set).toHaveBeenCalledWith(0.5, 1);
+    expect(comp.renderObject.anchor.set).toHaveBeenCalledWith(0.5, 1);
+  });
+
+  it("reads and writes the anchor after construction", () => {
+    const comp = new TextComponent({ text: "x" });
+    comp.anchor = { x: 1, y: 0.5 };
+    expect(comp.renderObject.anchor).toMatchObject({ x: 1, y: 0.5 });
+    expect(comp.anchor).toEqual({ x: 1, y: 0.5 });
+    expect(() => {
+      comp.anchor = { x: Infinity, y: 0 };
+    }).toThrow("TextComponent.anchor: anchor.x must be finite, got Infinity.");
+  });
+
+  it("throws on a non-finite anchor option, naming the coordinate", () => {
+    expect(
+      () => new TextComponent({ text: "x", anchor: { x: NaN, y: 0 } }),
+    ).toThrow("TextComponent.constructor: anchor.x must be finite, got NaN.");
+    expect(
+      () => new TextComponent({ text: "x", anchor: { x: 0, y: -Infinity } }),
+    ).toThrow(
+      "TextComponent.constructor: anchor.y must be finite, got -Infinity.",
+    );
   });
 
   it("sets visibility, tint, and alpha when provided", () => {
@@ -164,20 +185,20 @@ describe("TextComponent", () => {
       tint: 0x00ff00,
       alpha: 0.25,
     });
-    expect(comp.text.visible).toBe(false);
-    expect(comp.text.tint).toBe(0x00ff00);
-    expect(comp.text.alpha).toBe(0.25);
+    expect(comp.renderObject.visible).toBe(false);
+    expect(comp.renderObject.tint).toBe(0x00ff00);
+    expect(comp.renderObject.alpha).toBe(0.25);
   });
 
   it("applies the interactive option, defaulting eventMode to static", () => {
     const comp = new TextComponent({ text: "x", interactive: {} });
-    expect(comp.text.eventMode).toBe("static");
+    expect(comp.renderObject.eventMode).toBe("static");
   });
 
   it("setText updates the underlying Text content", () => {
     const comp = new TextComponent({ text: "old" });
     comp.setText("new");
-    expect(comp.text.text).toBe("new");
+    expect(comp.renderObject.text).toBe("new");
   });
 
   it("content reads the displayed string back, tracking setText", () => {
@@ -190,15 +211,15 @@ describe("TextComponent", () => {
   it("setStyle replaces the underlying Text style", () => {
     const comp = new TextComponent({ text: "x", style: { fontSize: 10 } });
     comp.setStyle({ fontSize: 20 });
-    expect(comp.text.style).toEqual({ fontSize: 20 });
+    expect(comp.renderObject.style).toEqual({ fontSize: 20 });
   });
 
   it("tint and alpha setters update the underlying Text", () => {
     const comp = new TextComponent({ text: "x" });
     comp.tint = 0xabcdef;
     comp.alpha = 0.5;
-    expect(comp.text.tint).toBe(0xabcdef);
-    expect(comp.text.alpha).toBe(0.5);
+    expect(comp.renderObject.tint).toBe(0xabcdef);
+    expect(comp.renderObject.alpha).toBe(0.5);
     expect(comp.tint).toBe(0xabcdef);
     expect(comp.alpha).toBe(0.5);
   });
@@ -211,7 +232,7 @@ describe("TextComponent", () => {
 
     const layerContainer = layerManager.defaultLayer
       .container as unknown as InstanceType<typeof mocks.MockContainer>;
-    expect(layerContainer.children).toContain(comp.text);
+    expect(layerContainer.children).toContain(comp.renderObject);
   });
 
   it("onDestroy removes the Text from its parent and destroys it", () => {
@@ -220,7 +241,7 @@ describe("TextComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new TextComponent({ text: "x" }));
 
-    const txt = comp.text as unknown as InstanceType<
+    const txt = comp.renderObject as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(txt.parent).not.toBeNull();
@@ -233,25 +254,31 @@ describe("TextComponent", () => {
   it("applies the engine default text style as a base, per-text style wins", () => {
     setDefaultTextStyle({ fontFamily: "Inter", fill: 0x111111 });
     const comp = new TextComponent({ text: "x", style: { fill: 0xff0000 } });
-    expect(comp.text.style).toEqual({ fontFamily: "Inter", fill: 0xff0000 });
+    expect(comp.renderObject.style).toEqual({
+      fontFamily: "Inter",
+      fill: 0xff0000,
+    });
   });
 
   it("keeps the engine default under a recolour via setStyle", () => {
     setDefaultTextStyle({ fontFamily: "Inter" });
     const comp = new TextComponent({ text: "x", style: { fill: 0xff0000 } });
     comp.setStyle({ fill: 0x00ff00 });
-    expect(comp.text.style).toEqual({ fontFamily: "Inter", fill: 0x00ff00 });
+    expect(comp.renderObject.style).toEqual({
+      fontFamily: "Inter",
+      fill: 0x00ff00,
+    });
   });
 
   it("constructs a canvas Text by default", () => {
     const comp = new TextComponent({ text: "x" });
-    expect(comp.text).toBeInstanceOf(mocks.MockText);
-    expect(comp.text).not.toBeInstanceOf(mocks.MockBitmapText);
+    expect(comp.renderObject).toBeInstanceOf(mocks.MockText);
+    expect(comp.renderObject).not.toBeInstanceOf(mocks.MockBitmapText);
   });
 
   it("constructs a BitmapText when bitmap: true", () => {
     const comp = new TextComponent({ text: "x", bitmap: true });
-    expect(comp.text).toBeInstanceOf(mocks.MockBitmapText);
+    expect(comp.renderObject).toBeInstanceOf(mocks.MockBitmapText);
   });
 
   it("bitmap text reads fontFamily / fontSize from style", () => {
@@ -260,8 +287,8 @@ describe("TextComponent", () => {
       bitmap: true,
       style: { fill: 0xff0000, fontFamily: "PressStart", fontSize: 16 },
     });
-    expect(comp.text).toBeInstanceOf(mocks.MockBitmapText);
-    expect(comp.text.style).toMatchObject({
+    expect(comp.renderObject).toBeInstanceOf(mocks.MockBitmapText);
+    expect(comp.renderObject.style).toMatchObject({
       fill: 0xff0000,
       fontFamily: "PressStart",
       fontSize: 16,
@@ -281,17 +308,19 @@ describe("TextComponent", () => {
         bitmap: true,
         style: { fontFamily: "Body", fontSize: 12 },
       });
-      expect(comp.text.style).toMatchObject({ fontFamily: "Body" });
+      expect(comp.renderObject.style).toMatchObject({ fontFamily: "Body" });
 
       comp.setStyle({ fontFamily: "Body", fontSize: 12, fontWeight: "bold" });
       // setStyle has to route through buildTextOptions so the variant redirect
       // runs on the update path — otherwise emphasis silently lands on the base
       // atlas after construction.
-      expect(comp.text.style).toMatchObject({ fontFamily: "Body bold" });
+      expect(comp.renderObject.style).toMatchObject({
+        fontFamily: "Body bold",
+      });
       // fontWeight is dropped on the redirect (the variant atlas already baked
       // its emphasis; Pixi resolves bitmap fonts by family-name alone).
       expect(
-        (comp.text.style as { fontWeight?: string }).fontWeight,
+        (comp.renderObject.style as { fontWeight?: string }).fontWeight,
       ).toBeUndefined();
     } finally {
       // The registry is process-global — restore it even if an assertion above
@@ -307,7 +336,7 @@ describe("TextComponent", () => {
       style: { fontFamily: "PressStart", fontSize: 16, fill: 0xffcc00 },
     });
     comp.mergeStyle({ fill: 0xff0000 });
-    expect(comp.text.style).toMatchObject({
+    expect(comp.renderObject.style).toMatchObject({
       fill: 0xff0000,
       fontFamily: "PressStart",
       fontSize: 16,
@@ -330,14 +359,14 @@ describe("TextComponent", () => {
       style: { fontSize: 10, fontFamily: "Foo" },
     });
     comp.setStyle({ fontSize: 20, fill: 0x00ff00 });
-    expect(comp.text.style).toEqual({ fontSize: 20, fill: 0x00ff00 });
+    expect(comp.renderObject.style).toEqual({ fontSize: 20, fill: 0x00ff00 });
   });
 
   it("forwards resolution to a canvas Text constructor", () => {
     const comp = new TextComponent({ text: "x", resolution: 3 });
-    expect((comp.text as unknown as { resolution?: number }).resolution).toBe(
-      3,
-    );
+    expect(
+      (comp.renderObject as unknown as { resolution?: number }).resolution,
+    ).toBe(3);
   });
 
   it("does NOT forward resolution to a BitmapText (font-managed in v8)", () => {
@@ -346,9 +375,9 @@ describe("TextComponent", () => {
       bitmap: true,
       resolution: 3,
     });
-    expect(comp.text).toBeInstanceOf(mocks.MockBitmapText);
+    expect(comp.renderObject).toBeInstanceOf(mocks.MockBitmapText);
     expect(
-      (comp.text as unknown as { resolution?: number }).resolution,
+      (comp.renderObject as unknown as { resolution?: number }).resolution,
     ).toBeUndefined();
   });
 
@@ -358,7 +387,7 @@ describe("TextComponent", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
       const comp = entity.add(new TextComponent({ text: "score" }));
-      const text = comp.text as unknown as InstanceType<
+      const text = comp.renderObject as unknown as InstanceType<
         typeof mocks.MockContainer
       >;
       text.boundsBox = { x: 2, y: 3, width: 50, height: 18 };
@@ -373,7 +402,7 @@ describe("TextComponent", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
       const comp = entity.add(new TextComponent({ text: "x", visible: false }));
-      const text = comp.text as unknown as InstanceType<
+      const text = comp.renderObject as unknown as InstanceType<
         typeof mocks.MockContainer
       >;
       text.boundsBox = { x: 0, y: 0, width: 8, height: 8 };

@@ -11,14 +11,19 @@ import type {
   DestroyOptions as PixiDestroyOptions,
   Filter as PixiFilter,
   FillGradient,
+  FillInput,
   Graphics,
+  GraphicsPath,
+  Matrix,
   NineSliceSprite as PixiNineSliceSprite,
   Particle as PixiParticle,
   ParticleContainer as PixiParticleContainer,
   PointData,
+  RoundedPoint,
   Sprite,
   SplitBitmapText,
   SplitText,
+  StrokeInput,
   Text,
   Texture,
   TextureSource,
@@ -55,8 +60,23 @@ export type TextureInput = string | TextureResource | TextureHandle;
  */
 export type TextureRef = string | TextureHandle;
 
-/** The mutable graphics drawing context used by renderer draw callbacks. */
-export type GraphicsContext = Graphics;
+/** A graphics display object, as `GraphicsComponent` draws with. Draw callbacks receive a `DrawContext`. */
+export type DisplayGraphics = Graphics;
+
+/** What a `DrawContext.fill` accepts: a colour, a gradient, a texture or a fill style. */
+export type DrawFill = FillInput;
+
+/** What a `DrawContext.stroke` accepts: a colour, a gradient or a stroke style. */
+export type DrawStroke = StrokeInput;
+
+/** A prepared path for `DrawContext.path`. */
+export type DrawPath = GraphicsPath;
+
+/** A 2D affine matrix, as the `DrawContext` transform stack reads and writes it. */
+export type DrawMatrix = Matrix;
+
+/** A corner of `DrawContext.roundShape`: a point plus an optional `radius`. */
+export type DrawRoundedPoint = RoundedPoint;
 
 /** A display container used by renderer and UI APIs. */
 export type DisplayContainer = Container;

@@ -101,6 +101,8 @@ export class FitController {
     private target: HTMLElement | null,
     initialCanvasW: number,
     initialCanvasH: number,
+    /** Runs after every transform this controller applies. */
+    private readonly onApply?: () => void,
   ) {
     this.canvasW = initialCanvasW;
     this.canvasH = initialCanvasH;
@@ -496,6 +498,7 @@ export class FitController {
     // `expand` lets the game draw into bars on purpose, `cover` and
     // `stretch` fully cover the canvas already.
     this.applyLetterboxMask();
+    this.onApply?.();
   }
 
   private applyLetterboxMask(): void {

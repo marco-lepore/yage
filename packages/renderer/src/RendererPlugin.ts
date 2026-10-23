@@ -38,10 +38,10 @@ import { DisplaySystem } from "./DisplaySystem.js";
 import { RenderFacetContributor } from "./RenderFacetContributor.js";
 import { FitController } from "./Fit.js";
 import type { CanvasRect, VirtualRect } from "./Fit.js";
+import type { DrawContext } from "./DrawContext.js";
 import type {
   Application,
   DisplayContainer,
-  GraphicsContext,
   TextStyle,
   TextureResource,
 } from "./public-types.js";
@@ -55,7 +55,11 @@ import type {
   RenderTargetOptions,
 } from "./RenderTarget.js";
 import { RendererKey } from "./types.js";
-import type { RendererConfig, RendererFitOptions } from "./types.js";
+import type {
+  RendererBackend,
+  RendererConfig,
+  RendererFitOptions,
+} from "./types.js";
 import type { SceneRenderTreeProvider } from "./SceneRenderTree.js";
 import {
   SceneRenderTreeKey,
@@ -134,6 +138,12 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * intended canvas-pixel coordinates.
    */
   private _worldRoot!: DisplayContainer;
+  /**
+   * Parents every scene's canvas-space layers: a sibling of `_worldRoot`
+   * above it, so those layers draw in canvas pixels, outside the fit
+   * transform and the letterbox mask, above every scene's other layers.
+   */
+  private _canvasRoot!: DisplayContainer;
   private _installed = {
     app: false,
     fit: false,
@@ -275,6 +285,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     this._worldRoot = new Container();
     this._worldRoot.label = "yage:worldRoot";
     this._app.stage.addChild(this._worldRoot);
+    this._canvasRoot = new Container();
+    this._canvasRoot.label = "yage:canvasRoot";
+    this._app.stage.addChild(this._canvasRoot);
 
     // 5. FitController owns the world-root transform. When `fit` is
     //    configured (or defaulted), it observes a host element and re-maps
@@ -301,10 +314,19 @@ export class RendererPlugin implements Plugin, RendererAdapter {
 
     // 7. Create the per-scene render tree provider.
     //    Each scene gets one root container as a direct child of `_worldRoot`
-    //    (which is itself the only world-space child of `app.stage`).
+    //    (which is itself the only world-space child of `app.stage`), and one
+    //    for its canvas-space layers under `_canvasRoot`. A render-target
+    //    layer gets a target that redraws before every stage render.
     this._provider = new SceneRenderTreeProviderImpl(
       this._worldRoot,
       this._processSystem,
+      this._canvasRoot,
+      (source, options) =>
+        createRenderTarget(this._app.renderer, source, options, {
+          stage: this._app.stage,
+          isEnabled: () => this.drawingEnabled,
+          refresh: options.refresh ?? "every-frame",
+        }),
     );
     this._installed.provider = true;
 
@@ -483,16 +505,23 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
-   * The container that carries the responsive-fit transform — the natural
-   * parent for things that should live inside the virtual play area
-   * (transition overlays scoped to the play rect, world-space HUD, etc.).
-   * Children operate in virtual-space pixels.
+   * The graphics API drawing the canvas. Pixi tries WebGL, then WebGPU, then
+   * a 2D canvas, and the first the browser supports wins;
+   * `RendererConfig.pixi.preference` moves one of them to the front.
+   */
+  get backend(): RendererBackend {
+    return this._app.renderer.name as RendererBackend;
+  }
+
+  /**
+   * The container that carries the responsive-fit transform. Its children
+   * are in virtual pixels, and under `letterbox` they are clipped to the
+   * play area.
    *
-   * Use `app.stage` instead when the geometry must cover the canvas
-   * including letterbox / expand bars (full-screen dip-to-color overlays).
-   *
-   * For code that adds its own Pixi objects here, such as a custom scene
-   * transition. Game code draws through visual components on scene layers.
+   * For code that adds its own Pixi objects inside the fit, such as a
+   * rendering tool. Game code draws through visual components on scene
+   * layers, and a custom scene transition covers the swap with
+   * `createTransitionOverlay`.
    */
   get worldRoot(): DisplayContainer {
     return this._worldRoot;
@@ -736,9 +765,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * HUD).
    *
    * Under `letterbox` they only report where the background-color bars land.
-   * Every scene layer is clipped to the virtual rect under that mode, so
-   * content placed at these coordinates on a scene layer is invisible. To
-   * draw in the bars, parent a container directly on `renderer.application.stage` and
+   * Every world and screen layer is clipped to the virtual rect under that
+   * mode, so content placed at these coordinates on one is invisible. To
+   * draw in the bars, put the content on a `space: "canvas"` layer and
    * position it in canvas pixels.
    */
   get extendedVirtualRects(): readonly VirtualRect[] {
@@ -752,8 +781,8 @@ export class RendererPlugin implements Plugin, RendererAdapter {
 
   /**
    * Bake a texture once by drawing into a temporary graphics context. The
-   * result never changes again; for a buffer the game redraws, use
-   * {@link createRenderTarget}.
+   * result never changes again; for a texture the game redraws, declare a
+   * layer with `renderTarget`.
    *
    * With `size`, the texture measures exactly that region of the drawing,
    * starting at `(0, 0)`: a 4-frame strip of 32-pixel cells is `width: 128,
@@ -767,7 +796,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * everything drawn from it turns transparent.
    */
   createTexture(
-    draw: (graphics: GraphicsContext) => void,
+    draw: (g: DrawContext) => void,
     size?: CreateTextureOptions,
   ): TextureResource {
     if (size) {
@@ -793,10 +822,13 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
-   * Create an offscreen buffer that draws `source` into a texture the game
+   * Create an offscreen buffer that draws `source` into a texture the caller
    * owns and redraws on its own schedule — the repeatable counterpart of
    * {@link createTexture}, with control over when the buffer refreshes and
    * how many texels it gets.
+   *
+   * For rendering tools that build their own Pixi containers. Game content
+   * drawn into a texture goes on a layer declared with `renderTarget`.
    *
    * Composite the result by showing `target.texture` (a `SpriteComponent`, a
    * mask, a filter input). See {@link RenderTargetHandle} for the coordinate
@@ -1003,6 +1035,11 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       target,
       this._config.width,
       this._config.height,
+      // A scene offset is held in virtual pixels; its canvas layers move by
+      // it at the new scale. The first fit applies before the provider exists.
+      () => {
+        if (this._installed.provider) this._provider.reapplyOffsets();
+      },
     );
     this._fitController.start();
   }

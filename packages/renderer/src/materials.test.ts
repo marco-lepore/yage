@@ -155,17 +155,17 @@ describe("sprite materials", () => {
       new SpriteComponent({ texture: "material-color" }),
     );
     expect(sprite.material).toBeUndefined();
-    expect(sprite.sprite.renderPipeId).toBe("yage-material");
+    expect(sprite.renderObject.renderPipeId).toBe("yage-material");
     expect(sprite.inspectRender()).toMatchObject({
       material: litMaterial(),
       lighting: "surface",
     });
     sprite.setLayer("hud");
-    expect(sprite.sprite.renderPipeId).toBe("sprite");
+    expect(sprite.renderObject.renderPipeId).toBe("sprite");
     expect(sprite.inspectRender()).not.toHaveProperty("material");
     sprite.setLayer("default");
     sprite.setMaterial(unlitMaterial());
-    expect(sprite.sprite.renderPipeId).toBe("yage-material");
+    expect(sprite.renderObject.renderPipeId).toBe("yage-material");
     expect(sprite.inspectRender()).toMatchObject({
       material: { kind: "unlit" },
       lighting: "none",
@@ -178,12 +178,12 @@ describe("sprite materials", () => {
     const sprite = spawnEntityInScene(scene).add(
       new SpriteComponent({ texture: "material-color" }),
     );
-    expect(sprite.sprite.renderPipeId).toBe("sprite");
+    expect(sprite.renderObject.renderPipeId).toBe("sprite");
     scene.registerScoped(SpriteLightingKey, { kind: "composite" });
     const other = spawnEntityInScene(scene).add(
       new SpriteComponent({ texture: "material-color" }),
     );
-    expect(other.sprite.renderPipeId).toBe("sprite");
+    expect(other.renderObject.renderPipeId).toBe("sprite");
   });
 
   it("validates map role, dimensions, and full-page layout before replacing the source", () => {
@@ -199,7 +199,7 @@ describe("sprite materials", () => {
     expect(() => sprite.setTexture("material-other", { normal })).toThrow(
       /32×32/,
     );
-    expect(sprite.sprite.texture).toBe(base);
+    expect(sprite.renderObject.texture).toBe(base);
     expect(sprite.maps.normal).toBe(normal);
     expect(() =>
       resolveMaps([base], {
@@ -221,7 +221,7 @@ describe("sprite materials", () => {
     const sprite = spawnEntityInScene(scene).add(
       new AnimatedSpriteComponent({ source }),
     );
-    const oldFrames = [...sprite.animatedSprite.textures];
+    const oldFrames = [...sprite.renderObject.textures];
     sprite.gotoFrame(1);
     const seen: (DataTextureHandle | undefined)[] = [];
     sprite.onFrameChange(() => seen.push(sprite.maps.normal));
@@ -259,7 +259,7 @@ describe("sprite materials", () => {
       /surfaceLighting/,
     );
     expect(sprite.material).toBeUndefined();
-    expect(sprite.sprite.renderPipeId).toBe("sprite");
+    expect(sprite.renderObject.renderPipeId).toBe("sprite");
   });
 
   it("rejects a screen-space layer before moving a lit sprite", () => {
@@ -272,10 +272,24 @@ describe("sprite materials", () => {
         material: litMaterial(),
       }),
     );
-    const parent = sprite.sprite.parent;
+    const parent = sprite.renderObject.parent;
     expect(() => sprite.setLayer("hud")).toThrow(/world-space layer/);
     expect(sprite.layerName).toBe("default");
-    expect(sprite.sprite.parent).toBe(parent);
+    expect(sprite.renderObject.parent).toBe(parent);
+  });
+
+  it("rejects a canvas layer before moving a lit sprite", () => {
+    registerTexture("material-color", image());
+    const { scene, tree } = surfaceScene();
+    tree.ensureLayer({ name: "bars", order: 1, space: "canvas" });
+    const sprite = spawnEntityInScene(scene).add(
+      new SpriteComponent({
+        texture: "material-color",
+        material: litMaterial(),
+      }),
+    );
+    expect(() => sprite.setLayer("bars")).toThrow(/world-space layer/);
+    expect(sprite.layerName).toBe("default");
   });
 });
 
@@ -327,7 +341,7 @@ describe("mapped animation sources", () => {
     const controller = entity.add(
       new AnimationController({ idle: { source, speed: 0.1 } }),
     );
-    const frames = [...sprite.animatedSprite.textures] as Texture[];
+    const frames = [...sprite.renderObject.textures] as Texture[];
     controller.onDestroy();
     expect(frames.every((frame) => !frame.destroyed)).toBe(true);
     sprite.onDestroy();
@@ -343,7 +357,7 @@ describe("mapped animation sources", () => {
     scene.registerScoped(SpriteLightingKey, { kind: "composite" });
     const entity = spawnEntityInScene(scene);
     const sprite = entity.add(new AnimatedSpriteComponent({ source }));
-    const before = sprite.animatedSprite.textures;
+    const before = sprite.renderObject.textures;
     const controller = new AnimationController({
       idle: { source, speed: 0.1 },
       mapped: {
@@ -352,14 +366,14 @@ describe("mapped animation sources", () => {
       },
     });
     expect(() => entity.add(controller)).toThrow(/surfaceLighting/);
-    expect(sprite.animatedSprite.textures).toBe(before);
+    expect(sprite.renderObject.textures).toBe(before);
     expect(() =>
       sprite.setSource({
         ...source,
         maps: { normal: dataTexture("normal.png") },
       }),
     ).toThrow(/surfaceLighting/);
-    expect(sprite.animatedSprite.textures).toBe(before);
+    expect(sprite.renderObject.textures).toBe(before);
     controller.onDestroy();
     sprite.onDestroy();
   });

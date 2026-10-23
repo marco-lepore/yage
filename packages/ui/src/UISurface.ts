@@ -1,7 +1,6 @@
 import { Component, ErrorBoundaryKey, Transform } from "@yagejs/core";
 import type { TextStyle } from "@yagejs/renderer";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
-import type { DisplayContainer } from "@yagejs/renderer";
 import { UIPanel } from "./UIPanel.js";
 import { UIFocusStackKey } from "./focus/UIFocusStack.js";
 import type { UIFocusScope } from "./focus/UIFocusScope.js";
@@ -86,14 +85,6 @@ export class UISurface extends Component {
   /** The offset the tree is drawn at. */
   get offset(): Readonly<{ x: number; y: number }> {
     return this._offset;
-  }
-
-  /**
-   * The Pixi container of the root panel. Change the surface through its
-   * props and elements; see `UIElement.displayObject`.
-   */
-  get container(): DisplayContainer {
-    return this.root.container;
   }
 
   /**
@@ -196,7 +187,7 @@ export class UISurface extends Component {
     // fail on add.
     const focusStack = this.scene.tryResolveScoped(UIFocusStackKey) ?? null;
     this.root._attachToTree({ label: this.entity.name, focusStack });
-    bindUIErrorBoundary(this.root.container, this.use(ErrorBoundaryKey));
+    bindUIErrorBoundary(this.root.displayObject, this.use(ErrorBoundaryKey));
     const tree = this.use(SceneRenderTreeKey);
     const layerName = this._layer ?? UI_DEFAULT_LAYER;
     let layer = tree.tryGet(layerName);
@@ -224,7 +215,7 @@ export class UISurface extends Component {
     }
 
     layer.container.eventMode = "static";
-    layer.container.addChild(this.root.container);
+    layer.container.addChild(this.root.displayObject);
     // A component is never effectively enabled during `onAdd` — `onEnable`
     // runs right after, and only for an active entity. Start hidden so a tree
     // mounted on a dormant entity doesn't show before it should.
@@ -234,7 +225,7 @@ export class UISurface extends Component {
   onDestroy(): void {
     // `root.destroy()` detaches the tree, which takes every scope off the
     // stack.
-    this.root.container.removeFromParent();
+    this.root.displayObject.removeFromParent();
     this.root.destroy();
   }
 }

@@ -1,6 +1,6 @@
 import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
-import type { CameraEntity, GraphicsContext } from "@yagejs/renderer";
+import type { CameraEntity, DrawContext } from "@yagejs/renderer";
 import { isRoomLayoutWalkable } from "@yagejs-addons/procedural";
 import type {
   CatalogSelection,
@@ -104,7 +104,7 @@ export class MapView extends Component {
     });
   }
 
-  private drawRooms(g: GraphicsContext, layout: RoomLayout): void {
+  private drawRooms(g: DrawContext, layout: RoomLayout): void {
     for (const room of layout.regions) {
       const color = regionColor(room.metadata);
       for (let y = room.y; y < room.y + room.height; y++)
@@ -126,7 +126,7 @@ export class MapView extends Component {
     }
   }
 
-  private drawCatalog(g: GraphicsContext, selection: CatalogSelection): void {
+  private drawCatalog(g: DrawContext, selection: CatalogSelection): void {
     const positions = catalogNodePositions(selection);
     for (const edge of selection.connections) {
       const a = positions.get(edge.from)!,
@@ -147,7 +147,7 @@ export class MapView extends Component {
     }
   }
 
-  private drawCave(g: GraphicsContext, cave: TileMap): void {
+  private drawCave(g: DrawContext, cave: TileMap): void {
     cave.cells.forEach((row, y) =>
       [...row].forEach((cell, x) =>
         g

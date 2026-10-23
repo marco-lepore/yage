@@ -235,7 +235,7 @@ describe("UIImage", () => {
 
     const img = new UIImage({ texture: "runtime-image" });
 
-    const sprite = img.sprite as unknown as InstanceType<
+    const sprite = img.displayObject.children[0]! as unknown as InstanceType<
       typeof mocks.MockSprite
     >;
     expect(sprite.texture).toBe(texture);
@@ -259,7 +259,7 @@ describe("UIImage", () => {
     const img = new UIImage({ texture: handle, width: 200, height: 100 });
     img.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     img.applyLayout();
-    const sprite = img.sprite as unknown as InstanceType<
+    const sprite = img.displayObject.children[0]! as unknown as InstanceType<
       typeof mocks.MockSprite
     >;
     expect(sprite.width).toBe(200);
@@ -381,7 +381,7 @@ describe("UIImage", () => {
   it("applyLayout sizes the sprite to the derived box", () => {
     const img = new UIImage({ texture: handle, height: 25 });
     layoutInParent(img);
-    const sprite = img.sprite as unknown as InstanceType<
+    const sprite = img.displayObject.children[0]! as unknown as InstanceType<
       typeof mocks.MockSprite
     >;
     expect(sprite.width).toBe(50);
@@ -390,7 +390,7 @@ describe("UIImage", () => {
 
   it("applies tint and alpha", () => {
     const img = new UIImage({ texture: handle, tint: 0xff0000, alpha: 0.5 });
-    const sprite = img.sprite as unknown as InstanceType<
+    const sprite = img.displayObject.children[0]! as unknown as InstanceType<
       typeof mocks.MockSprite
     >;
     expect(sprite.tint).toBe(0xff0000);
@@ -400,7 +400,7 @@ describe("UIImage", () => {
   it("update changes tint and alpha", () => {
     const img = new UIImage({ texture: handle });
     img.update({ tint: 0x00ff00, alpha: 0.3 });
-    const sprite = img.sprite as unknown as InstanceType<
+    const sprite = img.displayObject.children[0]! as unknown as InstanceType<
       typeof mocks.MockSprite
     >;
     expect(sprite.tint).toBe(0x00ff00);
@@ -417,10 +417,11 @@ describe("UIImage", () => {
 
   it("destroy cleans up", () => {
     const img = new UIImage({ texture: handle });
-    img.destroy();
-    const sprite = img.sprite as unknown as InstanceType<
+    // Read before destroy: destroying the container empties its children.
+    const sprite = img.displayObject.children[0]! as unknown as InstanceType<
       typeof mocks.MockSprite
     >;
+    img.destroy();
     expect(sprite.destroyed).toBe(true);
   });
 });

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import type { DebugDiagnostics } from "@yagejs/debug";
 import { getSceneStack, gotoFixture, stepFrames } from "./helpers.js";
 
 interface SceneTransitionTestApi {
@@ -14,7 +15,6 @@ interface SceneTransitionTestApi {
   resetEvents(): void;
   getIsTransitioning(): boolean;
   getStackNames(): string[];
-  getSceneAlpha(sceneIndex: number): number | null;
   clearAll(): void;
 }
 
@@ -54,6 +54,19 @@ function call<K extends keyof SceneTransitionTestApi>(
     },
     { k: key, a: args },
   ) as Promise<Awaited<ReturnType<SceneTransitionTestApi[K]>> | undefined>;
+}
+
+/** The alpha the debug Inspector extension reports for the scene at `index` on the stack. */
+function sceneAlpha(page: Page, index: number): Promise<number | null> {
+  return page.evaluate((i) => {
+    const inspector = window.__yage__!.inspector;
+    const name = inspector.getSceneStack()[i]?.name;
+    if (name === undefined) return null;
+    return (
+      inspector.getExtension<DebugDiagnostics>("debug")?.getSceneRender(name)
+        ?.alpha ?? null
+    );
+  }, index);
 }
 
 test.describe("Scene transitions", () => {
@@ -268,8 +281,8 @@ test.describe("Scene transitions", () => {
     // midpoint is fine.
     await stepFrames(page, 13, { dtMs: 16 });
 
-    const fromAlpha = await call(page, "getSceneAlpha", 1);
-    const toAlpha = await call(page, "getSceneAlpha", 2);
+    const fromAlpha = await sceneAlpha(page, 1);
+    const toAlpha = await sceneAlpha(page, 2);
     expect(fromAlpha).not.toBeNull();
     expect(toAlpha).not.toBeNull();
     expect(fromAlpha!).toBeGreaterThan(0.3);
@@ -279,7 +292,7 @@ test.describe("Scene transitions", () => {
 
     // Let it finish — both should return to alpha 1.
     await stepFrames(page, 20, { dtMs: 16 });
-    expect(await call(page, "getSceneAlpha", 2)).toBe(1);
+    expect(await sceneAlpha(page, 2)).toBe(1);
   });
 
   test("popAll empties the stack after any in-flight transition finishes", async ({

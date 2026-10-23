@@ -176,7 +176,7 @@ describe("UINineSlice", () => {
 
     const ns = new UINineSlice({ texture: "runtime-panel", insets: 4 });
 
-    const sprite = ns.container as unknown as InstanceType<
+    const sprite = ns.displayObject as unknown as InstanceType<
       typeof mocks.MockNineSliceSprite
     >;
     expect(sprite.texture).toBe(texture);
@@ -190,7 +190,7 @@ describe("UINineSlice", () => {
       height: 50,
     });
     expect(ns.displayObject).toBeDefined();
-    const sprite = ns.container as unknown as InstanceType<
+    const sprite = ns.displayObject as unknown as InstanceType<
       typeof mocks.MockNineSliceSprite
     >;
     expect(sprite.leftWidth).toBe(10);
@@ -206,7 +206,7 @@ describe("UINineSlice", () => {
       width: 100,
       height: 50,
     });
-    const sprite = ns.container as unknown as InstanceType<
+    const sprite = ns.displayObject as unknown as InstanceType<
       typeof mocks.MockNineSliceSprite
     >;
     expect(sprite.leftWidth).toBe(5);
@@ -224,7 +224,7 @@ describe("UINineSlice", () => {
     });
     ns.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     ns.applyLayout();
-    const sprite = ns.container as unknown as InstanceType<
+    const sprite = ns.displayObject as unknown as InstanceType<
       typeof mocks.MockNineSliceSprite
     >;
     expect(sprite.width).toBe(200);
@@ -238,7 +238,7 @@ describe("UINineSlice", () => {
       tint: 0xff0000,
       alpha: 0.5,
     });
-    const sprite = ns.container as unknown as InstanceType<
+    const sprite = ns.displayObject as unknown as InstanceType<
       typeof mocks.MockNineSliceSprite
     >;
     expect(sprite.alpha).toBe(0.5);
@@ -249,7 +249,7 @@ describe("UINineSlice", () => {
 
     ns.update({ insets: { left: 5, top: 6, right: 7, bottom: 8 } });
 
-    const sprite = ns.container as unknown as InstanceType<
+    const sprite = ns.displayObject as unknown as InstanceType<
       typeof mocks.MockNineSliceSprite
     >;
     expect([
@@ -327,7 +327,7 @@ describe("UINineSlice", () => {
   it("destroy cleans up", () => {
     const ns = new UINineSlice({ texture: handle, insets: 4 });
     ns.destroy();
-    const sprite = ns.container as unknown as InstanceType<
+    const sprite = ns.displayObject as unknown as InstanceType<
       typeof mocks.MockNineSliceSprite
     >;
     expect(sprite.destroyed).toBe(true);

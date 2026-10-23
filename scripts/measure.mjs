@@ -1176,6 +1176,168 @@ export function checkElementTransformCoverage(files) {
   return errors;
 }
 
+/**
+ * A visual component whose options set the point its art turns about
+ * (`anchor` as a fraction of the texture, `pivot` in pixels) also lets the game
+ * read and move that point later, so a per-frame anchor never needs the Pixi
+ * object. The check pairs each `<Name>Options` interface with the `<Name>`
+ * class declared in the same file.
+ */
+export function checkVisualOriginAccessors(files) {
+  const originOptions = ["anchor", "pivot"];
+  const errors = [];
+  for (const file of files) {
+    if (!/^packages\/(?:[^/]+\/)*src\//.test(file.path)) continue;
+    if (file.path.endsWith(".test.ts")) continue;
+    const source = sourceFile(file.path, file.code);
+    const classes = new Map();
+    const options = [];
+    ts.forEachChild(source, (node) => {
+      if (ts.isClassDeclaration(node) && node.name) {
+        classes.set(node.name.text, node);
+      }
+      if (
+        ts.isInterfaceDeclaration(node) &&
+        node.name.text.endsWith("ComponentOptions")
+      ) {
+        options.push(node);
+      }
+    });
+    for (const option of options) {
+      const owner = classes.get(option.name.text.slice(0, -"Options".length));
+      if (!owner) continue;
+      for (const member of option.members) {
+        const name = member.name?.getText(source);
+        if (!originOptions.includes(name)) continue;
+        const accessors = owner.members.filter(
+          (candidate) =>
+            (ts.isGetAccessorDeclaration(candidate) ||
+              ts.isSetAccessorDeclaration(candidate)) &&
+            candidate.name.getText(source) === name,
+        );
+        if (accessors.length === 2) continue;
+        errors.push(
+          finding(
+            "visual-origin-accessors",
+            file.path,
+            lineOf(source, member),
+            `${owner.name.text} takes a \`${name}\` option but has no \`${name}\` getter and setter, so moving it after construction needs the Pixi object.`,
+          ),
+        );
+      }
+    }
+  }
+  return errors;
+}
+
+/**
+ * A component or UI element hands out its Pixi object under one name:
+ * `renderObject` on a component, `displayObject` on a UI element. A second
+ * public member typed with a Pixi display object gives game code a raw path
+ * the engine overwrites, so it needs a component API instead. The members
+ * named in `allowed` are the deliberate exceptions, each with its reason.
+ */
+export function checkRawHandleNames(files) {
+  // The renderer's aliases and the Pixi display classes they rename.
+  const display =
+    /\b(?:DisplayContainer|DisplaySprite|DisplayAnimatedSprite|DisplayText|DisplayBitmapText|DisplaySplitText|DisplaySplitBitmapText|NineSliceSprite|ParticleContainer|DisplayGraphics|Container|Sprite|AnimatedSprite|TilingSprite|Graphics|Text|BitmapText|HTMLText|SplitText|SplitBitmapText|Mesh)\b/;
+  const elementInterfaces = [
+    "UIElement",
+    "UIContainerElement",
+    "UIInputCaptureElement",
+  ];
+  const canonical = new Set(["renderObject", "displayObject"]);
+  const allowed = new Map([
+    // Code that adds its own Pixi objects to a sort group parents them here.
+    ["SortGroupComponent.container", true],
+    // The emitter has no `visible` or `alpha`; game code hides it here.
+    ["ParticleEmitterComponent.container", true],
+  ]);
+  const sources = files.filter(
+    (file) =>
+      /^packages\/(?:[^/]+\/)*src\//.test(file.path) &&
+      !/\.test\.tsx?$/.test(file.path) &&
+      !posix.basename(file.path).startsWith("test-"),
+  );
+  const parsed = sources.map((file) => ({
+    file,
+    source: sourceFile(file.path, file.code),
+  }));
+  const bases = new Map();
+  for (const { source } of parsed) {
+    ts.forEachChild(source, function visit(node) {
+      ts.forEachChild(node, visit);
+      if (ts.isClassDeclaration(node) && node.name) {
+        bases.set(node.name.text, classBaseName(node));
+      }
+    });
+  }
+  const implementsElement = (node) =>
+    (node.heritageClauses ?? []).some(
+      (clause) =>
+        clause.token === ts.SyntaxKind.ImplementsKeyword &&
+        clause.types.some((type) =>
+          elementInterfaces.includes(type.expression.getText()),
+        ),
+    );
+  const reaches = (name) => {
+    const seen = new Set();
+    for (let current = name; current && !seen.has(current); ) {
+      if (current === "Component" || current === "UIElementBase") return true;
+      seen.add(current);
+      current = bases.get(current);
+    }
+    return false;
+  };
+  const errors = [];
+  for (const { file, source } of parsed) {
+    ts.forEachChild(source, function visit(node) {
+      ts.forEachChild(node, visit);
+      if (!ts.isClassDeclaration(node) || !node.name) return;
+      const owner = node.name.text;
+      if (!reaches(classBaseName(node)) && !implementsElement(node)) return;
+      const constructor = node.members.find(ts.isConstructorDeclaration);
+      const parameterProperties = (constructor?.parameters ?? []).filter(
+        (parameter) =>
+          ts
+            .getModifiers(parameter)
+            ?.some(
+              (modifier) =>
+                modifier.kind === ts.SyntaxKind.ReadonlyKeyword ||
+                modifier.kind === ts.SyntaxKind.PublicKeyword,
+            ),
+      );
+      for (const member of [...node.members, ...parameterProperties]) {
+        if (
+          !ts.isPropertyDeclaration(member) &&
+          !ts.isGetAccessorDeclaration(member) &&
+          !ts.isMethodDeclaration(member) &&
+          !ts.isParameter(member)
+        )
+          continue;
+        const flags = ts.getCombinedModifierFlags(member);
+        if (flags & (ts.ModifierFlags.Private | ts.ModifierFlags.Protected))
+          continue;
+        const name = member.name.getText(source);
+        if (name.startsWith("_") || name.startsWith("#")) continue;
+        if (canonical.has(name) || allowed.has(`${owner}.${name}`)) continue;
+        // A getter without a return type is not checked: its type is inferred.
+        const type = member.type?.getText(source);
+        if (!type || !display.test(type)) continue;
+        errors.push(
+          finding(
+            "raw-handle-names",
+            file.path,
+            lineOf(source, member),
+            `${owner}.${name} hands out a Pixi object (${type}) beside renderObject/displayObject. Give the task a component API instead.`,
+          ),
+        );
+      }
+    });
+  }
+  return errors;
+}
+
 export function checkInlineImportTypes(files) {
   function hasCircularDependencyException(file, source, node) {
     const line = lineOf(source, node) - 1;
@@ -1746,6 +1908,66 @@ export function positiveControlFailures() {
         ]).length === 0,
     },
     {
+      name: "visual-origin-accessors",
+      passed:
+        checkVisualOriginAccessors([
+          {
+            path: "packages/renderer/src/BadgeComponent.ts",
+            code:
+              "export interface BadgeComponentOptions { anchor?: Vec2Like; }\n" +
+              "export class BadgeComponent { get anchor() { return a; } }",
+          },
+        ]).length === 1 &&
+        checkVisualOriginAccessors([
+          {
+            path: "packages/renderer/src/BadgeComponent.ts",
+            code:
+              "export interface BadgeComponentOptions { pivot?: Vec2Like; }\n" +
+              "export class BadgeComponent { get pivot() { return p; } set pivot(v) {} }",
+          },
+        ]).length === 0,
+    },
+    {
+      name: "raw-handle-names",
+      passed:
+        checkRawHandleNames([
+          {
+            path: "packages/renderer/src/BadgeComponent.ts",
+            code:
+              "class BadgeComponent extends VisualComponent {\n" +
+              "  readonly sprite: DisplaySprite;\n" +
+              "  get renderObject(): DisplaySprite { return this.sprite; }\n" +
+              "}",
+          },
+          {
+            path: "packages/renderer/src/VisualComponent.ts",
+            code: "abstract class VisualComponent extends Component {}",
+          },
+        ]).length === 1 &&
+        checkRawHandleNames([
+          {
+            path: "packages/renderer/src/BadgeComponent.ts",
+            code:
+              "class BadgeComponent extends Component {\n" +
+              "  private readonly sprite: DisplaySprite;\n" +
+              "  get renderObject(): DisplaySprite { return this.sprite; }\n" +
+              "}",
+          },
+        ]).length === 0 &&
+        checkRawHandleNames([
+          {
+            path: "packages/ui/src/UIDial.ts",
+            code:
+              "class UIDial implements UIElement {\n" +
+              "  constructor(readonly knob: DisplaySprite) {}\n" +
+              "  get displayObject(): DisplayContainer { return this.knob; }\n" +
+              "  face(): Graphics { return g; }\n" +
+              "  readonly system: DisplaySystem;\n" +
+              "}",
+          },
+        ]).length === 2,
+    },
+    {
       name: "inline-import-type",
       passed:
         checkInlineImportTypes([
@@ -1814,6 +2036,8 @@ export function runChecks(root = repoRoot) {
     ...checkLocalizedWidgetCoverage(sources),
     ...checkFocusWidgetCoverage(sources),
     ...checkElementTransformCoverage(sources),
+    ...checkVisualOriginAccessors(sources),
+    ...checkRawHandleNames(sources),
     ...checkInlineImportTypes(sources),
     ...checkVec2VoidMethods(sources),
     ...checkCoreEventBusKeys(sources),
