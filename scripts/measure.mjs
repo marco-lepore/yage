@@ -1250,8 +1250,6 @@ export function checkRawHandleNames(files) {
   const allowed = new Map([
     // Code that adds its own Pixi objects to a sort group parents them here.
     ["SortGroupComponent.container", true],
-    // The emitter has no `visible` or `alpha`; game code hides it here.
-    ["ParticleEmitterComponent.container", true],
   ]);
   const sources = files.filter(
     (file) =>

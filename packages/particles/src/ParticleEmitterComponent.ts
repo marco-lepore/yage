@@ -111,14 +111,20 @@ export interface ParticleEmissionHandle {
 export class ParticleEmitterComponent extends Component implements SortSource {
   private readonly positionScratch = new Vec2Buffer();
   /**
-   * The Pixi container the particles draw in. The emitter writes its position
-   * from the entity's `Transform`, and its visibility on enable and disable.
-   * Change the emitter through this component; a task that needs this object
-   * is a missing component API.
+   * The Pixi container the particles draw in. Game code does not write to it:
+   * the emitter writes its position from the entity's `Transform` every frame,
+   * and re-applies `visible` and `alpha`. Change the emitter through this
+   * component; a task that needs this object is a missing component API.
    */
-  readonly container: ParticleContainer;
-  /** Container visibility to restore on enable, so a hand-set hide survives. */
-  private _visibleWhenActive = true;
+  readonly renderObject: ParticleContainer;
+  /**
+   * The visibility the game asked for. The Pixi flag is this AND the
+   * component being effectively enabled, so hiding an emitter by hand
+   * survives a `setActive(false)` / `setActive(true)` cycle.
+   */
+  private _userVisible = true;
+  /** The opacity the game asked for. */
+  private _userAlpha = 1;
   private _zIndex = 0;
   private _sortOffset = 0;
   /** Whether the ignored-`zIndex` development warning has fired. */
@@ -159,7 +165,7 @@ export class ParticleEmitterComponent extends Component implements SortSource {
       ...copyOptions(options),
     };
 
-    this.container = new PixiParticleContainer({
+    this.renderObject = new PixiParticleContainer({
       texture,
       dynamicProperties: {
         position: true,
@@ -168,7 +174,7 @@ export class ParticleEmitterComponent extends Component implements SortSource {
         vertex: true,
       },
     });
-    if (blendMode !== undefined) this.container.blendMode = blendMode;
+    if (blendMode !== undefined) this.renderObject.blendMode = blendMode;
 
     this._pool = new ParticlePool(texture, this.config.maxParticles);
   }
@@ -306,7 +312,7 @@ export class ParticleEmitterComponent extends Component implements SortSource {
       ?.tryGet(Transform)
       ?.getWorldPositionInto(this.positionScratch);
     if (origin) this._syncContainer(origin.x, origin.y);
-    const { x: originX, y: originY } = this.container.position;
+    const { x: originX, y: originY } = this.renderObject.position;
     const x = worldX === undefined ? 0 : worldX - originX;
     const y = worldY === undefined ? 0 : worldY - originY;
 
@@ -327,12 +333,47 @@ export class ParticleEmitterComponent extends Component implements SortSource {
 
   /** Set how the particles combine with what is drawn beneath them. */
   set blendMode(mode: BlendMode) {
-    this.container.blendMode = mode;
+    this.renderObject.blendMode = mode;
   }
 
   /** Get the particles' blend mode. */
   get blendMode(): BlendMode {
-    return this.container.blendMode;
+    return this.renderObject.blendMode;
+  }
+
+  /**
+   * Show or hide every particle. Emission and particle ageing go on while the
+   * emitter is hidden. Written while the entity is dormant, it is remembered
+   * and applied when the entity is activated.
+   */
+  set visible(value: boolean) {
+    this._userVisible = value;
+    this.applyAppearance();
+  }
+
+  /** Get the requested visibility, whatever the entity's activeness. */
+  get visible(): boolean {
+    return this._userVisible;
+  }
+
+  /**
+   * Opacity of the whole emitter, multiplied into the opacity each particle
+   * gets from the `alpha`, `alphaFadeIn` and `alphaFadeOut` options. Default
+   * `1`.
+   */
+  set alpha(value: number) {
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `ParticleEmitterComponent.alpha: value must be finite, got ${value}.`,
+      );
+    }
+    this._userAlpha = value;
+    this.applyAppearance();
+  }
+
+  /** Get the emitter's opacity. */
+  get alpha(): number {
+    return this._userAlpha;
   }
 
   /**
@@ -352,7 +393,7 @@ export class ParticleEmitterComponent extends Component implements SortSource {
       );
     }
     this._zIndex = value;
-    this.container.zIndex = value;
+    this.renderObject.zIndex = value;
     this.warnIfZIndexIgnored();
   }
 
@@ -375,17 +416,17 @@ export class ParticleEmitterComponent extends Component implements SortSource {
 
   onAdd(): void {
     const layer = this.use(SceneRenderTreeKey).get(this.config.layer);
-    layer.container.addChild(this.container);
-    setSortSource(this.container, this);
+    layer.container.addChild(this.renderObject);
+    setSortSource(this.renderObject, this);
     this.warnIfZIndexIgnored();
     // A component is never effectively enabled during `onAdd` — `onEnable`
     // runs right after, and only for an active entity.
-    this.container.visible = false;
+    this.renderObject.visible = false;
   }
 
   /** Warn once when the emitter's layer sorts, which ignores `zIndex`. */
   private warnIfZIndexIgnored(): void {
-    if (this._zIndex === 0 || this._warnedZIndex || !this.container.parent) {
+    if (this._zIndex === 0 || this._warnedZIndex || !this.renderObject.parent) {
       return;
     }
     const layer = this.use(SceneRenderTreeKey).tryGet(this.config.layer);
@@ -405,12 +446,11 @@ export class ParticleEmitterComponent extends Component implements SortSource {
    * kept, so the emitter picks up mid-flight when the entity comes back.
    */
   onDisable(): void {
-    this._visibleWhenActive = this.container.visible;
-    this.container.visible = false;
+    this.renderObject.visible = false;
   }
 
   onEnable(): void {
-    this.container.visible = this._visibleWhenActive;
+    this.applyAppearance();
   }
 
   onDestroy(): void {
@@ -418,11 +458,16 @@ export class ParticleEmitterComponent extends Component implements SortSource {
     for (const request of this._emissionRequests) request.active = false;
     this._emissionRequests.clear();
     this._manualEmission = false;
-    setSortSource(this.container, undefined);
-    this.container.removeFromParent();
+    setSortSource(this.renderObject, undefined);
+    this.renderObject.removeFromParent();
     // No destroy options: the particle texture may be a built-in shape or
     // `Texture.WHITE`, both shared by every other emitter using them.
-    this.container.destroy();
+    this.renderObject.destroy();
+  }
+
+  private applyAppearance(): void {
+    this.renderObject.alpha = this._userAlpha;
+    this.renderObject.visible = this._userVisible && this.effectiveEnabled;
   }
 
   /**
@@ -453,7 +498,7 @@ export class ParticleEmitterComponent extends Component implements SortSource {
 
       // Kill expired
       if (s.age >= s.lifetime) {
-        this.container.removeParticle(s.particle);
+        this.renderObject.removeParticle(s.particle);
         this._pool.release(s.particle);
         // Swap-remove
         active[i] = active[active.length - 1]!;
@@ -502,11 +547,11 @@ export class ParticleEmitterComponent extends Component implements SortSource {
    * @internal
    */
   _syncContainer(worldX: number, worldY: number): void {
-    const { x, y } = this.container.position;
+    const { x, y } = this.renderObject.position;
     const dx = worldX - x;
     const dy = worldY - y;
     if (dx === 0 && dy === 0) return;
-    this.container.position.set(worldX, worldY);
+    this.renderObject.position.set(worldX, worldY);
     if (this.config.simulationSpace === "local") return;
     for (const state of this._active) {
       state.particle.x -= dx;
@@ -603,7 +648,7 @@ export class ParticleEmitterComponent extends Component implements SortSource {
       alphaEnd,
     });
 
-    this.container.addParticle(particle);
+    this.renderObject.addParticle(particle);
   }
 }
 

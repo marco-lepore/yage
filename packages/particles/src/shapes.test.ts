@@ -254,14 +254,14 @@ describe("shapeTexture", () => {
       lifetime: 1,
     });
     const shared = shapeTexture("circle");
-    expect(first.container.texture).toBe(shared);
-    expect(second.container.texture).toBe(shared);
+    expect(first.renderObject.texture).toBe(shared);
+    expect(second.renderObject.texture).toBe(shared);
 
     first.onDestroy?.();
 
     expect(shared.destroyed).toBe(false);
     expect(shapeTexture("circle")).toBe(shared);
-    expect(second.container.texture).toBe(shared);
+    expect(second.renderObject.texture).toBe(shared);
   });
 
   it("leaves Texture.WHITE intact when a default emitter is torn down", () => {

@@ -279,6 +279,8 @@ emitter.configure({ rate: 40 });                 // change the emitter from now 
 emitter.isEmitting;          // boolean
 emitter.activeCount;         // number of live particles
 emitter.blendMode = "add";   // read/write
+emitter.visible = false;     // hide every particle
+emitter.alpha = 0.5;         // fade the whole emitter
 ```
 
 `emit()` and `stop()` control the emitter's manual state. Temporary systems
@@ -286,6 +288,33 @@ can call `requestEmission()` instead. Emission continues while manual state or
 at least one request is active. Releasing one request cannot stop another
 request or a later `emit()` call. Existing particles always continue to their
 end of life.
+
+### Hiding and Fading an Emitter
+
+`visible` and `alpha` work on the emitter as a whole, the same way they do on a
+sprite. Hide a torch's flames while the torch is out of the player's sight, or
+lower a spell's glow as the spell runs out:
+
+```typescript yage-group="emitter" yage-context="entity"
+emitter.visible = false; // hide every particle
+emitter.visible = true;  // show them again
+emitter.alpha = 0.5;     // draw every particle at half its opacity
+```
+
+A hidden emitter keeps emitting, and its particles keep moving and ageing.
+Showing it again shows the particles where they would have been anyway. To
+stop spawning particles, call `stop()`.
+
+`emitter.alpha` multiplies the opacity each particle gets from the `alpha`,
+`alphaFadeIn` and `alphaFadeOut` options. The `alpha` option sets each
+particle's own opacity as it spawns. `emitter.alpha` changes every particle at
+once, including the ones already alive. `emitter.alpha` must be a finite
+number, and `NaN` or `Infinity` throws. Neither `visible` nor `emitter.alpha`
+is a `configure` option.
+
+A `visible` value set while the entity is inactive is remembered. The emitter
+stays hidden while the entity is inactive and takes the value you set when the
+entity is activated again.
 
 ### Changing an Emitter
 

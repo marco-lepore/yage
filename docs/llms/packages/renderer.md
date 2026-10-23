@@ -19,7 +19,7 @@ Every exported field, parameter, and return type across `@yagejs/renderer` (and 
 | `DrawFill` / `DrawStroke`                      | `FillInput` / `StrokeInput`                              | `DrawContext.fill()` / `stroke()`                                                  |
 | `DrawPath` / `DrawMatrix` / `DrawRoundedPoint` | `GraphicsPath` / `Matrix` / `RoundedPoint`               | `DrawContext.path()`, the transform stack, `roundShape()`                          |
 | `NineSliceSprite`                              | `NineSliceSprite`                                        | `NineSliceComponent.renderObject`                                                  |
-| `ParticleContainer`                            | `ParticleContainer`                                      | `@yagejs/particles`' `ParticleEmitterComponent.container`                          |
+| `ParticleContainer`                            | `ParticleContainer`                                      | `@yagejs/particles`' `ParticleEmitterComponent.renderObject`                       |
 | `Particle`                                     | `Particle`                                               | `@yagejs/particles`' `ParticlePool.acquire()`/`release()`                          |
 | `Filter`                                       | `Filter`                                                 | effects API (`Effect.filter`, `rawFilter(filter)`)                                 |
 | `Application`                                  | `Application`                                            | `RendererPlugin.application`                                                       |
