@@ -28,7 +28,7 @@ export interface IrisRevealOptions {
 
 /**
  * Reveal the destination scene through an expanding circular mask. The
- * incoming scene's container is masked by a circle that grows from
+ * incoming scene is masked by a circle that grows from
  * radius 0 to a radius covering the canvas, so the new scene "blooms"
  * over the previous one from the chosen center point. The previous
  * scene stays visible outside the iris until the circle fully covers
@@ -70,8 +70,8 @@ export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
       maxRadius = Math.hypot(farX, farY);
 
       radius = 0;
-      // The scene mask replaces any mask the scene set for itself until
-      // `end()` clears it.
+      // The scene mask replaces and destroys any mask the scene set for
+      // itself, and `end()` clears it.
       mask = toTree.setMask(
         graphicsMask((g) => drawCircleMask(g, cx, cy, radius)),
       );

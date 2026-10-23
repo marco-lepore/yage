@@ -37,7 +37,7 @@ export interface SlidePushOptions {
  * pace, locked together as a single horizontal/vertical translation.
  * Ideal for menu carousels, level-to-level book turns, or wizard flows.
  *
- * Unlike a pure `slideIn`, this transition translates BOTH containers,
+ * Unlike a pure `slideIn`, this transition moves BOTH scenes,
  * giving the visual impression that the new scene is physically pushing
  * the old one off the screen.
  *

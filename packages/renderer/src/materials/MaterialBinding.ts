@@ -106,7 +106,7 @@ export class MaterialBinding {
     const surface = environment?.kind === "surface" ? environment : undefined;
     const tree = scene.tryResolveScoped(SceneRenderTreeKey);
     const layer = tree?.tryGet(layerName) ?? tree?.defaultLayer;
-    const world = layer?.space !== "screen";
+    const world = (layer?.space ?? "world") === "world";
     if (explicit && environment?.kind === "composite") {
       throw new Error(
         `Sprite material: scene "${scene.name}" must select surfaceLighting() to use sprite materials.`,

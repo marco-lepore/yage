@@ -193,6 +193,7 @@ export type {
   LayerDef,
   LayerSortFn,
   LayerSpace,
+  RenderLayerSpace,
   SortItem,
 } from "./LayerDef.js";
 export { ySort } from "./ySort.js";
@@ -255,6 +256,7 @@ export type {
   LayerRenderRefresh,
   LayerRenderTarget,
   LayerRenderTargetOptions,
+  LayerTargetFactory,
   RenderTargetHandle,
   RenderTargetOptions,
 } from "./RenderTarget.js";

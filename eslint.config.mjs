@@ -63,6 +63,14 @@ const NO_PIXI_IMPORT = {
   message:
     "Reach Pixi through @yagejs/renderer's components and type aliases, not pixi.js.",
 };
+// The provider hands out every scene's tree and its Pixi root, for tools and
+// addon presenters that add a layer to a given scene.
+const NO_TREE_PROVIDER = {
+  name: "@yagejs/renderer",
+  importNames: ["SceneRenderTreeProviderKey"],
+  message:
+    "Resolve the current scene's tree with SceneRenderTreeKey, or a transition's scenes with getSceneRenderTree.",
+};
 
 // Directory groups name the bare specifier as well as the paths under it:
 // `**/server/**` needs at least one segment after `server`, so `../../server`
@@ -264,6 +272,7 @@ export default tseslint.config(
                 "Blueprints are deprecated; define an Entity subclass with setup().",
             },
             NO_PIXI_IMPORT,
+            NO_TREE_PROVIDER,
           ],
         },
       ],

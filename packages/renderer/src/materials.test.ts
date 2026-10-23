@@ -277,6 +277,20 @@ describe("sprite materials", () => {
     expect(sprite.layerName).toBe("default");
     expect(sprite.renderObject.parent).toBe(parent);
   });
+
+  it("rejects a canvas layer before moving a lit sprite", () => {
+    registerTexture("material-color", image());
+    const { scene, tree } = surfaceScene();
+    tree.ensureLayer({ name: "bars", order: 1, space: "canvas" });
+    const sprite = spawnEntityInScene(scene).add(
+      new SpriteComponent({
+        texture: "material-color",
+        material: litMaterial(),
+      }),
+    );
+    expect(() => sprite.setLayer("bars")).toThrow(/world-space layer/);
+    expect(sprite.layerName).toBe("default");
+  });
 });
 
 describe("mapped animation sources", () => {

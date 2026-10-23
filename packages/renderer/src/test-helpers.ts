@@ -176,6 +176,9 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       root as never,
       undefined,
       queueFactory,
+      undefined,
+      // Holds the scene's canvas layers, off the stage.
+      new MockContainer() as never,
     );
 
     const sceneFx = new EffectsHost(() => root as never, "scene", queueFactory);

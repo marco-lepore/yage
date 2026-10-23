@@ -18,6 +18,7 @@ import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
 import type { DisplayContainer } from "./public-types.js";
 import type { LayerTargetFactory } from "./RenderTarget.js";
+import { registerTexture } from "./assets.js";
 import { assertFiniteNumber } from "./internal/validate.js";
 
 interface SceneEntry {
@@ -39,7 +40,7 @@ class SceneRenderTreeImpl implements SceneRenderTree {
    */
   private _aboveLayer: PixiRenderLayer | undefined;
   /**
-   * Attached node → the listener that re-attaches it after a re-parent.
+   * Lifted node → the listener that places it again after a re-parent.
    * Pixi drops a render-layer attachment in `removeChild`, which every
    * re-parent (`setLayer`, a sort group claiming a visual) goes through.
    */
@@ -52,14 +53,20 @@ class SceneRenderTreeImpl implements SceneRenderTree {
     readonly root: DisplayContainer,
     private readonly manager: RenderLayerManager,
     queueFactory?: EffectQueueFactory,
-    private readonly canvasRoot?: DisplayContainer,
-    /** Virtual-to-canvas scale, for moving the canvas root by a virtual offset. */
-    private readonly fitScale?: () => {
-      readonly x: number;
-      readonly y: number;
+    /**
+     * The scene's canvas root, with the virtual-to-canvas scale that moves it
+     * by a virtual offset.
+     */
+    private readonly canvas?: {
+      readonly root: DisplayContainer;
+      readonly fitScale: () => { readonly x: number; readonly y: number };
     },
   ) {
     this.fx = new EffectsHost(() => this.root, "scene", queueFactory);
+  }
+
+  private get canvasRoot(): DisplayContainer | undefined {
+    return this.canvas?.root;
   }
 
   get alpha(): number {
@@ -91,9 +98,9 @@ class SceneRenderTreeImpl implements SceneRenderTree {
     this._offset.x = x;
     this._offset.y = y;
     this.root.position.set(x, y);
-    if (this.canvasRoot) {
-      const scale = this.fitScale?.() ?? { x: 1, y: 1 };
-      this.canvasRoot.position.set(x * scale.x, y * scale.y);
+    if (this.canvas) {
+      const scale = this.canvas.fitScale();
+      this.canvas.root.position.set(x * scale.x, y * scale.y);
     }
   }
 
@@ -180,37 +187,43 @@ class SceneRenderTreeImpl implements SceneRenderTree {
 
   renderAboveEffects(node: DisplayContainer): void {
     if (this._aboveListeners.has(node)) return;
-    // A canvas layer already draws after the scene's layers and outside its
-    // effects and mask.
-    if (this.canvasRoot && isUnder(node, this.canvasRoot)) return;
-    // A render-target layer draws only into its texture.
-    if (
-      this.manager
-        .getAll()
-        .some((layer) => layer.renderTarget && isUnder(node, layer.container))
-    ) {
-      return;
-    }
-    if (!this.contains(node)) {
+    if (!this.contains(node) && !this.drawsOutsideRoot(node)) {
       throw new Error(
         `SceneRenderTree.renderAboveEffects: node "${node.label}" is not in ` +
           `the "${this.root.label}" tree. Add it to a layer first.`,
       );
     }
-    const reattach = (): void => {
-      this._aboveLayer?.attach(node);
+    // Runs again after every re-parent, which drops the attachment first.
+    const place = (): void => {
+      if (!this.drawsOutsideRoot(node)) this.ensureAboveLayer().attach(node);
     };
-    this._aboveListeners.set(node, reattach);
-    node.on("added", reattach);
-    this.ensureAboveLayer().attach(node);
+    this._aboveListeners.set(node, place);
+    node.on("added", place);
+    place();
+  }
+
+  /**
+   * Whether `node` sits on a canvas layer, which already draws after the
+   * scene's layers and outside its effects and mask, or on a render-target
+   * layer, which draws only into its texture.
+   */
+  private drawsOutsideRoot(node: DisplayContainer): boolean {
+    if (this.canvasRoot && isUnder(node, this.canvasRoot)) return true;
+    return this.manager
+      .getAll()
+      .some(
+        (layer) => layer.space === "texture" && isUnder(node, layer.container),
+      );
   }
 
   renderWithEffects(node: DisplayContainer): void {
-    const reattach = this._aboveListeners.get(node);
-    if (!reattach) return;
+    const place = this._aboveListeners.get(node);
+    if (!place) return;
     this._aboveListeners.delete(node);
-    node.off("added", reattach);
-    this._aboveLayer?.detach(node);
+    node.off("added", place);
+    if (node.parentRenderLayer === this._aboveLayer) {
+      this._aboveLayer?.detach(node);
+    }
   }
 
   /** @internal — called by the provider before container teardown. */
@@ -319,12 +332,10 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
 
     const root = new Container();
     root.label = `scene:${scene.name}`;
-    this.stage.addChild(root);
     let canvasRoot: DisplayContainer | undefined;
     if (this.canvasStage) {
       canvasRoot = new Container();
       canvasRoot.label = `scene:${scene.name}:canvas`;
-      this.canvasStage.addChild(canvasRoot);
     }
 
     // Bind the queue factory to (processSystem, scene) so every layer- and
@@ -350,18 +361,22 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
       this.renderTargets,
     );
 
+    // Check every declaration before any layer allocates a texture or
+    // registers a key, and before the roots join the stage.
+    manager.assertCanCreate(layers);
     for (const def of layers) {
       if (manager.tryGet(def.name)) continue;
       warnUiLayerShadow(def);
       manager.createFromDef(def);
     }
+    this.stage.addChild(root);
+    if (canvasRoot) this.canvasStage?.addChild(canvasRoot);
 
     const tree = new SceneRenderTreeImpl(
       root,
       manager,
       queueFactory,
-      canvasRoot,
-      () => this.stage.scale,
+      canvasRoot && { root: canvasRoot, fitScale: () => this.stage.scale },
     );
     this.entries.set(scene, { root, canvasRoot, manager, tree });
     return tree;
@@ -378,7 +393,7 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
     entry.tree._destroyMask();
     entry.manager.destroyEffects();
     entry.manager.destroyMasks();
-    entry.manager.destroyRenderTargets();
+    const released = entry.manager.destroyRenderTargets();
     entry.root.removeFromParent();
     entry.root.destroy({ children: true });
     entry.canvasRoot?.removeFromParent();
@@ -386,6 +401,14 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
     entry.tree._destroyAboveLayer();
     entry.manager.destroy();
     this.entries.delete(scene);
+    // A key another live scene registered too goes back to the latest of them.
+    for (const key of released) {
+      const heir = [...this.entries.values()]
+        .reverse()
+        .map((other) => other.manager.textureFor(key))
+        .find((texture) => texture !== undefined);
+      if (heir) registerTexture(key, heir);
+    }
   }
 
   getTree(scene: Scene): SceneRenderTree | undefined {

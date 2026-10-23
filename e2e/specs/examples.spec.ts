@@ -331,7 +331,7 @@ test.describe("Examples", () => {
     expect(result.errors.callbackErrors).toEqual([]);
   });
 
-  test("render-targets moves the radar on its layer and stops redrawing while paused", async ({
+  test("render-targets moves the radar on its layer and stops asking for redraws while paused", async ({
     page,
   }) => {
     await page.goto("/render-targets.html?test");

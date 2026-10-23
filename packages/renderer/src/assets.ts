@@ -541,21 +541,36 @@ const registeredTextures = new Map<string, TextureResource>();
  * ```
  */
 export function registerTexture(key: string, texture: TextureResource): void {
-  const registered = registeredTextures.get(key);
-  if (registered !== undefined && Assets.cache.get(key) === registered) {
-    // Replacing our own prior registration.
-    Assets.cache.remove(key);
-  } else if (Assets.cache.has(key)) {
-    // A loaded asset's key, or an asset that overwrote a stale registration —
-    // foreign either way: shadowing it would let the asset's unload destroy
-    // the registered texture later.
-    throw new Error(
-      `registerTexture("${key}"): the key is already used by a loaded asset — ` +
-        `pick a key that doesn't collide with an asset path.`,
-    );
-  }
+  assertTextureKeyFree(`registerTexture("${key}")`, key);
+  // Replacing our own prior registration.
+  if (holdsRegistration(key)) Assets.cache.remove(key);
   Assets.cache.set(key, texture);
   registeredTextures.set(key, texture);
+}
+
+/** Whether the asset cache entry for `key` is a texture this API registered. */
+function holdsRegistration(key: string): boolean {
+  const registered = registeredTextures.get(key);
+  return registered !== undefined && Assets.cache.get(key) === registered;
+}
+
+/**
+ * Throw when {@link registerTexture} cannot take `key`: a loaded asset's key,
+ * or an asset that overwrote a stale registration. Shadowing it would let
+ * the asset's unload destroy the registered texture later. `context` opens
+ * the error message. @internal
+ */
+export function assertTextureKeyFree(context: string, key: string): void {
+  if (holdsRegistration(key) || !Assets.cache.has(key)) return;
+  throw new Error(
+    `${context}: the key is already used by a loaded asset — ` +
+      `pick a key that doesn't collide with an asset path.`,
+  );
+}
+
+/** The texture registered under `key`, if any. @internal */
+export function registeredTexture(key: string): TextureResource | undefined {
+  return registeredTextures.get(key);
 }
 
 /**
@@ -576,10 +591,13 @@ export function unregisterTexture(key: string): void {
 
 /**
  * Unregister `key` only while it still holds `texture`, so an owner that
- * releases its key leaves a later owner's registration in place. @internal
+ * releases its key leaves a later owner's registration in place. Returns
+ * whether it unregistered the key. @internal
  */
-export function releaseTexture(key: string, texture: TextureResource): void {
-  if (registeredTextures.get(key) === texture) unregisterTexture(key);
+export function releaseTexture(key: string, texture: TextureResource): boolean {
+  if (registeredTextures.get(key) !== texture) return false;
+  unregisterTexture(key);
+  return true;
 }
 
 /** Drop every registered texture entry — test isolation only. @internal */

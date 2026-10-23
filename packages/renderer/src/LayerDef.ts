@@ -5,6 +5,13 @@ import type { LayerRenderTargetOptions } from "./RenderTarget.js";
 export type LayerSpace = "world" | "screen" | "canvas";
 
 /**
+ * Coordinate space a created layer draws in: its `LayerDef.space`, or
+ * `"texture"` for a layer declared with `renderTarget`, which draws in its
+ * texture's pixels.
+ */
+export type RenderLayerSpace = LayerSpace | "texture";
+
+/**
  * What a layer's depth-key function reads for one child of the layer.
  *
  * `DisplaySystem` reuses one item for every child, so read its fields inside
@@ -93,8 +100,9 @@ export interface LayerDef {
    * - `"canvas"`: drawn in canvas CSS pixels, outside the responsive-fit
    *   scale and the `letterbox` clip, so it reaches the letterbox bars. Use
    *   for branding or a scoreboard in the bars. Every canvas layer draws
-   *   above every scene's world and screen layers, ordered among
-   *   themselves by `order`. No camera binds it; naming one in `bindings`
+   *   above every scene's world and screen layers. A scene's canvas layers
+   *   follow its place on the scene stack, and `order` sorts them within
+   *   the scene. No camera binds it; naming one in `bindings`
    *   throws. Scene-scope `fx` and `setMask` do not cover it.
    */
   space?: LayerSpace;

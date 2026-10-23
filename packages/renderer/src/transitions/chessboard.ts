@@ -17,7 +17,7 @@ export interface ChessboardOptions {
 
 /**
  * Reveal the destination scene through a staggered checkerboard mask. The
- * incoming scene's container is masked by a grid of cells that grow from
+ * incoming scene is masked by a grid of cells that grow from
  * a center point to fill their slot — even-parity cells first, odd-parity
  * second — so the new scene "paints in" cell-by-cell on top of the
  * previous one. No blackout mid-point and no color overlay: the previous
@@ -57,8 +57,8 @@ export function chessboard(opts: ChessboardOptions = {}): SceneTransition {
       toTree = getSceneRenderTree(ctx, ctx.toScene);
       if (!toTree) return;
       progress = 0;
-      // The scene mask replaces any mask the scene set for itself until
-      // `end()` clears it. The cells read the virtual size on every redraw,
+      // The scene mask replaces and destroys any mask the scene set for
+      // itself, and `end()` clears it. The cells read the virtual size on every redraw,
       // so a resize mid-transition still covers the play area.
       mask = toTree.setMask(
         graphicsMask((g) => {

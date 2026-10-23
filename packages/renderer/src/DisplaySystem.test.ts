@@ -520,9 +520,7 @@ describe("DisplaySystem", () => {
     const tree = {
       getAll: () => [],
       tryGet: (name: string) =>
-        name === "radar"
-          ? { name, space: "world", renderTarget: {} }
-          : undefined,
+        name === "radar" ? { name, space: "texture" } : undefined,
     } as unknown as SceneRenderTree;
 
     expect(() => camera.getResolvedBindings(tree)).toThrow(
@@ -533,8 +531,8 @@ describe("DisplaySystem", () => {
   it("never auto-binds a render-target layer", () => {
     const camera = new CameraComponent();
     const layers = [
-      { name: "world", space: "world", renderTarget: undefined },
-      { name: "radar", space: "world", renderTarget: {} },
+      { name: "world", space: "world" },
+      { name: "radar", space: "texture" },
     ];
     const tree = {
       getAll: () => layers,

@@ -290,14 +290,14 @@ export class CameraComponent extends Component {
   getResolvedBindings(tree: SceneRenderTree): readonly CameraBinding[] {
     const explicit = this.bindings;
     for (const binding of explicit ?? NO_BINDINGS) {
-      const layer = tree.tryGet(binding.layer);
-      if (layer?.space === "canvas") {
+      const space = tree.tryGet(binding.layer)?.space;
+      if (space === "canvas") {
         throw new Error(
           `CameraComponent.bindings: layer "${binding.layer}" is a "canvas" ` +
             `layer, which no camera binds.`,
         );
       }
-      if (layer?.renderTarget) {
+      if (space === "texture") {
         throw new Error(
           `CameraComponent.bindings: layer "${binding.layer}" draws into a ` +
             `texture, which no camera binds.`,
@@ -308,7 +308,7 @@ export class CameraComponent extends Component {
 
     const worldLayers = tree
       .getAll()
-      .filter((layer) => layer.space === "world" && !layer.renderTarget);
+      .filter((layer) => layer.space === "world");
     if (!explicit || explicit.length === 0) {
       return worldLayers.map((layer) => ({
         layer: layer.name,

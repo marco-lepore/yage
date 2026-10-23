@@ -51,8 +51,9 @@ export interface LayerRenderTargetOptions extends Pick<
   /**
    * Register the texture under this key while the scene lives, so a
    * `SpriteComponent` shows it with `texture: key`. Scene exit unregisters it.
-   * A later scene that registers the same key replaces the earlier one's
-   * texture under the key.
+   * When two live scenes register the same key, the key resolves the later
+   * scene's texture, and goes back to the earlier one's when the later scene
+   * exits. A key used by a loaded asset throws when the scene enters.
    */
   texture?: string;
   /**
@@ -374,9 +375,9 @@ export function createRenderTarget(
 }
 
 /**
- * @internal Builds the target a render-target layer draws into. The renderer
- * plugin supplies one bound to the live renderer; a render tree without one
- * cannot hold a render-target layer.
+ * Builds the target a render-target layer draws into. The renderer plugin
+ * passes `SceneRenderTreeProviderImpl` one bound to the live renderer; a
+ * render tree without one cannot hold a render-target layer.
  */
 export type LayerTargetFactory = (
   source: DisplayContainer,

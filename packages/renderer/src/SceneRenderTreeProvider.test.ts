@@ -816,6 +816,18 @@ describe("render-target layers", () => {
     expect(container.destroyed).toBe(true);
   });
 
+  it("gives the key back to the earlier scene when the later one exits first", () => {
+    const { built, provider } = setup();
+    provider.createForScene(makeFakeScene("first", [RADAR]));
+    const second = makeFakeScene("second", [RADAR]);
+    provider.createForScene(second);
+    expect(Assets.cache.get("radar-feed")).toBe(built[1]!.handle.texture);
+
+    provider.destroyForScene(second);
+
+    expect(Assets.cache.get("radar-feed")).toBe(built[0]!.handle.texture);
+  });
+
   it("keeps a later scene's texture under the key when the earlier scene exits", () => {
     const { built, provider } = setup();
     const first = makeFakeScene("first", [RADAR]);
@@ -837,6 +849,74 @@ describe("render-target layers", () => {
 
     expect(stage.children).toEqual([tree.root]);
     expect(node.parentRenderLayer).toBeNull();
+  });
+
+  it("lifts a visual moved off a render-target layer, and leaves it on one", () => {
+    const { stage, provider } = setup();
+    const tree = provider.createForScene(
+      makeFakeScene("radar", [{ name: "world", order: 1 }, RADAR]),
+    );
+    const radar = tree.get("radar").container as unknown as InstanceType<
+      typeof MockContainer
+    >;
+    const world = tree.get("world").container as unknown as InstanceType<
+      typeof MockContainer
+    >;
+    const node = new MockContainer();
+    radar.addChild(node);
+    tree.renderAboveEffects(node as never);
+    expect(node.parentRenderLayer).toBeNull();
+
+    world.addChild(node);
+    expect(node.parentRenderLayer).toBe(stage.children[1]);
+
+    radar.addChild(node);
+    expect(node.parentRenderLayer).toBeNull();
+  });
+
+  it("checks every declared layer before allocating or attaching anything", () => {
+    const { built, stage, provider } = setup();
+    (Assets.cache as unknown as Map<string, unknown>).set("hero.png", {});
+    const scene = makeFakeScene("radar", [
+      RADAR,
+      {
+        name: "map",
+        order: 1,
+        renderTarget: { width: 8, height: 8, texture: "hero.png" },
+      },
+    ]);
+
+    expect(() => provider.createForScene(scene)).toThrow(
+      'RenderLayer "map".renderTarget.texture "hero.png": the key is already used by a loaded asset',
+    );
+    expect(built).toEqual([]);
+    expect(stage.children).toEqual([]);
+    expect(Assets.cache.has("radar-feed")).toBe(false);
+    expect(provider.getTree(scene)).toBeUndefined();
+  });
+
+  it("refuses two layers of one scene that register the same texture key", () => {
+    const { provider } = setup();
+    expect(() =>
+      provider.createForScene(
+        makeFakeScene("radar", [RADAR, { ...RADAR, name: "copy" }]),
+      ),
+    ).toThrow(
+      'RenderLayer "copy": another layer of this scene already registers its texture as "radar-feed".',
+    );
+  });
+
+  it("refuses a render target with a non-positive size", () => {
+    const { provider } = setup();
+    expect(() =>
+      provider.createForScene(
+        makeFakeScene("radar", [
+          { name: "radar", order: 0, renderTarget: { width: 0, height: 8 } },
+        ]),
+      ),
+    ).toThrow(
+      'RenderLayer "radar".renderTarget: width must be finite and > 0, got 0.',
+    );
   });
 
   it("refuses a render target on the default layer, with a space, or without a factory", () => {

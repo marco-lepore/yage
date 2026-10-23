@@ -32,14 +32,20 @@ export class LayerSets {
   /**
    * What the inspector offers for a level.
    *
-   * Screen-space layers are left out: a camera skips them when it binds
-   * automatically, so a placement's world transform would be read as raw
-   * screen pixels there. So is `default`, which is what a placement with no
-   * authored layer already draws on.
+   * Only world-space layers are offered. A camera skips screen and canvas
+   * layers when it binds automatically, so a placement's world transform
+   * would be read as screen or canvas pixels there, and a render-target layer
+   * draws only into its texture. `default` is left out too, since a
+   * placement with no authored layer already draws on it.
    */
   choicesFor(index: number | undefined): readonly LayerChoice[] {
     return this.defsFor(index)
-      .filter((def) => def.space !== "screen" && def.name !== "default")
+      .filter(
+        (def) =>
+          (def.space ?? "world") === "world" &&
+          def.renderTarget === undefined &&
+          def.name !== "default",
+      )
       .map((def) => ({ name: def.name, sorted: def.sort !== undefined }));
   }
 

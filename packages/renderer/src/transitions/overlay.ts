@@ -20,8 +20,9 @@ export interface TransitionOverlayOptions {
 }
 
 /**
- * A drawing above every scene, for a transition to cover the swap with: a
- * dip to a colour, a flash, an iris. Created by
+ * A drawing above every scene's world and screen layers, for a transition to
+ * cover the swap with: a dip to a colour, a flash, an iris. Canvas layers
+ * draw above it unless it was created with `coverScreen`. Created by
  * {@link createTransitionOverlay}; the transition destroys it in `end()`.
  */
 export interface TransitionOverlay {
@@ -109,14 +110,16 @@ class TransitionOverlayImpl implements TransitionOverlay {
 }
 
 /**
- * Create a drawing above every scene for a custom transition: draw on it in
- * `begin`, animate its `alpha` or mask in `tick`, and `destroy()` it in
- * `end`. The built-in `fade`, `flash` and `iris` cover the swap with one.
+ * Create a drawing above every scene's world and screen layers for a custom
+ * transition: draw on it in `begin`, animate its `alpha` or mask in `tick`,
+ * and `destroy()` it in `end`. The built-in `fade`, `flash` and `iris` cover
+ * the swap with one.
  *
  * Without `coverScreen` the overlay sits inside the responsive fit, so its
- * `area` is in virtual pixels and the letterbox bars stay visible. With
- * `coverScreen: true` it covers the bars too, in canvas pixels; convert a
- * virtual point for it with `renderer.virtualToCanvas`.
+ * `area` is in virtual pixels, the letterbox bars stay visible, and canvas
+ * layers draw above it. With `coverScreen: true` it covers the bars and the
+ * canvas layers too, in canvas pixels; convert a virtual point for it with
+ * `renderer.virtualToCanvas`.
  *
  * ```ts
  * let overlay: TransitionOverlay | undefined;
