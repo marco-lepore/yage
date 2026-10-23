@@ -116,7 +116,9 @@ test.describe("Inspector pointer verbs", () => {
     page,
   }) => {
     await gotoFixture(page, "/inspector-pointer.html");
-    await stepFrames(page, 1);
+    // Pointer dispatch needs a drawn frame, and the fixture can freeze
+    // before drawing one.
+    await stepFrames(page, 1, { render: "last" });
     const { plain } = await buttons(page);
 
     const hit = await pointerClick(page, plain.id);
@@ -152,7 +154,7 @@ test.describe("Inspector pointer verbs", () => {
     page,
   }) => {
     await gotoFixture(page, "/inspector-pointer.html");
-    await stepFrames(page, 1);
+    await stepFrames(page, 1, { render: "last" });
     const { disabled } = await buttons(page);
 
     const hit = await pointerClick(page, disabled.id);
@@ -165,7 +167,7 @@ test.describe("Inspector pointer verbs", () => {
 
   test("an overlay over a button takes the click", async ({ page }) => {
     await gotoFixture(page, "/inspector-pointer.html");
-    await stepFrames(page, 1);
+    await stepFrames(page, 1, { render: "last" });
     const { nodes, covered } = await buttons(page);
     // The overlay is the button's sibling inside the same surface.
     const surface = parentId(covered.id);
@@ -189,7 +191,7 @@ test.describe("Inspector pointer verbs", () => {
     page,
   }) => {
     await gotoFixture(page, "/inspector-pointer.html?letterbox=1");
-    await stepFrames(page, 1);
+    await stepFrames(page, 1, { render: "last" });
 
     // A 400 x 300 host for a 320 x 180 virtual space: the fit scales up and
     // leaves bars, so canvas pixels and virtual pixels differ on both axes.
@@ -213,7 +215,7 @@ test.describe("Inspector pointer verbs", () => {
     page,
   }) => {
     await gotoFixture(page, "/inspector-pointer.html");
-    await stepFrames(page, 1);
+    await stepFrames(page, 1, { render: "last" });
 
     // The middle of the play area, clear of all three surfaces.
     const hit = await pointerHalf(page, "down", { x: 160, y: 90 });
@@ -241,7 +243,7 @@ test.describe("Inspector pointer verbs", () => {
     page,
   }) => {
     await gotoFixture(page, "/inspector-pointer.html");
-    await stepFrames(page, 1);
+    await stepFrames(page, 1, { render: "last" });
     const { plain } = await buttons(page);
 
     await pointerClick(page, plain.id);

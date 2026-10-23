@@ -72,7 +72,7 @@ test.describe("Scene transitions", () => {
     await stepFrames(page, 1);
     expect(await call(page, "getIsTransitioning")).toBe(true);
 
-    await stepFrames(page, 10, 16);
+    await stepFrames(page, 10, { dtMs: 16 });
 
     stack = await getSceneStack(page);
     expect(stack).toHaveLength(2);
@@ -86,10 +86,10 @@ test.describe("Scene transitions", () => {
     await waitForTestApi(page);
 
     await call(page, "pushWithTransition", "fade", 0.3);
-    await stepFrames(page, 1, 16);
+    await stepFrames(page, 1, { dtMs: 16 });
     expect(await call(page, "getIsTransitioning")).toBe(true);
 
-    await stepFrames(page, 30, 16);
+    await stepFrames(page, 30, { dtMs: 16 });
     expect(await call(page, "getIsTransitioning")).toBe(false);
   });
 
@@ -101,7 +101,7 @@ test.describe("Scene transitions", () => {
     await call(page, "resetEvents");
 
     await call(page, "pushWithTransition", "fade", 0.1);
-    await stepFrames(page, 20, 16);
+    await stepFrames(page, 20, { dtMs: 16 });
 
     const events = await call(page, "getTransitionEvents");
     expect(events).toEqual([
@@ -127,12 +127,12 @@ test.describe("Scene transitions", () => {
     // Drive the first transition to completion, yield so the queued push's
     // awaited preload / beforeEnter microtasks settle, then drive the
     // second.
-    await stepFrames(page, 10, 16);
+    await stepFrames(page, 10, { dtMs: 16 });
     await page.waitForFunction(
       () =>
         (window as Win).__sceneTransitionTest__!.getStackNames().length >= 2,
     );
-    await stepFrames(page, 30, 16);
+    await stepFrames(page, 30, { dtMs: 16 });
     await page.waitForFunction(
       () =>
         (window as Win).__sceneTransitionTest__!.getStackNames().length === 3,
@@ -164,7 +164,7 @@ test.describe("Scene transitions", () => {
       void api.pushWithTransition("fade", 0.1);
     });
 
-    await stepFrames(page, 1, 16);
+    await stepFrames(page, 1, { dtMs: 16 });
     expect(await call(page, "getIsTransitioning")).toBe(true);
 
     await call(page, "clearAll");
@@ -178,9 +178,9 @@ test.describe("Scene transitions", () => {
     // its boundaries — the second push can't start ticking until the
     // first push's transition promise resolves and the _pendingChain
     // advances, which happens between evaluates.
-    await stepFrames(page, 15, 16); // drain 0.2s fade
-    await stepFrames(page, 10, 16); // drain 0.1s fade
-    await stepFrames(page, 1, 16); // let popAll microtask run
+    await stepFrames(page, 15, { dtMs: 16 }); // drain 0.2s fade
+    await stepFrames(page, 10, { dtMs: 16 }); // drain 0.1s fade
+    await stepFrames(page, 1, { dtMs: 16 }); // let popAll microtask run
 
     expect(await getSceneStack(page)).toHaveLength(0);
 
@@ -199,17 +199,17 @@ test.describe("Scene transitions", () => {
     await waitForTestApi(page);
     // Push a second scene so we can replace the top.
     await call(page, "pushWithTransition", "fade", 0.1);
-    await stepFrames(page, 20, 16);
+    await stepFrames(page, 20, { dtMs: 16 });
 
     await call(page, "resetEvents");
 
     await call(page, "replaceWithTransition", 0.2);
-    await stepFrames(page, 1, 16);
+    await stepFrames(page, 1, { dtMs: 16 });
 
     // Frame 1 of replace: both scenes on stack.
     expect((await getSceneStack(page)).length).toBeGreaterThanOrEqual(2);
 
-    await stepFrames(page, 30, 16);
+    await stepFrames(page, 30, { dtMs: 16 });
 
     const stack = await getSceneStack(page);
     expect(stack).toHaveLength(2); // base scene-a + new replacement
@@ -224,11 +224,11 @@ test.describe("Scene transitions", () => {
     await call(page, "resetEvents");
 
     await call(page, "pushWithDefault");
-    await stepFrames(page, 1, 16);
+    await stepFrames(page, 1, { dtMs: 16 });
 
     expect(await call(page, "getIsTransitioning")).toBe(true);
 
-    await stepFrames(page, 30, 16);
+    await stepFrames(page, 30, { dtMs: 16 });
     expect(await call(page, "getIsTransitioning")).toBe(false);
     expect(await call(page, "getStackNames")).toContain("default-scene");
   });
@@ -239,16 +239,16 @@ test.describe("Scene transitions", () => {
     await gotoFixture(page, "/scene-transitions.html");
     await waitForTestApi(page);
     await call(page, "pushWithTransition", "fade", 0.1);
-    await stepFrames(page, 20, 16);
+    await stepFrames(page, 20, { dtMs: 16 });
     expect((await getSceneStack(page)).length).toBe(2);
 
     await call(page, "popWithTransition", 0.3);
 
-    await stepFrames(page, 1, 16);
+    await stepFrames(page, 1, { dtMs: 16 });
     // Still 2 scenes on stack while the transition runs.
     expect((await getSceneStack(page)).length).toBe(2);
 
-    await stepFrames(page, 40, 16);
+    await stepFrames(page, 40, { dtMs: 16 });
     expect((await getSceneStack(page)).length).toBe(1);
   });
 
@@ -261,12 +261,12 @@ test.describe("Scene transitions", () => {
     // Push scene-1 so we have two scenes to cross-dissolve between. Finish
     // this setup transition entirely so we only measure the next one.
     await call(page, "pushWithTransition", "fade", 0.1);
-    await stepFrames(page, 20, 16);
+    await stepFrames(page, 20, { dtMs: 16 });
 
     await call(page, "pushWithTransition", "crossFade", 0.4);
     // Step to ~half-way (≈200ms). crossFade clamps, so one frame past
     // midpoint is fine.
-    await stepFrames(page, 13, 16);
+    await stepFrames(page, 13, { dtMs: 16 });
 
     const fromAlpha = await call(page, "getSceneAlpha", 1);
     const toAlpha = await call(page, "getSceneAlpha", 2);
@@ -278,7 +278,7 @@ test.describe("Scene transitions", () => {
     expect(toAlpha!).toBeLessThan(0.7);
 
     // Let it finish — both should return to alpha 1.
-    await stepFrames(page, 20, 16);
+    await stepFrames(page, 20, { dtMs: 16 });
     expect(await call(page, "getSceneAlpha", 2)).toBe(1);
   });
 
@@ -296,7 +296,7 @@ test.describe("Scene transitions", () => {
     expect((await getSceneStack(page)).length).toBeGreaterThan(0);
 
     // Finish the transition and let popAll run.
-    await stepFrames(page, 15, 16);
+    await stepFrames(page, 15, { dtMs: 16 });
     expect(await getSceneStack(page)).toHaveLength(0);
   });
 });

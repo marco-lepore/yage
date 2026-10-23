@@ -61,7 +61,9 @@ test.describe("Input UI auto-consume fixture", () => {
   }) => {
     await gotoFixture(page, "/input-ui-consume.html");
     await waitForClock(page);
-    await stepFrames(page, 1);
+    // Pointer dispatch needs a drawn frame, and the fixture can freeze
+    // before drawing one.
+    await stepFrames(page, 1, { render: "last" });
 
     const canvas = page.locator("canvas");
 
@@ -88,7 +90,7 @@ test.describe("Input UI auto-consume fixture", () => {
   }) => {
     await gotoFixture(page, "/input-ui-consume.html");
     await waitForClock(page);
-    await stepFrames(page, 1);
+    await stepFrames(page, 1, { render: "last" });
 
     // The top-right panel was created with `consumeInput: false`. Hit-testing
     // resolves through the nested wrapper and the action edge fires through.
@@ -106,7 +108,7 @@ test.describe("Input UI auto-consume fixture", () => {
   }) => {
     await gotoFixture(page, "/input-ui-consume.html");
     await waitForClock(page);
-    await stepFrames(page, 1);
+    await stepFrames(page, 1, { render: "last" });
     await page.locator("canvas").click({ position: { x: 240, y: 10 } });
     await stepFrames(page, 1);
     const data = await probe(page);
@@ -120,7 +122,7 @@ test.describe("Input UI auto-consume fixture", () => {
   }) => {
     await gotoFixture(page, "/input-ui-consume.html");
     await waitForClock(page);
-    await stepFrames(page, 1);
+    await stepFrames(page, 1, { render: "last" });
     await page.locator("canvas").click({ position: { x: 50, y: 135 } });
     await stepFrames(page, 1);
     const data = await probe(page);
@@ -134,7 +136,7 @@ test.describe("Input UI auto-consume fixture", () => {
   }) => {
     await gotoFixture(page, "/input-ui-consume.html");
     await waitForClock(page);
-    await stepFrames(page, 1);
+    await stepFrames(page, 1, { render: "last" });
     const box = await page.locator("canvas").boundingBox();
     if (!box) throw new Error("canvas has no bounding box");
     await page.mouse.move(box.x + 270, box.y + 30);
@@ -152,7 +154,7 @@ test.describe("Input UI auto-consume fixture", () => {
   }) => {
     await gotoFixture(page, "/input-ui-consume.html");
     await waitForClock(page);
-    await stepFrames(page, 1);
+    await stepFrames(page, 1, { render: "last" });
 
     const canvas = page.locator("canvas");
     const box = await canvas.boundingBox();
@@ -182,7 +184,7 @@ test.describe("Input UI auto-consume fixture", () => {
   }) => {
     await gotoFixture(page, "/input-ui-consume.html");
     await waitForClock(page);
-    await stepFrames(page, 1);
+    await stepFrames(page, 1, { render: "last" });
 
     const canvas = page.locator("canvas");
     const box = await canvas.boundingBox();
@@ -207,7 +209,7 @@ test.describe("Input UI auto-consume fixture", () => {
   }) => {
     await gotoFixture(page, "/input-ui-consume.html");
     await waitForClock(page);
-    await stepFrames(page, 1);
+    await stepFrames(page, 1, { render: "last" });
 
     const canvas = page.locator("canvas");
     const box = await canvas.boundingBox();

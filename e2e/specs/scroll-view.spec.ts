@@ -39,7 +39,9 @@ test.describe("ScrollView fixture", () => {
   }) => {
     await gotoFixture(page, "/scroll-view.html");
     await waitForClock(page);
-    await stepFrames(page, 2);
+    // Pointer dispatch needs a drawn frame, and the fixture can freeze
+    // before drawing one.
+    await stepFrames(page, 2, { render: "last" });
     const initial = await probe(page);
     const canvas = page.locator("canvas");
     const box = await canvas.boundingBox();
@@ -70,7 +72,7 @@ test.describe("ScrollView fixture", () => {
   }) => {
     await gotoFixture(page, "/scroll-view.html");
     await waitForClock(page);
-    await stepFrames(page, 2);
+    await stepFrames(page, 2, { render: "last" });
 
     const canvas = page.locator("canvas");
 
