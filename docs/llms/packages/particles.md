@@ -134,6 +134,8 @@ emitter.configure({ rate: 40 }); // EmitterUpdateOptions — from now on
 emitter.isEmitting; // boolean
 emitter.activeCount; // number
 emitter.blendMode = "add"; // BlendMode, read/write
+emitter.visible = false; // hide every particle; emission goes on
+emitter.alpha = 0.5; // whole-emitter opacity, multiplies each particle's alpha
 ```
 
 Manual emission and temporary requests compose. `isEmitting` stays true while
@@ -209,6 +211,16 @@ emitter still accumulate, so `"add"` is what makes fire, sparks, and magic
 brighten where they pile up. Same `BlendMode` values and same
 `import "pixi.js/advanced-blend-modes"` requirement as the renderer's visual
 components (see `renderer.md`).
+
+**`visible` and `alpha`** hide or fade the whole emitter, the same way they do
+on a visual component. Both are accessors on the component, not `configure`
+options. `emitter.alpha` multiplies the opacity each particle gets from the
+`alpha`, `alphaFadeIn` and `alphaFadeOut` options, so `emitter.alpha = 0.5`
+halves the opacity of every particle at once. `emitter.alpha` must be finite:
+`NaN` or `Infinity` throws. A hidden emitter keeps emitting and ageing its
+particles. A `visible` written while the entity is dormant is remembered and
+applied when the entity is activated. Defaults: `visible` is `true`, `alpha`
+is `1`.
 
 Continuous emission and a no-argument `burst` both spawn at the entity's
 `Transform.worldPosition`, so a child entity emits where it is drawn, not at

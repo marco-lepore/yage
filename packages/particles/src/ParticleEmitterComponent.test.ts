@@ -45,6 +45,8 @@ const { mocks } = vi.hoisted(() => {
     };
     parent: unknown = null;
     destroyed = false;
+    visible = true;
+    alpha = 1;
     texture: unknown = null;
     dynamicProperties: unknown = null;
     // Pixi's own default — display objects start at "inherit", not "normal".
@@ -200,7 +202,7 @@ function createEmitter(overrides: Partial<EmitterOptions> = {}) {
 /** A particle's world position: its container-local coordinate plus the container's. */
 function worldOf(emitter: ParticleEmitterComponent, index = 0) {
   const particle = emitter._active[index]!.particle;
-  const { x, y } = emitter.container.position;
+  const { x, y } = emitter.renderObject.position;
   return { x: particle.x + x, y: particle.y + y };
 }
 
@@ -223,7 +225,7 @@ describe("ParticleEmitterComponent", () => {
   describe("construction", () => {
     it("creates a ParticleContainer", () => {
       const emitter = createEmitter();
-      expect(emitter.container).toBeDefined();
+      expect(emitter.renderObject).toBeDefined();
     });
 
     it("defaults to not emitting", () => {
@@ -238,7 +240,7 @@ describe("ParticleEmitterComponent", () => {
 
     it("needs no texture — defaults to the shared white pixel", () => {
       const emitter = new ParticleEmitterComponent({ lifetime: 1 });
-      const container = emitter.container as unknown as InstanceType<
+      const container = emitter.renderObject as unknown as InstanceType<
         typeof mocks.MockParticleContainer
       >;
       expect(container.texture).toEqual({ label: "WHITE" });
@@ -260,7 +262,7 @@ describe("ParticleEmitterComponent", () => {
         shape: "circle",
         lifetime: 1,
       } as unknown as EmitterConfig);
-      const container = emitter.container as unknown as InstanceType<
+      const container = emitter.renderObject as unknown as InstanceType<
         typeof mocks.MockParticleContainer
       >;
       expect(container.texture).toBe(tex);
@@ -271,7 +273,7 @@ describe("ParticleEmitterComponent", () => {
         texture: "loaded.png",
         lifetime: 1,
       });
-      const container = emitter.container as unknown as InstanceType<
+      const container = emitter.renderObject as unknown as InstanceType<
         typeof mocks.MockParticleContainer
       >;
       expect(container.texture).toEqual({ label: "loaded.png" });
@@ -341,24 +343,162 @@ describe("ParticleEmitterComponent", () => {
     it("hides the container while dormant and shows it again on activation", () => {
       const emitter = createEmitter();
       const { entity } = setupEntity(emitter);
-      expect(emitter.container.visible).toBe(true);
+      expect(emitter.renderObject.visible).toBe(true);
 
       entity.setActive(false);
-      expect(emitter.container.visible).toBe(false);
+      expect(emitter.renderObject.visible).toBe(false);
 
       entity.setActive(true);
-      expect(emitter.container.visible).toBe(true);
+      expect(emitter.renderObject.visible).toBe(true);
     });
 
     it("keeps a hand-set hide across a deactivate/reactivate cycle", () => {
       const emitter = createEmitter();
       const { entity } = setupEntity(emitter);
-      emitter.container.visible = false;
+      emitter.visible = false;
 
       entity.setActive(false);
       entity.setActive(true);
-      expect(emitter.container.visible).toBe(false);
+      expect(emitter.visible).toBe(false);
+      expect(emitter.renderObject.visible).toBe(false);
     });
+
+    it("hides the container while the component is disabled", () => {
+      const emitter = createEmitter();
+      setupEntity(emitter);
+
+      emitter.enabled = false;
+      expect(emitter.renderObject.visible).toBe(false);
+
+      emitter.enabled = true;
+      expect(emitter.renderObject.visible).toBe(true);
+    });
+  });
+
+  describe("visible", () => {
+    it("defaults to true", () => {
+      expect(createEmitter().visible).toBe(true);
+    });
+
+    it("shows and hides the container on a live entity", () => {
+      const emitter = createEmitter();
+      setupEntity(emitter);
+
+      emitter.visible = false;
+      expect(emitter.renderObject.visible).toBe(false);
+
+      emitter.visible = true;
+      expect(emitter.renderObject.visible).toBe(true);
+    });
+
+    it("keeps the container hidden when shown while the entity is dormant", () => {
+      const emitter = createEmitter();
+      const { entity } = setupEntity(emitter);
+      emitter.visible = false;
+      entity.setActive(false);
+
+      emitter.visible = true;
+      expect(emitter.visible).toBe(true);
+      expect(emitter.renderObject.visible).toBe(false);
+
+      entity.setActive(true);
+      expect(emitter.renderObject.visible).toBe(true);
+    });
+
+    it("applies a hide written while dormant on activation", () => {
+      const emitter = createEmitter();
+      const { entity } = setupEntity(emitter);
+      entity.setActive(false);
+
+      emitter.visible = false;
+      entity.setActive(true);
+      expect(emitter.renderObject.visible).toBe(false);
+    });
+
+    it("applies a hide written before the emitter is added", () => {
+      const emitter = createEmitter();
+      emitter.visible = false;
+
+      setupEntity(emitter);
+      expect(emitter.renderObject.visible).toBe(false);
+    });
+
+    it("keeps emitting and ageing particles while hidden", () => {
+      const emitter = createEmitter({ rate: 10, lifetime: 1 });
+      setupEntity(emitter);
+      emitter.visible = false;
+      emitter.emit();
+
+      emitter._update(0.5, 0, 0);
+      expect(emitter.activeCount).toBe(5);
+
+      emitter._update(0.6, 0, 0);
+      expect(emitter._active.every((s) => s.age > 0)).toBe(true);
+      expect(emitter.activeCount).toBe(6);
+    });
+  });
+
+  describe("alpha", () => {
+    it("defaults to 1", () => {
+      const emitter = createEmitter();
+      setupEntity(emitter);
+      expect(emitter.alpha).toBe(1);
+      expect(emitter.renderObject.alpha).toBe(1);
+    });
+
+    it("writes the container's alpha", () => {
+      const emitter = createEmitter();
+      setupEntity(emitter);
+
+      emitter.alpha = 0.3;
+      expect(emitter.alpha).toBe(0.3);
+      expect(emitter.renderObject.alpha).toBe(0.3);
+    });
+
+    it("leaves each particle's own alpha alone", () => {
+      const emitter = createEmitter({ alpha: 0.8 });
+      setupEntity(emitter);
+      emitter.alpha = 0.5;
+
+      emitter.burst(1);
+      expect(emitter._active[0]!.particle.alpha).toBe(0.8);
+    });
+
+    it("keeps its value across a deactivate/reactivate cycle", () => {
+      const emitter = createEmitter();
+      const { entity } = setupEntity(emitter);
+      emitter.alpha = 0.4;
+
+      entity.setActive(false);
+      entity.setActive(true);
+      expect(emitter.alpha).toBe(0.4);
+      expect(emitter.renderObject.alpha).toBe(0.4);
+    });
+
+    it("applies a value written before the emitter is added", () => {
+      const emitter = createEmitter();
+      emitter.alpha = 0.25;
+
+      setupEntity(emitter);
+      expect(emitter.renderObject.alpha).toBe(0.25);
+    });
+
+    it.each([NaN, Infinity, -Infinity])(
+      "throws on %s and keeps the previous value",
+      (value) => {
+        const emitter = createEmitter();
+        setupEntity(emitter);
+        emitter.alpha = 0.6;
+
+        expect(() => {
+          emitter.alpha = value;
+        }).toThrow(
+          `ParticleEmitterComponent.alpha: value must be finite, got ${value}.`,
+        );
+        expect(emitter.alpha).toBe(0.6);
+        expect(emitter.renderObject.alpha).toBe(0.6);
+      },
+    );
   });
 
   describe("emit / stop", () => {
@@ -576,7 +716,7 @@ describe("ParticleEmitterComponent", () => {
     it("writes a blend mode through to the container", () => {
       const emitter = createEmitter();
       emitter.configure({ blendMode: "add" });
-      expect(emitter.container.blendMode).toBe("add");
+      expect(emitter.renderObject.blendMode).toBe("add");
     });
 
     it("rejects a bad value and leaves every previous value in force", () => {
@@ -784,8 +924,8 @@ describe("ParticleEmitterComponent", () => {
       const emitter = createEmitter({ lifetime: 10, maxParticles: 10 });
       setupEntity(emitter, new Transform({ position: new Vec2(40, 60) }));
       expect(() => emitter.burst(1, { lifetime: 0 })).toThrow(/lifetime/);
-      expect(emitter.container.position.x).toBe(0);
-      expect(emitter.container.position.y).toBe(0);
+      expect(emitter.renderObject.position.x).toBe(0);
+      expect(emitter.renderObject.position.y).toBe(0);
     });
 
     it("checks the merged configuration, not the override alone", () => {
@@ -1018,7 +1158,7 @@ describe("ParticleEmitterComponent", () => {
     it("removed particles are taken off the container", () => {
       const emitter = createEmitter({ lifetime: 0.1, maxParticles: 5 });
       emitter.burst(3);
-      const container = emitter.container as unknown as InstanceType<
+      const container = emitter.renderObject as unknown as InstanceType<
         typeof mocks.MockParticleContainer
       >;
       expect(container.children.length).toBe(3);
@@ -1189,8 +1329,8 @@ describe("ParticleEmitterComponent", () => {
       const emitter = createEmitter();
       setupEntity(emitter, new Transform({ position: new Vec2(250, 275) }));
       emitter._update(0, 250, 275);
-      expect(emitter.container.position.x).toBe(250);
-      expect(emitter.container.position.y).toBe(275);
+      expect(emitter.renderObject.position.x).toBe(250);
+      expect(emitter.renderObject.position.y).toBe(275);
     });
 
     it("is keyed by a sorted layer at its y plus its sortOffset", () => {
@@ -1208,7 +1348,7 @@ describe("ParticleEmitterComponent", () => {
 
       system.update();
 
-      expect(emitter.container.zIndex).toBe(307);
+      expect(emitter.renderObject.zIndex).toBe(307);
     });
 
     it("warns once when zIndex is set on a sorted layer", () => {
@@ -1232,7 +1372,7 @@ describe("ParticleEmitterComponent", () => {
       setupEntity(emitter);
       emitter.zIndex = 3;
       expect(emitter.zIndex).toBe(3);
-      expect(emitter.container.zIndex).toBe(3);
+      expect(emitter.renderObject.zIndex).toBe(3);
       expect(() => {
         emitter.zIndex = Number.NaN;
       }).toThrow("ParticleEmitterComponent.zIndex: value must be finite");
@@ -1248,8 +1388,8 @@ describe("ParticleEmitterComponent", () => {
       emitter.burst(2);
       emitter._update(0, 250, 275);
 
-      expect(emitter.container.position.x).toBe(250);
-      expect(emitter.container.position.y).toBe(275);
+      expect(emitter.renderObject.position.x).toBe(250);
+      expect(emitter.renderObject.position.y).toBe(275);
       expect(worldOf(emitter, 0)).toEqual({ x: 100, y: 200 });
       expect(worldOf(emitter, 1)).toEqual({ x: 100, y: 200 });
     });
@@ -1364,7 +1504,7 @@ describe("ParticleEmitterComponent", () => {
       const { layerManager } = setupEntity(emitter);
       const layerContainer = layerManager.defaultLayer
         .container as unknown as InstanceType<typeof mocks.MockContainer>;
-      expect(layerContainer.children).toContain(emitter.container);
+      expect(layerContainer.children).toContain(emitter.renderObject);
     });
 
     it("adding the emitter does not warn on its own", () => {
@@ -1409,7 +1549,7 @@ describe("ParticleEmitterComponent", () => {
       const emitter = createEmitter();
       setupEntity(emitter);
       emitter.onDestroy?.();
-      const container = emitter.container as unknown as InstanceType<
+      const container = emitter.renderObject as unknown as InstanceType<
         typeof mocks.MockParticleContainer
       >;
       expect(container.destroyed).toBe(true);
@@ -1423,13 +1563,13 @@ describe("ParticleEmitterComponent", () => {
 
     it("applies the configured mode to the container", () => {
       const emitter = createEmitter({ blendMode: "add" });
-      expect(emitter.container.blendMode).toBe("add");
+      expect(emitter.renderObject.blendMode).toBe("add");
     });
 
     it("the setter writes through to the container", () => {
       const emitter = createEmitter();
       emitter.blendMode = "screen";
-      expect(emitter.container.blendMode).toBe("screen");
+      expect(emitter.renderObject.blendMode).toBe("screen");
       expect(emitter.blendMode).toBe("screen");
     });
   });

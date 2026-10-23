@@ -128,8 +128,8 @@ describe("ParticleSystem", () => {
 
     system.update(0.1);
 
-    expect(emitter.container.position.x).toBe(120);
-    expect(emitter.container.position.y).toBe(340);
+    expect(emitter.renderObject.position.x).toBe(120);
+    expect(emitter.renderObject.position.y).toBe(340);
   });
 
   it("registers a query for [Transform, ParticleEmitterComponent]", () => {

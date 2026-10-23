@@ -575,9 +575,9 @@ test("a fence reaching a game object's raw Pixi handle fails unless marked", () 
       ),
     ],
     [
-      "emitter-field",
+      "emitter-handle",
       fence(
-        'import { ParticleEmitterComponent } from "@yagejs/particles";\nentity.get(ParticleEmitterComponent).container.visible = false;',
+        'import { ParticleEmitterComponent } from "@yagejs/particles";\nentity.get(ParticleEmitterComponent).renderObject.visible = false;',
         'yage-context="entity"',
       ),
     ],
@@ -626,7 +626,7 @@ test("a fence reaching a game object's raw Pixi handle fails unless marked", () 
       );
   for (const name of [
     "visual-handle",
-    "emitter-field",
+    "emitter-handle",
     "ui-handle",
     "stale-mark",
   ])
