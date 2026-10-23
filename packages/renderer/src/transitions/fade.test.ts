@@ -22,6 +22,7 @@ function makeCtx(opts: {
     fromScene: opts.fromScene,
     toScene: opts.toScene,
     engineContext: {
+      tryResolve: () => undefined,
       resolve: (key: unknown) => {
         if (key === RendererKey) {
           // virtualSize and screen are intentionally distinct so any

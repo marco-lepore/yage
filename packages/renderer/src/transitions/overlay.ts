@@ -1,6 +1,8 @@
-import type { SceneTransitionContext } from "@yagejs/core";
+import { ErrorBoundaryKey } from "@yagejs/core";
+import type { ErrorBoundary, SceneTransitionContext } from "@yagejs/core";
 import { Container, Graphics } from "pixi.js";
 import type { DrawContext } from "../DrawContext.js";
+import { attributed } from "../internal/attribution.js";
 import { assertFiniteNumber } from "../internal/validate.js";
 import { attachMask } from "../masks/attachMask.js";
 import type { MaskFactory } from "../masks/MaskFactory.js";
@@ -34,7 +36,9 @@ export interface TransitionOverlay {
   readonly area: VisualBounds;
   /**
    * Draw on the overlay. Shapes accumulate, so a callback that redraws
-   * starts with `g.clear()`. Returns the overlay for chaining.
+   * starts with `g.clear()`. A throw from the callback is recorded on the
+   * error boundary as a transition overlay draw callback and rethrown.
+   * Returns the overlay for chaining.
    */
   draw(fn: (g: DrawContext) => void): this;
   /** Opacity of the whole overlay. Default `1`. A non-finite value throws. */
@@ -60,7 +64,11 @@ class TransitionOverlayImpl implements TransitionOverlay {
   private mask: MaskHandle | undefined;
   private destroyed = false;
 
-  constructor(parent: Container, area: VisualBounds) {
+  constructor(
+    parent: Container,
+    area: VisualBounds,
+    private readonly boundary: ErrorBoundary | undefined,
+  ) {
     this.area = area;
     this.container.label = "yage:transition-overlay";
     this.container.addChild(this.graphics);
@@ -68,7 +76,13 @@ class TransitionOverlayImpl implements TransitionOverlay {
   }
 
   draw(fn: (g: DrawContext) => void): this {
-    fn(this.graphics);
+    attributed(
+      this.boundary,
+      { kind: "Transition overlay draw callback" },
+      () => {
+        fn(this.graphics);
+      },
+    );
     return this;
   }
 
@@ -145,23 +159,22 @@ export function createTransitionOverlay(
   options: TransitionOverlayOptions = {},
 ): TransitionOverlay {
   const renderer = ctx.engineContext.resolve(RendererKey);
+  const boundary = ctx.engineContext.tryResolve(ErrorBoundaryKey);
   if (options.coverScreen) {
     // `app.stage` sits at identity, so its children are in canvas pixels.
     const { width, height } = renderer.canvasSize;
-    return new TransitionOverlayImpl(renderer.application.stage, {
-      x: 0,
-      y: 0,
-      width,
-      height,
-    });
+    return new TransitionOverlayImpl(
+      renderer.application.stage,
+      { x: 0, y: 0, width, height },
+      boundary,
+    );
   }
   // The world root carries the fit transform and the letterbox clip, which
   // trims an overlay sized to the visible canvas back to the play area.
   const r = renderer.visibleCanvasRect;
-  return new TransitionOverlayImpl(renderer.worldRoot, {
-    x: r.x,
-    y: r.y,
-    width: r.width,
-    height: r.height,
-  });
+  return new TransitionOverlayImpl(
+    renderer.worldRoot,
+    { x: r.x, y: r.y, width: r.width, height: r.height },
+    boundary,
+  );
 }

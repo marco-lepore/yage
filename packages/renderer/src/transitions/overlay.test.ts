@@ -1,11 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Container } from "pixi.js";
+import {
+  ErrorBoundary,
+  ErrorBoundaryKey,
+  Logger,
+  LogLevel,
+} from "@yagejs/core";
 import type { SceneTransitionContext } from "@yagejs/core";
 import { RendererKey } from "../types.js";
 import { graphicsMask } from "../masks/graphicsMask.js";
 import { createTransitionOverlay } from "./overlay.js";
 
-function makeCtx() {
+function makeCtx(boundary?: ErrorBoundary) {
   const stage = new Container();
   const worldRoot = new Container();
   const renderer = {
@@ -19,12 +25,30 @@ function makeCtx() {
     kind: "push",
     engineContext: {
       resolve: (key: unknown) => (key === RendererKey ? renderer : undefined),
+      tryResolve: (key: unknown) =>
+        key === ErrorBoundaryKey ? boundary : undefined,
     },
   } as unknown as SceneTransitionContext;
   return { ctx, stage, worldRoot };
 }
 
 describe("createTransitionOverlay", () => {
+  it("attributes a throwing draw callback to the overlay and rethrows it", () => {
+    const boundary = new ErrorBoundary(new Logger({ level: LogLevel.Debug }));
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const overlay = createTransitionOverlay(makeCtx(boundary).ctx);
+
+    expect(() =>
+      overlay.draw(() => {
+        throw new Error("bad shape");
+      }),
+    ).toThrow("bad shape");
+    expect(boundary.getCallbackErrors()).toMatchObject([
+      { kind: "Transition overlay draw callback", error: "bad shape" },
+    ]);
+    quiet.mockRestore();
+  });
+
   it("covers the visible canvas in virtual pixels inside the fit", () => {
     const { ctx, worldRoot } = makeCtx();
     const overlay = createTransitionOverlay(ctx);
