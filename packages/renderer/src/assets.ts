@@ -574,6 +574,14 @@ export function unregisterTexture(key: string): void {
   registeredTextures.delete(key);
 }
 
+/**
+ * Unregister `key` only while it still holds `texture`, so an owner that
+ * releases its key leaves a later owner's registration in place. @internal
+ */
+export function releaseTexture(key: string, texture: TextureResource): void {
+  if (registeredTextures.get(key) === texture) unregisterTexture(key);
+}
+
 /** Drop every registered texture entry — test isolation only. @internal */
 export function clearRegisteredTextures(): void {
   for (const [key, texture] of registeredTextures) {

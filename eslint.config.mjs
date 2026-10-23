@@ -43,12 +43,21 @@ const ENGINE_TIME_SYNTAX = [
 // Game-facing code (examples, addon source) changes a visual through its
 // component, never the Pixi object underneath, which the engine overwrites.
 // Visual components and UI elements hand out that object only as
-// `renderObject` and `displayObject`. Docs fences get a typed check in
+// `renderObject` and `displayObject`. Content drawn into a texture goes on a
+// layer declared with `renderTarget`; `createRenderTarget` draws a Pixi
+// container the caller builds. Docs fences get a typed check in
 // docs/scripts/check-snippets.mjs.
-const RAW_PIXI_SYNTAX = ["renderObject", "displayObject"].map((name) => ({
-  selector: `MemberExpression[property.name='${name}']`,
-  message: `\`${name}\` is the Pixi object the engine overwrites. Change the visual through its component; a task that needs the object is a missing renderer API.`,
-}));
+const RAW_PIXI_SYNTAX = [
+  ...["renderObject", "displayObject"].map((name) => ({
+    selector: `MemberExpression[property.name='${name}']`,
+    message: `\`${name}\` is the Pixi object the engine overwrites. Change the visual through its component; a task that needs the object is a missing renderer API.`,
+  })),
+  {
+    selector: "CallExpression[callee.property.name='createRenderTarget']",
+    message:
+      "`createRenderTarget` draws a Pixi container the caller builds. Declare a layer with `renderTarget` and put the visuals on it.",
+  },
+];
 const NO_PIXI_IMPORT = {
   name: "pixi.js",
   message:

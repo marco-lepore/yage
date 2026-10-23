@@ -331,6 +331,54 @@ test.describe("Examples", () => {
     expect(result.errors.callbackErrors).toEqual([]);
   });
 
+  test("render-targets moves the radar on its layer and stops redrawing while paused", async ({
+    page,
+  }) => {
+    await page.goto("/render-targets.html?test");
+    await page.waitForFunction(
+      () =>
+        window.__yage__?.inspector?.getSceneStack().at(-1)?.name ===
+        "render-targets",
+      undefined,
+      { timeout: 10_000 },
+    );
+
+    const result = await page.evaluate(async () => {
+      const inspector = window.__yage__!.inspector;
+      const read = () => ({
+        contact: inspector.getEntityPosition("ContactEntity")!,
+        redraws: (
+          inspector.getComponentData("RadarEntity", "RadarScan") as {
+            redraws: number;
+          }
+        ).redraws,
+      });
+      await inspector.time.stepAsync(10, { render: "none" });
+      const running = read();
+      await inspector.time.stepAsync(10, { render: "none" });
+      const later = read();
+      inspector.input.keyDown("Space");
+      await inspector.time.stepAsync(1, { render: "none" });
+      inspector.input.keyUp("Space");
+      const paused = read();
+      await inspector.time.stepAsync(10, { render: "none" });
+      const stillPaused = read();
+      return {
+        running,
+        later,
+        paused,
+        stillPaused,
+        errors: inspector.getErrors(),
+      };
+    });
+
+    expect(result.later.contact).not.toEqual(result.running.contact);
+    expect(result.later.redraws - result.running.redraws).toBe(10);
+    expect(result.stillPaused.contact).toEqual(result.paused.contact);
+    expect(result.stillPaused.redraws).toBe(result.paused.redraws);
+    expect(result.errors.callbackErrors).toEqual([]);
+  });
+
   test("abilities-addon replaces active loadouts cleanly", async ({ page }) => {
     const errors: string[] = [];
     page.on("console", (msg) => {

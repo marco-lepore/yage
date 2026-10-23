@@ -75,6 +75,11 @@ Each `LayerDef` has a `space: "world" | "screen" | "canvas"` (default
   [Responsive canvas](/guides/rendering/responsive/) for content in the
   bars.
 
+A layer declared with `renderTarget` draws into a texture, not the screen,
+and takes no `space`. Its visuals show wherever a sprite shows
+that texture, such as a radar on two monitors. See [Offscreen render
+targets](/guides/rendering/effects/#offscreen-render-targets).
+
 If no `"ui"` layer is declared, `@yagejs/ui` auto-provisions one as
 `space: "screen"` the first time a `UISurface` is added, so HUDs just
 work without any layer wiring.

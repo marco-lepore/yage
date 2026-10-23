@@ -315,11 +315,18 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     // 7. Create the per-scene render tree provider.
     //    Each scene gets one root container as a direct child of `_worldRoot`
     //    (which is itself the only world-space child of `app.stage`), and one
-    //    for its canvas-space layers under `_canvasRoot`.
+    //    for its canvas-space layers under `_canvasRoot`. A render-target
+    //    layer gets a target that redraws before every stage render.
     this._provider = new SceneRenderTreeProviderImpl(
       this._worldRoot,
       this._processSystem,
       this._canvasRoot,
+      (source, options) =>
+        createRenderTarget(this._app.renderer, source, options, {
+          stage: this._app.stage,
+          isEnabled: () => this.drawingEnabled,
+          refresh: options.refresh ?? "every-frame",
+        }),
     );
     this._installed.provider = true;
 
@@ -774,8 +781,8 @@ export class RendererPlugin implements Plugin, RendererAdapter {
 
   /**
    * Bake a texture once by drawing into a temporary graphics context. The
-   * result never changes again; for a buffer the game redraws, use
-   * {@link createRenderTarget}.
+   * result never changes again; for a texture the game redraws, declare a
+   * layer with `renderTarget`.
    *
    * With `size`, the texture measures exactly that region of the drawing,
    * starting at `(0, 0)`: a 4-frame strip of 32-pixel cells is `width: 128,
@@ -815,10 +822,13 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
-   * Create an offscreen buffer that draws `source` into a texture the game
+   * Create an offscreen buffer that draws `source` into a texture the caller
    * owns and redraws on its own schedule — the repeatable counterpart of
    * {@link createTexture}, with control over when the buffer refreshes and
    * how many texels it gets.
+   *
+   * For rendering tools that build their own Pixi containers. Game content
+   * drawn into a texture goes on a layer declared with `renderTarget`.
    *
    * Composite the result by showing `target.texture` (a `SpriteComponent`, a
    * mask, a filter input). See {@link RenderTargetHandle} for the coordinate

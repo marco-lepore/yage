@@ -7,6 +7,13 @@ import { attachMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
 import type { DisplayContainer } from "./public-types.js";
+import type {
+  LayerRenderTarget,
+  LayerRenderTargetOptions,
+  LayerTargetFactory,
+  RenderTargetHandle,
+} from "./RenderTarget.js";
+import { registerTexture, releaseTexture } from "./assets.js";
 import { restoreZIndex } from "./SortGroupComponent.js";
 
 /**
@@ -39,6 +46,8 @@ export interface CreateLayerOptions {
    * order. Default: undefined (insertion order).
    */
   sort?: LayerSortFn;
+  /** Draw the layer into a texture. See `LayerDef.renderTarget`. */
+  renderTarget?: LayerRenderTargetOptions;
 }
 
 /**
@@ -55,6 +64,7 @@ export function layerDefToOptions(
   if (def.space !== undefined) merged.space = def.space;
   if (def.isRenderGroup !== undefined) merged.isRenderGroup = def.isRenderGroup;
   if (def.sort !== undefined) merged.sort = def.sort;
+  if (def.renderTarget !== undefined) merged.renderTarget = def.renderTarget;
   return merged;
 }
 
@@ -71,6 +81,11 @@ export class RenderLayer {
   readonly container: DisplayContainer;
   /** Coordinate space — see `CreateLayerOptions.space`. */
   readonly space: LayerSpace;
+  /**
+   * The texture this layer draws into, for a layer declared with
+   * `renderTarget`; `undefined` for a layer that draws on screen.
+   */
+  readonly renderTarget: LayerRenderTarget | undefined;
   private _sort: LayerSortFn | undefined;
   /**
    * Layer-scope effects host. `.fx.addEffect(...)` applies a filter to every
@@ -90,11 +105,13 @@ export class RenderLayer {
     space: LayerSpace = "world",
     queueFactory?: EffectQueueFactory,
     sort?: LayerSortFn,
+    renderTarget?: LayerRenderTarget,
   ) {
     this.name = name;
     this.order = order;
     this.container = container;
     this.space = space;
+    this.renderTarget = renderTarget;
     this._sort = sort;
     if (sort) container.sortableChildren = true;
     this.fx = new EffectsHost(() => this.container, "layer", queueFactory);
@@ -171,6 +188,11 @@ export class RenderLayer {
  */
 export class RenderLayerManager {
   private layers = new Map<string, RenderLayer>();
+  /** Each render-target layer's target and the texture key it registered. */
+  private readonly targets = new Map<
+    RenderLayer,
+    { handle: RenderTargetHandle; key: string | undefined }
+  >();
   private readonly rootContainer: DisplayContainer;
   private readonly canvasRoot: DisplayContainer | undefined;
   private readonly _defaultLayer: RenderLayer;
@@ -190,6 +212,8 @@ export class RenderLayerManager {
     defaultLayerOptions?: CreateLayerOptions,
     /** Parent of the scene's `"canvas"` layers, outside the fit transform. */
     canvasRoot?: DisplayContainer,
+    /** Builds the texture of a layer declared with `renderTarget`. */
+    private readonly renderTargets?: LayerTargetFactory,
   ) {
     this.rootContainer = root;
     this.canvasRoot = canvasRoot;
@@ -213,6 +237,10 @@ export class RenderLayerManager {
     }
     const container = new Container();
     container.label = name;
+    const targetOptions = opts?.renderTarget;
+    const target =
+      targetOptions &&
+      this.createTarget(name, opts?.space, container, targetOptions);
 
     const eventMode = opts?.eventMode ?? this._defaultEventMode;
     if (eventMode) container.eventMode = eventMode;
@@ -229,13 +257,53 @@ export class RenderLayerManager {
       space,
       this._queueFactory,
       opts?.sort,
+      target,
     );
     this.layers.set(name, layer);
-
-    parent.addChild(container);
+    // A render-target layer stays out of the scene's display tree: it draws
+    // only into its texture, which another layer shows.
+    if (target) {
+      this.targets.set(layer, { handle: target, key: targetOptions?.texture });
+    } else {
+      parent.addChild(container);
+    }
     this.sortLayers();
 
     return layer;
+  }
+
+  /**
+   * Build the texture a layer declared with `renderTarget` draws into, and
+   * register it under its texture key.
+   */
+  private createTarget(
+    name: string,
+    space: LayerSpace | undefined,
+    container: DisplayContainer,
+    options: LayerRenderTargetOptions,
+  ): RenderTargetHandle {
+    if (name === "default") {
+      throw new Error(
+        `RenderLayer "default": the default layer cannot draw into a texture. ` +
+          `Declare the render target on a layer of its own.`,
+      );
+    }
+    if (space !== undefined) {
+      throw new Error(
+        `RenderLayer "${name}": a render-target layer draws only into its ` +
+          `texture, so it takes no space, got "${space}".`,
+      );
+    }
+    if (!this.renderTargets) {
+      throw new Error(
+        `RenderLayer "${name}": this render tree cannot draw a layer into a texture.`,
+      );
+    }
+    const target = this.renderTargets(container, options);
+    if (options.texture !== undefined) {
+      registerTexture(options.texture, target.texture);
+    }
+    return target;
   }
 
   /**
@@ -310,6 +378,20 @@ export class RenderLayerManager {
     for (const layer of this.layers.values()) {
       layer._destroyMask();
     }
+  }
+
+  /**
+   * Destroy every render-target layer's texture, unregister its texture key,
+   * and destroy the layer's container, which sits outside the root. Call
+   * after {@link destroyEffects} and {@link destroyMasks}.
+   */
+  destroyRenderTargets(): void {
+    for (const [layer, { handle, key }] of this.targets) {
+      if (key !== undefined) releaseTexture(key, handle.texture);
+      handle.destroy();
+      layer.container.destroy({ children: true });
+    }
+    this.targets.clear();
   }
 
   /** Clear internal state. Call after the root container has been destroyed. */

@@ -513,6 +513,39 @@ describe("DisplaySystem", () => {
     );
   });
 
+  it("refuses a camera binding that names a render-target layer", () => {
+    const camera = new CameraComponent({
+      bindings: [{ layer: "radar" }],
+    });
+    const tree = {
+      getAll: () => [],
+      tryGet: (name: string) =>
+        name === "radar"
+          ? { name, space: "world", renderTarget: {} }
+          : undefined,
+    } as unknown as SceneRenderTree;
+
+    expect(() => camera.getResolvedBindings(tree)).toThrow(
+      'CameraComponent.bindings: layer "radar" draws into a texture, which no camera binds.',
+    );
+  });
+
+  it("never auto-binds a render-target layer", () => {
+    const camera = new CameraComponent();
+    const layers = [
+      { name: "world", space: "world", renderTarget: undefined },
+      { name: "radar", space: "world", renderTarget: {} },
+    ];
+    const tree = {
+      getAll: () => layers,
+      tryGet: (name: string) => layers.find((layer) => layer.name === name),
+    } as unknown as SceneRenderTree;
+
+    expect(camera.getResolvedBindings(tree)).toEqual([
+      { layer: "world", translateRatio: 1 },
+    ]);
+  });
+
   it("rotateRatio=0 keeps a bound layer upright while the camera rotates", () => {
     const { scene, tree } = setup();
     tree.ensureLayer({ name: "billboards", order: 500 });

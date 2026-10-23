@@ -131,6 +131,14 @@ const { MockContainer, MockRenderLayer } = vi.hoisted(() => {
 vi.mock("pixi.js", () => ({
   Container: MockContainer,
   RenderLayer: MockRenderLayer,
+  // `registerTexture` keeps its keys in Pixi's asset cache.
+  Assets: {
+    cache: Object.assign(new Map<string, unknown>(), {
+      remove(this: Map<string, unknown>, key: string) {
+        this.delete(key);
+      },
+    }),
+  },
 }));
 
 import { ProcessSystem, Scene } from "@yagejs/core";
@@ -138,6 +146,8 @@ import type { LayerDef } from "./LayerDef.js";
 import type { SceneRenderTree } from "./SceneRenderTree.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
+import type { LayerTargetFactory, RenderTargetHandle } from "./RenderTarget.js";
+import { Assets } from "pixi.js";
 
 function makeFakeScene(name: string, layers?: LayerDef[]): Scene {
   return { name, layers } as unknown as Scene;
@@ -727,6 +737,135 @@ describe("canvas layers", () => {
       provider.createForScene(makeFakeScene("plain", [BARS])),
     ).toThrow(
       'RenderLayer "bars": this render tree has no canvas root, so it cannot hold a "canvas" layer.',
+    );
+  });
+});
+
+describe("render-target layers", () => {
+  /** Records each target built and the order of teardown steps. */
+  function setup() {
+    const steps: string[] = [];
+    const built: { source: unknown; handle: RenderTargetHandle }[] = [];
+    const factory: LayerTargetFactory = (source) => {
+      const texture = { label: `texture:${built.length}` };
+      const handle = {
+        texture,
+        destroy: () => steps.push(`destroy ${texture.label}`),
+      } as unknown as RenderTargetHandle;
+      built.push({ source, handle });
+      return handle;
+    };
+    const stage = new MockContainer();
+    const provider = new SceneRenderTreeProviderImpl(
+      stage as never,
+      undefined,
+      undefined,
+      factory,
+    );
+    return { steps, built, stage, provider };
+  }
+
+  const RADAR: LayerDef = {
+    name: "radar",
+    order: 0,
+    renderTarget: { width: 64, height: 32, texture: "radar-feed" },
+  };
+
+  beforeEach(() => {
+    (Assets.cache as unknown as Map<string, unknown>).clear();
+  });
+
+  it("keeps the layer out of the scene's display tree and draws it into its target", () => {
+    const { built, provider } = setup();
+    const tree = provider.createForScene(
+      makeFakeScene("radar", [{ name: "world", order: 1 }, RADAR]),
+    );
+    const radar = tree.get("radar");
+
+    expect(built).toHaveLength(1);
+    expect(built[0]!.source).toBe(radar.container);
+    expect(radar.renderTarget).toBe(built[0]!.handle);
+    expect(
+      (radar.container as unknown as InstanceType<typeof MockContainer>).parent,
+    ).toBeNull();
+    expect(tree.root.children).toEqual([
+      tree.get("default").container,
+      tree.get("world").container,
+    ]);
+    expect(tree.get("world").renderTarget).toBeUndefined();
+  });
+
+  it("registers the texture key while the scene lives and releases it on exit", () => {
+    const { steps, built, provider } = setup();
+    const scene = makeFakeScene("radar", [RADAR]);
+    const tree = provider.createForScene(scene);
+    const container = tree.get("radar").container as unknown as InstanceType<
+      typeof MockContainer
+    >;
+    const destroyContainer = container.destroy.bind(container);
+    container.destroy = () => {
+      steps.push("destroy container");
+      destroyContainer();
+    };
+    expect(Assets.cache.get("radar-feed")).toBe(built[0]!.handle.texture);
+
+    provider.destroyForScene(scene);
+
+    expect(Assets.cache.has("radar-feed")).toBe(false);
+    expect(steps).toEqual(["destroy texture:0", "destroy container"]);
+    expect(container.destroyed).toBe(true);
+  });
+
+  it("keeps a later scene's texture under the key when the earlier scene exits", () => {
+    const { built, provider } = setup();
+    const first = makeFakeScene("first", [RADAR]);
+    provider.createForScene(first);
+    provider.createForScene(makeFakeScene("second", [RADAR]));
+
+    provider.destroyForScene(first);
+
+    expect(Assets.cache.get("radar-feed")).toBe(built[1]!.handle.texture);
+  });
+
+  it("leaves a render-target node out of renderAboveEffects", () => {
+    const { stage, provider } = setup();
+    const tree = provider.createForScene(makeFakeScene("radar", [RADAR]));
+    const node = new MockContainer();
+    tree.get("radar").container.addChild(node as never);
+
+    tree.renderAboveEffects(node as never);
+
+    expect(stage.children).toEqual([tree.root]);
+    expect(node.parentRenderLayer).toBeNull();
+  });
+
+  it("refuses a render target on the default layer, with a space, or without a factory", () => {
+    const { provider } = setup();
+    const target = { width: 8, height: 8 };
+    expect(() =>
+      provider.createForScene(
+        makeFakeScene("a", [
+          { name: "default", order: 0, renderTarget: target },
+        ]),
+      ),
+    ).toThrow(
+      'RenderLayer "default": the default layer cannot draw into a texture. Declare the render target on a layer of its own.',
+    );
+    expect(() =>
+      provider.createForScene(
+        makeFakeScene("b", [
+          { name: "radar", order: 0, space: "screen", renderTarget: target },
+        ]),
+      ),
+    ).toThrow(
+      'RenderLayer "radar": a render-target layer draws only into its texture, so it takes no space, got "screen".',
+    );
+    expect(() =>
+      new SceneRenderTreeProviderImpl(
+        new MockContainer() as never,
+      ).createForScene(makeFakeScene("c", [RADAR])),
+    ).toThrow(
+      'RenderLayer "radar": this render tree cannot draw a layer into a texture.',
     );
   });
 });

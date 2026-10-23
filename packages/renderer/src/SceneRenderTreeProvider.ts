@@ -17,6 +17,7 @@ import { attachMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
 import type { DisplayContainer } from "./public-types.js";
+import type { LayerTargetFactory } from "./RenderTarget.js";
 import { assertFiniteNumber } from "./internal/validate.js";
 
 interface SceneEntry {
@@ -182,6 +183,14 @@ class SceneRenderTreeImpl implements SceneRenderTree {
     // A canvas layer already draws after the scene's layers and outside its
     // effects and mask.
     if (this.canvasRoot && isUnder(node, this.canvasRoot)) return;
+    // A render-target layer draws only into its texture.
+    if (
+      this.manager
+        .getAll()
+        .some((layer) => layer.renderTarget && isUnder(node, layer.container))
+    ) {
+      return;
+    }
     if (!this.contains(node)) {
       throw new Error(
         `SceneRenderTree.renderAboveEffects: node "${node.label}" is not in ` +
@@ -294,6 +303,11 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
      * the fit transform. Without one a scene cannot hold a `"canvas"` layer.
      */
     private readonly canvasStage?: DisplayContainer,
+    /**
+     * Builds the texture of a layer declared with `renderTarget`. Without one
+     * a scene cannot hold a render-target layer.
+     */
+    private readonly renderTargets?: LayerTargetFactory,
   ) {}
 
   createForScene(scene: Scene): SceneRenderTree {
@@ -333,6 +347,7 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
       queueFactory,
       defaultDef ? layerDefToOptions(defaultDef) : undefined,
       canvasRoot,
+      this.renderTargets,
     );
 
     for (const def of layers) {
@@ -363,6 +378,7 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
     entry.tree._destroyMask();
     entry.manager.destroyEffects();
     entry.manager.destroyMasks();
+    entry.manager.destroyRenderTargets();
     entry.root.removeFromParent();
     entry.root.destroy({ children: true });
     entry.canvasRoot?.removeFromParent();

@@ -1,4 +1,5 @@
 import type { Entity } from "@yagejs/core";
+import type { LayerRenderTargetOptions } from "./RenderTarget.js";
 
 /** Coordinate space a layer lives in. See `LayerDef.space`. */
 export type LayerSpace = "world" | "screen" | "canvas";
@@ -128,4 +129,20 @@ export interface LayerDef {
    * uniform scope, and the filter's transform stays scoped to its source.
    */
   isRenderGroup?: boolean;
+  /**
+   * Draw the layer into a texture, not the screen. Visuals join the
+   * layer with `layer: name` as on any layer and follow their entity's
+   * `Transform`, in the texture's pixels. Show the texture with a
+   * `SpriteComponent` on another layer, through the `texture` key or
+   * `layer.renderTarget.texture`. Use it for a radar, a security-camera
+   * screen or a minimap drawn from its own entities.
+   *
+   * The layer itself never draws on screen, so its `order` has no effect.
+   * No camera binds it; naming it in a camera's `bindings` throws. It takes
+   * no `space`, the `"default"` layer cannot be one, and scene-scope `fx`
+   * and `setMask` do not reach it. The layer's own `fx` and `setMask` apply
+   * inside the texture. Render-target layers redraw in declaration order, so
+   * a render-target layer that shows another's texture is declared after it.
+   */
+  renderTarget?: LayerRenderTargetOptions;
 }

@@ -252,6 +252,9 @@ export type { RawFilterOptions } from "./effects/rawFilter.js";
 
 // Offscreen buffers
 export type {
+  LayerRenderRefresh,
+  LayerRenderTarget,
+  LayerRenderTargetOptions,
   RenderTargetHandle,
   RenderTargetOptions,
 } from "./RenderTarget.js";

@@ -1121,6 +1121,8 @@ class GameScene extends Scene {
 
 **Undeclared `layer` name.** A visual component (`SpriteComponent`, `GraphicsComponent`, etc.) whose `layer` names a layer the scene never declared emits a dev-mode `[yage]` warning (naming the entity, the missing layer, and the scene) and falls back to the `"default"` layer — the visual still renders, just on the wrong layer. The fix is to add `{ name: "<layer>", order: N }` to the scene's `layers`.
 
+**Render-target layers.** A `LayerDef` with `renderTarget: { width, height, texture?, refresh? }` draws into a texture, not the screen. It takes no `space`, and cameras never bind it. See [Offscreen render targets](#offscreen-render-targets).
+
 ### Ensuring a layer
 
 `tree.ensureLayer(def, options?)` creates a missing layer and otherwise returns
@@ -1635,89 +1637,112 @@ Mask coordinates are the masked object's own local space: world pixels on a worl
 
 ## Offscreen render targets
 
-`renderer.createRenderTarget(source, options)` draws a container into a texture the game owns and redraws on its own schedule. Use it when several objects must composite against each other before reaching the screen (a light buffer, a trail buffer, a downscaled blur source), or to cache expensive static content as one texture.
+A layer declared with `renderTarget` draws into a texture, not the screen. Visuals join it with `layer: name` and follow their entity's `Transform`; another layer shows the texture through a `SpriteComponent`. Use it when several objects must composite against each other before reaching the screen (a light buffer, an `erase` cut-out), when one drawing shows in several places (a radar on two monitors), or for static content too expensive to redraw every frame.
 
-The source is a raw Pixi container the game builds, moves and destroys: no visual component draws into a render target, so this is one of the few documented places game code handles Pixi objects.
-
-```ts yage-context="scene-enter"
-import { Component, Transform } from "@yagejs/core";
-import { Container, Graphics } from "pixi.js";
+```ts
+import { Component, Entity, Scene, Transform, Vec2 } from "@yagejs/core";
 import {
-  RendererKey,
+  GraphicsComponent,
+  SceneRenderTreeKey,
   SpriteComponent,
-  registerTexture,
-  unregisterTexture,
 } from "@yagejs/renderer";
-import type { RenderTargetHandle } from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
 
-// One component owns all three resources — the source container, the buffer
-// and the registered key — and frees them in onDestroy.
-class LightBuffer extends Component {
-  private readonly source = new Container();
-  private readonly hole = new Graphics().circle(0, 0, 120).fill(0xffffff);
-  private target!: RenderTargetHandle;
+const LIGHTING = "arena:lighting";
 
-  /** Registered keys are engine-global, so give each buffer its own. */
-  constructor(private readonly key: string) {
-    super();
-  }
-
-  onAdd(): void {
-    const darkness = new Graphics()
-      .rect(0, 0, 1280, 720)
-      .fill({ color: 0x05060a, alpha: 0.85 });
-    this.hole.blendMode = "erase"; // cuts the darkness INSIDE the buffer
-    this.source.addChild(darkness, this.hole); // never added to the scene tree
-
-    this.target = this.use(RendererKey).createRenderTarget(this.source, {
-      width: 1280,
-      height: 720,
-      resolutionScale: 0.5, // quarter the texels; invisible on soft gradients
-    });
-    registerTexture(this.key, this.target.texture);
-  }
-
-  /** Move the lit spot. Coordinates are buffer pixels, not world pixels. */
-  moveLight(x: number, y: number): void {
-    this.hole.position.set(x, y);
-    this.target.invalidate();
-  }
-
-  update(): void {
-    this.target.renderIfNeeded(); // draws only when a redraw is pending
-  }
-
-  onDestroy(): void {
-    unregisterTexture(this.key); // the key outlives the texture
-    this.target.destroy(); // frees the buffer's GPU memory
-    this.source.destroy({ children: true }); // frees the offscreen content
+class Darkness extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(
+      new GraphicsComponent({ layer: "lighting" }).draw((g) =>
+        g.rect(0, 0, 1280, 720).fill({ color: 0x05060a, alpha: 0.85 }),
+      ),
+    );
   }
 }
 
-// In a Scene. The owner is added first, so the key resolves for the sprite.
-const LIGHTING = "arena:lighting";
+class LampControl extends Component {
+  private readonly transform = this.sibling(Transform);
 
-const lights = this.spawn("lights");
-lights.add(new Transform());
-lights.add(new LightBuffer(LIGHTING));
-lights.add(new SpriteComponent({ texture: LIGHTING, layer: "overlay" }));
+  /** Texture pixels, not world pixels. */
+  moveTo(x: number, y: number): void {
+    this.transform.setPosition(x, y);
+    this.use(SceneRenderTreeKey).get("lighting").renderTarget?.invalidate(); // on-demand layer
+  }
+}
+
+class Lamp extends Entity {
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(640, 360) }));
+    // `erase` cuts the darkness INSIDE the texture only.
+    this.add(
+      new GraphicsComponent({ layer: "lighting", blendMode: "erase" }).draw(
+        (g) => g.circle(0, 0, 120).fill(0xffffff),
+      ),
+    );
+    this.add(new LampControl());
+  }
+}
+
+class ArenaScene extends Scene {
+  readonly name = "arena";
+  readonly layers: readonly LayerDef[] = [
+    {
+      name: "lighting",
+      order: 0,
+      renderTarget: {
+        width: 1280,
+        height: 720,
+        texture: LIGHTING, // registered on scene enter, unregistered on exit
+        refresh: "on-demand",
+        resolutionScale: 0.5,
+      },
+    },
+    { name: "world", order: 0 },
+    { name: "overlay", order: 10 },
+  ];
+
+  onEnter(): void {
+    this.spawn(Darkness);
+    this.spawn(Lamp);
+    const overlay = this.spawn("lighting-overlay");
+    overlay.add(new Transform());
+    overlay.add(new SpriteComponent({ texture: LIGHTING, layer: "overlay" }));
+  }
+}
 ```
 
-Destroying that entity runs `onDestroy` and releases all three; so does
-exiting the scene, which destroys its entities. Own the buffer on a scene's
-`onEnter` / `onExit` pair instead when its lifetime is exactly the scene's.
+| Member                                        | Signature                                                                                  | Description                                                                                                                                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LayerDef.renderTarget`                       | `LayerRenderTargetOptions`                                                                 | Draw the layer into a texture.                                                                                                                                                                        |
+| `LayerRenderTargetOptions`                    | `{ width, height, texture?, refresh?, resolutionScale?, antialias?, clearColor?, label? }` | `width` / `height` in layer pixels. `texture` registers the texture under that key while the scene lives. `refresh` is `"every-frame"` (default) or `"on-demand"`. The rest as `RenderTargetOptions`. |
+| `RenderLayer.renderTarget`                    | `LayerRenderTarget \| undefined`                                                           | The layer's texture; `undefined` on a layer that draws on screen.                                                                                                                                     |
+| `layerTarget.texture`                         | `TextureResource`                                                                          | What the layer draws into.                                                                                                                                                                            |
+| `layerTarget.invalidate()`                    | `() => void`                                                                               | Redraw on the next frame. Needed only with `refresh: "on-demand"`.                                                                                                                                    |
+| `layerTarget.needsRender`                     | `boolean`                                                                                  | Whether a redraw is pending.                                                                                                                                                                          |
+| `layerTarget.resize(w, h, scale?)`            | `(number, number, number?) => void`                                                        | Resize and redraw on the next frame. Omitting `scale` keeps the configured `resolutionScale`.                                                                                                         |
+| `layerTarget.width` / `height` / `resolution` | `number`                                                                                   | Size in layer pixels, and the texels per pixel actually allocated.                                                                                                                                    |
 
-Give each buffer its own key rather than a shared constant. Registrations are
-engine-global, and a `replace` transition keeps both scenes alive at once, so
-two scenes registering `"lighting"` leave one `unregisterTexture` call to
-remove the other scene's entry. Every later lookup of that key then throws.
+Semantics:
+
+- **Redraw timing.** The texture redraws just before the frame is drawn, after `DisplaySystem` has written every visual's pose, so it never lags a frame. `"every-frame"` redraws each frame; `"on-demand"` only after `invalidate()` or `resize()`. With `renderer.drawingEnabled = false` nothing draws until `renderer.render()` / `captureCanvas()`.
+- **Coordinate space.** Layer pixels are texture pixels: a visual at `(100, 50)` lands at texture pixel `(100, 50)`. No camera binds the layer and the responsive `fit` does not reach it. To follow the camera, place entities at `camera.worldToScreen(x, y)`.
+- **Off screen.** The layer's container is never in the scene's display tree. `onPointer` never fires for its visuals, their bounds are in texture pixels, and `renderAboveEffects` leaves them in the texture.
+- **Validation (throws when the scene enters).** A render-target layer takes no `space`; `"default"` cannot be one. Naming it in a camera's `bindings` throws.
+- **Effects.** Scene `fx` / `setMask` do not reach it; the layer's own `fx` / `setMask` apply inside the texture.
+- **Lifetime.** The scene owns the texture: scene exit destroys it and unregisters the key. A later scene that registers the same key (a `replace` to a fresh copy of the scene) keeps the key after the earlier scene exits.
+- **Order.** Render-target layers redraw in declaration order; declare a layer before a render-target layer that shows its texture.
+
+### `createRenderTarget` for rendering tools
+
+`renderer.createRenderTarget(source, options)` draws a Pixi container the caller builds and owns into a texture. It is for rendering tools that manage their own Pixi objects (the lighting renderers use it). Game content goes on a render-target layer instead.
 
 | Member                                   | Signature                                                                        | Description                                                                                                                                                                                                                                                                                              |
 | ---------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `RendererPlugin.createRenderTarget`      | `(source: DisplayContainer, options: RenderTargetOptions) => RenderTargetHandle` | Allocate the buffer. The repeatable counterpart of `createTexture`, which bakes once and never changes.                                                                                                                                                                                                  |
 | `RenderTargetOptions`                    | `{ width, height, resolutionScale?, antialias?, clearColor?, label? }`           | `width` / `height` are in source coordinates. `resolutionScale` (default `1`) multiplies the renderer's own resolution. `clearColor` defaults to transparent.                                                                                                                                            |
 | `handle.texture`                         | `TextureResource`                                                                | What the buffer draws into. Feed it to `SpriteComponent` or `textureMask` (via `registerTexture`), or to a filter uniform.                                                                                                                                                                               |
-| `handle.source`                          | `DisplayContainer`                                                               | The container passed to `createRenderTarget`. `destroy()` leaves it alone — freeing it is the game's job.                                                                                                                                                                                                |
+| `handle.source`                          | `DisplayContainer`                                                               | The container passed to `createRenderTarget`. `destroy()` leaves it alone — freeing it is the caller's job.                                                                                                                                                                                              |
 | `handle.render()`                        | `() => void`                                                                     | Draw now and clear the pending flag.                                                                                                                                                                                                                                                                     |
 | `handle.renderIfNeeded()`                | `() => boolean`                                                                  | Draw only when pending; returns whether it drew.                                                                                                                                                                                                                                                         |
 | `handle.invalidate()`                    | `() => void`                                                                     | Mark the buffer stale.                                                                                                                                                                                                                                                                                   |
@@ -1726,7 +1751,7 @@ remove the other scene's entry. Every later lookup of that key then throws.
 | `handle.width` / `height` / `resolution` | `number`                                                                         | Measured size in source coordinates, and the texels-per-pixel actually allocated.                                                                                                                                                                                                                        |
 | `handle.destroy()`                       | `() => void`                                                                     | Free the texture's GPU memory. Repeatable. The source container is untouched — destroy that as well. Afterwards `texture`, `width`, `height`, `resolution`, `render()` and `resize()` throw `RenderTargetHandle.<member>: the handle is destroyed.`; so does `renderIfNeeded()` while a draw is pending. |
 
-Semantics:
+Semantics of a handle from `createRenderTarget`:
 
 - **Coordinate space.** The buffer is drawn in the source container's OWN space: a child at local `(100, 50)` lands at texture pixel `(100, 50)`. Ancestor transforms never reach it, so neither the camera nor the responsive `fit` scale moves or resizes the content. To follow the camera, move the source's children yourself. `camera.position` alone is not enough once zoom, rotation, or shake are in play — run the world point through `camera.worldToScreen(x, y)` and place the child at the result, or size the buffer to `renderer.visibleVirtualRect`.
 - **The source's own transform DOES apply.** Setting `source.position` or `source.scale` shifts everything inside the texture. Leave the source untransformed unless that is what you want.

@@ -15,11 +15,11 @@
         <b>R</b> cycle buffer resolution &middot; <b>Space</b> pause the radar
       </span>
       <span>
-        A radar is drawn into an offscreen texture and reused by two screens.
+        The radar is a layer that draws into a texture, which two screens show.
         Lowering the resolution changes its texel count without changing either
-        screen's layout. Pausing it shows how <code>renderIfNeeded()</code>
-        avoids redraws when the source is unchanged. The strip below uses
-        <code>blendMode</code> directly, with no buffer.
+        screen's layout. The layer redraws on demand, so pausing the radar stops
+        the redraws. The strip below uses <code>blendMode</code>
+        directly, with no texture.
       </span>
     </div>
     <script type="module" src="/src/render-targets/main.ts"></script>
