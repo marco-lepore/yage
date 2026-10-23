@@ -1,5 +1,13 @@
 # @yagejs/particles
 
+## 0.12.1
+
+### Patch Changes
+
+- Updated dependencies [[`cd014b8`](https://github.com/marco-lepore/yage/commit/cd014b818f2f97c10825552d6e4feccca77fb640)]:
+  - @yagejs/renderer@0.12.1
+  - @yagejs/core@0.12.1
+
 ## 0.12.0
 
 ### Minor Changes
