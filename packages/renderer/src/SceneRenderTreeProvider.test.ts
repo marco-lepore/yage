@@ -613,3 +613,106 @@ describe("renderAboveEffects", () => {
     expect(stage.children).toEqual([]);
   });
 });
+
+describe("canvas layers", () => {
+  function setup(layers: LayerDef[]) {
+    const stage = new MockContainer();
+    const canvasStage = new MockContainer();
+    const provider = new SceneRenderTreeProviderImpl(
+      stage as never,
+      undefined,
+      canvasStage as never,
+    );
+    const scene = makeFakeScene("branded", layers);
+    const tree = provider.createForScene(scene);
+    return { stage, canvasStage, provider, scene, tree };
+  }
+
+  const BARS: LayerDef = { name: "bars", order: 5, space: "canvas" };
+
+  it("parents a canvas layer on the scene's canvas root, outside the scene root", () => {
+    const { stage, canvasStage, tree } = setup([
+      { name: "world", order: 0 },
+      BARS,
+    ]);
+    const bars = tree.get("bars");
+    const canvasRoot = canvasStage.children[0]!;
+
+    expect(bars.space).toBe("canvas");
+    expect(bars.container.parent).toBe(canvasRoot);
+    expect(tree.root.children).not.toContain(bars.container);
+    expect(tree.get("world").container.parent).toBe(tree.root);
+    expect(stage.children).toEqual([tree.root]);
+  });
+
+  it("orders canvas layers among themselves by order", () => {
+    const { canvasStage, tree } = setup([
+      BARS,
+      { name: "score", order: 1, space: "canvas" },
+    ]);
+    const canvasRoot = canvasStage.children[0]!;
+    expect(canvasRoot.children).toEqual([
+      tree.get("score").container,
+      tree.get("bars").container,
+    ]);
+  });
+
+  it("hides, shows and reorders the canvas root with the scene", () => {
+    const stage = new MockContainer();
+    const canvasStage = new MockContainer();
+    const provider = new SceneRenderTreeProviderImpl(
+      stage as never,
+      undefined,
+      canvasStage as never,
+    );
+    const below = makeFakeScene("below", [BARS]);
+    const above = makeFakeScene("above", [BARS]);
+    (above as unknown as { transparentBelow: boolean }).transparentBelow =
+      false;
+    provider.createForScene(below);
+    provider.createForScene(above);
+    const [belowCanvas, aboveCanvas] = canvasStage.children;
+
+    provider.applyTransparentBelow([below, above]);
+    expect(belowCanvas!.visible).toBe(false);
+    expect(aboveCanvas!.visible).toBe(true);
+
+    provider.resetVisibility([below, above]);
+    expect(belowCanvas!.visible).toBe(true);
+
+    provider.bringSceneToFront(below);
+    expect(canvasStage.children.at(-1)).toBe(belowCanvas);
+  });
+
+  it("destroys the canvas root with the scene", () => {
+    const { canvasStage, provider, scene } = setup([BARS]);
+    const canvasRoot = canvasStage.children[0]!;
+
+    provider.destroyForScene(scene);
+
+    expect(canvasRoot.destroyed).toBe(true);
+    expect(canvasStage.children).toEqual([]);
+  });
+
+  it("leaves a canvas-layer node out of renderAboveEffects", () => {
+    const { stage, tree } = setup([BARS]);
+    const node = new MockContainer();
+    tree.get("bars").container.addChild(node as never);
+
+    tree.renderAboveEffects(node as never);
+
+    expect(stage.children).toEqual([tree.root]);
+    expect(node.parentRenderLayer).toBeNull();
+  });
+
+  it("refuses a canvas layer in a tree without a canvas root", () => {
+    const provider = new SceneRenderTreeProviderImpl(
+      new MockContainer() as never,
+    );
+    expect(() =>
+      provider.createForScene(makeFakeScene("plain", [BARS])),
+    ).toThrow(
+      'RenderLayer "bars": this render tree has no canvas root, so it cannot hold a "canvas" layer.',
+    );
+  });
+});

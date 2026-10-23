@@ -173,35 +173,33 @@ Rectangles of the visible canvas that sit **outside** the declared virtual rect 
 
 Under `expand` these are the play-adjacent strips the game is expected to draw into. The `responsive-ui` example fills each with a solid dark rect plus a short gradient along the inner edge (touching the play area) so the bars read as "not the play area, but still part of the rendered world."
 
-Under `letterbox` the same rects only report where the `backgroundColor` bars land. That mode clips every scene layer to the virtual rect, so content placed at these coordinates on a scene layer is invisible. To draw in the bars, parent a container directly on `renderer.application.stage` and position it in **canvas pixels**. No scene layer reaches the bars, so this code owns raw Pixi objects: destroy the container when the scene exits.
+Under `letterbox` the same rects only report where the `backgroundColor` bars land. That mode clips every world and screen layer to the virtual rect, so content placed at these coordinates on such a layer is invisible. To draw in the bars, declare a layer with `space: "canvas"`: it draws in **canvas CSS pixels**, outside the fit scale and the letterbox clip, above every scene's other layers, and ends with the scene like any layer.
 
 ```ts
-import { Scene } from "@yagejs/core";
-import { Container, Graphics } from "pixi.js";
-import { RendererKey } from "@yagejs/renderer";
+import { Scene, Transform } from "@yagejs/core";
+import { GraphicsComponent, RendererKey } from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
 
 class BrandedScene extends Scene {
   readonly name = "branded";
-  private bars: Container | undefined;
+  readonly layers: readonly LayerDef[] = [
+    { name: "bars", order: 0, space: "canvas" },
+  ];
 
   onEnter(): void {
     const renderer = this.use(RendererKey);
-    this.bars = new Container();
-    renderer.application.stage.addChild(this.bars); // canvas px, above the fit transform
-
     const { width } = renderer.canvasSize; // CSS px
     const play = renderer.virtualCanvasRect; // play area, in canvas px
-    const branding = new Graphics();
-    branding.rect(0, 0, width, play.y).fill({ color: 0x0f172a }); // top bar
-    this.bars.addChild(branding);
-  }
-
-  onExit(): void {
-    // The stage outlives the scene, so the scene destroys what it added.
-    this.bars?.destroy({ children: true });
+    const branding = this.spawn("branding");
+    branding.add(new Transform()); // canvas px: (0, 0) is the canvas corner
+    branding.add(new GraphicsComponent({ layer: "bars" })).draw((g) => {
+      g.rect(0, 0, width, play.y).fill({ color: 0x0f172a }); // top bar
+    });
   }
 }
 ```
+
+A canvas layer keeps its canvas-pixel coordinates when the canvas resizes, so redraw it from the new `canvasSize` / `virtualCanvasRect` after a resize. Cameras never bind it (naming it in `bindings` throws), and scene-scope `fx` / `setMask` do not cover it; screen-scope `renderer.fx` does.
 
 Note: "screen" in the engine (UI `LayerSpace: "screen"`, `Camera.screenToWorld`) means _virtual viewport space_. The `canvasToVirtual` method is named after its inputs (DOM CSS pixels on the canvas) to avoid that collision.
 
@@ -1136,7 +1134,9 @@ their configured layer names.
 A `CameraEntity` auto-binds every world-space layer in the scene tree
 (`LayerDef.space === "world"`, the default), including layers created after
 the camera spawned. Declare a layer with `space: "screen"` to keep it fixed
-to the viewport — cameras skip it on auto-bind.
+to the viewport — cameras skip it on auto-bind. A `space: "canvas"` layer
+(content in the letterbox bars, see Responsive canvas) is never bound, and a
+binding that names one throws.
 
 ```ts
 import { Scene } from "@yagejs/core";

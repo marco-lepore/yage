@@ -22,8 +22,9 @@ export interface CreateLayerOptions {
   /**
    * Coordinate space. `"world"` (default) layers are auto-bound by every
    * camera unless it sets `autoBind: false`; `"screen"` layers are skipped
-   * so they stay fixed to the viewport. Cameras can still explicitly bind screen-space layers by
-   * naming them in `bindings`.
+   * so they stay fixed to the viewport. Cameras can still explicitly bind
+   * screen-space layers by naming them in `bindings`. `"canvas"` layers draw
+   * in canvas pixels outside the responsive fit; see `LayerDef.space`.
    */
   space?: LayerSpace;
   /**
@@ -171,6 +172,7 @@ export class RenderLayer {
 export class RenderLayerManager {
   private layers = new Map<string, RenderLayer>();
   private readonly rootContainer: DisplayContainer;
+  private readonly canvasRoot: DisplayContainer | undefined;
   private readonly _defaultLayer: RenderLayer;
   private readonly _defaultEventMode: EventMode | undefined;
   private readonly _queueFactory: EffectQueueFactory | undefined;
@@ -186,8 +188,11 @@ export class RenderLayerManager {
      * no-op. The provider derives this from the matching `LayerDef`.
      */
     defaultLayerOptions?: CreateLayerOptions,
+    /** Parent of the scene's `"canvas"` layers, outside the fit transform. */
+    canvasRoot?: DisplayContainer,
   ) {
     this.rootContainer = root;
+    this.canvasRoot = canvasRoot;
     this._defaultEventMode = defaultEventMode;
     this._queueFactory = queueFactory;
     this._defaultLayer = this.create("default", 0, defaultLayerOptions);
@@ -197,6 +202,14 @@ export class RenderLayerManager {
   create(name: string, order: number, opts?: CreateLayerOptions): RenderLayer {
     if (this.layers.has(name)) {
       throw new Error(`RenderLayer "${name}" already exists.`);
+    }
+    const space = opts?.space ?? "world";
+    const parent = space === "canvas" ? this.canvasRoot : this.rootContainer;
+    if (!parent) {
+      throw new Error(
+        `RenderLayer "${name}": this render tree has no canvas root, so it ` +
+          `cannot hold a "canvas" layer.`,
+      );
     }
     const container = new Container();
     container.label = name;
@@ -213,13 +226,13 @@ export class RenderLayerManager {
       name,
       order,
       container,
-      opts?.space ?? "world",
+      space,
       this._queueFactory,
       opts?.sort,
     );
     this.layers.set(name, layer);
 
-    this.rootContainer.addChild(container);
+    parent.addChild(container);
     this.sortLayers();
 
     return layer;
@@ -269,7 +282,10 @@ export class RenderLayerManager {
     return [...this.layers.values()].sort((a, b) => a.order - b.order);
   }
 
-  /** The root container holding all layers, for code that adds its own Pixi objects. */
+  /**
+   * The root container holding every layer but the `"canvas"` ones, for code
+   * that adds its own Pixi objects.
+   */
   get root(): DisplayContainer {
     return this.rootContainer;
   }
@@ -305,7 +321,10 @@ export class RenderLayerManager {
     for (const layer of this.layers.values()) {
       layer.container.zIndex = layer.order;
     }
-    this.rootContainer.sortableChildren = true;
-    this.rootContainer.sortChildren();
+    for (const root of [this.rootContainer, this.canvasRoot]) {
+      if (!root) continue;
+      root.sortableChildren = true;
+      root.sortChildren();
+    }
   }
 }

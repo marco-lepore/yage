@@ -1,7 +1,7 @@
 import type { Entity } from "@yagejs/core";
 
 /** Coordinate space a layer lives in. See `LayerDef.space`. */
-export type LayerSpace = "world" | "screen";
+export type LayerSpace = "world" | "screen" | "canvas";
 
 /**
  * What a layer's depth-key function reads for one child of the layer.
@@ -55,6 +55,9 @@ export type LayerSortFn = (item: SortItem) => number;
  * - `"screen"` — cameras skip the layer on auto-bind, so it stays fixed
  *   to the viewport. Use for HUD, menus, dialogs, or any UI you want
  *   anchored to the screen.
+ * - `"canvas"` — drawn in canvas pixels, outside the responsive fit and the
+ *   letterbox clip, and never bound by a camera. Use for content in the
+ *   letterbox bars.
  *
  * UI plugins auto-provision a screen-space `"ui"` layer when no layer is
  * explicitly declared, so a single `new UISurface(...)` keeps working with
@@ -86,6 +89,12 @@ export interface LayerDef {
    * - `"screen"`: excluded from auto-bindings; stays fixed to the viewport.
    *   Use for HUD, menus, dialogs, and other screen-anchored UI. Cameras
    *   can still opt in explicitly by naming the layer in their `bindings`.
+   * - `"canvas"`: drawn in canvas CSS pixels, outside the responsive-fit
+   *   scale and the `letterbox` clip, so it reaches the letterbox bars. Use
+   *   for branding or a scoreboard in the bars. Every canvas layer draws
+   *   above every scene's world and screen layers, ordered among
+   *   themselves by `order`. No camera binds it; naming one in `bindings`
+   *   throws. Scene-scope `fx` and `setMask` do not cover it.
    */
   space?: LayerSpace;
   /**

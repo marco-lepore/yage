@@ -20,6 +20,8 @@ import type { DisplayContainer } from "./public-types.js";
 
 interface SceneEntry {
   root: DisplayContainer;
+  /** Parent of the scene's `"canvas"` layers, when the provider has a canvas stage. */
+  canvasRoot: DisplayContainer | undefined;
   manager: RenderLayerManager;
   tree: SceneRenderTreeImpl;
 }
@@ -47,6 +49,7 @@ class SceneRenderTreeImpl implements SceneRenderTree {
     readonly root: DisplayContainer,
     private readonly manager: RenderLayerManager,
     queueFactory?: EffectQueueFactory,
+    private readonly canvasRoot?: DisplayContainer,
   ) {
     this.fx = new EffectsHost(() => this.root, "scene", queueFactory);
   }
@@ -134,6 +137,9 @@ class SceneRenderTreeImpl implements SceneRenderTree {
 
   renderAboveEffects(node: DisplayContainer): void {
     if (this._aboveListeners.has(node)) return;
+    // A canvas layer already draws after the scene's layers and outside its
+    // effects and mask.
+    if (this.canvasRoot && isUnder(node, this.canvasRoot)) return;
     if (!this.contains(node)) {
       throw new Error(
         `SceneRenderTree.renderAboveEffects: node "${node.label}" is not in ` +
@@ -195,29 +201,40 @@ class SceneRenderTreeImpl implements SceneRenderTree {
 
   /** Whether `node` sits somewhere under this scene's root. */
   private contains(node: DisplayContainer): boolean {
-    for (let current = node.parent; current != null; current = current.parent) {
-      if (current === this.root) return true;
-    }
-    return false;
+    return isUnder(node, this.root);
   }
+}
+
+/** Whether `node` sits somewhere under `ancestor`. */
+function isUnder(node: DisplayContainer, ancestor: DisplayContainer): boolean {
+  for (let current = node.parent; current != null; current = current.parent) {
+    if (current === ancestor) return true;
+  }
+  return false;
 }
 
 /**
  * Materializes a per-scene render tree with one root container per scene,
  * added as a direct child of the renderer plugin's `_worldRoot` container
  * (which itself sits under `app.stage`, but holds the fit transform — see
- * `RendererPlugin._worldRoot` for the rationale). Registered under
+ * `RendererPlugin._worldRoot` for the rationale). Each scene also gets a
+ * canvas root under `_canvasRoot` for its `"canvas"` layers, created,
+ * reordered, shown and destroyed with the scene root. Registered under
  * `SceneRenderTreeProviderKey` by the renderer plugin.
  *
  * ```
  * app.stage                  // identity
- *  └── _worldRoot           // fit transform lives here
- *       ├── scene A root
- *       │    ├── layer "bg" (order -10)
- *       │    ├── layer "world" (order 0)
- *       │    └── layer "hud" (order 100)
- *       └── scene B root
- *            └── ...
+ *  ├── _worldRoot           // fit transform lives here
+ *  │    ├── scene A root
+ *  │    │    ├── layer "bg" (order -10)
+ *  │    │    ├── layer "world" (order 0)
+ *  │    │    └── layer "hud" (order 100)
+ *  │    └── scene B root
+ *  │         └── ...
+ *  └── _canvasRoot          // canvas pixels, no fit, no letterbox clip
+ *       ├── scene A canvas root
+ *       │    └── layer "bars" (space "canvas")
+ *       └── scene B canvas root
  * ```
  *
  * A scene that uses `renderAboveEffects` also owns a Pixi `RenderLayer`
@@ -230,6 +247,11 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
   constructor(
     private readonly stage: DisplayContainer,
     private readonly processSystem?: ProcessSystem,
+    /**
+     * Parent of every scene's canvas root: a sibling above `stage`, outside
+     * the fit transform. Without one a scene cannot hold a `"canvas"` layer.
+     */
+    private readonly canvasStage?: DisplayContainer,
   ) {}
 
   createForScene(scene: Scene): SceneRenderTree {
@@ -242,6 +264,12 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
     const root = new Container();
     root.label = `scene:${scene.name}`;
     this.stage.addChild(root);
+    let canvasRoot: DisplayContainer | undefined;
+    if (this.canvasStage) {
+      canvasRoot = new Container();
+      canvasRoot.label = `scene:${scene.name}:canvas`;
+      this.canvasStage.addChild(canvasRoot);
+    }
 
     // Bind the queue factory to (processSystem, scene) so every layer- and
     // scene-scope effect created on this tree pauses and time-scales with
@@ -262,6 +290,7 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
       "passive",
       queueFactory,
       defaultDef ? layerDefToOptions(defaultDef) : undefined,
+      canvasRoot,
     );
 
     for (const def of layers) {
@@ -270,8 +299,13 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
       manager.createFromDef(def);
     }
 
-    const tree = new SceneRenderTreeImpl(root, manager, queueFactory);
-    this.entries.set(scene, { root, manager, tree });
+    const tree = new SceneRenderTreeImpl(
+      root,
+      manager,
+      queueFactory,
+      canvasRoot,
+    );
+    this.entries.set(scene, { root, canvasRoot, manager, tree });
     return tree;
   }
 
@@ -288,6 +322,8 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
     entry.manager.destroyMasks();
     entry.root.removeFromParent();
     entry.root.destroy({ children: true });
+    entry.canvasRoot?.removeFromParent();
+    entry.canvasRoot?.destroy({ children: true });
     entry.tree._destroyAboveLayer();
     entry.manager.destroy();
     this.entries.delete(scene);
@@ -312,6 +348,11 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
       parent.addChild(entry.root);
       entry.tree._placeAboveLayer();
     }
+    const canvasParent = entry.canvasRoot?.parent;
+    if (entry.canvasRoot && canvasParent) {
+      canvasParent.removeChild(entry.canvasRoot);
+      canvasParent.addChild(entry.canvasRoot);
+    }
   }
 
   /**
@@ -328,7 +369,7 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
     for (let i = stack.length - 1; i >= 0; i--) {
       const scene = stack[i]!;
       const entry = this.entries.get(scene);
-      if (entry) entry.root.visible = visible;
+      if (entry) setRootsVisible(entry, visible);
       if (!scene.transparentBelow) visible = false;
     }
   }
@@ -346,7 +387,7 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
   resetVisibility(stack: readonly Scene[]): void {
     for (const scene of stack) {
       const entry = this.entries.get(scene);
-      if (entry) entry.root.visible = true;
+      if (entry) setRootsVisible(entry, true);
     }
   }
 
@@ -356,6 +397,12 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
       this.destroyForScene(scene);
     }
   }
+}
+
+/** Show or hide a scene's root and its canvas root together. */
+function setRootsVisible(entry: SceneEntry, visible: boolean): void {
+  entry.root.visible = visible;
+  if (entry.canvasRoot) entry.canvasRoot.visible = visible;
 }
 
 // String-duplicated from @yagejs/ui's `UI_DEFAULT_LAYER` ("ui") to avoid a

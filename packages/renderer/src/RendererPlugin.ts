@@ -138,6 +138,12 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * intended canvas-pixel coordinates.
    */
   private _worldRoot!: DisplayContainer;
+  /**
+   * Parents every scene's canvas-space layers: a sibling of `_worldRoot`
+   * above it, so those layers draw in canvas pixels, outside the fit
+   * transform and the letterbox mask, above every scene's other layers.
+   */
+  private _canvasRoot!: DisplayContainer;
   private _installed = {
     app: false,
     fit: false,
@@ -279,6 +285,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     this._worldRoot = new Container();
     this._worldRoot.label = "yage:worldRoot";
     this._app.stage.addChild(this._worldRoot);
+    this._canvasRoot = new Container();
+    this._canvasRoot.label = "yage:canvasRoot";
+    this._app.stage.addChild(this._canvasRoot);
 
     // 5. FitController owns the world-root transform. When `fit` is
     //    configured (or defaulted), it observes a host element and re-maps
@@ -305,10 +314,12 @@ export class RendererPlugin implements Plugin, RendererAdapter {
 
     // 7. Create the per-scene render tree provider.
     //    Each scene gets one root container as a direct child of `_worldRoot`
-    //    (which is itself the only world-space child of `app.stage`).
+    //    (which is itself the only world-space child of `app.stage`), and one
+    //    for its canvas-space layers under `_canvasRoot`.
     this._provider = new SceneRenderTreeProviderImpl(
       this._worldRoot,
       this._processSystem,
+      this._canvasRoot,
     );
     this._installed.provider = true;
 
@@ -749,9 +760,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * HUD).
    *
    * Under `letterbox` they only report where the background-color bars land.
-   * Every scene layer is clipped to the virtual rect under that mode, so
-   * content placed at these coordinates on a scene layer is invisible. To
-   * draw in the bars, parent a container directly on `renderer.application.stage` and
+   * Every world and screen layer is clipped to the virtual rect under that
+   * mode, so content placed at these coordinates on one is invisible. To
+   * draw in the bars, put the content on a `space: "canvas"` layer and
    * position it in canvas pixels.
    */
   get extendedVirtualRects(): readonly VirtualRect[] {

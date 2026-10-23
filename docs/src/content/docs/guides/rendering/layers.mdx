@@ -59,8 +59,8 @@ A level file can set this without any code — see
 
 ## Layer space
 
-Each `LayerDef` has a `space: "world" | "screen"` (default `"world"`)
-that controls whether cameras transform it:
+Each `LayerDef` has a `space: "world" | "screen" | "canvas"` (default
+`"world"`) that controls whether cameras transform it:
 
 - **`"world"`** — layers scroll and zoom with the camera. Use for
   gameplay layers (background, tiles, characters, fx), parallax, and
@@ -69,6 +69,11 @@ that controls whether cameras transform it:
   menus, dialogs, and any UI you want anchored to the screen. Cameras
   skip screen-space layers on auto-bind; you can still bind one by
   naming it in a camera's `bindings`.
+- **`"canvas"`** — layers are drawn in canvas pixels, outside the
+  responsive fit and its letterbox clip, so they reach the letterbox bars.
+  They draw above every scene's other layers, and no camera binds them. See
+  [Responsive canvas](/guides/rendering/responsive/) for content in the
+  bars.
 
 If no `"ui"` layer is declared, `@yagejs/ui` auto-provisions one as
 `space: "screen"` the first time a `UISurface` is added, so HUDs just

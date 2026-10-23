@@ -277,7 +277,7 @@ export class CameraComponent extends Component {
    *
    * An entry in `bindings` replaces the binding for the layer it names; an
    * entry naming a screen-space layer, or a layer the tree does not hold,
-   * is added. With `autoBind: false` the camera binds exactly the entries in
+   * is added. An entry naming a `"canvas"` layer throws. With `autoBind: false` the camera binds exactly the entries in
    * `bindings` and nothing else — the only way to leave a world-space layer
    * untransformed, since a binding with all three ratios at `0` centres the
    * layer on the viewport instead.
@@ -287,6 +287,14 @@ export class CameraComponent extends Component {
    */
   getResolvedBindings(tree: SceneRenderTree): readonly CameraBinding[] {
     const explicit = this.bindings;
+    for (const binding of explicit ?? NO_BINDINGS) {
+      if (tree.tryGet(binding.layer)?.space === "canvas") {
+        throw new Error(
+          `CameraComponent.bindings: layer "${binding.layer}" is a "canvas" ` +
+            `layer, which no camera binds.`,
+        );
+      }
+    }
     if (!this.autoBind) return explicit ?? NO_BINDINGS;
 
     const worldLayers = tree

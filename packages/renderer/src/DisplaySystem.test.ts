@@ -158,6 +158,7 @@ import { TextComponent } from "./TextComponent.js";
 import { SortGroupComponent } from "./SortGroupComponent.js";
 import { VisualComponent } from "./VisualComponent.js";
 import type { DisplayContainer } from "./public-types.js";
+import type { SceneRenderTree } from "./SceneRenderTree.js";
 import { ySort } from "./ySort.js";
 import {
   createRendererTestContext,
@@ -495,6 +496,21 @@ describe("DisplaySystem", () => {
     // camHigh wins: position.x = 800/2 - 300*2*1 = -200, scale = 2
     expect(world.scale.x).toBe(2);
     expect(world.position.x).toBe(-200);
+  });
+
+  it("refuses a camera binding that names a canvas layer", () => {
+    const camera = new CameraComponent({
+      bindings: [{ layer: "bars" }],
+    });
+    const tree = {
+      getAll: () => [],
+      tryGet: (name: string) =>
+        name === "bars" ? { name, space: "canvas" } : undefined,
+    } as unknown as SceneRenderTree;
+
+    expect(() => camera.getResolvedBindings(tree)).toThrow(
+      'CameraComponent.bindings: layer "bars" is a "canvas" layer, which no camera binds.',
+    );
   });
 
   it("rotateRatio=0 keeps a bound layer upright while the camera rotates", () => {
