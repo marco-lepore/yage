@@ -21,11 +21,11 @@ export class SpritesProbe extends CaseProbe {
   private readonly sprite = this.sibling(SpriteComponent);
 
   get settled(): boolean {
-    return this.sprite.sprite.texture.width > 0;
+    return this.sprite.renderObject.texture.width > 0;
   }
 
   reading(): SpritesReading {
-    const { texture: loaded } = this.sprite.sprite;
+    const { texture: loaded } = this.sprite.renderObject;
     return {
       textureWidth: loaded.width,
       textureHeight: loaded.height,

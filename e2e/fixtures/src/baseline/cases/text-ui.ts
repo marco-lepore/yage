@@ -29,7 +29,7 @@ export class TextUiProbe extends CaseProbe {
 
   reading(): TextUiReading {
     return {
-      textWidth: this.text.text.width,
+      textWidth: this.text.renderObject.width,
       panelWidth: this.panel.yogaNode.getComputedWidth(),
       panelHeight: this.panel.yogaNode.getComputedHeight(),
     };

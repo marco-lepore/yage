@@ -30,7 +30,7 @@ export class MasksProbe extends CaseProbe {
 
   reading(): MasksReading {
     return {
-      maskAttached: this.sprite.sprite.mask !== null,
+      maskAttached: this.sprite.renderObject.mask !== null,
       frames: this.frames,
     };
   }

@@ -273,7 +273,7 @@ describe("sprite materials", () => {
       /WebGL2 or WebGPU/,
     );
     expect(sprite.material).toBeUndefined();
-    expect(sprite.sprite.renderPipeId).toBe("sprite");
+    expect(sprite.renderObject.renderPipeId).toBe("sprite");
   });
 
   it("rejects a screen-space layer before moving a lit sprite", () => {
