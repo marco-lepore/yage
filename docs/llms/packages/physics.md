@@ -65,16 +65,17 @@ Methods:
 - `setVelocity(v: Vec2Like)` — set linear velocity (px/s). Preferred over impulse.
 - `setVelocityX(vx)` / `setVelocityY(vy)` — set single axis
 - `getVelocity(): Vec2` — read velocity (px/s), allocates a `Vec2`
-- `getVelocityInto(out: Vec2Buffer): Vec2Buffer` — read both velocity coordinates (px/s) into the caller's buffer with one Rapier read and no `Vec2` construction
-- `velocityX` / `velocityY` — scalar reads (px/s) that skip the `Vec2` allocation; reading both calls into Rapier twice
+- `getVelocityInto(out: Vec2Buffer): Vec2Buffer` — read both velocity coordinates (px/s) into the caller's buffer with one read and no `Vec2` construction
+- `velocityX` / `velocityY` — scalar reads (px/s) that skip the `Vec2` allocation; reading both reads the velocity twice
 - `speed` / `speedSquared` — velocity magnitude (px/s) / squared magnitude, no `Vec2` allocation
+- A kinematic body's velocity reads (and `getAngularVelocity()`) report its travel over the last physics step and keep that value on updates that run no step; a teleport (`setPosition`, `setRotation`, `setType`) sets them to zero until the next step. Contact filter candidates and `world.snapshot()` report the same values
 - `applyImpulse(v: Vec2Like)` — instant momentum change
 - `applyForce(v: Vec2Like)` — continuous force
 - `position: Vec2` — read the simulated position (px), allocates a `Vec2`
 - `getPositionInto(out: Vec2Buffer): Vec2Buffer` — read both simulated position coordinates (px) into the caller's buffer with one Rapier read and no `Vec2` construction
 - `positionX` / `positionY` — scalar reads (px) that skip the `Vec2` allocation; reading both calls into Rapier twice
 - `rotation: number` — read the simulated rotation (radians)
-- `setPosition(x, y)` — teleport any body type: no interpolation, the drawn pose jumps. A static body's `Transform` moves with it. Writing the `Transform` of a kinematic body instead moves it there smoothly over one step.
+- `setPosition(x, y)` — teleport any body type: no interpolation, the drawn pose jumps. A static body's `Transform` moves with it. Writing the `Transform` of a kinematic body instead moves it there smoothly over the following physics steps.
 - `setRotation(radians)` — teleport rotation; the rotation counterpart of `setPosition`, and it rotates a static body's `Transform` too when `syncRotation` is on
 - `setAngularVelocity(v)` / `getAngularVelocity()` — radians/s
 - `applyTorque(t)` — rotational force, in Rapier's native units: the value is not converted from pixels, and angular inertia scales with `pixelsPerMeter`⁻⁴, so the same torque spins a body 16× faster at 100 px/m than at 50. Retune after changing the scale, as with spring stiffness.
@@ -126,7 +127,7 @@ An active static body does not follow `Transform` writes; `rb.setPosition` / `rb
 
 ### Physics steps while the scene is sped up
 
-Above time scale 1 a scene runs about that many physics steps per fixed update, capped at the exported `MAX_PHYSICS_STEPS_PER_UPDATE` (8); above time scale 8 physics advances more slowly than the scene clock components receive. A kinematic body moved through its Transform reaches the new position in the first step of an update and holds still for the remaining steps.
+Above time scale 1 a scene runs about that many physics steps per fixed update, capped at the exported `MAX_PHYSICS_STEPS_PER_UPDATE` (8); above time scale 8 physics advances more slowly than the scene clock components receive.
 
 ### Velocity while the scene is slowed
 
@@ -151,7 +152,28 @@ The factor is `1` while the scene is frozen — nothing integrates, so nothing n
 
 ### Moving kinematic bodies
 
-Write the `Transform` (`setPosition`, `translate`) in `fixedUpdate`; the body reaches the written pose on the next physics step and is drawn interpolated, so the drawn gap to dynamic bodies riding it stays constant. A write from `update()` lands after that frame's interpolation pass: the frame shows the raw pose, then drawing re-blends from the last two steps, so a one-shot write visibly hops — prefer `fixedUpdate`. `rb.setPosition()` / `rb.setRotation()` teleport instead — no smoothing.
+Write the `Transform` (`setPosition`, `translate`) in `fixedUpdate`; physics moves the body to the written pose at a steady speed at any time scale and writes the interpolated pose for drawing, so the drawn gap to dynamic bodies riding it stays constant. A write from `update()` lands after that frame's interpolation pass: the frame shows the raw pose, then drawing re-blends from the last two steps, so a one-shot write visibly hops — prefer `fixedUpdate`. `rb.setPosition()` / `rb.setRotation()` teleport instead — no smoothing.
+
+`world.nextUpdateTime` (seconds) is the scene time the scene's next fixed update has to simulate: what earlier updates left over plus the next update's share at the current time scale, up to `MAX_PHYSICS_STEPS_PER_UPDATE` steps. The body spreads its move over that time, so its speed during the next update is the distance to the written pose divided by `nextUpdateTime`. When the time is not a whole number of steps, the body ends the update short of the pose and continues in the next one. The `Transform` keeps the pose the game wrote, so per-update `translate` calls build on the last write. While the scene's time scale is 0 the world does not advance and `nextUpdateTime` is 0. Reading it on a `PhysicsWorld` that no scene steps throws.
+
+```ts
+import { Component, Transform } from "@yagejs/core";
+import { PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
+
+class Lift extends Component {
+  private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly transform = this.sibling(Transform);
+  /** px/s the lift rises at during the next update; carry riders with it. */
+  riseSpeed = 0;
+
+  fixedUpdate(dt: number): void {
+    this.transform.translate(0, -60 * dt);
+    const time = this.use(PhysicsWorldKey).nextUpdateTime;
+    this.riseSpeed =
+      time > 0 ? (this.rb.positionY - this.transform.position.y) / time : 0;
+  }
+}
+```
 
 ## ColliderComponent
 
@@ -258,7 +280,7 @@ Events:
 
 A `sensor: true` collider fires only `onTrigger`; a solid collider fires only `onCollision`. Register the wrong one and it never fires — dev builds log a warning when you add the handler.
 
-Events are collected after every physics step and delivered after that step, so a scene running above `timeScale` 1 receives every transition, in order, each with its own step's contact data. Handlers run with Transforms synced to the step that produced the contact, and a handler's `setVelocity` or `destroy` takes effect before the next step of the same tick.
+Events are collected after every physics step and delivered after that step, so a scene running above `timeScale` 1 receives every transition, in order, each with its own step's contact data. Handlers run with dynamic bodies' Transforms synced to the step that produced the contact; a kinematic body's Transform keeps the pose the game wrote, and `rb.position` reads where the body is at that step. A handler's `setVelocity` or `destroy` takes effect before the next step of the same tick.
 
 ```ts yage-context="entity,scene" yage-group="collider"
 const collider = entity.get(ColliderComponent);

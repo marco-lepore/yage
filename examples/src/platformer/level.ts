@@ -42,8 +42,8 @@ export class MovingPlatform extends Component {
     this.prevPos = new Vec2(startPos.x, startPos.y);
   }
 
-  // Kinematic movement belongs in fixedUpdate: the body reaches the written
-  // pose on the next physics step and the platform is drawn interpolated, in
+  // Kinematic movement belongs in fixedUpdate: physics moves the body to the
+  // written pose at a steady speed and the platform is drawn interpolated, in
   // step with the player riding it.
   fixedUpdate(dt: number): void {
     this.elapsed += dt;

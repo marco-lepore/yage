@@ -1,6 +1,6 @@
 import RAPIER from "@dimforge/rapier2d";
-import { devWarn, Vec2 } from "@yagejs/core";
-import type { Entity, Vec2Like } from "@yagejs/core";
+import { devWarn, GameLoopKey, Vec2, Vec2Buffer } from "@yagejs/core";
+import type { Entity, Scene, Vec2Like } from "@yagejs/core";
 import { CollisionLayers } from "./CollisionLayers.js";
 import {
   colliderRotation,
@@ -20,9 +20,10 @@ import type {
   JointMotorConfig,
   QueryOptions,
   QuerySensorMode,
+  ScenePhysicsContext,
 } from "./types.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
-import type { RigidBodyComponent } from "./RigidBodyComponent.js";
+import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { MutableContactCandidate } from "./ContactCandidate.js";
 import type {
   ColliderStepPose,
@@ -36,6 +37,7 @@ import {
 } from "./validate.js";
 import { colliderPairKey, colliderPart } from "./colliderParts.js";
 import { castShape } from "./shapeCast.js";
+import { pendingPhysicsTime, sceneTimeScale } from "./stepSchedule.js";
 
 const DEFAULT_PIXELS_PER_METER = 50;
 const DEFAULT_GRAVITY_X = 0;
@@ -147,6 +149,14 @@ export class PhysicsWorld {
   private _elapsed = 0;
   /** Number of completed positive-duration steps, including unfiltered ones. */
   private _completedSteps = 0;
+  /** @internal Duration of the last positive-duration step, in seconds. */
+  _lastStepTime = 0;
+  /**
+   * @internal The scene whose fixed updates step this world, and the
+   * context holding the time those updates left unsimulated. Set by
+   * PhysicsWorldManager.
+   */
+  _schedule: { scene: Scene; context: ScenePhysicsContext } | undefined;
   /**
    * True when a collider was created, re-shaped, enabled, disabled or
    * teleported since the last step. Rapier's query index is rebuilt only by
@@ -160,6 +170,7 @@ export class PhysicsWorld {
   /** Pre-step snapshot per collider; see PreStepColliderState. */
   private readonly _preStepStates = new Map<number, PreStepColliderState>();
   private readonly _candidate = new MutableContactCandidate();
+  private readonly _velocityScratch = new Vec2Buffer();
   private readonly _hooks: RAPIER.PhysicsHooks = {
     filterContactPair: (c1, c2) => this._filterContactPair(c1, c2),
     filterIntersectionPair: () => true,
@@ -209,6 +220,32 @@ export class PhysicsWorld {
   }
 
   /**
+   * Seconds of scene time this world has to simulate at the scene's next
+   * fixed update: what earlier updates left unsimulated plus the next
+   * update's share at the scene's current time scale, up to
+   * `MAX_PHYSICS_STEPS_PER_UPDATE` steps. The update runs as many whole
+   * steps as fit and leaves the rest to the update after it.
+   *
+   * A kinematic body spreads its move to a new Transform position over this
+   * time, so its speed is the distance divided by `nextUpdateTime`. While
+   * the scene's time scale is 0 the world does not advance and this is 0.
+   */
+  get nextUpdateTime(): number {
+    const schedule = this._schedule;
+    if (!schedule)
+      throw new Error(
+        "PhysicsWorld.nextUpdateTime: no scene steps this world; read it from the world PhysicsPlugin creates for a scene (PhysicsWorldKey)",
+      );
+    const timeScale = sceneTimeScale(schedule.scene);
+    if (timeScale === 0) return 0;
+    return pendingPhysicsTime(
+      schedule.context.accumulator,
+      schedule.scene.context.resolve(GameLoopKey).fixedTimestep,
+      timeScale,
+    );
+  }
+
+  /**
    * Step the physics simulation by `dt` seconds and queue the step's
    * collision events, each captured with that step's contact data.
    * `processCollisionEvents()` delivers them; a caller that steps directly
@@ -231,6 +268,7 @@ export class PhysicsWorld {
     this.world.step(this.eventQueue, useHooks ? this._hooks : undefined);
     if (dt > 0) {
       this._completedSteps++;
+      this._lastStepTime = dt;
       if (useHooks) {
         for (const [handle, state] of this._preStepStates) {
           state.previous.x = state.x;
@@ -281,12 +319,14 @@ export class PhysicsWorld {
     state.y = this.toPixels(t.y);
     state.rotation = collider.rotation();
     const bodyHandle = this._colliderBody.get(handle);
-    const body =
-      bodyHandle !== undefined ? this.getBody(bodyHandle) : undefined;
-    if (body) {
-      const v = body.linvel();
-      state.vx = this.toPixels(v.x);
-      state.vy = this.toPixels(v.y);
+    const entity =
+      bodyHandle !== undefined ? this.bodyMap.get(bodyHandle) : undefined;
+    if (entity) {
+      const velocity = entity
+        .get(RigidBodyComponent)
+        .getVelocityInto(this._velocityScratch);
+      state.vx = velocity.x;
+      state.vy = velocity.y;
     } else {
       state.vx = 0;
       state.vy = 0;
@@ -1182,7 +1222,17 @@ export class PhysicsWorld {
       body.setNextKinematicTranslation(body.translation());
       body.setNextKinematicRotation(body.rotation());
     }
-    this.step(0);
+    // The zero step only rebuilds the query index. Without solver iterations
+    // it leaves every dynamic body's velocity as the last step left it; with
+    // them, contacts against a platform held still for this step would cancel
+    // a rider's velocity into it.
+    const iterations = this.world.numSolverIterations;
+    this.world.numSolverIterations = 0;
+    try {
+      this.step(0);
+    } finally {
+      this.world.numSolverIterations = iterations;
+    }
   }
 
   /** Rapier's `filterFlags` for a query's sensor mode; the default excludes sensors. */
@@ -1614,7 +1664,8 @@ export class PhysicsWorld {
         if (!body) return null;
 
         const position = body.translation();
-        const linvel = body.linvel();
+        const rb = entity.get(RigidBodyComponent);
+        const linvel = rb.getVelocity();
         return {
           entityId: String(entity.id),
           type: this.bodyTypeToSnapshot(body.bodyType()),
@@ -1623,11 +1674,8 @@ export class PhysicsWorld {
             y: this.toPixels(position.y),
           },
           rotation: body.rotation(),
-          linvel: {
-            x: this.toPixels(linvel.x),
-            y: this.toPixels(linvel.y),
-          },
-          angvel: body.angvel(),
+          linvel: { x: linvel.x, y: linvel.y },
+          angvel: rb.getAngularVelocity(),
         };
       })
       .filter((body): body is NonNullable<typeof body> => body !== null)

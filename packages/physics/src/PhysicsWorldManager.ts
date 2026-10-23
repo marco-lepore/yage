@@ -30,6 +30,7 @@ export class PhysicsWorldManager {
         accumulator: 0,
         alphaRef: { value: 0 },
       };
+      ctx.world._schedule = { scene, context: ctx };
       this.contexts.set(scene, ctx);
     }
     return ctx.world;

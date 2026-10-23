@@ -1,9 +1,9 @@
 import {
+  MathUtils,
   System,
   Phase,
   Transform,
   SceneManagerKey,
-  SceneTimeKey,
 } from "@yagejs/core";
 import type { Scene, SceneManager } from "@yagejs/core";
 import { PhysicsWorldManagerKey } from "./types.js";
@@ -16,13 +16,7 @@ import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { ColliderComponent } from "./ColliderComponent.js";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
-
-/**
- * The most physics steps a scene runs per fixed update. Above this time
- * scale, physics advances this many steps per update, more slowly than the
- * scene clock that component updates receive.
- */
-export const MAX_PHYSICS_STEPS_PER_UPDATE = 8;
+import { pendingPhysicsTime, sceneTimeScale } from "./stepSchedule.js";
 
 /**
  * Steps per-scene physics worlds and synchronises Rapier ↔ Transform.
@@ -35,9 +29,10 @@ export const MAX_PHYSICS_STEPS_PER_UPDATE = 8;
  * scenes are simply not stepped — no sleep/wake needed.
  *
  * Collision events are delivered after every step, so a scene running above
- * time scale 1 sees each step's transitions in order, with Transforms synced
- * to the step that produced them, and a handler's `setVelocity` or `destroy`
- * takes effect before the next step of the same tick.
+ * time scale 1 sees each step's transitions in order, with dynamic bodies'
+ * Transforms synced to the step that produced them, and a handler's
+ * `setVelocity` or `destroy` takes effect before the next step of the same
+ * tick.
  *
  * NOTE: `entity.timeScale` and SceneTime `excludeUpdates` exclusions are
  * intentionally NOT applied here. The whole scene shares one Rapier world
@@ -69,30 +64,33 @@ export class PhysicsSystem extends System {
   }
 
   private stepScene(dt: number, scene: Scene, ctx: ScenePhysicsContext): void {
-    const timeScale =
-      scene.tryResolveScoped(SceneTimeKey)?.effectiveScale ?? scene.timeScale;
-    const maxSteps = Math.min(
-      Math.ceil(timeScale) + 1,
-      MAX_PHYSICS_STEPS_PER_UPDATE,
+    ctx.accumulator = pendingPhysicsTime(
+      ctx.accumulator,
+      dt,
+      sceneTimeScale(scene),
     );
-    ctx.accumulator += dt * timeScale;
-
-    // Cap accumulator to prevent unbounded growth at high timeScale
-    ctx.accumulator = Math.min(ctx.accumulator, dt * maxSteps);
 
     let steps = 0;
-    while (ctx.accumulator >= dt && steps < maxSteps) {
-      this.preStep(scene, ctx.world);
+    while (ctx.accumulator >= dt) {
+      // The step's share of the scene time this world still has to simulate.
+      this.preStep(scene, ctx.world, dt / ctx.accumulator);
       ctx.world.step(dt);
       this.postStep(scene, ctx.world);
       ctx.world.processCollisionEvents();
       ctx.accumulator -= dt;
       steps++;
     }
+    // An update that runs no step still hands kinematic targets back to the
+    // Transform, so code that adds to it each update builds on its last write.
+    if (steps === 0) this.restoreKinematicTargets(scene, ctx.world);
   }
 
-  /** Pre-step: store prev state and drive kinematic bodies to their target. */
-  private preStep(scene: Scene, world: PhysicsWorld): void {
+  /**
+   * Pre-step: store prev state and drive kinematic bodies toward their
+   * target. `share` is this step's part of the scene time not yet simulated,
+   * at most 1.
+   */
+  private preStep(scene: Scene, world: PhysicsWorld, share: number): void {
     for (const entity of scene.getEntities()) {
       if (!entity.isActive) continue;
       const rb = entity.tryGet(RigidBodyComponent);
@@ -111,17 +109,33 @@ export class PhysicsSystem extends System {
       // Kinematic bodies move toward the captured target, not toward the
       // Transform itself — the Transform usually holds the interpolated
       // (trailing) pose at this point in the frame. The capture here keeps
-      // the target fresh on catch-up frames that run several steps between
-      // interpolation passes; without it, later steps in the same frame
-      // would re-drive an already-reached target and the pending write
-      // would land as one doubled step.
+      // the target fresh on catch-up frames that run several fixed updates
+      // between interpolation passes; without it, the later updates would
+      // keep driving toward an older target and the pending write would
+      // land later as one doubled move.
+      //
+      // Each step covers its share of the scene time still to simulate, so
+      // the body moves at a steady speed at any time scale. When the scene
+      // time does not divide into whole steps, the body ends the update short
+      // of the target and continues toward it in the next one.
       if (body.isKinematic()) {
         rb._capturePendingTarget();
-        body.setNextKinematicTranslation({
-          x: world.toMeters(rb._kinematicTargetPositionX),
-          y: world.toMeters(rb._kinematicTargetPositionY),
-        });
-        body.setNextKinematicRotation(rb._kinematicTargetRotation);
+        const x = world.toMeters(rb._kinematicTargetPositionX);
+        const y = world.toMeters(rb._kinematicTargetPositionY);
+        const rotation = rb._kinematicTargetRotation;
+        if (share >= 1) {
+          body.setNextKinematicTranslation({ x, y });
+          body.setNextKinematicRotation(rotation);
+        } else {
+          const at = body.translation();
+          body.setNextKinematicTranslation({
+            x: at.x + (x - at.x) * share,
+            y: at.y + (y - at.y) * share,
+          });
+          body.setNextKinematicRotation(
+            MathUtils.lerpAngle(body.rotation(), rotation, share),
+          );
+        }
       }
     }
   }
@@ -151,24 +165,47 @@ export class PhysicsSystem extends System {
           transform.worldRotation = rb._currRotation;
         }
       } else {
-        // Kinematic: the body reached its target this step. Put that pose
-        // back into the Transform so a fixedUpdate author that accumulates
-        // (`transform.translate(...)`) builds on its own last write rather
-        // than on the interpolated pose the last lerp left behind. A
-        // Transform the game has written since that lerp is a target the
-        // capture in PhysicsInterpolationSystem hasn't consumed yet — leave
-        // it alone. The last-written pose moves with the restore so the
-        // restored value doesn't itself read as a pending game write.
-        if (!rb._hasPendingTargetPosition()) {
-          transform.setWorldPosition(rb._currPositionX, rb._currPositionY);
-          rb._lastWrittenPositionX = rb._currPositionX;
-          rb._lastWrittenPositionY = rb._currPositionY;
-        }
-        if (rb.syncRotation && !rb._hasPendingTargetRotation()) {
-          transform.worldRotation = rb._currRotation;
-          rb._lastWrittenRotation = rb._currRotation;
-        }
+        this.restoreKinematicTarget(rb, transform);
       }
+    }
+  }
+
+  /** Hand every kinematic body's target back to its Transform, for an update with no step. */
+  private restoreKinematicTargets(scene: Scene, world: PhysicsWorld): void {
+    for (const entity of scene.getEntities()) {
+      if (!entity.isActive) continue;
+      const rb = entity.tryGet(RigidBodyComponent);
+      if (!rb || rb._bodyHandle === -1) continue;
+      if (!world.getBody(rb._bodyHandle)?.isKinematic()) continue;
+      this.restoreKinematicTarget(rb, entity.get(Transform));
+    }
+  }
+
+  /**
+   * Put a kinematic body's target back into its Transform so a fixedUpdate
+   * author that accumulates (`transform.translate(...)`) builds on its own
+   * last write. The body itself can end an update short of the target, and
+   * the last lerp left an interpolated pose. A Transform the game has written
+   * since that lerp is a target the capture in PhysicsInterpolationSystem
+   * hasn't consumed yet — leave it alone. The last-written pose moves with
+   * the restore so the restored value doesn't itself read as a pending game
+   * write.
+   */
+  private restoreKinematicTarget(
+    rb: RigidBodyComponent,
+    transform: Transform,
+  ): void {
+    if (!rb._hasPendingTargetPosition()) {
+      transform.setWorldPosition(
+        rb._kinematicTargetPositionX,
+        rb._kinematicTargetPositionY,
+      );
+      rb._lastWrittenPositionX = rb._kinematicTargetPositionX;
+      rb._lastWrittenPositionY = rb._kinematicTargetPositionY;
+    }
+    if (rb.syncRotation && !rb._hasPendingTargetRotation()) {
+      transform.worldRotation = rb._kinematicTargetRotation;
+      rb._lastWrittenRotation = rb._kinematicTargetRotation;
     }
   }
 }

@@ -45,10 +45,10 @@ entity.add(new RigidBodyComponent({
 - **`kinematic`** — moved programmatically, not by forces. Use for moving
   platforms, elevators, and doors. **Move kinematic bodies by setting the
   `Transform` position** (e.g. `transform.setPosition(x, y)` or
-  `transform.translate(dx, dy)`), preferably in `fixedUpdate` — the body
-  reaches the written pose on the next physics step and is drawn
-  interpolated, so the drawn gap to a dynamic body riding it stays
-  constant. `rb.setPosition` is the teleport for any body type: use it to
+  `transform.translate(dx, dy)`), preferably in `fixedUpdate` — physics
+  moves the body to the written pose at a steady speed and writes the
+  interpolated pose for drawing, so the drawn gap to a dynamic body riding
+  it stays constant. `rb.setPosition` is the teleport for any body type: use it to
   move a platform across the map with no in-between frames.
 
 `rb.setType(type)` switches the type at runtime: a dead enemy becomes
@@ -318,8 +318,10 @@ warning when you add it.
 Events are collected after every physics step and delivered after that step.
 A scene running above `timeScale` 1 steps more than once per tick and receives
 every transition, in order, each with its own step's contact data. Handlers
-see Transforms synced to the step that produced the contact, and a handler's
-`setVelocity` or `destroy` takes effect before the next step of the same tick.
+see dynamic bodies' Transforms synced to the step that produced the contact.
+A kinematic body's Transform keeps the position the game wrote, and
+`rb.position` reads where the body is at that step. A handler's `setVelocity`
+or `destroy` takes effect before the next step of the same tick.
 
 ```typescript yage-context="entity" yage-group="sensor"
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
@@ -549,8 +551,8 @@ rb.setVelocityY(-300);    // set Y, keep X
 // Read velocity
 const vel = rb.getVelocity(); // Vec2 in px/s
 
-// Reading a single axis or the magnitude — these read numbers straight from
-// Rapier without allocating a Vec2, so prefer them on a per-frame read path.
+// Reading a single axis or the magnitude — these read numbers without
+// allocating a Vec2, so prefer them on a per-frame read path.
 rb.velocityX;      // number, px/s
 rb.velocityY;      // number, px/s
 rb.speed;          // number, px/s — velocity magnitude
@@ -579,9 +581,15 @@ rb.getVelocityInto(velocity);      // writes x and y in pixels per second
 ```
 
 `getVelocityInto` overwrites and returns the same buffer without constructing
-a `Vec2`. Both coordinates come from one Rapier read. Read again to refresh
+a `Vec2`. Both coordinates come from one read. Read again to refresh
 the buffer; its values do not follow later changes to the body. Without a
 live body, the method writes `(0, 0)`.
+
+A kinematic body reports the velocity of its last physics step: its travel
+over that step divided by the step's length. `getAngularVelocity()` reports
+its turn the same way. The value holds on updates that run no physics step,
+such as every other update at time scale 0.5. A teleport (`rb.setPosition`,
+`rb.setRotation` or `rb.setType`) sets it to zero until the next step.
 
 Rapier limits how fast a body can move. Linear speed stops at 400 meters per
 second, which is `400 × pixelsPerMeter` px/s: 20,000 px/s at the default 50.
@@ -605,9 +613,48 @@ spring stiffness.
 A scene running above time scale 1 runs about that many physics steps per
 fixed update, up to `MAX_PHYSICS_STEPS_PER_UPDATE` (8). Above time scale 8 it
 runs 8 steps per update, so the world moves more slowly than the scene clock
-that component updates receive. A kinematic body moved through its Transform
-reaches the new position in the first step of an update and holds still for
-the remaining steps.
+that component updates receive.
+
+### Kinematic speed at any time scale
+
+A kinematic body moved through its Transform travels to the new position at a
+steady speed at any time scale. `world.nextUpdateTime` is the scene time, in
+seconds, that the scene's next fixed update has to simulate: what earlier
+updates left over plus the next update's share at the current time scale, up
+to `MAX_PHYSICS_STEPS_PER_UPDATE` steps. The body spreads its move over that
+time, so its speed during the next update is the distance to the new position
+divided by `nextUpdateTime`.
+
+When that time is not a whole number of steps, the body ends the update short
+of the position and continues in the next update. The Transform keeps the
+position the game wrote, so code that adds to it each update builds on its own
+last write. While the scene's time scale is 0 the world does not advance, and
+`nextUpdateTime` is 0.
+
+Read it after writing the new position, for example to carry what stands on a
+lift at the lift's speed:
+
+```typescript
+import { Component, Transform } from "@yagejs/core";
+import { PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
+
+class Lift extends Component {
+  private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly transform = this.sibling(Transform);
+  /** How fast the lift rises during the next update, in px/s. */
+  riseSpeed = 0;
+
+  fixedUpdate(dt: number): void {
+    this.transform.translate(0, -60 * dt);
+    const time = this.use(PhysicsWorldKey).nextUpdateTime;
+    this.riseSpeed =
+      time > 0 ? (this.rb.positionY - this.transform.position.y) / time : 0;
+  }
+}
+```
+
+Reading `nextUpdateTime` on a `PhysicsWorld` that no scene steps throws. Read
+it from the world `PhysicsWorldKey` resolves.
 
 ### Velocity while the scene is slowed
 
@@ -644,9 +691,9 @@ rb.setRotation(Math.PI / 2); // radians
 ```
 
 On a kinematic body, `rb.setPosition` and `transform.setPosition` do
-different things: the first is an instant jump, the second a smooth move the
-body completes over one physics step. Pick by whether the player should see
-the travel.
+different things: the first is an instant jump, the second a smooth move over
+the physics steps that follow. Pick by whether the player should see the
+travel.
 
 On a static body, `rb.setPosition` and `rb.setRotation` move the `Transform`
 with the body, so the sprite follows the teleport. Nothing else writes a static

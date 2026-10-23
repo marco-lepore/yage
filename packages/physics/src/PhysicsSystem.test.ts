@@ -248,10 +248,9 @@ vi.mock("@dimforge/rapier2d", () => ({
 
 import { Transform, Vec2, Phase, SceneTime, SceneTimeKey } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
-import {
-  MAX_PHYSICS_STEPS_PER_UPDATE,
-  PhysicsSystem,
-} from "./PhysicsSystem.js";
+import type { PhysicsWorld } from "./PhysicsWorld.js";
+import { PhysicsSystem } from "./PhysicsSystem.js";
+import { MAX_PHYSICS_STEPS_PER_UPDATE } from "./stepSchedule.js";
 import {
   createPhysicsTestContext,
   createTestScene,
@@ -358,6 +357,200 @@ describe("PhysicsSystem", () => {
         y: 6, // 300/50
       });
       expect(body.setNextKinematicRotationSpy).toHaveBeenCalledWith(0.5);
+    });
+
+    function kinematicFixture(
+      physicsWorld: PhysicsWorld,
+      rb: RigidBodyComponent,
+    ): InstanceType<typeof mocks.MockRigidBody> {
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      body._bodyType = "kinematic";
+      return body;
+    }
+
+    it.each([
+      [2, [0.5, 1]],
+      [3, [1 / 3, 2 / 3, 1]],
+    ])(
+      "moves a kinematic body by each step's share of the update at time scale %s",
+      async (scale, fractions) => {
+        const { scene, physicsWorld, context } = await createPhysicsTestContext(
+          { pixelsPerMeter: 50 },
+        );
+        const system = new PhysicsSystem();
+        system._setContext(context);
+        const entity = spawnEntityInScene(scene, "test");
+        entity.add(new Transform());
+        const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+        const body = kinematicFixture(physicsWorld, rb);
+
+        rb._kinematicTargetPositionX = 300;
+        rb._kinematicTargetPositionY = 150;
+        rb._kinematicTargetRotation = 1;
+        scene.timeScale = scale;
+        system.update(16.67);
+
+        const translations = body.setNextKinematicTranslationSpy.mock.calls.map(
+          ([t]) => t as { x: number; y: number },
+        );
+        expect(translations).toHaveLength(fractions.length);
+        fractions.forEach((fraction, step) => {
+          expect(translations[step]?.x).toBeCloseTo(6 * fraction); // 300 px at 50 px/m
+          expect(translations[step]?.y).toBeCloseTo(3 * fraction);
+        });
+        expect(translations.at(-1)).toEqual({ x: 6, y: 3 });
+        const rotations = body.setNextKinematicRotationSpy.mock.calls.map(
+          ([r]) => r as number,
+        );
+        expect(rotations[0]).toBeCloseTo(fractions[0] ?? 0);
+        expect(rotations.at(-1)).toBe(1);
+      },
+    );
+
+    it.each([0.5, 1.5, 2.5])(
+      "moves a kinematic body at a steady speed at time scale %s",
+      async (scale) => {
+        const { scene, physicsWorld, context } = await createPhysicsTestContext(
+          { pixelsPerMeter: 50 },
+        );
+        const system = new PhysicsSystem();
+        system._setContext(context);
+        const entity = spawnEntityInScene(scene, "test");
+        const transform = entity.add(new Transform());
+        const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+        const body = kinematicFixture(physicsWorld, rb);
+        scene.timeScale = scale;
+
+        // The game moves the body 2 px per step of scene time each update.
+        let x = 0;
+        for (let update = 0; update < 8; update++) {
+          x += 2 * scale;
+          transform.setPosition(x, 0);
+          system.update(16.67);
+          // The Transform keeps the game's position, even when the body
+          // ends the update short of it.
+          expect(transform.position.x).toBeCloseTo(x);
+        }
+
+        const positions = body.setNextKinematicTranslationSpy.mock.calls.map(
+          ([t]) => (t as { x: number }).x * 50,
+        );
+        expect(positions.length).toBeGreaterThan(2);
+        positions.forEach((position, step) => {
+          expect(position).toBeCloseTo(2 * (step + 1));
+        });
+      },
+    );
+
+    it.each([
+      [0.5, 1],
+      [1, 1],
+      [1.5, 2],
+      [2.5, 3],
+      [10, MAX_PHYSICS_STEPS_PER_UPDATE],
+    ])(
+      "reports the time the next update has to simulate at time scale %s",
+      async (scale, steps) => {
+        const { scene, physicsWorld, context } =
+          await createPhysicsTestContext();
+        const system = new PhysicsSystem();
+        system._setContext(context);
+        scene.timeScale = scale;
+
+        // The first update leaves the part of its time that does not fill
+        // a whole step for the next one.
+        system.update(1 / 60);
+
+        expect(physicsWorld.nextUpdateTime).toBeCloseTo(steps / 60);
+      },
+    );
+
+    it("reports no time for the next update while the scene is frozen", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+      scene.timeScale = 1.5;
+      system.update(1 / 60);
+
+      scene.timeScale = 0;
+
+      expect(physicsWorld.nextUpdateTime).toBe(0);
+    });
+
+    it("spreads a kinematic move over the time the next update has to simulate", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
+      const system = new PhysicsSystem();
+      system._setContext(context);
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+      const body = kinematicFixture(physicsWorld, rb);
+      scene.timeScale = 1.5;
+      system.update(1 / 60);
+      body.setNextKinematicTranslationSpy.mockClear();
+
+      const time = physicsWorld.nextUpdateTime;
+      rb._kinematicTargetPositionX = 300;
+      system.update(1 / 60);
+
+      const first = body.setNextKinematicTranslationSpy.mock.calls[0]?.[0] as {
+        x: number;
+      };
+      expect(first.x * 50).toBeCloseTo((300 / time) * (1 / 60));
+    });
+
+    it("puts a kinematic target back into the Transform on an update that runs no step", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+      const entity = spawnEntityInScene(scene, "test");
+      const transform = entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+      const body = kinematicFixture(physicsWorld, rb);
+      scene.timeScale = 0.5;
+
+      // The interpolation pass left the body's trailing pose in the Transform.
+      transform.setPosition(4, 0);
+      transform.setRotation(0.2);
+      rb._lastWrittenPositionX = 4;
+      rb._lastWrittenPositionY = 0;
+      rb._lastWrittenRotation = 0.2;
+      rb._kinematicTargetPositionX = 10;
+      rb._kinematicTargetPositionY = 0;
+      rb._kinematicTargetRotation = 0.5;
+      system.update(16.67);
+
+      expect(body.setNextKinematicTranslationSpy).not.toHaveBeenCalled();
+      // A game that adds to its last write builds on the target.
+      transform.translate(2, 0);
+      transform.rotate(0.1);
+      expect(transform.position.x).toBe(12);
+      expect(transform.rotation).toBeCloseTo(0.6);
+    });
+
+    it("turns a kinematic body the short way across ±π over an update's steps", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+      const body = kinematicFixture(physicsWorld, rb);
+      body._rotation = 3;
+      rb._kinematicTargetRotation = -3;
+      scene.timeScale = 2;
+      system.update(16.67);
+
+      const rotations = body.setNextKinematicRotationSpy.mock.calls.map(
+        ([r]) => r as number,
+      );
+      // Halfway from 3 to -3 the short way is π, not 0.
+      expect(Math.abs(rotations[0] ?? 0)).toBeCloseTo(Math.PI);
+      expect(rotations[1]).toBe(-3);
     });
 
     it("syncs kinematic curr from the body pose after the step", async () => {

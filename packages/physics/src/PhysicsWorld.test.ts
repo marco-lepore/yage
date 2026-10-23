@@ -547,6 +547,12 @@ describe("PhysicsWorld", () => {
         "PhysicsWorld: gravity.y must be finite, got NaN.",
       );
     });
+
+    it("has no next update time without a scene that steps it", () => {
+      expect(() => new PhysicsWorld().nextUpdateTime).toThrow(
+        "PhysicsWorld.nextUpdateTime: no scene steps this world",
+      );
+    });
   });
 
   describe("addJoint", () => {
