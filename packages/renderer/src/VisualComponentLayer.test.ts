@@ -65,7 +65,8 @@ vi.mock("pixi.js", () => ({
   Sprite: mocks.MockSprite,
 }));
 
-import { Transform, Vec2 } from "@yagejs/core";
+import { Component, Transform, Vec2 } from "@yagejs/core";
+import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { SpriteComponent } from "./SpriteComponent.js";
 import { SortGroupComponent } from "./SortGroupComponent.js";
 import {
@@ -149,6 +150,38 @@ describe("VisualComponent.setLayer", () => {
     expect(
       tree.defaultLayer.container.children.indexOf(sprite.renderObject),
     ).toBe(before);
+  });
+});
+
+describe("a render-target layer an entity creates with ensureLayer", () => {
+  /** Creates the radar's texture layer when its entity joins the scene. */
+  class RadarFeed extends Component {
+    onAdd(): void {
+      this.use(SceneRenderTreeKey).ensureLayer({
+        name: "radar",
+        renderTarget: { width: 64, height: 32 },
+      });
+    }
+  }
+
+  it("takes the visuals of every entity that names it, off the scene root", () => {
+    const { scene, tree, root } = createRendererTestContext();
+    spawnEntityInScene(scene, "radar").add(new RadarFeed());
+    const blips = ["enemy", "player"].map((name) => {
+      const entity = spawnEntityInScene(scene, name);
+      entity.add(new Transform());
+      return entity.add(
+        new SpriteComponent({ texture: {} as never, layer: "radar" }),
+      );
+    });
+
+    const radar = tree.get("radar");
+    expect(radar.space).toBe("texture");
+    expect(radar.renderTarget).toBeDefined();
+    for (const blip of blips) {
+      expect(radar.container.children).toContain(blip.renderObject);
+    }
+    expect(root.children).not.toContain(radar.container);
   });
 });
 

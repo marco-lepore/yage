@@ -81,6 +81,7 @@ export function layerDefToOptions(
 /** A named rendering layer — a pixi container at a given draw order. */
 export class RenderLayer {
   readonly name: string;
+  /** Draw order within the scene; `0` on a render-target layer, which never draws on screen. */
   readonly order: number;
   /**
    * The layer's Pixi container, for code that adds its own Pixi objects to
@@ -338,6 +339,12 @@ export class RenderLayerManager {
     if (target.resolutionScale !== undefined) {
       assertPositiveNumber(context, "resolutionScale", target.resolutionScale);
     }
+    if (target.texture !== undefined && this.textureFor(target.texture)) {
+      throw new Error(
+        `RenderLayer "${name}": another layer of this scene already ` +
+          `registers its texture as "${target.texture}".`,
+      );
+    }
     if (target.texture !== undefined) {
       assertTextureKeyFree(
         `${context}.texture "${target.texture}"`,
@@ -378,7 +385,8 @@ export class RenderLayerManager {
    * declare (via `ensureLayer`).
    */
   createFromDef(def: LayerDef, opts?: CreateLayerOptions): RenderLayer {
-    return this.create(def.name, def.order, layerDefToOptions(def, opts));
+    // A render-target layer has no order; `0` is never used to draw it.
+    return this.create(def.name, def.order ?? 0, layerDefToOptions(def, opts));
   }
 
   /** Get a layer by name. Throws if not found. */

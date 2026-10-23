@@ -846,7 +846,6 @@ describe("render-target layers", () => {
 
   const RADAR: LayerDef = {
     name: "radar",
-    order: 0,
     renderTarget: { width: 64, height: 32, texture: "radar-feed" },
   };
 
@@ -960,7 +959,6 @@ describe("render-target layers", () => {
       RADAR,
       {
         name: "map",
-        order: 1,
         renderTarget: { width: 8, height: 8, texture: "hero.png" },
       },
     ]);
@@ -972,6 +970,31 @@ describe("render-target layers", () => {
     expect(stage.children).toEqual([]);
     expect(Assets.cache.has("radar-feed")).toBe(false);
     expect(provider.getTree(scene)).toBeUndefined();
+  });
+
+  it("creates one at runtime through ensureLayer, owned by the scene", () => {
+    const { built, provider } = setup();
+    const scene = makeFakeScene("radar");
+    const tree = provider.createForScene(scene);
+
+    const radar = tree.ensureLayer(RADAR);
+    expect(radar.space).toBe("texture");
+    expect(radar.renderTarget).toBe(built[0]!.handle);
+    expect(Assets.cache.get("radar-feed")).toBe(built[0]!.handle.texture);
+    // A second entity asking for the same layer gets the same texture.
+    expect(tree.ensureLayer(RADAR)).toBe(radar);
+    expect(built).toHaveLength(1);
+
+    provider.destroyForScene(scene);
+    expect(Assets.cache.has("radar-feed")).toBe(false);
+  });
+
+  it("refuses a runtime layer whose key another layer of the scene registers", () => {
+    const { provider } = setup();
+    const tree = provider.createForScene(makeFakeScene("radar", [RADAR]));
+    expect(() => tree.ensureLayer({ ...RADAR, name: "copy" })).toThrow(
+      'RenderLayer "copy": another layer of this scene already registers its texture as "radar-feed".',
+    );
   });
 
   it("refuses two layers of one scene that register the same texture key", () => {
@@ -990,7 +1013,7 @@ describe("render-target layers", () => {
     expect(() =>
       provider.createForScene(
         makeFakeScene("radar", [
-          { name: "radar", order: 0, renderTarget: { width: 0, height: 8 } },
+          { name: "radar", renderTarget: { width: 0, height: 8 } },
         ]),
       ),
     ).toThrow(
@@ -1003,18 +1026,19 @@ describe("render-target layers", () => {
     const target = { width: 8, height: 8 };
     expect(() =>
       provider.createForScene(
-        makeFakeScene("a", [
-          { name: "default", order: 0, renderTarget: target },
-        ]),
+        makeFakeScene("a", [{ name: "default", renderTarget: target }]),
       ),
     ).toThrow(
       'RenderLayer "default": the default layer cannot draw into a texture. Declare the render target on a layer of its own.',
     );
+    // A declaration cannot name a space; a caller's ensureLayer options can.
+    const tree = provider.createForScene(makeFakeScene("b"));
     expect(() =>
-      provider.createForScene(
-        makeFakeScene("b", [
-          { name: "radar", order: 0, space: "screen", renderTarget: target },
-        ]),
+      tree.ensureLayer(
+        { name: "radar", renderTarget: target },
+        {
+          space: "screen",
+        },
       ),
     ).toThrow(
       'RenderLayer "radar": a render-target layer draws only into its texture, so it takes no space, got "screen".',

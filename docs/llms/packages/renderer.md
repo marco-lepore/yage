@@ -1121,7 +1121,7 @@ class GameScene extends Scene {
 
 **Undeclared `layer` name.** A visual component (`SpriteComponent`, `GraphicsComponent`, etc.) whose `layer` names a layer the scene never declared emits a dev-mode `[yage]` warning (naming the entity, the missing layer, and the scene) and falls back to the `"default"` layer — the visual still renders, just on the wrong layer. The fix is to add `{ name: "<layer>", order: N }` to the scene's `layers`.
 
-**Render-target layers.** A `LayerDef` with `renderTarget: { width, height, texture?, refresh? }` draws into a texture, not the screen. It takes no `space`, and cameras never bind it. See [Offscreen render targets](#offscreen-render-targets).
+**Render-target layers.** A `LayerDef` with `renderTarget: { width, height, texture?, refresh? }` draws into a texture, not the screen. It takes no `order` or `space`, cameras never bind it, and it can be declared on the scene or created at runtime with `ensureLayer`. See [Offscreen render targets](#offscreen-render-targets).
 
 ### Ensuring a layer
 
@@ -1692,8 +1692,7 @@ class ArenaScene extends Scene {
   readonly name = "arena";
   readonly layers: readonly LayerDef[] = [
     {
-      name: "lighting",
-      order: 0,
+      name: "lighting", // no order: a render-target layer never draws on screen
       renderTarget: {
         width: 1280,
         height: 720,
@@ -1716,9 +1715,39 @@ class ArenaScene extends Scene {
 }
 ```
 
+The entity that needs a texture can create its layer at runtime instead; `ensureLayer` returns the existing layer on later calls, and the texture still lives as long as the scene:
+
+```ts
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
+import { GraphicsComponent, SceneRenderTreeKey } from "@yagejs/renderer";
+
+class RadarFeed extends Component {
+  onAdd(): void {
+    this.use(SceneRenderTreeKey).ensureLayer({
+      name: "radar",
+      renderTarget: { width: 320, height: 220, texture: "radar-feed" },
+    });
+  }
+}
+
+class Radar extends Entity {
+  setup(): void {
+    this.add(new RadarFeed()); // before any visual names the layer, or it falls back to "default"
+    const sweep = this.spawnChild("sweep");
+    sweep.add(new Transform({ position: new Vec2(160, 110) }));
+    sweep.add(
+      new GraphicsComponent({ layer: "radar" }).draw((g) =>
+        g.moveTo(0, 0).lineTo(100, 0).stroke({ color: 0x86ffd6, width: 3 }),
+      ),
+    );
+  }
+}
+```
+
 | Member                                        | Signature                                                                                  | Description                                                                                                                                                                                           |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `LayerDef.renderTarget`                       | `LayerRenderTargetOptions`                                                                 | Draw the layer into a texture.                                                                                                                                                                        |
+| `LayerDef`                                    | `OnScreenLayerDef \| RenderTargetLayerDef`                                                 | A render-target declaration has `renderTarget` and no `order` or `space`.                                                                                                                             |
+| `RenderTargetLayerDef.renderTarget`           | `LayerRenderTargetOptions`                                                                 | Draw the layer into a texture.                                                                                                                                                                        |
 | `LayerRenderTargetOptions`                    | `{ width, height, texture?, refresh?, resolutionScale?, antialias?, clearColor?, label? }` | `width` / `height` in layer pixels. `texture` registers the texture under that key while the scene lives. `refresh` is `"every-frame"` (default) or `"on-demand"`. The rest as `RenderTargetOptions`. |
 | `RenderLayer.renderTarget`                    | `LayerRenderTarget \| undefined`                                                           | The layer's texture; `undefined` on a layer that draws on screen.                                                                                                                                     |
 | `RenderLayer.space`                           | `RenderLayerSpace`                                                                         | `"texture"` on a render-target layer, so a check for `"world"` leaves it out.                                                                                                                         |
@@ -1733,10 +1762,10 @@ Semantics:
 - **Redraw timing.** The texture redraws just before the frame is drawn, after `DisplaySystem` has written every visual's pose, so it never lags a frame. `"every-frame"` redraws each frame, also while the scene is hidden under another (another scene can show the texture by key); `"on-demand"` only after `invalidate()` or `resize()`. With `renderer.drawingEnabled = false` nothing draws until `renderer.render()` / `captureCanvas()`.
 - **Coordinate space.** Layer pixels are texture pixels: a visual at `(100, 50)` lands at texture pixel `(100, 50)`. No camera binds the layer and the responsive `fit` does not reach it. To follow the camera, place entities at `camera.worldToScreen(x, y)`.
 - **Off screen.** The layer's container is never in the scene's display tree. `onPointer` never fires for its visuals, their bounds are in texture pixels, and `renderAboveEffects` leaves them in the texture.
-- **Validation.** A render-target layer takes no `space`, `"default"` cannot be one, and its size must be positive; the scene's declared layers are all checked when it enters, before any is created. A camera whose `bindings` names a render-target layer throws when it resolves its bindings.
+- **Validation.** A render-target layer takes no `order` or `space`, `"default"` cannot be one, its size must be positive, and its texture key cannot be one another layer of the scene registers; each layer is checked when it is created, and a scene's declared layers are all checked before any is created. A camera whose `bindings` names a render-target layer throws when the camera is added.
 - **Effects.** Scene `fx` / `setMask` do not reach it; the layer's own `fx` / `setMask` apply inside the texture.
 - **Lifetime.** The scene owns the texture: scene exit destroys it and unregisters the key. When two live scenes register the same key, it resolves the later scene's texture, and goes back to the earlier scene's when the later one exits.
-- **Order.** Render-target layers redraw in declaration order; declare a layer before a render-target layer that shows its texture.
+- **Order.** Render-target layers redraw in the order they were created; create a layer before a render-target layer that shows its texture.
 
 ### `createRenderTarget` for rendering tools
 

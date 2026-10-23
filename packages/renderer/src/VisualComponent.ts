@@ -308,8 +308,9 @@ export abstract class VisualComponent extends Component implements SortSource {
     return this.renderObject.tint;
   }
 
-  /** Set the container's alpha (opacity). */
+  /** Set the container's alpha (opacity). A non-finite value throws. */
   set alpha(alpha: number) {
+    assertFiniteNumber(`${this.constructor.name}.alpha`, "value", alpha);
     this._userAlpha = alpha;
     this.applyAppearance();
   }

@@ -53,9 +53,19 @@ export type LayerSortFn = (item: SortItem) => number;
 
 /**
  * Declarative layer definition attached to a Scene subclass via
- * `readonly layers = [...]`. The renderer augments `Scene` in core (via
+ * `readonly layers = [...]`, or passed to `SceneRenderTree.ensureLayer` to
+ * create a layer at runtime. The renderer augments `Scene` in core (via
  * `scene-augmentation.ts`) so this field is typed without core depending
  * on renderer.
+ *
+ * A layer either draws on screen ({@link OnScreenLayerDef}, with an
+ * `order`) or into a texture ({@link RenderTargetLayerDef}, with a
+ * `renderTarget` and no `order`).
+ */
+export type LayerDef = OnScreenLayerDef | RenderTargetLayerDef;
+
+/**
+ * A layer that draws on screen, at its `order` among the scene's layers.
  *
  * A layer's `space` controls whether cameras transform it:
  * - `"world"` (default) — cameras auto-bind the layer (unless spawned with
@@ -71,7 +81,7 @@ export type LayerSortFn = (item: SortItem) => number;
  * explicitly declared, so a single `new UISurface(...)` keeps working with
  * zero layer wiring.
  */
-export interface LayerDef {
+export interface OnScreenLayerDef {
   /**
    * Unique layer name within a scene. `"default"` is special — every
    * scene's render tree auto-creates a layer called `"default"` at order 0,
@@ -137,20 +147,37 @@ export interface LayerDef {
    * uniform scope, and the filter's transform stays scoped to its source.
    */
   isRenderGroup?: boolean;
-  /**
-   * Draw the layer into a texture, not the screen. Visuals join the
-   * layer with `layer: name` as on any layer and follow their entity's
-   * `Transform`, in the texture's pixels. Show the texture with a
-   * `SpriteComponent` on another layer, through the `texture` key or
-   * `layer.renderTarget.texture`. Use it for a radar, a security-camera
-   * screen or a minimap drawn from its own entities.
-   *
-   * The layer itself never draws on screen, so its `order` has no effect.
-   * No camera binds it; naming it in a camera's `bindings` throws. It takes
-   * no `space`, the `"default"` layer cannot be one, and scene-scope `fx`
-   * and `setMask` do not reach it. The layer's own `fx` and `setMask` apply
-   * inside the texture. Render-target layers redraw in declaration order, so
-   * a render-target layer that shows another's texture is declared after it.
-   */
-  renderTarget?: LayerRenderTargetOptions;
+  /** Only a {@link RenderTargetLayerDef} draws into a texture. */
+  renderTarget?: never;
+}
+
+/**
+ * A layer that draws into a texture, not the screen. Visuals join the layer
+ * with `layer: name` as on any layer and follow their entity's `Transform`,
+ * in the texture's pixels, so several entities can draw into one texture.
+ * Show the texture with a `SpriteComponent` on another layer, through the
+ * `texture` key or `layer.renderTarget.texture`. Use it for a radar, a
+ * security-camera screen, a minimap or a light buffer.
+ *
+ * Declare it on the scene, or create it at runtime from the entity that
+ * needs it with `this.use(SceneRenderTreeKey).ensureLayer(def)`. Either way
+ * the texture lives as long as the scene.
+ *
+ * The layer never draws on screen, so it takes no `order` and no `space`.
+ * No camera binds it; a camera whose `bindings` names it throws. The
+ * `"default"` layer cannot be one, and scene-scope `fx` and `setMask` do not
+ * reach it. The layer's own `fx` and `setMask` apply inside the texture.
+ * Render-target layers redraw in the order they were created, so a
+ * render-target layer that shows another's texture is created after it.
+ */
+export interface RenderTargetLayerDef extends Omit<
+  OnScreenLayerDef,
+  "order" | "space" | "renderTarget"
+> {
+  /** The texture the layer draws into. */
+  renderTarget: LayerRenderTargetOptions;
+  /** A render-target layer never draws on screen, so it has no order. */
+  order?: never;
+  /** A render-target layer draws in its texture's pixels. */
+  space?: never;
 }

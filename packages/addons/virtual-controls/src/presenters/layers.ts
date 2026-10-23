@@ -1,4 +1,4 @@
-import type { LayerDef } from "@yagejs/renderer";
+import type { LayerDef, OnScreenLayerDef } from "@yagejs/renderer";
 
 /**
  * The screen-space layer the built-in presenter draws on. The presenter
@@ -8,7 +8,7 @@ import type { LayerDef } from "@yagejs/renderer";
  * 1080 sits above the inventory addon's layers (1050–1070) and below the
  * dialogue addon's chrome (1100).
  */
-export const VIRTUAL_CONTROLS_LAYER: LayerDef = {
+export const VIRTUAL_CONTROLS_LAYER: OnScreenLayerDef = {
   name: "virtual-controls",
   order: 1080,
   space: "screen",

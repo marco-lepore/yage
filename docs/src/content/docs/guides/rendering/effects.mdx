@@ -649,7 +649,6 @@ class ArenaScene extends Scene {
   readonly layers: readonly LayerDef[] = [
     {
       name: "lighting",
-      order: 0,
       renderTarget: {
         width: 1280,
         height: 720,
@@ -672,9 +671,49 @@ class ArenaScene extends Scene {
 }
 ```
 
-The `texture` key is registered when the scene enters, so a sprite can name
-it in `onEnter`. `layer.renderTarget` also holds the texture itself, and is
+A render-target layer takes no `order`, because it never draws on screen. The
+`texture` key is registered when the scene enters, so a sprite can name it in
+`onEnter`. `layer.renderTarget` also holds the texture itself, and is
 `undefined` on a layer that draws on screen.
+
+### Creating the layer from an entity
+
+The entity that needs a texture can create its layer itself, so the scene's
+`layers` list never mentions it. `ensureLayer` creates the layer the first
+time and returns the same layer after that, so several entities can ask for
+it. The texture still lives as long as the scene.
+
+```ts
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
+import { GraphicsComponent, SceneRenderTreeKey } from "@yagejs/renderer";
+
+/** Creates the radar's texture layer when the radar joins the scene. */
+class RadarFeed extends Component {
+  onAdd(): void {
+    this.use(SceneRenderTreeKey).ensureLayer({
+      name: "radar",
+      renderTarget: { width: 320, height: 220, texture: "radar-feed" },
+    });
+  }
+}
+
+class Radar extends Entity {
+  setup(): void {
+    this.add(new RadarFeed()); // before any visual names the layer
+    const sweep = this.spawnChild("sweep");
+    sweep.add(new Transform({ position: new Vec2(160, 110) }));
+    sweep.add(
+      new GraphicsComponent({ layer: "radar" }).draw((g) =>
+        g.moveTo(0, 0).lineTo(100, 0).stroke({ color: 0x86ffd6, width: 3 }),
+      ),
+    );
+  }
+}
+```
+
+Create the layer before a visual names it. A visual whose `layer` names a
+layer that does not exist yet draws on `"default"` instead, with a
+development warning.
 
 ### When the texture redraws
 
@@ -709,9 +748,10 @@ soon as zoom, rotation, or shake are in play. Or size the texture to
   visuals, the bounds they report are in texture pixels, and
   `renderAboveEffects` leaves them in the texture.
 - **No camera binds it.** Naming the layer in a camera's `bindings` throws.
-- **It takes no `space`, and `"default"` cannot be one.** Both throw when
-  the scene enters, as does a size that is not positive. The scene's layers
-  are all checked before any of them is created.
+- **It takes no `order` or `space`, and `"default"` cannot be one.** A
+  `space` or a size that is not positive throws when the layer is created,
+  and so does a texture key another layer of the scene already registers. A
+  scene's declared layers are all checked before any of them is created.
 - **Scene-wide effects and masks do not reach it.** The scene's `fx` and
   `setMask` cover what is on screen. The layer's own `fx` and `setMask` apply
   inside the texture.
@@ -719,9 +759,9 @@ soon as zoom, rotation, or shake are in play. Or size the texture to
   key. When two live scenes register the same key, as a `replace` to a fresh
   copy of the same scene does, the key resolves the later scene's texture.
   When the later scene exits first, the key goes back to the earlier one.
-- **Declare a texture's layer before the layer that shows it.** Render-target
-  layers redraw in declaration order, so a render-target layer that shows
-  another's texture comes after it.
+- **Create a texture's layer before the layer that shows it.**
+  Render-target layers redraw in the order they were created, so a
+  render-target layer that shows another's texture comes after it.
 - **`resolutionScale` costs sharpness, not layout.** Only the texel count
   changes. The exception is rounding: PixiJS stores whole texels, so a size
   that lands between them is rounded up and the measured size grows to

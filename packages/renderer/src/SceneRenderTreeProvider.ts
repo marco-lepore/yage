@@ -137,7 +137,7 @@ class SceneRenderTreeImpl implements SceneRenderTree {
   ensureLayer(def: LayerDef, opts?: EnsureLayerOptions): RenderLayer {
     const existing = this.manager.tryGet(def.name);
     if (!existing) return this.manager.createFromDef(def, opts);
-    if (isDev() && existing.order !== def.order) {
+    if (isDev() && def.order !== undefined && existing.order !== def.order) {
       let orders = this.warnedOrders.get(def.name);
       if (!orders) {
         orders = new Set();
