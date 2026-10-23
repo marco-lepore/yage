@@ -23,13 +23,18 @@ export type {
   DisplayAnimatedSprite,
   DisplayBitmapText,
   DisplayContainer,
+  DisplayGraphics,
   DisplaySplitBitmapText,
   DisplaySplitText,
   DisplaySprite,
   DisplayText,
+  DrawFill,
+  DrawMatrix,
+  DrawPath,
+  DrawRoundedPoint,
+  DrawStroke,
   Filter,
   GradientFill,
-  GraphicsContext,
   NineSliceSprite,
   Particle,
   ParticleContainer,
@@ -44,6 +49,7 @@ export type {
   WebFontHandle,
   WebFontResource,
 } from "./public-types.js";
+export type { DrawContext } from "./DrawContext.js";
 
 // Plugin
 export { RendererPlugin } from "./RendererPlugin.js";

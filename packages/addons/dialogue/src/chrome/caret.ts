@@ -6,7 +6,7 @@
  * caret without forking a presenter.
  */
 
-import type { GraphicsContext } from "@yagejs/renderer";
+import type { DrawContext } from "@yagejs/renderer";
 import {
   DEFAULT_CARET_BLINK,
   DEFAULT_CARET_SIZE,
@@ -28,7 +28,7 @@ export function caretAlpha(
  *  `size` (default {@link DEFAULT_CARET_SIZE}). Position the owning entity's
  *  `Transform` to place it. */
 export function drawCaret(
-  g: GraphicsContext,
+  g: DrawContext,
   color: number,
   size: CaretTheme["size"] = DEFAULT_CARET_SIZE,
 ): void {

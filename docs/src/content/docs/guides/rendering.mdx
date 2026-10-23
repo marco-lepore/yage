@@ -97,7 +97,7 @@ object:
 - **Type aliases, not raw pixi types.** Every exported field, parameter, and
   return type (`VisualComponent.renderObject`, `RenderLayer.container`, ...)
   is typed through `@yagejs/renderer`'s own alias names (`DisplaySprite`,
-  `DisplayContainer`, `GraphicsContext`, `ColorValue`, ...), so your code
+  `DisplayContainer`, `DrawContext`, `ColorValue`, ...), so your code
   never imports `pixi.js` to name a type. `DisplaySprite` is pixi's `Sprite`
   under another name; the alias changes only the import.
 - **An inactive entity draws nothing.** `DisplaySystem` skips it and its

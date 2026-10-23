@@ -6,7 +6,7 @@ import {
   Vec2,
   SceneManagerKey,
 } from "@yagejs/core";
-import { GraphicsComponent, type GraphicsContext } from "@yagejs/renderer";
+import { GraphicsComponent, type DrawContext } from "@yagejs/renderer";
 import { UIRoot, Anchor } from "@yagejs/ui-react";
 import { InputManagerKey } from "@yagejs/input";
 import type { SlotInfo } from "@yagejs/save";
@@ -69,7 +69,7 @@ export class MenuScene extends Scene {
 // 6. GameplayScene — coin sprite + HUD + Pause overlay on Esc.
 // ---------------------------------------------------------------------------
 
-function drawCoin(g: GraphicsContext, coins: number): void {
+function drawCoin(g: DrawContext, coins: number): void {
   g.clear();
   const scale = Math.min(1 + coins * 0.04, 3);
   const r = 36 * scale;

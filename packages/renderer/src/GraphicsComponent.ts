@@ -1,7 +1,8 @@
 import type { Vec2Like } from "@yagejs/core";
 import { Graphics } from "pixi.js";
 import { readPoint, writePoint } from "./internal/point.js";
-import type { GraphicsContext } from "./public-types.js";
+import type { DrawContext } from "./DrawContext.js";
+import type { DisplayGraphics } from "./public-types.js";
 import {
   VisualComponent,
   type VisualComponentOptions,
@@ -22,7 +23,7 @@ export interface GraphicsComponentOptions extends VisualComponentOptions {
 
 /** Component that wraps a PixiJS Graphics object for procedural drawing. */
 export class GraphicsComponent extends VisualComponent {
-  private readonly _graphics: GraphicsContext;
+  private readonly _graphics: DisplayGraphics;
 
   constructor(options?: GraphicsComponentOptions) {
     super(options?.layer);
@@ -42,7 +43,7 @@ export class GraphicsComponent extends VisualComponent {
    * The Pixi object this component draws with. Change the visual through the
    * component; see {@link VisualComponent.renderObject}.
    */
-  get renderObject(): GraphicsContext {
+  get renderObject(): DisplayGraphics {
     return this._graphics;
   }
 
@@ -60,8 +61,11 @@ export class GraphicsComponent extends VisualComponent {
     writePoint("GraphicsComponent.pivot", "pivot", this._graphics.pivot, value);
   }
 
-  /** Execute a drawing function on the graphics object. Returns this for chaining. */
-  draw(fn: (g: GraphicsContext) => void): this {
+  /**
+   * Run a drawing callback on this visual's drawing. Shapes accumulate, so a
+   * callback that redraws starts with `g.clear()`. Returns this for chaining.
+   */
+  draw(fn: (g: DrawContext) => void): this {
     fn(this._graphics);
     return this;
   }

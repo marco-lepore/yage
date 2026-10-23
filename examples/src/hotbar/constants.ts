@@ -1,5 +1,5 @@
 import { defineEvent } from "@yagejs/core";
-import type { GraphicsContext } from "@yagejs/renderer";
+import type { DrawContext } from "@yagejs/renderer";
 import { defineItems } from "@yagejs-addons/inventory";
 
 export const WIDTH = 800;
@@ -50,7 +50,7 @@ export const ITEMS = defineItems({
 });
 
 /** Drawn once at boot and registered under {@link ICON_POTION}. */
-export function drawPotionIcon(g: GraphicsContext): void {
+export function drawPotionIcon(g: DrawContext): void {
   const s = ICON_SIZE;
   g.circle(s / 2, s * 0.62, s * 0.3).fill({ color: 0xff5566 });
   g.rect(s * 0.42, s * 0.12, s * 0.16, s * 0.24).fill({ color: 0xd8dae8 });

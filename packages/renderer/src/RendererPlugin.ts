@@ -38,10 +38,10 @@ import { DisplaySystem } from "./DisplaySystem.js";
 import { RenderFacetContributor } from "./RenderFacetContributor.js";
 import { FitController } from "./Fit.js";
 import type { CanvasRect, VirtualRect } from "./Fit.js";
+import type { DrawContext } from "./DrawContext.js";
 import type {
   Application,
   DisplayContainer,
-  GraphicsContext,
   TextStyle,
   TextureResource,
 } from "./public-types.js";
@@ -780,7 +780,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * everything drawn from it turns transparent.
    */
   createTexture(
-    draw: (graphics: GraphicsContext) => void,
+    draw: (g: DrawContext) => void,
     size?: CreateTextureOptions,
   ): TextureResource {
     if (size) {

@@ -6,35 +6,34 @@ Depends on `@yagejs/core`, `pixi.js`. PixiJS v8 rendering behind the YAGE plugin
 
 Every exported field, parameter, and return type across `@yagejs/renderer` (and its downstream consumers — `@yagejs/ui`, `@yagejs/particles`, `@yagejs/tilemap`) uses this package's own alias names instead of a direct `pixi.js` type import, so consumer code never has to import `pixi.js` for types:
 
-| Alias                    | Underlying Pixi type                                     | Where it shows up                                                                  |
-| ------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `DisplayContainer`       | `Container`                                              | `renderObject` getters, `RenderLayer.container`, UI element `displayObject` fields |
-| `DisplaySprite`          | `Sprite`                                                 | `SpriteComponent.renderObject`                                                     |
-| `DisplayAnimatedSprite`  | `AnimatedSprite`                                         | `AnimatedSpriteComponent.renderObject`                                             |
-| `DisplayText`            | `Text`                                                   | `TextComponent.renderObject` (canvas variant)                                      |
-| `DisplayBitmapText`      | `BitmapText`                                             | `TextComponent.renderObject` (bitmap variant)                                      |
-| `DisplaySplitText`       | `SplitText`                                              | `SplitTextComponent.renderObject` (canvas variant)                                 |
-| `DisplaySplitBitmapText` | `SplitBitmapText`                                        | `SplitTextComponent.renderObject` (bitmap variant)                                 |
-| `GraphicsContext`        | `Graphics`                                               | `GraphicsComponent.renderObject`, `draw((g) => ...)`, mask draw callbacks          |
-| `NineSliceSprite`        | `NineSliceSprite`                                        | `NineSliceComponent.renderObject`                                                  |
-| `ParticleContainer`      | `ParticleContainer`                                      | `@yagejs/particles`' `ParticleEmitterComponent.container`                          |
-| `Particle`               | `Particle`                                               | `@yagejs/particles`' `ParticlePool.acquire()`/`release()`                          |
-| `Filter`                 | `Filter`                                                 | effects API (`Effect.filter`, `rawFilter(filter)`)                                 |
-| `Application`            | `Application`                                            | `RendererPlugin.application`                                                       |
-| `ApplicationOptions`     | `ApplicationOptions`                                     | `RendererConfig.pixi`                                                              |
-| `DestroyOptions`         | `DestroyOptions`                                         | visual components' `destroyOptions()` override hook                                |
-| `ColorValue`             | `ColorSource`                                            | every `tint` option/accessor                                                       |
-| `BlendMode`              | `BLEND_MODES`                                            | every visual component's `blendMode` option/accessor                               |
-| `PointLike`              | `PointData`                                              | point-shaped callbacks/options                                                     |
-| `TextStyle`              | `TextStyleOptions`                                       | every `style` option                                                               |
-| `TextureRef`             | none — `string \| TextureHandle`, a key/handle reference | `SpriteComponent.texture`, `setTexture()`                                          |
+| Alias                                          | Underlying Pixi type                                     | Where it shows up                                                                  |
+| ---------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `DisplayContainer`                             | `Container`                                              | `renderObject` getters, `RenderLayer.container`, UI element `displayObject` fields |
+| `DisplaySprite`                                | `Sprite`                                                 | `SpriteComponent.renderObject`                                                     |
+| `DisplayAnimatedSprite`                        | `AnimatedSprite`                                         | `AnimatedSpriteComponent.renderObject`                                             |
+| `DisplayText`                                  | `Text`                                                   | `TextComponent.renderObject` (canvas variant)                                      |
+| `DisplayBitmapText`                            | `BitmapText`                                             | `TextComponent.renderObject` (bitmap variant)                                      |
+| `DisplaySplitText`                             | `SplitText`                                              | `SplitTextComponent.renderObject` (canvas variant)                                 |
+| `DisplaySplitBitmapText`                       | `SplitBitmapText`                                        | `SplitTextComponent.renderObject` (bitmap variant)                                 |
+| `DisplayGraphics`                              | `Graphics`                                               | `GraphicsComponent.renderObject`                                                   |
+| `DrawFill` / `DrawStroke`                      | `FillInput` / `StrokeInput`                              | `DrawContext.fill()` / `stroke()`                                                  |
+| `DrawPath` / `DrawMatrix` / `DrawRoundedPoint` | `GraphicsPath` / `Matrix` / `RoundedPoint`               | `DrawContext.path()`, the transform stack, `roundShape()`                          |
+| `NineSliceSprite`                              | `NineSliceSprite`                                        | `NineSliceComponent.renderObject`                                                  |
+| `ParticleContainer`                            | `ParticleContainer`                                      | `@yagejs/particles`' `ParticleEmitterComponent.container`                          |
+| `Particle`                                     | `Particle`                                               | `@yagejs/particles`' `ParticlePool.acquire()`/`release()`                          |
+| `Filter`                                       | `Filter`                                                 | effects API (`Effect.filter`, `rawFilter(filter)`)                                 |
+| `Application`                                  | `Application`                                            | `RendererPlugin.application`                                                       |
+| `ApplicationOptions`                           | `ApplicationOptions`                                     | `RendererConfig.pixi`                                                              |
+| `DestroyOptions`                               | `DestroyOptions`                                         | visual components' `destroyOptions()` override hook                                |
+| `ColorValue`                                   | `ColorSource`                                            | every `tint` option/accessor                                                       |
+| `BlendMode`                                    | `BLEND_MODES`                                            | every visual component's `blendMode` option/accessor                               |
+| `PointLike`                                    | `PointData`                                              | point-shaped callbacks/options                                                     |
+| `TextStyle`                                    | `TextStyleOptions`                                       | every `style` option                                                               |
+| `TextureRef`                                   | none — `string \| TextureHandle`, a key/handle reference | `SpriteComponent.texture`, `setTexture()`                                          |
 
 The aliases are transparent (`type DisplayContainer = Container`) and provide no encapsulation: `RendererPlugin.application` and every `renderObject` getter return the real Pixi object. Game code never writes to it. `DisplaySystem` writes position, rotation and scale from the entity's `Transform` every frame, and the component re-applies its own `visible` and `alpha` on every change, on activation and on every modifier change, so a write on the Pixi object is lost. Change a visual through its component; a task that needs the Pixi object is a missing component API.
 
-A `GraphicsContext` therefore carries Pixi's graphics transform stack —
-`translateTransform`, `scaleTransform`, `rotateTransform`, `setTransform`,
-`resetTransform`, and the `save` / `restore` pair. See `GraphicsComponent`
-below.
+A drawing callback (`GraphicsComponent.draw`, `createTexture`, `graphicsMask`) receives a `DrawContext`, not the Pixi object: Pixi's drawing vocabulary only (shapes, paths, `fill` / `stroke` with colours, gradients and textures, `texture`, `cut`, `clear`, the transform stack `translateTransform` / `scaleTransform` / `rotateTransform` / `setTransform` / `transform` / `resetTransform` / `getTransform`, and `save` / `restore`). Every call returns the context. It has no `addChild`, `position`, `alpha`, `visible` or `destroy`: those belong to the component and its `Transform`. The Pixi `Graphics` itself is passed, so nothing is wrapped. See `GraphicsComponent` below.
 
 ## Setup
 
@@ -405,7 +404,7 @@ Tint, alpha, visibility and blend mode live on the component: `sprite.tint = 0xf
 
 ### GraphicsComponent
 
-Procedural drawing via PixiJS Graphics API:
+Procedural drawing through a `DrawContext` (Pixi's `Graphics` drawing methods, see Type vocabulary):
 
 ```ts yage-context="entity"
 import { GraphicsComponent } from "@yagejs/renderer";

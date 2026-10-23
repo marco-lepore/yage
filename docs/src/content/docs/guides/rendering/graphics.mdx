@@ -18,9 +18,11 @@ entity.add(
 );
 ```
 
-Call `.draw()` again at any time to redraw. The callback receives a PixiJS
-`Graphics` object, so all standard drawing methods are available — `rect`,
-`roundRect`, `poly`, `moveTo`/`lineTo`, `stroke`, and `fill`.
+Call `.draw()` again at any time to redraw. The callback receives a
+`DrawContext`: the drawing methods of PixiJS `Graphics` — `rect`,
+`roundRect`, `poly`, `moveTo`/`lineTo`, `stroke`, `fill` and the rest — and
+nothing else. It has no position, visibility or children, because those
+belong to the component and its entity's `Transform`.
 
 `GraphicsComponent` takes the same `visible` / `tint` / `alpha` /
 `blendMode` / `zIndex` / `sortOffset` / `interactive` options as
@@ -29,10 +31,11 @@ for masking and filters. Graphics are runtime resources and are not part of an
 `@yagejs/save` state root. Save the game facts that determine the drawing, then
 let normal scene setup call `.draw()` when the scene is constructed.
 
-The `g` passed to `.draw(fn)` draws with pixi's `Graphics` API, which mirrors
-the Canvas 2D vocabulary: `moveTo`, `lineTo`, `arc`, `bezierCurveTo`, plus
-shape shortcuts like `rect` and `circle`. Draw only inside `.draw(fn)`, and
-change visibility, tint and alpha through the component. `arc` continues the current path: `moveTo()` to its
+The `g` passed to `.draw(fn)` draws with pixi's `Graphics` vocabulary, which
+mirrors the Canvas 2D one: `moveTo`, `lineTo`, `arc`, `bezierCurveTo`, plus
+shape shortcuts like `rect` and `circle`. A helper that draws for several
+callbacks takes a `DrawContext` parameter. Change visibility, tint and alpha
+through the component. `arc` continues the current path: `moveTo()` to its
 start point first for a standalone arc, otherwise a line connects it from
 the previous point. Fill and stroke take options bags (`{ color, alpha,
 width, ... }`). See the [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).

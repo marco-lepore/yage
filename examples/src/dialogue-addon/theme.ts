@@ -1,6 +1,6 @@
 import {
   registerTexture,
-  type GraphicsContext,
+  type DrawContext,
   type RendererPlugin,
 } from "@yagejs/renderer";
 import {
@@ -27,7 +27,7 @@ const BUBBLE_BORDER = 6;
 
 /** A simple face for the avatar portraits. `stern` angles the brows and turns
  *  the smile into a frown. */
-function drawFace(g: GraphicsContext, skin: number, stern: boolean): void {
+function drawFace(g: DrawContext, skin: number, stern: boolean): void {
   const s = FACE_SIZE;
   const ink = 0x15151f;
   g.circle(s / 2, s / 2, s / 2 - 3)
@@ -55,7 +55,7 @@ function drawFace(g: GraphicsContext, skin: number, stern: boolean): void {
 /** A nine-slice frame: a coloured `border`-px ring around a fill. The border
  *  must equal the nine-slice insets so the corners map 1:1. */
 function drawFrame(
-  g: GraphicsContext,
+  g: DrawContext,
   edge: number,
   fill: number,
   border: number,
@@ -77,7 +77,7 @@ export function registerTownTextures(renderer: RendererPlugin): void {
   const bake = (
     key: string,
     size: number,
-    draw: (g: GraphicsContext) => void,
+    draw: (g: DrawContext) => void,
   ): void => {
     registerTexture(
       key,

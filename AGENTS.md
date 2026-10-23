@@ -69,7 +69,7 @@ Enforced by tooling — match these conventions exactly:
 - **Pixels everywhere** — all user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`.
 - **Immutable `Vec2`, mutable `Transform`** — `Vec2` operations return new instances. `Transform` has mutating methods (`setPosition`, `translate`, etc.).
 - **No pixi.js imports in `@yagejs/core`** — core has zero runtime dependencies.
-- **No raw `pixi.js` type in an exported signature.** Public fields, parameters, and return types in `@yagejs/renderer` and its consumers (ui, particles, tilemap, ...) use the renderer's aliases (`DisplayContainer`, `DisplaySprite`, `GraphicsContext`, `ColorValue`, ...). Why: consumer code never imports `pixi.js` for types. The aliases are transparent (`type DisplayContainer = Container`); constructing a Pixi object still imports `pixi.js` directly.
+- **No raw `pixi.js` type in an exported signature.** Public fields, parameters, and return types in `@yagejs/renderer` and its consumers (ui, particles, tilemap, ...) use the renderer's aliases (`DisplayContainer`, `DisplaySprite`, `DrawContext`, `ColorValue`, ...). Why: consumer code never imports `pixi.js` for types. The aliases are transparent (`type DisplayContainer = Container`); constructing a Pixi object still imports `pixi.js` directly.
 - **Export new public types from `index.ts`** — every package has a barrel export.
 - **Plain objects for config** — plugin configs, action maps, collider shapes. No `Map`, no classes for config.
 - **Entity subclasses with `setup()` for entity types** — preferred pattern for game entities. `defineBlueprint()` still works for simple parametric factories but is deprecated.

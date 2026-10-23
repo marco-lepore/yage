@@ -2,7 +2,6 @@ import type {
   ColorValue,
   DisplayContainer,
   DisplaySprite,
-  GraphicsContext,
   PointLike,
   SegmentAnchor,
   TextStyle,
@@ -20,8 +19,7 @@ export type PixiViewType =
   | TextureHandle
   | TextureResource
   | DisplayContainer
-  | DisplaySprite
-  | GraphicsContext;
+  | DisplaySprite;
 
 /**
  * Default UI layer name, auto-provisioned on the active scene's render tree

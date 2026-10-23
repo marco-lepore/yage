@@ -1240,7 +1240,7 @@ export function checkVisualOriginAccessors(files) {
 export function checkRawHandleNames(files) {
   // The renderer's aliases and the Pixi display classes they rename.
   const display =
-    /\b(?:DisplayContainer|DisplaySprite|DisplayAnimatedSprite|DisplayText|DisplayBitmapText|DisplaySplitText|DisplaySplitBitmapText|NineSliceSprite|ParticleContainer|GraphicsContext|Container|Sprite|AnimatedSprite|TilingSprite|Graphics|Text|BitmapText|HTMLText|SplitText|SplitBitmapText|Mesh)\b/;
+    /\b(?:DisplayContainer|DisplaySprite|DisplayAnimatedSprite|DisplayText|DisplayBitmapText|DisplaySplitText|DisplaySplitBitmapText|NineSliceSprite|ParticleContainer|DisplayGraphics|Container|Sprite|AnimatedSprite|TilingSprite|Graphics|Text|BitmapText|HTMLText|SplitText|SplitBitmapText|Mesh)\b/;
   const elementInterfaces = [
     "UIElement",
     "UIContainerElement",

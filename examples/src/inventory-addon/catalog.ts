@@ -3,7 +3,7 @@ import {
   type ItemActionDef,
   type ItemDef,
 } from "@yagejs-addons/inventory";
-import type { GraphicsContext } from "@yagejs/renderer";
+import type { DrawContext } from "@yagejs/renderer";
 import { ICON_POTION } from "./constants.js";
 
 // ── the item catalog — ids are the map keys, typed end to end ────────────────
@@ -118,7 +118,7 @@ export const POTION_ICON_SIZE = 48;
 
 /** A red flask with a grey neck. `main.ts` bakes it into the texture the
  *  catalog's `icon` key names. */
-export function drawPotionIcon(g: GraphicsContext): void {
+export function drawPotionIcon(g: DrawContext): void {
   const s = POTION_ICON_SIZE;
   g.circle(s / 2, s * 0.62, s * 0.3).fill({ color: 0xff5566 });
   g.rect(s * 0.42, s * 0.12, s * 0.16, s * 0.24).fill({ color: 0xd8dae8 });
