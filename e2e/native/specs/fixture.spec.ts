@@ -657,20 +657,33 @@ async function recordFocus(
     );
     return;
   }
-  await app.evaluate(({ BrowserWindow }) => {
+  // getAllWindows() lists the newest window first and keeps a closed window
+  // until its "closed" event, so both windows are found by id. The game
+  // window takes focus back once the second one is gone, which leaves it
+  // the only window for the later steps.
+  const windows = await app.evaluate(({ BrowserWindow }) => {
+    const game = BrowserWindow.getAllWindows()[0]!;
     const second = new BrowserWindow({ width: 320, height: 240 });
     second.focus();
+    return { game: game.id, second: second.id };
   });
   await expect
     .poll(async () => (await readPage(page))!.host.lifecycle.focus, {
       timeout: 15_000,
     })
     .toBe("unfocused");
-  await app.evaluate(({ BrowserWindow }) => {
-    const windows = BrowserWindow.getAllWindows();
-    windows[windows.length - 1]?.close();
-    windows[0]?.focus();
-  });
+  await app.evaluate(
+    ({ BrowserWindow }, ids) =>
+      new Promise<void>((done) => {
+        const second = BrowserWindow.fromId(ids.second)!;
+        second.once("closed", () => {
+          BrowserWindow.fromId(ids.game)!.focus();
+          done();
+        });
+        second.close();
+      }),
+    windows,
+  );
   await expect
     .poll(async () => (await readPage(page))!.host.lifecycle.focus, {
       timeout: 15_000,
