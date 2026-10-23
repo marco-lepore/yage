@@ -296,7 +296,7 @@ export class DialogueTextView implements TextPresenter {
   /** Apply the master visibility gate to the laid-out line — toggles the split
    *  container, leaving the per-glyph reveal state intact. */
   private applyHidden(): void {
-    if (this.line) this.line.comp.splitText.visible = !this.hidden;
+    if (this.line) this.line.comp.visible = !this.hidden;
   }
 
   /** Reveal everything immediately (jump-to-end on a click/tap). */
@@ -358,6 +358,7 @@ export class DialogueTextView implements TextPresenter {
       new SplitTextComponent(this.lineSplitOptions(text)),
     );
     const chars = comp.chars;
+    // eslint-disable-next-line no-restricted-syntax -- per-glyph effects walk up to the split root
     const root = comp.splitText;
 
     // One run-style per non-space glyph, in reading order (1:1 with `chars`).

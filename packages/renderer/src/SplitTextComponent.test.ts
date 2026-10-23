@@ -271,6 +271,26 @@ describe("SplitTextComponent", () => {
     expect(split.pivot).toMatchObject({ x: 44, y: 26 });
   });
 
+  it("reports localBounds around the block anchor", () => {
+    const comp = new SplitTextComponent({
+      text: "hi",
+      anchor: { x: 0.5, y: 0.5 },
+    });
+    const split = comp.splitText as unknown as InstanceType<
+      typeof mocks.MockSplitText
+    >;
+    split.boundsBox = { x: 0, y: 0, width: 80, height: 20 };
+
+    comp.resplit();
+
+    expect(comp.localBounds).toEqual({
+      x: -40,
+      y: -10,
+      width: 80,
+      height: 20,
+    });
+  });
+
   it("recomputes the block anchor after text, style, and manual split changes", () => {
     const comp = new SplitTextComponent({
       text: "hi",

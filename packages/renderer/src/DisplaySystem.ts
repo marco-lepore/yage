@@ -15,13 +15,11 @@ import type {
 import type { SceneRenderTreeProvider } from "./SceneRenderTree.js";
 import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
 import { CameraComponent } from "./CameraComponent.js";
-import {
-  SortGroupComponent,
-  sortGroupForContainer,
-} from "./SortGroupComponent.js";
+import { SortGroupComponent, sortOwnerOf } from "./SortGroupComponent.js";
 import type { Container } from "pixi.js";
 import { VisualComponent } from "./VisualComponent.js";
 import { attributed } from "./internal/attribution.js";
+import { SortItemBuffer } from "./internal/sortItem.js";
 import { syncCameraTransform } from "./cameraTransform.js";
 
 /**
@@ -32,6 +30,7 @@ import { syncCameraTransform } from "./cameraTransform.js";
  */
 export class DisplaySystem extends System {
   private readonly transformScratch = new Vec2Buffer();
+  private readonly sortItem = new SortItemBuffer();
   readonly phase = Phase.Render;
   readonly priority = 0;
 
@@ -108,7 +107,8 @@ export class DisplaySystem extends System {
 
   /**
    * Per-frame depth-key hook. For every layer with a `sort` fn, writes
-   * `child.zIndex = sort(child)` on every direct child. The layer's
+   * `child.zIndex = sort(item)` on every direct child, where `item` describes
+   * the child's position and its owning component. The layer's
    * container already has `sortableChildren = true` (set in `RenderLayer`),
    * so Pixi's render-pipeline sort runs at frame end and orders the
    * children by zIndex — no custom sort path on our side. Pixi's
@@ -126,8 +126,9 @@ export class DisplaySystem extends System {
   private applyLayerSort(): void {
     // Pass 1: key every sorted layer's direct children. A group container is
     // keyed off its anchor (so the whole group sorts as one unit); everything
-    // else by the layer's depth-key fn. `sortGroupForContainer` is an O(1)
-    // registry lookup — no per-frame allocation in this hot path.
+    // else by the layer's depth-key fn. `sortOwnerOf` is an O(1) registry
+    // lookup, and the one reused `SortItemBuffer` keeps the hot path free of
+    // per-child items.
     for (const [scene, tree] of this.treeProvider.allTrees()) {
       for (const layer of tree.getAll()) {
         const sort = layer.sort;
@@ -138,9 +139,11 @@ export class DisplaySystem extends System {
           event: layer.name,
         };
         for (const child of layer.container.children) {
-          const group = sortGroupForContainer(child);
+          const owner = sortOwnerOf(child);
           child.zIndex = attributed(this.boundary, info, () =>
-            group ? group.resolveSortKey(sort) : sort(child),
+            owner instanceof SortGroupComponent
+              ? owner.resolveSortKey(sort, this.sortItem)
+              : sort(this.sortItem.fill(child, owner)),
           );
         }
       }
@@ -148,8 +151,8 @@ export class DisplaySystem extends System {
 
     // Pass 2: intra-group member ordering. A group with an `innerSort` re-keys
     // its own members each frame (independent of whether its layer has a sort);
-    // groups without one keep insertion order and honour a manual `zIndex`. A
-    // disabled group is skipped, matching the visual sync pass.
+    // groups without one keep insertion order and honour each member's
+    // `zIndex`. A disabled group is skipped, matching the visual sync pass.
     for (const entity of this.sortGroupQuery) {
       const group = entity.get(SortGroupComponent);
       const inner = group.innerSort;
@@ -159,7 +162,15 @@ export class DisplaySystem extends System {
         entity: entity.name,
       };
       for (const member of group.container.children) {
-        member.zIndex = attributed(this.boundary, info, () => inner(member));
+        const owner = sortOwnerOf(member);
+        member.zIndex = attributed(this.boundary, info, () =>
+          inner(
+            this.sortItem.fill(
+              member,
+              owner instanceof SortGroupComponent ? undefined : owner,
+            ),
+          ),
+        );
       }
     }
   }

@@ -1,9 +1,5 @@
 import type { Scene } from "@yagejs/core";
-import {
-  FloatingOverlay,
-  FloatingOverlayKey,
-  layoutFloat,
-} from "./floating.js";
+import { FloatingOverlay, FloatingOverlayKey } from "./floating.js";
 import type { Placement } from "./positioning.js";
 import type { UIElement } from "./types.js";
 
@@ -98,28 +94,27 @@ export function attachTooltip(
 
   const content = opts.content();
   const handle = overlay.acquire();
-  handle.container.addChild(content.displayObject);
+  handle.setContent(content);
   handle.setReference(() => anchor);
   handle.setConfig({
     placement: opts.placement,
     offset: opts.offset ?? 6,
     ...(opts.maxWidth !== undefined ? { maxWidth: opts.maxWidth } : {}),
   });
-  handle.setLayout((mw) => layoutFloat([content], mw));
 
   // The caller owns the activation wiring (e.g. `onHover: tip.setActive`),
   // which may outlive this tooltip — so `setActive` must stay safe to call
   // after `dispose()` has released the slot. The guard makes post-dispose
   // activation a no-op and `dispose()` idempotent.
   let disposed = false;
+  let stopListening = (): void => {};
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
-    anchor.displayObject.off("destroyed", dispose);
-    content.destroy();
-    handle.release();
+    stopListening();
+    handle.release(); // destroys the content too
   };
-  anchor.displayObject.once("destroyed", dispose);
+  stopListening = anchor.onDestroy(dispose);
 
   return {
     setActive(active: boolean): void {

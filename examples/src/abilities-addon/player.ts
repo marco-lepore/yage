@@ -382,15 +382,15 @@ export class PlayerController extends Component {
   private drawChargeSparks(): void {
     // Drawn in the entity's local space, which is already centered on the
     // body (the Transform origin is the torso — see `SPRITE_ANCHOR`).
-    for (const spark of this.chargeSparks) {
-      const x = Math.cos(spark.angle) * spark.radius;
-      const y = Math.sin(spark.angle) * spark.radius;
-      const alpha =
-        CHARGE_SPARK_ALPHA * (spark.radius / CHARGE_SPARK_RING_RADIUS);
-      this.gfx.graphics
-        .circle(x, y, 3)
-        .fill({ color: CHARGE_SPARK_COLOR, alpha });
-    }
+    this.gfx.draw((g) => {
+      for (const spark of this.chargeSparks) {
+        const x = Math.cos(spark.angle) * spark.radius;
+        const y = Math.sin(spark.angle) * spark.radius;
+        const alpha =
+          CHARGE_SPARK_ALPHA * (spark.radius / CHARGE_SPARK_RING_RADIUS);
+        g.circle(x, y, 3).fill({ color: CHARGE_SPARK_COLOR, alpha });
+      }
+    });
   }
 
   /** Re-aims Facing to the currently-held movement axis, if any. The input

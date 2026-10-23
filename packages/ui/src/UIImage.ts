@@ -39,7 +39,10 @@ function isSizedDimension(value: { readonly unit: Unit }): boolean {
  * inside it, so the element's `scale` and `rotation` stay the game's.
  */
 export class UIImage extends UIElementBase {
-  /** The sprite drawing the texture, stretched to the layout box. */
+  /**
+   * The sprite drawing the texture, stretched to the layout box. Layout writes
+   * its size and position; change the picture through {@link update}.
+   */
   readonly sprite: DisplaySprite;
   readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;

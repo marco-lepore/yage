@@ -13,7 +13,13 @@ vi.mock("pixi.js", async () => (await import("./test-pixi.js")).pixiMock);
 import Yoga, { Direction } from "yoga-layout";
 import type { Node as YogaNode } from "yoga-layout";
 import { Container } from "pixi.js";
-import { isPointerConsumeContainer } from "@yagejs/core";
+import {
+  ErrorBoundary,
+  isPointerConsumeContainer,
+  Logger,
+  LogLevel,
+} from "@yagejs/core";
+import { bindUIErrorBoundary } from "./error-boundary.js";
 import type { DisplayContainer } from "@yagejs/renderer";
 import { createYogaNode, setYoga } from "./yoga-helpers.js";
 import { MockContainer, MockGraphics } from "./test-pixi.js";
@@ -54,6 +60,10 @@ class FocusProbe implements UIElement {
   }
 
   update(): void {}
+
+  onDestroy(): () => void {
+    return () => {};
+  }
 
   destroy(): void {
     this.focus.destroy();
@@ -558,5 +568,62 @@ describe("UIPanel pointer focus", () => {
     const request = takePointerRequest();
     expect(request?.element).toBe(inner);
     expect(request?.trigger).toBe(trigger);
+  });
+});
+
+describe("UIElementBase.onDestroy", () => {
+  it("calls the listener once when the element is destroyed", () => {
+    const panel = new UIPanel({});
+    const fn = vi.fn();
+    panel.onDestroy(fn);
+
+    panel.destroy();
+
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a throwing listener on the tree's error boundary", () => {
+    const boundary = new ErrorBoundary(new Logger({ level: LogLevel.None }));
+    const root = new UIPanel({});
+    const child = new UIPanel({});
+    root.addElement(child);
+    bindUIErrorBoundary(root.container, boundary);
+    child.onDestroy(() => {
+      throw new Error("listener failed");
+    });
+
+    expect(() => root.destroy()).toThrow("listener failed");
+    expect(boundary.getCallbackErrors()).toEqual([
+      { kind: "UI destroy listener", error: "listener failed" },
+    ]);
+  });
+
+  it("records a throwing listener on a tree root's own error boundary", () => {
+    const boundary = new ErrorBoundary(new Logger({ level: LogLevel.None }));
+    const layer = new Container();
+    const root = new UIPanel({});
+    layer.addChild(root.container);
+    bindUIErrorBoundary(root.container, boundary);
+    root.onDestroy(() => {
+      throw new Error("listener failed");
+    });
+
+    // A surface takes its root off the layer before destroying it.
+    root.container.removeFromParent();
+    expect(() => root.destroy()).toThrow("listener failed");
+    expect(boundary.getCallbackErrors()).toEqual([
+      { kind: "UI destroy listener", error: "listener failed" },
+    ]);
+  });
+
+  it("does not call a listener removed before destroy", () => {
+    const panel = new UIPanel({});
+    const fn = vi.fn();
+    const off = panel.onDestroy(fn);
+
+    off();
+    panel.destroy();
+
+    expect(fn).not.toHaveBeenCalled();
   });
 });

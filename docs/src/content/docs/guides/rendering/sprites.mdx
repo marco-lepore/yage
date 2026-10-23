@@ -48,10 +48,6 @@ proportionally — use the
 from `@yagejs/effects` instead.
 :::
 
-**Escape hatch:** `.sprite` is the underlying pixi `Sprite`. Reach for it
-when you need a pixi feature `SpriteComponent` doesn't surface — full pixi
-API is available. See the [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
-
 ### What `anchor` does
 
 `anchor` is a fraction of the texture: `{ x: 0, y: 0 }` is its top-left
@@ -75,6 +71,50 @@ rotation carries every descendant around its own position.
 `anchor` too. `GraphicsComponent` has no texture to take a fraction of, and
 takes a `pivot` in pixels instead — see
 [Where the drawing turns](/guides/rendering/graphics/#where-the-drawing-turns).
+
+### Size and pointer events
+
+`localBounds` reports the box a visual draws in its own pixels, before the
+entity's position, rotation and scale apply. Its `x` and `y` are the box's
+top-left corner relative to the entity's position, so a visual anchored at its
+centre reports `x = -width / 2`. A `GraphicsComponent` pivot moves the box the
+same way it moves the drawing. Every visual component has `localBounds`, and it
+reports the size of a hidden visual too:
+
+```typescript yage-context="entity"
+import { SpriteComponent } from "@yagejs/renderer";
+
+const { width, height } = entity.get(SpriteComponent).localBounds;
+```
+
+`onPointer(event, fn)` calls `fn` when a pointer event hits the visual:
+`"down"`, `"up"`, `"tap"`, `"over"` or `"out"`. It makes the visual a
+hit-test target, and a throw from `fn` is recorded with the visual's entity.
+It returns a function that removes the listener, and the listener also ends
+when the visual is destroyed:
+
+```typescript
+import { Component } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+class Selectable extends Component {
+  private readonly card = this.sibling(SpriteComponent);
+  selected = false;
+
+  onAdd(): void {
+    // Removing Selectable alone ends the listener too.
+    this.addCleanup(this.card.onPointer("tap", () => this.toggle()));
+  }
+
+  toggle(): void {
+    this.selected = !this.selected;
+    this.card.tint = this.selected ? 0xffcc00 : 0xffffff;
+  }
+}
+```
+
+Add `interactive: { consumeOnInteraction: true }` to the visual when a press
+on it should not also fire the action map's `MouseLeft`.
 
 ### Temporary visual modifiers
 
@@ -195,10 +235,6 @@ quarter speed and `2` plays at double speed. A paused scene,
 `scene.timeScale = 0`, or a disabled `AnimatedSpriteComponent` freezes
 playback. Put an animation in a separate active overlay scene when it must keep
 playing while gameplay is frozen.
-
-**Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
-Frame selection, playback rate, and restart control are available directly on
-the component — see below. Use `.animatedSprite` for other pixi features.
 
 ### Hold a frame or restart playback
 
@@ -467,6 +503,37 @@ function attack(
 `AnimationController.calcDuration(name, options?)` exposes the same validated
 calculation that automatic one-shots use, and takes the same `startFrame` and
 `speed`.
+
+## Nine-slice frames
+
+`NineSliceComponent` draws a texture stretched to any size while its corners
+keep their size: panels, signs, speech bubbles. `insets` give the border
+widths of the texture in source pixels. The entity's `Transform` places the
+frame, its top-left corner by default (`anchor` moves that point), and
+`setSize` stretches it. It takes the same `visible` / `tint` / `alpha` /
+`blendMode` / `zIndex` / `sortOffset` options as `SpriteComponent`.
+
+```typescript
+import { Entity, Transform } from "@yagejs/core";
+import { NineSliceComponent } from "@yagejs/renderer";
+
+class Signpost extends Entity {
+  setup(params: { x: number; y: number }) {
+    this.add(new Transform({ position: { x: params.x, y: params.y } }));
+    const board = this.add(
+      new NineSliceComponent({
+        texture: "panel", // a loaded or registered texture key
+        insets: { left: 8, top: 8, right: 8, bottom: 8 },
+        width: 160,
+        height: 64,
+      }),
+    );
+    board.setSize(200, 80); // corners stay 8 px; edges and centre stretch
+  }
+}
+```
+
+For a frame inside a UI layout, use `UINineSlice` from `@yagejs/ui`.
 
 ## Asset Factories
 

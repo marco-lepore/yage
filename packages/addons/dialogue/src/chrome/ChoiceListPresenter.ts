@@ -143,8 +143,7 @@ export class ChoiceListPresenter implements ChoicePresenter {
       const comp = entity.add(
         new TextComponent(this.textOptions(choiceRowLabel(choice), wrapWidth)),
       );
-      comp.text.visible = true;
-      const slotHeight = Math.ceil(comp.text.height) + gap;
+      const slotHeight = Math.ceil(comp.localBounds.height) + gap;
       return { entity, comp, disabled: choice.disabled ?? false, slotHeight };
     });
 
@@ -182,11 +181,11 @@ export class ChoiceListPresenter implements ChoicePresenter {
 
   /** Render = rows present AND not hidden. Disabled rows still show (greyed). */
   private applyHidden(): void {
-    for (const row of this.rows) row.comp.text.visible = !this.hidden;
+    for (const row of this.rows) row.comp.visible = !this.hidden;
     if (this.highlightBar) {
       const onEnabled =
         this.selected >= 0 && !this.rows[this.selected]?.disabled;
-      this.highlightBar.gfx.graphics.visible = !this.hidden && onEnabled;
+      this.highlightBar.gfx.visible = !this.hidden && onEnabled;
     }
   }
 
@@ -231,7 +230,7 @@ export class ChoiceListPresenter implements ChoicePresenter {
       for (const row of this.rows)
         row.comp.mergeStyle({ wordWrapWidth: wrapWidth });
       const rects = this.layout.layoutChoicePanel(
-        this.rows.map((row) => Math.ceil(row.comp.text.height) + gap),
+        this.rows.map((row) => Math.ceil(row.comp.localBounds.height) + gap),
       );
       for (let i = 0; i < this.rows.length; i++) {
         const row = this.rows[i]!;

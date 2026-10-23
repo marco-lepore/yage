@@ -1,14 +1,20 @@
 import {
   Component,
+  devWarn,
   RandomKey,
   Transform,
   Vec2Buffer,
   type RandomService,
 } from "@yagejs/core";
-import { SceneRenderTreeKey, resolveTextureInput } from "@yagejs/renderer";
+import {
+  SceneRenderTreeKey,
+  resolveTextureInput,
+  setSortSource,
+} from "@yagejs/renderer";
 import type {
   BlendMode,
   ParticleContainer,
+  SortSource,
   TextureInput,
   TextureResource,
 } from "@yagejs/renderer";
@@ -102,11 +108,21 @@ export interface ParticleEmissionHandle {
  * container-local coordinates and the container's own `position` is the depth
  * key a layer sort such as `ySort` reads.
  */
-export class ParticleEmitterComponent extends Component {
+export class ParticleEmitterComponent extends Component implements SortSource {
   private readonly positionScratch = new Vec2Buffer();
+  /**
+   * The Pixi container the particles draw in. The emitter writes its position
+   * from the entity's `Transform`, and its visibility on enable and disable.
+   * Change the emitter through this component; a task that needs this object
+   * is a missing component API.
+   */
   readonly container: ParticleContainer;
   /** Container visibility to restore on enable, so a hand-set hide survives. */
   private _visibleWhenActive = true;
+  private _zIndex = 0;
+  private _sortOffset = 0;
+  /** Whether the ignored-`zIndex` development warning has fired. */
+  private _warnedZIndex = false;
   /** @internal */ readonly _pool: ParticlePool;
   /** @internal */ readonly _active: ParticleState[] = [];
   /** @internal */ _accumulator = 0;
@@ -319,12 +335,68 @@ export class ParticleEmitterComponent extends Component {
     return this.container.blendMode;
   }
 
+  /**
+   * Draw order among the visuals on the emitter's layer: higher values draw on
+   * top. Default `0`. On a layer with `sort` the depth key decides the order,
+   * so a non-zero `zIndex` there logs one development warning; see
+   * `VisualComponent.zIndex`.
+   */
+  get zIndex(): number {
+    return this._zIndex;
+  }
+
+  set zIndex(value: number) {
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `ParticleEmitterComponent.zIndex: value must be finite, got ${value}.`,
+      );
+    }
+    this._zIndex = value;
+    this.container.zIndex = value;
+    this.warnIfZIndexIgnored();
+  }
+
+  /**
+   * Pixels added to the emitter's y position when a layer's depth key reads
+   * it: `ySort` keys a torch's sparks at `y + sortOffset`. Default `0`.
+   */
+  get sortOffset(): number {
+    return this._sortOffset;
+  }
+
+  set sortOffset(value: number) {
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `ParticleEmitterComponent.sortOffset: value must be finite, got ${value}.`,
+      );
+    }
+    this._sortOffset = value;
+  }
+
   onAdd(): void {
     const layer = this.use(SceneRenderTreeKey).get(this.config.layer);
     layer.container.addChild(this.container);
+    setSortSource(this.container, this);
+    this.warnIfZIndexIgnored();
     // A component is never effectively enabled during `onAdd` — `onEnable`
     // runs right after, and only for an active entity.
     this.container.visible = false;
+  }
+
+  /** Warn once when the emitter's layer sorts, which ignores `zIndex`. */
+  private warnIfZIndexIgnored(): void {
+    if (this._zIndex === 0 || this._warnedZIndex || !this.container.parent) {
+      return;
+    }
+    const layer = this.use(SceneRenderTreeKey).tryGet(this.config.layer);
+    if (!layer?.sort) return;
+    this._warnedZIndex = true;
+    devWarn(
+      `ParticleEmitterComponent on entity "${this.entity.name}": zIndex ` +
+        `${this._zIndex} has no effect on layer "${layer.name}", which has a ` +
+        `sort, because the depth key orders the children every frame. Shift ` +
+        `the key with sortOffset, or emit on a layer without sort.`,
+    );
   }
 
   /**
@@ -346,6 +418,7 @@ export class ParticleEmitterComponent extends Component {
     for (const request of this._emissionRequests) request.active = false;
     this._emissionRequests.clear();
     this._manualEmission = false;
+    setSortSource(this.container, undefined);
     this.container.removeFromParent();
     // No destroy options: the particle texture may be a built-in shape or
     // `Texture.WHITE`, both shared by every other emitter using them.

@@ -93,6 +93,10 @@ function isExplicitSize(v: LayoutValue | undefined): boolean {
  * them to let Yoga shrink-to-fit the content.
  */
 export class UIButton extends UIElementBase implements UIContainerElement {
+  /**
+   * The same Pixi container as {@link displayObject}. Change the element
+   * through its props; see `UIElement.displayObject`.
+   */
   readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 

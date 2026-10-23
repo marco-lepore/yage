@@ -266,7 +266,7 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     await playScript(page, "textured");
     await stepFrames(page, 2);
 
-    // Line 1 → a named textured nine-slice: the nine-slice host shows, the drawn
+    // Line 1 → a named textured nine-slice: that frame shows, the drawn
     // Graphics frame does not.
     await advanceUntilLine(page, "Parchment");
     await stepFrames(page, 1);
@@ -295,16 +295,16 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     await gotoFixture(page, "/dialogue-addon.html?theme=textured");
     await waitForClock(page);
 
-    // The first box line uses the textured "default" style: the nine-slice host
-    // shows, the drawn Graphics frame does not.
+    // The first box line uses the textured "default" style: its nine-slice
+    // frame shows, the drawn Graphics frame does not.
     await stepFrames(page, 4);
     const boxLine = await probe(page);
     expect(boxLine?.texturedVisible).toBe(true);
     expect(boxLine?.boxVisible).toBe(false);
 
-    // Walk to the diegetic bubble line: its body is a nine-slice parented into
-    // the bubble's Graphics (content-sized per line), so the bubble carries a
-    // child sprite the plain Graphics bubble would not.
+    // Walk to the diegetic bubble line: its body is a nine-slice on a child
+    // entity of the bubble (content-sized per line), which the plain Graphics
+    // bubble does not have.
     await advanceUntilLine(page, "bubble");
     await stepFrames(page, 1);
     const bubble = await probe(page);

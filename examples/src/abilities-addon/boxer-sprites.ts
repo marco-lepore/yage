@@ -377,6 +377,7 @@ export class BoxerAnimState extends Component {
       : undefined;
     // `AnimatedSpriteComponent` takes an anchor only in its constructor and
     // has no setter, so the per-frame anchor is written to the Pixi sprite.
+    // eslint-disable-next-line no-restricted-syntax -- no component anchor setter
     const anchor = this.sprite.animatedSprite.anchor;
     if (px) {
       anchor.set(px[1] / FRAME_W, (px[0] - GROUND_OFFSET_ROWS) / FRAME_H);
@@ -408,17 +409,14 @@ export function playBoxerAnim(
   const controller = entity.get(AnimationController);
   const key = boxerKey(anim, dir);
   if (options.oneShot) {
-    controller.playOneShot(
-      key,
-      options.lockDuration !== undefined
+    controller.playOneShot(key, {
+      ...(options.startFrame !== undefined
+        ? { startFrame: options.startFrame }
+        : {}),
+      ...(options.lockDuration !== undefined
         ? { duration: options.lockDuration }
-        : undefined,
-    );
-    if (options.startFrame !== undefined) {
-      entity
-        .get(AnimatedSpriteComponent)
-        .animatedSprite.gotoAndPlay(options.startFrame);
-    }
+        : {}),
+    });
   } else {
     controller.play(key);
   }

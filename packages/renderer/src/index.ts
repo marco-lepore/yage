@@ -58,8 +58,15 @@ export type {
 export { VisualComponent } from "./VisualComponent.js";
 export type {
   VisualComponentOptions,
+  VisualBounds,
+  VisualPointerEvent,
   VisualInteractiveOptions,
 } from "./VisualComponent.js";
+export { NineSliceComponent } from "./NineSliceComponent.js";
+export type {
+  NineSliceComponentOptions,
+  NineSliceInsets,
+} from "./NineSliceComponent.js";
 export { SpriteComponent } from "./SpriteComponent.js";
 export type { SpriteComponentOptions } from "./SpriteComponent.js";
 export { GraphicsComponent } from "./GraphicsComponent.js";
@@ -80,7 +87,10 @@ export {
 export type {
   SortGroupComponentOptions,
   LayerRenderable,
+  SortSource,
 } from "./SortGroupComponent.js";
+/** @internal - sort-source registration for @yagejs/particles' emitter, not for public consumption. */
+export { setSortSource } from "./SortGroupComponent.js";
 /** @internal - shared Text/BitmapText constructor logic for @yagejs/ui, not for public consumption. */
 export {
   buildTextOptions,
@@ -166,8 +176,13 @@ export { RenderLayer, RenderLayerManager } from "./RenderLayer.js";
 export type { CreateLayerOptions } from "./RenderLayer.js";
 
 // Per-scene render tree
-export type { LayerDef, LayerSortFn, LayerSpace } from "./LayerDef.js";
-export { ySort, ySortBy } from "./ySort.js";
+export type {
+  LayerDef,
+  LayerSortFn,
+  LayerSpace,
+  SortItem,
+} from "./LayerDef.js";
+export { ySort } from "./ySort.js";
 export type {
   EnsureLayerOptions,
   SceneRenderTree,
@@ -185,7 +200,6 @@ export * from "./transitions/index.js";
 // Asset factories
 export {
   bitmapFont,
-  createNineSlice,
   installBitmapFont,
   measureWrappedText,
   registerTexture,
@@ -203,7 +217,6 @@ export type {
   InstallBitmapFontOptions,
   MeasuredText,
   MeasureTextOptions,
-  NineSliceOptions,
   TextureOptions,
   WebFontBakeOptions,
   WebFontOptions,
@@ -238,7 +251,8 @@ export { defineMask } from "./masks/defineMask.js";
 export type { MaskDefinition } from "./masks/defineMask.js";
 export { rectMask } from "./masks/rectMask.js";
 export type { RectMaskOptions } from "./masks/rectMask.js";
-export { spriteMask } from "./masks/spriteMask.js";
+export { textureMask } from "./masks/textureMask.js";
+export type { TextureMaskOptions } from "./masks/textureMask.js";
 export { graphicsMask } from "./masks/graphicsMask.js";
 export { syncCameraTransform } from "./cameraTransform.js";
 

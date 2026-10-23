@@ -212,12 +212,24 @@ export interface LayoutProps {
 
 /** Common interface for elements that participate in Yoga layout. */
 export interface UIElement {
+  /**
+   * The Pixi container this element draws with. Game code does not write to
+   * it: layout writes its position, and the `scale`, `rotation` and `zIndex`
+   * props write theirs, so a direct write is replaced at the next layout pass
+   * or prop change. Change the element through its props; a task that needs
+   * this object is a missing API.
+   */
   readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
   visible: boolean;
   applyLayout?(): void;
   update(props: Record<string, unknown>): void;
   destroy(): void;
+  /**
+   * Call `fn` once when this element is destroyed. Returns a function that
+   * removes the listener before then.
+   */
+  onDestroy(fn: () => void): () => void;
   /**
    * The element's `transformOrigin`, `scale`, `rotation` and `zIndex`. The
    * parent's layout pass reads it to place the element; an element without

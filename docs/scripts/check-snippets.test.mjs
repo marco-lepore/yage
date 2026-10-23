@@ -564,3 +564,77 @@ test("missing built declarations fail and nested ESM conditions beat CommonJS", 
     "@yagejs/example/extra",
   ]);
 });
+
+test("a fence reaching a game object's raw Pixi handle fails unless marked", () => {
+  const documents = [
+    [
+      "visual-handle",
+      fence(
+        'import { SpriteComponent } from "@yagejs/renderer";\nentity.get(SpriteComponent).renderObject.alpha = 0.5;',
+        'yage-context="entity"',
+      ),
+    ],
+    [
+      "visual-field",
+      fence(
+        'import { GraphicsComponent } from "@yagejs/renderer";\nentity.get(GraphicsComponent).graphics.visible = false;',
+        'yage-context="entity"',
+      ),
+    ],
+    [
+      "ui-handle",
+      fence(
+        'import { UISurface } from "@yagejs/ui";\nentity.get(UISurface).root.displayObject.alpha = 0;',
+        'yage-context="entity"',
+      ),
+    ],
+    [
+      "marked",
+      fence(
+        'import { SpriteComponent } from "@yagejs/renderer";\nentity.get(SpriteComponent).renderObject.alpha = 0.5;',
+        'yage-context="entity" yage-raw-pixi="a custom visual reads its own container"',
+      ),
+    ],
+    [
+      "stale-mark",
+      fence(
+        "entity.id;",
+        'yage-context="entity" yage-raw-pixi="this fence reads nothing raw at all"',
+      ),
+    ],
+    [
+      "component-api",
+      fence(
+        'import { SpriteComponent } from "@yagejs/renderer";\nconst sprite = entity.get(SpriteComponent);\nsprite.alpha = 0.5;\nsprite.localBounds.width;',
+        'yage-context="entity"',
+      ),
+    ],
+    [
+      "extension-handle",
+      fence(
+        'import { SceneRenderTreeKey } from "@yagejs/renderer";\nthis.use(SceneRenderTreeKey).get("world").container;',
+        'yage-context="component"',
+      ),
+    ],
+  ].map(([name, text]) => ({ file: `${name}.md`, text }));
+  const report = checkDocuments(documents);
+  const codes = (name) =>
+    report.snippets
+      .filter((snippet) => snippet.file === `${name}.md`)
+      .flatMap((snippet) =>
+        snippet.diagnostics.map((diagnostic) => diagnostic.code),
+      );
+  for (const name of [
+    "visual-handle",
+    "visual-field",
+    "ui-handle",
+    "stale-mark",
+  ])
+    assert.deepEqual(codes(name), ["raw-pixi"], name);
+  for (const name of ["marked", "component-api", "extension-handle"])
+    assert.deepEqual(codes(name), [], name);
+  assert.throws(
+    () => parseMetadata('yage-raw-pixi="short"'),
+    /substantive reason/,
+  );
+});

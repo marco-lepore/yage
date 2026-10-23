@@ -96,7 +96,9 @@ class TooltipScene extends Scene {
     panel.setPointerHandlers({ onHover: tip.setActive });
 
     const overlay = this.use(FloatingOverlayKey);
-    const triggerContainer = panel.container;
+    // The hover wiring is what the spec covers, so the probe fires the
+    // trigger's own Pixi pointer events; no component API emits them.
+    const trigger = panel.root.displayObject;
 
     // Probe for the spec. `show`/`hide` fire the trigger's Pixi pointer
     // events, which run the `onHover` wired above to `tip.setActive` — no real
@@ -104,8 +106,8 @@ class TooltipScene extends Scene {
     // overlay's own coordinate space so the spec can assert the gap.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__tooltip__ = {
-      show: () => triggerContainer.emit("pointerover"),
-      hide: () => triggerContainer.emit("pointerout"),
+      show: () => trigger.emit("pointerover"),
+      hide: () => trigger.emit("pointerout"),
       probe: () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const layer = (overlay as any).layer as {

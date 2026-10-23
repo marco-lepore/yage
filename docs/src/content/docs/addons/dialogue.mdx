@@ -1662,8 +1662,8 @@ offset).
   </TabItem>
   <TabItem label="Textured nine-slice (opt-in)">
     `theme.textured` is a **map of named chrome styles**, each a nine-slice
-    frame (`{ frame: { texture, insets }, bubble? }`) drawn through the
-    renderer's `createNineSlice` — so the addon needs no `pixi.js` peer. A box
+    frame (`{ frame: { texture, insets }, bubble? }`) drawn by the
+    renderer's `NineSliceComponent` — so the addon needs no `pixi.js` peer. A box
     line picks its style by name through its `meta.chrome` key; the speech
     bubble uses the `"default"` style's `bubble`, content-sized per line.
   </TabItem>

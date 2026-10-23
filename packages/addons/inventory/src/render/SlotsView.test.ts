@@ -263,8 +263,8 @@ describe("SlotsView lifecycle + diagnostics", () => {
     );
     const gfx = hints?.get(GraphicsComponent);
     view.setVisible(false);
-    expect(gfx?.graphics.visible).toBe(false);
+    expect(gfx?.visible).toBe(false);
     view.setVisible(true);
-    expect(gfx?.graphics.visible).toBe(true);
+    expect(gfx?.visible).toBe(true);
   });
 });

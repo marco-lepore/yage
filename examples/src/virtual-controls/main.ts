@@ -117,12 +117,14 @@ class PlayerController extends Component {
     }
     this.transform.setPosition(x, y);
 
-    this.gfx.graphics
-      .clear()
-      .roundRect(-18, -18, 36, 36, 6)
-      .fill({ color: this.dash.running ? 0xf472b6 : 0x38bdf8 })
-      .roundRect(this.facing > 0 ? 4 : -10, -8, 6, 6, 2)
-      .fill({ color: 0x0f172a });
+    this.gfx.draw((g) =>
+      g
+        .clear()
+        .roundRect(-18, -18, 36, 36, 6)
+        .fill({ color: this.dash.running ? 0xf472b6 : 0x38bdf8 })
+        .roundRect(this.facing > 0 ? 4 : -10, -8, 6, 6, 2)
+        .fill({ color: 0x0f172a }),
+    );
   }
 }
 
@@ -141,25 +143,26 @@ class RippleBackdrop extends Component {
       if (this.ripples.length > 16) this.ripples.shift();
     }
 
-    const g = this.gfx.graphics;
-    g.clear();
-    // Ground line.
-    g.rect(0, GROUND_Y, WIDTH, 2).fill({ color: 0x334155 });
     for (let i = this.ripples.length - 1; i >= 0; i--) {
       const r = this.ripples[i];
       if (!r) continue;
       r.t += dt;
-      if (r.t > 0.6) {
-        this.ripples.splice(i, 1);
-        continue;
-      }
-      const p = r.t / 0.6;
-      g.circle(r.pos.x, r.pos.y, 8 + p * 46).stroke({
-        width: 2,
-        color: 0x38bdf8,
-        alpha: 0.7 * (1 - p),
-      });
+      if (r.t > 0.6) this.ripples.splice(i, 1);
     }
+
+    this.gfx.draw((g) => {
+      g.clear();
+      // Ground line.
+      g.rect(0, GROUND_Y, WIDTH, 2).fill({ color: 0x334155 });
+      for (const r of this.ripples) {
+        const p = r.t / 0.6;
+        g.circle(r.pos.x, r.pos.y, 8 + p * 46).stroke({
+          width: 2,
+          color: 0x38bdf8,
+          alpha: 0.7 * (1 - p),
+        });
+      }
+    });
   }
 }
 

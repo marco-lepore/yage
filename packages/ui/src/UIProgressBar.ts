@@ -21,6 +21,10 @@ const DEFAULT_FILL: BackgroundOptions = { color: 0x44aa44, alpha: 1 };
 
 /** A progress bar with track and fill backgrounds. */
 export class UIProgressBar extends UIElementBase {
+  /**
+   * The same Pixi container as {@link displayObject}. Change the element
+   * through its props; see `UIElement.displayObject`.
+   */
   readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 

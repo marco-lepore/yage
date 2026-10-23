@@ -82,7 +82,7 @@ export class PortraitPresenter implements AvatarPresenter {
 
   private applyVisibility(): void {
     if (this.sprite) {
-      this.sprite.sprite.visible = this.current !== undefined && !this.hidden;
+      this.sprite.visible = this.current !== undefined && !this.hidden;
     }
   }
 
@@ -155,6 +155,6 @@ export class PortraitPresenter implements AvatarPresenter {
   }
 
   private hide(): void {
-    if (this.sprite) this.sprite.sprite.visible = false;
+    if (this.sprite) this.sprite.visible = false;
   }
 }

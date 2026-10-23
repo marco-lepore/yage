@@ -16,10 +16,10 @@ import { ensureDialogueLayer } from "../render/ensureLayer.js";
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
 import {
-  createNineSlice,
   GraphicsComponent,
+  NineSliceComponent,
+  SortGroupComponent,
   TextComponent,
-  type NineSliceSprite,
 } from "@yagejs/renderer";
 import type { PresentedLine } from "../core/session.js";
 import type { BubbleLayout } from "../render/BubbleLayout.js";
@@ -59,9 +59,11 @@ export class BubbleChrome implements ChromePresenter {
   private root?: Entity | undefined;
   private gfx?: GraphicsComponent | undefined;
   private transform?: Transform | undefined;
-  /** Nine-slice body sprite (child of {@link gfx}) when textured; resized per
+  /** Nine-slice body on a child entity when textured; resized and placed per
    *  line. The tail stays a drawn triangle on {@link gfx}. */
-  private bubbleSlice?: NineSliceSprite | undefined;
+  private bubbleSlice?:
+    | { readonly transform: Transform; readonly slice: NineSliceComponent }
+    | undefined;
   private name?: TextComponent | undefined;
   private nameTransform?: Transform | undefined;
   private caret?: GraphicsComponent | undefined;
@@ -99,25 +101,29 @@ export class BubbleChrome implements ChromePresenter {
     const c = this.cfg;
     const root = scene.spawn("dlg-bubble");
     this.transform = root.add(new Transform());
+    // A textured body is a second visual on a child entity. The sort group
+    // keeps it and the tail together as one unit on a depth-sorted layer,
+    // drawn in add order: tail first, body over it.
+    if (c.frame) root.add(new SortGroupComponent({ layer: c.layer }));
     this.gfx = root.add(new GraphicsComponent({ layer: c.layer }));
     if (c.frame) {
-      // Textured body: a nine-slice child of the bubble graphics, resized +
-      // positioned per line in drawBubble. createNineSlice keeps the addon off a
-      // direct pixi.js import.
-      const slice = createNineSlice({
-        texture: c.frame.texture,
-        leftWidth: c.frame.insets.left,
-        topHeight: c.frame.insets.top,
-        rightWidth: c.frame.insets.right,
-        bottomHeight: c.frame.insets.bottom,
-        width: this.currentWidth,
-        height: this.currentHeight,
-      });
-      this.gfx.graphics.addChild(slice);
-      this.bubbleSlice = slice;
+      // Resized and positioned per line in drawBubble.
+      const body = root.spawnChild("dlg-bubble-body");
+      const transform = body.add(new Transform());
+      const slice = body.add(
+        new NineSliceComponent({
+          texture: c.frame.texture,
+          insets: c.frame.insets,
+          width: this.currentWidth,
+          height: this.currentHeight,
+          layer: c.layer,
+        }),
+      );
+      this.bubbleSlice = { transform, slice };
     }
     this.drawBubble();
-    this.gfx.graphics.visible = false;
+    this.gfx.visible = false;
+    if (this.bubbleSlice) this.bubbleSlice.slice.visible = false;
 
     // Name floats just above the bubble; left-aligned to the inner edge.
     const nameEntity = scene.spawn("dlg-bubble-name");
@@ -127,14 +133,14 @@ export class BubbleChrome implements ChromePresenter {
         makeTextOptions(c, "", c.nameSize, c.nameColor, c.layer),
       ),
     );
-    this.name.text.visible = false;
+    this.name.visible = false;
 
     const caretEntity = scene.spawn("dlg-bubble-caret");
     this.caretTransform = caretEntity.add(new Transform());
     this.caret = caretEntity.add(new GraphicsComponent({ layer: c.layer }));
     // Drawn once in local coords; positioned each frame via the transform.
     this.caret.draw((g) => drawCaret(g, c.indicatorColor, c.caret?.size));
-    this.caret.graphics.visible = false;
+    this.caret.visible = false;
 
     this.root = root;
   }
@@ -153,7 +159,9 @@ export class BubbleChrome implements ChromePresenter {
       const label = line.speaker?.name;
       this.nameShown = label !== undefined && label.length > 0;
       if (label && this.name) {
-        this.name.text.style.fill = line.speaker?.color ?? this.cfg.nameColor;
+        this.name.mergeStyle({
+          fill: line.speaker?.color ?? this.cfg.nameColor,
+        });
         this.name.setText(label);
       }
     } else {
@@ -191,21 +199,23 @@ export class BubbleChrome implements ChromePresenter {
 
   /** Render each piece = master-visible AND a line is up AND its content present. */
   private apply(): void {
-    if (this.gfx) this.gfx.graphics.visible = this.visible && this.hasLine;
+    if (this.gfx) this.gfx.visible = this.visible && this.hasLine;
+    if (this.bubbleSlice) {
+      this.bubbleSlice.slice.visible = this.visible && this.hasLine;
+    }
     if (this.name) {
-      this.name.text.visible = this.visible && this.hasLine && this.nameShown;
+      this.name.visible = this.visible && this.hasLine && this.nameShown;
     }
     if (this.caret) {
-      this.caret.graphics.visible =
-        this.visible && this.hasLine && this.caretShown;
+      this.caret.visible = this.visible && this.hasLine && this.caretShown;
     }
   }
 
   update(dt: number): void {
     this.follow();
-    // Read pixi's `visible` directly — a parallel boolean could desync (e.g.
-    // keep animating a caret that `setVisible(false)` hid).
-    const gfx = this.caret?.graphics;
+    // The component's `visible` is the state `apply()` wrote, so a caret that
+    // `setVisible(false)` hid stops blinking.
+    const gfx = this.caret;
     if (gfx?.visible) {
       this.caretTime += dt;
       gfx.alpha = caretAlpha(this.caretTime, this.cfg.caret?.blink);
@@ -263,15 +273,14 @@ export class BubbleChrome implements ChromePresenter {
     const lean = c.tailLean ?? DEFAULT_TAIL_LEAN;
     const tipX = lean.x; // slight lean
     const tipY = lean.y; // just above the actor's head anchor (local 0,0)
-    this.gfx?.graphics.clear(); // re-drawn per line at a new size — don't accumulate
+    this.gfx?.draw((g) => g.clear()); // re-drawn per line at a new size — don't accumulate
 
     if (this.bubbleSlice) {
       // Textured body: stretch the nine-slice to the content size and place it
       // at the bubble's top-left; draw only the tail triangle (the nine-slice is
       // a rectangle and can't carry the pointer).
-      this.bubbleSlice.position.set(L, T);
-      this.bubbleSlice.width = w;
-      this.bubbleSlice.height = h;
+      this.bubbleSlice.transform.setPosition(L, T);
+      this.bubbleSlice.slice.setSize(w, h);
       this.gfx?.draw((g) => {
         g.poly([-half, B, half, B, tipX, tipY]).fill({
           color: c.frameColor,

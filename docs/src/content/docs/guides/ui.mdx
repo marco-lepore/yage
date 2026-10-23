@@ -347,15 +347,18 @@ a lingering hover handler cannot touch a freed tooltip.
 
 For fully custom popovers / menus, drop to the primitives: acquire a slot
 with `scene.use(FloatingOverlayKey).acquire()` for a
-`FloatingHandle`, and position with the pure `computePosition()` engine
-(`offset → flip → shift → size`). The React `<Tooltip>` / `useFloating`
+`FloatingHandle`, hand it a UI element with `handle.setContent(panel)`, and
+position with the pure `computePosition()` engine
+(`offset → flip → shift → size`). `setContent` lays the element out
+shrink-to-content. `release()` destroys the element, and so does the scene's
+exit if you still hold the handle. The React `<Tooltip>` / `useFloating`
 build on this exact overlay — see the
 [React UI guide](/guides/ui-react/).
 
 The overlay reuses a floating element's layout while its trigger, config,
-and viewport stay the same. If you change imperative content without
-calling `setLayout` again, call `handle.invalidateLayout()` so the next
-overlay update measures and positions it again. React floating content does
+and viewport stay the same. If you change the content element's children or
+text, call `handle.invalidateLayout()` so the next overlay update measures
+and positions it again. React floating content does
 this automatically through its normal render update.
 
 ## Text
@@ -489,6 +492,11 @@ function GameOver({ label }: { label: string }) {
 Imperatively (no React), `new UISplitText({ children, charAnchor, … })`
 exposes the same `chars` / `words` / `lines` and an `onSplit(cb)`
 subscription that fires after each re-split.
+
+The engine writes none of a segment's `x`, `y`, `rotation`, `scale`,
+`alpha`, `tint` or `visible`, so those are yours to animate. A `setText`,
+`setStyle` or `resplit()` replaces every segment, so read `chars` again
+after one instead of keeping the old array.
 
 :::caution[Different from `UIText`]
 `UISplitText` has **no `truncate` and no word-wrap** — pre-break long
@@ -633,7 +641,6 @@ panel.addElement(img);
 
 `UIImage`, `UINineSlice`, and texture backgrounds accept `TextureInput`: a
 registered asset key, a texture handle, or a raw renderer texture.
-`img.sprite` is the picture itself.
 
 #### Sizing
 
@@ -1123,7 +1130,11 @@ with `focus: true`:
 
 ```typescript
 import { Component } from "@yagejs/core";
-import { Graphics } from "pixi.js";
+import {
+  RendererKey,
+  registerTexture,
+  unregisterTexture,
+} from "@yagejs/renderer";
 import { isCapturingInput, PixiInput, UISurface } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
 
@@ -1133,8 +1144,18 @@ class NameEntry extends Component {
 
   onAdd() {
     const menu = this.entity.get(UISurface);
+    // A view takes a texture key; bake the field's background once.
+    const fieldBg = this.use(RendererKey).createTexture(
+      (g) => g.rect(0, 0, 220, 40).fill(0x222230),
+      { width: 220, height: 40 },
+    );
+    registerTexture("name-field-bg", fieldBg);
+    this.addCleanup(() => {
+      unregisterTexture("name-field-bg");
+      fieldBg.destroy();
+    });
     this.nameField = new PixiInput({
-      bg: new Graphics().rect(0, 0, 220, 40).fill(0x222230),
+      bg: "name-field-bg",
       placeholder: "Save name",
     });
     menu.addElement(this.nameField);
@@ -1187,6 +1208,24 @@ Child elements also support visibility:
 ```typescript yage-group="panel" yage-context="entity,scene-enter"
 label.visible = false;
 btn.visible = true;
+```
+
+## Knowing when an element is destroyed
+
+`onDestroy(fn)` calls `fn` once when the element is destroyed, so a
+subscription the element drives ends with it. It returns a function that
+removes the listener earlier, when the subscription should end first:
+
+```typescript yage-context="entity"
+import { defineEvent } from "@yagejs/core";
+import { UISurface } from "@yagejs/ui";
+
+const ScoreChanged = defineEvent<number>("score-changed");
+const label = entity.get(UISurface).text("Score: 0");
+const stopListening = entity.on(ScoreChanged, (score) => {
+  label.setText(`Score: ${score}`);
+});
+label.onDestroy(stopListening); // the label stops listening when destroyed
 ```
 
 ## Absolute Positioning

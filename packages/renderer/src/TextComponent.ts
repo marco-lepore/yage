@@ -38,6 +38,10 @@ export interface TextComponentOptions extends VisualComponentOptions {
 
 /** Component that displays text on a render layer. */
 export class TextComponent extends VisualComponent {
+  /**
+   * The Pixi text object, the same one as {@link renderObject}. Change the visual through
+   * the component; see `VisualComponent.renderObject`.
+   */
   readonly text: DisplayText | DisplayBitmapText;
   // Raw style options are kept so mergeStyle can preserve prior values.
   private _styleOptions?: TextStyle;
@@ -63,7 +67,10 @@ export class TextComponent extends VisualComponent {
     this.applyVisualOptions(options);
   }
 
-  /** The underlying Pixi display object. */
+  /**
+   * The Pixi object this component draws with. Change the visual through the
+   * component; see {@link VisualComponent.renderObject}.
+   */
   get renderObject(): DisplayText | DisplayBitmapText {
     return this.text;
   }

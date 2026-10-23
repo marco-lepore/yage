@@ -468,7 +468,11 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     }
   }
 
-  /** The PixiJS Application instance. */
+  /**
+   * The PixiJS Application instance, for tools and for code that adds its
+   * own Pixi objects to the stage. Game code draws through visual components
+   * on scene layers.
+   */
   get application(): Application {
     return this._app;
   }
@@ -486,6 +490,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    *
    * Use `app.stage` instead when the geometry must cover the canvas
    * including letterbox / expand bars (full-screen dip-to-color overlays).
+   *
+   * For code that adds its own Pixi objects here, such as a custom scene
+   * transition. Game code draws through visual components on scene layers.
    */
   get worldRoot(): DisplayContainer {
     return this._worldRoot;

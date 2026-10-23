@@ -5,8 +5,6 @@ vi.mock("@yagejs/renderer", async () => {
     await vi.importActual<typeof import("@yagejs/core")>("@yagejs/core");
 
   class MockGraphics {
-    visible = true;
-
     clear(): this {
       return this;
     }
@@ -25,15 +23,22 @@ vi.mock("@yagejs/renderer", async () => {
   }
 
   class GraphicsComponent extends Component {
-    readonly graphics = new MockGraphics();
+    visible = true;
+    private readonly graphics = new MockGraphics();
+
+    draw(fn: (g: MockGraphics) => void): this {
+      fn(this.graphics);
+      return this;
+    }
   }
 
   class TextComponent extends Component {
-    readonly text = { visible: true, alpha: 1 };
+    visible = true;
+    alpha: number;
 
     constructor(options: { alpha?: number }) {
       super();
-      this.text.alpha = options.alpha ?? 1;
+      this.alpha = options.alpha ?? 1;
     }
 
     mergeStyle(): void {}
@@ -56,21 +61,21 @@ describe("GraphicsButtonView", () => {
     const theme = defaultControlsTheme();
     const view = new GraphicsButtonView(scene, button, theme);
     const visuals = view as unknown as {
-      gfx: { graphics: { visible: boolean } };
-      text: { text: { visible: boolean; alpha: number } };
+      gfx: { visible: boolean };
+      text: { visible: boolean; alpha: number };
     };
 
     view.setVisible(true);
     model.setButtonVisible("a", false);
     view.update(1 / 60);
-    expect(visuals.gfx.graphics.visible).toBe(false);
-    expect(visuals.text.text.visible).toBe(false);
+    expect(visuals.gfx.visible).toBe(false);
+    expect(visuals.text.visible).toBe(false);
 
     model.setButtonVisible("a", true);
     model.setButtonEnabled("a", false);
     view.update(1);
-    expect(visuals.gfx.graphics.visible).toBe(true);
-    expect(visuals.text.text.visible).toBe(true);
-    expect(visuals.text.text.alpha).toBeLessThan(theme.labelAlpha);
+    expect(visuals.gfx.visible).toBe(true);
+    expect(visuals.text.visible).toBe(true);
+    expect(visuals.text.alpha).toBeLessThan(theme.labelAlpha);
   });
 });

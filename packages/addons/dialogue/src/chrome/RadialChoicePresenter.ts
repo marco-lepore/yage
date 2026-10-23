@@ -103,7 +103,6 @@ export class RadialChoicePresenter implements ChoicePresenter {
           ),
         ),
       );
-      comp.text.visible = true;
       this.spokes.push({
         entity,
         comp,
@@ -140,9 +139,8 @@ export class RadialChoicePresenter implements ChoicePresenter {
   }
 
   private applyHidden(): void {
-    for (const s of this.spokes) s.comp.text.visible = !this.hidden;
-    if (this.hub)
-      this.hub.gfx.graphics.visible = !this.hidden && this.spokes.length > 0;
+    for (const s of this.spokes) s.comp.visible = !this.hidden;
+    if (this.hub) this.hub.gfx.visible = !this.hidden && this.spokes.length > 0;
   }
 
   /** {@link ChoicePresenter}: nearest spoke within a small radius. */

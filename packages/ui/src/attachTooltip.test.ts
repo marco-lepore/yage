@@ -141,6 +141,14 @@ function makeAnchor(): UIElement & { readonly updateCalls: number } {
     destroy: () => {
       (displayObject as unknown as { destroy(): void }).destroy();
     },
+    onDestroy: (fn: () => void) => {
+      const target = displayObject as unknown as {
+        once(event: string, fn: () => void): void;
+        off(event: string, fn: () => void): void;
+      };
+      target.once("destroyed", fn);
+      return () => target.off("destroyed", fn);
+    },
     get updateCalls() {
       return updateCalls;
     },
@@ -273,6 +281,44 @@ describe("attachTooltip", () => {
     handle.invalidateLayout();
     overlay.update(VIEWPORT);
     expect(handle.container.position.x).toBe(initialX - 40);
+  });
+
+  it("setContent shows a UI element and destroys it on replace and release", () => {
+    makeScene(overlay);
+    const anchor = makeAnchor();
+    const handle = overlay.acquire();
+    const first = makeContent(80, 24) as UIElement & { _destroyed: boolean };
+    const second = makeContent(120, 24) as UIElement & { _destroyed: boolean };
+    handle.setReference(() => anchor);
+    handle.setConfig({ placement: "bottom" });
+
+    handle.setContent(first);
+    expect(first.displayObject.parent).toBe(handle.container);
+    handle.setActive(true);
+    overlay.update(VIEWPORT);
+    expect(handle.container.visible).toBe(true);
+
+    handle.setContent(second);
+    expect(first._destroyed).toBe(true);
+    expect(second.displayObject.parent).toBe(handle.container);
+
+    handle.release();
+    expect(second._destroyed).toBe(true);
+  });
+
+  it("destroying the overlay destroys content still on a float", () => {
+    makeScene(overlay);
+    const handle = overlay.acquire();
+    const content = makeContent(80, 24) as UIElement & { _destroyed: boolean };
+    handle.setContent(content);
+
+    overlay.destroy();
+    expect(content._destroyed).toBe(true);
+
+    // A late release from the float's owner leaves the content alone.
+    const destroy = vi.spyOn(content, "destroy");
+    handle.release();
+    expect(destroy).not.toHaveBeenCalled();
   });
 
   it("wires no input on the anchor — activation is the caller's", () => {

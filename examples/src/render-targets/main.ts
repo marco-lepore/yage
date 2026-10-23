@@ -3,7 +3,8 @@
  *
  * A radar display is drawn into an offscreen texture, then the same live
  * texture is shown on a large wall monitor and a smaller console display.
- * The source container never joins the scene graph.
+ * The source container never joins the scene graph. It is built from Pixi
+ * objects directly, because no visual component draws into a render target.
  *
  * R cycles `resolutionScale`. Both screens keep the same layout while the
  * texture gets sharper or chunkier. Space pauses the radar; once nothing
@@ -12,6 +13,7 @@
  * The strip along the bottom demonstrates component `blendMode` without a
  * render target.
  */
+// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- no visual component draws into a render target
 import { Container, Graphics } from "pixi.js";
 import {
   Component,

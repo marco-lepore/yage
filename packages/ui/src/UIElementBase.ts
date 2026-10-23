@@ -1,6 +1,7 @@
 import type { DisplayContainer } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { ElementTransform } from "./internal/element-transform.js";
+import { runUICallback } from "./error-boundary.js";
 import type { LayoutProps, UIElement } from "./types.js";
 
 /**
@@ -10,6 +11,13 @@ import type { LayoutProps, UIElement } from "./types.js";
  * calls {@link applyTransformProps} from its constructor and its `update()`.
  */
 export abstract class UIElementBase implements UIElement {
+  /**
+   * The Pixi container this element draws with. Game code does not write to
+   * it: layout writes its position, and the `scale`, `rotation` and `zIndex`
+   * props write theirs, so a direct write is replaced at the next layout pass
+   * or prop change. Change the element through its props; a task that needs
+   * this object is a missing API.
+   */
   abstract readonly displayObject: DisplayContainer;
   abstract readonly yogaNode: YogaNode;
   abstract visible: boolean;
@@ -18,6 +26,33 @@ export abstract class UIElementBase implements UIElement {
 
   /** @internal */
   readonly _transform: ElementTransform = new ElementTransform(this);
+
+  /**
+   * Call `fn` once when this element is destroyed. A throw from `fn` is
+   * recorded on the scene's `ErrorBoundary`. Returns a function that removes
+   * the listener before then.
+   */
+  onDestroy(fn: () => void): () => void {
+    const display = this.displayObject;
+    // Pixi removes a container from its parent before it emits "destroyed".
+    // The throw is attributed through the element's own boundary (a surface
+    // root carries one), else through the parent it was last removed from,
+    // whose chain still reaches the tree's error boundary.
+    let formerParent: DisplayContainer | undefined;
+    const removed = (parent: DisplayContainer): void => {
+      formerParent = parent;
+    };
+    const destroyed = (): void => {
+      display.off("removed", removed);
+      runUICallback(display, "UI destroy listener", fn, formerParent);
+    };
+    display.on("removed", removed);
+    display.once("destroyed", destroyed);
+    return () => {
+      display.off("removed", removed);
+      display.off("destroyed", destroyed);
+    };
+  }
 
   /**
    * Apply the four transform props present in `props`. A present key holding

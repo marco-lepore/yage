@@ -25,14 +25,23 @@ export interface FloatConfig {
 }
 
 /**
- * One live floating element. The owner parents content into `container`;
- * the overlay re-anchors it to `getReference()` every frame and asks the
- * owner-supplied `setLayout` callback for the content's shrink-to-content
- * size — so the overlay stays agnostic of how that content is built (React
- * reconciler tree, hand-built `UIPanel`s, …).
+ * One live floating element. The owner hands it content with
+ * {@link FloatingHandle.setContent}; the overlay re-anchors it to
+ * `getReference()` every frame and lays the content out shrink-to-content.
  */
 export interface FloatingHandle {
+  /**
+   * The float's Pixi container. For a renderer that builds content outside
+   * `@yagejs/ui` elements (the React layer portals into it); hand-built
+   * content goes through {@link setContent}.
+   */
   readonly container: DisplayContainer;
+  /**
+   * Show `element` as the float's content, laid out shrink-to-content. A
+   * previous content element is destroyed. `release()` destroys the current
+   * one, and so does the scene's exit if the float is still held.
+   */
+  setContent(element: UIElement): void;
   setReference(get: () => UIElement | null): void;
   setConfig(cfg: FloatConfig): void;
   /**
@@ -59,6 +68,8 @@ export interface FloatingHandle {
 
 interface Entry {
   container: DisplayContainer;
+  /** The element handed to `setContent`, destroyed with the entry. */
+  content: UIElement | undefined;
   getReference: () => UIElement | null;
   config: FloatConfig;
   layout: (maxWidth: number | undefined) => Dimensions;
@@ -73,6 +84,15 @@ interface Entry {
 const OVERLAY_LAYER = "ui-overlay";
 const OVERLAY_LAYER_ORDER = 1_000_000;
 const EMPTY_SIZE: Dimensions = { width: 0, height: 0 };
+
+/** Destroy an entry's content element, then its container. */
+function disposeEntry(entry: Entry): void {
+  const content = entry.content;
+  entry.content = undefined;
+  content?.destroy();
+  entry.container.removeFromParent();
+  entry.container.destroy({ children: true });
+}
 
 function sameRect(a: Rect | null, b: Rect): boolean {
   return (
@@ -128,6 +148,7 @@ export class FloatingOverlay {
     container.visible = false;
     const entry: Entry = {
       container,
+      content: undefined,
       getReference: () => null,
       config: {},
       layout: () => EMPTY_SIZE,
@@ -143,6 +164,13 @@ export class FloatingOverlay {
 
     return {
       container,
+      setContent: (element) => {
+        if (entry.content && entry.content !== element) entry.content.destroy();
+        entry.content = element;
+        container.addChild(element.displayObject);
+        entry.layout = (mw) => layoutFloat([element], mw);
+        entry.dirty = true;
+      },
       setReference: (get) => {
         entry.getReference = get;
         entry.dirty = true;
@@ -169,8 +197,7 @@ export class FloatingOverlay {
       },
       release: () => {
         this.entries.delete(entry);
-        container.removeFromParent();
-        container.destroy({ children: true });
+        disposeEntry(entry);
       },
     };
   }
@@ -235,10 +262,7 @@ export class FloatingOverlay {
   }
 
   destroy(): void {
-    for (const e of this.entries) {
-      e.container.removeFromParent();
-      e.container.destroy({ children: true });
-    }
+    for (const e of this.entries) disposeEntry(e);
     this.entries.clear();
     this.layer = null;
   }

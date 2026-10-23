@@ -25,6 +25,10 @@ const LABEL_GAP = 6;
 
 /** Interactive checkbox with optional label. */
 export class UICheckbox extends UIElementBase {
+  /**
+   * The same Pixi container as {@link displayObject}. Change the element
+   * through its props; see `UIElement.displayObject`.
+   */
   readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 

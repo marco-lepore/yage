@@ -21,10 +21,9 @@ import { ensureDialogueLayer } from "../render/ensureLayer.js";
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
 import {
-  createNineSlice,
   GraphicsComponent,
+  NineSliceComponent,
   TextComponent,
-  type NineSliceSprite,
 } from "@yagejs/renderer";
 import { caretAlpha, drawCaret } from "./caret.js";
 import type { ChromePresenter, DiagnosticSink } from "./DialogueUiAdapter.js";
@@ -91,13 +90,12 @@ export function resolveActiveFrame(
 export class DialogueChrome implements ChromePresenter {
   private frame?: Entity | undefined;
   private frameGfx?: GraphicsComponent | undefined;
-  /** Separate entity hosting the nine-slice sprites (one per textured style);
+  /** Parent entity of the nine-slice frames, one child per textured style;
    *  only spawned when {@link DialogueChromeConfig.frameStyles} has entries. Its
-   *  Transform tracks the per-line frame origin so the sprites draw at local 0. */
+   *  Transform tracks the per-line frame origin, so each child sits at local 0. */
   private frameTex?: Entity | undefined;
   private frameTexTransform?: Transform | undefined;
-  private nineSliceHost?: GraphicsComponent | undefined;
-  private readonly nineSlices = new Map<string, NineSliceSprite>();
+  private readonly nineSlices = new Map<string, NineSliceComponent>();
   private name?:
     | { entity: Entity; transform: Transform; comp: TextComponent }
     | undefined;
@@ -156,37 +154,32 @@ export class DialogueChrome implements ChromePresenter {
     const frame = scene.spawn("dlg-frame");
     frame.add(new Transform()).setPosition(0, 0);
     this.frameGfx = frame.add(new GraphicsComponent({ layer: cfg.layerFrame }));
-    this.frameGfx.graphics.visible = false;
+    this.frameGfx.visible = false;
     this.frame = frame;
 
-    // Textured frame styles: a nine-slice sprite per named style, parented into
-    // a host GraphicsComponent (Pixi Graphics is a Container) on its OWN entity
-    // — the DisplaySystem drives a GraphicsComponent's position from its entity
-    // Transform, so the host Transform tracks the per-line frame origin and the
-    // sprites draw at local (0,0). Reuses renderer's layer path; no pixi.js import.
+    // Textured frame styles: one nine-slice child entity per named style,
+    // under a parent whose Transform tracks the per-line frame origin.
     const styles = cfg.frameStyles;
     if (styles && Object.keys(styles).length > 0) {
       const texEntity = scene.spawn("dlg-frame-tex");
       this.frameTexTransform = texEntity.add(new Transform());
-      const host = texEntity.add(
-        new GraphicsComponent({ layer: cfg.layerFrame }),
-      );
+      const { width, height } = this.layout.frameRect();
       for (const [key, spec] of Object.entries(styles)) {
-        const sprite = createNineSlice({
-          texture: spec.texture,
-          leftWidth: spec.insets.left,
-          topHeight: spec.insets.top,
-          rightWidth: spec.insets.right,
-          bottomHeight: spec.insets.bottom,
-          width: this.layout.frameRect().width,
-          height: this.layout.frameRect().height,
-        });
-        sprite.visible = false;
-        host.graphics.addChild(sprite);
-        this.nineSlices.set(key, sprite);
+        const child = texEntity.spawnChild(`dlg-frame-tex:${key}`);
+        child.add(new Transform());
+        const slice = child.add(
+          new NineSliceComponent({
+            texture: spec.texture,
+            insets: spec.insets,
+            width,
+            height,
+            layer: cfg.layerFrame,
+            visible: false,
+          }),
+        );
+        this.nineSlices.set(key, slice);
       }
       this.frameTex = texEntity;
-      this.nineSliceHost = host;
     }
 
     // Name plate.
@@ -210,7 +203,7 @@ export class DialogueChrome implements ChromePresenter {
     const indTransform = ind.add(new Transform());
     const indGfx = ind.add(new GraphicsComponent({ layer: cfg.layerFrame }));
     indGfx.draw((g) => drawCaret(g, cfg.indicatorColor, caretSize));
-    indGfx.graphics.visible = false;
+    indGfx.visible = false;
     this.indicator = { entity: ind, transform: indTransform, gfx: indGfx };
 
     this.applyGeometry();
@@ -222,9 +215,8 @@ export class DialogueChrome implements ChromePresenter {
     // hide-all (that overload died; the Session hides via setVisible).
     this.nameShown = name !== undefined;
     if (name !== undefined) {
-      // Mutate fill in place — replacing the whole style would drop the bitmap
-      // font (BitmapText resolves its font from style.fontFamily).
-      this.name.comp.text.style.fill = color ?? this.cfg.nameColor;
+      // Merge, not replace: the bitmap font name lives in style.fontFamily.
+      this.name.comp.mergeStyle({ fill: color ?? this.cfg.nameColor });
       this.name.comp.setText(name);
     }
     this.apply();
@@ -278,9 +270,8 @@ export class DialogueChrome implements ChromePresenter {
         .stroke({ color: this.cfg.borderColor, alpha: 1, width: 2 });
     });
     if (this.frameTexTransform) this.frameTexTransform.setPosition(r.x, r.y);
-    for (const sprite of this.nineSlices.values()) {
-      sprite.width = r.width;
-      sprite.height = r.height;
+    for (const slice of this.nineSlices.values()) {
+      slice.setSize(r.width, r.height);
     }
     if (this.name) {
       const p = this.layout.nameplatePos();
@@ -298,28 +289,24 @@ export class DialogueChrome implements ChromePresenter {
   private apply(): void {
     const active = resolveActiveFrame(this.styleKey, this.nineSlices);
     if (this.frameGfx) {
-      this.frameGfx.graphics.visible =
-        this.visible && active.kind === "graphics";
+      this.frameGfx.visible = this.visible && active.kind === "graphics";
     }
-    if (this.nineSliceHost) {
-      // The host shows only while a nine-slice is the active frame (so the
-      // "graphics"/"none" cases leave nothing textured on screen).
-      this.nineSliceHost.graphics.visible =
-        this.visible && active.kind === "nineSlice";
-      for (const [key, sprite] of this.nineSlices) {
-        sprite.visible = active.kind === "nineSlice" && active.key === key;
-      }
+    // Only the active style's frame shows, so the "graphics" and "none" cases
+    // leave nothing textured on screen.
+    for (const [key, slice] of this.nineSlices) {
+      slice.visible =
+        this.visible && active.kind === "nineSlice" && active.key === key;
     }
-    if (this.name) this.name.comp.text.visible = this.visible && this.nameShown;
+    if (this.name) this.name.comp.visible = this.visible && this.nameShown;
     if (this.indicator) {
-      this.indicator.gfx.graphics.visible = this.visible && this.caretShown;
+      this.indicator.gfx.visible = this.visible && this.caretShown;
     }
   }
 
   update(dt: number): void {
-    // Read pixi's `visible` directly — a parallel boolean could desync (e.g.
-    // keep animating a caret that `setVisible(false)` hid).
-    const gfx = this.indicator?.gfx.graphics;
+    // The component's `visible` is the state `apply()` wrote, so a caret that
+    // `setVisible(false)` hid stops blinking.
+    const gfx = this.indicator?.gfx;
     if (gfx?.visible) {
       this.indicatorTime += dt;
       gfx.alpha = caretAlpha(this.indicatorTime, this.cfg.caret?.blink);
@@ -338,7 +325,6 @@ export class DialogueChrome implements ChromePresenter {
     this.frameTex = undefined;
     this.frameTexTransform = undefined;
     this.frameGfx = undefined;
-    this.nineSliceHost = undefined;
     this.name = undefined;
     this.indicator = undefined;
   }

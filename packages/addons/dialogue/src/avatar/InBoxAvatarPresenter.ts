@@ -141,8 +141,7 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
         width: this.cfg.width + (this.cfg.gap ?? 8),
         height: Math.max(
           this.cfg.background ? this.cfg.width : 0,
-          (this.sprite?.sprite.texture.height ?? this.cfg.width) *
-            Math.abs(scale),
+          (this.sprite?.localBounds.height ?? this.cfg.width) * Math.abs(scale),
         ),
       });
     } else {
@@ -195,8 +194,7 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
     const y =
       this.cfg.align === "top"
         ? region.y +
-          (this.sprite!.sprite.texture.height * Math.abs(this.cfg.scale ?? 1)) /
-            2
+          (this.sprite!.localBounds.height * Math.abs(this.cfg.scale ?? 1)) / 2
         : region.y + region.height / 2;
     this.transform.setPosition(x, y);
     this.bgTransform?.setPosition(
@@ -207,8 +205,8 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
 
   private applyVisibility(): void {
     const shown = this.shown && !this.hidden;
-    if (this.sprite) this.sprite.sprite.visible = shown;
-    if (this.bg) this.bg.graphics.visible = shown;
+    if (this.sprite) this.sprite.visible = shown;
+    if (this.bg) this.bg.visible = shown;
   }
 
   private ensureSprite(initialKey: string): void {
@@ -226,7 +224,7 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
           .roundRect(-w / 2, -w / 2, w, w, bgCfg.radius ?? 8)
           .fill({ color: bgCfg.color, alpha: bgCfg.alpha ?? 1 }),
       );
-      bg.graphics.visible = false;
+      bg.visible = false;
       this.bg = bg;
       this.bgEntity = bgEntity;
     }

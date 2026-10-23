@@ -10,8 +10,8 @@ import { ensureInventoryLayer } from "./ensureLayer.js";
 
 import { Transform, type Scene } from "@yagejs/core";
 import {
-  createNineSlice,
   GraphicsComponent,
+  NineSliceComponent,
   TextComponent,
 } from "@yagejs/renderer";
 import type {
@@ -81,24 +81,23 @@ class DefaultMenuSkin implements MenuSkinPresenter {
     // Graphics rounded rect (default). Spawned first either way, so the bar +
     // labels paint on top.
     const frameEntity = scene.spawn("inv-menu-frame");
-    frameEntity.add(new Transform());
-    const frame = frameEntity.add(
-      new GraphicsComponent({ layer: this.cfg.layerOverlay }),
-    );
+    let frame: GraphicsComponent | NineSliceComponent;
     if (this.cfg.textured) {
-      const sprite = createNineSlice({
-        texture: this.cfg.textured.texture,
-        leftWidth: this.cfg.textured.insets.left,
-        topHeight: this.cfg.textured.insets.top,
-        rightWidth: this.cfg.textured.insets.right,
-        bottomHeight: this.cfg.textured.insets.bottom,
-        width: menu.width,
-        height: menu.height,
-      });
-      sprite.x = menu.x;
-      sprite.y = menu.y;
-      frame.graphics.addChild(sprite);
+      frameEntity.add(new Transform()).setPosition(menu.x, menu.y);
+      frame = frameEntity.add(
+        new NineSliceComponent({
+          texture: this.cfg.textured.texture,
+          insets: this.cfg.textured.insets,
+          width: menu.width,
+          height: menu.height,
+          layer: this.cfg.layerOverlay,
+        }),
+      );
     } else {
+      frameEntity.add(new Transform());
+      frame = frameEntity.add(
+        new GraphicsComponent({ layer: this.cfg.layerOverlay }),
+      );
       frame.draw((g) => {
         g.clear();
         g.roundRect(
@@ -171,7 +170,7 @@ class DefaultMenuSkin implements MenuSkinPresenter {
         if (labels.length === 0) return;
         selected = Math.max(0, Math.min(position, labels.length - 1));
         labels.forEach((row, i) => {
-          row.comp.text.tint =
+          row.comp.tint =
             i === selected
               ? this.cfg.actionSelectedColor
               : this.cfg.actionColor;
@@ -179,9 +178,9 @@ class DefaultMenuSkin implements MenuSkinPresenter {
         drawBar();
       },
       setVisible: (visible: boolean): void => {
-        frame.graphics.visible = visible;
-        bar.graphics.visible = visible;
-        for (const row of labels) row.comp.text.visible = visible;
+        frame.visible = visible;
+        bar.visible = visible;
+        for (const row of labels) row.comp.visible = visible;
       },
       dispose: (): void => {
         for (const row of labels) row.entity.destroy();

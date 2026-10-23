@@ -23,7 +23,7 @@ export interface MaskHandle {
 
   /**
    * Re-run the original draw function on a `graphicsMask`. No-op for
-   * `rectMask` / `spriteMask`. Call this whenever the data the draw closure
+   * `rectMask` / `textureMask`. Call this whenever the data the draw closure
    * depends on changes (e.g. after a layout pass updates dimensions).
    */
   redraw(): void;

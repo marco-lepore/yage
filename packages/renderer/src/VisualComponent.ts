@@ -1,5 +1,6 @@
 import {
   Component,
+  devWarn,
   makeEntityScopedQueue,
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
@@ -7,7 +8,15 @@ import {
 import { computeRenderFacet } from "./internal/renderFacet.js";
 import type { RenderFacetSnapshot } from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
-import { resolveRenderParent } from "./SortGroupComponent.js";
+import {
+  SortGroupComponent,
+  resolveRenderParent,
+  setSortSource,
+  sortOwnerOf,
+} from "./SortGroupComponent.js";
+import type { SortSource } from "./SortGroupComponent.js";
+import { assertFiniteNumber } from "./internal/validate.js";
+import { runAttributed } from "./internal/attribution.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { VisualModifierHost } from "./VisualModifiers.js";
 import { attachMask } from "./masks/attachMask.js";
@@ -35,7 +44,26 @@ export interface VisualInteractiveOptions {
   consumeOnInteraction?: boolean;
 }
 
-/** Options shared by all five visual components. */
+/** The pointer events {@link VisualComponent.onPointer} listens for. */
+export type VisualPointerEvent = "down" | "up" | "tap" | "over" | "out";
+
+const PIXI_POINTER_EVENTS = {
+  down: "pointerdown",
+  up: "pointerup",
+  tap: "pointertap",
+  over: "pointerover",
+  out: "pointerout",
+} as const;
+
+/** A visual's size and offset in its own pixels, before position, rotation and scale. */
+export interface VisualBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** Options shared by every visual component. */
 export interface VisualComponentOptions {
   /** Render layer name. Default: "default". */
   layer?: string;
@@ -45,6 +73,13 @@ export interface VisualComponentOptions {
   tint?: ColorValue;
   /** Alpha (opacity). Default: 1. */
   alpha?: number;
+  /** Draw order among siblings. See {@link VisualComponent.zIndex}. Default: 0. */
+  zIndex?: number;
+  /**
+   * Pixels added to the y position a depth sort reads. See
+   * {@link VisualComponent.sortOffset}. Default: 0.
+   */
+  sortOffset?: number;
   /**
    * How this object's pixels combine with what is drawn beneath it.
    * Default: `"inherit"` — the mode of the nearest ancestor that sets one,
@@ -54,16 +89,16 @@ export interface VisualComponentOptions {
    */
   blendMode?: BlendMode;
   /**
-   * Make the container interactive. When set, Pixi `eventMode` is configured
-   * so it participates in pointer hit-testing — required for any
-   * `.on("pointerdown", ...)` listener to fire.
+   * Make the visual a pointer hit-test target. {@link VisualComponent.onPointer}
+   * does this itself, so the option matters for its `eventMode` and
+   * `consumeOnInteraction` settings.
    *
    * `consumeOnInteraction: true` additionally marks it as a UI-input surface
    * (via `@yagejs/core`'s consume registry), so a `pointerdown` landing on it
    * is auto-claimed by `@yagejs/input` — preventing the same press from also
    * firing gameplay action-map edges like `MouseLeft`. Default `false`: an
-   * interactive container still propagates the action, matching the "I want
-   * both Pixi events AND the action map" use case.
+   * interactive visual still propagates the action, so a press can reach both
+   * an `onPointer` handler and the action map.
    */
   interactive?: VisualInteractiveOptions;
   /**
@@ -75,8 +110,9 @@ export interface VisualComponentOptions {
 }
 
 /**
- * Shared base for the renderer's five visual components (Sprite,
- * AnimatedSprite, Graphics, Text, SplitText). Carries the render-layer field,
+ * Shared base for the renderer's visual components (Sprite,
+ * AnimatedSprite, Graphics, Text, SplitText, NineSlice) and
+ * `@yagejs/tilemap`'s `TilemapComponent`. Carries the render-layer field,
  * lazy effects host, mask lifecycle, scene-tree parenting, and the generic
  * visible/tint/alpha/interactive vocabulary — every underlying Pixi display
  * object supports all four directly on `Container`, so this operates on
@@ -87,8 +123,14 @@ export interface VisualComponentOptions {
  * it exists — options can't be applied during `VisualComponent`'s own
  * constructor since `renderObject` isn't assigned yet at that point.
  */
-export abstract class VisualComponent extends Component {
-  /** The underlying Pixi display object. */
+export abstract class VisualComponent extends Component implements SortSource {
+  /**
+   * The Pixi object this component draws with. Game code does not write to
+   * it: `DisplaySystem` writes its position, rotation and scale from the
+   * entity's `Transform` every frame, and the component re-applies `visible`
+   * and `alpha`. Change the visual through this component; a task that needs
+   * this object is a missing component API.
+   */
   abstract readonly renderObject: DisplayContainer;
   private _layerName: string;
   /**
@@ -114,6 +156,12 @@ export abstract class VisualComponent extends Component {
   private _userAlpha = 1;
   /** See {@link renderAboveEffects}. */
   private _renderAboveEffects = false;
+  /** See {@link zIndex}. */
+  private _zIndex = 0;
+  /** See {@link sortOffset}. */
+  private _sortOffset = 0;
+  /** Whether the ignored-`zIndex` development warning has fired. */
+  private _warnedZIndex = false;
 
   constructor(layer: string | undefined) {
     super();
@@ -135,6 +183,10 @@ export abstract class VisualComponent extends Component {
     if (options.visible !== undefined) this.visible = options.visible;
     if (options.tint !== undefined) this.renderObject.tint = options.tint;
     if (options.alpha !== undefined) this.alpha = options.alpha;
+    if (options.zIndex !== undefined) this.zIndex = options.zIndex;
+    if (options.sortOffset !== undefined) {
+      this.sortOffset = options.sortOffset;
+    }
     if (options.blendMode !== undefined) {
       this.renderObject.blendMode = options.blendMode;
     }
@@ -204,6 +256,45 @@ export abstract class VisualComponent extends Component {
       name,
       this.use(SceneRenderTreeKey),
     ).addChild(this.renderObject);
+    // A sorted layer overwrote the Pixi zIndex with its depth key.
+    this.renderObject.zIndex = this._zIndex;
+    this.warnIfZIndexIgnored();
+  }
+
+  /**
+   * Draw order among the visuals that share this visual's parent: higher
+   * values draw on top, and equal values keep the order they were added in.
+   * Default `0`. It orders visuals on a layer without `sort` and inside a
+   * `SortGroupComponent` without `innerSort`.
+   *
+   * On a layer with `sort`, or in a group with `innerSort`, the depth key
+   * decides the order, so a non-zero `zIndex` there logs one development
+   * warning. Shift the key with {@link sortOffset}, or draw on another layer.
+   */
+  get zIndex(): number {
+    return this._zIndex;
+  }
+
+  set zIndex(value: number) {
+    assertFiniteNumber(`${this.constructor.name}.zIndex`, "value", value);
+    this._zIndex = value;
+    this.renderObject.zIndex = value;
+    this.warnIfZIndexIgnored();
+  }
+
+  /**
+   * Pixels added to this visual's y position when a layer's depth key reads
+   * it: `ySort` keys the visual at `y + sortOffset`. Use it when the anchor is
+   * not where the visual meets the ground, such as a tree anchored at its top
+   * whose trunk base is 96 px lower. Default `0`.
+   */
+  get sortOffset(): number {
+    return this._sortOffset;
+  }
+
+  set sortOffset(value: number) {
+    assertFiniteNumber(`${this.constructor.name}.sortOffset`, "value", value);
+    this._sortOffset = value;
   }
 
   /** Set the container's tint color. */
@@ -275,6 +366,50 @@ export abstract class VisualComponent extends Component {
   }
 
   /**
+   * What this visual draws, in its own pixels: the box around its content
+   * before the entity's position, rotation and scale apply. `x` and `y` are
+   * the box's top-left corner relative to the entity's position, so a sprite
+   * or split text anchored at its centre reports `x = -width / 2`, and a
+   * graphics `pivot` of `(px, py)` moves the box by `(-px, -py)`. A hidden
+   * visual reports its size too. Computed on each read.
+   */
+  get localBounds(): VisualBounds {
+    const object = this.renderObject;
+    const bounds = object.getLocalBounds();
+    return {
+      x: bounds.x - object.pivot.x,
+      y: bounds.y - object.pivot.y,
+      width: bounds.width,
+      height: bounds.height,
+    };
+  }
+
+  /**
+   * Call `fn` when a pointer event hits this visual: `"down"`, `"up"`,
+   * `"tap"` (down then up on the visual), `"over"` or `"out"`. The visual
+   * becomes a hit-test target if it is not one yet. A throw from `fn` is
+   * recorded on the `ErrorBoundary` and names this visual's entity.
+   *
+   * Returns a function that removes the listener. Destroying the visual
+   * removes it too, so pass the function to `addCleanup` only when the
+   * listener should end first. Read the pointer's position from
+   * `@yagejs/input`'s `InputManager`.
+   */
+  onPointer(event: VisualPointerEvent, fn: () => void): () => void {
+    const target = this.renderObject;
+    if (target.eventMode === "passive" || target.eventMode === undefined) {
+      target.eventMode = "static";
+    }
+    const pixiEvent = PIXI_POINTER_EVENTS[event];
+    const kind = `${this.constructor.name} ${event} pointer handler`;
+    const listener = (): void => runAttributed(this, kind, fn);
+    target.on(pixiEvent, listener);
+    return () => {
+      target.off(pixiEvent, listener);
+    };
+  }
+
+  /**
    * Derived render facet for the Inspector — world-space `bounds` and the
    * component's own (local, non-inherited) `visible` flag, computed on
    * demand from the live render object. See {@link computeRenderFacet} for
@@ -289,6 +424,8 @@ export abstract class VisualComponent extends Component {
     resolveRenderParent(this.entity, this._layerName, tree).addChild(
       this.renderObject,
     );
+    setSortSource(this.renderObject, this);
+    this.warnIfZIndexIgnored();
     if (this._renderAboveEffects) tree.renderAboveEffects(this.renderObject);
     // A component is never effectively enabled during `onAdd` — `onEnable`
     // runs right after, and only for an active entity. Start hidden so a
@@ -306,6 +443,7 @@ export abstract class VisualComponent extends Component {
   }
 
   onDestroy(): void {
+    setSortSource(this.renderObject, undefined);
     unmarkPointerConsumeContainer(this.renderObject);
     this.modifiers._destroy();
     this.fx.destroy();
@@ -327,6 +465,31 @@ export abstract class VisualComponent extends Component {
   /** Apply the final alpha after transient modifiers. */
   protected applyEffectiveAlpha(alpha: number): void {
     this.renderObject.alpha = alpha;
+  }
+
+  /** Warn once when the parent re-keys its children, which ignores `zIndex`. */
+  private warnIfZIndexIgnored(): void {
+    if (this._zIndex === 0 || this._warnedZIndex) return;
+    const parent = this.renderObject.parent;
+    if (!parent) return;
+    const group = sortOwnerOf(parent);
+    let where: string | undefined;
+    if (group instanceof SortGroupComponent) {
+      if (group.innerSort) where = "a SortGroupComponent with innerSort";
+    } else {
+      const layer = this.use(SceneRenderTreeKey)
+        .getAll()
+        .find((candidate) => candidate.container === parent);
+      if (layer?.sort) where = `layer "${layer.name}", which has a sort`;
+    }
+    if (where === undefined) return;
+    this._warnedZIndex = true;
+    devWarn(
+      `${this.constructor.name} on entity "${this.entity.name}": zIndex ` +
+        `${this._zIndex} has no effect inside ${where}, because the depth ` +
+        `key orders the children every frame. Shift the key with ` +
+        `sortOffset, or draw on a layer without sort.`,
+    );
   }
 
   private applyAppearance(): void {

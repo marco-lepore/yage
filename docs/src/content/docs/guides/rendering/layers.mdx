@@ -92,12 +92,11 @@ Repeated requests with the same order are silent.
 
 By default, sprites within a layer paint in the order their containers
 were added (insertion order). For top-down 2D games you almost always
-want characters with a higher `position.y` to paint over those with a
-lower y, so the "in front of" relationship looks right. Set
-`LayerDef.sort` to a **depth-key function** `(container) => number` and
-`DisplaySystem` writes the result to each child's `zIndex` every frame;
-Pixi's render pipeline then orders the layer by zIndex — this is the
-engine's Y-sort / depth-sort mechanism:
+want characters with a higher y to paint over those with a lower y, so
+the "in front of" relationship looks right. Set `LayerDef.sort` to a
+**depth-key function**: `DisplaySystem` calls it for every child of the
+layer each frame, and the layer paints its children in key order. This is
+the engine's Y-sort / depth-sort mechanism:
 
 ```typescript
 import { Scene } from "@yagejs/core";
@@ -114,9 +113,29 @@ class GameScene extends Scene {
 }
 ```
 
-`ySort` is just `(c) => c.position.y` — terse enough that you can write
-your own depth-key if you'd rather drive paint order from a different
-axis or off a custom field on the sprite.
+The function receives a `SortItem` for each child: its `x` and `y` in the
+layer, the `sortOffset` of the component that draws it, and that
+component's `entity`. `ySort` is `(item) => item.y + item.sortOffset`.
+Write your own key to sort along another axis, such as an isometric
+key:
+
+```typescript
+import { Scene } from "@yagejs/core";
+import type { LayerDef, LayerSortFn } from "@yagejs/renderer";
+
+const isoSort: LayerSortFn = (item) => item.x + item.y + item.sortOffset;
+
+class IsoScene extends Scene {
+  readonly name = "iso";
+
+  readonly layers: readonly LayerDef[] = [
+    { name: "world", order: 0, sort: isoSort },
+  ];
+}
+```
+
+The same item object is reused for every child, so read its fields inside
+the call and keep no reference to it.
 
 ### Sorting the default layer
 
@@ -151,58 +170,69 @@ const tree = this.use(SceneRenderTreeKey); // inside a Component
 tree.defaultLayer.setSort(ySort);
 ```
 
-Passing `undefined` to `setSort` stops the per-frame re-sort, but it does
-**not** restore the original insertion order — Pixi reorders the
-container's children in place while sorting is on, so clearing
-`sortableChildren` only halts further sorting and children keep their
-last-sorted order. Re-establish paint order yourself if you need the
-original sequence back.
+Passing `undefined` to `setSort` stops the per-frame re-sort and gives each
+visual back its own `zIndex`, but it does **not** restore the original
+insertion order — Pixi reorders the container's children in place while
+sorting is on, so visuals with equal `zIndex` keep their last-sorted order.
+Re-establish paint order yourself if you need the original sequence back.
 
-### Depth offsets (`ySortBy`) — Godot's `y_sort_origin` pattern
+### Depth offsets (`sortOffset`) — Godot's `y_sort_origin` pattern
 
-A sprite's `position.y` is its **anchor's** y in the world. If your
-sprites are anchored at the top, the visual "footprint" (where the
-sprite *appears* to touch the ground) sits well below `position.y`, and
-plain `ySort` will produce wrong overlaps: a player whose feet are at
-the bottom of the sprite will sort *behind* a tree whose trunk is at
-the bottom of *its* sprite, even though the player's feet are
-geometrically in front of the tree's trunk.
+A sprite's y position is its **anchor's** y in the world. If your sprites
+are anchored at the top, the visual "footprint" (where the sprite
+*appears* to touch the ground) sits well below the anchor, and plain
+`ySort` produces wrong overlaps: a player whose feet are at the bottom of
+the sprite sorts *behind* a tree whose trunk is at the bottom of *its*
+sprite, even though the player's feet are in front of the trunk.
 
-`ySortBy(offsetOf)` lets each container advertise a per-sprite Y offset
-that gets added to `position.y` before the depth-key is computed. This
-is the same idea as Godot's `y_sort_origin`:
+Set `sortOffset` on the visual to move its key to the footprint. `ySort`
+keys the visual at `y + sortOffset`, the same idea as Godot's
+`y_sort_origin`:
 
 ```typescript yage-context="entity"
-import { SpriteComponent, ySortBy } from "@yagejs/renderer";
+import { SpriteComponent } from "@yagejs/renderer";
 
-const sort = ySortBy(
-  (c) => (c as { depthOffset?: number }).depthOffset,
+// Anchored at its top; the trunk base is 96 px lower.
+entity.add(
+  new SpriteComponent({
+    texture: "tree",
+    anchor: { x: 0.5, y: 0 },
+    sortOffset: 96,
+  }),
 );
-
-// On each sprite that should sort by its visual base:
-const sprite = entity.get(SpriteComponent);
-Object.assign(sprite.sprite, { depthOffset: 32 }); // depth key is `position.y + 32`
 ```
 
-`offsetOf` returns `undefined` to fall through to plain `position.y`,
-so mixed-content layers work without every child carrying a depth
-offset.
+`sortOffset` defaults to `0`, so mixed-content layers work without every
+visual carrying one, and you can change it at any time
+(`sprite.sortOffset = 48`).
 
 A particle emitter sorts the same way. Its container follows the entity's
-position, so `ySort` keys it off the emitter entity and `ySortBy` reads a
-depth offset you set on `emitter.container` — a torch's sparks interleave
-with the characters walking past it.
+position, so `ySort` keys it off the emitter entity, and
+`emitter.sortOffset` shifts the key — a torch's sparks interleave with the
+characters walking past it.
 
-### Manual zIndex still works alongside `sort`
+### `zIndex` on a layer without `sort`
 
-Because `sort` writes to `zIndex`, anything that manually sets
-`child.zIndex = N` between frames composes naturally — the next
-`DisplaySystem.update` overwrites it from the depth-key fn, but
-between updates Pixi sees whatever you wrote. For occasional one-off
-biasing (a "pop to front" highlight, a brief "behind everything" fade),
-just don't depend on the manual value surviving the next frame. For
-permanent per-sprite biasing, fold it into the depth-key fn itself via
-`ySortBy`.
+A layer without `sort` draws its visuals in the order they were added. Set
+`zIndex` on a visual to raise or lower it among its siblings: higher
+values draw on top, and equal values keep the order they were added in.
+`ParticleEmitterComponent` takes `zIndex` too.
+
+```typescript yage-context="entity"
+import { SpriteComponent } from "@yagejs/renderer";
+
+// Drawn above every sibling on "props" with a lower zIndex.
+entity.add(
+  new SpriteComponent({ texture: "flag", layer: "props", zIndex: 10 }),
+);
+```
+
+On a layer with `sort`, the depth key decides the order every frame, so a
+`zIndex` there has no effect and logs one development warning. Shift the
+visual's key with `sortOffset`, or draw it on another layer: a separate
+layer above the sorted one keeps a flying bird over the crowd. Inside a
+`SortGroupComponent` without `innerSort`, `zIndex` orders the group's
+members.
 
 ## Keeping multi-part entities together (`SortGroupComponent`)
 
@@ -260,12 +290,12 @@ hero — never between his parts.
 A few things worth knowing:
 
 - **The group sorts at the owning entity's footing.** It keys off that
-  entity's *own* sprite (so `ySort`/`ySortBy` read a real sprite's
-  position and offset). An entity with no sprite of its own — a purely
+  entity's *own* sprite (so `ySort` reads a real sprite's position and
+  `sortOffset`). An entity with no sprite of its own — a purely
   logical parent that just groups children — falls back to its `Transform`
   position, which is usually exactly the right anchor.
 - **Members keep their order.** By default they render in the order they
-  were added, and you can bias one with a manual `zIndex` — a genuine
+  were added, and a member's `zIndex` raises or lowers it — a genuine
   stacking context. Pass `innerSort: ySort` if you'd rather the parts
   depth-sort among themselves.
 - **Only paint order changes.** The group container is an invisible

@@ -90,7 +90,10 @@ export interface SplitTextComponentOptions extends VisualComponentOptions {
  * differ slightly from `Text` (browser kerning is lost once glyphs are split).
  */
 export class SplitTextComponent extends VisualComponent {
-  /** The underlying Pixi `SplitText` / `SplitBitmapText` container. */
+  /**
+   * The same Pixi object as {@link renderObject}. Change the visual through
+   * the component; see `VisualComponent.renderObject`.
+   */
   readonly splitText: DisplaySplitText | DisplaySplitBitmapText;
   /** Whether this renders with a bitmap font (`SplitBitmapText`). */
   readonly isBitmap: boolean;
@@ -137,22 +140,37 @@ export class SplitTextComponent extends VisualComponent {
     this.applyVisualOptions(options);
   }
 
-  /** The underlying Pixi display object. */
+  /**
+   * The Pixi object this component draws with. Change the visual through the
+   * component; see {@link VisualComponent.renderObject}.
+   */
   get renderObject(): DisplaySplitText | DisplaySplitBitmapText {
     return this.splitText;
   }
 
-  /** Individual character segments (`Text` or `BitmapText`), in reading order. */
+  /**
+   * Individual character segments (`Text` or `BitmapText`), in reading order,
+   * for per-glyph animation of `x`, `y`, `rotation`, `scale`, `alpha`, `tint`
+   * and `visible`; the component writes none of these on a segment. A
+   * `setText`, `setStyle` or `resplit` replaces the segments, so read this
+   * again after one.
+   */
   get chars(): (DisplayText | DisplayBitmapText)[] {
     return this.splitText.chars;
   }
 
-  /** Word-group containers, each holding its character segments. */
+  /**
+   * Word-group containers, each holding its character segments. Replaced by a
+   * `setText`, `setStyle` or `resplit`, like {@link chars}.
+   */
   get words(): DisplayContainer[] {
     return this.splitText.words;
   }
 
-  /** Line-group containers, each holding its word containers. */
+  /**
+   * Line-group containers, each holding its word containers. Replaced by a
+   * `setText`, `setStyle` or `resplit`, like {@link chars}.
+   */
   get lines(): DisplayContainer[] {
     return this.splitText.lines;
   }
@@ -190,7 +208,7 @@ export class SplitTextComponent extends VisualComponent {
 
   /**
    * Re-split now. Only needed when constructed with `autoSplit: false` — after
-   * mutating `text` / `style`, call this to apply the change in one pass.
+   * `setText` / `setStyle`, call this to apply the change in one pass.
    */
   resplit(): void {
     if (!splitIfNotEmpty(this.splitText)) return;

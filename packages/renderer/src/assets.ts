@@ -767,7 +767,10 @@ export function resolveTextureInput(input: TextureInput): TextureResource {
   return input;
 }
 
-/** Options for {@link createNineSlice}. Slice insets follow pixi's `NineSliceSprite`. */
+/**
+ * Options for {@link createNineSlice}. Slice insets follow pixi's `NineSliceSprite`.
+ * @internal
+ */
 export interface NineSliceOptions {
   /** Frame {@link TextureInput} — handle, asset key, or raw `Texture`. */
   readonly texture: TextureInput;
@@ -787,15 +790,14 @@ export interface NineSliceOptions {
 
 /**
  * Build a `NineSliceSprite` from an engine-resolved {@link TextureInput} — a
- * stretchable textured frame whose corners stay crisp at any size. Returns the
- * raw display object so callers can parent it into their own container, the
- * same escape-hatch shape as {@link resolveTextureInput}. This is the renderer's
- * nine-slice primitive: reach for it (not a direct `pixi.js` import) when
- * building textured panels, dialogue/UI frames, or buttons.
+ * stretchable textured frame whose corners stay crisp at any size. The
+ * construction step of `NineSliceComponent`, which is the public nine-slice
+ * visual.
  *
  * `width`/`height` are required: a nine-slice is stretched to a target size, and
  * defaulting to the (possibly unloaded → 0×0) texture size would silently bake a
  * degenerate frame.
+ * @internal
  */
 export function createNineSlice(options: NineSliceOptions): NineSliceSprite {
   return new PixiNineSliceSprite({

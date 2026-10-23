@@ -9,9 +9,9 @@ import type { MaskFactory } from "./MaskFactory.js";
  * changes the dimensions the closure references.
  *
  * ```ts
- * const handle = attachMask(panel.container, graphicsMask((g) => {
+ * const handle = minimap.setMask(graphicsMask((g) => {
  *   g.clear();
- *   g.rect(0, 0, panel.width, panel.height);
+ *   g.rect(0, 0, view.width, view.height);
  *   g.fill({ color: 0xffffff });
  * }));
  * // …after layout changes:

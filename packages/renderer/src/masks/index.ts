@@ -5,5 +5,6 @@ export { defineMask } from "./defineMask.js";
 export type { MaskDefinition } from "./defineMask.js";
 export { rectMask } from "./rectMask.js";
 export type { RectMaskOptions } from "./rectMask.js";
-export { spriteMask } from "./spriteMask.js";
+export { textureMask } from "./textureMask.js";
+export type { TextureMaskOptions } from "./textureMask.js";
 export { graphicsMask } from "./graphicsMask.js";

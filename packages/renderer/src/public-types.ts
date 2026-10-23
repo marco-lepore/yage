@@ -79,7 +79,7 @@ export type DisplaySplitText = SplitText;
 /** A per-character/word/line split bitmap-text display object (`SplitTextComponent`'s bitmap render object). */
 export type DisplaySplitBitmapText = SplitBitmapText;
 
-/** A nine-slice display object, as built by `createNineSlice` / `UINineSlice`. */
+/** A nine-slice display object, as drawn by `NineSliceComponent` / `UINineSlice`. */
 export type NineSliceSprite = PixiNineSliceSprite;
 
 /** A pixi filter (or chain of filters), as attached through the effects API or `rawFilter`. */

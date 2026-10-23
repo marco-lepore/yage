@@ -162,20 +162,22 @@ import { Transform } from "@yagejs/core";
 import { GraphicsComponent, RendererKey } from "@yagejs/renderer";
 
 const renderer = this.use(RendererKey);
-const bgGraphics = this.spawn("backdrop").add(new GraphicsComponent()).graphics;
-const fogGraphics = this.spawn("fog").add(new GraphicsComponent()).graphics;
 const hud = this.spawn("hud").add(new Transform());
 
 // Backdrop that fills the whole canvas, extending into bars under expand:
 const canvas = renderer.visibleCanvasRect;
-bgGraphics.rect(canvas.x, canvas.y, canvas.width, canvas.height)
-          .fill({ color: 0x0f172a });
+this.spawn("backdrop").add(new GraphicsComponent()).draw((g) => {
+  g.rect(canvas.x, canvas.y, canvas.width, canvas.height)
+    .fill({ color: 0x0f172a });
+});
 
 // Fog-of-war over the bars:
-for (const bar of renderer.extendedVirtualRects) {
-  fogGraphics.rect(bar.x, bar.y, bar.width, bar.height)
-             .fill({ color: 0x000000, alpha: 0.78 });
-}
+this.spawn("fog").add(new GraphicsComponent()).draw((g) => {
+  for (const bar of renderer.extendedVirtualRects) {
+    g.rect(bar.x, bar.y, bar.width, bar.height)
+      .fill({ color: 0x000000, alpha: 0.78 });
+  }
+});
 
 // HUD that follows the canvas corners (so cards live in the bars):
 const cornerTL = renderer.visibleCanvasRect;
@@ -189,22 +191,36 @@ drawn at those coordinates on a scene layer is invisible.
 
 To put a scoreboard or branding in letterbox bars, parent a container
 directly on the Pixi stage, above the fit transform, and position it in
-**canvas pixels**:
+**canvas pixels**. No scene layer reaches the bars, so this code builds the
+Pixi objects itself and owns them: destroy the container when the scene
+exits.
 
-```typescript yage-context="scene-enter"
+```typescript
+import { Scene } from "@yagejs/core";
 import { Container, Graphics } from "pixi.js";
 import { RendererKey } from "@yagejs/renderer";
 
-const renderer = this.use(RendererKey);
-const bars = new Container();
-renderer.application.stage.addChild(bars);
+class BrandedScene extends Scene {
+  readonly name = "branded";
+  private bars: Container | undefined;
 
-const { width } = renderer.canvasSize; // CSS px
-const play = renderer.virtualCanvasRect; // play area, in canvas px
+  onEnter(): void {
+    const renderer = this.use(RendererKey);
+    this.bars = new Container();
+    renderer.application.stage.addChild(this.bars); // canvas px, above the fit transform
 
-const branding = new Graphics();
-branding.rect(0, 0, width, play.y).fill({ color: 0x0f172a });
-bars.addChild(branding);
+    const { width } = renderer.canvasSize; // CSS px
+    const play = renderer.virtualCanvasRect; // play area, in canvas px
+    const branding = new Graphics();
+    branding.rect(0, 0, width, play.y).fill({ color: 0x0f172a }); // top bar
+    this.bars.addChild(branding);
+  }
+
+  onExit(): void {
+    // The stage outlives the scene, so the scene destroys what it added.
+    this.bars?.destroy({ children: true });
+  }
+}
 ```
 
 ## Reasoning about the cropped region under `cover`

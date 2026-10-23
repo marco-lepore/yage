@@ -112,7 +112,7 @@ describe("hints (default scroll-hint renderer)", () => {
     });
     const gfx = named(scene, "inv-slots-hints")[0]?.get(GraphicsComponent);
     handle.setVisible(false);
-    expect(gfx?.graphics.visible).toBe(false);
+    expect(gfx?.visible).toBe(false);
     handle.dispose();
     expect(named(scene, "inv-slots-hints")).toHaveLength(0);
   });

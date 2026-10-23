@@ -368,6 +368,11 @@ normalized 0–1, settable at construction or at runtime) — control the pivot
 each segment rotates and scales about. `chars` are `Text` / `BitmapText`;
 `words` and `lines` are containers grouping them.
 
+The engine writes none of a segment's `x`, `y`, `rotation`, `scale`,
+`alpha`, `tint` or `visible`, so those are yours to animate. A `setText`,
+`setStyle` or `resplit()` replaces every segment, so read `chars` again
+after one instead of keeping the old array.
+
 :::caution[Experimental, and not free]
 `SplitText` is flagged experimental in Pixi, and splitting re-lays-out
 the text on every `text` / `style` change — keep static or simple

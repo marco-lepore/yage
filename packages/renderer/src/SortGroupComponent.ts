@@ -5,19 +5,20 @@ import type { LayerSortFn } from "./LayerDef.js";
 import type { DisplayContainer } from "./public-types.js";
 import type { SceneRenderTree } from "./SceneRenderTree.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
+import type { SortItemBuffer } from "./internal/sortItem.js";
 
 /**
  * Contract a single-display-object visual component satisfies: a layer name
- * plus the Pixi object it renders. All five built-in visual components
- * (`SpriteComponent`, `GraphicsComponent`, `AnimatedSpriteComponent`,
- * `TextComponent`, `SplitTextComponent`) expose it through their `renderObject`
- * getter, and `SortGroupComponent` uses it to gather a subtree's visuals
- * without importing the concrete classes (which would create an import cycle).
+ * plus the Pixi object it renders. Every built-in visual component exposes
+ * it through its `renderObject` getter, and `SortGroupComponent` uses it to
+ * gather a subtree's visuals without importing the concrete classes (which
+ * would create an import cycle).
  *
  * It's also the extension point for custom visual components: implement
  * `renderObject` + `layerName`, and route through {@link resolveRenderParent}
- * in `onAdd`, and the component takes part in sort groups exactly like the
- * built-ins.
+ * in `onAdd`, and a sort group gathers the component like the built-ins. A
+ * layer's depth key sees its `sortOffset` and `entity`, and a move between
+ * parents keeps its `zIndex`, only when it extends `VisualComponent`.
  */
 export interface LayerRenderable {
   /** Name of the layer this component renders into. */
@@ -29,7 +30,7 @@ export interface LayerRenderable {
 /**
  * Duck-typed check for {@link LayerRenderable}. Visual components expose a
  * `renderObject` getter; nothing else in the engine does, so a positive match
- * is reliable without an `instanceof` against five concrete classes.
+ * is reliable without an `instanceof` against every concrete class.
  */
 function isLayerRenderable(
   component: Component,
@@ -89,22 +90,67 @@ export function resolveRenderParent(
 }
 
 /**
- * Container → owning sort group, maintained as groups enter and leave the
- * scene tree (see `SortGroupComponent`'s `onAdd` / `onDestroy`). Lets
- * `DisplaySystem` recognise a group container during its per-frame sort pass
- * with an O(1) lookup and no per-frame allocation.
+ * What a layer's depth sort reads from the component that draws a child: its
+ * entity, and the `zIndex` and `sortOffset` the game set on it.
+ * `VisualComponent` and `@yagejs/particles`' `ParticleEmitterComponent`
+ * implement it.
  */
-const groupByContainer = new WeakMap<DisplayContainer, SortGroupComponent>();
+export interface SortSource {
+  readonly entity: Entity;
+  readonly zIndex: number;
+  readonly sortOffset: number;
+}
 
 /**
- * The sort group that owns `container`, or `undefined` for a plain visual.
- *
- * @internal Used by `DisplaySystem.applyLayerSort`.
+ * Container → the component that owns it: a sort group for its own container,
+ * or the visual or particle emitter that draws it. Groups register in
+ * `onAdd` / `onDestroy`, sort sources through {@link setSortSource}. Lets
+ * `DisplaySystem` key a layer's children with an O(1) lookup and no per-frame
+ * allocation.
  */
-export function sortGroupForContainer(
+const ownerByContainer = new WeakMap<
+  DisplayContainer,
+  SortGroupComponent | SortSource
+>();
+
+/**
+ * Record the component that draws `container`, or forget it with `undefined`.
+ *
+ * @internal Called by `VisualComponent` and `@yagejs/particles`' emitter as
+ * their container enters and leaves the scene tree.
+ */
+export function setSortSource(
   container: DisplayContainer,
-): SortGroupComponent | undefined {
-  return groupByContainer.get(container);
+  source: SortSource | undefined,
+): void {
+  if (source) ownerByContainer.set(container, source);
+  else ownerByContainer.delete(container);
+}
+
+/**
+ * The sort group or sort source that owns `container`, or `undefined` for a
+ * container no component owns.
+ *
+ * @internal Used by `DisplaySystem.applyLayerSort` and `VisualComponent`.
+ */
+export function sortOwnerOf(
+  container: DisplayContainer,
+): SortGroupComponent | SortSource | undefined {
+  return ownerByContainer.get(container);
+}
+
+/**
+ * Write the `zIndex` the owning component asked for back onto `child`. A
+ * sorted parent overwrites a child's `zIndex` with its depth key every frame,
+ * so a child moving to a parent that keeps manual order carries a stale key.
+ *
+ * @internal Also used by `RenderLayer.setSort` when a layer stops sorting.
+ */
+export function restoreZIndex(child: DisplayContainer): void {
+  const owner = ownerByContainer.get(child);
+  if (owner !== undefined && !(owner instanceof SortGroupComponent)) {
+    child.zIndex = owner.zIndex;
+  }
 }
 
 /** Options for {@link SortGroupComponent}. */
@@ -118,11 +164,11 @@ export interface SortGroupComponentOptions {
   layer?: string;
   /**
    * Optional depth key for ordering the group's own members. Default (unset):
-   * members keep insertion order, and any member's manually-set `zIndex` is
-   * honoured — a real stacking context, matching Unity's `SortingGroup`. Pass
-   * `ySort` (or any {@link LayerSortFn}) to instead order members by position
-   * among themselves, while the group as a whole still sorts as one unit
-   * against the rest of the layer.
+   * members keep insertion order, and a member's `zIndex` raises or lowers it
+   * among the others — a real stacking context, matching Unity's
+   * `SortingGroup`. Pass `ySort` (or any {@link LayerSortFn}) to instead order
+   * members by position among themselves, while the group as a whole still
+   * sorts as one unit against the rest of the layer.
    */
   innerSort?: LayerSortFn;
 }
@@ -163,15 +209,16 @@ export interface SortGroupComponentOptions {
  */
 export class SortGroupComponent extends Component {
   private readonly positionScratch = new Vec2Buffer();
-  /** The group's Pixi container. Kept at identity; holds the member visuals. */
+  /**
+   * The group's Pixi container. Kept at identity; holds the member visuals.
+   * The group writes its `zIndex` and re-parents members into it, so game
+   * code does not write to it.
+   */
   readonly container: DisplayContainer;
   /** Layer this group renders into. */
   readonly layer: string;
   /** Depth key for intra-group member order, or `undefined` for insertion order. */
   innerSort: LayerSortFn | undefined;
-  /** Lazily-created stand-in used for the group's sort key when the owning
-   * entity has no sprite of its own. */
-  private _proxy: DisplayContainer | undefined;
 
   constructor(options?: SortGroupComponentOptions) {
     super();
@@ -180,12 +227,13 @@ export class SortGroupComponent extends Component {
     this.container = new Container();
     this.container.label = `sort-group:${this.layer}`;
     // Members order by their own zIndex; default 0 keeps stable insertion order
-    // and lets a member opt above/below its siblings with a manual zIndex.
+    // and lets a member opt above/below its siblings with its component's
+    // zIndex.
     this.container.sortableChildren = true;
   }
 
   onAdd(): void {
-    groupByContainer.set(this.container, this);
+    ownerByContainer.set(this.container, this);
     const tree = this.use(SceneRenderTreeKey);
     // Each group is its own unit at the layer level — even a group nested under
     // another entity's group. Transform parenting (ECS) and sort grouping
@@ -195,7 +243,7 @@ export class SortGroupComponent extends Component {
   }
 
   onDestroy(): void {
-    groupByContainer.delete(this.container);
+    ownerByContainer.delete(this.container);
     // Return members to the layer so removing the grouping doesn't orphan
     // sprites; on scene teardown they're destroyed by their own components
     // immediately after. Destroy only the wrapper, never its (borrowed) children.
@@ -203,6 +251,7 @@ export class SortGroupComponent extends Component {
     if (layerContainer) {
       for (const child of [...this.container.children]) {
         layerContainer.addChild(child);
+        restoreZIndex(child);
       }
     } else {
       this.container.removeChildren();
@@ -212,23 +261,27 @@ export class SortGroupComponent extends Component {
 
   /**
    * Compute this group's depth key under the layer `sort`. Samples the
-   * group-owning entity's own visual (so `ySort`/`ySortBy` read a real sprite's
-   * position and offset); falls back to a proxy at the entity's `Transform`
-   * world position when the owner renders nothing itself.
+   * group-owning entity's own visual on this layer (its position and
+   * `sortOffset`); falls back to the entity's `Transform` world position with
+   * no offset when the owner renders nothing itself.
    *
-   * @internal Called by `DisplaySystem` each Render phase.
+   * @internal Called by `DisplaySystem` each Render phase with its reused item.
    */
-  resolveSortKey(sort: LayerSortFn): number {
+  resolveSortKey(sort: LayerSortFn, item: SortItemBuffer): number {
     const sample = this.findSample();
-    if (sample) return sort(sample);
-
-    const proxy = (this._proxy ??= new Container());
-    const transform = this.entity.tryGet(Transform);
-    if (transform) {
-      const world = transform.getWorldPositionInto(this.positionScratch);
-      proxy.position.set(world.x, world.y);
+    if (sample) {
+      const owner = ownerByContainer.get(sample);
+      return sort(
+        item.fill(
+          sample,
+          owner instanceof SortGroupComponent ? undefined : owner,
+        ),
+      );
     }
-    return sort(proxy);
+
+    const transform = this.entity.tryGet(Transform);
+    const world = transform?.getWorldPositionInto(this.positionScratch);
+    return sort(item.set(world?.x ?? 0, world?.y ?? 0, 0, this.entity));
   }
 
   /** The owning entity's own visual on this layer, if currently in the group. */
@@ -259,6 +312,7 @@ export class SortGroupComponent extends Component {
       if (component === this) continue;
       if (isLayerRenderable(component) && component.layerName === this.layer) {
         this.container.addChild(component.renderObject);
+        restoreZIndex(component.renderObject);
       }
     }
     for (const child of entity.children.values()) {

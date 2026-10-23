@@ -533,9 +533,11 @@ Two gotchas inside a `graphicsMask` closure:
    Reference the live source (`panel.width`, `this.layout.width`, a getter)
    inside the closure so each call picks up the current value.
 
-Three mask factories are built in: `rectMask`, `spriteMask`, and `graphicsMask`.
-`spriteMask` uses a caller-owned sprite, while `graphicsMask` redraws through
-your callback. Use `defineMask` for a reusable named factory.
+Three mask factories are built in: `rectMask`, `textureMask`, and
+`graphicsMask`. `textureMask("vignette", { anchor: { x: 0.5, y: 0.5 } })`
+clips to a texture's alpha channel, which suits soft or organic edges, while
+`graphicsMask` redraws through your callback. Use `defineMask` for a reusable
+named factory.
 
 ## Blend modes
 
@@ -588,6 +590,10 @@ only reaches that buffer.
 schedule you control. Reach for it when several objects need to composite
 against each other before they reach the screen, or when redrawing expensive
 static content every frame is wasteful.
+
+The source is a Pixi container your code builds, moves and destroys itself:
+no visual component draws into a render target, so this is one of the few
+places a game works with Pixi objects directly.
 
 ```ts yage-group="light-buffer" yage-file="light-buffer.ts"
 import { Component } from "@yagejs/core";

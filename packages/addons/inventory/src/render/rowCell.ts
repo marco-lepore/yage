@@ -130,7 +130,7 @@ class RowCellPresenter implements CellPresenter {
         ),
       );
       entities.push(nameEntity);
-      displays.push(name.text);
+      displays.push(name);
 
       if (view.stack.quantity > 1) {
         const qtyEntity = scene.spawn("inv-row-qty");
@@ -153,14 +153,14 @@ class RowCellPresenter implements CellPresenter {
           ),
         );
         entities.push(qtyEntity);
-        displays.push(qty.text);
+        displays.push(qty);
       }
     }
 
     return {
       setSelected: draw,
       setVisible: (visible: boolean): void => {
-        bar.graphics.visible = visible;
+        bar.visible = visible;
         for (const d of displays) d.visible = visible;
       },
       dispose: (): void => {

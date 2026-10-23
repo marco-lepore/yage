@@ -7,6 +7,7 @@ import { attachMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
 import type { DisplayContainer } from "./public-types.js";
+import { restoreZIndex } from "./SortGroupComponent.js";
 
 /**
  * Factory that produces a fresh `ScopedProcessQueue` instance — called once
@@ -33,9 +34,8 @@ export interface CreateLayerOptions {
   isRenderGroup?: boolean;
   /**
    * Depth-key function. See `LayerDef.sort` — when set, `DisplaySystem`
-   * writes `child.zIndex = sort(child)` on every child each frame, and
-   * flips `container.sortableChildren = true` so Pixi orders the layer
-   * by zIndex at render time. Default: undefined (insertion order).
+   * keys every child each frame and the layer draws its children in key
+   * order. Default: undefined (insertion order).
    */
   sort?: LayerSortFn;
 }
@@ -61,6 +61,12 @@ export function layerDefToOptions(
 export class RenderLayer {
   readonly name: string;
   readonly order: number;
+  /**
+   * The layer's Pixi container, for code that adds its own Pixi objects to
+   * the layer, such as a custom visual component or a lighting renderer.
+   * Game code puts a visual on the layer with the component's `layer`
+   * option and changes the layer through `fx`, `setSort` and `setMask`.
+   */
   readonly container: DisplayContainer;
   /** Coordinate space — see `CreateLayerOptions.space`. */
   readonly space: LayerSpace;
@@ -96,8 +102,8 @@ export class RenderLayer {
   /**
    * Per-frame depth-key function, or `undefined` for insertion-order
    * rendering. Set via `LayerDef.sort` / `CreateLayerOptions.sort` at
-   * creation, or {@link setSort} at runtime. `DisplaySystem` writes
-   * `child.zIndex = sort(child)` on every child each Render phase.
+   * creation, or {@link setSort} at runtime. `DisplaySystem` keys every
+   * child with it each Render phase.
    */
   get sort(): LayerSortFn | undefined {
     return this._sort;
@@ -109,16 +115,23 @@ export class RenderLayer {
    * auto-created `"default"` layer into `ySort` after the scene is live,
    * or toggling depth sorting on dynamically.
    *
-   * Passing `undefined` stops the per-frame re-sort, but does **not**
-   * restore the original insertion order: Pixi reorders `container.children`
-   * in place while sorting is on, so clearing `sortableChildren` only halts
-   * further sorting — children keep their current (last-sorted) order and
-   * `zIndex`. Re-establish paint order yourself if you need the original
-   * sequence back.
+   * Passing `undefined` stops the per-frame re-sort and gives each visual
+   * back its own `zIndex`, but does **not** restore the original insertion
+   * order: Pixi reorders `container.children` in place while sorting is on,
+   * so visuals with equal `zIndex` keep their last-sorted order. Re-establish
+   * paint order yourself if you need the original sequence back.
    */
   setSort(sort: LayerSortFn | undefined): void {
     this._sort = sort;
     this.container.sortableChildren = sort !== undefined;
+    if (sort === undefined) {
+      for (const child of this.container.children) restoreZIndex(child);
+      // Pixi turns sorting on only when a zIndex changes; one that matched
+      // its last depth key changed nothing.
+      this.container.sortableChildren = this.container.children.some(
+        (child) => child.zIndex !== 0,
+      );
+    }
   }
 
   /**
@@ -256,7 +269,7 @@ export class RenderLayerManager {
     return [...this.layers.values()].sort((a, b) => a.order - b.order);
   }
 
-  /** The root container holding all layers. */
+  /** The root container holding all layers, for code that adds its own Pixi objects. */
   get root(): DisplayContainer {
     return this.rootContainer;
   }

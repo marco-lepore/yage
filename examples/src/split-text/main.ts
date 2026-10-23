@@ -184,7 +184,7 @@ class SplitTextShowcase extends Component {
     }
   }
 
-  /** Capture glyph homes + block center on the first update. */
+  /** Capture glyph homes + their centroid on the first update. */
   private ready(): boolean {
     if (this.glyphs.length) return true;
     const chars = this.split.chars;
@@ -201,9 +201,12 @@ class SplitTextShowcase extends Component {
       startY: 0,
       startRotation: 0,
     }));
-    const b = this.split.splitText.getLocalBounds();
-    this.cx = b.x + b.width / 2;
-    this.cy = b.y + b.height / 2;
+    // Glyph homes sit in the text block's own space; the explosion pushes
+    // away from their centroid.
+    this.cx =
+      this.glyphs.reduce((sum, g) => sum + g.homeX, 0) / this.glyphs.length;
+    this.cy =
+      this.glyphs.reduce((sum, g) => sum + g.homeY, 0) / this.glyphs.length;
 
     this.enterEffect(0);
     return true;

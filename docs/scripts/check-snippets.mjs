@@ -40,7 +40,93 @@ const keys = new Set([
   "check",
   "reason",
   "fixture",
+  "raw-pixi",
 ]);
+
+// Game objects whose raw Pixi handle a fence must not reach: visual
+// components, particle emitters, sort groups and UI elements. A member
+// counts when its declared type is a Pixi display object. Handles for code
+// that adds its own Pixi objects to the scene (a layer's container, the scene
+// tree's root, the plugin's application) are left out.
+const RAW_PIXI_OWNER_BASES = new Set([
+  "VisualComponent",
+  "UIElementBase",
+  "UIElement",
+]);
+const RAW_PIXI_OWNERS = new Set([
+  "ParticleEmitterComponent",
+  "SortGroupComponent",
+  "UISurface",
+]);
+
+function declaredInEnginePackage(declaration) {
+  const file = declaration.getSourceFile().fileName;
+  return /\/packages\/(?:[^/]+\/)+dist\//.test(file);
+}
+
+function ownsRawPixiHandle(checker, owner) {
+  if (
+    !(ts.isClassDeclaration(owner) || ts.isInterfaceDeclaration(owner)) ||
+    !owner.name
+  )
+    return false;
+  const name = owner.name.text;
+  if (RAW_PIXI_OWNERS.has(name) || RAW_PIXI_OWNER_BASES.has(name)) return true;
+  const symbol = checker.getSymbolAtLocation(owner.name);
+  if (!symbol) return false;
+  const seen = new Set();
+  const extendsOwner = (type) =>
+    (checker.getBaseTypes(type) ?? []).some((base) => {
+      const baseName = base.symbol?.name;
+      if (!baseName || seen.has(baseName)) return false;
+      seen.add(baseName);
+      return RAW_PIXI_OWNER_BASES.has(baseName) || extendsOwner(base);
+    });
+  return extendsOwner(checker.getDeclaredTypeOfSymbol(symbol));
+}
+
+function isPixiDisplayObject(checker, type) {
+  return (type.isUnion() ? type.types : [type]).some((member) => {
+    const declaration = member.getSymbol()?.declarations?.[0];
+    return (
+      declaration !== undefined &&
+      declaration.getSourceFile().fileName.includes("/node_modules/pixi.js/") &&
+      checker.getPropertyOfType(member, "addChild") !== undefined
+    );
+  });
+}
+
+/** Property accesses in `sourceFile` that reach a game object's raw Pixi handle. */
+function rawPixiAccesses(checker, sourceFile) {
+  const found = [];
+  const visit = (node) => {
+    if (ts.isPropertyAccessExpression(node)) {
+      const symbol = checker.getSymbolAtLocation(node.name);
+      const declaration = symbol?.declarations?.find(
+        (candidate) =>
+          declaredInEnginePackage(candidate) &&
+          ownsRawPixiHandle(checker, candidate.parent),
+      );
+      if (
+        symbol &&
+        declaration &&
+        isPixiDisplayObject(
+          checker,
+          checker.getTypeOfSymbolAtLocation(symbol, node),
+        )
+      ) {
+        found.push({
+          node: node.name,
+          owner: declaration.parent.name.text,
+          member: node.name.text,
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
+}
 
 function walk(directory, accept) {
   if (!existsSync(directory)) return [];
@@ -243,6 +329,10 @@ export function parseMetadata(meta = "") {
     );
   if (result.reason && result.check !== "syntax")
     throw new Error("yage-reason is only valid with yage-check=syntax.");
+  if (result["raw-pixi"] !== undefined && result["raw-pixi"].trim().length < 20)
+    throw new Error(
+      "yage-raw-pixi needs a substantive reason (at least 20 characters).",
+    );
   return result;
 }
 
@@ -865,14 +955,50 @@ export function checkDocuments(
                   "Type checking is blocked by a syntax error in this virtual group.",
               });
         } else if (source.parts[0].metadata.check !== "syntax") {
-          program
-            .getSemanticDiagnostics(program.getSourceFile(source.path))
-            .forEach(record);
+          const sourceFile = program.getSourceFile(source.path);
+          program.getSemanticDiagnostics(sourceFile).forEach(record);
+          for (const access of rawPixiAccesses(
+            program.getTypeChecker(),
+            sourceFile,
+          )) {
+            const position = sourceFile.getLineAndCharacterOfPosition(
+              access.node.getStart(sourceFile),
+            );
+            const mapped =
+              source.mapping[position.line] ?? source.mapping.at(-1);
+            if (mapped.generated) continue;
+            if (mapped.snippet.metadata["raw-pixi"] !== undefined) {
+              mapped.snippet.rawPixiUsed = true;
+              continue;
+            }
+            mapped.snippet.diagnostics.push({
+              code: "raw-pixi",
+              line: mapped.line,
+              column: position.character + 1,
+              message:
+                `\`${access.owner}.${access.member}\` is the Pixi object the ` +
+                "engine overwrites. Change the visual through its component, " +
+                'or mark a deliberate use with yage-raw-pixi="<reason>".',
+            });
+          }
         }
       }
     }
   }
   for (const snippet of snippets) {
+    if (
+      snippet.metadata["raw-pixi"] !== undefined &&
+      snippet.metadata.check !== "syntax" &&
+      !snippet.rawPixiUsed &&
+      !snippet.diagnostics.length
+    )
+      snippet.diagnostics.push({
+        code: "raw-pixi",
+        line: snippet.line,
+        column: 1,
+        message:
+          "yage-raw-pixi marks a fence that reaches no raw Pixi handle; remove it.",
+      });
     for (const expectation of snippet.expected)
       if (!expectation.matched)
         snippet.diagnostics.push({

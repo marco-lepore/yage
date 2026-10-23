@@ -22,11 +22,14 @@ import {
 } from "@yagejs/core";
 import {
   RendererPlugin,
+  RendererKey,
   CameraEntity,
   GraphicsComponent,
+  NineSliceComponent,
   SplitTextComponent,
+  registerTexture,
+  type GraphicsContext,
 } from "@yagejs/renderer";
-import { Assets, Texture } from "pixi.js";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
 import {
@@ -57,29 +60,20 @@ const WIDTH = 800;
 const HEIGHT = 600;
 const container = setupContainer(WIDTH, HEIGHT);
 
-/** A synchronous 48×48 nine-slice frame (8px border) for the textured
- *  `meta.chrome` scenario — drawn on a canvas so it resolves immediately, with
- *  no async asset load to race the chrome mount. */
-function makeFrameTexture(): Texture {
-  const size = 48;
-  const border = 8;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    ctx.fillStyle = "#b89a5e"; // border
-    ctx.fillRect(0, 0, size, size);
-    ctx.fillStyle = "#2a2418"; // center
-    ctx.fillRect(border, border, size - 2 * border, size - 2 * border);
-  }
-  return Texture.from(canvas);
-}
+/** A 48×48 nine-slice frame (8px border) for the textured `meta.chrome`
+ *  scenario. Baked and registered in `onEnter`, so it resolves synchronously
+ *  with no async asset load to race the chrome mount. */
+const FRAME_KEY = "e2e/frame";
 
-/** The in-box avatar's `meta.portrait` texture key. Preloaded into the Pixi
- *  cache in `onEnter` (after `RendererPlugin` initialises `Assets`) so the
- *  avatar resolves it synchronously, the way a host preloads portrait art. */
+/** The in-box avatar's `meta.portrait` texture key, registered in `onEnter`
+ *  so the avatar resolves it synchronously, the way a host preloads portrait
+ *  art. */
 const PORTRAIT_KEY = "e2e/portrait";
+
+function drawFrame(g: GraphicsContext): void {
+  g.rect(0, 0, 48, 48).fill(0xb89a5e); // border
+  g.rect(8, 8, 32, 32).fill(0x2a2418); // center
+}
 
 const SCRIPT: DialogueScript = {
   id: "demo",
@@ -421,20 +415,33 @@ class DialogueProbe extends Component {
     return this.frameVisible("dlg-bubble");
   }
 
+  /** Whether one of the box's nine-slice frames (one child per style) shows. */
   get texturedVisible(): boolean {
-    return this.frameVisible("dlg-frame-tex");
+    return this.nineSliceChildren("dlg-frame-tex").some(
+      (slice) => slice.visible,
+    );
   }
 
+  /** Whether the bubble's body is a nine-slice child entity. */
   get bubbleTextured(): boolean {
-    return this.frameChildren("dlg-bubble") > 0;
+    return this.nineSliceChildren("dlg-bubble").length > 0;
   }
 
   /** Whether the named chrome entity's Graphics is currently visible. */
   private frameVisible(name: string): boolean {
     return (
-      this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics
-        .visible ?? false
+      this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.visible ?? false
     );
+  }
+
+  /** The nine-slice frames on the named chrome entity's children. */
+  private nineSliceChildren(name: string): NineSliceComponent[] {
+    const entity = this.scene.findEntity(name);
+    if (!entity) return [];
+    return [...entity.children.values()].flatMap((child) => {
+      const slice = child.tryGet(NineSliceComponent);
+      return slice ? [slice] : [];
+    });
   }
 
   /** The named entity's Transform Y (−1 when absent). */
@@ -445,15 +452,6 @@ class DialogueProbe extends Component {
   /** The named entity's Transform X (−1 when absent). */
   private entityX(name: string): number {
     return this.scene.findEntity(name)?.tryGet(Transform)?.position.x ?? -1;
-  }
-
-  /** Child count of the named chrome entity's Graphics (a nine-slice sprite is
-   *  parented here when the bubble body is textured). */
-  private frameChildren(name: string): number {
-    return (
-      this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics.children
-        .length ?? 0
-    );
   }
 }
 
@@ -468,10 +466,10 @@ class DialogueScene extends Scene {
   ];
 
   onEnter(): void {
-    // Preload the in-box avatar portrait into the Pixi cache now that the
-    // renderer has initialised Assets, so `texture(PORTRAIT_KEY)` resolves
-    // synchronously when a meta.portrait line spawns the avatar sprite.
-    Assets.cache.set(PORTRAIT_KEY, makeFrameTexture());
+    const renderer = this.use(RendererKey);
+    const frameSize = { width: 48, height: 48 };
+    registerTexture(FRAME_KEY, renderer.createTexture(drawFrame, frameSize));
+    registerTexture(PORTRAIT_KEY, renderer.createTexture(drawFrame, frameSize));
 
     const cam = this.spawn(CameraEntity, {
       position: new Vec2(WIDTH / 2, HEIGHT / 2),
@@ -497,15 +495,15 @@ class DialogueScene extends Scene {
           ...defaultDialogueTheme(),
           textured: {
             default: {
-              frame: { texture: makeFrameTexture(), insets },
-              bubble: { texture: makeFrameTexture(), insets },
+              frame: { texture: FRAME_KEY, insets },
+              bubble: { texture: FRAME_KEY, insets },
             },
           },
         }
       : {
           ...defaultDialogueTheme(),
           textured: {
-            parchment: { frame: { texture: makeFrameTexture(), insets } },
+            parchment: { frame: { texture: FRAME_KEY, insets } },
           },
         };
     let sharedLayout: BoxLayout | undefined;

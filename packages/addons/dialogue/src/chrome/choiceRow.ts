@@ -60,7 +60,7 @@ export function applyChoiceTint(
 ): void {
   rows.forEach((row, i) => {
     const active = i === selected && !row.disabled;
-    row.comp.text.style.fill = active ? selectedColor : color;
-    row.comp.text.alpha = row.disabled ? DISABLED_CHOICE_ALPHA : 1;
+    row.comp.mergeStyle({ fill: active ? selectedColor : color });
+    row.comp.alpha = row.disabled ? DISABLED_CHOICE_ALPHA : 1;
   });
 }

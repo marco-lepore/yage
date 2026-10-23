@@ -16,7 +16,7 @@ Every exported field, parameter, and return type across `@yagejs/renderer` (and 
 | `DisplaySplitText`       | `SplitText`                                              | `SplitTextComponent.splitText` (canvas variant)                                                |
 | `DisplaySplitBitmapText` | `SplitBitmapText`                                        | `SplitTextComponent.splitText` (bitmap variant)                                                |
 | `GraphicsContext`        | `Graphics`                                               | `GraphicsComponent.graphics`, `draw((g) => ...)`, mask draw callbacks                          |
-| `NineSliceSprite`        | `NineSliceSprite`                                        | `createNineSlice()` return, `UINineSlice.container`                                            |
+| `NineSliceSprite`        | `NineSliceSprite`                                        | `NineSliceComponent.renderObject`, `UINineSlice.container`                                     |
 | `ParticleContainer`      | `ParticleContainer`                                      | `@yagejs/particles`' `ParticleEmitterComponent.container`                                      |
 | `Particle`               | `Particle`                                               | `@yagejs/particles`' `ParticlePool.acquire()`/`release()`                                      |
 | `Filter`                 | `Filter`                                                 | effects API (`Effect.filter`, `rawFilter(filter)`)                                             |
@@ -29,7 +29,7 @@ Every exported field, parameter, and return type across `@yagejs/renderer` (and 
 | `TextStyle`              | `TextStyleOptions`                                       | every `style` option                                                                           |
 | `TextureRef`             | none — `string \| TextureHandle`, a key/handle reference | `SpriteComponent.texture`, `setTexture()`                                                      |
 
-The aliases are transparent (`type DisplayContainer = Container`) and provide no encapsulation. Escape hatches (`RendererPlugin.application`, every `renderObject` getter, `.sprite`/`.graphics`/`.text`/`.splitText`/`.animatedSprite`) still return the real Pixi object. Only the _type_ used to describe it is aliased, so calling any native Pixi method on it works exactly as it would on the raw type.
+The aliases are transparent (`type DisplayContainer = Container`) and provide no encapsulation: `RendererPlugin.application`, every `renderObject` getter and the class fields (`.sprite`/`.graphics`/`.text`/`.splitText`/`.animatedSprite`) return the real Pixi object. Game code never writes to it. `DisplaySystem` writes position, rotation and scale from the entity's `Transform` every frame, and the component re-applies its own `visible` and `alpha` on every change, on activation and on every modifier change, so a write on the Pixi object is lost. Change a visual through its component; a task that needs the Pixi object is a missing component API.
 
 A `GraphicsContext` therefore carries Pixi's graphics transform stack —
 `translateTransform`, `scaleTransform`, `rotateTransform`, `setTransform`,
@@ -172,20 +172,34 @@ Rectangles of the visible canvas that sit **outside** the declared virtual rect 
 
 Under `expand` these are the play-adjacent strips the game is expected to draw into. The `responsive-ui` example fills each with a solid dark rect plus a short gradient along the inner edge (touching the play area) so the bars read as "not the play area, but still part of the rendered world."
 
-Under `letterbox` the same rects only report where the `backgroundColor` bars land. That mode clips every scene layer to the virtual rect, so content placed at these coordinates on a scene layer is invisible. To draw in the bars, parent a container directly on `renderer.application.stage` and position it in **canvas pixels**:
+Under `letterbox` the same rects only report where the `backgroundColor` bars land. That mode clips every scene layer to the virtual rect, so content placed at these coordinates on a scene layer is invisible. To draw in the bars, parent a container directly on `renderer.application.stage` and position it in **canvas pixels**. No scene layer reaches the bars, so this code owns raw Pixi objects: destroy the container when the scene exits.
 
-```ts yage-context="scene-enter"
+```ts
+import { Scene } from "@yagejs/core";
 import { Container, Graphics } from "pixi.js";
 import { RendererKey } from "@yagejs/renderer";
 
-const renderer = this.use(RendererKey);
-const bars = new Container();
-renderer.application.stage.addChild(bars); // canvas px, above the fit transform
-const { width } = renderer.canvasSize;
-const play = renderer.virtualCanvasRect; // play area, in canvas px
-const branding = new Graphics();
-branding.rect(0, 0, width, play.y).fill({ color: 0x0f172a }); // top bar
-bars.addChild(branding);
+class BrandedScene extends Scene {
+  readonly name = "branded";
+  private bars: Container | undefined;
+
+  onEnter(): void {
+    const renderer = this.use(RendererKey);
+    this.bars = new Container();
+    renderer.application.stage.addChild(this.bars); // canvas px, above the fit transform
+
+    const { width } = renderer.canvasSize; // CSS px
+    const play = renderer.virtualCanvasRect; // play area, in canvas px
+    const branding = new Graphics();
+    branding.rect(0, 0, width, play.y).fill({ color: 0x0f172a }); // top bar
+    this.bars.addChild(branding);
+  }
+
+  onExit(): void {
+    // The stage outlives the scene, so the scene destroys what it added.
+    this.bars?.destroy({ children: true });
+  }
+}
 ```
 
 Note: "screen" in the engine (UI `LayerSpace: "screen"`, `Camera.screenToWorld`) means _virtual viewport space_. The `canvasToVirtual` method is named after its inputs (DOM CSS pixels on the canvas) to avoid that collision.
@@ -292,7 +306,7 @@ For procedural shapes plus a label, use a parent entity with `GraphicsComponent`
 
 ### Shared options vocabulary
 
-All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitText) accept the same `visible` / `tint` / `alpha` / `blendMode` / `interactive` options, with runtime accessors for the first four. Pixi's `Container` carries all five natively, so the behavior is identical across every component:
+Every visual component below (Sprite, AnimatedSprite, Graphics, Text, SplitText, NineSlice) accepts the same `visible` / `tint` / `alpha` / `blendMode` / `zIndex` / `sortOffset` / `interactive` options, with runtime accessors for all but `interactive`. The behavior is identical across every component:
 
 ```ts
 import type {
@@ -306,6 +320,8 @@ interface VisualComponentOptions extends BaseVisualComponentOptions {
   tint?: ColorValue; // number (0xff0000) or CSS color string ("red", "#ff0000")
   alpha?: number; // opacity, default 1
   blendMode?: BlendMode; // how the pixels combine with what is beneath, default "inherit"
+  zIndex?: number; // order among siblings on a layer without sort, default 0
+  sortOffset?: number; // px added to y when a depth key reads it, default 0
   interactive?: {
     eventMode?: "static" | "dynamic"; // default "static" when the object is set
     consumeOnInteraction?: boolean; // claim the press for @yagejs/input's action map
@@ -320,12 +336,17 @@ the computed render values. `interactive` is set once at construction.
 `comp.renderAboveEffects` toggles at runtime — see [Effects](#effects) for what
 it escapes.
 
+Every visual component also has:
+
+- `comp.localBounds: { x, y, width, height }` — the drawn box in the visual's own pixels, before position, rotation and scale; `x`/`y` are the top-left corner relative to the entity's position, after any anchor or `GraphicsComponent` pivot (centre-anchored → `x = -width / 2`; pivot `(px, py)` → box moved by `(-px, -py)`). Works while hidden. Computed per read.
+- `comp.onPointer(event: "down" | "up" | "tap" | "over" | "out", fn: () => void): () => void` — makes the visual a hit-test target and calls `fn` through the `ErrorBoundary` (a throw names the entity). Returns the unsubscribe; destroying the visual also ends it. Read the pointer position from `InputManager`. `interactive.consumeOnInteraction` keeps the same press from firing `MouseLeft`.
+
 Every visual component also exposes `comp.modifiers: VisualModifierHost`:
 
 ```ts yage-context="entity"
 import { SpriteComponent } from "@yagejs/renderer";
 
-const comp = entity.get(SpriteComponent); // any of the five visual components
+const comp = entity.get(SpriteComponent); // any visual component
 
 const motion = comp.modifiers.addTransform({
   position: { x: 0, y: -4 }, // Vec2Like offset
@@ -375,7 +396,7 @@ entity.add(
 
 `texture` takes a `TextureRef` (asset key or handle), not a raw `Texture` object. A key that is neither preloaded nor registered throws, naming the key. Runtime-created textures: register them under a key first — see "Runtime textures" under Asset Factories.
 
-**Escape hatch:** `.sprite` is the underlying pixi `Sprite` instance — full pixi API surface available, including `sprite.tint`. See [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
+Tint, alpha, visibility and blend mode live on the component: `sprite.tint = 0xff0000`, `sprite.alpha = 0.5`, `sprite.visible = false`.
 
 > `sprite.tint` multiplies the source RGB by the tint colour. That's cheap on the GPU and right for "darken / desaturate / multiply with a colour" effects, but it turns saturated source colours into mud (a blue mushroom × yellow tint reads as olive). For replace-style recolour — where black stays black, white reaches the target colour, and midtones blend proportionally — use the `colorize` effect from `@yagejs/effects` instead.
 
@@ -435,7 +456,7 @@ entity.add(
 );
 ```
 
-**Escape hatch:** `.graphics` (and the `g` passed to `.draw(fn)`) is a raw pixi `Graphics` with the v8 fluent API: `rect` / `circle` / `roundRect` / `poly` / `moveTo` / `lineTo` / `arc` / `fill` / `stroke`. `arc` continues the current path like Canvas 2D: call `moveTo(x, y)` at the arc's start point first for a standalone arc, otherwise a line connects it from the previous point. See [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
+The `g` passed to `.draw(fn)` is a pixi `Graphics` with the v8 fluent API; draw only inside `draw`, and set `visible` / `alpha` / `tint` on the component. Methods: `rect` / `circle` / `roundRect` / `poly` / `moveTo` / `lineTo` / `arc` / `fill` / `stroke`. `arc` continues the current path like Canvas 2D: call `moveTo(x, y)` at the arc's start point first for a standalone arc, otherwise a line connects it from the previous point. See [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
 
 Gradient fills: use `linearGradient` / `radialGradient` (see below) instead of reaching into `pixi.js` for `FillGradient`.
 
@@ -529,6 +550,8 @@ const title = entity.add(
 title.chars; // (Text | BitmapText)[] — one per glyph
 title.words; // Container[] — word groups
 title.lines; // Container[] — line groups
+// Glyph x / y / rotation / scale / alpha / tint / visible are yours: the engine
+// writes none. setText / setStyle / resplit() replace every segment — re-read.
 
 // Typewriter: stagger each glyph's fade-in (0.05s apart) via a ProcessComponent.
 title.chars.forEach((c) => (c.alpha = 0));
@@ -634,7 +657,31 @@ const icon = new UIImage({
 });
 ```
 
-**Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
+### NineSliceComponent
+
+A texture stretched to any size with fixed-size corners (panels, signs, bubbles). Placed by the entity's `Transform` at its top-left corner by default; shares the visual options above.
+
+```ts
+import { Entity, Transform } from "@yagejs/core";
+import { NineSliceComponent } from "@yagejs/renderer";
+
+class Signpost extends Entity {
+  setup(params: { x: number; y: number }) {
+    this.add(new Transform({ position: { x: params.x, y: params.y } }));
+    const board = this.add(
+      new NineSliceComponent({
+        texture: "panel", // a loaded or registered texture key
+        insets: { left: 8, top: 8, right: 8, bottom: 8 },
+        width: 160,
+        height: 64,
+      }),
+    );
+    board.setSize(200, 80); // corners stay 8 px; edges and centre stretch
+  }
+}
+```
+
+`new NineSliceComponent({ texture: TextureInput, insets: { left, top, right, bottom }, width, height, anchor?, ...VisualComponentOptions })`; `width` / `height` getters; `setSize(width, height)`. Sizes and insets throw when negative or non-finite; an unknown texture key throws at construction. Inside a UI layout use `UINineSlice`.
 
 ### AnimationController
 
@@ -1065,7 +1112,7 @@ class GameScene extends Scene {
 }
 ```
 
-**The `"default"` layer.** Every scene's tree auto-creates a layer named `"default"` at order 0; any sprite/text/graphics with no explicit `layer` renders there. Declaring `{ name: "default", ... }` _configures_ that pre-created layer (its `sort` / `space` / `isRenderGroup`) rather than adding a second one — `{ name: "default", order: 0, sort: ySort }` is the canonical "depth-sort the layer my entities already use" setup, without setting `layer` on each component. `order` is required by `LayerDef` but ignored for `"default"` (default is order 0 by definition). To change a live layer's sort after the scene is running, call `layer.setSort(fn)` — `tree.defaultLayer.setSort(ySort)`. Passing `undefined` stops the per-frame re-sort but does **not** restore the original insertion order (Pixi reorders `children` in place; clearing `sortableChildren` just halts further sorting), so children keep their last-sorted order.
+**The `"default"` layer.** Every scene's tree auto-creates a layer named `"default"` at order 0; any sprite/text/graphics with no explicit `layer` renders there. Declaring `{ name: "default", ... }` _configures_ that pre-created layer (its `sort` / `space` / `isRenderGroup`) rather than adding a second one — `{ name: "default", order: 0, sort: ySort }` is the canonical "depth-sort the layer my entities already use" setup, without setting `layer` on each component. `order` is required by `LayerDef` but ignored for `"default"` (default is order 0 by definition). To change a live layer's sort after the scene is running, call `layer.setSort(fn)` — `tree.defaultLayer.setSort(ySort)`. Passing `undefined` stops the per-frame re-sort and puts each visual's own `zIndex` back, but does **not** restore the original insertion order (Pixi reorders `children` in place), so visuals with equal `zIndex` keep their last-sorted order.
 
 **Moving a visual between layers.** `component.layerName` is the layer a visual draws on, and `component.setLayer(name)` moves it: the render object is detached and re-parented through the same resolution the initial add uses, so a `SortGroupComponent` on the new layer still claims it. Called before the component is added to an entity it only records the name. The visual joins its new parent last, which on a layer with no `sort` means it draws in front of everything already there.
 
@@ -1143,18 +1190,29 @@ this.spawn(CameraEntity, {
 
 ### `LayerDef.sort` — per-frame paint order
 
-Default paint order within a layer is **insertion order** — sprites render in the order their containers were added. Set `LayerDef.sort` to a **depth-key function** `(container) => number` and `DisplaySystem` writes the result to `container.zIndex` for every child each frame; Pixi's render pipeline then orders the layer by zIndex. The hook also flips `container.sortableChildren = true` so Pixi knows to honour the zIndex.
+Default paint order within a layer is **insertion order** — sprites render in the order their containers were added. Set `LayerDef.sort` to a **depth-key function** `(item: SortItem) => number`; `DisplaySystem` calls it for every child each frame and the layer paints its children in key order.
 
-Two built-in helpers cover the common cases:
+```ts
+import type { Entity } from "@yagejs/core";
 
-| Helper              | Returns                                                                                                                                                                                                                                                 |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ySort`             | `c.position.y` — classic top-down depth, characters with higher y paint on top.                                                                                                                                                                         |
-| `ySortBy(offsetOf)` | `c.position.y + offsetOf(c)` — each container can provide a per-sprite Y offset (Godot's `y_sort_origin`) so the depth key tracks the visual "footprint" instead of the top-left. `offsetOf` returns `undefined` to fall through to plain `position.y`. |
+interface SortItem {
+  readonly x: number; // child's position in its layer, px
+  readonly y: number;
+  readonly sortOffset: number; // owning component's sortOffset; 0 for an unowned container
+  readonly entity: Entity | undefined; // undefined for a container added without a component
+}
+type LayerSortFn = (item: SortItem) => number;
+```
+
+`DisplaySystem` reuses one item for every child: read fields inside the call, keep no reference. A key that reads another component through `item.entity` costs a component lookup per child per frame.
+
+| Helper  | Returns                                                                                                                                             |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ySort` | `item.y + item.sortOffset` — classic top-down depth, higher y paints on top; `sortOffset` keys a sprite at its footprint (Godot's `y_sort_origin`). |
 
 ```ts
 import { Scene } from "@yagejs/core";
-import { ySort, ySortBy, type LayerDef } from "@yagejs/renderer";
+import { ySort, type LayerDef, type LayerSortFn } from "@yagejs/renderer";
 
 class GameScene extends Scene {
   readonly name = "game";
@@ -1164,11 +1222,33 @@ class GameScene extends Scene {
   ];
 }
 
-// Per-sprite offset variant — read off a custom field on the display object:
-const sort = ySortBy((c) => (c as { depthOffset?: number }).depthOffset);
+// A custom key: isometric depth.
+const isoSort: LayerSortFn = (item) => item.x + item.y + item.sortOffset;
 ```
 
-Game code that manually writes `child.zIndex` on individual sprites doesn't need `sort` — once `sortableChildren` is on, Pixi sorts them. `sort` is for the common case where the depth key is a function of the sprite's current state (position, depth offset) and needs to be recomputed each frame. The two paths compose: a `sort` fn handles the bulk of a layer, and individual sprites can still write their own `zIndex` between updates to bias themselves above or below the depth key.
+Per-visual order, on every `VisualComponent` (option and accessor) and on `ParticleEmitterComponent` (accessor):
+
+| Member       | Meaning                                                                                                                                                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sortOffset` | Pixels added to `y` when a depth key reads the visual. Default `0`. A tree anchored at its top: `sortOffset: 96` keys it at its trunk base.                                                                                                |
+| `zIndex`     | Order among siblings on a layer **without** `sort` and inside a `SortGroupComponent` without `innerSort`: higher draws on top, ties keep add order. Default `0`. On a sorted layer the key wins; a non-zero `zIndex` logs one dev warning. |
+
+Both throw on a non-finite value. `setLayer` re-applies the visual's `zIndex`, so leaving a sorted layer does not carry the old depth key along. For "always above the crowd" on a sorted layer, use a separate layer.
+
+```ts yage-context="entity"
+import { SpriteComponent } from "@yagejs/renderer";
+
+entity.add(
+  new SpriteComponent({
+    texture: "tree",
+    anchor: { x: 0.5, y: 0 },
+    sortOffset: 96,
+  }),
+);
+entity.add(
+  new SpriteComponent({ texture: "flag", layer: "props", zIndex: 10 }),
+);
+```
 
 ### `SortGroupComponent` — keep a multi-part entity from splitting
 
@@ -1207,14 +1287,14 @@ class Knight extends Entity {
 
 `new SortGroupComponent(options?)`:
 
-| Option      | Meaning                                                                                                                                                                                                                                                                                                          |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `layer`     | Layer the group renders into (default `"default"`). Subtree visuals targeting **this same layer** are gathered in; visuals on other layers are left alone (a child's shadow can stay on a separate `"ground"` layer).                                                                                            |
-| `innerSort` | Depth key for ordering the group's own members. Default (unset): members keep **insertion order**, and a member's manually-set `zIndex` is honoured (a real stacking context — like Unity's `SortingGroup`). Pass `ySort` to order members by position among themselves while the group still sorts as one unit. |
+| Option      | Meaning                                                                                                                                                                                                                                                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `layer`     | Layer the group renders into (default `"default"`). Subtree visuals targeting **this same layer** are gathered in; visuals on other layers are left alone (a child's shadow can stay on a separate `"ground"` layer).                                                                                              |
+| `innerSort` | Depth key for ordering the group's own members. Default (unset): members keep **insertion order**, and a member's `zIndex` orders it among the others (a real stacking context — like Unity's `SortingGroup`). Pass `ySort` to order members by position among themselves while the group still sorts as one unit. |
 
 Semantics:
 
-- **Sort key** — the group sorts in the layer by the owning entity's _own_ sprite (so `ySort`/`ySortBy` read a real sprite's position/offset). A group-owning entity with no sprite of its own falls back to a proxy at its `Transform` world position — fine for a purely-logical parent that just groups children.
+- **Sort key** — the group sorts in the layer by the owning entity's _own_ sprite (so `ySort` reads a real sprite's position and `sortOffset`). A group-owning entity with no sprite of its own falls back to its `Transform` world position with no offset — fine for a purely-logical parent that just groups children.
 - **Transforms are untouched.** The group container stays at identity/origin; members keep their normal world transforms. Adding a group changes paint **order** only — never position, rotation, or scale (those stay composed by the ECS `Transform`). Rotating the parent rotates the children exactly as before.
 - **Add the group before the visuals it should capture.** It also re-homes any already-present subtree visuals when added late.
 - A `SortGroupComponent` on a _descendant_ entity starts its own independent unit rather than nesting inside the ancestor's. Sort grouping and transform parenting are independent axes.
@@ -1364,16 +1444,13 @@ class Nameplate extends Entity {
 
 ```ts yage-context="component"
 import { Scene } from "@yagejs/core";
-import { Graphics } from "pixi.js";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
-import { crt } from "@yagejs/effects";
-
-const myDisplayObject = new Graphics().circle(0, 0, 8).fill(0xffffff);
+import { crt, vignette } from "@yagejs/effects";
 
 // Inside a Component:
 const tree = this.use(SceneRenderTreeKey);
 const layer = tree.get("world");
-layer.container.addChild(myDisplayObject);
+layer.fx.addEffect(vignette({}));
 
 // Also resolvable from anything holding the scene (onEnter onward) — Scene.use is
 // scope-aware, so a scene-scoped effect/mask can be attached at setup:
@@ -1390,8 +1467,9 @@ Don't use `SceneRenderTreeProviderKey` from game code — it's tooling-only
 (Inspector/debug tools enumerate trees across scenes). Resolve the tree for
 the current scene with `this.use(SceneRenderTreeKey)`.
 
-`SpriteComponent`/`GraphicsComponent`/etc. take a `layer` option and handle
-this internally. DisplaySystem syncs `Transform` to PixiJS display objects
+`SpriteComponent`/`GraphicsComponent`/etc. take a `layer` option and add
+their Pixi object to that layer themselves; game code never adds Pixi objects
+to `layer.container`. DisplaySystem syncs `Transform` to PixiJS display objects
 each Render phase and applies camera + virtual-resolution scaling to the
 world root.
 
@@ -1510,7 +1588,7 @@ import {
   SceneRenderTreeKey,
   SpriteComponent,
   rectMask,
-  spriteMask,
+  textureMask,
   graphicsMask,
 } from "@yagejs/renderer";
 
@@ -1531,6 +1609,9 @@ tree.setMask(
     g.circle(0, 0, 100).fill(0xffffff);
   }),
 );
+tree
+  .get("world")
+  .setMask(textureMask("vignette", { anchor: { x: 0.5, y: 0.5 } }));
 ```
 
 | Export                                  | Signature                                                               | Description                                                                                                                                                                                                                            |
@@ -1539,7 +1620,7 @@ tree.setMask(
 | `clearMask` (component / layer / scene) | `() => void`                                                            | Detach + destroy the current mask.                                                                                                                                                                                                     |
 | `MaskHandle`                            | interface                                                               | `remove()` / `setInverse(on)` / `inverse` / `redraw()`.                                                                                                                                                                                |
 | `rectMask`                              | `(opts: RectMaskOptions) => MaskFactory`                                | Static rectangle, optional `rounded` corners.                                                                                                                                                                                          |
-| `spriteMask`                            | `(sprite: Sprite) => MaskFactory`                                       | User-owned sprite as mask.                                                                                                                                                                                                             |
+| `textureMask`                           | `(texture: TextureRef, opts?: TextureMaskOptions) => MaskFactory`       | The texture's alpha channel clips. `opts`: `x`, `y`, `width`, `height`, `anchor`. The mask owns its sprite; `setMask` throws on an unknown key.                                                                                        |
 | `graphicsMask`                          | `(draw: (g: Graphics) => void) => MaskFactory`                          | Custom drawn mask; call `handle.redraw()` after dependencies change. The closure must `g.clear()` first (pixi commands accumulate) and read live state from a captured object/getter — `const` snapshots stay stale across `redraw()`. |
 | `defineMask`                            | `<O>({ name, factory: (opts: O) => Mask }) => (opts: O) => MaskFactory` | Define a reusable named mask preset.                                                                                                                                                                                                   |
 | `attachMask`                            | low-level helper                                                        | `attachMask(target, factory, owner?)` returns a `MaskHandle`. Pass the owning `Component` as `owner` so a throw from the draw callback is attributed to it in `Inspector.getErrors().callbackErrors`.                                  |
@@ -1549,6 +1630,8 @@ Mask coordinates are the masked object's own local space: world pixels on a worl
 ## Offscreen render targets
 
 `renderer.createRenderTarget(source, options)` draws a container into a texture the game owns and redraws on its own schedule. Use it when several objects must composite against each other before reaching the screen (a light buffer, a trail buffer, a downscaled blur source), or to cache expensive static content as one texture.
+
+The source is a raw Pixi container the game builds, moves and destroys: no visual component draws into a render target, so this is one of the few documented places game code handles Pixi objects.
 
 ```ts yage-context="scene-enter"
 import { Component, Transform } from "@yagejs/core";
@@ -1627,7 +1710,7 @@ remove the other scene's entry. Every later lookup of that key then throws.
 | ---------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `RendererPlugin.createRenderTarget`      | `(source: DisplayContainer, options: RenderTargetOptions) => RenderTargetHandle` | Allocate the buffer. The repeatable counterpart of `createTexture`, which bakes once and never changes.                                                                                                                                                                                                  |
 | `RenderTargetOptions`                    | `{ width, height, resolutionScale?, antialias?, clearColor?, label? }`           | `width` / `height` are in source coordinates. `resolutionScale` (default `1`) multiplies the renderer's own resolution. `clearColor` defaults to transparent.                                                                                                                                            |
-| `handle.texture`                         | `TextureResource`                                                                | What the buffer draws into. Feed it to `SpriteComponent` (via `registerTexture`), `spriteMask`, or a filter uniform.                                                                                                                                                                                     |
+| `handle.texture`                         | `TextureResource`                                                                | What the buffer draws into. Feed it to `SpriteComponent` or `textureMask` (via `registerTexture`), or to a filter uniform.                                                                                                                                                                               |
 | `handle.source`                          | `DisplayContainer`                                                               | The container passed to `createRenderTarget`. `destroy()` leaves it alone — freeing it is the game's job.                                                                                                                                                                                                |
 | `handle.render()`                        | `() => void`                                                                     | Draw now and clear the pending flag.                                                                                                                                                                                                                                                                     |
 | `handle.renderIfNeeded()`                | `() => boolean`                                                                  | Draw only when pending; returns whether it drew.                                                                                                                                                                                                                                                         |

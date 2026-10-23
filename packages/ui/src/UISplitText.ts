@@ -88,7 +88,11 @@ function shallowEqualStyle(
 export class UISplitText extends UIElementBase {
   readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
-  /** The underlying Pixi `SplitText` / `SplitBitmapText`. */
+  /**
+   * The same Pixi `SplitText` / `SplitBitmapText` as {@link displayObject}.
+   * Change the text through the element; animate glyphs through
+   * {@link chars}.
+   */
   readonly splitText: DisplaySplitText | DisplaySplitBitmapText;
   /** Whether this renders with a bitmap font (`SplitBitmapText`). */
   readonly isBitmap: boolean;
@@ -189,17 +193,22 @@ export class UISplitText extends UIElementBase {
     });
   }
 
-  /** Per-glyph display objects, in reading order. */
+  /**
+   * Per-glyph display objects, in reading order, for animating `x`, `y`,
+   * `rotation`, `scale`, `alpha`, `tint` and `visible`; the element writes
+   * none of these on a glyph. A re-split replaces the glyphs, so read this
+   * again after `setText`, `setStyle` or `resplit`.
+   */
   get chars(): (DisplayText | DisplayBitmapText)[] {
     return this.splitText.chars;
   }
 
-  /** Word-group containers. */
+  /** Word-group containers. Replaced by a re-split, like {@link chars}. */
   get words(): DisplayContainer[] {
     return this.splitText.words;
   }
 
-  /** Line-group containers. */
+  /** Line-group containers. Replaced by a re-split, like {@link chars}. */
   get lines(): DisplayContainer[] {
     return this.splitText.lines;
   }

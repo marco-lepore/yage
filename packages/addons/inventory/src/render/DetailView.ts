@@ -83,13 +83,14 @@ export class DetailView implements DetailPresenter {
     const stack = view?.stack;
     const def = view?.def;
     if (!stack || !def) {
-      this.name.text.text = "";
-      this.description.text.text = "";
+      this.name.setText("");
+      this.description.setText("");
       return;
     }
-    this.name.text.text =
-      stack.quantity > 1 ? `${def.name} ×${stack.quantity}` : def.name;
-    this.description.text.text = def.description ?? "";
+    this.name.setText(
+      stack.quantity > 1 ? `${def.name} ×${stack.quantity}` : def.name,
+    );
+    this.description.setText(def.description ?? "");
   }
 
   setVisible(visible: boolean): void {
@@ -116,14 +117,16 @@ export class DetailView implements DetailPresenter {
       this.description.entity
         .get(Transform)
         .setPosition(r.x + 2, r.y + this.cfg.textSize + 7);
-      this.description.text.style.wordWrap = true;
-      this.description.text.style.wordWrapWidth = Math.max(10, r.width - 4);
+      this.description.mergeStyle({
+        wordWrap: true,
+        wordWrapWidth: Math.max(10, r.width - 4),
+      });
     }
   }
 
   private applyHidden(): void {
     const visible = !this.hidden;
-    if (this.name) this.name.text.visible = visible;
-    if (this.description) this.description.text.visible = visible;
+    if (this.name) this.name.visible = visible;
+    if (this.description) this.description.visible = visible;
   }
 }

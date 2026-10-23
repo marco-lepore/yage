@@ -252,19 +252,19 @@ export class HotbarSlot extends Component {
 
   private redraw(ratio: number): void {
     const r = HOTBAR_RADIUS;
-    this.gfx.graphics
-      .clear()
-      .roundRect(-r - 4, -r - 4, (r + 4) * 2, (r + 4) * 2, 10)
-      .fill({ color: 0x0f172a, alpha: 0.88 })
-      .stroke({ color: 0x334155, width: 1.5 });
-    if (ratio < 1) {
-      const angle = (1 - ratio) * Math.PI * 2;
-      this.gfx.graphics
-        .moveTo(0, 0)
-        .arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + angle)
-        .lineTo(0, 0)
-        .fill({ color: 0x000000, alpha: 0.62 });
-    }
+    this.gfx.draw((g) => {
+      g.clear()
+        .roundRect(-r - 4, -r - 4, (r + 4) * 2, (r + 4) * 2, 10)
+        .fill({ color: 0x0f172a, alpha: 0.88 })
+        .stroke({ color: 0x334155, width: 1.5 });
+      if (ratio < 1) {
+        const angle = (1 - ratio) * Math.PI * 2;
+        g.moveTo(0, 0)
+          .arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + angle)
+          .lineTo(0, 0)
+          .fill({ color: 0x000000, alpha: 0.62 });
+      }
+    });
   }
 }
 

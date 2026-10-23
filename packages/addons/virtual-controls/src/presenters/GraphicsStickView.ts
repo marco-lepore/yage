@@ -84,7 +84,7 @@ export class GraphicsStickView implements ControlView {
 
   setVisible(visible: boolean): void {
     this.visible = visible;
-    if (!this.disposed) this.gfx.graphics.visible = visible;
+    if (!this.disposed) this.gfx.visible = visible;
   }
 
   dispose(): void {
@@ -97,20 +97,21 @@ export class GraphicsStickView implements ControlView {
     const t = this.theme;
     const base = this.stick.basePos;
     const radius = this.stick.layout.radius;
-    const g = this.gfx.graphics;
-    g.clear();
-    g.circle(base.x, base.y, radius).fill({
-      color: t.stickBaseColor,
-      alpha: t.stickBaseAlpha * this.alpha,
-    });
-    g.circle(base.x, base.y, radius).stroke({
-      width: t.stickBorderWidth,
-      color: t.stickBorderColor,
-      alpha: t.stickBorderAlpha * this.alpha,
-    });
-    g.circle(this.knobX, this.knobY, radius * t.knobScale).fill({
-      color: t.stickKnobColor,
-      alpha: t.stickKnobAlpha * this.alpha,
+    this.gfx.draw((g) => {
+      g.clear();
+      g.circle(base.x, base.y, radius).fill({
+        color: t.stickBaseColor,
+        alpha: t.stickBaseAlpha * this.alpha,
+      });
+      g.circle(base.x, base.y, radius).stroke({
+        width: t.stickBorderWidth,
+        color: t.stickBorderColor,
+        alpha: t.stickBorderAlpha * this.alpha,
+      });
+      g.circle(this.knobX, this.knobY, radius * t.knobScale).fill({
+        color: t.stickKnobColor,
+        alpha: t.stickKnobAlpha * this.alpha,
+      });
     });
     this.drawnBaseX = base.x;
     this.drawnBaseY = base.y;

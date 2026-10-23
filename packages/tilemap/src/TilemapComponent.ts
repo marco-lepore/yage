@@ -58,6 +58,10 @@ export class TilemapComponent extends VisualComponent {
   // copy on every Inspector snapshot.
   static inspectExclude = ["data"];
 
+  /**
+   * The same Pixi object as {@link renderObject}. Change the visual through
+   * the component; see `VisualComponent.renderObject`.
+   */
   readonly container: DisplayContainer;
   readonly data: TilemapData;
   /** Asset path of this map, or `null` if constructed from a raw `TiledMapData` without one. */
@@ -131,7 +135,10 @@ export class TilemapComponent extends VisualComponent {
     this.syncColorFilter();
   }
 
-  /** The underlying tilemap container. */
+  /**
+   * The Pixi object this component draws with. Change the visual through the
+   * component; see {@link VisualComponent.renderObject}.
+   */
   get renderObject(): DisplayContainer {
     return this.container;
   }
