@@ -341,6 +341,7 @@ it escapes.
 Every visual component also has:
 
 - `comp.localBounds: { x, y, width, height }` — the drawn box in the visual's own pixels, before position, rotation and scale; `x`/`y` are the top-left corner relative to the entity's position, after any anchor or `GraphicsComponent` pivot (centre-anchored → `x = -width / 2`; pivot `(px, py)` → box moved by `(-px, -py)`). Works while hidden. Computed per read.
+- `comp.drawInactive(shown: boolean): void` — draws the visual of an inactive entity, which `DisplaySystem` skips: places it at the pose its `Transform` composes, with its transform modifiers, and shows it when `shown` and the component's own `enabled` and `visible` allow it. For tools that show dormant entities (a level editor's preview); call it once per frame after the Render-phase `DisplaySystem`, and after any modifier change, which hides the dormant visual again. Throws for an active entity.
 - `comp.onPointer(event: "down" | "up" | "tap" | "over" | "out", fn: () => void): () => void` — makes the visual a hit-test target and calls `fn` through the `ErrorBoundary` (a throw names the entity). Returns the unsubscribe; destroying the visual also ends it. Read the pointer position from `InputManager`. `interactive.consumeOnInteraction` keeps the same press from firing `MouseLeft`.
 
 Every visual component also exposes `comp.modifiers: VisualModifierHost`:

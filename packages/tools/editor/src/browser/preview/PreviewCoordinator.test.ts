@@ -2557,6 +2557,18 @@ function entityCarrying(x: number, y: number, ...types: string[]): unknown {
   };
 }
 
+/** A writable point, the shape Pixi gives a position or a scale. */
+function point(x: number, y: number) {
+  return {
+    x,
+    y,
+    set(nextX: number, nextY = nextX) {
+      this.x = nextX;
+      this.y = nextY;
+    },
+  };
+}
+
 /** An entity at a point. With no options it draws nothing at all. */
 function entityAt(
   x: number,
@@ -2594,25 +2606,32 @@ function entityAt(
         height: halfY * 2,
       }),
       pivot: { x: 0, y: 0 },
-      // The render-phase dormant pass writes these every frame, so a case
-      // that ticks the systems needs them present.
-      position: { x: 0, y: 0 },
-      scale: { x: 1, y: 1 },
+      // The render-phase dormant pass draws through `drawInactive`, which
+      // writes these every frame, so a case that ticks the systems needs them
+      // present.
+      position: point(0, 0),
+      scale: point(1, 1),
       rotation: 0,
       visible: true,
     },
-    // The pass reads both off the component before it writes a visibility.
-    // They are own properties, set before the prototype is, so they stand in
-    // for the accessors a real component has.
+    // `drawInactive` reads these off the component before it writes a
+    // visibility. They are own properties, set before the prototype is, so
+    // they stand in for the accessors a real component has.
     enabled: true,
     visible: true,
+    modifiers: { hasTransformModifiers: false, visible: true },
+    entity: undefined as unknown,
   };
   Object.setPrototypeOf(visual, VisualComponent.prototype);
-  return {
+  const entity = {
+    name: "placement",
+    isActive: false,
     get: () => transform,
     getAll: () => [transform, visual],
     parent: null,
   };
+  visual.entity = entity;
+  return entity;
 }
 
 describe("placements put out of the way", () => {

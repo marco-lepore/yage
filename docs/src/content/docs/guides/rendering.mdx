@@ -100,5 +100,10 @@ object:
   `DisplayContainer`, `GraphicsContext`, `ColorValue`, ...), so your code
   never imports `pixi.js` to name a type. `DisplaySprite` is pixi's `Sprite`
   under another name; the alias changes only the import.
+- **An inactive entity draws nothing.** `DisplaySystem` skips it and its
+  visuals stay hidden. A tool that shows inactive entities anyway, such as a
+  level editor's preview, calls `visual.drawInactive(shown)` once per frame:
+  it places the visual at its `Transform` pose and shows it when `shown` is
+  `true` and the visual's own `enabled` and `visible` allow it.
 
 Each section links to the relevant pixi v8 docs.

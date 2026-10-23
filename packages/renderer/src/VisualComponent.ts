@@ -1,5 +1,6 @@
 import {
   Component,
+  Transform,
   devWarn,
   makeEntityScopedQueue,
   markPointerConsumeContainer,
@@ -407,6 +408,74 @@ export abstract class VisualComponent extends Component implements SortSource {
     return () => {
       target.off(pixiEvent, listener);
     };
+  }
+
+  /**
+   * Draw this visual while its entity is inactive. `DisplaySystem` draws only
+   * active entities, so a tool that shows dormant ones, such as a level
+   * editor's preview, calls this once per frame after the renderer's own
+   * pass. It places the visual at the pose its entity's `Transform` composes,
+   * with the visual's transform modifiers, and shows it when `shown` is
+   * `true` and the component's own `enabled` and `visible` allow it.
+   *
+   * Throws for an active entity: `DisplaySystem` already draws it, and the
+   * two would fight over the pose.
+   */
+  drawInactive(shown: boolean): void {
+    if (this.entity.isActive) {
+      throw new Error(
+        `${this.constructor.name}.drawInactive: entity "${this.entity.name}" ` +
+          `is active, and DisplaySystem already draws it.`,
+      );
+    }
+    const transform = this.entity.get(Transform);
+    const position = transform.worldPosition;
+    const scale = transform.worldScale;
+    this._writePose(
+      position.x,
+      position.y,
+      transform.worldRotation,
+      scale.x,
+      scale.y,
+    );
+    this._applyTransformModifiers();
+    this.renderObject.visible =
+      shown && this.enabled && this.visible && this.modifiers.visible;
+  }
+
+  /**
+   * Place the render object at a world pose. `DisplaySystem` calls it every
+   * frame for an enabled visual; {@link drawInactive} for a dormant one.
+   * @internal
+   */
+  _writePose(
+    x: number,
+    y: number,
+    rotation: number,
+    scaleX: number,
+    scaleY: number,
+  ): void {
+    const object = this.renderObject;
+    object.position.set(x, y);
+    object.rotation = rotation;
+    object.scale.set(scaleX, scaleY);
+  }
+
+  /**
+   * Add the transform modifiers' offsets to the pose {@link _writePose}
+   * wrote. `DisplaySystem` calls it after depth sorting, so a shake never
+   * changes a depth key.
+   * @internal
+   */
+  _applyTransformModifiers(): void {
+    const modifiers = this.modifiers;
+    if (!modifiers.hasTransformModifiers) return;
+    const object = this.renderObject;
+    object.position.x += modifiers.positionOffset.x;
+    object.position.y += modifiers.positionOffset.y;
+    object.rotation += modifiers.rotationOffset;
+    object.scale.x *= modifiers.scaleFactor.x;
+    object.scale.y *= modifiers.scaleFactor.y;
   }
 
   /**

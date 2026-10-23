@@ -16,7 +16,6 @@ import type { SceneRenderTreeProvider } from "./SceneRenderTree.js";
 import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
 import { CameraComponent } from "./CameraComponent.js";
 import { SortGroupComponent, sortOwnerOf } from "./SortGroupComponent.js";
-import type { Container } from "pixi.js";
 import { VisualComponent } from "./VisualComponent.js";
 import { attributed } from "./internal/attribution.js";
 import { SortItemBuffer } from "./internal/sortItem.js";
@@ -63,11 +62,9 @@ export class DisplaySystem extends System {
       const scaleX = scale.x;
       const scaleY = scale.y;
       for (const visual of entity.getAll(VisualComponent)) {
-        if (!visual.effectiveEnabled) continue;
-        const displayObject = visual.renderObject as Container;
-        displayObject.position.set(x, y);
-        displayObject.rotation = rotation;
-        displayObject.scale.set(scaleX, scaleY);
+        if (visual.effectiveEnabled) {
+          visual._writePose(x, y, rotation, scaleX, scaleY);
+        }
       }
     }
 
@@ -89,20 +86,9 @@ export class DisplaySystem extends System {
   private applyVisualModifiers(): void {
     for (const entity of this.visualQuery) {
       for (const visual of entity.getAll(VisualComponent)) {
-        if (visual.effectiveEnabled) this.applyModifiers(visual);
+        if (visual.effectiveEnabled) visual._applyTransformModifiers();
       }
     }
-  }
-
-  private applyModifiers(visual: VisualComponent): void {
-    const modifiers = visual.modifiers;
-    if (!modifiers.hasTransformModifiers) return;
-    const displayObject = visual.renderObject as Container;
-    displayObject.position.x += modifiers.positionOffset.x;
-    displayObject.position.y += modifiers.positionOffset.y;
-    displayObject.rotation += modifiers.rotationOffset;
-    displayObject.scale.x *= modifiers.scaleFactor.x;
-    displayObject.scale.y *= modifiers.scaleFactor.y;
   }
 
   /**

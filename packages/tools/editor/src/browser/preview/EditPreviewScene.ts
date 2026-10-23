@@ -69,8 +69,8 @@ export class EditPreviewScene extends Scene {
  * Draws the dormant placements once per frame.
  *
  * It runs after the renderer's own pass, which skips dormant entities
- * entirely, so these writes are the last word on where an authored placement
- * appears.
+ * entirely, so its `drawInactive` calls are the last word on where an
+ * authored placement appears.
  */
 class DormantVisualSystem extends System {
   readonly phase = Phase.Render;

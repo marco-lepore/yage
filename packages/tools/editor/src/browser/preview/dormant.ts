@@ -1,4 +1,4 @@
-import { Transform, type Entity } from "@yagejs/core";
+import type { Entity } from "@yagejs/core";
 import {
   VisualComponent,
   type VisualOpacityModifierHandle,
@@ -35,11 +35,11 @@ const fades = new WeakMap<VisualComponent, VisualOpacityModifierHandle>();
  *
  * A preview entity is dormant, so nothing in the engine updates it: no system
  * queries it, `onEnable` never runs, and its components never tick. What makes
- * it visible is this pass, which every frame writes the pose its `Transform`
- * composes and the visibility its placement authored onto each render object,
- * and sets how faded each visual is through that visual's own opacity
- * modifiers. All three are recomputed from state, so a fade is never something
- * to put back.
+ * it visible is this pass, which every frame sets how faded each visual is
+ * through that visual's own opacity modifiers, then draws it with
+ * `VisualComponent.drawInactive` at the pose its `Transform` composes and the
+ * visibility its placement authored. Both are recomputed from state, so a fade
+ * is never something to put back.
  *
  * Fading and hiding are separate and both can apply: a fade says a placement
  * is not what a press is looking for, and hiding says the developer put it out
@@ -63,36 +63,23 @@ export function synchronizeDormantVisuals(
     placements.map((placement) => [placement.entity, placement]),
   );
   for (const placement of placements) {
-    // Every placement has one: the loader refuses an entity without a
-    // Transform before an instance exists.
-    const transform = placement.entity.get(Transform);
-    const shown = !hidden.has(placement.id);
-    const hierarchyVisible = authoredVisible(placement, byEntity);
+    const shown =
+      !hidden.has(placement.id) && authoredVisible(placement, byEntity);
     const fade = dimmed.has(placement.id) ? DIMMED_ALPHA : 1;
     for (const component of placement.entity.getAll()) {
       if (!(component instanceof VisualComponent)) continue;
-      const object = component.renderObject;
-      object.position.x = transform.worldPosition.x;
-      object.position.y = transform.worldPosition.y;
-      object.rotation = transform.worldRotation;
-      object.scale.x = transform.worldScale.x;
-      object.scale.y = transform.worldScale.y;
-      // The fade goes through the component's own opacity modifiers rather
-      // than onto the render object, because a subclass may reach its pixels
-      // by another route: a tilemap's opacity is a colour filter, and a
-      // direct write leaves it at full strength while everything around it
-      // dims. The modifier is multiplied into the alpha the game asked for,
-      // so a placement authored translucent stays translucent and dims from
-      // there.
+      // The fade goes through the component's own opacity modifiers, so a
+      // subclass that reaches its pixels by another route dims too: a
+      // tilemap's opacity is a colour filter. The modifier is multiplied
+      // into the alpha the game asked for, so a placement authored
+      // translucent stays translucent and dims from there.
       const worn = fades.get(component);
       if (worn) worn.setFactor(fade);
       else if (fade !== 1)
         fades.set(component, component.modifiers.addOpacity(fade));
-      // After the fade, which writes a visibility of its own that this pass
-      // overrules: the component reads the engine's enabled state, and a
-      // dormant entity is inactive whatever the document authored.
-      object.visible =
-        component.enabled && component.visible && hierarchyVisible && shown;
+      // After the fade: changing a modifier hides a dormant visual again,
+      // and drawing it decides its visibility last.
+      component.drawInactive(shown);
     }
   }
 }

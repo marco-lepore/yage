@@ -147,6 +147,7 @@ vi.mock("./spritesheet.js", () => ({
 }));
 
 import { Transform, Vec2, ErrorBoundaryKey } from "@yagejs/core";
+import type { Scene } from "@yagejs/core";
 import { Graphics } from "pixi.js";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { CameraComponent } from "./CameraComponent.js";
@@ -888,53 +889,91 @@ describe("DisplaySystem", () => {
   });
 
   /**
-   * A dormant entity is drawn by writing its pose and visibility straight onto
-   * the render object, which works only because this pass never touches one —
-   * the queries exclude a dormant entity. These cases pin that outcome, so a
-   * change to how the pass selects entities fails here.
+   * This pass skips a dormant entity: the queries exclude it. A tool that
+   * shows dormant entities draws them with `VisualComponent.drawInactive`
+   * after this pass, so these cases pin both halves.
    */
   describe("dormant entities", () => {
-    it("leaves an externally written pose, visibility and opacity alone", () => {
-      const { scene } = setup();
+    function dormantSprite(scene: Scene, position = new Vec2(100, 200)) {
       const entity = scene.spawn("dormant", { active: false });
-      // Deliberately unlike the pose written below: a pass that synced dormant
-      // entities would overwrite the written one with this.
-      entity.add(new Transform({ position: new Vec2(100, 200) }));
-      const spriteComp = entity.add(
-        new SpriteComponent({ texture: {} as never }),
-      );
-
-      const sprite = spriteComp.renderObject as unknown as InstanceType<
+      const transform = entity.add(new Transform({ position }));
+      const visual = entity.add(new SpriteComponent({ texture: {} as never }));
+      const sprite = visual.renderObject as unknown as InstanceType<
         typeof mocks.MockContainer
       >;
-      sprite.position.set(10, 20);
-      sprite.rotation = 0.5;
-      sprite.scale.set(2, 3);
-      sprite.visible = true;
-      sprite.alpha = 0.25;
+      return { entity, transform, visual, sprite };
+    }
+
+    it("leaves a dormant visual where drawInactive put it", () => {
+      const { scene } = setup();
+      const { entity, transform, visual, sprite } = dormantSprite(scene);
+      visual.drawInactive(true);
+      // A pass that synced dormant entities would write this pose instead.
+      transform.setPosition(500, 600);
 
       system.update();
 
-      expect(sprite.position).toMatchObject({ x: 10, y: 20 });
+      expect(sprite.position).toMatchObject({ x: 100, y: 200 });
+      expect(sprite.visible).toBe(true);
+      expect(entity.isActive).toBe(false);
+    });
+
+    it("draws a dormant visual at its Transform pose and modifiers", () => {
+      const { scene } = setup();
+      const { transform, visual, sprite } = dormantSprite(scene);
+      transform.setRotation(0.5);
+      transform.setScale(2, 3);
+      visual.modifiers.addTransform({ position: new Vec2(4, -8) });
+
+      visual.drawInactive(true);
+
+      expect(sprite.position).toMatchObject({ x: 104, y: 192 });
       expect(sprite.rotation).toBe(0.5);
       expect(sprite.scale).toMatchObject({ x: 2, y: 3 });
       expect(sprite.visible).toBe(true);
-      expect(sprite.alpha).toBe(0.25);
-      expect(entity.isActive).toBe(false);
+    });
+
+    it("hides a dormant visual the caller, the game or its modifiers hide", () => {
+      const { scene } = setup();
+      const { visual, sprite } = dormantSprite(scene);
+
+      visual.drawInactive(false);
+      expect(sprite.visible).toBe(false);
+
+      visual.visible = false;
+      visual.drawInactive(true);
+      expect(sprite.visible).toBe(false);
+
+      visual.visible = true;
+      visual.enabled = false;
+      visual.drawInactive(true);
+      expect(sprite.visible).toBe(false);
+
+      visual.enabled = true;
+      const hidden = visual.modifiers.addVisibility(false);
+      visual.drawInactive(true);
+      expect(sprite.visible).toBe(false);
+      hidden.remove();
+      visual.drawInactive(true);
+      expect(sprite.visible).toBe(true);
+    });
+
+    it("refuses an active entity, which this pass already draws", () => {
+      const { scene } = setup();
+      const entity = spawnEntityInScene(scene, "live");
+      entity.add(new Transform());
+      const visual = entity.add(new SpriteComponent({ texture: {} as never }));
+
+      expect(() => visual.drawInactive(true)).toThrow(
+        'SpriteComponent.drawInactive: entity "live" is active, and DisplaySystem already draws it.',
+      );
     });
 
     it("syncs an active entity in the same pass", () => {
       const { scene } = setup();
 
-      const dormant = scene.spawn("dormant", { active: false });
-      dormant.add(new Transform({ position: new Vec2(100, 200) }));
-      const dormantSprite = dormant.add(
-        new SpriteComponent({ texture: {} as never }),
-      );
-      const written = dormantSprite.renderObject as unknown as InstanceType<
-        typeof mocks.MockContainer
-      >;
-      written.position.set(10, 20);
+      const { visual: dormant, sprite: written } = dormantSprite(scene);
+      dormant.drawInactive(true);
 
       const overlay = spawnEntityInScene(scene, "overlay");
       overlay.add(new Transform({ position: new Vec2(30, 40) }));
@@ -942,7 +981,7 @@ describe("DisplaySystem", () => {
 
       system.update();
 
-      expect(written.position).toMatchObject({ x: 10, y: 20 });
+      expect(written.position).toMatchObject({ x: 100, y: 200 });
       expect(
         (
           overlayGfx.renderObject as unknown as InstanceType<
