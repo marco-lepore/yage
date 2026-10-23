@@ -63,8 +63,7 @@ const NO_PIXI_IMPORT = {
   message:
     "Reach Pixi through @yagejs/renderer's components and type aliases, not pixi.js.",
 };
-// The provider hands out every scene's tree and its Pixi root, for tools and
-// addon presenters that add a layer to a given scene.
+// The provider hands out every scene's tree and its Pixi root, for tools.
 const NO_TREE_PROVIDER = {
   name: "@yagejs/renderer",
   importNames: ["SceneRenderTreeProviderKey"],
@@ -214,7 +213,7 @@ export default tseslint.config(
       ],
       "@typescript-eslint/no-restricted-imports": [
         "error",
-        { paths: [NO_PIXI_IMPORT] },
+        { paths: [NO_PIXI_IMPORT, NO_TREE_PROVIDER] },
       ],
     },
   },

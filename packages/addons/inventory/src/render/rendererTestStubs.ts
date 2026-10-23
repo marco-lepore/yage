@@ -11,11 +11,12 @@
  */
 
 import { Component, ServiceKey } from "@yagejs/core";
-import type { SceneRenderTreeProvider } from "@yagejs/renderer";
+import type { SceneRenderTree } from "@yagejs/renderer";
 
 // Test-only service identity, shared by the renderer mock and its callers.
-export const SceneRenderTreeProviderKey =
-  new ServiceKey<SceneRenderTreeProvider>("renderer-tree-stub");
+export const SceneRenderTreeKey = new ServiceKey<SceneRenderTree>(
+  "renderer-tree-stub",
+);
 
 /** One recorded drawing call inside a `draw()` block. */
 export interface DrawOp {

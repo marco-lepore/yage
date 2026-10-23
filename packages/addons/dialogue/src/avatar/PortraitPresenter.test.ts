@@ -4,7 +4,6 @@ import {
   GraphicsComponent,
   SceneRenderTreeProviderImpl,
   SceneRenderTreeKey,
-  SceneRenderTreeProviderKey,
 } from "@yagejs/renderer";
 import { Assets, Texture } from "pixi.js";
 import { PortraitPresenter } from "./PortraitPresenter.js";
@@ -20,12 +19,11 @@ afterEach(() => {
 describe("portrait mirroring", () => {
   it("centers a right-side portrait and background above the caret footer", () => {
     Assets.cache.set(KEY, Texture.WHITE);
-    const { scene, context } = createMockScene();
+    const { scene } = createMockScene();
     const provider = new SceneRenderTreeProviderImpl(
       new GraphicsComponent().renderObject,
     );
     scene._registerScoped(SceneRenderTreeKey, provider.createForScene(scene));
-    context.register(SceneRenderTreeProviderKey, provider);
     const layout = new BoxLayout({
       ...defaultDialogueTheme(),
       padding: 10,
@@ -60,12 +58,11 @@ describe("portrait mirroring", () => {
   });
   it("keeps the flip across expressions and resets it for another speaker", () => {
     Assets.cache.set(KEY, Texture.WHITE);
-    const { scene, context } = createMockScene();
+    const { scene } = createMockScene();
     const provider = new SceneRenderTreeProviderImpl(
       new GraphicsComponent().renderObject,
     );
     scene._registerScoped(SceneRenderTreeKey, provider.createForScene(scene));
-    context.register(SceneRenderTreeProviderKey, provider);
     const presenter = new PortraitPresenter({
       layer: "portraits",
       leftX: 20,
@@ -104,12 +101,11 @@ describe("portrait mirroring", () => {
 
   it("reads the in-box flip per line without flipping the background", () => {
     Assets.cache.set(KEY, Texture.WHITE);
-    const { scene, context } = createMockScene();
+    const { scene } = createMockScene();
     const provider = new SceneRenderTreeProviderImpl(
       new GraphicsComponent().renderObject,
     );
     scene._registerScoped(SceneRenderTreeKey, provider.createForScene(scene));
-    context.register(SceneRenderTreeProviderKey, provider);
     const layout = new BoxLayout({ ...defaultDialogueTheme(), choiceGap: 6 });
     layout.setViewport(800, 450);
     const presenter = new InBoxAvatarPresenter(layout, {

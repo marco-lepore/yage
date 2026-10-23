@@ -4,7 +4,6 @@ import {
   GraphicsComponent,
   SceneRenderTreeProviderImpl,
   SceneRenderTreeKey,
-  SceneRenderTreeProviderKey,
 } from "@yagejs/renderer";
 import type { BoxLayout } from "./BoxLayout.js";
 import { createMixedDialogue } from "../factory/createMixedDialogue.js";
@@ -17,12 +16,11 @@ import { PortraitPresenter } from "../avatar/PortraitPresenter.js";
 
 describe("dialogue presenter layers", () => {
   it("provisions custom screen and bubble world layers on standalone mount", () => {
-    const { scene, context } = createMockScene();
+    const { scene } = createMockScene();
     const root = new GraphicsComponent();
     const provider = new SceneRenderTreeProviderImpl(root.renderObject);
     const tree = provider.createForScene(scene);
     const ensureLayer = vi.spyOn(tree, "ensureLayer");
-    context.register(SceneRenderTreeProviderKey, provider);
     scene._registerScoped(SceneRenderTreeKey, tree);
     const theme = {
       ...defaultDialogueTheme(),
@@ -97,12 +95,11 @@ describe("dialogue presenter layers", () => {
 describe("configured dialogue layer orders", () => {
   it("passes theme orders through box and mixed bundles and respects an intentional host layer", () => {
     for (const mixed of [false, true]) {
-      const { scene, context } = createMockScene();
+      const { scene } = createMockScene();
       const provider = new SceneRenderTreeProviderImpl(
         new GraphicsComponent().renderObject,
       );
       const tree = provider.createForScene(scene);
-      context.register(SceneRenderTreeProviderKey, provider);
       scene._registerScoped(SceneRenderTreeKey, tree);
       tree.ensureLayer({ name: "portrait", order: 1095, space: "screen" });
       const ensureLayer = vi.spyOn(tree, "ensureLayer");

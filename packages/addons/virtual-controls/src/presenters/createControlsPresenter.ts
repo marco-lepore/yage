@@ -1,5 +1,5 @@
 import type { Scene } from "@yagejs/core";
-import { SceneRenderTreeProviderKey } from "@yagejs/renderer";
+import { SceneRenderTreeKey } from "@yagejs/renderer";
 import type { ControlsPresenter } from "../view.js";
 import { GraphicsButtonView } from "./GraphicsButtonView.js";
 import { GraphicsStickView } from "./GraphicsStickView.js";
@@ -38,15 +38,11 @@ export function createControlsPresenter(
     mount(s: Scene): void {
       scene = s;
       // Auto-provision the screen-space layer (a scene that declared the
-      // same name just gets its own layer back). The provider key is the
-      // public path to the per-scene render tree from non-component code.
-      s.context
-        .tryResolve(SceneRenderTreeProviderKey)
-        ?.getTree(s)
-        ?.ensureLayer(
-          { name: resolved.layer, order: VIRTUAL_CONTROLS_LAYER.order },
-          { space: "screen" },
-        );
+      // same name just gets its own layer back).
+      s.tryResolveScoped(SceneRenderTreeKey)?.ensureLayer(
+        { name: resolved.layer, order: VIRTUAL_CONTROLS_LAYER.order },
+        { space: "screen" },
+      );
     },
     createStickView(stick) {
       return new GraphicsStickView(mustScene(), stick, resolved);

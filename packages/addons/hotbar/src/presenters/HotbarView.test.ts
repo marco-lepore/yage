@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMockScene } from "@yagejs/core";
-import { RendererKey, SceneRenderTreeProviderKey } from "@yagejs/renderer";
-import type { RendererPlugin, SceneRenderTreeProvider } from "@yagejs/renderer";
+import { RendererKey, SceneRenderTreeKey } from "@yagejs/renderer";
+import type { RendererPlugin, SceneRenderTree } from "@yagejs/renderer";
 import { Hotbar } from "../core/Hotbar.js";
 import { HotbarView, defaultHotbarTheme } from "./HotbarView.js";
 import type { HotbarTheme } from "./HotbarView.js";
@@ -81,7 +81,7 @@ vi.mock("@yagejs/renderer", async () => {
       return { width: 16, height: 16 };
     },
     RendererKey: new ServiceKey("renderer"),
-    SceneRenderTreeProviderKey: new ServiceKey("sceneRenderTreeProvider"),
+    SceneRenderTreeKey: new ServiceKey("sceneRenderTree"),
   };
 });
 
@@ -94,9 +94,9 @@ function mount(theme: Partial<HotbarTheme> = {}) {
   context.register(RendererKey, {
     virtualSize: { width: 800, height: 500 },
   } as RendererPlugin);
-  context.register(SceneRenderTreeProviderKey, {
-    getTree: () => ({ ensureLayer }),
-  } as unknown as SceneRenderTreeProvider);
+  scene.registerScoped(SceneRenderTreeKey, {
+    ensureLayer,
+  } as unknown as SceneRenderTree);
   const view = new HotbarView(theme);
   view.mount(scene);
   const model = new Hotbar({
