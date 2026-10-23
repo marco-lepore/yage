@@ -1574,48 +1574,54 @@ test("perception explains each failed check, remembers the last position, and dr
     const sensor = () =>
       inspector.getComponentData("GuardEntity", "PerceptionSensor");
     const brain = () => inspector.getComponentData("GuardEntity", "GuardBrain");
-    // The assertions read component state, so only the last frame is drawn.
-    const wait = (frames: number) =>
-      inspector.time.stepAsync(frames, { render: "last" });
-    const moveTo = async (key: string, frames = 3) => {
-      inspector.input.tap(key);
-      await wait(frames);
-    };
-    await wait(3);
-    const initial = sensor();
-    await moveTo("Digit2");
-    const cover = sensor();
-    await wait(190);
-    const expired = sensor();
-    await moveTo("Digit1");
-    const reacquired = sensor();
-    await moveTo("Digit3");
-    const range = sensor();
-    await moveTo("Digit4");
-    const fov = sensor();
-    await moveTo("Digit5");
-    const shadow = sensor();
-    // Stay in sight until the guard is fully aware, then break line of sight.
-    await moveTo("Digit1", 90);
-    const alerted = brain();
-    await moveTo("Digit2");
-    const investigating = brain();
-    await wait(400);
-    return {
-      initial,
-      cover,
-      expired,
-      reacquired,
-      range,
-      fov,
-      shadow,
-      alerted,
-      investigating,
-      returned: brain(),
-      forgotten: sensor(),
-      errors: inspector.getErrors(),
-    };
+    // One drive with drawing off: the assertions read component state, and
+    // the test steps about 700 frames.
+    const run = await inspector.drive(
+      async ({ step, input }) => {
+        const moveTo = async (key: string, frames = 3) => {
+          await input.tap(key);
+          await step(frames);
+        };
+        await step(3);
+        const initial = sensor();
+        await moveTo("Digit2");
+        const cover = sensor();
+        await step(190);
+        const expired = sensor();
+        await moveTo("Digit1");
+        const reacquired = sensor();
+        await moveTo("Digit3");
+        const range = sensor();
+        await moveTo("Digit4");
+        const fov = sensor();
+        await moveTo("Digit5");
+        const shadow = sensor();
+        // Stay in sight until the guard is fully aware, then break line of sight.
+        await moveTo("Digit1", 90);
+        const alerted = brain();
+        await moveTo("Digit2");
+        const investigating = brain();
+        await step(400);
+        return {
+          initial,
+          cover,
+          expired,
+          reacquired,
+          range,
+          fov,
+          shadow,
+          alerted,
+          investigating,
+          returned: brain(),
+          forgotten: sensor(),
+          errors: inspector.getErrors(),
+        };
+      },
+      { render: "none" },
+    );
+    return run.ok ? run.value : run.error;
   });
+  if (typeof result === "string") throw new Error(result);
   const near = (x: number, y: number) => ({
     x: expect.closeTo(x, 0),
     y: expect.closeTo(y, 0),
