@@ -18,7 +18,7 @@ import type { ParamsOf } from "../params/types.js";
 import { prepareLevel } from "../prepare/prepare.js";
 import type { PreparedLevel } from "../prepare/types.js";
 import { LevelLoadError } from "./errors.js";
-import { instantiateLevel } from "./instantiate.js";
+import { instantiateLevel, levelSceneKeys } from "./instantiate.js";
 
 const textureAsset = defineLevelAsset<string>({
   kind: "texture",
@@ -215,6 +215,22 @@ describe("instantiateLevel", () => {
     expect(scene.findByKey("forest/hero")).toBe(instance.get("p2"));
     expect(instance.entities).toHaveLength(2);
     expect(instance.id).toBe("forest");
+  });
+
+  it("lists the scene keys a load claims, without loading", () => {
+    const scene = sceneOf();
+    const prepared = prepare([
+      placement({ id: "p1" }),
+      placement({ id: "p2", key: "hero" }),
+    ]);
+
+    expect(levelSceneKeys(prepared, "forest")).toEqual([
+      "forest/p1",
+      "forest/hero",
+    ]);
+    expect(scene.findByKey("forest/p1")).toBeUndefined();
+    expect(() => levelSceneKeys(prepared, "a/b")).toThrow(LevelLoadError);
+    expect(() => levelSceneKeys(prepared, "")).toThrow(LevelLoadError);
   });
 
   it("hands setup the decoded parameters", () => {

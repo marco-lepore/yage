@@ -644,6 +644,12 @@ links exist before setup can read them.
 Two instances of one level, or two levels, coexist in one scene as long as
 their namespaces differ.
 
+`levelSceneKeys(prepared, namespace): readonly string[]` returns the scene keys
+`instantiateLevel` would give the level's entities, in placement order, without
+loading anything. Check them with `scene.findByKey` before loading several
+levels that must all load or none. It throws `LevelLoadError` for a namespace
+`instantiateLevel` refuses.
+
 `LevelInstance`:
 
 ```typescript yage-group="project" yage-file="instance.ts" yage-context="scene"

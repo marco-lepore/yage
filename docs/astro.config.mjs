@@ -185,6 +185,7 @@ export default defineConfig({
             { label: "Hotbar", slug: "addons/hotbar" },
             { label: "Stats", slug: "addons/stats" },
             { label: "Behavior Trees", slug: "addons/behavior-tree" },
+            { label: "Procedural Maps", slug: "addons/procedural" },
             { label: "Steering", slug: "addons/steering" },
             { label: "Synth", slug: "addons/synth" },
             { label: "Feel", slug: "addons/feel" },

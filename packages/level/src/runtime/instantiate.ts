@@ -74,6 +74,27 @@ export function instantiateLevel(
   return instance;
 }
 
+/**
+ * The scene keys {@link instantiateLevel} gives a prepared level's entities
+ * under `namespace`, in placement order. Check them against the scene before
+ * loading several levels that must all load or none.
+ *
+ * Throws {@link LevelLoadError} for a namespace `instantiateLevel` refuses.
+ */
+export function levelSceneKeys(
+  prepared: PreparedLevel,
+  namespace: string,
+): readonly string[] {
+  checkNamespace(namespace, prepared.document.id);
+  return prepared.placements.map((entry) =>
+    sceneKey(namespace, entry.placement),
+  );
+}
+
+function sceneKey(namespace: string, placement: LevelPlacement): string {
+  return `${namespace}/${placement.key ?? placement.id}`;
+}
+
 function build(
   scene: Scene,
   prepared: PreparedLevel,
@@ -96,7 +117,7 @@ function build(
         byPlacementId.set(
           placement.id,
           batch.reserve(entry.entry.EntityClass, {
-            key: `${namespace}/${placement.key ?? placement.id}`,
+            key: sceneKey(namespace, placement),
             active: false,
           }),
         );
