@@ -340,7 +340,6 @@ class RenderTargetScene extends Scene {
   readonly layers: readonly LayerDef[] = [
     {
       name: RADAR_LAYER,
-      order: 0,
       renderTarget: {
         width: RADAR_WIDTH,
         height: RADAR_HEIGHT,

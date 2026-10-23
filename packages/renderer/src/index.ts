@@ -193,6 +193,8 @@ export type {
   LayerDef,
   LayerSortFn,
   LayerSpace,
+  OnScreenLayerDef,
+  RenderTargetLayerDef,
   RenderLayerSpace,
   SortItem,
 } from "./LayerDef.js";

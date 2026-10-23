@@ -514,11 +514,7 @@ describe("DisplaySystem", () => {
 
   it("refuses, when the camera is added, a binding that names a render-target layer", () => {
     const { scene, tree } = setup();
-    tree.ensureLayer({
-      name: "radar",
-      order: 1,
-      renderTarget: { width: 8, height: 8 },
-    });
+    tree.ensureLayer({ name: "radar", renderTarget: { width: 8, height: 8 } });
     const entity = spawnEntityInScene(scene, "camera");
 
     expect(() =>

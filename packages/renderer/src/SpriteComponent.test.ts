@@ -279,6 +279,17 @@ describe("SpriteComponent", () => {
     expect(comp.alpha).toBe(0.3);
   });
 
+  it("refuses a non-finite alpha and keeps the previous one", () => {
+    const comp = new SpriteComponent({ texture: {} as never, alpha: 0.4 });
+    expect(() => {
+      comp.alpha = NaN;
+    }).toThrow("SpriteComponent.alpha: value must be finite, got NaN.");
+    expect(comp.alpha).toBe(0.4);
+    expect(
+      () => new SpriteComponent({ texture: {} as never, alpha: Infinity }),
+    ).toThrow("SpriteComponent.alpha: value must be finite, got Infinity.");
+  });
+
   it("keeps base alpha separate from overlapping opacity modifiers", () => {
     const comp = new SpriteComponent({ texture: {} as never, alpha: 0.8 });
     const first = comp.modifiers.addOpacity(0.5);
