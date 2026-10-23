@@ -1,15 +1,8 @@
 import { finite } from "../core/validate.js";
 import { CrushProbe } from "./CrushProbe.js";
-import {
-  Component,
-  GameLoopKey,
-  SceneTimeKey,
-  Transform,
-  type Vec2Like,
-} from "@yagejs/core";
+import { Component, Transform, type Vec2Like } from "@yagejs/core";
 import {
   ColliderComponent,
-  MAX_PHYSICS_STEPS_PER_UPDATE,
   PhysicsWorldKey,
   RigidBodyComponent,
 } from "@yagejs/physics";
@@ -74,19 +67,14 @@ export class MovingSurface extends Component {
     const fraction = Math.min(this.travel, 2 * length - this.travel) / length;
     const x = from.x + (to.x - from.x) * fraction;
     const y = from.y + (to.y - from.y) * fraction;
-    // The body reaches this target in the next physics step. Above time scale
-    // 1 the scene runs about that many steps per update, up to the physics
-    // limit, and riders move in every one of them, so the carry speed covers
-    // all of them.
-    const steps = Math.min(
-      Math.max(1, this.use(SceneTimeKey).effectiveScale),
-      MAX_PHYSICS_STEPS_PER_UPDATE,
-    );
-    const physicsTime = this.use(GameLoopKey).fixedTimestep * steps;
-    const vx = (x - this.body.positionX) / physicsTime;
-    const vy = (y - this.body.positionY) / physicsTime;
-    this.nextVelocity.x = vx;
-    this.nextVelocity.y = vy;
+    // Physics moves the body to this target at a steady speed over the scene
+    // time its next update has to simulate. Riders are carried at that
+    // speed. A scene frozen around an entity that still updates simulates no
+    // time, so nothing is carried.
+    const physics = this.use(PhysicsWorldKey);
+    const time = physics.nextUpdateTime;
+    this.nextVelocity.x = time > 0 ? (x - this.body.positionX) / time : 0;
+    this.nextVelocity.y = time > 0 ? (y - this.body.positionY) / time : 0;
     // Broad phase only: the receiver checks its actual stance and escape path.
     // Crush geometry supports translating boxes.
     const collider = this.entity.get(ColliderComponent);
@@ -95,7 +83,7 @@ export class MovingSurface extends Component {
       const dx = x - this.body.positionX,
         dy = y - this.body.positionY;
       const offset = collider.config.offset ?? { x: 0, y: 0 };
-      const candidates = this.use(PhysicsWorldKey).queryShape(
+      const candidates = physics.queryShape(
         {
           type: "box",
           width: shape.width + Math.abs(dx),

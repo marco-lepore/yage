@@ -146,9 +146,15 @@ export class PlatformerController extends Component {
     // tolerance keeps a resting body grounded: the solver pushes it out of
     // the floor every step, so its vertical speed crosses zero constantly.
     // The last supported normal tells travel over a crest from a takeoff.
+    // The body's velocity is measured against the support velocity it was
+    // built on. On an update that runs no physics step the body already holds
+    // its next velocity while the support still reports its last step, so
+    // the support's own reading would count a turning platform as departure.
     const normal = this.grounded ? this.supportNormal : this.ground.normal;
     const currentNormal = this.ground.normal;
-    const supportVelocity = this.ground.actualSupportVelocity;
+    const supportVelocity =
+      this.motion.appliedSupportVelocity(this.ground.support) ??
+      this.ground.actualSupportVelocity;
     const relativeX = this.motion.velocityX - supportVelocity.x;
     const relativeY = this.motion.velocityY - supportVelocity.y;
     const separating =

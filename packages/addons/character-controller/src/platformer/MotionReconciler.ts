@@ -65,6 +65,18 @@ export class MotionReconciler extends Component {
     return this.velocityX - (this.support ? this.applied.x : 0);
   }
 
+  /**
+   * The support velocity the body's current velocity was built on, while
+   * `body` is still the support it was built on.
+   */
+  appliedSupportVelocity(
+    body: RigidBodyComponent | undefined,
+  ): Readonly<{ x: number; y: number }> | undefined {
+    return body !== undefined && body === this.support
+      ? this.applied
+      : undefined;
+  }
+
   constructor(
     private readonly terrain?: TerrainAssist,
     private readonly resolver: MotionResolver = resolveMotion,

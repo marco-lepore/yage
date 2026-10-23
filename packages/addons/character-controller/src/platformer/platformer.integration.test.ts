@@ -1073,27 +1073,70 @@ it.each(["tall riser", "low ceiling"])(
   },
 );
 
-it.each([0.5, 1.5, 2, 10, 16])(
-  "keeps riders on a horizontal platform with scene timeScale %s",
+it.each([0.5, 0.75, 1, 1.5, 2, 2.5, 3.3, 10, 16])(
+  "keeps a rider's place on a sideways platform through turns at scene timeScale %s",
   async (scale) => {
     const { scene, floor, body, tick } = await setup();
+    const platformBody = floor.get(RigidBodyComponent);
+    platformBody.setType("kinematic");
+    // The platform turns around every 8 steps of scene time.
+    floor.add(
+      new MovingSurface({
+        from: { x: 0, y: 100 },
+        to: { x: 40, y: 100 },
+        speed: 300,
+      }),
+    );
+    scene.timeScale = scale;
+    const offset = body.positionX - platformBody.positionX;
+    for (let i = 0; i < 240; i++) {
+      tick();
+      expect(body.positionX - platformBody.positionX).toBeCloseTo(offset, 2);
+    }
+  },
+);
+
+it.each([
+  [0.5, 60],
+  [0.5, 300],
+  [0.75, 300],
+  [1, 300],
+  [1.5, 300],
+  [2, 300],
+  [2.5, 300],
+  [10, 60],
+])(
+  "keeps a rider grounded on a platform moving up and down at scene timeScale %s and %s px/s",
+  async (scale, speed) => {
+    const { scene, floor, body, controller, tick } = await setup();
     const platformBody = floor.get(RigidBodyComponent);
     platformBody.setType("kinematic");
     floor.add(
       new MovingSurface({
         from: { x: 0, y: 100 },
-        to: { x: 1000, y: 100 },
-        speed: 60,
+        to: { x: 0, y: 20 },
+        speed,
       }),
     );
     scene.timeScale = scale;
-    tick(60);
-    expect(Math.abs(body.positionX - platformBody.positionX)).toBeLessThan(2);
+    const gap = platformBody.positionY - body.positionY;
+    for (let i = 0; i < 240; i++) {
+      tick();
+      expect(controller.grounded).toBe(true);
+      expect(platformBody.positionY - body.positionY).toBeCloseTo(gap, 2);
+    }
   },
 );
 
-it.each([0.5, 1.5])(
-  "keeps riders on a rising platform with scene timeScale %s",
+/** Adds a collider each update, so queries rebuild Rapier's index between steps. */
+class ColliderChurn extends Component {
+  fixedUpdate(): void {
+    this.scene.spawn(Floor, { x: 5000, y: 5000, width: 4, height: 4 });
+  }
+}
+
+it.each([0.5, 1, 2.5])(
+  "keeps a rider's place on a moving platform while colliders are added at scene timeScale %s",
   async (scale) => {
     const { scene, floor, body, controller, tick } = await setup();
     const platformBody = floor.get(RigidBodyComponent);
@@ -1101,20 +1144,62 @@ it.each([0.5, 1.5])(
     floor.add(
       new MovingSurface({
         from: { x: 0, y: 100 },
-        to: { x: 0, y: -2000 },
-        speed: 30,
+        to: { x: 40, y: 20 },
+        speed: 300,
       }),
     );
+    floor.add(new ColliderChurn());
     scene.timeScale = scale;
-    for (let i = 0; i < 60; i++) {
+    const offset = {
+      x: body.positionX - platformBody.positionX,
+      y: body.positionY - platformBody.positionY,
+    };
+    for (let i = 0; i < 120; i++) {
       tick();
       expect(controller.grounded).toBe(true);
-      expect(
-        Math.abs(body.positionY - platformBody.positionY + 10),
-      ).toBeLessThan(1);
+      expect(body.positionX - platformBody.positionX).toBeCloseTo(offset.x, 2);
+      expect(body.positionY - platformBody.positionY).toBeCloseTo(offset.y, 2);
     }
   },
 );
+
+it("keeps a rider's place on a moving platform through a scene freeze", async () => {
+  const { scene, floor, body, controller, tick } = await setup();
+  const platformBody = floor.get(RigidBodyComponent);
+  platformBody.setType("kinematic");
+  floor.add(
+    new MovingSurface({
+      from: { x: 0, y: 100 },
+      to: { x: 40, y: 20 },
+      speed: 300,
+    }),
+  );
+  scene.timeScale = 1.5;
+  tick(5);
+  const offset = {
+    x: body.positionX - platformBody.positionX,
+    y: body.positionY - platformBody.positionY,
+  };
+  const expectRiderInPlace = () => {
+    expect(controller.grounded).toBe(true);
+    expect(body.positionX - platformBody.positionX).toBeCloseTo(offset.x, 2);
+    expect(body.positionY - platformBody.positionY).toBeCloseTo(offset.y, 2);
+  };
+
+  scene.use(SceneTimeKey).freezeFor(0.1);
+  tick();
+  const frozenAt = platformBody.positionX;
+  for (let i = 0; i < 4; i++) {
+    tick();
+    expect(platformBody.positionX).toBe(frozenAt);
+    expectRiderInPlace();
+  }
+  for (let i = 0; i < 60; i++) {
+    tick();
+    expectRiderInPlace();
+  }
+  expect(platformBody.positionX).not.toBeCloseTo(frozenAt);
+});
 
 it.each([0.5, 2])(
   "carries riders at the platform's physics speed with entity timeScale %s",
