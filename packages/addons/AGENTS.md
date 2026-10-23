@@ -35,9 +35,9 @@ Built-in presenters ensure their configured layers before drawing, including
 when mounted standalone. Use the shared renderer `ensureLayer` contract. An
 existing host layer keeps its order. In development a mismatch logs one warning
 per tree, layer name, and requested order. Do not add a separate warning
-registry in an addon. A presenter that adds a layer to a given scene resolves
-that scene's tree through `SceneRenderTreeProviderKey`; examples and game code
-use `SceneRenderTreeKey`, and lint rejects the provider key in examples only.
+registry in an addon. A presenter reaches the tree of the scene it mounts on
+with `scene.tryResolveScoped(SceneRenderTreeKey)`. Lint rejects
+`SceneRenderTreeProviderKey` in addon source and examples.
 
 | Use                                    | Default order range |
 | -------------------------------------- | ------------------- |

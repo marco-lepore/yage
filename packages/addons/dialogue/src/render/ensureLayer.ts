@@ -1,5 +1,5 @@
 import type { Scene } from "@yagejs/core";
-import { SceneRenderTreeProviderKey } from "@yagejs/renderer";
+import { SceneRenderTreeKey } from "@yagejs/renderer";
 
 export function ensureDialogueLayer(
   scene: Scene,
@@ -10,8 +10,7 @@ export function ensureDialogueLayer(
   if (!Number.isFinite(order)) {
     throw new Error(`ensureDialogueLayer: order must be finite, got ${order}`);
   }
-  scene.context
-    .tryResolve(SceneRenderTreeProviderKey)
-    ?.getTree(scene)
+  scene
+    .tryResolveScoped(SceneRenderTreeKey)
     ?.ensureLayer({ name, order, space });
 }

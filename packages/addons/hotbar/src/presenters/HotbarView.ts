@@ -3,7 +3,7 @@ import type { Scene } from "@yagejs/core";
 import {
   GraphicsComponent,
   RendererKey,
-  SceneRenderTreeProviderKey,
+  SceneRenderTreeKey,
   SpriteComponent,
   TextComponent,
   resolveTextureInput,
@@ -112,9 +112,8 @@ export class HotbarView implements HotbarPresenter {
 
   mount(scene: Scene): void {
     if (this.scene) throw new Error("HotbarView.mount: view already mounted");
-    scene.context
-      .tryResolve(SceneRenderTreeProviderKey)
-      ?.getTree(scene)
+    scene
+      .tryResolveScoped(SceneRenderTreeKey)
       ?.ensureLayer({ name: this.theme.layer, order: 1070, space: "screen" });
     this.scene = scene;
     const frame = scene.spawn("hotbar-frame");

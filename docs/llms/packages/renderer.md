@@ -1470,10 +1470,10 @@ class MyScene extends Scene {
 }
 ```
 
-Don't use `SceneRenderTreeProviderKey` from game code. It is for tools that
-enumerate trees across scenes (Inspector, debug) and for addon presenters that
-add a layer to a given scene; lint rejects it in examples only. Resolve the tree
-for the current scene with `this.use(SceneRenderTreeKey)`.
+Don't use `SceneRenderTreeProviderKey` from game or addon code. It is for tools
+that enumerate trees across scenes (Inspector, debug), and lint rejects it in
+examples and addon source. Resolve the tree for the current scene with
+`this.use(SceneRenderTreeKey)`.
 
 `SpriteComponent`/`GraphicsComponent`/etc. take a `layer` option and add
 their Pixi object to that layer themselves; game code never adds Pixi objects

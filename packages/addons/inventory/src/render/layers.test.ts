@@ -1,22 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("@yagejs/renderer", () => import("./rendererTestStubs.js"));
 import { createMockScene } from "@yagejs/core";
-import { SceneRenderTreeProviderKey } from "@yagejs/renderer";
-import type { LayerDef, SceneRenderTreeProvider } from "@yagejs/renderer";
+import { SceneRenderTreeKey } from "@yagejs/renderer";
+import type { LayerDef, SceneRenderTree } from "@yagejs/renderer";
 import { createInventoryPanel } from "../factory/createInventoryPanel.js";
 import { defaultInventoryTheme } from "../factory/defaultTheme.js";
 import { menuSkin } from "./menuSkin.js";
 
 describe("inventory presenter layers", () => {
   it("provisions custom layers for standalone presenters and disposes their visuals", () => {
-    const { scene, context } = createMockScene();
+    const { scene } = createMockScene();
     const defs = new Map<string, LayerDef>();
     const ensureLayer = vi.fn((def: LayerDef) => {
       defs.set(def.name, def);
     });
-    context.register(SceneRenderTreeProviderKey, {
-      getTree: () => ({ ensureLayer }),
-    } as unknown as SceneRenderTreeProvider);
+    scene.registerScoped(SceneRenderTreeKey, {
+      ensureLayer,
+    } as unknown as SceneRenderTree);
     const theme = {
       ...defaultInventoryTheme(),
       layerPanel: "my-panel",
