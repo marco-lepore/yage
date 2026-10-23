@@ -1560,3 +1560,101 @@ test.describe("Examples index", () => {
     expect(layout.bottom).toBeLessThanOrEqual(layout.height);
   });
 });
+
+test("perception explains each failed check, remembers the last position, and drives a separate guard reaction", async ({
+  page,
+}) => {
+  await page.goto("/perception.html?test");
+  await page.waitForFunction(
+    () =>
+      window.__yage__?.inspector?.getSceneStack().at(-1)?.name === "perception",
+  );
+  const result = await page.evaluate(async () => {
+    const inspector = window.__yage__!.inspector;
+    const sensor = () =>
+      inspector.getComponentData("GuardEntity", "PerceptionSensor");
+    const brain = () => inspector.getComponentData("GuardEntity", "GuardBrain");
+    // One drive with drawing off: the assertions read component state, and
+    // the test steps about 700 frames.
+    const run = await inspector.drive(
+      async ({ step, input }) => {
+        const moveTo = async (key: string, frames = 3) => {
+          await input.tap(key);
+          await step(frames);
+        };
+        await step(3);
+        const initial = sensor();
+        await moveTo("Digit2");
+        const cover = sensor();
+        await step(190);
+        const expired = sensor();
+        await moveTo("Digit1");
+        const reacquired = sensor();
+        await moveTo("Digit3");
+        const range = sensor();
+        await moveTo("Digit4");
+        const fov = sensor();
+        await moveTo("Digit5");
+        const shadow = sensor();
+        // Stay in sight until the guard is fully aware, then break line of sight.
+        await moveTo("Digit1", 90);
+        const alerted = brain();
+        await moveTo("Digit2");
+        const investigating = brain();
+        await step(400);
+        return {
+          initial,
+          cover,
+          expired,
+          reacquired,
+          range,
+          fov,
+          shadow,
+          alerted,
+          investigating,
+          returned: brain(),
+          forgotten: sensor(),
+          errors: inspector.getErrors(),
+        };
+      },
+      { render: "none" },
+    );
+    return run.ok ? run.value : run.error;
+  });
+  if (typeof result === "string") throw new Error(result);
+  const near = (x: number, y: number) => ({
+    x: expect.closeTo(x, 0),
+    y: expect.closeTo(y, 0),
+  });
+  // Candidates are evaluated in spawn order: the ally, then the player.
+  expect(result.initial).toMatchObject({
+    evaluations: [{ reason: "ally" }, { reason: null }],
+    diagnostics: [{ visible: true, lastPosition: near(300, 310) }],
+  });
+  expect(result.cover).toMatchObject({
+    evaluations: [{ reason: "ally" }, { reason: "occluded" }],
+    diagnostics: [{ visible: false, lastPosition: near(300, 310) }],
+  });
+  expect(result.expired).toMatchObject({ diagnostics: [] });
+  expect(result.reacquired).toMatchObject({ diagnostics: [{ visible: true }] });
+  expect(result.range).toMatchObject({
+    evaluations: [{}, { reason: "out-of-range" }],
+  });
+  expect(result.fov).toMatchObject({
+    evaluations: [{}, { reason: "outside-field-of-view" }],
+  });
+  expect(result.shadow).toMatchObject({
+    evaluations: [{}, { reason: "below-visibility-threshold" }],
+  });
+  expect(result.alerted).toMatchObject({ state: "alerted" });
+  expect(result.investigating).toMatchObject({
+    state: "investigating",
+    investigations: 1,
+  });
+  expect(result.returned).toMatchObject({
+    state: "watching",
+    investigations: 1,
+  });
+  expect(result.forgotten).toMatchObject({ diagnostics: [] });
+  expect(result.errors.callbackErrors).toEqual([]);
+});

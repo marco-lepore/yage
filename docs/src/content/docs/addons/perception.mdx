@@ -1,0 +1,436 @@
+---
+title: Perception
+description: Give an entity sight, see why it missed a target, and remember where the target was last seen.
+---
+
+`@yagejs-addons/perception` gives an entity sight and last-seen memory. Each
+frame, a `PerceptionSensor` reports which targets its entity sees, why it
+missed each of the others, and where it last saw each target it lost. Your
+game decides the reaction: chase, search the last known position, or ignore
+an ally.
+
+## Install and detect a target
+
+```bash
+npm install @yagejs-addons/perception @yagejs/core
+```
+
+Add a `PerceptionSensor` next to the observer's `Transform`. Tag every target
+with `PERCEPTIBLE_TAG` and give it a `Transform`. No plugin is required.
+
+```ts
+import { Engine, Entity, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  PERCEPTIBLE_TAG,
+  PerceptionDetectedEvent,
+  PerceptionSensor,
+} from "@yagejs-addons/perception";
+
+class Guard extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new PerceptionSensor({ range: 300, fieldOfView: Math.PI }));
+    this.on(PerceptionDetectedEvent, ({ observation }) => {
+      const target = observation.target.current;
+      if (target) console.log(`Saw ${target.name}`);
+    });
+  }
+}
+
+class Player extends Entity {
+  setup() {
+    this.tags.add(PERCEPTIBLE_TAG);
+    this.add(new Transform({ position: new Vec2(100, 0) }));
+  }
+}
+
+class GuardScene extends Scene {
+  readonly name = "guards";
+  onEnter() {
+    this.spawn(Guard);
+    this.spawn(Player, { key: "player" });
+  }
+}
+
+const engine = new Engine();
+await engine.start();
+await engine.scenes.push(new GuardScene());
+```
+
+The sensor samples on every frame update. This guard sees 300 world pixels
+ahead through a 180-degree field of view, centered on its world rotation, with
+0 pointing along +X. Without options, the range is 256 pixels, the field of
+view is a full circle, and memory lasts 3 seconds. The default sensor sees
+through walls; [add occlusion](#block-sight-with-walls-and-game-rules) to stop
+that.
+
+[Try the runnable example](https://examples.yage.dev/perception.html). A guard
+grows suspicious while it sees you, turns to follow you once aware, walks around
+the wall to search where it last saw you, and ignores a friendly character.
+
+## Read what the sensor sees
+
+`sensor.observationOf(entity)` returns the observation of that entity, or
+`undefined` if the sensor has never seen it or has forgotten it. An
+observation stays after the target goes out of sight, until `memoryDuration`
+seconds pass without a new sighting.
+
+| Field          | Meaning                                                            |
+| -------------- | ------------------------------------------------------------------ |
+| `visible`      | The target passed every check in the latest sample                 |
+| `lastPosition` | World position at the last successful sighting                     |
+| `lastSeenAt`   | Scene time of the last successful sighting, in seconds             |
+| `lostAt`       | Scene time the target went out of sight, or `null` while visible   |
+| `firstSeenAt`  | Scene time this observation began                                  |
+| `reason`       | Why the latest sample failed, or `null` while visible              |
+| `visibility`   | Visibility score at the last successful sighting                   |
+| `target`       | An `EntityHandle`; read `target.current` before using the entity   |
+
+`sensor.detected` lists the visible observations whose target is still active.
+`sensor.observations` lists
+every observation, visible or remembered. A failed sample never moves
+`lastPosition`, so a remembered position is always a place the observer saw.
+
+The sensor emits three events on its entity, each with `{ sensor, observation }`:
+
+- `PerceptionDetectedEvent` when a target comes into sight.
+- `PerceptionLostEvent` when a visible target fails a check or stops being a
+  candidate, and for each visible target when the sensor clears its memory.
+- `PerceptionForgottenEvent` when an observation is dropped.
+
+A target that stays in sight emits no further events, so read
+`observationOf` when you need the current state.
+
+A listener can clear the sensor, sample it again, or disable it. The events
+that call produces are delivered after the rest of the current batch, so every
+listener still receives every event. Listeners read the sensor's current
+memory, which can already be past the event they receive: after a clear,
+`observationOf` returns `undefined` for a target whose detection is still being
+delivered. A listener that throws stops the remaining events.
+
+This component walks the guard to the point where it lost the player:
+
+```ts
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
+import type { Vec2Like } from "@yagejs/core";
+import {
+  PerceptionLostEvent,
+  PerceptionSensor,
+} from "@yagejs-addons/perception";
+
+class Investigate extends Component {
+  private readonly sensor = this.sibling(PerceptionSensor);
+  private readonly transform = this.sibling(Transform);
+  private goal: Vec2Like | null = null;
+
+  onAdd() {
+    this.listen(this.entity, PerceptionLostEvent, ({ observation }) => {
+      this.goal = observation.lastPosition;
+    });
+  }
+
+  update(dt: number) {
+    const player = this.scene.findByKey("player");
+    if (player && this.sensor.observationOf(player)?.visible) this.goal = null;
+    if (!this.goal) return;
+    const position = this.transform.position;
+    const offset = new Vec2(this.goal.x - position.x, this.goal.y - position.y);
+    const distance = offset.length();
+    const step = 80 * dt;
+    if (distance <= step) {
+      this.transform.setPosition(this.goal.x, this.goal.y);
+      this.goal = null;
+      return;
+    }
+    const move = offset.scale(step / distance);
+    this.transform.translate(move.x, move.y);
+  }
+}
+
+class InvestigatingGuard extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new PerceptionSensor({ fieldOfView: Math.PI }));
+    this.add(new Investigate());
+  }
+}
+```
+
+`Investigate` walks a straight line, which can cut through the corner of a
+wall. To walk around walls, plan the route with `GridGraph` from
+`@yagejs/pathfinding`, as the example does.
+
+Add game components after the sensor. Components update in the order they are
+added, so `Investigate` reads the sample the sensor took this frame.
+
+## Block sight with walls and game rules
+
+For physical walls, install `@yagejs/physics` and pass `perceptionRaycast()`
+as the line-of-sight check. Physics is an optional peer of this addon.
+
+```ts
+import { Engine, Entity, Scene, Transform } from "@yagejs/core";
+import { PhysicsPlugin } from "@yagejs/physics";
+import { PerceptionSensor } from "@yagejs-addons/perception";
+import { perceptionRaycast } from "@yagejs-addons/perception/physics";
+
+class Guard extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(
+      new PerceptionSensor({
+        range: 300,
+        loseRange: 330,
+        fieldOfView: Math.PI,
+        lineOfSight: perceptionRaycast(),
+        eligible: ({ target }) => (target.tags.has("ally") ? "ally" : null),
+        visibility: ({ target }) => (target.tags.has("in-shadow") ? 0.2 : 1),
+        visibilityThreshold: 0.5,
+      }),
+    );
+  }
+}
+
+class GuardScene extends Scene {
+  readonly name = "guards";
+  onEnter() {
+    this.spawn(Guard);
+  }
+}
+
+const engine = new Engine();
+engine.use(new PhysicsPlugin());
+await engine.start();
+await engine.scenes.push(new GuardScene());
+```
+
+`perceptionRaycast()` casts one ray through the scene's physics world, from
+the observer to the target. Any collider in between blocks sight, except the
+observer's own colliders and the target's. By default, trigger colliders do not
+block sight. Pass `{ sensors: "include" }` to let them block, or
+`{ filterGroups }` to test only some collision groups. A collider on a child entity of the target counts as a
+different entity and blocks.
+
+The sensor runs its checks in this order and stops at the first failure. The
+failure becomes the `reason` on the evaluation and the observation.
+
+| Check          | Option                                      | Reason on failure                |
+| -------------- | ------------------------------------------- | -------------------------------- |
+| Eligibility    | `eligible` returns a string                 | That string, for example `ally`  |
+| Range          | `range`, or `loseRange` while visible       | `out-of-range`                   |
+| Field of view  | `fieldOfView`, a full angle in radians      | `outside-field-of-view`          |
+| Line of sight  | `lineOfSight` returns `false`               | `occluded`                       |
+| Visibility     | `visibility` is below `visibilityThreshold` | `below-visibility-threshold`     |
+
+`loseRange` lets a visible target move farther than `range` before range alone
+breaks contact. To reacquire it, the target must come back within `range`.
+`visibility` returns a score from 0 to 1, such as a camouflage or lighting
+value; a target scoring at least `visibilityThreshold` passes. The threshold
+defaults to 0.01.
+
+Each check receives the observer, the target, the observer's world position,
+the sampled target position, the distance, and the angle from the facing
+direction. Checks must only read game state. A check that throws stops the
+sample and keeps the previous results. The ErrorBoundary records the error
+under the check's name, such as `PerceptionSensor.visibility`.
+
+## Look somewhere other than the rotation
+
+By default the field of view follows the observer's world rotation. A
+side-view guard that turns by flipping its sprite keeps a rotation of 0, so
+pass `facing` with the world angle it looks along:
+
+```ts
+import { Component, Entity, Transform } from "@yagejs/core";
+import { PerceptionSensor } from "@yagejs-addons/perception";
+
+class Patrol extends Component {
+  /** 1 walks right, -1 walks left. */
+  direction: 1 | -1 = 1;
+}
+
+class SideViewGuard extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new Patrol());
+    this.add(
+      new PerceptionSensor({
+        fieldOfView: Math.PI / 2,
+        facing: (guard) => (guard.get(Patrol).direction === 1 ? 0 : Math.PI),
+      }),
+    );
+  }
+}
+```
+
+## Choose targets and sample points
+
+`candidates(observer)` replaces the default query, which returns the active
+entities tagged `PERCEPTIBLE_TAG` in the observer's scene. Return a team list
+or any other entities. The sensor skips the observer itself, duplicates,
+inactive entities, and entities from another scene.
+
+`position(target)` replaces the sample point, which defaults to the target's
+`Transform` world position. Use it to aim at a character's head instead of
+its feet. A candidate without a `Transform` throws unless you supply
+`position`.
+
+## Build gradual awareness
+
+The sensor answers one question per sample: is the target in sight right now?
+How quickly a guard notices, which target it picks, and whether it hears
+anything are game rules. This component, from the example, builds a
+suspicion level from the sensor's samples:
+
+```ts
+import { Component, Entity, Transform } from "@yagejs/core";
+import { PerceptionSensor } from "@yagejs-addons/perception";
+
+class Awareness extends Component {
+  private readonly sensor = this.sibling(PerceptionSensor);
+  /** 0 = calm, 1 = noticed. */
+  level = 0;
+
+  update(dt: number) {
+    const player = this.scene.findByKey("player");
+    const sighting = player && this.sensor.observationOf(player);
+    this.level = sighting?.visible
+      ? Math.min(1, this.level + dt * sighting.visibility)
+      : Math.max(0, this.level - dt / 4);
+  }
+}
+
+class WaryGuard extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new PerceptionSensor({ fieldOfView: Math.PI }));
+    this.add(new Awareness());
+  }
+}
+```
+
+The level rises to 1 over one second of full visibility and falls back to 0
+over four seconds out of sight. A dim target rises more slowly, because the
+rate scales with its visibility score.
+
+## Timing and lifecycle
+
+The sensor samples on every component update with a positive frame delta. A
+frame with a delta of 0, such as one under a time scale of 0, takes no sample.
+Set `autoUpdate: false` and call `sense()` to sample on your own schedule,
+for example every few frames for a distant guard. `sense()` samples whenever
+you call it, as long as the sensor is enabled and its entity is active.
+
+Times come from the scene clock. Pausing the scene pauses memory, so a target
+is never forgotten during a pause. Forgetting happens during a sample: a
+sensor that stops sampling keeps its last results. When a sample sees a target
+whose memory has already run out, it forgets the old observation and starts a
+new one, so listeners receive the forgotten event before the detected one.
+`sampledAt` holds the scene time of the latest sample.
+
+Disabling the sensor, deactivating its entity, or removing the component
+clears every observation and emits loss and forgetting with the reason
+`disabled`. `clear(reason)` does the same on demand, with reason `cleared` by
+default.
+
+## Explain a failed detection
+
+`sensor.evaluations` lists every candidate from the latest sample, including
+the ones that failed. Each row has `id`, `entityId`, `entityName`, `distance`,
+`angle`, `visibility` and `reason`. `visibility` is 0 when an earlier check
+failed before the visibility check ran. When an observed target stops being
+a candidate, because it was destroyed, deactivated, or untagged, its
+observation gets the reason `unavailable` on the next sample.
+
+With an Inspector installed, `getComponentData("Guard", "PerceptionSensor")`
+returns the sensor's `config`, `evaluations`, `sampledAt` and `diagnostics`.
+`diagnostics` lists the observations with each target's entity id, whether it
+is alive and active, and the age of its last sighting.
+
+## Save memory
+
+`snapshot()` returns the observations of targets spawned with a key, recorded
+under that key. `restore(snapshot)` finds each target with
+`scene.findByKey` and replaces the sensor's memory. Spawn the targets before
+you restore.
+
+```ts
+import { Entity, Transform } from "@yagejs/core";
+import { PerceptionSensor } from "@yagejs-addons/perception";
+import type { PerceptionSnapshot } from "@yagejs-addons/perception";
+
+class PersistentGuard extends Entity {
+  private readonly sensor = new PerceptionSensor();
+
+  setup() {
+    this.add(new Transform());
+    this.add(this.sensor);
+  }
+
+  captureMemory(): PerceptionSnapshot {
+    return this.sensor.snapshot();
+  }
+
+  restoreMemory(saved: PerceptionSnapshot): void {
+    this.sensor.restore(saved);
+  }
+}
+```
+
+Store the snapshot in your game's save state; the addon registers no save
+slot. A snapshot holds keys, positions, visibility scores and ages, and no
+entities or functions. Targets without a key are left out.
+
+A restored observation is remembered, not visible, with the reason
+`restored`. The next sample decides whether the target is in sight. Restore
+emits no events. It skips keys that resolve to no entity, to an inactive one,
+or to the observer itself, and records last seen more than `memoryDuration`
+seconds before the snapshot. Invalid data throws before memory changes. Restore throws when the sensor
+is disabled or its entity is inactive.
+
+## Use the memory model directly
+
+`PerceptionMemory<T>` is the memory without the component, for sensing you do
+yourself. Pass it every candidate's result on each sample. It returns the
+transitions instead of emitting events:
+
+```ts
+import { PerceptionMemory } from "@yagejs-addons/perception";
+
+const memory = new PerceptionMemory<string>(2);
+const seen = { x: 10, y: 0 };
+memory.update(0, [
+  { id: "player", target: "player", position: seen, visibility: 1, reason: null },
+]);
+const transitions = memory.update(0.5, [
+  {
+    id: "player",
+    target: "player",
+    position: { x: 40, y: 0 },
+    visibility: 1,
+    reason: "occluded",
+  },
+]);
+console.log(transitions[0]?.type, memory.get("player")?.lastPosition);
+```
+
+The second update logs `lost` and the position `{ x: 10, y: 0 }`. An id
+missing from an update is lost with the reason `unavailable`. Time must not
+go backwards between updates. `snapshot(now)` and
+`restore(snapshot, now, resolve)` save and load the memory, where `resolve`
+maps each saved id back to a target.
+
+A sensor accepts a model through its `memory` option. Set the model's duration
+through its constructor; passing `memoryDuration` as well throws.
+
+## Limits
+
+- Sight tests one point per target, its center by default. A character half
+  behind a wall counts as hidden. Aim `position` at another point, or write a
+  `lineOfSight` check that casts several rays.
+- Hearing, gradual awareness, and choosing among several visible targets are
+  game code. The [awareness section](#build-gradual-awareness) shows the
+  pattern.
+- Callbacks passed as options must only read game state. The sample throws
+  when one of them calls `sense()`, or changes the sensor's memory with
+  `clear()` or `restore()`.

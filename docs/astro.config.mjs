@@ -187,6 +187,7 @@ export default defineConfig({
             { label: "Behavior Trees", slug: "addons/behavior-tree" },
             { label: "Procedural Maps", slug: "addons/procedural" },
             { label: "Steering", slug: "addons/steering" },
+            { label: "Perception", slug: "addons/perception" },
             { label: "Synth", slug: "addons/synth" },
             { label: "Feel", slug: "addons/feel" },
             { label: "Localization", slug: "addons/i18n" },
