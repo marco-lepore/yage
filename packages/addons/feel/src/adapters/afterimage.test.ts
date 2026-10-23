@@ -43,6 +43,9 @@ function createRenderedHost() {
       throw new Error("Masks are not used by this test.");
     },
     clearMask: () => {},
+    setTransitionMask: () => {
+      throw new Error("Masks are not used by this test.");
+    },
     renderAboveEffects: () => {
       throw new Error("This test tree does not support renderAboveEffects.");
     },

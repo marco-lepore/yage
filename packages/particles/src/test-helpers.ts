@@ -140,6 +140,11 @@ export function createParticlesTestContext(): ParticlesTestContext {
       throw new Error("Particles test-helpers tree does not support setMask.");
     },
     clearMask: () => undefined,
+    setTransitionMask: () => {
+      throw new Error(
+        "Particles test-helpers tree does not support setTransitionMask.",
+      );
+    },
     renderAboveEffects: () => {
       throw new Error(
         "Particles test-helpers tree does not support renderAboveEffects.",

@@ -10,28 +10,31 @@ import { RendererKey } from "../types.js";
 import type { MaskFactory } from "../masks/MaskFactory.js";
 import type { MaskHandle } from "../masks/MaskHandle.js";
 
-/** A scene tree that records the scene mask a transition sets and clears. */
+/** A scene tree that records the transition mask a transition sets and removes. */
 interface MaskableContainer {
-  setMask: (factory: MaskFactory) => MaskHandle;
-  clearMask: () => void;
-  /** The mask the last `setMask` factory built. */
+  setTransitionMask: (factory: MaskFactory) => MaskHandle;
+  /** The mask the last `setTransitionMask` factory built. */
   built: ReturnType<MaskFactory> | undefined;
+  /** How many times the transition mask's handle was removed. */
+  removed: number;
 }
 
 function makeMaskableContainer(): MaskableContainer {
   const tree: MaskableContainer = {
     built: undefined,
-    setMask: (factory) => {
+    removed: 0,
+    setTransitionMask: (factory) => {
       const built = factory();
       tree.built = built;
       return {
-        remove: () => {},
+        remove: () => {
+          tree.removed++;
+        },
         setInverse: () => {},
         inverse: built.inverse,
         redraw: () => built.redraw?.(),
       };
     },
-    clearMask: () => {},
   };
   return tree;
 }
@@ -112,15 +115,14 @@ describe("irisReveal", () => {
     const t = irisReveal({ duration: 100 });
     const toScene = { name: "to" } as Scene;
     const toContainer = makeMaskableContainer();
-    const setMask = vi.spyOn(toContainer, "setMask");
-    const clearMask = vi.spyOn(toContainer, "clearMask");
+    const setTransitionMask = vi.spyOn(toContainer, "setTransitionMask");
 
     t.begin!(makeCtx({ elapsed: 0, kind: "push", toScene, toContainer }));
-    expect(setMask).toHaveBeenCalledTimes(1);
+    expect(setTransitionMask).toHaveBeenCalledTimes(1);
     expect(toContainer.built?.inverse).toBe(false);
 
     t.end!(makeCtx({ elapsed: 100, kind: "push", toScene, toContainer }));
-    expect(clearMask).toHaveBeenCalledTimes(1);
+    expect(toContainer.removed).toBe(1);
   });
 
   it("tolerates an undefined toScene container", () => {

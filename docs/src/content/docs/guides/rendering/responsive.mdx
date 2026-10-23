@@ -221,9 +221,11 @@ class BrandedScene extends Scene {
 
 A canvas layer's coordinates do not follow a resize, so redraw its content
 from the new `canvasSize` and `virtualCanvasRect` when the canvas changes
-size. No camera binds a canvas layer, and naming one in a camera's `bindings`
-throws. The scene's own `fx` and `setMask` do not cover it; the renderer's
-screen-scope `fx` does.
+size. No camera binds a canvas layer, and a camera whose `bindings` names one
+throws when it is added. The scene's own `fx` and `setMask` do not cover it;
+the renderer's screen-scope `fx` does. A scene transition draws its overlay
+under canvas layers, so `fade`, `flash` and `iris` leave them in view unless
+you pass `coverScreen: true`.
 
 ## Reasoning about the cropped region under `cover`
 

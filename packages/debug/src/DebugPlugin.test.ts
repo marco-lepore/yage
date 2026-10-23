@@ -275,6 +275,7 @@ function createContext() {
       addLayerEffect: vi.fn(() => ({}) as never),
       setMask: vi.fn(() => ({}) as never),
       clearMask: vi.fn(),
+      setTransitionMask: vi.fn(() => ({}) as never),
       renderAboveEffects: vi.fn(),
       renderWithEffects: vi.fn(),
     }),

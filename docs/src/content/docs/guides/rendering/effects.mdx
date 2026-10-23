@@ -681,7 +681,10 @@ it in `onEnter`. `layer.renderTarget` also holds the texture itself, and is
 - **`refresh: "every-frame"`** (the default) redraws the texture each frame,
   just before the frame is drawn. Every visual on the layer has already taken
   its entity's `Transform` by then, so the texture never shows the previous
-  frame. Use it for content that moves every frame.
+  frame. Use it for content that moves every frame. It keeps redrawing while
+  its scene is hidden under another, because another scene can show the
+  texture through its key. Use `"on-demand"` for a texture nobody looks at
+  most of the time.
 - **`refresh: "on-demand"`** redraws only on the frame after
   `layer.renderTarget.invalidate()`, and after `resize()`. Use it for a baked
   background, a fog-of-war map revealed on discovery, or a lamp that moves on

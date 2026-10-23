@@ -670,6 +670,27 @@ describe("FitController", () => {
       expect(fit.canvasSize).toEqual({ width: 1600, height: 900 });
     });
 
+    it("runs onApply after each transform it applies", () => {
+      const app = new MockApp();
+      const target = makeTarget(800, 600);
+      const scales: number[] = [];
+      const fit = new FitController(
+        app as unknown as Application,
+        app.stage as unknown as Container,
+        400,
+        300,
+        "letterbox",
+        target,
+        app.renderer.width,
+        app.renderer.height,
+        () => scales.push(app.stage.scale.x),
+      );
+      fit.start();
+      observers[0]!.fire(1600, 900);
+
+      expect(scales).toEqual([2, 3]);
+    });
+
     it("ignores zero-size resize events", () => {
       const { fit, app } = makeFit("letterbox", 400, 300, 800, 600);
       fit.start();

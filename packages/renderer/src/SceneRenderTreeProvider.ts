@@ -13,7 +13,8 @@ import type { EffectFactory } from "./effects/Effect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { fanOutHandle } from "./effects/fanOutHandle.js";
-import { attachMask } from "./masks/attachMask.js";
+import { attachMask, createMask } from "./masks/attachMask.js";
+import type { SuspendableMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
 import type { DisplayContainer } from "./public-types.js";
@@ -31,7 +32,9 @@ interface SceneEntry {
 
 class SceneRenderTreeImpl implements SceneRenderTree {
   readonly fx: EffectsHost;
-  private _mask: MaskHandle | undefined;
+  private _mask: SuspendableMask | undefined;
+  /** The transition mask that has set `_mask` aside, if any. */
+  private _transitionMask: MaskHandle | undefined;
   private readonly _offset = { x: 0, y: 0 };
   private readonly warnedOrders = new Map<string, Set<number>>();
   /**
@@ -98,10 +101,21 @@ class SceneRenderTreeImpl implements SceneRenderTree {
     this._offset.x = x;
     this._offset.y = y;
     this.root.position.set(x, y);
-    if (this.canvas) {
-      const scale = this.canvas.fitScale();
-      this.canvas.root.position.set(x * scale.x, y * scale.y);
-    }
+    this._applyCanvasOffset();
+  }
+
+  /**
+   * Move the canvas root by the offset at the current fit scale. The
+   * provider calls it again after every fit change.
+   * @internal
+   */
+  _applyCanvasOffset(): void {
+    if (!this.canvas) return;
+    const scale = this.canvas.fitScale();
+    this.canvas.root.position.set(
+      this._offset.x * scale.x,
+      this._offset.y * scale.y,
+    );
   }
 
   get(name: string): RenderLayer {
@@ -176,13 +190,43 @@ class SceneRenderTreeImpl implements SceneRenderTree {
 
   setMask(factory: MaskFactory): MaskHandle {
     this._mask?.remove();
-    this._mask = attachMask(this.root, factory);
+    this._mask = createMask(
+      this.root,
+      factory,
+      undefined,
+      this._transitionMask === undefined,
+    );
     return this._mask;
   }
 
   clearMask(): void {
     this._mask?.remove();
     this._mask = undefined;
+  }
+
+  setTransitionMask(factory: MaskFactory): MaskHandle {
+    this._transitionMask?.remove();
+    this._mask?.suspend();
+    const mask = attachMask(this.root, factory);
+    const handle: MaskHandle = {
+      remove: () => {
+        mask.remove();
+        if (this._transitionMask !== handle) return;
+        this._transitionMask = undefined;
+        this._mask?.resume();
+      },
+      setInverse: (on) => {
+        mask.setInverse(on);
+      },
+      get inverse() {
+        return mask.inverse;
+      },
+      redraw: () => {
+        mask.redraw();
+      },
+    };
+    this._transitionMask = handle;
+    return handle;
   }
 
   renderAboveEffects(node: DisplayContainer): void {
@@ -228,6 +272,9 @@ class SceneRenderTreeImpl implements SceneRenderTree {
 
   /** @internal — called by the provider before container teardown. */
   _destroyMask(): void {
+    const transition = this._transitionMask;
+    this._transitionMask = undefined;
+    transition?.remove();
     this._mask?.remove();
     this._mask = undefined;
   }
@@ -409,6 +456,14 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
         .find((texture) => texture !== undefined);
       if (heir) registerTexture(key, heir);
     }
+  }
+
+  /**
+   * Move every scene's canvas layers by its offset at the current fit scale,
+   * after the fit changes. Called by the renderer plugin.
+   */
+  reapplyOffsets(): void {
+    for (const entry of this.entries.values()) entry.tree._applyCanvasOffset();
   }
 
   getTree(scene: Scene): SceneRenderTree | undefined {

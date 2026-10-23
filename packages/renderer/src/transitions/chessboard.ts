@@ -3,7 +3,6 @@ import type { DrawContext } from "../DrawContext.js";
 import { graphicsMask } from "../masks/graphicsMask.js";
 import type { MaskHandle } from "../masks/MaskHandle.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
-import type { SceneRenderTree } from "../SceneRenderTree.js";
 import { getSceneRenderTree, getVirtualBounds } from "./helpers.js";
 
 export interface ChessboardOptions {
@@ -41,7 +40,6 @@ export function chessboard(opts: ChessboardOptions = {}): SceneTransition {
   const rows = Math.max(1, Math.floor(opts.rows ?? 6));
   const cols = Math.max(1, Math.floor(opts.cols ?? 10));
 
-  let toTree: SceneRenderTree | undefined;
   let mask: MaskHandle | undefined;
   let progress = 0;
 
@@ -54,13 +52,14 @@ export function chessboard(opts: ChessboardOptions = {}): SceneTransition {
       // No-op for push/replace where the new scene is already topmost.
       if (ctx.toScene) provider.bringSceneToFront?.(ctx.toScene);
 
-      toTree = getSceneRenderTree(ctx, ctx.toScene);
+      const toTree = getSceneRenderTree(ctx, ctx.toScene);
       if (!toTree) return;
       progress = 0;
-      // The scene mask replaces and destroys any mask the scene set for
-      // itself, and `end()` clears it. The cells read the virtual size on every redraw,
-      // so a resize mid-transition still covers the play area.
-      mask = toTree.setMask(
+      // The transition mask sets aside any mask the scene set for itself,
+      // and removing it in `end()` puts that mask back. The cells read the
+      // virtual size on every redraw, so a resize mid-transition still
+      // covers the play area.
+      mask = toTree.setTransitionMask(
         graphicsMask((g) => {
           const { width, height } = getVirtualBounds(ctx);
           drawCells(g, width, height, rows, cols, progress);
@@ -73,9 +72,8 @@ export function chessboard(opts: ChessboardOptions = {}): SceneTransition {
       mask.redraw();
     },
     end() {
-      if (mask) toTree?.clearMask();
+      mask?.remove();
       mask = undefined;
-      toTree = undefined;
     },
   };
 }

@@ -210,6 +210,9 @@ function createTestContext() {
       throw new Error("Tilemap test tree does not support setMask.");
     },
     clearMask: () => undefined,
+    setTransitionMask: () => {
+      throw new Error("Tilemap test tree does not support setTransitionMask.");
+    },
     renderAboveEffects: () => {
       throw new Error("Tilemap test tree does not support renderAboveEffects.");
     },

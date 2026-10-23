@@ -1035,6 +1035,11 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       target,
       this._config.width,
       this._config.height,
+      // A scene offset is held in virtual pixels; its canvas layers move by
+      // it at the new scale. The first fit applies before the provider exists.
+      () => {
+        if (this._installed.provider) this._provider.reapplyOffsets();
+      },
     );
     this._fitController.start();
   }

@@ -175,6 +175,11 @@ class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
         throw new Error("UI test-helpers tree does not support setMask.");
       },
       clearMask: () => undefined,
+      setTransitionMask: () => {
+        throw new Error(
+          "UI test-helpers tree does not support setTransitionMask.",
+        );
+      },
       renderAboveEffects: () => {
         throw new Error(
           "UI test-helpers tree does not support renderAboveEffects.",

@@ -199,7 +199,7 @@ class BrandedScene extends Scene {
 }
 ```
 
-A canvas layer keeps its canvas-pixel coordinates when the canvas resizes, so redraw it from the new `canvasSize` / `virtualCanvasRect` after a resize. Cameras never bind it (naming it in `bindings` throws), and scene-scope `fx` / `setMask` do not cover it; screen-scope `renderer.fx` does.
+A canvas layer keeps its canvas-pixel coordinates when the canvas resizes, so redraw it from the new `canvasSize` / `virtualCanvasRect` after a resize. Cameras never bind it (a camera whose `bindings` names it throws when the camera is added), and scene-scope `fx` / `setMask` do not cover it; screen-scope `renderer.fx` does. A scene transition's overlay draws under canvas layers and `fade` / `flash` / `iris` do not fade them, unless the transition is created with `coverScreen: true`.
 
 Note: "screen" in the engine (UI `LayerSpace: "screen"`, `Camera.screenToWorld`) means _virtual viewport space_. The `canvasToVirtual` method is named after its inputs (DOM CSS pixels on the canvas) to avoid that collision.
 
@@ -1470,9 +1470,10 @@ class MyScene extends Scene {
 }
 ```
 
-Don't use `SceneRenderTreeProviderKey` from game code — it's tooling-only
-(Inspector/debug tools enumerate trees across scenes). Resolve the tree for
-the current scene with `this.use(SceneRenderTreeKey)`.
+Don't use `SceneRenderTreeProviderKey` from game code. It is for tools that
+enumerate trees across scenes (Inspector, debug) and for addon presenters that
+add a layer to a given scene; lint rejects it in examples only. Resolve the tree
+for the current scene with `this.use(SceneRenderTreeKey)`.
 
 `SpriteComponent`/`GraphicsComponent`/etc. take a `layer` option and add
 their Pixi object to that layer themselves; game code never adds Pixi objects
@@ -1578,6 +1579,7 @@ sprite.renderAboveEffects = true;
 | `tree.renderAboveEffects`              | `(node: DisplayContainer) => void`                                                   | Draw `node` after the scene's layers, outside every layer- and scene-scope effect and mask, keeping its logical parent. `tree.renderWithEffects(node)` undoes it. Visual components expose the same thing as the `renderAboveEffects` option; use these for a display object the game parents in itself.                                                                                         |
 | `tree.alpha` / `tree.visible`          | `number` / `boolean`                                                                 | Opacity and visibility of the whole scene, canvas layers included. The scene stack writes `visible` too: it hides scenes under an opaque one, and shows every scene during a transition. A non-finite `alpha` throws.                                                                                                                                                                            |
 | `tree.setOffset(x, y)` / `tree.offset` | `(number, number) => void` / `{ x, y }`                                              | Draw the whole scene shifted by a virtual-pixel offset, canvas layers included. A sliding transition moves a scene with it.                                                                                                                                                                                                                                                                      |
+| `tree.setTransitionMask`               | `(factory: MaskFactory) => MaskHandle`                                               | Mask the scene for a transition. The scene's own `setMask` mask is set aside, not destroyed, and comes back when the handle's `remove()` runs; a `setMask` call meanwhile waits for it.                                                                                                                                                                                                          |
 
 **Filter ordering:** pixi processes filters bottom-up the display tree — component → layer → scene → screen. Each outer scope sees the previous scope's rasterized output, so screen-scope `pixelate` will pixelate already-bloomed gameplay.
 
@@ -1728,7 +1730,7 @@ class ArenaScene extends Scene {
 
 Semantics:
 
-- **Redraw timing.** The texture redraws just before the frame is drawn, after `DisplaySystem` has written every visual's pose, so it never lags a frame. `"every-frame"` redraws each frame; `"on-demand"` only after `invalidate()` or `resize()`. With `renderer.drawingEnabled = false` nothing draws until `renderer.render()` / `captureCanvas()`.
+- **Redraw timing.** The texture redraws just before the frame is drawn, after `DisplaySystem` has written every visual's pose, so it never lags a frame. `"every-frame"` redraws each frame, also while the scene is hidden under another (another scene can show the texture by key); `"on-demand"` only after `invalidate()` or `resize()`. With `renderer.drawingEnabled = false` nothing draws until `renderer.render()` / `captureCanvas()`.
 - **Coordinate space.** Layer pixels are texture pixels: a visual at `(100, 50)` lands at texture pixel `(100, 50)`. No camera binds the layer and the responsive `fit` does not reach it. To follow the camera, place entities at `camera.worldToScreen(x, y)`.
 - **Off screen.** The layer's container is never in the scene's display tree. `onPointer` never fires for its visuals, their bounds are in texture pixels, and `renderAboveEffects` leaves them in the texture.
 - **Validation.** A render-target layer takes no `space`, `"default"` cannot be one, and its size must be positive; the scene's declared layers are all checked when it enters, before any is created. A camera whose `bindings` names a render-target layer throws when it resolves its bindings.

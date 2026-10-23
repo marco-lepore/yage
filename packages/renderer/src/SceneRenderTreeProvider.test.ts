@@ -36,6 +36,11 @@ const { MockContainer, MockRenderLayer } = vi.hoisted(() => {
     label = "";
     eventMode = "passive";
     destroyed = false;
+    /** The node `setMask` installed, as Pixi's `mask` reads it back. */
+    mask: unknown = null;
+    setMask(options: { mask: unknown }): void {
+      this.mask = options.mask;
+    }
     /** Set by `MockRenderLayer.attach`, mirroring Pixi's own field. */
     parentRenderLayer: MockRenderLayer | null = null;
     private listeners = new Map<string, Set<() => void>>();
@@ -145,6 +150,7 @@ import { ProcessSystem, Scene } from "@yagejs/core";
 import type { LayerDef } from "./LayerDef.js";
 import type { SceneRenderTree } from "./SceneRenderTree.js";
 import type { EffectFactory } from "./effects/Effect.js";
+import type { MaskFactory } from "./masks/MaskFactory.js";
 import { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
 import type { LayerTargetFactory, RenderTargetHandle } from "./RenderTarget.js";
 import { Assets } from "pixi.js";
@@ -741,6 +747,79 @@ describe("canvas layers", () => {
   });
 });
 
+describe("transition masks", () => {
+  /** A mask factory whose node the test can find on the root. */
+  function maskOf(label: string): {
+    node: InstanceType<typeof MockContainer>;
+    factory: MaskFactory;
+  } {
+    const node = new MockContainer();
+    node.label = label;
+    return {
+      node,
+      factory: () => ({
+        node: node as never,
+        owned: true,
+        attachToTarget: true,
+        inverse: false,
+      }),
+    };
+  }
+
+  function setup() {
+    const provider = new SceneRenderTreeProviderImpl(
+      new MockContainer() as never,
+    );
+    const scene = makeFakeScene("masked");
+    const tree = provider.createForScene(scene);
+    const root = tree.root as unknown as InstanceType<typeof MockContainer>;
+    return { provider, scene, tree, root };
+  }
+
+  it("sets the scene's own mask aside and puts it back on remove", () => {
+    const { tree, root } = setup();
+    const own = maskOf("own");
+    const reveal = maskOf("reveal");
+    tree.setMask(own.factory);
+
+    const handle = tree.setTransitionMask(reveal.factory);
+    expect(root.mask).toBe(reveal.node);
+    expect(root.children).not.toContain(own.node);
+    expect(own.node.destroyed).toBe(false);
+
+    handle.remove();
+    expect(root.mask).toBe(own.node);
+    expect(root.children).toContain(own.node);
+    expect(reveal.node.destroyed).toBe(true);
+  });
+
+  it("holds a mask set during the transition until the transition mask goes", () => {
+    const { tree, root } = setup();
+    const reveal = maskOf("reveal");
+    const own = maskOf("own");
+    const handle = tree.setTransitionMask(reveal.factory);
+
+    tree.setMask(own.factory);
+    expect(root.mask).toBe(reveal.node);
+
+    handle.remove();
+    expect(root.mask).toBe(own.node);
+  });
+
+  it("destroys both masks with the scene", () => {
+    const { provider, scene, tree } = setup();
+    const own = maskOf("own");
+    const reveal = maskOf("reveal");
+    tree.setMask(own.factory);
+    tree.setTransitionMask(reveal.factory);
+
+    provider.destroyForScene(scene);
+
+    expect(own.node.destroyed).toBe(true);
+    expect(reveal.node.destroyed).toBe(true);
+  });
+});
+
 describe("render-target layers", () => {
   /** Records each target built and the order of teardown steps. */
   function setup() {
@@ -963,7 +1042,7 @@ describe("scene alpha, visibility and offset", () => {
       makeFakeScene("scene", [{ name: "bars", order: 0, space: "canvas" }]),
     );
     const canvasRoot = canvasStage.children[0]!;
-    return { stage, tree, canvasRoot };
+    return { stage, tree, canvasRoot, provider };
   }
 
   it("fades the scene root and its canvas root together", () => {
@@ -1003,5 +1082,17 @@ describe("scene alpha, visibility and offset", () => {
     expect(() => tree.setOffset(Infinity, 0)).toThrow(
       "SceneRenderTree.setOffset: x must be finite, got Infinity.",
     );
+  });
+
+  it("keeps the canvas layers on a held offset when the fit scale changes", () => {
+    const { stage, tree, canvasRoot, provider } = setup();
+    stage.scale.set(2, 2);
+    tree.setOffset(30, -10);
+
+    stage.scale.set(3, 3);
+    provider.reapplyOffsets();
+
+    expect(canvasRoot.position).toMatchObject({ x: 90, y: -30 });
+    expect(tree.offset).toEqual({ x: 30, y: -10 });
   });
 });

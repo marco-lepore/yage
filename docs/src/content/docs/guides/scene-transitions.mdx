@@ -38,7 +38,7 @@ it with `this.use(SceneManagerKey)` and pass the same options.
 **`fade({ duration?, color?, coverScreen? })`** — Fades to a solid color and
 back. The first half fades out, the second half fades in. Defaults to 0.3s,
 black, play-area-only. Pass `coverScreen: true` to also obscure letterbox bars
-(see the caution block below).
+and the scene's `"canvas"` layers (see the caution block below).
 
 ```typescript
 import { fade } from "@yagejs/renderer";
@@ -226,7 +226,7 @@ transitions use the same three:
 - `getSceneRenderTree(ctx, scene)` returns the scene's render tree. Fade the
   whole scene with `tree.alpha`, hide it with `tree.visible`, slide it with
   `tree.setOffset(x, y)` in virtual pixels, and mask it with
-  `tree.setMask(...)`. The alpha, visibility and offset also apply to the
+  `tree.setTransitionMask(...)`. The alpha, visibility and offset also apply to the
   scene's `"canvas"` layers. The mask and `tree.fx` do not.
 - `createTransitionOverlay(ctx, options)` creates a drawing above every
   scene, for covering the swap with a colour, a flash or an iris.
@@ -309,8 +309,9 @@ A few rules hold for every custom transition:
 - **The scene stack owns visibility after the transition.** It shows every
   scene while a transition runs and hides the scenes under an opaque one
   again when it ends, replacing what the transition set.
-- **A transition mask replaces the scene's own mask.** `tree.setMask` holds
-  one mask per scene; call `tree.clearMask()` in `end()`.
+- **Mask with `tree.setTransitionMask`.** It sets the scene's own mask
+  aside and puts it back when you call `remove()` on the handle it returns.
+  Call it in `end()`.
 - **Leave an outgoing scene alone in `end()` on pop and replace.** `end()`
   runs before the frame renders, so restoring its alpha or offset draws it
   for one last frame before it is removed.
@@ -319,7 +320,8 @@ A few rules hold for every custom transition:
 Without options, an overlay sits inside the responsive fit. Its `area` is
 in virtual pixels: the play area under `letterbox`, and the play area plus
 the bars under `expand`, which the game treats as part of its play area.
-A scene's `"canvas"` layers draw above it.
+A scene's `"canvas"` layers draw above it, and `fade`, `flash` and `iris`
+do not fade them.
 
 With `coverScreen: true`, the overlay covers the whole canvas, letterbox
 bars and canvas layers included, and its `area` is in canvas pixels. Convert

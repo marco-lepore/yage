@@ -104,11 +104,20 @@ export interface SceneRenderTree {
   ): H;
   /**
    * Attach a scene-scope mask, replacing any existing one. Clips the entire
-   * per-scene root. Torn down on scene exit.
+   * per-scene root. Torn down on scene exit. While a transition mask is set,
+   * the new mask waits and takes effect when the transition mask is removed.
    */
   setMask(factory: MaskFactory): MaskHandle;
   /** Detach and destroy the scene-scope mask, if any. */
   clearMask(): void;
+  /**
+   * Mask the scene for a transition, such as a circle or a checkerboard
+   * revealing it. The scene's own mask from {@link setMask} is set aside, not
+   * destroyed, and comes back when the returned handle's `remove()` runs.
+   * Setting another transition mask replaces this one. Torn down on scene
+   * exit.
+   */
+  setTransitionMask(factory: MaskFactory): MaskHandle;
   /**
    * Draw `node` after this scene's layers, outside every layer- and
    * scene-scope effect and mask, while it keeps its logical parent (position,

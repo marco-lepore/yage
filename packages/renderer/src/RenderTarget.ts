@@ -57,7 +57,9 @@ export interface LayerRenderTargetOptions extends Pick<
    */
   texture?: string;
   /**
-   * `"every-frame"` (the default) redraws the texture each frame.
+   * `"every-frame"` (the default) redraws the texture each frame, also
+   * while the scene is hidden under another, since another scene can show
+   * the texture by key.
    * `"on-demand"` redraws it only on the frame after
    * `layer.renderTarget.invalidate()`, for content that changes rarely.
    */

@@ -9,7 +9,6 @@ import { attributed } from "../internal/attribution.js";
 import { graphicsMask } from "../masks/graphicsMask.js";
 import type { MaskHandle } from "../masks/MaskHandle.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
-import type { SceneRenderTree } from "../SceneRenderTree.js";
 import { getSceneRenderTree, getVirtualBounds } from "./helpers.js";
 
 export interface IrisRevealOptions {
@@ -46,7 +45,6 @@ export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
   const duration = opts.duration ?? 0.6;
   const easing = opts.easing ?? easeLinear;
 
-  let toTree: SceneRenderTree | undefined;
   let mask: MaskHandle | undefined;
   let cx = 0;
   let cy = 0;
@@ -59,7 +57,7 @@ export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
       const provider = ctx.engineContext.resolve(SceneRenderTreeProviderKey);
       if (ctx.toScene) provider.bringSceneToFront?.(ctx.toScene);
 
-      toTree = getSceneRenderTree(ctx, ctx.toScene);
+      const toTree = getSceneRenderTree(ctx, ctx.toScene);
       if (!toTree) return;
 
       const { width: w, height: h } = getVirtualBounds(ctx);
@@ -70,9 +68,9 @@ export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
       maxRadius = Math.hypot(farX, farY);
 
       radius = 0;
-      // The scene mask replaces and destroys any mask the scene set for
-      // itself, and `end()` clears it.
-      mask = toTree.setMask(
+      // The transition mask sets aside any mask the scene set for itself,
+      // and removing it in `end()` puts that mask back.
+      mask = toTree.setTransitionMask(
         graphicsMask((g) => drawCircleMask(g, cx, cy, radius)),
       );
     },
@@ -88,9 +86,8 @@ export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
       mask.redraw();
     },
     end() {
-      if (mask) toTree?.clearMask();
+      mask?.remove();
       mask = undefined;
-      toTree = undefined;
     },
   };
 }

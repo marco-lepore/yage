@@ -498,34 +498,49 @@ describe("DisplaySystem", () => {
     expect(world.position.x).toBe(-200);
   });
 
-  it("refuses a camera binding that names a canvas layer", () => {
-    const camera = new CameraComponent({
-      bindings: [{ layer: "bars" }],
-    });
-    const tree = {
-      getAll: () => [],
-      tryGet: (name: string) =>
-        name === "bars" ? { name, space: "canvas" } : undefined,
-    } as unknown as SceneRenderTree;
+  it("refuses, when the camera is added, a binding that names a canvas layer", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "bars", order: 1, space: "canvas" });
+    const entity = spawnEntityInScene(scene, "camera");
 
-    expect(() => camera.getResolvedBindings(tree)).toThrow(
-      'CameraComponent.bindings: layer "bars" is a "canvas" layer, which no camera binds.',
+    expect(() =>
+      entity.add(
+        new CameraComponent({ name: "main", bindings: [{ layer: "bars" }] }),
+      ),
+    ).toThrow(
+      'CameraComponent.bindings: camera "main" names layer "bars", a "canvas" layer, which no camera binds.',
     );
   });
 
-  it("refuses a camera binding that names a render-target layer", () => {
-    const camera = new CameraComponent({
-      bindings: [{ layer: "radar" }],
+  it("refuses, when the camera is added, a binding that names a render-target layer", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({
+      name: "radar",
+      order: 1,
+      renderTarget: { width: 8, height: 8 },
     });
-    const tree = {
-      getAll: () => [],
-      tryGet: (name: string) =>
-        name === "radar" ? { name, space: "texture" } : undefined,
-    } as unknown as SceneRenderTree;
+    const entity = spawnEntityInScene(scene, "camera");
 
-    expect(() => camera.getResolvedBindings(tree)).toThrow(
-      'CameraComponent.bindings: layer "radar" draws into a texture, which no camera binds.',
+    expect(() =>
+      entity.add(new CameraComponent({ bindings: [{ layer: "radar" }] })),
+    ).toThrow(
+      'CameraComponent.bindings: camera "camera" names layer "radar", a layer that draws into a texture, which no camera binds.',
     );
+  });
+
+  it("skips a binding to a canvas layer created after the camera", () => {
+    const { scene, tree } = setup();
+    const camera = spawnEntityInScene(scene, "camera").add(
+      new CameraComponent({
+        bindings: [{ layer: "bars" }, { layer: "world" }],
+      }),
+    );
+    tree.ensureLayer({ name: "bars", order: 1, space: "canvas" });
+
+    expect(() => system.update()).not.toThrow();
+    expect(
+      camera.getResolvedBindings(tree).map((binding) => binding.layer),
+    ).not.toContain("bars");
   });
 
   it("never auto-binds a render-target layer", () => {

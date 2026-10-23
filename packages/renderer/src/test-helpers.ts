@@ -179,6 +179,8 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       undefined,
       // Holds the scene's canvas layers, off the stage.
       new MockContainer() as never,
+      // A render-target layer gets a target that never draws.
+      () => ({ texture: {}, destroy: () => {} }) as never,
     );
 
     const sceneFx = new EffectsHost(() => root as never, "scene", queueFactory);
@@ -234,6 +236,9 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       clearMask(): void {
         sceneMask?.remove();
         sceneMask = undefined;
+      },
+      setTransitionMask(factory: MaskFactory): MaskHandle {
+        return attachMask(root as never, factory);
       },
       renderAboveEffects(node): void {
         aboveNodes.add(node as never);

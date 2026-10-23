@@ -1,7 +1,9 @@
 import { Component, Vec2, Vec2Buffer } from "@yagejs/core";
 import type { Vec2Like, EasingFunction } from "@yagejs/core";
 import { RendererKey } from "./types.js";
+import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import type { SceneRenderTree } from "./SceneRenderTree.js";
+import type { RenderLayerSpace } from "./LayerDef.js";
 import { CameraFollow } from "./CameraFollow.js";
 import type { FollowTarget } from "./FollowTarget.js";
 import { CameraShake } from "./CameraShake.js";
@@ -92,6 +94,14 @@ export const CAMERA_REFERENCE_DT = 1 / 60;
 
 /** Shared empty result for a camera that binds nothing. */
 const NO_BINDINGS: readonly CameraBinding[] = [];
+
+/**
+ * Whether a camera can bind a layer in `space`: a `"canvas"` layer draws in
+ * canvas pixels and a `"texture"` layer into its own texture.
+ */
+function bindable(space: RenderLayerSpace | undefined): boolean {
+  return space !== "canvas" && space !== "texture";
+}
 
 /**
  * Core camera state component. Added by `CameraEntity`; holds position,
@@ -278,7 +288,8 @@ export class CameraComponent extends Component {
    * An entry in `bindings` replaces the binding for the layer it names; an
    * entry naming a screen-space layer, or a layer the tree does not hold,
    * is added. An entry naming a `"canvas"` layer or a render-target layer
-   * throws, and render-target layers are never auto-bound. With
+   * throws when the camera is added; one naming such a layer created later
+   * is skipped. Render-target layers are never auto-bound. With
    * `autoBind: false` the camera binds exactly the entries in
    * `bindings` and nothing else — the only way to leave a world-space layer
    * untransformed, since a binding with all three ratios at `0` centres the
@@ -288,22 +299,7 @@ export class CameraComponent extends Component {
    * spawned is bound on the next frame.
    */
   getResolvedBindings(tree: SceneRenderTree): readonly CameraBinding[] {
-    const explicit = this.bindings;
-    for (const binding of explicit ?? NO_BINDINGS) {
-      const space = tree.tryGet(binding.layer)?.space;
-      if (space === "canvas") {
-        throw new Error(
-          `CameraComponent.bindings: layer "${binding.layer}" is a "canvas" ` +
-            `layer, which no camera binds.`,
-        );
-      }
-      if (space === "texture") {
-        throw new Error(
-          `CameraComponent.bindings: layer "${binding.layer}" draws into a ` +
-            `texture, which no camera binds.`,
-        );
-      }
-    }
+    const explicit = this.bindableEntries(tree);
     if (!this.autoBind) return explicit ?? NO_BINDINGS;
 
     const worldLayers = tree
@@ -323,7 +319,41 @@ export class CameraComponent extends Component {
     for (const binding of explicit) resolved.set(binding.layer, binding);
     return [...resolved.values()];
   }
+  /**
+   * Check `bindings` against the layers the scene holds when the camera is
+   * added: an entry naming a `"canvas"` layer or a render-target layer
+   * throws, naming the camera and the layer.
+   */
+  onAdd(): void {
+    // A scene the renderer has not built a tree for has no layers to check;
+    // DisplaySystem skips it too.
+    const tree = this.scene.tryResolveScoped(SceneRenderTreeKey);
+    for (const binding of this.bindings ?? NO_BINDINGS) {
+      const space = tree?.tryGet(binding.layer)?.space;
+      if (bindable(space)) continue;
+      const kind =
+        space === "canvas"
+          ? `a "canvas" layer`
+          : "a layer that draws into a texture";
+      throw new Error(
+        `CameraComponent.bindings: camera "${this.cameraName ?? this.entity.name}" ` +
+          `names layer "${binding.layer}", ${kind}, which no camera binds.`,
+      );
+    }
+  }
+
   onDestroy(): void {
     this.modifiers._destroy();
+  }
+
+  /** `bindings` without the entries naming a layer no camera binds. */
+  private bindableEntries(
+    tree: SceneRenderTree,
+  ): readonly CameraBinding[] | null {
+    const bindings = this.bindings;
+    const isBindable = (binding: CameraBinding): boolean =>
+      bindable(tree.tryGet(binding.layer)?.space);
+    if (!bindings || bindings.every(isBindable)) return bindings;
+    return bindings.filter(isBindable);
   }
 }
