@@ -26,15 +26,9 @@ export function geometryOf(
   const artwork: PreviewOutline[] = [];
   for (const component of entity.getAll()) {
     if (!(component instanceof VisualComponent)) continue;
-    const bounds = component.renderObject.getLocalBounds();
-    const pivot = component.renderObject.pivot;
+    const bounds = component.localBounds;
     artwork.push({
-      vertices: rectangle(
-        bounds.x - pivot.x,
-        bounds.y - pivot.y,
-        bounds.width,
-        bounds.height,
-      ),
+      vertices: rectangle(bounds.x, bounds.y, bounds.width, bounds.height),
       closed: true,
       sensor: false,
     });
