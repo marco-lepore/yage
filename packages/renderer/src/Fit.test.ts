@@ -685,6 +685,7 @@ describe("FitController", () => {
         target,
         app.renderer.width,
         app.renderer.height,
+        false,
         () => scales.push(app.stage.scale.x),
       );
       fit.start();
