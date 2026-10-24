@@ -1012,7 +1012,7 @@ test.describe("Examples", () => {
       await page.goto("/loot-addon.html?test&seed=42");
       await page.waitForFunction(
         () =>
-          window.__yage__?.inspector.time.isFrozen() &&
+          window.__yage__?.inspector?.time.isFrozen() &&
           window.__yage__.inspector.getSceneStack().at(-1)?.name ===
             "loot-addon",
         undefined,
@@ -1199,7 +1199,7 @@ test.describe("Examples", () => {
     await page.goto("/behavior-tree.html?test");
     await page.waitForFunction(
       () =>
-        window.__yage__?.inspector.time.isFrozen() === true &&
+        window.__yage__?.inspector?.time.isFrozen() === true &&
         window.__yage__.inspector.getSceneStack().length > 0,
     );
     const result = await page.evaluate(async () => {
