@@ -18,7 +18,7 @@ export const RendererKey = new ServiceKey<RendererPlugin>("renderer");
 export type FitMode = "letterbox" | "expand" | "cover" | "stretch";
 
 /** The graphics API Pixi draws the canvas with. See `RendererPlugin.backend`. */
-export type RendererBackend = "webgl" | "webgpu" | "canvas";
+export type RendererBackend = "webgl" | "webgpu";
 
 /** Options for the responsive-fit API. */
 export interface RendererFitOptions {
@@ -68,7 +68,7 @@ export interface RendererConfig {
    * WebGL or WebGPU, and Pixi's Canvas 2D renderer is not one of them.
    */
   pixi?: Omit<Partial<ApplicationOptions>, "preference"> & {
-    preference?: "webgl" | "webgpu" | readonly ("webgl" | "webgpu")[];
+    preference?: RendererBackend | readonly RendererBackend[];
   };
   /**
    * Responsive fit. Defaults to `{ mode: "letterbox" }` against the resolved

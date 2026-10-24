@@ -118,10 +118,7 @@ const NO_BUTTON_CHANGE = -1;
  * Canvas 2D renderer draws no light, skips every filter and ignores inverse
  * masks, so a game that reached it would run half-drawn without saying so.
  */
-const DRAWN_BACKENDS = ["webgl", "webgpu"] as const;
-
-/** One graphics API the renderer draws with. */
-type DrawnBackend = (typeof DRAWN_BACKENDS)[number];
+const DRAWN_BACKENDS: readonly RendererBackend[] = ["webgl", "webgpu"];
 
 /** A fullscreen transition the host is running. */
 interface FullscreenStep {
@@ -253,7 +250,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   private _prevDefaultTextStyle: TextStyle | undefined = undefined;
   private _defaultTextStyleCaptured = false;
   /** The backends Pixi is asked for, narrowed from the configured preference. */
-  private readonly _backends: readonly DrawnBackend[];
+  private readonly _backends: readonly RendererBackend[];
   /**
    * What the graphics context reports, read once per context. `null` outside
    * the window from `install` to `onDestroy`, where the two public readers
@@ -1619,9 +1616,9 @@ function readOrientation(part: HostOrientation): OrientationType | null {
  * the front and the other backend follows it, so a game that prefers WebGPU
  * still draws where only WebGL exists.
  */
-function resolveBackends(preference: unknown): readonly DrawnBackend[] {
+function resolveBackends(preference: unknown): readonly RendererBackend[] {
   if (preference === undefined) return DRAWN_BACKENDS;
-  if (isDrawnBackend(preference)) {
+  if (isRendererBackend(preference)) {
     return [
       preference,
       ...DRAWN_BACKENDS.filter((backend) => backend !== preference),
@@ -1630,7 +1627,7 @@ function resolveBackends(preference: unknown): readonly DrawnBackend[] {
   if (
     Array.isArray(preference) &&
     preference.length > 0 &&
-    preference.every(isDrawnBackend)
+    preference.every(isRendererBackend)
   ) {
     return preference;
   }
@@ -1641,7 +1638,7 @@ function resolveBackends(preference: unknown): readonly DrawnBackend[] {
   );
 }
 
-function isDrawnBackend(value: unknown): value is DrawnBackend {
+function isRendererBackend(value: unknown): value is RendererBackend {
   return (
     typeof value === "string" &&
     (DRAWN_BACKENDS as readonly string[]).includes(value)
