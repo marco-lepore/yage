@@ -193,6 +193,7 @@ export default defineConfig({
             { label: "Steering", slug: "addons/steering" },
             { label: "Perception", slug: "addons/perception" },
             { label: "Synth", slug: "addons/synth" },
+            { label: "Music", slug: "addons/music" },
             { label: "Feel", slug: "addons/feel" },
             { label: "Localization", slug: "addons/i18n" },
           ],

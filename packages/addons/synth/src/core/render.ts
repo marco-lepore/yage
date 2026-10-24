@@ -1,4 +1,11 @@
 import type {
+  SynthBankNames,
+  SynthInstrument,
+  SynthInstrumentBank,
+} from "./instruments.js";
+import { seededRandom } from "./random.js";
+import { renderSynthInstrument } from "./instruments.js";
+import type {
   SynthFilter,
   SynthJingle,
   SynthPatch,
@@ -82,7 +89,7 @@ export function renderSynthPatch(
   const attackSamples = Math.min(Math.round(attack * sampleRate), voiceLength);
   const glide = wave === "noise" ? 1 : endFreq / startFreq;
 
-  const random = createRandom(patch.seed ?? 1);
+  const random = seededRandom(patch.seed ?? 1);
   const filter = patch.filter ? createFilter(patch.filter, sampleRate) : null;
 
   let phase = 0;
@@ -169,11 +176,16 @@ export function renderSynthJingle(
   return mix(parts, timeline);
 }
 
-/** Render a patch, a stack of layered patches, or a jingle. */
-export function renderSynthSound(
-  sound: SynthSound,
+/** Render a patch, layered patches, a jingle, or a supplied instrument. */
+export function renderSynthSound<
+  Bank extends SynthInstrumentBank = SynthInstrumentBank,
+>(
+  sound: SynthSound<SynthBankNames<Bank>>,
   sampleRate: number = SYNTH_SAMPLE_RATE,
+  instruments?: Bank,
 ): Float32Array {
+  if (isSynthInstrument(sound))
+    return renderSynthInstrument(sound, sampleRate, instruments).samples;
   if (isPatchStack(sound)) {
     return mix(
       sound.map((patch) => ({
@@ -184,6 +196,13 @@ export function renderSynthSound(
   }
   if ("notes" in sound) return renderSynthJingle(sound, sampleRate);
   return renderSynthPatch(sound, sampleRate);
+}
+
+/** @internal True for an instrument descriptor. */
+export function isSynthInstrument<Name extends string>(
+  sound: SynthSound<Name>,
+): sound is SynthInstrument<Name> {
+  return "instrument" in sound;
 }
 
 /**
@@ -285,20 +304,6 @@ function createFilter(
       : spec.type === "highpass"
         ? high
         : band;
-  };
-}
-
-/**
- * mulberry32 — a small deterministic generator, so noise is reproducible.
- * @internal Shared with preset generators that need seeded randomness.
- */
-export function createRandom(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 

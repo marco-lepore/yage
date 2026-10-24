@@ -3,7 +3,7 @@ title: "Audio"
 description: "Sound effects, music, and channel-based audio mixing"
 ---
 
-YAGE wraps [@pixi/sound](https://github.com/pixijs/sound) for audio playback.
+YAGE plays recorded and generated sounds through Web Audio.
 The `@yagejs/audio` package provides channel-based mixing, a `SoundComponent` for
 entity-bound audio, and a `sound()` asset factory for preloading.
 
@@ -42,6 +42,12 @@ class GameScene extends Scene {
   readonly preload = [CoinSfx, BgMusic];
 }
 ```
+
+Engines in one page share a decoded file. A second engine that preloads the
+same path plays the first engine's decode, and the file stays loaded until
+every engine that loaded it unloads it or is destroyed. Each engine must load
+the file with the same `loopStart`, `loopEnd` and `rootNote`. A different value
+throws an error that names the file.
 
 ## Playing Sounds
 
@@ -122,8 +128,7 @@ calling `onEnd`.
 
 `request.release({ fadeOut: seconds })` accepts `SoundRequestReleaseOptions`.
 `fadeOut` must be finite and non-negative; omitting it or passing zero stops
-immediately when the final owner releases. A positive fade requires an installed
-`AudioPlugin`. Other requests and `playOnce` owners keep the recording playing
+immediately when the final owner releases. Other requests and `playOnce` owners keep the recording playing
 at its current volume. Only the final request's fade applies.
 
 The final request remains `active` through its fade, then becomes inactive when
@@ -156,24 +161,23 @@ audio.stop(handle);
 
 ## Fades and Crossfades
 
-Fade a handle to a target volume with `fadeTo`. The method returns a `Process`,
-so you can cancel it or wait for it with `toPromise()`:
+Fade a handle on the audio clock. `at` is an absolute context time in seconds;
+omit it to begin now. The call returns immediately.
 
 ```typescript yage-group="audio" yage-context="scene-enter"
-import { easeInOutQuad } from "@yagejs/core";
-
-const fade = handle.fadeTo(0, {
+handle.fadeTo(0, {
+  at: audio.currentTime + 0.2,
   duration: 0.6,
-  easing: easeInOutQuad,
   stopOnComplete: true,
 });
-
-await fade.toPromise();
 ```
 
-The default easing is linear. `stopOnComplete` is available when the target
-volume is zero. Starting another fade on the same handle cancels and replaces
-the first fade.
+The default curve is linear. `curve: "exponential"` requires positive start
+and target values. `stopOnComplete` requires a zero target. A later volume
+write replaces the automation from its start time onward. When it starts
+before a `stopOnComplete` fade ends, it also cancels that stop. Writing the current
+value, `handle.setVolume(handle.volume)`, holds the volume where the fade has
+reached. `handle.stop()` ends playback.
 
 Use `crossfade` to replace one playing sound with another:
 
@@ -185,7 +189,6 @@ const current = audio.play(BgMusic, { channel: "music", loop: true });
 
 const next = audio.crossfade(current, StageMusic, {
   duration: 1.2,
-  easing: easeInOutQuad,
   channel: "music",
   loop: true,
   volume: 0.8,
@@ -201,9 +204,11 @@ incoming sound uses the outgoing handle's channel.
 Changing either preserves the handle volume and the current point
 in an active fade.
 
-Fades use the engine-global frame clock. They continue across scene changes
-and do not pause with an individual scene. They follow the global
-`ProcessSystem.timeScale`.
+Fades run on the audio clock. Scene pause and time scale do not affect them,
+so a music fade keeps its length behind a pause menu or during slow motion. To
+hold a fade, pause its handle or its channel: the playback position and the
+remaining automation wait until resume. While the browser suspends the audio
+context, such as in a hidden tab, the audio clock stops and every fade waits.
 
 ## Channels
 
@@ -219,7 +224,7 @@ audio.setChannelVolume("music", 0.7);
 audio.getChannelNames(); // ["sfx", "music"]
 ```
 
-Playback volume is master volume × channel volume × sound volume. For example,
+Playback volume is master volume × every parent channel volume × sound volume. For example,
 master volume 0.5, channel volume 0.7 and sound volume 0.8 produce volume 0.28.
 Changing master volume immediately affects playing sounds and applies to future
 sounds, including channels created later. Channel and sound volumes, ongoing
@@ -264,15 +269,10 @@ audio.stopAll();
 
 ## Audio Unlock
 
-Web browsers suspend the `AudioContext` when a page loads and require a user
-gesture (click, tap, or keypress) before any audio can play. `@pixi/sound`
-attaches a one-shot gesture listener that resumes the context on the first
-interaction, so calling `audio.play(...)` after a click just works.
-
-What this means in practice: **any audio you schedule on page load is silent
-until the user first interacts with the page**. That is expected browser
-behavior, not a YAGE bug — the classic symptom is "my title music doesn't
-play until I click somewhere." To handle the gap cleanly, use `onUnlock`:
+Browsers may suspend audio until a trusted click, tap, or keypress. `AudioPlugin`
+requests resume from those gestures. A successful resume can be asynchronous;
+use `onUnlock` when work must wait for a running context. Ordinary `play`
+calls made while locked remain booked on the frozen audio clock.
 
 ```typescript yage-group="unlock" yage-context="scene-enter"
 import { AudioManagerKey } from "@yagejs/audio";
@@ -303,18 +303,16 @@ Expose the pending state to the UI if you want a "tap to enable audio" hint:
 
 ```typescript yage-group="unlock" yage-context="scene-enter"
 if (!audio.isUnlocked()) {
-  // render a prompt; it's safe to dismiss on first click —
-  // @pixi/sound will have resumed the context by then
+  // Show a prompt until onUnlock confirms that the context is running.
 }
 ```
 
-`isUnlocked()` reflects `AudioContext.state === "running"` and is **never**
-flipped by the mute/pause-on-blur flags below — it is strictly the
-browser-capability check.
+`isUnlocked()` is true exactly while the context is running. It is false during
+visibility suspension as well as before the first successful gesture.
 
 ## Tab Visibility
 
-Most web games go silent when the user backgrounds the tab. `AudioManager`
+Most web games go silent when the user backgrounds the tab. `AudioPlugin`
 suspends the underlying `AudioContext` when the window loses focus and
 resumes it on return:
 
@@ -330,12 +328,11 @@ const audio = this.use(AudioManagerKey);
 audio.autoMuteOnBlur = false;
 ```
 
-`autoMuteOnBlur` is delegated to `@pixi/sound`'s built-in
-`WebAudioContext.autoPause`, which listens for `window.blur`/`focus` events
-and pauses/resumes the entire `AudioContext`. Per-channel mutes and volumes
-are untouched. Toggling the flag while the window is currently unfocused
-takes effect immediately (the manager reconciles `paused` for you);
-otherwise the new policy applies on the next blur event.
+With `autoMuteOnBlur`, the plugin suspends the context on blur or hidden-tab
+notification and requests resume on return after its first successful unlock.
+Channel mute, volume and pause settings retain their values. A changed policy
+applies on the next focus or visibility event. The audio clock stops during
+context suspension, so booked starts and fades retain their relative timing.
 
 Pausing scenes on tab blur is a scene-lifecycle concern, not an audio one —
 see [`SceneManager.autoPauseOnBlur`](/patterns/scene-management/#pause-on-tab-blur).
@@ -362,13 +359,12 @@ audio.play("shoot");
 ```
 
 You can call `registerSound` at module scope, before `AudioPlugin` installs:
-the alias is held and added to the audio library the plugin loads.
+the buffer is available to managers once they are created.
 
 Registered aliases are engine-global and live until you call
 `unregisterSound(alias)`. Re-registering an alias replaces the entry.
-Registering an alias already used by a loaded sound asset throws, since
-letting a runtime buffer shadow a loaded asset would let that asset's unload
-destroy the registered sound.
+Registering an alias already used by a loaded sound asset throws: the asset
+owns that alias until it is unloaded.
 
 If a save root stores the alias, re-register the buffer under the same alias
 during boot before loading that root. The `AudioBuffer` itself is runtime state
@@ -413,3 +409,98 @@ sc.handle;  // current SoundHandle or null
 
 This is useful for ambient sounds attached to world entities — the sound
 lifecycle is tied to the entity lifecycle.
+
+## Scheduled playback and continuous loops
+
+`at` books a start on `audio.currentTime`, independently of rendering frames.
+`offset` selects a position inside the sample. `stopAt` books a stop. Stopping
+a handle immediately cancels its booked start too. A start time already in the
+past starts now and increments `lateStarts` in audio diagnostics.
+
+```ts yage-context="component"
+import { AudioManagerKey } from "@yagejs/audio";
+const audio = this.use(AudioManagerKey);
+const at = audio.currentTime + 0.15;
+const motor = audio.play("motor", {
+  at, offset: 0.1, loop: true, channel: "machinery", volume: 0.2,
+});
+motor.setSpeed(1.3, { at: at + 1, duration: 0.4 });
+motor.setPan(0.7, { at: at + 1, duration: 0.4 });
+motor.release({ at: at + 4, duration: 0.2 });
+```
+
+`setVolume`, `setSpeed`, `setPan`, and `setChannelVolume` accept the same
+`at`, `duration`, and `curve` options. Volume is 0–1, pan is −1–1, and speed
+must remain positive and finite at Web Audio's 32-bit float precision. All
+numeric inputs must be finite. Loop points are seconds
+inside the buffer: `loopStart` defaults to zero, `loopEnd` to its duration.
+
+`registerSound(alias, buffer, { loopStart, loopEnd, rootNote })` stores sound
+metadata with the buffer. The loop points become the sustain loop that
+`loop: true` plays. `rootNote` is the MIDI pitch the recording sounds at its
+original rate. The [music addon](/addons/music/) transposes notes against it.
+`audio.getSoundMetadata(ref)` returns a copy of both.
+`sound(path, { loopStart, loopEnd, rootNote })` sets the same metadata for a
+recorded file. Handles for one file must agree on their metadata.
+
+An automation time already in the past begins now. `crossfade` requires an
+explicit start time to be at or after the current audio time.
+
+Create a child channel with `audio.createChannel("engine", { parent: "sfx" })`.
+Parent gain and mute affect already-booked voices. Parent pause and stop affect
+all descendants. `removeChannel(name)` stops its voices and removes its children.
+The default `sfx` and `music` channels remain when you configure extra channels.
+
+For a custom sequencer, `addScheduler((now, horizon) => { ... })` returns an
+unsubscribe function. Book sources with exact `at` values before `horizon`.
+The plugin calls subscribers every `tickInterval` seconds (default 0.025),
+looking `lookahead` seconds ahead (default 0.12). Background throttling or a
+blocked main thread can exceed that window. The [music addon](/addons/music/)
+counts and skips missed notes instead of playing them in a burst.
+
+## Offline mix measurements
+
+`renderAudio` runs the same voices, channels, panning, rate changes and gain
+automation in an `OfflineAudioContext`. Preload or register the sources first,
+then book every operation in the render plan. Configure `mix` with the same
+master and channel levels used live. There is no implicit compressor or limiter.
+
+```ts
+import { renderAudio, measureAudio } from "@yagejs/audio";
+const buffer = await renderAudio({ duration: 3 }, (audio) => {
+  const loop = audio.play("motor", { loop: true, volume: 0.2 });
+  loop.setSpeed(1.5, { at: 1, duration: 0.5 });
+  loop.release({ at: 2.5, duration: 0.2 });
+});
+const measurements = measureAudio(
+  Array.from({ length: buffer.numberOfChannels }, (_, i) => buffer.getChannelData(i)),
+  buffer.sampleRate,
+);
+```
+
+Measurements include duration, sample peak, RMS, clipped samples (absolute
+value at least 1), and non-finite samples. They do not measure true peak,
+perceptual loudness, or musical quality. Rendering covers the supplied plan;
+it cannot reconstruct gameplay parameter changes that were never recorded.
+Native rendering can differ by small floating-point amounts between runs or
+browsers, so compare measurements with a numerical tolerance.
+
+`audio.getDiagnostics()` reports context state, current time, active and booked
+voices, scheduler count, late starts, channels and callback failures. With an
+Inspector installed, the same data is available through its `audio` extension.
+Unlock, scheduler and completion callbacks use YAGE's error boundary; failures
+are reported and rethrown.
+
+
+## Custom automation and pause-aware sequencing
+
+`onChannelPause(name, callback)` reports effective channel pause, including its
+parents. It calls the callback immediately and on changes, and returns an
+unsubscribe function. A sequencer can hold its transport while that channel is
+paused. Callbacks use the audio error boundary.
+
+`AudioTimeline` holds a value over audio time as steps and linear or
+exponential ramps, for a sequencer's own control values such as a layer
+parameter. `set(value, at, duration?, curve?)` replaces the automation from
+`at`, `valueAt(time)` reads it, and `shift(from, delta)` moves the remaining
+points after a pause.

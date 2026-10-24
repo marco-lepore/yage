@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Adaptive Music</title>
+    <link rel="stylesheet" href="/shared.css" />
+    <style>
+      .audio-controls {
+        max-width: 800px;
+        margin: 20px auto;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      button,
+      select {
+        padding: 10px 16px;
+        background: #18243a;
+        color: #e2e8f0;
+        border: 1px solid #52617a;
+        border-radius: 6px;
+        font: inherit;
+        cursor: pointer;
+      }
+      label {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <a class="back-link" href="/#adaptive-music">← All Examples</a>
+    <h1>Adaptive Music</h1>
+    <div id="game-container"></div>
+    <div class="audio-controls">
+      <label
+        >Lead
+        <select id="lead">
+          <option value="keys">Electric piano</option>
+          <option value="flute">Flute</option>
+          <option value="clarinet">Clarinet</option>
+          <option value="organ">Organ</option>
+        </select></label
+      >
+      <label
+        >Danger
+        <input
+          id="danger"
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value="0.25"
+      /></label>
+      <button id="reward">Collect reward</button
+      ><button id="song">Enter new area</button
+      ><button id="pause">Pause game</button
+      ><button id="measure">Measure offline mix</button
+      ><button id="remove">Remove music entity</button>
+    </div>
+    <p class="controls">
+      Click the page or press a key to start audio. Every sound but one is a
+      synth instrument rendered when the page loads; the accent is a recorded
+      file. The hi-hat is a custom instrument the game defines. Raise danger to
+      bring in bass, kick, hi-hat, and the recorded accent; the wind follows the
+      same control. A reward plays a bell on the next eighth note, moved into
+      the current chord. A new area switches between the swung waltz and
+      straight four-beat music on the next bar, and a new lead instrument also
+      waits for the bar.
+    </p>
+    <p class="controls">
+      Pausing the game pauses the scene and the music and ambience channels, so
+      the music resumes on the beat where it stopped. Measuring renders five
+      seconds of the current song offline and reports its sample peak and RMS.
+      Removing the music entity stops its song and wind.
+    </p>
+    <script type="module" src="/src/adaptive-music/main.ts"></script>
+  </body>
+</html>

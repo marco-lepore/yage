@@ -1,3 +1,7 @@
+import type {
+  SynthBankNames,
+  SynthInstrumentBank,
+} from "./core/instruments.js";
 import { renderSynthSound, SYNTH_SAMPLE_RATE } from "./core/render.js";
 import type { SynthSound } from "./core/types.js";
 
@@ -19,11 +23,14 @@ import type { SynthSound } from "./core/types.js";
  * the browser's first-gesture unlock. Playback resamples if the output device
  * runs at a different rate.
  */
-export function synthBuffer(
-  sound: SynthSound,
+export function synthBuffer<
+  Bank extends SynthInstrumentBank = SynthInstrumentBank,
+>(
+  sound: SynthSound<SynthBankNames<Bank>>,
   sampleRate: number = SYNTH_SAMPLE_RATE,
+  instruments?: Bank,
 ): AudioBuffer {
-  const samples = renderSynthSound(sound, sampleRate);
+  const samples = renderSynthSound(sound, sampleRate, instruments);
   const buffer = new AudioBuffer({
     numberOfChannels: 1,
     length: samples.length,
