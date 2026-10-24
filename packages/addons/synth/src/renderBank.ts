@@ -17,6 +17,9 @@ export interface SynthRenderDiagnostics {
   fallbackReason: string | null;
   failure: string | null;
 }
+/** How a game instrument's renderer appears in the error boundary's records. */
+const RENDERER = "Synth instrument renderer";
+
 /** @internal Worker ownership and readiness for one plugin install. */
 export class RenderBank {
   readonly diagnostics: SynthRenderDiagnostics = {
@@ -45,7 +48,7 @@ export class RenderBank {
     this.diagnostics.total = sounds.length;
     if (this.worker && sounds.length) {
       this.diagnostics.mode = "worker";
-      const result = await this.inWorker(sounds, sampleRate);
+      const result = await this.inWorker(sounds, sampleRate, boundary);
       if (result) return result;
     }
     this.diagnostics.mode = "main";
@@ -57,7 +60,7 @@ export class RenderBank {
       };
       if (boundary && isSynthInstrument(sound))
         boundary.wrapCallback(render, {
-          kind: "Synth instrument renderer",
+          kind: RENDERER,
           event: sound.instrument,
         });
       else render();
@@ -69,6 +72,7 @@ export class RenderBank {
   private inWorker(
     sounds: readonly SynthSound[],
     sampleRate: number,
+    boundary: ErrorBoundary | undefined,
   ): Promise<SynthSample[] | undefined> {
     const worker = this.worker!;
     return new Promise((resolve, reject) => {
@@ -105,7 +109,22 @@ export class RenderBank {
         }
         if ("error" in data) {
           cleanup();
-          reject(new Error(`SynthPlugin: render ${data.id}: ${data.error}`));
+          const sound = sounds[data.id]!;
+          // The renderer threw inside the worker. Raise its error here as the
+          // main-thread path does, so the boundary records the instrument.
+          const raise = (): never => {
+            throw new Error(`SynthPlugin: render ${data.id}: ${data.error}`);
+          };
+          try {
+            if (boundary && isSynthInstrument(sound))
+              boundary.wrapCallback(raise, {
+                kind: RENDERER,
+                event: sound.instrument,
+              });
+            else raise();
+          } catch (error) {
+            reject(error);
+          }
           return;
         }
         result.set(data.id, data.sample);

@@ -39,6 +39,18 @@ export function requirePositive(
       );
 }
 
+/** Throws unless every named value is a finite number of zero or more. */
+export function requireNonNegative(
+  method: string,
+  values: Readonly<Record<string, number>>,
+): void {
+  for (const [name, value] of Object.entries(values))
+    if (!(Number.isFinite(value) && value >= 0))
+      throw new Error(
+        `${method}: ${name} must be a finite number of zero or more, got ${value}`,
+      );
+}
+
 export function samples(seconds: number, sr: number): number {
   return Math.max(1, Math.round(seconds * sr));
 }

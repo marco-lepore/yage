@@ -16,6 +16,7 @@ import {
   saturate,
   sinCycles,
   t60Coef,
+  requireNonNegative,
   requirePositive,
 } from "./util.js";
 
@@ -324,11 +325,13 @@ export function renderMetal(o: SynthMetalOptions, sr: number): Float32Array {
     t60: o.t60,
     frequencyScale: o.frequencyScale,
   });
+  if (o.attack !== undefined)
+    requireNonNegative("renderMetal", { attack: o.attack });
   const { duration, t60, seed } = o;
   const freqScale = o.frequencyScale;
   const noiseLevel = o.noise ?? 0.6;
   const squareLevel = o.squares ?? 0.12;
-  const attackN = (o.attack ?? 0.001) * sr;
+  const attackN = Math.max(1, (o.attack ?? 0.001) * sr);
   const n = samples(duration, sr);
   const out = whiteNoise(n, seed);
   const rng = seededRandom(seed);

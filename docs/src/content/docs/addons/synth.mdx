@@ -478,9 +478,11 @@ The building blocks, all exported from `@yagejs-addons/synth/render`:
 | `seededRandom(seed)` | The seeded generator every built-in uses |
 
 The five `render…` functions allocate new samples, and `renderAdditive` returns
-them with loop points. Each throws when the sample rate, the duration or a top-level
-`frequency`, `t60` or `frequencyScale` option is zero, negative or not finite. `renderAdditive` also requires the
-ranges an instrument accepts. The filters and the level and edge functions
+them with loop points. Each throws when the sample rate, the duration or a
+top-level `frequency`, `t60` or `frequencyScale` option is zero, negative or not
+finite. `renderModal` and `renderMetal` also throw on an `attack` that is
+negative or not finite; an `attack` of 0 starts at full level. `renderAdditive`
+also requires the ranges an instrument accepts. The filters and the level and edge functions
 change the buffer they receive and return it. `fadeIn` and
 `fadeOut` take their length in samples. `prepareTonalLoop` crossfades the
 buffer in place and returns the loop end. `seededRandom` returns a function

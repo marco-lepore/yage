@@ -107,6 +107,31 @@ it("lets two engines preload one file and unload it in either order", async () =
   expect(getSound(coin.path)).toBeUndefined();
   first.plugin.onDestroy();
 });
+it("keeps another engine's hold when a destroyed engine's assets are cleared", async () => {
+  class Context extends FakeAudioContext {
+    decodeAudioData = vi.fn(() => Promise.resolve(fakeBuffer(1)));
+  }
+  vi.stubGlobal("AudioContext", Context);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(44)),
+      }),
+    ),
+  );
+  const coin = sound("/sfx/coin.wav");
+  const first = bootWithLoader();
+  const second = bootWithLoader();
+  await first.assets.loadAll([coin]);
+  await second.assets.loadAll([coin]);
+  first.plugin.onDestroy();
+  await first.assets.clear();
+  expect(getSound(coin.path)).toBe(second.assets.get(coin));
+  second.plugin.onDestroy();
+  expect(getSound(coin.path)).toBeUndefined();
+});
 it("rejects a second engine's load of a file with different metadata", async () => {
   class Context extends FakeAudioContext {
     decodeAudioData = vi.fn(() => Promise.resolve(fakeBuffer(1)));

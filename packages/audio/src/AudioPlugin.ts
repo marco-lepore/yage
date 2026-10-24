@@ -57,8 +57,9 @@ export class AudioPlugin implements Plugin {
         return shared;
       },
       unload: (path: string) => {
-        this.loaded.delete(path);
-        unloadSound(path);
+        // Destroy already released this engine's hold; a later unload of the
+        // same file must not release another engine's.
+        if (this.loaded.delete(path)) unloadSound(path);
       },
     });
     this.unlocked = manager.isUnlocked();

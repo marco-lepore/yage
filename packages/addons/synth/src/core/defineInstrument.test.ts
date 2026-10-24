@@ -129,5 +129,32 @@ describe("a custom instrument", () => {
     expect(() =>
       renderNoise({ color: "pink", duration: Number.NaN, seed: 1 }, 8000),
     ).toThrow("renderNoise: duration");
+    expect(() =>
+      renderMetal(
+        { duration: 0.1, t60: 0.05, frequencyScale: 1, seed: 1, attack: -1 },
+        8000,
+      ),
+    ).toThrow("renderMetal: attack must be a finite number of zero or more");
+  });
+
+  it("renders a zero attack as an immediate start", () => {
+    const hit = renderMetal(
+      { duration: 0.1, t60: 0.05, frequencyScale: 1, seed: 1, attack: 0 },
+      8000,
+    );
+    expect(hit.every(Number.isFinite)).toBe(true);
+    const strike = renderModal(
+      {
+        frequency: 440,
+        duration: 0.1,
+        partials: [{ ratio: 1, amp: 1, t60: 0.1 }],
+        attack: 0,
+        strike: 0,
+        strikeFrequency: 1000,
+        seed: 1,
+      },
+      8000,
+    );
+    expect(strike.every(Number.isFinite)).toBe(true);
   });
 });

@@ -455,8 +455,9 @@ declare function defineInstrument<Name extends string>(
 
 Building blocks on `/render` (the `render…` functions allocate and throw when
 the sample rate, the duration or a top-level frequency, t60 or frequencyScale
-option is zero, negative or not finite; filters and level functions work in
-place and return the buffer; lengths in samples):
+option is zero, negative or not finite, or an `attack` is negative or not
+finite; filters and level functions work in place and return the buffer;
+lengths in samples):
 
 - `renderString({ frequency, duration, t60, brightness, pickPosition, seed,
 twangCents?, twangTime?, vibrato?, thump? }, sampleRate)`: Karplus–Strong

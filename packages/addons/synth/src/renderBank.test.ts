@@ -4,6 +4,7 @@ import type { SynthInstrumentBank } from "./core/instruments.js";
 // Typed as a plain bank: the tests render sounds typed as any SynthSound.
 const instruments: SynthInstrumentBank = { kick, pad };
 import { afterEach, expect, it, vi } from "vitest";
+import { ErrorBoundary, Logger, LogLevel } from "@yagejs/core";
 import { RenderBank } from "./renderBank.js";
 import { renderSynthSample } from "./core/sample.js";
 import type { SynthWorkerRequest } from "./worker.js";
@@ -88,6 +89,24 @@ it("rejects authored render errors instead of concealing them with fallback", as
   );
   await assertion;
   expect(bank.diagnostics.fallbackReason).toBeNull();
+});
+it("records a game instrument that throws in the worker on the error boundary", async () => {
+  const boundary = new ErrorBoundary(new Logger({ level: LogLevel.None }));
+  const worker = new TestWorker();
+  const bank = new RenderBank(worker.asWorker(), 500, instruments);
+  const pending = bank.render(sounds, 8000, boundary);
+  const assertion = expect(pending).rejects.toThrow("render 1: broken pad");
+  worker.dispatchEvent(
+    new MessageEvent("message", { data: { id: 1, error: "broken pad" } }),
+  );
+  await assertion;
+  expect(boundary.getCallbackErrors()).toEqual([
+    {
+      kind: "Synth instrument renderer",
+      event: "pad",
+      error: "SynthPlugin: render 1: broken pad",
+    },
+  ]);
 });
 it("cancels pending rendering on disposal", async () => {
   const worker = new TestWorker();

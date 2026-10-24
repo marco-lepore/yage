@@ -17,6 +17,7 @@ import {
   normalize,
   samples,
   sinCycles,
+  requireNonNegative,
   requirePositive,
 } from "./util.js";
 
@@ -57,6 +58,7 @@ export function renderModal(o: SynthModalOptions, sr: number): Float32Array {
     frequency: o.frequency,
     duration: o.duration,
   });
+  requireNonNegative("renderModal", { attack: o.attack });
   const out = new Float32Array(samples(o.duration, sr));
   const n = out.length;
   const attackN = Math.max(1, o.attack * sr);
