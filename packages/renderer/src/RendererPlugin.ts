@@ -68,6 +68,8 @@ import {
 } from "./internal/textConstruction.js";
 import { createBakedTarget, createRenderTarget } from "./RenderTarget.js";
 import type {
+  LayerRenderRefresh,
+  RenderTargetDrawing,
   RenderTargetHandle,
   RenderTargetOptions,
 } from "./RenderTarget.js";
@@ -430,17 +432,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
           source,
           {
             ...options,
-            // A context with no multisampled render target draws the texture
-            // the same either way; asking for one only earns a warning.
-            antialias:
-              options.antialias === true && this.capabilities.maxSamples > 0,
+            antialias: this.antialiasFor(options.antialias === true),
           },
-          {
-            stage: this._app.stage,
-            isEnabled: () => this.drawingEnabled,
-            refresh: options.refresh ?? "every-frame",
-            live: this._renderTargets,
-          },
+          this.targetDrawing(options.refresh ?? "every-frame"),
         ),
     );
     this._installed.provider = true;
@@ -1114,14 +1108,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       {
         width,
         height,
-        antialias:
-          pixi.view.antialias === true && this.capabilities.maxSamples > 0,
+        antialias: this.antialiasFor(pixi.view.antialias === true),
       },
-      {
-        stage: this._app.stage,
-        isEnabled: () => this.drawingEnabled,
-        live: this._renderTargets,
-      },
+      this.targetDrawing(),
     );
     const texture = target.texture;
     // The game owns the texture: destroying it frees the drawing behind it.
@@ -1153,19 +1142,31 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     return createRenderTarget(
       this._app.renderer,
       source,
-      {
-        ...options,
-        // A context with no multisampled render target draws the buffer the
-        // same either way; asking for one only earns a warning per buffer.
-        antialias:
-          options.antialias === true && this.capabilities.maxSamples > 0,
-      },
-      {
-        stage: this._app.stage,
-        isEnabled: () => this.drawingEnabled,
-        live: this._renderTargets,
-      },
+      { ...options, antialias: this.antialiasFor(options.antialias === true) },
+      this.targetDrawing(),
     );
+  }
+
+  /**
+   * The drawing policy every render target shares. `refresh` is set for a
+   * render-target layer, which draws before each stage render.
+   */
+  private targetDrawing(refresh?: LayerRenderRefresh): RenderTargetDrawing {
+    return {
+      stage: this._app.stage,
+      isEnabled: () => this.drawingEnabled,
+      live: this._renderTargets,
+      ...(refresh === undefined ? {} : { refresh }),
+    };
+  }
+
+  /**
+   * Whether a render target is allocated with antialiasing. A context with no
+   * multisampled render target draws the same either way, and Pixi logs a
+   * warning for each request.
+   */
+  private antialiasFor(requested: boolean): boolean {
+    return requested && this.capabilities.maxSamples > 0;
   }
 
   /** Draw the current stage and pending targets without advancing time. */
