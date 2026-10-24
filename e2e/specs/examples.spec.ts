@@ -1012,7 +1012,7 @@ test.describe("Examples", () => {
       await page.goto("/loot-addon.html?test&seed=42");
       await page.waitForFunction(
         () =>
-          window.__yage__?.inspector.time.isFrozen() &&
+          window.__yage__?.inspector?.time.isFrozen() &&
           window.__yage__.inspector.getSceneStack().at(-1)?.name ===
             "loot-addon",
         undefined,
@@ -1199,7 +1199,7 @@ test.describe("Examples", () => {
     await page.goto("/behavior-tree.html?test");
     await page.waitForFunction(
       () =>
-        window.__yage__?.inspector.time.isFrozen() === true &&
+        window.__yage__?.inspector?.time.isFrozen() === true &&
         window.__yage__.inspector.getSceneStack().length > 0,
     );
     const result = await page.evaluate(async () => {
@@ -1607,6 +1607,56 @@ test.describe("Examples", () => {
     );
     expect(callbackErrors).toEqual([]);
     expect(errors).toEqual([]);
+  });
+
+  test("the audio example holds its sound while the window is unfocused", async ({
+    page,
+  }) => {
+    // Every context the page creates is recorded, because the one audio holds
+    // belongs to the audio library and the page does not expose it.
+    await page.addInitScript(() => {
+      const created: AudioContext[] = [];
+      (window as unknown as { __contexts__: AudioContext[] }).__contexts__ =
+        created;
+      const Original = window.AudioContext;
+      window.AudioContext = class extends Original {
+        constructor(options?: AudioContextOptions) {
+          super(options);
+          created.push(this);
+        }
+      } as typeof AudioContext;
+    });
+    await page.goto("/audio.html?test");
+    await page.waitForFunction(
+      () =>
+        window.__yage__?.inspector?.getSceneStack().at(-1)?.name ===
+        "audio-demo",
+      undefined,
+      { timeout: 10_000 },
+    );
+    // Audio starts locked until a gesture; the example reports when it runs.
+    await page.keyboard.press("KeyR");
+    const states = (): Promise<string[]> =>
+      page.evaluate(() =>
+        (
+          window as unknown as { __contexts__: AudioContext[] }
+        ).__contexts__.map((context) => context.state as string),
+      );
+    await expect.poll(states).toContain("running");
+
+    await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+    await expect.poll(states).toContain("suspended");
+
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(states).toContain("running");
+
+    // With the setting off, the window's focus does not hold audio, which the
+    // audio library's own listener would do on its own.
+    await page.evaluate(() => window.__yage__!.inspector.input.tap("KeyB", 2));
+    await expect(page.locator("#auto-pause-state")).toHaveText("off");
+    await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+    await page.waitForTimeout(500);
+    expect(await states()).toContain("running");
   });
 });
 

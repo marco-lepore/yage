@@ -55,6 +55,18 @@ export type { DrawContext } from "./DrawContext.js";
 export { RendererPlugin } from "./RendererPlugin.js";
 export type { CreateTextureOptions } from "./RendererPlugin.js";
 
+// Host display — what the application running the game supplies for
+// fullscreen and screen orientation.
+export { HostDisplayKey } from "./HostDisplay.js";
+export type {
+  HostDisplay,
+  HostFullscreen,
+  HostOrientation,
+  OrientationLock,
+} from "./HostDisplay.js";
+export { TestHostDisplay } from "./TestHostDisplay.js";
+export type { TestHostDisplayState } from "./TestHostDisplay.js";
+
 // Inspector render facet — the renderer owns this type and publishes it into the
 // Inspector snapshot via RenderFacetContributor (which also augments core's
 // `InspectorFacets` so `snapshot.entities[].facets?.render` is typed). Exporting
@@ -262,6 +274,14 @@ export type {
   RenderTargetHandle,
   RenderTargetOptions,
 } from "./RenderTarget.js";
+
+// Graphics context
+export type {
+  GraphicsBackend,
+  GraphicsCapabilities,
+  GraphicsFormatSupport,
+} from "./GraphicsCapabilities.js";
+export type { GraphicsDiagnostics } from "./GraphicsDiagnostics.js";
 
 // Masks
 export type { MaskHandle } from "./masks/MaskHandle.js";

@@ -144,7 +144,9 @@ Which one to pick:
 
 `ShaderLightingRendererOptions` is `{ layer?, order?, resolutionScale?,
 fallback? }`. `resolutionScale` defaults to `1`, where the drawn light matches
-`levelAt()` pixel for pixel; the overlay's default is `0.5`.
+`levelAt()` pixel for pixel; the overlay's default is `0.5`. `fallback`
+defaults to `overlayLighting()` in the same `layer` and `order`, and with the
+same `resolutionScale` when one is set.
 
 The drawn picture equals what `levelAt()` reports, up to two sources of
 rounding. The shader divides a lamp into 128 slots and rounds each hidden
@@ -156,18 +158,28 @@ Occluder shapes reach the shader through one data texture per scene, so there
 is no cap on how much outline a light may reach and nothing is dropped
 silently. A run is written again only for the lights that moved.
 
-`fallback` takes another `LightingRendererFactory` and is built instead of this
-renderer when the browser gives Pixi a WebGL 1 context, whose shader language
-has none of what the renderer is written in. That is the one device limit the
-renderer reads before drawing; a shader that fails to build on a context that
-does have the language is reported to the browser console by Pixi and by the
-driver, not to the factory, so nothing answers it. A scene on a WebGL 1
-context with no `fallback` throws when it is entered, naming the option.
+`fallback` takes another `LightingRendererFactory`, built in place of this
+renderer where it cannot draw:
+
+| Context                                       | What `shaderLighting()` builds                | Recorded reason                            |
+| --------------------------------------------- | --------------------------------------------- | ------------------------------------------ |
+| WebGL 2, the light program links              | the shader renderer                           | none                                       |
+| WebGL 2, the driver refuses the light program | `fallback`, else `overlayLighting()`          | `"shader-rejected"`, with the driver's log |
+| WebGL 1                                       | `fallback`, else `overlayLighting()`          | `"webgl1"`                                 |
+| WebGPU                                        | the shader renderer, through its WGSL program | none                                       |
+
+The driver test compiles and links the light program once per graphics
+context, which takes a few milliseconds and leaves the compiled program in
+the browser's own cache for the draw that follows. A WebGPU device is not
+tested: WGSL errors arrive after a scene has started drawing, so a choice
+made before the first frame cannot use them.
+
+Pass a `fallback` to choose something other than the overlay:
 
 ```ts
 import { overlayLighting, shaderLighting } from "@yagejs/lighting";
 
-shaderLighting({ fallback: overlayLighting() });
+shaderLighting({ fallback: overlayLighting({ resolutionScale: 0.25 }) });
 ```
 
 The renderer ships a WebGL shader and a WebGPU shader. Both draw the same
@@ -211,6 +223,14 @@ class CaveScene extends Scene {
   brightest spots dim slightly. It suits the overlay, whose hard edges it
   softens.
 
+`"max"` needs min/max blending. Where `renderer.capabilities.blendMinMax` is
+`"unsupported"` — a WebGL 1 context without `EXT_blend_minmax` — the scene is
+drawn with `"mix"` instead, a development build warns once per scene, and the
+lighting diagnostics report both the requested blend and the drawn one. A
+context that replaces a lost one is read again, so a scene whose replacement
+blends differently is redrawn with what that context supports and the
+diagnostics follow it.
+
 `LightingConfig.bounce` is the default for scenes that set none:
 
 ```ts yage-context="engine"
@@ -235,6 +255,10 @@ light buffer itself was redrawn.
 `resolutionScale`: the blurred copy is drawn at a fixed low density of its own,
 so lowering `resolutionScale` sharpens nothing about the bounce and softens
 nothing either.
+
+The light buffers keep the display's pixel ratio. A window moved to a display
+with another ratio, or a browser zoom, re-allocates them at the new density
+and redraws them at the next frame.
 
 ## LightSource
 
@@ -458,6 +482,27 @@ constructing a `Vec2`. The buffer holds world pixels, including parent
 transforms, and stays unchanged until overwritten. Use `position` for an
 immutable value you retain or share.
 
+## Diagnostics
+
+With an Inspector installed, `LightingPlugin` registers the `"lighting"`
+extension: one entry per live scene, oldest first.
+
+```ts yage-context="inspector"
+import type { LightingDiagnostics } from "@yagejs/lighting";
+
+const lighting = inspector.getExtension<LightingDiagnostics>("lighting");
+lighting?.scenes();
+// [{ scene: "cave", renderer: "shader",
+//    fallback: { reason: "webgl1", detail: null },
+//    bounce: { requested: "max", drawn: "mix" } }]
+```
+
+`LightingSceneDiagnostics` holds the scene's name, the configured renderer
+name it asked for, why the shader renderer's fallback drew it
+(`"webgl1"` for a context whose shader language cannot express it, or
+`"shader-rejected"` with the driver's log) or `null`, and the bounce blend it
+asked for beside the one that was drawn, or `null` without bounce.
+
 ## Custom renderer
 
 An entry of `LightingConfig.renderers` is a `LightingRendererFactory`:
@@ -503,13 +548,19 @@ import { LightingComposite } from "@yagejs/lighting";
 import type { LightingRendererFactory } from "@yagejs/lighting";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 
-const composited: LightingRendererFactory = ({ scene, renderer, bounce }) => {
+const composited: LightingRendererFactory = ({
+  scene,
+  world,
+  renderer,
+  bounce,
+}) => {
   const lightContainer = new Container();
   const layer = scene
     .use(SceneRenderTreeKey)
     .ensureLayer({ name: "lighting", order: 900, space: "screen" });
 
   const composite = new LightingComposite(renderer, {
+    world, // reports the drawn bounce blend to the diagnostics
     source: lightContainer, // what this renderer draws into
     parent: layer.container, // a screen-space layer
     width: renderer.virtualSize.width,
@@ -532,6 +583,14 @@ const composited: LightingRendererFactory = ({ scene, renderer, bounce }) => {
   };
 };
 ```
+
+`LightingComposite` also substitutes the bounce blend where the context has
+no min/max blending, reads the blend again on a context that replaces a lost
+one, and keeps its buffers at the display's pixel ratio. The `world` it is
+given is where the lighting diagnostics read the drawn blend. A
+factory that decides what to build reads `context.renderer.capabilities`:
+`backend` says which graphics API drew the scene, and a feature's own field
+says whether the context has it.
 
 A custom renderer that draws shadows should apply the rule `levelAt()` applies,
 or the drawn light and the queried light disagree. The query is the truth

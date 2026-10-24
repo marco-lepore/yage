@@ -44,6 +44,16 @@ npx playwright test e2e/specs/physics-bounce.spec.ts
 
 # Run Playwright with headed browser (for debugging)
 npx playwright test --headed
+
+# Install the shell the iOS half of the native baseline suite drives
+npm --prefix e2e/native/capacitor ci
+
+# Run the native baseline suite: Chromium, Electron and the iOS simulator
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  npm run native -w @yagejs/e2e
+
+# Run one of its projects
+npm run native -w @yagejs/e2e -- --project=electron
 ```
 
 ---
@@ -76,7 +86,11 @@ When modifying packages, changes flow downstream. Build and test in dependency o
   │
   ├── @yagejs/save (→ core)
   │
-  └── @yagejs/level (→ core) — level documents; `/document` entry has no engine dependency
+  ├── @yagejs/level (→ core) — level documents; `/document` entry has no engine dependency
+  │
+  ├── @yagejs/host-electron (→ core, save; peer: electron) — Electron shell and host adapter
+  │
+  └── @yagejs/host-capacitor (→ core, save; peer: @capacitor/core, app, filesystem, screen-orientation) — Capacitor mobile host adapter
 ```
 
 ### Modification Order
@@ -99,61 +113,65 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 
 ### `@yagejs/core`
 
-| File                       | Purpose                                                        |
-| -------------------------- | -------------------------------------------------------------- |
-| `src/index.ts`             | Barrel export -- all public API                                |
-| `src/Engine.ts`            | Entry point, plugin orchestration                              |
-| `src/EngineContext.ts`     | DI container (ServiceKey, register, resolve)                   |
-| `src/Entity.ts`            | Entity class (component CRUD)                                  |
-| `src/Component.ts`         | Base component class                                           |
-| `src/System.ts`            | Base system class, Phase enum                                  |
-| `src/SystemScheduler.ts`   | Ordered system execution                                       |
-| `src/GameLoop.ts`          | Fixed timestep loop                                            |
-| `src/QueryCache.ts`        | Incremental entity query cache                                 |
-| `src/EventBus.ts`          | Typed pub/sub                                                  |
-| `src/SceneManager.ts`      | Scene stack (push/pop/replace)                                 |
-| `src/Scene.ts`             | Scene base class (entity factory)                              |
-| `src/Process.ts`           | Coroutine / tween / sequence                                   |
-| `src/ProcessSlot.ts`       | Reusable restartable process handle (cooldowns, effects)       |
-| `src/ProcessComponent.ts`  | Entity component for slots + one-off processes                 |
-| `src/TimerEntity.ts`       | Pre-built entity exposing ProcessComponent API                 |
-| `src/Trait.ts`             | Trait system (`defineTrait`, `@trait`)                         |
-| `src/Blueprint.ts`         | Reusable entity templates (deprecated)                         |
-| `src/ErrorBoundary.ts`     | System/component error wrapping                                |
-| `src/Inspector.ts`         | Programmatic state queries                                     |
-| `src/InspectorPlugin.ts`   | Installs the Inspector (`InspectorPlugin`, `installInspector`) |
-| `src/SceneRandomSource.ts` | Creates each scene's `RandomKey` RNG; owns the seed            |
-| `src/Logger.ts`            | Structured logging                                             |
-| `src/Vec2.ts`              | Immutable 2D vector                                            |
-| `src/Vec2Buffer.ts`        | Caller-owned mutable coordinates for `Into` results            |
-| `src/Transform.ts`         | Position/rotation/scale component                              |
-| `src/MathUtils.ts`         | Math utilities                                                 |
-| `src/types.ts`             | Shared type definitions                                        |
-| `src/test-utils.ts`        | Mock factories for testing                                     |
-| `package.json`             | Zero runtime dependencies                                      |
-| `tsconfig.json`            | Extends root tsconfig.base.json                                |
-| `tsup.config.ts`           | Build config (ESM + CJS + .d.ts)                               |
-| `vitest.config.ts`         | Test config (100% coverage threshold)                          |
+| File                       | Purpose                                                                                                    |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`             | Barrel export -- all public API                                                                            |
+| `src/Engine.ts`            | Entry point, plugin orchestration                                                                          |
+| `src/EngineContext.ts`     | DI container (ServiceKey, register, resolve)                                                               |
+| `src/Host.ts`              | Which application runs the game, and whether it is active, visible and focused; where host adapters attach |
+| `src/Entity.ts`            | Entity class (component CRUD)                                                                              |
+| `src/Component.ts`         | Base component class                                                                                       |
+| `src/System.ts`            | Base system class, Phase enum                                                                              |
+| `src/SystemScheduler.ts`   | Ordered system execution                                                                                   |
+| `src/GameLoop.ts`          | Fixed timestep loop                                                                                        |
+| `src/QueryCache.ts`        | Incremental entity query cache                                                                             |
+| `src/EventBus.ts`          | Typed pub/sub                                                                                              |
+| `src/SceneManager.ts`      | Scene stack (push/pop/replace)                                                                             |
+| `src/Scene.ts`             | Scene base class (entity factory)                                                                          |
+| `src/Process.ts`           | Coroutine / tween / sequence                                                                               |
+| `src/ProcessSlot.ts`       | Reusable restartable process handle (cooldowns, effects)                                                   |
+| `src/ProcessComponent.ts`  | Entity component for slots + one-off processes                                                             |
+| `src/TimerEntity.ts`       | Pre-built entity exposing ProcessComponent API                                                             |
+| `src/Trait.ts`             | Trait system (`defineTrait`, `@trait`)                                                                     |
+| `src/Blueprint.ts`         | Reusable entity templates (deprecated)                                                                     |
+| `src/ErrorBoundary.ts`     | System/component error wrapping                                                                            |
+| `src/Inspector.ts`         | Programmatic state queries                                                                                 |
+| `src/InspectorPlugin.ts`   | Installs the Inspector (`InspectorPlugin`, `installInspector`)                                             |
+| `src/SceneRandomSource.ts` | Creates each scene's `RandomKey` RNG; owns the seed                                                        |
+| `src/Logger.ts`            | Structured logging                                                                                         |
+| `src/Vec2.ts`              | Immutable 2D vector                                                                                        |
+| `src/Vec2Buffer.ts`        | Caller-owned mutable coordinates for `Into` results                                                        |
+| `src/Transform.ts`         | Position/rotation/scale component                                                                          |
+| `src/MathUtils.ts`         | Math utilities                                                                                             |
+| `src/types.ts`             | Shared type definitions                                                                                    |
+| `src/test-utils.ts`        | Mock factories for testing                                                                                 |
+| `package.json`             | Zero runtime dependencies                                                                                  |
+| `tsconfig.json`            | Extends root tsconfig.base.json                                                                            |
+| `tsup.config.ts`           | Build config (ESM + CJS + .d.ts)                                                                           |
+| `vitest.config.ts`         | Test config (100% coverage threshold)                                                                      |
 
 ### `@yagejs/renderer`
 
-| File                             | Purpose                                                        |
-| -------------------------------- | -------------------------------------------------------------- |
-| `src/RendererPlugin.ts`          | Plugin entry, PixiJS v8 setup                                  |
-| `src/SpriteComponent.ts`         | Sprite wrapper                                                 |
-| `src/GraphicsComponent.ts`       | Graphics wrapper with `draw()`                                 |
-| `src/AnimatedSpriteComponent.ts` | Animated sprite using `FrameSource`                            |
-| `src/AnimationController.ts`     | Named animations, one-shot locking                             |
-| `src/spritesheet.ts`             | `sliceSheet`, `FrameSource`, `resolveFrames`                   |
-| `src/assets.ts`                  | `texture()`, `spritesheet()` factories                         |
-| `src/CameraEntity.ts`            | Entity for camera instances                                    |
-| `src/CameraComponent.ts`         | Core camera component                                          |
-| `src/CameraFollow.ts`            | Follow behavior component                                      |
-| `src/CameraShake.ts`             | Shake behavior component                                       |
-| `src/CameraZoom.ts`              | Zoom behavior component                                        |
-| `src/CameraBoundsComponent.ts`   | Bounds constraint component                                    |
-| `src/DisplaySystem.ts`           | Render-phase Transform→PixiJS sync for every `VisualComponent` |
-| `src/RenderLayer.ts`             | Named draw-order layers                                        |
+| File                             | Purpose                                                               |
+| -------------------------------- | --------------------------------------------------------------------- |
+| `src/RendererPlugin.ts`          | Plugin entry, PixiJS v8 setup                                         |
+| `src/GraphicsCapabilities.ts`    | What the graphics context can do, read from Pixi's renderer           |
+| `src/RenderTarget.ts`            | Offscreen buffers; redraw after a restore and on a resolution change  |
+| `src/HostDisplay.ts`             | What a host supplies for fullscreen and orientation; `HostDisplayKey` |
+| `src/SpriteComponent.ts`         | Sprite wrapper                                                        |
+| `src/GraphicsComponent.ts`       | Graphics wrapper with `draw()`                                        |
+| `src/AnimatedSpriteComponent.ts` | Animated sprite using `FrameSource`                                   |
+| `src/AnimationController.ts`     | Named animations, one-shot locking                                    |
+| `src/spritesheet.ts`             | `sliceSheet`, `FrameSource`, `resolveFrames`                          |
+| `src/assets.ts`                  | `texture()`, `spritesheet()` factories                                |
+| `src/CameraEntity.ts`            | Entity for camera instances                                           |
+| `src/CameraComponent.ts`         | Core camera component                                                 |
+| `src/CameraFollow.ts`            | Follow behavior component                                             |
+| `src/CameraShake.ts`             | Shake behavior component                                              |
+| `src/CameraZoom.ts`              | Zoom behavior component                                               |
+| `src/CameraBoundsComponent.ts`   | Bounds constraint component                                           |
+| `src/DisplaySystem.ts`           | Render-phase Transform→PixiJS sync for every `VisualComponent`        |
+| `src/RenderLayer.ts`             | Named draw-order layers                                               |
 
 ### `@yagejs/lighting`
 
@@ -166,6 +184,8 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 | `src/LightingSystem.ts`          | Render-phase backend synchronization            |
 | `src/OverlayLightingRenderer.ts` | Built-in multiply-overlay renderer              |
 | `src/ShaderLightingRenderer.ts`  | Soft-shadow renderer, one shaded quad per light |
+| `src/LightingComposite.ts`       | Light buffer, bounce, multiply over the scene   |
+| `src/shader-probe.ts`            | One link test of the light shader per context   |
 
 ### `@yagejs/physics`
 
@@ -261,25 +281,63 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 Controlled persistence for typed reactive stores and custom
 `Serializable<TEncoded>` state roots:
 
-| File                           | Purpose                                                            |
-| ------------------------------ | ------------------------------------------------------------------ |
-| `src/Save.ts`                  | `Save` class + `createSave({ adapter })`, slot manifest, IO        |
-| `src/SavePlugin.ts`            | Plugin entry, registers `SaveServiceKey` from user-provided `Save` |
-| `src/keys.ts`                  | `SaveServiceKey`                                                   |
-| `src/adapters/localStorage.ts` | `localStorageAdapter()` — browser default                          |
-| `src/adapters/memory.ts`       | `memoryAdapter()` — tests + Node                                   |
+| File                           | Purpose                                                                    |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| `src/Save.ts`                  | `Save` class + `createSave({ adapter })`, slot documents, IO               |
+| `src/SavePlugin.ts`            | Plugin entry, registers `SaveServiceKey` from user-provided `Save`         |
+| `src/keys.ts`                  | `SaveServiceKey`                                                           |
+| `src/adapters/localStorage.ts` | `localStorageAdapter()` — browser default                                  |
+| `src/adapters/memory.ts`       | `memoryAdapter()` — tests + Node                                           |
+| `src/adapters/file.ts`         | `fileAdapter({ store })` — atomic per-key writes over a directory of files |
 
 The reactive state factories themselves live in `@yagejs/core` under `src/state/`: the compound `createStore` plus the leaf factories `createRecord`, `createValue`, `createSet`, `createMap`, `createCounter`, and `createList`. They implement three contracts: `Reactive`, `Serializable<T>`, and `Resettable`. Those contracts and the `Reactive*` shape interfaces are defined in `state/reactive.ts`. The save layer accepts any `Serializable<T>` by id at the call site. The state factories know nothing about the save layer's documents, slots, or migrations.
 
+### `@yagejs/host-electron`
+
+The Electron desktop host: the page side that feeds `Host` and the renderer,
+the preload script, and the main-process shell:
+
+| File                                                     | Purpose                                                                                    |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `src/ElectronHostPlugin.ts`                              | `Plugin` named `host`: identity and lifecycle to `Host`, window fullscreen to the renderer |
+| `src/saves.ts`                                           | `electronSaveAdapter()` — a `SaveAdapter` over the main process's file store               |
+| `src/detect.ts`                                          | `isElectronHost()`, the `./detect` entry; imports nothing                                  |
+| `src/bridge.ts`                                          | The one check every page entry runs, and the bridge's page-side type                       |
+| `src/protocol.ts`                                        | `HOST_BRIDGE_PROTOCOL`, the channel names and the payload types, shared by all three sides |
+| `src/preload/`                                           | `createBridge(ipc)` and the script that exposes it as `window.__yageHost__`                |
+| `src/main/startGame.ts`                                  | `startGame(options)` and `DEFAULT_CONTENT_SECURITY_POLICY`                                 |
+| `src/main/gameProtocol.ts`                               | Serving the built web directory from `yage://game`                                         |
+| `src/main/channels.ts`                                   | The sender check and the handlers behind each bridge operation                             |
+| `src/main/windowState.ts`                                | The window and power events, as the snapshots the page reads                               |
+| `src/main/nodeFileStore.ts`, `src/main/saveDirectory.ts` | The save files on disk and the directory they live in                                      |
+| `src/test/fakeElectron.ts`                               | The stand-in every unit test reads in place of `electron`                                  |
+
+### `@yagejs/host-capacitor`
+
+The Capacitor mobile host: the page side that feeds `Host`, the renderer and
+the input manager from the app's official plugins:
+
+| File                         | Purpose                                                                                                         |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `src/CapacitorHostPlugin.ts` | `Plugin` named `host`: identity and lifecycle to `Host`, the display to the renderer, Back to the input manager |
+| `src/lifecycle.ts`           | What one App plugin event reports, per system                                                                   |
+| `src/display.ts`             | The orientation lock and its settle bound; fullscreen on Android                                                |
+| `src/fileStore.ts`           | A `SaveFileStore` over the Filesystem plugin's Library directory                                                |
+| `src/saves.ts`               | `capacitorSaveAdapter(options?)` — a `SaveAdapter` over that store                                              |
+| `src/shell.ts`               | The checks every entry runs: inside an app, and the plugin it needs                                             |
+| `src/detect.ts`              | `isCapacitorHost()`, the `./detect` entry; imports nothing                                                      |
+| `src/test/fakeCapacitor.ts`  | The stand-in every unit test reads in place of the four `@capacitor/*` packages                                 |
+
 ### Project Root
 
-| File                       | Purpose                  |
-| -------------------------- | ------------------------ |
-| `package.json`             | Workspace root, scripts  |
-| `turbo.json`               | Turborepo task pipeline  |
-| `tsconfig.base.json`       | Shared TypeScript config |
-| `playwright.config.ts`     | E2E test config          |
-| `.github/workflows/ci.yml` | CI pipeline              |
+| File                       | Purpose                                                       |
+| -------------------------- | ------------------------------------------------------------- |
+| `package.json`             | Workspace root, scripts                                       |
+| `turbo.json`               | Turborepo task pipeline                                       |
+| `tsconfig.base.json`       | Shared TypeScript config                                      |
+| `playwright.config.ts`     | E2E test config                                               |
+| `e2e/native/`              | Native baseline suite: shells, build, reports (not run by CI) |
+| `.github/workflows/ci.yml` | CI pipeline                                                   |
 
 ---
 
@@ -314,6 +372,32 @@ npx turbo test && npx turbo typecheck && npx turbo build && npx playwright test
 - **Use test utilities**: Import `createTestEngine`, `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core`
 - **E2E assertions**: Use Inspector API (`window.__yage__.inspector`) for state assertions, not screenshots
 - **Deterministic browser timing**: Prefer `window.__yage__.inspector.time.freeze()` + `step()` over `waitForTimeout()` when a fixture needs exact frame control. The fixture must install `DebugPlugin` — `inspector.time.*` throws without it
+
+### Native baseline runs
+
+The baseline fixture is one small game built from the workspace packages, so every build of it tests this checkout's engine. It has 13 selectable cases — sprites, text and UI, masks, render targets, effects, lighting, physics, workers, audio, input, saves, lifecycle and display — and three entries, one per target: `e2e/fixtures/baseline.html`, `baseline-electron.html` and `baseline-capacitor.html`. Each entry passes its host plugins and its save adapter to one `bootBaseline` call, so an artifact carries only the adapters of the target it was built for. `?case=sprites,physics` mounts a subset; an unknown name stops the start with an authored error.
+
+A test build adds an Inspector, an extension named `baseline` that answers `read()` with every case's reading, and a console reporter that writes one `[yage-baseline]` line per event. The extension also answers `pixels()` with the colour at each named point of the drawing and `loseContext()`, which takes the graphics context away and waits for the page to get one back. A test build reads three more launch flags: `?backend=webgl1` or `?backend=webgpu` picks the graphics API, `?bounce=max` turns on bounced light, and `?lockOrientation=landscape` locks the screen through the renderer and reports what the host answered. A build with `--mode release` has none of them: the reporting module is reached through one dynamic import behind a mode check, which the release build removes, and the release build reads no launch flag.
+
+`e2e/specs/baseline.spec.ts` checks every case in Chromium, so CI covers the fixture on each push. The native suite under `e2e/native/` is local only, and has five projects:
+
+| Project         | Needs                                                                                                                                         |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `harness`       | `npm --prefix e2e/native/capacitor ci`: the suite's own helpers, and the generated Android project, read rather than built                    |
+| `browser`       | Chromium, over a built web directory served on loopback                                                                                       |
+| `electron`      | the root `npm install`, which brings Electron in through `@yagejs/host-electron`                                                              |
+| `ios-simulator` | `npm --prefix e2e/native/capacitor ci`, Xcode and a booted simulator, with `DEVELOPER_DIR` set                                                |
+| `pack`          | the npm registry: it packages the fixture with Electron Forge and builds a game scaffolded by `create-yage` for every target this machine has |
+
+The Capacitor app loads one fixed path with no query string, so its test
+build carries its launch flags from the build: `buildBaseline` takes a
+`query` for them.
+
+Each shell project builds its target's web directory, runs the scenario — launch, read every case, send input, let the shell take the app away and give it back, relaunch on the same stored profile — then builds the release profile and checks that nothing of the test profile reached it. Every run writes one JSON report to `e2e/native/.work/reports/`: the engine commit and package versions, the third-party versions actually resolved, the shell and system versions, every emitted file's hash, each check's outcome and evidence, the readings, a timeline of page and shell events, and the screenshots taken.
+
+`node e2e/native/prepare-game.mjs --source <checkout> --workspace <name>` builds a game from another checkout against packed copies of this repository's packages, and prints the built directory and a provenance file. Pointing `BASELINE_WEB` at that directory runs it through the same shells.
+
+A target counts as verified only from a recorded run of that target. A check the machine cannot run is written `pending` with its reason, never `passed`, and a simulator result is labelled as a simulator's.
 
 ---
 
@@ -1023,6 +1107,8 @@ Engine code that invokes a callback the game registered (event handlers, collisi
 Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`) use `ErrorBoundary.wrapLifecycleHook`. A synchronous throw from one of them is reported and rethrown the same way. A rejected async hook can only be reported, because the call has already returned by the time the rejection settles, leaving no stack to rethrow into. Plugin `beforeEnter` hooks behave differently. `SceneHookRegistry.runBeforeEnter` awaits each one, so a rejection is reported and rethrown, and the scene push or replace that triggered it rejects rather than activating the scene. `Logger`'s own `output` sink catches and reports its own errors, because it cannot route through the boundary it is reporting into.
 
 `GameLoop.tick()` is the one place that decides a failure is terminal: an error that escapes an entire frame unhandled stops the loop and rethrows so it reaches the host.
+
+One change of host state (`Host`) dispatches in a fixed order: it stores the new state, calls the internal observers that input and audio register, matches the scene pause to it, emits `host:active`, then emits `host:lifecycle`. A throw at any step ends the sequence there and reaches whoever caused the change — the DOM event dispatch, a host adapter's report, the `activeWhenUnfocused` setter, `attach`, or the function `attach` returned. The steps after it do not run, and nothing catches the error. The consumers read `host.active` rather than counting events, so the next change makes them match it again.
 
 Every new dispatch site needs the same wrap. Without it, the throw is attributed to whichever caller was on the stack when the error escaped, not to the callback that threw.
 

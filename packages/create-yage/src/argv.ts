@@ -157,5 +157,5 @@ Examples:
   npm create yage@latest my-game
   npm create yage@latest my-game -- --template minimal --yes
   npx create-yage . --template recommended --no-install
-  npx create-yage my-game --features ui,save
+  npx create-yage my-game --features ui,effects
 `;

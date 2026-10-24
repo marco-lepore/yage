@@ -64,7 +64,7 @@ export function _setSoundLibrary(loaded: SoundLibrary): void {
 /**
  * Register a runtime-generated `AudioBuffer` under an alias, so `alias`
  * resolves and plays exactly like a preloaded sound — through the same
- * `AudioManager` channels, mute, and blur auto-pause. This is the audio
+ * `AudioManager` channels, mute, and automatic pause. This is the audio
  * analogue of the renderer's `registerTexture(key, texture)`.
  *
  * Registered aliases are engine-global, outside the asset manager's ref

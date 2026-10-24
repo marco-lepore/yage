@@ -538,7 +538,7 @@ All test utilities are exported from `@yagejs/core`. Tests run in Vitest (Node.j
 ```ts
 import {
   createTestEngine, // fully wired Engine (async)
-  createMockScene, // lightweight Scene + EngineContext
+  createMockScene, // lightweight Scene + EngineContext (logger, assets, host)
   createMockEntity, // entity in a mock scene with full context
   advanceFrames, // tick the game loop N times
 } from "@yagejs/core";

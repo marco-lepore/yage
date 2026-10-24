@@ -28,7 +28,7 @@ const MOUSE_BUTTON_CODES = ["MouseLeft", "MouseMiddle", "MouseRight"] as const;
 
 /**
  * What ended a hold: the player letting go, or the engine dropping held state
- * (window blur, page hide, pad disconnect, cancelled pointer,
+ * (window blur, page hide, an inactive app, pad disconnect, cancelled pointer,
  * {@link InputManager.clearAll}). Both notify listeners; only a `"player"`
  * release answers {@link InputManager.isJustReleasedByPlayer}.
  */
@@ -472,8 +472,8 @@ export class InputManager {
    *
    * A key-up, a gamepad button-up, a pointer-button release and a finger
    * leaving an on-screen control count. Held state the engine drops does not:
-   * window blur, page hide, a pad disconnecting, a cancelled pointer,
-   * {@link clearAll}, an action source released. Those still notify
+   * window blur, page hide, an inactive app, a pad disconnecting, a cancelled
+   * pointer, {@link clearAll}, an action source released. Those still notify
    * {@link onActionReleased}, and {@link isJustReleased} reports them.
    *
    * Read this where the release commits something the player cannot take
@@ -2302,8 +2302,9 @@ export class InputManager {
   }
 
   /**
-   * @internal Release physical input on window blur or page hide, then discard
-   * browser events queued before the boundary.
+   * @internal Release physical input when the window loses focus, the page
+   * hides, or the host reports the app inactive, then discard browser events
+   * queued before the boundary.
    */
   _releaseAllPhysicalState(): void {
     this.inputQueue.length = 0;

@@ -32,7 +32,7 @@ Six phases per frame, with a fixed-timestep accumulator for physics:
 6. EndOfFrame     - deferred entity destruction flush (onDestroy, detach from scene)
 ```
 
-Fixed timestep default: `1/60` s. Max steps per frame: 5 (prevents spiral of death).
+Fixed timestep default: `1/60` s. Max steps per frame: 5 (prevents spiral of death). One frame is at most 100 ms long, with or without a renderer. With the default `fixedTimestep` and `maxFixedStepsPerFrame`, a 100 ms frame runs 5 fixed steps and leaves about one for the next frame.
 
 ## Engine Setup
 
@@ -230,7 +230,7 @@ await engine.scenes.popAll(); // exits all (queued)
 All four are async and queued — they await `beforeEnter` hooks,
 `scene.preload`, and any in-flight transition before applying.
 
-Scene hooks, every one `Scene` declares: `onProgress(ratio)` (asset preload progress, 0→1), `onEnter`, `onExit`, `onPause` (scene became effectively paused — covered by a pushed `pauseBelow` scene, manual `paused = true`, or blur auto-pause), `onResume` (scene became effectively unpaused). `LoadingScene` adds one more, `onLoadError(error)`, for a preload that fails.
+Scene hooks, every one `Scene` declares: `onProgress(ratio)` (asset preload progress, 0→1), `onEnter`, `onExit`, `onPause` (scene became effectively paused — covered by a pushed `pauseBelow` scene, manual `paused = true`, or the manager's `autoPause` while the host is inactive), `onResume` (scene became effectively unpaused). `LoadingScene` adds one more, `onLoadError(error)`, for a preload that fails.
 
 A scene has no per-frame hook. `update` and `fixedUpdate` are typed as `never` on `Scene`, so a subclass that declares either one fails to compile. Put per-frame scene logic in a component on an entity the scene spawns, or in a process on a queue from `makeSceneScopedQueue()`. The same rule holds for an `Entity` subclass: components tick, entities do not.
 
@@ -281,7 +281,7 @@ bus.once("engine:started", () => {
 });
 ```
 
-Built-in events: `entity:created`, `entity:destroyed`, `component:added`, `component:removed`, `scene:pushed`, `scene:popped`, `scene:replaced`, `scene:transition:started`, `scene:transition:ended`, `scene:loading:progress`, `scene:loading:done`, `engine:started`, `engine:stopped`, `screen:fullscreen`, `screen:orientation`. Payloads: the `EngineEvents` table in `packages/core.md`. From a component, `this.listenBus(event, handler)` subscribes with auto-cleanup.
+Built-in events: `entity:created`, `entity:destroyed`, `component:added`, `component:removed`, `scene:pushed`, `scene:popped`, `scene:replaced`, `scene:transition:started`, `scene:transition:ended`, `scene:loading:progress`, `scene:loading:done`, `engine:started`, `engine:stopped`, `screen:fullscreen`, `screen:orientation`, `graphics:context`, `host:active`, `host:lifecycle`. Payloads: the `EngineEvents` table in `packages/core.md`. From a component, `this.listenBus(event, handler)` subscribes with auto-cleanup.
 
 ## Game State
 
@@ -343,7 +343,7 @@ const svc = context.resolve(MyServiceKey); // throws if missing
 const svc2 = context.tryResolve(MyServiceKey); // undefined if missing
 ```
 
-Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `SceneRandomSourceKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`, `SceneTimeKey` (per-scene, registered by the engine itself). `InspectorKey` is registered only when `DebugPlugin` or `InspectorPlugin` installs an Inspector.
+Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `HostKey`, `SceneRandomSourceKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`, `SceneTimeKey` (per-scene, registered by the engine itself). `InspectorKey` is registered only when `DebugPlugin` or `InspectorPlugin` installs an Inspector.
 
 Plugin keys: `RendererKey`, `RendererAdapterKey` (cross-package pointer-input contract defined in core; registered by `RendererPlugin` or a foreign renderer, consumed by `InputPlugin`), `SceneRenderTreeKey`, `InputManagerKey`, `PhysicsWorldKey`, `PhysicsWorldManagerKey`, `AudioManagerKey`, `SaveServiceKey`.
 

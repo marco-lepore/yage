@@ -681,13 +681,15 @@ The rules that make this safe:
   reference their keys. A missing key throws an error naming the key.
 - Registered keys are engine-global and live until `unregisterTexture(key)`.
   Unregistering never destroys the texture — you created it, so call
-  `texture.destroy()` when nothing draws it anymore.
+  `texture.destroy()` when nothing draws it anymore. `engine.destroy()` leaves
+  the texture to you as well, and `texture.destroy()` still works after it.
 - Registering a key that collides with a loaded asset's path throws;
   re-registering your own key replaces the entry (components built earlier
   keep the old texture instance).
 - Never call `update()` on the `source` of a texture from `createTexture`.
-  Those pixels live only on the GPU, so the re-upload writes an empty image
-  over them and the texture stays blank.
+  The re-upload writes an empty image over the baked pixels and the texture
+  stays blank. The renderer keeps the drawing itself, so the texture does come
+  back after the browser takes the graphics context away and gives one back.
 - Give `createTexture` a size whenever the texture is sliced into frames.
   Without one the texture measures the drawn bounds and starts at the top-left
   of the drawing, so the four circles above would bake into a 114 x 24 texture

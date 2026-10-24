@@ -1,11 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  createMockScene,
-  Logger,
-  LoggerKey,
-  LogLevel,
-  Transform,
-} from "@yagejs/core";
+import { createMockScene, LoggerKey, Transform } from "@yagejs/core";
 import { InputManagerKey, type InputManager } from "@yagejs/input";
 import { Interactor } from "./Interactor.js";
 import { Interactable } from "./Interactable.js";
@@ -366,9 +360,7 @@ describe("Interactor", () => {
 
   it("warns once (dev) when the InputManager is resolvable but the action is unmapped", () => {
     const { scene } = createMockScene();
-    const logger = new Logger({ level: LogLevel.Debug });
-    scene.context.register(LoggerKey, logger);
-    const warn = vi.spyOn(logger, "warn");
+    const warn = vi.spyOn(scene.context.resolve(LoggerKey), "warn");
     scene.context.register(
       InputManagerKey,
       fakeInputManager(new Set(), new Set()),
@@ -395,9 +387,7 @@ describe("Interactor", () => {
 
   it("warns (dev) when range is negative — the reach test would square it back positive", () => {
     const { scene } = createMockScene();
-    const logger = new Logger({ level: LogLevel.Debug });
-    scene.context.register(LoggerKey, logger);
-    const warn = vi.spyOn(logger, "warn");
+    const warn = vi.spyOn(scene.context.resolve(LoggerKey), "warn");
 
     const player = scene.spawn("player");
     player.add(new Transform());
@@ -410,9 +400,7 @@ describe("Interactor", () => {
 
   it("does not warn for a non-negative range", () => {
     const { scene } = createMockScene();
-    const logger = new Logger({ level: LogLevel.Debug });
-    scene.context.register(LoggerKey, logger);
-    const warn = vi.spyOn(logger, "warn");
+    const warn = vi.spyOn(scene.context.resolve(LoggerKey), "warn");
 
     const player = scene.spawn("player");
     player.add(new Transform());
@@ -425,9 +413,7 @@ describe("Interactor", () => {
 
   it("does not warn when the action is mapped", () => {
     const { scene } = createMockScene();
-    const logger = new Logger({ level: LogLevel.Debug });
-    scene.context.register(LoggerKey, logger);
-    const warn = vi.spyOn(logger, "warn");
+    const warn = vi.spyOn(scene.context.resolve(LoggerKey), "warn");
     scene.context.register(InputManagerKey, fakeInputManager());
 
     const player = scene.spawn("player");

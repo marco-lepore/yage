@@ -15,6 +15,7 @@ import type {
   EngineContext,
   EngineEvents,
   EventBus,
+  HostSupport,
   Plugin,
   ProcessSystem,
   RendererAdapter,
@@ -31,7 +32,13 @@ import {
   TextureStyle,
   UPDATE_PRIORITY,
 } from "pixi.js";
-import type { BitmapFont, Spritesheet, SCALE_MODE } from "pixi.js";
+import type {
+  BitmapFont,
+  Spritesheet,
+  SCALE_MODE,
+  WebGLRenderer,
+  WebGPURenderer,
+} from "pixi.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { synchronizeInteraction } from "./drawing.js";
 import { DisplaySystem } from "./DisplaySystem.js";
@@ -39,6 +46,16 @@ import { RenderFacetContributor } from "./RenderFacetContributor.js";
 import { FitController } from "./Fit.js";
 import type { CanvasRect, VirtualRect } from "./Fit.js";
 import type { DrawContext } from "./DrawContext.js";
+import { HostDisplayKey } from "./HostDisplay.js";
+import type {
+  HostFullscreen,
+  HostOrientation,
+  OrientationLock,
+} from "./HostDisplay.js";
+import {
+  createPageFullscreen,
+  createPageOrientation,
+} from "./internal/pageDisplay.js";
 import type {
   Application,
   DisplayContainer,
@@ -49,11 +66,16 @@ import {
   getDefaultTextStyle,
   setDefaultTextStyle,
 } from "./internal/textConstruction.js";
-import { createRenderTarget } from "./RenderTarget.js";
+import { createBakedTarget, createRenderTarget } from "./RenderTarget.js";
 import type {
+  LayerRenderRefresh,
+  RenderTargetDrawing,
   RenderTargetHandle,
   RenderTargetOptions,
 } from "./RenderTarget.js";
+import { readGraphicsCapabilities } from "./GraphicsCapabilities.js";
+import type { GraphicsCapabilities } from "./GraphicsCapabilities.js";
+import type { GraphicsDiagnostics } from "./GraphicsDiagnostics.js";
 import { RendererKey } from "./types.js";
 import type {
   RendererBackend,
@@ -70,6 +92,7 @@ import { loadDataTexture, unloadDataTexture } from "./dataTexture.js";
 import { installMaterialPipe } from "./materials/MaterialPipe.js";
 import { loadTexture, loadWebFont, unloadWebFont } from "./assets.js";
 import { assertPositiveNumber } from "./internal/validate.js";
+import { stringEvaluationAllowed } from "./internal/stringEvaluation.js";
 
 import "./scene-augmentation.js";
 
@@ -92,6 +115,20 @@ const SYNTHETIC_POINTER_ID = 1;
 /** `PointerEvent.button` for an event that presses and releases nothing. */
 const NO_BUTTON_CHANGE = -1;
 
+/**
+ * The graphics APIs the renderer draws with, in Pixi's own order. Pixi's
+ * Canvas 2D renderer draws no light, skips every filter and ignores inverse
+ * masks, so a game that reached it would run half-drawn without saying so.
+ */
+const DRAWN_BACKENDS: readonly RendererBackend[] = ["webgl", "webgpu"];
+
+/** A fullscreen transition the host is running. */
+interface FullscreenStep {
+  /** `true` for a request, `false` for an exit. */
+  readonly enter: boolean;
+  readonly done: Promise<void>;
+}
+
 /** The region {@link RendererPlugin.createTexture} bakes, in pixels. */
 export interface CreateTextureOptions {
   /** Width of the baked texture, measured from x = 0. */
@@ -100,7 +137,11 @@ export interface CreateTextureOptions {
   readonly height: number;
 }
 
-/** RendererPlugin wraps PixiJS v8 behind the YAGE plugin interface. */
+/**
+ * RendererPlugin wraps PixiJS v8 behind the YAGE plugin interface. It draws
+ * under a content security policy whose `script-src` omits `'unsafe-eval'`:
+ * on such a page it loads PixiJS's prebuilt shader and uniform code itself.
+ */
 export class RendererPlugin implements Plugin, RendererAdapter {
   readonly name = "renderer";
   /** Whether automatic canvas and render-target drawing is enabled. */
@@ -168,9 +209,33 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   fx!: EffectsHost;
   private _unregisterFacetContributor: (() => void) | null = null;
   private _context: EngineContext | null = null;
-  private _unregisterFullscreenListener: (() => void) | null = null;
-  private _unregisterOrientationListener: (() => void) | null = null;
   private _unregisterSceneVisibility: (() => void) | null = null;
+  /**
+   * The display parts in use, the page's unless a host adapter registered a
+   * {@link HostDisplay}. Both are set from `onStart` to `onDestroy` and `null`
+   * outside that span, which is where every display member reports that it is
+   * unavailable.
+   */
+  private _fullscreen: HostFullscreen | null = null;
+  private _orientation: HostOrientation | null = null;
+  private _stopDisplay: Array<() => void> = [];
+  /** The last state the renderer read, and the state its events describe. */
+  private _lastFullscreen = false;
+  private _lastOrientation: OrientationType | null = null;
+  /**
+   * The fullscreen transition in flight, which a call in the same direction
+   * joins. A browser rejects a second request made in the same task.
+   */
+  private _fullscreenStep: FullscreenStep | null = null;
+  /**
+   * The direction the latest fullscreen call asked for. The run queued behind
+   * the step in flight reads it when that step settles, so the last call
+   * wins however many calls arrived in between.
+   */
+  private _wantFullscreen = false;
+  /** The one run queued behind the step in flight, shared by every later call. */
+  private _queuedFullscreen: Promise<void> | null = null;
+  private _bus: EventBus<EngineEvents> | null = null;
   /**
    * Snapshot of `TextureStyle.defaultOptions.scaleMode` captured before
    * `pixelArtPreset` flips it to `"nearest"`. Pixi's defaults live on a
@@ -186,11 +251,42 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   private _scaleModeCaptured = false;
   private _prevDefaultTextStyle: TextStyle | undefined = undefined;
   private _defaultTextStyleCaptured = false;
+  /** The backends Pixi is asked for, narrowed from the configured preference. */
+  private readonly _backends: readonly RendererBackend[];
+  /**
+   * What the graphics context reports, read once per context. `null` outside
+   * the window from `install` to `onDestroy`, where the two public readers
+   * throw instead of reporting a context that does not exist.
+   */
+  private _capabilities: GraphicsCapabilities | null = null;
+  private _contextLost = false;
+  /**
+   * Context changes waiting for the next frame's `DisplaySystem` pass. A game
+   * handler runs inside the game loop's frame rather than inside Pixi's own
+   * recovery, where throwing would stop the Pixi systems queued behind it.
+   */
+  private _contextNotices: boolean[] = [];
+  private _onCanvasContextLost: (() => void) | null = null;
+  private _contextRunner: { contextChange(): void } | null = null;
+  /**
+   * The GPU device whose loss is being awaited. A restore brings a new
+   * device, and the promise of the replaced one resolves against nothing.
+   */
+  private _watchedDevice: GPUDevice | null = null;
+  private _inspector: { removeExtension(namespace: string): void } | null =
+    null;
+  /**
+   * Render targets, render-target layers and `createTexture` bakes that
+   * follow the renderer, from creation until they are destroyed. Scene exit
+   * destroys a layer's target; the game destroys the others.
+   */
+  private readonly _renderTargets = new Set<{ release(): void }>();
 
   constructor(config: RendererConfig) {
     this._config = config;
     this._virtualWidth = config.virtualWidth ?? config.width;
     this._virtualHeight = config.virtualHeight ?? config.height;
+    this._backends = resolveBackends(config.pixi?.preference);
   }
 
   async install(context: EngineContext): Promise<void> {
@@ -215,7 +311,12 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       setDefaultTextStyle(this._config.defaultTextStyle);
     }
 
-    // 2. Create & init PixiJS Application
+    // 2. Create & init PixiJS Application. PixiJS writes shader and uniform
+    //    code at run time; on a page that forbids turning strings into code,
+    //    its prebuilt replacements are loaded first.
+    if (!stringEvaluationAllowed()) {
+      await import("./internal/noStringEvaluation.js");
+    }
     installMaterialPipe();
     this._app = new PixiApplication();
     const resolution =
@@ -229,9 +330,13 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       autoDensity: true,
       ...(this._config.pixelArtPreset ? { roundPixels: true } : undefined),
       ...this._config.pixi,
+      // After the spread: the narrowed list is what the renderer draws with,
+      // whatever shape the configured preference had.
+      preference: [...this._backends],
       ...(this._config.canvas ? { canvas: this._config.canvas } : undefined),
     });
     this._installed.app = true;
+    this.watchGraphicsContext();
     const draw = this._app.render;
     this._app.ticker.remove(draw, this._app);
     this._app.render = () => {
@@ -242,15 +347,15 @@ export class RendererPlugin implements Plugin, RendererAdapter {
 
     // 2b. Tell the browser to scale the canvas backing store with
     //     nearest-neighbor when it's CSS-scaled past 1:1 (e.g. on a HiDPI
-    //     monitor, under fit, or when the host CSS-sizes the canvas larger
-    //     than its backing store). Without this the browser bicubic-blurs
-    //     the pixel art back into mush. We write both declarations via
-    //     `cssText` because the CSS cascade only keeps the LAST
-    //     `image-rendering` value the browser understands — Safari falls
+    //     monitor, under fit, or when the host element CSS-sizes the canvas
+    //     larger than its backing store). Without this the browser
+    //     bicubic-blurs the pixel art back into mush. We write both
+    //     declarations via `cssText` because the CSS cascade only keeps the
+    //     LAST `image-rendering` value the browser understands — Safari falls
     //     through `pixelated` (which it ignores) to the older
     //     `-webkit-optimize-contrast`; everywhere else `pixelated` wins.
-    //     Guarded for headless test runs that stub `canvas` as a plain
-    //     object without a `style`.
+    //     Guarded for headless test runs that stub `canvas` as a plain object
+    //     without a `style`.
     if (this._config.pixelArtPreset) {
       const style = (this._app.canvas as { style?: CSSStyleDeclaration }).style;
       if (style) {
@@ -261,14 +366,14 @@ export class RendererPlugin implements Plugin, RendererAdapter {
 
     // 2b. Force `display:block` on the canvas. The <canvas> UA default is
     //     `display:inline`, which seats it on the text baseline and leaves a
-    //     ~4px line-box descender beneath it. On a fit host whose height is
-    //     content-driven (no explicit/bounded height) that descender makes
-    //     the host measure taller than the canvas the FitController just
-    //     sized to it, the ResizeObserver re-fires, the canvas grows, the
-    //     host grows again — an unbounded loop. `display:block` removes the
-    //     descender so the host content box equals the canvas height and the
-    //     controller reaches a fixed point. Canvas-local and overridable from
-    //     a developer stylesheet. Guarded for headless test runs that stub
+    //     ~4px line-box descender beneath it. On a fit host element whose
+    //     height is content-driven (no explicit/bounded height) that descender
+    //     makes the element measure taller than the canvas the FitController
+    //     just sized to it, the ResizeObserver re-fires, the canvas grows, the
+    //     element grows again — an unbounded loop. `display:block` removes the
+    //     descender so the element's content box equals the canvas height and
+    //     the controller reaches a fixed point. Canvas-local and overridable
+    //     from a developer stylesheet. Guarded for headless test runs that stub
     //     `canvas` without a `style`.
     const canvasStyle = (this._app.canvas as { style?: CSSStyleDeclaration })
       .style;
@@ -322,11 +427,15 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       this._processSystem,
       this._canvasRoot,
       (source, options) =>
-        createRenderTarget(this._app.renderer, source, options, {
-          stage: this._app.stage,
-          isEnabled: () => this.drawingEnabled,
-          refresh: options.refresh ?? "every-frame",
-        }),
+        createRenderTarget(
+          this._app.renderer,
+          source,
+          {
+            ...options,
+            antialias: this.antialiasFor(options.antialias === true),
+          },
+          this.targetDrawing(options.refresh ?? "every-frame"),
+        ),
     );
     this._installed.provider = true;
 
@@ -370,13 +479,10 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       return () => this._app.ticker.remove(fn);
     });
 
-    // 10b. Wire viewport-lifecycle listeners (fullscreen + orientation).
-    //     Both emit onto the engine event bus. Gated behind environment
-    //     checks so node-environment tests that don't stub the globals
-    //     skip the wiring without crashing.
-    const bus = context.resolve(EventBusKey);
-    this.installFullscreenListener(bus);
-    this.installOrientationListener(bus);
+    // 10b. Keep the bus the display events are emitted on. Which display the
+    //     renderer reads is resolved in `onStart`, once every plugin has
+    //     installed and a host adapter could have registered one.
+    this._bus = context.resolve(EventBusKey);
 
     // 11. Register asset loaders (if AssetManager is available)
     const am = context.tryResolve(AssetManagerKey);
@@ -430,17 +536,56 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   onStart(): void {
+    // Pick the display parts first. A host adapter registers its HostDisplay
+    // during install, so every install has run by now whatever order the
+    // plugins were registered in, and the page supplies each part the adapter
+    // leaves out.
+    const display = this._context!.tryResolve(HostDisplayKey);
+    const sync = (): void => this._syncDisplay();
+    const hostFullscreen = display?.fullscreen;
+    if (hostFullscreen) {
+      this._fullscreen = hostFullscreen;
+    } else {
+      const page = createPageFullscreen(this.fullscreenTarget());
+      this._fullscreen = page.part;
+      this._stopDisplay.push(page.watch(sync));
+    }
+    const hostOrientation = display?.orientation;
+    if (hostOrientation) {
+      this._orientation = hostOrientation;
+    } else {
+      const page = createPageOrientation();
+      this._orientation = page.part;
+      this._stopDisplay.push(page.watch(sync));
+    }
+    // The state at start is the baseline the events are measured against, so
+    // reading it emits nothing. It is read before the host display's watch,
+    // which may report a change from inside the call.
+    if (this._fullscreen) {
+      this._lastFullscreen = readFullscreenActive(this._fullscreen);
+    }
+    if (this._orientation) {
+      this._lastOrientation = readOrientation(this._orientation);
+    }
+    if (display) this._stopDisplay.push(display.watch(sync));
+
     // Publish the render facet (rendered geometry + visibility) into the
     // Inspector through `registerFacetContributor`, so `@yagejs/core` stays
     // agnostic of any rendering concept. In onStart rather than install: the
     // Inspector is installed by a plugin (DebugPlugin or InspectorPlugin),
     // and every install has run by now whatever order the plugins were
     // registered in.
-    const inspector = this._context?.tryResolve(InspectorKey);
+    const inspector = this._context!.tryResolve(InspectorKey);
     if (inspector) {
       this._unregisterFacetContributor = inspector.registerFacetContributor(
         new RenderFacetContributor(),
       );
+      const diagnostics: GraphicsDiagnostics = {
+        capabilities: () => this.capabilities,
+        contextLost: () => this.contextLost,
+      };
+      inspector.addExtension("graphics", diagnostics);
+      this._inspector = inspector;
     }
   }
 
@@ -451,11 +596,33 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     // instead of throwing on access.
     this._unregisterFacetContributor?.();
     this._unregisterFacetContributor = null;
+    this._inspector?.removeExtension("graphics");
+    this._inspector = null;
     this._context = null;
-    this._unregisterFullscreenListener?.();
-    this._unregisterFullscreenListener = null;
-    this._unregisterOrientationListener?.();
-    this._unregisterOrientationListener = null;
+    if (this._installed.app) {
+      const canvas = this._app.canvas as Partial<EventTarget>;
+      if (this._onCanvasContextLost && canvas.removeEventListener) {
+        canvas.removeEventListener(
+          "webglcontextlost",
+          this._onCanvasContextLost,
+        );
+      }
+      if (this._contextRunner) {
+        this._app.renderer.runners.contextChange.remove(this._contextRunner);
+      }
+    }
+    this._onCanvasContextLost = null;
+    this._contextRunner = null;
+    this._watchedDevice = null;
+    this._contextNotices = [];
+    this._capabilities = null;
+    for (const stop of this._stopDisplay) stop();
+    this._stopDisplay = [];
+    this._fullscreen = null;
+    this._orientation = null;
+    this._fullscreenStep = null;
+    this._queuedFullscreen = null;
+    this._bus = null;
     this._unregisterSceneVisibility?.();
     this._unregisterSceneVisibility = null;
     this._unregisterHooks?.();
@@ -469,6 +636,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     // user-assigned filters on app.stage outside our addEffect calls.
     this.fx?.destroy();
     if (this._installed.provider) this._provider.destroyAll();
+    // Pixi empties the runners these targets joined, so they leave first. Their
+    // textures stay with the game, which destroys them whenever it likes.
+    for (const target of [...this._renderTargets]) target.release();
     if (this._installed.app) this._app.destroy();
     // Restore the global TextureStyle default the pixel-art preset
     // mutated on install. Skipped when nothing was captured (preset was
@@ -491,6 +661,105 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
+   * What the graphics context the renderer draws with can do. Read when the
+   * renderer installs and again after a lost context is restored; each read
+   * is a new frozen object.
+   */
+  get capabilities(): GraphicsCapabilities {
+    return this.assertContextKnown("capabilities");
+  }
+
+  /**
+   * Whether the graphics context is lost. While it is, nothing draws and the
+   * canvas keeps its last frame. `graphics:context` reports each change.
+   */
+  get contextLost(): boolean {
+    this.assertContextKnown("contextLost");
+    return this._contextLost;
+  }
+
+  private assertContextKnown(member: string): GraphicsCapabilities {
+    const capabilities = this._capabilities;
+    if (capabilities === null) {
+      throw new Error(
+        `RendererPlugin.${member}: the graphics context is only known from ` +
+          "the renderer's install to engine.destroy().",
+      );
+    }
+    return capabilities;
+  }
+
+  /**
+   * Read what the context Pixi settled on can do and follow it from there: a
+   * lost context is reported to the game, and a replacement is read again, so
+   * every reader sees the context that is drawing.
+   */
+  private watchGraphicsContext(): void {
+    const pixi = this._app.renderer;
+    this._capabilities = readGraphicsCapabilities(pixi);
+    if (pixi.name === "webgl") {
+      const gl = (pixi as WebGLRenderer).gl;
+      this._contextLost = gl.isContextLost();
+      const canvas = this._app.canvas as Partial<EventTarget>;
+      if (canvas.addEventListener) {
+        const listener = (): void => this.noteContextLost();
+        this._onCanvasContextLost = listener;
+        canvas.addEventListener("webglcontextlost", listener);
+      }
+    } else {
+      this.watchDevice((pixi as WebGPURenderer).gpu.device);
+    }
+    // A private object rather than the plugin itself, so the renderer gains
+    // no public method named after a Pixi runner.
+    const runner = { contextChange: () => this.noteContextRestored() };
+    this._contextRunner = runner;
+    pixi.runners.contextChange.add(runner);
+  }
+
+  /**
+   * Wait for a WebGPU device to be lost. A device the engine itself tore down
+   * reports `"destroyed"`, and a device Pixi has already replaced is no
+   * longer the one drawing.
+   */
+  private watchDevice(device: GPUDevice): void {
+    this._watchedDevice = device;
+    void device.lost.then((info) => {
+      if (info.reason === "destroyed") return;
+      if (this._watchedDevice !== device) return;
+      this.noteContextLost();
+    });
+  }
+
+  private noteContextLost(): void {
+    this._contextLost = true;
+    this._contextNotices.push(true);
+  }
+
+  private noteContextRestored(): void {
+    const pixi = this._app.renderer;
+    this._capabilities = readGraphicsCapabilities(pixi);
+    this._contextLost = false;
+    if (pixi.name === "webgpu") {
+      this.watchDevice((pixi as WebGPURenderer).gpu.device);
+    }
+    this._contextNotices.push(false);
+  }
+
+  /**
+   * Report the context changes since the last frame, oldest first.
+   * `DisplaySystem` calls this at the start of its pass in the `Render`
+   * phase, so a throwing handler stops the game loop the way any error that
+   * escapes a frame does, with the notices behind it still queued.
+   * @internal
+   */
+  _flushContextNotices(): void {
+    while (this._contextNotices.length > 0) {
+      const lost = this._contextNotices.shift() as boolean;
+      this._bus?.emit("graphics:context", { lost });
+    }
+  }
+
+  /**
    * The PixiJS Application instance, for tools and for code that adds its
    * own Pixi objects to the stage. Game code draws through visual components
    * on scene layers.
@@ -505,9 +774,10 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
-   * The graphics API drawing the canvas. Pixi tries WebGL, then WebGPU, then
-   * a 2D canvas, and the first the browser supports wins;
-   * `RendererConfig.pixi.preference` moves one of them to the front.
+   * The graphics API drawing the canvas, `"webgl"` or `"webgpu"`. The
+   * renderer asks Pixi for WebGL, then WebGPU, and never for Pixi's 2D canvas;
+   * `RendererConfig.pixi.preference` moves WebGPU to the front.
+   * {@link capabilities} reports the WebGL version and the context's limits.
    */
   get backend(): RendererBackend {
     return this._app.renderer.name as RendererBackend;
@@ -532,7 +802,10 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     return { width: this._virtualWidth, height: this._virtualHeight };
   }
 
-  /** Current canvas size in CSS pixels. Changes on host resize under responsive fit. */
+  /**
+   * Current canvas size in CSS pixels. Changes on host-element resize under
+   * responsive fit.
+   */
   get canvasSize(): { width: number; height: number } {
     return this._fitController.canvasSize;
   }
@@ -549,7 +822,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   /**
    * Change the fit mode and/or target at runtime. Omitting `target` keeps the
    * element the fit currently observes, so switching mode alone does not send
-   * the fit back to its default host.
+   * the fit back to its default host element.
    */
   setFit(options: RendererFitOptions): void {
     if (options.target !== undefined) {
@@ -746,8 +1019,8 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   /**
    * Full canvas extent expressed in virtual-space pixels — unlike
    * {@link visibleVirtualRect}, not clamped to the declared virtual rect.
-   * Under `letterbox` / `expand` on an off-aspect host this extends past
-   * `virtualSize` on the unscaled axis (useful for drawing backdrops that
+   * Under `letterbox` / `expand` on an off-aspect host element this extends
+   * past `virtualSize` on the unscaled axis (useful for drawing backdrops that
    * fill the bars). Under `cover` it equals `visibleVirtualRect`; under
    * `stretch` it equals the virtual rect.
    */
@@ -791,9 +1064,14 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * drawn rather than `(0, 0)`, and a drawing that starts at `(10, 4)` bakes
    * shifted by that much.
    *
-   * The pixels live only on the GPU, with no image to reload from. Calling
-   * `update()` on the returned texture's `source` re-uploads it empty and
-   * everything drawn from it turns transparent.
+   * The drawing is kept and drawn again after a lost graphics context is
+   * restored, so the texture survives one. Calling `update()` on the returned
+   * texture's `source` re-uploads it empty and everything drawn from it turns
+   * transparent.
+   *
+   * The game owns the texture, and `engine.destroy()` leaves it alone:
+   * destroying it frees the drawing with it, before or after the engine is
+   * gone.
    */
   createTexture(
     draw: (g: DrawContext) => void,
@@ -807,18 +1085,40 @@ export class RendererPlugin implements Plugin, RendererAdapter {
         size.height,
       );
     }
+    const pixi = this._app.renderer;
     const graphics = new Graphics();
-    try {
-      draw(graphics);
-      return this._app.renderer.generateTexture({
-        target: graphics,
-        ...(size
-          ? { frame: new Rectangle(0, 0, size.width, size.height) }
-          : {}),
-      });
-    } finally {
-      graphics.destroy();
-    }
+    draw(graphics);
+    const region = size
+      ? new Rectangle(0, 0, size.width, size.height)
+      : graphics.getLocalBounds().rectangle;
+    const resolution = pixi.resolution;
+    // One texel is the smallest buffer there is, and a fractional edge is
+    // measured in whole texels.
+    const width = Math.max(1, Math.max(region.width, 1 / resolution) | 0);
+    const height = Math.max(1, Math.max(region.height, 1 / resolution) | 0);
+    // The drawing starts wherever it was drawn; the wrapper slides it so the
+    // region's top-left corner lands on the texture's.
+    const wrapper = new Container();
+    wrapper.label = "yage:bakedTexture";
+    wrapper.addChild(graphics);
+    graphics.position.set(-region.x, -region.y);
+    const target = createBakedTarget(
+      pixi,
+      wrapper,
+      {
+        width,
+        height,
+        antialias: this.antialiasFor(pixi.view.antialias === true),
+      },
+      this.targetDrawing(),
+    );
+    const texture = target.texture;
+    // The game owns the texture: destroying it frees the drawing behind it.
+    texture.once("destroy", () => {
+      target.release();
+      wrapper.destroy({ children: true });
+    });
+    return texture;
   }
 
   /**
@@ -839,10 +1139,34 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     source: DisplayContainer,
     options: RenderTargetOptions,
   ): RenderTargetHandle {
-    return createRenderTarget(this._app.renderer, source, options, {
+    return createRenderTarget(
+      this._app.renderer,
+      source,
+      { ...options, antialias: this.antialiasFor(options.antialias === true) },
+      this.targetDrawing(),
+    );
+  }
+
+  /**
+   * The drawing policy every render target shares. `refresh` is set for a
+   * render-target layer, which draws before each stage render.
+   */
+  private targetDrawing(refresh?: LayerRenderRefresh): RenderTargetDrawing {
+    return {
       stage: this._app.stage,
       isEnabled: () => this.drawingEnabled,
-    });
+      live: this._renderTargets,
+      ...(refresh === undefined ? {} : { refresh }),
+    };
+  }
+
+  /**
+   * Whether a render target is allocated with antialiasing. A context with no
+   * multisampled render target draws the same either way, and Pixi logs a
+   * warning for each request.
+   */
+  private antialiasFor(requested: boolean): boolean {
+    return requested && this.capabilities.maxSamples > 0;
   }
 
   /** Draw the current stage and pending targets without advancing time. */
@@ -897,60 +1221,247 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     }
   }
 
-  // ─── Fullscreen ──────────────────────────────────────────────────
+  // ─── Display ─────────────────────────────────────────────────────
 
   /**
-   * Request fullscreen for the renderer's host element. Targets the
-   * configured `container` when present (so DOM overlays placed
-   * alongside the canvas remain inside the fullscreened area), falling
-   * back to the canvas itself otherwise. Wraps `Element.requestFullscreen`
-   * with the legacy `webkitRequestFullscreen` fallback for iOS Safari.
+   * Present the game fullscreen. Resolves once the game is fullscreen, with
+   * `screen:fullscreen` already emitted. Resolves without asking the host when
+   * the game is fullscreen already, and rejects where
+   * {@link fullscreenSupport} is `"unsupported"`.
    *
-   * Must be called from a user-gesture handler (click, touch, key);
-   * browsers reject the returned Promise with a `TypeError` otherwise.
+   * The last call to this method or {@link exitFullscreen} wins. A call in
+   * the direction of the transition in flight shares its promise. A call in
+   * the other direction waits for that transition to settle and then moves in
+   * the direction of the latest call, and every call made until then shares
+   * that one run. A call a later one overrode therefore resolves when the
+   * final transition settles, with the game where the latest call asked.
+   *
+   * On a page this must be called from a user-gesture handler (click, touch,
+   * key); the browser rejects the returned promise with a `TypeError`
+   * otherwise. It targets the configured `container` when there is one, so DOM
+   * overlays beside the canvas stay inside the area shown fullscreen, and the
+   * canvas itself otherwise.
    */
-  async requestFullscreen(): Promise<void> {
-    const target = this.fullscreenTarget();
-    if (!target) {
-      throw new Error(
-        "RendererPlugin.requestFullscreen: no host element available.",
+  requestFullscreen(): Promise<void> {
+    return this.changeFullscreen(true);
+  }
+
+  /**
+   * Leave fullscreen. Resolves once the game is not fullscreen, with
+   * `screen:fullscreen` already emitted. Resolves without asking the host when
+   * the game is not fullscreen, so another element's fullscreen is left alone.
+   *
+   * Calls made while a transition is in flight follow the same rule as
+   * {@link requestFullscreen}: the last call wins, and a call a later one
+   * overrode resolves when the final transition settles.
+   */
+  exitFullscreen(): Promise<void> {
+    return this.changeFullscreen(false);
+  }
+
+  /**
+   * Record the direction asked for, then join the step in flight when it
+   * goes that way, or the run queued behind it.
+   */
+  private changeFullscreen(enter: boolean): Promise<void> {
+    const part = this._fullscreen;
+    if (part === null) {
+      return Promise.reject(
+        displayUnavailable(enter ? "requestFullscreen" : "exitFullscreen"),
       );
     }
-    await getFullscreenAPI(target).request();
-  }
-
-  /** Exit fullscreen. No-op if the page isn't currently fullscreen. */
-  async exitFullscreen(): Promise<void> {
-    const target = this.fullscreenTarget();
-    if (!target) return;
-    await getFullscreenAPI(target).exit();
+    this._wantFullscreen = enter;
+    if (this._queuedFullscreen !== null) return this._queuedFullscreen;
+    const step = this._fullscreenStep;
+    if (step === null) return this.startFullscreenStep(part, enter);
+    if (step.enter === enter) return step.done;
+    const run = (): Promise<void> => this.runQueuedFullscreen(step);
+    const queued = step.done.then(run, run);
+    this._queuedFullscreen = queued;
+    return queued;
   }
 
   /**
-   * Whether the renderer's host element is currently the fullscreen
-   * element. Reads live from the DOM, so this stays accurate when the
-   * user exits fullscreen via Esc or the browser UI.
+   * The run queued behind `step`, once it settled. When the latest call asked
+   * for the direction `step` went, the queued calls share its outcome, so a
+   * refused request is not asked for a second time.
+   */
+  private runQueuedFullscreen(step: FullscreenStep): Promise<void> {
+    this._queuedFullscreen = null;
+    if (this._wantFullscreen === step.enter) return step.done;
+    return this.changeFullscreen(this._wantFullscreen);
+  }
+
+  private startFullscreenStep(
+    part: HostFullscreen,
+    enter: boolean,
+  ): Promise<void> {
+    let support: HostSupport | undefined;
+    try {
+      if (readFullscreenActive(part) === enter) return Promise.resolve();
+      if (enter) support = readFullscreenSupport(part);
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
+    if (support === "unsupported") {
+      return Promise.reject(
+        new Error(
+          "RendererPlugin.requestFullscreen: this host cannot change to " +
+            'fullscreen (fullscreenSupport is "unsupported").',
+        ),
+      );
+    }
+    const done: Promise<void> = (enter ? part.request() : part.exit()).then(
+      () => {
+        this.settleFullscreen(done);
+      },
+      (error: unknown) => {
+        this.settleFullscreen(done);
+        throw error;
+      },
+    );
+    this._fullscreenStep = { enter, done };
+    return done;
+  }
+
+  /**
+   * Whether the game is presented fullscreen. Read live from the host, so it
+   * stays accurate when the player leaves fullscreen with Esc, the browser's
+   * own control, or a window menu. Another element's fullscreen does not count.
    */
   get isFullscreen(): boolean {
-    const target = this.fullscreenTarget();
-    if (!target) return false;
-    const current = getFullscreenAPI(target).fullscreenElement();
-    return current === target;
+    const part = this._fullscreen;
+    if (part === null) throw displayUnavailable("isFullscreen");
+    return readFullscreenActive(part);
   }
 
   /**
-   * Current device orientation. Returns `null` when neither the
-   * `screen.orientation` API nor the legacy `window.orientation` angle
-   * is available — typical of headless tests and very old browsers.
+   * Whether a fullscreen request can change how the game is presented on this
+   * host. `"unsupported"` covers a browser without the Fullscreen API, a frame
+   * from another origin without `allow="fullscreen"`, and an app that already
+   * opens fullscreen. Hide a fullscreen control where this reads
+   * `"unsupported"`, and show it for `"unknown"`.
    */
-  get orientation(): OrientationType | null {
-    return deriveOrientationType();
+  get fullscreenSupport(): HostSupport {
+    const part = this._fullscreen;
+    if (part === null) throw displayUnavailable("fullscreenSupport");
+    return readFullscreenSupport(part);
   }
 
-  private fullscreenTarget(): HTMLElement | null {
-    if (this._config.container) return this._config.container;
-    if (this._installed.app) return this._app.canvas;
-    return null;
+  /**
+   * The screen orientation, or `null` where the host cannot read it — typical
+   * of headless tests and very old browsers. No order is promised between
+   * `screen:orientation` and the canvas taking its new size, so layout code
+   * reads the fit getters each frame.
+   */
+  get orientation(): OrientationType | null {
+    const part = this._orientation;
+    if (part === null) throw displayUnavailable("orientation");
+    return readOrientation(part);
+  }
+
+  /**
+   * Whether this host can lock the screen orientation. `"unknown"` means the
+   * operation exists and only an attempt tells whether this device accepts it:
+   * a desktop browser refuses, and Android Chrome accepts while the page is
+   * fullscreen or installed.
+   */
+  get orientationLockSupport(): HostSupport {
+    const part = this._orientation;
+    if (part === null) throw displayUnavailable("orientationLockSupport");
+    return readLockSupport(part);
+  }
+
+  /**
+   * Lock the screen orientation. Resolves with the orientation the host
+   * reports once it accepted the lock, which can differ from `lock` when the
+   * device does not turn — compare the two to decide whether to show a
+   * rotate-device prompt. Rejects where {@link orientationLockSupport} is
+   * `"unsupported"`, and with the host's own error when it refuses.
+   */
+  lockOrientation(lock: OrientationLock): Promise<OrientationType | null> {
+    const part = this._orientation;
+    if (part === null) {
+      return Promise.reject(displayUnavailable("lockOrientation"));
+    }
+    let support: HostSupport;
+    try {
+      support = readLockSupport(part);
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
+    if (support === "unsupported") {
+      return Promise.reject(
+        new Error(
+          "RendererPlugin.lockOrientation: this host cannot lock the screen " +
+            'orientation (orientationLockSupport is "unsupported").',
+        ),
+      );
+    }
+    return part.lock(lock).then(() => {
+      this._syncDisplay();
+      return this.orientation;
+    });
+  }
+
+  /**
+   * Release an orientation lock. Resolves without action where
+   * {@link orientationLockSupport} is `"unsupported"`.
+   */
+  unlockOrientation(): Promise<void> {
+    const part = this._orientation;
+    if (part === null) {
+      return Promise.reject(displayUnavailable("unlockOrientation"));
+    }
+    let support: HostSupport;
+    try {
+      support = readLockSupport(part);
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
+    if (support === "unsupported") return Promise.resolve();
+    return part.unlock();
+  }
+
+  /**
+   * Drop the settled step and publish the state the host reports. Clearing
+   * first lets a `screen:fullscreen` handler start the next transition rather
+   * than join the one that just finished; while a run is queued, the
+   * handler's call joins that run.
+   */
+  private settleFullscreen(done: Promise<void>): void {
+    if (this._fullscreenStep?.done === done) this._fullscreenStep = null;
+    this._syncDisplay();
+  }
+
+  /**
+   * Read both parts and emit one event per state that moved. Every value is
+   * validated before any of it is stored, so a part reporting nonsense leaves
+   * the renderer's state as it was. A throwing event handler ends the sequence
+   * and reaches whoever caused the read, with the new state already stored.
+   */
+  private _syncDisplay(): void {
+    const fullscreen = this._fullscreen;
+    // A host event that arrives after teardown is expected, not an error.
+    if (fullscreen === null) return;
+    const active = readFullscreenActive(fullscreen);
+    const current = this._orientation
+      ? readOrientation(this._orientation)
+      : null;
+    if (active !== this._lastFullscreen) {
+      this._lastFullscreen = active;
+      this._bus?.emit("screen:fullscreen", { active });
+    }
+    if (current !== this._lastOrientation) {
+      this._lastOrientation = current;
+      if (current !== null) {
+        this._bus?.emit("screen:orientation", { type: current });
+      }
+    }
+  }
+
+  private fullscreenTarget(): HTMLElement {
+    return this._config.container ?? this._app.canvas;
   }
 
   private installSceneVisibilityListeners(context: EngineContext): void {
@@ -986,41 +1497,6 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     };
   }
 
-  private installFullscreenListener(bus: EventBus<EngineEvents>): void {
-    if (typeof document === "undefined") return;
-    const handler = (): void => {
-      bus.emit("screen:fullscreen", { active: this.isFullscreen });
-    };
-    document.addEventListener("fullscreenchange", handler);
-    document.addEventListener("webkitfullscreenchange", handler);
-    this._unregisterFullscreenListener = () => {
-      document.removeEventListener("fullscreenchange", handler);
-      document.removeEventListener("webkitfullscreenchange", handler);
-    };
-  }
-
-  private installOrientationListener(bus: EventBus<EngineEvents>): void {
-    if (typeof window === "undefined") return;
-    const emit = (): void => {
-      const type = deriveOrientationType();
-      if (type !== null) bus.emit("screen:orientation", { type });
-    };
-    const orientation = window.screen?.orientation;
-    if (orientation && typeof orientation.addEventListener === "function") {
-      orientation.addEventListener("change", emit);
-      this._unregisterOrientationListener = () => {
-        orientation.removeEventListener("change", emit);
-      };
-      return;
-    }
-    // Legacy fallback: window.orientationchange. Deprecated but still the
-    // only signal on older iOS Safari.
-    window.addEventListener("orientationchange", emit);
-    this._unregisterOrientationListener = () => {
-      window.removeEventListener("orientationchange", emit);
-    };
-  }
-
   // ─── Internal ────────────────────────────────────────────────────
 
   private startFit(options: RendererFitOptions): void {
@@ -1035,6 +1511,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       target,
       this._config.width,
       this._config.height,
+      (this._config.pixi?.resolution ?? this._config.resolution) === undefined,
       // A scene offset is held in virtual pixels; its canvas layers move by
       // it at the new scale. The first fit applies before the provider exists.
       () => {
@@ -1045,14 +1522,14 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
-   * Resolve the fit target. Returns `null` when no reasonable host can be
-   * inferred — the controller then applies a one-shot transform against
-   * `config.width × config.height` without observing. We intentionally do
-   * NOT fall through to `document.body`: a `ResizeObserver` on `body` fires
-   * on any page layout change (font loads, text reflows, dynamic content),
-   * not just viewport resizes, which would silently re-layout the canvas
-   * every frame. Callers that want full-page fit must opt in explicitly
-   * via `fit: { target: document.body }`.
+   * Resolve the fit target. Returns `null` when no reasonable host element can
+   * be inferred — the controller then applies a one-shot transform against
+   * `config.width × config.height` without observing. We intentionally do NOT
+   * fall through to `document.body`: a `ResizeObserver` on `body` fires on any
+   * page layout change (font loads, text reflows, dynamic content), not just
+   * viewport resizes, which would silently re-layout the canvas every frame.
+   * Callers that want full-page fit must opt in explicitly via
+   * `fit: { target: document.body }`.
    */
   private resolveFitTarget(options: RendererFitOptions): HTMLElement | null {
     if (options.target) return options.target;
@@ -1065,77 +1542,106 @@ export class RendererPlugin implements Plugin, RendererAdapter {
 
 // ─── Module-private helpers ──────────────────────────────────────────
 
-interface FullscreenAPI {
-  request(): Promise<void>;
-  exit(): Promise<void>;
-  fullscreenElement(): Element | null;
+const HOST_SUPPORT_VALUES: readonly string[] = [
+  "supported",
+  "unsupported",
+  "unknown",
+];
+
+const ORIENTATION_VALUES: readonly string[] = [
+  "portrait-primary",
+  "portrait-secondary",
+  "landscape-primary",
+  "landscape-secondary",
+];
+
+/** The error every display member reports outside the engine's run. */
+function displayUnavailable(member: string): Error {
+  return new Error(
+    `RendererPlugin.${member}: the display is only available from the ` +
+      "renderer's onStart to engine.destroy(). A plugin that reads it in " +
+      "its own onStart must be registered after RendererPlugin.",
+  );
 }
 
-type WebkitElement = Element & {
-  webkitRequestFullscreen?: () => void | Promise<void>;
-};
+// A registered display part reports values from a native bridge, so each read
+// is checked at that boundary. The page's own parts always pass.
 
-type WebkitDocument = Document & {
-  webkitExitFullscreen?: () => void | Promise<void>;
-  webkitFullscreenElement?: Element | null;
-};
+function readFullscreenActive(part: HostFullscreen): boolean {
+  const value: unknown = part.active;
+  if (typeof value !== "boolean") {
+    throw new Error(
+      `HostFullscreen.active must be a boolean, got ${JSON.stringify(value)}.`,
+    );
+  }
+  return value;
+}
 
-/**
- * Resolve the fullscreen API at call time, picking the unprefixed
- * standard methods when present and falling back to the `webkit*`
- * variants on iOS Safari. Detection runs on each call rather than at
- * module load so the helper still works if the prefixed API is
- * polyfilled or wrapped after import.
- */
-function getFullscreenAPI(el: Element): FullscreenAPI {
-  if (typeof document === "undefined") {
-    return {
-      request: () =>
-        Promise.reject(new Error("Fullscreen unavailable: no document")),
-      exit: () => Promise.resolve(),
-      fullscreenElement: () => null,
-    };
+function readFullscreenSupport(part: HostFullscreen): HostSupport {
+  const value: unknown = part.support;
+  if (!HOST_SUPPORT_VALUES.includes(value as string)) {
+    throw new Error(
+      "HostFullscreen.support must be one of supported, unsupported, " +
+        `unknown, got ${JSON.stringify(value)}.`,
+    );
   }
-  if ("requestFullscreen" in el) {
-    return {
-      request: () => Promise.resolve(el.requestFullscreen()),
-      exit: () => Promise.resolve(document.exitFullscreen()),
-      fullscreenElement: () => document.fullscreenElement,
-    };
+  return value as HostSupport;
+}
+
+function readLockSupport(part: HostOrientation): HostSupport {
+  const value: unknown = part.lockSupport;
+  if (!HOST_SUPPORT_VALUES.includes(value as string)) {
+    throw new Error(
+      "HostOrientation.lockSupport must be one of supported, unsupported, " +
+        `unknown, got ${JSON.stringify(value)}.`,
+    );
   }
-  const webkitEl = el as WebkitElement;
-  const webkitDoc = document as WebkitDocument;
-  if (typeof webkitEl.webkitRequestFullscreen === "function") {
-    return {
-      request: () => Promise.resolve(webkitEl.webkitRequestFullscreen?.()),
-      exit: () => Promise.resolve(webkitDoc.webkitExitFullscreen?.()),
-      fullscreenElement: () => webkitDoc.webkitFullscreenElement ?? null,
-    };
+  return value as HostSupport;
+}
+
+function readOrientation(part: HostOrientation): OrientationType | null {
+  const value: unknown = part.current;
+  if (value === null) return null;
+  if (!ORIENTATION_VALUES.includes(value as string)) {
+    throw new Error(
+      "HostOrientation.current must be one of portrait-primary, " +
+        "portrait-secondary, landscape-primary, landscape-secondary or " +
+        `null, got ${JSON.stringify(value)}.`,
+    );
   }
-  return {
-    request: () =>
-      Promise.reject(new Error("Fullscreen API not supported in this browser")),
-    exit: () => Promise.resolve(),
-    fullscreenElement: () => null,
-  };
+  return value as OrientationType;
 }
 
 /**
- * Best-effort device orientation read. Prefers `window.screen.orientation.type`,
- * falling back to deriving from the legacy numeric `window.orientation` angle
- * (deprecated but still the only signal on some old iOS Safari versions).
- * Returns `null` when neither API is available.
+ * The backend list Pixi is asked for. A single name keeps its own place at
+ * the front and the other backend follows it, so a game that prefers WebGPU
+ * still draws where only WebGL exists.
  */
-function deriveOrientationType(): OrientationType | null {
-  if (typeof window === "undefined") return null;
-  const modern = window.screen?.orientation?.type;
-  if (modern) return modern;
-  const legacyAngle =
-    (window as Window & { orientation?: number }).orientation ?? null;
-  if (legacyAngle === null) return null;
-  if (legacyAngle === 0) return "portrait-primary";
-  if (legacyAngle === 180) return "portrait-secondary";
-  if (legacyAngle === 90) return "landscape-primary";
-  if (legacyAngle === -90 || legacyAngle === 270) return "landscape-secondary";
-  return null;
+function resolveBackends(preference: unknown): readonly RendererBackend[] {
+  if (preference === undefined) return DRAWN_BACKENDS;
+  if (isRendererBackend(preference)) {
+    return [
+      preference,
+      ...DRAWN_BACKENDS.filter((backend) => backend !== preference),
+    ];
+  }
+  if (
+    Array.isArray(preference) &&
+    preference.length > 0 &&
+    preference.every(isRendererBackend)
+  ) {
+    return preference;
+  }
+  throw new Error(
+    'RendererPlugin: pixi.preference must name "webgl" or "webgpu"; YAGE ' +
+      "does not draw with Pixi's Canvas 2D renderer. Got " +
+      `${JSON.stringify(preference)}.`,
+  );
+}
+
+function isRendererBackend(value: unknown): value is RendererBackend {
+  return (
+    typeof value === "string" &&
+    (DRAWN_BACKENDS as readonly string[]).includes(value)
+  );
 }

@@ -37,10 +37,13 @@ export type {
   LightConeOptions,
   LightGrid,
   LightingConfig,
+  LightingDiagnostics,
+  LightingFallbackReason,
   LightingRenderer,
   LightingRendererContext,
   LightingRendererFactory,
   LightingRenderFrame,
+  LightingSceneDiagnostics,
   LightOccluderShape,
   SceneLightingOptions,
 } from "./types.js";

@@ -89,9 +89,10 @@ await save.loadSlot("saves", "manual-1", game);
 - **Save** — `createSave({ adapter })` with `persist(id, thing)`,
   `restore(id, thing, opts?)`, `saveSlot(id, slot, thing, opts?)`,
   `loadSlot(id, slot, thing, opts?)`, `listSlots(id)`, `deleteSlot(id, slot)`,
-  `autoPersist(id, thing, opts?)`.
-- **Adapters** — `localStorageAdapter`, `memoryAdapter`. Implement
-  `SaveAdapter` for IndexedDB, files, cloud, etc.
+  `autoPersist(id, thing, opts?)`, `flush()`.
+- **Adapters** — `localStorageAdapter`, `memoryAdapter`, `fileAdapter`. Every
+  adapter replaces each key atomically; implement `SaveAdapter` with the same
+  guarantees for IndexedDB or cloud storage.
 - **Codecs** — `jsonCodec`, `setCodec`, `mapCodec`, `dateCodec`.
 
 ## Docs

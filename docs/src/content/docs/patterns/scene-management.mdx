@@ -468,26 +468,54 @@ class Difficulty extends Component {
 The engine's `EventBus` carries engine events only. It is keyed by string and
 does not take `defineEvent` tokens. See [Events](/concepts/events/).
 
-## Pause on Tab Blur
+## Pause While the Game Is in the Background
 
-`SceneManager` can automatically pause every active scene when the tab is
-hidden, and restore them on return. Opt in per engine instance:
+`SceneManager` can hold every scene on the stack paused while the game is in
+the background — the app is inactive, the page is hidden, or the window is
+unfocused — and resume them on the return. Opt in per engine instance:
 
 ```typescript yage-context="engine"
 import { SceneManagerKey } from "@yagejs/core";
 
 const scenes = engine.context.resolve(SceneManagerKey);
-scenes.autoPauseOnBlur = true;  // default: false
+scenes.autoPause = true;  // default: false
 ```
 
 Default is `false` because freezing simulation mid-combat because someone
 alt-tabbed is surprising — opt in only when the game design wants it.
 
-Only scenes paused by this mechanism are restored on focus. Scenes the user
-had already paused (manual `scene.paused = true` or a `pauseBelow` cascade
-from a modal stacked on top) are never touched, so a game-over modal that
-was paused before the blur stays paused after the return. Toggling the flag
-off mid-blur unpauses the tracked scenes immediately.
+The pause belongs to the manager, not to the scenes. `scene.paused` keeps
+whatever the game wrote, so a game-over modal paused before the game went to
+the background is still paused after the return, and a pause written while the
+game was in the background is in force when the player comes back. Scenes that
+were already paused — manually, or by a `pauseBelow` cascade from a modal on
+top — get neither `onPause` nor `onResume`. A scene pushed while the game is in
+the background enters paused, with one `onPause` after its `onEnter`.
 
-Muting audio on blur is a separate concern handled by
-`AudioManager.autoMuteOnBlur` (default `true`) — see the [Audio guide](/guides/audio/#tab-visibility).
+For a resume the player confirms, push a pause scene from the `host:active`
+event. That pause is the game's own, so the automatic resume does not clear it:
+
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
+
+declare class PauseMenu extends Scene {
+  readonly name: "pause-menu";
+}
+
+engine.events.on("host:active", ({ active }) => {
+  if (!active) void engine.scenes.push(new PauseMenu());
+});
+```
+
+`PauseMenu` keeps the scenes under it paused until the player closes it, since
+`pauseBelow` is on by default. A game that wants no automatic pause at all
+leaves `autoPause` off and uses the event alone.
+
+The loop itself keeps running on whatever frames the browser or shell
+delivers, so rendering, scene transitions, and the game's own event handlers,
+timers and promises still run: networking code is unaffected. What a paused
+scene stops is the list in [Scenes](/concepts/scenes/).
+
+Audio has its own setting, `AudioManager.autoPause` (default `true`), which
+follows the same host state — see the
+[Audio guide](/guides/audio/#pausing-in-the-background).

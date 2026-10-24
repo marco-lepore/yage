@@ -332,7 +332,10 @@ export function createRendererTestContext(options?: {
 
   const vw = options?.viewportWidth ?? 800;
   const vh = options?.viewportHeight ?? 600;
-  const mockRenderer = { virtualSize: { width: vw, height: vh } };
+  const mockRenderer = {
+    virtualSize: { width: vw, height: vh },
+    _flushContextNotices: () => undefined,
+  };
   ctx.register(RendererKey, mockRenderer as never);
 
   const stage = new MockContainer();

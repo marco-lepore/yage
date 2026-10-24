@@ -14,6 +14,8 @@ import type {
 } from "@yagejs/core";
 import type { SceneRenderTreeProvider } from "./SceneRenderTree.js";
 import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
+import type { RendererPlugin } from "./RendererPlugin.js";
+import { RendererKey } from "./types.js";
 import { CameraComponent } from "./CameraComponent.js";
 import { SortGroupComponent, sortOwnerOf } from "./SortGroupComponent.js";
 import { VisualComponent } from "./VisualComponent.js";
@@ -26,6 +28,9 @@ import { syncCameraTransform } from "./cameraTransform.js";
  * camera-based per-layer transforms. Each scene's CameraEntity bindings
  * determine which layers receive the camera transform; unbound layers
  * stay at identity (screen-space behavior).
+ *
+ * Each pass starts by emitting the `graphics:context` events queued since the
+ * last frame, so their handlers run inside the game loop's frame.
  */
 export class DisplaySystem extends System {
   private readonly transformScratch = new Vec2Buffer();
@@ -37,6 +42,7 @@ export class DisplaySystem extends System {
   private cameraQuery!: QueryResult;
   private sortGroupQuery!: QueryResult;
   private treeProvider!: SceneRenderTreeProvider;
+  private renderer!: RendererPlugin;
   private boundary: ErrorBoundary | undefined;
 
   onRegister(context: EngineContext): void {
@@ -45,10 +51,13 @@ export class DisplaySystem extends System {
     this.cameraQuery = queryCache.register([CameraComponent]);
     this.sortGroupQuery = queryCache.register([SortGroupComponent]);
     this.treeProvider = context.resolve(SceneRenderTreeProviderKey);
+    this.renderer = context.resolve(RendererKey);
     this.boundary = context.tryResolve(ErrorBoundaryKey);
   }
 
   update(): void {
+    this.renderer._flushContextNotices();
+
     // 1. Sync transforms to display objects. One entity can carry several
     //    visuals of different classes (a background plus a label), so every
     //    assignable component is synced, not just the first.

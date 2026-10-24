@@ -38,6 +38,8 @@ const EXPLICIT = {
   "guides/ui": "/llms/packages/ui.md",
   "guides/ui-react": "/llms/packages/ui-react.md",
   "guides/save-and-load": "/llms/packages/save.md",
+  "guides/electron": "/llms/packages/host-electron.md",
+  "guides/capacitor": "/llms/packages/host-capacitor.md",
   "guides/assets": "/llms/assets.md",
   "guides/loading-scene": "/llms/loading-scene.md",
   "guides/scene-transitions": "/llms/scene-transitions.md",
@@ -47,6 +49,7 @@ const EXPLICIT = {
   "tooling/sequence-editor": "/llms/tools/sequence-editor.md",
   "tooling/level-editor": "/llms/tools/editor.md",
   "tooling/feedback": "/llms/tools/feedback.md",
+  "tooling/packaging": "/llms/tools/pack.md",
   "tooling/local-engine": "/llms/local-engine.md",
 };
 

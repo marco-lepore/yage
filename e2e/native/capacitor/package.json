@@ -1,0 +1,17 @@
+{
+  "name": "yage-baseline-capacitor-shell",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Capacitor inputs for the generated native projects that load a built baseline web directory.",
+  "devDependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/cli": "8.5.3"
+  },
+  "dependencies": {
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/filesystem": "8.1.4",
+    "@capacitor/ios": "8.5.3",
+    "@capacitor/screen-orientation": "8.0.2"
+  }
+}

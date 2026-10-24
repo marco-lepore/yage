@@ -45,6 +45,12 @@ interface StartedPlayback {
   readonly instance: IMediaInstance;
 }
 
+/** The members of the WebAudio context this manager reads. */
+type AudioContextEvents = Pick<
+  BaseAudioContext,
+  "state" | "addEventListener" | "removeEventListener"
+>;
+
 const DEFAULT_CHANNELS: Record<string, { volume: number }> = {
   sfx: { volume: 1 },
   music: { volume: 0.7 },
@@ -62,8 +68,23 @@ export class AudioManager {
   private readonly _channels = new Map<string, ChannelState>();
   private _masterVolume: number;
 
-  private _autoMuteOnBlur: boolean;
+  private _autoPause: boolean;
+  private _hostActive = true;
+  private _holding = false;
+  private _pausedBeforeHold = false;
   private readonly _unlockListeners: Array<() => void> = [];
+  /**
+   * Runs the pending `onUnlock` listeners once the `AudioContext` is running.
+   * The context reports every transition: the resume after the first
+   * gesture, and the resume after a hold for an inactive host.
+   */
+  private readonly _onContextStateChange = (): void => {
+    if (!this.isUnlocked()) return;
+    const pending = this._unlockListeners.splice(0);
+    for (const cb of pending) {
+      this._runUnlockCallback(cb);
+    }
+  };
   /**
    * Wired by {@link _setErrorBoundary} during `AudioPlugin.install`, since
    * this manager is constructed directly (no `EngineContext` of its own)
@@ -98,13 +119,18 @@ export class AudioManager {
       });
     }
 
-    this._autoMuteOnBlur = config?.autoMuteOnBlur ?? true;
+    this._autoPause = config?.autoPause ?? true;
 
-    // Delegate pause-on-blur to pixi-sound's built-in autoPause. It listens to
-    // `window.blur`/`focus` itself and suspends/resumes the AudioContext —
-    // saves us from owning a parallel visibility listener.
-    const ctx = this._getBlurContext();
-    if (ctx) ctx.autoPause = this._autoMuteOnBlur;
+    // The audio library has a window-focus listener of its own, and it stays
+    // off: audio follows one host state, read from `Host`, which covers a
+    // hidden page and a backgrounded app as well as an unfocused window.
+    const ctx = this._getAutoPauseContext();
+    if (ctx) ctx.autoPause = false;
+
+    this._getAudioContext()?.addEventListener(
+      "statechange",
+      this._onContextStateChange,
+    );
   }
 
   /**
@@ -319,10 +345,10 @@ export class AudioManager {
   }
 
   /**
-   * Whether the underlying `AudioContext` is running (i.e. audio will play).
-   * Browsers suspend the context on page load until a user gesture; this is
-   * purely a browser-level capability check and is not affected by
-   * `autoMuteOnBlur`.
+   * Whether the underlying `AudioContext` is running, which is when audio
+   * plays. It is `false` before the first user gesture, which every browser
+   * requires; while audio is held for an inactive host; and until the context
+   * has resumed after the host becomes active again.
    */
   isUnlocked(): boolean {
     const ctx = this._getAudioContext();
@@ -331,8 +357,10 @@ export class AudioManager {
 
   /**
    * Fires `cb` once when audio becomes playable. If already unlocked, fires
-   * synchronously. Returns a disposer that removes the pending listener (no-op
-   * once it has fired).
+   * synchronously. Otherwise it fires when the `AudioContext` next starts
+   * running: after the first user gesture, or when audio held for an
+   * inactive host resumes. Returns a disposer that removes the pending
+   * listener (no-op once it has fired).
    */
   onUnlock(cb: () => void): () => void {
     if (this.isUnlocked()) {
@@ -353,35 +381,30 @@ export class AudioManager {
     if (idx !== -1) this._unlockListeners.splice(idx, 1);
   }
 
-  /** Pause audio when the window loses focus or the tab is hidden. Default: `true`. */
-  get autoMuteOnBlur(): boolean {
-    return this._autoMuteOnBlur;
+  /**
+   * Pause all audio while the host is inactive (`Host.active` is `false`): the
+   * app is in the background, the page is hidden, or the window is unfocused.
+   * Default: `true`. Playback continues from where it stopped, and channel and
+   * handle volume, mute and pause are left as the player set them.
+   */
+  get autoPause(): boolean {
+    return this._autoPause;
   }
 
-  set autoMuteOnBlur(value: boolean) {
-    if (this._autoMuteOnBlur === value) return;
-    this._autoMuteOnBlur = value;
-    const ctx = this._getBlurContext();
-    if (!ctx) return;
-    ctx.autoPause = value;
-    // Pixi only acts on the next blur event. If the toggle happens while the
-    // window is already blurred, sync `paused` so the change takes effect now.
-    if (typeof document !== "undefined" && !document.hasFocus()) {
-      ctx.paused = value;
-    }
+  set autoPause(value: boolean) {
+    if (this._autoPause === value) return;
+    this._autoPause = value;
+    this._applyHostPause();
   }
 
   /**
-   * Called by `AudioPlugin` after a user gesture fires. Fires pending
-   * `onUnlock` listeners if the context has become running.
+   * Follow the host's activity.
    * @internal
    */
-  _handleGesture(): void {
-    if (!this.isUnlocked()) return;
-    const pending = this._unlockListeners.splice(0);
-    for (const cb of pending) {
-      this._runUnlockCallback(cb);
-    }
+  _setHostActive(active: boolean): void {
+    if (this._hostActive === active) return;
+    this._hostActive = active;
+    this._applyHostPause();
   }
 
   /**
@@ -393,9 +416,16 @@ export class AudioManager {
     this._errorBoundary = boundary;
   }
 
-  /** Cancel every fade owned by this manager. @internal */
+  /**
+   * Cancel every fade owned by this manager and stop following the
+   * `AudioContext`. @internal
+   */
   _dispose(): void {
     this._fadeQueue?.cancelAll();
+    this._getAudioContext()?.removeEventListener(
+      "statechange",
+      this._onContextStateChange,
+    );
   }
 
   /**
@@ -428,30 +458,45 @@ export class AudioManager {
     }
   }
 
-  private _getBlurContext():
-    | { autoPause: boolean; paused: boolean }
-    | undefined {
-    // `autoPause` only exists on pixi-sound's WebAudioContext. The HTMLAudio
-    // fallback (no WebAudio support, or `useLegacy=true`) lacks it — return
-    // undefined there so callers no-op rather than silently writing a dead
-    // property. `paused` is on IMediaContext, but we guard it together since
-    // reconciliation only makes sense when autoPause is also writable.
+  /**
+   * Hold the whole audio context paused while the host is inactive, or
+   * release it. The value `paused` had before the hold is restored, so audio
+   * the game had paused itself stays paused.
+   */
+  private _applyHostPause(): void {
+    const hold = this._autoPause && !this._hostActive;
+    if (hold === this._holding) return;
+    this._holding = hold;
+    // Both members are on the audio library's media-context interface, so the
+    // HTML-audio fallback (no WebAudio support, or `useLegacy=true`) has them
+    // too.
+    const ctx = this._sound.context;
+    if (hold) {
+      this._pausedBeforeHold = ctx.paused;
+      ctx.paused = true;
+    } else {
+      ctx.paused = this._pausedBeforeHold;
+    }
+    ctx.refreshPaused();
+  }
+
+  /**
+   * The context when it carries the audio library's own window-focus setting.
+   * Only its WebAudio context has one.
+   */
+  private _getAutoPauseContext(): { autoPause: boolean } | undefined {
     const ctx = (this._sound as unknown as { context?: unknown }).context;
-    if (
-      ctx !== null &&
-      typeof ctx === "object" &&
-      "autoPause" in ctx &&
-      "paused" in ctx
-    ) {
-      return ctx as { autoPause: boolean; paused: boolean };
+    if (ctx !== null && typeof ctx === "object" && "autoPause" in ctx) {
+      return ctx as { autoPause: boolean };
     }
     return undefined;
   }
 
-  private _getAudioContext(): { state: string } | undefined {
+  /** The WebAudio context. The HTML-audio fallback has none. */
+  private _getAudioContext(): AudioContextEvents | undefined {
     const ctx = (
       this._sound as unknown as {
-        context?: { audioContext?: { state: string } };
+        context?: { audioContext?: AudioContextEvents };
       }
     ).context;
     return ctx?.audioContext;

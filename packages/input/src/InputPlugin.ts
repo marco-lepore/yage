@@ -1,6 +1,7 @@
 import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
 import {
   ErrorBoundaryKey,
+  HostKey,
   RendererAdapterKey,
   SceneHookRegistryKey,
   SceneTimeKey,
@@ -267,25 +268,21 @@ export class InputPlugin implements Plugin {
         ),
     );
 
-    // A hidden or blurred page can miss the matching release events.
-    const releasePhysicalInput = (): void => {
-      this.manager._releaseAllPhysicalState();
-    };
-    window.addEventListener("blur", releasePhysicalInput);
-    this.cleanupFns.push(() =>
-      window.removeEventListener("blur", releasePhysicalInput),
-    );
-    if (typeof document !== "undefined") {
-      const onVisibilityChange = (): void => {
-        if (document.visibilityState === "hidden") {
-          releasePhysicalInput();
+    // A host that takes focus away, hides the page or turns the app inactive
+    // can swallow the matching release events.
+    this.cleanupFns.push(
+      context.resolve(HostKey)._observe(({ lifecycle, previous }) => {
+        if (
+          (lifecycle.focus === "unfocused" && previous.focus !== "unfocused") ||
+          (lifecycle.visibility === "hidden" &&
+            previous.visibility !== "hidden") ||
+          (lifecycle.activity === "inactive" &&
+            previous.activity !== "inactive")
+        ) {
+          this.manager._releaseAllPhysicalState();
         }
-      };
-      document.addEventListener("visibilitychange", onVisibilityChange);
-      this.cleanupFns.push(() =>
-        document.removeEventListener("visibilitychange", onVisibilityChange),
-      );
-    }
+      }),
+    );
 
     const sceneHooks = context.resolve(SceneHookRegistryKey);
     this.unregisterSceneHooks = sceneHooks.register({

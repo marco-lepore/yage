@@ -7,7 +7,9 @@ import {
   AssetManagerKey,
   LoggerKey,
   ErrorBoundaryKey,
+  HostKey,
 } from "./EngineContext.js";
+import type { Host } from "./Host.js";
 import type { SceneHookRegistry } from "./SceneHooks.js";
 import { SceneHookRegistryKey } from "./SceneHooks.js";
 import type { Logger } from "./Logger.js";
@@ -70,31 +72,40 @@ export class SceneManager {
    */
   private readonly _preloads = new WeakMap<Scene, PreloadRun>();
 
-  private _autoPauseOnBlur = false;
-  private _isBlurred = false;
-  private readonly _visibilityPausedScenes = new Set<Scene>();
-  private _visibilityListenerCleanup: (() => void) | undefined;
+  private host: Host | undefined;
+  private _autoPause = false;
+  private _hostPaused = false;
 
   /**
-   * Pause all non-paused scenes when `document.hidden` becomes `true`; restore
-   * them on focus. Default: `false`. Only scenes paused by this mechanism are
-   * restored — user-paused scenes (manual `scene.paused = true` or `pauseBelow`
-   * cascade) are never touched. Blur pause goes through the `paused` setter,
-   * so affected scenes get `onPause` on blur and `onResume` on focus.
+   * Scenes whose hooks last reported them paused: `onPause` ran and no
+   * `onResume` since. Every change of a scene's effective pause is compared
+   * against this record, whatever caused the change, so each change fires
+   * one hook. A scene leaves the record when it leaves the stack.
    */
-  get autoPauseOnBlur(): boolean {
-    return this._autoPauseOnBlur;
+  private readonly _pauseReported = new WeakSet<Scene>();
+
+  /**
+   * Pause every scene on the stack while the host is inactive — the app is in
+   * the background, the page is hidden, or the window is unfocused — and
+   * resume them when it is active again. Default: `false`.
+   *
+   * The pause is the manager's, not the scene's: `scene.paused` keeps whatever
+   * the game wrote, so a manual pause made while the game was in the
+   * background is still in force after the return.
+   */
+  get autoPause(): boolean {
+    return this._autoPause;
   }
 
-  set autoPauseOnBlur(value: boolean) {
-    if (this._autoPauseOnBlur === value) return;
-    this._autoPauseOnBlur = value;
-    if (!this._isBlurred) return;
-    if (value) {
-      this._applyBlurPause();
-    } else if (this._visibilityPausedScenes.size > 0) {
-      this._restoreBlurPause();
-    }
+  set autoPause(value: boolean) {
+    if (this._autoPause === value) return;
+    this._autoPause = value;
+    this._syncHostPause();
+  }
+
+  /** Whether `autoPause` holds the stack paused. @internal */
+  get _pausedByHost(): boolean {
+    return this._hostPaused;
   }
 
   /**
@@ -110,45 +121,43 @@ export class SceneManager {
     this.hookRegistry = context.tryResolve(SceneHookRegistryKey);
     this.logger = context.tryResolve(LoggerKey);
     this.errorBoundary = context.tryResolve(ErrorBoundaryKey);
-
-    if (this._visibilityListenerCleanup || typeof document === "undefined") {
-      return;
-    }
-    const onVisibilityChange = (): void => {
-      this._handleVisibilityChange(document.hidden);
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    this._visibilityListenerCleanup = () =>
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+    this.host = context.tryResolve(HostKey);
   }
 
   /**
-   * React to a visibility change. Parameterised on `hidden` so unit tests can
-   * drive it without a real `document`.
+   * Match the host pause to `Host.active` and `autoPause`, firing
+   * `onPause` or `onResume` for the scenes whose effective pause flips.
    * @internal
    */
-  _handleVisibilityChange(hidden: boolean): void {
-    if (hidden && !this._isBlurred) {
-      this._isBlurred = true;
-      if (this._autoPauseOnBlur) this._applyBlurPause();
-    } else if (!hidden && this._isBlurred) {
-      this._isBlurred = false;
-      if (this._visibilityPausedScenes.size > 0) this._restoreBlurPause();
-    }
+  _syncHostPause(): void {
+    const next =
+      !this._destroyed &&
+      this._autoPause &&
+      this.host !== undefined &&
+      !this.host.active;
+    if (next === this._hostPaused) return;
+    this._hostPaused = next;
+    this._withMutationSync(() => this._reportPauseChanges());
   }
 
-  private _applyBlurPause(): void {
-    for (const scene of this.activeScenes) {
-      scene.paused = true;
-      this._visibilityPausedScenes.add(scene);
+  /**
+   * Fire `onPause` or `onResume` when `scene`'s effective pause differs from
+   * the state its hooks last reported. The new state is recorded before the
+   * hook runs, so a `paused` write the hook makes is compared against it. A
+   * scene that is not on the stack fires nothing.
+   * @internal
+   */
+  _reportPause(scene: Scene): void {
+    if (!this.stack.includes(scene)) return;
+    const paused = scene.isPaused;
+    if (paused === this._pauseReported.has(scene)) return;
+    if (paused) {
+      this._pauseReported.add(scene);
+      this._invokeLifecycle(scene, "onPause", () => scene.onPause?.());
+    } else {
+      this._pauseReported.delete(scene);
+      this._invokeLifecycle(scene, "onResume", () => scene.onResume?.());
     }
-  }
-
-  private _restoreBlurPause(): void {
-    for (const scene of this._visibilityPausedScenes) {
-      scene.paused = false;
-    }
-    this._visibilityPausedScenes.clear();
   }
 
   /** The topmost (active) scene. */
@@ -169,16 +178,6 @@ export class SceneManager {
   /** Whether a scene transition is currently running. */
   get isTransitioning(): boolean {
     return this._currentRun !== undefined;
-  }
-
-  /**
-   * Whether a stack mutation (push/pop/replace/popAll) is running, including
-   * while its lifecycle hooks execute. Lets `Scene.paused` detect a reentrant
-   * write from inside a hook, which would race the transition's pause diff.
-   * @internal
-   */
-  get _isMutating(): boolean {
-    return this._mutationDepth > 0;
   }
 
   /**
@@ -268,7 +267,7 @@ export class SceneManager {
       // `isTransitioning` is still true when `scene:replaced` fires.
       await this._runTransition("replace", transition, old, scene, () => {
         if (old) {
-          this._removeScene(old, true);
+          this._removeScene(old);
         }
         this.bus?.emit("scene:replaced", {
           oldScene: old ?? scene,
@@ -407,10 +406,7 @@ export class SceneManager {
       this._cleanupRun(this._currentRun);
     }
     this._pendingChain = Promise.resolve();
-
-    this._visibilityListenerCleanup?.();
-    this._visibilityListenerCleanup = undefined;
-    this._visibilityPausedScenes.clear();
+    this._hostPaused = false;
 
     this._withMutationSync(() => {
       while (this.stack.length > 0) {
@@ -483,8 +479,6 @@ export class SceneManager {
   }
 
   private async _pushScene(scene: Scene, suppressEvent = false): Promise<void> {
-    const wasPaused = this._snapshotPauseStates();
-
     await this._withMutation(async () => {
       scene._setContext(this._context);
       await this.hookRegistry?.runBeforeEnter(scene);
@@ -493,7 +487,7 @@ export class SceneManager {
       await this._preloadScene(scene);
       this.stack.push(scene);
       this._invokeLifecycle(scene, "onEnter", () => scene.onEnter?.());
-      this._firePauseTransitions(wasPaused);
+      this._reportPauseChanges();
       if (!suppressEvent) {
         this.bus?.emit("scene:pushed", { scene });
       }
@@ -501,14 +495,12 @@ export class SceneManager {
   }
 
   private _popScene(suppressEvent = false): Scene | undefined {
-    const wasPaused = this._snapshotPauseStates();
-
     return this._withMutationSync(() => {
       const removed = this.stack.pop();
       if (!removed) return undefined;
 
       this._teardownScene(removed);
-      this._fireResumeTransitions(wasPaused);
+      this._reportPauseChanges();
       if (!suppressEvent) {
         this.bus?.emit("scene:popped", { scene: removed });
       }
@@ -517,8 +509,6 @@ export class SceneManager {
   }
 
   private async _replaceScene(scene: Scene): Promise<void> {
-    const wasPaused = this._snapshotPauseStates();
-
     await this._withMutation(async () => {
       scene._setContext(this._context);
       await this.hookRegistry?.runBeforeEnter(scene);
@@ -531,8 +521,7 @@ export class SceneManager {
       this.stack.push(scene);
       this._invokeLifecycle(scene, "onEnter", () => scene.onEnter?.());
 
-      this._firePauseTransitions(wasPaused);
-      this._fireResumeTransitions(wasPaused);
+      this._reportPauseChanges();
       this.bus?.emit("scene:replaced", {
         oldScene: old ?? scene,
         newScene: scene,
@@ -540,19 +529,18 @@ export class SceneManager {
     });
   }
 
-  private _removeScene(scene: Scene, suppressEvent = false): void {
+  /**
+   * Take a scene off the stack and tear it down, without a `scene:popped`
+   * event: the caller announces the stack change itself.
+   */
+  private _removeScene(scene: Scene): void {
     this._withMutationSync(() => {
       const idx = this.stack.indexOf(scene);
       if (idx === -1) return;
 
-      const wasPaused = this._snapshotPauseStates();
       this.stack.splice(idx, 1);
       this._teardownScene(scene);
-      this._firePauseTransitions(wasPaused);
-      this._fireResumeTransitions(wasPaused);
-      if (!suppressEvent) {
-        this.bus?.emit("scene:popped", { scene });
-      }
+      this._reportPauseChanges();
     });
   }
 
@@ -594,11 +582,11 @@ export class SceneManager {
   }
 
   private _teardownScene(scene: Scene): void {
+    this._pauseReported.delete(scene);
     this._invokeLifecycle(scene, "onExit", () => scene.onExit?.());
     scene._destroyAllEntities();
     this.hookRegistry?.runAfterExit(scene);
     scene._clearScopedServices();
-    this._visibilityPausedScenes.delete(scene);
   }
 
   private async _runTransition(
@@ -728,10 +716,6 @@ export class SceneManager {
     };
   }
 
-  private _snapshotPauseStates(): Map<Scene, boolean> {
-    return new Map(this.stack.map((scene) => [scene, scene.isPaused] as const));
-  }
-
   private _warnIfMutating(method: string): void {
     if (this._mutationDepth === 0) return;
     // The call is safe — _enqueue chains it onto _pendingChain, so it runs
@@ -766,34 +750,21 @@ export class SceneManager {
     }
   }
 
-  /** Fire onPause() for scenes that transitioned from not-paused to paused. */
-  private _firePauseTransitions(wasPaused: Map<Scene, boolean>): void {
-    for (const scene of this.stack) {
-      const was = wasPaused.get(scene) ?? false;
-      if (scene.isPaused && !was) {
-        this._invokeLifecycle(scene, "onPause", () => scene.onPause?.());
-      }
-    }
-  }
-
-  /** Fire onResume() for scenes that transitioned from paused to not-paused. */
-  private _fireResumeTransitions(wasPaused: Map<Scene, boolean>): void {
-    for (const scene of this.stack) {
-      const was = wasPaused.get(scene) ?? false;
-      if (!scene.isPaused && was) {
-        this._invokeLifecycle(scene, "onResume", () => scene.onResume?.());
-      }
-    }
+  /**
+   * Report every scene on the stack, bottom to top. A throwing hook ends the
+   * pass, and the next pass reports the scenes after it.
+   */
+  private _reportPauseChanges(): void {
+    for (const scene of this.stack) this._reportPause(scene);
   }
 
   /**
    * Run a scene-lifecycle hook (`onEnter`/`onExit`/`onPause`/`onResume`)
    * through the error boundary when one is available. Reports and
-   * rethrows, so a throwing hook propagates to the caller exactly as it
-   * does today — `_mountDetached`, blur-driven pause/resume, and
-   * `Engine.destroy()`'s synchronous teardown all invoke hooks directly
-   * here rather than through `_enqueue`, so this is the one place that
-   * covers all of them.
+   * rethrows, so a throwing hook propagates to its caller — `_mountDetached`,
+   * the host pause and resume, and `Engine.destroy()`'s synchronous teardown
+   * all invoke hooks directly here rather than through `_enqueue`, so this is
+   * the one place that covers all of them.
    */
   private _invokeLifecycle(scene: Scene, phase: string, fn: () => void): void {
     if (this.errorBoundary) {

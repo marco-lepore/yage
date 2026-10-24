@@ -28,6 +28,11 @@ engine.use(
 The plugin creates the PixiJS application, sets up the render loop, and
 registers all rendering systems.
 
+The renderer also draws on a page whose content security policy forbids
+turning strings into code. PixiJS writes shader and uniform code at run time,
+and the renderer loads PixiJS's prebuilt replacements itself on such a page;
+your game needs no import and no option for it.
+
 ### Pixel-art preset
 
 If you're shipping pixel art, set `pixelArtPreset: true`. One flag flips
@@ -63,11 +68,98 @@ only changes the *default* sampling mode.
 
 ### Which graphics API runs
 
-Pixi tries WebGL, then WebGPU, then a plain 2D canvas, and draws with the
-first one the browser supports. `pixi: { preference: "webgpu" }` moves WebGPU
-to the front of that order. `renderer.backend` reports the one it picked,
-`"webgl"`, `"webgpu"` or `"canvas"`, for a game that adjusts its effects to it
-or a test that checks it.
+YAGE draws with WebGL or WebGPU. `renderer.backend` reports the one Pixi
+picked, `"webgl"` or `"webgpu"`, for a game that adjusts its effects to it or
+a test that checks it. `renderer.capabilities` reports the WebGL version and
+the context's limits, as described in
+[What the device can draw](#what-the-device-can-draw), and
+[Choosing a graphics API](#choosing-a-graphics-api) covers the order Pixi tries
+them in.
+
+## What the device can draw
+
+A browser gives the page a graphics context: a WebGL context or a WebGPU
+device. Which one it is, and what it can do, differs between machines, and a
+game that wants the better-looking of two options has to ask.
+
+`renderer.capabilities` is one frozen object with the answers.
+
+```typescript
+import type { RendererPlugin } from "@yagejs/renderer";
+
+declare const renderer: RendererPlugin;
+
+const caps = renderer.capabilities;
+const bounce = caps.blendMinMax === "supported" ? "max" : "mix";
+const atlasSide = Math.min(2048, caps.maxTextureSize);
+```
+
+It carries the graphics API (`backend`, one of `"webgl1"`, `"webgl2"` and
+`"webgpu"`), the size limits for textures, render targets and the drawable
+area, how many samples an antialiased render target takes, whether fragment
+shaders compute at high float precision, whether the `"min"` and `"max"` blend
+modes draw as named, and what the two float colour formats can be sampled,
+filtered and drawn into.
+
+Each of the yes-or-no fields reads `"supported"`, `"unsupported"` or
+`"unknown"`, the same three words a host operation reports. `"unknown"` means
+only a draw would settle it, and YAGE draws nothing to find out.
+
+The renderer reads the snapshot when it installs and again after a lost
+context is restored, so reading it every frame costs nothing. Both
+`capabilities` and `contextLost` are readable from the renderer's install to
+`engine.destroy()`.
+
+### Choosing a graphics API
+
+YAGE draws with WebGL or WebGPU. WebGL is asked for first; pass
+`pixi: { preference: "webgpu" }` to put WebGPU first, and an array to give the
+exact order. Pixi's Canvas 2D renderer is never asked for: it draws no light,
+skips every filter and ignores inverse masks, so a game that reached it would
+run half-drawn without saying so. The option takes those two names only, so
+`"canvas"` fails to compile, and any other value that reaches the plugin's
+constructor at run time makes it throw.
+
+Under a content security policy without `'unsafe-eval'`, PixiJS on WebGPU
+writes integer uniforms as floats, so `motionBlur` from `@yagejs/effects`
+draws nothing there. WebGL, the renderer's first choice, draws it.
+
+On a browser that offers neither WebGL nor WebGPU, `engine.start()` rejects
+with Pixi's `No available renderer for the current environment`. Catch it
+where you start the engine and show the player whatever error page the game
+has.
+
+## When the graphics context is lost
+
+A browser takes the graphics context away when the system reclaims the GPU: a
+driver reset, a laptop switching graphics processors, a mobile app the system
+sent to the background. While the context is gone nothing draws and the canvas
+keeps its last frame.
+
+The engine's event bus carries `graphics:context` for both halves of that:
+
+```typescript yage-context="engine"
+const overlay = document.getElementById("graphics-interrupted")!;
+engine.events.on("graphics:context", ({ lost }) => {
+  overlay.hidden = !lost;
+});
+```
+
+Each event arrives in the next frame the game loop runs, at the start of the
+`Render` phase: after the component updates, and before the frame's transforms
+are copied to the display objects and lighting draws. A handler that throws
+stops the loop, the same way any error that escapes a frame does.
+`renderer.contextLost` reads the same state at any moment.
+
+Everything the engine drew comes back by itself once the browser hands over a
+new context: textures and shaders are uploaded again, every render target
+redraws from its source, and every `createTexture` result redraws from the
+drawing it keeps.
+
+A restore that never comes means the `{ lost: false }` event never arrives.
+An overlay shown on `{ lost: true }` stays up, which is the signal to offer a
+reload. The engine keeps running its loop and its scenes meanwhile; pause them
+yourself if that suits the game.
 
 ## Where to go next
 

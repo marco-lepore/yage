@@ -154,7 +154,7 @@ await engine.scenes.push(scene);
     };
   }
 ).__softLighting__ = {
-  backend: () => renderer.backend,
+  backend: () => renderer.capabilities.backend,
   frames: () => scene.counter.frames,
   probe: (x, y) => {
     const screen = scene.camera.worldToScreen(x, y);

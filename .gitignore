@@ -49,3 +49,7 @@ output/playwright/
 
 # Local feedback evidence
 .yage/feedback/
+
+# Native baseline runs: built web directories, generated native projects,
+# Electron profiles, reports.
+e2e/native/.work/

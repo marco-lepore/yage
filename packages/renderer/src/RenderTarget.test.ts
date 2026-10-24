@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import { Container, WebGLRenderer } from "pixi.js";
 import type { Renderer } from "pixi.js";
 import { createRenderTarget } from "./RenderTarget.js";
-import type { RenderTargetOptions } from "./RenderTarget.js";
+import type {
+  RenderTargetDrawing,
+  RenderTargetOptions,
+} from "./RenderTarget.js";
 
 interface CapturedRender {
   container: Container;
@@ -281,13 +284,23 @@ describe("createRenderTarget", () => {
   });
 });
 
+/** Pixi's own dispatch lists, which a target joins while it follows them. */
+function fakeRunners(): WebGLRenderer["runners"] {
+  return new WebGLRenderer().runners;
+}
+
 describe("deferred target drawing", () => {
   it("keeps dependent draws pending while their input is hidden", () => {
     const { renderer, calls } = fakeRenderer();
-    const prerender = new WebGLRenderer().runners.prerender;
-    Object.assign(renderer, { runners: { prerender } });
+    const runners = fakeRunners();
+    const prerender = runners.prerender;
+    Object.assign(renderer, { runners });
     const stage = new Container();
-    const drawing = { stage, isEnabled: () => true };
+    const drawing: RenderTargetDrawing = {
+      stage,
+      isEnabled: () => true,
+      live: new Set(),
+    };
     const source = new Container();
     const input = createRenderTarget(
       renderer,
@@ -329,11 +342,16 @@ describe("deferred target drawing", () => {
 
   it("flushes only requested targets, in order, before drawing the stage", () => {
     const { renderer, calls } = fakeRenderer();
-    const prerender = new WebGLRenderer().runners.prerender;
-    Object.assign(renderer, { runners: { prerender } });
+    const runners = fakeRunners();
+    const prerender = runners.prerender;
+    Object.assign(renderer, { runners });
     const stage = new Container();
     let enabled = false;
-    const drawing = { stage, isEnabled: () => enabled };
+    const drawing: RenderTargetDrawing = {
+      stage,
+      isEnabled: () => enabled,
+      live: new Set(),
+    };
     const source = new Container();
     const first = createRenderTarget(
       renderer,
@@ -384,15 +402,16 @@ describe("deferred target drawing", () => {
 describe("render-target layer drawing", () => {
   function layerTarget(refresh: "every-frame" | "on-demand") {
     const { renderer, calls } = fakeRenderer();
-    const prerender = new WebGLRenderer().runners.prerender;
-    Object.assign(renderer, { runners: { prerender } });
+    const runners = fakeRunners();
+    const prerender = runners.prerender;
+    Object.assign(renderer, { runners });
     const stage = new Container();
     const source = new Container();
     const target = createRenderTarget(
       renderer,
       source,
       { width: 10, height: 10 },
-      { stage, isEnabled: () => true, refresh },
+      { stage, isEnabled: () => true, refresh, live: new Set() },
     );
     return { calls, prerender, stage, source, target };
   }
@@ -428,5 +447,130 @@ describe("render-target layer drawing", () => {
     prerender.emit({ container: stage });
     expect(calls).toHaveLength(3);
     target.destroy();
+  });
+});
+
+describe("a replaced graphics context", () => {
+  function followed(options?: Partial<RenderTargetOptions>): {
+    target: ReturnType<typeof createRenderTarget>;
+    runners: WebGLRenderer["runners"];
+    stage: Container;
+    source: Container;
+    calls: CapturedRender[];
+    renderer: Renderer;
+  } {
+    const { renderer, calls } = fakeRenderer(1);
+    const runners = fakeRunners();
+    Object.assign(renderer, { runners });
+    const stage = new Container();
+    const source = new Container();
+    const target = createRenderTarget(
+      renderer,
+      source,
+      { width: 10, height: 10, ...options },
+      { stage, isEnabled: () => true, live: new Set() },
+    );
+    return { target, runners, stage, source, calls, renderer };
+  }
+
+  it("follows the context only while the renderer draws the buffer", () => {
+    const { target, runners } = followed();
+    expect(runners.contextChange.items).toHaveLength(1);
+
+    target.destroy();
+    expect(runners.contextChange.items).toHaveLength(0);
+    expect(runners.prerender.items).toHaveLength(0);
+
+    const { renderer } = fakeRenderer(1);
+    const runnersWithoutDrawing = fakeRunners();
+    Object.assign(renderer, { runners: runnersWithoutDrawing });
+    createRenderTarget(renderer, new Container(), { width: 10, height: 10 });
+    expect(runnersWithoutDrawing.contextChange.items).toHaveLength(0);
+  });
+
+  it("draws a clean buffer again at the next frame", () => {
+    const { target, runners, stage, calls } = followed();
+    target.render();
+    calls.length = 0;
+    expect(target.needsRender).toBe(false);
+
+    runners.contextChange.emit();
+    expect(target.needsRender).toBe(true);
+
+    runners.prerender.emit({ container: stage });
+    expect(calls).toHaveLength(1);
+    expect(target.needsRender).toBe(false);
+  });
+
+  it("waits for its input before drawing again", () => {
+    const { renderer, calls } = fakeRenderer(1);
+    const runners = fakeRunners();
+    Object.assign(renderer, { runners });
+    const stage = new Container();
+    const drawing: RenderTargetDrawing = {
+      stage,
+      isEnabled: () => true,
+      live: new Set(),
+    };
+    const inputSource = new Container();
+    const input = createRenderTarget(
+      renderer,
+      inputSource,
+      { width: 10, height: 10 },
+      drawing,
+    );
+    const output = createRenderTarget(
+      renderer,
+      new Container(),
+      { width: 10, height: 10, dependsOn: [input] },
+      drawing,
+    );
+    input.render();
+    output.render();
+    calls.length = 0;
+
+    inputSource.visible = false;
+    runners.contextChange.emit();
+    runners.prerender.emit({ container: stage });
+    expect(calls).toHaveLength(0);
+
+    inputSource.visible = true;
+    runners.prerender.emit({ container: stage });
+    expect(calls.map((call) => call.target)).toEqual([
+      input.texture,
+      output.texture,
+    ]);
+  });
+
+  it("names the destroyed source when it cannot draw again", () => {
+    const { target, runners, stage, source } = followed();
+    target.render();
+    source.destroy();
+
+    runners.contextChange.emit();
+    expect(() => runners.prerender.emit({ container: stage })).toThrow(
+      /source container has been destroyed/,
+    );
+  });
+
+  it("keeps the texel density of a following buffer and leaves the others", () => {
+    const { target, runners, stage, calls, renderer } = followed({
+      followResolution: true,
+      resolutionScale: 0.5,
+    });
+    const other = followed();
+    target.render();
+    calls.length = 0;
+
+    (renderer as { resolution: number }).resolution = 2;
+    runners.resolutionChange.emit(2);
+
+    expect(target.resolution).toBe(1);
+    expect(target.width).toBe(10);
+    expect(target.needsRender).toBe(true);
+    runners.prerender.emit({ container: stage });
+    expect(calls).toHaveLength(1);
+
+    expect(other.runners.resolutionChange.items).toHaveLength(0);
   });
 });

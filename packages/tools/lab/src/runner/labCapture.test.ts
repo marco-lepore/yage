@@ -60,26 +60,14 @@ function stubEngine(opts: RendererStubOptions = {}) {
     screen,
     resolution: opts.resolution ?? 1,
     extract: { canvas: extractCanvas },
-    ...(opts.textureLimit === undefined
-      ? {}
-      : opts.webGpu === true
-        ? {
-            gpu: {
-              device: {
-                limits: { maxTextureDimension2D: opts.textureLimit },
-              },
-            },
-          }
-        : {
-            gl: {
-              MAX_TEXTURE_SIZE: 0x0d33,
-              getParameter: () => opts.textureLimit,
-            },
-          }),
   };
   const renderer = {
     worldRoot,
     virtualSize: { width: 800, height: 450 },
+    capabilities: {
+      backend: opts.webGpu === true ? "webgpu" : "webgl2",
+      maxTextureSize: opts.textureLimit ?? Number.MAX_SAFE_INTEGER,
+    },
     application: {
       renderer: graphics,
       stage: {

@@ -71,7 +71,9 @@ async function main() {
   await engine.start();
 
   // Fullscreen button: toggle on click, sync label from the bus event so
-  // it stays correct when the user exits via Esc or the browser UI.
+  // it stays correct when the user exits via Esc or the browser UI. Hidden
+  // where a request cannot change the presentation, such as on iPhone.
+  fullscreenBtn.hidden = renderer.fullscreenSupport === "unsupported";
   const bus = engine.context.resolve(EventBusKey);
   bus.on("screen:fullscreen", ({ active }) => {
     fullscreenBtn.textContent = active ? "⛶ Exit fullscreen" : "⛶ Fullscreen";

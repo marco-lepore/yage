@@ -1,0 +1,107 @@
+{
+  "name": "@yagejs-tools/pack",
+  "version": "0.0.0",
+  "description": "Package a YAGE game with Electron Forge and Capacitor: project files, toolchain and release checks, build records",
+  "keywords": [
+    "yage",
+    "yage-tool",
+    "game-engine",
+    "2d",
+    "typescript",
+    "electron",
+    "capacitor",
+    "packaging"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/tools/pack"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "yage-pack": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./forge": {
+      "import": {
+        "types": "./dist/forge.d.ts",
+        "default": "./dist/forge.js"
+      },
+      "require": {
+        "types": "./dist/forge.d.cts",
+        "default": "./dist/forge.cjs"
+      }
+    },
+    "./capacitor": {
+      "import": {
+        "types": "./dist/capacitor.d.ts",
+        "default": "./dist/capacitor.js"
+      },
+      "require": {
+        "types": "./dist/capacitor.d.cts",
+        "default": "./dist/capacitor.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@capacitor/cli": "^8.5.3",
+    "@electron-forge/plugin-fuses": "^8.0.1",
+    "@electron-forge/shared-types": "^8.0.1",
+    "@electron/fuses": "^2.1.3",
+    "@yagejs/host-electron": ">=0.12.0 <0.13.0"
+  },
+  "peerDependenciesMeta": {
+    "@capacitor/cli": {
+      "optional": true
+    },
+    "@electron-forge/plugin-fuses": {
+      "optional": true
+    },
+    "@electron-forge/shared-types": {
+      "optional": true
+    },
+    "@electron/fuses": {
+      "optional": true
+    },
+    "@yagejs/host-electron": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3",
+    "@electron-forge/plugin-fuses": "8.0.1",
+    "@electron-forge/shared-types": "8.0.1",
+    "@electron/fuses": "2.1.3",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@yagejs/host-electron": "^0.12.0"
+  }
+}

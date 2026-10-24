@@ -27,5 +27,13 @@ export type { SavePluginOptions } from "./SavePlugin.js";
 
 export { SaveServiceKey } from "./keys.js";
 
-export { memoryAdapter, localStorageAdapter } from "./adapters/index.js";
-export type { LocalStorageAdapterOptions } from "./adapters/index.js";
+export {
+  memoryAdapter,
+  localStorageAdapter,
+  fileAdapter,
+} from "./adapters/index.js";
+export type {
+  LocalStorageAdapterOptions,
+  FileAdapterOptions,
+  SaveFileStore,
+} from "./adapters/index.js";

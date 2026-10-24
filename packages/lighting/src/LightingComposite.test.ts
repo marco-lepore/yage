@@ -2,11 +2,14 @@ import { BlurFilter, Container, Filter, Sprite, Texture } from "pixi.js";
 import type * as PixiModule from "pixi.js";
 import type {
   DisplayContainer,
+  GraphicsCapabilities,
   RenderTargetOptions,
   RendererPlugin,
 } from "@yagejs/renderer";
+import { createMockScene } from "@yagejs/core";
 import { describe, expect, it, vi } from "vitest";
-import { LightingComposite } from "./LightingComposite.js";
+import { LightingComposite, drawnBounceBlend } from "./LightingComposite.js";
+import { LightingWorld } from "./LightingWorld.js";
 import type { BounceLightOptions } from "./types.js";
 
 interface BlurOptions {
@@ -48,9 +51,15 @@ interface Harness {
   targets: FakeTarget[];
 }
 
-function createHarness(): Harness {
+/** A context snapshot whose only interesting field is min/max blending. */
+function fakeCapabilities(blendMinMax: string): GraphicsCapabilities {
+  return { blendMinMax } as unknown as GraphicsCapabilities;
+}
+
+function createHarness(blendMinMax = "supported"): Harness {
   const targets: FakeTarget[] = [];
   const renderer = {
+    capabilities: fakeCapabilities(blendMinMax),
     createRenderTarget: vi.fn(
       (source: DisplayContainer, options: RenderTargetOptions) => {
         const target: FakeTarget = {
@@ -85,11 +94,25 @@ function createHarness(): Harness {
   };
 }
 
+/** Hand the harness the capability snapshot of a replacement context. */
+function setCapabilities(harness: Harness, blendMinMax: string): void {
+  (harness.renderer as { capabilities: GraphicsCapabilities }).capabilities =
+    fakeCapabilities(blendMinMax);
+}
+
+/** A world the composite reports its drawn bounce blend to. */
+function createWorld(): LightingWorld {
+  const { scene } = createMockScene();
+  return new LightingWorld(scene, { level: 0 });
+}
+
 function createComposite(
   harness: Harness,
   bounce: BounceLightOptions | null = null,
+  world: LightingWorld = createWorld(),
 ): LightingComposite {
   return new LightingComposite(harness.renderer, {
+    world,
     source: harness.source,
     parent: harness.parent,
     width: 800,
@@ -115,6 +138,7 @@ describe("LightingComposite", () => {
       antialias: true,
       clearColor: 0x000000,
       label: "lighting:cave",
+      followResolution: true,
     });
     const overlay = harness.parent.children[0] as Sprite;
     expect(overlay.blendMode).toBe("multiply");
@@ -151,6 +175,7 @@ describe("LightingComposite", () => {
       clearColor: 0x000000,
       label: "lighting:cave:bounce",
       dependsOn: [buffer],
+      followResolution: true,
     });
     const [sharp, blurred] = (bounced?.source.children ?? []) as Sprite[];
     expect(sharp?.texture).toBe(buffer?.texture);
@@ -201,8 +226,11 @@ describe("LightingComposite", () => {
   });
 
   it("draws the blurred copy with the blend the bounce names", () => {
-    const blendOf = (bounce: BounceLightOptions): unknown => {
-      const harness = createHarness();
+    const blendOf = (
+      bounce: BounceLightOptions,
+      blendMinMax = "supported",
+    ): unknown => {
+      const harness = createHarness(blendMinMax);
       createComposite(harness, bounce);
       const [, blurred] = (harness.targets[1]?.source.children ??
         []) as Sprite[];
@@ -215,6 +243,75 @@ describe("LightingComposite", () => {
     expect(blendOf({ strength: 0.4, radius: 18 })).toBe("max");
     expect(blendOf({ strength: 0.4, radius: 18, blend: "max" })).toBe("max");
     expect(blendOf({ strength: 0.4, radius: 18, blend: "mix" })).toBe("normal");
+
+    // Where the context has no min/max blending, the brighter-of-the-two
+    // blend is drawn as the mix.
+    expect(blendOf({ strength: 0.4, radius: 18 }, "unsupported")).toBe(
+      "normal",
+    );
+    expect(
+      blendOf({ strength: 0.4, radius: 18, blend: "mix" }, "unsupported"),
+    ).toBe("normal");
+  });
+
+  it("follows the blend of the context that replaced a lost one", () => {
+    const harness = createHarness("unsupported");
+    const world = createWorld();
+    const composite = createComposite(
+      harness,
+      { strength: 0.4, radius: 18 },
+      world,
+    );
+    const [, blurred] = (harness.targets[1]?.source.children ?? []) as Sprite[];
+    const filter = (blurred?.filters as Filter[])[0] as Filter;
+    expect(
+      (filter as unknown as { options: BlurOptions }).options.blendMode,
+    ).toBe("normal");
+    expect(composite.bounceBlend).toBe("mix");
+    expect(world._bounceBlend).toBe("mix");
+
+    setCapabilities(harness, "supported");
+    world._followGraphicsContext();
+
+    expect(filter.blendMode).toBe("max");
+    expect(composite.bounceBlend).toBe("max");
+    expect(world._bounceBlend).toBe("max");
+  });
+
+  it("names the scene once where the bounce blend is substituted", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const harness = createHarness("unsupported");
+      const composite = createComposite(harness, { strength: 0.4, radius: 18 });
+      composite._followGraphicsContext();
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain('drawn as "mix"');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("reports which blend a context draws", () => {
+    expect(drawnBounceBlend("max", fakeCapabilities("supported"))).toBe("max");
+    expect(drawnBounceBlend("max", fakeCapabilities("unsupported"))).toBe(
+      "mix",
+    );
+    expect(drawnBounceBlend("max", fakeCapabilities("unknown"))).toBe("mix");
+    expect(drawnBounceBlend("mix", fakeCapabilities("supported"))).toBe("mix");
+    expect(drawnBounceBlend("mix", fakeCapabilities("unsupported"))).toBe(
+      "mix",
+    );
+  });
+
+  it("keeps both buffers at the canvas texel density", () => {
+    const harness = createHarness();
+    createComposite(harness, { strength: 0.4, radius: 18 });
+
+    expect(harness.targets).toHaveLength(2);
+    for (const target of harness.targets) {
+      expect(target.options.followResolution).toBe(true);
+    }
   });
 
   it("rejects a bounce setting before it allocates a buffer", () => {

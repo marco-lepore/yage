@@ -45,8 +45,24 @@ export {
   SystemSchedulerKey,
   ProcessSystemKey,
   AssetManagerKey,
+  HostKey,
 } from "./EngineContext.js";
 export type { ServiceScope, ServiceKeyOptions } from "./EngineContext.js";
+
+export { Host } from "./Host.js";
+export type {
+  HostInfo,
+  HostInfoInput,
+  HostOS,
+  HostProvider,
+  HostSupport,
+  HostActivity,
+  HostVisibility,
+  HostFocus,
+  HostLifecycle,
+  HostLifecycleReport,
+  HostChange,
+} from "./Host.js";
 
 export type { SceneHooks } from "./SceneHooks.js";
 export { SceneHookRegistry, SceneHookRegistryKey } from "./SceneHooks.js";
@@ -133,6 +149,7 @@ export type {
   InputStateSnapshot,
   PointerSnapshot,
   EngineSnapshot,
+  HostSnapshot,
   InspectorTimeController,
   InspectorRenderMode,
   InspectorStepOptions,
@@ -276,6 +293,7 @@ export {
   createMockScene,
   createMockEntity,
   advanceFrames,
+  TestHostPlugin,
 } from "./test-utils.js";
 
 /** @internal - exposed for sibling @yagejs packages, not for public consumption. */

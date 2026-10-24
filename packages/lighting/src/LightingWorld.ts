@@ -1,10 +1,13 @@
 import { Vec2Buffer } from "@yagejs/core";
 import type { ErrorBoundary, Scene } from "@yagejs/core";
+import type { LightingComposite } from "./LightingComposite.js";
 import type { LightOccluder } from "./LightOccluder.js";
 import type { LightSource } from "./LightSource.js";
 import type {
   AmbientLightOptions,
+  BounceBlend,
   LightGrid,
+  LightingFallbackReason,
   LightingRenderer,
   LightingRenderFrame,
 } from "./types.js";
@@ -41,6 +44,13 @@ export class LightingWorld {
   private readonly _occluders = new Set<LightOccluder>();
   private readonly errorBoundary: ErrorBoundary | undefined;
   private backend: LightingRenderer | null = null;
+  /** The composite the scene's renderer draws its light through, if any. */
+  private composite: LightingComposite | null = null;
+  /** Set by a renderer factory that built something other than it names. */
+  private _fallback: {
+    readonly reason: LightingFallbackReason;
+    readonly detail: string | null;
+  } | null = null;
   private _ambientLevel: number;
   private _ambientColor: number;
   private destroyed = false;
@@ -345,6 +355,37 @@ export class LightingWorld {
     this._occluders.delete(occluder);
   }
 
+  /** @internal Why the shader renderer's fallback drew this scene. */
+  _noteFallback(reason: LightingFallbackReason, detail: string | null): void {
+    this._fallback = { reason, detail };
+  }
+
+  /** @internal The fallback record, or `null` when none was chosen. */
+  get _fallbackRecord(): {
+    readonly reason: LightingFallbackReason;
+    readonly detail: string | null;
+  } | null {
+    return this._fallback;
+  }
+
+  /**
+   * @internal Registered by the {@link LightingComposite} the scene's
+   * renderer draws through, so the bounce blend has one owner.
+   */
+  _attachComposite(composite: LightingComposite): void {
+    this.composite = composite;
+  }
+
+  /** @internal The bounce blend the composite draws, or `null` without one. */
+  get _bounceBlend(): BounceBlend | null {
+    return this.composite?.bounceBlend ?? null;
+  }
+
+  /** @internal Read the bounce blend again on a replacement context. */
+  _followGraphicsContext(): void {
+    this.composite?._followGraphicsContext();
+  }
+
   /** @internal */
   _attachRenderer(renderer: LightingRenderer): void {
     if (this.backend) {
@@ -375,6 +416,7 @@ export class LightingWorld {
     this.destroyed = true;
     const backend = this.backend;
     this.backend = null;
+    this.composite = null;
     try {
       if (backend && this.errorBoundary) {
         this.errorBoundary.wrapCallback(() => backend.destroy(), {

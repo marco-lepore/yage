@@ -37,6 +37,8 @@ A drawing callback (`GraphicsComponent.draw`, `createTexture`, `graphicsMask`) r
 
 ## Setup
 
+The renderer draws under a content security policy whose `script-src` omits `'unsafe-eval'`: on such a page it loads PixiJS's prebuilt shader and uniform code itself, before it creates the Pixi application. A game needs no import and no option for it.
+
 ```ts yage-context="engine"
 import { RendererPlugin } from "@yagejs/renderer";
 
@@ -49,14 +51,15 @@ engine.use(
     // optional:
     virtualWidth: 320, // virtual resolution (auto-scaled)
     virtualHeight: 240,
-    resolution: window.devicePixelRatio,
+    resolution: 2, // fixed density; left out, the canvas follows the display
     fit: { mode: "cover" }, // override default letterbox (see below)
     pixelArtPreset: true, // crisp, non-blurred pixel art (see below)
+    // pixi: { preference: "webgpu" }, // backend order: "webgl" and "webgpu" only
   }),
 );
 ```
 
-`renderer.backend: RendererBackend` reports the graphics API Pixi picked: `"webgl"`, `"webgpu"` or `"canvas"`. Pixi tries them in that order and takes the first the browser supports; `pixi: { preference }` moves one to the front.
+`renderer.backend: RendererBackend` reports the graphics API Pixi picked: `"webgl"` or `"webgpu"`. The renderer never asks for Pixi's Canvas 2D renderer (see Backends below), and `pixi: { preference: "webgpu" }` moves WebGPU to the front. `renderer.capabilities` reports the WebGL version (`capabilities.backend`) and the context's limits.
 
 ### `pixelArtPreset`
 
@@ -71,12 +74,12 @@ Default: `false`. Composes with `pixi`: explicit `pixi: { roundPixels: false }` 
 ```ts
 import { RendererPlugin } from "@yagejs/renderer";
 
-declare const host: HTMLElement; // the page element that holds the game
+declare const hostElement: HTMLElement; // the page element that holds the game
 
 new RendererPlugin({
   width: 320,
   height: 240,
-  container: host,
+  container: hostElement,
   pixelArtPreset: true,
 });
 ```
@@ -85,19 +88,99 @@ Registers `RendererKey`, `SceneRenderTreeProviderKey`, and the cross-package `Re
 
 The adapter contract (`RendererAdapter` in `@yagejs/core`) carries `canvas`, `canvasToVirtual`, `hitTestUI`, `hitTestUIPath` (the same test, reporting the container chain it crossed), `dispatchPointerEvent` (deliver a pointer event at a virtual-space point, which `inspector.pointer` drives the user interface through), and the optional `visibleVirtualRect` — the on-screen region of virtual space CLAMPED to the declared virtual rect. Renderer-agnostic overlays (e.g. `@yagejs-addons/virtual-controls`) lay out against `visibleVirtualRect`, NOT against `canvasToVirtual`-mapped canvas corners: under letterbox the corners map into the masked bars, where drawn content is clipped but pointer input still registers.
 
+## Graphics capabilities
+
+`renderer.capabilities` reports what the graphics context — the WebGL context or WebGPU device the renderer draws with — can do. A game reads it to pick between two ways of drawing the same thing.
+
+```ts yage-context="object-member"
+import type { GraphicsCapabilities } from "@yagejs/renderer";
+
+get capabilities(): GraphicsCapabilities;
+get contextLost(): boolean;
+```
+
+Both are readable from the end of the renderer's `install` to `engine.destroy()`; outside that window each throws `RendererPlugin.<member>: the graphics context is only known from the renderer's install to engine.destroy().` The snapshot is a frozen object, read once when the renderer installs and again after a lost context is restored, so reading it every frame costs nothing.
+
+| Field                                   | Type                               | What it holds                                                                    |
+| --------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------- |
+| `backend`                               | `"webgl1" \| "webgl2" \| "webgpu"` | The graphics API Pixi settled on                                                 |
+| `maxTextureSize`                        | `number`                           | Largest texture width or height, in texels                                       |
+| `maxRenderTargetSize`                   | `number`                           | Largest render target width or height                                            |
+| `maxViewportWidth`, `maxViewportHeight` | `number`                           | Largest drawable size, in device pixels                                          |
+| `maxSamples`                            | `number`                           | Samples one antialiased render target takes; `0` where `antialias` has no effect |
+| `highpFragment`                         | `HostSupport`                      | Whether fragment shaders compute at high float precision                         |
+| `blendMinMax`                           | `HostSupport`                      | Whether the `"min"` and `"max"` blend modes draw as named                        |
+| `rgba16float`, `rgba32float`            | `GraphicsFormatSupport`            | `sample`, `filter` and `render` for each float colour format                     |
+
+`HostSupport` (from `@yagejs/core`) is `"supported" | "unsupported" | "unknown"`. A field reads `"unknown"` when only a draw would settle it and YAGE draws nothing to find out: a WebGL 1 context that promises float sampling without promising a float render target is the one case.
+
+```ts
+import type { RendererPlugin } from "@yagejs/renderer";
+
+declare const renderer: RendererPlugin;
+
+const caps = renderer.capabilities;
+const bounceBlend = caps.blendMinMax === "supported" ? "max" : "mix";
+const atlasSide = Math.min(2048, caps.maxTextureSize);
+```
+
+### Backends
+
+The renderer draws with WebGL or WebGPU. Pixi's Canvas 2D renderer draws no light, skips every filter with a console warning and ignores inverse masks, so the renderer never asks for it.
+
+Under a content security policy without `'unsafe-eval'`, PixiJS on WebGPU writes integer uniforms as floats, so `motionBlur` from `@yagejs/effects` draws nothing there. WebGL, which the renderer asks for first, draws it.
+
+| `pixi.preference`                    | What Pixi is asked for |
+| ------------------------------------ | ---------------------- |
+| absent                               | `["webgl", "webgpu"]`  |
+| `"webgl"`                            | `["webgl", "webgpu"]`  |
+| `"webgpu"`                           | `["webgpu", "webgl"]`  |
+| an array of `"webgl"` and `"webgpu"` | the array as given     |
+
+The config type admits those two names only, so `"canvas"` fails to compile; anything else that reaches the constructor at run time makes it throw `RendererPlugin: pixi.preference must name "webgl" or "webgpu"; YAGE does not draw with Pixi's Canvas 2D renderer. Got <value>.` On a browser that offers neither, `engine.start()` rejects with Pixi's own `No available renderer for the current environment`, and the game shows whatever error page it has.
+
+### Lost graphics context
+
+A browser takes the graphics context away when the system reclaims the GPU: a driver reset, a laptop switching graphics processors, an application the system put in the background. While the context is gone nothing draws and the canvas keeps its last frame.
+
+`renderer.contextLost` reads the state live. The engine's event bus carries `graphics:context` with `{ lost: boolean }`: `{ lost: true }` when the context goes, `{ lost: false }` when Pixi has it back. Each arrives in the next frame the game loop runs, at the start of its `Render` phase: after the game's updates, before `DisplaySystem` copies transforms and before lighting draws. A handler never runs inside Pixi's own recovery. A handler that throws stops the loop, like any error that escapes a frame, and while the loop is stopped the events wait.
+
+```ts yage-context="engine"
+const overlay = document.getElementById("graphics-interrupted")!;
+engine.events.on("graphics:context", ({ lost }) => {
+  overlay.hidden = !lost;
+});
+```
+
+What comes back by itself after a restore: Pixi uploads again everything it holds on the CPU (image textures, buffers, programs, uniforms), every live render target redraws from its source, and every `createTexture` result redraws from the drawing it keeps.
+
+A restore that never comes means `{ lost: false }` never arrives. A game that shows an overlay on `{ lost: true }` keeps it up, with whatever reload control it offers. The engine keeps running its loop and its scenes; pausing them is the game's own call.
+
+### Diagnostics
+
+With an Inspector installed, `RendererPlugin` registers the `"graphics"` extension:
+
+```ts yage-context="inspector"
+import type { GraphicsDiagnostics } from "@yagejs/renderer";
+
+const graphics = inspector.getExtension<GraphicsDiagnostics>("graphics");
+graphics?.capabilities(); // the same object renderer.capabilities returns
+graphics?.contextLost();
+```
+
 ## Responsive fit
 
-The canvas is **responsive by default** — it tracks a host element and re-maps the virtual rectangle on every resize. Without an explicit `fit` config, the renderer defaults to `{ mode: "letterbox" }` against the configured `container`, falling back to `canvas.parentElement`. There is no `document.body` fallback: a `ResizeObserver` on `body` fires on any page layout change, not just viewport resizes. With no host to observe, the fit applies once against `config.width × config.height`. Pass `fit: { target: document.body }` to opt in explicitly. `setFit({ mode })` changes the mode and keeps the current target. Fixed-size canvases are achieved via fixed CSS dimensions on the container.
+The canvas is **responsive by default** — it tracks a host element and re-maps the virtual rectangle on every resize. Without an explicit `fit` config, the renderer defaults to `{ mode: "letterbox" }` against the configured `container`, falling back to `canvas.parentElement`. There is no `document.body` fallback: a `ResizeObserver` on `body` fires on any page layout change, not just viewport resizes. With no host element to observe, the fit applies once against `config.width × config.height`. Pass `fit: { target: document.body }` to opt in explicitly. `setFit({ mode })` changes the mode and keeps the current target. Fixed-size canvases are achieved via fixed CSS dimensions on the container.
 
 ```ts
 import { RendererPlugin } from "@yagejs/renderer";
 
-declare const host: HTMLElement; // the page element that holds the game
+declare const hostElement: HTMLElement; // the page element that holds the game
 
 new RendererPlugin({
   width: 800,
   height: 600,
-  container: host,
+  container: hostElement,
   // fit: { mode: "letterbox" }  // this is the default
   // fit: { mode: "cover" },     // or override
   // fit: { mode: "stretch", target: otherElement },
@@ -108,14 +191,14 @@ new RendererPlugin({
 | ----------- | --------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `letterbox` | uniform `min(cw/vw, ch/vh)` | centers; bars in `backgroundColor`       | default — preserves aspect, full virtual rect visible                                                                                                                                                    |
 | `expand`    | same as `letterbox`         | same as `letterbox`                      | virtual always fully visible, but the game draws into the bars instead of leaving them blank (fog, parallax, decorative backdrop, HUD). Matches Godot `expand`, Unity `Expand`, Construct "Scale inner". |
-| `cover`     | uniform `max(cw/vw, ch/vh)` | centers; overflow clipped by canvas edge | fills the host; accept CSS-cover-style clipping on one axis. Rare for gameplay — aspect affects what the player sees.                                                                                    |
-| `stretch`   | non-uniform per axis        | none                                     | fills the host; virtual rect squashed. Use for menus or editor panels, not gameplay.                                                                                                                     |
+| `cover`     | uniform `max(cw/vw, ch/vh)` | centers; overflow clipped by canvas edge | fills the host element; accept CSS-cover-style clipping on one axis. Rare for gameplay — aspect affects what the player sees.                                                                            |
+| `stretch`   | non-uniform per axis        | none                                     | fills the host element; virtual rect squashed. Use for menus or editor panels, not gameplay.                                                                                                             |
 
 `letterbox` and `expand` produce the same stage transform. They differ in convention: letterbox expects bars to be the flat `backgroundColor`; expand expects the game to fill them via `extendedVirtualRects`.
 
 A `ResizeObserver` drives updates; it's disposed in `onDestroy`. In headless environments (no DOM target, no `document`) the plugin applies a one-shot transform against the initial `width × height` and installs no observer.
 
-**Give the fit container a bounded height.** The fit host's size is fed back into the canvas every resize, so a container with no height of its own (only content-driven height) has no stable size and the observer can grow without bound. The renderer sets `display:block` on the canvas, which removes the ~4px inline-canvas baseline gap that otherwise causes this and makes the common case converge with zero CSS. You still want the container to have an explicit or bounded height (`height: 100%` under a sized ancestor, or `max-height`). If a true feedback loop is detected anyway (residual margin / sub-pixel growth), `FitController` freezes auto-resize and logs a one-time `console.warn` rather than hang the tab.
+**Give the fit container a bounded height.** The fit host element's size is fed back into the canvas every resize, so a container with no height of its own (only content-driven height) has no stable size and the observer can grow without bound. The renderer sets `display:block` on the canvas, which removes the ~4px inline-canvas baseline gap that otherwise causes this and makes the common case converge with zero CSS. You still want the container to have an explicit or bounded height (`height: 100%` under a sized ancestor, or `max-height`). If a true feedback loop is detected anyway (residual margin / sub-pixel growth), `FitController` freezes auto-resize and logs a one-time `console.warn` rather than hang the tab.
 
 Runtime API on the plugin:
 
@@ -140,14 +223,14 @@ renderer.extendedVirtualRects; // parts of canvas OUTSIDE virtual (bars)
 
 Sub-rectangle of the declared virtual space that's actually on-screen, clamped to virtual bounds. Anchor HUD / UI that must stay inside the play area to this rect; keep gameplay queries on `virtualSize`. Critical under `cover` for competitive games where a wider viewport must not grant a gameplay advantage: the play area stays `virtualSize`, but HUDs align to the visible sub-rect.
 
-| Mode                               | `visibleVirtualRect`                                                                                 |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `letterbox` / `expand` / `stretch` | full virtual rect: `{ 0, 0, virtualWidth, virtualHeight }`                                           |
-| `cover`                            | cropped sub-rect on the long axis, e.g. `{ 0, 30, 400, 240 }` for 400×300 virtual in a 1000×600 host |
+| Mode                               | `visibleVirtualRect`                                                                                         |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `letterbox` / `expand` / `stretch` | full virtual rect: `{ 0, 0, virtualWidth, virtualHeight }`                                                   |
+| `cover`                            | cropped sub-rect on the long axis, e.g. `{ 0, 30, 400, 240 }` for 400×300 virtual in a 1000×600 host element |
 
 ### `croppedVirtualRects`
 
-Rectangles of virtual space that are currently off-screen — the complement of `visibleVirtualRect` inside `virtualSize`. Empty under `letterbox` / `expand` / `stretch`. Under `cover`, returns 1–2 strips on the cropped axis (top + bottom on a wide host, left + right on a tall host). Gameplay still runs in these regions; they're just clipped by the canvas edge.
+Rectangles of virtual space that are currently off-screen — the complement of `visibleVirtualRect` inside `virtualSize`. Empty under `letterbox` / `expand` / `stretch`. Under `cover`, returns 1–2 strips on the cropped axis (top + bottom on a wide host element, left + right on a tall one). Gameplay still runs in these regions; they're just clipped by the canvas edge.
 
 Use when an effect needs to reason about what's beyond the visible edge under `cover` — fog-of-war overlays that fade at the crop boundary, edge-activity indicators, auto-panning cameras that keep action in view.
 
@@ -157,7 +240,7 @@ Where the declared virtual rectangle sits on the canvas, in **CSS pixels**. Usef
 
 ### `visibleCanvasRect`
 
-Full canvas extent expressed in **virtual-space pixels**. Unlike `visibleVirtualRect`, not clamped to the declared virtual rect — under `letterbox` / `expand` on an off-aspect host this extends past `virtualSize` on the bar axis (negative `x` / `y` or `width` / `height` greater than the virtual dimension). Under `cover` it equals `visibleVirtualRect`; under `stretch` it equals the virtual rect.
+Full canvas extent expressed in **virtual-space pixels**. Unlike `visibleVirtualRect`, not clamped to the declared virtual rect — under `letterbox` / `expand` on an off-aspect host element this extends past `virtualSize` on the bar axis (negative `x` / `y` or `width` / `height` greater than the virtual dimension). Under `cover` it equals `visibleVirtualRect`; under `stretch` it equals the virtual rect.
 
 Anchor HUD to this rect (not `visibleVirtualRect`) when you want cards to live in the bars under `expand`. Iterate over it for backdrops that should fill the whole visible canvas.
 
@@ -165,11 +248,11 @@ Anchor HUD to this rect (not `visibleVirtualRect`) when you want cards to live i
 
 Rectangles of the visible canvas that sit **outside** the declared virtual rect — the letterbox / expand "bars" expressed in virtual-space pixels. Complement of `virtualSize` inside `visibleCanvasRect`.
 
-| Mode                   | `extendedVirtualRects`                                                                         |
-| ---------------------- | ---------------------------------------------------------------------------------------------- |
-| `letterbox` / `expand` | 0–2 bar strips when aspect mismatches (top + bottom on tall hosts, left + right on wide hosts) |
-| `cover`                | `[]` (virtual covers the entire canvas)                                                        |
-| `stretch`              | `[]` (virtual exactly fills the canvas)                                                        |
+| Mode                   | `extendedVirtualRects`                                                                                |
+| ---------------------- | ----------------------------------------------------------------------------------------------------- |
+| `letterbox` / `expand` | 0–2 bar strips when aspect mismatches (top + bottom on tall host elements, left + right on wide ones) |
+| `cover`                | `[]` (virtual covers the entire canvas)                                                               |
+| `stretch`              | `[]` (virtual exactly fills the canvas)                                                               |
 
 Under `expand` these are the play-adjacent strips the game is expected to draw into. The `responsive-ui` example fills each with a solid dark rect plus a short gradient along the inner edge (touching the play area) so the bars read as "not the play area, but still part of the rendered world."
 
@@ -207,44 +290,110 @@ Pair with `@yagejs/input` — `InputPlugin` auto-resolves the renderer via `Rend
 
 ## Fullscreen & Orientation
 
-`RendererPlugin` wraps the browser fullscreen API (with `webkitRequestFullscreen` fallback for iOS Safari) and emits viewport-lifecycle events on the engine bus. The fullscreen target is the configured `container` when present, falling back to the canvas.
+`RendererPlugin` is the one entrypoint for fullscreen and screen orientation, whichever application runs the game. It reads both from the `HostDisplay` a host adapter registered, and from the page's Fullscreen and Screen Orientation APIs for whatever no adapter supplies. The page's fullscreen target is the configured `container`, falling back to the canvas.
 
-| Member                                 | Purpose                                                                                                                                |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `requestFullscreen(): Promise<void>`   | Enter fullscreen on the host. Must be called from a user gesture. Rejects if unsupported.                                              |
-| `exitFullscreen(): Promise<void>`      | Exit fullscreen. No-op if not currently fullscreen.                                                                                    |
-| `isFullscreen: boolean`                | Live read of `document.fullscreenElement === host`.                                                                                    |
-| `orientation: OrientationType \| null` | Current device orientation (`portrait-primary`, `landscape-primary`, etc.), or `null` when neither modern nor legacy API is available. |
+In the Electron shell of `@yagejs/host-electron`, fullscreen is the window's, whatever started it: the menu, the system button, or `requestFullscreen()`.
+
+In a Capacitor app with `@yagejs/host-capacitor`, fullscreen comes from the page on iOS and is `"unsupported"` on Android, whose web view leaves fullscreen in the call that enters it. The orientation lock goes through the app on both systems and resolves once the screen has turned, or after 2000 ms when the system turns nothing.
+
+| Member                                                                     | Purpose                                                                                                                                                             |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `requestFullscreen(): Promise<void>`                                       | Present the game fullscreen. On a page, must be called from a user gesture. Resolves without asking the host when the game is fullscreen already.                   |
+| `exitFullscreen(): Promise<void>`                                          | Leave fullscreen. No-op if not currently fullscreen, so another element's fullscreen is left alone.                                                                 |
+| `isFullscreen: boolean`                                                    | Whether the game is presented fullscreen: the host element is the fullscreen element, or the host's window is fullscreen when a host adapter supplies fullscreen.   |
+| `fullscreenSupport: HostSupport`                                           | Whether a request can change how the game is presented. Hide a fullscreen control where this is `"unsupported"`, and show it for `"unknown"`.                       |
+| `orientation: OrientationType \| null`                                     | The screen orientation (`portrait-primary`, `landscape-primary`, …), or `null` where the host cannot read it.                                                       |
+| `orientationLockSupport: HostSupport`                                      | Whether this host can lock the orientation. `"unknown"` means only an attempt tells: desktop browsers refuse, Android Chrome accepts while fullscreen or installed. |
+| `lockOrientation(lock: OrientationLock): Promise<OrientationType \| null>` | Lock the orientation. Resolves with the orientation the host reports once it accepted the lock, which can differ from `lock` when the device does not turn.         |
+| `unlockOrientation(): Promise<void>`                                       | Release a lock. Resolves without action where locking is `"unsupported"`.                                                                                           |
+
+Rules that hold whichever host supplies the state:
+
+- Each event is emitted once per change, and before the promise of a request the game made resolves. A repeated page event, or one for another element's fullscreen, emits nothing.
+- The last call wins, which is what a player clicking a toggle several times expects. A request made while a request is pending shares that request's promise. One made while an exit is pending waits for the exit to settle and then moves in the direction of the latest call, and the reverse; every call made in the meantime shares that one run. A call a later one overrode resolves when the final transition settles, so exit, request, exit leaves the game out of fullscreen and all three promises resolve. When the pending transition already went where the latest call asked, the waiting calls share its result, a refusal included.
+- `requestFullscreen()` rejects with `RendererPlugin.requestFullscreen: this host cannot change to fullscreen (fullscreenSupport is "unsupported").` where the support says so, and with the host's own error when the host refuses (no user gesture, a denied permission). `lockOrientation()` rejects the same way through `RendererPlugin.lockOrientation: this host cannot lock the screen orientation (orientationLockSupport is "unsupported").`
+- No order is promised between `screen:orientation` and the canvas taking its new size. Layout code reads the fit getters each frame.
+- The eight members are available from the renderer's `onStart` to `engine.destroy()`. A plugin that reads one in its own `onStart` is registered after `RendererPlugin`. Outside that span each one fails with `RendererPlugin.<member>: the display is only available from the renderer's onStart to engine.destroy(). A plugin that reads it in its own onStart must be registered after RendererPlugin.`
 
 Emits on the engine `EventBus`:
 
-| Event                | Payload                     | When                                                                                |
-| -------------------- | --------------------------- | ----------------------------------------------------------------------------------- |
-| `screen:fullscreen`  | `{ active: boolean }`       | `fullscreenchange` / `webkitfullscreenchange` (entering, exiting, Esc, browser UI). |
-| `screen:orientation` | `{ type: OrientationType }` | `screen.orientation.change` if available, else `window.orientationchange` fallback. |
+| Event                | Payload                     | When                                      |
+| -------------------- | --------------------------- | ----------------------------------------- |
+| `screen:fullscreen`  | `{ active: boolean }`       | `isFullscreen` changed                    |
+| `screen:orientation` | `{ type: OrientationType }` | `orientation` changed to a non-null value |
 
 ```ts yage-context="engine"
 import { EventBusKey } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 
-declare const host: HTMLElement; // the page element that holds the game
+declare const hostElement: HTMLElement; // the page element that holds the game
 declare const button: HTMLButtonElement; // a "Fullscreen" button
 declare function layoutHud(orientation: OrientationType): void; // game code
 
 const renderer = new RendererPlugin({
   width: 800,
   height: 600,
-  container: host,
+  container: hostElement,
 });
 engine.use(renderer); // use() returns the engine, not the plugin
 const bus = engine.context.resolve(EventBusKey);
 bus.on("screen:orientation", ({ type }) => layoutHud(type));
+void engine.start().then(() => {
+  // The display members are readable from here on.
+  button.hidden = renderer.fullscreenSupport === "unsupported";
+});
 button.addEventListener("click", () => {
-  renderer.requestFullscreen().catch(console.warn); // rejects if unsupported
+  renderer.requestFullscreen().catch(console.warn);
 });
 ```
 
-Listeners are registered in `install()` (gated by `typeof document/window !== "undefined"`) and torn down in `onDestroy()`. iOS Safari requires `requestFullscreen` to run inside a user-gesture handler.
+### Host display
+
+A host adapter supplies fullscreen, orientation, or both by registering a `HostDisplay` under `HostDisplayKey` in its `install`. The renderer picks the parts up when the engine starts. A part the adapter leaves out comes from the page, so an adapter replaces only what its own shell reports differently — a desktop shell whose window fullscreen the page cannot read supplies fullscreen and leaves orientation to the page. `@yagejs/host-electron` registers one for the Electron window. `@yagejs/host-capacitor` registers one for the app's orientation lock, and on Android for fullscreen.
+
+| Export            | Signature                                                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `HostDisplayKey`  | `ServiceKey<HostDisplay>`, also exported from `@yagejs/renderer/api`, the entry without Pixi                                          |
+| `HostDisplay`     | `{ fullscreen?: HostFullscreen; orientation?: HostOrientation; watch(changed: () => void): () => void }`                              |
+| `HostFullscreen`  | `{ support: HostSupport; active: boolean; request(): Promise<void>; exit(): Promise<void> }`                                          |
+| `HostOrientation` | `{ current: OrientationType \| null; lockSupport: HostSupport; lock(lock: OrientationLock): Promise<void>; unlock(): Promise<void> }` |
+| `OrientationLock` | `"portrait" \| "landscape" \| "portrait-primary" \| "portrait-secondary" \| "landscape-primary" \| "landscape-secondary"`             |
+| `TestHostDisplay` | `new TestHostDisplay(state?: TestHostDisplayState)` plus `set(state)` and `calls` — a fake with both parts, for tests                 |
+
+`watch` is called once. Call `changed` after any state a supplied part reports may have changed, and the renderer reads both parts and emits whatever moved. `support`, `active`, `current` and `lockSupport` are read on every access. `request()` resolves once `active` reads `true`, `exit()` once it reads `false`, and `lock()` once the host accepted the lock.
+
+What the page reports where no adapter supplies the part:
+
+| Member                   | The page's value                                                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fullscreenSupport`      | `"supported"` where the Fullscreen API is enabled; `"unsupported"` on iPhone, in a frame from another origin without `allow="fullscreen"`, and in an app running `display-mode: fullscreen` |
+| `isFullscreen`           | The host element is the page's fullscreen element                                                                                                                                           |
+| `orientation`            | `screen.orientation.type`, or the legacy `window.orientation` angle                                                                                                                         |
+| `orientationLockSupport` | `"unknown"` where `screen.orientation.lock` exists, `"unsupported"` where it does not                                                                                                       |
+
+Every value a part reports is validated where the renderer reads it, and an invalid one throws before anything is stored: `HostFullscreen.active must be a boolean, got <value>.`, `HostFullscreen.support must be one of supported, unsupported, unknown, got <value>.`, `HostOrientation.lockSupport must be one of supported, unsupported, unknown, got <value>.`, and `HostOrientation.current must be one of portrait-primary, portrait-secondary, landscape-primary, landscape-secondary or null, got <value>.`
+
+```ts
+import { HostDisplayKey } from "@yagejs/renderer";
+import type { EngineContext, Plugin } from "@yagejs/core";
+import type { HostFullscreen } from "@yagejs/renderer";
+
+declare const shellFullscreen: HostFullscreen; // the shell's own window state
+declare function onShellFullscreenChange(listener: () => void): () => void;
+
+class ShellHostPlugin implements Plugin {
+  readonly name = "host";
+  readonly version = "1.0.0";
+
+  install(context: EngineContext): void {
+    context.register(HostDisplayKey, {
+      fullscreen: shellFullscreen,
+      // Orientation is left out, so the page supplies it.
+      watch: (changed) => onShellFullscreenChange(changed),
+    });
+  }
+}
+```
 
 ## Mobile readiness
 
@@ -270,20 +419,21 @@ Page setup so a game gets the whole visible screen on phones. Both `create-yage`
 
 - `viewport-fit=cover`: page covers the notch and rounded-corner areas. Without it iOS insets the page and every `env(safe-area-inset-*)` is `0`.
 - `100dvh`, not `100vh`: on phones `100vh` is the height with the toolbars hidden, so the bottom of the game sits behind them. Never rely on scrolling to hide the toolbars.
-- Safe-area padding on the `container`: `RendererPlugin` fits the game inside the container's content box, so the padding keeps it clear of the notch, corners and home indicator with no renderer config. Give the container its own background (`backgroundColor`): in fullscreen only the container is drawn, so a `body` background alone leaves black strips in the padding.
-- Fullscreen button: place it inside the `container` (the element that goes fullscreen) so it stays visible. Show it only when fullscreen is available and the page is not already an installed app running fullscreen:
+- Safe-area padding on the `container`: `RendererPlugin` fits the game inside the container's content box, so the padding keeps it clear of the notch, corners and home indicator with no renderer config. This padding is the one place the insets are subtracted, and a native shell draws the web view edge to edge and adds none of its own. Give the container its own background (`backgroundColor`): in fullscreen only the container is drawn, so a `body` background alone leaves black strips in the padding.
+- Fullscreen button: place it inside the `container` (the element that goes fullscreen) so it stays visible, and let `fullscreenSupport` decide whether to show it:
 
   ```ts
+  import type { RendererPlugin } from "@yagejs/renderer";
+
+  declare const renderer: RendererPlugin;
   declare const button: HTMLButtonElement; // the fullscreen button
-  const doc = document as Document & { webkitFullscreenEnabled?: boolean }; // not in lib.dom
-  button.hidden =
-    matchMedia("(display-mode: fullscreen)").matches ||
-    !(doc.fullscreenEnabled === true || doc.webkitFullscreenEnabled === true);
+
+  button.hidden = renderer.fullscreenSupport === "unsupported";
   ```
 
-  The prefixed flag covers iPad Safari < 16.4. Neither flag is `true` on iPhone (no element fullscreen) or in an iframe without `allow="fullscreen"`. On iPad, Safari overlays its own exit button and a swipe down exits fullscreen. Call `button.blur()` in the click handler, or the focused button takes game keys such as Enter.
+  That one check covers the three cases where the button would do nothing: iPhone, which has no element fullscreen; a frame from another origin without `allow="fullscreen"`; and a page already running as an installed app in `display-mode: fullscreen`. On iPad, Safari overlays its own exit button and a swipe down exits fullscreen. Call `button.blur()` in the click handler, or the focused button takes game keys such as Enter.
 
-- Rotate overlay: Safari has no `screen.orientation.lock()`; Chrome on Android only locks while fullscreen or installed. Show a "rotate the device" overlay from `screen:orientation`, and read `renderer.orientation` once at startup because the event fires only on change.
+- Orientation: `lockOrientation("landscape")` resolves with the orientation the host reports once it accepted the lock, so compare the result with what you asked for. Safari has no orientation lock, and Chrome on Android locks only while fullscreen or installed, so show a "rotate the device" overlay when the result differs or `orientationLockSupport` is `"unsupported"`. Read `renderer.orientation` once after `engine.start()` as well, because `screen:orientation` fires only on change.
 - Add to Home Screen is the only way to remove Safari's toolbars on iPhone. No install prompt on iOS (player uses Share → Add to Home Screen). iOS 26+ opens every Home Screen site without toolbars; earlier iOS needs a web app manifest with `display: "standalone"` (iOS does not support `"fullscreen"`; add `display_override: ["fullscreen"]` for Android, which iOS ignores). Tags: `<link rel="apple-touch-icon" href="/apple-touch-icon.png">` (180×180) and `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">` (installed game draws under the status bar; the safe-area padding clears it). The `recommended` template's `vite-plugin-pwa` setup ships this manifest and both tags; see `quick-start.md`.
 
 ## Components
@@ -947,10 +1097,10 @@ class SkyBand extends Component {
 - There is no wrap mode to set. Pixi switches the fill texture's address mode
   to `repeat` when it builds the geometry, so `texture.source.addressMode`
   needs no help.
-- Never call `texture.source.update()` on a texture from `createTexture`. That
-  texture's pixels live only on the GPU, so the re-upload `update()` triggers
-  writes an empty image over them. Everything drawn from the texture then
-  renders transparent, permanently.
+- Never call `texture.source.update()` on a texture from `createTexture`. The
+  renderer drew that texture rather than loading an image into it, so the
+  re-upload `update()` triggers writes an empty image over it. Everything
+  drawn from the texture then renders transparent, permanently.
 
 ## Camera
 
@@ -1483,7 +1633,7 @@ world root.
 
 ## DisplaySystem
 
-Runs in `Phase.Render`. Syncs entity `Transform` to PixiJS display object positions, applying camera offset and zoom.
+Runs in `Phase.Render`. Each pass first emits the `graphics:context` events queued since the last frame (see Lost graphics context), then syncs entity `Transform` to PixiJS display object positions, applying camera offset and zoom.
 
 ## Scene Transitions
 
@@ -1771,19 +1921,19 @@ Semantics:
 
 `renderer.createRenderTarget(source, options)` draws a Pixi container the caller builds and owns into a texture. It is for rendering tools that manage their own Pixi objects (the lighting renderers use it). Game content goes on a render-target layer instead.
 
-| Member                                   | Signature                                                                        | Description                                                                                                                                                                                                                                                                                              |
-| ---------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RendererPlugin.createRenderTarget`      | `(source: DisplayContainer, options: RenderTargetOptions) => RenderTargetHandle` | Allocate the buffer. The repeatable counterpart of `createTexture`, which bakes once and never changes.                                                                                                                                                                                                  |
-| `RenderTargetOptions`                    | `{ width, height, resolutionScale?, antialias?, clearColor?, label? }`           | `width` / `height` are in source coordinates. `resolutionScale` (default `1`) multiplies the renderer's own resolution. `clearColor` defaults to transparent.                                                                                                                                            |
-| `handle.texture`                         | `TextureResource`                                                                | What the buffer draws into. Feed it to `SpriteComponent` or `textureMask` (via `registerTexture`), or to a filter uniform.                                                                                                                                                                               |
-| `handle.source`                          | `DisplayContainer`                                                               | The container passed to `createRenderTarget`. `destroy()` leaves it alone — freeing it is the caller's job.                                                                                                                                                                                              |
-| `handle.render()`                        | `() => void`                                                                     | Draw now and clear the pending flag.                                                                                                                                                                                                                                                                     |
-| `handle.renderIfNeeded()`                | `() => boolean`                                                                  | Draw only when pending; returns whether it drew.                                                                                                                                                                                                                                                         |
-| `handle.invalidate()`                    | `() => void`                                                                     | Mark the buffer stale.                                                                                                                                                                                                                                                                                   |
-| `handle.needsRender`                     | `boolean`                                                                        | Whether a render is pending.                                                                                                                                                                                                                                                                             |
-| `handle.resize(w, h, scale?)`            | `(number, number, number?) => void`                                              | Resize and mark stale. Anything showing the texture picks up the new size on its next draw. Omitting `scale` keeps the configured `resolutionScale`, re-derived against the renderer's current resolution; passing one replaces it.                                                                      |
-| `handle.width` / `height` / `resolution` | `number`                                                                         | Measured size in source coordinates, and the texels-per-pixel actually allocated.                                                                                                                                                                                                                        |
-| `handle.destroy()`                       | `() => void`                                                                     | Free the texture's GPU memory. Repeatable. The source container is untouched — destroy that as well. Afterwards `texture`, `width`, `height`, `resolution`, `render()` and `resize()` throw `RenderTargetHandle.<member>: the handle is destroyed.`; so does `renderIfNeeded()` while a draw is pending. |
+| Member                                   | Signature                                                                                             | Description                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RendererPlugin.createRenderTarget`      | `(source: DisplayContainer, options: RenderTargetOptions) => RenderTargetHandle`                      | Allocate the buffer. The repeatable counterpart of `createTexture`, which bakes once and never changes.                                                                                                                                                                                                                                                                                        |
+| `RenderTargetOptions`                    | `{ width, height, resolutionScale?, antialias?, clearColor?, label?, dependsOn?, followResolution? }` | `width` / `height` are in source coordinates. `resolutionScale` (default `1`) multiplies the renderer's resolution at creation and at each `resize()`. `clearColor` defaults to transparent. `followResolution` (default `false`) re-allocates the buffer at the renderer's new resolution and redraws it at the next frame. `antialias` has no effect where `capabilities.maxSamples` is `0`. |
+| `handle.texture`                         | `TextureResource`                                                                                     | What the buffer draws into. Feed it to `SpriteComponent` or `textureMask` (via `registerTexture`), or to a filter uniform.                                                                                                                                                                                                                                                                     |
+| `handle.source`                          | `DisplayContainer`                                                                                    | The container passed to `createRenderTarget`. `destroy()` leaves it alone — freeing it is the caller's job.                                                                                                                                                                                                                                                                                    |
+| `handle.render()`                        | `() => void`                                                                                          | Draw now and clear the pending flag.                                                                                                                                                                                                                                                                                                                                                           |
+| `handle.renderIfNeeded()`                | `() => boolean`                                                                                       | Draw only when pending; returns whether it drew.                                                                                                                                                                                                                                                                                                                                               |
+| `handle.invalidate()`                    | `() => void`                                                                                          | Mark the buffer stale.                                                                                                                                                                                                                                                                                                                                                                         |
+| `handle.needsRender`                     | `boolean`                                                                                             | Whether a render is pending.                                                                                                                                                                                                                                                                                                                                                                   |
+| `handle.resize(w, h, scale?)`            | `(number, number, number?) => void`                                                                   | Resize and mark stale. Anything showing the texture picks up the new size on its next draw. Omitting `scale` keeps the configured `resolutionScale`, re-derived against the renderer's current resolution; passing one replaces it.                                                                                                                                                            |
+| `handle.width` / `height` / `resolution` | `number`                                                                                              | Measured size in source coordinates, and the texels-per-pixel actually allocated.                                                                                                                                                                                                                                                                                                              |
+| `handle.destroy()`                       | `() => void`                                                                                          | Free the texture's GPU memory. Repeatable. The source container is untouched — destroy that as well. Afterwards `texture`, `width`, `height`, `resolution`, `render()` and `resize()` throw `RenderTargetHandle.<member>: the handle is destroyed.`; so does `renderIfNeeded()` while a draw is pending.                                                                                       |
 
 Semantics of a handle from `createRenderTarget`:
 
@@ -1795,7 +1945,9 @@ Semantics of a handle from `createRenderTarget`:
 - **`resolutionScale` costs sharpness, not layout.** Only the texel count drops. The one exception is rounding: Pixi stores whole texels, so a `width × resolution` that lands between them is rounded up and the measured size grows to match — at `resolutionScale: 0.25` on a resolution-2 renderer, `resize(1279, 719)` measures `1280 × 720`. Use sizes that divide evenly by the effective resolution if the exact measurement matters. Worth it for gradients and glows, not for text or pixel art.
 - **One owner frees three things.** A render target is the texture (`handle.destroy()`), the source container (`source.destroy({ children: true })` — `handle.destroy()` never touches it) and any key it was registered under (`unregisterTexture(key)`, or that key keeps resolving a destroyed texture). Put all three in one component's `onDestroy`, which runs when its entity is destroyed or when the scene tears down. A scene's `onEnter` / `onExit` pair is the alternative for a buffer whose lifetime is the whole scene.
 - **Cost.** Every `render()` is a full draw of the source plus a render-target switch. A buffer that only changes when the game state does should be invalidated on that change, not every frame. A buffer that tracks moving content pays that cost per frame — `resolutionScale` is the lever there.
-- **Backends.** Pixi's default backend order is WebGL first, so a game that doesn't pass `pixi: { preference: "webgpu" }` runs on WebGL. Blend behaviour inside a render target, `"erase"` included, is verified on WebGL and unmeasured on WebGPU.
+- **A restored graphics context redraws every buffer.** After the browser gives the page a context back, each live target draws from its source again at the next frame, inputs before the targets that sample them. A target whose source was destroyed throws then, as it would on any other draw.
+- **The texture outlives the engine.** `engine.destroy()` stops every buffer following the renderer and leaves its texture to the game, so `handle.destroy()` still frees it afterwards, from a hot-reload or test teardown that runs after the engine is gone.
+- **Backends.** The renderer asks Pixi for WebGL first, and for WebGPU first with `pixi: { preference: "webgpu" }`; it never asks for Canvas 2D. Blend behaviour inside a render target, `"erase"` included, is verified on WebGL and unmeasured on WebGPU.
 
 ## Save state
 
@@ -1896,6 +2048,7 @@ Semantics:
 - Re-registering a key replaces the entry; components constructed before the replacement keep the old texture instance (resolution happens at construction).
 - Registering a key already used by a loaded asset (or any cache entry the API didn't create) throws — shadowing a loaded asset would let that asset's unload destroy the registered texture.
 - A runtime texture also works as a graphics fill — `g.rect(...).fill({ texture, textureSpace: "global" })` tiles it across the shape. See "Texture fills". Do not call `update()` on the `source` of a `createTexture` result: that re-uploads the texture empty and it stays blank.
+- A `createTexture` result keeps the drawing it was baked from and draws it again after a lost graphics context is restored. `texture.destroy()` frees the drawing with it, also after `engine.destroy()`, which leaves the texture to the game.
 - A frame grid needs the size option on `createTexture`. Without it the texture measures the drawn bounds and its origin is the top-left of the drawing, so `frameWidth` slices land between the shapes rather than on them: four circles of radius 6 to 12 drawn at `x = i * 32 + 16` bake into a 114 x 24 texture whose cells start 10 pixels off. `{ width: 128, height: 32 }` makes the grid line up. A non-finite or zero dimension throws naming the dimension.
 
 **`installBitmapFont(source, opts)`** — bake a bitmap glyph atlas from a `.ttf`/`.woff` at runtime via Pixi v8's `BitmapFont.install`. Returns the registered font name, ready to pass as `style.fontFamily` (with `bitmap: true`):

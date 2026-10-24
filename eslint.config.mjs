@@ -227,6 +227,12 @@ export default tseslint.config(
       "packages/tools/lab/src/cli/test.ts",
       "packages/tools/lab/src/runner/LabPanel.ts",
       "packages/tools/lab/src/runner/mountLab.ts",
+      // The Electron main process has no engine clock: the bound on a
+      // fullscreen request is wall-clock time in the shell.
+      "packages/host-electron/src/main/channels.ts",
+      // A mobile app turns its screen while the engine is paused, so the
+      // bound on an orientation lock is wall-clock time too.
+      "packages/host-capacitor/src/display.ts",
     ],
     rules: {
       "no-restricted-globals": [
@@ -673,9 +679,12 @@ export default tseslint.config(
   //    packages/level carves itself out because blocks K and L restrict more.
   //    The glob has three path segments, so packages/addons/*/src and
   //    packages/tools/*/src are outside it, as they are outside the block above.
+  //    The scaffolder's tests are carved out: they check the versions it writes
+  //    into a new project against what the tools themselves declare, and
+  //    nothing it ships imports one.
   {
     files: ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
-    ignores: [`${LEVEL}/src/**`],
+    ignores: [`${LEVEL}/src/**`, "packages/create-yage/src/**/*.test.ts"],
     rules: {
       "no-restricted-imports": [
         "error",

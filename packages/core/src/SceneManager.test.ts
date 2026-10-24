@@ -5,10 +5,13 @@ import {
   EngineContext,
   QueryCacheKey,
   EventBusKey,
+  HostKey,
   SceneManagerKey,
   ServiceKey,
   ErrorBoundaryKey,
 } from "./EngineContext.js";
+import { Host } from "./Host.js";
+import type { HostLifecycleReport } from "./Host.js";
 import { QueryCache } from "./QueryCache.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
@@ -48,6 +51,29 @@ class OverlayScene extends Scene {
   readonly name = "overlay";
   override readonly pauseBelow = false;
   override readonly transparentBelow = true;
+}
+
+/** A named scene that leaves the scenes under it running. */
+class RunningScene extends GameScene {
+  override readonly pauseBelow = false;
+}
+
+/**
+ * Attach a host adapter to `host` and return the function that reports a
+ * change through it, the way a native adapter does.
+ */
+function driveHost(host: Host): (state: HostLifecycleReport) => void {
+  let push: ((state: HostLifecycleReport) => void) | undefined;
+  host.attach({
+    info: { runtime: "test", os: "unknown" },
+    watchLifecycle: (report) => {
+      push = report;
+      return () => {
+        push = undefined;
+      };
+    },
+  });
+  return (state) => push?.(state);
 }
 
 function setup() {
@@ -968,131 +994,451 @@ describe("SceneManager", () => {
     });
   });
 
-  describe("autoPauseOnBlur", () => {
-    it("defaults to false", () => {
-      const { manager } = setup();
-      expect(manager.autoPauseOnBlur).toBe(false);
+  describe("autoPause", () => {
+    function setupWithHost() {
+      _resetEntityIdCounter();
+      const ctx = new EngineContext();
+      ctx.register(QueryCacheKey, new QueryCache());
+      const bus = new EventBus<EngineEvents>();
+      ctx.register(EventBusKey, bus);
+      const logger = new Logger({ level: LogLevel.Debug });
+      const boundary = new ErrorBoundary(logger);
+      ctx.register(ErrorBoundaryKey, boundary);
+      const hooks = new SceneHookRegistry();
+      hooks._setErrorBoundary(boundary);
+      ctx.register(SceneHookRegistryKey, hooks);
+      const host = new Host();
+      ctx.register(HostKey, host);
+      const manager = new SceneManager();
+      ctx.register(SceneManagerKey, manager);
+      manager._setContext(ctx);
+      host._connect({
+        events: bus,
+        syncScenes: () => manager._syncHostPause(),
+      });
+      return { manager, ctx, host, hooks, boundary, setHost: driveHost(host) };
+    }
+
+    /** Let a queued stack mutation reach the hook it awaits. */
+    function settle(): Promise<void> {
+      return new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+
+    it("defaults to off, and takes the value it already holds silently", () => {
+      const { manager, setHost } = setupWithHost();
+      expect(manager.autoPause).toBe(false);
+
+      manager.autoPause = false;
+      setHost({ activity: "inactive" });
+      manager.autoPause = true;
+      manager.autoPause = true;
+
+      expect(manager._pausedByHost).toBe(true);
     });
 
-    it("pauses active scenes on hide and restores on show", async () => {
-      const { manager } = setup();
-      manager.autoPauseOnBlur = true;
+    it("holds the stack paused while the host is inactive", async () => {
+      const { manager, setHost } = setupWithHost();
+      manager.autoPause = true;
       const a = new GameScene("a");
-      const b = new GameScene("b");
+      const b = new OverlayScene();
       await manager.push(a);
       await manager.push(b);
-      // 'a' is stack-paused by 'b.pauseBelow`; only 'b' is in activeScenes.
-      manager._handleVisibilityChange(true);
-      expect(b.paused).toBe(true);
-      manager._handleVisibilityChange(false);
+
+      setHost({ activity: "inactive" });
+
+      expect(a.isPaused).toBe(true);
+      expect(b.isPaused).toBe(true);
+      expect(manager.activeScenes).toEqual([]);
+      expect(a.paused).toBe(false);
       expect(b.paused).toBe(false);
+
+      setHost({ activity: "active" });
+
+      expect(a.isPaused).toBe(false);
+      expect(b.isPaused).toBe(false);
+      expect(manager.activeScenes).toEqual([a, b]);
     });
 
-    it("leaves user-paused scenes untouched on restore", async () => {
-      const { manager } = setup();
-      manager.autoPauseOnBlur = true;
+    it("fires one hook per running scene; a paused scene gets neither", async () => {
+      const { manager, setHost } = setupWithHost();
+      manager.autoPause = true;
       const userPaused = new GameScene("userPaused");
       userPaused.paused = true;
-      const running = new OverlayScene();
+      const covered = new GameScene("covered");
+      const running = new GameScene("running");
       await manager.push(userPaused);
+      await manager.push(covered);
       await manager.push(running);
-      // Only 'running' is active; 'userPaused' has paused=true already.
-      manager._handleVisibilityChange(true);
-      manager._handleVisibilityChange(false);
-      expect(userPaused.paused).toBe(true);
-      expect(running.paused).toBe(false);
+      const pauses = vi.fn();
+      const resumes = vi.fn();
+      userPaused.onPause = pauses;
+      userPaused.onResume = resumes;
+      covered.onPause = pauses;
+      covered.onResume = resumes;
+      const runningPause = vi.fn();
+      const runningResume = vi.fn();
+      running.onPause = runningPause;
+      running.onResume = runningResume;
+
+      setHost({ visibility: "hidden" });
+      expect(runningPause).toHaveBeenCalledOnce();
+      expect(pauses).not.toHaveBeenCalled();
+
+      setHost({ visibility: "visible" });
+      expect(runningResume).toHaveBeenCalledOnce();
+      expect(resumes).not.toHaveBeenCalled();
     });
 
-    it("toggling off mid-blur unpauses immediately", async () => {
-      const { manager } = setup();
-      manager.autoPauseOnBlur = true;
+    it("keeps a manual pause made while the host is inactive", async () => {
+      const { manager, setHost } = setupWithHost();
+      manager.autoPause = true;
       const scene = new GameScene("a");
       await manager.push(scene);
-      manager._handleVisibilityChange(true);
-      expect(scene.paused).toBe(true);
-      manager.autoPauseOnBlur = false;
-      expect(scene.paused).toBe(false);
+      setHost({ activity: "inactive" });
+      const resume = vi.fn();
+      scene.onResume = resume;
+
+      scene.paused = true;
+      setHost({ activity: "active" });
+
+      expect(scene.isPaused).toBe(true);
+      expect(resume).not.toHaveBeenCalled();
     });
 
-    it("toggling on mid-blur pauses immediately", async () => {
-      const { manager } = setup();
+    it("applies a manual unpause made while the host is inactive at the return", async () => {
+      const { manager, setHost } = setupWithHost();
+      manager.autoPause = true;
       const scene = new GameScene("a");
+      scene.paused = true;
       await manager.push(scene);
-      manager._handleVisibilityChange(true);
-      expect(scene.paused).toBe(false);
-      manager.autoPauseOnBlur = true;
-      expect(scene.paused).toBe(true);
-      manager._handleVisibilityChange(false);
-      expect(scene.paused).toBe(false);
+      setHost({ activity: "inactive" });
+      const resume = vi.fn();
+      scene.onResume = resume;
+
+      scene.paused = false;
+      expect(resume).not.toHaveBeenCalled();
+
+      setHost({ activity: "active" });
+      expect(resume).toHaveBeenCalledOnce();
+      expect(scene.isPaused).toBe(false);
     });
 
-    it("is a no-op when disabled", async () => {
-      const { manager } = setup();
-      const scene = new GameScene("a");
+    it("enters a scene pushed while the host is inactive paused", async () => {
+      const { manager, setHost } = setupWithHost();
+      manager.autoPause = true;
+      setHost({ activity: "inactive" });
+      const order: string[] = [];
+      const scene = new GameScene("late");
+      scene.onEnter = () => order.push("enter");
+      scene.onPause = () => order.push("pause");
+      scene.onResume = () => order.push("resume");
+
       await manager.push(scene);
-      manager._handleVisibilityChange(true);
-      expect(scene.paused).toBe(false);
+      expect(order).toEqual(["enter", "pause"]);
+      expect(scene.isPaused).toBe(true);
+
+      setHost({ activity: "active" });
+      expect(order).toEqual(["enter", "pause", "resume"]);
     });
 
-    it("does not double-pause across reentrant hides", async () => {
-      const { manager } = setup();
-      manager.autoPauseOnBlur = true;
+    it("exits a scene popped while the host is inactive without resuming it", async () => {
+      const { manager, setHost } = setupWithHost();
+      manager.autoPause = true;
       const scene = new GameScene("a");
       await manager.push(scene);
-      manager._handleVisibilityChange(true);
-      // A spurious second hide (e.g. browser quirks) must be a no-op — if it
-      // re-ran the apply step it would re-add the scene to the tracking set
-      // and nothing else, but more importantly it would let a parallel
-      // implementation that snapshotted external state corrupt it. Guarded
-      // here as the canonical "two hides in a row are idempotent" invariant.
-      manager._handleVisibilityChange(true);
-      manager._handleVisibilityChange(false);
-      expect(scene.paused).toBe(false);
-    });
+      setHost({ activity: "inactive" });
+      const resume = vi.fn();
+      scene.onResume = resume;
 
-    it("drops popped scenes from the tracking set so teardown cannot leak", async () => {
-      const { manager } = setup();
-      manager.autoPauseOnBlur = true;
-      const scene = new GameScene("a");
-      await manager.push(scene);
-      manager._handleVisibilityChange(true);
-      // Game pops the scene while the tab is still hidden (e.g. return-to-menu).
       await manager.pop();
-      manager._handleVisibilityChange(false);
-      // The popped scene is torn down; writes to scene.paused at this point
-      // would be meaningless state-change noise on a destroyed Scene.
-      // Exposing the private set through a cast is the only way to assert
-      // the cleanup without adding public surface.
-      const internals = manager as unknown as {
-        _visibilityPausedScenes: Set<Scene>;
-      };
-      expect(internals._visibilityPausedScenes.size).toBe(0);
+      expect(scene.exitCalled).toBe(true);
+
+      setHost({ activity: "active" });
+      expect(resume).not.toHaveBeenCalled();
     });
 
-    it("fires onPause on blur and onResume on focus; user-paused scenes get neither", async () => {
+    it("takes effect the moment it is switched on or off", async () => {
+      const { manager, setHost } = setupWithHost();
+      const scene = new GameScene("a");
+      await manager.push(scene);
+      setHost({ activity: "inactive" });
+      expect(scene.isPaused).toBe(false);
+
+      manager.autoPause = true;
+      expect(scene.isPaused).toBe(true);
+      expect(scene.pauseCalled).toBe(true);
+
+      manager.autoPause = false;
+      expect(scene.isPaused).toBe(false);
+      expect(scene.resumeCalled).toBe(true);
+
+      setHost({ activity: "active" });
+      const pause = vi.fn();
+      scene.onPause = pause;
+      manager.autoPause = true;
+      manager.autoPause = false;
+      expect(pause).not.toHaveBeenCalled();
+    });
+
+    it("fires nothing when the state it syncs to is unchanged", async () => {
+      const { manager, setHost } = setupWithHost();
+      manager.autoPause = true;
+      const scene = new GameScene("a");
+      await manager.push(scene);
+      setHost({ activity: "inactive" });
+      const pause = vi.fn();
+      scene.onPause = pause;
+
+      manager._syncHostPause();
+
+      expect(pause).not.toHaveBeenCalled();
+    });
+
+    it("fires one hook each when the host turns inactive during a push", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { manager, hooks, setHost } = setupWithHost();
+      manager.autoPause = true;
+      const below = new GameScene("below");
+      await manager.push(below);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      hooks.register({ beforeEnter: () => gate });
+      const pushed = new OverlayScene();
+      const belowPause = vi.fn();
+      const pushedPause = vi.fn();
+      below.onPause = belowPause;
+      pushed.onPause = pushedPause;
+
+      const pending = manager.push(pushed);
+      await settle();
+      setHost({ activity: "inactive" });
+      release();
+      await pending;
+
+      expect(belowPause).toHaveBeenCalledOnce();
+      expect(pushedPause).toHaveBeenCalledOnce();
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it("fires no hook on a scene a host-driven onResume keeps paused by hand", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { manager, setHost } = setupWithHost();
+      manager.autoPause = true;
+      const below = new GameScene("below");
+      const top = new OverlayScene();
+      await manager.push(below);
+      await manager.push(top);
+      setHost({ activity: "inactive" });
+      const topPause = vi.fn();
+      const topResume = vi.fn();
+      top.onPause = topPause;
+      top.onResume = topResume;
+      below.onResume = () => {
+        top.paused = true;
+      };
+
+      setHost({ activity: "active" });
+
+      // `top` was reported paused when the host turned inactive and is still
+      // paused, so neither of its hooks runs.
+      expect(top.isPaused).toBe(true);
+      expect(topPause).not.toHaveBeenCalled();
+      expect(topResume).not.toHaveBeenCalled();
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it("fires onPause once for autoPause switched on in onEnter while the host is inactive", async () => {
+      const { manager, setHost } = setupWithHost();
+      setHost({ focus: "unfocused" });
+      const order: string[] = [];
+      const below = new GameScene("below");
+      below.onPause = () => order.push("below:pause");
+      below.onResume = () => order.push("below:resume");
+      await manager.push(below);
+      const scene = new OverlayScene();
+      scene.onEnter = () => {
+        order.push("enter");
+        manager.autoPause = true;
+      };
+      scene.onPause = () => order.push("pause");
+      scene.onResume = () => order.push("resume");
+
+      await manager.push(scene);
+      expect(order).toEqual(["enter", "below:pause", "pause"]);
+
+      setHost({ focus: "focused" });
+      expect(order).toEqual([
+        "enter",
+        "below:pause",
+        "pause",
+        "below:resume",
+        "resume",
+      ]);
+    });
+
+    it("fires one hook for a manual pause made during a push", async () => {
+      const { manager, hooks } = setupWithHost();
+      const below = new GameScene("below");
+      await manager.push(below);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      hooks.register({ beforeEnter: () => gate });
+      const belowPause = vi.fn();
+      below.onPause = belowPause;
+
+      const pending = manager.push(new OverlayScene());
+      await settle();
+      below.paused = true;
+      release();
+      await pending;
+
+      expect(belowPause).toHaveBeenCalledOnce();
+    });
+
+    it("fires one hook each when the host turns inactive during a replace", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { manager, hooks, setHost } = setupWithHost();
+      manager.autoPause = true;
+      const bottom = new GameScene("bottom");
+      const leaving = new OverlayScene();
+      await manager.push(bottom);
+      await manager.push(leaving);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      hooks.register({ beforeEnter: () => gate });
+      const arriving = new OverlayScene();
+      const bottomPause = vi.fn();
+      const arrivingPause = vi.fn();
+      bottom.onPause = bottomPause;
+      arriving.onPause = arrivingPause;
+
+      const pending = manager.replace(arriving);
+      await settle();
+      setHost({ activity: "inactive" });
+      release();
+      await pending;
+
+      expect(bottomPause).toHaveBeenCalledOnce();
+      expect(arrivingPause).toHaveBeenCalledOnce();
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it("fires one hook for a manual pause made during a replace", async () => {
+      const { manager, hooks } = setupWithHost();
+      const bottom = new GameScene("bottom");
+      await manager.push(bottom);
+      await manager.push(new OverlayScene());
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      hooks.register({ beforeEnter: () => gate });
+      const bottomPause = vi.fn();
+      bottom.onPause = bottomPause;
+
+      const pending = manager.replace(new OverlayScene());
+      await settle();
+      bottom.paused = true;
+      release();
+      await pending;
+
+      expect(bottomPause).toHaveBeenCalledOnce();
+    });
+
+    it("reports a throwing onPause and stops the scenes after it", async () => {
+      const { manager, boundary, setHost } = setupWithHost();
+      manager.autoPause = true;
+      const first = new RunningScene("first");
+      const broken = new RunningScene("broken");
+      const last = new RunningScene("last");
+      await manager.push(first);
+      await manager.push(broken);
+      await manager.push(last);
+      broken.onPause = () => {
+        throw new Error("pause failed");
+      };
+      const brokenResume = vi.fn();
+      broken.onResume = brokenResume;
+      const lastPause = vi.fn();
+      const lastResume = vi.fn();
+      last.onPause = lastPause;
+      last.onResume = lastResume;
+
+      expect(() => setHost({ activity: "inactive" })).toThrow("pause failed");
+
+      expect(lastPause).not.toHaveBeenCalled();
+      expect(first.isPaused).toBe(true);
+      expect(broken.isPaused).toBe(true);
+      expect(last.isPaused).toBe(true);
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Scene onPause hook",
+        scene: "broken",
+      });
+
+      setHost({ activity: "active" });
+      expect(first.isPaused).toBe(false);
+      expect(broken.isPaused).toBe(false);
+      expect(last.isPaused).toBe(false);
+      // `broken` was reported paused when its `onPause` ran, so the return
+      // resumes it once.
+      expect(brokenResume).toHaveBeenCalledOnce();
+      // `last` was never reported paused, so the return fires no hook on it.
+      expect(lastPause).not.toHaveBeenCalled();
+      expect(lastResume).not.toHaveBeenCalled();
+    });
+
+    it("leaves a detached scene running", async () => {
+      const { manager, setHost } = setupWithHost();
+      manager.autoPause = true;
+      const detached = new GameScene("detached");
+      await manager._mountDetached(detached);
+
+      setHost({ activity: "inactive" });
+
+      expect(detached.isPaused).toBe(false);
+    });
+
+    it("never pauses without a host in the context", async () => {
       const { manager } = setup();
-      manager.autoPauseOnBlur = true;
-      const userPaused = new GameScene("userPaused");
-      userPaused.paused = true;
-      const running = new OverlayScene();
-      await manager.push(userPaused);
-      await manager.push(running);
-      const userOnPause = vi.fn();
-      const userOnResume = vi.fn();
-      const runningOnPause = vi.fn();
-      const runningOnResume = vi.fn();
-      userPaused.onPause = userOnPause;
-      userPaused.onResume = userOnResume;
-      running.onPause = runningOnPause;
-      running.onResume = runningOnResume;
+      manager.autoPause = true;
+      const scene = new GameScene("a");
+      await manager.push(scene);
 
-      manager._handleVisibilityChange(true);
-      expect(runningOnPause).toHaveBeenCalledOnce();
-      expect(userOnPause).not.toHaveBeenCalled();
+      manager._syncHostPause();
 
-      manager._handleVisibilityChange(false);
-      expect(runningOnResume).toHaveBeenCalledOnce();
-      expect(userOnResume).not.toHaveBeenCalled();
+      expect(scene.isPaused).toBe(false);
+    });
+
+    it("tears scenes down without resuming them", async () => {
+      const { manager, setHost } = setupWithHost();
+      manager.autoPause = true;
+      const scene = new GameScene("a");
+      await manager.push(scene);
+      setHost({ activity: "inactive" });
+      const resume = vi.fn();
+      scene.onResume = resume;
+
+      manager._destroy();
+
+      expect(scene.exitCalled).toBe(true);
+      expect(resume).not.toHaveBeenCalled();
+
+      // A host signal that arrives after the teardown pauses nothing.
+      setHost({ activity: "active" });
+      setHost({ activity: "inactive" });
+
+      expect(manager._pausedByHost).toBe(false);
+      expect(resume).not.toHaveBeenCalled();
     });
   });
 
@@ -1163,22 +1509,32 @@ describe("SceneManager", () => {
       expect(onPause).toHaveBeenCalledOnce();
     });
 
-    it("warns when paused is written from inside a lifecycle hook", async () => {
+    it("fires one onPause for a pause written in onEnter, and one onResume when it is cleared", async () => {
       const { manager } = setup();
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const onPause = vi.fn();
+      const onResume = vi.fn();
       class SelfPausing extends GameScene {
         override onEnter() {
           super.onEnter();
           this.paused = true;
         }
+        override onPause() {
+          onPause();
+        }
+        override onResume() {
+          onResume();
+        }
       }
       const scene = new SelfPausing("a");
 
       await manager.push(scene);
+      expect(onPause).toHaveBeenCalledOnce();
 
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("set from inside a lifecycle hook"),
-      );
+      scene.paused = false;
+      expect(onResume).toHaveBeenCalledOnce();
+      expect(onPause).toHaveBeenCalledOnce();
+      expect(warnSpy).not.toHaveBeenCalled();
       warnSpy.mockRestore();
     });
 
@@ -1205,10 +1561,16 @@ describe("SceneManager", () => {
       const logger = new Logger({ level: LogLevel.Debug });
       const boundary = new ErrorBoundary(logger);
       ctx.register(ErrorBoundaryKey, boundary);
+      const host = new Host();
+      ctx.register(HostKey, host);
       const manager = new SceneManager();
       ctx.register(SceneManagerKey, manager);
       manager._setContext(ctx);
-      return { manager, ctx, boundary };
+      host._connect({
+        events: ctx.resolve(EventBusKey) as EventBus<EngineEvents>,
+        syncScenes: () => manager._syncHostPause(),
+      });
+      return { manager, ctx, boundary, host };
     }
 
     it("a throwing transition step is reported through the boundary and the transition still settles", async () => {
@@ -1419,19 +1781,20 @@ describe("SceneManager", () => {
       });
     });
 
-    it("a throwing onPause is reported when blur auto-pauses the active scene", async () => {
-      const { manager, boundary } = setupWithBoundary();
+    it("a throwing onPause is reported when the host turns inactive", async () => {
+      const { manager, boundary, host } = setupWithBoundary();
       class BrokenPause extends GameScene {
         override onPause(): void {
-          throw new Error("blur pause failed");
+          throw new Error("host pause failed");
         }
       }
       const scene = new BrokenPause("broken");
       await manager.push(scene);
-      manager.autoPauseOnBlur = true;
+      manager.autoPause = true;
+      const setHost = driveHost(host);
 
-      expect(() => manager._handleVisibilityChange(true)).toThrow(
-        "blur pause failed",
+      expect(() => setHost({ activity: "inactive" })).toThrow(
+        "host pause failed",
       );
 
       const errors = boundary.getCallbackErrors();
@@ -1442,21 +1805,22 @@ describe("SceneManager", () => {
       });
     });
 
-    it("a throwing onResume is reported when blur restores the active scene", async () => {
-      const { manager, boundary } = setupWithBoundary();
+    it("a throwing onResume is reported when the host becomes active", async () => {
+      const { manager, boundary, host } = setupWithBoundary();
       class BrokenResume extends GameScene {
         override onResume(): void {
-          throw new Error("blur resume failed");
+          throw new Error("host resume failed");
         }
       }
       const scene = new BrokenResume("broken");
       await manager.push(scene);
-      manager.autoPauseOnBlur = true;
-      manager._handleVisibilityChange(true); // pauses cleanly — onResume is the broken hook
+      manager.autoPause = true;
+      const setHost = driveHost(host);
+      setHost({ activity: "inactive" }); // pauses cleanly — onResume is the broken hook
       expect(scene.isPaused).toBe(true);
 
-      expect(() => manager._handleVisibilityChange(false)).toThrow(
-        "blur resume failed",
+      expect(() => setHost({ activity: "active" })).toThrow(
+        "host resume failed",
       );
 
       const errors = boundary.getCallbackErrors();

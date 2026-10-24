@@ -32,6 +32,13 @@ export interface RenderTargetOptions {
   label?: string;
   /** Targets sampled by this pass. Drawing waits until these targets are clean. */
   dependsOn?: readonly RenderTargetHandle[];
+  /**
+   * Re-allocate the buffer at the renderer's new resolution when that
+   * changes (a window moved to a display with another pixel ratio, a browser
+   * zoom) and redraw it from the source at the next frame. Default `false`:
+   * the buffer keeps the density it was created or last resized with.
+   */
+  followResolution?: boolean;
 }
 
 /** How often a render-target layer redraws its texture. */
@@ -159,9 +166,17 @@ export interface RenderTargetHandle {
    * Destroy the texture and its GPU memory. Safe to call repeatedly. Frees
    * the texture only: destroy the source container yourself, and call
    * `unregisterTexture(key)` for any key the texture was registered under, or
-   * that key keeps resolving a destroyed texture.
+   * that key keeps resolving a destroyed texture. `engine.destroy()` leaves
+   * the texture to the game, so this call frees it after the engine is gone
+   * too.
    */
   destroy(): void;
+}
+
+/** One of Pixi's own dispatch lists, which a target joins and leaves. */
+interface PixiRunner {
+  add(item: unknown): unknown;
+  remove(item: unknown): unknown;
 }
 
 /** @internal Drawing policy supplied by the owning renderer. */
@@ -173,6 +188,12 @@ export interface RenderTargetDrawing {
    * time or only while a render is pending.
    */
   readonly refresh?: LayerRenderRefresh;
+  /**
+   * Every target built with this policy and not yet destroyed. Before Pixi
+   * destroys the runners these targets joined, the renderer calls `release()`
+   * on each one.
+   */
+  readonly live: Set<{ release(): void }>;
 }
 
 class RenderTargetImpl implements RenderTargetHandle, LayerRenderTarget {
@@ -194,12 +215,20 @@ class RenderTargetImpl implements RenderTargetHandle, LayerRenderTarget {
   private _resolutionScale: number;
   private _state: "clean" | "dirty" | "deferred" = "dirty";
   private _destroyed = false;
+  /** Pixi runners this target joined, so teardown leaves every one of them. */
+  private readonly _runners: PixiRunner[] = [];
+  /**
+   * Whether `destroy` frees the texture. A buffer the renderer bakes hands
+   * its texture to the game, which destroys it when it is done with it.
+   */
+  private readonly _ownsTexture: boolean;
 
   constructor(
     renderer: Renderer,
     source: DisplayContainer,
     options: RenderTargetOptions,
     private readonly drawing?: RenderTargetDrawing,
+    ownsTexture = true,
   ) {
     if (source === drawing?.stage) {
       throw new Error(
@@ -212,6 +241,7 @@ class RenderTargetImpl implements RenderTargetHandle, LayerRenderTarget {
     assertPositive(scale, "resolutionScale");
 
     this._renderer = renderer;
+    this._ownsTexture = ownsTexture;
     this._dependencies = [...(options.dependsOn ?? [])];
     this.source = source;
     this._resolutionScale = scale;
@@ -230,7 +260,14 @@ class RenderTargetImpl implements RenderTargetHandle, LayerRenderTarget {
       dynamic: true,
       ...(options.label !== undefined ? { label: options.label } : undefined),
     });
-    if (drawing) renderer.runners.prerender.add(this);
+    if (drawing) {
+      this.join(renderer.runners.prerender);
+      this.join(renderer.runners.contextChange);
+      if (options.followResolution) {
+        this.join(renderer.runners.resolutionChange);
+      }
+      drawing.live.add(this);
+    }
   }
 
   /** Pixi's existing pre-render dispatch flushes targets in creation order. */
@@ -241,6 +278,33 @@ class RenderTargetImpl implements RenderTargetHandle, LayerRenderTarget {
     if (refresh ? this._state !== "clean" : this._state === "deferred") {
       this.draw(true);
     }
+  }
+
+  /**
+   * A replacement graphics context holds none of the pixels the old one did,
+   * so the buffer is drawn again from its source at the next frame.
+   */
+  contextChange(): void {
+    this._state = "deferred";
+  }
+
+  /**
+   * Keep the buffer's texel density as the canvas changes its own, so what it
+   * holds stays as sharp as the canvas it is shown on.
+   */
+  resolutionChange(): void {
+    this.resize(this._texture.width, this._texture.height);
+    this._state = "deferred";
+  }
+
+  /** Draw the source into the buffer now, whatever drawing is enabled. */
+  drawNow(): void {
+    this.draw(true);
+  }
+
+  private join(runner: PixiRunner): void {
+    runner.add(this);
+    this._runners.push(runner);
   }
 
   get texture(): TextureResource {
@@ -337,8 +401,19 @@ class RenderTargetImpl implements RenderTargetHandle, LayerRenderTarget {
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
-    if (this.drawing) this._renderer.runners.prerender.remove(this);
-    this._texture.destroy(true);
+    this.release();
+    if (this._ownsTexture) this._texture.destroy(true);
+  }
+
+  /**
+   * Stop following the renderer: leave every Pixi runner this target joined.
+   * The texture stays with whoever owns it, so a `destroy()` after the
+   * renderer is gone still frees it.
+   */
+  release(): void {
+    for (const runner of this._runners) runner.remove(this);
+    this._runners.length = 0;
+    this.drawing?.live.delete(this);
   }
 
   /**
@@ -374,6 +449,39 @@ export function createRenderTarget(
   drawing?: RenderTargetDrawing,
 ): RenderTargetHandle {
   return new RenderTargetImpl(renderer, source, options, drawing);
+}
+
+/** @internal A buffer whose texture belongs to the game that asked for it. */
+export interface BakedTargetHandle {
+  /** The texture the drawing was baked into. */
+  readonly texture: TextureResource;
+  /** Stop following the renderer, leaving the texture to its owner. */
+  release(): void;
+}
+
+/**
+ * @internal Bake `source` into a texture at once and keep drawing it again
+ * whenever the graphics context is replaced. Reached through
+ * `RendererPlugin.createTexture`, which keeps the drawing as the source.
+ */
+export function createBakedTarget(
+  renderer: Renderer,
+  source: DisplayContainer,
+  options: RenderTargetOptions,
+  drawing: RenderTargetDrawing,
+): BakedTargetHandle {
+  const target = new RenderTargetImpl(
+    renderer,
+    source,
+    options,
+    drawing,
+    false,
+  );
+  target.drawNow();
+  return {
+    texture: target.texture,
+    release: () => target.destroy(),
+  };
 }
 
 /**

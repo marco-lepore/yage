@@ -8,6 +8,13 @@ export interface GameLoopCallbacks {
   endOfFrame(dt: number): void;
 }
 
+/**
+ * Longest frame the built-in animation-frame driver reports, in milliseconds.
+ * The same bound a PixiJS ticker applies by default, so a game sees the same
+ * longest frame with or without a renderer.
+ */
+const MAX_BUILT_IN_FRAME_MS = 100;
+
 /** Configuration for the game loop. */
 export interface GameLoopConfig {
   /** Fixed timestep in seconds. Default: 1/60. */
@@ -80,6 +87,12 @@ export class GameLoop {
    * Attach an external ticker (e.g., PixiJS Ticker).
    * The ticker calls `tick(dtMs)` every frame with the wall-clock delta in
    * milliseconds. If no ticker is attached, the loop uses requestAnimationFrame.
+   *
+   * The ticker decides the largest delta it reports — a PixiJS ticker caps one
+   * tick at 100 ms — and `tick()` simulates whatever delta it is given. The
+   * built-in animation-frame driver reports at most 100 ms a frame. With the
+   * default `fixedTimestep` and `maxFixedStepsPerFrame`, that runs 5 fixed
+   * steps and leaves about one for the next frame.
    */
   attachTicker(
     subscribe: (callback: (dt: number) => void) => () => void,
@@ -104,7 +117,12 @@ export class GameLoop {
         if (!this.running) return;
         // The first rAF timestamp can precede the `performance.now()` sampled
         // at start(); a negative delta means "no time passed", not an error.
-        const dt = Math.max(0, now - this.lastTime);
+        // The upper bound keeps the gap of a page the browser stopped
+        // animating out of one simulated frame.
+        const dt = Math.min(
+          MAX_BUILT_IN_FRAME_MS,
+          Math.max(0, now - this.lastTime),
+        );
         this.lastTime = now;
         this.tick(dt);
         this.rafId = requestAnimationFrame(loop);

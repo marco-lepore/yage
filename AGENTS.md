@@ -15,22 +15,24 @@ YAGE is a 2D game engine built as a Turborepo monorepo.
   which documents are authoritative, and which gates must pass before the next
   slice begins.
 
-| Package               | Description                                             |
-| --------------------- | ------------------------------------------------------- |
-| `@yagejs/core`        | ECS, DI, game loop, scenes, events (zero runtime deps)  |
-| `@yagejs/renderer`    | PixiJS v8 rendering, sprites, camera                    |
-| `@yagejs/lighting`    | Radial lights, light-level queries, render backends     |
-| `@yagejs/physics`     | Rapier2D physics (pixel↔meter conversion is internal)   |
-| `@yagejs/input`       | Keyboard/mouse/gamepad input + action maps              |
-| `@yagejs/audio`       | Channel-based audio via @pixi/sound                     |
-| `@yagejs/particles`   | Particle emitters with pooling and presets              |
-| `@yagejs/tilemap`     | Tiled map loading and rendering                         |
-| `@yagejs/pathfinding` | Grid A\* pathfinding, tilemap adapter                   |
-| `@yagejs/ui`          | Yoga flexbox-based UI components                        |
-| `@yagejs/ui-react`    | React reconciler over the UI layer                      |
-| `@yagejs/debug`       | Debug overlay, stats, world/HUD drawing                 |
-| `@yagejs/save`        | Controlled state documents, migrations, and named slots |
-| `@yagejs/level`       | Level documents: read, validate, prepare, load          |
+| Package                  | Description                                                          |
+| ------------------------ | -------------------------------------------------------------------- |
+| `@yagejs/core`           | ECS, DI, game loop, scenes, events (zero runtime deps)               |
+| `@yagejs/renderer`       | PixiJS v8 rendering, sprites, camera                                 |
+| `@yagejs/lighting`       | Radial lights, light-level queries, render backends                  |
+| `@yagejs/physics`        | Rapier2D physics (pixel↔meter conversion is internal)                |
+| `@yagejs/input`          | Keyboard/mouse/gamepad input + action maps                           |
+| `@yagejs/audio`          | Channel-based audio via @pixi/sound                                  |
+| `@yagejs/particles`      | Particle emitters with pooling and presets                           |
+| `@yagejs/tilemap`        | Tiled map loading and rendering                                      |
+| `@yagejs/pathfinding`    | Grid A\* pathfinding, tilemap adapter                                |
+| `@yagejs/ui`             | Yoga flexbox-based UI components                                     |
+| `@yagejs/ui-react`       | React reconciler over the UI layer                                   |
+| `@yagejs/debug`          | Debug overlay, stats, world/HUD drawing                              |
+| `@yagejs/save`           | Controlled state documents, migrations, and named slots              |
+| `@yagejs/level`          | Level documents: read, validate, prepare, load                       |
+| `@yagejs/host-electron`  | Electron shell and host adapter: window state, fullscreen, saves     |
+| `@yagejs/host-capacitor` | Capacitor host adapter: app lifecycle, orientation lock, Back, saves |
 
 ## Design Rules
 
@@ -83,6 +85,8 @@ Enforced by tooling — match these conventions exactly:
   input before anything mutates. This is edge validation, not mid-operation
   recovery.
 - **No non-finite number (`NaN`, `Infinity`) enters engine state unguarded.** A game-supplied number written into simulation state (setter, config, callback return) throws at the write site with `Context.method: constraint, got ${x}`. Two legal inputs that combine into a non-finite result (a documented `Infinity` times a `dt` of `0`) get a defined result plus a one-shot `devWarn` when it is lossy. A read-only query stays unguarded and documents that the result is undefined. Full cases: the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
+- **`Host` is the one source of host state.** Whether the app is active, the page visible or the window focused comes from `Host`: `host.lifecycle`, `host.active`, and the `host:active` and `host:lifecycle` events. An engine package or addon adds no listener of its own for those states (`visibilitychange`, window `blur` and `focus`, a native app-state event). Engine packages follow `Host._observe`; game code uses the events. Why: listeners in separate packages each define "in the background" their own way, and a native host cannot reach them. Fullscreen and screen orientation come from `RendererPlugin` (`isFullscreen`, `orientation`, the `screen:fullscreen` and `screen:orientation` events), which reads them from the registered `HostDisplay` or the page; no other package listens for them.
+- **Graphics capabilities come from `RendererPlugin.capabilities`.** What the graphics context can do (backend, size limits, multisampling, precision, min/max blending, float formats) is read from `renderer.capabilities`, which the renderer reads from the context Pixi selected and again after a restore; `graphics:context` reports a loss and a restore. No package reads Pixi's `gl`, `context` or `gpu` objects to answer a capability question. Why: each reader answers it its own way, and only the renderer knows when the context changed. One exception: a feature that must test its own shader on the live context does so once per context, in its own package; the shader lighting renderer's link test is that case.
 
 ## Testing
 
@@ -90,6 +94,7 @@ Enforced by tooling — match these conventions exactly:
 - **E2E tests**: `e2e/` directory at repo root (Playwright)
 - **Test utilities**: `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core`
 - **E2E assertions**: use the Inspector API (`window.__yage__.inspector`), not screenshots. The page's engine needs `debug: true` and an installed Inspector: `DebugPlugin` installs one, or `InspectorPlugin` from `@yagejs/core` without the overlay
+- **Native shells**: `e2e/native/` runs the baseline fixture (`e2e/fixtures/baseline*.html`) in Chromium, Electron and the iOS simulator and writes a report per run; its `pack` project packages them with Electron Forge and Capacitor through `@yagejs-tools/pack`. CI does not run it; see the Testing Workflow section of `docs/AGENT_GUIDE.md`.
 
 ## Documentation
 

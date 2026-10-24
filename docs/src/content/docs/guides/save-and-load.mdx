@@ -266,6 +266,27 @@ settings.set({ audio: { ...settings.get().audio, music: 0.5 } });
 time-based debouncing across user interactions (e.g. throttling a slider
 drag), wrap the value yourself.
 
+`autoPersist` writes nothing to the console when a write fails. `save.flush()` waits for the
+writes `autoPersist` started or scheduled before the call, and rejects with an
+`AggregateError` naming the stores whose latest write failed — use it before
+you tell the player their settings are saved. A failure nothing awaits becomes
+an unhandled promise rejection, which the browser reports in the console. A
+later successful write of the same store clears the failure.
+
+```typescript yage-group="save" yage-file="flush.ts"
+import { save } from "./persistence/save.js";
+
+// The line the settings menu shows after the player presses "Save".
+export async function settingsSaveMessage(): Promise<string> {
+  try {
+    await save.flush();
+    return "Settings saved.";
+  } catch {
+    return "Your settings could not be saved. Please try again.";
+  }
+}
+```
+
 ## Save slots
 
 Slots are named instances of a value. Use them for "save game" semantics.
@@ -288,12 +309,49 @@ await save.saveSlot<unknown, RunMeta>("saves", "manual-1", saves, {
 await save.loadSlot("saves", "manual-1", saves);
 
 const slots = await save.listSlots<RunMeta>("saves");
-// [{ name: "manual-1", savedAt: 1714…, metadata: { location, playtime } }, …]
+// newest first: [{ name: "manual-1", savedAt: 1714…, metadata: {…} }, …]
 
 await save.deleteSlot("saves", "manual-1");
 ```
 
-`loadSlot` throws `SlotNotFoundError` for missing slots.
+Each slot is one document holding the value, the time it was written and the
+metadata, so saving or deleting a slot is a single storage operation.
+`listSlots` returns the store's slots newest first; it reads every slot
+document of that store, so a store with many large slots takes longer to list
+than to load one. A slot whose stored bytes are damaged is left out of the
+listing and left in storage.
+
+`loadSlot` throws `SlotNotFoundError` for missing slots, and
+`CorruptPayloadError` when the stored bytes are not readable as a save.
+
+Operations on one slot take effect in the order you call them, whether or not
+you await them. A `loadSlot` called right after an unawaited `saveSlot`
+or `deleteSlot` of the same slot reads its result.
+
+### How long a slot name can be
+
+`Save` writes each slot under a key of at most 96 bytes, on every adapter, so
+a slot name that works in a web build also works in a packaged one. A
+`saveSlot` with a longer key throws `InvalidKeyError`, naming the store id and
+the slot name, before anything is written.
+
+A slot's key is the store id, 3 bytes of separators, then the slot name. The
+store id and the slot name are URI-encoded:
+
+- `A-Z`, `a-z`, `0-9` and `- _ . ! ~ * ' ( )` take 1 byte each.
+- Any other character takes 3 bytes per byte of its UTF-8 form: 3 for a space
+  or `/`, 6 for `é`, 9 for most Chinese, Japanese and Korean characters, and
+  12 for an emoji.
+
+With the store id `saves`, a slot name holds 88 ASCII letters or 9 Japanese
+characters. A document saved with `persist` or `autoPersist` has a key of the
+store id and 2 bytes, so its store id takes up to 94 bytes once encoded.
+
+Only writes check the length. A slot an earlier release saved under a longer
+name keeps its time and metadata: `listSlots` lists it, `loadSlot` loads it and
+`deleteSlot` deletes it. `restore` reads a document stored under a longer store
+id the same way. A `saveSlot` to that name throws. To keep the save, load it,
+save it under a shorter name with its metadata, then delete the old slot.
 
 ### Continue (load latest)
 
@@ -301,8 +359,7 @@ await save.deleteSlot("saves", "manual-1");
 import { save } from "./persistence/save.js";
 import { saves } from "./persistence/stores.js";
 
-const slots = await save.listSlots("saves");
-const latest = slots.sort((a, b) => b.savedAt - a.savedAt)[0];
+const [latest] = await save.listSlots("saves");
 if (latest) {
   await save.loadSlot("saves", latest.name, saves);
 }
@@ -349,10 +406,10 @@ class CheckpointOnRest extends Component {
 
 ## Migration & versioning
 
-`version` + `migrate` live on the read call (`restore` / `loadSlot` /
-`autoPersist`), not on the primitive. Bump `version` when the encoded shape
-changes and pass `migrate` to transform older payloads. Per-leaf migration
-inside a compound is not supported — migrate the tree as a whole.
+`version` + `migrate` live on the read call (`restore` / `loadSlot`), not on
+the primitive; `autoPersist` takes `version` only. Bump `version` when the
+encoded shape changes and pass `migrate` to transform older payloads. Per-leaf
+migration inside a compound is not supported — migrate the tree as a whole.
 
 ```typescript yage-group="save" yage-file="migration.ts"
 import { createRecord, createStore } from "@yagejs/core";
@@ -414,19 +471,156 @@ types: `createValue<Date, string>({ default: () => new Date(), codec: dateCodec(
 
 ## Adapters
 
+An adapter is where the bytes go. Three ship with the package, and
+`@yagejs/host-electron` adds `electronSaveAdapter()` for a desktop build: a
+`fileAdapter` over the app's data directory, running in Electron's main
+process, so a page that crashes during a save does not stop the write. See
+[Desktop with Electron](/guides/electron/).
+
+`@yagejs/host-capacitor` adds `capacitorSaveAdapter()` for a
+mobile build: a `fileAdapter` over a directory in the app's private Library
+directory, one per build profile. A write that resolved is held when the
+system kills the app. See [Mobile with Capacitor](/guides/capacitor/).
+
 ```typescript
-import type { SaveAdapter } from "@yagejs/save";
+import type { SaveAdapter, SaveFileStore } from "@yagejs/save";
 
 // Adapter factories exported by @yagejs/save:
 // browser
 declare function localStorageAdapter(opts?: { namespace?: string }): SaveAdapter;
 // tests + Node
 declare function memoryAdapter(): SaveAdapter;
+// any directory of files, including one reached over a native bridge
+declare function fileAdapter(opts: { store: SaveFileStore }): SaveAdapter;
 ```
 
-The `SaveAdapter` interface is intentionally minimal — `read`, `write`,
-`delete`, `list` over async string IO. Custom adapters (file system, IndexedDB,
-cloud sync) plug in here.
+The interface is four async string operations — `read`, `write`, `delete`,
+`list` — and a promise about what happens to each key:
+
+- **Replacing a key is all-or-nothing.** If a write is cut off, a later read
+  gives you the value that was there before, or the new one. Never a mix.
+- **A resolved write is stored.** Every later `read` and `list` sees it, and
+  it is still there if the process is killed a moment later. `memoryAdapter`
+  and `localStorageAdapter` do not keep that last promise; the table below
+  says what they keep.
+- **Operations on one key keep their order.**
+- **A write that cannot finish rejects** and leaves the key readable.
+
+Two keys are never written together, so state that has to agree belongs in one
+compound store, which `createStore` already saves as one document.
+
+What each adapter survives:
+
+| Adapter                                                | Process kill                                                                     | Power loss                       |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------- | -------------------------------- |
+| `memoryAdapter`                                        | no — the values live in the process                                              | no                               |
+| `localStorageAdapter`                                  | the browser commits on its own schedule, so the last writes can be lost, never torn | the browser's                    |
+| `fileAdapter` over a store whose `write` syncs         | yes                                                                              | where the sync reaches the drive |
+| `fileAdapter` over a store whose `write` does not sync | yes                                                                              | not guaranteed                   |
+
+### Files
+
+`fileAdapter` turns a directory of files into an adapter with those
+guarantees, even when the file system has no atomic replace. You supply four
+file operations; a `write` that an interruption cuts in half is expected and
+handled. Each value is written to a shadow file first and carries a checksum,
+so an interrupted write leaves the previous value or the new one readable.
+
+```typescript yage-group="files"
+import { createSave, fileAdapter } from "@yagejs/save";
+import type { SaveFileStore } from "@yagejs/save";
+
+const files = new Map<string, string>();
+const store: SaveFileStore = {
+  async read(name) {
+    return files.get(name) ?? null;
+  },
+  async write(name, content) {
+    files.set(name, content);
+  },
+  async delete(name) {
+    files.delete(name);
+  },
+  async list() {
+    return [...files.keys()];
+  },
+};
+
+export const save = createSave({ adapter: fileAdapter({ store }) });
+```
+
+Keys are at most 96 bytes in UTF-8, which keeps the longest file name at 160
+characters. `Save` refuses to write a longer key on every adapter; see
+[How long a slot name can be](#how-long-a-slot-name-can-be). No file can hold
+a longer key, so `fileAdapter` reads one as absent: `loadSlot` throws
+`SlotNotFoundError` for such a name and `deleteSlot` completes, as they do on
+the other adapters. A file is named `k-` plus the key in base32, so names hold
+only `a-z`, `2-7`, `-` and `.`.
+
+A custom adapter — IndexedDB, cloud sync, your own shell — has to meet the
+same four promises.
+
+## When a save is finished
+
+A resolved `persist`, `saveSlot` or `deleteSlot` means the storage holds the
+value and every later read sees it. One document is the unit that changes
+atomically; nothing spans two.
+
+Whether a value survives the power going out is the storage's promise, not the
+engine's. The table above says which adapter gives it.
+
+Keep one `Save` per storage. Two instances, or two browser tabs writing the
+same keys, are not coordinated.
+
+A save is plain JSON that anyone with the device's files or the browser
+profile can read. Keep passwords and tokens out of it.
+
+## Saving when the game goes to the background
+
+`@yagejs/save` does not save by itself when the app is backgrounded.
+`autoPersist` already writes within a microtask of every change, and only your
+game knows what its checkpoint is. Save it from the lifecycle event:
+
+```typescript yage-group="save" yage-file="background.ts" yage-context="engine"
+import { save } from "./persistence/save.js";
+import { saves } from "./persistence/stores.js";
+
+engine.events.on("host:active", ({ active }) => {
+  if (!active) void save.saveSlot("saves", "auto", saves);
+});
+```
+
+The operating system may end the process before that write resolves. The
+previous checkpoint is still readable then, and the next launch restores it —
+no shutdown callback is needed.
+
+## Moving saves to another adapter
+
+A packaged app and a web build never share storage, so a packaged release that
+ships its own adapter from the start has nothing to import. If a shipped
+release changes adapter, copy the keys at boot, before any save:
+
+```typescript yage-group="move"
+import type { SaveAdapter } from "@yagejs/save";
+
+const DONE = "imported";
+
+export async function importSaves(
+  from: SaveAdapter,
+  to: SaveAdapter,
+): Promise<void> {
+  if ((await to.read(DONE)) !== null) return;
+  for (const key of await from.list("")) {
+    const value = await from.read(key);
+    if (value !== null) await to.write(key, value);
+  }
+  await to.write(DONE, new Date().toISOString());
+}
+```
+
+The marker holds no `/`, so it cannot collide with a key `Save` writes.
+Nothing is deleted from the source, so an interrupted copy runs again at the
+next boot.
 
 ## Tests
 

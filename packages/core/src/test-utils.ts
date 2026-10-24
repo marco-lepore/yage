@@ -8,7 +8,13 @@ import {
   QueryCacheKey,
   EventBusKey,
   ErrorBoundaryKey,
+  HostKey,
+  LoggerKey,
+  AssetManagerKey,
 } from "./EngineContext.js";
+import { Host } from "./Host.js";
+import type { HostInfoInput, HostLifecycleReport } from "./Host.js";
+import { AssetManager } from "./AssetManager.js";
 import { QueryCache } from "./QueryCache.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
@@ -41,7 +47,73 @@ export async function createTestEngine(
   return engine;
 }
 
-/** Create a lightweight mock scene with EngineContext for unit tests. */
+/**
+ * A host adapter for tests. Attaches `info` and the lifecycle state it was
+ * given on install, reports later changes through `setLifecycle`, and detaches
+ * on destroy. Fields left out of `info` default to
+ * `{ runtime: "test", os: "unknown" }` with no versions; a lifecycle field
+ * left out comes from the page, as it does for any host adapter.
+ */
+export class TestHostPlugin implements Plugin {
+  readonly name = "host";
+  readonly version = "1.0.0";
+  readonly info: HostInfoInput;
+
+  private state: HostLifecycleReport;
+  private report: ((state: HostLifecycleReport) => void) | undefined;
+  private detach: (() => void) | undefined;
+
+  constructor(info?: Partial<HostInfoInput>, lifecycle?: HostLifecycleReport) {
+    this.info = {
+      ...info,
+      runtime: info?.runtime ?? "test",
+      os: info?.os ?? "unknown",
+    };
+    this.state = { ...lifecycle };
+  }
+
+  /** The state this fake host has reported so far. */
+  get lifecycle(): HostLifecycleReport {
+    return this.state;
+  }
+
+  /** Report a change, as a native host would. Fields left out keep their value. */
+  setLifecycle(report: HostLifecycleReport): void {
+    this.state = { ...this.state, ...report };
+    this.report?.(report);
+  }
+
+  watchLifecycle(report: (state: HostLifecycleReport) => void): () => void {
+    this.report = report;
+    return () => {
+      this.report = undefined;
+    };
+  }
+
+  install(context: EngineContext): void {
+    this.detach = context.resolve(HostKey).attach(this);
+  }
+
+  onDestroy(): void {
+    this.detach?.();
+    this.detach = undefined;
+  }
+}
+
+/**
+ * Create a lightweight mock scene with EngineContext for unit tests.
+ *
+ * The context carries the services that need no running engine: the query
+ * cache, the event bus and the error boundary, plus a `Logger`, an
+ * `AssetManager` and a `Host`. A component that resolves one of them works
+ * here with no extra setup.
+ *
+ * The `Host` is not connected to the page or to the event bus:
+ * `host.lifecycle` reads `"unknown"` for all three fields, `host.active` is
+ * `true`, and `host:active` and `host:lifecycle` never fire. Test what a
+ * component does in the background with `createTestEngine` and a
+ * `TestHostPlugin`.
+ */
 export function createMockScene(name = "mock-scene"): {
   scene: Scene;
   context: EngineContext;
@@ -59,6 +131,9 @@ export function createMockScene(name = "mock-scene"): {
   ctx.register(QueryCacheKey, queryCache);
   ctx.register(EventBusKey, bus);
   ctx.register(ErrorBoundaryKey, boundary);
+  ctx.register(LoggerKey, logger);
+  ctx.register(AssetManagerKey, new AssetManager());
+  ctx.register(HostKey, new Host());
 
   const scene = new _TestScene(name);
   scene._setContext(ctx);

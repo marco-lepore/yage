@@ -97,6 +97,36 @@ export interface LightingRenderFrame {
   readonly height: number;
 }
 
+/** Why the shader renderer's fallback drew a scene. */
+export type LightingFallbackReason = "webgl1" | "shader-rejected";
+
+/** One scene in the `"lighting"` Inspector extension. */
+export interface LightingSceneDiagnostics {
+  readonly scene: string;
+  /** The configured renderer name the scene drew with. */
+  readonly renderer: string;
+  /** Why the shader renderer's fallback drew it, or `null`. */
+  readonly fallback: {
+    readonly reason: LightingFallbackReason;
+    /** The driver's log for `"shader-rejected"`, else `null`. */
+    readonly detail: string | null;
+  } | null;
+  /** The bounce blend the scene asked for and the one drawn, or `null` without bounce. */
+  readonly bounce: {
+    readonly requested: BounceBlend;
+    readonly drawn: BounceBlend;
+  } | null;
+}
+
+/**
+ * The `"lighting"` Inspector extension, registered by `LightingPlugin`. Read
+ * it with `inspector.getExtension<LightingDiagnostics>("lighting")`.
+ */
+export interface LightingDiagnostics {
+  /** One entry per scene with a lighting world, oldest first. */
+  scenes(): LightingSceneDiagnostics[];
+}
+
 /** A per-scene lighting backend. */
 export interface LightingRenderer {
   /** Synchronize the backend with the world's current lights and view. */

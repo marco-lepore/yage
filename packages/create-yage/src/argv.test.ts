@@ -76,20 +76,20 @@ describe("parseArgs", () => {
   });
 
   it("parses --features with comma-separated list", () => {
-    const result = parseArgs(["--features", "ui,save"]);
-    expect(result.features).toEqual(["ui", "save"]);
+    const result = parseArgs(["--features", "ui,effects"]);
+    expect(result.features).toEqual(["ui", "effects"]);
     expect(result.error).toBeUndefined();
   });
 
   it("parses --features with equals syntax and trims whitespace", () => {
-    const result = parseArgs(["--features=ui, effects ,save"]);
-    expect(result.features).toEqual(["ui", "effects", "save"]);
+    const result = parseArgs(["--features=ui, effects ,editor"]);
+    expect(result.features).toEqual(["ui", "effects", "editor"]);
   });
 
   it("dedupes repeated feature ids", () => {
-    expect(parseArgs(["--features", "ui,ui,save"]).features).toEqual([
+    expect(parseArgs(["--features", "ui,ui,effects"]).features).toEqual([
       "ui",
-      "save",
+      "effects",
     ]);
   });
 

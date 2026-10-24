@@ -14,19 +14,28 @@ import {
   createMockScene,
   createMockEntity,
   advanceFrames,
+  TestHostPlugin,
 } from "@yagejs/core";
 ```
 
 | Utility | Returns | Purpose |
 |---|---|---|
 | `createTestEngine(config?, plugins?)` | `Promise<Engine>` | Headless engine, already started, with the `plugins` you pass installed. No renderer, audio, or input plugins unless you pass them |
-| `createMockScene(name?)` | `{ scene, context }` | Scene with a working ECS world, no engine |
+| `createMockScene(name?)` | `{ scene, context }` | Scene with a working ECS world, no engine. Its context carries the services that need no running engine: the query cache, event bus and error boundary, plus a `Logger`, an `AssetManager` and a `Host`, so `this.use(LoggerKey)` in a component resolves with no extra setup |
 | `createMockEntity(name?)` | `{ entity, scene, context }` | Entity spawned into a mock scene |
 | `advanceFrames(engine, n, dtMs?)` | `void` | Tick the game loop `n` times. `dtMs` defaults to `1000 / 60` |
+| `new TestHostPlugin(info?, lifecycle?)` | `Plugin` | Host adapter for a test engine. Attaches `info` and `lifecycle` on install and detaches on destroy; the `info` fields you leave out default to `runtime: "test"`, `os: "unknown"` and no versions. Call `setLifecycle({ activity: "inactive" })` on it to drive the engine into the background |
+| `new TestHostDisplay(state?)` | `HostDisplay` | Fake fullscreen and orientation, from `@yagejs/renderer`. The renderer reads it once, when the engine starts, so build the engine yourself: `engine.use(new RendererPlugin(...))`, `engine.context.register(HostDisplayKey, display)`, then `await engine.start()`. An engine from `createTestEngine` has already started and ignores a display registered on it. Call `set({ fullscreen: true })` on the fake to drive the renderer. `calls` lists every request it received |
 
 `createTestEngine` is async — it starts the engine for you, so `await` it and
 don't call `engine.start()` yourself. The mock helpers return an object: take
 the piece you need with destructuring (`const { entity } = createMockEntity()`).
+
+The `Host` in a mock scene's context is not connected to the page or to the
+event bus. Its `lifecycle` reads `"unknown"` for activity, visibility and
+focus, `active` stays `true`, and `host:active` and `host:lifecycle` never
+fire. To test what a component does when the game goes into the background,
+use `createTestEngine` with a `TestHostPlugin` and call `setLifecycle` on it.
 
 ## Unit Testing a Component
 
@@ -420,6 +429,7 @@ if (lantern) {
 | `getComponentData(nameOrId, componentName)` | Reflected public fields and getters from the live component. Typed `unknown`, and `null` when nothing is inspectable |
 | `getSystems()` | Every registered system, with phase/priority/enabled flags |
 | `getErrors()` | Recorded failures from the error boundary (`callbackErrors`) — system, component, and callback throws, most recent last. The same list is `engine.context.resolve(ErrorBoundaryKey).getCallbackErrors()` without an Inspector |
+| `getHost()` | Which application runs the game, and whether it is active, visible and focused. Left out of `snapshot()`, because window focus differs between runs |
 
 The four per-entity helpers take either address form. A name resolves the
 first *active* entity with that name in the *active* scene, so a deactivated
