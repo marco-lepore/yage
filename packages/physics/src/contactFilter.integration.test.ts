@@ -20,6 +20,7 @@ import { Transform, Vec2 } from "@yagejs/core";
 import type { Scene } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { ColliderComponent } from "./ColliderComponent.js";
+import { PhysicsSystem } from "./PhysicsSystem.js";
 import type { ContactCandidate } from "./types.js";
 import {
   createPhysicsTestContext,
@@ -245,6 +246,61 @@ function spawnFilteredBox(
 }
 
 describe("contact filters on both sides of a pair (real Rapier)", () => {
+  it.each([0.5, 1, 2.5])(
+    "reads the kinematic body's last completed velocity at time scale %s",
+    async (scale) => {
+      const { scene, context } = await createPhysicsTestContext({
+        gravity: { x: 0, y: 0 },
+      });
+      scene.timeScale = scale;
+      const system = new PhysicsSystem();
+      system._setContext(context);
+      const platform = spawnEntityInScene(scene, "platform");
+      const transform = platform.add(new Transform());
+      const body = platform.add(new RigidBodyComponent({ type: "kinematic" }));
+      const collider = platform.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 100, height: 100 },
+        }),
+      );
+      const selfVelocities: Array<{ x: number; y: number }> = [];
+      const otherVelocities: Array<{ x: number; y: number }> = [];
+      collider.setContactFilter((contact) => {
+        selfVelocities.push({
+          x: contact.selfVelocityX,
+          y: contact.selfVelocityY,
+        });
+        return false;
+      });
+      spawnFilteredBox(scene, "actor", (contact) => {
+        otherVelocities.push({
+          x: contact.otherVelocityX,
+          y: contact.otherVelocityY,
+        });
+        return true;
+      });
+
+      for (let update = 1; update <= 4; update++) {
+        transform.setPosition(
+          60 * DT * scale * update,
+          -120 * DT * scale * update,
+        );
+        system.update(DT);
+      }
+
+      expect(body.velocityX).toBeCloseTo(60);
+      expect(body.velocityY).toBeCloseTo(-120);
+      for (const velocities of [selfVelocities, otherVelocities]) {
+        expect(velocities.length).toBeGreaterThan(1);
+        expect(velocities[0]).toEqual({ x: 0, y: 0 });
+        for (const velocity of velocities.slice(1)) {
+          expect(velocity.x).toBeCloseTo(60);
+          expect(velocity.y).toBeCloseTo(-120);
+        }
+      }
+    },
+  );
+
   it("identifies the participating compound shape", async () => {
     const { scene, physicsWorld } = await createPhysicsTestContext({
       gravity: { x: 0, y: 0 },

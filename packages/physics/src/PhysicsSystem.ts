@@ -86,7 +86,7 @@ export class PhysicsSystem extends System {
   }
 
   /**
-   * Pre-step: store prev state and drive kinematic bodies toward their
+   * Pre-step: sync collider scales and drive kinematic bodies toward their
    * target. `share` is this step's part of the scene time not yet simulated,
    * at most 1.
    */
@@ -100,11 +100,6 @@ export class PhysicsSystem extends System {
 
       const body = world.getBody(rb._bodyHandle);
       if (!body) continue;
-
-      // Store previous state for interpolation
-      rb._prevPositionX = rb._currPositionX;
-      rb._prevPositionY = rb._currPositionY;
-      rb._prevRotation = rb._currRotation;
 
       // Kinematic bodies move toward the captured target, not toward the
       // Transform itself — the Transform usually holds the interpolated
@@ -153,6 +148,11 @@ export class PhysicsSystem extends System {
       if (!isDynamic && !body.isKinematic()) continue;
 
       const translation = body.translation();
+      // Both poses describe the last completed step until the next one ends:
+      // contact filters read kinematic velocity from their difference.
+      rb._prevPositionX = rb._currPositionX;
+      rb._prevPositionY = rb._currPositionY;
+      rb._prevRotation = rb._currRotation;
       rb._currPositionX = world.toPixels(translation.x);
       rb._currPositionY = world.toPixels(translation.y);
       rb._currRotation = body.rotation();
