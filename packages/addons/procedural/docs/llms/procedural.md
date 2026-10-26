@@ -382,7 +382,7 @@ From `@yagejs-addons/procedural/level`. Loads `levelFor(room)` for every room
 at `room.x * tileWidth, room.y * tileHeight`, with namespace
 `<namespace>:<index>`; pick by `room.templateId`, `room.variantId` or
 metadata. Returns one `LevelInstance` per room, in layout order; the game
-disposes them. Needs `@yagejs/level` 0.12.1 or later. It throws before
+disposes them. Needs `@yagejs/level` 0.13.0 or later. It throws before
 loading anything when `levelFor` returns no level, a prepared level has
 diagnostics, the namespace is empty or contains `/`, a room's scene key (from
 `levelSceneKeys` in `@yagejs/level`) is already taken, or a tile size is not
