@@ -26,6 +26,7 @@ export interface GameManifest {
   readonly version?: unknown;
   readonly main?: unknown;
   readonly dependencies?: Record<string, string>;
+  readonly optionalDependencies?: Record<string, string>;
   readonly devDependencies?: Record<string, string>;
   readonly peerDependencies?: Record<string, string>;
   readonly scripts?: Record<string, string>;
@@ -114,10 +115,12 @@ export interface ClosurePackage {
 }
 
 /**
- * The named packages and every package they load through `dependencies`, each
- * found the way Node finds it from the package that depends on it. The
- * Electron packager copies a symbolic link as the files it points to, so a
- * linked package keeps the path the game's folder gives it.
+ * The named packages and every package they load through `dependencies` or
+ * `optionalDependencies`, each found the way Node finds it from the package
+ * that depends on it. An optional dependency the install left out, such as a
+ * native build for another platform, is not part of the closure. The Electron
+ * packager copies a symbolic link as the files it points to, so a linked
+ * package keeps the path the game's folder gives it.
  */
 export function productionClosure(
   root: string,
@@ -125,6 +128,8 @@ export function productionClosure(
 ): ClosurePackage[] {
   return closure(root, names, {
     edges: (manifest) => Object.keys(manifest.dependencies ?? {}),
+    optionalEdges: (manifest) =>
+      Object.keys(manifest.optionalDependencies ?? {}),
     realPaths: false,
   });
 }
@@ -191,16 +196,19 @@ export function loadedCopies(root: string, name: string): LoadedCopy[] {
 }
 
 /**
- * The named packages and every package `edges` names from their manifests,
- * each found from the folder of the package that names it. With `realPaths`,
- * that folder is the one a symbolic link points to, as Node and a bundler
- * resolve it; without, it keeps the path the game's folder gives it.
+ * The named packages and every package `edges` and `optionalEdges` name from
+ * their manifests, each found from the folder of the package that names it.
+ * A package `optionalEdges` names and the install left out is skipped; any
+ * other package that is not installed is listed with no `dir`. With
+ * `realPaths`, the folder is the one a symbolic link points to, as Node and a
+ * bundler resolve it; without, it keeps the path the game's folder gives it.
  */
 function closure(
   root: string,
   names: readonly string[],
   options: {
     readonly edges: (manifest: GameManifest) => readonly string[];
+    readonly optionalEdges?: (manifest: GameManifest) => readonly string[];
     readonly realPaths: boolean;
   },
 ): ClosurePackage[] {
@@ -208,9 +216,10 @@ function closure(
   const top = searchTop(game);
   const found: ClosurePackage[] = [];
   const seen = new Set<string>();
-  const queue = names.map((name) => ({ name, from: game }));
+  const queue = names.map((name) => ({ name, from: game, optional: false }));
   for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
     const located = lookUp(next.from, next.name, top);
+    if (located === undefined && next.optional) continue;
     const dir =
       located !== undefined && options.realPaths
         ? realpathSync(located)
@@ -220,8 +229,12 @@ function closure(
     seen.add(key);
     found.push({ name: next.name, dir });
     if (dir === undefined) continue;
-    for (const dependency of options.edges(readPackageManifest(dir))) {
-      queue.push({ name: dependency, from: dir });
+    const manifest = readPackageManifest(dir);
+    for (const dependency of options.edges(manifest)) {
+      queue.push({ name: dependency, from: dir, optional: false });
+    }
+    for (const dependency of options.optionalEdges?.(manifest) ?? []) {
+      queue.push({ name: dependency, from: dir, optional: true });
     }
   }
   return found;

@@ -202,7 +202,10 @@ default, a ZIP maker for `darwin` and `win32`.
 
 The archive holds `package.json`, the directory of the `main` script,
 `dist-electron/`, each `include` path and the production-dependency closure
-of `@yagejs/host-electron` plus any `runtimeDependencies`. Nothing else.
+of `@yagejs/host-electron` plus any `runtimeDependencies`: every package
+they reach through `dependencies`, and through `optionalDependencies` where
+the install put one, such as a native build for the current platform.
+Nothing else.
 
 The packager copies the game's folder and nothing above it, so every package
 of that closure has to be installed in the game's own `node_modules`. When

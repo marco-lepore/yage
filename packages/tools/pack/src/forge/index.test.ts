@@ -199,6 +199,27 @@ describe("electronForgeConfig result", () => {
     }
   });
 
+  it("keeps a runtime dependency's installed optional packages", () => {
+    const root = game({
+      ...installed("sharp", {
+        optionalDependencies: {
+          "@img/sharp-darwin-arm64": "0.34.0",
+          "@img/sharp-linux-x64": "0.34.0",
+        },
+      }),
+      ...installed("@img/sharp-darwin-arm64"),
+    });
+    const config = electronForgeConfig({
+      root,
+      runtimeDependencies: ["sharp"],
+    });
+    const ignore = config.packagerConfig?.ignore as (file: string) => boolean;
+    expect(ignore("/node_modules/sharp/package.json")).toBe(false);
+    expect(ignore("/node_modules/@img/sharp-darwin-arm64/package.json")).toBe(
+      false,
+    );
+  });
+
   it("keeps an include path written with a trailing slash or a dot segment", () => {
     const root = game();
     addFile(root, "assets/credits.txt", "x");
