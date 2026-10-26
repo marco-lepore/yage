@@ -47,6 +47,7 @@ function stated(value: unknown): string | undefined {
  * Connects the engine to the Capacitor app that runs the game: the app's
  * identity, whether it is active and visible, the screen orientation lock,
  * and the Android Back button as a key the game binds.
+ * @experimental
  */
 export class CapacitorHostPlugin implements Plugin {
   readonly name = "host";

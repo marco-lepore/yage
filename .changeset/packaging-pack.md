@@ -2,7 +2,7 @@
 "@yagejs-tools/pack": minor
 ---
 
-Package YAGE games with Electron Forge and Capacitor.
+Experimental: package YAGE games with Electron Forge and Capacitor. It has packaged games on macOS only, and it does not sign or notarize what it builds.
 
 - New package. `yage-pack init --target <electron|ios|android>…` writes the entry file each target boots from, the Electron shell, `forge.config.cjs` and `capacitor.config.ts`, adds the build and packaging scripts, and sets `productName`, `yage.appId` and `main` when they are absent. It keeps every file that is already there unless `--force` is passed, so the files are the game's after the first run.
 - The entries `init` writes pass the host's save adapter to `boot` as `saveAdapter`: `electronSaveAdapter()` on desktop and `capacitorSaveAdapter()` on mobile. The report says that `BootOptions` needs that field, and that each `vite build --mode <target>` script needs a Vite config that maps the mode to the target's entry file and directory. The Electron shell shows a failed start in an error dialog and quits, because a packaged app's console output reaches no terminal.

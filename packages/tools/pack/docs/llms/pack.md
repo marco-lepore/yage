@@ -6,6 +6,11 @@ things they do not do — set the project up once, check the toolchain, check
 that the app's identity and YAGE's settings agree across both hosts, and
 record what went into a build.
 
+**Experimental.** This tool has packaged games on macOS only: Electron apps
+for macOS, and Capacitor apps for the iOS simulator. It has checked a Windows
+package but not run one, and it generates and checks an Android project but
+has not built one. It does not sign or notarize what it builds.
+
 ```sh
 npm install --save-dev @yagejs-tools/pack
 ```

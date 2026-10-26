@@ -52,6 +52,7 @@ export interface ElectronForgeOptions {
  * the shell, the Electron web build and the packages the shell loads at run
  * time, and every package carries the release fuses. Each build checks the
  * game's settings and writes a record of what went into it.
+ * @experimental
  */
 export function electronForgeConfig(
   options: ElectronForgeOptions = {},

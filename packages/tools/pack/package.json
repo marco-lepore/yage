@@ -1,7 +1,7 @@
 {
   "name": "@yagejs-tools/pack",
   "version": "0.0.0",
-  "description": "Package a YAGE game with Electron Forge and Capacitor: project files, toolchain and release checks, build records",
+  "description": "Experimental tool to package a YAGE game with Electron Forge and Capacitor: project files, toolchain and release checks, build records",
   "keywords": [
     "yage",
     "yage-tool",
@@ -10,7 +10,8 @@
     "typescript",
     "electron",
     "capacitor",
-    "packaging"
+    "packaging",
+    "experimental"
   ],
   "license": "MIT",
   "author": "Marco Lepore",

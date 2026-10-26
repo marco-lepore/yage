@@ -1,13 +1,28 @@
 ---
 title: Packaging for desktop and mobile
 description: Turn a YAGE game into a macOS or Windows app with Electron Forge, and into an iOS or Android app with Capacitor.
+sidebar:
+  badge:
+    text: Experimental
+    variant: caution
 ---
+
+import { Aside } from "@astrojs/starlight/components";
 
 A YAGE game runs in a browser, and the same source runs as a desktop app and
 as a mobile app. Electron Forge builds the desktop package and the Capacitor
 CLI builds the native projects; `@yagejs-tools/pack` is the small tool
 beside them that sets the project up, checks the machine, checks a release,
 and records what went into a build.
+
+<Aside type="caution" title="Experimental">
+This tool has packaged games on macOS only: Electron apps for macOS, and
+Capacitor apps for the iOS simulator. It has checked a Windows package but not
+run one, and it generates and checks an Android project but has not built one.
+It does not sign or notarize what it builds. The two host packages a packaged
+game runs with, `@yagejs/host-electron` and `@yagejs/host-capacitor`, are
+experimental too.
+</Aside>
 
 What you get:
 

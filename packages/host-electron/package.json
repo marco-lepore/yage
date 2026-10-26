@@ -1,7 +1,7 @@
 {
   "name": "@yagejs/host-electron",
   "version": "0.12.0",
-  "description": "Electron host for YAGE: window state, fullscreen, file saves and a locked-down shell",
+  "description": "Experimental Electron host for YAGE: window state, fullscreen, file saves and a locked-down shell",
   "keywords": [
     "yage",
     "game-engine",
@@ -9,7 +9,8 @@
     "typescript",
     "electron",
     "desktop",
-    "host"
+    "host",
+    "experimental"
   ],
   "license": "MIT",
   "author": "Marco Lepore",

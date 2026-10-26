@@ -7,6 +7,7 @@ interface InjectedCapacitor {
  * Whether the page runs inside a Capacitor app on a device or simulator. A
  * game that ships one bundle for every target reads this before it imports
  * the rest of the package.
+ * @experimental
  */
 export function isCapacitorHost(): boolean {
   const capacitor = (globalThis as { Capacitor?: InjectedCapacitor }).Capacitor;

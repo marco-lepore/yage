@@ -4,6 +4,9 @@ Run a [YAGE](https://yage.dev) game as a desktop app: the window's state
 reaches the engine, fullscreen is the window's, and saves are
 files in the app's data directory.
 
+**Experimental.** This package has run on macOS only, in Electron 44. It has
+not run on Windows or Linux.
+
 ```sh
 npm install @yagejs/host-electron
 npm install --save-dev electron@^44.7.0

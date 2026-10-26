@@ -7,6 +7,9 @@ reaches the engine, the game locks the screen orientation, the Android Back
 button is a key the game binds, and saves are files in the app's private
 directory.
 
+**Experimental.** This package has run in the iOS simulator only. It has not
+run on Android or on a physical iPhone or iPad.
+
 Two halves. The **app** is the Capacitor app around the game: its generated
 iOS or Android project and its `capacitor.config.json`. The **page** is the
 game's web page inside the app's web view. This package runs in the page and

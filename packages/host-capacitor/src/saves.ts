@@ -23,6 +23,7 @@ export interface CapacitorSaveAdapterOptions {
  * that resolved is held when the app is killed; neither system's write
  * reaches the storage hardware, so the same write is not guaranteed to
  * survive a power loss.
+ * @experimental
  */
 export function capacitorSaveAdapter(
   options: CapacitorSaveAdapterOptions = {},

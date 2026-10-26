@@ -3,6 +3,11 @@
 Package a [YAGE](https://yage.dev) game for desktop with Electron Forge and
 for mobile with Capacitor.
 
+**Experimental.** This tool has packaged games on macOS only: Electron apps
+for macOS, and Capacitor apps for the iOS simulator. It has checked a Windows
+package but not run one, and it generates and checks an Android project but
+has not built one. It does not sign or notarize what it builds.
+
 The vendor commands do the building. This tool adds the four things they do
 not do: it sets the project up once, checks that this machine can build each
 target, checks that the app's identity and YAGE's settings agree across both

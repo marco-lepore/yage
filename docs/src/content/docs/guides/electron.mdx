@@ -1,11 +1,22 @@
 ---
 title: "Desktop with Electron"
 description: "Ship a YAGE game as a desktop app: window state, fullscreen, file saves, and a locked-down shell"
+sidebar:
+  badge:
+    text: Experimental
+    variant: caution
 ---
+
+import { Aside } from "@astrojs/starlight/components";
 
 `@yagejs/host-electron` runs a YAGE game as a desktop app. The window's
 state reaches the engine, fullscreen is the window's whatever started it, and
 saves are files in the app's data directory rather than browser storage.
+
+<Aside type="caution" title="Experimental">
+This package has run on macOS only, in Electron 44. It has not run on Windows
+or Linux.
+</Aside>
 
 A desktop build has two halves. The **shell** is the Electron app around the
 game: its main script, its preload script and its window. The **page** is the

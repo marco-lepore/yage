@@ -134,6 +134,7 @@ function isAllowedLink(target: URL, links: readonly URL[]): boolean {
  * app is ready, and the call registers it before it returns.
  *
  * Every failure rejects the returned promise, an invalid option included.
+ * @experimental
  */
 export async function startGame(
   options: GameShellOptions,

@@ -5,6 +5,7 @@ import { requireHostBridge } from "./bridge.js";
  * Saves written as files in the app's data directory by the main process.
  * The write algorithm runs there, so a renderer that crashes during a save
  * does not stop the write.
+ * @experimental
  */
 export function electronSaveAdapter(): SaveAdapter {
   const bridge = requireHostBridge("electronSaveAdapter", "adapter");

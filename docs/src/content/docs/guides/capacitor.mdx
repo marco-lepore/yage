@@ -1,12 +1,23 @@
 ---
 title: "Mobile with Capacitor"
 description: "Ship a YAGE game as a mobile app: app lifecycle, orientation lock, the Back button, and file saves"
+sidebar:
+  badge:
+    text: Experimental
+    variant: caution
 ---
+
+import { Aside } from "@astrojs/starlight/components";
 
 `@yagejs/host-capacitor` runs a YAGE game as a mobile app. The app's state
 reaches the engine, the game locks the screen orientation, the Android Back
 button is a key the game binds, and saves are files in the app's private
 directory rather than web-view storage the system may reclaim.
+
+<Aside type="caution" title="Experimental">
+This package has run in the iOS simulator only. It has not run on Android or
+on a physical iPhone or iPad.
+</Aside>
 
 A mobile build has two halves. The **app** is the Capacitor app around the
 game: its generated iOS or Android project and its `capacitor.config.json`.

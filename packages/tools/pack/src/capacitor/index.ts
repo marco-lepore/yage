@@ -11,6 +11,7 @@ const OWNED_KEYS = ["appId", "appName", "webDir"] as const;
  * The app's identity comes from the game's `package.json`, so a desktop and a
  * mobile build never disagree about it, and the two settings the mobile
  * adapter depends on are set here. Everything else passes through.
+ * @experimental
  */
 export function capacitorConfig(
   overrides: CapacitorConfig = {},

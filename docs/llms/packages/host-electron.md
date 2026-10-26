@@ -5,6 +5,9 @@ at `^44.7.0`. Runs a YAGE game as a desktop app: the window's state reaches
 the engine, fullscreen is the window's, and saves are
 files in the app's data directory.
 
+**Experimental.** This package has run on macOS only, in Electron 44. It has
+not run on Windows or Linux.
+
 Two halves. The **shell** is the Electron app around the game: its main
 script, its preload script and its window. The **page** is the game's web page
 inside that window. The package holds both, plus the bridge between them.

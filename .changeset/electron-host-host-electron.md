@@ -2,7 +2,7 @@
 "@yagejs/host-electron": patch
 ---
 
-Run YAGE games in Electron with a host adapter and a locked-down shell.
+Experimental: run YAGE games in Electron with a host adapter and a locked-down shell. It has run on macOS only, not on Windows or Linux.
 
 - New package. The page side exports `ElectronHostPlugin`, a `Plugin` named `host` that reports the window's identity, activity, visibility and focus to `engine.host` and registers a `HostDisplay` whose fullscreen is the window's, whatever started it: the menu, the system button or the game.
 - `electronSaveAdapter()` is a `SaveAdapter` that writes saves as files in the app's data directory. The write runs in the main process, so a renderer that crashes during a save does not stop the write.

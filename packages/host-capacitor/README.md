@@ -4,6 +4,9 @@ Run a [YAGE](https://yage.dev) game as a mobile app: the app's state reaches
 the engine, the game locks the screen orientation, the Android Back button is
 a key the game binds, and saves are files in the app's private directory.
 
+**Experimental.** This package has run in the iOS simulator only. It has not
+run on Android or on a physical iPhone or iPad.
+
 ```sh
 npm install @yagejs/host-capacitor
 npm install @capacitor/core @capacitor/app @capacitor/filesystem @capacitor/screen-orientation

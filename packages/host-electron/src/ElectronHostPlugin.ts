@@ -30,6 +30,7 @@ const UNREAD: BridgeState = {
  * Connects the engine to the Electron window that runs the game: the app's
  * identity, whether the window is active, visible and focused, and fullscreen
  * as the window does it, whatever started it.
+ * @experimental
  */
 export class ElectronHostPlugin implements Plugin {
   readonly name = "host";

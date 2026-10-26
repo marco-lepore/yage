@@ -2,7 +2,7 @@
 "@yagejs/host-capacitor": patch
 ---
 
-Run YAGE games in Capacitor apps with a host adapter.
+Experimental: run YAGE games in Capacitor apps with a host adapter. It has run in the iOS simulator only, not on Android or on a physical device.
 
 - New package. `CapacitorHostPlugin` is a `Plugin` named `host` that reports the app's identity, activity and visibility to `engine.host`, registers a `HostDisplay` whose orientation lock goes through the app, and delivers the Android Back button as the key `"BrowserBack"`. With no action bound to that key, a press moves the app to the background.
 - Activity and visibility are mapped per system from the App plugin's `appStateChange`, `pause` and `resume` events. Focus comes from the page.
