@@ -1856,6 +1856,36 @@ describe("RendererPlugin", () => {
       expect(app.initOptions.roundPixels).toBe(false);
     });
 
+    it("keeps Tab from turning on Pixi's accessibility layer", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
+      expect(app.initOptions["accessibilityOptions"]).toEqual({
+        activateOnTab: false,
+      });
+    });
+
+    it("keeps the game's accessibility options, a Tab opt-in included", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({
+        ...defaultConfig,
+        pixi: { accessibilityOptions: { debug: true, activateOnTab: true } },
+      });
+      await plugin.install(context);
+
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
+      expect(app.initOptions["accessibilityOptions"]).toEqual({
+        debug: true,
+        activateOnTab: true,
+      });
+    });
+
     it("applies image-rendering CSS to the canvas when enabled", async () => {
       const { context } = createInstallContext();
       const plugin = new RendererPlugin({
@@ -2491,6 +2521,11 @@ describe("RendererPlugin", () => {
       }
     }
 
+    it("reports webgpu as its backend on a webgpu device", async () => {
+      const { plugin } = await installedOnWebGPU(fakeDevice().device);
+      expect(plugin.backend).toBe("webgpu");
+    });
+
     it("reads what a webgpu device reports", async () => {
       const device = fakeDevice();
       const { plugin } = await installedOnWebGPU(device.device);
@@ -2580,6 +2615,33 @@ describe("RendererPlugin", () => {
       expect(
         (flat.texture as unknown as { antialias: boolean }).antialias,
       ).toBe(false);
+    });
+  });
+
+  describe("render-target layers", () => {
+    it("keeps a layer's texel density when the renderer's resolution changes", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      const pixi = plugin.application.renderer as unknown as {
+        resolution: number;
+        runners: { resolutionChange: { emit(resolution: number): void } };
+      };
+      const scene = {
+        name: "radar",
+        layers: [{ name: "radar", renderTarget: { width: 10, height: 10 } }],
+      } as unknown as Scene;
+      const radar = plugin.sceneRenderTrees
+        .createForScene(scene)
+        .get("radar").renderTarget!;
+      expect(radar.resolution).toBe(1);
+
+      pixi.resolution = 2;
+      pixi.runners.resolutionChange.emit(2);
+
+      expect(radar.resolution).toBe(2);
+      expect(radar.width).toBe(10);
+      expect(radar.needsRender).toBe(true);
     });
   });
 

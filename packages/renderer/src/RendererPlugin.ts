@@ -330,6 +330,12 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       autoDensity: true,
       ...(this._config.pixelArtPreset ? { roundPixels: true } : undefined),
       ...this._config.pixi,
+      // Tab belongs to the game: Pixi's accessibility layer turns on from a
+      // Tab press only when the game asks for it.
+      accessibilityOptions: {
+        activateOnTab: false,
+        ...this._config.pixi?.accessibilityOptions,
+      },
       // After the spread: the narrowed list is what the renderer draws with,
       // whatever shape the configured preference had.
       preference: [...this._backends],
@@ -433,6 +439,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
           {
             ...options,
             antialias: this.antialiasFor(options.antialias === true),
+            followResolution: true,
           },
           this.targetDrawing(options.refresh ?? "every-frame"),
         ),
@@ -774,13 +781,14 @@ export class RendererPlugin implements Plugin, RendererAdapter {
   }
 
   /**
-   * The graphics API drawing the canvas, `"webgl"` or `"webgpu"`. The
-   * renderer asks Pixi for WebGL, then WebGPU, and never for Pixi's 2D canvas;
-   * `RendererConfig.pixi.preference` moves WebGPU to the front.
-   * {@link capabilities} reports the WebGL version and the context's limits.
+   * The graphics API drawing the canvas, `"webgl"` or `"webgpu"`, read from
+   * {@link capabilities}, which also reports the WebGL version and the
+   * context's limits. The renderer asks Pixi for WebGL, then WebGPU, and
+   * never for Pixi's 2D canvas; `RendererConfig.pixi.preference` moves WebGPU
+   * to the front.
    */
   get backend(): RendererBackend {
-    return this._app.renderer.name as RendererBackend;
+    return this.capabilities.backend === "webgpu" ? "webgpu" : "webgl";
   }
 
   /**

@@ -772,6 +772,9 @@ soon as zoom, rotation, or shake are in play. Or size the texture to
 - **`resize()` keeps the density you asked for.** Omit the third argument
   and the texture re-derives its resolution from the renderer's current one
   using the configured `resolutionScale`; pass one to replace that scale.
+- **The texture follows the canvas's pixel ratio.** When the window moves to
+  a display with another pixel ratio, or the browser zooms, the texture is
+  allocated again at the new density and redrawn at the next frame.
 - **A restored graphics context redraws every texture.** After the browser
   takes the context away and gives one back, each render-target layer and
   each live `createRenderTarget` texture draws again at the next frame,

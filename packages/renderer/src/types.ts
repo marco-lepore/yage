@@ -66,6 +66,8 @@ export interface RendererConfig {
    * Additional PixiJS Application options. `preference` names the graphics
    * API tried first, or the list tried in order: the renderer draws with
    * WebGL or WebGPU, and Pixi's Canvas 2D renderer is not one of them.
+   * `accessibilityOptions.activateOnTab` defaults to `false`, so a Tab press
+   * reaches the game's input and does not turn on Pixi's accessibility layer.
    */
   pixi?: Omit<Partial<ApplicationOptions>, "preference"> & {
     preference?: RendererBackend | readonly RendererBackend[];

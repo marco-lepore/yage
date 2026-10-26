@@ -59,7 +59,9 @@ engine.use(
 );
 ```
 
-`renderer.backend: RendererBackend` reports the graphics API Pixi picked: `"webgl"` or `"webgpu"`. The renderer never asks for Pixi's Canvas 2D renderer (see Backends below), and `pixi: { preference: "webgpu" }` moves WebGPU to the front. `renderer.capabilities` reports the WebGL version (`capabilities.backend`) and the context's limits.
+`renderer.backend: RendererBackend` reports the graphics API drawing the canvas, `"webgl"` or `"webgpu"`, read from `renderer.capabilities`, which also reports the WebGL version (`capabilities.backend`) and the context's limits. The renderer never asks for Pixi's Canvas 2D renderer (see Backends below), and `pixi: { preference: "webgpu" }` moves WebGPU to the front.
+
+Pixi's accessibility layer, the HTML elements it lays over the canvas for screen readers, does not turn on from a Tab press, so Tab reaches the game's input. `pixi: { accessibilityOptions: { activateOnTab: true } }` turns that on; other `accessibilityOptions` are passed through.
 
 ### `pixelArtPreset`
 
@@ -1905,7 +1907,7 @@ class Radar extends Entity {
 | `layerTarget.invalidate()`                    | `() => void`                                                                               | Redraw on the next frame. Needed only with `refresh: "on-demand"`.                                                                                                                                    |
 | `layerTarget.needsRender`                     | `boolean`                                                                                  | Whether a redraw is pending.                                                                                                                                                                          |
 | `layerTarget.resize(w, h, scale?)`            | `(number, number, number?) => void`                                                        | Resize and redraw on the next frame. Omitting `scale` keeps the configured `resolutionScale`.                                                                                                         |
-| `layerTarget.width` / `height` / `resolution` | `number`                                                                                   | Size in layer pixels, and the texels per pixel actually allocated.                                                                                                                                    |
+| `layerTarget.width` / `height` / `resolution` | `number`                                                                                   | Size in layer pixels, and the texels per pixel actually allocated: the renderer's resolution times `resolutionScale`, re-allocated and redrawn when the renderer's resolution changes.                |
 
 Semantics:
 

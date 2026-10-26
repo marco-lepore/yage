@@ -66,15 +66,12 @@ The preset composes with `pixi: {...}` — explicit options win, so
 overrides (`source.scaleMode = "linear"`) keep working too — the preset
 only changes the *default* sampling mode.
 
-### Which graphics API runs
+### The Tab key
 
-YAGE draws with WebGL or WebGPU. `renderer.backend` reports the one Pixi
-picked, `"webgl"` or `"webgpu"`, for a game that adjusts its effects to it or
-a test that checks it. `renderer.capabilities` reports the WebGL version and
-the context's limits, as described in
-[What the device can draw](#what-the-device-can-draw), and
-[Choosing a graphics API](#choosing-a-graphics-api) covers the order Pixi tries
-them in.
+Pixi can lay HTML elements over the canvas for screen readers. That layer does
+not turn on when the player presses Tab, so Tab reaches the game's input like
+any other key. A game that wants the layer turned on by Tab passes
+`pixi: { accessibilityOptions: { activateOnTab: true } }`.
 
 ## What the device can draw
 
@@ -112,7 +109,9 @@ context is restored, so reading it every frame costs nothing. Both
 
 ### Choosing a graphics API
 
-YAGE draws with WebGL or WebGPU. WebGL is asked for first; pass
+YAGE draws with WebGL or WebGPU, and `renderer.backend` reports which one
+runs: `"webgl"` or `"webgpu"`. `capabilities.backend` gives the same answer
+and also tells WebGL 1 from WebGL 2. WebGL is asked for first; pass
 `pixi: { preference: "webgpu" }` to put WebGPU first, and an array to give the
 exact order. Pixi's Canvas 2D renderer is never asked for: it draws no light,
 skips every filter and ignores inverse masks, so a game that reached it would
