@@ -9,6 +9,12 @@ This is a [YAGE](https://yage.dev) 2D game engine project (TypeScript + Vite).
 - `npm run build` — production build to `dist/`
 - `npm run preview` — preview the production build
 
+A desktop or mobile build comes from the same source. A project created with
+`npm create yage -- --features electron,capacitor` already has the packages;
+for a project created without those features, the packaging guide lists the
+packages to install. Then `npx yage-pack init` writes the entry files and the
+project configuration. See https://yage.dev/tooling/packaging.
+
 ## What's in the starter
 
 The starter is a playable platformer. Move with `A`/`D` or the arrow keys,
@@ -45,7 +51,8 @@ page does on phones.
 │       ├── player-walk.png
 │       └── slime_purple.png
 └── src/
-    ├── main.ts                    # boot: Engine, plugins, initial scene
+    ├── boot.ts                    # Engine, plugins, initial scene — every target calls it
+    ├── main.web.ts                # the browser entry; yage-pack init adds one per target
     ├── assets.ts                  # texture and sound handles, frame sizes
     ├── events.ts                  # game events (PlayerHit, CoinCollected)
     ├── fullscreen.ts              # the Fullscreen button in index.html
@@ -74,7 +81,7 @@ See https://yage.dev/patterns/project-layout for the full conventions.
 - **One scene per file.** A scene preloads assets, sets up the camera, and spawns entities. Game rules stay out of it. If a scene grows past ~150 lines, extract entity classes.
 - **Simple entity → single file; complex entity → folder.** Move an entity into a folder only when it has a second supporting file.
 - **Entity-specific components live next to the entity**, such as `Player/PlayerController.ts`. Use `components/` only for components shared across multiple entities, such as `Oscillate`.
-- **`main.ts` stays short.** It creates the engine, registers plugins, and pushes the first scene. Keep game logic out of it.
+- **`boot.ts` stays short.** It creates the engine, registers plugins, and pushes the first scene. Keep game logic out of it. Each target's entry file calls `boot` with the host adapters and the save adapter that build runs with.
 
 ## Installed packages
 
@@ -83,9 +90,10 @@ See https://yage.dev/patterns/project-layout for the full conventions.
 - `@yagejs/physics` — Rapier2D physics with pixel↔meter conversion
 - `@yagejs/input` — keyboard, mouse, gamepad, action maps
 - `@yagejs/audio` — sound effects and music
-- `@yagejs/debug` — debug overlay and runtime inspector (`DebugPlugin` in `main.ts`)
+- `@yagejs/debug` — debug overlay and runtime inspector (`DebugPlugin` in `boot.ts`)
+- `@yagejs/save` — save slots and saved state (`SavePlugin` in `boot.ts`)
 
-Add more as you need them: `@yagejs/particles`, `@yagejs/tilemap`, `@yagejs/ui`, `@yagejs/ui-react`, `@yagejs/save`.
+Add more as you need them: `@yagejs/particles`, `@yagejs/tilemap`, `@yagejs/ui`, `@yagejs/ui-react`.
 
 ## Writing game code
 
@@ -233,6 +241,11 @@ files contain only the state you choose. YAGE does not serialize the live ECS
 world automatically. The Vite config preserves class and function names so
 diagnostics stay readable. Do not rely on those names for save-file identity.
 
+`boot.ts` registers `SavePlugin` with the save adapter the entry file passes:
+browser storage from `main.web.ts`, files in the app's data directory from a
+desktop or mobile entry. A component reaches the saves with
+`this.use(SaveServiceKey)`.
+
 ## Full YAGE documentation
 
 - Short index: https://yage.dev/llms.txt
@@ -243,7 +256,7 @@ diagnostics stay readable. Do not rely on those names for save-file identity.
 
 ## Runtime inspector
 
-`main.ts` starts the engine with `debug: true`, which publishes
+`boot.ts` starts the engine with `debug: true`, which publishes
 `window.__yage__`, and installs `DebugPlugin`, which puts the inspector on it.
 In the browser console:
 

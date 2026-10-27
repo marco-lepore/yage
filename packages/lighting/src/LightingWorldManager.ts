@@ -1,12 +1,14 @@
 import { SpriteLightingKey } from "@yagejs/renderer/api";
 import type { ErrorBoundary, Scene } from "@yagejs/core";
 import type { RendererPlugin } from "@yagejs/renderer";
+import { drawnBounceBlend, requestedBounceBlend } from "./LightingComposite.js";
 import { LightingWorld } from "./LightingWorld.js";
 import type {
   AmbientLightOptions,
   BounceLightOptions,
   LightingRenderer,
   LightingRendererFactory,
+  LightingSceneDiagnostics,
 } from "./types.js";
 import { assertBounce } from "./validation.js";
 
@@ -24,9 +26,18 @@ export interface LightingWorldManagerOptions {
   readonly errorBoundary?: ErrorBoundary;
 }
 
+/** One live scene's world and what it is drawn from. */
+interface SceneLighting {
+  readonly world: LightingWorld;
+  /** The configured renderer name the scene drew with. */
+  readonly renderer: string;
+  /** The bounce the scene drew with, or `null` when nothing draws it. */
+  readonly bounce: BounceLightOptions | null;
+}
+
 /** Owns every live scene's {@link LightingWorld}. */
 export class LightingWorldManager {
-  private readonly worlds = new Map<Scene, LightingWorld>();
+  private readonly worlds = new Map<Scene, SceneLighting>();
 
   constructor(
     private readonly renderer: RendererPlugin,
@@ -36,11 +47,11 @@ export class LightingWorldManager {
   /** Create the scene's world and renderer, or return the existing world. */
   getOrCreateWorld(scene: Scene): LightingWorld {
     const existing = this.worlds.get(scene);
-    if (existing) return existing;
+    if (existing) return existing.world;
 
     const errorBoundary = this.options.errorBoundary;
     const world = new LightingWorld(scene, this.options.ambient, errorBoundary);
-    const factory = this.resolveFactory(scene);
+    const { name, factory } = this.resolveFactory(scene);
     const bounce = this.resolveBounce(scene);
     if (factory) {
       let backend: LightingRenderer | undefined;
@@ -65,26 +76,68 @@ export class LightingWorldManager {
       world._attachRenderer(backend);
     }
 
-    this.worlds.set(scene, world);
+    this.worlds.set(scene, {
+      world,
+      renderer: name,
+      // A scene no renderer draws has no bounce to report.
+      bounce: factory ? bounce : null,
+    });
     return world;
+  }
+
+  /** @internal One entry per live scene, oldest first. */
+  _describe(): LightingSceneDiagnostics[] {
+    const entries: LightingSceneDiagnostics[] = [];
+    for (const [scene, lighting] of this.worlds) {
+      const bounce = lighting.bounce;
+      const requested = bounce ? requestedBounceBlend(bounce) : null;
+      entries.push({
+        scene: scene.name,
+        renderer: lighting.renderer,
+        fallback: lighting.world._fallbackRecord,
+        bounce:
+          requested === null
+            ? null
+            : {
+                requested,
+                // A renderer that draws its own composite reports the blend
+                // it set; one that draws the bounce another way is read from
+                // the context the renderer draws with.
+                drawn:
+                  lighting.world._bounceBlend ??
+                  drawnBounceBlend(requested, this.renderer.capabilities),
+              },
+      });
+    }
+    return entries;
+  }
+
+  /**
+   * @internal Read the bounce blend again in every live scene, after a lost
+   * graphics context was replaced by one that may blend differently.
+   */
+  _followGraphicsContext(): void {
+    for (const lighting of this.worlds.values()) {
+      lighting.world._followGraphicsContext();
+    }
   }
 
   /** Get a scene's world, or `undefined` before entry or after exit. */
   getWorld(scene: Scene): LightingWorld | undefined {
-    return this.worlds.get(scene);
+    return this.worlds.get(scene)?.world;
   }
 
   /** Iterate every live scene and lighting world. */
-  getAllWorlds(): IterableIterator<[Scene, LightingWorld]> {
-    return this.worlds.entries();
+  *getAllWorlds(): IterableIterator<[Scene, LightingWorld]> {
+    for (const [scene, lighting] of this.worlds) yield [scene, lighting.world];
   }
 
   /** Destroy one scene's world and renderer. */
   destroyWorld(scene: Scene): void {
-    const world = this.worlds.get(scene);
-    if (!world) return;
+    const lighting = this.worlds.get(scene);
+    if (!lighting) return;
     try {
-      world.destroy();
+      lighting.world.destroy();
     } finally {
       this.worlds.delete(scene);
     }
@@ -93,9 +146,9 @@ export class LightingWorldManager {
   /** Destroy every world and renderer. */
   destroy(): void {
     let firstError: unknown;
-    for (const [scene, world] of this.worlds) {
+    for (const [scene, lighting] of this.worlds) {
       try {
-        world.destroy();
+        lighting.world.destroy();
       } catch (error) {
         firstError ??= error;
       } finally {
@@ -105,8 +158,11 @@ export class LightingWorldManager {
     if (firstError !== undefined) throw firstError;
   }
 
-  /** The factory the scene names, or the configured default. */
-  private resolveFactory(scene: Scene): LightingRendererFactory | null {
+  /** The factory the scene names, or the configured default, and its name. */
+  private resolveFactory(scene: Scene): {
+    readonly name: string;
+    readonly factory: LightingRendererFactory | null;
+  } {
     const { renderers, defaultRenderer } = this.options;
     const name = scene.lighting?.renderer ?? defaultRenderer;
     if (!Object.hasOwn(renderers, name)) {
@@ -115,7 +171,7 @@ export class LightingWorldManager {
           `not configured. Configured renderers: ${describeNames(renderers)}.`,
       );
     }
-    return renderers[name] ?? null;
+    return { name, factory: renderers[name] ?? null };
   }
 
   /**

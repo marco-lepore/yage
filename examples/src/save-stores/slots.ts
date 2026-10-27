@@ -17,7 +17,7 @@ import {
  * registered, resolved through `SaveServiceKey`.
  *
  * `list` holds the slots newest first, for the React UI to read with
- * `useStore(slots.list)`. It is a copy of the slot manifest for display and is
+ * `useStore(slots.list)`. It is a copy of the slot listing for display and is
  * not saved itself.
  */
 export class SaveSlots extends Component {
@@ -30,10 +30,9 @@ export class SaveSlots extends Component {
     void this.refresh();
   }
 
-  /** Re-read the slot manifest into `list`. */
+  /** Re-read the slot listing into `list`. */
   async refresh(): Promise<void> {
-    const slots = await this.save.listSlots<RunMeta>(GAME_ID);
-    this.list.set(slots.sort((a, b) => b.savedAt - a.savedAt));
+    this.list.set(await this.save.listSlots<RunMeta>(GAME_ID));
   }
 
   /** Save the current run into slot `name`, replacing what was there. */

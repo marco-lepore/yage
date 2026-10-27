@@ -1,10 +1,13 @@
+import { devWarn } from "@yagejs/core";
 import { BlurFilter, Container, Sprite } from "pixi.js";
 import type {
   DisplayContainer,
   RendererPlugin,
   RenderTargetHandle,
 } from "@yagejs/renderer";
-import type { BounceLightOptions } from "./types.js";
+import type { GraphicsCapabilities } from "@yagejs/renderer";
+import type { LightingWorld } from "./LightingWorld.js";
+import type { BounceBlend, BounceLightOptions } from "./types.js";
 import { assertBounce } from "./validation.js";
 
 /**
@@ -16,8 +19,30 @@ const BOUNCE_RESOLUTION = 0.25;
 /** Passes the Gaussian blur makes over that copy. */
 const BOUNCE_QUALITY = 6;
 
+/** The blend a bounce asks for: its own `blend`, else `"max"`. */
+export function requestedBounceBlend(bounce: BounceLightOptions): BounceBlend {
+  return bounce.blend ?? "max";
+}
+
+/**
+ * How a bounce blend is drawn on this context. A context without min/max
+ * blending draws a requested `"max"` as `"mix"`: in the dark the two are
+ * close, and dropping the bounce would lose the lift it is there for.
+ */
+export function drawnBounceBlend(
+  requested: BounceBlend,
+  capabilities: GraphicsCapabilities,
+): BounceBlend {
+  if (requested === "max" && capabilities.blendMinMax !== "supported") {
+    return "mix";
+  }
+  return requested;
+}
+
 /** Options for {@link LightingComposite}. */
 export interface LightingCompositeOptions {
+  /** The lighting world of the scene being drawn. */
+  world: LightingWorld;
   /** The container a renderer draws one scene's light into. */
   source: DisplayContainer;
   /** Screen-space container the finished light is shown in. */
@@ -52,6 +77,7 @@ export interface LightingCompositeOptions {
  * still.
  */
 export class LightingComposite {
+  private readonly renderer: RendererPlugin;
   private readonly buffer: RenderTargetHandle;
   /** The light buffer plus its blurred copy, or `null` without bounce. */
   private readonly bounced: RenderTargetHandle | null = null;
@@ -59,18 +85,32 @@ export class LightingComposite {
   private readonly blur: BlurFilter | null = null;
   /** Every sprite showing a buffer, all stretched over the viewport. */
   private readonly sprites: Sprite[] = [];
+  /** The blend the bounce asks for, or `null` without bounce. */
+  private readonly requestedBlend: BounceBlend | null;
+  /** The blend the bounce is drawn with on the current graphics context. */
+  private drawnBlend: BounceBlend | null;
+  /** The scene the warning about a substituted blend names. */
+  private readonly sceneName: string;
+  private warnedAboutBlend = false;
   private width: number;
   private height: number;
   private destroyed = false;
 
   constructor(renderer: RendererPlugin, options: LightingCompositeOptions) {
     const { width, height } = options;
+    this.renderer = renderer;
+    this.sceneName = options.world.scene.name;
     this.width = width;
     this.height = height;
     const label = options.label ?? "lighting";
     const resolutionScale = options.resolutionScale ?? 1;
     const bounce = options.bounce ?? null;
     if (bounce) assertBounce(bounce, "LightingComposite bounce");
+    this.requestedBlend = bounce ? requestedBounceBlend(bounce) : null;
+    this.drawnBlend =
+      this.requestedBlend === null
+        ? null
+        : drawnBounceBlend(this.requestedBlend, renderer.capabilities);
 
     this.buffer = renderer.createRenderTarget(options.source, {
       width,
@@ -79,6 +119,7 @@ export class LightingComposite {
       antialias: options.antialias ?? false,
       clearColor: 0x000000,
       label,
+      followResolution: true,
     });
 
     if (bounce) {
@@ -92,7 +133,7 @@ export class LightingComposite {
         resolution: BOUNCE_RESOLUTION,
         // Pixi draws a filtered sprite with the filter's blend mode, not the
         // sprite's. "normal" with the alpha below is the mix.
-        blendMode: (bounce.blend ?? "max") === "max" ? "max" : "normal",
+        blendMode: this.drawnBlend === "max" ? "max" : "normal",
       });
       blurred.alpha = bounce.strength;
       blurred.filters = [this.blur];
@@ -106,6 +147,7 @@ export class LightingComposite {
         clearColor: 0x000000,
         label: `${label}:bounce`,
         dependsOn: [this.buffer],
+        followResolution: true,
       });
     }
 
@@ -114,6 +156,31 @@ export class LightingComposite {
     overlay.eventMode = "none";
     overlay.blendMode = "multiply";
     options.parent.addChild(overlay);
+
+    this.warnAboutSubstitutedBlend();
+    options.world._attachComposite(this);
+  }
+
+  /** The bounce blend this composite draws, or `null` without bounce. */
+  get bounceBlend(): BounceBlend | null {
+    return this.drawnBlend;
+  }
+
+  /**
+   * Read the bounce blend again on the context that replaced a lost one, so
+   * what is drawn follows what the new context supports.
+   * @internal
+   */
+  _followGraphicsContext(): void {
+    const requested = this.requestedBlend;
+    const blur = this.blur;
+    if (requested === null || blur === null) return;
+    const drawn = drawnBounceBlend(requested, this.renderer.capabilities);
+    if (drawn === this.drawnBlend) return;
+    this.drawnBlend = drawn;
+    blur.blendMode = drawn === "max" ? "max" : "normal";
+    this.warnAboutSubstitutedBlend();
+    this.invalidate();
   }
 
   /** Mark the light buffer stale, so the next {@link render} redraws it. */
@@ -159,6 +226,19 @@ export class LightingComposite {
     this.bounced?.destroy();
     this.bounceSource?.destroy();
     this.buffer.destroy();
+  }
+
+  /** Say once per scene that this context draws the bounce another way. */
+  private warnAboutSubstitutedBlend(): void {
+    if (this.warnedAboutBlend) return;
+    if (this.requestedBlend === null) return;
+    if (this.drawnBlend === this.requestedBlend) return;
+    this.warnedAboutBlend = true;
+    devWarn(
+      `Lighting bounce blend "${this.requestedBlend}" is drawn as ` +
+        `"${this.drawnBlend}" in scene "${this.sceneName}", because this ` +
+        "graphics context has no min/max blending.",
+    );
   }
 
   private addSprite(target: RenderTargetHandle): Sprite {

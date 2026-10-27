@@ -3,6 +3,7 @@ import type { SaveAdapter } from "../Save.js";
 /**
  * In-memory adapter — backed by a `Map<string, string>`. Useful for tests and
  * Node tooling. State lives on the instance; create a fresh adapter to reset.
+ * The values live in the process only: nothing survives it.
  */
 export function memoryAdapter(): SaveAdapter {
   const data = new Map<string, string>();

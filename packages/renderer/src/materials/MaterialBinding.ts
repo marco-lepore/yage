@@ -150,12 +150,6 @@ export class MaterialBinding {
 }
 
 function assertBackend(scene: Scene): void {
-  const renderer = scene.context.tryResolve(RendererKey)?.application.renderer;
-  if (
-    renderer &&
-    (renderer.name === "canvas" ||
-      ("context" in renderer && renderer.context.webGLVersion === 1))
-  ) {
+  if (scene.context.resolve(RendererKey).capabilities.backend === "webgl1")
     throw new Error("Sprite material: WebGL2 or WebGPU is required.");
-  }
 }

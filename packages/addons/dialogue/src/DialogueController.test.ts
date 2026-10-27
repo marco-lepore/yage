@@ -1,11 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  Logger,
-  LoggerKey,
-  LogLevel,
-  ServiceKey,
-  createMockScene,
-} from "@yagejs/core";
+import { LoggerKey, ServiceKey, createMockScene } from "@yagejs/core";
 import { InputManager, InputManagerKey } from "@yagejs/input";
 
 import {
@@ -795,16 +789,15 @@ describe("DialogueController — zero-config pointer input drives choices", () =
 });
 
 describe("DialogueController — default action names validated against the live map", () => {
-  /** Mock scene whose context also carries an InputManager (with `actions`) and a
-   *  Logger we can spy on — the two seams the warning check reads in onAdd. */
+  /** Mock scene whose context also carries an InputManager (with `actions`).
+   *  The check in onAdd reads that InputManager's action names and warns
+   *  through the Logger every mock scene registers. */
   function sceneWithInput(actions: Record<string, string[]>) {
     const { scene, context } = createMockScene();
     const input = new InputManager();
     input.setActionMap(actions);
     context.register(InputManagerKey, input);
-    const logger = new Logger({ level: LogLevel.Debug });
-    context.register(LoggerKey, logger);
-    const warn = vi.spyOn(logger, "warn");
+    const warn = vi.spyOn(context.resolve(LoggerKey), "warn");
     return { scene, warn };
   }
 

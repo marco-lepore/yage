@@ -10,7 +10,8 @@ npm install @yagejs/core
 
 ## What's in the box
 
-- **Engine** - the game loop and plugin host
+- **Engine** - the game loop and plugin registry
+- **Host** - which application runs the game: a browser tab, or a native shell around a web view, and whether it is active, visible and focused
 - **Scene / SceneManager** - scene stack with push/pop, pause, and time scaling
 - **Entity / Component** - ECS primitives with typed queries; an entity type is an `Entity` subclass with `setup()`, and components hold the game logic
 - **Transform / Vec2** - 2D math and spatial positioning

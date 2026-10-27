@@ -18,8 +18,12 @@ export interface AudioConfig {
   /** Master volume multiplier. Must be finite and from 0 to 1. Default: 1. */
   masterVolume?: number;
   channels?: Record<string, ChannelConfig>;
-  /** Pause audio when the window loses focus or the tab is hidden. Default: `true`. */
-  autoMuteOnBlur?: boolean;
+  /**
+   * Pause all audio while the host is inactive (`Host.active` is `false`): the
+   * app is in the background, the page is hidden, or the window is unfocused.
+   * Default: `true`.
+   */
+  autoPause?: boolean;
 }
 
 export interface ChannelConfig {

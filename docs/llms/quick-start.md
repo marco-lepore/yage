@@ -8,9 +8,11 @@ cd my-game
 npm run dev
 ```
 
-Pick `recommended` for a playable platformer seed (physics, input, animations, enemies, collectibles) or `minimal` for an empty scene with just core + renderer.
+Pick `recommended` for a playable platformer seed (physics, input, animations, enemies, collectibles) or `minimal` for an empty scene with just core + renderer + save.
 
-Both templates' `index.html` is set up for phones: `viewport-fit=cover`, and a `#game` container sized `100dvh` (with a `100vh` fallback) and padded by `env(safe-area-inset-*)`. `recommended` also has a Fullscreen button (`src/fullscreen.ts`; hidden where neither `document.fullscreenEnabled` nor `webkitFullscreenEnabled` is `true`, such as iPhone, and in an installed app running `display-mode: fullscreen`) and `apple-mobile-web-app-status-bar-style: black-translucent`. Details: `packages/renderer.md` → Mobile readiness.
+Both templates set the engine up in `src/boot.ts` and call it from `src/main.web.ts`, the browser entry. `boot` takes `hostPlugins` and a `saveAdapter` and registers `SavePlugin` with it. `main.web.ts` passes `localStorageAdapter({ namespace })`, and create-yage writes the project's name into that namespace once. Renaming the project later does not change the namespace. Changing the namespace after the first release leaves players' saves behind. `--features electron,capacitor` adds the desktop and mobile packages; `npx yage-pack init` then writes the entry and project files for those targets (`/llms/tools/pack.md`).
+
+Both templates' `index.html` is set up for phones: `viewport-fit=cover`, and a `#game` container sized `100dvh` (with a `100vh` fallback) and padded by `env(safe-area-inset-*)`. `recommended` also has a Fullscreen button (`src/fullscreen.ts`; hidden where `renderer.fullscreenSupport` is `"unsupported"`, such as iPhone and an installed app that already opens fullscreen) and `apple-mobile-web-app-status-bar-style: black-translucent`. Details: `packages/renderer.md` → Mobile readiness.
 
 The `recommended` template's production build is an installable, offline-capable PWA (`vite-plugin-pwa` in `vite.config.ts`):
 
@@ -18,7 +20,7 @@ The `recommended` template's production build is an installable, offline-capable
 - A file over `maximumFileSizeToCacheInBytes` (10 MB) fails `vite build` with an error naming it; raise the limit. Cross-origin assets need a `runtimeCaching` rule.
 - Releasing = `npm run build` + upload `dist/`. No version number: `dist/sw.js` embeds a content hash per file, and the browser byte-compares `sw.js` at each launch. On a difference it downloads changed files in the background; `registerType: "prompt"` with no update UI means the new version waits until every tab or window of the game is closed (a reload keeps the old version), so players see a release on their second launch. Host/CDN must not cache `sw.js` or `index.html` for long.
 - No service worker in `npm run dev`: installing, offline play, and updates only exist in the production build (`npm run preview` serves it locally). Production needs HTTPS.
-- In-game update prompt (not in the template; add on request) — `src/pwa.ts`, imported from `main.ts`. Importing `virtual:pwa-register` replaces the injected `registerSW.js`; `vite.config.ts` is unchanged:
+- In-game update prompt (not in the template; add on request) — `src/pwa.ts`, imported from `main.web.ts` (the browser entry only). Importing `virtual:pwa-register` replaces the injected `registerSW.js`; `vite.config.ts` is unchanged:
 
   ```ts yage-check="syntax" yage-reason="vite-plugin-pwa is a dependency of the recommended template only, so the docs checker cannot resolve its virtual:pwa-register types"
   /// <reference types="vite-plugin-pwa/vanillajs" />

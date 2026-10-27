@@ -9,50 +9,11 @@ export interface LabCaptureResult {
   readonly warnings: readonly string[];
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function positiveLimit(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? value
-    : undefined;
-}
-
-/** GPU capabilities come from browser-owned objects and may be unavailable. */
-function textureLimit(renderer: unknown): number | undefined {
-  if (!isRecord(renderer)) return undefined;
-
-  try {
-    const gl = renderer["gl"];
-    if (isRecord(gl) && typeof gl["getParameter"] === "function") {
-      const parameter = gl["MAX_TEXTURE_SIZE"];
-      if (parameter !== undefined) {
-        const value = Reflect.apply(gl["getParameter"], gl, [parameter]);
-        const limit = positiveLimit(value);
-        if (limit !== undefined) return limit;
-      }
-    }
-  } catch {
-    // A limit that cannot be read leaves no warning. Guessing one would fire
-    // on runs that were never going to exceed it.
-  }
-
-  const gpu = renderer["gpu"];
-  if (!isRecord(gpu)) return undefined;
-  const device = gpu["device"];
-  if (!isRecord(device)) return undefined;
-  const limits = device["limits"];
-  if (!isRecord(limits)) return undefined;
-  return positiveLimit(limits["maxTextureDimension2D"]);
-}
-
 function contentWarning(engine: Engine): string | undefined {
   try {
     const renderer = engine.context.tryResolve(RendererKey);
     if (!renderer) return undefined;
-    const limit = textureLimit(renderer.application.renderer);
-    if (limit === undefined) return undefined;
+    const limit = renderer.capabilities.maxTextureSize;
 
     const bounds = renderer.application.stage.getLocalBounds();
     const resolution = renderer.application.renderer.resolution;

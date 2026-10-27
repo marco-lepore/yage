@@ -548,4 +548,94 @@ describe("GameLoop", () => {
       }
     });
   });
+
+  describe("the longest frame the built-in driver reports", () => {
+    /**
+     * Run the built-in animation-frame driver for one frame whose timestamp is
+     * `now`, with the loop started at timestamp 0.
+     */
+    function driveOneFrame(now: number): {
+      loop: GameLoop;
+      cbs: ReturnType<typeof createCallbacks>;
+    } {
+      const rafCallbacks: Array<(now: number) => void> = [];
+      const originalRAF = globalThis.requestAnimationFrame;
+      const originalCAF = globalThis.cancelAnimationFrame;
+      globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
+        rafCallbacks.push(cb);
+        return rafCallbacks.length;
+      };
+      globalThis.cancelAnimationFrame = vi.fn();
+      const nowSpy = vi.spyOn(performance, "now").mockReturnValue(0);
+
+      try {
+        const loop = new GameLoop();
+        const cbs = createCallbacks();
+        loop.setCallbacks(cbs);
+        loop.start();
+        rafCallbacks[0]?.(now);
+        loop.stop();
+        return { loop, cbs };
+      } finally {
+        nowSpy.mockRestore();
+        if (originalRAF) {
+          globalThis.requestAnimationFrame = originalRAF;
+        } else {
+          delete (globalThis as Record<string, unknown>)[
+            "requestAnimationFrame"
+          ];
+        }
+        if (originalCAF) {
+          globalThis.cancelAnimationFrame = originalCAF;
+        } else {
+          delete (globalThis as Record<string, unknown>)[
+            "cancelAnimationFrame"
+          ];
+        }
+      }
+    }
+
+    it("is 100 ms, so a long gap leaves at most one fixed step over", () => {
+      const { loop, cbs } = driveOneFrame(60_000);
+
+      expect(cbs.update).toHaveBeenCalledWith(0.1);
+      expect(cbs.fixedUpdate).toHaveBeenCalledTimes(5);
+      expect(loop.interpolationAlpha).toBeLessThan(2);
+    });
+
+    it("leaves an ordinary frame as it is", () => {
+      const { cbs } = driveOneFrame(16);
+
+      expect(cbs.update).toHaveBeenCalledWith(0.016);
+    });
+
+    it("does not bound a delta passed to tick()", () => {
+      const loop = new GameLoop();
+      const cbs = createCallbacks();
+      loop.setCallbacks(cbs);
+      loop.start();
+
+      loop.tick(600_000);
+
+      expect(cbs.update).toHaveBeenCalledWith(600);
+      loop.stop();
+    });
+
+    it("does not bound a delta an attached ticker reports", () => {
+      const loop = new GameLoop();
+      const cbs = createCallbacks();
+      loop.setCallbacks(cbs);
+      let send!: (dt: number) => void;
+      loop.attachTicker((callback) => {
+        send = callback;
+        return () => {};
+      });
+      loop.start();
+
+      send(5_000);
+
+      expect(cbs.update).toHaveBeenCalledWith(5);
+      loop.stop();
+    });
+  });
 });

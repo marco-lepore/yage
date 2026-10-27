@@ -3,6 +3,7 @@ import type { Engine } from "./Engine.js";
 import type { ErrorBoundary } from "./ErrorBoundary.js";
 import type { EngineEvents, EventBus } from "./EventBus.js";
 import type { GameLoop } from "./GameLoop.js";
+import type { Host } from "./Host.js";
 import type { Inspector } from "./Inspector.js";
 import type { Logger } from "./Logger.js";
 import type { ProcessSystem } from "./ProcessSystem.js";
@@ -144,3 +145,6 @@ export const ProcessSystemKey = new ServiceKey<ProcessSystem>("processSystem");
 
 /** Key for the AssetManager instance. */
 export const AssetManagerKey = new ServiceKey<AssetManager>("assetManager");
+
+/** Key for the Host instance. */
+export const HostKey = new ServiceKey<Host>("host");

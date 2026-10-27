@@ -1,0 +1,7 @@
+{
+  "name": "yage-baseline-electron-shell",
+  "productName": "YAGE Baseline",
+  "private": true,
+  "version": "0.0.0",
+  "main": "main.cjs"
+}

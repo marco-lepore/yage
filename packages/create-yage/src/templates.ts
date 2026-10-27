@@ -16,12 +16,12 @@ export const TEMPLATES: readonly TemplateInfo[] = [
   {
     id: "recommended",
     label: "Recommended",
-    hint: "Playable platformer seed — core, renderer, physics, input, audio, debug",
+    hint: "Playable platformer seed — core, renderer, physics, input, audio, debug, save",
   },
   {
     id: "minimal",
     label: "Minimal",
-    hint: "Empty scene — core, renderer only. Wire the rest yourself.",
+    hint: "Empty scene — core, renderer, save. Register the rest yourself.",
   },
 ] as const;
 

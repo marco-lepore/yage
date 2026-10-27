@@ -17,7 +17,8 @@
     "@yagejs/debug": "^0.12.0",
     "@yagejs/input": "^0.12.0",
     "@yagejs/physics": "^0.12.0",
-    "@yagejs/renderer": "^0.12.0"
+    "@yagejs/renderer": "^0.12.0",
+    "@yagejs/save": "^0.12.0"
   },
   "devDependencies": {
     "typescript": "^5.9.0",

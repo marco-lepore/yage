@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>YAGE E2E — Display</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      #game {
+        box-sizing: border-box;
+        position: relative;
+        background: #0f172a;
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right)
+          env(safe-area-inset-bottom) env(safe-area-inset-left);
+      }
+      #fullscreen {
+        position: absolute;
+        top: calc(env(safe-area-inset-top) + 8px);
+        right: calc(env(safe-area-inset-right) + 8px);
+      }
+      #other {
+        width: 10px;
+        height: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game">
+      <button id="fullscreen" type="button" hidden>Fullscreen</button>
+    </div>
+    <div id="other"></div>
+    <script type="module" src="/src/display.ts"></script>
+  </body>
+</html>

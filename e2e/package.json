@@ -7,15 +7,20 @@
     "dev": "vite --config fixtures/vite.config.ts",
     "build": "vite build --config fixtures/vite.config.ts",
     "preview": "vite preview --config fixtures/vite.config.ts",
-    "typecheck": "tsc -p specs/tsconfig.json",
-    "e2e": "playwright test -c ../playwright.config.ts"
+    "typecheck": "tsc -p specs/tsconfig.json && tsc -p fixtures/src/baseline/tsconfig.json && tsc -p native/tsconfig.json",
+    "e2e": "playwright test -c ../playwright.config.ts",
+    "native": "playwright test -c native/playwright.config.ts",
+    "native:game": "node native/prepare-game.mjs"
   },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0",
     "vite": "^8.0.0",
-    "vite-plugin-wasm": "^3.6.0"
+    "@electron/asar": "4.3.1",
+    "vite-plugin-wasm": "^3.6.0",
+    "pixi.js": "^8.22.0",
+    "@yagejs-tools/pack": "^0.0.0"
   },
   "dependencies": {
     "@yagejs-tools/editor": "^0.2.0",
@@ -34,6 +39,10 @@
     "@yagejs/physics": "^0.12.0",
     "@yagejs/renderer": "^0.12.0",
     "@yagejs/save": "^0.12.0",
-    "@yagejs/ui": "^0.12.0"
+    "@yagejs/ui": "^0.12.0",
+    "@yagejs/audio": "^0.12.0",
+    "@yagejs/effects": "^0.12.0",
+    "@yagejs/host-electron": "^0.12.0",
+    "@yagejs/host-capacitor": "^0.12.0"
   }
 }

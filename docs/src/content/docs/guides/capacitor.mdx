@@ -1,0 +1,297 @@
+---
+title: "Mobile with Capacitor"
+description: "Ship a YAGE game as a mobile app: app lifecycle, orientation lock, the Back button, and file saves"
+sidebar:
+  badge:
+    text: Experimental
+    variant: caution
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+`@yagejs/host-capacitor` runs a YAGE game as a mobile app. The app's state
+reaches the engine, the game locks the screen orientation, the Android Back
+button is a key the game binds, and saves are files in the app's private
+directory rather than web-view storage the system may reclaim.
+
+<Aside type="caution" title="Experimental">
+This package has run in the iOS simulator only. It has not run on Android or
+on a physical iPhone or iPad.
+</Aside>
+
+A mobile build has two halves. The **app** is the Capacitor app around the
+game: its generated iOS or Android project and its `capacitor.config.json`.
+The **page** is the game's web page inside the app's web view. This package
+runs in the page and talks to the app through Capacitor's official plugins.
+
+## Install
+
+```sh
+npm install @yagejs/host-capacitor
+npm install @capacitor/core @capacitor/app @capacitor/filesystem @capacitor/screen-orientation
+```
+
+The four `@capacitor/*` packages go in the game's own `dependencies`.
+`npx cap sync` installs the native half of the plugins the app itself names,
+so a plugin that arrives only as another package's dependency reaches the
+page with nothing behind it. The game stops at start with a message naming
+the package to add.
+
+## The game's entry file
+
+Write one boot function for every target, and one entry file per target that
+hands it the plugins that target needs.
+
+```ts yage-group="targets" yage-file="boot.ts"
+import { Engine } from "@yagejs/core";
+import type { Plugin } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { SavePlugin, createSave } from "@yagejs/save";
+import type { SaveAdapter } from "@yagejs/save";
+
+export interface BootOptions {
+  hostPlugins: readonly Plugin[];
+  saveAdapter: SaveAdapter;
+}
+
+export async function boot(options: BootOptions): Promise<Engine> {
+  const engine = new Engine();
+  for (const plugin of options.hostPlugins) engine.use(plugin);
+  engine.use(new RendererPlugin({ width: 640, height: 360 }));
+  engine.use(
+    new SavePlugin({ save: createSave({ adapter: options.saveAdapter }) }),
+  );
+  await engine.start();
+  return engine;
+}
+```
+
+The Capacitor entry installs the plugin and the save adapter without asking
+whether it is inside an app:
+
+```ts yage-group="targets" yage-file="main.capacitor.ts"
+import {
+  CapacitorHostPlugin,
+  capacitorSaveAdapter,
+} from "@yagejs/host-capacitor";
+import { boot } from "./boot.js";
+
+await boot({
+  hostPlugins: [new CapacitorHostPlugin()],
+  saveAdapter: capacitorSaveAdapter(),
+});
+```
+
+The browser entry installs neither:
+
+```ts yage-group="targets" yage-file="main.web.ts"
+import { localStorageAdapter } from "@yagejs/save";
+import { boot } from "./boot.js";
+
+await boot({
+  hostPlugins: [],
+  saveAdapter: localStorageAdapter({ namespace: "my-game" }),
+});
+```
+
+Each build then carries only what its target needs, and a mobile build that
+somehow opens in a browser says so rather than running with the wrong saves.
+
+### One bundle for every target
+
+A game that ships a single bundle asks first. `isCapacitorHost()` comes from
+an entry that imports nothing, so a browser build can call it before it loads
+the rest of the package:
+
+```ts yage-group="single-bundle"
+import { isCapacitorHost } from "@yagejs/host-capacitor/detect";
+import { localStorageAdapter } from "@yagejs/save";
+import type { Plugin } from "@yagejs/core";
+import type { SaveAdapter } from "@yagejs/save";
+
+let hostPlugins: readonly Plugin[] = [];
+let saveAdapter: SaveAdapter = localStorageAdapter({ namespace: "my-game" });
+if (isCapacitorHost()) {
+  const host = await import("@yagejs/host-capacitor");
+  hostPlugins = [new host.CapacitorHostPlugin()];
+  saveAdapter = host.capacitorSaveAdapter();
+}
+```
+
+The drawback: a page outside an app takes the browser branch in silence, so a
+build meant for a phone runs as a browser game and writes its saves to the
+browser's storage.
+
+## Generating the native projects
+
+The Capacitor CLI builds the projects around the built web directory:
+
+```sh
+npx cap add ios --packagemanager SPM
+npx cap add android
+npx cap sync
+```
+
+Every plugin this package uses ships a `Package.swift`, so an iOS project
+needs no other dependency manager. Two settings belong to this package:
+
+- `ios.contentInset` is `"never"`, so the web view goes edge to edge and the
+  page's own CSS pads for the safe areas.
+- `App.disableBackButtonHandler` stays unset, so Back reaches the game.
+
+A `capacitor.config.ts` that exports `capacitorConfig()` from
+`@yagejs-tools/pack/capacitor` carries both, along with the app's identity and
+the web directory:
+
+```ts
+import { capacitorConfig } from "@yagejs-tools/pack/capacitor";
+
+export default capacitorConfig();
+```
+
+With it, `npm run sync:capacitor` also checks on every sync that the bundle
+identifier in the Xcode and Gradle projects still matches the one the saves
+follow; see [Packaging for desktop and mobile](/tooling/packaging/).
+
+An iOS release also needs a privacy manifest,
+`ios/App/App/PrivacyInfo.xcprivacy`, that declares
+`NSPrivacyAccessedAPICategoryFileTimestamp` with reason `C617.1`, because
+`@capacitor/filesystem` requires it.
+`npx yage-pack check --target ios --release` fails until the App target
+carries it; see
+[Before a release](/tooling/packaging/#before-a-release).
+
+## What the game gets
+
+Every Android behaviour on this page, the default save profile on a device,
+and the iOS cases that need an iPhone (a call, Control Centre, a system alert
+or a permission dialog) follow from Capacitor's code and have not been run.
+
+### Who is running it
+
+`engine.host.info` reports `{ runtime: "capacitor", os, appVersion,
+appBuild }`. `os` is `"ios"` or `"android"`; the version and the build number
+come from the native project.
+
+Use them for a diagnostics screen, never to decide what the game offers.
+`renderer.fullscreenSupport`, `renderer.orientationLockSupport` and the other
+support values say what this host can do.
+
+### App state
+
+`engine.host.active` turns `false` when the player takes a call, pulls down
+Control Centre, answers a permission dialog or leaves for another app, and
+`true` again on the return. Scenes with `scenes.autoPause` and audio with
+`audio.autoPause` follow it, so a game needs no code of its own while the
+player is away.
+
+What the app reports on each system:
+
+| Field        | iOS                                                      | Android                                                |
+| ------------ | -------------------------------------------------------- | ------------------------------------------------------ |
+| `activity`   | the app losing and regaining interaction                 | the activity pausing and resuming                      |
+| `visibility` | the window leaving and coming back                       | the activity being stopped and started                 |
+| `focus`      | the page's own                                           | the page's own                                         |
+
+### Orientation and fullscreen
+
+`renderer.lockOrientation("landscape")` asks the app for the lock and
+resolves with the orientation the page reads once the screen has turned. A
+lock the system does not perform — an orientation the iOS project does not
+list, or a large Android screen on Android 16 with target SDK 36 — settles
+after two seconds with the screen as it was, so compare the result with what
+you asked for:
+
+```ts yage-group="lock"
+import type { RendererPlugin } from "@yagejs/renderer";
+
+export async function goLandscape(renderer: RendererPlugin): Promise<boolean> {
+  if (renderer.orientationLockSupport !== "supported") return false;
+  const turned = await renderer.lockOrientation("landscape");
+  return turned?.startsWith("landscape") ?? false;
+}
+```
+
+A `"landscape"` lock holds the screen on `landscape-primary`, and a
+`"portrait"` lock on `portrait-primary`, because the app's orientation plugin
+locks one side. To let the screen follow the player to either landscape side,
+call no lock and list the orientations in the native project instead: both
+landscape entries in the iOS `Info.plist`, and
+`android:screenOrientation="sensorLandscape"` on the Android activity.
+
+On Android, `renderer.unlockOrientation()` lets the system choose any
+orientation, whatever the manifest declares. A game the manifest limits to
+landscape locks again instead of unlocking. On iOS, an unlock returns to the
+orientations the Xcode project lists.
+
+On iOS before 16.4 the web view has no `screen.orientation`:
+`renderer.orientation` reads `null`, no `screen:orientation` event fires, and
+`goLandscape` above returns `false` after two seconds even when the screen
+turned.
+
+`renderer.fullscreenSupport` is `"unsupported"` in an Android web view: it
+leaves fullscreen in the same call that enters it, so a button would do
+nothing. On iOS the value comes from the web view's own Fullscreen API. Read
+the support value before offering the button.
+
+### The Android Back button
+
+A press arrives as the key `"BrowserBack"`, so a game binds it in its action
+map like any other key:
+
+```ts yage-group="back"
+import { InputPlugin } from "@yagejs/input";
+
+const input = new InputPlugin({
+  actions: { back: ["Escape", "BrowserBack"] },
+});
+```
+
+With no action bound to the key, a press moves the app to the background and
+leaves the game where it was, which is what Android itself does at the root
+of an app. A key held by a disabled action group counts as bound: the press
+is delivered and nothing happens. On a screen where Back should leave
+the app, unbind the key there:
+
+```ts yage-group="back"
+import type { InputManager } from "@yagejs/input";
+
+export function letBackLeaveTheApp(manager: InputManager): void {
+  manager.unbindKey("back", "BrowserBack");
+}
+```
+
+### Saves
+
+`capacitorSaveAdapter()` writes each key as a file under
+`Library/yage-saves/<profile>` in the app's private directory. iOS includes
+it in its backup and the Files app does not show it. The directory follows
+the app's bundle identifier, so renaming the app leaves the saves where they
+are, and builds with different profiles never read each other's slots.
+
+The profile comes from the build. The adapter reads `Capacitor.DEBUG`, which
+the app sets to `true` on a device in an iOS build with the Debug
+configuration and in a debuggable Android build. Such a build saves under
+`development`, and any other build under `release`. The iOS simulator
+reports `true` in every configuration, so a simulator build saves under
+`development` even when it is a Release build. A Debug build and a Release
+build of one app install into one app container, and the two profiles keep
+their saves apart.
+To name the directory yourself, pass a profile:
+`capacitorSaveAdapter({ profile: "beta" })`.
+
+A write that resolved is held when the system kills the app in the
+background. Neither system's write reaches the storage hardware, so the same
+write is not guaranteed to survive a power loss; a game that cares takes its
+checkpoints at moments the player can repeat.
+
+## Errors you may see
+
+- `CapacitorHostPlugin.install: this page is not running inside a Capacitor app. Leave this plugin out of a browser build.` — the mobile entry's bundle opened in a browser.
+- `CapacitorHostPlugin.install: the @capacitor/app plugin is not in this app. Add "@capacitor/app" to the app's package.json dependencies and run npx cap sync.` — the plugin's native half is missing. The same message names `@capacitor/screen-orientation`.
+- `capacitorSaveAdapter: the @capacitor/filesystem plugin is not in this app. Add "@capacitor/filesystem" to the app's package.json dependencies and run npx cap sync.` — the save adapter's plugin is missing.
+- `capacitorSaveAdapter: profile must match ^[a-z][a-z0-9-]*$, got "Release".` — the profile names the save directory, so it is lower case.
+- `CapacitorHostPlugin.install: this instance belongs to a destroyed engine. Construct a new CapacitorHostPlugin for each engine.` — a second engine was given the plugin of a destroyed one, for example from a module-level `hostPlugins` list. Construct the plugin for each engine.
+
+If Xcode stops at a GitHub credential prompt while it resolves a Swift
+package, add `-packageAuthorizationProvider netrc` to the `xcodebuild` call.

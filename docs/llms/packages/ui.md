@@ -748,8 +748,9 @@ follows, where dragging off a button before releasing it cancels the click.
 
 Only the player ending the hold runs the action. A hold that ends because the
 engine dropped the held state — the window losing focus, the page hiding, the
-confirm action's input group switched off, a gamepad disconnecting, a
-cancelled pointer gesture, `InputManager.clearAll()` — drops the press
+host reporting the app inactive, the confirm action's input group switched
+off, a gamepad disconnecting, a cancelled pointer gesture,
+`InputManager.clearAll()` — drops the press
 unpainted and runs nothing, so a player can alt-tab away from a held confirm
 on a destructive row and come back to nothing having happened. A press and its
 release that arrive in the same frame, such as a quick tap or a scripted key

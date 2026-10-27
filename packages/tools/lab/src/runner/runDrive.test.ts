@@ -193,6 +193,10 @@ function stubRenderer(opts: {
   return {
     worldRoot,
     virtualSize: { width: 320, height: 180 },
+    capabilities: {
+      backend: "webgl2",
+      maxTextureSize: opts.textureLimit ?? 4_096,
+    },
     application: {
       stage: {
         getLocalBounds: () => opts.stageBounds ?? { width: 100, height: 100 },
@@ -201,10 +205,6 @@ function stubRenderer(opts: {
         resolution: 1,
         screen: {
           clone: () => ({ x: 0, y: 0, width: 0, height: 0 }),
-        },
-        gl: {
-          MAX_TEXTURE_SIZE: 0x0d33,
-          getParameter: () => opts.textureLimit ?? 4_096,
         },
         extract: {
           canvas: () => {

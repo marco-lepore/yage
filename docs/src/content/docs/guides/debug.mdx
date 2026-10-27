@@ -368,6 +368,20 @@ visible. It re-renders the stage synchronously, so it takes effect even while
 the debug clock is frozen. Screenshot tooling uses it to keep wall-clock
 numbers out of captures that would otherwise differ on every run.
 
+The renderer and the lighting plugin register one extension each. `"graphics"`
+reports what the graphics context can do and whether it is lost right now;
+`"lighting"` lists every live scene with the renderer that drew it, why a
+fallback drew it, and the bounce blend asked for beside the one drawn.
+
+```typescript yage-context="browser"
+import type { GraphicsDiagnostics } from "@yagejs/renderer";
+import type { LightingDiagnostics } from "@yagejs/lighting";
+
+const inspector = window.__yage__.inspector;
+inspector.getExtension<GraphicsDiagnostics>("graphics")?.capabilities();
+inspector.getExtension<LightingDiagnostics>("lighting")?.scenes();
+```
+
 ## StatsStore
 
 `StatsStore` provides rolling-window statistics for performance monitoring:

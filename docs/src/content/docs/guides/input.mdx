@@ -103,9 +103,10 @@ fixed step is held for the next step. Poll from whichever context your gameplay
 runs in; frame and step rates don't change the answer.
 
 A hold also ends when the engine drops it: the window loses focus, the page
-hides, a gamepad disconnects, a pointer gesture is cancelled, or the game calls
-`clearAll()`. `isJustReleased` reports all of those, which is right for a jump
-that should stop when the player alt-tabs away. Where the release is what
+hides, the operating system turns the app inactive, a gamepad disconnects, a
+pointer gesture is cancelled, or the game calls `clearAll()`. `isJustReleased`
+reports all of those, which is right for a jump that should stop when the
+player alt-tabs away. Where the release is what
 commits something the player cannot take back — a menu confirming the row under
 the cursor, a charged shot leaving the barrel — read
 `isJustReleasedByPlayer` instead, and alt-tabbing commits nothing.
@@ -773,9 +774,10 @@ and applies state synchronously, so existing tests using these helpers don't
 need to change. Tests that drive `dispatchEvent` directly need an explicit
 `manager._drainInputQueue()` (or a frame step) before assertions.
 
-When the window blurs or the page becomes hidden, held keyboard, gamepad, and
-pointer input releases through the normal paths. Browser events queued before
-that focus boundary are discarded. Synthetic action-source holds remain owned
+When the window loses focus, the page becomes hidden, or the operating system
+turns the app inactive, held keyboard, gamepad, and pointer input releases
+through the normal paths. Browser events queued before that boundary are
+discarded. Synthetic action-source holds remain owned
 by their source until it releases them.
 
 ## Listener APIs
@@ -1165,7 +1167,23 @@ input.enableGroup("movement");
 input.enableGroup("combat");
 ```
 
-Disabled actions always return `false` / `0` when queried.
+Disabled actions always return `false` / `0` when queried. A disabled group
+still holds its keys, so a key a host delivers for one of its actions is
+taken and does nothing.
+
+## The Android Back button
+
+In a Capacitor app with
+[`@yagejs/host-capacitor`](/guides/capacitor/), a press of the Android Back
+button arrives as the key `"BrowserBack"`:
+
+```typescript yage-group="input" yage-context="engine"
+input.setActionMap({ back: ["Escape", "BrowserBack"] });
+```
+
+With no action bound to that key, the press moves the app to the background
+and leaves the game where it was. On a screen where Back should leave the
+app, unbind it there with `input.unbindKey("back", "BrowserBack")`.
 
 ## Display Names
 

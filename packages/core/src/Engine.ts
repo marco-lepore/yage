@@ -11,8 +11,10 @@ import {
   SystemSchedulerKey,
   ProcessSystemKey,
   AssetManagerKey,
+  HostKey,
 } from "./EngineContext.js";
 import { AssetManager } from "./AssetManager.js";
+import { Host } from "./Host.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
 import { Logger } from "./Logger.js";
@@ -78,6 +80,11 @@ export class Engine {
   readonly logger: Logger;
   /** Creates each scene's `RandomKey` RNG and owns the seed it starts from. */
   readonly sceneRandom: SceneRandomSource;
+  /**
+   * Which application runs the game, and whether it is active, visible and
+   * focused. Host adapters attach here.
+   */
+  readonly host: Host;
 
   private readonly scheduler: SystemScheduler;
   private readonly errorBoundary: ErrorBoundary;
@@ -146,12 +153,17 @@ export class Engine {
     this.sceneRandom = new SceneRandomSource(this.scenes);
     this.assets = new AssetManager();
     this.sceneHooks = new SceneHookRegistry();
+    this.host = new Host();
 
     // EventBus and SceneHookRegistry are constructed directly rather than
     // resolved through EngineContext, so they can't reach the boundary the
     // way a Component/System does — wire it once here.
     this.events._setErrorBoundary(this.errorBoundary);
     this.sceneHooks._setErrorBoundary(this.errorBoundary);
+    this.host._connect({
+      events: this.events,
+      syncScenes: () => this.scenes._syncHostPause(),
+    });
 
     // Wire up the scheduler with error boundary
     this.scheduler.setErrorBoundary(this.errorBoundary);
@@ -168,6 +180,7 @@ export class Engine {
     this.context.register(SystemSchedulerKey, this.scheduler);
     this.context.register(AssetManagerKey, this.assets);
     this.context.register(SceneHookRegistryKey, this.sceneHooks);
+    this.context.register(HostKey, this.host);
 
     this.sceneHooks.register({
       beforeEnter: (scene) => {
@@ -456,6 +469,10 @@ export class Engine {
 
     // Unregister all systems (reverse order for clean teardown)
     step(() => this.scheduler._destroy());
+
+    // Stop reading the page and detach the host adapter before the adapter's
+    // own onDestroy runs, so a late native event reaches nothing.
+    step(() => this.host._dispose());
 
     // Destroy installed plugins in reverse install order (dependents first)
     for (let i = this.installed.length - 1; i >= 0; i--) {

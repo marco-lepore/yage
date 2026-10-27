@@ -9,19 +9,26 @@ This is a [YAGE](https://yage.dev) 2D game engine project (TypeScript + Vite).
 - `npm run build` — production build to `dist/`
 - `npm run preview` — preview the production build
 
+A desktop or mobile build comes from the same source. A project created with
+`npm create yage -- --features electron,capacitor` already has the packages;
+for a project created without those features, the packaging guide lists the
+packages to install. Then `npx yage-pack init` writes the entry files and the
+project configuration. See https://yage.dev/tooling/packaging.
+
 ## What's in the starter
 
-The starter installs `@yagejs/core` and `@yagejs/renderer` only. It contains
-one scene that spawns a placeholder rectangle. `src/main.ts` has commented-out
-blocks that register `@yagejs/physics`, `@yagejs/input`, `@yagejs/audio`, and
-`@yagejs/debug`. Uncomment the blocks you need, and run the install command
-listed above each block.
+The starter installs `@yagejs/core`, `@yagejs/renderer` and `@yagejs/save`
+only. It contains one scene that spawns a placeholder rectangle.
+`src/boot.ts` has commented-out blocks that register `@yagejs/physics`,
+`@yagejs/input`, `@yagejs/audio`, and `@yagejs/debug`. Uncomment the blocks
+you need, and run the install command listed above each block.
 
 ## Project layout
 
 ```
 src/
-├── main.ts               # Engine boot, plugins, scene push
+├── boot.ts               # Engine, plugins, scene push — every target calls it
+├── main.web.ts           # the browser entry; yage-pack init adds one per target
 ├── vite-env.d.ts         # Vite's types for import.meta.env
 ├── scenes/
 │   └── MainScene.ts      # spawns the entities; edit this to build your game
@@ -33,7 +40,8 @@ Add folders as your project grows. The suggested structure:
 
 ```
 src/
-├── main.ts
+├── boot.ts
+├── main.web.ts
 ├── scenes/             # one file per scene
 ├── entities/           # entity subclasses (simple: single file; complex: folder)
 └── components/         # components shared across multiple entities
@@ -47,7 +55,8 @@ See https://yage.dev/patterns/project-layout for the full conventions.
   `index.ts`.
 - Entity-specific components live next to their entity. Use `components/` only
   for components shared across entities.
-- Keep `main.ts` short.
+- Keep `boot.ts` short. Each target's entry file calls `boot` with the host
+  adapters and the save adapter that build runs with.
 
 ## Writing game code
 
@@ -154,6 +163,11 @@ Follow these rules for every entity, component, and scene you add.
 Use `@yagejs/save` with an explicit `Serializable<TEncoded>` state root. Save
 files contain only the state you choose. YAGE does not serialize the live ECS
 world automatically.
+
+`boot.ts` registers `SavePlugin` with the save adapter the entry file passes:
+browser storage from `main.web.ts`, files in the app's data directory from a
+desktop or mobile entry. A component reaches the saves with
+`this.use(SaveServiceKey)`.
 
 ## Full YAGE documentation
 

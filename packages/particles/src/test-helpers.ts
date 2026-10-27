@@ -21,6 +21,7 @@ import {
 import type { EngineEvents } from "@yagejs/core";
 import {
   RenderLayerManager,
+  RendererKey,
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
 } from "@yagejs/renderer";
@@ -106,6 +107,8 @@ export function createParticlesTestContext(): ParticlesTestContext {
   ctx.register(ErrorBoundaryKey, boundary);
   ctx.register(GameLoopKey, gameLoop);
   ctx.register(SystemSchedulerKey, scheduler);
+  // `DisplaySystem` emits the renderer's queued `graphics:context` events.
+  ctx.register(RendererKey, { _flushContextNotices: () => undefined } as never);
 
   const root = new MockContainer();
   const layerManager = new RenderLayerManager(root as never);

@@ -1,5 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+/**
+ * What the page allows, and what the install did about it. A page that
+ * forbids turning strings into code needs PixiJS's prebuilt replacements
+ * loaded before the application exists.
+ */
+const { policy } = vi.hoisted(() => ({
+  policy: { stringEvaluation: true, steps: [] as string[] },
+}));
+
+vi.mock("./internal/stringEvaluation.js", () => ({
+  stringEvaluationAllowed: (): boolean => policy.stringEvaluation,
+}));
+
+vi.mock("./internal/noStringEvaluation.js", () => {
+  policy.steps.push("no-eval module");
+  return {};
+});
+
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
@@ -78,22 +96,114 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
+  /**
+   * Pixi's own dispatch list: it calls the runner's name on every item. A
+   * destroyed runner holds `null`, as Pixi's does, so any later use throws.
+   */
+  class MockRunner {
+    items: Array<Record<string, (...args: unknown[]) => void>> | null = [];
+    constructor(private readonly method: string) {}
+
+    add(item: object): void {
+      if (!this.items!.includes(item as never)) this.items!.push(item as never);
+    }
+
+    remove(item: object): void {
+      const idx = this.items!.indexOf(item as never);
+      if (idx !== -1) this.items!.splice(idx, 1);
+    }
+
+    emit(...args: unknown[]): void {
+      for (const item of [...this.items!]) item[this.method]?.(...args);
+    }
+
+    destroy(): void {
+      this.items = null;
+    }
+  }
+
+  /** A WebGL 2 context reporting the limits a desktop browser reports. */
+  function mockGl(): Record<string, unknown> {
+    const present = new Set([
+      "EXT_color_buffer_float",
+      "OES_texture_float_linear",
+    ]);
+    return {
+      MAX_TEXTURE_SIZE: 0x0d33,
+      MAX_RENDERBUFFER_SIZE: 0x84e8,
+      MAX_VIEWPORT_DIMS: 0x0d3a,
+      MAX_SAMPLES: 0x8d57,
+      FRAGMENT_SHADER: 0x8b30,
+      HIGH_FLOAT: 0x8df2,
+      extensions: present,
+      contextLost: false,
+      isContextLost(this: { contextLost: boolean }) {
+        return this.contextLost;
+      },
+      getParameter(name: number) {
+        if (name === 0x0d3a) return [8192, 8192];
+        if (name === 0x8d57) return 4;
+        return 8192;
+      },
+      getExtension(name: string) {
+        return present.has(name) ? {} : null;
+      },
+      getShaderPrecisionFormat() {
+        return { precision: 23 };
+      },
+    };
+  }
+
+  /** What the next application's renderer looks like, set per test. */
+  const rendererShape: { build: (() => Record<string, unknown>) | null } = {
+    build: null,
+  };
+
   class MockApplication {
     stage = new MockContainer();
     ticker = new MockTicker();
     canvas: unknown = {
       tagName: "CANVAS",
       style: { cssText: "" } as { cssText: string },
+      listeners: new Map<string, Set<() => void>>(),
+      addEventListener(
+        this: { listeners: Map<string, Set<() => void>> },
+        type: string,
+        fn: () => void,
+      ) {
+        const set = this.listeners.get(type) ?? new Set();
+        set.add(fn);
+        this.listeners.set(type, set);
+      },
+      removeEventListener(
+        this: { listeners: Map<string, Set<() => void>> },
+        type: string,
+        fn: () => void,
+      ) {
+        this.listeners.get(type)?.delete(fn);
+      },
     };
     initOptions: Record<string, unknown> = {};
-    renderer = {
-      name: "webgl",
+    renderer: Record<string, unknown> = {
+      ...(rendererShape.build?.() ?? {
+        name: "webgl",
+        context: { webGLVersion: 2 },
+        gl: mockGl(),
+      }),
       width: 800,
       height: 600,
+      resolution: 1,
+      view: { antialias: false },
+      runners: {
+        prerender: new MockRunner("prerender"),
+        contextChange: new MockRunner("contextChange"),
+        resolutionChange: new MockRunner("resolutionChange"),
+      },
       resize(this: { width: number; height: number }, w: number, h: number) {
         this.width = w;
         this.height = h;
       },
+      render: vi.fn(),
       generateTexture: vi.fn((options: unknown) => ({
         label: "generated",
         options,
@@ -103,6 +213,10 @@ const { mocks } = vi.hoisted(() => {
     initialized = false;
     destroyCalled = false;
 
+    constructor() {
+      policy.steps.push("application");
+    }
+
     async init(opts: Record<string, unknown> = {}): Promise<void> {
       this.initialized = true;
       this.initOptions = opts;
@@ -110,11 +224,24 @@ const { mocks } = vi.hoisted(() => {
 
     destroy(): void {
       this.ticker.remove(this.render);
+      for (const runner of Object.values(
+        this.renderer["runners"] as Record<string, MockRunner>,
+      )) {
+        runner.destroy();
+      }
       this.destroyCalled = true;
     }
   }
 
-  return { mocks: { MockContainer, MockTicker, MockApplication } };
+  return {
+    mocks: {
+      MockContainer,
+      MockTicker,
+      MockApplication,
+      MockRunner,
+      rendererShape,
+    },
+  };
 });
 
 vi.mock("pixi.js", () => {
@@ -123,18 +250,83 @@ vi.mock("pixi.js", () => {
     constructor(public label = "filter") {}
   }
   class MockGraphics extends mocks.MockContainer {
+    /** Union of every drawn rectangle, as Pixi measures local bounds. */
+    bounds = { x: 0, y: 0, width: 0, height: 0 };
     clear(): this {
+      this.bounds = { x: 0, y: 0, width: 0, height: 0 };
       return this;
     }
-    rect(): this {
+    rect(x: number, y: number, width: number, height: number): this {
+      const right = Math.max(this.bounds.x + this.bounds.width, x + width);
+      const bottom = Math.max(this.bounds.y + this.bounds.height, y + height);
+      const left = this.bounds.width === 0 ? x : Math.min(this.bounds.x, x);
+      const top = this.bounds.height === 0 ? y : Math.min(this.bounds.y, y);
+      this.bounds = {
+        x: left,
+        y: top,
+        width: right - left,
+        height: bottom - top,
+      };
       return this;
     }
     fill(): this {
       return this;
     }
+    getLocalBounds(): {
+      rectangle: { x: number; y: number; width: number; height: number };
+    } {
+      return { rectangle: this.bounds };
+    }
     destroy(): void {
       // mirror Pixi v8: just a no-op marker, parent removeChild already
       // detaches us from any container.
+    }
+  }
+  /** Enough of a Pixi render texture for the buffer code paths. */
+  class MockRenderTexture {
+    static created: MockRenderTexture[] = [];
+    source: { resolution: number; destroyed: boolean };
+    private readonly handlers = new Map<string, Array<() => void>>();
+    constructor(
+      public width: number,
+      public height: number,
+      resolution: number,
+      public antialias: boolean,
+    ) {
+      this.source = { resolution, destroyed: false };
+    }
+    once(event: string, fn: () => void): void {
+      const list = this.handlers.get(event) ?? [];
+      list.push(fn);
+      this.handlers.set(event, list);
+    }
+    emit(event: string): void {
+      for (const fn of this.handlers.get(event) ?? []) fn();
+      this.handlers.delete(event);
+    }
+    static create(options: {
+      width: number;
+      height: number;
+      resolution: number;
+      antialias?: boolean;
+    }): MockRenderTexture {
+      const texture = new MockRenderTexture(
+        options.width,
+        options.height,
+        options.resolution,
+        options.antialias ?? false,
+      );
+      MockRenderTexture.created.push(texture);
+      return texture;
+    }
+    resize(width: number, height: number, resolution: number): void {
+      this.width = width;
+      this.height = height;
+      this.source.resolution = resolution;
+    }
+    destroy(): void {
+      this.source.destroyed = true;
+      this.emit("destroy");
     }
   }
   return {
@@ -152,6 +344,13 @@ vi.mock("pixi.js", () => {
       }
     },
     TextureStyle: { defaultOptions: { scaleMode: "linear" } },
+    RenderTexture: MockRenderTexture,
+    Color: class {
+      constructor(private readonly value: number) {}
+      toArray(): number[] {
+        return [this.value, 0, 0, 1];
+      }
+    },
     Rectangle: class {
       constructor(
         public x: number,
@@ -164,6 +363,7 @@ vi.mock("pixi.js", () => {
 });
 
 import {
+  Engine,
   EngineContext,
   GameLoop,
   GameLoopKey,
@@ -172,6 +372,8 @@ import {
   Scene,
   SceneManager,
   SceneManagerKey,
+  Phase,
+  System,
   SystemScheduler,
   SystemSchedulerKey,
   QueryCache,
@@ -188,12 +390,17 @@ import {
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
 } from "@yagejs/core";
-import type { EngineEvents, SceneTransition } from "@yagejs/core";
+import type { EngineEvents, HostSupport, SceneTransition } from "@yagejs/core";
 import { RendererPlugin } from "./RendererPlugin.js";
+import { HostDisplayKey } from "./HostDisplay.js";
+import type { HostDisplay } from "./HostDisplay.js";
+import { TestHostDisplay } from "./TestHostDisplay.js";
 import { RenderFacetContributor } from "./RenderFacetContributor.js";
 import { RendererKey } from "./types.js";
 import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
 import type { RendererConfig } from "./types.js";
+import type { GraphicsDiagnostics } from "./GraphicsDiagnostics.js";
+import type { DisplayContainer } from "./public-types.js";
 
 function createInstallContext(): {
   context: EngineContext;
@@ -228,6 +435,31 @@ const defaultConfig: RendererConfig = {
 describe("RendererPlugin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  // The two cases run in order: the mock of the no-eval module is evaluated
+  // the first time something imports it, so the case that forbids string
+  // evaluation has to be the one that triggers that import.
+  describe("a page that forbids turning strings into code", () => {
+    afterEach(() => {
+      policy.stringEvaluation = true;
+      policy.steps.length = 0;
+    });
+
+    it("leaves PixiJS its generated code where the page allows it", async () => {
+      const { context } = createInstallContext();
+      policy.steps.length = 0;
+      await new RendererPlugin(defaultConfig).install(context);
+      expect(policy.steps).toEqual(["application"]);
+    });
+
+    it("loads PixiJS's prebuilt code before the application exists", async () => {
+      const { context } = createInstallContext();
+      policy.stringEvaluation = false;
+      policy.steps.length = 0;
+      await new RendererPlugin(defaultConfig).install(context);
+      expect(policy.steps).toEqual(["no-eval module", "application"]);
+    });
   });
 
   it("has correct name and version", () => {
@@ -316,7 +548,13 @@ describe("RendererPlugin", () => {
       // (which installs the Inspector) comes after the renderer.
       const unregister = vi.fn();
       const registerFacetContributor = vi.fn(() => unregister);
-      context.register(InspectorKey, { registerFacetContributor } as never);
+      const addExtension = vi.fn();
+      const removeExtension = vi.fn();
+      context.register(InspectorKey, {
+        registerFacetContributor,
+        addExtension,
+        removeExtension,
+      } as never);
 
       plugin.onStart();
       expect(registerFacetContributor).toHaveBeenCalledWith(
@@ -324,6 +562,30 @@ describe("RendererPlugin", () => {
       );
       plugin.onDestroy();
       expect(unregister).toHaveBeenCalledOnce();
+    });
+
+    it("reports the graphics context through the Inspector, and removes the reader on destroy", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      const extensions = new Map<string, GraphicsDiagnostics>();
+      context.register(InspectorKey, {
+        registerFacetContributor: () => () => {},
+        addExtension: (namespace: string, api: GraphicsDiagnostics) => {
+          extensions.set(namespace, api);
+        },
+        removeExtension: (namespace: string) => {
+          extensions.delete(namespace);
+        },
+      } as never);
+
+      plugin.onStart();
+      const graphics = extensions.get("graphics");
+      expect(graphics?.capabilities().backend).toBe("webgl2");
+      expect(graphics?.contextLost()).toBe(false);
+
+      plugin.onDestroy();
+      expect(extensions.has("graphics")).toBe(false);
     });
 
     it("starts without an Inspector", async () => {
@@ -761,12 +1023,259 @@ describe("RendererPlugin", () => {
     });
   });
 
-  describe("fullscreen", () => {
+  describe("display", () => {
     afterEach(() => {
       vi.unstubAllGlobals();
     });
 
-    it("calls requestFullscreen on the configured container", async () => {
+    /** The eight members, with the message each reports outside the run. */
+    const DISPLAY_MEMBERS = [
+      "isFullscreen",
+      "fullscreenSupport",
+      "orientation",
+      "orientationLockSupport",
+      "requestFullscreen",
+      "exitFullscreen",
+      "lockOrientation",
+      "unlockOrientation",
+    ] as const;
+
+    function unavailableMessage(member: string): string {
+      return (
+        `RendererPlugin.${member}: the display is only available from the ` +
+        "renderer's onStart to engine.destroy(). A plugin that reads it in " +
+        "its own onStart must be registered after RendererPlugin."
+      );
+    }
+
+    /** Read every display member, collecting the failure each one reports. */
+    async function readAll(plugin: RendererPlugin): Promise<string[]> {
+      const reads: Record<(typeof DISPLAY_MEMBERS)[number], () => unknown> = {
+        isFullscreen: () => plugin.isFullscreen,
+        fullscreenSupport: () => plugin.fullscreenSupport,
+        orientation: () => plugin.orientation,
+        orientationLockSupport: () => plugin.orientationLockSupport,
+        requestFullscreen: () => plugin.requestFullscreen(),
+        exitFullscreen: () => plugin.exitFullscreen(),
+        lockOrientation: () => plugin.lockOrientation("portrait"),
+        unlockOrientation: () => plugin.unlockOrientation(),
+      };
+      const failures: string[] = [];
+      for (const member of DISPLAY_MEMBERS) {
+        try {
+          await reads[member]();
+          failures.push(`${member}: no failure`);
+        } catch (error) {
+          failures.push((error as Error).message);
+        }
+      }
+      return failures;
+    }
+
+    interface HarnessOptions {
+      readonly display?: HostDisplay;
+      readonly config?: Partial<RendererConfig>;
+    }
+
+    interface Harness {
+      readonly plugin: RendererPlugin;
+      readonly boundary: ErrorBoundary;
+      readonly fullscreenEvents: boolean[];
+      readonly orientationEvents: OrientationType[];
+      /** Both events in the order they were emitted, by name. */
+      readonly order: string[];
+    }
+
+    /** Install and start a renderer, recording both display events. */
+    async function startRenderer(
+      options: HarnessOptions = {},
+    ): Promise<Harness> {
+      const { context } = createInstallContext();
+      const bus = context.resolve(EventBusKey);
+      const boundary = context.resolve(ErrorBoundaryKey);
+      bus._setErrorBoundary(boundary);
+      if (options.display) context.register(HostDisplayKey, options.display);
+      const fullscreenEvents: boolean[] = [];
+      const orientationEvents: OrientationType[] = [];
+      const order: string[] = [];
+      bus.on("screen:fullscreen", ({ active }) => {
+        fullscreenEvents.push(active);
+        order.push("fullscreen");
+      });
+      bus.on("screen:orientation", ({ type }) => {
+        orientationEvents.push(type);
+        order.push("orientation");
+      });
+      const plugin = new RendererPlugin({
+        ...defaultConfig,
+        ...options.config,
+      });
+      await plugin.install(context);
+      plugin.onStart();
+      return { plugin, boundary, fullscreenEvents, orientationEvents, order };
+    }
+
+    /** The state a {@link manualDisplay} reports, before validation. */
+    interface ManualState {
+      active: unknown;
+      support: unknown;
+      current: unknown;
+      lockSupport: unknown;
+    }
+
+    /**
+     * A display whose fullscreen transitions settle when the test says so, so
+     * a test can observe what the renderer does while one is in flight and in
+     * which order it publishes the result.
+     */
+    function manualDisplay(initial: Partial<ManualState> = {}): {
+      display: HostDisplay;
+      state: ManualState;
+      calls: string[];
+      rejectWith: { error: Error | null };
+      settle: () => void;
+      notify: () => void;
+      notifyDetached: () => void;
+      stops: () => number;
+    } {
+      const state: ManualState = {
+        active: false,
+        support: "supported",
+        current: "landscape-primary",
+        lockSupport: "supported",
+        ...initial,
+      };
+      const calls: string[] = [];
+      const rejectWith: { error: Error | null } = { error: null };
+      let pending: (() => void) | null = null;
+      let changed: (() => void) | null = null;
+      // Kept past the stop function, so a test can report a change the way a
+      // host whose own listener outlives the engine does.
+      let detached: (() => void) | null = null;
+      let stops = 0;
+      const transition = (to: boolean): Promise<void> =>
+        new Promise<void>((resolve, reject) => {
+          pending = () => {
+            pending = null;
+            if (rejectWith.error) {
+              reject(rejectWith.error);
+              return;
+            }
+            state.active = to;
+            resolve();
+          };
+        });
+      const display: HostDisplay = {
+        fullscreen: {
+          get support(): HostSupport {
+            return state.support as HostSupport;
+          },
+          get active(): boolean {
+            return state.active as boolean;
+          },
+          request(): Promise<void> {
+            calls.push("request");
+            return transition(true);
+          },
+          exit(): Promise<void> {
+            calls.push("exit");
+            return transition(false);
+          },
+        },
+        orientation: {
+          get current(): OrientationType | null {
+            return state.current as OrientationType | null;
+          },
+          get lockSupport(): HostSupport {
+            return state.lockSupport as HostSupport;
+          },
+          lock(lock): Promise<void> {
+            calls.push(`lock:${lock}`);
+            state.current = lock === "portrait" ? "portrait-primary" : lock;
+            return Promise.resolve();
+          },
+          unlock(): Promise<void> {
+            calls.push("unlock");
+            return Promise.resolve();
+          },
+        },
+        watch(fn): () => void {
+          changed = fn;
+          detached = fn;
+          return () => {
+            stops += 1;
+            changed = null;
+          };
+        },
+      };
+      return {
+        display,
+        state,
+        calls,
+        rejectWith,
+        settle: () => pending?.(),
+        notify: () => changed?.(),
+        notifyDetached: () => detached?.(),
+        stops: () => stops,
+      };
+    }
+
+    it("reports every member as unavailable before the engine starts", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+
+      expect(await readAll(plugin)).toEqual(
+        DISPLAY_MEMBERS.map(unavailableMessage),
+      );
+    });
+
+    it("reports every member as unavailable after the engine is destroyed", async () => {
+      const { plugin } = await startRenderer({
+        display: new TestHostDisplay(),
+      });
+      plugin.onDestroy();
+
+      expect(await readAll(plugin)).toEqual(
+        DISPLAY_MEMBERS.map(unavailableMessage),
+      );
+    });
+
+    it("reads a registered display and leaves the page alone", async () => {
+      const documentAddEventListener = vi.fn();
+      const orientationAddEventListener = vi.fn();
+      vi.stubGlobal("document", {
+        fullscreenElement: null,
+        fullscreenEnabled: true,
+        addEventListener: documentAddEventListener,
+        removeEventListener: vi.fn(),
+      });
+      vi.stubGlobal("window", {
+        screen: {
+          orientation: {
+            type: "portrait-primary",
+            addEventListener: orientationAddEventListener,
+            removeEventListener: vi.fn(),
+          },
+        },
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      });
+      const display = new TestHostDisplay({ orientation: "landscape-primary" });
+
+      const { plugin } = await startRenderer({ display });
+
+      expect(plugin.fullscreenSupport).toBe("supported");
+      expect(plugin.orientation).toBe("landscape-primary");
+      const attached = documentAddEventListener.mock.calls.map(
+        (args: unknown[]) => args[0],
+      );
+      expect(attached).not.toContain("fullscreenchange");
+      expect(attached).not.toContain("webkitfullscreenchange");
+      expect(orientationAddEventListener).not.toHaveBeenCalled();
+    });
+
+    it("asks the configured container for fullscreen with no display registered", async () => {
       const requestFullscreen = vi.fn().mockResolvedValue(undefined);
       const container = {
         requestFullscreen,
@@ -775,105 +1284,508 @@ describe("RendererPlugin", () => {
       } as unknown as HTMLElement;
       vi.stubGlobal("document", {
         fullscreenElement: null,
+        fullscreenEnabled: true,
         exitFullscreen: vi.fn().mockResolvedValue(undefined),
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
       });
 
-      const { context } = createInstallContext();
-      const plugin = new RendererPlugin({ ...defaultConfig, container });
-      await plugin.install(context);
+      const { plugin } = await startRenderer({ config: { container } });
       await plugin.requestFullscreen();
 
       expect(requestFullscreen).toHaveBeenCalledOnce();
     });
 
-    it("falls back to the webkit-prefixed API when unprefixed is unavailable", async () => {
-      const webkitRequestFullscreen = vi.fn();
-      const container = {
-        webkitRequestFullscreen,
-        appendChild: vi.fn(),
-        getBoundingClientRect: () => ({ width: 800, height: 600 }),
-      } as unknown as HTMLElement;
+    it("asks the canvas for fullscreen when there is no container", async () => {
       vi.stubGlobal("document", {
-        webkitFullscreenElement: null,
-        webkitExitFullscreen: vi.fn(),
+        fullscreenElement: null,
+        fullscreenEnabled: true,
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
       });
+      const { plugin } = await startRenderer();
+      const canvas = plugin.canvas as unknown as {
+        requestFullscreen: () => Promise<void>;
+      };
+      canvas.requestFullscreen = vi.fn().mockResolvedValue(undefined);
 
-      const { context } = createInstallContext();
-      const plugin = new RendererPlugin({ ...defaultConfig, container });
-      await plugin.install(context);
       await plugin.requestFullscreen();
 
-      expect(webkitRequestFullscreen).toHaveBeenCalledOnce();
+      expect(canvas.requestFullscreen).toHaveBeenCalledOnce();
     });
 
-    it("emits screen:fullscreen when fullscreenchange fires", async () => {
-      let changeHandler: (() => void) | null = null;
-      const container = {
-        requestFullscreen: vi.fn().mockResolvedValue(undefined),
-        appendChild: vi.fn(),
-        getBoundingClientRect: () => ({ width: 800, height: 600 }),
-      } as unknown as HTMLElement;
-      vi.stubGlobal("document", {
-        fullscreenElement: null,
-        exitFullscreen: vi.fn().mockResolvedValue(undefined),
-        addEventListener: vi.fn((event: string, fn: () => void) => {
-          if (event === "fullscreenchange") changeHandler = fn;
-        }),
+    it("takes the part a display leaves out from the page", async () => {
+      vi.stubGlobal("window", {
+        screen: { orientation: { type: "portrait-secondary" } },
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      });
+      const fullscreenOnly: HostDisplay = {
+        fullscreen: {
+          support: "unsupported",
+          active: false,
+          request: () => Promise.resolve(),
+          exit: () => Promise.resolve(),
+        },
+        watch: () => () => {},
+      };
+
+      const { plugin } = await startRenderer({ display: fullscreenOnly });
+
+      expect(plugin.fullscreenSupport).toBe("unsupported");
+      expect(plugin.orientation).toBe("portrait-secondary");
+      expect(plugin.orientationLockSupport).toBe("unsupported");
+    });
+
+    it("takes fullscreen from the page for a display that only reports orientation", async () => {
+      const orientationOnly: HostDisplay = {
+        orientation: {
+          current: "portrait-primary",
+          lockSupport: "supported",
+          lock: () => Promise.resolve(),
+          unlock: () => Promise.resolve(),
+        },
+        watch: () => () => {},
+      };
+
+      const { plugin } = await startRenderer({ display: orientationOnly });
+
+      // No document in this environment, so the page reports no fullscreen.
+      expect(plugin.fullscreenSupport).toBe("unsupported");
+      expect(plugin.orientation).toBe("portrait-primary");
+      expect(plugin.orientationLockSupport).toBe("supported");
+    });
+
+    it("emits nothing when the display reports from inside its watch", async () => {
+      const display = new TestHostDisplay({
+        fullscreen: true,
+        orientation: "landscape-primary",
+      });
+      const watch = display.watch.bind(display);
+      display.watch = (changed) => {
+        const stop = watch(changed);
+        changed();
+        return stop;
+      };
+
+      const { fullscreenEvents, orientationEvents } = await startRenderer({
+        display,
+      });
+
+      expect(fullscreenEvents).toEqual([]);
+      expect(orientationEvents).toEqual([]);
+    });
+
+    it("emits one event per state that moved", async () => {
+      const display = new TestHostDisplay({ orientation: "portrait-primary" });
+      const { plugin, fullscreenEvents, orientationEvents, order } =
+        await startRenderer({ display });
+
+      // The state at start is the baseline, not a change.
+      expect(plugin.isFullscreen).toBe(false);
+      expect(fullscreenEvents).toEqual([]);
+      expect(orientationEvents).toEqual([]);
+
+      display.set({ fullscreen: false });
+      expect(fullscreenEvents).toEqual([]);
+      expect(orientationEvents).toEqual([]);
+
+      display.set({ orientation: "landscape-primary" });
+      expect(orientationEvents).toEqual(["landscape-primary"]);
+
+      display.set({ orientation: null });
+      expect(orientationEvents).toEqual(["landscape-primary"]);
+
+      order.length = 0;
+      display.set({ fullscreen: true, orientation: "portrait-secondary" });
+      expect(fullscreenEvents).toEqual([true]);
+      expect(orientationEvents).toEqual([
+        "landscape-primary",
+        "portrait-secondary",
+      ]);
+      // One change of both states publishes fullscreen first.
+      expect(order).toEqual(["fullscreen", "orientation"]);
+    });
+
+    it("resolves a request that changes nothing without asking the host", async () => {
+      const { display, calls } = manualDisplay({ active: true });
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      await expect(plugin.requestFullscreen()).resolves.toBeUndefined();
+
+      expect(calls).toEqual([]);
+      expect(fullscreenEvents).toEqual([]);
+    });
+
+    it("rejects a request on a host that cannot change to fullscreen", async () => {
+      const { display, calls } = manualDisplay({ support: "unsupported" });
+      const { plugin } = await startRenderer({ display });
+
+      await expect(plugin.requestFullscreen()).rejects.toThrow(
+        "RendererPlugin.requestFullscreen: this host cannot change to " +
+          'fullscreen (fullscreenSupport is "unsupported").',
+      );
+      expect(calls).toEqual([]);
+    });
+
+    it("asks a host that cannot tell whether it supports fullscreen", async () => {
+      const { display, calls, settle } = manualDisplay({ support: "unknown" });
+      const { plugin } = await startRenderer({ display });
+
+      const pending = plugin.requestFullscreen();
+      settle();
+      await pending;
+
+      expect(calls).toEqual(["request"]);
+      expect(plugin.isFullscreen).toBe(true);
+    });
+
+    it("emits the change before the request resolves", async () => {
+      const { display, settle } = manualDisplay();
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const pending = plugin.requestFullscreen();
+      expect(fullscreenEvents).toEqual([]);
+      settle();
+      await pending;
+
+      expect(fullscreenEvents).toEqual([true]);
+    });
+
+    it("passes a host's refusal on and emits nothing", async () => {
+      const refusal = new TypeError("Permissions check failed");
+      const { display, rejectWith, settle } = manualDisplay();
+      rejectWith.error = refusal;
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const pending = plugin.requestFullscreen();
+      settle();
+
+      await expect(pending).rejects.toBe(refusal);
+      expect(fullscreenEvents).toEqual([]);
+    });
+
+    it("shares one request between callers", async () => {
+      const { display, calls, settle } = manualDisplay();
+      const { plugin } = await startRenderer({ display });
+
+      const first = plugin.requestFullscreen();
+      const second = plugin.requestFullscreen();
+      expect(second).toBe(first);
+      settle();
+      await Promise.all([first, second]);
+
+      expect(calls).toEqual(["request"]);
+    });
+
+    it("shares one exit between callers", async () => {
+      const { display, calls, settle } = manualDisplay({ active: true });
+      const { plugin } = await startRenderer({ display });
+
+      const first = plugin.exitFullscreen();
+      const second = plugin.exitFullscreen();
+      expect(second).toBe(first);
+      settle();
+      await Promise.all([first, second]);
+
+      expect(calls).toEqual(["exit"]);
+    });
+
+    it("runs an exit after the request it interrupts", async () => {
+      const { display, calls, settle } = manualDisplay();
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const request = plugin.requestFullscreen();
+      const exit = plugin.exitFullscreen();
+      settle();
+      await request;
+      settle();
+      await exit;
+
+      expect(calls).toEqual(["request", "exit"]);
+      expect(fullscreenEvents).toEqual([true, false]);
+      expect(plugin.isFullscreen).toBe(false);
+    });
+
+    it("runs a request after the exit it interrupts", async () => {
+      const { display, calls, settle } = manualDisplay({ active: true });
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const exit = plugin.exitFullscreen();
+      const request = plugin.requestFullscreen();
+      settle();
+      await exit;
+      settle();
+      await request;
+
+      expect(calls).toEqual(["exit", "request"]);
+      expect(fullscreenEvents).toEqual([false, true]);
+      expect(plugin.isFullscreen).toBe(true);
+    });
+
+    it("leaves fullscreen after exit, request, exit, the last call winning", async () => {
+      const { display, calls, settle } = manualDisplay({ active: true });
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const first = plugin.exitFullscreen();
+      const overridden = plugin.requestFullscreen();
+      const last = plugin.exitFullscreen();
+      settle();
+      await Promise.all([first, overridden, last]);
+
+      expect(calls).toEqual(["exit"]);
+      expect(fullscreenEvents).toEqual([false]);
+      expect(plugin.isFullscreen).toBe(false);
+    });
+
+    it("stays fullscreen after request, exit, request, the last call winning", async () => {
+      const { display, calls, settle } = manualDisplay();
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const first = plugin.requestFullscreen();
+      const overridden = plugin.exitFullscreen();
+      const last = plugin.requestFullscreen();
+      settle();
+      await Promise.all([first, overridden, last]);
+
+      expect(calls).toEqual(["request"]);
+      expect(fullscreenEvents).toEqual([true]);
+      expect(plugin.isFullscreen).toBe(true);
+    });
+
+    it("runs the latest direction once the step in flight settles", async () => {
+      const { display, calls, settle } = manualDisplay({ active: true });
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const first = plugin.exitFullscreen();
+      const queued = [
+        plugin.requestFullscreen(),
+        plugin.exitFullscreen(),
+        plugin.requestFullscreen(),
+      ];
+      settle();
+      await first;
+      settle();
+      await Promise.all(queued);
+
+      expect(calls).toEqual(["exit", "request"]);
+      expect(fullscreenEvents).toEqual([false, true]);
+      expect(plugin.isFullscreen).toBe(true);
+    });
+
+    it("rejects the queued calls with a refusal they asked for, without asking again", async () => {
+      const refusal = new TypeError("Permissions check failed");
+      const { display, calls, rejectWith, settle } = manualDisplay();
+      rejectWith.error = refusal;
+      const { plugin } = await startRenderer({ display });
+
+      const first = plugin.requestFullscreen();
+      const overridden = plugin.exitFullscreen();
+      const last = plugin.requestFullscreen();
+      settle();
+
+      await expect(first).rejects.toBe(refusal);
+      await expect(overridden).rejects.toBe(refusal);
+      await expect(last).rejects.toBe(refusal);
+      expect(calls).toEqual(["request"]);
+    });
+
+    it("resolves an exit that changes nothing without asking the host", async () => {
+      const { display, calls } = manualDisplay();
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      await expect(plugin.exitFullscreen()).resolves.toBeUndefined();
+
+      expect(calls).toEqual([]);
+      expect(fullscreenEvents).toEqual([]);
+    });
+
+    it("rejects an orientation lock on a host that cannot lock", async () => {
+      const { display, calls } = manualDisplay({ lockSupport: "unsupported" });
+      const { plugin } = await startRenderer({ display });
+
+      await expect(plugin.lockOrientation("landscape")).rejects.toThrow(
+        "RendererPlugin.lockOrientation: this host cannot lock the screen " +
+          'orientation (orientationLockSupport is "unsupported").',
+      );
+      expect(calls).toEqual([]);
+    });
+
+    it("resolves a lock with the orientation the host reports afterwards", async () => {
+      const { display, calls } = manualDisplay();
+      const { plugin, orientationEvents } = await startRenderer({ display });
+
+      await expect(plugin.lockOrientation("portrait")).resolves.toBe(
+        "portrait-primary",
+      );
+
+      expect(calls).toEqual(["lock:portrait"]);
+      expect(orientationEvents).toEqual(["portrait-primary"]);
+    });
+
+    it("resolves the release on a host that cannot lock", async () => {
+      const { display, calls } = manualDisplay({ lockSupport: "unsupported" });
+      const { plugin } = await startRenderer({ display });
+
+      await expect(plugin.unlockOrientation()).resolves.toBeUndefined();
+
+      expect(calls).toEqual([]);
+    });
+
+    it("releases the lock through the host", async () => {
+      const { display, calls } = manualDisplay();
+      const { plugin } = await startRenderer({ display });
+
+      await plugin.unlockOrientation();
+
+      expect(calls).toEqual(["unlock"]);
+    });
+
+    it.each([
+      [
+        { active: "yes" },
+        'HostFullscreen.active must be a boolean, got "yes".',
+      ],
+      [
+        { support: "maybe" },
+        "HostFullscreen.support must be one of supported, unsupported, " +
+          'unknown, got "maybe".',
+      ],
+      [
+        { current: "up" },
+        "HostOrientation.current must be one of portrait-primary, " +
+          "portrait-secondary, landscape-primary, landscape-secondary or " +
+          'null, got "up".',
+      ],
+      [
+        { lockSupport: 7 },
+        "HostOrientation.lockSupport must be one of supported, unsupported, " +
+          "unknown, got 7.",
+      ],
+    ])("rejects the value %o a host reports", async (broken, message) => {
+      const { display, state } = manualDisplay();
+      const { plugin, fullscreenEvents, orientationEvents } =
+        await startRenderer({ display });
+      Object.assign(state, broken);
+
+      expect(() => {
+        if ("active" in broken) return plugin.isFullscreen;
+        if ("support" in broken) return plugin.fullscreenSupport;
+        if ("current" in broken) return plugin.orientation;
+        return plugin.orientationLockSupport;
+      }).toThrow(message);
+      expect(fullscreenEvents).toEqual([]);
+      expect(orientationEvents).toEqual([]);
+    });
+
+    it("passes a host's refusal of an exit on and emits nothing", async () => {
+      const refusal = new TypeError("Document not active");
+      const { display, rejectWith, settle } = manualDisplay({ active: true });
+      rejectWith.error = refusal;
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      const pending = plugin.exitFullscreen();
+      settle();
+
+      await expect(pending).rejects.toBe(refusal);
+      expect(fullscreenEvents).toEqual([]);
+    });
+
+    it("rejects a request that reads a broken value from the host", async () => {
+      const { display, state } = manualDisplay();
+      const { plugin } = await startRenderer({ display });
+      state.active = "yes";
+
+      await expect(plugin.requestFullscreen()).rejects.toThrow(
+        'HostFullscreen.active must be a boolean, got "yes".',
+      );
+    });
+
+    it("rejects an exit that reads a broken value from the host", async () => {
+      const { display, state } = manualDisplay();
+      const { plugin } = await startRenderer({ display });
+      state.active = 1;
+
+      await expect(plugin.exitFullscreen()).rejects.toThrow(
+        "HostFullscreen.active must be a boolean, got 1.",
+      );
+    });
+
+    it("rejects a lock and a release that read a broken value", async () => {
+      const { display, state } = manualDisplay();
+      const { plugin } = await startRenderer({ display });
+      state.lockSupport = null;
+      const message =
+        "HostOrientation.lockSupport must be one of supported, unsupported, " +
+        "unknown, got null.";
+
+      await expect(plugin.lockOrientation("portrait")).rejects.toThrow(message);
+      await expect(plugin.unlockOrientation()).rejects.toThrow(message);
+    });
+
+    it("stops watching the display once, on destroy", async () => {
+      const { display, state, stops, notifyDetached } = manualDisplay();
+      const { plugin, fullscreenEvents } = await startRenderer({ display });
+
+      plugin.onDestroy();
+      expect(stops()).toBe(1);
+
+      state.active = true;
+      expect(() => notifyDetached()).not.toThrow();
+      expect(fullscreenEvents).toEqual([]);
+    });
+
+    it("records a throwing event handler and reports it to the caller", async () => {
+      const failure = new Error("handler failed");
+      const { display, settle, notifyDetached } = manualDisplay();
+      const { context } = createInstallContext();
+      const bus = context.resolve(EventBusKey);
+      const boundary = context.resolve(ErrorBoundaryKey);
+      bus._setErrorBoundary(boundary);
+      context.register(HostDisplayKey, display);
+      bus.on("screen:fullscreen", () => {
+        throw failure;
+      });
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      plugin.onStart();
+
+      const pending = plugin.requestFullscreen();
+      settle();
+      await expect(pending).rejects.toBe(failure);
+
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]?.event).toBe("screen:fullscreen");
+      // The state was stored before the handler ran, so the same state is not
+      // a change: the handler, which throws on every emit, is not called
+      // again.
+      expect(plugin.isFullscreen).toBe(true);
+      expect(() => notifyDetached()).not.toThrow();
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+    });
+
+    it("follows the display's pixel ratio unless the game fixed the resolution", async () => {
+      const matchMedia = vi.fn(() => ({
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+      vi.stubGlobal("window", {
+        devicePixelRatio: 2,
+        matchMedia,
+        screen: {},
+        addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
       });
 
-      const { context } = createInstallContext();
-      const bus = context.resolve(EventBusKey);
-      const received: Array<{ active: boolean }> = [];
-      bus.on("screen:fullscreen", (data) => received.push(data));
+      await startRenderer();
+      expect(matchMedia).toHaveBeenCalledWith("(resolution: 2dppx)");
 
-      const plugin = new RendererPlugin({ ...defaultConfig, container });
-      await plugin.install(context);
+      matchMedia.mockClear();
+      await startRenderer({ config: { resolution: 1 } });
+      expect(matchMedia).not.toHaveBeenCalled();
 
-      // Simulate the browser entering fullscreen, then dispatching the event.
-      const fire = changeHandler as unknown as (() => void) | null;
-      (
-        document as unknown as { fullscreenElement: HTMLElement | null }
-      ).fullscreenElement = container;
-      fire?.();
-      expect(received).toEqual([{ active: true }]);
-
-      (
-        document as unknown as { fullscreenElement: HTMLElement | null }
-      ).fullscreenElement = null;
-      fire?.();
-      expect(received).toEqual([{ active: true }, { active: false }]);
-    });
-
-    it("removes the fullscreenchange listener on destroy", async () => {
-      const removeEventListener = vi.fn();
-      const container = {
-        requestFullscreen: vi.fn().mockResolvedValue(undefined),
-        appendChild: vi.fn(),
-        getBoundingClientRect: () => ({ width: 800, height: 600 }),
-      } as unknown as HTMLElement;
-      vi.stubGlobal("document", {
-        fullscreenElement: null,
-        exitFullscreen: vi.fn().mockResolvedValue(undefined),
-        addEventListener: vi.fn(),
-        removeEventListener,
-      });
-
-      const { context } = createInstallContext();
-      const plugin = new RendererPlugin({ ...defaultConfig, container });
-      await plugin.install(context);
-      plugin.onDestroy();
-
-      // Both the standard and prefixed listener names are detached.
-      const detached = removeEventListener.mock.calls.map(
-        (args: unknown[]) => args[0],
-      );
-      expect(detached).toContain("fullscreenchange");
-      expect(detached).toContain("webkitfullscreenchange");
+      await startRenderer({ config: { pixi: { resolution: 1 } } });
+      expect(matchMedia).not.toHaveBeenCalled();
     });
   });
 
@@ -944,6 +1856,36 @@ describe("RendererPlugin", () => {
       expect(app.initOptions.roundPixels).toBe(false);
     });
 
+    it("keeps Tab from turning on Pixi's accessibility layer", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
+      expect(app.initOptions["accessibilityOptions"]).toEqual({
+        activateOnTab: false,
+      });
+    });
+
+    it("keeps the game's accessibility options, a Tab opt-in included", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({
+        ...defaultConfig,
+        pixi: { accessibilityOptions: { debug: true, activateOnTab: true } },
+      });
+      await plugin.install(context);
+
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
+      expect(app.initOptions["accessibilityOptions"]).toEqual({
+        debug: true,
+        activateOnTab: true,
+      });
+    });
+
     it("applies image-rendering CSS to the canvas when enabled", async () => {
       const { context } = createInstallContext();
       const plugin = new RendererPlugin({
@@ -1006,105 +1948,6 @@ describe("RendererPlugin", () => {
     });
   });
 
-  describe("orientation", () => {
-    afterEach(() => {
-      vi.unstubAllGlobals();
-    });
-
-    it("emits screen:orientation when the screen orientation changes", async () => {
-      let changeHandler: (() => void) | null = null;
-      const orientationMock = {
-        type: "landscape-primary",
-        addEventListener: vi.fn((event: string, fn: () => void) => {
-          if (event === "change") changeHandler = fn;
-        }),
-        removeEventListener: vi.fn(),
-      };
-      vi.stubGlobal("window", {
-        screen: { orientation: orientationMock },
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      });
-      vi.stubGlobal("document", {
-        fullscreenElement: null,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      });
-
-      const { context } = createInstallContext();
-      const bus = context.resolve(EventBusKey);
-      const received: Array<{ type: OrientationType }> = [];
-      bus.on("screen:orientation", (data) => received.push(data));
-
-      const plugin = new RendererPlugin(defaultConfig);
-      await plugin.install(context);
-
-      orientationMock.type = "portrait-primary";
-      (changeHandler as unknown as (() => void) | null)?.();
-
-      expect(received).toEqual([{ type: "portrait-primary" }]);
-      expect(plugin.orientation).toBe("portrait-primary");
-    });
-
-    it("falls back to window.orientationchange on browsers without screen.orientation", async () => {
-      let changeHandler: (() => void) | null = null;
-      const windowAddEventListener = vi.fn((event: string, fn: () => void) => {
-        if (event === "orientationchange") changeHandler = fn;
-      });
-      vi.stubGlobal("window", {
-        screen: {},
-        orientation: 90,
-        addEventListener: windowAddEventListener,
-        removeEventListener: vi.fn(),
-      });
-      vi.stubGlobal("document", {
-        fullscreenElement: null,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      });
-
-      const { context } = createInstallContext();
-      const bus = context.resolve(EventBusKey);
-      const received: Array<{ type: OrientationType }> = [];
-      bus.on("screen:orientation", (data) => received.push(data));
-
-      const plugin = new RendererPlugin(defaultConfig);
-      await plugin.install(context);
-
-      (changeHandler as unknown as (() => void) | null)?.();
-      expect(received).toEqual([{ type: "landscape-primary" }]);
-    });
-
-    it("removes the orientation listener on destroy", async () => {
-      const removeEventListener = vi.fn();
-      vi.stubGlobal("window", {
-        screen: {
-          orientation: {
-            type: "portrait-primary",
-            addEventListener: vi.fn(),
-            removeEventListener,
-          },
-        },
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      });
-      vi.stubGlobal("document", {
-        fullscreenElement: null,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      });
-
-      const { context } = createInstallContext();
-      const plugin = new RendererPlugin(defaultConfig);
-      await plugin.install(context);
-      plugin.onDestroy();
-
-      expect(removeEventListener).toHaveBeenCalledWith(
-        "change",
-        expect.any(Function),
-      );
-    });
-  });
   describe("UI hit testing and pointer dispatch", () => {
     /** A container chain the hit test can walk, innermost first. */
     function chain(depth: number): Array<{ parent: object | null }> {
@@ -1424,6 +2267,384 @@ describe("RendererPlugin", () => {
     });
   });
 
+  describe("graphics context", () => {
+    interface MockPixi {
+      name: string;
+      resolution: number;
+      gl: {
+        contextLost: boolean;
+        getParameter: (name: number) => unknown;
+        getExtension: (name: string) => unknown;
+      };
+      context: { webGLVersion: number };
+      gpu?: { device: unknown };
+      runners: {
+        contextChange: { emit(): void };
+        prerender: { emit(options: { container: unknown }): void };
+      };
+    }
+
+    /** A started engine drawing with a renderer, and one frame of its loop. */
+    async function installed(config: RendererConfig = defaultConfig): Promise<{
+      engine: Engine;
+      plugin: RendererPlugin;
+      bus: EventBus<EngineEvents>;
+      pixi: MockPixi;
+      canvas: { listeners: Map<string, Set<() => void>> };
+      tick: () => void;
+    }> {
+      const engine = new Engine();
+      const plugin = new RendererPlugin(config);
+      await engine.use(plugin).start();
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
+      // The game loop's ticker function, attached after Pixi's own render.
+      const frame = app.ticker.callbacks[app.ticker.callbacks.length - 1]!;
+      return {
+        engine,
+        plugin,
+        bus: engine.events,
+        pixi: plugin.application.renderer as unknown as MockPixi,
+        canvas: plugin.canvas as unknown as {
+          listeners: Map<string, Set<() => void>>;
+        },
+        tick: () => frame(),
+      };
+    }
+
+    /** Fire the DOM event a browser sends when it takes the context away. */
+    function loseContext(canvas: {
+      listeners: Map<string, Set<() => void>>;
+    }): void {
+      for (const fn of canvas.listeners.get("webglcontextlost") ?? []) fn();
+    }
+
+    it("reports the context only while one exists", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      const message =
+        "the graphics context is only known from the renderer's install to engine.destroy().";
+
+      expect(() => plugin.capabilities).toThrow(
+        `RendererPlugin.capabilities: ${message}`,
+      );
+      expect(() => plugin.contextLost).toThrow(
+        `RendererPlugin.contextLost: ${message}`,
+      );
+
+      await plugin.install(context);
+      expect(plugin.capabilities.backend).toBe("webgl2");
+      plugin.onDestroy();
+
+      expect(() => plugin.capabilities).toThrow(
+        `RendererPlugin.capabilities: ${message}`,
+      );
+      expect(() => plugin.contextLost).toThrow(
+        `RendererPlugin.contextLost: ${message}`,
+      );
+    });
+
+    it("reads what the context reports once, not every frame", async () => {
+      const { plugin, pixi, tick } = await installed();
+      const first = plugin.capabilities;
+      expect(first).toMatchObject({
+        backend: "webgl2",
+        maxTextureSize: 8192,
+        maxRenderTargetSize: 8192,
+        maxViewportWidth: 8192,
+        maxViewportHeight: 8192,
+        maxSamples: 4,
+        highpFragment: "supported",
+        blendMinMax: "supported",
+      });
+      const reads = vi.spyOn(pixi.gl, "getParameter");
+
+      for (let i = 0; i < 60; i++) tick();
+
+      expect(reads).not.toHaveBeenCalled();
+      expect(plugin.capabilities).toBe(first);
+    });
+
+    it("asks pixi for the backends it draws with", async () => {
+      const cases: Array<[unknown, string[]]> = [
+        [undefined, ["webgl", "webgpu"]],
+        ["webgl", ["webgl", "webgpu"]],
+        ["webgpu", ["webgpu", "webgl"]],
+        [["webgpu"], ["webgpu"]],
+      ];
+      for (const [preference, expected] of cases) {
+        const { context } = createInstallContext();
+        const plugin = new RendererPlugin({
+          ...defaultConfig,
+          ...(preference === undefined
+            ? {}
+            : { pixi: { preference } as never }),
+        });
+        await plugin.install(context);
+        const app = plugin.application as unknown as InstanceType<
+          typeof mocks.MockApplication
+        >;
+        expect(app.initOptions["preference"]).toEqual(expected);
+      }
+    });
+
+    it("rejects a backend it does not draw with, before anything is built", () => {
+      const message =
+        'RendererPlugin: pixi.preference must name "webgl" or "webgpu"; YAGE does not draw with Pixi\'s Canvas 2D renderer. Got ';
+      for (const preference of ["canvas", ["webgl", "canvas"], [], "metal"]) {
+        expect(
+          () =>
+            new RendererPlugin({
+              ...defaultConfig,
+              pixi: { preference } as never,
+            }),
+        ).toThrow(`${message}${JSON.stringify(preference)}.`);
+      }
+    });
+
+    it("reports a lost context at once and tells the game in the next frame's Render phase", async () => {
+      const { engine, plugin, bus, canvas, tick } = await installed();
+      const seen: boolean[] = [];
+      const order: string[] = [];
+      bus.on("graphics:context", ({ lost }) => {
+        seen.push(lost);
+        order.push("event");
+      });
+      class UpdateProbe extends System {
+        readonly phase = Phase.Update;
+        update(): void {
+          order.push("update");
+        }
+      }
+      class LateRenderProbe extends System {
+        readonly phase = Phase.Render;
+        readonly priority = 100;
+        update(): void {
+          order.push("render");
+        }
+      }
+      const scheduler = engine.context.resolve(SystemSchedulerKey);
+      scheduler.add(new UpdateProbe());
+      scheduler.add(new LateRenderProbe());
+
+      loseContext(canvas);
+      expect(plugin.contextLost).toBe(true);
+      expect(seen).toEqual([]);
+
+      tick();
+      expect(seen).toEqual([true]);
+      expect(order).toEqual(["update", "event", "render"]);
+
+      tick();
+      expect(seen).toEqual([true]);
+    });
+
+    it("stops the game loop when a handler throws, recording the handler", async () => {
+      const { engine, bus, canvas, tick } = await installed();
+      const failure = new Error("handler failed");
+      bus.on("graphics:context", () => {
+        throw failure;
+      });
+
+      loseContext(canvas);
+
+      expect(() => tick()).toThrow(failure);
+      expect(engine.loop.isRunning).toBe(false);
+      expect(
+        engine.context.resolve(ErrorBoundaryKey).getCallbackErrors(),
+      ).toEqual([expect.objectContaining({ event: "graphics:context" })]);
+    });
+
+    it("waits for a frame while the loop is stopped", async () => {
+      const { engine, bus, canvas, tick } = await installed();
+      const seen: boolean[] = [];
+      bus.on("graphics:context", ({ lost }) => seen.push(lost));
+
+      engine.loop.stop();
+      loseContext(canvas);
+      tick();
+      expect(seen).toEqual([]);
+
+      engine.loop.start();
+      engine.loop.tick(16);
+      expect(seen).toEqual([true]);
+    });
+
+    it("reads the replacement context and reports the restore", async () => {
+      const { plugin, bus, pixi, canvas, tick } = await installed();
+      const seen: boolean[] = [];
+      bus.on("graphics:context", ({ lost }) => seen.push(lost));
+      const before = plugin.capabilities;
+
+      loseContext(canvas);
+      pixi.runners.contextChange.emit();
+
+      expect(plugin.contextLost).toBe(false);
+      expect(plugin.capabilities).not.toBe(before);
+      expect(plugin.capabilities).toEqual(before);
+
+      tick();
+      expect(seen).toEqual([true, false]);
+    });
+
+    function fakeDevice(): {
+      device: Record<string, unknown>;
+      lose: (reason: string) => void;
+    } {
+      let settle: (info: { reason: string }) => void = () => {};
+      const lost = new Promise<{ reason: string }>((resolve) => {
+        settle = resolve;
+      });
+      return {
+        device: {
+          limits: { maxTextureDimension2D: 4096 },
+          features: new Set<string>(["float32-filterable"]),
+          lost,
+        },
+        lose: (reason: string) => settle({ reason }),
+      };
+    }
+
+    /** Install a renderer whose pixi settled on WebGPU with `device`. */
+    async function installedOnWebGPU(
+      device: Record<string, unknown>,
+    ): Promise<Awaited<ReturnType<typeof installed>>> {
+      mocks.rendererShape.build = () => ({
+        name: "webgpu",
+        gpu: { device },
+      });
+      try {
+        return await installed();
+      } finally {
+        mocks.rendererShape.build = null;
+      }
+    }
+
+    it("reports webgpu as its backend on a webgpu device", async () => {
+      const { plugin } = await installedOnWebGPU(fakeDevice().device);
+      expect(plugin.backend).toBe("webgpu");
+    });
+
+    it("reads what a webgpu device reports", async () => {
+      const device = fakeDevice();
+      const { plugin } = await installedOnWebGPU(device.device);
+
+      expect(plugin.capabilities).toMatchObject({
+        backend: "webgpu",
+        maxTextureSize: 4096,
+        maxRenderTargetSize: 4096,
+        maxSamples: 4,
+        blendMinMax: "supported",
+        rgba32float: { filter: "supported" },
+      });
+    });
+
+    it("takes the engine tearing its own device down for what it is", async () => {
+      const device = fakeDevice();
+      const { plugin } = await installedOnWebGPU(device.device);
+
+      device.lose("destroyed");
+      await Promise.resolve();
+
+      expect(plugin.contextLost).toBe(false);
+    });
+
+    it("follows the device a webgpu restore hands back, and leaves the one it replaced", async () => {
+      const first = fakeDevice();
+      const second = fakeDevice();
+      const stranger = fakeDevice();
+      const { plugin, pixi } = await installedOnWebGPU(first.device);
+
+      pixi.gpu = { device: second.device };
+      pixi.runners.contextChange.emit();
+
+      first.lose("unknown");
+      stranger.lose("unknown");
+      await Promise.resolve();
+      expect(plugin.contextLost).toBe(false);
+
+      second.lose("unknown");
+      await Promise.resolve();
+      expect(plugin.contextLost).toBe(true);
+    });
+
+    it("stops following the context once the renderer is destroyed", async () => {
+      const { plugin, bus, pixi, canvas } = await installed();
+      const seen: boolean[] = [];
+      bus.on("graphics:context", ({ lost }) => seen.push(lost));
+      const contextChange = pixi.runners
+        .contextChange as unknown as InstanceType<typeof mocks.MockRunner>;
+      const destroyRunner = contextChange.destroy.bind(contextChange);
+      let leftWhenPixiDestroyed = -1;
+      contextChange.destroy = () => {
+        leftWhenPixiDestroyed = contextChange.items!.length;
+        destroyRunner();
+      };
+
+      plugin.onDestroy();
+      loseContext(canvas);
+
+      expect(leftWhenPixiDestroyed).toBe(0);
+      expect(canvas.listeners.get("webglcontextlost")?.size ?? 0).toBe(0);
+      expect(seen).toEqual([]);
+    });
+
+    it("drops antialiasing on a buffer where the context cannot multisample", async () => {
+      const { plugin, pixi } = await installed();
+      const source = new (
+        await import("pixi.js")
+      ).Container() as unknown as import("./public-types.js").DisplayContainer;
+
+      const sharp = plugin.createRenderTarget(source, {
+        width: 10,
+        height: 10,
+        antialias: true,
+      });
+      expect(
+        (sharp.texture as unknown as { antialias: boolean }).antialias,
+      ).toBe(true);
+
+      pixi.gl.getParameter = (name: number) => (name === 0x8d57 ? 0 : 8192);
+      pixi.runners.contextChange.emit();
+      const flat = plugin.createRenderTarget(source, {
+        width: 10,
+        height: 10,
+        antialias: true,
+      });
+      expect(
+        (flat.texture as unknown as { antialias: boolean }).antialias,
+      ).toBe(false);
+    });
+  });
+
+  describe("render-target layers", () => {
+    it("keeps a layer's texel density when the renderer's resolution changes", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      const pixi = plugin.application.renderer as unknown as {
+        resolution: number;
+        runners: { resolutionChange: { emit(resolution: number): void } };
+      };
+      const scene = {
+        name: "radar",
+        layers: [{ name: "radar", renderTarget: { width: 10, height: 10 } }],
+      } as unknown as Scene;
+      const radar = plugin.sceneRenderTrees
+        .createForScene(scene)
+        .get("radar").renderTarget!;
+      expect(radar.resolution).toBe(1);
+
+      pixi.resolution = 2;
+      pixi.runners.resolutionChange.emit(2);
+
+      expect(radar.resolution).toBe(2);
+      expect(radar.width).toBe(10);
+      expect(radar.needsRender).toBe(true);
+    });
+  });
+
   describe("createTexture", () => {
     async function installedPlugin(): Promise<RendererPlugin> {
       const { context } = createInstallContext();
@@ -1432,40 +2653,179 @@ describe("RendererPlugin", () => {
       return plugin;
     }
 
-    function generateCalls(plugin: RendererPlugin): { frame?: unknown }[] {
-      const generate = (
-        plugin.application.renderer as unknown as {
-          generateTexture: { mock: { calls: [{ frame?: unknown }][] } };
-        }
-      ).generateTexture;
-      return generate.mock.calls.map(([options]) => options);
+    /** The texture the bake produced, with the sizes it was built at. */
+    function baked(texture: unknown): {
+      width: number;
+      height: number;
+      resolution: number;
+    } {
+      const resource = texture as {
+        width: number;
+        height: number;
+        source: { resolution: number };
+      };
+      return {
+        width: resource.width,
+        height: resource.height,
+        resolution: resource.source.resolution,
+      };
+    }
+
+    /** The wrapper the bake drew, parented under nothing else. */
+    function drawnWrapper(plugin: RendererPlugin): {
+      children: Array<{ position: { x: number; y: number } }>;
+    } {
+      const renderer = plugin.application.renderer as unknown as {
+        render: { mock: { calls: [{ container: unknown }][] } };
+      };
+      const [call] = renderer.render.mock.calls;
+      return call![0].container as never;
     }
 
     it("bakes the region a size names, starting at the origin", async () => {
       const plugin = await installedPlugin();
 
-      plugin.createTexture(() => {}, { width: 128, height: 32 });
+      const texture = plugin.createTexture(
+        (g) => {
+          (
+            g as unknown as {
+              rect(x: number, y: number, w: number, h: number): void;
+            }
+          ).rect(0, 0, 40, 10);
+        },
+        { width: 128, height: 32 },
+      );
 
-      const [options] = generateCalls(plugin);
-      expect(options?.frame).toMatchObject({
-        x: 0,
-        y: 0,
-        width: 128,
-        height: 32,
+      expect(baked(texture)).toEqual({ width: 128, height: 32, resolution: 1 });
+      const origin = drawnWrapper(plugin).children[0]?.position;
+      expect(origin?.x).toBeCloseTo(0);
+      expect(origin?.y).toBeCloseTo(0);
+    });
+
+    it("bakes the drawn bounds without a size, however far from the origin the drawing starts", async () => {
+      const plugin = await installedPlugin();
+
+      const texture = plugin.createTexture((g) => {
+        (
+          g as unknown as {
+            rect(x: number, y: number, w: number, h: number): void;
+          }
+        ).rect(10, 4, 20, 12);
+      });
+
+      expect(baked(texture)).toEqual({ width: 20, height: 12, resolution: 1 });
+      expect(drawnWrapper(plugin).children[0]?.position).toMatchObject({
+        x: -10,
+        y: -4,
       });
     });
 
-    it("passes no frame without a size, so pixi bakes the drawn bounds", async () => {
+    it("bakes one texel for a drawing with no bounds", async () => {
       const plugin = await installedPlugin();
 
-      plugin.createTexture(() => {});
+      const texture = plugin.createTexture(() => {});
 
-      const [options] = generateCalls(plugin);
-      expect(options).not.toHaveProperty("frame");
+      expect(baked(texture)).toEqual({ width: 1, height: 1, resolution: 1 });
+    });
+
+    it("draws the kept drawing again once the graphics context is replaced", async () => {
+      const plugin = await installedPlugin();
+      const pixi = plugin.application.renderer as unknown as {
+        render: { mock: { calls: unknown[] } };
+        runners: {
+          contextChange: { emit(): void };
+          prerender: { emit(options: { container: unknown }): void };
+        };
+      };
+      plugin.createTexture((g) => {
+        (
+          g as unknown as {
+            rect(x: number, y: number, w: number, h: number): void;
+          }
+        ).rect(0, 0, 8, 8);
+      });
+      expect(pixi.render.mock.calls).toHaveLength(1);
+
+      pixi.runners.contextChange.emit();
+      pixi.runners.prerender.emit({ container: plugin.application.stage });
+
+      expect(pixi.render.mock.calls).toHaveLength(2);
+    });
+
+    it("frees the drawing when the game destroys the texture", async () => {
+      const plugin = await installedPlugin();
+      const pixi = plugin.application.renderer as unknown as {
+        render: { mock: { calls: unknown[] } };
+        runners: {
+          contextChange: { emit(): void; items: unknown[] };
+          prerender: {
+            emit(options: { container: unknown }): void;
+            items: unknown[];
+          };
+        };
+      };
+      const texture = plugin.createTexture((g) => {
+        (
+          g as unknown as {
+            rect(x: number, y: number, w: number, h: number): void;
+          }
+        ).rect(0, 0, 8, 8);
+      }) as unknown as { destroy(): void };
+      const wrapper = drawnWrapper(plugin) as unknown as {
+        destroy(options?: unknown): void;
+      };
+      const destroyWrapper = vi.spyOn(wrapper, "destroy");
+      const destroyTexture = vi.spyOn(texture, "destroy");
+
+      texture.destroy();
+
+      // The game's call is the only texture destroy; the wrapper takes the
+      // kept drawing with it.
+      expect(destroyTexture).toHaveBeenCalledTimes(1);
+      expect(destroyWrapper).toHaveBeenCalledTimes(1);
+      expect(destroyWrapper).toHaveBeenCalledWith({ children: true });
+      // The renderer's own listener stays; the baked buffer left both lists.
+      expect(pixi.runners.contextChange.items).toHaveLength(1);
+      expect(pixi.runners.prerender.items).toHaveLength(0);
+      pixi.runners.contextChange.emit();
+      pixi.runners.prerender.emit({ container: plugin.application.stage });
+      expect(pixi.render.mock.calls).toHaveLength(1);
+    });
+
+    it("leaves its textures to the game after engine.destroy()", async () => {
+      const engine = new Engine();
+      const plugin = new RendererPlugin(defaultConfig);
+      await engine.use(plugin).start();
+      const baked = plugin.createTexture((g) => {
+        (
+          g as unknown as {
+            rect(x: number, y: number, w: number, h: number): void;
+          }
+        ).rect(0, 0, 8, 8);
+      }) as unknown as { destroy(): void; source: { destroyed: boolean } };
+      const target = plugin.createRenderTarget(
+        new mocks.MockContainer() as unknown as DisplayContainer,
+        { width: 10, height: 10 },
+      );
+      const buffer = target.texture as unknown as {
+        source: { destroyed: boolean };
+      };
+
+      engine.destroy();
+
+      expect(baked.source.destroyed).toBe(false);
+      expect(buffer.source.destroyed).toBe(false);
+      expect(() => baked.destroy()).not.toThrow();
+      expect(() => target.destroy()).not.toThrow();
+      expect(baked.source.destroyed).toBe(true);
+      expect(buffer.source.destroyed).toBe(true);
     });
 
     it("throws naming the offending dimension", async () => {
       const plugin = await installedPlugin();
+      const pixi = plugin.application.renderer as unknown as {
+        render: { mock: { calls: unknown[] } };
+      };
 
       expect(() =>
         plugin.createTexture(() => {}, { width: 0, height: 32 }),
@@ -1473,7 +2833,7 @@ describe("RendererPlugin", () => {
       expect(() =>
         plugin.createTexture(() => {}, { width: 128, height: NaN }),
       ).toThrow("RendererPlugin.createTexture: height must be finite and > 0");
-      expect(generateCalls(plugin)).toEqual([]);
+      expect(pixi.render.mock.calls).toEqual([]);
     });
   });
 });

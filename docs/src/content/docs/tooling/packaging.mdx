@@ -1,0 +1,421 @@
+---
+title: Packaging for desktop and mobile
+description: Turn a YAGE game into a macOS or Windows app with Electron Forge, and into an iOS or Android app with Capacitor.
+sidebar:
+  badge:
+    text: Experimental
+    variant: caution
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+A YAGE game runs in a browser, and the same source runs as a desktop app and
+as a mobile app. Electron Forge builds the desktop package and the Capacitor
+CLI builds the native projects; `@yagejs-tools/pack` is the small tool
+beside them that sets the project up, checks the machine, checks a release,
+and records what went into a build.
+
+<Aside type="caution" title="Experimental">
+This tool has packaged games on macOS only: Electron apps for macOS, and
+Capacitor apps for the iOS simulator. It has checked a Windows package but not
+run one, and it generates and checks an Android project but has not built one.
+It does not sign or notarize what it builds. The two host packages a packaged
+game runs with, `@yagejs/host-electron` and `@yagejs/host-capacitor`, are
+experimental too.
+</Aside>
+
+What you get:
+
+- `npm run start:electron` — the game in a desktop window.
+- `npm run make:electron` — the packaged app and the files the configured
+  makers write from it, plus a JSON record of everything that went into
+  them.
+- `npm run sync:capacitor` — the mobile build copied into the iOS and
+  Android projects, with the app's identity checked on every sync.
+- `npx yage-pack check --target <electron|ios|android> --release` — what a
+  release still needs, each failure with the exact setting to change.
+
+## A new project
+
+```bash
+npm create yage@latest my-game -- --features electron,capacitor
+cd my-game
+npx yage-pack init --target electron --target ios --target android --app-id com.example.mygame
+```
+
+The feature adds the host adapter and the build tools. `init` writes the
+files each target needs and the npm scripts that build them.
+
+`--app-id` is the app's identifier: letters and digits in each dot-separated
+part, starting with a letter, such as `com.example.mygame`. It names the
+desktop save directory and the mobile bundle, so pick it before the first
+release and leave it alone afterwards — changing it leaves every player's
+saves behind.
+
+## An existing game
+
+### One boot function
+
+Every target's build contains only the adapters it needs, so each target
+gets its own entry file and all of them call one boot function. Move the
+engine setup out of your browser entry into `src/boot.ts`:
+
+```ts yage-group="boot" yage-file="boot.ts"
+import { Engine, type Plugin } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { SavePlugin, createSave, type SaveAdapter } from "@yagejs/save";
+
+export interface BootOptions {
+  /** The host adapters this build runs with. */
+  readonly hostPlugins: readonly Plugin[];
+  /** Where this build keeps its saves. */
+  readonly saveAdapter: SaveAdapter;
+}
+
+export async function boot(options: BootOptions): Promise<Engine> {
+  const engine = new Engine();
+  // First, so the rest of the engine can read what the host reports.
+  for (const plugin of options.hostPlugins) engine.use(plugin);
+  engine.use(new RendererPlugin({ width: 800, height: 600 }));
+  engine.use(
+    new SavePlugin({ save: createSave({ adapter: options.saveAdapter }) }),
+  );
+  await engine.start();
+  return engine;
+}
+```
+
+The module must not call `boot` itself, or a target's entry would start the
+game twice. The browser entry does the calling:
+
+```ts yage-group="boot" yage-file="main.web.ts"
+import { localStorageAdapter } from "@yagejs/save";
+import { boot } from "./boot.js";
+
+boot({
+  hostPlugins: [],
+  saveAdapter: localStorageAdapter({ namespace: "my-game" }),
+}).catch((err) => {
+  console.error(err);
+});
+```
+
+Point `index.html` at it:
+
+```html
+<script type="module" src="/src/main.web.ts"></script>
+```
+
+Each entry passes the save adapter for where its build runs. The browser
+entry keeps saves in the browser's storage, and the `namespace` keeps them
+apart from other games on the same site. The entries `yage-pack init` writes
+pass `electronSaveAdapter()` and `capacitorSaveAdapter()`, which keep saves as
+files in the app's data directory. A game that passes `localStorageAdapter`
+in every build saves into the web view's storage on desktop and mobile, and
+nothing reports it.
+
+### One build per target
+
+With Vite, the mode picks the target and the entry file:
+
+```ts
+import { defineConfig } from "vite";
+
+export default defineConfig(({ mode }) => {
+  const target = mode === "electron" || mode === "capacitor" ? mode : "web";
+  return {
+    plugins: [
+      {
+        name: "target-entry",
+        transformIndexHtml: {
+          order: "pre" as const,
+          handler: (html: string) =>
+            target === "web"
+              ? html
+              : html.replace("/src/main.web.ts", `/src/main.${target}.ts`),
+        },
+      },
+    ],
+    build: { outDir: target === "web" ? "dist" : `dist-${target}` },
+  };
+});
+```
+
+`vite build` still writes `dist/`. `vite build --mode electron` writes
+`dist-electron/` and `vite build --mode capacitor` writes
+`dist-capacitor/`, and those two directories are what the packaging tools
+read. A game on another bundler packages the same way: add `build:electron`
+and `build:capacitor` scripts that write those two directories, because the
+scripts `yage-pack init` adds run them.
+
+Two things to watch:
+
+- **Service workers.** An app ships its files; a service worker inside it
+  would keep serving the old ones after an update. Register your PWA plugin
+  for the browser build only. `yage-pack check` fails a native build whose
+  files register one.
+- **Environment files.** A native build loads `.env.electron` or
+  `.env.capacitor`, because Vite reads the file named after the mode, not
+  `.env.production`.
+
+### Install and set up
+
+```bash
+npm install @yagejs/host-electron @yagejs/save
+npm install -D electron @electron-forge/cli @electron-forge/maker-zip @electron-forge/plugin-fuses @electron/fuses @yagejs-tools/pack
+npx yage-pack init --target electron --app-id com.example.mygame
+```
+
+```bash
+npm install @yagejs/host-capacitor @yagejs/save @capacitor/core @capacitor/app @capacitor/filesystem @capacitor/screen-orientation @capacitor/ios @capacitor/android
+npm install -D @capacitor/cli @yagejs-tools/pack
+npx yage-pack init --target ios --target android --app-id com.example.mygame
+```
+
+Each Capacitor plugin is a runtime dependency of the app itself: `npx cap
+sync` installs native code only for the plugins your `package.json` lists.
+
+## Checking the machine
+
+```bash
+npx yage-pack doctor
+```
+
+It reports what each target's build needs and installs nothing. A failure
+names the exact command or setting:
+
+```
+yage-pack doctor — ios
+PASS node: Node 24.15.0.
+FAIL Xcode: The selected developer directory is /Library/Developer/CommandLineTools.
+  Fix: xcode-select points to /Library/Developer/CommandLineTools, the command-line tools. Run the command with DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer, or select Xcode with sudo xcode-select -s /Applications/Xcode.app/Contents/Developer.
+```
+
+It checks Node, the packages each target needs and the versions the host
+adapters accept, that every package the game loads that declares `pixi.js`
+uses one copy of it, and then Xcode and the simulator for iOS, or the JDK and
+the Android SDK for Android. The packages that declare `pixi.js` include the
+`@yagejs` packages, addons and Pixi plugins such as `@pixi/ui`, and the game
+itself when its `package.json` lists `pixi.js`.
+
+## Desktop
+
+```bash
+npm run start:electron     # unpackaged, with developer tools
+npm run package:electron   # the app directory under out/
+npm run make:electron      # the app plus what the makers write under out/make/
+```
+
+`init` writes `electron/main.cjs`, the shell that serves the build. When the
+shell cannot start the game, it shows the error in a dialog and quits,
+because a packaged app's console output reaches no terminal. `init` also
+writes `forge.config.cjs`, which is one line:
+
+```js
+const { electronForgeConfig } = require("@yagejs-tools/pack/forge");
+
+module.exports = electronForgeConfig();
+```
+
+Pass your own settings to it. Packager settings such as an icon or signing
+options are added to YAGE's, and your plugins and hooks run after YAGE's. A
+`makers` list replaces the default ZIP maker, so it names every maker the
+game uses:
+
+```js
+const { electronForgeConfig } = require("@yagejs-tools/pack/forge");
+
+module.exports = electronForgeConfig({
+  packagerConfig: { icon: "build/icon" },
+  makers: [{ name: "@electron-forge/maker-dmg", config: {} }],
+});
+```
+
+What the configuration owns:
+
+- **The archive.** The package holds `package.json`, the shell, the
+  `dist-electron/` build and the packages the shell loads at run time, and
+  nothing else. Add more with `include` and `runtimeDependencies`.
+- **The app's identity**, read from `package.json` `productName`, `version`
+  and `yage.appId`.
+- **The release fuses.** A packaged app ignores `ELECTRON_RUN_AS_NODE`,
+  `NODE_OPTIONS` and `--inspect`, and refuses to start when its archive has
+  been changed. No fuse covers Chromium's `--remote-debugging-port` and
+  `--remote-debugging-pipe` switches, so the shell's `startGame` refuses to
+  load the game in a packaged app started with either. A test driver cannot
+  attach to a packaged app: run it and read what it writes.
+- **The checks and the record.** Packaging runs the checks first, then
+  writes `out/yage-build-electron.json`, and `make` adds every file the
+  makers write to it, from an installer to the update files beside it. The
+  release check reads the fuses from the `.app` bundle of a macOS package or
+  the `.exe` of a Windows package.
+
+On Linux, `npm run package:electron` and `npm run make:electron` stop at the
+release check, because the check cannot tell which file in a Linux package
+folder is the app's executable. The package folder is written, then the check
+fails, so neither the build record nor any maker's files are written.
+`npx yage-pack check --target electron --release --app <path to the executable>`
+reads the fuses of an executable you name.
+
+A packaged app is a release and `electron-forge start` is development: the
+shell reads `app.isPackaged`, which decides the save directory and whether
+developer tools open.
+
+### A game inside an npm workspace
+
+An Electron package carries the game's folder and nothing above it, so the
+packages the shell loads have to be in the game's own `node_modules`. In an
+npm workspace, npm installs them at the workspace root. `electronForgeConfig`
+then refuses to build and names each package outside the game's folder.
+`npx yage-pack doctor` reports the same problem for `@yagejs/host-electron`
+and the packages it loads.
+
+Two npm settings install the game's packages in its own `node_modules`. Each
+one changes more than the game:
+
+- **`npm install --workspaces=false` in the game's folder.** npm treats the
+  game as a project of its own. It installs the game's dependencies in the
+  game's `node_modules` and writes a `package-lock.json` beside them. A
+  dependency on another package of the workspace is downloaded from the
+  public npm registry: the install fails for a name nobody published, and it
+  installs someone else's package for a name another author published. Do
+  not use it for a game that depends on unpublished workspace packages. The
+  next `npm install` at the workspace root removes the game's copies again.
+- **`install-strategy=shallow` in the `.npmrc` at the workspace root.** npm
+  installs the dependencies of every workspace member in that member's own
+  `node_modules`. The setting takes effect only on a fresh install: delete
+  the workspace root's `node_modules` and `package-lock.json`, then run
+  `npm install` at the root. Without the lockfile, npm resolves every
+  dependency of every member again, to the newest version its range accepts.
+  A workspace package the game depends on stays linked at the workspace
+  root, outside the game's folder.
+
+`install-strategy=nested` also installs in each member's folder, but it gives
+each package its own copy of a dependency the game does not list itself, so a
+game can load two copies of one engine package.
+
+## Mobile
+
+```bash
+npm run build:capacitor
+npx cap add ios --packagemanager SPM
+npx cap add android
+npm run sync:capacitor
+npx cap open ios
+```
+
+`capacitor.config.ts` is one line as well:
+
+```ts
+import { capacitorConfig } from "@yagejs-tools/pack/capacitor";
+
+export default capacitorConfig();
+```
+
+It fills in the app's identity, points Capacitor at `dist-capacitor/`, sets
+`ios.contentInset: "never"` so the web view draws edge to edge and the
+page's CSS pads for the safe areas, and leaves the Back button reaching the
+game. Pass anything else through:
+
+```ts
+import { capacitorConfig } from "@yagejs-tools/pack/capacitor";
+
+export default capacitorConfig({
+  android: { backgroundColor: "#0f172a" },
+});
+```
+
+`npm run sync:capacitor` rebuilds the mobile page, copies it into both
+native projects and runs `yage-pack check`, so a bundle identifier that
+differs from `package.json` is reported during the sync. `npx cap add`
+writes the identifier into the Xcode and Gradle projects once and `npx cap
+sync` never updates it, which is why the check compares them and names the
+setting to change.
+
+The check reads the configuration a sync copies into each native project,
+so on a fresh clone it asks for `npx cap sync <platform>` first. On iOS it
+reads the bundle identifier and the version from the App target's Release
+configuration. A value that comes from an xcconfig file or from the project
+level cannot be read there, and the check asks you to set it on the target.
+
+## Before a release
+
+```bash
+npx yage-pack check --target ios --release
+npx yage-pack check --target android --release
+```
+
+The release rules refuse a development server, a keystore password in the
+configuration, a version that differs from `package.json`, an iOS app with
+no privacy manifest, and an Android app that does not declare itself a
+game. Each failure prints what to add and where.
+
+Keep the record each build writes: it names the app's identity, your git
+commit and the files that differed from it, every installed package and
+resolved dependency version, the toolchain, the hash of every file in the
+web build, and each artifact with its size, hash and signing state. Pass a
+previous release's record to catch the one change that cannot be undone:
+
+```bash
+npx yage-pack check --target ios --release --previous releases/1.0.0/yage-build-ios.json
+```
+
+Record a build the vendor tools do not write one for, such as a simulator
+build or an Android package:
+
+```bash
+npx yage-pack record --target android --profile release --artifact android/app/build/outputs/bundle/release/app-release.aab
+```
+
+## What is yours and what is regenerated
+
+| Path | Written by | Afterwards |
+| ---- | ---------- | ---------- |
+| `src/boot.ts`, `src/main.web.ts`, `index.html`, `vite.config.ts` | the template, or you | yours |
+| `src/main.electron.ts`, `src/main.capacitor.ts`, `electron/main.cjs`, `forge.config.cjs`, `capacitor.config.ts`, the npm scripts | `yage-pack init`, once | yours |
+| `ios/`, `android/` | `npx cap add` | yours: commit them; YAGE never edits them |
+| `ios/App/App/public`, the copied `capacitor.config.json` files, `ios/App/CapApp-SPM/Package.swift`, `android/capacitor.settings.gradle`, `android/app/capacitor.build.gradle` | `npx cap sync`, every time | regenerated from your config and plugins |
+| `dist/`, `dist-electron/`, `dist-capacitor/`, `out/` | the builds | regenerated; ignored by git |
+
+`yage-pack init` keeps every file that is already there, so running it again
+after adding a target fills in what is missing and touches nothing else.
+Pass `--force` to rewrite the files it owns.
+
+Edit the native projects freely: a key added to `Info.plist`, an Android
+manifest entry, a version set in Xcode and a file added to the app target
+all survive `npx cap sync`. What a sync does replace is the copied web
+directory, the copied configuration, and the plugin lists it derives from
+your `package.json`.
+
+## Upgrading
+
+Update the `@yagejs/*` packages together, bring `electron` and the
+`@capacitor/*` packages to the ranges the host adapters declare, then run
+`npx yage-pack doctor`. There is no upgrade command: your two configuration
+files call into `@yagejs-tools/pack` rather than holding a copy of its
+settings, so a changed setting arrives with the package.
+
+## When something fails
+
+Every refusal names the input:
+
+- `package.json "yage.appId" must match …` — the identifier needs at least
+  two dot-separated parts of letters and digits. An underscore or a hyphen
+  is refused by one of the two hosts.
+- `src/boot.ts with an exported boot function is missing` — do the split
+  under [One boot function](#one-boot-function) first.
+- `dist-electron/index.html is missing` or `dist-capacitor/index.html is
+  missing` — `npm run build:electron` and `npm run build:capacitor` have to
+  write those directories. With Vite, the config maps each mode to its
+  directory, as [One build per target](#one-build-per-target) shows. Without
+  that mapping, Vite writes `dist/`.
+- `packagerConfig.asar is set by @yagejs-tools/pack` — remove it;
+  `electronForgeConfig` owns the archive, the bundle identifier and what
+  goes into the package.
+- `--app-id … differs from package.json "yage.appId"` — the identifier names
+  the save directory, so `init` never changes it. Edit `package.json`
+  yourself if you mean to.
+- `cannot tell what … is for android` — `record` takes the artifacts that
+  target produces: an `.apk` or an `.aab` here, an `.app`, `.xcarchive` or
+  `.ipa` on iOS, a packaged directory or a file a Forge maker wrote on the
+  desktop.

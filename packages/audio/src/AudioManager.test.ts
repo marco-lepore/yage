@@ -74,13 +74,40 @@ class TestFadeQueue implements ScopedProcessQueue {
   }
 }
 
+/** A WebAudio context that reports its state changes to its listeners. */
+interface MockAudioContext {
+  state: string;
+  readonly listeners: Set<() => void>;
+  addEventListener(type: string, listener: () => void): void;
+  removeEventListener(type: string, listener: () => void): void;
+}
+
+function createMockAudioContext(state: string): MockAudioContext {
+  const listeners = new Set<() => void>();
+  return {
+    state,
+    listeners,
+    addEventListener(type, listener) {
+      if (type === "statechange") listeners.add(listener);
+    },
+    removeEventListener(type, listener) {
+      if (type === "statechange") listeners.delete(listener);
+    },
+  };
+}
+
+/**
+ * Move the context to `state` and report the change, as the browser does
+ * after a gesture resumes it or after the audio library suspends it.
+ */
 function setAudioContextState(
   s: SoundLibrary,
   state: "suspended" | "running",
 ): void {
-  (
-    s as unknown as { context: { audioContext: { state: string } } }
-  ).context.audioContext.state = state;
+  const ctx = (s as unknown as { context: { audioContext: MockAudioContext } })
+    .context.audioContext;
+  ctx.state = state;
+  for (const listener of [...ctx.listeners]) listener();
 }
 
 function createMockSoundLibrary(options?: {
@@ -88,16 +115,23 @@ function createMockSoundLibrary(options?: {
   muted?: boolean;
   autoPause?: boolean;
   paused?: boolean;
+  /** `false` builds the HTML-audio fallback, which has no `autoPause`. */
+  webAudio?: boolean;
 }): MockSoundLibrary {
   const instances = new Map<string, MockMediaInstance>();
   let nextId = 1;
 
-  const context = {
+  const context: Record<string, unknown> = {
     muted: options?.muted ?? false,
-    autoPause: options?.autoPause ?? true,
     paused: options?.paused ?? false,
-    audioContext: { state: options?.state ?? "running" },
+    refreshPaused: vi.fn(),
   };
+  if (options?.webAudio !== false) {
+    context["autoPause"] = options?.autoPause ?? true;
+    context["audioContext"] = createMockAudioContext(
+      options?.state ?? "running",
+    );
+  }
 
   return {
     _instances: instances,
@@ -268,18 +302,20 @@ describe("AudioManager", () => {
         );
         expect(manager.masterVolume).toBe(0.5);
         expect(mockSound._instances.get("music")?.volume).toBeCloseTo(0.35);
+        const context = mockSound.context as unknown as {
+          autoPause: boolean;
+        };
+        context.autoPause = true;
         expect(
           () =>
             new AudioManager(mockSound, {
               masterVolume: value,
-              autoMuteOnBlur: false,
+              autoPause: false,
             }),
         ).toThrow(
           `AudioManager.masterVolume: volume must be a finite number from 0 to 1, got ${value}.`,
         );
-        expect(
-          (mockSound.context as unknown as { autoPause: boolean }).autoPause,
-        ).toBe(true);
+        expect(context.autoPause).toBe(true);
       },
     );
   });
@@ -1016,21 +1052,45 @@ describe("AudioManager", () => {
       expect(cb).toHaveBeenCalledTimes(1);
     });
 
-    it("queues listener while suspended and fires on gesture when state flips", () => {
+    it("queues a listener while suspended and fires it when the context starts running", () => {
       const s = createMockSoundLibrary({ state: "suspended" });
       const m = new AudioManager(s);
       const cb = vi.fn();
       m.onUnlock(cb);
-      // Gesture arrives but context is still suspended
-      m._handleGesture();
+      // A change that leaves the context suspended runs nothing.
+      setAudioContextState(s, "suspended");
       expect(cb).not.toHaveBeenCalled();
-      // Browser resumes context (e.g. @pixi/sound's _unlock ran)
+      // The browser resumes the context after the first gesture.
       setAudioContextState(s, "running");
-      m._handleGesture();
       expect(cb).toHaveBeenCalledTimes(1);
-      // Idempotent
-      m._handleGesture();
+      setAudioContextState(s, "running");
       expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it("fires a listener registered while audio is held when the hold ends", () => {
+      const s = createMockSoundLibrary({ state: "running" });
+      const m = new AudioManager(s);
+      m._setHostActive(false);
+      // The audio library suspends the context for the hold.
+      setAudioContextState(s, "suspended");
+      const cb = vi.fn();
+      m.onUnlock(cb);
+      expect(cb).not.toHaveBeenCalled();
+
+      m._setHostActive(true);
+      // The audio library resumes the context when the hold ends.
+      setAudioContextState(s, "running");
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops following the context once disposed", () => {
+      const s = createMockSoundLibrary({ state: "suspended" });
+      const m = new AudioManager(s);
+      const cb = vi.fn();
+      m.onUnlock(cb);
+      m._dispose();
+      setAudioContextState(s, "running");
+      expect(cb).not.toHaveBeenCalled();
     });
 
     it("returned disposer removes a pending listener", () => {
@@ -1040,7 +1100,6 @@ describe("AudioManager", () => {
       const dispose = m.onUnlock(cb);
       dispose();
       setAudioContextState(s, "running");
-      m._handleGesture();
       expect(cb).not.toHaveBeenCalled();
     });
 
@@ -1051,7 +1110,6 @@ describe("AudioManager", () => {
       m.onUnlock(cb);
       m.offUnlock(cb);
       setAudioContextState(s, "running");
-      m._handleGesture();
       expect(cb).not.toHaveBeenCalled();
     });
 
@@ -1062,7 +1120,6 @@ describe("AudioManager", () => {
       m.onUnlock(() => order.push(1));
       m.onUnlock(() => order.push(2));
       setAudioContextState(s, "running");
-      m._handleGesture();
       expect(order).toEqual([1, 2]);
     });
 
@@ -1075,8 +1132,13 @@ describe("AudioManager", () => {
       });
       m.onUnlock(after);
       setAudioContextState(s, "running");
-      m._handleGesture();
       expect(after).toHaveBeenCalledTimes(1);
+    });
+
+    it("follows no context on the HTML-audio fallback, which has none", () => {
+      const s = createMockSoundLibrary({ webAudio: false });
+      const m = new AudioManager(s);
+      expect(() => m._dispose()).not.toThrow();
     });
 
     it("sync-path (already unlocked) also swallows a throwing listener", () => {
@@ -1102,9 +1164,8 @@ describe("AudioManager", () => {
           throw new Error("boom");
         });
         m.onUnlock(after);
-        setAudioContextState(s, "running");
 
-        expect(() => m._handleGesture()).toThrow("boom");
+        expect(() => setAudioContextState(s, "running")).toThrow("boom");
 
         expect(after).not.toHaveBeenCalled();
         const errors = boundary.getCallbackErrors();
@@ -1132,31 +1193,123 @@ describe("AudioManager", () => {
     });
   });
 
-  describe("autoMuteOnBlur", () => {
-    function getAutoPause(s: MockSoundLibrary): boolean {
-      return (s.context as unknown as { autoPause: boolean }).autoPause;
+  describe("autoPause", () => {
+    function contextOf(s: MockSoundLibrary): {
+      autoPause?: boolean;
+      paused: boolean;
+      refreshPaused: ReturnType<typeof vi.fn>;
+    } {
+      return s.context as unknown as {
+        autoPause?: boolean;
+        paused: boolean;
+        refreshPaused: ReturnType<typeof vi.fn>;
+      };
     }
 
-    it("defaults to true", () => {
-      const s = createMockSoundLibrary();
-      const m = new AudioManager(s);
-      expect(m.autoMuteOnBlur).toBe(true);
+    it("defaults to on and takes the value the config gives", () => {
+      expect(new AudioManager(createMockSoundLibrary()).autoPause).toBe(true);
+      expect(
+        new AudioManager(createMockSoundLibrary(), { autoPause: false })
+          .autoPause,
+      ).toBe(false);
     });
 
-    it("propagates the initial value to context.autoPause", () => {
-      const s = createMockSoundLibrary({ autoPause: true });
-      new AudioManager(s, { autoMuteOnBlur: false });
-      expect(getAutoPause(s)).toBe(false);
+    it("switches the audio library's own focus listener off", () => {
+      const on = createMockSoundLibrary({ autoPause: true });
+      new AudioManager(on, { autoPause: true });
+      expect(contextOf(on).autoPause).toBe(false);
+
+      const off = createMockSoundLibrary({ autoPause: true });
+      new AudioManager(off, { autoPause: false });
+      expect(contextOf(off).autoPause).toBe(false);
+
+      const fallback = createMockSoundLibrary({ webAudio: false });
+      new AudioManager(fallback);
+      expect("autoPause" in contextOf(fallback)).toBe(false);
     });
 
-    it("setter writes through to context.autoPause", () => {
+    it("holds the context paused while the host is inactive", () => {
       const s = createMockSoundLibrary();
       const m = new AudioManager(s);
-      expect(getAutoPause(s)).toBe(true);
-      m.autoMuteOnBlur = false;
-      expect(getAutoPause(s)).toBe(false);
-      m.autoMuteOnBlur = true;
-      expect(getAutoPause(s)).toBe(true);
+      const ctx = contextOf(s);
+
+      m._setHostActive(false);
+      expect(ctx.paused).toBe(true);
+      expect(ctx.refreshPaused).toHaveBeenCalledOnce();
+
+      m._setHostActive(false);
+      expect(ctx.refreshPaused).toHaveBeenCalledOnce();
+
+      m._setHostActive(true);
+      expect(ctx.paused).toBe(false);
+      expect(ctx.refreshPaused).toHaveBeenCalledTimes(2);
+
+      m._setHostActive(true);
+      expect(ctx.refreshPaused).toHaveBeenCalledTimes(2);
+    });
+
+    it("leaves a context the game had already paused paused", () => {
+      const s = createMockSoundLibrary({ paused: true });
+      const m = new AudioManager(s);
+
+      m._setHostActive(false);
+      m._setHostActive(true);
+
+      expect(contextOf(s).paused).toBe(true);
+    });
+
+    it("takes effect the moment it is switched on or off", () => {
+      const s = createMockSoundLibrary();
+      const m = new AudioManager(s);
+      const ctx = contextOf(s);
+
+      m._setHostActive(false);
+      m.autoPause = false;
+      expect(ctx.paused).toBe(false);
+
+      m.autoPause = true;
+      expect(ctx.paused).toBe(true);
+
+      m._setHostActive(true);
+      const calls = ctx.refreshPaused.mock.calls.length;
+      m.autoPause = false;
+      m.autoPause = true;
+      expect(ctx.paused).toBe(false);
+      expect(ctx.refreshPaused).toHaveBeenCalledTimes(calls);
+    });
+
+    it("leaves channel and handle state as the game set it", () => {
+      const s = createMockSoundLibrary();
+      const m = new AudioManager(s);
+      const music = m.play("theme", { channel: "music" });
+      const voice = m.play("line", { channel: "voice" });
+      const held = m.play("kept", { channel: "sfx" });
+      m.pauseChannel("music");
+      m.muteChannel("voice");
+      held.paused = true;
+
+      m._setHostActive(false);
+      const during = m.play("during", { channel: "ambient" });
+      during.paused = true;
+      m._setHostActive(true);
+
+      expect(music.paused).toBe(true);
+      expect(voice.muted).toBe(true);
+      expect(held.paused).toBe(true);
+      expect(during.paused).toBe(true);
+    });
+
+    it("holds the HTML-audio fallback the same way", () => {
+      const s = createMockSoundLibrary({ webAudio: false });
+      const m = new AudioManager(s);
+      const ctx = contextOf(s);
+
+      m._setHostActive(false);
+      expect(ctx.paused).toBe(true);
+      expect(ctx.refreshPaused).toHaveBeenCalledOnce();
+
+      m._setHostActive(true);
+      expect(ctx.paused).toBe(false);
     });
   });
 });

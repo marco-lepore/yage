@@ -6,6 +6,8 @@ import { SceneRenderTreeKey } from "@yagejs/renderer";
 import type {
   CameraComponent,
   DisplayContainer,
+  GraphicsBackend,
+  GraphicsCapabilities,
   RenderTargetHandle,
   RendererPlugin,
   SceneRenderTree,
@@ -14,6 +16,7 @@ import { describe, expect, it, vi } from "vitest";
 import { LightOccluder } from "./LightOccluder.js";
 import { LightSource } from "./LightSource.js";
 import { LightingWorld } from "./LightingWorld.js";
+import { OverlayLightingRenderer } from "./OverlayLightingRenderer.js";
 import {
   ShaderLightingRenderer,
   shaderLighting,
@@ -35,10 +38,57 @@ interface Harness {
   invalidate: ReturnType<typeof vi.fn>;
   resizeTarget: ReturnType<typeof vi.fn>;
   offscreen: () => DisplayContainer;
+  tree: SceneRenderTree;
   context: () => LightingRendererContext;
+  /** Objects the link test has not deleted, and how often it ran. */
+  live: () => { shaders: number; programs: number; linkTests: number };
 }
 
-function createHarness(webGLVersion = 2): Harness {
+/** What the graphics context under a harness reports and does. */
+interface HarnessOptions {
+  readonly backend?: GraphicsBackend;
+  readonly contextLost?: boolean;
+  /** Whether the fake driver links the light program. */
+  readonly links?: boolean;
+  /** What the fake driver says when it does not. */
+  readonly log?: string;
+}
+
+/** A WebGL context that records what a link test asked of it. */
+function fakeGl(options: HarnessOptions): Record<string, unknown> {
+  const live = { shaders: 0, programs: 0, linkTests: 0 };
+  return {
+    live,
+    VERTEX_SHADER: 0x8b31,
+    FRAGMENT_SHADER: 0x8b30,
+    LINK_STATUS: 0x8b82,
+    isContextLost: () => false,
+    createShader: () => {
+      live.shaders++;
+      return {};
+    },
+    createProgram: () => {
+      live.programs++;
+      live.linkTests++;
+      return {};
+    },
+    shaderSource: () => {},
+    compileShader: () => {},
+    attachShader: () => {},
+    linkProgram: () => {},
+    getProgramParameter: () => options.links !== false,
+    getProgramInfoLog: () => options.log ?? "",
+    getShaderInfoLog: () => "",
+    deleteShader: () => {
+      live.shaders--;
+    },
+    deleteProgram: () => {
+      live.programs--;
+    },
+  };
+}
+
+function createHarness(options: HarnessOptions = {}): Harness {
   const { scene } = createMockScene();
   const layerContainer = new Container();
   const tree = {
@@ -61,9 +111,34 @@ function createHarness(webGLVersion = 2): Harness {
     destroy: vi.fn(),
   } as unknown as RenderTargetHandle;
   let offscreenSource: DisplayContainer | undefined;
+  const backend = options.backend ?? "webgl2";
+  const gl = fakeGl(options);
+  // Frozen and new per harness, as the renderer reads one per context.
+  const capabilities = Object.freeze({
+    backend,
+    maxTextureSize: 8192,
+    maxRenderTargetSize: 8192,
+    maxViewportWidth: 8192,
+    maxViewportHeight: 8192,
+    maxSamples: backend === "webgl1" ? 0 : 4,
+    highpFragment: "supported",
+    blendMinMax: backend === "webgl1" ? "unsupported" : "supported",
+    rgba16float: Object.freeze({
+      sample: "supported",
+      filter: "supported",
+      render: "supported",
+    }),
+    rgba32float: Object.freeze({
+      sample: "supported",
+      filter: "supported",
+      render: "supported",
+    }),
+  }) as GraphicsCapabilities;
   const renderer = {
     virtualSize: VIEWPORT,
-    application: { renderer: { context: { webGLVersion } } },
+    capabilities,
+    contextLost: options.contextLost ?? false,
+    application: { renderer: { gl } },
     createRenderTarget: vi.fn((source: DisplayContainer) => {
       offscreenSource ??= source;
       return target;
@@ -77,6 +152,7 @@ function createHarness(webGLVersion = 2): Harness {
     scene,
     world,
     renderer,
+    tree,
     invalidate,
     resizeTarget,
     offscreen: () => {
@@ -89,6 +165,8 @@ function createHarness(webGLVersion = 2): Harness {
       renderer,
       bounce: null,
     }),
+    live: () =>
+      gl["live"] as { shaders: number; programs: number; linkTests: number },
   };
 }
 
@@ -577,9 +655,9 @@ describe("ShaderLightingRenderer", () => {
   });
 });
 
-describe("shaderLighting on a WebGL 1 context", () => {
-  it("builds the fallback renderer instead", () => {
-    const harness = createHarness(1);
+describe("shaderLighting chooses what can draw the scene", () => {
+  it("builds the given fallback on a WebGL 1 context and records why", () => {
+    const harness = createHarness({ backend: "webgl1" });
     const backend: LightingRenderer = { render: vi.fn(), destroy: vi.fn() };
     const fallback = vi.fn(() => backend);
 
@@ -588,23 +666,106 @@ describe("shaderLighting on a WebGL 1 context", () => {
     expect(built).toBe(backend);
     expect(fallback).toHaveBeenCalledTimes(1);
     expect(harness.renderer.createRenderTarget).not.toHaveBeenCalled();
+    expect(harness.world._fallbackRecord).toEqual({
+      reason: "webgl1",
+      detail: null,
+    });
   });
 
-  it("throws with no fallback, naming the option", () => {
-    const harness = createHarness(1);
-    expect(() => shaderLighting()(harness.context())).toThrow(
-      /WebGL 1 context[\s\S]*shaderLighting\({ fallback }\)/,
+  it("draws a WebGL 1 context with the overlay renderer when no fallback is given", () => {
+    const harness = createHarness({ backend: "webgl1" });
+
+    const built = shaderLighting({
+      layer: "lights",
+      order: 42,
+      resolutionScale: 0.25,
+    })(harness.context());
+
+    expect(built).toBeInstanceOf(OverlayLightingRenderer);
+    expect(harness.tree.ensureLayer).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "lights", order: 42 }),
+      expect.anything(),
     );
+    expect(harness.renderer.createRenderTarget).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ resolutionScale: 0.25 }),
+    );
+    built.destroy();
   });
 
-  it("builds the shader renderer on a WebGL 2 context", () => {
-    const harness = createHarness(2);
+  it("leaves the texel density to the overlay's own default when the shader options set none", () => {
+    const harness = createHarness({ backend: "webgl1" });
+
+    const built = shaderLighting()(harness.context());
+
+    expect(harness.renderer.createRenderTarget).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ resolutionScale: 0.5 }),
+    );
+    built.destroy();
+  });
+
+  it("builds the shader renderer where the driver links its program", () => {
+    const harness = createHarness();
     const fallback = vi.fn();
 
     const built = shaderLighting({ fallback })(harness.context());
 
     expect(built).toBeInstanceOf(ShaderLightingRenderer);
     expect(fallback).not.toHaveBeenCalled();
+    expect(harness.live()).toMatchObject({ shaders: 0, programs: 0 });
+    built.destroy();
+  });
+
+  it("falls back where the driver refuses the program, keeping its log", () => {
+    const harness = createHarness({ links: false, log: "  boom  " });
+    const backend: LightingRenderer = { render: vi.fn(), destroy: vi.fn() };
+    const fallback = vi.fn(() => backend);
+
+    const built = shaderLighting({ fallback })(harness.context());
+
+    expect(built).toBe(backend);
+    expect(harness.world._fallbackRecord).toEqual({
+      reason: "shader-rejected",
+      detail: "boom",
+    });
+    expect(harness.live()).toMatchObject({ shaders: 0, programs: 0 });
+  });
+
+  it("tests one program per graphics context", () => {
+    const harness = createHarness();
+    const first = shaderLighting()(harness.context());
+    const second = shaderLighting()(harness.context());
+
+    expect(harness.live().linkTests).toBe(1);
+    first.destroy();
+    second.destroy();
+
+    // A replacement context brings its own snapshot, so it is tested again.
+    const replaced = createHarness({ links: false });
+    const third = shaderLighting()(replaced.context());
+    expect(replaced.live().linkTests).toBe(1);
+    expect(third).toBeInstanceOf(OverlayLightingRenderer);
+    third.destroy();
+  });
+
+  it("builds the shader renderer while the context is lost, which compiles nothing", () => {
+    const harness = createHarness({ contextLost: true, links: false });
+
+    const built = shaderLighting()(harness.context());
+
+    expect(built).toBeInstanceOf(ShaderLightingRenderer);
+    expect(harness.world._fallbackRecord).toBeNull();
+    built.destroy();
+  });
+
+  it("builds the shader renderer on a WebGPU device, which it does not test", () => {
+    const harness = createHarness({ backend: "webgpu", links: false });
+
+    const built = shaderLighting()(harness.context());
+
+    expect(built).toBeInstanceOf(ShaderLightingRenderer);
+    expect(harness.world._fallbackRecord).toBeNull();
     built.destroy();
   });
 });

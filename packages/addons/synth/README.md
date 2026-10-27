@@ -4,7 +4,7 @@ Procedural sound effects for YAGE (`@yagejs-addons` scope, independently
 versioned, NOT in the engine `fixed` group). A sound is a plain parameter
 object; the addon renders it to samples, wraps them in an `AudioBuffer`, and
 registers it with `@yagejs/audio` under an alias — so it plays through the
-engine's channels, volumes, mute, and blur auto-pause exactly like a preloaded
+engine's channels, volumes, mute, and automatic pause exactly like a preloaded
 file. No audio assets, no `AudioContext` of its own.
 
 ## Install

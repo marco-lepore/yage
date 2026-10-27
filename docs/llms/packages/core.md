@@ -9,6 +9,7 @@ Zero runtime dependencies. ECS foundation, DI, game loop, scenes, events, proces
 | Export            | Purpose                                                                                |
 | ----------------- | -------------------------------------------------------------------------------------- |
 | `Engine`          | Entry point; plugin orchestration, game loop, scene manager                            |
+| `Host`            | Which application runs the game, and whether it is active, visible and focused         |
 | `EngineContext`   | DI container                                                                           |
 | `ServiceKey<T>`   | Typed DI key                                                                           |
 | `Scene`           | Abstract scene base class                                                              |
@@ -520,8 +521,11 @@ interface EntityHandle<
 | `scene:loading:progress`                              | `{ scene; ratio }`                                                                                                                                           |
 | `scene:loading:done`                                  | `{ scene }`                                                                                                                                                  |
 | `engine:started` / `engine:stopped`                   | `undefined`                                                                                                                                                  |
-| `screen:fullscreen`                                   | `{ active: boolean }` — emitted by `RendererPlugin` on `fullscreenchange` / `webkitfullscreenchange`                                                         |
-| `screen:orientation`                                  | `{ type: OrientationType }` — emitted by `RendererPlugin` on `screen.orientation.change` (or `orientationchange` fallback)                                   |
+| `screen:fullscreen`                                   | `{ active: boolean }` — emitted by `RendererPlugin` when `isFullscreen` changes                                                                              |
+| `screen:orientation`                                  | `{ type: OrientationType }` — emitted by `RendererPlugin` when `orientation` changes to a non-null value                                                     |
+| `graphics:context`                                    | `{ lost: boolean }` — emitted by `RendererPlugin` when the graphics context is lost and when it is restored, at the start of the next frame's `Render` phase |
+| `host:active`                                         | `{ active: boolean }` — emitted by `Host` when the game goes to or returns from the background                                                               |
+| `host:lifecycle`                                      | `{ lifecycle: HostLifecycle; previous: HostLifecycle }` — emitted by `Host` on every change of activity, visibility or focus                                 |
 
 `entity` in the `entity:*` and `component:*` payloads is the live `Entity` (`entity.tags`, `entity.get(...)` work in the handler). The `scene` fields are `{ name }`, except `scene:loading:*` and `entity:destroyed`, which carry the `Scene`. The destruction payload retains its owning scene after the entity detaches.
 
@@ -998,19 +1002,50 @@ consumes the mark instead of loading again, so the manifest is counted once
 and one `unload` per handle frees it. `LoadingScene` uses this method. A scene
 preloaded and never pushed keeps its references until `assets.clear()`.
 
-### Pause on Tab Blur
+### Pause While the Host Is Inactive
 
-```ts yage-context="scene-enter"
-import { SceneManagerKey } from "@yagejs/core";
+```ts
+import { Engine } from "@yagejs/core";
 
-const scenes = this.context.resolve(SceneManagerKey);
-
-scenes.autoPauseOnBlur = true; // default: false
+const engine = new Engine();
+engine.scenes.autoPause = true; // default: false
+await engine.start();
 ```
 
-When enabled, `SceneManager` sets `scene.paused = true` on every scene in `activeScenes` on `document.hidden === true`, and restores them on `hidden === false`. Affected scenes get `onPause` on blur and `onResume` on focus. Only scenes paused by this mechanism are restored — user-paused scenes (manual `scene.paused = true` or `pauseBelow` cascade) are never touched, and get neither hook. Toggling the flag off mid-blur unpauses immediately. No-op in non-browser environments.
+While `autoPause` is on and `Host.active` is `false` — the app is in the background, the page is hidden, or the window is unfocused — every scene on the stack reads `isPaused === true` and `activeScenes` is empty. The pause belongs to the manager: `scene.paused` keeps whatever the game wrote, so a manual pause made while the game was in the background is still in force after the return. Switching `autoPause` on or off takes effect at once. A scene that is not on the stack is never paused this way.
 
-`onPause`/`onResume` fire on every effective pause transition, i.e. whenever `scene.isPaused` flips, whatever the source: a `pauseBelow` scene pushed above, manual `scene.paused = true`/`false`, or blur auto-pause. Writes that don't change the effective state fire nothing: repeated assignments, flag flips masked by a stack pause, and writes before the scene is pushed. Pushing a scene whose `paused` flag is already true fires `onPause` on entry — this is how you start a scene paused. Do NOT write `scene.paused` from inside a lifecycle hook (`onEnter`/`onExit`/`onPause`/`onResume`): the write races the stack transition's own pause diff, so the hooks can fire twice or unpaired. A dev-mode warning flags it.
+Hooks follow the effective state, so a repeated or out-of-order host signal fires nothing extra:
+
+| Case                                                       | Hooks                                                                                                                                                               |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A running scene                                            | One `onPause` when the host turns inactive, one `onResume` at the return                                                                                            |
+| A manually paused scene, or one under a `pauseBelow` scene | Neither, at either end                                                                                                                                              |
+| A manual pause written while the host is inactive          | Neither; the scene is still paused after the return                                                                                                                 |
+| A manual unpause written while the host is inactive        | One `onResume` at the return                                                                                                                                        |
+| A scene pushed while the host is inactive                  | One `onPause` after its `onEnter`, one `onResume` at the return                                                                                                     |
+| A scene popped while the host is inactive                  | `onExit` only                                                                                                                                                       |
+| A throwing `onPause`                                       | Reported and rethrown; the scenes after it get neither hook. The return ends the host pause for every scene and fires `onResume` on the scene whose `onPause` threw |
+
+For a resume the player confirms, react to `host:active` with a pause of the game's own:
+
+```ts
+import { Engine, Scene } from "@yagejs/core";
+
+declare const engine: Engine;
+declare class PauseMenu extends Scene {
+  readonly name: "pause-menu";
+}
+
+engine.events.on("host:active", ({ active }) => {
+  if (!active) void engine.scenes.push(new PauseMenu());
+});
+```
+
+`PauseMenu` has `pauseBelow`, so the scenes under it stay paused until the player closes it. A game that never wants the engine to pause by itself leaves `autoPause` off and uses the event alone.
+
+While the stack is held paused, the loop, engine-global processes, scene transitions and rendering keep running on whatever frames the host delivers, and the game's own event handlers, timers and promises run — networking code keeps working. What a paused scene stops is in `Scene` above.
+
+`onPause`/`onResume` follow `scene.isPaused`, whatever changes it: a `pauseBelow` scene pushed above, manual `scene.paused = true`/`false`, or the manager's `autoPause`. Each scene's hooks fire when its effective state differs from the one they last reported, so every change fires one hook. Writes that leave the effective state where it was fire nothing: repeated assignments, flag flips masked by a stack or host pause, and writes to a scene that is not on the stack. Pushing a scene whose `paused` flag is already true fires `onPause` on entry — this is how you start a scene paused. A `paused` write from inside a lifecycle hook, `onEnter` included, follows the same rule.
 
 ### Scene Transitions
 
@@ -1209,12 +1244,15 @@ const { turret, target } = scene.spawnBatch((batch) => {
 
 ### Testing
 
-| Export                                | Purpose                                                                             |
-| ------------------------------------- | ----------------------------------------------------------------------------------- |
-| `createTestEngine(config?, plugins?)` | Started Engine for integration tests; `plugins` install before it starts            |
-| `createMockScene(name?)`              | Lightweight scene with EngineContext for unit tests                                 |
-| `createMockEntity(name?)`             | Entity spawned in a mock scene                                                      |
-| `advanceFrames(engine, n, dtMs?)`     | Advance game loop by N frames (`dtMs` is the per-frame ms delta; default `1000/60`) |
+| Export                                | Purpose                                                                                                                                       |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createTestEngine(config?, plugins?)` | Started Engine for integration tests; `plugins` install before it starts                                                                      |
+| `createMockScene(name?)`              | Lightweight scene with EngineContext for unit tests; its context carries a `Logger`, an `AssetManager` and a `Host`                           |
+| `createMockEntity(name?)`             | Entity spawned in a mock scene                                                                                                                |
+| `advanceFrames(engine, n, dtMs?)`     | Advance game loop by N frames (`dtMs` is the per-frame ms delta; default `1000/60`)                                                           |
+| `TestHostPlugin(info?, lifecycle?)`   | Host adapter for tests; attaches `info` and `lifecycle` on install, reports later changes through `setLifecycle(report)`, detaches on destroy |
+
+The mock scene's `Host` is not connected to the page or to the event bus: `host.lifecycle` reads `"unknown"` for all three fields, `host.active` is `true`, and `host:active` and `host:lifecycle` never fire. Test background behavior with `createTestEngine` and a `TestHostPlugin`.
 
 See also the `Testing & Debugging` section in the Quick Start for a runnable example and the Inspector API for runtime introspection.
 
@@ -1304,6 +1342,11 @@ releases ownership after cleanup; advance through its context.
 share the frame identity used by `snapshot().frame`, event entries and logger
 entries. Compare against a captured baseline when asserting frames advanced.
 
+`getHost()` reports the host: its identity (`info`, with an absent version as
+`null`), `lifecycle`, `active` and `activeWhenUnfocused`. `snapshot()` leaves
+the host out, because focus depends on the machine's windows and would differ
+between runs.
+
 `events.waitFor(pattern, { withinFrames?, source? })` checks the earliest
 retained match first without consuming it. Clear the log before an action
 when the assertion needs a new occurrence. `withinFrames` is validated before
@@ -1364,9 +1407,122 @@ console.log(engine.logger.formatRecentLogs(20));
 
 `bufferSize` (default 500) caps the ring buffer. `categories` restricts which categories are accepted. `output` overrides the default `console.*` handler with a custom sink (e.g., to ship logs to a remote service).
 
+### Host
+
+The host is the application that runs the game's page: a browser tab, or a native shell built around a web view. The Engine constructor creates one `Host` per engine, reachable as `engine.host` and under `HostKey`.
+
+| Export                | Signature                                                                                                                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Host`                | `info: HostInfo`, `lifecycle: HostLifecycle`, `active: boolean` (read-only); `activeWhenUnfocused: boolean`; `attach(provider: HostProvider): () => void` — returns the function that detaches that provider |
+| `HostInfo`            | `{ runtime: string; os: HostOS; appVersion: string \| undefined; appBuild: string \| undefined; runtimeVersion: string \| undefined }`                                                                       |
+| `HostInfoInput`       | What an adapter supplies: `runtime` and `os` required, `appVersion`, `appBuild` and `runtimeVersion` optional                                                                                                |
+| `HostOS`              | `"macos" \| "windows" \| "linux" \| "ios" \| "android" \| "unknown"`                                                                                                                                         |
+| `HostActivity`        | `"active" \| "inactive" \| "unknown"`                                                                                                                                                                        |
+| `HostVisibility`      | `"visible" \| "hidden" \| "unknown"`                                                                                                                                                                         |
+| `HostFocus`           | `"focused" \| "unfocused" \| "unknown"`                                                                                                                                                                      |
+| `HostLifecycle`       | `{ activity: HostActivity; visibility: HostVisibility; focus: HostFocus }`                                                                                                                                   |
+| `HostLifecycleReport` | The same three fields, each optional — what an adapter reports                                                                                                                                               |
+| `HostChange`          | `{ lifecycle; previous; active; wasActive }` — the payload engine packages receive                                                                                                                           |
+| `HostProvider`        | `{ info: HostInfoInput; lifecycle?: HostLifecycleReport; watchLifecycle?(report): () => void }` — what a host adapter hands to `attach`                                                                      |
+| `HostSupport`         | `"supported" \| "unsupported" \| "unknown"`                                                                                                                                                                  |
+
+`Host` holds no display state: a host adapter supplies fullscreen and screen orientation by registering a `HostDisplay` from `@yagejs/renderer`, and `RendererPlugin` reports both.
+
+The Electron adapter ships as `@yagejs/host-electron`, with its shell: [reference](host-electron.md), [guide](https://yage.dev/guides/electron/). The Capacitor adapter ships as `@yagejs/host-capacitor`: [reference](host-capacitor.md), [guide](https://yage.dev/guides/capacitor/).
+
+An adapter supplies `runtime` and `os`, and leaves out a version it has no authoritative value for. `host.info` holds all five fields, with `undefined` in every version the adapter did not supply.
+
+A page with no adapter reports `{ runtime: "browser", os: "unknown" }` and no versions. The operating system stays `"unknown"` there: a page reads the system name only from the user agent, and an emulated device changes it. `runtime` is an open string, so an adapter outside this repository names itself.
+
+`attach` reads `info` and `lifecycle` once, copies their fields, and freezes the copies. `host.info` and `host.lifecycle` each keep their identity between reads until something changes. The returned function restores the browser values and detaches only its own provider, so a stale call does nothing. `attach` throws when the engine has been destroyed, when a provider is already attached, when `runtime` is not a non-empty string, when `os` is outside `HostOS`, when `appVersion`, `appBuild` or `runtimeVersion` is neither `undefined` nor a non-empty string, when `lifecycle` is neither `undefined` nor an object, or when one of its three fields holds a value outside its union. A report with a value outside its union throws the same way, from `report`.
+
+#### Active, visible, focused
+
+`host.lifecycle` holds three states, each of which is `"unknown"` where the host cannot observe it:
+
+| Field        | Meaning                                                                              |
+| ------------ | ------------------------------------------------------------------------------------ |
+| `activity`   | Whether the operating system runs the app in the foreground and delivers input to it |
+| `visibility` | Whether the player can see the game's page                                           |
+| `focus`      | Whether the game's window has keyboard focus                                         |
+
+`host.active` is the one answer the engine follows:
+
+```ts
+import type { Host } from "@yagejs/core";
+
+declare const host: Host;
+
+const active =
+  host.lifecycle.activity !== "inactive" &&
+  host.lifecycle.visibility !== "hidden" &&
+  (host.activeWhenUnfocused || host.lifecycle.focus !== "unfocused");
+```
+
+`"unknown"` never makes the host inactive. `host.activeWhenUnfocused` defaults to `false`, so a window the player clicked away from counts as inactive; set it to `true` for a game that should keep running behind another window. A game in a page frame starts unfocused until the player clicks it, so with `scenes.autoPause` on it holds until then. It is the one policy setting, so scenes and audio can never be given different definitions.
+
+A page with no adapter reports `activity: "unknown"`, `visibility` from `document.visibilityState`, and `focus` from the window's `focus` and `blur` events, starting from `document.hasFocus()`. Without a `document` all three are `"unknown"` and the host is active. A game in a frame nobody has clicked yet therefore starts unfocused, which holds audio and, with `scenes.autoPause` on, the scenes too.
+
+An adapter owns every field it reports: for that field the adapter's value is the state and the page's is ignored, including when the adapter reports `"unknown"`. A field the adapter never reports comes from the page, and a detach hands every field back to it. `lifecycle` is the adapter's state at attach; `watchLifecycle(report)` is called once, and the adapter calls `report` with a partial update on every later change and returns the function that stops the reports.
+
+Two events carry the state to game code. `host:active` is emitted when `host.active` flips, before the more detailed `host:lifecycle`, which is emitted on every change of the three fields. Scene `onPause` and `onResume` run before both. A repeated or duplicate signal changes nothing, so neither event fires twice for one real change. A change made during a dispatch, for example by a handler that sets `host.activeWhenUnfocused`, is delivered after the current change has reached every engine package, scene and handler, so every handler receives the changes in order.
+
+A host adapter is a `Plugin` named `"host"` that attaches in `install` and detaches in `onDestroy`. `Engine.use` refuses a second plugin with that name. A plugin that reads `host.info` without depending on the adapter reads it in `onStart`, by which point every `install` has finished.
+
+```ts
+import { HostKey } from "@yagejs/core";
+import type {
+  EngineContext,
+  HostInfoInput,
+  HostLifecycleReport,
+  Plugin,
+} from "@yagejs/core";
+
+declare function readShellInfo(): Promise<HostInfoInput>;
+declare function readShellState(): Promise<HostLifecycleReport>;
+declare function onShellStateChange(
+  listener: (state: HostLifecycleReport) => void,
+): () => void;
+
+class ShellHostPlugin implements Plugin {
+  readonly name = "host";
+  readonly version = "1.0.0";
+
+  private detach: (() => void) | undefined;
+  private released = false;
+
+  async install(context: EngineContext): Promise<void> {
+    const info = await readShellInfo();
+    // destroy() can run while install awaits, so check after every await.
+    if (this.released) return;
+    const lifecycle = await readShellState();
+    if (this.released) return;
+    this.detach = context.resolve(HostKey).attach({
+      info,
+      lifecycle,
+      watchLifecycle: (report) => onShellStateChange(report),
+    });
+  }
+
+  onDestroy(): void {
+    this.released = true;
+    this.detach?.();
+    this.detach = undefined;
+  }
+}
+```
+
+`HostSupport` is the word every operation uses for its own status: whether the host has the operation at all. Reading it never shows a prompt. Whether an operation works at this moment — the hardware is present, a stream starts — is the result of the operation, not a stored state. The package that owns an operation reports its support beside it; `Host` holds no capability registry.
+
+| Value           | Meaning                                                                                                   |
+| --------------- | --------------------------------------------------------------------------------------------------------- |
+| `"supported"`   | The host has the operation. Says nothing about the hardware.                                              |
+| `"unsupported"` | The host has no such operation. A request returns its documented unsupported outcome and shows no prompt. |
+| `"unknown"`     | The host cannot tell without trying. Never read from the operating system name or user agent.             |
+
 ### Well-known DI Keys
 
-`EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey` (only once `DebugPlugin` or `InspectorPlugin` installs an Inspector), `SceneRandomSourceKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`
+`EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `HostKey`, `InspectorKey` (only once `DebugPlugin` or `InspectorPlugin` installs an Inspector), `SceneRandomSourceKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`
 
 ## LoadingScene
 

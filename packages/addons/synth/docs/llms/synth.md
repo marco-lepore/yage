@@ -2,7 +2,7 @@
 
 Procedural sound effects for YAGE: a sound is a plain parameter object,
 rendered to samples and registered with `@yagejs/audio` under an alias, so it
-plays through the engine's channels, mute, and blur auto-pause like a
+plays through the engine's channels, mute, and automatic pause like a
 preloaded file. No audio assets, no `AudioContext`. Root entry only — no
 `/presenters` subpath.
 

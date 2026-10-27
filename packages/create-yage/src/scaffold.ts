@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { lstat, readdir, rm } from "node:fs/promises";
+import { lstat, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { TemplateId } from "./templates.js";
 import type { FeatureId } from "./features.js";
@@ -25,8 +25,9 @@ export interface ScaffoldResult {
 }
 
 /**
- * Copies the chosen template into the target directory, patches package.json
- * with the project name, and optionally runs `npm install` + `git init`.
+ * Copies the chosen template into the target directory, writes the project
+ * name into package.json and the browser entry's save namespace, and
+ * optionally runs `npm install` + `git init`.
  * The caller is responsible for confirming with the user before overwriting.
  */
 export async function scaffold(
@@ -40,6 +41,7 @@ export async function scaffold(
 
   const templateDir = join(options.templatesRoot, options.template);
   await copyTemplateDirectory(templateDir, options.targetDir);
+  await nameSaveNamespace(options.targetDir, options.projectName);
 
   const features = options.features ?? [];
   await rewriteJson<PackageJson>(
@@ -68,6 +70,35 @@ export async function scaffold(
       : null;
 
   return { installSucceeded, gitSucceeded };
+}
+
+/** The save namespace every template's browser entry starts with. */
+const TEMPLATE_SAVE_NAMESPACE = 'namespace: "my-yage-game"';
+
+/**
+ * Writes the project name into the browser entry's save namespace. Games
+ * served from one site share the browser's storage, so each scaffolded game
+ * keeps its saves under its own name. The name is written once: renaming the
+ * project later leaves the saves where they are.
+ */
+async function nameSaveNamespace(
+  targetDir: string,
+  projectName: string,
+): Promise<void> {
+  const entry = join(targetDir, "src", "main.web.ts");
+  const source = await readFile(entry, "utf8");
+  if (!source.includes(TEMPLATE_SAVE_NAMESPACE)) {
+    throw new Error(
+      `create-yage: ${entry} has no ${TEMPLATE_SAVE_NAMESPACE} to name after the project.`,
+    );
+  }
+  await writeFile(
+    entry,
+    source.replace(
+      TEMPLATE_SAVE_NAMESPACE,
+      `namespace: ${JSON.stringify(projectName)}`,
+    ),
+  );
 }
 
 async function hasGitMetadata(target: string): Promise<boolean> {

@@ -217,9 +217,10 @@ There is no wrap mode to set. Pixi switches the fill texture's address mode to
 `repeat` when it builds the shape, so `texture.source.addressMode` needs no
 help.
 
-Never call `texture.source.update()` on a texture from `createTexture`. Those
-pixels live only on the GPU, so the re-upload writes an empty image over them
-and everything drawn from the texture turns transparent permanently.
+Never call `texture.source.update()` on a texture from `createTexture`. The
+renderer drew that texture rather than loading an image into it, so the
+re-upload writes an empty image over it and everything drawn from the texture
+turns transparent permanently.
 
 A standalone `g.texture(...)` call draws at the alpha of the active fill style,
 so a `fill({ alpha: 0 })` before it makes the texture invisible. Give

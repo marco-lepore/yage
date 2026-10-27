@@ -1,11 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  createMockScene,
-  Logger,
-  LoggerKey,
-  LogLevel,
-  Transform,
-} from "@yagejs/core";
+import { createMockScene, LoggerKey, Transform } from "@yagejs/core";
 import { Interactable } from "./Interactable.js";
 import { interactableRegistryFor, interactablesIn } from "./core/registry.js";
 
@@ -173,9 +167,7 @@ describe("Interactable", () => {
 
   it("warns (dev) when radius is negative — the reach test would square it back positive", () => {
     const { scene } = createMockScene();
-    const logger = new Logger({ level: LogLevel.Debug });
-    scene.context.register(LoggerKey, logger);
-    const warn = vi.spyOn(logger, "warn");
+    const warn = vi.spyOn(scene.context.resolve(LoggerKey), "warn");
 
     const entity = scene.spawn("chest");
     entity.add(new Transform());
@@ -188,9 +180,7 @@ describe("Interactable", () => {
 
   it("does not warn for a non-negative radius", () => {
     const { scene } = createMockScene();
-    const logger = new Logger({ level: LogLevel.Debug });
-    scene.context.register(LoggerKey, logger);
-    const warn = vi.spyOn(logger, "warn");
+    const warn = vi.spyOn(scene.context.resolve(LoggerKey), "warn");
 
     const entity = scene.spawn("chest");
     entity.add(new Transform());

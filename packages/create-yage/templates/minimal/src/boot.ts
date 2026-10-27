@@ -1,9 +1,32 @@
-import { Engine, InspectorPlugin } from "@yagejs/core";
+import { Engine, InspectorPlugin, type Plugin } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
+import { SavePlugin, createSave, type SaveAdapter } from "@yagejs/save";
 import { MainScene } from "./scenes/MainScene";
 
-async function main(): Promise<void> {
+export interface BootOptions {
+  /**
+   * The host adapters this build runs with. The browser entry passes none;
+   * a desktop or mobile entry passes its own.
+   */
+  readonly hostPlugins: readonly Plugin[];
+  /**
+   * Where saves are kept: browser storage for the browser entry, files in
+   * the app's data directory for a desktop or mobile entry.
+   */
+  readonly saveAdapter: SaveAdapter;
+}
+
+/**
+ * Create the engine, register the plugins and push the first scene. Every
+ * target's entry file calls this; nothing here depends on where the game
+ * runs.
+ */
+export async function boot(options: BootOptions): Promise<Engine> {
   const engine = new Engine({ debug: true });
+
+  // First, so the rest of the engine can read what the host reports.
+  for (const plugin of options.hostPlugins) engine.use(plugin);
+
   // Puts the inspector on window.__yage__ for the browser console under
   // `npm run dev`; a production build does not install it.
   // DebugPlugin (below) installs one as well; keeping both is harmless.
@@ -18,6 +41,11 @@ async function main(): Promise<void> {
       backgroundColor: 0x0f172a,
       container: document.getElementById("game")!,
     }),
+  );
+
+  // A component reads and writes saves through this.use(SaveServiceKey).
+  engine.use(
+    new SavePlugin({ save: createSave({ adapter: options.saveAdapter }) }),
   );
 
   // ---------------------------------------------------------------------
@@ -66,8 +94,5 @@ async function main(): Promise<void> {
 
   await engine.start();
   await engine.scenes.push(new MainScene());
+  return engine;
 }
-
-main().catch((err) => {
-  console.error(err);
-});

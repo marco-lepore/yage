@@ -167,6 +167,7 @@ describe("registering before AudioPlugin installs", () => {
       install: () => {
         const context = new core.EngineContext();
         context.register(core.ProcessSystemKey, new core.ProcessSystem());
+        context.register(core.HostKey, new core.Host());
         return new AudioPlugin().install(context);
       },
     };

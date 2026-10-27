@@ -607,8 +607,9 @@ belongs in one call, as above, not one call per value.
   end-of-frame clear has already run. Read the edge through a component that
   recorded it during the frame. `inspector.input.tap` makes a press land
   inside the frame it steps, without the queue; it is not a way to read the
-  edge back, because it returns after that frame's clear. A blurred or hidden
-  tab discards whatever is still queued.
+  edge back, because it returns after that frame's clear. A window that loses
+  focus, a hidden page, and an app the system turns inactive each discard
+  whatever is still queued.
 - **A `const` or `let` typed straight into the browser console stays declared
   in the page**, so running the same lines twice fails with a redeclaration
   error. Wrap console work in `(async () => { … })()`. Code inside a
