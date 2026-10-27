@@ -104,7 +104,7 @@ interface LightVisual {
  * only for the lights that moved.
  *
  * The bounced light the scene resolved to reaches the picture through
- * {@link LightingComposite}, which every lighting renderer shares.
+ * {@link LightingComposite}, which the overlay and shader renderers share.
  */
 export class ShaderLightingRenderer implements LightingRenderer {
   private readonly positionScratch = new Vec2Buffer();

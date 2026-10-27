@@ -28,7 +28,7 @@ const MAX_SHADOW_SPLIT_DEPTH = 6;
 /** Below this, an edge counts as running straight through the light. */
 const STRAIGHT_ANGLE_EPSILON = 1e-6;
 
-/** Options for the built-in multiply-composite renderer. */
+/** Options for the overlay lighting renderer. */
 export interface OverlayLightingRendererOptions {
   /** Screen-space layer name. Default `"lighting"`. */
   layer?: string;
@@ -84,7 +84,7 @@ interface SourceVisual {
  * so the two agree everywhere except inside that border.
  *
  * The bounced light the scene resolved to reaches the picture through
- * {@link LightingComposite}, which every lighting renderer shares.
+ * {@link LightingComposite}, which the overlay and shader renderers share.
  */
 export class OverlayLightingRenderer implements LightingRenderer {
   private readonly positionScratch = new Vec2Buffer();
@@ -393,7 +393,7 @@ export class OverlayLightingRenderer implements LightingRenderer {
   }
 }
 
-/** Return a per-scene factory for the built-in renderer. */
+/** Return a per-scene factory for the overlay renderer. */
 export function overlayLighting(
   options: OverlayLightingRendererOptions = {},
 ): (context: LightingRendererContext) => OverlayLightingRenderer {

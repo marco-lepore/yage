@@ -536,8 +536,8 @@ engine.use(
 YAGE creates one backend per entered scene. Renderer callbacks are attributed
 through the engine error boundary and still rethrow.
 
-`LightingComposite` is the last step the overlay and shader compositors use, and a custom
-renderer that draws its light into a container can reuse it. It owns the
+`LightingComposite` is the last step `overlayLighting()` and `shaderLighting()`
+use, and a custom renderer that draws its light into a container can reuse it. It owns the
 offscreen buffer, multiplies it over the scene, and applies the `bounce` the
 factory was handed, which is the scene's own setting, or the plugin's, or
 `null`:

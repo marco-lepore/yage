@@ -18,7 +18,7 @@ export const LightingWorldManagerKey = new ServiceKey<LightingWorldManager>(
 export interface AmbientLightOptions {
   /** Scalar light level used by `levelAt()`. Default `0.15`. */
   level?: number;
-  /** RGB tint applied by the built-in overlay renderer. Default `0xffffff`. */
+  /** RGB tint of ambient light in the drawn picture. Default `0xffffff`. */
   color?: number;
 }
 

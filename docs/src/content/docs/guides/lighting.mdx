@@ -88,7 +88,8 @@ the scene is created.
 With `surfaceLighting()`, `height` places the light above the sprite plane in
 pixels. It defaults to `64` and must fit a positive, finite GPU float. Set
 `light.height` to change diffuse and specular direction. Height does not change
-light-level queries, radius falloff, or shadow geometry. The compositors ignore it.
+light-level queries, radius falloff, or shadow geometry. `overlayLighting()` and
+`shaderLighting()` ignore it.
 
 ### Give the lamp a size
 
@@ -255,11 +256,11 @@ lighting.setAmbient(0.05);
 lighting.setAmbient(0.2, 0x8090b8);
 ```
 
-## Configure the built-in renderer
+## Configure the overlay renderer
 
 `@yagejs/lighting` provides `overlayLighting()`, `shaderLighting()`, and
-`surfaceLighting()`. This section covers the default overlay. The shader
-compositor is described below; surface lighting is covered in
+`surfaceLighting()`. This section covers the default overlay.
+`shaderLighting()` is described below, and `surfaceLighting()` is covered in
 [sprite materials](/guides/materials/).
 
 The default renderer draws ambient colour and radial lights into an offscreen
@@ -374,8 +375,9 @@ class MenuScene extends Scene {
 }
 ```
 
-Both renderers answer to the same `levelAt()`, so two scenes of one game can
-name different renderers and a character still reads as equally lit in each.
+`shaderLighting()` and `overlayLighting()` answer to the same `levelAt()`, so
+two scenes of one game can name different renderers and a character still
+reads as equally lit in each.
 
 ### Which renderer a scene wants
 
@@ -414,16 +416,17 @@ fill cost, at the price of a coarser shadow border. `fallback` starts at
 `overlayLighting()` in the same layer and order, with the same
 `resolutionScale` when you set one.
 
-:::note[The picture equals the query]
-`levelAt()` measures light reaching a point. Surface materials also respond to
-normal direction, specular settings, and emission, so their pixel brightness is
-not the scalar query. The shader compositor
-draws what it answers, up to two sources of rounding: it divides a lamp into
-128 slots and rounds each hidden stretch out to whole slots at both ends, which
-is 2/128 of that light's contribution for each separate stretch hidden from a
-pixel, and the light buffer holds eight bits a channel. The overlay draws one
-hard line through the middle of the border, so a character inside the border is
-drawn on one side of the line and queried as partly lit.
+:::note[The shader and overlay pictures match the query]
+`shaderLighting()` draws what `levelAt()` answers, up to two sources of
+rounding. The shader renderer divides a lamp into 128 slots and rounds each
+hidden stretch out to whole slots at both ends, which is 2/128 of that light's
+contribution for each separate stretch hidden from a pixel. The light buffer
+holds eight bits a channel. The overlay draws one hard line through the
+middle of the border, so a character inside the border is drawn on one side of
+the line and queried as partly lit. `levelAt()` measures light reaching a
+point. Surface materials also respond to normal direction, specular settings,
+and emission, so their pixel brightness under `surfaceLighting()` is not the
+scalar query.
 :::
 
 ### When the shader cannot run
@@ -473,8 +476,9 @@ From the browser console the same call is
 
 ## Let light bounce off surfaces
 
-Bounce works with the overlay and shader compositors. `surfaceLighting()` requires
-`bounce: null` when the plugin has a bounce default.
+Bounce works with `overlayLighting()` and `shaderLighting()`.
+`surfaceLighting()` requires `bounce: null` when the plugin has a bounce
+default.
 
 Real light does not stop at a shadow's edge: a lit floor throws some of it
 back, so the dark side of a crate is dim rather than black. `bounce` combines
