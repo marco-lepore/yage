@@ -1,266 +1,357 @@
-/**
- * @vitest-environment happy-dom
- */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-const mockSound = vi.hoisted(() => {
-  const listeners = new Set<() => void>();
-  return {
-    play: vi.fn(),
-    stop: vi.fn(),
-    muteAll: vi.fn(),
-    unmuteAll: vi.fn(),
-    close: vi.fn(),
-    exists: vi.fn(() => true),
-    context: {
-      muted: false,
-      autoPause: true,
-      paused: false,
-      refreshPaused: vi.fn(),
-      audioContext: {
-        state: "running" as "suspended" | "running",
-        listeners,
-        addEventListener(type: string, listener: () => void): void {
-          if (type === "statechange") listeners.add(listener);
-        },
-        removeEventListener(type: string, listener: () => void): void {
-          if (type === "statechange") listeners.delete(listener);
-        },
-      },
-    },
-  };
-});
-
-/** Move the context to `state` and report the change, as the browser does. */
-function setContextState(state: "suspended" | "running"): void {
-  const audioContext = mockSound.context.audioContext;
-  audioContext.state = state;
-  for (const listener of [...audioContext.listeners]) listener();
-}
-
-vi.mock("@pixi/sound", () => ({
-  sound: mockSound,
-}));
-
+import { afterEach, beforeEach, it, expect, vi } from "vitest";
 import {
+  AssetManager,
+  AssetManagerKey,
   EngineContext,
   EventBus,
   Host,
   HostKey,
-  ProcessSystem,
-  ProcessSystemKey,
 } from "@yagejs/core";
 import type { HostLifecycleReport } from "@yagejs/core";
 import { AudioPlugin } from "./AudioPlugin.js";
 import { AudioManagerKey } from "./types.js";
-import { AudioManager } from "./AudioManager.js";
+import { clearRegisteredSounds, getSound, sound } from "./assets.js";
+import { FakeAudioContext, fakeBuffer } from "./test-helpers.js";
 
-/** Every engine registers a `Host`; audio follows it. */
-let host: Host | undefined;
-
-function createContext(lifecycle?: HostLifecycleReport): EngineContext {
-  const context = new EngineContext();
-  context.register(ProcessSystemKey, new ProcessSystem());
-  host = new Host();
-  context.register(HostKey, host);
+const hosts: Host[] = [];
+/**
+ * An engine context with the `Host` every engine registers, and a way to
+ * report a lifecycle change through an attached adapter. Audio follows it.
+ */
+function engineContext(): {
+  engine: EngineContext;
+  setHost: (state: HostLifecycleReport) => void;
+} {
+  const engine = new EngineContext();
+  const host = new Host();
+  hosts.push(host);
+  engine.register(HostKey, host);
   host._connect({ events: new EventBus(), syncScenes: () => {} });
-  if (lifecycle) setHost(lifecycle);
-  return context;
+  let report: ((state: HostLifecycleReport) => void) | undefined;
+  host.attach({
+    info: { runtime: "test", os: "unknown" },
+    watchLifecycle: (next) => {
+      report = next;
+      return () => {
+        report = undefined;
+      };
+    },
+  });
+  return { engine, setHost: (state) => report?.(state) };
 }
-
-/** Attach an adapter to the context's host and report a change through it. */
-function setHost(state: HostLifecycleReport): void {
-  const current = host;
-  if (!current) throw new Error("no host in the context");
-  if (reportToHost === undefined) {
-    current.attach({
-      info: { runtime: "test", os: "unknown" },
-      watchLifecycle: (report) => {
-        reportToHost = report;
-        return () => {
-          reportToHost = undefined;
-        };
-      },
-    });
+/** Let the context apply the state changes requested so far. */
+const settle = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 0));
+beforeEach(clearRegisteredSounds);
+afterEach(() => {
+  for (const host of hosts.splice(0)) host._dispose();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+it("owns the context and timer, and releases both on destroy", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("AudioContext", FakeAudioContext);
+  const { engine } = engineContext();
+  const plugin = new AudioPlugin();
+  plugin.install(engine);
+  const manager = engine.resolve(AudioManagerKey);
+  const tick = vi.fn();
+  manager.addScheduler(tick);
+  vi.advanceTimersByTime(25);
+  expect(tick).toHaveBeenCalledOnce();
+  plugin.onDestroy();
+  vi.advanceTimersByTime(100);
+  expect(tick).toHaveBeenCalledOnce();
+  await vi.runOnlyPendingTimersAsync();
+  expect(manager.getDiagnostics().state).toBe("closed");
+});
+it("reports unsupported environments explicitly", () => {
+  vi.stubGlobal("AudioContext", undefined);
+  expect(() => new AudioPlugin().install(new EngineContext())).toThrow(
+    "unavailable",
+  );
+});
+it("releases the sounds its loader registered, so a later engine loads them again", async () => {
+  class Context extends FakeAudioContext {
+    decodeAudioData = vi.fn().mockResolvedValue(fakeBuffer(1));
   }
-  reportToHost?.(state);
+  vi.stubGlobal("AudioContext", Context);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(44)),
+    }),
+  );
+  const coin = sound("/sfx/coin.wav");
+  const boot = async (): Promise<AudioPlugin> => {
+    const assets = new AssetManager();
+    const { engine } = engineContext();
+    engine.register(AssetManagerKey, assets);
+    const plugin = new AudioPlugin();
+    plugin.install(engine);
+    await assets.loadAll([coin]);
+    return plugin;
+  };
+  const first = await boot();
+  expect(getSound(coin.path)).toBeDefined();
+  first.onDestroy();
+  expect(getSound(coin.path)).toBeUndefined();
+  const second = await boot();
+  expect(getSound(coin.path)).toBeDefined();
+  second.onDestroy();
+});
+it("lets two engines preload one file and unload it in either order", async () => {
+  class Context extends FakeAudioContext {
+    decodeAudioData = vi.fn(() => Promise.resolve(fakeBuffer(1)));
+  }
+  vi.stubGlobal("AudioContext", Context);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(44)),
+      }),
+    ),
+  );
+  const coin = sound("/sfx/coin.wav", { rootNote: 72 });
+  const boot = async (): Promise<{
+    assets: AssetManager;
+    plugin: AudioPlugin;
+  }> => {
+    const booted = bootWithLoader();
+    await booted.assets.loadAll([coin]);
+    return booted;
+  };
+  // The engine that loaded the file first releases it first: an unload,
+  // then the other engine's destroy.
+  let first = await boot();
+  let second = await boot();
+  const shared = getSound(coin.path);
+  expect(first.assets.get(coin)).toBe(shared);
+  expect(second.assets.get(coin)).toBe(shared);
+  await first.assets.unload(coin);
+  expect(getSound(coin.path)).toBe(shared);
+  second.plugin.onDestroy();
+  expect(getSound(coin.path)).toBeUndefined();
+  first.plugin.onDestroy();
+
+  // The engine that loaded it second releases it first: a destroy, then the
+  // other engine's unload.
+  first = await boot();
+  second = await boot();
+  second.plugin.onDestroy();
+  expect(getSound(coin.path)).toBe(first.assets.get(coin));
+  await first.assets.unload(coin);
+  expect(getSound(coin.path)).toBeUndefined();
+  first.plugin.onDestroy();
+});
+it("keeps another engine's hold when a destroyed engine's assets are cleared", async () => {
+  class Context extends FakeAudioContext {
+    decodeAudioData = vi.fn(() => Promise.resolve(fakeBuffer(1)));
+  }
+  vi.stubGlobal("AudioContext", Context);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(44)),
+      }),
+    ),
+  );
+  const coin = sound("/sfx/coin.wav");
+  const first = bootWithLoader();
+  const second = bootWithLoader();
+  await first.assets.loadAll([coin]);
+  await second.assets.loadAll([coin]);
+  first.plugin.onDestroy();
+  await first.assets.clear();
+  expect(getSound(coin.path)).toBe(second.assets.get(coin));
+  second.plugin.onDestroy();
+  expect(getSound(coin.path)).toBeUndefined();
+});
+it("rejects a second engine's load of a file with different metadata", async () => {
+  class Context extends FakeAudioContext {
+    decodeAudioData = vi.fn(() => Promise.resolve(fakeBuffer(1)));
+  }
+  vi.stubGlobal("AudioContext", Context);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(44)),
+      }),
+    ),
+  );
+  const a = bootWithLoader();
+  const b = bootWithLoader();
+  await a.assets.loadAll([sound("/sfx/pad.wav", { rootNote: 60 })]);
+  await expect(
+    b.assets.loadAll([sound("/sfx/pad.wav", { rootNote: 57 })]),
+  ).rejects.toThrow('Audio asset "/sfx/pad.wav": another engine loaded');
+  a.plugin.onDestroy();
+  b.plugin.onDestroy();
+  expect(getSound("/sfx/pad.wav")).toBeUndefined();
+});
+it("resumes on a gesture and holds audio while the host is inactive", async () => {
+  vi.useFakeTimers();
+  class Context extends FakeAudioContext {
+    override state: AudioContextState = "suspended";
+  }
+  const { engine, setHost } = engineContext();
+  const page = new EventTarget();
+  vi.stubGlobal("AudioContext", Context);
+  vi.stubGlobal("document", page);
+  const plugin = new AudioPlugin();
+  plugin.install(engine);
+  const manager = engine.resolve(AudioManagerKey);
+  const unlocked = vi.fn();
+  manager.onUnlock(unlocked);
+  expect(manager.isUnlocked()).toBe(false);
+
+  page.dispatchEvent(new Event("pointerdown"));
+  page.dispatchEvent(new Event("keydown"));
+  await vi.runOnlyPendingTimersAsync();
+  expect(manager.isUnlocked()).toBe(true);
+  expect(unlocked).toHaveBeenCalledOnce();
+
+  setHost({ activity: "inactive" });
+  await vi.runOnlyPendingTimersAsync();
+  expect(manager.isUnlocked()).toBe(false);
+  // A gesture while the host is inactive does not end the hold.
+  page.dispatchEvent(new Event("pointerdown"));
+  await vi.runOnlyPendingTimersAsync();
+  expect(manager.isUnlocked()).toBe(false);
+
+  setHost({ activity: "active" });
+  await vi.runOnlyPendingTimersAsync();
+  expect(manager.isUnlocked()).toBe(true);
+  plugin.onDestroy();
+});
+it("holds audio when it installs under an inactive host", async () => {
+  vi.stubGlobal("AudioContext", FakeAudioContext);
+  const { engine, setHost } = engineContext();
+  setHost({ activity: "inactive" });
+  const plugin = new AudioPlugin();
+  plugin.install(engine);
+  const manager = engine.resolve(AudioManagerKey);
+  await settle();
+  expect(manager.isUnlocked()).toBe(false);
+  setHost({ activity: "active" });
+  await settle();
+  expect(manager.isUnlocked()).toBe(true);
+  plugin.onDestroy();
+});
+it("starts a context the hold kept from its first gesture once the host returns", async () => {
+  // A page in a frame starts unfocused, so the first click lands while audio
+  // is held and the frame's focus follows it.
+  class Context extends FakeAudioContext {
+    override state: AudioContextState = "suspended";
+  }
+  const { engine, setHost } = engineContext();
+  setHost({ activity: "inactive" });
+  const page = new EventTarget();
+  vi.stubGlobal("AudioContext", Context);
+  vi.stubGlobal("document", page);
+  const plugin = new AudioPlugin();
+  plugin.install(engine);
+  const manager = engine.resolve(AudioManagerKey);
+  page.dispatchEvent(new Event("pointerdown"));
+  await settle();
+  expect(manager.isUnlocked()).toBe(false);
+  setHost({ activity: "active" });
+  await settle();
+  expect(manager.isUnlocked()).toBe(true);
+  plugin.onDestroy();
+});
+it("stops following the host once destroyed", () => {
+  vi.stubGlobal("AudioContext", FakeAudioContext);
+  const { engine, setHost } = engineContext();
+  const plugin = new AudioPlugin();
+  plugin.install(engine);
+  const manager = engine.resolve(AudioManagerKey);
+  const follow = vi.spyOn(manager, "_setHostActive");
+  plugin.onDestroy();
+  setHost({ activity: "inactive" });
+  expect(follow).not.toHaveBeenCalled();
+});
+it("listens to the page for gestures only, never for visibility or focus", () => {
+  vi.stubGlobal("AudioContext", FakeAudioContext);
+  const { engine } = engineContext();
+  const page = new EventTarget();
+  const view = new EventTarget();
+  const pageAdd = vi.spyOn(page, "addEventListener");
+  const viewAdd = vi.spyOn(view, "addEventListener");
+  vi.stubGlobal("document", page);
+  vi.stubGlobal("window", view);
+  const plugin = new AudioPlugin();
+  plugin.install(engine);
+  expect(pageAdd.mock.calls.map(([type]) => type)).toEqual([
+    "pointerdown",
+    "keydown",
+    "touchend",
+  ]);
+  expect(viewAdd).not.toHaveBeenCalled();
+  plugin.onDestroy();
+});
+function bootWithLoader(): { assets: AssetManager; plugin: AudioPlugin } {
+  const assets = new AssetManager();
+  const { engine } = engineContext();
+  engine.register(AssetManagerKey, assets);
+  const plugin = new AudioPlugin();
+  plugin.install(engine);
+  return { assets, plugin };
 }
-
-let reportToHost: ((state: HostLifecycleReport) => void) | undefined;
-
-describe("AudioPlugin", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    host?._dispose();
-    host = undefined;
-    reportToHost = undefined;
-    mockSound.context.muted = false;
-    mockSound.context.autoPause = true;
-    mockSound.context.paused = false;
-    mockSound.context.audioContext.state = "running";
-    mockSound.context.audioContext.listeners.clear();
-  });
-
-  it("has name 'audio'", () => {
-    const plugin = new AudioPlugin();
-    expect(plugin.name).toBe("audio");
-  });
-
-  it("has no dependencies", () => {
-    const plugin = new AudioPlugin();
-    expect(
-      (plugin as unknown as Record<string, unknown>).dependencies,
-    ).toBeUndefined();
-  });
-
-  it("install() registers AudioManager on context", async () => {
-    const plugin = new AudioPlugin();
-    const context = createContext();
-    await plugin.install(context);
-
-    const manager = context.resolve(AudioManagerKey);
-    expect(manager).toBeInstanceOf(AudioManager);
-    plugin.onDestroy();
-  });
-
-  it("onDestroy() calls sound.close()", async () => {
-    const plugin = new AudioPlugin();
-    const context = createContext();
-    await plugin.install(context);
-    plugin.onDestroy();
-    expect(mockSound.close).toHaveBeenCalled();
-  });
-
-  it("registers nothing when destroyed while the library is loading", async () => {
-    const plugin = new AudioPlugin();
-    const context = createContext();
-
-    const installing = plugin.install(context);
-    plugin.onDestroy();
-    await installing;
-
-    expect(context.tryResolve(AudioManagerKey)).toBeUndefined();
-    expect(mockSound.close).toHaveBeenCalledTimes(1);
-    expect(mockSound.context.audioContext.listeners.size).toBe(0);
-  });
-
-  describe("following the host", () => {
-    it("pauses the context when it installs under an inactive host", async () => {
-      const plugin = new AudioPlugin();
-      const context = createContext({ activity: "inactive" });
-
-      await plugin.install(context);
-
-      expect(mockSound.context.paused).toBe(true);
-      expect(mockSound.context.autoPause).toBe(false);
-      plugin.onDestroy();
-    });
-
-    it("pauses and resumes the context as the host changes", async () => {
-      const plugin = new AudioPlugin();
-      const context = createContext();
-      await plugin.install(context);
-
-      setHost({ activity: "inactive" });
-      expect(mockSound.context.paused).toBe(true);
-
-      setHost({ activity: "active" });
-      expect(mockSound.context.paused).toBe(false);
-      plugin.onDestroy();
-    });
-
-    it("leaves the context alone after it is destroyed", async () => {
-      const plugin = new AudioPlugin();
-      const context = createContext();
-      await plugin.install(context);
-      plugin.onDestroy();
-
-      setHost({ activity: "inactive" });
-
-      expect(mockSound.context.paused).toBe(false);
-    });
-
-    it("adds no page listener of its own", async () => {
-      const plugin = new AudioPlugin();
-      const context = createContext();
-      const addSpy = vi.spyOn(document, "addEventListener");
-
-      await plugin.install(context);
-
-      expect(addSpy).not.toHaveBeenCalled();
-      addSpy.mockRestore();
-      plugin.onDestroy();
-    });
-
-    it("registers no observer when it is destroyed while the library loads", async () => {
-      const plugin = new AudioPlugin();
-      const context = createContext();
-
-      const installing = plugin.install(context);
-      plugin.onDestroy();
-      await installing;
-
-      setHost({ activity: "inactive" });
-
-      expect(mockSound.context.paused).toBe(false);
-    });
-  });
-
-  describe("unlock", () => {
-    it("fires onUnlock listeners when the context starts running", async () => {
-      mockSound.context.audioContext.state = "suspended";
-      const plugin = new AudioPlugin();
-      const context = createContext();
-      await plugin.install(context);
-      const manager = context.resolve(AudioManagerKey);
-
-      const cb = vi.fn();
-      manager.onUnlock(cb);
-      expect(cb).not.toHaveBeenCalled();
-
-      setContextState("running");
-      expect(cb).toHaveBeenCalledTimes(1);
-
-      const late = vi.fn();
-      manager.onUnlock(late);
-      expect(late).toHaveBeenCalledTimes(1);
-
-      plugin.onDestroy();
-    });
-
-    it("fires a listener registered while the host is inactive when it returns", async () => {
-      const plugin = new AudioPlugin();
-      const context = createContext();
-      await plugin.install(context);
-      const manager = context.resolve(AudioManagerKey);
-
-      setHost({ activity: "inactive" });
-      setContextState("suspended");
-      const cb = vi.fn();
-      manager.onUnlock(cb);
-      expect(cb).not.toHaveBeenCalled();
-
-      setHost({ activity: "active" });
-      setContextState("running");
-      expect(cb).toHaveBeenCalledTimes(1);
-
-      plugin.onDestroy();
-    });
-
-    it("stops following the context after it is destroyed", async () => {
-      mockSound.context.audioContext.state = "suspended";
-      const plugin = new AudioPlugin();
-      const context = createContext();
-      await plugin.install(context);
-      const manager = context.resolve(AudioManagerKey);
-      const cb = vi.fn();
-      manager.onUnlock(cb);
-
-      plugin.onDestroy();
-      setContextState("running");
-
-      expect(mockSound.context.audioContext.listeners.size).toBe(0);
-      expect(cb).not.toHaveBeenCalled();
-    });
-  });
+it("rejects a failed download and registers nothing", async () => {
+  vi.stubGlobal("AudioContext", FakeAudioContext);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+  const { assets, plugin } = bootWithLoader();
+  const missing = sound("/sfx/missing.wav");
+  await expect(assets.loadAll([missing])).rejects.toThrow("HTTP 404");
+  expect(getSound(missing.path)).toBeUndefined();
+  plugin.onDestroy();
+});
+it("rejects audio the browser cannot decode and registers nothing", async () => {
+  class Context extends FakeAudioContext {
+    decodeAudioData = vi.fn().mockRejectedValue(new Error("not audio"));
+  }
+  vi.stubGlobal("AudioContext", Context);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(4)),
+    }),
+  );
+  const { assets, plugin } = bootWithLoader();
+  const corrupt = sound("/sfx/corrupt.wav");
+  await expect(assets.loadAll([corrupt])).rejects.toThrow("not audio");
+  expect(getSound(corrupt.path)).toBeUndefined();
+  plugin.onDestroy();
+});
+it("rejects a load that finishes after the plugin is destroyed", async () => {
+  class Context extends FakeAudioContext {
+    decodeAudioData = vi.fn().mockResolvedValue(fakeBuffer(1));
+  }
+  vi.stubGlobal("AudioContext", Context);
+  let respond!: (response: unknown) => void;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      () =>
+        new Promise((resolve) => {
+          respond = resolve;
+        }),
+    ),
+  );
+  const { assets, plugin } = bootWithLoader();
+  const late = sound("/sfx/late.wav");
+  const loading = assets.loadAll([late]);
+  plugin.onDestroy();
+  respond({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(4)) });
+  await expect(loading).rejects.toThrow("destroyed during load");
+  expect(getSound(late.path)).toBeUndefined();
 });

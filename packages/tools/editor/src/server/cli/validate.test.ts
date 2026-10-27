@@ -213,10 +213,10 @@ describe("runValidate", () => {
 
 /**
  * A project shaped like a scaffolded game: one entity type whose module
- * reaches `@yagejs/physics` and `@yagejs/audio`. Neither package loads under
- * plain Node — `@dimforge/rapier2d` declares no entry point Node's resolver
- * finds, and `@pixi/sound` reads `document` while it evaluates — so this is
- * the check that the run transforms them instead of handing them over.
+ * reaches `@yagejs/physics` and `@yagejs/audio`. `@yagejs/physics` does not
+ * load under plain Node, because `@dimforge/rapier2d` declares no entry point
+ * Node's resolver finds. So this is the check that the run transforms the
+ * engine packages instead of handing them over.
  */
 const PHYSICS_PROJECT = {
   "vite.config.ts": `import { defineConfig } from "vite";

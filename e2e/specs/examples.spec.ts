@@ -1612,8 +1612,8 @@ test.describe("Examples", () => {
   test("the audio example holds its sound while the window is unfocused", async ({
     page,
   }) => {
-    // Every context the page creates is recorded, because the one audio holds
-    // belongs to the audio library and the page does not expose it.
+    // Every context the page creates is recorded, because `AudioPlugin` owns
+    // the one audio holds and the page does not expose it.
     await page.addInitScript(() => {
       const created: AudioContext[] = [];
       (window as unknown as { __contexts__: AudioContext[] }).__contexts__ =
@@ -1650,8 +1650,7 @@ test.describe("Examples", () => {
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect.poll(states).toContain("running");
 
-    // With the setting off, the window's focus does not hold audio, which the
-    // audio library's own listener would do on its own.
+    // With the setting off, an unfocused window does not hold audio.
     await page.evaluate(() => window.__yage__!.inspector.input.tap("KeyB", 2));
     await expect(page.locator("#auto-pause-state")).toHaveText("off");
     await page.evaluate(() => window.dispatchEvent(new Event("blur")));

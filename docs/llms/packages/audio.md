@@ -1,11 +1,8 @@
 # @yagejs/audio
 
-Depends on `@yagejs/core`, `@pixi/sound`. Channel-based audio playback.
-
-`AudioPlugin` loads `@pixi/sound` when it installs, so the package imports
-outside a browser too — a level check or a test run in Node can import a module
-that uses `sound()` or `SoundComponent`. A registration made before the plugin
-installs is applied when it does.
+Depends on `@yagejs/core`. Native Web Audio playback with audio-clock scheduling.
+The module imports in Node; installing `AudioPlugin` requires browser Web Audio.
+Assets contain `AudioBuffer`. Recorded and generated sources share one graph.
 
 ## Setup
 
@@ -26,7 +23,7 @@ engine.use(
 
 ## Unlock & Automatic Pause
 
-Browsers suspend the `AudioContext` until the user interacts with the page. `@pixi/sound` already resumes it on the first pointer/touch gesture, so "play on click" works without extra setup. That means **music scheduled on page-load stays silent until first click** — not a bug, but surprising. Use `isUnlocked` / `onUnlock` to schedule autoplay that survives the delay:
+AudioPlugin requests resume on pointer, touch and keyboard gestures. Resume may be asynchronous. Booked sources wait on the frozen context clock. Use `onUnlock` to wait for a running context:
 
 ```ts yage-context="scene-enter"
 import { AudioManagerKey } from "@yagejs/audio";
@@ -45,7 +42,7 @@ audio.autoPause = true; // default true — pause all audio while the host is in
 
 - `onUnlock(cb)` fires synchronously if already unlocked; otherwise once, when the context next starts running: after the first gesture, or when audio held for an inactive host resumes. Returns a disposer.
 - `isUnlocked()` is `false` before the first gesture, while audio is held for an inactive host, and until the context has resumed after the host becomes active again.
-- `autoPause` holds all audio while `Host.active` is `false`: the app is in the background, the page is hidden, or the window is unfocused. Playback continues from where it stopped, and channel and handle volume, mute and pause are left as the player set them. The HTML-audio fallback is held the same way.
+- `autoPause` holds all audio while `Host.active` is `false`: the app is in the background, the page is hidden, or the window is unfocused. Playback continues from where it stopped, and channel and handle volume, mute and pause are left as the player set them. A gesture while the host is inactive does not end the hold; a context no gesture has unlocked stays suspended after it.
 - Pausing scenes is a scene-lifecycle concern, not an audio one: use `SceneManager.autoPause` (see `core.md`).
 
 ## Asset Factory
@@ -93,7 +90,7 @@ handle.volume; // get/set, per-sound volume before the channel multiplier
 handle.speed; // get/set
 handle.paused; // get/set
 handle.muted; // get/set
-handle.fadeTo(0, { duration: 0.6, stopOnComplete: true }); // returns Process
+handle.fadeTo(0, { duration: 0.6, stopOnComplete: true }); // returns void
 handle.stop();
 
 // Stop
@@ -119,48 +116,19 @@ audio.pauseChannel("music");
 audio.resumeChannel("music");
 ```
 
-Fade types and signatures:
-
-```ts
-import {
-  AudioManager as BaseAudioManager,
-  SoundHandle as BaseSoundHandle,
-} from "@yagejs/audio";
-import type {
-  AudioCrossfadeOptions as BaseAudioCrossfadeOptions,
-  AudioFadeOptions as BaseAudioFadeOptions,
-  SoundRef,
-} from "@yagejs/audio";
-import type { EasingFunction, Process } from "@yagejs/core";
-
-interface AudioFadeOptions extends BaseAudioFadeOptions {
-  duration: number;
-  easing?: EasingFunction; // default: easeLinear
-  stopOnComplete?: boolean; // requires target volume 0
-}
-
-interface AudioCrossfadeOptions extends BaseAudioCrossfadeOptions {
-  duration: number;
-  easing?: EasingFunction; // default: easeLinear
-}
-
-declare class SoundHandle extends BaseSoundHandle {
-  fadeTo(volume: number, options: AudioFadeOptions): Process;
-}
-
-declare class AudioManager extends BaseAudioManager {
-  crossfade(
-    outgoing: SoundHandle,
-    next: SoundRef,
-    options: AudioCrossfadeOptions,
-  ): SoundHandle;
-}
-```
+Automation options: `{ at?: number; duration?: number; curve?: "linear" | "exponential" }`.
+`at` is absolute audio-context seconds; omitted or past automation times mean
+now. Duration defaults to 0. An explicit past `crossfade` start throws.
+Exponential ramps require positive endpoints. `fadeTo` requires duration and
+optionally `stopOnComplete` (only with target 0); it returns void. A later
+volume write (`volume`, `setVolume`, `fadeTo`) that starts before that fade
+ends replaces it and cancels its stop. `stop(at)` replaces only the fade's
+stop; the ramp continues.
 
 `AudioConfig.masterVolume?: number` sets the initial master volume (default 1).
 `AudioManager.masterVolume` accepts finite values from 0 to 1 and throws before
-changing state for invalid inputs. Playback volume is `masterVolume × channel
-volume × SoundHandle.volume`. Master volume affects this manager's playing and
+changing state for invalid inputs. Playback volume is `masterVolume × every
+ancestor channel volume × channel volume × SoundHandle.volume`. Master volume affects this manager's playing and
 future sounds, including channels created later. It preserves channel and
 sound volumes, active fades, and mute/pause state. It does not control external
 audio contexts or playback outside this manager.
@@ -171,22 +139,15 @@ Playing a sound or setting a channel's volume, mute or pause state creates an
 unknown channel. `getChannelVolume(name)` returns 1 for an unknown channel
 without creating it.
 
-`SoundHandle.volume` is a value from 0 to 1 before master and channel volumes
-are applied. Changing either keeps each handle's volume and any active fade. A second
-`fadeTo` on the same handle cancels and replaces its current fade. The returned
-`Process` can be cancelled or awaited with `toPromise()`.
+`SoundHandle.volume` is the 0–1 value before channel and master gains. Writes
+replace future automation from the supplied `at` onward. Setting the current
+value cancels a ramp. `crossfade` fades the incoming sound from 0 to its target,
+fades and stops the outgoing sound, and returns the incoming handle immediately.
+It inherits the outgoing channel unless a channel is supplied.
 
-`crossfade` starts `next` at zero, fades it to `options.volume ?? 1`, fades the
-outgoing handle to zero, and stops the outgoing handle at completion. It
-returns the incoming handle immediately. When `options.channel` is absent, the
-incoming sound uses the outgoing handle's channel. One easing function applies
-to both fades.
-
-Fades use the engine-global frame process pool. They continue across scene
-changes, follow `ProcessSystem.timeScale`, and are not gated by an individual
-scene's pause state. Duration and volume inputs are validated before playback
-changes. Easing output is clamped to the fade interval; a non-finite result
-throws at the volume write.
+Fades run on audio time, independent of scene pause and game time scale.
+Context suspension freezes time. Handle/channel pause holds playback position
+and automation until resume. Invalid numeric inputs throw before state changes.
 
 `play`, `playOnce`, `requestOnce`, and `playRandom` throw naming the alias when no sound is registered under it — a typo, or playback before the asset finished preloading. Preload it with `sound(path)` or register it with `registerSound(alias, buffer)`.
 
@@ -203,8 +164,7 @@ active. A released request receives no callback. Stopping the shared
 
 `request.release({ fadeOut: seconds })` accepts `SoundRequestReleaseOptions`.
 `fadeOut` must be finite and non-negative; omitting it or passing zero stops
-immediately when the final owner releases. A positive fade requires an installed
-`AudioPlugin`. Other requests and `playOnce` owners keep the recording playing
+immediately when the final owner releases. Other requests and `playOnce` owners keep the recording playing
 at its current volume. Only the final request's fade applies.
 
 The final request remains `active` through its fade, then becomes inactive when
@@ -234,11 +194,12 @@ Semantics:
 - Runtime buffers are not persisted by YAGE. If game-owned save data contains
   an alias, re-register the buffer under that alias before reconstructing
   playback.
-- Callable at module scope, before `AudioPlugin` installs: the alias is held and added to the library the plugin loads.
+- Callable at module scope, before `AudioPlugin` installs: the buffer is available once a manager is created.
 - Registered aliases are engine-global and live until `unregisterSound(alias)`.
 - `unregisterSound` is a no-op for aliases it never registered. An `AudioBuffer` has no destroy step, so unlike `unregisterTexture` there is nothing to release beyond the alias itself.
 - Re-registering an alias replaces the entry.
-- Registering an alias already used by a loaded sound asset (or any entry the API didn't create) throws — shadowing a loaded asset would let that asset's unload destroy the registered sound.
+- Registering an alias already used by a loaded sound asset throws. Unloading
+  that asset removes its alias; already-playing voices retain their buffer.
 
 ## SoundComponent
 
@@ -271,3 +232,93 @@ sc.channel;
 sc.loop;
 sc.volume;
 ```
+
+## Exact scheduling, layers and diagnostics
+
+- `audio.currentTime`, `audio.sampleRate`: context seconds and samples/second.
+- `play(ref, { at, offset, stopAt, loopStart, loopEnd, pan, ... })`: absolute start,
+  buffer offset, absolute stop, loop region in seconds, stereo pan −1..1.
+  Past starts begin now and increment `lateStarts`. `stop()` cancels booked starts.
+- `handle.scheduled`: active start lies in the future; `playing` includes paused
+  and booked voices. `handle.setVolume`, `setSpeed`, `setPan` accept automation
+  options. Speed must remain finite and positive at Web Audio's 32-bit float
+  precision. `release({ at?, duration? }?)` (`SoundReleaseOptions`; `at`
+  defaults to now, `duration` to 0.05 s) fades to zero and stops; duration 0
+  stops at `at`. `stop(at?)` can book a stop.
+- `createChannel(name, { parent?, volume? })`: unique named channel; parent must
+  already exist. `removeChannel(name)` stops and removes descendants.
+- Parent gain/mute changes affect booked voices. Parent pause/stop propagates.
+  Configured channels augment defaults `sfx: 1`, `music: 0.7`.
+- `setChannelVolume(name, volume, automation?)`: gain automation on all voices.
+- `registerSound(alias, buffer, metadata?: SoundMetadata)`: `{ loopStart?,
+loopEnd?, rootNote? }`. The loop pair is the default sustain region used when
+  `play` sets `loop: true` (play options override it). `rootNote` is the MIDI
+  pitch at the original rate; the music addon transposes against it.
+- `getSoundMetadata(ref): SoundMetadata | undefined`: copy of the registered
+  loop points and root note; `undefined` for an unregistered alias.
+- `addScheduler((now, horizon) => void): () => void`: independent of scene time.
+  Defaults: `AudioConfig.lookahead = 0.12`, `tickInterval = 0.025` seconds;
+  both positive finite, interval < lookahead. The plugin owns timer cleanup.
+- `updateSchedule(now?, horizon?)`: explicitly book work, including offline plans.
+- `getDiagnostics()`: state/time, active/scheduled voices, schedulerCount,
+  lateStarts, channels and recent callback failures. Inspector extension `audio`
+  exposes `getDiagnostics`. Unlock, scheduler, channel-pause and `onEnd`
+  callbacks run through the engine's ErrorBoundary.
+- `dispose()` stops voices and releases nodes, subscribers and pending unlocks.
+
+## Offline graph rendering
+
+```ts
+import { renderAudio, measureAudio } from "@yagejs/audio";
+const buffer = await renderAudio(
+  { duration: 3, sampleRate: 44100, channels: 2 },
+  (audio) => {
+    const voice = audio.play("loop", { loop: true, volume: 0.2 });
+    voice.setSpeed(1.5, { at: 1, duration: 0.5 });
+    voice.release({ at: 2.5, duration: 0.2 });
+  },
+);
+const metrics = measureAudio(
+  [buffer.getChannelData(0), buffer.getChannelData(1)],
+  buffer.sampleRate,
+);
+```
+
+`renderAudio(options, plan)` returns `Promise<AudioBuffer>`; optional `mix` is
+`AudioConfig`. Preload/register sources first. Book every operation synchronously
+in the plan. Native offline rendering uses the same graph, without a timer or
+implicit compressor. `measureAudio` returns duration, samplePeak, rms,
+clippedSamples (absolute value >= 1), nonFiniteSamples. These are sample metrics,
+not true peak or standardized loudness. Only the supplied plan is reproduced.
+Native rendering can differ by small floating-point amounts between runs or
+browsers; compare measurements with a numerical tolerance.
+
+## Custom automation and pause-aware sequencing
+
+`onChannelPause(name, callback)` reports effective channel pause, including its
+parents. It calls the callback immediately and on changes, and returns an
+unsubscribe function. A sequencer can hold its transport while that channel is
+paused. Callbacks use the audio error boundary.
+
+`AudioTimeline` is the shared numeric automation planner used by audio controls
+and the music addon. Construct it with an initial finite value. `set(value, at,
+duration?, curve?)` replaces automation from `at`; `valueAt(time)`, `integral(from,
+to)`, and `events(from)` query its value, area and detached future points.
+`prune(time)` discards elapsed history; consume any required integral first.
+`shift(from, delta)` holds the value at `from` and moves future points by `delta`.
+`apply(param, now)` submits the timeline to an AudioParam. Queries require valid
+finite times; results outside retained history are undefined. This planner does
+not create an audio context or timer.
+
+## Recorded sound metadata and shared files
+
+- `sound(path, metadata?: SoundMetadata): AssetHandle<AudioBuffer>` accepts
+  paired `loopStart`/`loopEnd` in seconds and `rootNote` (MIDI 0–127). The
+  metadata follows the handle through preloading into the registry.
+- The sound loader and AssetManager own decoding, reference counting and
+  unload. Handles for the same file must agree on their metadata.
+- Engines on one page share a decoded file by path. Each engine's load adds
+  one hold and plays the first decode. Each engine's unload or `AudioPlugin`
+  destroy releases one, and the file is removed when none remain. A load of
+  the same path with different metadata throws `Audio asset "<path>": another
+engine loaded this file with metadata ...`.

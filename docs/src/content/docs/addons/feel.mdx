@@ -602,7 +602,8 @@ const reel = feelLoop(feelSound({ alias: "reel", fadeOut: 0.02 }), 0.15);
 The default `lifetime: "cue"` stops the sound on release, cancellation, disable,
 or destruction. Use `lifetime: "sound"` for menu confirmations, gunshots, and
 other sounds that should finish through those events or a scene change. Audio
-channel stops and asset unloading can still interrupt them. `onEnd` runs only
+channel stops can still interrupt them. Unloading an alias prevents new
+playback but lets existing voices finish. `onEnd` runs only
 on natural audio completion. Cue lifetime suppresses the callback once release
 or cancellation begins, including when the recording ends during its fade.
 With sound lifetime, the callback may run after its Feel owner is gone.
@@ -611,9 +612,8 @@ For cue-owned sounds, `fadeOut` sets a fade to silence in seconds. It must be
 finite and non-negative; the default `0` stops immediately. A positive fade
 cannot be combined with sound lifetime. Graceful release waits for the audio
 fade to finish. Cancellation ends the cue immediately while the audio tail
-continues. Fades use the engine-global frame clock and follow
-`ProcessSystem.timeScale`, so they continue across scene changes and individual
-scene pauses. They are not sample-accurate audio ramps.
+continues. Fades use audio time and continue across scene changes, scene pauses,
+and game time-scale changes. Context suspension or channel pause holds the fade.
 
 With `once: true`, cues share a recording by the selected alias and channel.
 Releasing one cue cannot stop or fade a recording another cue still owns.

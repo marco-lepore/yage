@@ -18,6 +18,7 @@ export default defineConfig({
         "**/examples.spec.ts",
         "**/level-editor.spec.ts",
         "**/sequence-editor.spec.ts",
+        "**/adaptive-music.spec.ts",
       ],
       use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5200" },
     },
@@ -25,7 +26,7 @@ export default defineConfig({
     // through the deterministic `?test` harness by examples.spec.ts.
     {
       name: "examples",
-      testMatch: "**/examples.spec.ts",
+      testMatch: ["**/examples.spec.ts", "**/adaptive-music.spec.ts"],
       use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5199" },
     },
     // The level editor over e2e/editor-project, served on :5201 by

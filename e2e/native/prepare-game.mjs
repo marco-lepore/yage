@@ -329,13 +329,10 @@ const provenance = {
     file: relative(gameDir, tarball.file),
   })),
   resolved: Object.fromEntries(
-    [
-      "pixi.js",
-      "@pixi/sound",
-      "@dimforge/rapier2d",
-      "yoga-layout",
-      "react",
-    ].map((name) => [name, installedVersion(name)]),
+    ["pixi.js", "@dimforge/rapier2d", "yoga-layout", "react"].map((name) => [
+      name,
+      installedVersion(name),
+    ]),
   ),
   build: hashDir(webDir),
 };
