@@ -1,5 +1,46 @@
 # @yagejs/examples
 
+## 0.0.15
+
+### Patch Changes
+
+- Updated dependencies [[`42c6825`](https://github.com/marco-lepore/yage/commit/42c68255eb2ad068b49e3de8654f8e2c79819f21), [`e26bb25`](https://github.com/marco-lepore/yage/commit/e26bb252286c83cb6cec5a745420a1458b717bad), [`c3def87`](https://github.com/marco-lepore/yage/commit/c3def870a6be3e5f913eec8f8b5168dbd7809008), [`c3def87`](https://github.com/marco-lepore/yage/commit/c3def870a6be3e5f913eec8f8b5168dbd7809008), [`504f688`](https://github.com/marco-lepore/yage/commit/504f6889ddba1db454afa85045b76d383c70f811), [`f8add30`](https://github.com/marco-lepore/yage/commit/f8add30c2fc0fb4db73994531be3c033d8b1027f), [`f8add30`](https://github.com/marco-lepore/yage/commit/f8add30c2fc0fb4db73994531be3c033d8b1027f), [`f8add30`](https://github.com/marco-lepore/yage/commit/f8add30c2fc0fb4db73994531be3c033d8b1027f), [`ba82273`](https://github.com/marco-lepore/yage/commit/ba822735627cf5350a844c7052e7c184bba0ac62), [`6dc14e6`](https://github.com/marco-lepore/yage/commit/6dc14e6aeea0b8d3e8fb17677017b44985971206), [`b804d22`](https://github.com/marco-lepore/yage/commit/b804d226cd8be730c6a2519d92789e929f7dc526), [`b804d22`](https://github.com/marco-lepore/yage/commit/b804d226cd8be730c6a2519d92789e929f7dc526), [`f95a89a`](https://github.com/marco-lepore/yage/commit/f95a89adf82ca7d1785d101b615654996707d93d), [`f3f2d71`](https://github.com/marco-lepore/yage/commit/f3f2d7163c1d8f3f67c402771a8ad297f64a0a83), [`f3f2d71`](https://github.com/marco-lepore/yage/commit/f3f2d7163c1d8f3f67c402771a8ad297f64a0a83), [`e951f35`](https://github.com/marco-lepore/yage/commit/e951f35ba0fa427659add9ab4f12bd53549ff41f), [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03), [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03), [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03), [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`75b4388`](https://github.com/marco-lepore/yage/commit/75b438863b82259c70ba035c436b4116e856b4c1), [`2869e2a`](https://github.com/marco-lepore/yage/commit/2869e2a7888a6674e49c9af654ac22311cb2985b), [`5b4ecaf`](https://github.com/marco-lepore/yage/commit/5b4ecaf3c19098e2f9d9e85c1246a3769994de7f), [`5b4ecaf`](https://github.com/marco-lepore/yage/commit/5b4ecaf3c19098e2f9d9e85c1246a3769994de7f), [`60028a9`](https://github.com/marco-lepore/yage/commit/60028a912a115020b6deffd0f25b6c82315175f5), [`7764863`](https://github.com/marco-lepore/yage/commit/7764863094712cffa55404b46df1c5281669b3a7), [`960939a`](https://github.com/marco-lepore/yage/commit/960939a48fcfb30f73e3f8d85d0338197c827097), [`3aae2f1`](https://github.com/marco-lepore/yage/commit/3aae2f10761263a32d2790b86665941335566239), [`3aae2f1`](https://github.com/marco-lepore/yage/commit/3aae2f10761263a32d2790b86665941335566239), [`3aae2f1`](https://github.com/marco-lepore/yage/commit/3aae2f10761263a32d2790b86665941335566239), [`4d72844`](https://github.com/marco-lepore/yage/commit/4d728445a7121889713334f4c967cb1f5a2d96a3), [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03), [`ab01a9d`](https://github.com/marco-lepore/yage/commit/ab01a9d810a62ecbd4e46e846f298e7375ea17d1), [`207d373`](https://github.com/marco-lepore/yage/commit/207d373f73e3b6aff8a1cbe36b5ae4097a2ff5d1), [`207d373`](https://github.com/marco-lepore/yage/commit/207d373f73e3b6aff8a1cbe36b5ae4097a2ff5d1), [`207d373`](https://github.com/marco-lepore/yage/commit/207d373f73e3b6aff8a1cbe36b5ae4097a2ff5d1), [`20fb06e`](https://github.com/marco-lepore/yage/commit/20fb06e5c808da0c1ef42e45526432ed675765f2), [`bea7218`](https://github.com/marco-lepore/yage/commit/bea7218cd64809a68f77d9ac6dddb6e9ae059326), [`3c00174`](https://github.com/marco-lepore/yage/commit/3c00174714e220f5069230c562d9821fc1a66354), [`baf2d43`](https://github.com/marco-lepore/yage/commit/baf2d4317e36f284787de78422ecf20b9bdb3d75), [`bea7218`](https://github.com/marco-lepore/yage/commit/bea7218cd64809a68f77d9ac6dddb6e9ae059326), [`41d025d`](https://github.com/marco-lepore/yage/commit/41d025db4dce4ab2dd2037ac355ad00f296b72ba), [`41d025d`](https://github.com/marco-lepore/yage/commit/41d025db4dce4ab2dd2037ac355ad00f296b72ba), [`41d025d`](https://github.com/marco-lepore/yage/commit/41d025db4dce4ab2dd2037ac355ad00f296b72ba), [`41d025d`](https://github.com/marco-lepore/yage/commit/41d025db4dce4ab2dd2037ac355ad00f296b72ba), [`4f91952`](https://github.com/marco-lepore/yage/commit/4f9195241f58ac412c0c35b2ba5a55bab03de2de), [`4f91952`](https://github.com/marco-lepore/yage/commit/4f9195241f58ac412c0c35b2ba5a55bab03de2de), [`4f91952`](https://github.com/marco-lepore/yage/commit/4f9195241f58ac412c0c35b2ba5a55bab03de2de), [`1bdcdc6`](https://github.com/marco-lepore/yage/commit/1bdcdc629ca5d6219baa95c4cc75e217f377fa07), [`1bdcdc6`](https://github.com/marco-lepore/yage/commit/1bdcdc629ca5d6219baa95c4cc75e217f377fa07), [`cd014b8`](https://github.com/marco-lepore/yage/commit/cd014b818f2f97c10825552d6e4feccca77fb640), [`cd014b8`](https://github.com/marco-lepore/yage/commit/cd014b818f2f97c10825552d6e4feccca77fb640), [`67d3962`](https://github.com/marco-lepore/yage/commit/67d3962e4c1851459c4052d4ec9ce032b3540b0b), [`fdda394`](https://github.com/marco-lepore/yage/commit/fdda394efd47114e097a569e28b3952cd0b5305a), [`fdda394`](https://github.com/marco-lepore/yage/commit/fdda394efd47114e097a569e28b3952cd0b5305a), [`fdda394`](https://github.com/marco-lepore/yage/commit/fdda394efd47114e097a569e28b3952cd0b5305a), [`162ce3f`](https://github.com/marco-lepore/yage/commit/162ce3fe615dcb03e64a5dc6a050d32e734249ad), [`17d28a0`](https://github.com/marco-lepore/yage/commit/17d28a0917f6fbe25912affc0ca36af78ff6b95a), [`5b4ecaf`](https://github.com/marco-lepore/yage/commit/5b4ecaf3c19098e2f9d9e85c1246a3769994de7f), [`837fe35`](https://github.com/marco-lepore/yage/commit/837fe3579c5268ab591b380fcea23257ec919f68), [`28532d4`](https://github.com/marco-lepore/yage/commit/28532d4fe5c8d853d465c7e8f373783d4ab83bd6)]:
+  - @yagejs-addons/behavior-tree@0.1.0
+  - @yagejs/renderer@0.13.0
+  - @yagejs-addons/character-controller@0.1.0
+  - @yagejs/input@0.13.0
+  - @yagejs/physics@0.13.0
+  - @yagejs-addons/dialogue@0.8.0
+  - @yagejs-addons/inventory@0.5.0
+  - @yagejs-addons/virtual-controls@0.5.0
+  - @yagejs/particles@0.13.0
+  - @yagejs/save@0.13.0
+  - @yagejs/core@0.13.0
+  - @yagejs-tools/lab@0.4.0
+  - @yagejs/lighting@0.13.0
+  - @yagejs/audio@0.13.0
+  - @yagejs-addons/hotbar@0.1.0
+  - @yagejs/level@0.13.0
+  - @yagejs-addons/loot@0.1.0
+  - @yagejs-addons/perception@0.1.0
+  - @yagejs/ui@0.13.0
+  - @yagejs/ui-react@0.13.0
+  - @yagejs/tilemap@0.13.0
+  - @yagejs/debug@0.13.0
+  - @yagejs/effects@0.13.0
+  - @yagejs-addons/procedural@0.1.0
+  - @yagejs-addons/music@0.1.0
+  - @yagejs-addons/synth@0.4.0
+  - @yagejs-addons/sequence@0.1.0
+  - @yagejs-addons/feel@0.3.0
+  - @yagejs-addons/i18n@0.2.0
+  - @yagejs-addons/abilities@0.6.0
+  - @yagejs-addons/interaction@0.5.0
+  - @yagejs-addons/quests@0.5.0
+  - @yagejs-addons/stats@0.2.0
+  - @yagejs-addons/steering@0.6.0
+  - @yagejs/pathfinding@0.13.0
+
 ## 0.0.14
 
 ### Patch Changes

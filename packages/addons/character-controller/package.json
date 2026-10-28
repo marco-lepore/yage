@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/character-controller",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Customizable character controllers for YAGE: dynamic platformer movement, terrain assistance and motion arbitration",
   "keywords": [
     "yage",
@@ -48,15 +48,15 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@yagejs/core": ">=0.12.0 <0.13.0",
-    "@yagejs/physics": ">=0.12.0 <0.13.0",
-    "@yagejs/input": ">=0.12.0 <0.13.0"
+    "@yagejs/core": ">=0.13.0 <0.14.0",
+    "@yagejs/physics": ">=0.13.0 <0.14.0",
+    "@yagejs/input": ">=0.13.0 <0.14.0"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
-    "@yagejs/core": ">=0.12.0",
-    "@yagejs/physics": ">=0.12.0",
-    "@yagejs/input": ">=0.12.0",
+    "@yagejs/core": ">=0.13.0",
+    "@yagejs/physics": ">=0.13.0",
+    "@yagejs/input": ">=0.13.0",
     "@dimforge/rapier2d-compat": "^0.20.0"
   }
 }

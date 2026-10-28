@@ -1,5 +1,45 @@
 # @yagejs/core
 
+## 0.13.0
+
+### Minor Changes
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Name the application that runs the game through a `Host` service on every engine.
+  - `engine.host` and `HostKey` resolve a `Host`. Its `info` reports `runtime`, `os`, `appVersion`, `appBuild` and `runtimeVersion`; a page with no host adapter reports `runtime: "browser"` and `os: "unknown"`, since a page reads the system name only from the user agent.
+  - `Host.attach(provider)` is where a host adapter supplies that state. `HostProvider.info` is a `HostInfoInput`: `runtime` and `os` are required, and an adapter leaves out a version it has no authoritative value for. `attach` validates every field it is given, freezes a copy with all five fields present, and returns the function that detaches it. One engine takes one provider.
+  - A host adapter is a `Plugin` named `host`; the service id `host` belongs to the engine.
+  - `HostSupport` is the shared word for whether a host has an operation at all.
+  - `TestHostPlugin` attaches host state to a test engine.
+  - `Breaking:` the context `createMockScene` and `createMockEntity` return carries a `Logger`, an `AssetManager` and a `Host` beside the query cache, event bus and error boundary, so a component that resolves one of them works in a unit test with no extra setup. A test that registers `LoggerKey`, `AssetManagerKey` or `HostKey` on that context throws `Service "logger" is already registered.` (or the `"assetManager"` or `"host"` id). Remove the `register` call and resolve the service from the context, for example `vi.spyOn(context.resolve(LoggerKey), "warn")`.
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Follow one host state for application activity, visibility and focus.
+  - `Host` reports `lifecycle` — `activity`, `visibility` and `focus`, each of which may be `"unknown"` — and derives `active` from them. `activeWhenUnfocused` (default `false`) decides whether an unfocused window counts as active. A page with no host adapter reports its own visibility and the focus of its window.
+  - `host:active` and `host:lifecycle` carry the state to game code. Scene `onPause` and `onResume` run before both. A change made while one is being dispatched is delivered after it, so every handler receives the changes in order.
+  - A host adapter feeds the same state through two optional members of `HostProvider`: `lifecycle`, read once at attach, and `watchLifecycle(report)`, which the adapter calls on every later change. Values arriving from a host are validated where they enter `Host`.
+  - `Breaking:` `SceneManager.autoPauseOnBlur` is `SceneManager.autoPause`, and it holds the stack paused while `Host.active` is `false`, which includes an unfocused window.
+  - The host pause belongs to `SceneManager`, so `Scene.paused` holds only what the game wrote: a manual pause made while the game is in the background is still in force after the return, and a scene pushed while the host is inactive enters paused.
+  - A host pause fires one `onPause` on each scene it pauses, and one `onResume` when the host is active again. Switching `autoPause` on inside `onEnter` while the host is inactive fires the same single `onPause`.
+  - `Inspector.getHost()` reports the host's identity, its three fields, `active` and `activeWhenUnfocused`. `snapshot()` leaves the host out.
+  - `TestHostPlugin` takes a lifecycle argument and reports changes through `setLifecycle`.
+  - The loop's own animation-frame driver reports at most 100 ms a frame, the bound a PixiJS ticker applies by default.
+
+### Patch Changes
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`f3f2d71`](https://github.com/marco-lepore/yage/commit/f3f2d7163c1d8f3f67c402771a8ad297f64a0a83) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Run YAGE games in Electron with a host adapter and a locked-down shell.
+  - The `screen:fullscreen` event's description in `EngineEvents` names the host's window as a source beside the canvas host element, for a game whose host adapter supplies fullscreen.
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Report what the graphics context can do, and bring YAGE's drawing back after a lost context.
+  - `EngineEvents` carries `graphics:context` with `{ lost: boolean }`, emitted by `RendererPlugin` when the graphics context is lost and again when it is restored.
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`baf2d43`](https://github.com/marco-lepore/yage/commit/baf2d4317e36f284787de78422ecf20b9bdb3d75) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fire scene `onPause` and `onResume` once for each change of `isPaused`.
+  - A `scene.paused` write from inside a lifecycle hook, `onEnter` included, fires one hook and logs no warning.
+  - A `paused` write on a scene that is not on the stack, such as one running its `onExit`, fires neither hook.
+  - When an `onPause` throws, the scenes after it on the stack fire no `onPause` for that change, so the end of the pause fires no `onResume` on them either.
+
+- [#397](https://github.com/marco-lepore/yage/pull/397) [`1bdcdc6`](https://github.com/marco-lepore/yage/commit/1bdcdc629ca5d6219baa95c4cc75e217f377fa07) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add authored keyframe sequences and the editor's Sequence mode.
+  - Export `sampleKeyframes(keys, time, easing?)`, which reads a keyframe track at one time without running a `Process` or calling keyframe events. Keyframe tracks sample through the same function.
+  - A keyframe track whose `duration` runs past its last keyframe holds that keyframe's value until it completes, the same value it sets on completion.
+
 ## 0.12.0
 
 ### Minor Changes
