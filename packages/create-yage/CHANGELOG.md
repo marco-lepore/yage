@@ -1,5 +1,24 @@
 # create-yage
 
+## 0.13.0
+
+### Minor Changes
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`1ab57b8`](https://github.com/marco-lepore/yage/commit/1ab57b801b8041504eab57ce7535d5b6326b5c67) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Package YAGE games with Electron Forge and Capacitor.
+  - Both templates set the engine up in `src/boot.ts`, which exports a `boot(options)` every target's entry calls, and `src/main.web.ts` is the browser entry. A desktop or mobile entry passes its host adapter in `hostPlugins`, so each build carries only the host it runs on.
+  - Both templates depend on `@yagejs/save`. `boot` takes a `saveAdapter` and registers `SavePlugin` with it, so each entry decides where saves go. `src/main.web.ts` passes `localStorageAdapter` with the project's name as its namespace, written once when the project is created, so games served from one site keep their saves apart. The entries `yage-pack init` writes pass the desktop or mobile host's file adapter.
+  - `Breaking:` `--features save` is refused as an unknown feature, because both templates depend on `@yagejs/save`.
+  - `vite build --mode electron` and `--mode capacitor` swap the page's entry module and write `dist-electron/` and `dist-capacitor/`; any other mode builds the browser page into `dist/`. The Recommended template registers its service worker for the browser build alone, because an app ships its own files.
+  - The features `electron` and `capacitor` add the host adapter, the vendor build tools and the Capacitor plugins the app itself has to list, and print the `npx yage-pack init` step.
+
+### Patch Changes
+
+- [#423](https://github.com/marco-lepore/yage/pull/423) [`f8add30`](https://github.com/marco-lepore/yage/commit/f8add30c2fc0fb4db73994531be3c033d8b1027f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - The starter templates' `AGENTS.md` tells agents to change a visual through its component and its entity's `Transform`, never through the Pixi object underneath, and to register runtime textures with `registerTexture`.
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Report fullscreen and screen orientation through one display contract that a host can supply.
+  - The Recommended template's fullscreen button reads `renderer.fullscreenSupport` to decide whether to show itself, which covers iPhone, a frame from another origin, and an installed app that already opens fullscreen in one check.
+  - The button's label starts from the game's current state, so a game that opens fullscreen shows the exit label from the first frame.
+
 ## 0.12.0
 
 ### Minor Changes

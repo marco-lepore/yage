@@ -1,5 +1,113 @@
 # @yagejs/renderer
 
+## 0.13.0
+
+### Minor Changes
+
+- [#429](https://github.com/marco-lepore/yage/pull/429) [`ba82273`](https://github.com/marco-lepore/yage/commit/ba822735627cf5350a844c7052e7c184bba0ac62) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Drawing callbacks receive a `DrawContext`, which holds Pixi's drawing vocabulary and nothing else.
+  - `GraphicsComponent.draw`, `RendererPlugin.createTexture` and `graphicsMask` pass their callback a `DrawContext`: shapes, paths, `fill` and `stroke`, `texture`, `cut`, `clear`, the transform stack and `save` / `restore`. The Pixi `Graphics` itself is passed, so nothing is wrapped.
+  - Breaking: `GraphicsContext` is removed. A helper that draws for a callback takes a `DrawContext`, and `GraphicsComponent.renderObject` is typed `DisplayGraphics`. Code that called `addChild`, set `position`, `alpha` or `visible`, or called `destroy` on the callback's parameter changes the visual through the component instead.
+  - `DrawFill`, `DrawStroke`, `DrawPath`, `DrawMatrix` and `DrawRoundedPoint` name the types the drawing methods take.
+
+- [#423](https://github.com/marco-lepore/yage/pull/423) [`b804d22`](https://github.com/marco-lepore/yage/commit/b804d226cd8be730c6a2519d92789e929f7dc526) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Visual components carry their own draw order, and a layer's depth-key function reads a `SortItem` built by the renderer.
+  - Breaking: `LayerSortFn` is `(item: SortItem) => number`. `SortItem` holds the child's `x` and `y`, the owning component's `sortOffset`, and its `entity` (`undefined` for a container no component owns). A custom sort written as `(c) => c.position.y` becomes `(item) => item.y`.
+  - Breaking: `ySortBy` is removed. Set `sortOffset` on the visual and use `ySort`, which keys a child at `y + sortOffset`.
+  - `VisualComponent` has `zIndex` and `sortOffset`, as accessors and as options on every visual. `zIndex` orders a visual among its siblings on a layer without `sort` and inside a `SortGroupComponent` without `innerSort`; on a sorted layer it logs one development warning. Both throw on a non-finite value.
+  - `setLayer`, and a `SortGroupComponent` gathering or releasing its members, re-apply each visual's `zIndex`, so a visual leaving a sorted layer does not keep its last depth key as its draw order.
+  - A `SortGroupComponent` keys off its owner's visual including that visual's `sortOffset`.
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Report what the graphics context can do, and bring YAGE's drawing back after a lost context.
+  - `Breaking:` the renderer draws with WebGL or WebGPU only. On a browser that offers neither, `engine.start()` rejects with Pixi's `No available renderer for the current environment`. `pixi.preference` takes `"webgl"`, `"webgpu"` or an array of the two, so `"canvas"` fails to compile, and a value that reaches the plugin's constructor at run time throws. Pixi's Canvas 2D renderer draws no light, skips every filter and ignores inverse masks, so a game that reached it ran half-drawn without saying so.
+  - `Breaking:` requires `pixi.js` 8.22.0 or later. Pixi 8.21.0 throws when nested filters draw after the renderer resizes, and 8.16.0 to 8.17.1 corrupt filters and render textures on iOS 18.0 and 18.1. Pixi 8.22 turns on its accessibility layer when the player presses Tab on a fresh page, so the renderer passes `accessibilityOptions.activateOnTab: false` and Tab reaches the game's input; `pixi: { accessibilityOptions: { activateOnTab: true } }` turns it back on.
+  - `renderer.capabilities` is one frozen snapshot of the graphics context the renderer draws with: `backend`, the texture, render-target and viewport limits, the sample count of an antialiased render target, fragment precision, min/max blending, and sample, filter and render support for the two float colour formats. `GraphicsCapabilities`, `GraphicsBackend` and `GraphicsFormatSupport` are exported from the package and from the `@yagejs/renderer/api` entry, which loads no Pixi.
+  - `renderer.contextLost` and the `graphics:context` event report a lost context and its restore. Each event arrives in the next frame the game loop runs, at the start of its `Render` phase, where `DisplaySystem` emits it before copying transforms. A handler that throws stops the loop like any error that escapes a frame. Both members are readable from the renderer's install to `engine.destroy()`; outside that span each fails with `RendererPlugin.<member>: the graphics context is only known from the renderer's install to engine.destroy().`
+  - After a restore, every live render target draws from its source again at the next frame, inputs before the targets that sample them, and every `createTexture` result draws from the drawing it keeps. Destroying such a texture frees the drawing with it.
+  - `engine.destroy()` detaches every live `createRenderTarget` handle and `createTexture` result from the renderer and leaves its texture to the game, so `handle.destroy()` and `texture.destroy()` free it without a throw after the engine is gone, as in a hot reload or a test teardown.
+  - `RenderTargetOptions.followResolution` (default `false`) re-allocates a buffer at the renderer's new resolution and redraws it at the next frame, for a buffer that should stay as sharp as the canvas.
+  - `antialias` on a render target has no effect where `capabilities.maxSamples` is `0`, and the buffer is allocated without it rather than with Pixi's per-buffer console warning.
+  - With an Inspector installed, the `"graphics"` extension answers `capabilities()` and `contextLost()`. Its type is `GraphicsDiagnostics`.
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Report fullscreen and screen orientation through one display contract that a host can supply.
+  - `Breaking:` `isFullscreen`, `orientation`, `requestFullscreen()` and `exitFullscreen()` are available from the renderer's `onStart` to `engine.destroy()`, like the other display members, because which application supplies the state is settled as the engine starts. A plugin that reads one in its own `onStart` is registered after `RendererPlugin`. Outside that span each one fails with `RendererPlugin.<member>: the display is only available from the renderer's onStart to engine.destroy(). A plugin that reads it in its own onStart must be registered after RendererPlugin.`
+  - A host adapter registers a `HostDisplay` under `HostDisplayKey` in its `install`, with a `fullscreen` part, an `orientation` part, or both. A part it leaves out comes from the page. `HostDisplay`, `HostFullscreen`, `HostOrientation` and `OrientationLock` are exported, and the key and the four types are also on the `@yagejs/renderer/api` entry, which loads no Pixi. `TestHostDisplay` is a fake with both parts, for tests.
+  - `fullscreenSupport` answers whether a request can change how the game is presented: `"unsupported"` on iPhone, in a frame from another origin without `allow="fullscreen"`, and in an app that already opens fullscreen. `orientationLockSupport`, `lockOrientation(lock)` and `unlockOrientation()` cover the orientation lock; a lock resolves with the orientation the host reports afterwards, which can differ from what was asked for when the device does not turn.
+  - `exitFullscreen()` resolves without asking the host when the game is not fullscreen, so another element's fullscreen is left alone.
+  - `screen:fullscreen` and `screen:orientation` are emitted once per change, and before the promise of a request the game made resolves.
+  - The last fullscreen call wins. A request made while a request is pending shares its promise. One made while an exit is pending waits for the exit to settle and then moves in the direction of the latest call, and the reverse; every call made in the meantime shares that run. A call a later one overrode resolves when the final transition settles, so exit, request, exit leaves the game out of fullscreen with all three promises resolved.
+  - Without a `resolution` setting the canvas follows the display's pixel ratio, so a window moved to a display with another ratio, and a browser zoom, resize the backing store. A configured `resolution`, at the top level or in `pixi`, is held fixed.
+
+- [#432](https://github.com/marco-lepore/yage/pull/432) [`5b4ecaf`](https://github.com/marco-lepore/yage/commit/5b4ecaf3c19098e2f9d9e85c1246a3769994de7f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `LayerDef` is either an `OnScreenLayerDef`, which draws on screen at its `order`, or a `RenderTargetLayerDef`, which draws into a texture and has no `order` or `space`.
+  - Breaking: `LayerDef` is a union type. Code that reads `order` from a `LayerDef` gets `number | undefined`; type the value `OnScreenLayerDef` when it always draws on screen. An interface cannot extend `LayerDef`; extend `OnScreenLayerDef` instead.
+  - `RenderLayer.order` is `0` on a render-target layer, where it has no effect.
+
+- [#423](https://github.com/marco-lepore/yage/pull/423) [`3aae2f1`](https://github.com/marco-lepore/yage/commit/3aae2f10761263a32d2790b86665941335566239) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `NineSliceComponent` draws a stretchable textured frame as a scene visual.
+  - `new NineSliceComponent({ texture, insets, width, height, anchor?, ...visual options })` places the frame with the entity's `Transform`; `setSize(width, height)` stretches it. Sizes and insets throw when negative or non-finite.
+  - Breaking: `createNineSlice` and `NineSliceOptions` are not exported. Add a `NineSliceComponent` to an entity instead of parenting a raw nine-slice sprite into another visual.
+
+- [#429](https://github.com/marco-lepore/yage/pull/429) [`207d373`](https://github.com/marco-lepore/yage/commit/207d373f73e3b6aff8a1cbe36b5ae4097a2ff5d1) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Visual components hand out their Pixi object under one name, `renderObject`.
+  - Breaking: `SpriteComponent.sprite`, `AnimatedSpriteComponent.animatedSprite`, `GraphicsComponent.graphics`, `TextComponent.text` and `SplitTextComponent.splitText` are removed. Change a visual through its component: `visible`, `alpha`, `tint`, `setText`, `mergeStyle`, `draw`. `content` reads a text's string.
+
+- [#429](https://github.com/marco-lepore/yage/pull/429) [`fdda394`](https://github.com/marco-lepore/yage/commit/fdda394efd47114e097a569e28b3952cd0b5305a) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Split text hands out its characters, words and lines as `TextSegment`s.
+  - `TextSegment` holds what a game animates on a segment: `x`, `y`, `position`, `rotation`, `scale`, `alpha`, `tint` and `visible`.
+  - Breaking: `SplitTextComponent.chars`, `words` and `lines` return `readonly TextSegment[]`. Code that used a glyph's Pixi `Text`, `BitmapText` or `Container` API (`addChild`, `style`, `getBounds`) reads the Pixi glyphs through `renderObject.chars`.
+
+- [#429](https://github.com/marco-lepore/yage/pull/429) [`162ce3f`](https://github.com/marco-lepore/yage/commit/162ce3fe615dcb03e64a5dc6a050d32e734249ad) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A custom scene transition changes each scene through its `SceneRenderTree` and covers the swap with a transition overlay, without a Pixi object.
+  - `SceneRenderTree` has `alpha`, `visible` and `setOffset(x, y)` with a matching `offset`, in virtual pixels. All three apply to the scene's world, screen and canvas layers, and a held offset keeps the canvas layers in place when the canvas resizes. A non-finite alpha or offset throws.
+  - `getSceneRenderTree(ctx, scene)` returns a scene's render tree inside a transition.
+  - `createTransitionOverlay(ctx, { coverScreen? })` returns a `TransitionOverlay`: a drawing above every scene's world and screen layers, with `area`, `draw`, `alpha`, `visible`, `setMask`, `clearMask` and `destroy`. Without `coverScreen` its `area` is in virtual pixels, the letterbox bars stay visible, and canvas layers draw above it. With `coverScreen: true` it covers the whole canvas, canvas layers included, in canvas pixels.
+  - `SceneRenderTree.setTransitionMask(factory)` masks a scene for a transition. The scene's own `setMask` mask is set aside, not destroyed, and comes back when the returned handle is removed, so a scene keeps its mask after `chessboard` and `irisReveal`.
+  - The built-in transitions use the same helpers.
+  - Breaking: `getSceneContainer` is removed. A transition that faded, hid or moved the Pixi root uses `getSceneRenderTree` with `alpha`, `visible` or `setOffset`, and one that added its own `Graphics` to the stage uses `createTransitionOverlay`.
+  - Breaking: a hand-written `SceneRenderTree`, such as a test fake, implements `alpha`, `visible`, `offset`, `setOffset` and `setTransitionMask`.
+
+- [#423](https://github.com/marco-lepore/yage/pull/423) [`28532d4`](https://github.com/marco-lepore/yage/commit/28532d4fe5c8d853d465c7e8f373783d4ab83bd6) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Visual components report their size and take pointer listeners, and a texture can mask any visual.
+  - `VisualComponent.localBounds` returns the box a visual draws in its own pixels, before position, rotation and scale, including while it is hidden.
+  - `VisualComponent.onPointer(event, fn)` calls `fn` for `"down"`, `"up"`, `"tap"`, `"over"` or `"out"` on the visual, records a throw on the `ErrorBoundary`, and returns a function that removes the listener.
+  - `textureMask(texture, options)` clips to a texture's alpha channel. The mask owns the sprite that draws the texture.
+  - Breaking: `spriteMask` is removed. Replace `setMask(spriteMask(sprite))` with `setMask(textureMask(key))`.
+
+### Patch Changes
+
+- [#429](https://github.com/marco-lepore/yage/pull/429) [`e26bb25`](https://github.com/marco-lepore/yage/commit/e26bb252286c83cb6cec5a745420a1458b717bad) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A layer declared with `space: "canvas"` draws in canvas pixels, outside the responsive fit and its letterbox clip, so content reaches the letterbox bars.
+  - Each scene keeps its canvas layers in a second root above every scene's world and screen layers. The root is hidden, reordered and destroyed with its scene.
+  - No camera binds a canvas layer. A camera whose `bindings` names one throws when the camera is added, naming the camera and the layer; a binding to a canvas layer created later is skipped. The scene's `fx` and `setMask` do not cover it, and `renderAboveEffects` leaves a node on it in place, also after `setLayer` moves the node there.
+  - A sprite on a canvas layer gets no scene-default lit material, and a lit material on one throws, as on a screen layer.
+
+- [#429](https://github.com/marco-lepore/yage/pull/429) [`6dc14e6`](https://github.com/marco-lepore/yage/commit/6dc14e6aeea0b8d3e8fb17677017b44985971206) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `VisualComponent.drawInactive(shown)` draws a visual whose entity is inactive, which `DisplaySystem` skips. It places the visual at the pose its `Transform` composes, with its transform modifiers, and shows it when `shown` and the component's own `enabled` and `visible` allow it. It throws for an active entity.
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`f3f2d71`](https://github.com/marco-lepore/yage/commit/f3f2d7163c1d8f3f67c402771a8ad297f64a0a83) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Run YAGE games in Electron with a host adapter and a locked-down shell.
+  - `RendererPlugin` draws on a page whose content security policy forbids turning strings into code: it loads PixiJS's prebuilt shader and uniform code itself, before it creates the Pixi application. A page that allows string evaluation keeps PixiJS's generated code.
+  - Under such a policy on WebGPU, PixiJS writes integer uniforms as floats, so `motionBlur` from `@yagejs/effects` draws nothing there. WebGL, which the renderer asks for first, draws it.
+
+- [#429](https://github.com/marco-lepore/yage/pull/429) [`20fb06e`](https://github.com/marco-lepore/yage/commit/20fb06e5c808da0c1ef42e45526432ed675765f2) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A layer declared with `renderTarget` draws into a texture, not the screen, so game code fills a texture with ordinary visual components.
+  - Declare the layer on the scene, or create it at runtime from the entity that needs it with `ensureLayer`; the texture lives as long as the scene either way. Visuals from any entity join the layer with `layer: name` and follow their entity's `Transform`, in the texture's pixels. `texture: key` registers the texture while the scene lives, for a `SpriteComponent` to show; scene exit destroys the texture and unregisters the key.
+  - `refresh: "every-frame"` (the default) redraws the texture each frame, after every visual has taken its pose. `refresh: "on-demand"` redraws it only after `layer.renderTarget.invalidate()` or `resize()`.
+  - `RenderLayer.renderTarget` holds the layer's `LayerRenderTarget`: its texture, size, resolution, `invalidate` and `resize`.
+  - `RenderLayer.space` reads `"texture"` on a render-target layer, typed `RenderLayerSpace`. No camera binds such a layer, and a camera whose `bindings` names one throws when the camera is added.
+  - A render-target layer takes no `order` or `space`, the `"default"` layer cannot be one, its size must be positive, and its texture key cannot be one another layer of the scene registers. A scene's declared layers are all checked when it enters, before any is created, so a bad declaration leaves no texture or key behind.
+  - When two live scenes register the same texture key, the key resolves the later scene's texture and goes back to the earlier one's when the later scene exits.
+
+- [#429](https://github.com/marco-lepore/yage/pull/429) [`bea7218`](https://github.com/marco-lepore/yage/commit/bea7218cd64809a68f77d9ac6dddb6e9ae059326) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `RendererPlugin.backend` reports the graphics API Pixi picked, `"webgl"` or `"webgpu"`, typed `RendererBackend`.
+
+- [#412](https://github.com/marco-lepore/yage/pull/412) [`cd014b8`](https://github.com/marco-lepore/yage/commit/cd014b818f2f97c10825552d6e4feccca77fb640) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add sprite materials with normal maps, specular highlights, and emission.
+  - `SpriteComponent` and `AnimatedSpriteComponent` accept companion `maps` (normal, specular, emission) and a `material`. `litMaterial()` and `unlitMaterial()` create immutable, shareable definitions; `setMaterial()` replaces one sprite's.
+  - In a scene whose lighting backend shades sprites individually, every sprite on a world layer is lit, with or without maps. `unlitMaterial()` opts a sprite out. Elsewhere, a sprite without a material draws through Pixi's ordinary sprite path.
+  - `dataTexture()` loads PNG images whose channels are numbers, without color conversion or premultiplied alpha, for normal and specular maps.
+  - Grid sheets and single-page atlas animations carry their maps in the frame source. `AnimatedSpriteComponent.setSource()` replaces frames and maps together, and `AnimationController` switches both on every transition.
+  - Lit sprites keep their tint, alpha, blend mode, masks, effects, and draw order. Adjacent sprites with matching settings share a draw call.
+  - `AnimatedSpriteComponent` and `AnimationController` release the frame views they slice from a grid sheet when replaced or destroyed.
+  - `RendererPlugin.captureCanvas()` returns the rendered pixels on WebGPU devices whose canvas format differs from the render target's, such as Linux.
+
+- [#432](https://github.com/marco-lepore/yage/pull/432) [`5b4ecaf`](https://github.com/marco-lepore/yage/commit/5b4ecaf3c19098e2f9d9e85c1246a3769994de7f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Setting `alpha` on a visual component, or passing the `alpha` option, throws on a non-finite value, naming the component class. The previous alpha stays in place.
+
+- [#429](https://github.com/marco-lepore/yage/pull/429) [`837fe35`](https://github.com/marco-lepore/yage/commit/837fe3579c5268ab591b380fcea23257ec919f68) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A visual's anchor and pivot can be read and moved after construction.
+  - `SpriteComponent`, `AnimatedSpriteComponent`, `TextComponent` and `NineSliceComponent` have an `anchor` getter and setter, and `GraphicsComponent` a `pivot` getter and setter. A read returns a new `{ x, y }`.
+  - `SplitTextComponent.anchor` reads and moves the block anchor. It reads `undefined` until one is set, and assigning `undefined` puts the text's layout origin back on the entity.
+  - The `anchor` and `pivot` options and setters throw on a non-finite coordinate, and so does an `AnimationController` constructed with a non-finite `anchor` in an animation, naming that animation.
+
+- Updated dependencies [[`f3f2d71`](https://github.com/marco-lepore/yage/commit/f3f2d7163c1d8f3f67c402771a8ad297f64a0a83), [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`baf2d43`](https://github.com/marco-lepore/yage/commit/baf2d4317e36f284787de78422ecf20b9bdb3d75), [`1bdcdc6`](https://github.com/marco-lepore/yage/commit/1bdcdc629ca5d6219baa95c4cc75e217f377fa07)]:
+  - @yagejs/core@0.13.0
+
 ## 0.12.0
 
 ### Minor Changes

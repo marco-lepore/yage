@@ -1,5 +1,30 @@
 # @yagejs/audio
 
+## 0.13.0
+
+### Minor Changes
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Follow one host state for application activity, visibility and focus.
+  - `Breaking:` the `autoMuteOnBlur` config option and `AudioManager.autoMuteOnBlur` are `autoPause`.
+  - `autoPause` holds all audio while `Host.active` is `false`: the app is in the background, the page is hidden, or the window is unfocused. Playback continues from where it stopped, and channel and handle volume, mute and pause are left as the player set them.
+  - `isUnlocked()` documents what it returns: `false` before the first gesture, while audio is held for an inactive host, and until the context has resumed after the return.
+  - `onUnlock` runs a pending callback when the `AudioContext` next starts running, so a callback registered while audio is held runs when the hold ends.
+
+- [#418](https://github.com/marco-lepore/yage/pull/418) [`4f91952`](https://github.com/marco-lepore/yage/commit/4f9195241f58ac412c0c35b2ba5a55bab03de2de) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Schedule sounds and music on the audio clock, and render audio offline through the same graph.
+  - **Breaking:** playback uses native Web Audio, without `@pixi/sound`. A loaded sound asset holds an `AudioBuffer`, and constructing an `AudioManager` directly takes a `BaseAudioContext`.
+  - **Breaking:** fades run on the audio clock. `ProcessSystem.timeScale` does not scale them, and scene pause and scene time scale leave them running as before. `fadeTo` returns `void`: cancel a fade with a new volume write or `stop()`. A volume write that replaces a `stopOnComplete` fade also cancels its stop. Replace the `easing` option of `fadeTo` with `curve: "linear" | "exponential"`. `crossfade` takes no `easing` option and fades linearly. Pausing a handle or its channel holds its position and its remaining fade.
+  - Add start times (`at`), sample offsets, scheduled stops (`stopAt`), stereo `pan`, loop regions, and `setVolume`, `setSpeed`, `setPan` and `setChannelVolume` automation with linear or exponential ramps. `SoundHandle.release({ at, duration })` fades a sound out and stops it.
+  - Add child channels (`createChannel(name, { parent })`, `removeChannel`), `onChannelPause`, `addScheduler` and `AudioTimeline` for sequencers that book sounds ahead of playback.
+  - `AudioPlugin` resumes the context on the first gesture, holds it while `Host` reports the game inactive (with `autoPause` on), and runs the scheduler timer. `getDiagnostics()` and the Inspector `audio` extension report context state, voices, late starts, channels and callback failures.
+  - `renderAudio` renders a booked plan through the same voices and channels in an `OfflineAudioContext`. `measureAudio` reports sample peak, RMS, clipped samples and non-finite samples.
+  - `sound(path, metadata)` and `registerSound(alias, buffer, metadata)` take a `SoundMetadata`: the sustain loop that `loop: true` plays and `rootNote`, the MIDI pitch of the recording. `AudioManager.getSoundMetadata(ref)` reads it back.
+  - Engines in one page share a decoded sound file. Each engine's load holds it, and the file is released when the last engine that loaded it unloads it or is destroyed. Another engine loading the same file with different metadata throws an error that names the file.
+
+### Patch Changes
+
+- Updated dependencies [[`f3f2d71`](https://github.com/marco-lepore/yage/commit/f3f2d7163c1d8f3f67c402771a8ad297f64a0a83), [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`baf2d43`](https://github.com/marco-lepore/yage/commit/baf2d4317e36f284787de78422ecf20b9bdb3d75), [`1bdcdc6`](https://github.com/marco-lepore/yage/commit/1bdcdc629ca5d6219baa95c4cc75e217f377fa07)]:
+  - @yagejs/core@0.13.0
+
 ## 0.12.0
 
 ### Minor Changes

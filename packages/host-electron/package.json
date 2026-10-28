@@ -1,6 +1,6 @@
 {
   "name": "@yagejs/host-electron",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Experimental Electron host for YAGE: window state, fullscreen, file saves and a locked-down shell",
   "keywords": [
     "yage",
@@ -69,8 +69,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yagejs/core": "^0.12.0",
-    "@yagejs/save": "^0.12.0"
+    "@yagejs/core": "^0.13.0",
+    "@yagejs/save": "^0.13.0"
   },
   "peerDependencies": {
     "electron": "^44.7.0"
@@ -78,7 +78,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^4.0.18",
-    "@yagejs/renderer": "^0.12.0",
+    "@yagejs/renderer": "^0.13.0",
     "electron": "44.7.0"
   }
 }
