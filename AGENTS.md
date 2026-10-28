@@ -22,7 +22,7 @@ YAGE is a 2D game engine built as a Turborepo monorepo.
 | `@yagejs/lighting`       | Radial lights, light-level queries, render backends                  |
 | `@yagejs/physics`        | Rapier2D physics (pixel↔meter conversion is internal)                |
 | `@yagejs/input`          | Keyboard/mouse/gamepad input + action maps                           |
-| `@yagejs/audio`          | Channel-based audio via @pixi/sound                                  |
+| `@yagejs/audio`          | Scheduled Web Audio playback and channel mixing                      |
 | `@yagejs/particles`      | Particle emitters with pooling and presets                           |
 | `@yagejs/tilemap`        | Tiled map loading and rendering                                      |
 | `@yagejs/pathfinding`    | Grid A\* pathfinding, tilemap adapter                                |

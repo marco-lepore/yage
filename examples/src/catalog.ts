@@ -65,6 +65,7 @@ export const ADDONS = [
   "sequence",
   "steering",
   "synth",
+  "music",
   "virtual-controls",
 ] as const;
 
@@ -608,5 +609,15 @@ export const EXAMPLES: readonly Example[] = [
     packages: [],
     addons: ["sequence"],
     guide: "/addons/sequence/",
+  },
+  {
+    slug: "adaptive-music",
+    title: "Adaptive Music",
+    summary:
+      "Music that follows gameplay: danger-driven layers, chord-aware reward cues, song changes on the bar, and a pause that holds the beat.",
+    section: "audio",
+    packages: ["audio"],
+    addons: ["music", "synth"],
+    guide: "/addons/music/",
   },
 ];

@@ -1,65 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { SoundLibrary, IMediaInstance } from "@pixi/sound";
+import { clearRegisteredSounds, registerSound } from "./assets.js";
+import { FakeAudioContext, fakeBuffer } from "./test-helpers.js";
 import { Entity } from "@yagejs/core";
 import { SoundComponent } from "./SoundComponent.js";
 import { AudioManager } from "./AudioManager.js";
 import { createAudioTestContext, spawnEntityInScene } from "./test-helpers.js";
 
-type MockMediaInstance = IMediaInstance & { _emit(event: string): void };
-
-function createMockInstance(id = 1): MockMediaInstance {
-  const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
-  return {
-    id,
-    progress: 0,
-    paused: false,
-    volume: 1,
-    speed: 1,
-    loop: false,
-    muted: false,
-    stop: vi.fn(() => {
-      const fns = listeners.get("stop") ?? [];
-      for (const fn of fns) fn();
-    }),
-    refresh: vi.fn(),
-    refreshPaused: vi.fn(),
-    init: vi.fn(),
-    play: vi.fn(),
-    destroy: vi.fn(),
-    toString: vi.fn(() => ""),
-    set: vi.fn(),
-    once: vi.fn((event: string, fn: (...args: unknown[]) => void) => {
-      const list = listeners.get(event) ?? [];
-      list.push(fn);
-      listeners.set(event, list);
-    }),
-    on: vi.fn(),
-    off: vi.fn(),
-    _emit(event: string) {
-      const fns = listeners.get(event) ?? [];
-      for (const fn of fns) fn();
-    },
-  } as unknown as MockMediaInstance;
-}
-
-function createMockSoundLibrary(): SoundLibrary {
-  return {
-    play: vi.fn(() => createMockInstance()),
-    stop: vi.fn(),
-    muteAll: vi.fn(),
-    unmuteAll: vi.fn(),
-    close: vi.fn(),
-    exists: vi.fn(() => true),
-  } as unknown as SoundLibrary;
-}
-
 describe("SoundComponent", () => {
-  let mockSound: SoundLibrary;
+  let mockSound: { play: ReturnType<typeof vi.spyOn> };
   let manager: AudioManager;
 
   beforeEach(() => {
-    mockSound = createMockSoundLibrary();
-    manager = new AudioManager(mockSound);
+    clearRegisteredSounds();
+    for (const alias of ["laser", "hit", "music", "bgm"])
+      registerSound(alias, fakeBuffer());
+    manager = new AudioManager(new FakeAudioContext().asContext());
+    mockSound = { play: vi.spyOn(manager, "play") };
   });
 
   it("exposes its playback config for reading back", () => {
@@ -229,7 +185,7 @@ describe("SoundComponent", () => {
     expect(mockSound.play).toHaveBeenCalledWith(
       "bgm",
       expect.objectContaining({
-        volume: 0.5 * 0.7, // music channel default = 0.7, instance = 0.5
+        volume: 0.5,
         loop: true,
       }),
     );

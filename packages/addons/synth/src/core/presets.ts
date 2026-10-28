@@ -1,4 +1,5 @@
-import { createRandom, DEFAULT_VOLUME } from "./render.js";
+import { DEFAULT_VOLUME } from "./render.js";
+import { seededRandom } from "./random.js";
 import type {
   SynthFilter,
   SynthJingle,
@@ -494,7 +495,7 @@ export const synthPresets = {
         `dialogueBeeps: frequency must be a finite number greater than 0 (got ${frequency}).`,
       );
     }
-    const random = createRandom(phraseSeed);
+    const random = seededRandom(phraseSeed);
     const notes: (number | SynthNote)[] = [];
     for (let i = 0; i < count; i++) {
       // Roughly one blip in six rests, so the chatter phrases like

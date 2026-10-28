@@ -81,7 +81,6 @@ export interface BuildRecord {
 /** Third-party packages whose resolved version a record names. */
 const RECORDED_DEPENDENCIES = [
   "pixi.js",
-  "@pixi/sound",
   "@dimforge/rapier2d",
   "yoga-layout",
   "electron",

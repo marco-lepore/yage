@@ -65,6 +65,7 @@
     "remark-parse": "^11.0.0",
     "unified": "^11.0.5",
     "@yagejs-addons/procedural": "^0.0.0",
-    "@yagejs-tools/pack": "^0.0.0"
+    "@yagejs-tools/pack": "^0.0.0",
+    "@yagejs-addons/music": "^0.0.0"
   }
 }

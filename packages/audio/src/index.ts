@@ -20,9 +20,18 @@ export type {
   AudioPlayOptions,
   SoundComponentOptions,
   SoundRef,
+  SoundReleaseOptions,
   SoundRequestHandle,
   SoundRequestReleaseOptions,
 } from "./types.js";
 
 // Asset factories
 export { sound, registerSound, unregisterSound } from "./assets.js";
+export { renderAudio, measureAudio } from "./offline.js";
+export type { OfflineAudioOptions, AudioMeasurements } from "./offline.js";
+export type { AudioAutomationOptions, AudioDiagnostics } from "./types.js";
+
+export type { SoundMetadata } from "./assets.js";
+
+export { AudioTimeline } from "./AudioTimeline.js";
+export type { AudioAutomationPoint } from "./AudioTimeline.js";

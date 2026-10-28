@@ -1,57 +1,78 @@
-import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import { createMockEntity, Process } from "@yagejs/core";
-import type { ScopedProcessQueue } from "@yagejs/core";
-import { AudioManager, AudioManagerKey } from "@yagejs/audio";
+import { createMockEntity } from "@yagejs/core";
+import { AudioManager, AudioManagerKey, registerSound } from "@yagejs/audio";
 import { Feel } from "../Feel.js";
 import { feelLoop, feelSequence } from "../core/node.js";
 import { feelCall } from "../effects/core.js";
 import { feelSound } from "./audio.js";
 
-class TestAudioClock implements ScopedProcessQueue {
-  private readonly processes = new Set<Process>();
-
-  run(process: Process): Process {
-    this.processes.add(process);
-    return process;
+class TestParam {
+  value = 1;
+  setValueAtTime(): void {}
+  linearRampToValueAtTime(): void {}
+  exponentialRampToValueAtTime(): void {}
+  cancelScheduledValues(): void {}
+}
+class TestNode {
+  gain = new TestParam();
+  pan = new TestParam();
+  connect(): void {}
+  disconnect(): void {}
+}
+class TestSource extends TestNode {
+  playbackRate = new TestParam();
+  onended: (() => void) | null = null;
+  stopTime: number | undefined;
+  start(): void {}
+  stop(at = 0): void {
+    this.stopTime = at;
   }
-
-  cancelAll(): void {
-    for (const process of this.processes) process.cancel();
-    this.processes.clear();
-  }
-
-  advance(dt: number): void {
-    for (const process of this.processes) {
-      process._update(dt);
-      if (process.completed) this.processes.delete(process);
-    }
+  end(): void {
+    this.onended?.();
   }
 }
-
 function setupAudio() {
   const { entity, scene } = createMockEntity();
-  const clock = new TestAudioClock();
-  const instances: ReturnType<typeof createInstance>[] = [];
-  const library = {
-    exists: () => true,
-    play: () => {
-      const instance = createInstance();
-      instances.push(instance);
-      return instance;
+  const instances: TestSource[] = [];
+  const context = {
+    currentTime: 0,
+    sampleRate: 44100,
+    state: "running",
+    destination: new TestNode(),
+    createGain: () => new TestNode(),
+    createStereoPanner: () => new TestNode(),
+    createBufferSource: () => {
+      const source = new TestSource();
+      instances.push(source);
+      return source;
     },
-  } as unknown as ConstructorParameters<typeof AudioManager>[0];
-  const manager = new AudioManager(library, undefined, undefined, clock);
+    // The manager follows the context's state changes; this one never changes.
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+  const manager = new AudioManager(context as unknown as BaseAudioContext);
+  const buffer = {
+    length: 88200,
+    duration: 2,
+    sampleRate: 44100,
+    numberOfChannels: 1,
+    getChannelData: () => new Float32Array(88200),
+  } as unknown as AudioBuffer;
+  registerSound("confirm", buffer);
+  registerSound("reel", buffer);
   scene._registerScoped(AudioManagerKey, manager);
+  const clock = {
+    advance(dt: number): void {
+      context.currentTime += dt;
+      for (const source of instances)
+        if (
+          source.stopTime !== undefined &&
+          source.stopTime <= context.currentTime
+        )
+          source.end();
+    },
+  };
   return { entity, manager, clock, instances };
-}
-
-function createInstance() {
-  const events = new EventEmitter();
-  return Object.assign(events, {
-    volume: 1,
-    stop: vi.fn(() => events.emit("stop")),
-  });
 }
 
 describe("Feel audio ownership", () => {
@@ -71,18 +92,18 @@ describe("Feel audio ownership", () => {
       const playback = feel.play("confirm")!;
       expect(entity.isDestroyed).toBe(true);
       expect(playback.active).toBe(false);
-      expect(instances[0]!.stop).not.toHaveBeenCalled();
-      instances[0]!.emit("end");
+      expect(instances[0]!.stopTime).toBeUndefined();
+      instances[0]!.end();
       expect(onEnd).toHaveBeenCalledOnce();
       manager.stopAll();
-      expect(instances[0]!.stop).not.toHaveBeenCalled();
+      expect(instances[0]!.stopTime).toBeUndefined();
     },
   );
 
   it.each([false, true])(
     "finishes loop release after audio fades, without advancing the cue clock (once=%s)",
     (once) => {
-      const { entity, instances, clock } = setupAudio();
+      const { entity, instances, clock, manager } = setupAudio();
       const feel = entity.add(
         new Feel({
           reel: feelLoop(feelSound({ alias: "reel", once, fadeOut: 0.2 }), 0.1),
@@ -93,29 +114,28 @@ describe("Feel audio ownership", () => {
       playback.release();
       expect(playback.active).toBe(true);
       clock.advance(0.1);
-      for (const instance of instances)
-        expect(instance.volume).toBeCloseTo(0.5);
+      expect(manager.getDiagnostics().activeVoices).toBe(instances.length);
       clock.advance(0.1);
       feel.update(0);
       expect(playback.active).toBe(false);
-      for (const instance of instances)
-        expect(instance.stop).toHaveBeenCalledOnce();
+      expect(manager.getDiagnostics().activeVoices).toBe(0);
     },
   );
 
   it.each([false, true])(
     "finishes the fade after owner destruction (once=%s)",
     (once) => {
-      const { entity, instances, clock } = setupAudio();
+      const { entity, instances, clock, manager } = setupAudio();
       const feel = entity.add(
         new Feel({ reel: feelSound({ alias: "reel", once, fadeOut: 0.2 }) }),
       );
       const playback = feel.play("reel")!;
       entity.destroy();
       expect(playback.active).toBe(false);
-      expect(instances[0]!.stop).not.toHaveBeenCalled();
+      expect(instances[0]!.stopTime).toBe(0.2);
+      expect(manager.getDiagnostics().activeVoices).toBe(1);
       clock.advance(0.2);
-      expect(instances[0]!.stop).toHaveBeenCalledOnce();
+      expect(manager.getDiagnostics().activeVoices).toBe(0);
     },
   );
 
@@ -133,7 +153,7 @@ describe("Feel audio ownership", () => {
         const playback = feel.play("reel")!;
         if (action === "destroy") entity.destroy();
         else playback.release();
-        instances[0]!.emit("end");
+        instances[0]!.end();
         expect(onEnd).not.toHaveBeenCalled();
         feel.update(0);
         expect(playback.active).toBe(false);
@@ -142,7 +162,7 @@ describe("Feel audio ownership", () => {
   );
 
   it("retains shared sound lifetime when another cue releases with a fade", () => {
-    const { entity, instances, clock } = setupAudio();
+    const { entity, instances, clock, manager } = setupAudio();
     const feel = entity.add(
       new Feel({
         finish: feelSound({ alias: "confirm", once: true, lifetime: "sound" }),
@@ -153,7 +173,7 @@ describe("Feel audio ownership", () => {
     feel.play("fade")!.release();
     clock.advance(0.2);
     expect(instances).toHaveLength(1);
-    expect(instances[0]!.volume).toBe(1);
-    expect(instances[0]!.stop).not.toHaveBeenCalled();
+    expect(manager.getDiagnostics().activeVoices).toBe(1);
+    expect(instances[0]!.stopTime).toBeUndefined();
   });
 });

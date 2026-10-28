@@ -135,7 +135,6 @@ test("a run records the engine it built and the versions it resolved", async () 
   const dependencies = resolvedDependencies();
   for (const name of [
     "pixi.js",
-    "@pixi/sound",
     "@pixi/ui",
     "yoga-layout",
     "pixi-filters",

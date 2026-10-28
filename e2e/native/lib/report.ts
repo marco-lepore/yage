@@ -113,7 +113,6 @@ export async function readEngineProvenance(): Promise<
 /** Which workspace each third-party dependency is resolved from. */
 const DEPENDENCY_OWNERS: Record<string, string> = {
   "pixi.js": "packages/renderer",
-  "@pixi/sound": "packages/audio",
   "@pixi/ui": "packages/ui",
   "yoga-layout": "packages/ui",
   "pixi-filters": "packages/effects",
