@@ -124,6 +124,7 @@ export class PlacementPointerInput implements PlacementInputBinding {
     }
     if (this.selected && input.isJustPressed("placement-duplicate")) {
       session.duplicate(this.selected);
+      this.angle = session.model.worldPose(this.selected).rotation;
       this.lastPoint = null;
     }
     const mapPoint = (point: { x: number; y: number }): PlacementPose => {

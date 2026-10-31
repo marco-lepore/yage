@@ -62,6 +62,45 @@ it("keeps the selected pivot in place until the pointer moves", () => {
   });
 });
 
+it.each([0, Math.PI / 4])(
+  "duplicates the source rotation %s after cancelling a rotated draft",
+  (rotation) => {
+    const { input, model, session, binding } = setup();
+    model.commit({
+      kind: "place",
+      type: "table",
+      target: target(100, 100, rotation),
+    });
+    input.firePointerMove(100, 100);
+    input.firePointerDown();
+    binding.poll();
+    input._clearFrameState();
+    input.firePointerUp();
+    input.fireKeyDown("KeyR");
+    binding.poll();
+    input._clearFrameState();
+    input.fireKeyUp("KeyR");
+    input.fireKeyDown("Escape");
+    binding.poll();
+    expect(model.worldPose("p1").rotation).toBe(rotation);
+    input._clearFrameState();
+    input.fireKeyUp("Escape");
+    input.fireKeyDown("KeyD");
+    input.firePointerMove(200, 200);
+    binding.poll();
+    expect(session.inspect().command).toMatchObject({
+      kind: "duplicate",
+      target: { pose: { rotation } },
+    });
+    input._clearFrameState();
+    input.fireKeyUp("KeyD");
+    input.firePointerMove(240, 240);
+    input.fireKeyDown("Enter");
+    binding.poll();
+    expect(model.worldPose("p2")).toEqual({ x: 240, y: 240, rotation });
+  },
+);
+
 it("projects game-specific supports before applying the shared grid and validation", () => {
   const { input, session, model, binding } = setup({
     project: (pose) => ({ pose: { ...pose, y: 192 } }),

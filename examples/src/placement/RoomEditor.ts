@@ -606,8 +606,8 @@ export class RoomEditor extends Component {
     const snapshot = this.layout.snapshot();
     if (snapshot === this.shown) return;
     for (const old of this.shown?.objects ?? [])
-      if (!snapshot.objects.some((o) => o.id === old.id))
-        this.scene.findByKey(`room/${old.id}`)?.destroy();
+      if (!snapshot.objects.some((o) => o.id === old.id && o.type === old.type))
+        this.entity.removeChild(old.id).destroy();
     const document = this.layout.toLevelDocument();
     const paintOrder =
       this.view === "isometric" ? isoPaintOrder(snapshot, this.layout) : [];

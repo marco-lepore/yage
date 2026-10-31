@@ -207,6 +207,81 @@ test("top-down placement shows recognizable previews and places furniture direct
   expect((await state(page)).previewTypes).toEqual([]);
 });
 
+for (const [view, slug, position] of [
+  ["topdown", "placement", [640, 272]],
+  ["side", "placement-side", [736, 432]],
+  ["isometric", "placement-iso", [536, 352]],
+] as const) {
+  test(`${view} placement restores furniture artwork when a save reuses an ID for another type`, async ({
+    page,
+  }) => {
+    const ready = async () => {
+      await page.waitForFunction(
+        (view) =>
+          window.__yage__?.inspector.time.isFrozen() &&
+          (
+            window.__yage__.inspector.getComponentData(
+              "RoomEditorEntity",
+              "RoomEditor",
+            ) as RoomState | null
+          )?.view === view,
+        view,
+      );
+      await drive(page, []);
+    };
+    await page.goto(`/${slug}.html?test`);
+    await ready();
+    await drive(page, [
+      { click: [80, 174] },
+      { move: [...position] },
+      { key: "Enter" },
+      { key: "KeyS" },
+    ]);
+    await expect.poll(async () => (await state(page)).saved).toBe(true);
+    const saved = await state(page);
+    const chair = saved.layoutState.objects.at(-1)!;
+    expect(chair.type).toBe("chair");
+    const furniture = () =>
+      page.evaluate((id) => {
+        const inspector = window.__yage__!.inspector;
+        return inspector
+          .snapshot()
+          .scenes.flatMap((scene) => scene.entities)
+          .filter((entity) => entity.key === `room/${id}`)
+          .map((entity) => ({
+            type: entity.type,
+            look: inspector.getComponentData(entity.id, "FurnitureLook"),
+          }));
+      }, chair.id);
+    await page.reload();
+    await ready();
+    await drive(page, [
+      { click: [80, 126] },
+      { move: [...position] },
+      { key: "Enter" },
+    ]);
+    expect((await state(page)).layoutState.objects.at(-1)).toMatchObject({
+      id: chair.id,
+      type: "table",
+    });
+    expect(await furniture()).toMatchObject([
+      { type: "Table", look: { type: "table", view } },
+    ]);
+    await drive(page, [{ key: "KeyL" }]);
+    await expect
+      .poll(async () => (await state(page)).message)
+      .toBe("Layout loaded from this browser.");
+    await drive(page, []);
+    expect((await state(page)).layoutState).toEqual(saved.layoutState);
+    expect(await furniture()).toMatchObject([
+      { type: "Chair", look: { type: "chair", view } },
+    ]);
+    expect(
+      await page.evaluate(() => window.__yage__!.inspector.getErrors()),
+    ).toMatchObject({ callbackErrors: [] });
+  });
+}
+
 async function openSideView(page: Page): Promise<void> {
   await page.goto("/placement-side.html?test");
   await page.waitForFunction(
