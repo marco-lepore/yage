@@ -61,7 +61,7 @@
     "@yagejs/ui-react": "^0.12.0",
     "react": "^19.0.0",
     "@yagejs-addons/procedural": "^0.0.0",
-    "@yagejs/level": "^0.12.0",
-    "@yagejs-addons/music": "^0.0.0"
+    "@yagejs-addons/music": "^0.0.0",
+    "@yagejs-addons/placement": "^0.0.0"
   }
 }

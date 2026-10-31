@@ -194,6 +194,7 @@ export default defineConfig({
             { label: "Stats", slug: "addons/stats" },
             { label: "Behavior Trees", slug: "addons/behavior-tree" },
             { label: "Procedural Maps", slug: "addons/procedural" },
+            { label: "Placement", slug: "addons/placement" },
             { label: "Steering", slug: "addons/steering" },
             { label: "Perception", slug: "addons/perception" },
             { label: "Synth", slug: "addons/synth" },
