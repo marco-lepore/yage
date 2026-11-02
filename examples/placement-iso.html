@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Isometric Room</title>
+    <link rel="stylesheet" href="/shared.css" />
+    <style>
+      .view-tabs {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin: 0 0 16px;
+      }
+      .view-tabs a {
+        color: #bdd4c7;
+        text-decoration: none;
+        padding: 8px 18px;
+        border: 1px solid #405b4d;
+        border-radius: 6px;
+      }
+      .view-tabs a[aria-current="page"] {
+        background: #304d3e;
+        border-color: #8fbaa2;
+        color: #edf4ef;
+      }
+      .intro {
+        max-width: 864px;
+        margin: 0 auto 16px;
+        color: #bbc9c2;
+        text-align: center;
+      }
+      details {
+        max-width: 864px;
+        margin: 14px auto;
+        color: #bbc9c2;
+      }
+      summary {
+        cursor: pointer;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <a class="back-link" href="/#placement-iso">&larr; All Examples</a>
+    <h1>Isometric Room</h1>
+    <nav class="view-tabs" aria-label="Placement examples">
+      <a href="/placement.html">Top-down room</a>
+      <a href="/placement-side.html">Side-view workshop</a>
+      <a href="/placement-iso.html" aria-current="page">Isometric room</a>
+    </nav>
+    <p class="intro">
+      Arrange furniture on the diamond-shaped floor. Lamps sit on raised
+      tabletops.
+    </p>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span
+        >Choose an object, move its preview, then click to place. Green means
+        ready; red explains what to change.</span
+      >
+      <span
+        >Lamps sit on tables. Plants can go on the floor or a table. Move a
+        table to carry its lamp.</span
+      >
+      <span
+        ><kbd>Esc</kbd> cancel · <kbd>G</kbd> grid/free ·
+        <kbd>Z/Y</kbd> undo/redo · <kbd>R</kbd> rotate</span
+      >
+    </div>
+    <details>
+      <summary>More controls: editing, finishes, permissions and saves</summary>
+      <div class="controls">
+        <span
+          >Click an existing object to move it. <kbd>D</kbd> duplicates it and
+          its attachments.</span
+        >
+        <span
+          ><kbd>Delete</kbd> removes one object. <kbd>X</kbd> removes it with
+          its attachments.</span
+        >
+        <span
+          ><kbd>F/W</kbd> change the room floor/wall finish.
+          <kbd>C</kbd> changes selected furniture.</span
+        >
+        <span
+          ><kbd>P</kbd> locks editing. <kbd>S/L</kbd> save/load this view in
+          your browser.</span
+        >
+        <span>Add <code>?debug=1</code> for Inspector control.</span>
+      </div>
+    </details>
+    <script type="module" src="/src/placement/iso-main.ts"></script>
+  </body>
+</html>

@@ -53,3 +53,6 @@ output/playwright/
 # Native baseline runs: built web directories, generated native projects,
 # Electron profiles, reports.
 e2e/native/.work/
+
+# Local research notes
+/docs/research/

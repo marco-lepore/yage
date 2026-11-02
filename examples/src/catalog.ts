@@ -59,6 +59,7 @@ export const ADDONS = [
   "inventory",
   "loot",
   "perception",
+  "placement",
   "procedural",
   "stats",
   "quests",
@@ -91,6 +92,36 @@ export interface Example {
 
 /** Every example, grouped by section in display order. */
 export const EXAMPLES: readonly Example[] = [
+  {
+    slug: "placement",
+    title: "Room Planner",
+    summary:
+      "Furnish a room from above, preview actual objects, carry tabletop decorations, and save the layout.",
+    section: "gameplay",
+    packages: ["input", "save"],
+    addons: ["placement"],
+    guide: "/addons/placement/",
+  },
+  {
+    slug: "placement-side",
+    title: "Side-view Workshop",
+    summary:
+      "Join floor sections, add walls, and place furniture on floors and tables in a side view.",
+    section: "gameplay",
+    packages: ["input", "save"],
+    addons: ["placement"],
+    guide: "/addons/placement/",
+  },
+  {
+    slug: "placement-iso",
+    title: "Isometric Room",
+    summary:
+      "Arrange furniture on an isometric floor, rotate it, and attach decorations to raised tabletops.",
+    section: "gameplay",
+    packages: ["input", "save"],
+    addons: ["placement"],
+    guide: "/addons/placement/",
+  },
   // Start here
   {
     slug: "hello-world",

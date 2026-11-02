@@ -1,0 +1,283 @@
+---
+title: Placement
+description: Let players arrange furniture, attach modular pieces, customize rooms and save their layouts.
+---
+
+`@yagejs-addons/placement` lets players preview, place, move and remove
+objects in editable areas. Furniture and modular walls use the same layout.
+Objects can attach to a table surface or a fixed socket, and moving a parent
+moves its attached descendants. Invalid edits leave the committed layout
+unchanged.
+
+Try the [top-down Room Planner](https://examples.yage.dev/placement.html) to
+arrange furniture on an open floor and attach lamps to tables. The
+[Side-view Workshop](https://examples.yage.dev/placement-side.html) adds floor
+sections and wall panels. Furniture rests on its support, and moving a floor
+section carries its attached furniture and wall decorations.
+
+The [Isometric Room](https://examples.yage.dev/placement-iso.html) projects a
+floor plan into a diamond-shaped room. Furniture has height, tabletop objects
+sit above the floor, and clicking visible artwork selects the object.
+
+All three examples show the actual object artwork in their catalogs and previews.
+Green outlines mean an edit is valid; red outlines come with a repair hint.
+Press G for free placement, F/W for room finishes, P to change permissions,
+and S/L to save and load. Each view has its own browser save.
+
+## Install and place an object
+
+```bash
+npm install @yagejs-addons/placement @yagejs/core @yagejs/level @yagejs/input
+```
+
+A layout uses your existing level catalog. The placement definition adds a
+footprint and editing rules to a catalog type ID. Positions and dimensions
+are pixels. Rotation is radians, matching `Transform`.
+
+This complete headless example defines a chair and places it in a room:
+
+```ts yage-group="placement-start"
+import { Entity, Transform } from "@yagejs/core";
+import {
+  buildLevelCatalog, defineLevelEntity, defineLevelProject,
+} from "@yagejs/level";
+import { PlacementLayout } from "@yagejs-addons/placement";
+
+class Chair extends Entity {
+  static readonly level = defineLevelEntity({ id: "chair", version: 1 });
+  setup(): void { this.add(new Transform()); }
+}
+const result = buildLevelCatalog(defineLevelProject({ entities: [Chair] }));
+if (!result.ok) throw new Error(result.errors.map(e => e.message).join("\n"));
+
+const layout = new PlacementLayout({
+  catalog: result.catalog,
+  definitions: {
+    chair: {
+      label: "Chair",
+      footprint: [{ x: -16, y: -16, width: 32, height: 32 }],
+      clearance: 4,
+    },
+  },
+  areas: {
+    room: { bounds: { x: 224, y: 64, width: 352, height: 320 } },
+  },
+});
+const placed = layout.commit({
+  kind: "place", type: "chair",
+  target: { area: "room", pose: { x: 320, y: 160, rotation: 0 } },
+});
+console.log(placed.ok, placed.issues);
+```
+
+`preview(command)` returns the same validation result without changing state,
+history or the ID counter. `commit(command)` evaluates current state again.
+A preview is information, not a reservation or permission token.
+
+## Add player controls and canvas views
+
+Install `@yagejs/renderer` for the optional canvas views. The
+following continues the headless example with a real engine and scene. The
+host entity owns the session, and the component update loop polls input.
+
+```ts yage-group="placement-start"
+import { Engine, Scene } from "@yagejs/core";
+import { InputPlugin } from "@yagejs/input";
+import { RendererPlugin } from "@yagejs/renderer";
+import { PlacementController, placementControls } from "@yagejs-addons/placement";
+import { createPlacementViews } from "@yagejs-addons/placement/presenters";
+
+class EditorHost extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(new PlacementController({
+      model: layout,
+      ...createPlacementViews(),
+    }));
+  }
+}
+class RoomScene extends Scene {
+  readonly name = "room";
+  onEnter(): void { this.spawn(EditorHost); }
+}
+const container = document.createElement("div");
+container.style.width = "640px";
+container.style.height = "480px";
+document.body.append(container);
+const engine = new Engine();
+engine.use(new RendererPlugin({ container, width: 640, height: 480 }));
+engine.use(new InputPlugin({ actions: placementControls() }));
+await engine.start();
+await engine.scenes.push(new RoomScene());
+```
+
+Click a catalog row, then click the room to place the object. Click an existing
+object to move it. R rotates, G switches between a 16-pixel grid and free
+placement, Escape cancels, Enter commits, D duplicates the selected subtree,
+Delete removes, and Z/Y undo and redo. Gamepad A/B confirm or cancel, Y rotates,
+X duplicates, and LB/RB undo or redo. Removal refuses a parent with children;
+call `session.remove(id, true)` for an explicit cascade.
+
+The default layout view draws footprints, not your entity artwork. Replace
+`layout` with your game's visuals, replace `preview` for a different ghost,
+or replace `catalog` for a different selection UI. Each channel is optional.
+The three example sources use one drawing for catalog
+thumbnails, translucent previews and committed objects. A group preview includes
+its attached objects. The game keeps its catalog entities alive while poses change.
+
+`PlacementSession` also works without components or input. Use `select`,
+`move`, `duplicate`, `aim`, `rotate`, `confirm` and `cancel`. An aim with
+`{ grid: 0, snap: false }` is free placement without socket snapping. Headless
+commands use the exact supplied pose; grid snapping belongs to the session.
+Disabling the controller cancels its draft and releases its input and views.
+Omit `input` for the default keyboard, gamepad, mouse and touch binding. Pass
+a custom binding to replace it, or `input: null` to let the host drive the
+controller without device input. A catalog without `typeAtPoint` disables
+catalog pointer selection. The layout remains available for headless operations.
+The host controls which
+controller is enabled when several editors exist.
+
+For a side view or another constrained surface, construct
+`PlacementPointerInput({ project })`. Its synchronous `project(pose, session)`
+callback returns `{ pose, snap? }` before normal grid and socket snapping.
+Omit `snap` for normal socket snapping, or return `snap: false` when the pointer
+misses a visible support. This keeps an isometric floor aim from snapping to a
+tabletop drawn above it. Keep the
+callback free of state changes. Side-view Workshop projects the pointer to the
+nearest floor or tabletop, then validates support with an injected rule. Pair
+projection with validation so headless commands obey the same placement rules.
+The callback runs through the host's error boundary; non-finite results throw.
+
+For a projected view, `toLayout(pose)` converts renderer world coordinates into
+layout coordinates before area selection, grid snapping and default footprint
+picking. `project` receives that converted pose. The catalog still uses screen
+coordinates. `hitTest(pose, session)` can replace footprint picking with artwork
+picking; it receives the original renderer world pose and returns an existing
+object ID or `null` for a miss. The Isometric Room uses the same projected faces
+for drawing and picking, and retains ordinary floor coordinates in its saves.
+All three callbacks are synchronous and must be free of state changes. Callback
+exceptions use the host error boundary; invalid coordinates and unknown picked
+IDs throw before the draft or selection changes.
+
+## Footprints, surfaces and attachments
+
+A footprint is a union of local rectangles. Rectangles rotate with the object.
+The entire footprint and its clearance must fit within its named area.
+Touching edges are allowed. Clearance is space between one object's solid
+footprint and the other's padded footprint; two empty clearance margins may
+overlap.
+
+An area's surface defaults to `floor`. A definition's allowed `surfaces` also
+defaults to `["floor"]`. Give lamps `["surface"]` and pictures `["wall"]` to
+require an appropriate attachment. These are game labels, not physical planes.
+
+A socket has a local `pose`, a `surface` and optional `accepts` type IDs. Its
+capacity defaults to one. Without `bounds`, a socket is a fixed snap point:
+the attached object's local x and y must be zero. With `bounds`, the object
+can move across the socket's rectangle but its padded footprint must fit.
+Use a bounded surface and a larger capacity for a table carrying several props.
+
+A target's `attachment: { parent, socket }` makes its pose relative to the
+socket. The parent and child must share an area. World poses compose the
+parent pose, socket pose and child pose. Read `worldPose(id)` for the result.
+A parent move rechecks every descendant against bounds, occupancy and rules.
+
+Objects on the same named surface obstruct each other, even across overlapping
+areas. An ancestor and its descendants may overlap. Objects on different
+surfaces do not obstruct each other. Add a pure rule when the game needs a
+more specific relationship, such as keeping tall floor objects away from
+wall decorations.
+
+Socket selection prefers priority, then distance, then authored order. It
+skips full or incompatible sockets and excludes a moving subtree from its own
+snap candidates. Snapping does not imply validity: a snapped preview can still
+fail containment or an injected rule.
+
+## Edit styles and room finishes
+
+Definitions can provide named `variants` containing level parameter patches.
+Use variants for colors, materials or discrete appearance states. A `modify`
+command changes an object's variant or replaces its explicit `params`. Set
+`variant: null` to return to the default style. Exported parameters combine
+schema defaults, definition defaults, the chosen variant, then object parameters.
+Explicit object parameters override variants; `params: {}` clears those overrides. Existing level schemas
+validate the combined result.
+
+An area's `finishes` maps channels to allowed strings, for example
+`{ floor: ["oak", "tile"], walls: ["sage", "sand"] }`. The first value is the
+default. `customize` changes selected channels. The game renders those choices
+from `snapshot().finishes`; the prototype footprint view does not interpret
+finish names.
+
+A `batch` applies several commands as one edit and one history entry. If the
+final layout fails validation, none of the commands are committed. Subtree
+duplication remaps copied attachment IDs and catalog entity references within
+the group. References to objects outside the group keep their targets. Use batches, saved layouts and
+level documents for reusable groups of objects.
+
+## Rules, permissions and consequences
+
+Area `permissions` can disable `place`, `move`, `remove`, `modify` or
+`customize`. Unspecified operations are allowed. Moves check both their source
+and destination, including moved descendants. Category filters and capacity
+limits apply to the resulting layout.
+
+Inject dynamic rules as `{ id, evaluate }`. The evaluator receives `intent`,
+`before`, `after` and `changes`. It returns an array of issues; an empty array
+allows the edit. Each issue needs a stable `code` and a readable `message`.
+Optional `object`, `other`, `area` and `path` fields locate the problem. The
+model adds the rule ID. Built-in failures include `occupied`, `outside-area`,
+`surface`, `socket-bounds`, `socket-occupied`, `has-dependents` and `permission`.
+
+Rules are pure and synchronous. They run during previews and again on commits,
+undo and redo. Read game-owned inventory or permission state there. Spend
+materials, issue refunds, play sounds or update quests in a `subscribe`
+listener after a successful edit. The controller also emits
+`PlacementCommittedEvent` and `PlacementRejectedEvent` on its host entity.
+The example charges for added objects and refunds removed ones, including
+history operations. The game decides whether upgrades or undo have costs.
+
+State and history are already committed when a consequence runs. A throwing
+listener stops the remaining listeners and propagates through `ErrorBoundary`;
+it does not roll back external effects. Reentrant operations on the same
+layout are rejected. Schedule a subsequent edit from the host's next update.
+For server-authoritative inventories, coordinate a transaction in the game.
+
+## History, saves and level loading
+
+Undo and redo revalidate current rules and permissions. A refusal keeps the
+history entry available. A new edit after undo clears redo. IDs are not reused
+by history. `historyLimit` defaults to 50; zero disables history.
+
+`snapshot()` contains all durable layout data: object IDs, parameters, variants,
+poses, attachments, area finishes and the next ID. The snapshot is immutable.
+Drafts, selection and history are transient. Put the snapshot in a game-owned
+`Serializable` root alongside inventory or credits, then pass that root to
+`@yagejs/save`.
+
+`restore(snapshot)` validates catalog parameters, attachments, geometry and
+finishes before publishing. It is a trusted load operation: it bypasses gameplay
+rules and area permissions, then clears history. Rejected restore leaves the
+current layout untouched. Cancel active sessions before restoring; a controller
+does not automatically discard another owner's editing cursor. Save migrations
+belong to the game when entity schemas or placement definitions change.
+
+`toLevelDocument()` exports catalog entity parameters and the attachment
+hierarchy as a normal YAGE level. Call `prepareLevel` and `levelAssets` before
+loading assets, then `instantiateLevel` in a scene. The exported level contains
+entities; retain the placement snapshot separately for room finishes and future
+editing. Live entity presentation remains game-owned, so an edit need not
+recreate objects or reset their gameplay components.
+
+Read `session.inspect()` or `controller.inspection` for the draft, validation,
+last result and committed snapshot. The Inspector can read the controller's
+inspection getter without an extra global API.
+
+## Boundaries
+
+Areas are axis-aligned rectangles. Footprints are unions of rectangles with
+arbitrary rotation; object scale is fixed at one. Pairwise occupancy checks suit
+room and plot editors. Use independent layouts for independent plots in a large
+world. The package has no structural stress, collapse, rigid-body destruction,
+construction timers or material inventory. Attachments express logical ownership
+and movement only.
