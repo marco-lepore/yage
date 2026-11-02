@@ -58,10 +58,8 @@
     "test": "vitest run",
     "clean": "rm -rf dist"
   },
-  "dependencies": {
-    "@yagejs/core": "^0.12.0"
-  },
   "peerDependencies": {
+    "@yagejs/core": ">=0.12.0 <0.13.0",
     "@yagejs/tilemap": ">=0.12.0 <0.13.0"
   },
   "peerDependenciesMeta": {
