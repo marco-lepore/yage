@@ -21,7 +21,14 @@ export default defineConfig({
         "**/sequence-editor.spec.ts",
         "**/adaptive-music.spec.ts",
       ],
-      use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5200" },
+      use: {
+        ...devices["Desktop Chrome"],
+        // Without a screen size the emulated screen follows the viewport, so
+        // a test that resizes a phone viewport to landscape rotates its
+        // screen too. A test's own `screen: undefined` does not unset this.
+        screen: undefined,
+        baseURL: "http://127.0.0.1:5200",
+      },
     },
     // The shipped examples (examples/*.html), served on :5199 and driven
     // through the deterministic `?test` harness by examples.spec.ts.
