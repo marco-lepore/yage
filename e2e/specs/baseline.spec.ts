@@ -1,6 +1,6 @@
 import { chromium, expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { gotoFixture } from "./helpers.js";
+import { gotoFixture, setPixelRatio } from "./helpers.js";
 import {
   CASE_NAMES,
   openBaseline,
@@ -450,12 +450,7 @@ test.describe("baseline graphics", () => {
     });
 
     const session = await page.context().newCDPSession(page);
-    await session.send("Emulation.setDeviceMetricsOverride", {
-      width: 1280,
-      height: 720,
-      deviceScaleFactor: 2,
-      mobile: false,
-    });
+    await setPixelRatio(session, page, 2);
     await expect
       .poll(
         async () =>

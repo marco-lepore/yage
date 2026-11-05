@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { CDPSession, Page } from "@playwright/test";
 import type { InspectorRenderMode } from "@yagejs/core";
 
 export interface EntitySnapshot {
@@ -36,6 +36,29 @@ export interface EngineSnapshot {
 export async function gotoFixture(page: Page, path: string): Promise<void> {
   await page.goto(path);
   await waitForInspector(page);
+}
+
+/**
+ * Change the emulated pixel ratio through the DevTools protocol and keep the
+ * viewport's size. Chromium fires the `resolution` media query's change event
+ * only for an override that also changes the viewport size, so the ratio
+ * changes on a viewport one pixel wider and the width then returns.
+ */
+export async function setPixelRatio(
+  session: CDPSession,
+  page: Page,
+  ratio: number,
+): Promise<void> {
+  const size = page.viewportSize()!;
+  for (const width of [size.width + 1, size.width]) {
+    await session.send("Emulation.setDeviceMetricsOverride", {
+      width,
+      height: size.height,
+      deviceScaleFactor: ratio,
+      mobile: false,
+    });
+    await page.waitForFunction((expected) => innerWidth === expected, width);
+  }
 }
 
 export async function waitForInspector(page: Page): Promise<void> {

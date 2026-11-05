@@ -1,6 +1,6 @@
 import { devices, expect, test } from "@playwright/test";
-import type { CDPSession, Frame, Page } from "@playwright/test";
-import { gotoFixture } from "./helpers.js";
+import type { Frame, Page } from "@playwright/test";
+import { gotoFixture, setPixelRatio } from "./helpers.js";
 
 interface DisplayReading {
   isFullscreen: boolean;
@@ -267,21 +267,6 @@ test.describe("display in a frame", () => {
     });
   });
 });
-
-/** Change the emulated pixel ratio through the DevTools protocol. */
-async function setPixelRatio(
-  session: CDPSession,
-  page: Page,
-  ratio: number,
-): Promise<void> {
-  const size = page.viewportSize()!;
-  await session.send("Emulation.setDeviceMetricsOverride", {
-    width: size.width,
-    height: size.height,
-    deviceScaleFactor: ratio,
-    mobile: false,
-  });
-}
 
 for (const [label, started, changed] of [
   ["1 to 2", 1, 2],
