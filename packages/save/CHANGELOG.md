@@ -1,5 +1,25 @@
 # @yagejs/save
 
+## 0.13.0
+
+### Minor Changes
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`f95a89a`](https://github.com/marco-lepore/yage/commit/f95a89adf82ca7d1785d101b615654996707d93d) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Make every save a single atomic write and report failed automatic writes.
+  - `Breaking:` `listSlots` lists the store's slot documents through the adapter's `list` and reads each one, so a custom `SaveAdapter` must implement `list` as documented.
+  - `Breaking:` `autoPersist` reports a failed write and writes nothing to the console. `save.flush()` rejects while the latest automatic write of a store has failed, and a failure nothing awaits is an unhandled promise rejection, which ends a Node process that does not handle that event.
+  - `Breaking:` `persist`, `autoPersist` and `saveSlot` refuse a store id or slot name that makes a storage key longer than 96 bytes, on every adapter, with an `InvalidKeyError` naming both before the adapter is called. The key holds them URI-encoded: with store id `saves`, a slot name holds 88 ASCII letters or 9 Japanese characters. Reads, `listSlots`, `deleteSlot` and the merge below take a key of any length, so a slot an earlier version saved under a longer name keeps its time and metadata, lists, loads and deletes. To keep saving it, load it and save it under a shorter name.
+  - Each slot is one document holding its time and metadata, so `saveSlot` and `deleteSlot` are one storage operation each. A store saved by an earlier version is merged into slot documents the first time `listSlots`, `saveSlot` or `deleteSlot` touches it. Operations on one slot take effect in call order, awaited or not, also while that merge runs.
+  - `listSlots` returns slots newest first and leaves out a slot whose document is damaged; `loadSlot` reports it.
+  - `restore` and `loadSlot` throw `CorruptPayloadError` for stored bytes that are not JSON.
+  - `autoPersist` throws `InvalidKeyError` at the call for an empty or over-long store id.
+  - New `fileAdapter({ store })` and `SaveFileStore`: atomic per-key writes over any directory of files, with keys of at most 96 bytes. No file holds a longer key, so `read` returns `null` for one and `delete` resolves.
+  - `SaveAdapter` documents the guarantees every adapter gives: atomic replace per key, completion, order per key, and failure. `memoryAdapter` keeps nothing through a process kill, and `localStorageAdapter` can lose its last resolved writes.
+
+### Patch Changes
+
+- Updated dependencies [[`f3f2d71`](https://github.com/marco-lepore/yage/commit/f3f2d7163c1d8f3f67c402771a8ad297f64a0a83), [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`baf2d43`](https://github.com/marco-lepore/yage/commit/baf2d4317e36f284787de78422ecf20b9bdb3d75), [`1bdcdc6`](https://github.com/marco-lepore/yage/commit/1bdcdc629ca5d6219baa95c4cc75e217f377fa07)]:
+  - @yagejs/core@0.13.0
+
 ## 0.12.0
 
 ### Patch Changes

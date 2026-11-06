@@ -1,5 +1,23 @@
 # @yagejs-addons/synth
 
+## 0.4.0
+
+### Patch Changes
+
+- [#418](https://github.com/marco-lepore/yage/pull/418) [`4f91952`](https://github.com/marco-lepore/yage/commit/4f9195241f58ac412c0c35b2ba5a55bab03de2de) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Render synth instruments in the game: 25 built-ins or the game's own.
+  - Add 25 seeded instruments and noise sources: plucked strings, mallets, bells, electric piano, pad, flute, clarinet, organ, drums and percussion. Import them by name from `@yagejs-addons/synth/instruments`; an ESM bundle keeps only the instruments it imports. A `require()` of `@yagejs-addons/synth/instruments` loads all 25 instruments, because CommonJS cannot drop unused exports. Each definition has `sound(options)` for a portable descriptor and `render(options, sampleRate)` for samples with sustain loop points. A pitched instrument's sample reports `rootNote`, the MIDI pitch of its frequency; drums and noise have `pitched: false`, and the tuned tom reports the fixed pitch it sounds at.
+  - `SynthPlugin` takes the definitions its sounds use through `instruments` and registers each alias with its sustain loop and root note. Installation awaits rendering. An optional module `worker` renders the sounds off the main thread, with a timeout, a main-thread fallback and `getDiagnostics()`.
+  - `@yagejs-addons/synth/render` renders sounds without importing the engine, for Node tools and previews. `parseSynthSound` validates portable sound data. `@yagejs-addons/synth/worker` serves render requests inside a worker.
+  - `defineInstrument(name, render, { pitched, rootNote })` on `@yagejs-addons/synth/render` makes a game's own instrument, usable in `SynthPlugin`, a worker and music tracks. The same entry exports the DSP building blocks: `renderString`, `renderModal`, `renderAdditive`, `renderMetal`, `renderNoise`, `biquad`, `svf`, `normalize`, `limit`, `saturate`, `dcBlock`, `fadeIn`, `fadeOut`, `prepareTonalLoop` and `seededRandom`. Each throws, naming the input, on a number that is not finite, before it changes any sample.
+  - Instrument names are type parameters: `harp.sound()` is a `SynthInstrument<"harp">`, and with an inline `instruments` set, `SynthPlugin` and the render and parse functions reject a descriptor naming another instrument at compile time. A set resolves descriptors by each definition's `name`.
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`67d3962`](https://github.com/marco-lepore/yage/commit/67d3962e4c1851459c4052d4ec9ce032b3540b0b) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Describe the audio pause the engine applies in the terms `@yagejs/audio` uses.
+  - The plugin's documentation comment, which ships in the package's type declarations, calls the pause a registered sound follows "automatic pause", the name of the `autoPause` option that controls it.
+
+- Updated dependencies [[`f3f2d71`](https://github.com/marco-lepore/yage/commit/f3f2d7163c1d8f3f67c402771a8ad297f64a0a83), [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`baf2d43`](https://github.com/marco-lepore/yage/commit/baf2d4317e36f284787de78422ecf20b9bdb3d75), [`4f91952`](https://github.com/marco-lepore/yage/commit/4f9195241f58ac412c0c35b2ba5a55bab03de2de), [`1bdcdc6`](https://github.com/marco-lepore/yage/commit/1bdcdc629ca5d6219baa95c4cc75e217f377fa07)]:
+  - @yagejs/core@0.13.0
+  - @yagejs/audio@0.13.0
+
 ## 0.3.0
 
 ### Patch Changes

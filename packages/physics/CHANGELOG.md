@@ -1,5 +1,27 @@
 # @yagejs/physics
 
+## 0.13.0
+
+### Patch Changes
+
+- [#405](https://github.com/marco-lepore/yage/pull/405) [`504f688`](https://github.com/marco-lepore/yage/commit/504f6889ddba1db454afa85045b76d383c70f811) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Filter world queries and contact checks by what a given collider would collide with.
+  - `raycast`, `castShape`, `queryShape`, and `queryRadius` accept `solidFor: collider`. A query reports only colliders the source collider would collide with at their current poses: not its own entity, not sensors, with compatible collision groups, and accepted by both contact filters, including one-way and drop-through rules.
+  - `contactWith(other, { solidOnly: true })` measures a pair only when the two colliders would collide.
+  - The shared `QueryOptions` type describes the filters all four world queries accept. Combining `solidFor` with `sensors: "only"` throws, because `solidFor` skips every sensor.
+  - `RigidBodyComponent.rotationsLocked` reports whether the body's rotation is locked by `fixedRotation` or `lockRotations()`.
+  - `MAX_PHYSICS_STEPS_PER_UPDATE` (8) is the most physics steps a scene runs per fixed update. Above that time scale, physics advances more slowly than the scene clock.
+  - A kinematic body moved through its Transform travels to the new position at a steady speed at every time scale. Each physics step covers its share of the scene time not yet simulated, so above time scale 1 the movement is spread over all the steps of an update. When that time is not a whole number of steps, the body ends the update short of the position and continues in the next. Its Transform keeps the position the game wrote. Bodies resting on a moving kinematic body stay in contact at any time scale.
+  - `PhysicsWorld.nextUpdateTime` is the scene time, in seconds, that the scene's next fixed update has to simulate. A kinematic body's speed during that update is the distance to its new position divided by this time. It is 0 while the scene's time scale is 0.
+  - A kinematic body's velocity reads (`getVelocity`, `getVelocityInto`, `velocityX`, `velocityY`, `speed`, `speedSquared`, `getAngularVelocity`) report its travel over the last physics step. They keep that value on updates that run no step and through world queries made between steps. A teleport sets them to zero until the next step. Contact filter candidates and `PhysicsWorld.snapshot()` report the same values.
+  - A world query made between steps leaves every body's velocity unchanged, including a body riding a moving platform.
+
+- [#434](https://github.com/marco-lepore/yage/pull/434) [`2869e2a`](https://github.com/marco-lepore/yage/commit/2869e2a7888a6674e49c9af654ac22311cb2985b) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fix contact filters reporting zero velocity for moving kinematic bodies. Filters read the velocity of the last completed physics step, matching the body's velocity getters.
+
+- [#405](https://github.com/marco-lepore/yage/pull/405) [`960939a`](https://github.com/marco-lepore/yage/commit/960939a48fcfb30f73e3f8d85d0338197c827097) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fix shape casts missing floors and walls when starting almost in contact with them under Rapier 0.20. Recover the nearest surface while retaining the requested cast distance, query filters, and escape from initial overlap with `stopAtPenetration: false`.
+
+- Updated dependencies [[`f3f2d71`](https://github.com/marco-lepore/yage/commit/f3f2d7163c1d8f3f67c402771a8ad297f64a0a83), [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`baf2d43`](https://github.com/marco-lepore/yage/commit/baf2d4317e36f284787de78422ecf20b9bdb3d75), [`1bdcdc6`](https://github.com/marco-lepore/yage/commit/1bdcdc629ca5d6219baa95c4cc75e217f377fa07)]:
+  - @yagejs/core@0.13.0
+
 ## 0.12.0
 
 ### Patch Changes

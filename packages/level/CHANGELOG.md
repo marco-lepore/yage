@@ -1,5 +1,14 @@
 # @yagejs/level
 
+## 0.13.0
+
+### Patch Changes
+
+- [#414](https://github.com/marco-lepore/yage/pull/414) [`60028a9`](https://github.com/marco-lepore/yage/commit/60028a912a115020b6deffd0f25b6c82315175f5) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `levelSceneKeys(prepared, namespace)`, which returns the scene keys `instantiateLevel` gives a level's entities without loading anything. A game that loads several levels together checks the keys with `scene.findByKey` first, so a taken key stops the whole load before any level is created.
+
+- Updated dependencies [[`f3f2d71`](https://github.com/marco-lepore/yage/commit/f3f2d7163c1d8f3f67c402771a8ad297f64a0a83), [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`baf2d43`](https://github.com/marco-lepore/yage/commit/baf2d4317e36f284787de78422ecf20b9bdb3d75), [`1bdcdc6`](https://github.com/marco-lepore/yage/commit/1bdcdc629ca5d6219baa95c4cc75e217f377fa07)]:
+  - @yagejs/core@0.13.0
+
 ## 0.12.0
 
 ### Patch Changes
