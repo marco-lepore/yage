@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/procedural",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Seeded region graphs, catalog room layouts and cellular caves with progression validation for YAGE",
   "keywords": [
     "yage",
@@ -68,15 +68,15 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@yagejs/core": ">=0.12.0 <0.13.0",
-    "@yagejs/level": ">=0.12.1 <0.13.0",
-    "@yagejs/pathfinding": ">=0.12.0 <0.13.0"
+    "@yagejs/core": ">=0.13.0 <0.14.0",
+    "@yagejs/level": ">=0.13.0 <0.14.0",
+    "@yagejs/pathfinding": ">=0.13.0 <0.14.0"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
-    "@yagejs/core": ">=0.12.0",
-    "@yagejs/level": ">=0.12.0",
-    "@yagejs/pathfinding": ">=0.12.0"
+    "@yagejs/core": ">=0.13.0",
+    "@yagejs/level": ">=0.13.0",
+    "@yagejs/pathfinding": ">=0.13.0"
   },
   "peerDependenciesMeta": {
     "@yagejs/level": {

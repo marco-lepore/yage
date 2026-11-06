@@ -1,5 +1,36 @@
 # @yagejs/lighting
 
+## 0.13.0
+
+### Minor Changes
+
+- [#419](https://github.com/marco-lepore/yage/pull/419) [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Report what the graphics context can do, and bring YAGE's drawing back after a lost context.
+  - `Breaking:` `shaderLighting()` with no `fallback` draws a WebGL 1 context with `overlayLighting()`, in the same layer and order and with the same `resolutionScale` when one is set. A game that wants another outcome there passes its own `fallback`, or reads `renderer.capabilities.backend` and picks a renderer itself.
+  - A WebGL 2 driver that refuses to build the light program gets the fallback too. The renderer compiles and links that program once per graphics context, which takes a few milliseconds and leaves the result in the browser's own cache for the draw that follows. A WebGPU device is not tested: its shader errors arrive after a scene has started drawing.
+  - Bounce `"max"` is drawn as `"mix"` where `renderer.capabilities.blendMinMax` is `"unsupported"`, which is a WebGL 1 context without `EXT_blend_minmax`. A development build warns once per scene that the blend was substituted, and a context that replaces a lost one is read again, so the picture follows what that context can blend.
+  - `Breaking:` `LightingCompositeOptions` takes the scene's `world`, which a renderer factory is handed. The composite reports the bounce blend it draws to that world, and the `"lighting"` extension reads it there. A scene whose renderer builds no composite reports the blend its graphics context implies.
+  - The light buffers keep the display's pixel ratio, so a window moved to a display with another ratio redraws them at the new density. The lighting pass also redraws after a lost graphics context is restored.
+  - With an Inspector installed, the `"lighting"` extension answers `scenes()` with one entry per live scene: the configured renderer it asked for, why a fallback drew it, and the bounce blend asked for beside the one drawn. The types are `LightingDiagnostics`, `LightingSceneDiagnostics` and `LightingFallbackReason`.
+  - `Breaking:` requires `pixi.js` 8.22.0 or later.
+
+### Patch Changes
+
+- [#424](https://github.com/marco-lepore/yage/pull/424) [`3c00174`](https://github.com/marco-lepore/yage/commit/3c00174714e220f5069230c562d9821fc1a66354) Thanks [@marco-lepore](https://github.com/marco-lepore)! - The package documentation names all three built-in renderers: `overlayLighting()`, `shaderLighting()`, and `surfaceLighting()`.
+  - The README describes `surfaceLighting()` beside the other two renderers and says a `LightOccluder` blocks light in all three.
+  - The JSDoc of `OverlayLightingRendererOptions` and `overlayLighting()` names the overlay renderer.
+  - The JSDoc of `OverlayLightingRenderer` and `ShaderLightingRenderer` says the overlay and shader renderers share `LightingComposite`.
+  - `AmbientLightOptions.color` is documented as the tint of ambient light in the drawn picture.
+
+- [#412](https://github.com/marco-lepore/yage/pull/412) [`cd014b8`](https://github.com/marco-lepore/yage/commit/cd014b818f2f97c10825552d6e4feccca77fb640) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add sprite materials with normal maps, specular highlights, and emission.
+  - `surfaceLighting()` is a lighting backend that lights each sprite on a world layer individually, with its normal map, specular highlights, and emission, before the sprite blends with what is behind it. It uses the scene's ambient light, lights, cones, and occluders. It requires WebGL2 or WebGPU and rejects bounce. Graphics, text, tilemaps, and particles keep their own colors under it.
+  - `LightSource.height` places a light above the sprite plane in pixels, default 64. It changes the direction of surface lighting only, not light-level queries or shadows.
+  - `shaderLighting()` spends less GPU time on the shadows of point lights (`size: 0`), and skips occluder edges that cannot block a pixel's view of a finite lamp.
+  - A lighting buffer that runs out of room names the buffer and its capacity in its error.
+
+- Updated dependencies [[`e26bb25`](https://github.com/marco-lepore/yage/commit/e26bb252286c83cb6cec5a745420a1458b717bad), [`ba82273`](https://github.com/marco-lepore/yage/commit/ba822735627cf5350a844c7052e7c184bba0ac62), [`6dc14e6`](https://github.com/marco-lepore/yage/commit/6dc14e6aeea0b8d3e8fb17677017b44985971206), [`b804d22`](https://github.com/marco-lepore/yage/commit/b804d226cd8be730c6a2519d92789e929f7dc526), [`f3f2d71`](https://github.com/marco-lepore/yage/commit/f3f2d7163c1d8f3f67c402771a8ad297f64a0a83), [`f3f2d71`](https://github.com/marco-lepore/yage/commit/f3f2d7163c1d8f3f67c402771a8ad297f64a0a83), [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03), [`5ffc62f`](https://github.com/marco-lepore/yage/commit/5ffc62f0cb8a73c92880a09c2101d52cedfdaf03), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`590c7d2`](https://github.com/marco-lepore/yage/commit/590c7d2f0a024c27dc3c37e2272c90a59c8e1b0f), [`5b4ecaf`](https://github.com/marco-lepore/yage/commit/5b4ecaf3c19098e2f9d9e85c1246a3769994de7f), [`3aae2f1`](https://github.com/marco-lepore/yage/commit/3aae2f10761263a32d2790b86665941335566239), [`207d373`](https://github.com/marco-lepore/yage/commit/207d373f73e3b6aff8a1cbe36b5ae4097a2ff5d1), [`20fb06e`](https://github.com/marco-lepore/yage/commit/20fb06e5c808da0c1ef42e45526432ed675765f2), [`bea7218`](https://github.com/marco-lepore/yage/commit/bea7218cd64809a68f77d9ac6dddb6e9ae059326), [`baf2d43`](https://github.com/marco-lepore/yage/commit/baf2d4317e36f284787de78422ecf20b9bdb3d75), [`1bdcdc6`](https://github.com/marco-lepore/yage/commit/1bdcdc629ca5d6219baa95c4cc75e217f377fa07), [`cd014b8`](https://github.com/marco-lepore/yage/commit/cd014b818f2f97c10825552d6e4feccca77fb640), [`fdda394`](https://github.com/marco-lepore/yage/commit/fdda394efd47114e097a569e28b3952cd0b5305a), [`162ce3f`](https://github.com/marco-lepore/yage/commit/162ce3fe615dcb03e64a5dc6a050d32e734249ad), [`5b4ecaf`](https://github.com/marco-lepore/yage/commit/5b4ecaf3c19098e2f9d9e85c1246a3769994de7f), [`837fe35`](https://github.com/marco-lepore/yage/commit/837fe3579c5268ab591b380fcea23257ec919f68), [`28532d4`](https://github.com/marco-lepore/yage/commit/28532d4fe5c8d853d465c7e8f373783d4ab83bd6)]:
+  - @yagejs/renderer@0.13.0
+  - @yagejs/core@0.13.0
+
 ## 0.12.0
 
 ### Minor Changes

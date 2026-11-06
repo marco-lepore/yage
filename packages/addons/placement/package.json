@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/placement",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Furniture and modular object placement with previews, attachments, validation, editing and layout history for YAGE",
   "keywords": [
     "yage",
@@ -58,16 +58,16 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@yagejs/core": ">=0.12.0 <0.13.0",
-    "@yagejs/level": ">=0.12.0 <0.13.0",
-    "@yagejs/input": ">=0.12.0 <0.13.0",
-    "@yagejs/renderer": ">=0.12.0 <0.13.0"
+    "@yagejs/core": ">=0.13.0 <0.14.0",
+    "@yagejs/level": ">=0.13.0 <0.14.0",
+    "@yagejs/input": ">=0.13.0 <0.14.0",
+    "@yagejs/renderer": ">=0.13.0 <0.14.0"
   },
   "devDependencies": {
-    "@yagejs/core": ">=0.12.0",
-    "@yagejs/level": ">=0.12.0",
-    "@yagejs/input": ">=0.12.0",
-    "@yagejs/renderer": ">=0.12.0",
+    "@yagejs/core": ">=0.13.0",
+    "@yagejs/level": ">=0.13.0",
+    "@yagejs/input": ">=0.13.0",
+    "@yagejs/renderer": ">=0.13.0",
     "@vitest/coverage-v8": "^4.0.18"
   },
   "peerDependenciesMeta": {

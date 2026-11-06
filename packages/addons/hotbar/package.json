@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/hotbar",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed action hotbars with live availability, device controls and a default view for YAGE",
   "keywords": [
     "yage",
@@ -58,9 +58,9 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@yagejs/core": ">=0.12.0 <0.13.0",
-    "@yagejs/input": ">=0.12.0 <0.13.0",
-    "@yagejs/renderer": ">=0.12.0 <0.13.0"
+    "@yagejs/core": ">=0.13.0 <0.14.0",
+    "@yagejs/input": ">=0.13.0 <0.14.0",
+    "@yagejs/renderer": ">=0.13.0 <0.14.0"
   },
   "peerDependenciesMeta": {
     "@yagejs/renderer": {
@@ -69,8 +69,8 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
-    "@yagejs/core": ">=0.12.0",
-    "@yagejs/input": ">=0.12.0",
-    "@yagejs/renderer": ">=0.12.0"
+    "@yagejs/core": ">=0.13.0",
+    "@yagejs/input": ">=0.13.0",
+    "@yagejs/renderer": ">=0.13.0"
   }
 }
